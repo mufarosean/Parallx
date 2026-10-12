@@ -1,0 +1,375 @@
+/* mcpSection.css — the MCP Servers section of AI Settings: the server list,
+   its rows and badges, the sign-in progress box, the add form and the
+   install form with its catalog cards. Imported by mcpSection.ts. */
+
+/* ── MCP Servers Section ─────────────────────────────────────────── */
+
+.ai-settings-mcp-summary {
+  margin-left: 8px;
+  font-size: var(--parallx-fontSize-sm);
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-list {
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.ai-settings-mcp-empty {
+  padding: 16px;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground, #888);
+  text-align: center;
+}
+
+.ai-settings-mcp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-mcp-row:last-child {
+  border-bottom: none;
+}
+
+.ai-settings-mcp-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-mcp-row__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ai-settings-mcp-row__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ai-settings-mcp-dot {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.ai-settings-mcp-dot[data-status="connected"]    { color: var(--px-success); }
+.ai-settings-mcp-dot[data-status="unhealthy"]     { color: var(--px-warning); }
+.ai-settings-mcp-dot[data-status="connecting"],
+.ai-settings-mcp-dot[data-status="reconnecting"]  { color: var(--px-warning); animation: mcp-pulse 1.2s ease-in-out infinite; }
+.ai-settings-mcp-dot[data-status="error"]          { color: var(--px-danger); }
+.ai-settings-mcp-dot[data-status="disconnected"]   { color: var(--px-text-faint); }
+
+@keyframes mcp-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+.ai-settings-mcp-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-settings-mcp-name {
+  font-size: var(--parallx-fontSize-base);
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-settings-mcp-detail {
+  font-family: var(--px-font-mono);
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-settings-mcp-badge {
+  font-size: var(--parallx-fontSize-sm);
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.ai-settings-mcp-badge[data-status="connected"]   { color: var(--px-success); background: rgba(var(--px-green-rgb), 0.12); }
+.ai-settings-mcp-badge[data-status="unhealthy"]    { color: var(--px-warning); background: var(--px-warning-soft); }
+.ai-settings-mcp-badge[data-status="connecting"],
+.ai-settings-mcp-badge[data-status="reconnecting"] { color: var(--px-warning); background: var(--px-warning-soft); }
+.ai-settings-mcp-badge[data-status="error"]         { color: var(--px-danger); background: var(--px-danger-soft); }
+.ai-settings-mcp-badge[data-status="disconnected"]  { color: var(--px-text-faint); }
+
+/* The sign-in progress box under a server's row (mcpAuthProgress.ts). */
+.ai-settings-mcp-auth {
+  padding: 6px 12px 10px 38px;
+  font-size: var(--parallx-fontSize-sm);
+  color: var(--px-text-muted);
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+}
+.ai-settings-mcp-auth__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+.ai-settings-mcp-auth__url {
+  color: var(--px-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ai-settings-mcp-auth__log {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 96px;
+  overflow: auto;
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+  background: var(--px-bg-inset);
+  border-radius: 3px;
+  white-space: pre-wrap;
+}
+
+.ai-settings-mcp-btn {
+  background: none;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
+  color: var(--vscode-foreground, #ccc);
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: var(--parallx-fontSize-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-settings-mcp-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.ai-settings-mcp-btn--danger {
+  color: var(--px-danger);
+  border-color: color-mix(in srgb, var(--px-danger) 35%, transparent);
+}
+
+.ai-settings-mcp-btn--danger:hover {
+  background: var(--px-danger-soft);
+}
+
+.ai-settings-mcp-add-btn {
+  background: none;
+  border: 1px dashed var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
+  color: var(--vscode-textLink-foreground, #3794ff);
+  padding: 8px;
+  border-radius: 4px;
+  font-size: var(--parallx-fontSize-base);
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+}
+
+.ai-settings-mcp-add-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  border-color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* Add form */
+
+.ai-settings-mcp-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-mcp-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
+  border-radius: 3px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  font-size: var(--parallx-fontSize-base);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.ai-settings-mcp-input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.ai-settings-mcp-input::placeholder {
+  color: var(--px-text-faint);
+}
+
+.ai-settings-mcp-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── Install form: tabs + catalog cards ──────────────────────────────── */
+
+.ai-settings-mcp-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  margin-bottom: 8px;
+}
+
+.ai-settings-mcp-tab {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground, #ccc);
+  padding: 6px 12px;
+  font-size: var(--parallx-fontSize-base);
+  font-family: inherit;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.ai-settings-mcp-tab:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-mcp-tab--active {
+  border-bottom-color: var(--vscode-focusBorder, #007fd4);
+  color: var(--vscode-foreground, #fff);
+}
+
+.ai-settings-mcp-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-settings-mcp-catalog-intro {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-descriptionForeground, #888);
+  margin-bottom: 4px;
+}
+
+.ai-settings-mcp-catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+  border-radius: 3px;
+  background: var(--vscode-editor-background, transparent);
+}
+
+.ai-settings-mcp-catalog-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-settings-mcp-catalog-card__title {
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-mcp-catalog-card__tag {
+  font-size: var(--px-text-xs);
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-badge-foreground, #aaa);
+}
+
+.ai-settings-mcp-catalog-card__desc {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-catalog-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.ai-settings-mcp-catalog-card__home {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: none;
+}
+
+.ai-settings-mcp-catalog-card__home:hover {
+  text-decoration: underline;
+}
+
+.ai-settings-mcp-install-heading {
+  font-size: var(--parallx-fontSize-md);
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-mcp-install-desc {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-install-cmd {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--px-text-sm);
+  padding: 4px 8px;
+  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
+  border-radius: 3px;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-mcp-install-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.ai-settings-mcp-install-label {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-foreground, #ccc);
+  font-weight: 500;
+}
+
+.ai-settings-mcp-install-help {
+  font-size: var(--px-text-xs);
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-mcp-install-status {
+  font-size: var(--parallx-fontSize-base);
+  color: var(--vscode-errorForeground, #f48771);
+  min-height: 1em;
+}
+
+.ai-settings-mcp-textarea {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--px-text-sm);
+  resize: vertical;
+}

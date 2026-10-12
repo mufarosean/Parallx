@@ -15,6 +15,8 @@ import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsType
 import type { IMcpClientService } from '../../../services/serviceTypes.js';
 import type { IMcpServerConfig, McpConnectionState } from '../../../openclaw/mcp/mcpTypes.js';
 import { MCP_CATALOG, type IMcpCatalogEntry } from '../../../openclaw/mcp/mcpCatalog.js';
+import { createMcpAuthProgress } from './mcpAuthProgress.js';
+import './mcpSection.css';
 
 // ─── Status → display mapping ────────────────────────────────────────────────
 
@@ -542,6 +544,8 @@ export class McpSection extends SettingsSection {
             args: readonly string[],
             env: Record<string, string>,
           ) => Promise<{ error: string | null; exitCode: number | null; stderr?: string }>;
+          onOauthUrl?: (callback: (serverId: string, url: string) => void) => () => void;
+          onOauthStderr?: (callback: (serverId: string, text: string) => void) => () => void;
         };
       };
     }).parallxElectron;
@@ -567,6 +571,20 @@ export class McpSection extends SettingsSection {
       badge.dataset.status = 'connecting';
     }
 
+    // The sign-in page's address and the helper's output, under the row,
+    // while the helper runs: the browser is already open, but a sign-in
+    // that sits silent for a minute reads as broken.
+    const progress = createMcpAuthProgress();
+    row?.insertAdjacentElement('afterend', progress.el);
+    const unsubscribe = [
+      electronApi?.mcp?.onOauthUrl?.((id, url) => { if (id === server.id) progress.setUrl(url); }),
+      electronApi?.mcp?.onOauthStderr?.((id, text) => { if (id === server.id) progress.appendLog(text); }),
+    ];
+    const stopWatching = (): void => {
+      for (const off of unsubscribe) { try { off?.(); } catch { /* already gone */ } }
+      progress.dispose();
+    };
+
     let result: { error: string | null; exitCode: number | null; stderr?: string };
     try {
       result = await oauthBootstrap(
@@ -577,9 +595,11 @@ export class McpSection extends SettingsSection {
       );
     } catch (err) {
       console.error('[McpSection] OAuth bootstrap threw:', err);
+      stopWatching();
       this._renderServerList();
       return;
     }
+    stopWatching();
 
     if (result.error || result.exitCode !== 0) {
       console.error(
