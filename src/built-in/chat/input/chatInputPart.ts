@@ -10,6 +10,7 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 
+import { declareControl } from '../../../ui/kit.js';
 import './chatInput.css';
 
 import { Disposable } from '../../../platform/lifecycle.js';
@@ -29,6 +30,18 @@ import type { IMentionSuggestionProvider, ISlashCommandProvider } from '../chatT
 /**
  * Chat input area — textarea + context ribbon + toolbar (submit/stop, model/mode pickers).
  */
+/** An icon-only button of the input's chrome, in the scene by id. */
+function iconButton(className: string, svg: string, title: string, label: string, id: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = className;
+  btn.type = 'button';
+  btn.title = title;
+  btn.setAttribute('aria-label', label);
+  btn.innerHTML = svg;
+  declareControl(btn, { id, label, kind: 'iconButton', hint: title });
+  return btn;
+}
+
 export class ChatInputPart extends Disposable {
 
   // ── DOM ──
@@ -88,12 +101,7 @@ export class ChatInputPart extends Disposable {
     this._root.appendChild(contextRow);
 
     // Add Context button (VS Code-style attach) — first item in the context row
-    this._attachBtn = document.createElement('button');
-    this._attachBtn.className = 'parallx-chat-input-attach';
-    this._attachBtn.type = 'button';
-    this._attachBtn.title = 'Add context…';
-    this._attachBtn.setAttribute('aria-label', 'Add Context');
-    this._attachBtn.innerHTML = chatIcons.newChat;
+    this._attachBtn = iconButton('parallx-chat-input-attach', chatIcons.newChat, 'Add context…', 'Add Context', 'chat.addContext');
     this._attachLabel = document.createElement('span');
     this._attachLabel.className = 'parallx-chat-input-attach-label';
     this._attachLabel.textContent = '';
@@ -121,6 +129,7 @@ export class ChatInputPart extends Disposable {
     this._textarea.className = 'parallx-chat-input-textarea';
     this._textarea.placeholder = 'Ask a question\u2026';
     this._textarea.rows = 1;
+    declareControl(this._textarea, { id: 'chat.input', label: 'Message', kind: 'input', state: () => ({ kind: 'value', value: this._textarea.value }) });
     editorArea.appendChild(this._textarea);
 
     // Toolbar
@@ -142,12 +151,7 @@ export class ChatInputPart extends Disposable {
     }));
 
     // Configure Tools button (wrench icon — opens AI Hub → Tools section, M20 E.2)
-    this._toolsBtn = document.createElement('button');
-    this._toolsBtn.className = 'parallx-chat-input-tools';
-    this._toolsBtn.type = 'button';
-    this._toolsBtn.title = '\u2699 Configure AI\u2026';
-    this._toolsBtn.setAttribute('aria-label', 'Configure AI Tools');
-    this._toolsBtn.innerHTML = chatIcons.tools;
+    this._toolsBtn = iconButton('parallx-chat-input-tools', chatIcons.tools, '\u2699 Configure AI\u2026', 'Configure AI Tools', 'chat.configureTools');
     this._toolsBtn.style.display = 'none'; // hidden until services wired
     this._pickerSlot.appendChild(this._toolsBtn);
 
@@ -163,21 +167,11 @@ export class ChatInputPart extends Disposable {
     this._contextPills = this._register(new ChatContextPills(this._toolbar));
 
     // Submit button (icon-only: ↑ arrow, VS Code style)
-    this._submitBtn = document.createElement('button');
-    this._submitBtn.className = 'parallx-chat-input-submit';
-    this._submitBtn.innerHTML = chatIcons.send;
-    this._submitBtn.type = 'button';
-    this._submitBtn.title = 'Send message (Enter)';
-    this._submitBtn.setAttribute('aria-label', 'Send message');
+    this._submitBtn = iconButton('parallx-chat-input-submit', chatIcons.send, 'Send message (Enter)', 'Send message', 'chat.send');
     this._toolbar.appendChild(this._submitBtn);
 
     // Stop button (icon-only: ■ square, hidden by default)
-    this._stopBtn = document.createElement('button');
-    this._stopBtn.className = 'parallx-chat-input-stop';
-    this._stopBtn.innerHTML = chatIcons.stop;
-    this._stopBtn.type = 'button';
-    this._stopBtn.title = 'Stop generation';
-    this._stopBtn.setAttribute('aria-label', 'Stop generation');
+    this._stopBtn = iconButton('parallx-chat-input-stop', chatIcons.stop, 'Stop generation', 'Stop generation', 'chat.stop');
     this._stopBtn.style.display = 'none';
     this._toolbar.appendChild(this._stopBtn);
 
@@ -660,6 +654,7 @@ export class ChatInputPart extends Disposable {
     doneBtn.type = 'button';
     doneBtn.className = 'parallx-chat-context-picker-done';
     doneBtn.textContent = 'Done';
+    declareControl(doneBtn, { id: 'chat.contextPicker.done', label: 'Done' });
     doneBtn.disabled = true;
     headerBar.appendChild(doneBtn);
     dropdown.appendChild(headerBar);

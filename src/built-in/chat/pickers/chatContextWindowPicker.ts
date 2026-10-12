@@ -8,6 +8,7 @@
 //   2. OllamaProvider._contextLengthOverride (so num_ctx + token bar match)
 //   3. chatService.updateSessionContextWindow (fires onDidChangeSession)
 
+import { declareControl } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { $, addDisposableListener } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
@@ -56,6 +57,7 @@ export class ChatContextWindowPicker extends Disposable {
     this._button.className = 'parallx-chat-picker-btn parallx-chat-picker-btn--context';
     this._button.type = 'button';
     this._button.title = 'Context window for this chat (lower = faster, less VRAM)';
+    declareControl(this._button, { id: 'chat.contextWindow', label: 'Context window', hint: this._button.title, state: () => ({ kind: 'value', value: this._button.textContent?.trim() ?? '' }) });
     this._root.appendChild(this._button);
 
     this._label = document.createElement('span');

@@ -7,6 +7,7 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (ChatModelPickerWidget portion)
 
+import { declareControl } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -45,6 +46,7 @@ export class ChatModelPicker extends Disposable {
     this._button.className = 'parallx-chat-picker-btn parallx-chat-picker-btn--model';
     this._button.type = 'button';
     this._button.textContent = 'Model\u2026';
+    declareControl(this._button, { id: 'chat.model', label: 'Model', state: () => ({ kind: 'value', value: this._button.textContent?.trim() ?? '' }) });
     this._root.appendChild(this._button);
 
     // Click to toggle dropdown

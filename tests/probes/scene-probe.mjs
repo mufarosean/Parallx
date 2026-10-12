@@ -38,6 +38,7 @@ const BUILTIN_IDS = {
   planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
   agents: ['agents.newRoutine', 'agents.openSettings', 'agents.tab', 'agents.showHistory'],
+  chat: ['chat.input', 'chat.send', 'chat.addContext', 'chat.mode', 'chat.engine', 'chat.context'],
   workflows: ['workflows.editor.name', 'workflows.editor.runNow', 'workflows.editor.enabled', 'workflows.editor.add.trigger-schedule'],
   welcome: ['welcome.workbench.action.showCommands', 'welcome.settings.open', 'welcome.workbench.action.files.openFolder'],
   tools: ['tools.search', 'tools.install'],

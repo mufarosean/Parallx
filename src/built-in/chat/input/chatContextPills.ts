@@ -16,6 +16,7 @@
 //   Copilot's "used X references" collapsible area beneath the response.
 //   Our implementation shows them ABOVE the input for pre-send transparency.
 
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -113,6 +114,7 @@ export class ChatContextPills extends Disposable {
     toggleBtn.setAttribute('aria-haspopup', 'menu');
     toggleBtn.setAttribute('aria-expanded', 'false');
     this._toggleBtn = toggleBtn;
+    declareControl(toggleBtn, { id: 'chat.context', label: 'Context', state: () => ({ kind: 'pressed', value: toggleBtn.getAttribute('aria-expanded') === 'true' }) });
     this._toggleBtn.addEventListener('click', () => {
       this._expanded = !this._expanded;
       this._render();
@@ -375,6 +377,7 @@ export class ChatContextPills extends Disposable {
     el.appendChild(body);
 
     // Action button: × to exclude, or ↩ to restore
+    createSurface(el, { id: 'chat.contextPill', owner: 'chat', label: pill.label, instance: pill.id });
     if (pill.removable) {
       if (isExcluded) {
         const restoreBtn = document.createElement('button');
@@ -382,6 +385,7 @@ export class ChatContextPills extends Disposable {
         restoreBtn.type = 'button';
         restoreBtn.title = 'Restore to context';
         restoreBtn.setAttribute('aria-label', `Restore ${pill.label}`);
+        declareControl(restoreBtn, { id: 'chat.contextPill.restore', label: 'Restore to context', kind: 'iconButton' });
         restoreBtn.textContent = '↩';
         restoreBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -396,6 +400,7 @@ export class ChatContextPills extends Disposable {
         removeBtn.type = 'button';
         removeBtn.title = 'Exclude from context';
         removeBtn.setAttribute('aria-label', `Remove ${pill.label}`);
+        declareControl(removeBtn, { id: 'chat.contextPill.remove', label: 'Exclude from context', kind: 'iconButton' });
         removeBtn.innerHTML = chatIcons.close;
         removeBtn.addEventListener('click', (e) => {
           e.stopPropagation();

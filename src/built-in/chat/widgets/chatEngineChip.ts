@@ -12,6 +12,7 @@
 // pickers used (the widget passes them in), and usage comes from the token
 // meter, which keeps computing in the background.
 
+import { createSurface, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import type { IEngineStatus, IEngineStatusServices, IModelPickerServices } from '../chatTypes.js';
@@ -108,6 +109,7 @@ export class ChatEngineChip extends Disposable {
     this._ring = this._chip.querySelector('.parallx-chat-engine-ring-fill') as SVGCircleElement;
     this._label = document.createElement('span');
     this._chip.appendChild(this._label);
+    declareControl(this._chip, { id: 'chat.engine', label: 'Model and context', state: () => ({ kind: 'value', value: this._label.textContent?.trim() ?? '' }) });
     this._queue = document.createElement('span');
     this._queue.className = 'parallx-chat-engine-queue';
     this._queue.hidden = true;
@@ -159,6 +161,7 @@ export class ChatEngineChip extends Disposable {
     const pop = $('div.parallx-chat-engine-pop');
     pop.setAttribute('role', 'dialog');
     pop.setAttribute('aria-label', 'Model and context');
+    createSurface(pop, { id: 'chat.enginePopover', owner: 'chat', label: 'Model and context' });
     this._fill(pop);
     document.body.appendChild(pop);
     this._pop = pop;
@@ -197,6 +200,7 @@ export class ChatEngineChip extends Disposable {
       row.type = 'button';
       row.className = 'parallx-chat-engine-model';
       row.setAttribute('aria-pressed', m.id === active ? 'true' : 'false');
+      declareControl(row, { id: `chat.engine.model.${sceneSlug(m.id)}`, label: m.id, state: () => ({ kind: 'pressed', value: row.getAttribute('aria-pressed') === 'true' }) });
       const check = $('span.parallx-chat-engine-check', m.id === active ? '✓' : '');
       const text = $('span.parallx-chat-engine-model-text');
       text.appendChild($('span.parallx-chat-engine-model-name', m.displayName || m.id));
@@ -302,6 +306,7 @@ export class ChatEngineChip extends Disposable {
     details.type = 'button';
     details.className = 'parallx-chat-engine-link';
     details.textContent = 'Details…';
+    declareControl(details, { id: 'chat.engine.details', label: 'Details…' });
     details.addEventListener('click', () => { this._close(); this._o.openUsageDetails(this._chip); });
     host.appendChild(details);
   }

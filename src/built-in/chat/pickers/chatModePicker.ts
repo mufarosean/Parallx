@@ -8,6 +8,7 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (mode picker portion integrated into input toolbar)
 
+import { declareControl } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -73,6 +74,7 @@ export class ChatModePicker extends Disposable {
     this._button = document.createElement('button');
     this._button.className = 'parallx-chat-picker-btn parallx-chat-picker-btn--mode';
     this._button.type = 'button';
+    declareControl(this._button, { id: 'chat.mode', label: 'Chat mode', state: () => ({ kind: 'value', value: this._button.textContent?.trim() ?? '' }) });
     this._root.appendChild(this._button);
 
     // Click to toggle dropdown

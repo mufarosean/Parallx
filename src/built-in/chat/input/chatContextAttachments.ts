@@ -11,6 +11,7 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (ChatAttachedContext portion)
 
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -420,6 +421,7 @@ export class ChatContextAttachments extends Disposable {
   /** Create an explicit attachment chip with × close button. */
   private _createChip(attachment: IChatAttachment, _isImplicit: boolean, onRemove: () => void): HTMLElement {
     const chip = $('div.parallx-chat-context-chip');
+    createSurface(chip, { id: 'chat.attachment', owner: 'chat', label: attachment.name, instance: attachment.id });
     const isSelection = (attachment as IChatSelectionAttachment).kind === 'selection';
     const isCanvasBlock = isChatCanvasBlockAttachment(attachment);
     if (isChatImageAttachment(attachment)) {
@@ -490,6 +492,7 @@ export class ChatContextAttachments extends Disposable {
         switchLink.type = 'button';
         switchLink.textContent = 'Switch Model';
         switchLink.title = 'Switch to a vision-capable model';
+        declareControl(switchLink, { id: 'chat.attachment.switchModel', label: 'Switch Model', hint: switchLink.title });
         switchLink.addEventListener('click', (e) => {
           e.stopPropagation();
           this._onRequestVisionModel?.();
@@ -504,6 +507,7 @@ export class ChatContextAttachments extends Disposable {
     closeBtn.type = 'button';
     closeBtn.title = 'Remove';
     closeBtn.setAttribute('aria-label', `Remove ${attachment.name}`);
+    declareControl(closeBtn, { id: 'chat.attachment.remove', label: 'Remove', kind: 'iconButton' });
     closeBtn.innerHTML = chatIcons.close;
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -530,6 +534,7 @@ export class ChatContextAttachments extends Disposable {
   /** Create an implicit suggestion chip with + add button. */
   private _createImplicitChip(file: IOpenEditorFile): HTMLElement {
     const chip = $('div.parallx-chat-context-chip.parallx-chat-context-chip--implicit');
+    createSurface(chip, { id: 'chat.suggestedFile', owner: 'chat', label: file.name, instance: file.fullPath });
 
     // File icon — extension-aware colored icon
     const icon = document.createElement('span');
@@ -550,6 +555,7 @@ export class ChatContextAttachments extends Disposable {
     addBtn.type = 'button';
     addBtn.title = `Add ${file.name} as context`;
     addBtn.setAttribute('aria-label', `Add ${file.name}`);
+    declareControl(addBtn, { id: 'chat.suggestedFile.add', label: `Add ${file.name} as context`, kind: 'iconButton' });
     addBtn.innerHTML = chatIcons.newChat; // + icon
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -563,6 +569,7 @@ export class ChatContextAttachments extends Disposable {
     dismissBtn.type = 'button';
     dismissBtn.title = 'Dismiss suggestion';
     dismissBtn.setAttribute('aria-label', `Dismiss ${file.name}`);
+    declareControl(dismissBtn, { id: 'chat.suggestedFile.dismiss', label: 'Dismiss suggestion', kind: 'iconButton' });
     dismissBtn.innerHTML = chatIcons.close;
     dismissBtn.addEventListener('click', (e) => {
       e.stopPropagation();

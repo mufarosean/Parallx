@@ -748,6 +748,26 @@ after the openers (the settings editor shows one panel at a time, as a
 centred overlay) and checks the panel, its search, a nav item, add
 agent and add server, then presses Escape.
 
+Chat chrome done 2026-10-12, in the cloud, except the message area:
+the input's add-context, configure-tools, send and stop buttons (one
+`iconButton` helper now makes all four, which kept the file under its
+baseline), the message box (`chat.input`), the context picker's Done,
+the mode, model and context-window pickers (value is the button's
+text), the engine chip (`chat.engine`) and its popover as a surface
+with the model rows (pressed) and Details, the session sidebar's
+refresh, filter, search box, the session list, and each session row as
+`chat.session` by id with its delete; the context menu's toggle
+(`chat.context`, pressed while open) and each pill as `chat.contextPill`
+with restore or remove; each attachment chip as `chat.attachment` with
+remove and Switch Model, and each suggested file as `chat.suggestedFile`
+with add and dismiss. Not done: `chatWidget.ts` (1617 lines, over the
+limit) holds the empty state's shortcut keys, the offline notice's Open
+AI Settings, the pending-action steer and remove, the plan's clear and
+the thread panel's close and copy; declare them when a module is
+extracted from it (the empty state, lines 1480 to 1570, is the natural
+cut). The probe checks the input, send, add context, mode, engine and
+context ids.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the
@@ -892,7 +912,8 @@ Sessions append here. Each line: date, step, what was left and why.
   worksheet, planner, PDF, explorer, search, dashboard, settings panels,
   welcome, terminal, activity log, tool gallery, theme editor, the
   Agents view, run pane and routine form, the workflow editor, AI
-  settings and the three panel logs). Left in
+  settings, the three panel logs, and the chat chrome outside
+  `chatWidget.ts`). Left in
   step 5, in this order, one commit each, each verified by the probe
   (section 13; in the cloud run it as
   `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
@@ -902,8 +923,8 @@ Sessions append here. Each line: date, step, what was left and why.
   3. canvas: only the toolbar, menus and property editors, never the
      Tiptap document. Inventory with
      `grep -n "createElement('button')\|\$('button" src/canvas -r`.
-  4. chat: header, input chips, mode switch, tool cards; never the
-     message list's markdown.
+  4. chat: done except `chatWidget.ts` (see step 5's notes); the
+     message list's markdown is never declared.
   Then steps 6, 7, 8, 9, 4, 10, 11 as section 9 orders them.
 
   What this session learned, for whoever continues:

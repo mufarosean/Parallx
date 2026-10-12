@@ -85,7 +85,7 @@
   "src/built-in/chat/archivedRunViewer.ts": 10,
   "src/built-in/chat/input/chatContextAttachments.ts": 28,
   "src/built-in/chat/input/chatContextPills.ts": 34,
-  "src/built-in/chat/input/chatInputPart.ts": 41,
+  "src/built-in/chat/input/chatInputPart.ts": 35,
   "src/built-in/chat/input/chatMentionAutocomplete.ts": 12,
   "src/built-in/chat/pickers/chatContextWindowPicker.ts": 13,
   "src/built-in/chat/pickers/chatModePicker.ts": 22,

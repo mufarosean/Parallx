@@ -9,6 +9,7 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatHistory.ts
 
+import { createList, declareControl, createSurface } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import { addAppDays, appDateString, isSameAppDay } from '../../../services/localTime.js';
@@ -156,12 +157,12 @@ export class ChatSessionSidebar extends Disposable {
     header.appendChild(headerActions);
 
     // Refresh button
-    const refreshBtn = this._createButton(chatIcons.refresh, 'Refresh', 'parallx-chat-sidebar-btn');
+    const refreshBtn = this._createButton(chatIcons.refresh, 'Refresh', 'parallx-chat-sidebar-btn', 'chat.sessions.refresh');
     this._register(addDisposableListener(refreshBtn, 'click', () => this.refresh()));
     headerActions.appendChild(refreshBtn);
 
     // Search toggle button
-    const searchBtn = this._createButton(chatIcons.search, 'Filter Sessions', 'parallx-chat-sidebar-btn');
+    const searchBtn = this._createButton(chatIcons.search, 'Filter Sessions', 'parallx-chat-sidebar-btn', 'chat.sessions.filter');
     this._register(addDisposableListener(searchBtn, 'click', () => this._toggleFilter()));
     headerActions.appendChild(searchBtn);
 
@@ -174,6 +175,7 @@ export class ChatSessionSidebar extends Disposable {
     this._filterInput.type = 'text';
     this._filterInput.className = 'parallx-chat-session-sidebar-filter-input';
     this._filterInput.placeholder = 'Filter sessions\u2026';
+    declareControl(this._filterInput, { id: 'chat.sessions.search', label: 'Filter sessions', kind: 'input', state: () => ({ kind: 'value', value: this._filterInput.value }) });
     this._filterContainer.appendChild(this._filterInput);
 
     this._register(addDisposableListener(this._filterInput, 'input', () => {
@@ -189,6 +191,7 @@ export class ChatSessionSidebar extends Disposable {
 
     // ── Session list (scrollable) ──
     this._sessionList = $('div.parallx-chat-session-sidebar-list');
+    createList(this._sessionList, { id: 'chat.sessions', label: 'Sessions', rows: () => Array.from(this._sessionList.querySelectorAll<HTMLElement>('.parallx-chat-session-sidebar-item')), selected: () => Array.from(this._sessionList.querySelectorAll<HTMLElement>('.parallx-chat-session-sidebar-item--active')).map((r) => r.textContent?.trim() ?? '') });
     this._root.appendChild(this._sessionList);
 
     // ── Empty state ──
@@ -402,6 +405,7 @@ export class ChatSessionSidebar extends Disposable {
     const isActive = session.id === this._activeSessionId;
 
     const item = $('div.parallx-chat-session-sidebar-item');
+    createSurface(item, { id: 'chat.session', owner: 'chat', label: session.title || session.id, instance: session.id });
     if (isActive) {
       item.classList.add('parallx-chat-session-sidebar-item--active');
     }
@@ -431,6 +435,7 @@ export class ChatSessionSidebar extends Disposable {
     deleteBtn.type = 'button';
     deleteBtn.title = 'Delete Session';
     deleteBtn.setAttribute('aria-label', 'Delete Session');
+    declareControl(deleteBtn, { id: 'chat.session.delete', label: 'Delete Session', kind: 'iconButton' });
     deleteBtn.innerHTML = chatIcons.trash;
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -444,8 +449,9 @@ export class ChatSessionSidebar extends Disposable {
 
   // ── Helpers ──
 
-  private _createButton(svgHtml: string, tooltip: string, className: string): HTMLButtonElement {
+  private _createButton(svgHtml: string, tooltip: string, className: string, id: string): HTMLButtonElement {
     const btn = document.createElement('button');
+    declareControl(btn, { id, label: tooltip, kind: 'iconButton' });
     btn.className = className;
     btn.type = 'button';
     btn.title = tooltip;
