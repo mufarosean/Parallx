@@ -202,34 +202,6 @@ async function main() {
     await page.waitForTimeout(800);
     const redo = await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length);
     log('pdf', `highlight boxes: made=${made} afterUndo=${after} afterRedo=${redo}`);
-    // Add to Canvas Note: the passage goes to a canvas page and its new highlight links back.
-    const noted = await page.evaluate(async () => {
-      const spans = Array.from(document.querySelectorAll('.pdfViewer .page .textLayer span')).filter((s) => s.textContent.trim().length > 20);
-      const s = spans[6];
-      if (!s?.firstChild) return 'no span';
-      const r = document.createRange();
-      r.setStart(s.firstChild, 0); r.setEnd(s.firstChild, Math.min(25, s.firstChild.textContent.length));
-      getSelection().removeAllRanges(); getSelection().addRange(r);
-      const b = s.getBoundingClientRect();
-      s.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: b.left + 40, clientY: b.top + 4 }));
-      return 'selected';
-    });
-    await repaint(page);
-    await page.waitForTimeout(600);
-    const clicked = await page.evaluate(() => { const b = document.querySelector('.pdf-selection-bubble [aria-label="Add to Canvas Note"]'); b?.click(); return !!b; });
-    await page.waitForTimeout(1_200);
-    // Canvas asks which page the note goes to: take the first offer (a new page).
-    log('pdf', `canvas asks: ${await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.parallx-quickpick-row')).filter((x) => x.offsetParent);
-      const first = items[0];
-      const text = items.slice(0, 4).map((x) => x.textContent.trim().slice(0, 40)).join(' | ');
-      first?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      first?.click();
-      return text || 'nothing offered';
-    })}`);
-    await page.waitForTimeout(2_500);
-    await repaint(page);
-    log('pdf', `canvas note: ${noted} bubbleButton=${clicked} linkedTabs=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-tab.has-canvas-link').length)} tabs=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-tab').length)}`);
     // Overflow menu: list it, then pick spread and scroll modes.
     const openMore = async () => {
       await page.evaluate(() => document.querySelector('.pdf-toolbar [aria-label="More Actions"]')?.click());
@@ -288,6 +260,35 @@ async function main() {
       log('pdf', `${parent}#${i}: ${await subPick(parent, i)} -> ${await viewerClass()}`);
       await page.keyboard.press('Escape');
     }
+    // Add to Canvas Note: the passage goes to a canvas page and its new
+    // highlight links back. Last, since the canvas page it opens hides the PDF.
+    const noted = await page.evaluate(async () => {
+      const spans = Array.from(document.querySelectorAll('.pdfViewer .page .textLayer span')).filter((s) => s.textContent.trim().length > 20);
+      const s = spans[6];
+      if (!s?.firstChild) return 'no span';
+      const r = document.createRange();
+      r.setStart(s.firstChild, 0); r.setEnd(s.firstChild, Math.min(25, s.firstChild.textContent.length));
+      getSelection().removeAllRanges(); getSelection().addRange(r);
+      const b = s.getBoundingClientRect();
+      s.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: b.left + 40, clientY: b.top + 4 }));
+      return 'selected';
+    });
+    await repaint(page);
+    await page.waitForTimeout(600);
+    const clicked = await page.evaluate(() => { const b = document.querySelector('.pdf-selection-bubble [aria-label="Add to Canvas Note"]'); b?.click(); return !!b; });
+    await page.waitForTimeout(1_200);
+    // Canvas asks which page the note goes to: take the first offer (a new page).
+    log('pdf', `canvas asks: ${await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.parallx-quickpick-row')).filter((x) => x.offsetParent);
+      const first = items[0];
+      const text = items.slice(0, 4).map((x) => x.textContent.trim().slice(0, 40)).join(' | ');
+      first?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      first?.click();
+      return text || 'nothing offered';
+    })}`);
+    await page.waitForTimeout(2_500);
+    await repaint(page);
+    log('pdf', `canvas note: ${noted} bubbleButton=${clicked} linkedTabs=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-tab.has-canvas-link').length)} tabs=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-tab').length)}`);
     await shot(page, 'pdf');
   });
 
