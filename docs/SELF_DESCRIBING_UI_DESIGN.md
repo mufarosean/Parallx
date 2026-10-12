@@ -804,6 +804,16 @@ strip's `/`, `@` and mode cells (`chat.empty.*`, the mode cell's value
 is the mode's label) and the offline notice's Open AI Settings. The
 message list and its content parts stay undeclared by design.
 
+Canvas property editors done 2026-10-12, in the cloud.
+`createPropertyEditor` declares the editor it builds when its context
+carries a `sceneId`, with the property's name as label and what the
+editor shows as state (a box's checked, a field's text, else the words
+on it). A page's property panel passes `canvas.property.<name>` per
+property; the database table passes none, since one id per cell would
+repeat under one surface. Left in canvas: the sidebar
+(`canvasSidebar.ts`, 2198 lines; extract the add popover or the trash
+panel first).
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the
@@ -1003,8 +1013,7 @@ Sessions append here. Each line: date, step, what was left and why.
      output, diagnostics and indexing-log.
   3. canvas: the page chrome and bubble menu are done (see step 5's
      notes); left are the sidebar (`canvasSidebar.ts`, over the limit:
-     extract first) and `properties/propertyEditors.ts`. Never the
-     Tiptap document.
+     extract first). Never the Tiptap document.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done; the message list's markdown is never declared.
   Steps 6, 8 and 10 are done, and step 11's script exists (run it after

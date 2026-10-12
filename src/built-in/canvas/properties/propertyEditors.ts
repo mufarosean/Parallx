@@ -6,6 +6,7 @@
 import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
+import { declareControl } from '../../../ui/kit.js';
 import { parseStoredTime } from '../../../platform/storedTime.js';
 import { isChecked } from '../database/cellValues.js';
 
@@ -75,6 +76,12 @@ function wireInputCommit(input: HTMLInputElement, commit: () => void): void {
 export interface IPropertyEditorContext {
   /** Show pages sharing a tag/select value (M85 — tags that link pages). */
   onValueClick?: (propertyName: string, value: string, anchor: HTMLElement) => void;
+  /**
+   * With an id, the editor is in the scene under it, its value as state. A
+   * page's property panel passes one per property; a table does not, since
+   * one id per cell would repeat under one surface.
+   */
+  sceneId?: string;
 }
 
 export function createPropertyEditor(
@@ -83,6 +90,15 @@ export function createPropertyEditor(
   onChange: (value: unknown) => void,
   context?: IPropertyEditorContext,
 ): HTMLElement {
+  const editor = _buildEditor(definition, value, onChange, context);
+  if (context?.sceneId) {
+    const kind = definition.type === 'checkbox' ? 'toggle' : definition.type === 'select' ? 'select' : 'input';
+    declareControl(editor, { id: context.sceneId, label: definition.name, kind, state: () => editorState(editor) });
+  }
+  return editor;
+}
+
+function _buildEditor(definition: IPropertyDefinition, value: unknown, onChange: (value: unknown) => void, context?: IPropertyEditorContext): HTMLElement {
   switch (definition.type) {
     case 'text': return _createTextEditor(value as string | null, onChange);
     case 'number': return _createNumberEditor(value as number | null, onChange);
@@ -94,6 +110,14 @@ export function createPropertyEditor(
     case 'url': return _createUrlEditor(value as string | null, onChange);
     default: return _createTextEditor(value as string | null, onChange);
   }
+}
+
+/** What an editor shows right now: a box's checked, a field's text, else the words on it (a date, tags, a choice). */
+function editorState(editor: HTMLElement): { kind: 'pressed'; value: boolean } | { kind: 'value'; value: string } {
+  const input = editor instanceof HTMLInputElement ? editor : editor.querySelector('input');
+  if (input?.type === 'checkbox') return { kind: 'pressed', value: input.checked };
+  if (input) return { kind: 'value', value: input.value };
+  return { kind: 'value', value: editor.textContent?.trim() ?? '' };
 }
 
 // ─── Text ────────────────────────────────────────────────────────────────────

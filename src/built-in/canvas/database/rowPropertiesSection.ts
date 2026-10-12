@@ -26,6 +26,7 @@ import type { IPropertyDefinition, PropertyType } from '../properties/propertyTy
 import { showPropertyPicker } from '../properties/propertyPicker.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
+import { sceneSlug } from '../../../ui/kit.js';
 import { parseStoredTime } from '../../../platform/storedTime.js';
 import { appDateTimeString } from '../../../services/localTime.js';
 
@@ -192,6 +193,7 @@ export async function mountRowPropertiesSection(
       });
     }, {
       onValueClick: (propertyName, tagValue, anchor) => void showPagesForValue(home, propertyName, tagValue, anchor),
+      sceneId: `canvas.property.${sceneSlug(prop.name)}`,
     });
     value.appendChild(editor);
 
