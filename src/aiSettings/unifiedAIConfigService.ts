@@ -23,7 +23,6 @@ import {
   DEFAULT_UNIFIED_CONFIG,
   tolegacyProfile,
 } from './unifiedConfigTypes.js';
-import type { ILanguageModelsService, IChatResponseChunk } from '../services/chatTypes.js';
 import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
 // ─── Storage Keys ──────────────────────────────────────────────────────────
@@ -59,20 +58,6 @@ export function deepMerge<T extends Record<string, unknown>>(
     }
   }
   return result;
-}
-
-// ─── Stream Collector ──────────────────────────────────────────────────────
-
-async function collectStreamedResponse(
-  stream: AsyncIterable<IChatResponseChunk>,
-): Promise<string> {
-  const parts: string[] = [];
-  for await (const chunk of stream) {
-    if (chunk.content) {
-      parts.push(chunk.content);
-    }
-  }
-  return parts.join('');
 }
 
 // ─── Built-in Presets ──────────────────────────────────────────────────────
@@ -155,7 +140,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
 
   constructor(
     private readonly _storage: IStorage,
-    private readonly _languageModelsService: ILanguageModelsService | undefined,
   ) {
     super();
     this._onDidChangeUnified = this._register(new Emitter<IUnifiedAIConfig>());
@@ -511,32 +495,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
 
   async renameProfile(id: string, newName: string): Promise<void> {
     return this.renamePreset(id, newName);
-  }
-
-  async runPreviewTest(userMessage: string): Promise<string> {
-    if (!this._languageModelsService) {
-      throw new Error('[UnifiedAIConfigService] Language models service not available');
-    }
-
-    const config = this.getEffectiveConfig();
-    const modelId = this._languageModelsService.getActiveModel();
-    if (!modelId) {
-      throw new Error('[UnifiedAIConfigService] No active model available');
-    }
-
-    const stream = this._languageModelsService.sendChatRequest(
-      [
-        { role: 'system', content: config.chat.systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      {
-        think: true,
-        temperature: config.model.temperature,
-        maxTokens: config.model.maxTokens || undefined,
-      },
-    );
-
-    return collectStreamedResponse(stream);
   }
 
   // ── Private: Storage ──

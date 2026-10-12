@@ -11,14 +11,6 @@ import type { Event } from '../platform/events.js';
 // ─── The Full Settings Profile ─────────────────────────────────────────────
 
 export interface AIChatSettings {
-  /**
-   * The system prompt injected at the top of every chat conversation.
-   * The friendly UI controls (tone, focus, length) generate this string,
-   * but the user can also override it directly in the raw editor.
-   */
-  systemPrompt: string;
-  /** Whether the user has manually overridden the generated system prompt */
-  systemPromptIsCustom: boolean;
   /** IANA zone every time the assistant reads or writes is in; '' = this computer's zone */
   timeZone?: string;
 }
@@ -85,9 +77,6 @@ export interface IAISettingsService extends IDisposable {
 
   /** Reset the entire active profile to factory defaults */
   resetAll(): Promise<void>;
-
-  /** Test: send a single message using the active profile settings and return the response */
-  runPreviewTest(userMessage: string): Promise<string>;
 
   /** Subscribe to settings changes. Uses Emitter<T>/Event<T> pattern. */
   readonly onDidChange: Event<AISettingsProfile>;

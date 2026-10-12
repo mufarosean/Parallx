@@ -39,9 +39,6 @@ export interface IParallxPermissionsConfig {
 }
 
 export interface IParallxIndexingConfig {
-  readonly autoIndex: boolean;
-  readonly watchFiles: boolean;
-  readonly maxFileSize: number;
   readonly excludePatterns: readonly string[];
 }
 
@@ -85,9 +82,6 @@ const DEFAULT_PERMISSIONS: IParallxPermissionsConfig = {
 };
 
 const DEFAULT_INDEXING: IParallxIndexingConfig = {
-  autoIndex: true,
-  watchFiles: true,
-  maxFileSize: 262144, // 256 KB
   excludePatterns: [],
 };
 

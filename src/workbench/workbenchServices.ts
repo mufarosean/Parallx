@@ -476,10 +476,7 @@ export async function registerUnifiedAIConfigService(
   services: ServiceCollection,
   storage: IStorage,
 ): Promise<UnifiedAIConfigService> {
-  const languageModelsService = services.has(ILanguageModelsService)
-    ? services.get(ILanguageModelsService)
-    : undefined;
-  const unifiedConfigService = new UnifiedAIConfigService(storage, languageModelsService);
+  const unifiedConfigService = new UnifiedAIConfigService(storage);
   await unifiedConfigService.initialize();
   services.registerInstance(IUnifiedAIConfigService, unifiedConfigService);
   // The app's one time zone (api.env.timeZone) holds from boot, before any tool starts.

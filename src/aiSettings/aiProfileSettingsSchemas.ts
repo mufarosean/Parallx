@@ -1,7 +1,7 @@
 // aiProfileSettingsSchemas.ts — M61 Phase 4 §B
 //
-// Registers every "AI profile" setting (persona, chat, model, suggestions,
-// retrieval, indexing, agent, heartbeat) into ISettingsRegistryService and
+// Registers every "AI profile" setting (time zone, model, retrieval, agent,
+// tools, heartbeat) into ISettingsRegistryService and
 // adapter-binds them to IUnifiedAIConfigService so the unified-overlay editor
 // (`Ctrl+Alt+S` → `settings.open`) is the single UI for these values.
 //
@@ -35,21 +35,6 @@ interface IBoundSchema<T = unknown> {
 }
 
 const SCHEMAS: readonly IBoundSchema[] = ([
-
-  // ── Chat ──
-  {
-    schema: {
-      key: 'chat.systemPrompt',
-      type: 'multiline',
-      default: '',
-      scope: 'workspace',
-      description: 'System prompt injected at the top of every chat. Empty = use the built-in default.',
-      category: 'Chat',
-      rows: 6,
-    },
-    read: (c) => c.chat.systemPrompt,
-    write: (v) => ({ chat: { systemPrompt: v as string, systemPromptIsCustom: (v as string).length > 0 } }),
-  } as IBoundSchema<string>,
 
   // ── General (app-wide, stored with the chat profile) ──
   {
@@ -178,46 +163,6 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     },
     read: (c) => c.retrieval.ragScoreThreshold,
     write: (v) => ({ retrieval: { ragScoreThreshold: v as number } }),
-  } as IBoundSchema<number>,
-
-  // ── Indexing ──
-  {
-    schema: {
-      key: 'indexing.autoIndex',
-      type: 'boolean',
-      default: true,
-      scope: 'workspace',
-      description: 'Index workspace files automatically when the workspace opens.',
-      category: 'Indexing',
-    },
-    read: (c) => c.indexing.autoIndex,
-    write: (v) => ({ indexing: { autoIndex: v as boolean } }),
-  } as IBoundSchema<boolean>,
-  {
-    schema: {
-      key: 'indexing.watchFiles',
-      type: 'boolean',
-      default: true,
-      scope: 'workspace',
-      description: 'Watch the workspace for file changes and re-index incrementally.',
-      category: 'Indexing',
-    },
-    read: (c) => c.indexing.watchFiles,
-    write: (v) => ({ indexing: { watchFiles: v as boolean } }),
-  } as IBoundSchema<boolean>,
-  {
-    schema: {
-      key: 'indexing.maxFileSize',
-      type: 'number',
-      default: 262144,
-      scope: 'workspace',
-      description: 'Max file size in bytes to index. 0 = no limit.',
-      category: 'Indexing',
-      min: 0,
-      max: 50_000_000,
-    },
-    read: (c) => c.indexing.maxFileSize,
-    write: (v) => ({ indexing: { maxFileSize: v as number } }),
   } as IBoundSchema<number>,
 
   // ── Agent ──

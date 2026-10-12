@@ -14,8 +14,6 @@ function makeDefaultProfile(): AISettingsProfile {
     presetName: 'Default',
     isBuiltIn: true,
     chat: {
-      systemPrompt: '',
-      systemPromptIsCustom: false,
       timeZone: '',               // this computer's zone
     },
     model: {

@@ -21,10 +21,6 @@ import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 // ─── Behavior ──────────────────────────────────────
 
 export interface IUnifiedChatConfig {
-  /** System prompt injected at top of every chat */
-  readonly systemPrompt: string;
-  /** Whether user has manually edited the system prompt */
-  readonly systemPromptIsCustom: boolean;
   /**
    * The one zone every time the assistant reads or writes is in (an IANA
    * name such as America/Chicago). Empty: this computer's zone. Resolved by
@@ -168,12 +164,6 @@ export interface IUnifiedMemoryConfig {
 // ─── Indexing (from config.json) ─────────────────────────────────────────────
 
 export interface IUnifiedIndexingConfig {
-  /** Automatically index workspace files on open */
-  readonly autoIndex: boolean;
-  /** Watch files for changes and re-index */
-  readonly watchFiles: boolean;
-  /** Max file size in bytes to index (0 = no limit) */
-  readonly maxFileSize: number;
   /** Glob patterns to exclude from indexing */
   readonly excludePatterns: readonly string[];
 }
@@ -428,11 +418,6 @@ export interface IUnifiedAIConfigService extends IDisposable {
    */
   getActiveProfile(): AISettingsProfile;
 
-  // ── Preview ──
-
-  /** Send a test message using current effective config. */
-  runPreviewTest(userMessage: string): Promise<string>;
-
   // ── Filesystem ──
 
   /** Bind a filesystem accessor for reading workspace-level config files. */
@@ -464,8 +449,6 @@ export interface IUnifiedAIConfigService extends IDisposable {
 
 export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   chat: {
-    systemPrompt: '', // generated at runtime from tone/focus/length
-    systemPromptIsCustom: false,
     timeZone: '',                // this computer's zone
   },
   model: {
@@ -513,9 +496,6 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     evictionDays: 90,
   },
   indexing: {
-    autoIndex: true,
-    watchFiles: true,
-    maxFileSize: 262144, // 256 KB
     excludePatterns: [],
   },
   tools: {
@@ -604,9 +584,6 @@ export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUn
       maxIterations: config.agent.maxIterations,
     },
     indexing: {
-      autoIndex: config.indexing.autoIndex,
-      watchFiles: config.indexing.watchFiles,
-      maxFileSize: config.indexing.maxFileSize,
       excludePatterns: [...config.indexing.excludePatterns],
     },
   };

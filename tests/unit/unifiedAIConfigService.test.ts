@@ -83,7 +83,7 @@ describe('fromLegacyParallxConfig', () => {
     expect(override.retrieval?.ragTopK).toBe(10);
     expect(override.retrieval?.ragScoreThreshold).toBe(0.3);
     expect(override.agent?.maxIterations).toBe(10);
-    expect(override.indexing?.autoIndex).toBe(true);
+    expect(override.indexing?.excludePatterns).toEqual([]);
   });
 
   it('does not include chat (not in config.json)', () => {
@@ -108,7 +108,7 @@ describe('tolegacyProfile', () => {
     const profile = tolegacyProfile(preset);
     expect(profile.id).toBe('test-1');
     expect(profile.presetName).toBe('Test');
-    expect(profile.chat.systemPrompt).toBe('');
+    expect(profile.chat.timeZone).toBe('');
     expect(profile.model.defaultModel).toBe(''); // chatModel → defaultModel
   });
 });
@@ -152,7 +152,7 @@ describe('UnifiedAIConfigService', () => {
 
   beforeEach(async () => {
     storage = createMockStorage();
-    service = new UnifiedAIConfigService(storage as any, undefined);
+    service = new UnifiedAIConfigService(storage as any);
     await service.initialize();
   });
 
@@ -558,7 +558,7 @@ describe('A.4 Consumer wiring', () => {
 
     beforeEach(async () => {
       const storage = createMockStorage();
-      service = new UnifiedAIConfigService(storage as any, undefined);
+      service = new UnifiedAIConfigService(storage as any);
       await service.initialize();
     });
 
@@ -605,7 +605,7 @@ describe('A.4 Consumer wiring', () => {
   describe('loadWorkspaceConfig loads overrides from filesystem', () => {
     it('loads workspace overrides after setFileSystem', async () => {
       const storage = createMockStorage();
-      const svc = new UnifiedAIConfigService(storage as any, undefined);
+      const svc = new UnifiedAIConfigService(storage as any);
       await svc.initialize();
 
       // Default config before workspace
@@ -626,7 +626,7 @@ describe('A.4 Consumer wiring', () => {
 
     it('fires onDidChangeConfig after loadWorkspaceConfig', async () => {
       const storage = createMockStorage();
-      const svc = new UnifiedAIConfigService(storage as any, undefined);
+      const svc = new UnifiedAIConfigService(storage as any);
       await svc.initialize();
 
       const listener = vi.fn();
@@ -656,7 +656,7 @@ describe('Phase B: Workspace override persistence', () => {
 
   beforeEach(async () => {
     const storage = createMockStorage();
-    service = new UnifiedAIConfigService(storage as any, undefined);
+    service = new UnifiedAIConfigService(storage as any);
     await service.initialize();
 
     mockWriteFile = vi.fn(async (_relativePath: string, _content: string) => undefined);
@@ -854,7 +854,7 @@ describe('Phase B: Workspace override persistence', () => {
 
       // Create a new service and load from the written JSON
       const storage2 = createMockStorage();
-      const svc2 = new UnifiedAIConfigService(storage2 as any, undefined);
+      const svc2 = new UnifiedAIConfigService(storage2 as any);
       await svc2.initialize();
 
       svc2.setFileSystem({

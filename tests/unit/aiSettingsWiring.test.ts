@@ -12,13 +12,9 @@ import type { IUnifiedAIConfigService } from '../../src/aiSettings/unifiedConfig
 // ─── Mock Factories ──────────────────────────────────────────────────────────
 
 function createMockUnifiedConfigService(overrides?: {
-  chat?: { systemPrompt?: string };
   model?: { temperature?: number; maxTokens?: number };
 }) {
   const config = {
-    chat: {
-      systemPrompt: overrides?.chat?.systemPrompt ?? DEFAULT_PROFILE.chat.systemPrompt,
-    },
     model: {
       temperature: overrides?.model?.temperature ?? DEFAULT_PROFILE.model.temperature,
       maxTokens: overrides?.model?.maxTokens ?? DEFAULT_PROFILE.model.maxTokens,
@@ -41,20 +37,12 @@ describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
       // A partial fake: the test only checks that the slot takes a service.
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { systemPrompt: DEFAULT_PROFILE.chat.systemPrompt },
           model: { temperature: DEFAULT_PROFILE.model.temperature, maxTokens: DEFAULT_PROFILE.model.maxTokens },
         } as any),
       } as unknown as IUnifiedAIConfigService,
     };
     expect(mockServices.unifiedConfigService).toBeDefined();
-    expect(mockServices.unifiedConfigService!.getEffectiveConfig().chat.systemPrompt).toBeDefined();
-  });
-
-  it('falls back to file overlay when unified config system prompt is empty', () => {
-    const config = createMockUnifiedConfigService({ chat: { systemPrompt: '' } });
-    const fileOverlay = 'file-based overlay';
-    const promptOverlay = config.getEffectiveConfig().chat.systemPrompt || fileOverlay;
-    expect(promptOverlay).toBe(fileOverlay);
+    expect(mockServices.unifiedConfigService!.getEffectiveConfig().model.temperature).toBeDefined();
   });
 
   it('temperature from unified config is applied to request options', () => {

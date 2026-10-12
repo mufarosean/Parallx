@@ -66,11 +66,13 @@ describe('the Time Zone setting', () => {
     const row = document.querySelector<HTMLElement>('[data-key="chat.timeZone"]')!;
     expect(row.querySelector('.settings-editor__row-title')?.textContent).toBe('Time Zone');
 
-    // Not on the AI Chat page any more.
-    const chat = navItems.find((n) => n.textContent === 'Chat');
-    expect(chat).toBeDefined();
-    chat!.click();
-    expect(rowKeys()).not.toContain('chat.timeZone');
+    // On no other page, the AI ones included.
+    const others = navItems.filter((n) => n.textContent !== 'General');
+    expect(others.length).toBeGreaterThan(0);
+    for (const page of others) {
+      page.click();
+      expect(rowKeys()).not.toContain('chat.timeZone');
+    }
     editor.dispose();
   });
 
