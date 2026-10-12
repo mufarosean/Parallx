@@ -40,7 +40,6 @@ describe('IUnifiedAIConfig defaults', () => {
     expect(DEFAULT_UNIFIED_CONFIG.retrieval).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.agent).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.memory).toBeDefined();
-    expect(DEFAULT_UNIFIED_CONFIG.indexing).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.tools).toBeDefined();
   });
 
@@ -50,22 +49,13 @@ describe('IUnifiedAIConfig defaults', () => {
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.01);
   });
 
-  it('context budget has elastic shape (M20 Phase G)', () => {
-    const b = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
-    expect(b).toHaveProperty('trimPriority');
-    expect(b).toHaveProperty('minPercent');
-    expect(b.trimPriority.userMessage).toBe(4); // never trimmed (highest)
-    expect(b.trimPriority.history).toBe(1); // trimmed first (lowest)
-  });
-
   it('agent defaults match defaultParticipant constants', () => {
     expect(DEFAULT_UNIFIED_CONFIG.agent.maxIterations).toBe(25);
   });
 
   it('memory defaults enable features', () => {
     expect(DEFAULT_UNIFIED_CONFIG.memory.memoryEnabled).toBe(true);
-    expect(DEFAULT_UNIFIED_CONFIG.memory.autoSummarize).toBe(true);
-    expect(DEFAULT_UNIFIED_CONFIG.memory.evictionDays).toBe(90);
+    expect(DEFAULT_UNIFIED_CONFIG.memory.transcriptIndexingEnabled).toBe(false);
   });
 });
 
@@ -78,12 +68,10 @@ describe('fromLegacyParallxConfig', () => {
     const override = fromLegacyParallxConfig(DEFAULT_CONFIG);
 
     expect(override.model?.chatModel).toBe('qwen2.5:32b-instruct');
-    expect(override.model?.embeddingModel).toBe('nomic-embed-text');
     expect(override.retrieval?.autoRag).toBe(true);
     expect(override.retrieval?.ragTopK).toBe(10);
     expect(override.retrieval?.ragScoreThreshold).toBe(0.3);
     expect(override.agent?.maxIterations).toBe(10);
-    expect(override.indexing?.excludePatterns).toEqual([]);
   });
 
   it('does not include chat (not in config.json)', () => {
@@ -455,23 +443,6 @@ describe('A.4 Consumer wiring', () => {
       const searchOpts = mockVector.search.mock.calls[0][2];
       expect(searchOpts.topK).toBe(3);
       expect(results).toEqual([]);
-    });
-  });
-
-  // ── Context budget shape ──
-  // (The TokenBudgetService-coupled test died with the class in the
-  // Retirement phase — openclawTokenBudget is the live elastic impl.)
-
-  describe('unified config context budget', () => {
-    it('contextBudget shape has elastic trimPriority and minPercent', () => {
-      const budget = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
-      expect(budget).toHaveProperty('trimPriority');
-      expect(budget).toHaveProperty('minPercent');
-      expect(budget.trimPriority).toHaveProperty('systemPrompt');
-      expect(budget.trimPriority).toHaveProperty('ragContext');
-      expect(budget.trimPriority).toHaveProperty('history');
-      expect(budget.trimPriority).toHaveProperty('userMessage');
-      expect(budget.minPercent).toHaveProperty('systemPrompt');
     });
   });
 

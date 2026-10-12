@@ -13,7 +13,6 @@
 import { $ } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
 import type { IToolPickerServices, ToolCategory as ToolCategoryKind } from '../../../services/chatTypes.js';
-import type { IUnifiedAIConfigService } from '../../unifiedConfigTypes.js';
 import { SettingsSection } from '../sectionBase.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
 
@@ -57,7 +56,6 @@ const CATEGORY_DISPLAY: Record<ToolCategoryKind, { label: string; order: number 
 export class ToolsSection extends SettingsSection {
 
   private _toolServices: IToolPickerServices | undefined;
-  private readonly _unifiedService: IUnifiedAIConfigService | undefined;
   private _searchInput!: InputBox;
   private _summaryEl!: HTMLElement;
   private _treeContainer!: HTMLElement;
@@ -66,11 +64,9 @@ export class ToolsSection extends SettingsSection {
   constructor(
     service: IAISettingsService,
     toolServices?: IToolPickerServices,
-    unifiedService?: IUnifiedAIConfigService,
   ) {
     super(service, 'tools', 'Tools');
     this._toolServices = toolServices;
-    this._unifiedService = unifiedService;
   }
 
   /** Late-bind tool services (if not available at construction time). */
@@ -253,7 +249,6 @@ export class ToolsSection extends SettingsSection {
         const enable = groupCb.checked;
         for (const tool of groupTools) {
           services.setToolEnabled(tool.name, enable);
-          this._persistToolOverride(tool.name, enable);
         }
         this._renderTree(this._searchInput.value);
         this._updateSummary();
@@ -303,7 +298,6 @@ export class ToolsSection extends SettingsSection {
             const enable = catCb.checked;
             for (const tool of cat.tools) {
               services.setToolEnabled(tool.name, enable);
-              this._persistToolOverride(tool.name, enable);
             }
             this._renderTree(this._searchInput.value);
             this._updateSummary();
@@ -334,7 +328,6 @@ export class ToolsSection extends SettingsSection {
 
           toolCb.addEventListener('change', () => {
             services.setToolEnabled(tool.name, toolCb.checked);
-            this._persistToolOverride(tool.name, toolCb.checked);
             this._renderTree(this._searchInput.value);
             this._updateSummary();
           });
@@ -343,7 +336,6 @@ export class ToolsSection extends SettingsSection {
             if (e.target === toolCb) return;
             toolCb.checked = !toolCb.checked;
             services.setToolEnabled(tool.name, toolCb.checked);
-            this._persistToolOverride(tool.name, toolCb.checked);
             this._renderTree(this._searchInput.value);
             this._updateSummary();
           });
@@ -365,13 +357,5 @@ export class ToolsSection extends SettingsSection {
     if (this._summaryEl) {
       this._summaryEl.textContent = this._getSummaryText();
     }
-  }
-
-  /** Persist a tool enable/disable to workspace override. */
-  private _persistToolOverride(toolName: string, enabled: boolean): void {
-    if (!this._unifiedService) return;
-    const current = this._unifiedService.getEffectiveConfig().tools?.enabledOverrides ?? {};
-    const updated = { ...current, [toolName]: enabled };
-    this._unifiedService.updateConfig({ tools: { enabledOverrides: updated } });
   }
 }

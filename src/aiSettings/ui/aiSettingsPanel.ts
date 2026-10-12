@@ -94,7 +94,7 @@ export class AISettingsPanel extends Disposable {
     this._sections = [
       this._register(new ModelSection(this._service, this._unifiedConfigService, this._languageModelsService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
-      this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
+      this._register(new ToolsSection(this._service, this._toolPickerServices)),
       this._register(new McpSection(this._service, this._mcpClientService)),
     ];
 

@@ -33,48 +33,17 @@ export interface IUnifiedChatConfig {
 // ─── Model (merged from M15 + config.json) ──────────────────────────────────
 
 export interface IUnifiedModelConfig {
-  /** @deprecated F11-R3: Dead field — runtime reads model from chatConfig.get('defaultModel'), not unified config. UI removed. */
+  /** The workspace's default chat model ('' = auto-select). */
   readonly chatModel: string;
-  /** @deprecated F11-R3: Dead field — runtime hardcodes nomic-embed-text. No UI surface. */
-  readonly embeddingModel: string;
   /** -1 = use the model default (not sent); 0.0 = deterministic, 2.0 = most random */
   readonly temperature: number;
   /** Max tokens per response (0 = model default) */
   readonly maxTokens: number;
-  /** @deprecated F11-R3: Dead field — runtime reads context window from Ollama API getModelContextLength(). UI removed. */
+  /** Context size sent to Ollama as num_ctx (0 = the chat's own or last size). */
   readonly contextWindow: number;
 }
 
 // ─── Retrieval (from config.json — newly surfaced in UI) ─────────────────────
-
-/**
- * Elastic context budget configuration.
- *
- * Replaces the old fixed-percentage system. Trim priority controls which
- * slots are trimmed first when the context window is exceeded. Lower
- * numbers are trimmed first. Min-percent floors guarantee a slot keeps
- * at least that percentage of the window.
- */
-/**
- * @deprecated F11: contextBudget is dead code — OpenClaw context engine uses hardcoded elastic ratios.
- * Retained for type compatibility.
- */
-export interface IUnifiedContextBudgetConfig {
-  /** Trim priority per slot (lower = trimmed first). */
-  readonly trimPriority: {
-    readonly systemPrompt: number;
-    readonly ragContext: number;
-    readonly history: number;
-    readonly userMessage: number;
-  };
-  /** Minimum percentage floor per slot (0–100). */
-  readonly minPercent: {
-    readonly systemPrompt: number;
-    readonly ragContext: number;
-    readonly history: number;
-    readonly userMessage: number;
-  };
-}
 
 export interface IUnifiedRetrievalConfig {
   /** @parallx-specific No upstream OpenClaw equivalent. Upstream context engine always runs if registered. Desktop toggle to disable RAG when workspace is empty. */
@@ -92,8 +61,6 @@ export interface IUnifiedRetrievalConfig {
   readonly ragTopK: number;
   /** Upstream: memorySearch.query.minScore. RRF noise floor for retrievalService. */
   readonly ragScoreThreshold: number;
-  /** Token budget allocation across system/RAG/history/user */
-  readonly contextBudget: IUnifiedContextBudgetConfig;
 }
 
 // ─── Agent (from config.json) ────────────────────────────────────────────────
@@ -153,31 +120,13 @@ export interface IUnifiedRuntimeConfig {
 export interface IUnifiedMemoryConfig {
   /** Whether automatic memory creation is enabled */
   readonly memoryEnabled: boolean;
-  /** @deprecated F11: No OpenClaw consumer. Post-chat summarization is unconditional. */
-  readonly autoSummarize: boolean;
   /** Whether canonical session transcripts are indexed for explicit transcript recall. */
   readonly transcriptIndexingEnabled: boolean;
-  /** @deprecated F11: No consumer. Memory eviction is not implemented. */
-  readonly evictionDays: number;
-}
-
-// ─── Indexing (from config.json) ─────────────────────────────────────────────
-
-export interface IUnifiedIndexingConfig {
-  /** Glob patterns to exclude from indexing */
-  readonly excludePatterns: readonly string[];
 }
 
 // ─── Tool Overrides ────────────────────────────────────────────────
 
-/**
- * Per-workspace tool enable/disable overrides.
- * Keys are tool names, values are whether the tool is enabled.
- * Tools not listed here use the global (service-level) default.
- */
 export interface IUnifiedToolsConfig {
-  /** Tool enablement overrides: { toolName: enabled } */
-  readonly enabledOverrides: Readonly<Record<string, boolean>>;
   /**
    * M70 App Command Control — opt-in for the `app__find_commands` and
    * `app__run_command` tools that let the AI act on the workbench command
@@ -288,7 +237,6 @@ export interface IUnifiedAIConfig {
   readonly agent: IUnifiedAgentConfig;
   readonly runtime: IUnifiedRuntimeConfig;
   readonly memory: IUnifiedMemoryConfig;
-  readonly indexing: IUnifiedIndexingConfig;
   readonly tools: IUnifiedToolsConfig;
   /** Heartbeat / proactive tick config. */
   readonly heartbeat: IUnifiedHeartbeatConfig;
@@ -398,7 +346,6 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   model: {
     chatModel: '',               // auto-select
-    embeddingModel: 'nomic-embed-text',
     temperature: -1,             // model default
     maxTokens: 0,                // model default
     contextWindow: 0,            // model default
@@ -408,20 +355,6 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     standingContextLate: true,
     ragTopK: 20,
     ragScoreThreshold: 0.01,
-    contextBudget: {
-      trimPriority: {
-        systemPrompt: 3,
-        ragContext: 2,
-        history: 1,
-        userMessage: 4,
-      },
-      minPercent: {
-        systemPrompt: 5,
-        ragContext: 0,
-        history: 0,
-        userMessage: 0,
-      },
-    },
   },
   agent: {
     maxIterations: 25,
@@ -436,15 +369,9 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   memory: {
     memoryEnabled: true,
-    autoSummarize: true,
     transcriptIndexingEnabled: false,
-    evictionDays: 90,
-  },
-  indexing: {
-    excludePatterns: [],
   },
   tools: {
-    enabledOverrides: {},
     workbenchControlEnabled: false, // ships OFF; user opts in explicitly
   },
   heartbeat: {
@@ -502,34 +429,15 @@ export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUn
   return {
     model: {
       chatModel: config.model.chat,
-      embeddingModel: config.model.embedding,
       ...(config.model.contextLength != null ? { contextWindow: config.model.contextLength } : {}),
     },
     retrieval: {
       autoRag: config.agent.autoRag,
       ragTopK: config.agent.ragTopK,
       ragScoreThreshold: config.agent.ragScoreThreshold,
-      // New fields not in legacy config — omit to use defaults
-      contextBudget: {
-        trimPriority: {
-          systemPrompt: 3,
-          ragContext: 2,
-          history: 1,
-          userMessage: 4,
-        },
-        minPercent: {
-          systemPrompt: 5,
-          ragContext: 0,
-          history: 0,
-          userMessage: 0,
-        },
-      },
     },
     agent: {
       maxIterations: config.agent.maxIterations,
-    },
-    indexing: {
-      excludePatterns: [...config.indexing.excludePatterns],
     },
   };
 }
