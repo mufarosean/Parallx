@@ -156,9 +156,11 @@ is one entry. This is the rule that keeps the scene small and cheap.
   `canvas.page` with instance `42` (the editor input's id).
 - Ids are stable across versions. Renaming one is a commit of its own,
   with the old id in the message.
-- Within one parent surface and instance, ids are unique. Registering a
-  duplicate throws in development and logs once in production, and the
-  entry is not added.
+- Within one parent surface and instance, control ids are unique.
+  Registering a duplicate control throws in development and logs once in
+  production, and the entry is not added. Surfaces may repeat: the same
+  file open in two editor groups is two panes with one id and instance,
+  and both are listed.
 
 ### 4.4 State
 

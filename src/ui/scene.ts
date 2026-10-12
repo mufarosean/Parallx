@@ -229,10 +229,15 @@ class Scene implements IScene {
     const host = el.parentElement?.closest(`[${SURFACE_ATTR}]`);
     const parent = host instanceof HTMLElement ? this._mounted.get(host) : undefined;
     const siblings = parent ? parent.children : this._roots;
-    const dup = siblings.find((s) => s.entry.id === entry.id && s.entry.instance === entry.instance);
-    if (dup) {
-      complain(`"${entry.id}" is registered twice under ${parent ? parent.entry.id : 'the window'}`);
-      return;
+    // Two controls with one id under one surface is a mistake. Two surfaces
+    // with one id and instance is not: the same file open in two editor
+    // groups is two regions on screen, and both are listed.
+    if (entry.kind !== 'surface') {
+      const dup = siblings.find((s) => s.entry.id === entry.id && s.entry.instance === entry.instance);
+      if (dup) {
+        complain(`"${entry.id}" is registered twice under ${parent ? parent.entry.id : 'the window'}`);
+        return;
+      }
     }
     const m: Mounted = { entry, parent, children: [], seq: this._seq++ };
     this._mounted.set(el, m);
