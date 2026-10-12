@@ -15,164 +15,16 @@ import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
 import { PlannerTodayView, isLate, isOverdue, quickPlanOptions } from './plannerToday.js';
-import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
-import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
+import { Dropdown } from '../../ui/dropdown.js';
+import { createIconElement } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 import { appDateParts, appDateString, appTime, isSameAppDay } from '../../services/localTime.js';
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, atTime, startOfDayMs, sameDay, formatDateShort, formatHour, formatTimeShort, formatTimeRange, toDateInputValue, toTimeInputValue, fromDateTimeInputs } from './plannerDates.js';
-import { normalizeWebLink, extractLinks } from './plannerLinks.js';
-
-interface PlannerEditorInput {
-  readonly id: string;          // === instanceId; only one ('main') for M82
-  setName?(name: string): void;
-  setIconHtml?(html: string | undefined): void;
-}
-
-interface PlannerEditorApi {
-  editors: {
-    openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
-  };
-  commands: {
-    executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
-  };
-  links: {
-    open(uri: string): Promise<boolean>;
-    resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
-  };
-  /** per-workspace persistence for small UI state (calendar view). */
-  viewState?: {
-    get<T>(key: string, defaultValue: T): T;
-    set(key: string, value: unknown): void;
-  };
-  window: {
-    showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
-    showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
-    showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
-    showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
-    showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
-  };
-  /** The activity journal: the planner narrates the user's own task work. */
-  activity?: {
-    note(n: { actor?: 'user' | 'ai' | 'system'; source: string; verb: string; object: string; detail?: string; ref?: string }): void;
-  };
-  /** lazy snapshot of registered day-load providers (generic seam:
-   *  extensions decorate calendar days with per-day workload badges).
-   *  Resolved per access because providers register at their own pace. */
-  dayLoads?: {
-    get(): readonly IDayLoadProviderLike[];
-  };
-}
-
-/** Structural mirror of planner main's IDayLoadProvider. */
-export interface IDayLoadProviderLike {
-  readonly id: string;
-  getDayLoads(fromMs: number, toMs: number): Promise<readonly { dayStartMs: number; count: number; label: string }[]>;
-  onDidChange?(listener: () => void): { dispose(): void };
-}
-
-type Tab = 'today' | 'tasks' | 'calendar';
-type CalendarView = 'month' | 'week' | 'day';
-
-/** Widest pane that gets the compact layout. Mirrors the `compact` step in
- *  the planner tokens block of planner.css (CSS can't share it with TS). */
-const PANE_COMPACT_MAX = 719;
-
-const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
-
-// Small task glyphs for calendar entries (open circle / filled check).
-const TASK_DOT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/></svg>';
-const TASK_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
-
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const CALENDAR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Calendar</span>';
-const REPEAT_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Repeats</span>';
-
-// Link-chip glyphs: web (anchor/chain) vs internal (document).
-const LINK_WEB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-const LINK_DOC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-const LINK_PLUS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
-const COLOR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.31 17.51 2 12 2z"/></svg><span>Color</span>';
-const SYNC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
-
-// Google Calendar's event palette (colorId → hex). Used by the colour pickers
-// AND to import synced event colours (see mapGoogleEventToSynced).
-export const PLANNER_COLORS: readonly { readonly id: string; readonly name: string; readonly hex: string }[] = [
-  { id: '11', name: 'Tomato',    hex: '#d50000' },
-  { id: '4',  name: 'Flamingo',  hex: '#e67c73' },
-  { id: '6',  name: 'Tangerine', hex: '#f4511e' },
-  { id: '5',  name: 'Banana',    hex: '#f6bf26' },
-  { id: '2',  name: 'Sage',      hex: '#33b679' },
-  { id: '10', name: 'Basil',     hex: '#0b8043' },
-  { id: '7',  name: 'Peacock',   hex: '#039be5' },
-  { id: '9',  name: 'Blueberry', hex: '#3f51b5' },
-  { id: '1',  name: 'Lavender',  hex: '#7986cb' },
-  { id: '3',  name: 'Grape',     hex: '#8e24aa' },
-  { id: '8',  name: 'Graphite',  hex: '#616161' },
-];
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  return node;
-}
-
-/**
- * A row of colour swatches. `current` is the selected hex (or null = "default").
- * When `allowDefault`, a leading hollow chip clears the override (use the
- * calendar's colour). Calls `onPick(hex|null)` and re-highlights the selection.
- */
-function buildColorSwatches(
-  current: string | null,
-  onPick: (hex: string | null) => void,
-  allowDefault: boolean,
-): HTMLElement {
-  const wrap = el('div', 'planner-swatches');
-  let selected = current;
-  const chips: { el: HTMLElement; hex: string | null }[] = [];
-  const same = (a: string | null, b: string | null): boolean =>
-    (a ?? null) === (b ?? null) || (a != null && b != null && a.toLowerCase() === b.toLowerCase());
-  const refresh = (): void => {
-    for (const c of chips) c.el.classList.toggle('planner-swatch--on', same(c.hex, selected));
-  };
-  const addChip = (hex: string | null, title: string): void => {
-    const chip = el('button', 'planner-swatch');
-    chip.type = 'button';
-    chip.title = title;
-    if (hex) chip.style.setProperty('--sw', hex);
-    else chip.classList.add('planner-swatch--default');
-    chip.addEventListener('click', () => { selected = hex; refresh(); onPick(hex); });
-    chips.push({ el: chip, hex });
-    wrap.appendChild(chip);
-  };
-  if (allowDefault) addChip(null, 'Use calendar colour');
-  for (const c of PLANNER_COLORS) addChip(c.hex, c.name);
-  refresh();
-  return wrap;
-}
+import { PANE_COMPACT_MAX, PLANNER_ICON_SVG, TASK_DOT_SVG, TASK_DONE_SVG, WEEKDAY_NAMES, CALENDAR_LABEL_SVG, REPEAT_LABEL_SVG, COLOR_LABEL_SVG, SYNC_SVG, PLANNER_COLORS, el, buildColorSwatches, eventCalendarItems, type PlannerEditorInput, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
+import { PlannerNotes } from './plannerNotes.js';
 
 // ─── Provider ────────────────────────────────────────────────────────────────
-
-/**
- * Calendar options for the event dialog.
- *
- * An event only reaches Google if its calendar is a Google MIRROR row
- * (`source_provider = 'google'`, created when you tick a calendar in Settings).
- * Put an event on a local calendar and it stays on this machine forever — no
- * error, no upstream copy, and invisible in every other workspace on the same
- * account. The picker showed bare names, so a local "Personal" and a synced
- * "Nutty Plan" looked like equivalent choices.
- *
- * The hint is only added once something actually syncs; with Google not
- * connected, "Not Synced" on every row would be noise.
- */
-export function eventCalendarItems(cals: readonly PlannerCalendar[]): IDropdownItem[] {
-  const anySynced = cals.some((c) => !!c.sourceProvider);
-  return cals.map((c) => ({
-    value: c.id,
-    label: anySynced && !c.sourceProvider ? `${c.name} · Not Synced` : c.name,
-  }));
-}
 
 export class PlannerEditorProvider {
   constructor(
@@ -190,7 +42,7 @@ export class PlannerEditorProvider {
 
 // ─── Pane ────────────────────────────────────────────────────────────────────
 
-class PlannerEditorPane implements IDisposable {
+export class PlannerEditorPane implements IDisposable {
   private _root: HTMLElement | null = null;
   /** True when the last pointerdown landed inside this pane (see onKey). */
   private _pointerInside = false;
@@ -206,11 +58,12 @@ class PlannerEditorPane implements IDisposable {
   private _renderQueued = false;
   private readonly _disposables: IDisposable[] = [];
 
+  readonly notes = new PlannerNotes(this);
   constructor(
     private readonly _container: HTMLElement,
     private readonly _input: PlannerEditorInput | undefined,
     private readonly _data: PlannerDataService,
-    private readonly _api: PlannerEditorApi,
+    readonly _api: PlannerEditorApi,
     private readonly _sync?: IPlannerSyncController,
   ) {}
 
@@ -1739,123 +1592,6 @@ class PlannerEditorPane implements IDisposable {
   // ── Description links (notes + clickable links) ─────────────────────
 
   /**
-   * Render any links found in a description as clickable chips below the
-   * notes field, live-updating as the user types. Lets a description double
-   * as a notes scratchpad with real, openable references — external study
-   * URLs as well as internal `parallx://` links (e.g. a canvas page with
-   * review notes), which resolve to the page's title + icon.
-   */
-  private _attachDescriptionLinks(body: HTMLElement, descInput: HTMLTextAreaElement): void {
-    const row = el('div', 'planner-popover__links');
-    body.appendChild(row);
-    const render = () => {
-      row.innerHTML = '';
-      const links = extractLinks(descInput.value);
-      if (links.length === 0) { row.style.display = 'none'; return; }
-      row.style.display = '';
-      for (const link of links) {
-        const chip = el('button', 'planner-popover__linkchip');
-        if (link.kind === 'internal') chip.classList.add('planner-popover__linkchip--internal');
-        chip.type = 'button';
-        chip.title = link.href;
-        const labelSpan = el('span', 'planner-popover__linkchip-label');
-        labelSpan.textContent = link.label;
-        chip.innerHTML = link.kind === 'internal' ? LINK_DOC_SVG : LINK_WEB_SVG;
-        chip.appendChild(labelSpan);
-        if (link.kind === 'internal') {
-          chip.addEventListener('click', () => void this._api.links.open(link.href));
-          // Resolve the page title/icon lazily so the chip reads naturally.
-          void this._labelInternalChip(chip, labelSpan, link.href);
-        } else {
-          chip.addEventListener('click', () => void this._openExternalLink(link.href));
-        }
-        row.appendChild(chip);
-      }
-    };
-    descInput.addEventListener('input', render);
-    render();
-  }
-
-  /** Replace a raw internal-link chip label with the target's title + icon. */
-  private async _labelInternalChip(chip: HTMLElement, labelSpan: HTMLElement, uri: string): Promise<void> {
-    try {
-      const meta = await this._api.links.resolveMetadata(uri);
-      if (!meta) { chip.classList.add('planner-popover__linkchip--missing'); return; }
-      labelSpan.textContent = meta.title;
-      chip.title = meta.title;
-      if (meta.icon) {
-        // LinkMetadata.icon is a registry icon id (system UI never uses
-        // emoji). Unknown ids fall back to rendering the raw string so
-        // legacy providers still show something.
-        const iconSpan = el('span', 'planner-popover__linkchip-icon');
-        const svg = getIcon(meta.icon);
-        if (svg) iconSpan.innerHTML = svg;
-        else iconSpan.textContent = meta.icon;
-        chip.querySelector('svg')?.replaceWith(iconSpan);
-      }
-    } catch {
-      // Leave the raw label in place on failure — chip is still clickable.
-    }
-  }
-
-  /** Open an http/https link in the user's external browser, safely. */
-  private async _openExternalLink(rawUrl: string): Promise<void> {
-    const url = normalizeWebLink(rawUrl);
-    if (!url) return;
-    try {
-      const shell = (window as { parallxElectron?: { shell?: { openExternal?: (u: string) => Promise<{ ok?: boolean; error?: string } | void> } } }).parallxElectron?.shell;
-      if (shell?.openExternal) {
-        const result = await shell.openExternal(url);
-        if (result && typeof result === 'object' && result.ok === false) throw new Error(result.error || 'openExternal failed');
-        return;
-      }
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      console.error('[PlannerEditorPane] open link failed:', err);
-      await this._api.window.showErrorMessage('Failed to open link.');
-    }
-  }
-
-  /**
-   * A compact toolbar below the notes field. Currently offers "Link canvas
-   * page" — the bridge between study notes (canvas) and the plan (events
-   * and tasks). Kept minimal so notes stay lightweight.
-   */
-  private _appendNotesToolbar(body: HTMLElement, descInput: HTMLTextAreaElement): void {
-    const bar = el('div', 'planner-popover__notesbar');
-    const linkBtn = el('button', 'planner-popover__notesbtn');
-    linkBtn.type = 'button';
-    linkBtn.innerHTML = `${LINK_PLUS_SVG}<span>Link canvas page</span>`;
-    linkBtn.title = 'Attach a canvas page to these notes';
-    linkBtn.addEventListener('click', () => void this._linkCanvasPage(descInput));
-    bar.appendChild(linkBtn);
-    body.appendChild(bar);
-  }
-
-  /**
-   * Open the canvas page picker and append the chosen page's link to the
-   * notes field. Decoupled from the canvas schema — the link contract and
-   * the `canvas.pickPageLink` command do the resolution.
-   */
-  private async _linkCanvasPage(descInput: HTMLTextAreaElement): Promise<void> {
-    let result: { uri: string; title: string; icon: string | null } | null = null;
-    try {
-      result = await this._api.commands.executeCommand('canvas.pickPageLink');
-    } catch (err) {
-      console.error('[PlannerEditorPane] canvas.pickPageLink failed:', err);
-      await this._api.window.showErrorMessage('Could not open the canvas page picker.');
-      return;
-    }
-    if (!result) return;
-    const current = descInput.value;
-    const sep = current.length === 0 ? '' : (current.endsWith('\n') ? '' : '\n');
-    descInput.value = `${current}${sep}${result.uri}`;
-    // Fire input so the link chips re-render and any caller-bound listeners run.
-    descInput.dispatchEvent(new Event('input', { bubbles: true }));
-    descInput.focus();
-  }
-
-  /**
    * gather per-day loads from every registered provider for the given
    * window, keyed by LOCAL day start. Provider failures are isolated: a
    * throwing provider contributes nothing and cannot break the calendar.
@@ -2421,8 +2157,8 @@ class PlannerEditorPane implements IDisposable {
     descInput.placeholder = 'Notes & links';
     descInput.value = seed.description;
     body.appendChild(descInput);
-    this._appendNotesToolbar(body, descInput);
-    this._attachDescriptionLinks(body, descInput);
+    this.notes.appendNotesToolbar(body, descInput);
+    this.notes.attachDescriptionLinks(body, descInput);
 
     // Status — segmented control (Reviewing / Planned), defaults from seed.
     const statusRow = el('div', 'planner-popover__statusrow');
@@ -2749,8 +2485,8 @@ class PlannerEditorPane implements IDisposable {
     descInput.placeholder = 'Add notes & links';
     descInput.value = seed.description;
     body.appendChild(descInput);
-    this._appendNotesToolbar(body, descInput);
-    this._attachDescriptionLinks(body, descInput);
+    this.notes.appendNotesToolbar(body, descInput);
+    this.notes.attachDescriptionLinks(body, descInput);
 
     pop.appendChild(body);
 

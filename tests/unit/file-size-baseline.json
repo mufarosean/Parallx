@@ -55,7 +55,7 @@
   "src/built-in/explorer/main.ts": 2065,
   "src/built-in/planner/planner.css": 2057,
   "src/built-in/planner/plannerDataService.ts": 1401,
-  "src/built-in/planner/plannerEditorProvider.ts": 3016,
+  "src/built-in/planner/plannerEditorProvider.ts": 2752,
   "src/built-in/tool-gallery/main.ts": 1102,
   "src/built-in/worksheet/ooxml.ts": 1034,
   "src/built-in/worksheet/panes/dashboardPane.ts": 821,
