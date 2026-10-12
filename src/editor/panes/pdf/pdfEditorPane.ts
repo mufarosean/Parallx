@@ -51,6 +51,7 @@ import { setupTooltip } from '../../../ui/tooltip.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
 import { takeFileReveal } from '../../fileReveal.js';
+import { PdfThumbnails } from './pdfThumbnails.js';
 
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
 type InlineAISendChat = (
@@ -132,9 +133,7 @@ export class PdfEditorPane extends EditorPane {
 
   // Thumbnails
   private _thumbnailVisible = false;
-  private _thumbObserver: IntersectionObserver | null = null;
-  private _thumbCanvases: Map<number, HTMLCanvasElement> = new Map();
-  private _activeThumb: HTMLElement | null = null;
+  private _thumbs: PdfThumbnails | null = null;
 
   // Page labels
   private _pageLabels: string[] | null = null;
@@ -423,6 +422,11 @@ export class PdfEditorPane extends EditorPane {
     this._thumbnailList = $('div');
     this._thumbnailList.classList.add('pdf-thumbnail-list');
     this._thumbnailSidebar.appendChild(this._thumbnailList);
+    this._thumbs = new PdfThumbnails(this._thumbnailList, {
+      document: () => this._pdfDoc,
+      pageLabel: (pageNum) => this._pageLabels?.[pageNum - 1],
+      goToPage: (pageNum) => { if (this._pdfViewer) this._pdfViewer.currentPageNumber = pageNum; },
+    });
 
     // Resize edge for the panel (hidden with it)
     this._outlineSash = $('div');
@@ -1886,8 +1890,8 @@ export class PdfEditorPane extends EditorPane {
     this._outlineTree.style.display = hasOutline ? '' : 'none';
     this._outlineEmpty.style.display = hasOutline ? 'none' : '';
     if (this._thumbnailVisible) {
-      this._observeThumbnails();
-      this._activeThumb?.scrollIntoView({ block: 'nearest' });
+      this._thumbs?.observe();
+      this._thumbs?.revealActive();
     }
     if (this._outlineVisible) this._currentOutlineRow?.scrollIntoView({ block: 'nearest' });
     // Restore persisted width
@@ -2295,7 +2299,7 @@ export class PdfEditorPane extends EditorPane {
         const pageNum = evt.pageNumber;
         this._pageInput.value = String(pageNum);
         this._updatePageLabel(pageNum);
-        this._highlightThumb(pageNum);
+        this._thumbs?.markActive(pageNum, this._thumbnailVisible);
         if (this._currentInput) this._currentInput.page = pageNum;
       });
 
@@ -2447,7 +2451,7 @@ export class PdfEditorPane extends EditorPane {
 
       // ── Build thumbnails ───────────────────────────────────────────
 
-      this._buildThumbnails(this._pdfDoc);
+      this._thumbs?.build(this._pdfDoc.numPages);
 
       hide(this._loadingEl);
     } catch (err) {
@@ -2530,115 +2534,6 @@ export class PdfEditorPane extends EditorPane {
   }
 
   // ── Thumbnail sidebar ────────────────────────────────────────────────
-
-  private _buildThumbnails(pdfDoc: PDFDocumentProxy): void {
-    this._thumbnailList.replaceChildren();
-    this._thumbCanvases.clear();
-
-    const numPages = pdfDoc.numPages;
-    for (let i = 1; i <= numPages; i++) {
-      const item = $('div');
-      item.classList.add('pdf-thumbnail-item');
-      item.dataset.page = String(i);
-
-      const canvas = document.createElement('canvas');
-      canvas.classList.add('pdf-thumbnail-canvas');
-      // Set placeholder size — will be resized when rendered
-      canvas.width = 120;
-      canvas.height = 160;
-      item.appendChild(canvas);
-
-      const label = $('span');
-      label.classList.add('pdf-thumbnail-label');
-      label.textContent = this._pageLabels?.[i - 1] ?? String(i);
-      item.appendChild(label);
-
-      item.addEventListener('click', () => {
-        if (this._pdfViewer) {
-          this._pdfViewer.currentPageNumber = i;
-        }
-      });
-
-      this._thumbnailList.appendChild(item);
-      this._thumbCanvases.set(i, canvas);
-    }
-
-    // Highlight page 1
-    this._highlightThumb(1);
-  }
-
-  private _observeThumbnails(): void {
-    if (this._thumbObserver) {
-      this._thumbObserver.disconnect();
-    }
-
-    this._thumbObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const item = entry.target as HTMLElement;
-            const pageNum = parseInt(item.dataset.page ?? '0', 10);
-            if (pageNum > 0 && !item.dataset.rendered) {
-              item.dataset.rendered = '1';
-              void this._renderThumbnail(pageNum);
-            }
-          }
-        }
-      },
-      { root: this._thumbnailList, rootMargin: '200px' },
-    );
-
-    // Observe all thumbnail items
-    const items = this._thumbnailList.querySelectorAll('.pdf-thumbnail-item');
-    for (const item of items) {
-      this._thumbObserver.observe(item);
-    }
-  }
-
-  private async _renderThumbnail(pageNum: number): Promise<void> {
-    if (!this._pdfDoc) return;
-
-    const canvas = this._thumbCanvases.get(pageNum);
-    if (!canvas) return;
-
-    try {
-      const page = await this._pdfDoc.getPage(pageNum);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const thumbWidth = 200; // drawn larger than shown, so it stays crisp in a wide panel
-      const scale = thumbWidth / baseViewport.width;
-      const viewport = page.getViewport({ scale });
-
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      await page.render({
-        canvasContext: ctx,
-        canvas,
-        viewport,
-      }).promise;
-    } catch {
-      // Silently ignore thumbnail render failures
-    }
-  }
-
-  private _highlightThumb(pageNum: number): void {
-    if (this._activeThumb) {
-      this._activeThumb.classList.remove('pdf-thumbnail-active');
-    }
-    const items = this._thumbnailList.querySelectorAll('.pdf-thumbnail-item');
-    const target = items[pageNum - 1] as HTMLElement | undefined;
-    if (target) {
-      target.classList.add('pdf-thumbnail-active');
-      this._activeThumb = target;
-      // Scroll thumb into view if sidebar is visible
-      if (this._thumbnailVisible) {
-        target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-  }
 
   // ── Page labels ──────────────────────────────────────────────────────
 
@@ -3083,9 +2978,6 @@ export class PdfEditorPane extends EditorPane {
     this._highlights = [];
     this._fileKey = '';
 
-    // Disconnect thumbnail observer
-    if (this._thumbObserver) { this._thumbObserver.disconnect(); this._thumbObserver = null; }
-
     // Tear down viewer components. Once the first page has rendered, pdf.js
     // looks up every other page; destroying the document while those lookups
     // are in flight fails each one with a console error ("Unable to get page
@@ -3110,10 +3002,8 @@ export class PdfEditorPane extends EditorPane {
 
     this._viewerEl?.replaceChildren();
     this._outlineTree?.replaceChildren();
-    this._thumbnailList?.replaceChildren();
+    this._thumbs?.clear();
     this._clearSelectionOverlay();
-    this._thumbCanvases.clear();
-    this._activeThumb = null;
     this._outline = null;
     this._pageLabels = null;
     this._currentInput = null;

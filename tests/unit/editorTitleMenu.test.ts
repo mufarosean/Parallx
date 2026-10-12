@@ -6,7 +6,7 @@
 // turned off takes its entries.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MenuContributionProcessor, getEditorTitleActions } from '../../src/contributions/menuContribution';
 import { ContextKeyService } from '../../src/context/contextKey';
@@ -97,7 +97,7 @@ describe('editor More Actions (editor/title)', () => {
   it('the PDF pane names no tool', () => {
     // "study" as a plain word ("a study note") is fine; the tool's id, its
     // commands and its menu label are not.
-    const src = readFileSync(resolve(root, 'src/editor/panes/pdf/pdfEditorPane.ts'), 'utf8');
+    const src = readdirSync(resolve(root, 'src/editor/panes/pdf')).filter((f) => f.endsWith('.ts')).map((f) => readFileSync(resolve(root, 'src/editor/panes/pdf', f), 'utf8')).join('\n');
     expect(src).not.toMatch(/parallx-community\.study|['"`]study\.[a-zA-Z]+|Study This Document|flashcards\./);
     expect(src).toMatch(/getEditorTitleActions\(\)/);
   });

@@ -8,14 +8,14 @@
 // nothing was highlighted. The pane must leave that call to the viewer.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(__dirname, '../..');
 
 describe('PDF find controller document', () => {
   it('the pane never gives the find controller its document', () => {
-    const pane = readFileSync(resolve(root, 'src/editor/panes/pdf/pdfEditorPane.ts'), 'utf8');
+    const pane = readdirSync(resolve(root, 'src/editor/panes/pdf')).filter((f) => f.endsWith('.ts')).map((f) => readFileSync(resolve(root, 'src/editor/panes/pdf', f), 'utf8')).join('\n');
     expect(pane).toMatch(/findController:\s*this\._findController/);
     expect(pane).not.toMatch(/_findController\??\.setDocument\(/);
   });

@@ -18,8 +18,9 @@ describe('selection actions from tools', () => {
     expect(getToolSelectionActions()).toEqual([]);
   });
   it('no editor hardcodes a tool\'s action', async () => {
-    const { readFileSync } = await import('node:fs');
-    for (const f of ['src/editor/panes/pdf/pdfEditorPane.ts', 'src/editor/panes/markdownEditorPane.ts', 'src/editor/panes/textEditorPane.ts', 'src/built-in/canvas/menus/bubbleMenu.ts']) {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const pdfPane = readdirSync('src/editor/panes/pdf').filter((f) => f.endsWith('.ts')).map((f) => `src/editor/panes/pdf/${f}`);
+    for (const f of [...pdfPane, 'src/editor/panes/markdownEditorPane.ts', 'src/editor/panes/textEditorPane.ts', 'src/built-in/canvas/menus/bubbleMenu.ts']) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(/create-flashcard|Flashcard/);
     }
   });
