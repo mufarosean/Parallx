@@ -163,6 +163,9 @@ async function launchApp(appRoot, errors) {
   // Software WebGL (SwiftShader): the container has no GPU, and the image
   // editor draws with WebGL.
   const app = await electron.launch({ args: ['.', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  // The hidden copy never reaches the Ollama the real app uses: indexing a
+  // fresh workspace would load the embedding model into it.
+  await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
   _currentApp = app;
   const page = await app.firstWindow();
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
@@ -1445,6 +1448,12 @@ async function main() {
   }
 
   const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+
+  // The hidden copy never reaches the Ollama the real app uses: indexing a
+
+  // fresh workspace would load the embedding model into it.
+
+  await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
   _currentApp = app;
   const errors = [];
   try {

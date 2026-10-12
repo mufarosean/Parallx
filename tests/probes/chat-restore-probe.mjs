@@ -27,6 +27,9 @@ function launchEnv(appRoot) {
 const errors = [];
 async function launch(appRoot) {
   const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  // The hidden copy never reaches the Ollama the real app uses: indexing a
+  // fresh workspace would load the embedding model into it.
+  await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
   const page = await app.firstWindow();
   page.on('pageerror', (e) => errors.push(`pageerror: ${String(e).slice(0, 300)}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`); });
