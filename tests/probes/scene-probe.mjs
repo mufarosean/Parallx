@@ -32,6 +32,7 @@ const FRAME_IDS = [
 
 /** Ids a converted built-in declares (design step 5), checked after its surfaces open. */
 const BUILTIN_IDS = {
+  dashboard: ['dashboard.addWidget', 'dashboard.refreshAll', 'dashboard.schedule', 'dashboard.hideHeader', 'dashboard.side.new', 'dashboard.side.pages'],
   explorer: ['explorer.tree', 'explorer.openEditors'],
   search: ['search.query', 'search.replace', 'search.toggleReplace', 'search.match-case', 'search.results'],
   planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],

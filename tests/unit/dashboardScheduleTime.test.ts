@@ -3,7 +3,7 @@
 // user picked, in the app's Time Zone. It used to write UTC fields that the
 // scheduler then read as local: "Daily At 7:00" refreshed at noon in Chicago.
 import { describe, it, expect, afterEach } from 'vitest';
-import { dailyTimeToCron, cronToDailyTime } from '../../src/built-in/dashboard/dashboardEditorProvider';
+import { dailyTimeToCron, cronToDailyTime } from '../../src/built-in/dashboard/dashboardScheduleEditor';
 import { computeNextRun } from '../../src/openclaw/openclawCronService';
 import { setAssistantTimeZone, appDateParts } from '../../src/services/localTime';
 

@@ -8,6 +8,7 @@
 // structural types, so the dashboard loads whether or not canvas does —
 // the widget simply shows its unavailable state when canvas is absent.
 
+import { declareControl } from '../../../ui/kit.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -82,6 +83,7 @@ export const NOTES_WIDGET: WidgetTypeRegistration<NotesConfig> = {
     openBtn.type = 'button';
     openBtn.className = 'ntw__open';
     openBtn.title = 'Open this page in the canvas';
+    declareControl(openBtn, { id: 'dashboard.notes.openInCanvas', label: 'Open in canvas' });
     openBtn.innerHTML = '<span>↗</span> Open in canvas';
     bar.appendChild(openBtn);
 

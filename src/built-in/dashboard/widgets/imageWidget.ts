@@ -7,6 +7,7 @@
 // remote Image URL renders directly. Legacy widgets that stored a `data:` URL
 // still work. Fallback (no bridge / tests): inline data URL, capped.
 
+import { declareControl } from '../../../ui/kit.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -169,6 +170,8 @@ export const IMAGE_WIDGET: WidgetTypeRegistration<ImageWidgetConfig> = {
     replace.className = 'iw__replace';
     replace.title = 'Replace image';
     replace.textContent = 'Replace';
+    declareControl(replace, { id: 'dashboard.image.replace', label: 'Replace image' });
+    declareControl(empty, { id: 'dashboard.image.choose', label: 'Choose an image' });
 
     container.appendChild(img);
     container.appendChild(empty);

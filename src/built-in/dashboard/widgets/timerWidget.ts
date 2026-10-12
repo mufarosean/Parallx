@@ -10,6 +10,7 @@
 // intervals append to a log in cached_output, so anything else can chart
 // time per day without new storage. All arithmetic lives in timerLogic.ts.
 
+import { declareControl } from '../../../ui/kit.js';
 import type { WidgetContext, WidgetHandle, WidgetTypeRegistration } from '../dashboardTypes.js';
 import { getTaskSources, onDidChangeTaskSources, type TaskSource } from '../../../services/taskSources.js';
 import {
@@ -205,6 +206,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     const addInput = h('input', 'dtimer__input') as HTMLInputElement;
     addInput.type = 'text'; addInput.placeholder = 'What are you working on?'; addInput.maxLength = 120;
     addInput.setAttribute('aria-label', 'Task');
+    declareControl(addInput, { id: 'dashboard.timer.newTask', label: 'Task', kind: 'input', state: () => ({ kind: 'value', value: addInput.value }) });
     const estInput = h('input', 'dtimer__input dtimer__input--est') as HTMLInputElement;
     estInput.type = 'number'; estInput.min = '1'; estInput.max = '1440'; estInput.value = '60';
     estInput.title = 'Total minutes, including breaks'; estInput.setAttribute('aria-label', 'New task time budget in minutes');

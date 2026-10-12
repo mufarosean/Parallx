@@ -5,6 +5,7 @@
 // store the notes / image widgets use), so the checklist survives reloads with
 // no extra storage column. No refresh handler — the list is purely user-owned.
 
+import { declareControl } from '../../../ui/kit.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -90,12 +91,14 @@ export const TASKS_WIDGET: WidgetTypeRegistration<TasksConfig> = {
     input.type = 'text';
     input.className = 'tkw__input';
     input.placeholder = 'Add a task…';
+    declareControl(input, { id: 'dashboard.tasks.new', label: 'Add a task', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
     input.maxLength = MAX_TEXT_CHARS;
     const addBtn = document.createElement('button');
     addBtn.type = 'submit';
     addBtn.className = 'tkw__add-btn';
     addBtn.title = 'Add task';
     addBtn.textContent = '+';
+    declareControl(addBtn, { id: 'dashboard.tasks.add', label: 'Add task', kind: 'iconButton' });
     addRow.appendChild(input);
     addRow.appendChild(addBtn);
 

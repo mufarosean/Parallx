@@ -4,6 +4,7 @@
 // Two answers make it a coin; more make it a tiny wheel of fate. The
 // point is the ritual, not the randomness.
 
+import { declareControl } from '../../../ui/kit.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -68,6 +69,7 @@ export const DECISION_COIN_WIDGET: WidgetTypeRegistration<DecisionConfig> = {
     coin.className = 'dcw__coin';
     coin.type = 'button';
     coin.setAttribute('aria-label', 'Flip the coin');
+    declareControl(coin, { id: 'dashboard.coin.flip', label: 'Flip the coin' });
     const face = document.createElement('span');
     face.className = 'dcw__face';
     coin.appendChild(face);

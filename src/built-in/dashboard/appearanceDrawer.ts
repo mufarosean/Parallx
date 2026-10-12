@@ -8,6 +8,7 @@
 // settings-sheet family; dashboard.css is a global stylesheet, so the
 // sheet renders identically wherever it opens.
 
+import { createSurface, declareControl } from '../../ui/kit.js';
 import type { WidgetAppearance } from './dashboardTypes.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { createSelect } from '../../ui/dropdown.js';
@@ -52,6 +53,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   };
 
   const sheet = el('aside', 'dashboard-settings');
+  createSurface(sheet, { id: 'dashboard.appearance', owner: 'dashboard', label: 'Appearance' });
 
   // Standard popup contract (Escape / outside press / window blur — the
   // drawer previously had NO Escape at all). Every non-Save exit cancels:
@@ -164,6 +166,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   titleInput.className = 'dashboard-field__input';
   titleInput.value = draft.title ?? '';
   titleInput.placeholder = host.defaultTitle;
+  declareControl(titleInput, { id: 'dashboard.appearance.title', label: 'Title', kind: 'input', state: () => ({ kind: 'value', value: titleInput.value }) });
   titleBlock.appendChild(titleInput);
   titleInput.addEventListener('input', () => {
     draft.title = titleInput.value.trim() ? titleInput.value : null;
@@ -180,6 +183,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   hideRow.appendChild(hideCheckbox);
   const hideText = document.createElement('span');
   hideText.textContent = 'Hide Title Bar';
+  declareControl(hideCheckbox, { id: 'dashboard.appearance.hideTitleBar', label: 'Hide Title Bar', kind: 'toggle', state: () => ({ kind: 'pressed', value: hideCheckbox.checked }) });
   hideRow.appendChild(hideText);
   hideBlock.appendChild(hideRow);
   hideCheckbox.addEventListener('change', () => { draft.titleHidden = hideCheckbox.checked; preview(); });
@@ -189,6 +193,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
   const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
   cancel.type = 'button';
   cancel.textContent = 'Cancel';
+  declareControl(cancel, { id: 'dashboard.appearance.cancel', label: 'Cancel' });
   cancel.addEventListener('click', () => {
     applyWidgetAppearance(host.card, original);
     closeDrawer();

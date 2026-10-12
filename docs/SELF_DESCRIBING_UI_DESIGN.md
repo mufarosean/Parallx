@@ -669,6 +669,19 @@ open-editor rows and result rows are not. The explorer, a giant, lost
 its unique-name helper to `uniqueName.ts` and ended smaller. The probe
 opens Search by command and checks both panes' ids.
 
+Dashboard done 2026-10-12, in the cloud. The page header's buttons (add,
+refresh all, schedule, hide and show header, the empty state's add),
+the schedule popover as a surface with its time, cron, save and cancel,
+each widget card as a surface with the widget id as instance and its
+chrome buttons under it (refresh, run in chat, configure, appearance,
+move to workbench, remove), the picker and both drawers as surfaces
+with their cancel, save, title and hide-title-bar controls, the
+sidebar's new button and its page list, and inside the widgets the
+tasks box and add button, the image widget's choose and replace, the
+notes widget's open-in-canvas, the coin, and the timer's task box.
+Rows (sidebar pages, task rows, picker tiles, tracker rows) are not.
+The probe checks the header's and the sidebar's ids.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the

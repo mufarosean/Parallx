@@ -13,6 +13,8 @@
 // Phase 2 (clock-and-links), refresh in Phase 3, AI in Phase 4. The pane
 // is built so each phase plugs in without restructuring this file.
 
+import { openScheduleEditor } from './dashboardScheduleEditor.js';
+import { createSurface, declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { escapeHtml } from '../../ui/format.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
@@ -29,7 +31,6 @@ import {
   type WidgetPlacement,
   type WidgetTypeRegistration,
 } from './dashboardTypes.js';
-import { Dropdown } from '../../ui/dropdown.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { openAppearanceDrawer } from './appearanceDrawer.js';
@@ -238,6 +239,7 @@ class DashboardEditorPane implements IDisposable {
     const actions = el('div', 'dashboard-header__actions');
 
     const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
+    declareControl(addBtn, { id: 'dashboard.addWidget', label: 'Add Widget' });
     addBtn.type = 'button';
     addBtn.dataset.activity = 'Add Widget';
     addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Widget</span>';
@@ -251,6 +253,7 @@ class DashboardEditorPane implements IDisposable {
     const refreshAllBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
     refreshAllBtn.type = 'button';
     refreshAllBtn.title = 'Refresh every widget on this page';
+    declareControl(refreshAllBtn, { id: 'dashboard.refreshAll', label: 'Refresh All', hint: refreshAllBtn.title });
     refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh All</span>';
     refreshAllBtn.addEventListener('click', () => {
       for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
@@ -262,6 +265,7 @@ class DashboardEditorPane implements IDisposable {
     const scheduleBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
     scheduleBtn.type = 'button';
     scheduleBtn.title = 'Schedule automatic refresh for this page';
+    declareControl(scheduleBtn, { id: 'dashboard.schedule', label: 'Schedule Refresh', kind: 'iconButton', hint: scheduleBtn.title });
     scheduleBtn.dataset.role = 'page-schedule';
     scheduleBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
     scheduleBtn.addEventListener('click', () => void this._openScheduleEditor(scheduleBtn));
@@ -270,6 +274,7 @@ class DashboardEditorPane implements IDisposable {
     const collapseBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
     collapseBtn.type = 'button';
     collapseBtn.title = 'Hide header';
+    declareControl(collapseBtn, { id: 'dashboard.hideHeader', label: 'Hide header', kind: 'iconButton' });
     collapseBtn.dataset.role = 'header-collapse';
     collapseBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
     collapseBtn.addEventListener('click', () => this._togglePaneHeader());
@@ -285,6 +290,7 @@ class DashboardEditorPane implements IDisposable {
     const revealActions = el('div', 'dashboard-reveal__actions');
 
     const revealAdd = el('button', 'dashboard-btn dashboard-btn--primary dashboard-btn--small');
+    declareControl(revealAdd, { id: 'dashboard.collapsed.addWidget', label: 'Add Widget' });
     revealAdd.type = 'button';
     revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Widget</span>';
     revealAdd.addEventListener('click', () => void this._openWidgetPicker());
@@ -293,6 +299,7 @@ class DashboardEditorPane implements IDisposable {
     const revealExpand = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--small dashboard-btn--icon-only');
     revealExpand.type = 'button';
     revealExpand.title = 'Show header';
+    declareControl(revealExpand, { id: 'dashboard.showHeader', label: 'Show header', kind: 'iconButton' });
     revealExpand.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
     revealExpand.addEventListener('click', () => this._togglePaneHeader());
     revealActions.appendChild(revealExpand);
@@ -324,6 +331,7 @@ class DashboardEditorPane implements IDisposable {
     const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
     emptyAddBtn.type = 'button';
     emptyAddBtn.textContent = 'Add Widget';
+    declareControl(emptyAddBtn, { id: 'dashboard.empty.addWidget', label: 'Add Widget' });
     emptyAddBtn.addEventListener('click', () => void this._openWidgetPicker());
     empty.appendChild(emptyAddBtn);
     gridWrap.appendChild(empty);
@@ -355,131 +363,10 @@ class DashboardEditorPane implements IDisposable {
     if (hidden) root.classList.add('dashboard-pane--header-hidden');
   }
 
-  // ── Page schedule editor ──────────────────────────────────────
+  // ── Page schedule editor ────────────────────────────────────────────────
 
-  /**
-   * Compact popover to set the page's headless refresh schedule.
-   * Preset-first (off / hourly / every 4h / daily / weekdays) with a raw
-   * cron field for power users. Times and cron fields are in the app's Time
-   * Zone, as the scheduler reads them (computeNextRun walks the calendar in
-   * that zone). This used to convert daily/weekday times to UTC fields, so
-   * "Daily At 7:00" fired at 7:00 UTC read as local: noon in Central Time.
-   */
-  private async _openScheduleEditor(anchor: HTMLElement): Promise<void> {
-    document.querySelector('.dashboard-schedule-pop')?.remove();
-    const page = await this._data.getPage(this._pageId);
-    const current = page?.refreshPolicy ?? null;
-
-    const pop = el('div', 'dashboard-schedule-pop');
-    const title = el('div', 'dashboard-schedule-pop__title');
-    title.textContent = 'Refresh this page automatically';
-    pop.appendChild(title);
-
-    const selectHost = el('div', 'dashboard-schedule-pop__select');
-    const select = new Dropdown(selectHost, {
-      items: [
-        { value: 'off', label: 'Off' },
-        { value: 'hourly', label: 'Every Hour' },
-        { value: 'every4h', label: 'Every 4 hours' },
-        { value: 'daily', label: 'Daily At…' },
-        { value: 'weekdays', label: 'Weekdays At…' },
-        { value: 'cron', label: 'Custom Cron…' },
-      ],
-      selected: 'off',
-      ariaLabel: 'Refresh schedule',
-    });
-    pop.appendChild(selectHost);
-
-    const timeInput = document.createElement('input');
-    timeInput.type = 'time';
-    timeInput.value = '07:00';
-    timeInput.className = 'dashboard-schedule-pop__time';
-    pop.appendChild(timeInput);
-
-    const cronInput = document.createElement('input');
-    cronInput.type = 'text';
-    cronInput.placeholder = '0 12 * * 1-5  (5-field cron, your time zone)';
-    cronInput.className = 'dashboard-schedule-pop__cron';
-    pop.appendChild(cronInput);
-
-    const hint = el('div', 'dashboard-schedule-pop__hint');
-    pop.appendChild(hint);
-
-    // Initial state from the persisted policy.
-    if (!current) {
-      select.value = 'off';
-    } else if (current.kind === 'interval') {
-      select.value = current.ms === 4 * 3_600_000 ? 'every4h' : 'hourly';
-    } else if (current.kind === 'cron') {
-      // Try to recognise our own daily/weekday shapes; otherwise show raw.
-      const daily = cronToDailyTime(current.cron);
-      if (daily) {
-        timeInput.value = daily.time;
-        select.value = daily.weekdaysOnly ? 'weekdays' : 'daily';
-      } else {
-        select.value = 'cron';
-        cronInput.value = current.cron;
-      }
-    }
-
-    const syncVisibility = (): void => {
-      const v = select.value;
-      timeInput.style.display = v === 'daily' || v === 'weekdays' ? '' : 'none';
-      cronInput.style.display = v === 'cron' ? '' : 'none';
-      hint.textContent =
-        v === 'off' ? 'Widgets only refresh manually or on their own schedules.'
-        : v === 'cron' ? 'Standard 5-field cron, in your time zone.'
-        : v === 'daily' || v === 'weekdays' ? 'Local time. AI widgets run as background agents.'
-        : 'AI widgets run as background agents; the chat is never opened.';
-    };
-    syncVisibility();
-    select.onDidChange(syncVisibility);
-
-    const row = el('div', 'dashboard-schedule-pop__actions');
-    const save = el('button', 'dashboard-btn dashboard-btn--primary');
-    save.textContent = 'Save';
-    save.addEventListener('click', async () => {
-      let policy: import('./dashboardTypes.js').WidgetRefreshPolicy | null = null;
-      const v = select.value;
-      if (v === 'hourly') policy = { kind: 'interval', ms: 3_600_000 };
-      else if (v === 'every4h') policy = { kind: 'interval', ms: 4 * 3_600_000 };
-      else if (v === 'daily' || v === 'weekdays') {
-        policy = { kind: 'cron', cron: dailyTimeToCron(timeInput.value, v === 'weekdays') };
-      } else if (v === 'cron') {
-        const cron = cronInput.value.trim();
-        if (cron) policy = { kind: 'cron', cron };
-      }
-      try {
-        await this._data.setPageRefreshPolicy(this._pageId, policy);
-        teardown();
-      } catch (err) {
-        hint.textContent = err instanceof Error ? err.message : String(err);
-      }
-    });
-    row.appendChild(save);
-    const cancel = el('button', 'dashboard-btn dashboard-btn--ghost');
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => teardown());
-    row.appendChild(cancel);
-    pop.appendChild(row);
-
-    // Anchor under the button; dismiss on outside click. The Dropdown owns a
-    // document-level listener, so the popover teardown must dispose it.
-    const teardown = (): void => {
-      select.dispose();
-      pop.remove();
-      document.removeEventListener('mousedown', dismiss, true);
-    };
-    const rect = anchor.getBoundingClientRect();
-    pop.style.top = `${rect.bottom + 6}px`;
-    pop.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
-    document.body.appendChild(pop);
-    const dismiss = (e: MouseEvent): void => {
-      if (!pop.contains(e.target as Node) && e.target !== anchor) {
-        teardown();
-      }
-    };
-    document.addEventListener('mousedown', dismiss, true);
+  private _openScheduleEditor(anchor: HTMLElement): Promise<void> {
+    return openScheduleEditor({ data: this._data, pageId: this._pageId }, anchor);
   }
 
   // ── Rename flow ────────────────────────────────────────────────────────
@@ -542,6 +429,7 @@ class DashboardEditorPane implements IDisposable {
     // Card chrome
     const card = el('article', 'dashboard-widget');
     card.dataset.widgetId = row.id;
+    createSurface(card, { id: 'dashboard.widget', owner: 'dashboard', label: row.appearance.title?.trim() || typeReg?.displayName || row.widgetTypeId, instance: row.id });
     card.dataset.typeId = row.widgetTypeId;
     // Chrome preset (card | minimal | bare) drives background, header, and
     // footer visibility via CSS. Defaults to full 'card' chrome.
@@ -571,6 +459,7 @@ class DashboardEditorPane implements IDisposable {
 
     if (typeReg?.refresh) {
       const refreshBtn = el('button', 'dashboard-widget__btn');
+      declareControl(refreshBtn, { id: 'dashboard.widget.refresh', label: 'Refresh', kind: 'iconButton' });
       refreshBtn.type = 'button';
       refreshBtn.title = typeReg.category === 'ai' ? 'Refresh (background agent)' : 'Refresh';
       refreshBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
@@ -584,6 +473,7 @@ class DashboardEditorPane implements IDisposable {
         const chatBtn = el('button', 'dashboard-widget__btn');
         chatBtn.type = 'button';
         chatBtn.title = 'Run in chat (visible, for debugging the prompt)';
+        declareControl(chatBtn, { id: 'dashboard.widget.runInChat', label: 'Run in chat', kind: 'iconButton' });
         chatBtn.innerHTML = getIcon('px-ai-mark');
         chatBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id, 'chat'));
         actions.appendChild(chatBtn);
@@ -594,6 +484,7 @@ class DashboardEditorPane implements IDisposable {
       const settingsBtn = el('button', 'dashboard-widget__btn');
       settingsBtn.type = 'button';
       settingsBtn.title = 'Configure';
+      declareControl(settingsBtn, { id: 'dashboard.widget.configure', label: 'Configure', kind: 'iconButton' });
       settingsBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
       settingsBtn.addEventListener('click', () => this._openSettingsDrawer(row.id));
       actions.appendChild(settingsBtn);
@@ -603,6 +494,7 @@ class DashboardEditorPane implements IDisposable {
     const appearanceBtn = el('button', 'dashboard-widget__btn');
     appearanceBtn.type = 'button';
     appearanceBtn.title = 'Appearance';
+    declareControl(appearanceBtn, { id: 'dashboard.widget.appearance', label: 'Appearance', kind: 'iconButton' });
     appearanceBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>';
     appearanceBtn.addEventListener('click', () => this._openAppearanceDrawer(row.id));
     actions.appendChild(appearanceBtn);
@@ -614,6 +506,7 @@ class DashboardEditorPane implements IDisposable {
     const adoptBtn = el('button', 'dashboard-widget__btn');
     adoptBtn.type = 'button';
     adoptBtn.title = 'Move To Workbench';
+    declareControl(adoptBtn, { id: 'dashboard.widget.moveToWorkbench', label: 'Move To Workbench', kind: 'iconButton' });
     adoptBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
     adoptBtn.addEventListener('click', () => {
       void this._api.commands.executeCommand('workbench.action.adoptWidget', row.id);
@@ -623,6 +516,7 @@ class DashboardEditorPane implements IDisposable {
     const removeBtn = el('button', 'dashboard-widget__btn dashboard-widget__btn--danger');
     removeBtn.type = 'button';
     removeBtn.title = 'Remove widget';
+    declareControl(removeBtn, { id: 'dashboard.widget.remove', label: 'Remove widget', kind: 'iconButton' });
     removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
     removeBtn.addEventListener('click', () => void this._removeWidget(row.id));
     actions.appendChild(removeBtn);
@@ -1024,6 +918,7 @@ class DashboardEditorPane implements IDisposable {
     detach.observe(document.body, { childList: true });
 
     const sheet = el('div', 'dashboard-picker');
+    createSurface(sheet, { id: 'dashboard.picker', owner: 'dashboard', label: 'Add a widget' });
 
     const head = el('div', 'dashboard-picker__head');
     const ht = el('h2', 'dashboard-picker__title');
@@ -1118,6 +1013,7 @@ class DashboardEditorPane implements IDisposable {
 
     const foot = el('div', 'dashboard-picker__foot');
     const close = el('button', 'dashboard-btn dashboard-btn--ghost');
+    declareControl(close, { id: 'dashboard.picker.cancel', label: 'Cancel' });
     close.type = 'button';
     close.textContent = 'Cancel';
     close.addEventListener('click', () => overlay.remove());
@@ -1520,20 +1416,3 @@ export function firstFitPlacement(
   return { row: maxRow + 1, col: 0, rowSpan, colSpan };
 }
 
-/**
- * "Daily At" / "Weekdays At" as a cron. The fields are the app's Time Zone
- * wall clock, the way the scheduler (computeNextRun) reads them.
- */
-export function dailyTimeToCron(time: string, weekdaysOnly: boolean): string {
-  const [hh, mm] = (time || '07:00').split(':').map((x) => parseInt(x, 10));
-  const h = Number.isFinite(hh) ? Math.min(23, Math.max(0, hh)) : 7;
-  const min = Number.isFinite(mm) ? Math.min(59, Math.max(0, mm)) : 0;
-  return `${min} ${h} * * ${weekdaysOnly ? '1-5' : '*'}`;
-}
-
-/** The time a daily/weekday cron fires at ('HH:MM'), or null for any other cron. */
-export function cronToDailyTime(cron: string): { time: string; weekdaysOnly: boolean } | null {
-  const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5)$/.exec(String(cron).trim());
-  if (!m) return null;
-  return { time: `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}`, weekdaysOnly: m[3] === '1-5' };
-}

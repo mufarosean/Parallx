@@ -6,6 +6,7 @@
 // (string, number, boolean, enum, textarea, markdown with live preview,
 // string-list), saved through whichever host owns persistence.
 
+import { createSurface, declareControl } from '../../ui/kit.js';
 import type { WidgetTypeRegistration } from '../../api/bridges/dashboardBridge.js';
 import { createSelect } from '../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../ui/dom.js';
@@ -44,6 +45,7 @@ export function openWidgetSettingsDrawer(host: SettingsDrawerHost): void {
   };
 
   const sheet = el('aside', 'dashboard-settings');
+  createSurface(sheet, { id: 'dashboard.widgetSettings', owner: 'dashboard', label: 'Widget settings' });
 
   // Standard popup contract (Escape / outside press / window blur — the
   // drawer previously had NO Escape at all). Dropdown option lists mount
@@ -193,9 +195,11 @@ export function openWidgetSettingsDrawer(host: SettingsDrawerHost): void {
   cancel.textContent = 'Cancel';
   cancel.addEventListener('click', () => closeDrawer());
   foot.appendChild(cancel);
+  declareControl(cancel, { id: 'dashboard.widgetSettings.cancel', label: 'Cancel' });
   const save = el('button', 'dashboard-btn dashboard-btn--primary');
   save.type = 'button';
   save.textContent = 'Save';
+  declareControl(save, { id: 'dashboard.widgetSettings.save', label: 'Save' });
   save.addEventListener('click', async () => {
     const next: Record<string, unknown> = {};
     // Read every value BEFORE disposing anything.

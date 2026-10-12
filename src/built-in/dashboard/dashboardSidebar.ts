@@ -7,6 +7,7 @@
 // ribbon icon takes the user here, and from here they jump into any
 // dashboard page.
 
+import { declareControl, createList } from '../../ui/kit.js';
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import { attachPopupDismiss } from '../../ui/dom.js';
 import type { DashboardDataService } from './dashboardDataService.js';
@@ -75,6 +76,7 @@ export class DashboardSidebar implements IDisposable {
     const newBtn = el('button', 'dashboard-sidebar__newbtn');
     newBtn.type = 'button';
     newBtn.title = 'New dashboard';
+    declareControl(newBtn, { id: 'dashboard.side.new', label: 'New dashboard', kind: 'iconButton' });
     newBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New dashboard</span>';
     newBtn.addEventListener('click', () => void this._createPage());
     toolbar.appendChild(newBtn);
@@ -85,6 +87,7 @@ export class DashboardSidebar implements IDisposable {
     list.setAttribute('role', 'listbox');
     list.setAttribute('aria-label', 'Dashboards');
     this._list = list;
+    createList(list, { id: 'dashboard.side.pages', label: 'Dashboards', rows: () => Array.from(list.querySelectorAll<HTMLElement>('.dashboard-sidebar__row')), selected: () => Array.from(list.querySelectorAll<HTMLElement>('.dashboard-sidebar__row--active')).map((r) => r.textContent?.trim() ?? '') });
     root.appendChild(list);
 
     container.appendChild(root);
