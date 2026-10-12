@@ -171,7 +171,19 @@ move the same code.
    each `create*Pane` function into `panes/<name>Pane.ts`, with the module
    state they share (`_practice`, listener sets, caches) in a `state.ts`
    they import. Keep `main.ts` as the activation that registers them.
-3. **Planner pane.** `plannerEditorProvider.ts` (3,015 lines): the task
+3. **Planner pane** (done 2026-10-12, 03aa06b7 to ca069073). The pane is
+   471 lines and keeps the shell, the tab and view state, Today and the
+   keys. The rest is in modules beside it: plannerUi (shared types,
+   glyphs, palette, small DOM helpers), plannerNotes, plannerEventPopover,
+   plannerTaskPopover, plannerTaskList, plannerCalendarsMenu,
+   plannerEventBars, plannerAllDay, plannerCalendarViews. Each is a class
+   constructed with the pane, whose members it reads by name (the pane
+   class is module-internal and exported as a type only). The section 2
+   Worksheets rows were walked first and pass. `tests/probes/planner-probe.mjs`
+   seeds tasks and events and drives every part; its output before the
+   split is what each step was compared with, line for line. Hidden runs
+   no longer reach the real Ollama (43806232). The plan as written:
+   `plannerEditorProvider.ts` (3,015 lines): the task
    list, the day, week and month grids and the event popover into files;
    the pure helpers are already in `plannerDates.ts` and `plannerLinks.ts`.
 4. **Canvas data service.** `canvasDataService.ts` (3,045 lines, one

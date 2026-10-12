@@ -101,7 +101,6 @@
   "src/built-in/explorer/recentItemsWidget.ts": 4,
   "src/built-in/indexing-log/main.ts": 1,
   "src/built-in/planner/main.ts": 4,
-  "src/built-in/planner/plannerEditorProvider.ts": 1,
   "src/built-in/planner/plannerICal.ts": 2,
   "src/built-in/planner/plannerTypes.ts": 1,
   "src/built-in/search/search.css": 1,

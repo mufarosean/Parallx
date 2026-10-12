@@ -10,7 +10,7 @@
 // names, so nothing on screen distinguished a dead end from a live one.
 
 import { describe, it, expect } from 'vitest';
-import { eventCalendarItems } from '../../../src/built-in/planner/plannerEditorProvider.js';
+import { eventCalendarItems } from '../../../src/built-in/planner/plannerUi.js';
 import type { PlannerCalendar } from '../../../src/built-in/planner/plannerTypes.js';
 
 function cal(p: Partial<PlannerCalendar> & { id: string; name: string }): PlannerCalendar {
