@@ -44,10 +44,11 @@ import { getEditorTitleActions } from '../../../contributions/menuContribution.j
 import { toDisposable } from '../../../platform/lifecycle.js';
 import type { IStorage } from '../../../platform/storage.js';
 import { ICON } from './pdfIcons.js';
-import type { IPaneCommandService, PdfOutlineItem, SelectionOverlayRect } from './pdfTypes.js';
+import type { IPaneCommandService, PdfOutlineItem } from './pdfTypes.js';
 import { HIGHLIGHT_COLORS, highlightSolid } from './pdfHighlights.js';
 import type { PdfHighlightCanvasLink, PdfHighlight } from './pdfHighlights.js';
 import { PdfHighlightStore } from './pdfHighlightStore.js';
+import { PdfSelectionOverlay, selectionRectsOnLayer } from './pdfSelectionOverlay.js';
 import { setupTooltip } from '../../../ui/tooltip.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import { takeFileReveal } from '../../fileReveal.js';
@@ -130,7 +131,7 @@ export class PdfEditorPane extends EditorPane {
   private _scaleValue = 'page-fit';  // default fit mode
   private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentInput: PdfEditorInput | null = null;
-  private _selectionOverlayFrame: number | null = null;
+  private readonly _selectionOverlay = new PdfSelectionOverlay(() => this._viewerContainer ?? null);
   private _globalStorage: IStorage | undefined;
 
   // ── Reading modes ────────────────────────────────────────────────────
@@ -142,12 +143,9 @@ export class PdfEditorPane extends EditorPane {
     commands: () => this._commandService,
     viewerContainer: () => this._viewerContainer ?? null,
     pageView: (pageNumber) => this._getPageView(pageNumber),
-    selectionRects: (selection, textLayer) => {
-      const rects = this._collectSelectionRectsForTextLayer(selection, textLayer);
-      return rects.length ? this._mergeSelectionOverlayRects(rects) : [];
-    },
+    selectionRects: (selection, textLayer) => selectionRectsOnLayer(selection, textLayer),
     capturedText: () => this._capturedSelection,
-    clearSelectionOverlay: () => this._clearSelectionOverlay(),
+    clearSelectionOverlay: () => this._selectionOverlay.clear(),
     continueInChat: (hl) => this._continueHighlightInChat(hl),
   });
 
@@ -451,7 +449,7 @@ export class PdfEditorPane extends EditorPane {
     container.appendChild(this._errorEl);
 
     // Wire text selection context menu (shows on mouseup via shared ContextMenu)
-    this._wireSelectionOverlay();
+    this._register(this._selectionOverlay.listen());
     this._wireContextMenu();
     // The bubble lives on <body>; it must not outlive the pane.
     this._register(toDisposable(() => this._dismissSelectionBubble()));
@@ -524,213 +522,6 @@ export class PdfEditorPane extends EditorPane {
         findPrevious: false,
       });
     }
-  }
-
-  private _wireSelectionOverlay(): void {
-    const controller = new AbortController();
-    this._register(toDisposable(() => controller.abort()));
-
-    document.addEventListener('selectionchange', () => this._scheduleSelectionOverlayUpdate(), {
-      signal: controller.signal,
-    });
-
-    window.addEventListener('resize', () => this._scheduleSelectionOverlayUpdate(), {
-      signal: controller.signal,
-    });
-  }
-
-  private _scheduleSelectionOverlayUpdate(): void {
-    if (this._selectionOverlayFrame !== null) {
-      return;
-    }
-
-    this._selectionOverlayFrame = requestAnimationFrame(() => {
-      this._selectionOverlayFrame = requestAnimationFrame(() => {
-        this._selectionOverlayFrame = null;
-        this._updateSelectionOverlay();
-      });
-    });
-  }
-
-  private _updateSelectionOverlay(): void {
-    this._clearSelectionOverlay();
-
-    const selection = globalThis.getSelection?.();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !this._viewerContainer) {
-      return;
-    }
-
-    const textLayers = Array.from(this._viewerContainer.querySelectorAll<HTMLElement>('.textLayer'));
-    for (const textLayer of textLayers) {
-      const rects = this._collectSelectionRectsForTextLayer(selection, textLayer);
-      if (rects.length === 0) {
-        continue;
-      }
-
-      const mergedRects = this._mergeSelectionOverlayRects(rects);
-      if (mergedRects.length === 0) {
-        continue;
-      }
-
-      const overlayRoot = this._createSelectionOverlayRoot(textLayer);
-      if (!overlayRoot) {
-        continue;
-      }
-
-      for (const rect of mergedRects) {
-        const box = document.createElement('div');
-        box.classList.add('pdf-selection-overlay-box');
-        box.style.left = `${rect.left}px`;
-        box.style.top = `${rect.top}px`;
-        box.style.width = `${rect.width}px`;
-        box.style.height = `${rect.height}px`;
-        overlayRoot.appendChild(box);
-      }
-    }
-  }
-
-  private _clearSelectionOverlay(): void {
-    if (this._selectionOverlayFrame !== null) {
-      cancelAnimationFrame(this._selectionOverlayFrame);
-      this._selectionOverlayFrame = null;
-    }
-
-    this._viewerContainer?.querySelectorAll('.pdf-selection-overlay-root').forEach((node) => node.remove());
-  }
-
-  private _collectSelectionRectsForTextLayer(selection: Selection, textLayer: HTMLElement): SelectionOverlayRect[] {
-    const textLayerRect = textLayer.getBoundingClientRect();
-    if (textLayerRect.width === 0 || textLayerRect.height === 0) {
-      return [];
-    }
-
-    // PDF.js makes its endOfContent element selectable (user-select: text)
-    // and sizes it to the full text layer during active selection.  When the
-    // selection range includes endOfContent, getClientRects() returns a rect
-    // covering the _entire_ page — which our overlay draws as a page-sized
-    // blue box (the "blue flash").  Normal text selection rects are at most
-    // one line tall, so we filter out any rect taller than half the text
-    // layer height.
-    const maxRectHeight = textLayerRect.height * 0.5;
-
-    const rects: SelectionOverlayRect[] = [];
-    for (let index = 0; index < selection.rangeCount; index += 1) {
-      const range = selection.getRangeAt(index);
-      if (!range.intersectsNode(textLayer)) {
-        continue;
-      }
-
-      for (const rect of Array.from(range.getClientRects())) {
-        const clippedRect = this._clipRectToBounds(rect, textLayerRect);
-        if (!clippedRect) {
-          continue;
-        }
-
-        if (clippedRect.height > maxRectHeight) {
-          continue;
-        }
-
-        rects.push({
-          left: clippedRect.left - textLayerRect.left,
-          top: clippedRect.top - textLayerRect.top,
-          width: clippedRect.width,
-          height: clippedRect.height,
-        });
-      }
-    }
-
-    return rects;
-  }
-
-  private _clipRectToBounds(rect: DOMRect | ClientRect, bounds: DOMRect): SelectionOverlayRect | null {
-    const left = Math.max(rect.left, bounds.left);
-    const top = Math.max(rect.top, bounds.top);
-    const right = Math.min(rect.right, bounds.right);
-    const bottom = Math.min(rect.bottom, bounds.bottom);
-    const width = right - left;
-    const height = bottom - top;
-
-    if (width <= 0.5 || height <= 0.5) {
-      return null;
-    }
-
-    return { left, top, width, height };
-  }
-
-  private _mergeSelectionOverlayRects(rects: SelectionOverlayRect[]): SelectionOverlayRect[] {
-    const sortedRects = [...rects].sort((a, b) => {
-      const centerYDelta = (a.top + a.height / 2) - (b.top + b.height / 2);
-      if (Math.abs(centerYDelta) > 1.5) {
-        return centerYDelta;
-      }
-      return a.left - b.left;
-    });
-
-    const lines: Array<{ centerY: number; rects: SelectionOverlayRect[] }> = [];
-    for (const rect of sortedRects) {
-      const centerY = rect.top + rect.height / 2;
-      const line = lines.find((candidate) => {
-        const referenceHeight = candidate.rects.reduce((sum, value) => sum + value.height, 0) / candidate.rects.length;
-        const tolerance = Math.max(3, referenceHeight * 0.45);
-        return Math.abs(candidate.centerY - centerY) <= tolerance;
-      });
-
-      if (line) {
-        line.rects.push({ ...rect });
-        line.centerY = (line.centerY * (line.rects.length - 1) + centerY) / line.rects.length;
-      } else {
-        lines.push({ centerY, rects: [{ ...rect }] });
-      }
-    }
-
-    const mergedRects: SelectionOverlayRect[] = [];
-    for (const line of lines) {
-      const lineRects = line.rects.sort((a, b) => a.left - b.left);
-      const averageHeight = lineRects.reduce((sum, value) => sum + value.height, 0) / lineRects.length;
-      const gapTolerance = Math.max(6, Math.min(40, averageHeight * 1.5));
-      let currentRect: SelectionOverlayRect | null = null;
-
-      for (const rect of lineRects) {
-        if (!currentRect) {
-          currentRect = { ...rect };
-          continue;
-        }
-
-        const currentRight = currentRect.left + currentRect.width;
-        const rectRight = rect.left + rect.width;
-        const gap = rect.left - currentRight;
-
-        if (gap <= gapTolerance) {
-          const mergedLeft = Math.min(currentRect.left, rect.left);
-          const mergedTop = Math.min(currentRect.top, rect.top);
-          const mergedRight = Math.max(currentRight, rectRight);
-          const mergedBottom = Math.max(currentRect.top + currentRect.height, rect.top + rect.height);
-          currentRect = {
-            left: mergedLeft,
-            top: mergedTop,
-            width: mergedRight - mergedLeft,
-            height: mergedBottom - mergedTop,
-          };
-          continue;
-        }
-
-        mergedRects.push(currentRect);
-        currentRect = { ...rect };
-      }
-
-      if (currentRect) {
-        mergedRects.push(currentRect);
-      }
-    }
-
-    return mergedRects;
-  }
-
-  private _createSelectionOverlayRoot(textLayer: HTMLElement): HTMLElement | null {
-    const overlayRoot = document.createElement('div');
-    overlayRoot.classList.add('pdf-selection-overlay-root');
-    textLayer.insertBefore(overlayRoot, textLayer.firstChild);
-    return overlayRoot;
   }
 
   private _getPageView(pageNumber: number): any | null {
@@ -838,9 +629,7 @@ export class PdfEditorPane extends EditorPane {
     if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !this._viewerContainer || !this._currentInput) return;
 
     for (const textLayer of Array.from(this._viewerContainer.querySelectorAll<HTMLElement>('.textLayer'))) {
-      const rects = this._collectSelectionRectsForTextLayer(selection, textLayer);
-      if (rects.length === 0) continue;
-      const merged = this._mergeSelectionOverlayRects(rects);
+      const merged = selectionRectsOnLayer(selection, textLayer);
       if (merged.length === 0) continue;
 
       const pageEl = textLayer.closest<HTMLElement>('.page');
@@ -1328,7 +1117,7 @@ export class PdfEditorPane extends EditorPane {
         this._zoomInput.value = `${Math.round(evt.scale * 100)}%`;
         this._updateFitButton();
         this._pdfViewer?.update();
-        this._scheduleSelectionOverlayUpdate();
+        this._selectionOverlay.schedule();
         this._highlightStore.renderAll();
         if (this._currentInput && this._pdfViewer) {
           this._currentInput.scaleValue = this._pdfViewer.currentScaleValue;
@@ -1336,7 +1125,7 @@ export class PdfEditorPane extends EditorPane {
       });
 
       this._eventBus.on('textlayerrendered', (evt: any) => {
-        this._scheduleSelectionOverlayUpdate();
+        this._selectionOverlay.schedule();
         const pageNumber = evt?.pageNumber;
         if (typeof pageNumber === 'number') this._highlightStore.renderPage(pageNumber);
       });
@@ -1392,7 +1181,7 @@ export class PdfEditorPane extends EditorPane {
         this._zoomInput.value = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
         this._updateFitButton();
         this._pdfViewer!.update();
-        this._scheduleSelectionOverlayUpdate();
+        this._selectionOverlay.schedule();
         this._highlightStore.renderAll();
 
         // A citation link that opened this file: its page and quote win over
@@ -1600,7 +1389,7 @@ export class PdfEditorPane extends EditorPane {
         return;
       }
       requestAnimationFrame(() => {
-        this._scheduleSelectionOverlayUpdate();
+        this._selectionOverlay.schedule();
         const sel = window.getSelection();
         const text = sel?.toString()?.trim() ?? '';
         if (text.length > 0) {
@@ -1631,7 +1420,7 @@ export class PdfEditorPane extends EditorPane {
     // Dismiss on scroll
     this._viewerContainer.addEventListener('scroll', () => {
       this._dismissContextMenu();
-      this._scheduleSelectionOverlayUpdate();
+      this._selectionOverlay.schedule();
     }, { signal: controller.signal });
   }
 
@@ -1938,7 +1727,7 @@ export class PdfEditorPane extends EditorPane {
             this._pdfViewer.currentPageNumber = currentPage;
           }
 
-          this._scheduleSelectionOverlayUpdate();
+          this._selectionOverlay.schedule();
           this._highlightStore.renderAll();
         }
       }, 150);
@@ -1982,7 +1771,7 @@ export class PdfEditorPane extends EditorPane {
     this._viewerEl?.replaceChildren();
     this._outline?.clear();
     this._thumbs?.clear();
-    this._clearSelectionOverlay();
+    this._selectionOverlay.clear();
     this._pageLabels = null;
     this._currentInput = null;
     this._removeTestDebugHook();
