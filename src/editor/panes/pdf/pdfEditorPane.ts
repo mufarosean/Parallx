@@ -26,7 +26,6 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { loadPdfjs } from '../../../vendor/lazy.js';
 
 type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
-import { getToolSelectionActions } from '../../../services/selectionActionDispatcher.js';
 
 // ── CSS ─────────────────────────────────────────────────────────────────
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -45,10 +44,10 @@ import { toDisposable } from '../../../platform/lifecycle.js';
 import type { IStorage } from '../../../platform/storage.js';
 import { ICON } from './pdfIcons.js';
 import type { IPaneCommandService, PdfOutlineItem } from './pdfTypes.js';
-import { HIGHLIGHT_COLORS, highlightSolid } from './pdfHighlights.js';
-import type { PdfHighlightCanvasLink, PdfHighlight } from './pdfHighlights.js';
 import { PdfHighlightStore } from './pdfHighlightStore.js';
 import { PdfSelectionOverlay, selectionRectsOnLayer } from './pdfSelectionOverlay.js';
+import { PdfSelectionActions } from './pdfSelectionActions.js';
+import { PdfSelectionMenu } from './pdfSelectionMenu.js';
 import { setupTooltip } from '../../../ui/tooltip.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import { takeFileReveal } from '../../fileReveal.js';
@@ -86,8 +85,6 @@ export class PdfEditorPane extends EditorPane {
   private _paneContainer: HTMLElement | null = null;
   private _errorEl!: HTMLElement;
   private _activeContextMenu: ContextMenu | null = null;
-  private _selectionBubble: HTMLElement | null = null;
-  private _capturedSelection = '';  // text captured at context-menu show time
 
   // Toolbar elements
   private _pageInput!: HTMLInputElement;
@@ -144,10 +141,20 @@ export class PdfEditorPane extends EditorPane {
     viewerContainer: () => this._viewerContainer ?? null,
     pageView: (pageNumber) => this._getPageView(pageNumber),
     selectionRects: (selection, textLayer) => selectionRectsOnLayer(selection, textLayer),
-    capturedText: () => this._capturedSelection,
+    capturedText: () => this._selectionMenu?.capturedText ?? '',
     clearSelectionOverlay: () => this._selectionOverlay.clear(),
-    continueInChat: (hl) => this._continueHighlightInChat(hl),
+    continueInChat: (hl) => this._selectionActions.continueInChat(hl),
   });
+  private readonly _selectionActions = new PdfSelectionActions({
+    file: () => (this._currentInput ? { name: this._currentInput.name, fsPath: this._currentInput.uri.fsPath } : null),
+    currentPage: () => this._pdfViewer?.currentPageNumber,
+    capturedText: () => this._selectionMenu?.capturedText ?? '',
+    viewerContainer: () => this._viewerContainer ?? null,
+    pageView: (pageNumber) => this._getPageView(pageNumber),
+    commands: () => this._commandService,
+    highlights: this._highlightStore,
+  });
+  private _selectionMenu: PdfSelectionMenu | null = null;
 
   // ── M84: inline AI + canvas partnership ──────────────────────────────
   private _commandService: IPaneCommandService | undefined;
@@ -450,9 +457,16 @@ export class PdfEditorPane extends EditorPane {
 
     // Wire text selection context menu (shows on mouseup via shared ContextMenu)
     this._register(this._selectionOverlay.listen());
-    this._wireContextMenu();
-    // The bubble lives on <body>; it must not outlive the pane.
-    this._register(toDisposable(() => this._dismissSelectionBubble()));
+    this._selectionMenu = new PdfSelectionMenu(this._viewerContainer, {
+      scheduleOverlay: () => this._selectionOverlay.schedule(),
+      closeMenu: () => this._closeMenu(),
+      setMenu: (menu) => { this._activeContextMenu = menu; },
+      find: (query) => this._search?.find(query),
+      actions: this._selectionActions,
+      highlights: this._highlightStore,
+    });
+    // Its bubble lives on <body>; it goes with the pane.
+    this._register(this._selectionMenu.listen());
 
     container.tabIndex = 0;
     container.addEventListener('keydown', (e) => this._onKeyDown(e));
@@ -546,147 +560,6 @@ export class PdfEditorPane extends EditorPane {
     if (!c) return false;
     const active = document.activeElement;
     return !!active && c.contains(active);
-  }
-
-  /**
-   * Send the captured detail to a canvas page via the `canvas.captureSelection`
-   * command, then record the returned page as a link on the anchoring
-   * highlight(s) so the highlight becomes the durable hub between the two
-   * surfaces. Falls back to a fire-and-forget window event if the canvas
-   * command isn't available (canvas extension not activated).
-   */
-  private async _captureToCanvas(
-    detail: { text?: string; imageDataUrl?: string; fileName?: string; page?: number; sourceUri?: string },
-    anchors: PdfHighlight[],
-  ): Promise<void> {
-    let result: { pageId: string; title: string } | null = null;
-    if (this._commandService) {
-      try {
-        result = await this._commandService.executeCommand<{ pageId: string; title: string } | null>(
-          'canvas.captureSelection', detail,
-        );
-      } catch (err) {
-        console.warn('[PdfEditorPane] canvas.captureSelection failed:', err);
-      }
-    } else {
-      window.dispatchEvent(new CustomEvent('parallx:capture-to-canvas', { detail }));
-    }
-    if (!result) return;
-    const link: PdfHighlightCanvasLink = { pageId: result.pageId, title: result.title, at: Date.now() };
-    this._highlightStore.addCanvasLink(anchors, link);
-  }
-
-  /** Send the current selection to a Canvas study note and link it back. */
-  private _captureSelectionToCanvas(): void {
-    if (!this._capturedSelection || !this._currentInput) return;
-    const fsPath = this._currentInput.uri.fsPath;
-    const page = this._pdfViewer?.currentPageNumber;
-    // Build the documented explorer deep-link so the canvas note can jump
-    // back to this page + quote. (parallx://explorer/file?path=…&page=…&quote=…)
-    const params = new URLSearchParams();
-    params.set('path', fsPath);
-    if (page) params.set('page', String(page));
-    params.set('quote', this._capturedSelection.slice(0, 120));
-    const sourceUri = `parallx://explorer/file?${params.toString()}`;
-    const text = this._capturedSelection;
-    const fileName = this._currentInput.name;
-
-    // Auto-anchor a highlight on the captured passage so the link has a home.
-    const anchors = this._highlightStore.createFromSelection();
-    void this._captureToCanvas({ text, fileName, page, sourceUri }, anchors);
-  }
-
-  /**
-   * Inline AI entry point from the selection menu: anchor a highlight on the
-   * selection, then open its review panel with the AI "Discuss" input focused
-   * so the user can ask about the passage without leaving the page.
-   */
-  private _askAIAboutSelection(): void {
-    const sel = window.getSelection();
-    const rect = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
-    const anchors = this._highlightStore.createFromSelection();
-    const hl = anchors[0];
-    if (!hl) return;
-    const anchorRect = rect && rect.width + rect.height > 0
-      ? rect
-      : new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
-    this._highlightStore.openPopover(hl, anchorRect, true);
-  }
-
-  /**
-   * Capture the selected region as an image and send it to a canvas page.
-   *
-   * Text selection on math-typeset PDFs extracts the underlying glyph codes,
-   * which for formulas/tables/figures rarely map to meaningful Unicode (an
-   * integral sign may be encoded `R`, subscripts are just positioned glyphs
-   * with no `_`). There's no reliable way to recover LaTeX from the text
-   * layer, so for that content we crop the selection's bounding box straight
-   * from the rendered page canvas and insert it as an image — faithful to what
-   * is on the page. Reuses the same selection-rect machinery as highlights.
-   */
-  private _captureSelectionRegionToCanvas(): void {
-    const selection = globalThis.getSelection?.();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !this._viewerContainer || !this._currentInput) return;
-
-    for (const textLayer of Array.from(this._viewerContainer.querySelectorAll<HTMLElement>('.textLayer'))) {
-      const merged = selectionRectsOnLayer(selection, textLayer);
-      if (merged.length === 0) continue;
-
-      const pageEl = textLayer.closest<HTMLElement>('.page');
-      const pageNumber = pageEl ? parseInt(pageEl.dataset.pageNumber ?? '', 10) : NaN;
-      if (!Number.isFinite(pageNumber)) continue;
-
-      const canvas: HTMLCanvasElement | undefined = this._getPageView(pageNumber)?.canvas;
-      if (!canvas) continue;
-
-      // Selection rects are in text-layer-local CSS px; the canvas shares the
-      // same inset:0 box, so the coordinate spaces line up. Pad slightly so
-      // descenders / superscripts aren't clipped.
-      const pad = 4;
-      const cssBox = canvas.getBoundingClientRect();
-      const minLeft = Math.max(0, Math.min(...merged.map((r) => r.left)) - pad);
-      const minTop = Math.max(0, Math.min(...merged.map((r) => r.top)) - pad);
-      const maxRight = Math.min(cssBox.width, Math.max(...merged.map((r) => r.left + r.width)) + pad);
-      const maxBottom = Math.min(cssBox.height, Math.max(...merged.map((r) => r.top + r.height)) + pad);
-      const cropW = maxRight - minLeft;
-      const cropH = maxBottom - minTop;
-      if (cropW <= 1 || cropH <= 1) continue;
-
-      // Map CSS px → canvas backing-store px (HiDPI: canvas.width > cssBox.width).
-      const sx = canvas.width / cssBox.width;
-      const sy = canvas.height / cssBox.height;
-
-      const out = document.createElement('canvas');
-      out.width = Math.round(cropW * sx);
-      out.height = Math.round(cropH * sy);
-      const ctx = out.getContext('2d');
-      if (!ctx) continue;
-      ctx.drawImage(
-        canvas,
-        minLeft * sx, minTop * sy, cropW * sx, cropH * sy,
-        0, 0, out.width, out.height,
-      );
-
-      let imageDataUrl: string;
-      try {
-        imageDataUrl = out.toDataURL('image/png');
-      } catch (err) {
-        console.warn('[PdfEditorPane] region capture toDataURL failed:', err);
-        return;
-      }
-
-      const fsPath = this._currentInput.uri.fsPath;
-      const params = new URLSearchParams();
-      params.set('path', fsPath);
-      params.set('page', String(pageNumber));
-      const sourceUri = `parallx://explorer/file?${params.toString()}`;
-      const fileName = this._currentInput.name;
-
-      // Auto-anchor a highlight on the cropped region so the link has a home.
-      const anchors = this._highlightStore.createFromSelection();
-      void this._captureToCanvas({ imageDataUrl, fileName, page: pageNumber, sourceUri }, anchors);
-      return; // one region per invocation
-    }
   }
 
   // ── Toolbar ──────────────────────────────────────────────────────────
@@ -1360,12 +1233,12 @@ export class PdfEditorPane extends EditorPane {
 
   /** Get the currently selected text in the PDF viewer. */
   getSelectedText(): string {
-    return this._capturedSelection;
+    return this._selectionMenu?.capturedText ?? '';
   }
 
   /** Get selection source metadata for the AI action system. */
   getSelectionSource(): { fileName: string; filePath: string; pageNumber?: number } | undefined {
-    if (!this._capturedSelection || !this._currentInput) return undefined;
+    if (!this.getSelectedText() || !this._currentInput) return undefined;
     return {
       fileName: this._currentInput.name,
       filePath: this._currentInput.uri.fsPath,
@@ -1373,264 +1246,16 @@ export class PdfEditorPane extends EditorPane {
     };
   }
 
-  private _wireContextMenu(): void {
-    const controller = new AbortController();
-    this._register(toDisposable(() => controller.abort()));
-
-    // Show shared ContextMenu on mouseup when text is selected
-    this._viewerContainer.addEventListener('mouseup', (e) => {
-      // Left button only: a right-click's release would otherwise replace
-      // the menu it just opened with the bubble.
-      if (e.button !== 0) return;
-      // Ignore mouseups that originate from our own overlay UI (highlight
-      // margin tabs, the highlight popover, or the context menu itself) so
-      // clicking those never re-triggers the text-selection context menu.
-      if ((e.target as HTMLElement | null)?.closest('.pdf-highlight-tab, .pdf-highlight-popover, .context-menu')) {
-        return;
-      }
-      requestAnimationFrame(() => {
-        this._selectionOverlay.schedule();
-        const sel = window.getSelection();
-        const text = sel?.toString()?.trim() ?? '';
-        if (text.length > 0) {
-          this._capturedSelection = text;
-          this._showSelectionBubble();
-        } else {
-          this._capturedSelection = '';
-          this._dismissContextMenu();
-        }
-      });
-    }, { signal: controller.signal });
-
-    // A new press on the page starts a new selection: the bubble goes until
-    // the button is released.
-    this._viewerContainer.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this._dismissSelectionBubble();
-    }, { signal: controller.signal });
-
-    // Right-click on a selection: the full (short) menu.
-    this._viewerContainer.addEventListener('contextmenu', (e) => {
-      const text = window.getSelection()?.toString()?.trim() ?? '';
-      if (!text) return;
-      e.preventDefault();
-      this._capturedSelection = text;
-      this._showSelectionMenu(e.clientX, e.clientY);
-    }, { signal: controller.signal });
-
-    // Dismiss on scroll
-    this._viewerContainer.addEventListener('scroll', () => {
-      this._dismissContextMenu();
-      this._selectionOverlay.schedule();
-    }, { signal: controller.signal });
+  /** Close the open menu (selection, overflow or zoom). */
+  private _closeMenu(): void {
+    this._activeContextMenu?.dispose();
+    this._activeContextMenu = null;
   }
 
-  /**
-   * The bubble over a fresh selection: highlight colours, Copy, Ask AI, Add to
-   * Canvas Note, and ⋯ for the rest (the right-click menu). Shown on release,
-   * never while dragging, so it never covers what is still being selected.
-   */
-  private _showSelectionBubble(): void {
-    this._dismissContextMenu();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
-    if (!rect.width && !rect.height) return;
-
-    const bubble = document.createElement('div');
-    bubble.classList.add('pdf-selection-bubble');
-    bubble.setAttribute('role', 'toolbar');
-    bubble.setAttribute('aria-label', 'Selection');
-    // Pressing a bubble button must not collapse the selection it acts on.
-    bubble.addEventListener('mousedown', (e) => e.preventDefault());
-
-    for (const c of HIGHLIGHT_COLORS) {
-      const dot = document.createElement('button');
-      dot.classList.add('pdf-selection-dot');
-      dot.style.backgroundColor = highlightSolid(c.rgba);
-      dot.setAttribute('aria-label', `Highlight ${c.label}`);
-      setupTooltip(dot, `Highlight ${c.label}`);
-      dot.addEventListener('click', () => {
-        this._highlightStore.createFromSelection(c.key);
-        this._dismissContextMenu();
-      });
-      bubble.appendChild(dot);
-    }
-    const sep = document.createElement('span');
-    sep.classList.add('pdf-selection-sep');
-    bubble.appendChild(sep);
-
-    const act = (icon: string, label: string, run: () => void): void => {
-      const b = pdfButton(icon, label);
-      b.addEventListener('click', () => { run(); });
-      bubble.appendChild(b);
-    };
-    act(ICON.copy, 'Copy (Ctrl+C)', () => {
-      if (this._capturedSelection) void navigator.clipboard.writeText(this._capturedSelection);
-      this._dismissContextMenu();
-    });
-    act(ICON.sparkles, 'Ask AI About Selection', () => { this._dismissContextMenu(); this._askAIAboutSelection(); });
-    act(ICON.canvasNote, 'Add to Canvas Note', () => { this._dismissContextMenu(); this._captureSelectionToCanvas(); });
-    act(ICON.more, 'More Actions', () => {
-      const r = bubble.getBoundingClientRect();
-      this._showSelectionMenu(r.right - 4, r.bottom + 4, true);
-    });
-
-    document.body.appendChild(bubble);
-    bubble.style.visibility = 'hidden';
-    const margin = 8;
-    const bw = bubble.offsetWidth;
-    const bh = bubble.offsetHeight;
-    const host = this._viewerContainer.getBoundingClientRect();
-    let left = Math.max(margin, Math.min(rect.left, window.innerWidth - bw - margin));
-    // Above the selection; below it when there is no room under the toolbar.
-    let top = rect.top - bh - 8;
-    if (top < host.top + 4) top = rect.bottom + 8;
-    top = Math.max(margin, Math.min(top, window.innerHeight - bh - margin));
-    left = Math.round(left);
-    bubble.style.left = `${left}px`;
-    bubble.style.top = `${Math.round(top)}px`;
-    bubble.style.visibility = '';
-    this._selectionBubble = bubble;
-  }
-
-  private _dismissSelectionBubble(): void {
-    this._selectionBubble?.remove();
-    this._selectionBubble = null;
-  }
-
-  /**
-   * The menu for a selection (right-click, or the bubble's ⋯). Highlight
-   * colours sit in a submenu; `keepBubble` leaves the bubble up behind it.
-   */
-  private _showSelectionMenu(x: number, y: number, keepBubble = false): void {
-    if (this._activeContextMenu) { this._activeContextMenu.dispose(); this._activeContextMenu = null; }
-    if (!keepBubble) this._dismissSelectionBubble();
-
-    const hasSel = this._capturedSelection.length > 0;
-    const colourDot = (rgba: string) => (el: HTMLElement) => {
-      el.style.display = 'inline-flex';
-      el.style.alignItems = 'center';
-      el.style.width = '16px';
-      const dot = document.createElement('span');
-      dot.classList.add('pdf-menu-dot');
-      dot.style.backgroundColor = highlightSolid(rgba);
-      el.appendChild(dot);
-    };
-
-    const menu = ContextMenu.show({
-      items: [
-        { id: 'pdf.copy', label: 'Copy', keybinding: 'Ctrl+C', disabled: !hasSel },
-        {
-          id: 'pdf.highlight',
-          label: 'Highlight',
-          disabled: !hasSel,
-          submenu: HIGHLIGHT_COLORS.map((c) => ({
-            id: `pdf.highlight.${c.key}`,
-            label: c.label,
-            renderIcon: colourDot(c.rgba),
-          })),
-        },
-        { id: 'pdf.findInDocument', label: 'Find in Document', disabled: !hasSel },
-        { id: 'canvas.captureNote', label: 'Add to Canvas Note', disabled: !hasSel, group: 'canvas' },
-        { id: 'canvas.captureImage', label: 'Capture Region to Canvas', disabled: !hasSel, group: 'canvas' },
-        // Inline AI — discuss the selection on the page (creates a highlight
-        // and opens its review panel focused on the AI input).
-        { id: 'ai.askInline', label: 'Ask AI About Selection', disabled: !hasSel, group: 'ai' },
-        { id: 'ai.addToChat', label: 'Send to Chat', disabled: !hasSel, group: 'ai' },
-        // Actions running tools added (selection-action dispatcher), e.g.
-        // a study tool's "make a card"; none when no tool offers one.
-        ...getToolSelectionActions().map((a) => ({ id: `sel:${a.actionId}`, label: a.label, disabled: !hasSel, group: 'ai' })),
-      ],
-      anchor: { x, y },
-    });
-
-    menu.onDidSelect((e) => {
-      if (e.item.id === 'pdf.copy') {
-        if (this._capturedSelection) {
-          void navigator.clipboard.writeText(this._capturedSelection);
-        }
-      } else if (e.item.id === 'pdf.highlight') {
-        this._highlightStore.createFromSelection();
-      } else if (e.item.id.startsWith('pdf.highlight.')) {
-        this._highlightStore.createFromSelection(e.item.id.slice('pdf.highlight.'.length));
-      } else if (e.item.id === 'pdf.findInDocument') {
-        const sel = this._capturedSelection.trim();
-        if (sel) this._search?.find(sel);
-      } else if (e.item.id === 'canvas.captureNote') {
-        this._captureSelectionToCanvas();
-      } else if (e.item.id === 'canvas.captureImage') {
-        this._captureSelectionRegionToCanvas();
-      } else if (e.item.id === 'ai.askInline') {
-        this._askAIAboutSelection();
-      } else if (e.item.id === 'ai.addToChat') {
-        this._dispatchSelectionAction('add-to-chat');
-      } else if (e.item.id.startsWith('sel:')) {
-        this._dispatchSelectionAction(e.item.id.slice(4));
-      }
-      this._dismissSelectionBubble();
-    });
-
-    this._activeContextMenu = menu;
-  }
-
-  /**
-   * Hand a highlight's saved AI discussion to the main chat panel so the user
-   * can continue a larger conversation. Sends the passage text as the selection
-   * and the full thread as conversation context (mirrors canvas inline-AI
-   * "Send to Chat").
-   */
-  private _continueHighlightInChat(hl: PdfHighlight): void {
-    if (!this._currentInput) return;
-    const conversationContext = (hl.thread ?? [])
-      .map((t) => `[${t.role === 'ai' ? 'assistant' : 'user'}]: ${t.text}`)
-      .join('\n\n');
-
-    const detail = {
-      selectedText: hl.text || '(image selection)',
-      surface: 'pdf',
-      actionId: 'add-to-chat',
-      conversationContext: conversationContext || undefined,
-      source: {
-        fileName: this._currentInput.name,
-        filePath: this._currentInput.uri.fsPath,
-        pageNumber: hl.page,
-      },
-    };
-
-    this._viewerContainer.dispatchEvent(
-      new CustomEvent('parallx-selection-action', { bubbles: true, detail }),
-    );
-  }
-
-  /** Dispatch a selection action to the unified dispatcher. */
-  private _dispatchSelectionAction(actionId: string): void {
-    if (!this._capturedSelection || !this._currentInput) return;
-
-    const detail = {
-      selectedText: this._capturedSelection,
-      surface: 'pdf',
-      actionId,
-      source: {
-        fileName: this._currentInput.name,
-        filePath: this._currentInput.uri.fsPath,
-        pageNumber: this._pdfViewer?.currentPageNumber,
-      },
-    };
-
-    // Fire a bubbling custom event — the workbench picks this up and
-    // routes it to the SelectionActionDispatcher.
-    this._viewerContainer.dispatchEvent(
-      new CustomEvent('parallx-selection-action', { bubbles: true, detail }),
-    );
-  }
-
-  /** Dismiss the selection menu and the selection bubble. */
+  /** Close the open menu and the selection bubble. */
   private _dismissContextMenu(): void {
-    if (this._activeContextMenu) {
-      this._activeContextMenu.dispose();
-      this._activeContextMenu = null;
-    }
-    this._dismissSelectionBubble();
+    this._closeMenu();
+    this._selectionMenu?.dismissBubble();
   }
 
   // ── Keyboard ─────────────────────────────────────────────────────────
@@ -1669,7 +1294,7 @@ export class PdfEditorPane extends EditorPane {
       case 'h': case 'H':
         if (!e.ctrlKey && !e.metaKey) {
           const sel = window.getSelection()?.toString()?.trim() ?? '';
-          if (sel) { this._capturedSelection = sel; this._highlightStore.createFromSelection(); e.preventDefault(); }
+          if (sel) { this._selectionMenu?.capture(sel); this._highlightStore.createFromSelection(); e.preventDefault(); }
         }
         break;
       case 'g':
