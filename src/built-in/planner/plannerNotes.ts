@@ -2,6 +2,7 @@
 // its text shown as chips under it (a web page, or a Parallx page with its
 // title), and the toolbar that links a canvas page into it.
 
+import { declareControl } from '../../ui/kit.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { normalizeWebLink, extractLinks } from './plannerLinks.js';
 import { LINK_WEB_SVG, LINK_DOC_SVG, LINK_PLUS_SVG, el } from './plannerUi.js';
@@ -99,6 +100,7 @@ export class PlannerNotes {
     linkBtn.type = 'button';
     linkBtn.innerHTML = `${LINK_PLUS_SVG}<span>Link canvas page</span>`;
     linkBtn.title = 'Attach a canvas page to these notes';
+    declareControl(linkBtn, { id: 'planner.notes.attachPage', label: 'Attach a page', hint: linkBtn.title });
     linkBtn.addEventListener('click', () => void this._linkCanvasPage(descInput));
     bar.appendChild(linkBtn);
     body.appendChild(bar);

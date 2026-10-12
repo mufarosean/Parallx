@@ -32,6 +32,7 @@ const FRAME_IDS = [
 
 /** Ids a converted built-in declares (design step 5), checked after its surfaces open. */
 const BUILTIN_IDS = {
+  planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
 };
 /** Ids present once a scratch sheet is open (`worksheet.openScratch`). */
@@ -99,6 +100,15 @@ async function main() {
     const ids = new Set(flatten(full).map((n) => n.id));
     for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
     for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
+    // The task popover (design step 5, Planner): a surface with its fields and buttons.
+    const task = await cmd(page, 'planner.newTask');
+    await page.waitForTimeout(800);
+    if (task === true) {
+      const pop = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of ['planner.taskPopover', 'planner.task.title', 'planner.task.save']) if (!pop.has(id)) stats.problems.push(`planner: no "${id}" in the task popover`);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+    }
     const scratch = await cmd(page, 'worksheet.openScratch');
     await page.waitForTimeout(2_500);
     if (scratch === true) {

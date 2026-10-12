@@ -3,6 +3,7 @@
 // one occurrence of a repeating event first asks which events it applies
 // to (askSeriesScope, which dragging an occurrence also uses).
 
+import { createSurface, declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerEvent, SeriesEditScope, UpdateEventInput } from './plannerTypes.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
@@ -58,6 +59,7 @@ export class PlannerEventPopover {
         btn.type = 'button';
         btn.textContent = o.label;
         btn.addEventListener('click', () => done(o.scope));
+        declareControl(btn, { id: `planner.event.scope.${o.scope}`, label: o.label });
         bodyEl.appendChild(btn);
       }
       pop.appendChild(bodyEl);
@@ -125,6 +127,7 @@ export class PlannerEventPopover {
 
     const pop = el('div', 'planner-popover');
     pop.style.position = 'fixed';
+    createSurface(pop, { id: 'planner.eventPopover', owner: 'planner', label: 'Event' });
 
     const isEdit = init.mode === 'edit';
     const seed: { title: string; startAt: number; endAt: number; allDay: boolean; location: string; description: string; eventId: string | null } = isEdit
@@ -153,6 +156,7 @@ export class PlannerEventPopover {
     heading.textContent = isEdit ? 'Edit event' : 'New event';
     head.appendChild(heading);
     const closeBtn = el('button', 'planner-popover__close');
+    declareControl(closeBtn, { id: 'planner.event.close', label: 'Close', kind: 'iconButton' });
     closeBtn.type = 'button';
     closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     closeBtn.addEventListener('click', () => close());
@@ -163,6 +167,7 @@ export class PlannerEventPopover {
     const body = el('div', 'planner-popover__body');
 
     const titleInput = el('input', 'planner-popover__title-input') as HTMLInputElement;
+    declareControl(titleInput, { id: 'planner.event.title', label: 'Title', kind: 'input', state: () => ({ kind: 'value', value: titleInput.value }) });
     titleInput.type = 'text';
     titleInput.placeholder = 'Add a title';
     titleInput.value = seed.title;
@@ -171,17 +176,21 @@ export class PlannerEventPopover {
     // Date / time row
     const timeRow = el('div', 'planner-popover__row');
     const startDate = el('input', 'planner-popover__field planner-popover__field--date') as HTMLInputElement;
+    declareControl(startDate, { id: 'planner.event.startDate', label: 'Start date', kind: 'input', state: () => ({ kind: 'value', value: startDate.value }) });
     startDate.type = 'date';
     startDate.value = toDateInputValue(seed.startAt);
     const startTime = el('input', 'planner-popover__field planner-popover__field--time') as HTMLInputElement;
+    declareControl(startTime, { id: 'planner.event.startTime', label: 'Start time', kind: 'input', state: () => ({ kind: 'value', value: startTime.value }) });
     startTime.type = 'time';
     startTime.value = toTimeInputValue(seed.startAt);
     const sep = el('span', 'planner-popover__sep');
     sep.textContent = '–';
     const endTime = el('input', 'planner-popover__field planner-popover__field--time') as HTMLInputElement;
+    declareControl(endTime, { id: 'planner.event.endTime', label: 'End time', kind: 'input', state: () => ({ kind: 'value', value: endTime.value }) });
     endTime.type = 'time';
     endTime.value = toTimeInputValue(seed.endAt);
     const endDate = el('input', 'planner-popover__field planner-popover__field--date') as HTMLInputElement;
+    declareControl(endDate, { id: 'planner.event.endDate', label: 'End date', kind: 'input', state: () => ({ kind: 'value', value: endDate.value }) });
     endDate.type = 'date';
     endDate.value = toDateInputValue(seed.endAt);
     timeRow.appendChild(startDate);
@@ -197,6 +206,7 @@ export class PlannerEventPopover {
     allDayInput.checked = seed.allDay;
     const allDayText = el('span');
     allDayText.textContent = 'All Day';
+    declareControl(allDayInput, { id: 'planner.event.allDay', label: 'All Day', kind: 'toggle', state: () => ({ kind: 'pressed', value: allDayInput.checked }) });
     allDayRow.appendChild(allDayInput);
     allDayRow.appendChild(allDayText);
     body.appendChild(allDayRow);
@@ -216,6 +226,7 @@ export class PlannerEventPopover {
     calRow.appendChild(calLabel);
     const calHost = el('div', 'planner-popover__field planner-popover__field--select');
     const calSelect = new Dropdown(calHost, { items: [], ariaLabel: 'Calendar' });
+    declareControl(calSelect.element, { id: 'planner.event.calendar', label: 'Calendar', kind: 'select', state: () => ({ kind: 'value', value: calSelect.value ?? '' }) });
     popupDisposables.push(calSelect);
     calRow.appendChild(calHost);
     body.appendChild(calRow);
@@ -250,6 +261,7 @@ export class PlannerEventPopover {
     const seedRecurrence = isEdit ? (init.event.recurrence ?? null) : null;
     const seedPreset = rruleToPreset(seedRecurrence);
     const repeatSelect = new Dropdown(repeatHost, { items: [], selected: seedPreset, ariaLabel: 'Repeats' });
+    declareControl(repeatSelect.element, { id: 'planner.event.repeats', label: 'Repeats', kind: 'select', state: () => ({ kind: 'value', value: repeatSelect.value ?? '' }) });
     popupDisposables.push(repeatSelect);
     const repeatDefs: { value: string; label: () => string }[] = [
       { value: 'none',    label: () => 'Does not repeat' },
@@ -273,12 +285,14 @@ export class PlannerEventPopover {
     body.appendChild(repeatRow);
 
     const locationInput = el('input', 'planner-popover__field planner-popover__field--full') as HTMLInputElement;
+    declareControl(locationInput, { id: 'planner.event.location', label: 'Location', kind: 'input', state: () => ({ kind: 'value', value: locationInput.value }) });
     locationInput.type = 'text';
     locationInput.placeholder = 'Add location';
     locationInput.value = seed.location;
     body.appendChild(locationInput);
 
     const descInput = el('textarea', 'planner-popover__textarea') as HTMLTextAreaElement;
+    declareControl(descInput, { id: 'planner.event.description', label: 'Description', kind: 'input', state: () => ({ kind: 'value', value: descInput.value }) });
     descInput.placeholder = 'Add notes & links';
     descInput.value = seed.description;
     body.appendChild(descInput);
@@ -293,6 +307,7 @@ export class PlannerEventPopover {
       const delBtn = el('button', 'planner-popover__btn planner-popover__btn--danger');
       delBtn.type = 'button';
       delBtn.textContent = 'Delete';
+      declareControl(delBtn, { id: 'planner.event.delete', label: 'Delete' });
       delBtn.addEventListener('click', async () => {
         if (!seed.eventId) return;
         if (init.mode === 'edit' && init.event.seriesId) {
@@ -313,9 +328,11 @@ export class PlannerEventPopover {
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => close());
     foot.appendChild(cancel);
+    declareControl(cancel, { id: 'planner.event.cancel', label: 'Cancel' });
     const save = el('button', 'planner-popover__btn planner-popover__btn--primary');
     save.type = 'button';
     save.textContent = isEdit ? 'Save' : 'Create';
+    declareControl(save, { id: 'planner.event.save', label: isEdit ? 'Save' : 'Create' });
     const doSave = async () => {
       const title = titleInput.value.trim();
       if (!title) { titleInput.focus(); return; }

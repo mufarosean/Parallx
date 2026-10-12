@@ -4,6 +4,7 @@
 // in them and the day-load badges tools add, and drag-create on an empty
 // slot. A narrow pane shows fewer days in the week view.
 
+import { declareControl } from '../../ui/kit.js';
 import type { PlannerCalendar, PlannerTask } from './plannerTypes.js';
 import { googleSync } from './sync/googleClient.js';
 import { createButton } from '../../ui/kit.js';
@@ -28,6 +29,7 @@ export class PlannerCalendarViews {
     today.type = 'button';
     today.textContent = 'Today';
     today.title = 'Jump to today (T)';
+    declareControl(today, { id: 'planner.calendar.today', label: 'Today', hint: today.title });
     today.addEventListener('click', () => { this._pane._cursorDate = startOfDay(new Date()); void this._pane._renderTab(); });
     actions.appendChild(today);
 
@@ -36,12 +38,14 @@ export class PlannerCalendarViews {
     const prev = el('button', 'planner-iconbtn');
     prev.type = 'button';
     prev.title = 'Previous (←)';
+    declareControl(prev, { id: 'planner.calendar.previous', label: 'Previous', kind: 'iconButton' });
     prev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
     prev.addEventListener('click', () => { this.navigateCalendar(-1); void this._pane._renderTab(); });
     nav.appendChild(prev);
     const next = el('button', 'planner-iconbtn');
     next.type = 'button';
     next.title = 'Next (→)';
+    declareControl(next, { id: 'planner.calendar.next', label: 'Next', kind: 'iconButton' });
     next.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
     next.addEventListener('click', () => { this.navigateCalendar(1); void this._pane._renderTab(); });
     nav.appendChild(next);
@@ -64,6 +68,7 @@ export class PlannerCalendarViews {
     const label = this._viewLabel(this._pane._calendarView);
     viewBtn.innerHTML = `<span>${label}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>`;
     viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
+    declareControl(viewBtn, { id: 'planner.calendar.view', label: 'View', kind: 'select', state: () => ({ kind: 'value', value: this._pane._calendarView }) });
     actions.appendChild(viewBtn);
 
     // Sync — pull/push Google Calendar right from the planner (no trip to Settings).
@@ -72,6 +77,7 @@ export class PlannerCalendarViews {
       const syncBtn = el('button', 'planner-iconbtn');
       syncBtn.type = 'button';
       syncBtn.title = 'Sync with Google Calendar';
+      declareControl(syncBtn, { id: 'planner.calendar.sync', label: 'Sync with Google Calendar', kind: 'iconButton' });
       syncBtn.innerHTML = SYNC_SVG;
       syncBtn.addEventListener('click', async () => {
         if (syncBtn.classList.contains('planner-iconbtn--busy')) return;
@@ -141,12 +147,13 @@ export class PlannerCalendarViews {
     const calsBtn = el('button', 'planner-iconbtn');
     calsBtn.type = 'button';
     calsBtn.title = 'Calendars';
+    declareControl(calsBtn, { id: 'planner.calendar.calendars', label: 'Calendars', kind: 'iconButton' });
     calsBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
     calsBtn.addEventListener('click', () => void this._pane.calendarsMenu.openCalendarsMenu(calsBtn.getBoundingClientRect()));
     actions.appendChild(calsBtn);
 
     // Primary CTA.
-    const addEvt = createButton(null, { label: 'New Event', icon: 'plus', kind: 'primary', title: 'New Event (C)' });
+    const addEvt = createButton(null, { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus', kind: 'primary', title: 'New Event (C)' });
     addEvt.classList.add('planner-cta');
     addEvt.addEventListener('click', () => {
       const start = atTime(this._pane._cursorDate, 9);

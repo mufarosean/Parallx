@@ -7,6 +7,7 @@
 // plannerEventPopover (the dialogs), plannerNotes, plannerCalendarsMenu, and
 // plannerUi (what they share). Pure DOM + CSS Grid; no layout engine.
 
+import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
@@ -308,6 +309,7 @@ export class PlannerEditorPane implements IDisposable {
       label.textContent = t.label;
       tab.appendChild(label);
       tab.addEventListener('click', () => this._setTab(t.key));
+      declareControl(tab, { id: `planner.tab.${t.key}`, label: t.label, state: () => ({ kind: 'pressed', value: tab.dataset.tab === this._activeTab }) });
       tabs.appendChild(tab);
     }
     header.appendChild(tabs);

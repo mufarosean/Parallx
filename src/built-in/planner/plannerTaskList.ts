@@ -3,6 +3,7 @@
 // sections, each task's row (done check, due date, quick plan, its menu),
 // and capturing a new task.
 
+import { declareControl } from '../../ui/kit.js';
 import { renderEmptyStateEntry } from '../../ui/emptyStates.js';
 import { PLANNER_EMPTY_STATES } from './plannerEmptyStates.js';
 import type { PlannerTask, TaskStatus } from './plannerTypes.js';
@@ -19,7 +20,7 @@ export class PlannerTaskList {
   constructor(private readonly _pane: PlannerEditorPane) {}
 
   async renderTasksTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    const addBtn = createButton(null, { label: 'New Task', icon: 'plus', kind: 'primary', title: 'New Task (C)' });
+    const addBtn = createButton(null, { id: 'planner.newTask', command: 'planner.newTask', label: 'New Task', icon: 'plus', kind: 'primary', title: 'New Task (C)' });
     addBtn.classList.add('planner-cta');
     addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
     actions.appendChild(addBtn);
@@ -102,6 +103,7 @@ export class PlannerTaskList {
       const item = el('button', 'planner-tasks__navitem');
       item.type = 'button';
       item.dataset.key = f.key;
+      declareControl(item, { id: `planner.tasks.nav.${f.key}`, label: f.label, state: () => ({ kind: 'pressed', value: item.classList.contains('planner-tasks__navitem--active') }) });
       const label = el('span', 'planner-tasks__navlabel');
       label.textContent = f.label;
       const count = el('span', 'planner-tasks__navcount');

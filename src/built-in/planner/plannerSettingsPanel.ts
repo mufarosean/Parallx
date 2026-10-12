@@ -6,6 +6,7 @@
 // recolour / show-hide / delete). The calendar list re-renders live on
 // 'calendar-changed'.
 
+import { declareControl } from '../../ui/kit.js';
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { Dropdown } from '../../ui/dropdown.js';
@@ -106,6 +107,7 @@ export function createPlannerSettingsPanel(
         ariaLabel: 'Default event length',
       });
       store.add(durDropdown);
+      store.add(declareControl(durDropdown.element, { id: 'planner.settings.defaultEventLength', label: 'Default event length', kind: 'select', state: () => ({ kind: 'value', value: durDropdown.value ?? '' }) }));
       durField.append(durLabel, durHost);
       wrap.appendChild(durField);
       void data.getDefaultEventMinutes().then((m) => { durDropdown.value = String(m); });
@@ -131,6 +133,7 @@ export function createPlannerSettingsPanel(
       const addBtn = el('button', 'planner-settings__cal-add');
       addBtn.type = 'button';
       addBtn.textContent = '+ Add calendar';
+      store.add(declareControl(addBtn, { id: 'planner.settings.addCalendar', label: 'Add calendar' }));
       const onAdd = (): void => {
         void data.listCalendars().then((cals) => data.createCalendar({ name: 'New calendar', color: PALETTE[cals.length % PALETTE.length] }));
       };
@@ -254,6 +257,7 @@ function renderGoogleSyncSection(
       const recheck = el('button', 'planner-settings__btn');
       recheck.type = 'button';
       recheck.textContent = 'Re-check';
+      declareControl(recheck, { id: 'planner.settings.google.recheck', label: 'Re-check' });
       recheck.addEventListener('click', () => void refresh());
       section.appendChild(recheck);
       return;
@@ -265,6 +269,7 @@ function renderGoogleSyncSection(
       const connect = el('button', 'planner-settings__btn planner-settings__btn--primary');
       connect.type = 'button';
       connect.textContent = 'Connect Google';
+      declareControl(connect, { id: 'planner.settings.google.connect', label: 'Connect Google' });
       const statusLine = el('div', 'planner-settings__google-status');
       connect.addEventListener('click', async () => {
         if (busy) return;
@@ -297,6 +302,7 @@ function renderGoogleSyncSection(
     const disconnect = el('button', 'planner-settings__btn');
     disconnect.type = 'button';
     disconnect.textContent = 'Disconnect';
+    declareControl(disconnect, { id: 'planner.settings.google.disconnect', label: 'Disconnect' });
     disconnect.addEventListener('click', async () => {
       if (busy) return;
       busy = true;
@@ -319,6 +325,7 @@ function renderGoogleSyncSection(
       const reconnect = el('button', 'planner-settings__btn planner-settings__btn--primary');
       reconnect.type = 'button';
       reconnect.textContent = 'Reconnect Google';
+      declareControl(reconnect, { id: 'planner.settings.google.reconnect', label: 'Reconnect Google' });
       reconnect.addEventListener('click', async () => {
         if (busy) return;
         busy = true;
@@ -345,6 +352,7 @@ function renderGoogleSyncSection(
       const syncBtn = el('button', 'planner-settings__btn');
       syncBtn.type = 'button';
       syncBtn.textContent = 'Sync Now';
+      declareControl(syncBtn, { id: 'planner.settings.google.syncNow', label: 'Sync Now' });
       syncBtn.addEventListener('click', () => { if (!sync.isRunning) void sync.syncNow(); });
 
       // Repair, not routine: a workspace whose cursor once advanced past changes
@@ -354,6 +362,7 @@ function renderGoogleSyncSection(
       const resyncBtn = el('button', 'planner-settings__btn');
       resyncBtn.type = 'button';
       resyncBtn.textContent = 'Resync From Scratch';
+      declareControl(resyncBtn, { id: 'planner.settings.google.resync', label: 'Resync From Scratch' });
       resyncBtn.title = 'Re-read every synced calendar from Google and drop local copies of events that no longer exist there. Use this if two workspaces disagree.';
       resyncBtn.addEventListener('click', () => { if (!sync.isRunning) void sync.resyncFromScratch(); });
 
@@ -412,6 +421,7 @@ function renderGoogleSyncSection(
     });
     const tasksName = el('span');
     tasksName.textContent = 'Sync Tasks with Google Tasks';
+    declareControl(tasksCb, { id: 'planner.settings.google.syncTasks', label: 'Sync Tasks with Google Tasks', kind: 'toggle', state: () => ({ kind: 'pressed', value: tasksCb.checked }) });
     tasksRow.append(tasksCb, tasksName);
     section.appendChild(tasksRow);
 
@@ -499,6 +509,7 @@ function renderGoogleSyncSection(
         ariaLabel: 'Default calendar for new events',
       });
       store.add(selDropdown);
+      store.add(declareControl(selDropdown.element, { id: 'planner.settings.google.defaultCalendar', label: 'Default calendar for new events', kind: 'select', state: () => ({ kind: 'value', value: selDropdown.value ?? '' }) }));
       store.add(selDropdown.onDidChange((value: string) => {
         void data.setSetting(DEFAULT_EVENT_CALENDAR_KEY, value);
       }));

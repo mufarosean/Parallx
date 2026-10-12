@@ -6,6 +6,7 @@
 // label, the shared hover and selection surfaces. The task list and filter
 // groupings live inside the editor pane's Tasks tab; the sidebar is the way in.
 
+import { declareControl } from '../../ui/kit.js';
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import { setPendingPlannerTab } from './plannerNavState.js';
@@ -97,6 +98,7 @@ export class PlannerSidebar implements IDisposable {
       row.dataset.key = r.key;
       row.setAttribute('role', 'option');
       row.tabIndex = 0;
+      declareControl(row, { id: `planner.side.${r.key}`, label: r.label });
 
       const icon = el('span', 'planner-sidebar__row-icon');
       icon.appendChild(createIconElement(ICONS[r.key], 14));

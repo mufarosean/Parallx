@@ -6,6 +6,7 @@
 // (page header, buttons, section labels) and the planner's tokens. The pane
 // owns the popovers, so opening an event or task goes back through `deps`.
 
+import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { createButton, createIconButton, createPageHeader, createSectionLabel } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
@@ -187,7 +188,7 @@ export class PlannerTodayView implements IDisposable {
   constructor(private readonly _deps: PlannerTodayDeps) {}
 
   async render(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    const newBtn = createButton(actions, { label: 'New Event', icon: 'plus', kind: 'primary' });
+    const newBtn = createButton(actions, { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus', kind: 'primary' });
     newBtn.addEventListener('click', () => this._deps.newEvent(newBtn.getBoundingClientRect()));
 
     const now = Date.now();
@@ -228,6 +229,7 @@ export class PlannerTodayView implements IDisposable {
     input.type = 'text';
     input.placeholder = 'Capture a task, like “Call Priya about the trip”';
     input.setAttribute('aria-label', 'Capture a task');
+    declareControl(input, { id: 'planner.today.capture', label: 'Capture a task', kind: 'input', hint: 'Enter adds it to the Review Queue.', state: () => ({ kind: 'value', value: input.value }) });
     const hint = el('p', 'planner-today__hint', 'Press Enter to add it to the Review Queue. Give it a day when you are ready.');
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
@@ -359,8 +361,8 @@ export class PlannerTodayView implements IDisposable {
     head.appendChild(title);
     const nav = el('div', 'planner-today__month-nav');
     const repaint = () => void this._repaintMonth(card, now, isVisible);
-    createIconButton(nav, { icon: 'chevron-left', title: 'Previous Month', size: 'sm', onClick: () => { this._monthOffset--; repaint(); } });
-    createIconButton(nav, { icon: 'chevron-right', title: 'Next Month', size: 'sm', onClick: () => { this._monthOffset++; repaint(); } });
+    createIconButton(nav, { id: 'planner.today.previousMonth', icon: 'chevron-left', title: 'Previous Month', size: 'sm', onClick: () => { this._monthOffset--; repaint(); } });
+    createIconButton(nav, { id: 'planner.today.nextMonth', icon: 'chevron-right', title: 'Next Month', size: 'sm', onClick: () => { this._monthOffset++; repaint(); } });
     head.appendChild(nav);
     card.appendChild(head);
 
@@ -437,6 +439,7 @@ export class PlannerTodayView implements IDisposable {
       card.appendChild(item);
     }
     createButton(card, {
+      id: 'planner.today.openReviewQueue',
       label: review.length > REVIEW_PREVIEW ? `Open Review Queue (${review.length})` : 'Open Review Queue',
       icon: 'chevron-right', kind: 'ghost', size: 'sm',
       onClick: () => this._deps.openReviewQueue(),

@@ -627,6 +627,19 @@ dashboard pane, a giant, lost its day planner to `dayPlan.ts` so it
 ended under budget. The probe checks Home's and the sidebar's ids and
 the scratch sheet's theme and export buttons.
 
+Planner done 2026-10-12, in the cloud. The pane's three tabs (pressed
+while active), the sidebar's rows, the calendar bar (today, previous,
+next, the view switch as a select, sync, calendars, New Event with its
+command), the task list's New Task (with its command) and its nav
+filters, Today's capture box, month arrows and review-queue button, the
+notes' attach button, and the three popovers as surfaces with every
+field and button declared (`planner.event.*`, `planner.task.*`,
+`planner.calendars.*`), plus the settings panel's switches, calendar
+and Google buttons. Undeclared on purpose: task rows, event bars, day
+cells, month chips, calendar rows, colour swatches. The probe checks the
+Today tab's ids and opens the task popover by command to find its
+surface, title and save button.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the

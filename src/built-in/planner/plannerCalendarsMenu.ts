@@ -1,6 +1,7 @@
 // plannerCalendarsMenu.ts — the Planner's Calendars menu: each calendar's
 // colour, name and visibility, rename and delete, and a new calendar.
 
+import { createSurface, declareControl } from '../../ui/kit.js';
 import { PLANNER_COLORS, el, buildColorSwatches } from './plannerUi.js';
 import type { PlannerEditorPane } from './plannerEditorProvider.js';
 
@@ -17,12 +18,14 @@ export class PlannerCalendarsMenu {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     const pop = el('div', 'planner-popover planner-cals-menu');
     pop.style.position = 'fixed';
+    createSurface(pop, { id: 'planner.calendars', owner: 'planner', label: 'Calendars' });
 
     const head = el('div', 'planner-popover__head');
     const heading = el('h3', 'planner-popover__title');
     heading.textContent = 'Calendars';
     head.appendChild(heading);
     const closeBtn = el('button', 'planner-popover__close');
+    declareControl(closeBtn, { id: 'planner.calendars.close', label: 'Close', kind: 'iconButton' });
     closeBtn.type = 'button';
     closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     closeBtn.addEventListener('click', () => overlay.remove());
@@ -103,6 +106,8 @@ export class PlannerCalendarsMenu {
     const addBtn = el('button', 'planner-popover__btn planner-popover__btn--primary');
     addBtn.type = 'button';
     addBtn.textContent = 'Add';
+    declareControl(addBtn, { id: 'planner.calendars.add', label: 'Add calendar' });
+    declareControl(newInput, { id: 'planner.calendars.newName', label: 'New calendar name', kind: 'input', state: () => ({ kind: 'value', value: newInput.value }) });
     const doAdd = async (): Promise<void> => {
       const v = newInput.value.trim();
       if (!v) { newInput.focus(); return; }
