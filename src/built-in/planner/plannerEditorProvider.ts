@@ -4,9 +4,8 @@
 // week / day view). Pure DOM + CSS Grid; no layout engine.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { escapeHtml } from '../../ui/format.js';
 import type { PlannerDataService } from './plannerDataService.js';
-import type { PlannerCalendar, PlannerEvent, PlannerTask } from './plannerTypes.js';
+import type { PlannerCalendar, PlannerTask } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import { googleSync } from './sync/googleClient.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
@@ -17,6 +16,7 @@ import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, atTime, sameDay, formatHour, formatTimeShort, formatTimeRange } from './plannerDates.js';
 import { PANE_COMPACT_MAX, PLANNER_ICON_SVG, SYNC_SVG, el, type PlannerEditorInput, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
+import { PlannerAllDay } from './plannerAllDay.js';
 import { PlannerEventBars } from './plannerEventBars.js';
 import { PlannerCalendarsMenu } from './plannerCalendarsMenu.js';
 import { PlannerTaskList } from './plannerTaskList.js';
@@ -64,6 +64,7 @@ export class PlannerEditorPane implements IDisposable {
   readonly taskList = new PlannerTaskList(this);
   readonly calendarsMenu = new PlannerCalendarsMenu(this);
   readonly eventBars = new PlannerEventBars(this);
+  readonly allDay = new PlannerAllDay(this);
   constructor(
     private readonly _container: HTMLElement,
     private readonly _input: PlannerEditorInput | undefined,
@@ -599,7 +600,7 @@ export class PlannerEditorPane implements IDisposable {
   }
 
   /** Days the week view shows: 7 from Sunday, or 3 around the cursor in a compact pane. */
-  private _spanDays = 7;
+  _spanDays = 7;
 
   private _isCompact(): boolean {
     const w = this._container.clientWidth;
@@ -695,252 +696,6 @@ export class PlannerEditorPane implements IDisposable {
       this._api.activity?.note({ actor: 'user', source: 'planner', verb, object, detail, ref: taskId ? `task:${taskId}` : undefined });
     } catch { /* narration never breaks the gesture */ }
   }
-
-  /**
-   * An event belongs in the all-day band when it's flagged all-day or when
-   * it spans more than one calendar day (a multi-day event). Keeping these
-   * out of the timed grid is what stops a several-day event from crowding
-   * every hour of every column.
-   */
-  private _isAllDayLike(ev: PlannerEvent): boolean {
-    if (ev.allDay) return true;
-    return !sameDay(new Date(ev.startAt), new Date(ev.endAt));
-  }
-
-  /** Inclusive day index (0-6) of a timestamp within the visible week. */
-  private _weekDayIndex(ms: number, weekStartMs: number): number {
-    return Math.floor((startOfDay(new Date(ms)).getTime() - weekStartMs) / 86_400_000);
-  }
-
-  /**
-   * The horizontal all-day band that sits between the weekday header and the
-   * time grid. Multi-day events render as bars spanning their day range,
-   * stacked into rows so they never overlap. Dragging across empty cells
-   * creates a new all-day event; existing bars can be dragged to move or
-   * resized from either edge.
-   */
-  private _renderWeekAllDayBand(
-    host: HTMLElement,
-    weekStart: Date,
-    allDayEvents: readonly PlannerEvent[],
-    colorOf: (calendarId: string | null, override: string | null) => string,
-  ): void {
-    const ROW_H = 22;
-    const weekStartMs = weekStart.getTime();
-    const days = this._spanDays;
-    const weekEndMs = addDays(weekStart, days).getTime();
-
-    const band = el('div', 'planner-week__allday');
-    const gutter = el('div', 'planner-week__allday-gutter');
-    gutter.textContent = 'All day';
-    band.appendChild(gutter);
-
-    const grid = el('div', 'planner-week__allday-grid');
-    band.appendChild(grid);
-
-    // Background day cells — these are the drag-create surface.
-    for (let i = 0; i < days; i++) {
-      const cell = el('div', 'planner-week__allday-cell');
-      cell.dataset.dayIndex = String(i);
-      if (sameDay(addDays(weekStart, i), new Date())) cell.classList.add('planner-week__allday-cell--today');
-      grid.appendChild(cell);
-    }
-
-    // Lane-pack the bars by day-range overlap.
-    const visible = allDayEvents
-      .filter(ev => ev.startAt < weekEndMs && ev.endAt >= weekStartMs)
-      .sort((a, b) => a.startAt - b.startAt);
-    const laneEnds: number[] = []; // last endCol occupied per lane
-    let maxLane = 0;
-    for (const ev of visible) {
-      const startCol = Math.max(0, this._weekDayIndex(ev.startAt, weekStartMs));
-      const endCol = Math.min(days - 1, this._weekDayIndex(ev.endAt, weekStartMs));
-      let lane = laneEnds.findIndex(end => startCol > end);
-      if (lane === -1) { lane = laneEnds.length; laneEnds.push(endCol); }
-      else laneEnds[lane] = endCol;
-      maxLane = Math.max(maxLane, lane);
-
-      const span = endCol - startCol + 1;
-      const bar = el('button', 'planner-week__alldaybar');
-      bar.type = 'button';
-      bar.style.left = `calc(${(startCol / days) * 100}% + 2px)`;
-      bar.style.width = `calc(${(span / days) * 100}% - 4px)`;
-      bar.style.top = `${lane * ROW_H + 2}px`;
-      bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
-      const continuesLeft = ev.startAt < weekStartMs;
-      const continuesRight = ev.endAt >= weekEndMs;
-      if (continuesLeft) bar.classList.add('planner-week__alldaybar--clip-left');
-      if (continuesRight) bar.classList.add('planner-week__alldaybar--clip-right');
-      bar.innerHTML = `<span class="planner-week__alldaybar-title">${escapeHtml(ev.title)}</span>`;
-      bar.title = ev.title;
-      // Series occurrences drag too — the commit prompts this/following/all.
-      this._installAllDayBarInteractions(bar, ev, grid, weekStartMs);
-      grid.appendChild(bar);
-    }
-
-    grid.style.minHeight = `${(maxLane + 1) * ROW_H + 6}px`;
-    this._installAllDayDragCreate(grid, weekStart);
-    host.appendChild(band);
-  }
-
-  /** Drag across empty all-day cells to create a multi-day all-day event. */
-  private _installAllDayDragCreate(grid: HTMLElement, weekStart: Date): void {
-    const THRESHOLD_PX = 3;
-    grid.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      if (!(e.target instanceof HTMLElement) || !e.target.classList.contains('planner-week__allday-cell')) return;
-      e.preventDefault();
-
-      const days = this._spanDays;
-      const gridRect = grid.getBoundingClientRect();
-      const colW = gridRect.width / days;
-      const xToCol = (x: number) => Math.max(0, Math.min(days - 1, Math.floor((x - gridRect.left) / colW)));
-      const startCol = xToCol(e.clientX);
-      let endCol = startCol;
-      let moved = false;
-
-      const ghost = el('div', 'planner-week__allday-ghost');
-      grid.appendChild(ghost);
-      const drawGhost = () => {
-        const a = Math.min(startCol, endCol), b = Math.max(startCol, endCol);
-        ghost.style.left = `calc(${(a / days) * 100}% + 2px)`;
-        ghost.style.width = `calc(${((b - a + 1) / days) * 100}% - 4px)`;
-      };
-      drawGhost();
-
-      try { grid.setPointerCapture(e.pointerId); } catch { /* ok */ }
-      const onMove = (pe: PointerEvent) => {
-        if (Math.abs(pe.clientX - e.clientX) > THRESHOLD_PX) moved = true;
-        endCol = xToCol(pe.clientX);
-        drawGhost();
-      };
-      const onUp = (pe: PointerEvent) => {
-        grid.removeEventListener('pointermove', onMove);
-        grid.removeEventListener('pointerup', onUp);
-        grid.removeEventListener('pointercancel', onUp);
-        try { grid.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
-        const a = Math.min(startCol, endCol), b = Math.max(startCol, endCol);
-        const startMs = startOfDay(addDays(weekStart, a)).getTime();
-        const endMs = endOfDay(addDays(weekStart, b)).getTime();
-        const anchor = ghost.getBoundingClientRect();
-        this.eventPopover.openEventPopover({ mode: 'create', startAt: startMs, endAt: endMs, allDay: true, pendingGhost: ghost }, anchor);
-        void moved;
-      };
-      grid.addEventListener('pointermove', onMove);
-      grid.addEventListener('pointerup', onUp);
-      grid.addEventListener('pointercancel', onUp);
-    });
-  }
-
-  /** Move / resize an existing all-day bar by whole-day steps. */
-  private _installAllDayBarInteractions(bar: HTMLElement, ev: PlannerEvent, grid: HTMLElement, weekStartMs: number): void {
-    const DAY_MS = 86_400_000;
-    const THRESHOLD_PX = 4;
-    const leftHandle = el('div', 'planner-evt-handle planner-evt-handle--left');
-    const rightHandle = el('div', 'planner-evt-handle planner-evt-handle--right');
-    bar.appendChild(leftHandle);
-    bar.appendChild(rightHandle);
-
-    bar.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const target = e.target as HTMLElement;
-      const mode: 'move' | 'resize-start' | 'resize-end' =
-        target === leftHandle ? 'resize-start' : target === rightHandle ? 'resize-end' : 'move';
-
-      const days = this._spanDays;
-      const gridRect = grid.getBoundingClientRect();
-      const colW = gridRect.width / days;
-      const startClientX = e.clientX;
-      let dragging = false;
-      let curStart = ev.startAt;
-      let curEnd = ev.endAt;
-
-      const apply = (pe: PointerEvent) => {
-        const dayDelta = Math.round((pe.clientX - startClientX) / colW);
-        if (mode === 'move') {
-          curStart = ev.startAt + dayDelta * DAY_MS;
-          curEnd = ev.endAt + dayDelta * DAY_MS;
-        } else if (mode === 'resize-start') {
-          const ns = startOfDay(new Date(ev.startAt + dayDelta * DAY_MS)).getTime();
-          curStart = Math.min(ns, startOfDay(new Date(ev.endAt)).getTime());
-          curEnd = ev.endAt;
-        } else {
-          const ne = endOfDay(new Date(ev.endAt + dayDelta * DAY_MS)).getTime();
-          curEnd = Math.max(ne, endOfDay(new Date(ev.startAt)).getTime());
-          curStart = ev.startAt;
-        }
-        const startCol = Math.max(0, this._weekDayIndex(curStart, weekStartMs));
-        const endCol = Math.min(days - 1, this._weekDayIndex(curEnd, weekStartMs));
-        bar.style.left = `calc(${(startCol / days) * 100}% + 2px)`;
-        bar.style.width = `calc(${((endCol - startCol + 1) / days) * 100}% - 4px)`;
-        bar.classList.add('planner-evt--dragging');
-      };
-      const onMove = (pe: PointerEvent) => {
-        if (!dragging) {
-          if (Math.abs(pe.clientX - startClientX) > THRESHOLD_PX) dragging = true;
-          else return;
-        }
-        apply(pe);
-      };
-      const onUp = (pe: PointerEvent) => {
-        bar.removeEventListener('pointermove', onMove);
-        bar.removeEventListener('pointerup', onUp);
-        bar.removeEventListener('pointercancel', onUp);
-        try { bar.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
-        bar.classList.remove('planner-evt--dragging');
-        if (!dragging) {
-          this.eventPopover.openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
-          return;
-        }
-        if (curStart !== ev.startAt || curEnd !== ev.endAt) {
-          void this.eventBars.commitEventMove(ev, { startAt: curStart, endAt: curEnd, allDay: true }, bar.getBoundingClientRect());
-        }
-      };
-      try { bar.setPointerCapture(e.pointerId); } catch { /* ok */ }
-      bar.addEventListener('pointermove', onMove);
-      bar.addEventListener('pointerup', onUp);
-      bar.addEventListener('pointercancel', onUp);
-    });
-  }
-
-  /** Compact all-day strip for the single-day view. */
-  private _renderDayAllDaySection(
-    host: HTMLElement,
-    day: Date,
-    allDayEvents: readonly PlannerEvent[],
-    colorOf: (calendarId: string | null, override: string | null) => string,
-  ): void {
-    const dayStart = startOfDay(day).getTime();
-    const dayEnd = endOfDay(day).getTime();
-    const todays = allDayEvents.filter(ev => ev.startAt <= dayEnd && ev.endAt >= dayStart);
-
-    const band = el('div', 'planner-day__allday');
-    const gutter = el('div', 'planner-day__allday-gutter');
-    gutter.textContent = 'All day';
-    band.appendChild(gutter);
-    const list = el('div', 'planner-day__allday-list');
-    band.appendChild(list);
-
-    for (const ev of todays) {
-      const chip = el('button', 'planner-day__alldaybar');
-      chip.type = 'button';
-      chip.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
-      chip.innerHTML = `<span class="planner-week__alldaybar-title">${escapeHtml(ev.title)}</span>`;
-      chip.title = ev.title;
-      chip.addEventListener('click', () => this.eventPopover.openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect()));
-      list.appendChild(chip);
-    }
-    // Click the empty strip to add an all-day event for this day.
-    list.addEventListener('click', (e) => {
-      if (e.target !== list) return;
-      this.eventPopover.openEventPopover({ mode: 'create', startAt: dayStart, endAt: dayEnd, allDay: true }, list.getBoundingClientRect());
-    });
-    host.appendChild(band);
-  }
-
-  // ── Description links (notes + clickable links) ─────────────────────
 
   /**
    * gather per-day loads from every registered provider for the given
@@ -1075,8 +830,8 @@ export class PlannerEditorPane implements IDisposable {
     const end = addDays(start, days);
     const { isVisible, colorOf } = await this._loadCalCtx();
     const allEvents = (await this._data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 500 })).filter(ev => isVisible(ev.calendarId));
-    const allDayEvents = allEvents.filter(ev => this._isAllDayLike(ev));
-    const events = allEvents.filter(ev => !this._isAllDayLike(ev));
+    const allDayEvents = allEvents.filter(ev => this.allDay.isAllDayLike(ev));
+    const events = allEvents.filter(ev => !this.allDay.isAllDayLike(ev));
     const tasks = await this._tasksInWindow(start.getTime(), end.getTime(), isVisible);
     const dayLoads = await this._collectDayLoads(start.getTime(), end.getTime());
 
@@ -1106,7 +861,7 @@ export class PlannerEditorPane implements IDisposable {
     grid.appendChild(headerRow);
 
     // Outlook-style all-day band — multi-day events live here, not in the grid.
-    this._renderWeekAllDayBand(grid, start, allDayEvents, colorOf);
+    this.allDay.renderWeekAllDayBand(grid, start, allDayEvents, colorOf);
 
     const body2 = el('div', 'planner-week__body');
     const HOURS_START = 0, HOURS_END = 24;
@@ -1162,12 +917,12 @@ export class PlannerEditorPane implements IDisposable {
     const dayEnd = endOfDay(this._cursorDate).getTime();
     const { isVisible, colorOf } = await this._loadCalCtx();
     const allEvents = (await this._data.listEvents({ from: dayStart, to: dayEnd, limit: 500 })).filter(ev => isVisible(ev.calendarId));
-    const allDayEvents = allEvents.filter(ev => this._isAllDayLike(ev));
-    const events = allEvents.filter(ev => !this._isAllDayLike(ev));
+    const allDayEvents = allEvents.filter(ev => this.allDay.isAllDayLike(ev));
+    const events = allEvents.filter(ev => !this.allDay.isAllDayLike(ev));
     const tasks = await this._tasksInWindow(dayStart, dayEnd, isVisible);
 
     // All-day strip above the time grid, mirroring the week view.
-    this._renderDayAllDaySection(body, this._cursorDate, allDayEvents, colorOf);
+    this.allDay.renderDayAllDaySection(body, this._cursorDate, allDayEvents, colorOf);
 
     const grid = el('div', 'planner-day');
     const hours = el('div', 'planner-day__hours');
