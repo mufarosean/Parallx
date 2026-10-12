@@ -19,7 +19,9 @@ import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
-import { addAppDays, appDateParts, appDateString, appTime, appTimeString, isSameAppDay, startOfAppDay } from '../../services/localTime.js';
+import { appDateParts, appDateString, appTime, isSameAppDay } from '../../services/localTime.js';
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, atTime, startOfDayMs, sameDay, formatDateShort, formatHour, formatTimeShort, formatTimeRange, toDateInputValue, toTimeInputValue, fromDateTimeInputs } from './plannerDates.js';
+import { normalizeWebLink, extractLinks } from './plannerLinks.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -147,33 +149,6 @@ function buildColorSwatches(
   for (const c of PLANNER_COLORS) addChip(c.hex, c.name);
   refresh();
   return wrap;
-}
-
-// Days, weeks and months are the user's (the app's Time Zone setting, else
-// this computer's zone): a Date here is an instant, and its calendar fields
-// are read with appDateParts, never with the machine-local getters.
-function startOfDay(date: Date): Date { return new Date(startOfAppDay(date)); }
-function endOfDay(date: Date): Date { return new Date(addAppDays(startOfAppDay(date), 1) - 1); }
-function startOfWeek(date: Date): Date {
-  // Week starts on Sunday for compatibility with most calendars; could be configurable later.
-  const d = startOfAppDay(date);
-  return new Date(addAppDays(d, -appDateParts(d).weekday));
-}
-function startOfMonth(date: Date): Date {
-  const p = appDateParts(date);
-  return new Date(appTime(p.year, p.month, 1));
-}
-function endOfMonth(date: Date): Date {
-  const p = appDateParts(date);
-  return new Date(appTime(p.year, p.month + 1, 1) - 1);
-}
-function addDays(date: Date, n: number): Date {
-  return new Date(addAppDays(date, n));
-}
-/** `date`'s day in the app zone at the given wall-clock time. */
-function atTime(date: Date | number, hour: number, minute = 0): number {
-  const p = appDateParts(date);
-  return appTime(p.year, p.month, p.day, hour, minute);
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -3037,111 +3012,4 @@ class PlannerEditorPane implements IDisposable {
     this._bodyEl = null;
     this._container.classList.remove('planner-pane-host');
   }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function startOfDayMs(): number {
-  return startOfAppDay(Date.now());
-}
-
-function sameDay(a: Date, b: Date): boolean {
-  return isSameAppDay(a, b);
-}
-
-function formatDateShort(ts: number): string {
-  const now = Date.now();
-  if (isSameAppDay(ts, now)) return 'Today';
-  if (isSameAppDay(ts, addAppDays(now, 1))) return 'Tomorrow';
-  const diff = ts - now;
-  if (diff > 0 && diff < 7 * 86_400_000) return appDateString(ts, { weekday: 'short' });
-  return appDateString(ts, { month: 'short', day: 'numeric' });
-}
-
-function formatHour(h: number): string {
-  if (h === 0) return '12 AM';
-  if (h === 12) return '12 PM';
-  if (h < 12) return `${h} AM`;
-  return `${h - 12} PM`;
-}
-
-function formatTimeShort(ms: number): string {
-  return appTimeString(ms, { hour: 'numeric', minute: '2-digit' });
-}
-
-function formatTimeRange(ev: PlannerEvent): string {
-  const fmt = (ts: number) => appTimeString(ts, { hour: 'numeric', minute: '2-digit' });
-  if (ev.allDay) return 'All Day';
-  return `${fmt(ev.startAt)} – ${fmt(ev.endAt)}`;
-}
-
-/** Normalize a raw href to a safe http/https URL, or null if not web-openable. */
-function normalizeWebLink(rawHref: string): string | null {
-  const trimmed = rawHref.trim();
-  if (!trimmed) return null;
-  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed);
-  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-/** Pull links out of free-form notes for the popover chip row.
- *  Recognizes internal `parallx://` URIs as well as web (http/https/www.)
- *  links. Internal links render as rich page chips; web links open the
- *  external browser. */
-function extractLinks(text: string): { label: string; href: string; kind: 'web' | 'internal' }[] {
-  if (!text) return [];
-  const out: { label: string; href: string; kind: 'web' | 'internal' }[] = [];
-  const seen = new Set<string>();
-  const re = /(?:parallx:\/\/[^\s<>]+|(?:https?:\/\/|www\.)[^\s<>()]+)/gi;
-  for (const match of text.matchAll(re)) {
-    const raw = match[0].replace(/[.,;:!?]+$/, '');
-    if (/^parallx:\/\//i.test(raw)) {
-      if (seen.has(raw)) continue;
-      seen.add(raw);
-      out.push({ label: raw, href: raw, kind: 'internal' });
-      continue;
-    }
-    const url = normalizeWebLink(raw);
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    let label = url;
-    try { const u = new URL(url); label = u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname : ''); } catch { /* keep url */ }
-    if (label.length > 42) label = label.slice(0, 41) + '\u2026';
-    out.push({ label, href: url, kind: 'web' });
-  }
-  return out;
-}
-
-function toDateInputValue(ms: number): string {
-  const d = appDateParts(ms);
-  const m = String(d.month + 1).padStart(2, '0');
-  const day = String(d.day).padStart(2, '0');
-  return `${d.year}-${m}-${day}`;
-}
-
-function toTimeInputValue(ms: number): string {
-  const d = appDateParts(ms);
-  const h = String(d.hour).padStart(2, '0');
-  const m = String(d.minute).padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-function fromDateTimeInputs(dateStr: string, timeStr: string): number | null {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-  let hour = 0, min = 0;
-  if (timeStr) {
-    const [hh, mm] = timeStr.split(':').map(n => parseInt(n, 10));
-    if (Number.isFinite(hh)) hour = hh;
-    if (Number.isFinite(mm)) min = mm;
-  }
-  const dt = appTime(y, m - 1, d, hour, min, 0, 0);
-  return Number.isFinite(dt) ? dt : null;
 }
