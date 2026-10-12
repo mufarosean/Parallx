@@ -45,7 +45,7 @@ describe('HeartbeatRunner — M60 §3.8 flag gate', () => {
     expect(executor).not.toHaveBeenCalled();
     expect(events.length).toBeGreaterThan(0);
     expect(events[0].outcome).toBe('gated');
-    expect(events[0].note).toContain('autonomy.heartbeat.enabled=false');
+    expect(events[0].note).toContain('autonomy.paused.global=true');
 
     // Flip flag on — wake should now execute.
     flagEnabled = true;

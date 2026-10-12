@@ -33,20 +33,12 @@ export const FLAG_DESCRIPTIONS: Readonly<Record<AutonomyFlagId, string>> = Objec
     'Agents may write their results onto canvas pages.',
   'autonomy.surface.filesystem.enabled':
     'Agents may write their results to files in the workspace.',
-  'autonomy.heartbeat.enabled':
-    'Retired: the heartbeat is turned on and off in Agents › Heartbeat.',
   'autonomy.cron.enabled':
     'Let scheduled jobs run on their schedule. Routines built as workflows run whenever agents may run in the background.',
   'autonomy.subagent.enabled':
     'Let an agent start helper agents for parts of a task. Each one still asks before acting unless you remembered its approval.',
-  'canvas.blockIds.enabled':
-    'Stamp every canvas block with a stable unique ID for cross-block references. Default on; toggle off only for emergency rollback.',
-  'canvas.dataview.enabled':
-    'Render dataview blocks (live property-filtered page lists) inside canvas pages. Default on; toggle off only for emergency rollback.',
   'autonomy.paused.global':
     'Pause everything agents do on their own. Shown in Settings as Run In The Background.',
-  'autonomy.rail.enabled':
-    'Retired: nothing reads this.',
   'autonomy.patternMemory.enabled':
     'When you approve a helper agent and choose to remember it, don\u2019t ask again for the same kind of work.',
   'indexing.lazyMtime.enabled':
@@ -74,23 +66,17 @@ const FLAG_CATEGORY: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
   'autonomy.surface.statusbar.enabled': 'Agents / Where Results Go',
   'autonomy.surface.canvas.enabled': 'Agents / Where Results Go',
   'autonomy.surface.filesystem.enabled': 'Agents / Where Results Go',
-  'autonomy.heartbeat.enabled': 'Agents',
   'autonomy.cron.enabled': 'Agents / Routines',
   'autonomy.subagent.enabled': 'Agents / Helpers',
-  'canvas.blockIds.enabled': 'Canvas',
-  'canvas.dataview.enabled': 'Canvas',
   'autonomy.paused.global': 'Agents',
-  'autonomy.rail.enabled': 'Agents',
   'autonomy.patternMemory.enabled': 'Agents / Helpers',
   'indexing.lazyMtime.enabled': 'Indexing',
   'indexing.worker.enabled': 'Indexing',
 });
 
-/** Flags with no settings row: retired ones nothing reads, and the pause,
- *  which Agents shows the right way round as Run In The Background. */
+/** Flags with no settings row: the pause, which Agents shows the right way
+ *  round as Run In The Background. */
 const NO_ROW: ReadonlySet<AutonomyFlagId> = new Set<AutonomyFlagId>([
-  'autonomy.heartbeat.enabled',
-  'autonomy.rail.enabled',
   'autonomy.paused.global',
 ]);
 

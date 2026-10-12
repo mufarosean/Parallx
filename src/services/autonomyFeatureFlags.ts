@@ -34,25 +34,13 @@ export const FLAG_SURFACE_STATUSBAR_ENABLED = 'autonomy.surface.statusbar.enable
 export const FLAG_SURFACE_CANVAS_ENABLED = 'autonomy.surface.canvas.enabled';
 export const FLAG_SURFACE_FILESYSTEM_ENABLED = 'autonomy.surface.filesystem.enabled';
 // autonomy substrate (heartbeat/cron/subagent).
-// All three default OFF until proven via dogfood + autonomy eval, per M60 §3.8.
-export const FLAG_HEARTBEAT_ENABLED = 'autonomy.heartbeat.enabled';
+// Both default OFF until proven in use.
 export const FLAG_CRON_ENABLED = 'autonomy.cron.enabled';
 export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
-// canvas depth.
-// blockIds default ON: TipTap's `extension-unique-id` is already wired
-// in src/built-in/canvas/config/tiptapExtensions.ts (UNIQUE_ID_BLOCK_TYPES);
-// the flag exists for emergency rollback, not for opt-in.
-// dataview default ON for the same reason — the node is shipped read-only,
-// rendered by the canvas editor; flag gates registration.
-const FLAG_CANVAS_BLOCKIDS_ENABLED = 'canvas.blockIds.enabled';
-const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
-// autonomy task rail polish.
 // `paused.global` is the kill switch (default false; trips → no autonomous
-// trigger fires). `rail.enabled` lets the user hide the whole rail UI
-// (default true). `patternMemory.enabled` gates the auto-approve-on-pattern
+// trigger fires). `patternMemory.enabled` gates the auto-approve-on-pattern
 // memory recorded by AutonomyPatternMemoryService (default true).
 export const FLAG_PAUSED_GLOBAL = 'autonomy.paused.global';
-const FLAG_RAIL_ENABLED = 'autonomy.rail.enabled';
 export const FLAG_PATTERN_MEMORY_ENABLED = 'autonomy.patternMemory.enabled';
 // `indexing.lazyMtime.enabled` (default on) gates the page mtime fast-skip in
 // `IndexingPipelineService._indexAllPages`. `indexing.worker.enabled` (default
@@ -67,13 +55,9 @@ export type AutonomyFlagId =
   | typeof FLAG_SURFACE_STATUSBAR_ENABLED
   | typeof FLAG_SURFACE_CANVAS_ENABLED
   | typeof FLAG_SURFACE_FILESYSTEM_ENABLED
-  | typeof FLAG_HEARTBEAT_ENABLED
   | typeof FLAG_CRON_ENABLED
   | typeof FLAG_SUBAGENT_ENABLED
-  | typeof FLAG_CANVAS_BLOCKIDS_ENABLED
-  | typeof FLAG_CANVAS_DATAVIEW_ENABLED
   | typeof FLAG_PAUSED_GLOBAL
-  | typeof FLAG_RAIL_ENABLED
   | typeof FLAG_PATTERN_MEMORY_ENABLED
   | typeof FLAG_INDEXING_LAZY_MTIME_ENABLED
   | typeof FLAG_INDEXING_WORKER_ENABLED;
@@ -91,18 +75,9 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_SURFACE_STATUSBAR_ENABLED]: true,
   [FLAG_SURFACE_CANVAS_ENABLED]: false,
   [FLAG_SURFACE_FILESYSTEM_ENABLED]: false,
-  // Heartbeat is now gated by ONE user control — the per-workspace
-  // `heartbeat.enabled` config — plus the global `paused.global` kill switch.
-  // This flag is retained for back-compat but no longer gates the runner
-  // (see src/built-in/chat/main.ts), so it defaults ON to avoid silently
-  // blocking a user who enabled heartbeat from the AI settings panel.
-  [FLAG_HEARTBEAT_ENABLED]: true,
   [FLAG_CRON_ENABLED]: false,
   [FLAG_SUBAGENT_ENABLED]: false,
-  [FLAG_CANVAS_BLOCKIDS_ENABLED]: true,
-  [FLAG_CANVAS_DATAVIEW_ENABLED]: true,
   [FLAG_PAUSED_GLOBAL]: false,
-  [FLAG_RAIL_ENABLED]: true,
   [FLAG_PATTERN_MEMORY_ENABLED]: true,
   [FLAG_INDEXING_LAZY_MTIME_ENABLED]: true,
   // embedding worker is now on by default. The worker

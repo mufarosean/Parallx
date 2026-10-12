@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 import {
   AutonomyFeatureFlagsService,
   FLAG_PAUSED_GLOBAL,
-  FLAG_HEARTBEAT_ENABLED,
   FLAG_CRON_ENABLED,
   FLAG_SUBAGENT_ENABLED,
   FLAG_FOLLOWUP_ENABLED,
@@ -38,8 +37,9 @@ function memoryStorage(): IStorage {
 }
 
 describe('isAutonomyTriggerAllowed (M60 §8 ζ T5.E2)', () => {
+  // The heartbeat is not a flag: it is gated by the pause and the per-workspace
+  // Agents › Heartbeat setting.
   const TRIGGERS = [
-    FLAG_HEARTBEAT_ENABLED,
     FLAG_CRON_ENABLED,
     FLAG_SUBAGENT_ENABLED,
     FLAG_FOLLOWUP_ENABLED,
@@ -77,6 +77,6 @@ describe('isAutonomyTriggerAllowed (M60 §8 ζ T5.E2)', () => {
     const b = new AutonomyFeatureFlagsService(storage);
     await b.initialize();
     expect(b.isEnabled(FLAG_PAUSED_GLOBAL)).toBe(true);
-    expect(isAutonomyTriggerAllowed(b, FLAG_HEARTBEAT_ENABLED)).toBe(false);
+    expect(isAutonomyTriggerAllowed(b, FLAG_CRON_ENABLED)).toBe(false);
   });
 });

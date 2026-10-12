@@ -339,7 +339,7 @@ export class HeartbeatRunner implements IDisposable {
       return { executed: false, reason: 'skipped-shutting-down', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
-    // Gate: autonomy.heartbeat.enabled feature flag.
+    // Gate: the global pause (Run In The Background off).
     if (config.isFlagEnabled && !config.isFlagEnabled()) {
       // Drop pending events while gated to prevent unbounded growth.
       const dropped = this._pendingEvents.length;
@@ -349,7 +349,7 @@ export class HeartbeatRunner implements IDisposable {
         reason,
         eventsProcessed: dropped,
         durationMs: 0,
-        note: 'autonomy.heartbeat.enabled=false',
+        note: 'autonomy.paused.global=true',
       });
       return { executed: false, reason: 'skipped-flag-disabled', eventsProcessed: 0, timestamp: tickStartMs };
     }

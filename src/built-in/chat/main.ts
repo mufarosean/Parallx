@@ -2233,10 +2233,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         },
         // Single global gate: the per-workspace `heartbeat.enabled` config
         // (above) is the on/off switch users actually toggle; the only global
-        // override is the `paused.global` kill switch. Previously this ALSO
-        // required the separate, default-OFF `autonomy.heartbeat.enabled` flag,
-        // which silently blocked anyone who enabled heartbeat from AI settings
-        // — the "I turned it on but nothing happens" trap. Closure picks up
+        // override is the `paused.global` kill switch. The closure picks up
         // live changes; no restart required.
         isFlagEnabled: () => !autonomyFlags.isEnabled(FLAG_PAUSED_GLOBAL),
         // emit a structured autonomy event per tick.
