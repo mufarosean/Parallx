@@ -1,7 +1,7 @@
 // Unit tests for RetrievalService
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RetrievalService, dotProduct } from '../../src/services/retrievalService';
+import { RetrievalService } from '../../src/services/retrievalService';
 import type { SearchResult } from '../../src/services/vectorStoreService';
 
 // ── Mock factories ──
@@ -53,20 +53,6 @@ function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
 }
 
 // ── Tests ──
-
-describe('dotProduct()', () => {
-  it('computes dot product of two vectors', () => {
-    expect(dotProduct([1, 2, 3], [4, 5, 6])).toBe(32); // 1*4 + 2*5 + 3*6
-  });
-
-  it('returns 0 for orthogonal vectors', () => {
-    expect(dotProduct([1, 0], [0, 1])).toBe(0);
-  });
-
-  it('handles empty vectors', () => {
-    expect(dotProduct([], [])).toBe(0);
-  });
-});
 
 describe('RetrievalService', () => {
   let embeddingService: ReturnType<typeof createMockEmbeddingService>;

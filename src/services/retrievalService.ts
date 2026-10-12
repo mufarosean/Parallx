@@ -25,17 +25,6 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-/**
- * Dot product of two equal-length vectors.
- */
-export function dotProduct(a: number[], b: number[]): number {
-  let sum = 0;
-  for (let i = 0; i < a.length; i++) {
-    sum += a[i] * b[i];
-  }
-  return sum;
-}
-
 // ─── Internal artifact detection (desktop platform adaptation) ───────────────
 
 function isInternalArtifactPath(sourceId: string): boolean {
