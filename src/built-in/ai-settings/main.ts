@@ -228,17 +228,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── Toast Notifications ──
 
   if (notificationService) {
-    // Track preset name for switch detection
-    let _lastPresetName = aiSettingsService.getActiveProfile().presetName;
-
-    const presetSwitchListener = aiSettingsService.onDidChange((profile) => {
-      if (profile.presetName !== _lastPresetName) {
-        notificationService.info(`Switched to preset: ${profile.presetName}`);
-        _lastPresetName = profile.presetName;
-      }
-    });
-    context.subscriptions.push(presetSwitchListener);
-
     // Workspace override toasts. These confirm a *user* save/reset — never the
     // startup hydration. loadWorkspaceConfig() reads the persisted override from
     // disk and fires onDidChangeConfig, which (with no guard) looks identical to
@@ -263,23 +252,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         if (currentCount > _lastOverrideCount && _lastOverrideCount === 0) {
           notificationService.info('Workspace override saved');
         } else if (!hasOverride && _hadOverride) {
-          notificationService.info('Reset to global preset');
+          notificationService.info('Reset to global settings');
         } else if (currentCount === 0 && _lastOverrideCount > 0 && hasOverride) {
-          notificationService.info('Reset to global preset');
+          notificationService.info('Reset to global settings');
         }
 
         _lastOverrideCount = currentCount;
         _hadOverride = hasOverride;
       });
       context.subscriptions.push(overrideListener);
-
-      // Clone-on-write notification
-      const cloneListener = unifiedConfigService.onDidCloneBuiltIn(({ originalName, cloneName }) => {
-        notificationService.info(
-          `Built-in preset '${originalName}' is read-only. Created editable copy: '${cloneName}'`,
-        );
-      });
-      context.subscriptions.push(cloneListener);
     }
   }
 }

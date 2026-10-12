@@ -3,8 +3,9 @@
 // Tests for:
 //   - IUnifiedAIConfig types and defaults
 //   - Conversion helpers (fromLegacyParallxConfig, tolegacyProfile)
-//   - UnifiedAIConfigService: preset management, workspace overrides,
-//     effective config resolution, legacy compatibility, clone-on-write
+//   - UnifiedAIConfigService: the global settings and their carry-over from
+//     the old presets, workspace overrides, effective config resolution,
+//     legacy compatibility
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
@@ -12,7 +13,6 @@ import {
   fromLegacyParallxConfig,
   tolegacyProfile,
 } from '../../src/aiSettings/unifiedConfigTypes';
-import type { IUnifiedPreset } from '../../src/aiSettings/unifiedConfigTypes';
 import { UnifiedAIConfigService, deepMerge } from '../../src/aiSettings/unifiedAIConfigService';
 import { DEFAULT_CONFIG } from '../../src/services/parallxConfigService';
 
@@ -95,19 +95,8 @@ describe('fromLegacyParallxConfig', () => {
 });
 
 describe('tolegacyProfile', () => {
-  it('converts IUnifiedPreset back to AISettingsProfile shape', () => {
-    const preset: IUnifiedPreset = {
-      id: 'test-1',
-      presetName: 'Test',
-      isBuiltIn: false,
-      createdAt: 1000,
-      updatedAt: 2000,
-      config: { ...DEFAULT_UNIFIED_CONFIG },
-    };
-
-    const profile = tolegacyProfile(preset);
-    expect(profile.id).toBe('test-1');
-    expect(profile.presetName).toBe('Test');
+  it('converts a config to the AISettingsProfile shape', () => {
+    const profile = tolegacyProfile({ ...DEFAULT_UNIFIED_CONFIG });
     expect(profile.chat.timeZone).toBe('');
     expect(profile.model.defaultModel).toBe(''); // chatModel → defaultModel
   });
@@ -159,21 +148,77 @@ describe('UnifiedAIConfigService', () => {
   // ── Initialization ──
 
   describe('initialization', () => {
-    it('seeds with 3 built-in presets on fresh start', () => {
-      const presets = service.getAllPresets();
-      expect(presets.length).toBe(3);
-      expect(presets.map(p => p.presetName)).toEqual(['Default', 'Finance Focus', 'Creative Mode']);
+    it('starts from the defaults and stores them', async () => {
+      expect(service.getEffectiveConfig()).toEqual(DEFAULT_UNIFIED_CONFIG);
+      const stored = await storage.get('unified-ai.config');
+      expect(JSON.parse(stored!)).toEqual(DEFAULT_UNIFIED_CONFIG);
     });
 
-    it('sets default as active preset', () => {
-      expect(service.getActivePreset().id).toBe('default');
+    it('fills fields added since the settings were stored', async () => {
+      const s = createMockStorage();
+      await s.set('unified-ai.config', JSON.stringify({ model: { temperature: 0.4 } }));
+      const svc = new UnifiedAIConfigService(s as any);
+      await svc.initialize();
+      expect(svc.getEffectiveConfig().model.temperature).toBe(0.4);
+      expect(svc.getEffectiveConfig().agent.maxIterations).toBe(25);
+    });
+  });
+
+  // ── Carry-over from presets ──
+
+  describe('carry-over from the old presets', () => {
+    const oldPresets = (activeConfig: object) => JSON.stringify([
+      { id: 'default', presetName: 'Default', isBuiltIn: true, config: { ...DEFAULT_UNIFIED_CONFIG } },
+      { id: 'creative-mode', presetName: 'Creative Mode', isBuiltIn: true, config: { model: { temperature: 0.9 } } },
+      { id: 'preset-1', presetName: 'Default (Modified)', isBuiltIn: false, config: activeConfig },
+    ]);
+
+    it('takes the settings of the preset that was active', async () => {
+      const s = createMockStorage();
+      await s.set('unified-ai.presets', oldPresets({ model: { chatModel: 'qwen3:32b', temperature: 0.3 }, agent: { maxIterations: 40 } }));
+      await s.set('unified-ai.activePresetId', 'preset-1');
+      const svc = new UnifiedAIConfigService(s as any);
+      await svc.initialize();
+
+      const config = svc.getEffectiveConfig();
+      expect(config.model.chatModel).toBe('qwen3:32b');
+      expect(config.model.temperature).toBe(0.3);
+      expect(config.agent.maxIterations).toBe(40);
+      expect(config.retrieval.ragTopK).toBe(20); // filled from the defaults
+      expect(JSON.parse((await s.get('unified-ai.config'))!).model.chatModel).toBe('qwen3:32b');
     });
 
-    it('persists presets to storage on init', async () => {
-      const stored = await storage.get('unified-ai.presets');
-      expect(stored).toBeDefined();
-      const parsed = JSON.parse(stored!);
-      expect(parsed.length).toBe(3);
+    it('leaves the old keys as they were', async () => {
+      const s = createMockStorage();
+      const presets = oldPresets({ model: { temperature: 0.3 } });
+      await s.set('unified-ai.presets', presets);
+      await s.set('unified-ai.activePresetId', 'preset-1');
+      const svc = new UnifiedAIConfigService(s as any);
+      await svc.initialize();
+      expect(await s.get('unified-ai.presets')).toBe(presets);
+      expect(await s.get('unified-ai.activePresetId')).toBe('preset-1');
+    });
+
+    it('falls back to the Default preset when the active one is gone', async () => {
+      const s = createMockStorage();
+      await s.set('unified-ai.presets', oldPresets({ model: { temperature: 0.3 } }));
+      await s.set('unified-ai.activePresetId', 'preset-deleted');
+      const svc = new UnifiedAIConfigService(s as any);
+      await svc.initialize();
+      expect(svc.getEffectiveConfig().model.temperature).toBe(-1);
+    });
+
+    it('reads the old presets only once', async () => {
+      const s = createMockStorage();
+      await s.set('unified-ai.presets', oldPresets({ model: { temperature: 0.3 } }));
+      await s.set('unified-ai.activePresetId', 'preset-1');
+      const first = new UnifiedAIConfigService(s as any);
+      await first.initialize();
+      await first.updateConfig({ model: { temperature: 0.7 } });
+
+      const second = new UnifiedAIConfigService(s as any);
+      await second.initialize();
+      expect(second.getEffectiveConfig().model.temperature).toBe(0.7);
     });
   });
 
@@ -200,70 +245,19 @@ describe('UnifiedAIConfigService', () => {
     });
   });
 
-  // ── Preset Management ──
+  // ── Global Settings ──
 
-  describe('preset management', () => {
-    it('switches active preset', async () => {
-      await service.setActivePreset('finance-focus');
-      expect(service.getActivePreset().id).toBe('finance-focus');
-      expect(service.getActivePreset().presetName).toBe('Finance Focus');
+  describe('updateConfig', () => {
+    it('changes the global settings and stores them', async () => {
+      await service.updateConfig({ chat: { timeZone: 'Europe/Paris' } });
+      expect(service.getEffectiveConfig().chat.timeZone).toBe('Europe/Paris');
+      expect(JSON.parse((await storage.get('unified-ai.config'))!).chat.timeZone).toBe('Europe/Paris');
     });
 
-    it('throws on switch to non-existent preset', async () => {
-      await expect(service.setActivePreset('nonexistent')).rejects.toThrow('not found');
-    });
-
-    it('creates a new preset cloned from active', async () => {
-      const created = await service.createPreset('My Preset');
-      expect(created.presetName).toBe('My Preset');
-      expect(created.isBuiltIn).toBe(false);
-      expect(service.getActivePreset().id).toBe(created.id);
-      expect(service.getAllPresets().length).toBe(4);
-    });
-
-    it('creates a preset from a specific base', async () => {
-      const created = await service.createPreset('Research', 'creative-mode');
-      expect(created.config.model.temperature).toBe(0.9); // from creative
-    });
-
-    it('deletes a custom preset', async () => {
-      const created = await service.createPreset('Throwaway');
-      await service.deletePreset(created.id);
-      expect(service.getAllPresets().length).toBe(3); // back to built-ins
-      expect(service.getActivePreset().id).toBe('default'); // reverted
-    });
-
-    it('cannot delete built-in presets', async () => {
-      await expect(service.deletePreset('default')).rejects.toThrow('Cannot delete');
-    });
-
-    it('renames a custom preset', async () => {
-      const created = await service.createPreset('Old Name');
-      await service.renamePreset(created.id, 'New Name');
-      expect(service.getPreset(created.id)?.presetName).toBe('New Name');
-    });
-
-    it('cannot rename built-in presets', async () => {
-      await expect(service.renamePreset('default', 'Renamed')).rejects.toThrow('Cannot rename');
-    });
-  });
-
-  // ── Clone on Write ──
-
-  describe('clone-on-write for built-in presets', () => {
-    it('clones a built-in when updating it', async () => {
-      expect(service.getActivePreset().isBuiltIn).toBe(true);
-
-      await service.updateActivePreset({
-        chat: { timeZone: 'Europe/Paris' },
-      });
-
-      // Active should now be a cloned non-built-in
-      const active = service.getActivePreset();
-      expect(active.isBuiltIn).toBe(false);
-      expect(active.presetName).toBe('Default (Modified)');
-      expect(active.config.chat.timeZone).toBe('Europe/Paris');
-      expect(service.getAllPresets().length).toBe(4); // 3 built-in + 1 clone
+    it('keeps the fields the patch does not name', async () => {
+      await service.updateConfig({ model: { temperature: 0.2 } });
+      expect(service.getEffectiveConfig().model.maxTokens).toBe(0);
+      expect(service.getEffectiveConfig().retrieval.ragTopK).toBe(20);
     });
   });
 
@@ -312,7 +306,7 @@ describe('UnifiedAIConfigService', () => {
       await service.clearWorkspaceOverride('model.temperature');
 
       const config = service.getEffectiveConfig();
-      expect(config.model.temperature).toBe(-1); // reset to preset
+      expect(config.model.temperature).toBe(-1); // back to the global value
       expect(config.retrieval.ragTopK).toBe(20); // still overridden
     });
 
@@ -338,49 +332,20 @@ describe('UnifiedAIConfigService', () => {
     });
   });
 
-  // ── Workspace Preset Pinning ──
-
-  describe('workspace preset pinning', () => {
-    it('pins a preset for the workspace', async () => {
-      await service.setWorkspacePreset('creative-mode');
-
-      // getActivePreset should now return the pinned preset
-      expect(service.getActivePreset().id).toBe('creative-mode');
-    });
-
-    it('clears workspace preset pinning', async () => {
-      await service.setWorkspacePreset('creative-mode');
-      await service.clearWorkspacePreset();
-
-      // Should fall back to global active
-      expect(service.getActivePreset().id).toBe('default');
-    });
-
-    it('workspace pin + override = pin as base with override applied', async () => {
-      await service.setWorkspacePreset('creative-mode');
-      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
-
-      const config = service.getEffectiveConfig();
-      // Creative mode base = 0.9, overridden to 0.1
-      expect(config.model.temperature).toBe(0.1);
-    });
-  });
-
   // ── Reset ──
 
   describe('reset', () => {
     it('resets a section to defaults', async () => {
-      await service.createPreset('Custom');
-      await service.updateActivePreset({ model: { temperature: 0.1 } });
+      await service.updateConfig({ model: { temperature: 0.1 }, retrieval: { ragTopK: 100 } });
       expect(service.getEffectiveConfig().model.temperature).toBe(0.1);
 
       await service.resetSection('model');
       expect(service.getEffectiveConfig().model.temperature).toBe(-1);
+      expect(service.getEffectiveConfig().retrieval.ragTopK).toBe(100);
     });
 
     it('resets all to defaults', async () => {
-      await service.createPreset('Custom');
-      await service.updateActivePreset({
+      await service.updateConfig({
         model: { temperature: 0.1 },
         retrieval: { ragTopK: 100 },
       });
@@ -390,21 +355,16 @@ describe('UnifiedAIConfigService', () => {
       expect(config.model.temperature).toBe(-1);
       expect(config.retrieval.ragTopK).toBe(20);
     });
-
-    it('reset is no-op for built-in presets', async () => {
-      await service.resetAll(); // should not throw
-      expect(service.getActivePreset().isBuiltIn).toBe(true);
-    });
   });
 
   // ── Change Events ──
 
   describe('change events', () => {
-    it('fires onDidChangeConfig on preset switch', async () => {
+    it('fires onDidChangeConfig on a settings change', async () => {
       const listener = vi.fn();
       service.onDidChangeConfig(listener);
 
-      await service.setActivePreset('creative-mode');
+      await service.updateConfig({ model: { temperature: 0.9 } });
 
       expect(listener).toHaveBeenCalledOnce();
       expect(listener.mock.calls[0][0].model.temperature).toBe(0.9);
@@ -424,12 +384,10 @@ describe('UnifiedAIConfigService', () => {
       const listener = vi.fn();
       service.onDidChange(listener);
 
-      await service.setActivePreset('creative-mode');
+      await service.updateConfig({ model: { temperature: 0.9 } });
 
       expect(listener).toHaveBeenCalledOnce();
-      const profile = listener.mock.calls[0][0];
-      expect(profile.id).toBe('creative-mode');
-      expect(profile.model.temperature).toBe(0.9);
+      expect(listener.mock.calls[0][0].model.temperature).toBe(0.9);
     });
   });
 
@@ -438,32 +396,10 @@ describe('UnifiedAIConfigService', () => {
   describe('legacy IAISettingsService compatibility', () => {
     it('getActiveProfile returns AISettingsProfile shape', () => {
       const profile = service.getActiveProfile();
-      expect(profile.id).toBe('default');
-      expect(profile.presetName).toBe('Default');
       expect(profile.chat).toBeDefined();
       expect(profile.model).toBeDefined();
       expect(profile.model.defaultModel).toBeDefined(); // legacy field name
     });
-
-    it('getAllProfiles returns AISettingsProfile[] shape', () => {
-      const profiles = service.getAllProfiles();
-      expect(profiles.length).toBe(3);
-      expect(profiles[0].model.defaultModel).toBeDefined();
-    });
-
-    it('updateActiveProfile accepts legacy patch format', async () => {
-      // First clone to avoid clone-on-write
-      await service.createPreset('Test');
-
-      await service.updateActiveProfile({
-        model: { defaultModel: 'llama3', temperature: 0.5 },
-      });
-
-      const config = service.getEffectiveConfig();
-      expect(config.model.chatModel).toBe('llama3');
-      expect(config.model.temperature).toBe(0.5);
-    });
-
   });
 });
 
@@ -571,8 +507,8 @@ describe('A.4 Consumer wiring', () => {
       expect(service.getEffectiveConfig().agent.maxIterations).toBe(5);
     });
 
-    it('preset change changes maxIterations', async () => {
-      await service.updateActivePreset({ agent: { maxIterations: 20 } });
+    it('a settings change changes maxIterations', async () => {
+      await service.updateConfig({ agent: { maxIterations: 20 } });
       expect(service.getEffectiveConfig().agent.maxIterations).toBe(20);
     });
 
@@ -647,7 +583,7 @@ describe('A.4 Consumer wiring', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// B: Workspace Overrides & Preset Scoping — Persistence Tests
+// B: Workspace Overrides — Persistence Tests
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Phase B: Workspace override persistence', () => {
@@ -719,49 +655,34 @@ describe('Phase B: Workspace override persistence', () => {
     });
   });
 
-  describe('B.2: setWorkspacePreset persists _presetId', () => {
-    it('writes _presetId to disk on setWorkspacePreset', async () => {
-      await service.setWorkspacePreset('creative-mode');
+  describe('B.2: an older file that named a preset', () => {
+    it('reads its overrides and ignores the preset it named', async () => {
+      const svc = new UnifiedAIConfigService(createMockStorage() as any);
+      await svc.initialize();
+      await svc.updateConfig({ model: { temperature: 0.6 } });
+      svc.setFileSystem({
+        readFile: vi.fn().mockResolvedValue(JSON.stringify({ _presetId: 'creative-mode', overrides: { retrieval: { ragTopK: 7 } } })),
+        exists: vi.fn().mockResolvedValue(true),
+      });
+      await svc.loadWorkspaceConfig();
 
-      expect(mockWriteFile).toHaveBeenCalledOnce();
-      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
-      expect(written._presetId).toBe('creative-mode');
-    });
-
-    it('removes _presetId from disk on clearWorkspacePreset', async () => {
-      await service.setWorkspacePreset('creative-mode');
-      mockWriteFile.mockClear();
-
-      await service.clearWorkspacePreset();
-
-      // clearWorkspacePreset should either write without _presetId or not write
-      // (if override is empty). Check the override state is cleared.
-      expect(service.getActivePreset().id).toBe('default');
-    });
-
-    it('_presetId and overrides coexist in persisted file', async () => {
-      await service.setWorkspacePreset('finance-focus');
-      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
-
-      const lastWrite = JSON.parse(mockWriteFile.mock.calls[mockWriteFile.mock.calls.length - 1][1]);
-      expect(lastWrite._presetId).toBe('finance-focus');
-      expect(lastWrite.overrides.model.temperature).toBe(0.1);
+      expect(svc.getEffectiveConfig().retrieval.ragTopK).toBe(7);
+      expect(svc.getEffectiveConfig().model.temperature).toBe(0.6);
+      expect(svc.getWorkspaceOverride()).toEqual({ overrides: { retrieval: { ragTopK: 7 } } });
     });
   });
 
   describe('B.3: Override resolution order', () => {
-    it('override resolution: defaultConfig ← activePreset ← workspaceOverride', async () => {
-      // Switch to creative-mode (temperature 0.9)
-      await service.setActivePreset('creative-mode');
+    it('override resolution: defaults ← global settings ← workspace override', async () => {
+      await service.updateConfig({ model: { temperature: 0.9 }, chat: { timeZone: 'Asia/Tokyo' } });
       expect(service.getEffectiveConfig().model.temperature).toBe(0.9);
 
       // Apply workspace override
       await service.updateWorkspaceOverride({ model: { temperature: 0.5 } });
       expect(service.getEffectiveConfig().model.temperature).toBe(0.5);
 
-      // Non-overridden fields come from the preset
-      const creative = service.getActivePreset();
-      expect(service.getEffectiveConfig().chat.timeZone).toBe(creative.config.chat.timeZone);
+      // Non-overridden fields come from the global settings
+      expect(service.getEffectiveConfig().chat.timeZone).toBe('Asia/Tokyo');
     });
 
     it('workspace override only applies non-undefined keys', async () => {
@@ -777,52 +698,14 @@ describe('Phase B: Workspace override persistence', () => {
       expect(config.model.temperature).toBe(DEFAULT_UNIFIED_CONFIG.model.temperature);
     });
 
-    it('workspace preset pin changes base config', async () => {
-      // Pin to the creative-mode preset (its temperature differs from the default's)
-      await service.setWorkspacePreset('creative-mode');
-
-      const config = service.getEffectiveConfig();
-      const creativePreset = service.getAllPresets().find(p => p.id === 'creative-mode')!;
-      expect(config.model.temperature).toBe(creativePreset.config.model.temperature);
-    });
-
-    it('workspace pin + global switch: workspace pin wins', async () => {
-      await service.setWorkspacePreset('creative-mode');
-
-      // Switch global active to finance-focus
-      await service.setActivePreset('finance-focus');
-
-      // Workspace pin should still control effective config
-      const config = service.getEffectiveConfig();
-      const creative = service.getAllPresets().find(p => p.id === 'creative-mode')!;
-      expect(config.model.temperature).toBe(creative.config.model.temperature);
-    });
-
-    it('clearWorkspaceOverride() clears overrides but preserves preset pin', async () => {
-      await service.setWorkspacePreset('creative-mode');
+    it('clearWorkspaceOverride() returns to the global settings', async () => {
+      await service.updateConfig({ model: { temperature: 0.9 } });
       await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
 
-      await service.clearWorkspaceOverride();
-
-      // Overrides cleared, but preset pin preserved
-      const ws = service.getWorkspaceOverride();
-      expect(ws).toBeDefined();
-      expect(ws!._presetId).toBe('creative-mode');
-      expect(Object.keys(ws!.overrides)).toHaveLength(0);
-
-      // Effective config uses creative-mode base (temp 0.9), no override
-      expect(service.getEffectiveConfig().model.temperature).toBe(0.9);
-    });
-
-    it('clearWorkspacePreset + clearWorkspaceOverride fully resets', async () => {
-      await service.setWorkspacePreset('creative-mode');
-      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
-
-      await service.clearWorkspacePreset();
       await service.clearWorkspaceOverride();
 
       expect(service.getWorkspaceOverride()).toBeUndefined();
-      expect(service.getActivePreset().id).toBe('default');
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.9);
     });
 
     it('isOverridden returns false after clearing a specific key', async () => {
@@ -844,7 +727,6 @@ describe('Phase B: Workspace override persistence', () => {
 
     it('round-trip: write → load produces same effective config', async () => {
       // Set overrides
-      await service.setWorkspacePreset('finance-focus');
       await service.updateWorkspaceOverride({ model: { temperature: 0.4 } });
 
       const configBefore = service.getEffectiveConfig();

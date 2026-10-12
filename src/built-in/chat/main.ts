@@ -482,7 +482,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       {
         key: 'workspace.exportConfig',
         category: 'Workspace',
-        description: 'Export every workspace setting (and the active preset) to a JSON file.',
+        description: 'Export every workspace setting, the AI settings included, to a JSON file.',
         actionLabel: 'Export Workspace Config…',
         command: 'workspace.exportConfig',
       },

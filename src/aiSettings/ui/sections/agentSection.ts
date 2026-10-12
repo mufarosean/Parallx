@@ -295,7 +295,7 @@ export class AgentSection extends SettingsSection {
 
   private _updateAgent(patch: Partial<IUnifiedAIConfig['agent']>): void {
     if (this._unifiedService) {
-      this._unifiedService.updateActivePreset({ agent: patch });
+      this._unifiedService.updateConfig({ agent: patch });
     }
   }
 

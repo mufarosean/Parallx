@@ -24,7 +24,7 @@ import type { DeepPartial } from './aiSettingsTypes.js';
 //
 // Each entry pairs a schema with two functions:
 //   read  : (cfg) → primitive value
-//   write : (value) → DeepPartial patch for updateActivePreset
+//   write : (value) → DeepPartial patch for updateConfig
 //
 // Keep type/default/scope aligned with docs/archive/root-audits/SETTINGS_AUDIT.md §1.
 
@@ -224,7 +224,7 @@ export function registerAIProfileSettings(
       getValue: () => entry.read(unified.getEffectiveConfig()),
       setValue: async (value: unknown) => {
         const patch = entry.write(value);
-        await unified.updateActivePreset(patch);
+        await unified.updateConfig(patch);
       },
       onDidChange: emitter.event,
     };

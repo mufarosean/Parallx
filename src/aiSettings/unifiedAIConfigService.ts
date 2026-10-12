@@ -1,12 +1,12 @@
 // unifiedAIConfigService.ts — Unified AI Configuration Service
 //
 // Single source of truth for all AI configuration.
-// Replaces both AISettingsService and ParallxConfigService.
 //
 // Config resolution (lowest → highest priority):
-//   Built-in defaults → Active global preset → Workspace override
+//   Built-in defaults → Global AI settings → Workspace override
 //
-// Backwards-compatible: exposes getActiveProfile() for M15 consumers.
+// Backwards-compatible: exposes getActiveProfile() for consumers that read
+// the older profile shape.
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
@@ -16,7 +16,6 @@ import type { AISettingsProfile, DeepPartial, IAISettingsService } from './aiSet
 import type {
   IUnifiedAIConfig,
   IUnifiedAIConfigService,
-  IUnifiedPreset,
   IWorkspaceAIOverride,
 } from './unifiedConfigTypes.js';
 import {
@@ -27,8 +26,12 @@ import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
 // ─── Storage Keys ──────────────────────────────────────────────────────────
 
-const STORAGE_KEY_PRESETS = 'unified-ai.presets';
-const STORAGE_KEY_ACTIVE_ID = 'unified-ai.activePresetId';
+const STORAGE_KEY_CONFIG = 'unified-ai.config';
+// The settings used to live in a list of presets with one active. They are
+// read from there once, when the config key is still empty; the old keys
+// are left as they were.
+const STORAGE_KEY_OLD_PRESETS = 'unified-ai.presets';
+const STORAGE_KEY_OLD_ACTIVE_ID = 'unified-ai.activePresetId';
 
 // ─── Deep Merge ────────────────────────────────────────────────────────────
 
@@ -60,49 +63,15 @@ export function deepMerge<T extends Record<string, unknown>>(
   return result;
 }
 
-// ─── Built-in Presets ──────────────────────────────────────────────────────
-
-function makeBuiltInPresets(): IUnifiedPreset[] {
-
-  const defaultPreset: IUnifiedPreset = {
-    id: 'default',
-    presetName: 'Default',
-    isBuiltIn: true,
-    createdAt: 0,
-    updatedAt: 0,
-    config: { ...DEFAULT_UNIFIED_CONFIG },
-  };
-
-  const financePreset: IUnifiedPreset = {
-    id: 'finance-focus',
-    presetName: 'Finance Focus',
-    isBuiltIn: true,
-    createdAt: 0,
-    updatedAt: 0,
-    config: {
-      ...DEFAULT_UNIFIED_CONFIG,
-    },
-  };
-
-  const creativePreset: IUnifiedPreset = {
-    id: 'creative-mode',
-    presetName: 'Creative Mode',
-    isBuiltIn: true,
-    createdAt: 0,
-    updatedAt: 0,
-    config: {
-      ...DEFAULT_UNIFIED_CONFIG,
-      model: {
-        ...DEFAULT_UNIFIED_CONFIG.model,
-        temperature: 0.9,
-      },
-    },
-  };
-
-  return [defaultPreset, financePreset, creativePreset];
+/** Stored values over the current defaults, so fields added since are filled. */
+function withDefaults(stored: unknown): IUnifiedAIConfig {
+  const base = structuredClone(DEFAULT_UNIFIED_CONFIG);
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return base;
+  return deepMerge(
+    base as unknown as Record<string, unknown>,
+    stored as DeepPartial<Record<string, unknown>>,
+  ) as unknown as IUnifiedAIConfig;
 }
-
-const BUILT_IN_PRESETS = makeBuiltInPresets();
 
 // ─── Workspace Override File ───────────────────────────────────────────────
 
@@ -114,8 +83,7 @@ const LEGACY_CONFIG_PATH = '.parallx/config.json';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConfigService, IAISettingsService {
-  private _presets: IUnifiedPreset[] = [];
-  private _activePresetId: string = 'default';
+  private _config: IUnifiedAIConfig = structuredClone(DEFAULT_UNIFIED_CONFIG);
   private _workspaceOverride: IWorkspaceAIOverride | undefined;
   private _fs: IConfigFileSystem | undefined;
 
@@ -123,7 +91,7 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   /** Unified change event — fires effective IUnifiedAIConfig. */
   readonly onDidChangeConfig: Event<IUnifiedAIConfig>;
   /**
-   * Legacy change event — fires AISettingsProfile for M15 consumers.
+   * Legacy change event — fires AISettingsProfile.
    * Satisfies IAISettingsService.onDidChange.
    */
   readonly onDidChange: Event<AISettingsProfile>;
@@ -133,10 +101,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   /** Fires when workspace overrides are (re)loaded from disk (hydration). */
   private readonly _onDidLoadWorkspace: Emitter<void>;
   readonly onDidLoadWorkspaceConfig: Event<void>;
-
-  /** Fires when a built-in preset is cloned on write. */
-  private readonly _onDidCloneBuiltInEmitter: Emitter<{ originalName: string; cloneName: string }>;
-  readonly onDidCloneBuiltIn: Event<{ originalName: string; cloneName: string }>;
 
   constructor(
     private readonly _storage: IStorage,
@@ -148,21 +112,18 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
     this.onDidChange = this._onDidChangeLegacy.event;
     this._onDidLoadWorkspace = this._register(new Emitter<void>());
     this.onDidLoadWorkspaceConfig = this._onDidLoadWorkspace.event;
-    this._onDidCloneBuiltInEmitter = this._register(new Emitter<{ originalName: string; cloneName: string }>());
-    this.onDidCloneBuiltIn = this._onDidCloneBuiltInEmitter.event;
   }
 
   // ── Initialization ──
 
   /**
-   * Initialize: load presets from storage (migrating from legacy if needed),
-   * load workspace overrides, import legacy config.json if applicable.
-   * Must be called after construction.
+   * Initialize: load the global settings from storage, load workspace
+   * overrides, import legacy config.json if applicable. Must be called after
+   * construction.
    */
   async initialize(): Promise<void> {
-    await this._loadPresets();
+    await this._loadConfig();
     await this._loadWorkspaceOverride();
-    console.log(`[UnifiedAIConfigService] Loaded ${this._presets.length} presets, active: ${this._activePresetId}`);
   }
 
   /** Bind a filesystem accessor for reading workspace-level config files. */
@@ -187,182 +148,38 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   // ── Effective Config ──
 
   getEffectiveConfig(): IUnifiedAIConfig {
-    // Resolve the active preset: workspace pin overrides global active
-    const resolvedId = this._workspaceOverride?._presetId ?? this._activePresetId;
-    const preset = this._presets.find(p => p.id === resolvedId);
-    const baseConfig = preset?.config ?? DEFAULT_UNIFIED_CONFIG;
-
     if (!this._workspaceOverride?.overrides) {
-      return baseConfig;
+      return this._config;
     }
 
     return deepMerge(
-      baseConfig as unknown as Record<string, unknown>,
+      this._config as unknown as Record<string, unknown>,
       this._workspaceOverride.overrides as DeepPartial<Record<string, unknown>>,
     ) as unknown as IUnifiedAIConfig;
   }
 
-  // ── Preset Management ──
+  // ── Global Settings ──
 
-  getActivePreset(): IUnifiedPreset {
-    const resolvedId = this._workspaceOverride?._presetId ?? this._activePresetId;
-    const preset = this._presets.find(p => p.id === resolvedId);
-    return preset ?? this._presets[0] ?? { ...BUILT_IN_PRESETS[0] };
-  }
-
-  getPreset(id: string): IUnifiedPreset | undefined {
-    return this._presets.find(p => p.id === id);
-  }
-
-  getAllPresets(): IUnifiedPreset[] {
-    return [...this._presets];
-  }
-
-  async setActivePreset(id: string): Promise<void> {
-    const preset = this._presets.find(p => p.id === id);
-    if (!preset) {
-      throw new Error(`[UnifiedAIConfigService] Preset not found: ${id}`);
-    }
-    this._activePresetId = id;
-    await this._persist();
-    this._fireChange();
-  }
-
-  async updateActivePreset(patch: DeepPartial<IUnifiedAIConfig>): Promise<void> {
-    let preset = this.getActivePreset();
-
-    // Clone on write for built-in presets
-    if (preset.isBuiltIn) {
-      preset = await this._cloneBuiltIn(preset);
-    }
-
-    const updatedConfig = deepMerge(
-      preset.config as unknown as Record<string, unknown>,
+  async updateConfig(patch: DeepPartial<IUnifiedAIConfig>): Promise<void> {
+    this._config = deepMerge(
+      this._config as unknown as Record<string, unknown>,
       patch as DeepPartial<Record<string, unknown>>,
     ) as unknown as IUnifiedAIConfig;
-
-    const updatedPreset: IUnifiedPreset = {
-      ...preset,
-      updatedAt: Date.now(),
-      config: updatedConfig,
-    };
-
-    const idx = this._presets.findIndex(p => p.id === updatedPreset.id);
-    if (idx >= 0) {
-      this._presets[idx] = updatedPreset;
-    }
-
     await this._persist();
     this._fireChange();
-  }
-
-  async createPreset(name: string, baseId?: string): Promise<IUnifiedPreset> {
-    const base = baseId
-      ? this._presets.find(p => p.id === baseId)
-      : this.getActivePreset();
-    if (!base) {
-      throw new Error(`[UnifiedAIConfigService] Base preset not found: ${baseId}`);
-    }
-
-    const newPreset: IUnifiedPreset = {
-      id: this._generateId(),
-      presetName: name,
-      isBuiltIn: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      config: structuredClone(base.config),
-    };
-
-    this._presets.push(newPreset);
-    this._activePresetId = newPreset.id;
-    await this._persist();
-    this._fireChange();
-    return newPreset;
-  }
-
-  async deletePreset(id: string): Promise<void> {
-    const preset = this._presets.find(p => p.id === id);
-    if (!preset) {
-      throw new Error(`[UnifiedAIConfigService] Preset not found: ${id}`);
-    }
-    if (preset.isBuiltIn) {
-      throw new Error(`[UnifiedAIConfigService] Cannot delete built-in preset: ${preset.presetName}`);
-    }
-
-    this._presets = this._presets.filter(p => p.id !== id);
-    if (this._activePresetId === id) {
-      this._activePresetId = 'default';
-    }
-
-    await this._persist();
-    this._fireChange();
-  }
-
-  async renamePreset(id: string, newName: string): Promise<void> {
-    const preset = this._presets.find(p => p.id === id);
-    if (!preset) {
-      throw new Error(`[UnifiedAIConfigService] Preset not found: ${id}`);
-    }
-    if (preset.isBuiltIn) {
-      throw new Error(`[UnifiedAIConfigService] Cannot rename built-in preset: ${preset.presetName}`);
-    }
-
-    const updated: IUnifiedPreset = {
-      ...preset,
-      presetName: newName,
-      updatedAt: Date.now(),
-    };
-    const idx = this._presets.findIndex(p => p.id === id);
-    if (idx >= 0) {
-      this._presets[idx] = updated;
-    }
-
-    await this._persist();
-    if (this._activePresetId === id) {
-      this._fireChange();
-    }
   }
 
   async resetSection(section: keyof IUnifiedAIConfig): Promise<void> {
-    const preset = this.getActivePreset();
-    if (preset.isBuiltIn) return; // already at defaults
-
-    const defaultSection = DEFAULT_UNIFIED_CONFIG[section];
-    const updatedConfig = {
-      ...preset.config,
-      [section]: structuredClone(defaultSection),
+    this._config = {
+      ...this._config,
+      [section]: structuredClone(DEFAULT_UNIFIED_CONFIG[section]),
     };
-
-    const updatedPreset: IUnifiedPreset = {
-      ...preset,
-      updatedAt: Date.now(),
-      config: updatedConfig,
-    };
-
-    const idx = this._presets.findIndex(p => p.id === preset.id);
-    if (idx >= 0) {
-      this._presets[idx] = updatedPreset;
-    }
-
     await this._persist();
     this._fireChange();
   }
 
   async resetAll(): Promise<void> {
-    const preset = this.getActivePreset();
-    if (preset.isBuiltIn) return;
-
-    const updatedPreset: IUnifiedPreset = {
-      ...preset,
-      updatedAt: Date.now(),
-      config: structuredClone(DEFAULT_UNIFIED_CONFIG),
-    };
-
-    const idx = this._presets.findIndex(p => p.id === preset.id);
-    if (idx >= 0) {
-      this._presets[idx] = updatedPreset;
-    }
-
+    this._config = structuredClone(DEFAULT_UNIFIED_CONFIG);
     await this._persist();
     this._fireChange();
   }
@@ -380,10 +197,7 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
       patch as DeepPartial<Record<string, unknown>>,
     );
 
-    this._workspaceOverride = {
-      _presetId: this._workspaceOverride?._presetId,
-      overrides: merged as DeepPartial<IUnifiedAIConfig>,
-    };
+    this._workspaceOverride = { overrides: merged as DeepPartial<IUnifiedAIConfig> };
 
     await this._writeWorkspaceOverride();
     this._fireChange();
@@ -394,43 +208,15 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
 
     if (!path) {
       // Clear all overrides
-      this._workspaceOverride = this._workspaceOverride._presetId
-        ? { _presetId: this._workspaceOverride._presetId, overrides: {} }
-        : undefined;
+      this._workspaceOverride = undefined;
     } else {
       // Clear a specific path (dot-notation)
       const overrides = { ...(this._workspaceOverride.overrides as Record<string, unknown>) };
       const parts = path.split('.');
       _deleteNestedKey(overrides, parts);
-      this._workspaceOverride = {
-        _presetId: this._workspaceOverride._presetId,
-        overrides: overrides as DeepPartial<IUnifiedAIConfig>,
-      };
+      this._workspaceOverride = { overrides: overrides as DeepPartial<IUnifiedAIConfig> };
     }
 
-    await this._writeWorkspaceOverride();
-    this._fireChange();
-  }
-
-  async setWorkspacePreset(presetId: string): Promise<void> {
-    const preset = this._presets.find(p => p.id === presetId);
-    if (!preset) {
-      throw new Error(`[UnifiedAIConfigService] Preset not found: ${presetId}`);
-    }
-
-    this._workspaceOverride = {
-      _presetId: presetId,
-      overrides: this._workspaceOverride?.overrides ?? {},
-    };
-    await this._writeWorkspaceOverride();
-    this._fireChange();
-  }
-
-  async clearWorkspacePreset(): Promise<void> {
-    if (!this._workspaceOverride) return;
-    this._workspaceOverride = {
-      overrides: this._workspaceOverride.overrides,
-    };
     await this._writeWorkspaceOverride();
     this._fireChange();
   }
@@ -448,80 +234,36 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   // ── Legacy Compatibility (IAISettingsService) ──
 
   getActiveProfile(): AISettingsProfile {
-    return tolegacyProfile(this.getActivePreset());
-  }
-
-  getAllProfiles(): AISettingsProfile[] {
-    return this._presets.map(tolegacyProfile);
-  }
-
-  async setActiveProfile(id: string): Promise<void> {
-    return this.setActivePreset(id);
-  }
-
-  async updateActiveProfile(patch: DeepPartial<AISettingsProfile>): Promise<void> {
-    // Convert legacy profile patch to unified config patch
-    const configPatch: Record<string, unknown> = {};
-    if (patch.chat) {
-      configPatch.chat = patch.chat;
-    }
-    if (patch.model) {
-      const modelPatch: Record<string, unknown> = {};
-      if (patch.model.defaultModel !== undefined) {
-        modelPatch.chatModel = patch.model.defaultModel;
-      }
-      if (patch.model.temperature !== undefined) {
-        modelPatch.temperature = patch.model.temperature;
-      }
-      if (patch.model.maxTokens !== undefined) {
-        modelPatch.maxTokens = patch.model.maxTokens;
-      }
-      if (patch.model.contextWindow !== undefined) {
-        modelPatch.contextWindow = patch.model.contextWindow;
-      }
-      configPatch.model = modelPatch;
-    }
-    return this.updateActivePreset(configPatch as DeepPartial<IUnifiedAIConfig>);
-  }
-
-  async createProfile(name: string, baseId?: string): Promise<AISettingsProfile> {
-    const preset = await this.createPreset(name, baseId);
-    return tolegacyProfile(preset);
-  }
-
-  async deleteProfile(id: string): Promise<void> {
-    return this.deletePreset(id);
-  }
-
-  async renameProfile(id: string, newName: string): Promise<void> {
-    return this.renamePreset(id, newName);
+    return tolegacyProfile(this._config);
   }
 
   // ── Private: Storage ──
 
-  private async _loadPresets(): Promise<void> {
+  private async _loadConfig(): Promise<void> {
     try {
-      // Try loading new-format presets first
-      const presetsJson = await this._storage.get(STORAGE_KEY_PRESETS);
-      const activeId = await this._storage.get(STORAGE_KEY_ACTIVE_ID);
-
-      if (presetsJson) {
-        const parsed = JSON.parse(presetsJson);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this._presets = this._healthCheckPresets(parsed);
-          this._activePresetId = activeId ?? 'default';
-          return;
-        }
+      const json = await this._storage.get(STORAGE_KEY_CONFIG);
+      if (json) {
+        this._config = withDefaults(JSON.parse(json));
+        return;
       }
-
+      this._config = withDefaults(await this._readOldActivePreset());
     } catch (e) {
-      console.warn('[UnifiedAIConfigService] Failed to load presets, resetting to defaults:', e);
+      console.warn('[UnifiedAIConfigService] Failed to load AI settings, using defaults:', e);
+      this._config = structuredClone(DEFAULT_UNIFIED_CONFIG);
     }
-
-    // Seed with built-in presets
-    this._presets = BUILT_IN_PRESETS.map(p => structuredClone(p));
-    this._activePresetId = 'default';
     await this._persist();
+  }
+
+  /** The settings of the preset that was active, from before presets went. */
+  private async _readOldActivePreset(): Promise<unknown> {
+    const presetsJson = await this._storage.get(STORAGE_KEY_OLD_PRESETS);
+    if (!presetsJson) return undefined;
+    const presets: unknown = JSON.parse(presetsJson);
+    if (!Array.isArray(presets)) return undefined;
+    const activeId = (await this._storage.get(STORAGE_KEY_OLD_ACTIVE_ID)) || 'default';
+    const active = presets.find((p) => p && typeof p === 'object' && (p as { id?: unknown }).id === activeId)
+      ?? presets.find((p) => p && typeof p === 'object' && (p as { id?: unknown }).id === 'default');
+    return (active as { config?: unknown } | undefined)?.config;
   }
 
   private async _loadWorkspaceOverride(): Promise<void> {
@@ -534,7 +276,12 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
         const content = await this._fs.readFile(WORKSPACE_OVERRIDE_PATH);
         const json = _parseJsonWithComments(content);
         if (json && typeof json === 'object' && !Array.isArray(json)) {
-          this._workspaceOverride = json as IWorkspaceAIOverride;
+          // An older file may also name a preset to use (_presetId); only
+          // the overrides are read.
+          const overrides = (json as { overrides?: unknown }).overrides;
+          this._workspaceOverride = {
+            overrides: (overrides && typeof overrides === 'object' ? overrides : {}) as DeepPartial<IUnifiedAIConfig>,
+          };
           return;
         }
       }
@@ -576,18 +323,14 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   }
 
   private async _persist(): Promise<void> {
-    await this._storage.set(STORAGE_KEY_PRESETS, JSON.stringify(this._presets));
-    await this._storage.set(STORAGE_KEY_ACTIVE_ID, this._activePresetId);
+    await this._storage.set(STORAGE_KEY_CONFIG, JSON.stringify(this._config));
   }
 
   private async _writeWorkspaceOverride(): Promise<void> {
     if (!this._fs?.writeFile) return; // No write capability — skip silently
 
     try {
-      if (!this._workspaceOverride || (
-        !this._workspaceOverride._presetId &&
-        Object.keys(this._workspaceOverride.overrides).length === 0
-      )) {
+      if (!this._workspaceOverride || Object.keys(this._workspaceOverride.overrides).length === 0) {
         // Nothing to persist — could optionally delete the file, but leave it.
         return;
       }
@@ -600,73 +343,8 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   }
 
   private _fireChange(): void {
-    const effective = this.getEffectiveConfig();
-    this._onDidChangeUnified.fire(effective);
-    this._onDidChangeLegacy.fire(tolegacyProfile(this.getActivePreset()));
-  }
-
-  // ── Private: Health Check & Migration ──
-
-  private _healthCheckPresets(raw: unknown[]): IUnifiedPreset[] {
-    const result: IUnifiedPreset[] = [];
-    const builtInIds = new Set(BUILT_IN_PRESETS.map(p => p.id));
-
-    // Ensure all built-in presets exist
-    for (const builtIn of BUILT_IN_PRESETS) {
-      const existing = raw.find(
-        (p: any) => typeof p === 'object' && p !== null && p.id === builtIn.id,
-      );
-      if (existing && typeof existing === 'object') {
-        // Merge stored values over current built-in defaults to fill new fields
-        result.push(
-          _mergePreset(builtIn, existing as Partial<IUnifiedPreset>),
-        );
-      } else {
-        result.push(structuredClone(builtIn));
-      }
-    }
-
-    // Add custom presets
-    for (const item of raw) {
-      if (
-        typeof item === 'object' &&
-        item !== null &&
-        'id' in item &&
-        typeof (item as any).id === 'string' &&
-        !builtInIds.has((item as any).id)
-      ) {
-        const merged = _mergePreset(
-          { ...BUILT_IN_PRESETS[0], isBuiltIn: false },
-          item as Partial<IUnifiedPreset>,
-        );
-        const filled: IUnifiedPreset = { ...merged, isBuiltIn: false };
-        result.push(filled);
-      }
-    }
-
-    return result;
-  }
-
-  private async _cloneBuiltIn(preset: IUnifiedPreset): Promise<IUnifiedPreset> {
-    const clone: IUnifiedPreset = {
-      id: this._generateId(),
-      presetName: `${preset.presetName} (Modified)`,
-      isBuiltIn: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      config: structuredClone(preset.config),
-    };
-    this._presets.push(clone);
-    this._activePresetId = clone.id;
-    this._onDidCloneBuiltInEmitter.fire({
-      originalName: preset.presetName,
-      cloneName: clone.presetName,
-    });
-    return clone;
-  }
-
-  private _generateId(): string {
-    return `preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this._onDidChangeUnified.fire(this.getEffectiveConfig());
+    this._onDidChangeLegacy.fire(this.getActiveProfile());
   }
 }
 
@@ -716,28 +394,6 @@ function _collectPaths(obj: Record<string, unknown>, prefix = ''): string[] {
     }
   }
   return paths;
-}
-
-/** Merge a stored preset over a built-in one, filling missing fields. */
-function _mergePreset(
-  builtIn: IUnifiedPreset,
-  stored: Partial<IUnifiedPreset>,
-): IUnifiedPreset {
-  const config = stored.config
-    ? deepMerge(
-        structuredClone(builtIn.config) as unknown as Record<string, unknown>,
-        stored.config as unknown as DeepPartial<Record<string, unknown>>,
-      ) as unknown as IUnifiedAIConfig
-    : structuredClone(builtIn.config);
-
-  return {
-    id: stored.id ?? builtIn.id,
-    presetName: stored.presetName ?? builtIn.presetName,
-    isBuiltIn: builtIn.isBuiltIn,
-    createdAt: stored.createdAt ?? builtIn.createdAt,
-    updatedAt: stored.updatedAt ?? builtIn.updatedAt,
-    config,
-  };
 }
 
 /** Strip // and /* comments before parsing (jsonc → json). */

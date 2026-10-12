@@ -80,8 +80,8 @@ export function createSettingRow(options: ISettingRowOptions): {
     scopeBadge.textContent = isWs ? 'Workspace ↩' : 'Global';
     scopeBadge.classList.toggle('ai-settings-row__scope--workspace', isWs);
     scopeBadge.title = isWs
-      ? `This field is overridden for this workspace. Click to reset to global preset value.`
-      : 'Using the global preset value';
+      ? `This field is overridden for this workspace. Click to reset to the global value.`
+      : 'Using the global value';
     if (isWs) {
       scopeBadge.style.cursor = 'pointer';
       scopeBadge.addEventListener('click', (e) => {

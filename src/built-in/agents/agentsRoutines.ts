@@ -105,7 +105,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
     }).catch(() => undefined);
   } else {
     statusCard(top, 'off', 'Heartbeat', 'Off. It can look over your workspace now and then and suggest things.', {
-      label: 'Turn On', run: () => { void svc.config?.updateActivePreset({ heartbeat: { enabled: true } }); },
+      label: 'Turn On', run: () => { void svc.config?.updateConfig({ heartbeat: { enabled: true } }); },
     });
   }
   const cronOn = svc.flags?.isEnabled(FLAG_CRON_ENABLED) ?? false;

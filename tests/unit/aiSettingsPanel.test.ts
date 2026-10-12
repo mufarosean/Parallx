@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
-import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from './fixtures/aiSettingsDefaults';
+import { DEFAULT_PROFILE } from './fixtures/aiSettingsDefaults';
 import { Emitter } from '../../src/platform/events';
 import { createSettingRow } from '../../src/aiSettings/ui/sectionBase';
 import { AISettingsPanel } from '../../src/aiSettings/ui/aiSettingsPanel';
@@ -31,25 +31,12 @@ function createMockService(overrides?: Partial<AISettingsProfile>) {
     model: { ...DEFAULT_PROFILE.model, ...overrides?.model },
   };
 
-  const profiles: AISettingsProfile[] = structuredClone(BUILT_IN_PRESETS) as AISettingsProfile[];
   const onDidChangeEmitter = new Emitter<AISettingsProfile>();
 
   return {
     getActiveProfile: vi.fn(() => structuredClone(profile)),
-    getAllProfiles: vi.fn(() => [...profiles]),
-    setActiveProfile: vi.fn(async () => {}),
-    updateActiveProfile: vi.fn(async () => {}),
-    createProfile: vi.fn(async (name: string) => ({
-      ...structuredClone(DEFAULT_PROFILE),
-      id: `custom-${Date.now()}`,
-      presetName: name,
-      isBuiltIn: false,
-    })),
-    deleteProfile: vi.fn(async () => {}),
-    renameProfile: vi.fn(async () => {}),
     resetSection: vi.fn(async () => {}),
     resetAll: vi.fn(async () => {}),
-    runPreviewTest: vi.fn(async (msg: string) => `Echo: ${msg}`),
     onDidChange: onDidChangeEmitter.event,
     dispose: vi.fn(),
     _fireChange: (p?: AISettingsProfile) => onDidChangeEmitter.fire(p ?? profile),

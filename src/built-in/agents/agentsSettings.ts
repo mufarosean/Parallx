@@ -143,7 +143,7 @@ export function registerAgentsSettings(
       emitters.set(row.key, em);
       registry.bind(row.key, {
         getValue: () => row.read(unified.getEffectiveConfig()),
-        setValue: async (v: unknown) => { await unified.updateActivePreset(row.write(v) as never); },
+        setValue: async (v: unknown) => { await unified.updateConfig(row.write(v) as never); },
         onDidChange: em.event,
       });
     }

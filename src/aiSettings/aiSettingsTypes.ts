@@ -36,46 +36,20 @@ export interface AIModelSettings {
 }
 
 export interface AISettingsProfile {
-  /** Unique ID — used as the preset key */
-  id: string;
-  /** Human-readable name shown in the Preset Switcher */
-  presetName: string;
-  /** Whether this is a built-in read-only preset */
-  isBuiltIn: boolean;
   chat: AIChatSettings;
   model: AIModelSettings;
-  createdAt: number;
-  updatedAt: number;
 }
 
 // ─── Service Interface ─────────────────────────────────────────────────────
 
 export interface IAISettingsService extends IDisposable {
-  /** Get the currently active profile (effective = global merged with workspace override) */
+  /** The global AI settings in the profile shape (workspace overrides not applied) */
   getActiveProfile(): AISettingsProfile;
 
-  /** List all saved profiles */
-  getAllProfiles(): AISettingsProfile[];
-
-  /** Switch the active profile — fires onDidChange */
-  setActiveProfile(id: string): Promise<void>;
-
-  /** Update fields on the currently active profile and save */
-  updateActiveProfile(patch: DeepPartial<AISettingsProfile>): Promise<void>;
-
-  /** Create a new profile (cloned from active, or from base if baseId provided) */
-  createProfile(name: string, baseId?: string): Promise<AISettingsProfile>;
-
-  /** Delete a profile (cannot delete built-in presets) */
-  deleteProfile(id: string): Promise<void>;
-
-  /** Rename a profile */
-  renameProfile(id: string, newName: string): Promise<void>;
-
-  /** Reset a specific section of the active profile to factory defaults */
+  /** Reset a specific section of the global settings to factory defaults */
   resetSection(section: 'chat' | 'model'): Promise<void>;
 
-  /** Reset the entire active profile to factory defaults */
+  /** Reset all global settings to factory defaults */
   resetAll(): Promise<void>;
 
   /** Subscribe to settings changes. Uses Emitter<T>/Event<T> pattern. */

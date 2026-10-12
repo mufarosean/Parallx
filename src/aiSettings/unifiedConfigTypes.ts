@@ -278,8 +278,8 @@ export interface IUnifiedHeartbeatConfig {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Complete unified AI configuration — the merged result of global preset
- * + workspace overrides. This is what consumers read at runtime.
+ * Complete unified AI configuration — the merged result of the global
+ * settings + workspace overrides. This is what consumers read at runtime.
  */
 export interface IUnifiedAIConfig {
   readonly chat: IUnifiedChatConfig;
@@ -295,39 +295,14 @@ export interface IUnifiedAIConfig {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Preset Metadata
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * A named preset wrapping a full IUnifiedAIConfig with metadata.
- * Replaces AISettingsProfile as the primary preset type.
- */
-export interface IUnifiedPreset {
-  /** Unique preset ID */
-  readonly id: string;
-  /** Human-readable name shown in the switcher */
-  readonly presetName: string;
-  /** Whether this is a built-in read-only preset */
-  readonly isBuiltIn: boolean;
-  /** ISO timestamp of creation */
-  readonly createdAt: number;
-  /** ISO timestamp of last modification */
-  readonly updatedAt: number;
-  /** The full config values for this preset */
-  readonly config: IUnifiedAIConfig;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Workspace Override
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Sparse patch stored per-workspace in `.parallx/ai-config.json`.
- * Only fields present here override the global active preset.
+ * Only fields present here override the global settings.
  */
 export interface IWorkspaceAIOverride {
-  /** Optional: pin a specific global preset for this workspace */
-  readonly _presetId?: string;
   /** Sparse partial config — only overridden fields */
   readonly overrides: DeepPartial<IUnifiedAIConfig>;
 }
@@ -341,49 +316,28 @@ export interface IWorkspaceAIOverride {
  *
  * Replaces both AISettingsService and ParallxConfigService
  * with a single source of truth. Provides:
- *   - Global preset management (create, delete, rename, switch)
+ *   - The global AI settings
  *   - Workspace override layer (sparse patch per-workspace)
- *   - Merged effective config (preset + workspace override)
+ *   - Merged effective config (global settings + workspace override)
  *   - Change events for all consumers
  *
- * Config resolution: built-in defaults → active preset → workspace override
+ * Config resolution: built-in defaults → global settings → workspace override
  */
 export interface IUnifiedAIConfigService extends IDisposable {
   // ── Effective Config ──
 
-  /** Get the fully merged config (active preset + workspace overrides). */
+  /** Get the fully merged config (global settings + workspace overrides). */
   getEffectiveConfig(): IUnifiedAIConfig;
 
-  // ── Preset Management ──
+  // ── Global Settings ──
 
-  /** Get the active preset (un-merged, global-level). */
-  getActivePreset(): IUnifiedPreset;
-
-  /** Get a preset by ID. */
-  getPreset(id: string): IUnifiedPreset | undefined;
-
-  /** List all saved presets. */
-  getAllPresets(): IUnifiedPreset[];
-
-  /** Switch the active global preset. */
-  setActivePreset(id: string): Promise<void>;
-
-  /** Update the active preset's config. Clones if built-in. */
-  updateActivePreset(patch: DeepPartial<IUnifiedAIConfig>): Promise<void>;
-
-  /** Create a new preset (cloned from baseId or active). */
-  createPreset(name: string, baseId?: string): Promise<IUnifiedPreset>;
-
-  /** Delete a preset (cannot delete built-in). */
-  deletePreset(id: string): Promise<void>;
-
-  /** Rename a preset. */
-  renamePreset(id: string, newName: string): Promise<void>;
+  /** Update the global AI settings with a sparse patch. */
+  updateConfig(patch: DeepPartial<IUnifiedAIConfig>): Promise<void>;
 
   /** Reset a section to factory defaults. */
   resetSection(section: keyof IUnifiedAIConfig): Promise<void>;
 
-  /** Reset entire active preset to factory defaults. */
+  /** Reset all global AI settings to factory defaults. */
   resetAll(): Promise<void>;
 
   // ── Workspace Override ──
@@ -396,12 +350,6 @@ export interface IUnifiedAIConfigService extends IDisposable {
 
   /** Clear one field or all workspace overrides. */
   clearWorkspaceOverride(path?: string): Promise<void>;
-
-  /** Pin a specific preset for this workspace. */
-  setWorkspacePreset(presetId: string): Promise<void>;
-
-  /** Clear workspace preset pinning (fall back to global active). */
-  clearWorkspacePreset(): Promise<void>;
 
   /** Check if a specific config path is overridden at workspace level. */
   isOverridden(path: string): boolean;
@@ -428,7 +376,7 @@ export interface IUnifiedAIConfigService extends IDisposable {
 
   // ── Events ──
 
-  /** Fires whenever the effective config changes (preset switch, override, field edit). */
+  /** Fires whenever the effective config changes (a field edit or a workspace override). */
   readonly onDidChangeConfig: Event<IUnifiedAIConfig>;
 
   /**
@@ -438,9 +386,6 @@ export interface IUnifiedAIConfigService extends IDisposable {
    * loaded on startup for a fresh save.
    */
   readonly onDidLoadWorkspaceConfig: Event<void>;
-
-  /** Fires when a built-in preset is cloned on write (D.3). */
-  readonly onDidCloneBuiltIn: Event<{ originalName: string; cloneName: string }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -590,22 +535,17 @@ export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUn
 }
 
 /**
- * Convert a unified preset back to a legacy AISettingsProfile.
+ * Convert a unified config to a legacy AISettingsProfile.
  * Used by the compatibility facade for consumers not yet migrated.
  */
-export function tolegacyProfile(preset: IUnifiedPreset): AISettingsProfile {
+export function tolegacyProfile(config: IUnifiedAIConfig): AISettingsProfile {
   return {
-    id: preset.id,
-    presetName: preset.presetName,
-    isBuiltIn: preset.isBuiltIn,
-    createdAt: preset.createdAt,
-    updatedAt: preset.updatedAt,
-    chat: { ...preset.config.chat },
+    chat: { ...config.chat },
     model: {
-      defaultModel: preset.config.model.chatModel,
-      temperature: preset.config.model.temperature,
-      maxTokens: preset.config.model.maxTokens,
-      contextWindow: preset.config.model.contextWindow,
+      defaultModel: config.model.chatModel,
+      temperature: config.model.temperature,
+      maxTokens: config.model.maxTokens,
+      contextWindow: config.model.contextWindow,
     },
   };
 }

@@ -372,6 +372,6 @@ export class ToolsSection extends SettingsSection {
     if (!this._unifiedService) return;
     const current = this._unifiedService.getEffectiveConfig().tools?.enabledOverrides ?? {};
     const updated = { ...current, [toolName]: enabled };
-    this._unifiedService.updateActivePreset({ tools: { enabledOverrides: updated } });
+    this._unifiedService.updateConfig({ tools: { enabledOverrides: updated } });
   }
 }
