@@ -6,18 +6,18 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { escapeHtml } from '../../ui/format.js';
 import type { PlannerDataService } from './plannerDataService.js';
-import type { PlannerCalendar, PlannerEvent, PlannerTask, UpdateEventInput } from './plannerTypes.js';
+import type { PlannerCalendar, PlannerEvent, PlannerTask } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import { googleSync } from './sync/googleClient.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
-import { packLanes } from './plannerLayout.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, atTime, sameDay, formatHour, formatTimeShort, formatTimeRange } from './plannerDates.js';
-import { PANE_COMPACT_MAX, PLANNER_ICON_SVG, TASK_DOT_SVG, TASK_DONE_SVG, SYNC_SVG, el, type PlannerEditorInput, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
+import { PANE_COMPACT_MAX, PLANNER_ICON_SVG, SYNC_SVG, el, type PlannerEditorInput, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
+import { PlannerEventBars } from './plannerEventBars.js';
 import { PlannerCalendarsMenu } from './plannerCalendarsMenu.js';
 import { PlannerTaskList } from './plannerTaskList.js';
 import { PlannerTaskPopover } from './plannerTaskPopover.js';
@@ -63,6 +63,7 @@ export class PlannerEditorPane implements IDisposable {
   readonly taskPopover = new PlannerTaskPopover(this);
   readonly taskList = new PlannerTaskList(this);
   readonly calendarsMenu = new PlannerCalendarsMenu(this);
+  readonly eventBars = new PlannerEventBars(this);
   constructor(
     private readonly _container: HTMLElement,
     private readonly _input: PlannerEditorInput | undefined,
@@ -683,78 +684,6 @@ export class PlannerEditorPane implements IDisposable {
     return tasks.filter(t => t.dueAt != null && isVisible(t.calendarId));
   }
 
-  /** Month-cell chip for a task — colour-coded, check glyph, opens the task popover. */
-  private _renderCalTaskChip(task: PlannerTask, color: string): HTMLElement {
-    const chip = el('button', 'planner-month__chip planner-month__chip--task');
-    chip.type = 'button';
-    chip.style.setProperty('--cal-color', color);
-    if (task.status === 'done') chip.classList.add('planner-month__chip--done');
-    const icon = el('span', 'planner-month__chipcheck');
-    icon.innerHTML = task.status === 'done' ? TASK_DONE_SVG : TASK_DOT_SVG;
-    chip.appendChild(icon);
-    const label = el('span', 'planner-month__chiptext');
-    label.textContent = task.title;
-    chip.appendChild(label);
-    chip.title = task.dueAt ? `${task.title}\nDue ${formatTimeShort(task.dueAt)}` : task.title;
-    chip.addEventListener('click', (e) => { e.stopPropagation(); this.taskPopover.openTaskPopover({ mode: 'edit', task }, chip.getBoundingClientRect()); });
-    return chip;
-  }
-
-  /** Thin time-column pill for a dated task in week / day views. */
-  private _renderCalTaskPill(task: PlannerTask, color: string, variant: 'week' | 'day', dayStart: number): HTMLElement {
-    const topPct = ((task.dueAt! - dayStart) / (24 * 3_600_000)) * 100;
-    const pill = el('button', `planner-${variant}__task`);
-    pill.type = 'button';
-    pill.style.top = `${topPct}%`;
-    pill.style.setProperty('--cal-color', color);
-    if (task.status === 'done') pill.classList.add(`planner-${variant}__task--done`);
-    pill.title = `${task.title}\nDue ${formatTimeShort(task.dueAt!)}`;
-    pill.innerHTML = `<span class="planner-${variant}__task-check">${task.status === 'done' ? TASK_DONE_SVG : TASK_DOT_SVG}</span><span class="planner-${variant}__task-title">${escapeHtml(task.title)}</span>`;
-    pill.addEventListener('click', (e) => { e.stopPropagation(); this.taskPopover.openTaskPopover({ mode: 'edit', task }, pill.getBoundingClientRect()); });
-    return pill;
-  }
-
-  /** Absolutely-positioned event bar for week / day columns. */
-  private _buildEventBar(
-    ev: PlannerEvent,
-    variant: 'week' | 'day',
-    dayStart: number,
-    dayEnd: number,
-    colorOf: (calendarId: string | null, override: string | null) => string,
-  ): HTMLElement {
-    const DAY_MS = 24 * 3_600_000;
-    const evStart = Math.max(ev.startAt, dayStart);
-    const evEnd = Math.min(ev.endAt, dayEnd);
-    const topPct = ((evStart - dayStart) / DAY_MS) * 100;
-    const heightPct = Math.max(variant === 'day' ? 3 : 2, ((evEnd - evStart) / DAY_MS) * 100);
-    const bar = el('button', `planner-${variant}__event`);
-    bar.type = 'button';
-    // Inset 1px top + bottom so back-to-back events (one ends as the next begins)
-    // show a hairline gap instead of reading as a single fused block.
-    bar.style.top = `calc(${topPct}% + 1px)`;
-    bar.style.height = `calc(${heightPct}% - 2px)`;
-    bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
-    // Past events (already ended) render faded — the only special-case styling
-    // on an event, matching Google Calendar.
-    if (ev.endAt < Date.now()) bar.classList.add(`planner-${variant}__event--past`);
-    // Under ~45 minutes the block has room for the title only.
-    if (evEnd - evStart < 45 * 60_000) bar.classList.add(`planner-${variant}__event--short`);
-    bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
-    bar.innerHTML = variant === 'day'
-      ? `
-        <span class="planner-day__event-time">${escapeHtml(formatTimeRange(ev))}</span>
-        <strong class="planner-day__event-title">${escapeHtml(ev.title)}</strong>
-        ${ev.location ? `<span class="planner-day__event-loc">${escapeHtml(ev.location)}</span>` : ''}
-      `
-      : `<strong>${escapeHtml(ev.title)}</strong><span>${escapeHtml(formatTimeRange(ev))}</span>`;
-    // Direct manipulation: drag the body to move (and, in week view, change
-    // day), drag the top / bottom edge to resize. A bare click (no drag) opens
-    // the editor. Series occurrences drag too — the commit prompts the
-    // this/following/all scope (_commitEventMove).
-    this._installEventInteractions(bar, ev, variant);
-    return bar;
-  }
-
   /**
    * Commit a drag-move/resize. Non-series events update directly; a series
    * occurrence prompts the this/following/all scope and routes accordingly.
@@ -766,226 +695,6 @@ export class PlannerEditorPane implements IDisposable {
       this._api.activity?.note({ actor: 'user', source: 'planner', verb, object, detail, ref: taskId ? `task:${taskId}` : undefined });
     } catch { /* narration never breaks the gesture */ }
   }
-
-  private async _commitEventMove(ev: PlannerEvent, patch: UpdateEventInput, anchor: DOMRect): Promise<void> {
-    this._note('moved', `event "${ev.title}"`, undefined, undefined);
-    if (ev.seriesId) {
-      const scope = await this.eventPopover.askSeriesScope('edit', anchor);
-      if (!scope) { void this._renderTab(); return; }
-      await this._data.applySeriesEdit(ev.id, patch, scope);
-    } else {
-      await this._data.updateEvent(ev.id, patch);
-    }
-  }
-
-  /**
-   * Month-view drag: drop an event chip on another day cell to move it by whole
-   * days (time-of-day preserved). A sub-threshold press opens the editor instead.
-   */
-  private _installMonthChipDrag(chip: HTMLElement, ev: PlannerEvent, sourceDayStart: number): void {
-    const THRESHOLD_PX = 4;
-    chip.classList.add('planner-month__chip--draggable');
-    // Swallow the click so a chip press never drills the cell into day view.
-    chip.addEventListener('click', (e) => e.stopPropagation());
-
-    chip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const startX = e.clientX;
-      const startY = e.clientY;
-      let dragging = false;
-      let targetDayStart = sourceDayStart;
-
-      const clearDrop = (): void => {
-        for (const c of Array.from(document.querySelectorAll('.planner-month__cell--drop'))) {
-          c.classList.remove('planner-month__cell--drop');
-        }
-      };
-      const onMove = (pe: PointerEvent): void => {
-        if (!dragging) {
-          if (Math.abs(pe.clientX - startX) > THRESHOLD_PX || Math.abs(pe.clientY - startY) > THRESHOLD_PX) dragging = true;
-          else return;
-        }
-        chip.classList.add('planner-evt--dragging');
-        clearDrop();
-        const under = document.elementFromPoint(pe.clientX, pe.clientY) as HTMLElement | null;
-        const cell = under?.closest('.planner-month__cell') as HTMLElement | null;
-        if (cell?.dataset.dayStart) {
-          targetDayStart = Number(cell.dataset.dayStart);
-          cell.classList.add('planner-month__cell--drop');
-        }
-      };
-      const onUp = (pe: PointerEvent): void => {
-        chip.removeEventListener('pointermove', onMove);
-        chip.removeEventListener('pointerup', onUp);
-        chip.removeEventListener('pointercancel', onUp);
-        try { chip.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
-        chip.classList.remove('planner-evt--dragging');
-        clearDrop();
-        if (!dragging) {
-          this.eventPopover.openEventPopover({ mode: 'edit', event: ev }, chip.getBoundingClientRect());
-          return;
-        }
-        const dayDelta = targetDayStart - sourceDayStart;
-        if (dayDelta !== 0) {
-          void this._commitEventMove(ev, { startAt: ev.startAt + dayDelta, endAt: ev.endAt + dayDelta }, chip.getBoundingClientRect());
-        }
-      };
-
-      try { chip.setPointerCapture(e.pointerId); } catch { /* ok */ }
-      chip.addEventListener('pointermove', onMove);
-      chip.addEventListener('pointerup', onUp);
-      chip.addEventListener('pointercancel', onUp);
-    });
-  }
-
-  private _installEventInteractions(bar: HTMLElement, ev: PlannerEvent, variant: 'week' | 'day'): void {
-    const SNAP_MS = 15 * 60_000;
-    const DAY_MS = 24 * 3_600_000;
-    const MIN_MS = 15 * 60_000;
-    const THRESHOLD_PX = 4;
-
-    const topHandle = el('div', 'planner-evt-handle planner-evt-handle--top');
-    const botHandle = el('div', 'planner-evt-handle planner-evt-handle--bottom');
-    bar.appendChild(topHandle);
-    bar.appendChild(botHandle);
-
-    bar.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const target = e.target as HTMLElement;
-      const mode: 'move' | 'resize-start' | 'resize-end' =
-        target === topHandle ? 'resize-start' : target === botHandle ? 'resize-end' : 'move';
-
-      const originCol = bar.parentElement as HTMLElement | null;
-      if (!originCol) return;
-      const colRect = originCol.getBoundingClientRect();
-      const pxPerMs = colRect.height / DAY_MS;
-      const duration = ev.endAt - ev.startAt;
-      const originDayStart = Number(originCol.dataset.dayStart) || startOfDay(new Date(ev.startAt)).getTime();
-
-      // Week view can move across day columns; collect them once.
-      const body = variant === 'week' ? bar.closest('.planner-week__body') as HTMLElement | null : null;
-      const cols = body ? (Array.from(body.querySelectorAll('.planner-week__col')) as HTMLElement[]) : [originCol];
-
-      const startClientX = e.clientX;
-      const startClientY = e.clientY;
-      let dragging = false;
-      let targetCol = originCol;
-      let curStart = ev.startAt;
-      let curEnd = ev.endAt;
-
-      const snap = (ms: number) => Math.round(ms / SNAP_MS) * SNAP_MS;
-
-      const apply = (pe: PointerEvent) => {
-        const deltaMs = (pe.clientY - startClientY) / pxPerMs;
-        if (mode === 'move') {
-          let dayDeltaMs = 0;
-          if (variant === 'week' && cols.length > 1) {
-            const hit = cols.find(c => {
-              const r = c.getBoundingClientRect();
-              return pe.clientX >= r.left && pe.clientX <= r.right;
-            });
-            if (hit && hit.dataset.dayStart) {
-              dayDeltaMs = Number(hit.dataset.dayStart) - originDayStart;
-              targetCol = hit;
-            }
-          }
-          curStart = snap(ev.startAt + deltaMs + dayDeltaMs);
-          curEnd = curStart + duration;
-        } else if (mode === 'resize-start') {
-          curStart = Math.min(ev.endAt - MIN_MS, snap(ev.startAt + deltaMs));
-          curEnd = ev.endAt;
-        } else {
-          curEnd = Math.max(ev.startAt + MIN_MS, snap(ev.endAt + deltaMs));
-          curStart = ev.startAt;
-        }
-
-        const tcStart = Number(targetCol.dataset.dayStart) || originDayStart;
-        if (targetCol !== bar.parentElement) targetCol.appendChild(bar);
-        bar.style.top = `${((curStart - tcStart) / DAY_MS) * 100}%`;
-        bar.style.height = `${((curEnd - curStart) / DAY_MS) * 100}%`;
-        bar.classList.add('planner-evt--dragging');
-        bar.title = `${formatTimeShort(curStart)} – ${formatTimeShort(curEnd)}`;
-      };
-
-      const onMove = (pe: PointerEvent) => {
-        if (!dragging) {
-          if (Math.abs(pe.clientX - startClientX) > THRESHOLD_PX || Math.abs(pe.clientY - startClientY) > THRESHOLD_PX) {
-            dragging = true;
-          } else return;
-        }
-        apply(pe);
-      };
-      const onUp = (pe: PointerEvent) => {
-        bar.removeEventListener('pointermove', onMove);
-        bar.removeEventListener('pointerup', onUp);
-        bar.removeEventListener('pointercancel', onUp);
-        try { bar.releasePointerCapture(pe.pointerId); } catch { /* ok */ }
-        bar.classList.remove('planner-evt--dragging');
-        if (!dragging) {
-          this.eventPopover.openEventPopover({ mode: 'edit', event: ev }, bar.getBoundingClientRect());
-          return;
-        }
-        if (curStart !== ev.startAt || curEnd !== ev.endAt) {
-          void this._commitEventMove(ev, { startAt: curStart, endAt: curEnd }, bar.getBoundingClientRect());
-        }
-      };
-
-      try { bar.setPointerCapture(e.pointerId); } catch { /* ok */ }
-      bar.addEventListener('pointermove', onMove);
-      bar.addEventListener('pointerup', onUp);
-      bar.addEventListener('pointercancel', onUp);
-    });
-  }
-
-  /**
-   * Lay out a day's events + dated tasks into the time column. Items that
-   * overlap in time are packed into side-by-side lanes (Google-style) so
-   * nothing renders on top of anything else; a task is treated as a short
-   * nominal block for collision purposes while keeping its thin pill shape.
-   */
-  private _layoutTimedItems(
-    container: HTMLElement,
-    variant: 'week' | 'day',
-    dayStart: number,
-    dayEnd: number,
-    events: readonly PlannerEvent[],
-    tasks: readonly PlannerTask[],
-    colorOf: (calendarId: string | null, override: string | null) => string,
-  ): void {
-    const TASK_NOMINAL_MS = 30 * 60_000;
-    type Entry =
-      | { kind: 'event'; ev: PlannerEvent; startMs: number; endMs: number }
-      | { kind: 'task'; task: PlannerTask; startMs: number; endMs: number };
-
-    const entries: Entry[] = [];
-    for (const ev of events) {
-      if (!(ev.startAt <= dayEnd && ev.endAt >= dayStart)) continue;
-      entries.push({ kind: 'event', ev, startMs: Math.max(ev.startAt, dayStart), endMs: Math.min(ev.endAt, dayEnd) });
-    }
-    for (const t of tasks) {
-      if (t.dueAt == null || !(t.dueAt >= dayStart && t.dueAt <= dayEnd)) continue;
-      entries.push({ kind: 'task', task: t, startMs: t.dueAt, endMs: Math.min(dayEnd, t.dueAt + TASK_NOMINAL_MS) });
-    }
-
-    for (const { item, lane, laneCount } of packLanes(entries)) {
-      const node = item.kind === 'event'
-        ? this._buildEventBar(item.ev, variant, dayStart, dayEnd, colorOf)
-        : this._renderCalTaskPill(item.task, colorOf(item.task.calendarId, item.task.color), variant, dayStart);
-      if (laneCount > 1) {
-        // Split the column; 2px inset on each side keeps a hairline gutter.
-        node.style.left = `calc(${(lane / laneCount) * 100}% + 2px)`;
-        node.style.width = `calc(${100 / laneCount}% - 4px)`;
-        node.style.right = 'auto';
-      }
-      container.appendChild(node);
-    }
-  }
-
-  // ── All-day band (Outlook-style) ────────────────────────────────────
 
   /**
    * An event belongs in the all-day band when it's flagged all-day or when
@@ -1186,7 +895,7 @@ export class PlannerEditorPane implements IDisposable {
           return;
         }
         if (curStart !== ev.startAt || curEnd !== ev.endAt) {
-          void this._commitEventMove(ev, { startAt: curStart, endAt: curEnd, allDay: true }, bar.getBoundingClientRect());
+          void this.eventBars.commitEventMove(ev, { startAt: curStart, endAt: curEnd, allDay: true }, bar.getBoundingClientRect());
         }
       };
       try { bar.setPointerCapture(e.pointerId); } catch { /* ok */ }
@@ -1330,13 +1039,13 @@ export class PlannerEditorPane implements IDisposable {
         chip.appendChild(label);
         chip.title = `${ev.title}\n${formatTimeRange(ev)}`;
         // Series occurrences drag too — the commit prompts this/following/all.
-        this._installMonthChipDrag(chip, ev, dayStart);
+        this.eventBars.installMonthChipDrag(chip, ev, dayStart);
         evWrap.appendChild(chip);
         shown++;
       }
       for (const t of dayTasks) {
         if (shown >= MAX_SHOWN) break;
-        evWrap.appendChild(this._renderCalTaskChip(t, colorOf(t.calendarId, t.color)));
+        evWrap.appendChild(this.eventBars.renderCalTaskChip(t, colorOf(t.calendarId, t.color)));
         shown++;
       }
       if (total > MAX_SHOWN) {
@@ -1440,7 +1149,7 @@ export class PlannerEditorPane implements IDisposable {
       }
 
       // Events + dated tasks, packed into side-by-side lanes where they overlap.
-      this._layoutTimedItems(dayCol, 'week', dayStart, dayEnd, events, tasks, colorOf);
+      this.eventBars.layoutTimedItems(dayCol, 'week', dayStart, dayEnd, events, tasks, colorOf);
 
       body2.appendChild(dayCol);
     }
@@ -1493,7 +1202,7 @@ export class PlannerEditorPane implements IDisposable {
     }
 
     // Events + dated tasks, packed into side-by-side lanes where they overlap.
-    this._layoutTimedItems(col, 'day', dayStart, dayEnd, events, tasks, colorOf);
+    this.eventBars.layoutTimedItems(col, 'day', dayStart, dayEnd, events, tasks, colorOf);
 
     body.appendChild(grid);
   }
