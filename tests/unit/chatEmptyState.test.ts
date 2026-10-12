@@ -18,6 +18,8 @@ import { EMPTY_STATES } from '../../src/ui/emptyStates';
 
 const ROOT = resolve(__dirname, '../..');
 const widgetSrc = readFileSync(resolve(ROOT, 'src/built-in/chat/widgets/chatWidget.ts'), 'utf8');
+// The strip itself lives beside the widget, in chatEmptyStateKeys.ts.
+const keysSrc = readFileSync(resolve(ROOT, 'src/built-in/chat/widgets/chatEmptyStateKeys.ts'), 'utf8');
 const widgetCss = readFileSync(resolve(ROOT, 'src/built-in/chat/widgets/chatWidget.css'), 'utf8');
 const runtimeSrc = readFileSync(resolve(ROOT, 'src/openclaw/openclawDefaultRuntimeSupport.ts'), 'utf8');
 
@@ -58,10 +60,10 @@ describe('chat empty state — advertises only what exists', () => {
 
   it('describes chat modes from the picker metadata, never a second hard-coded copy', () => {
     // MODE_META is the picker's own source of truth; the empty state reads it.
-    expect(widgetSrc).toContain('MODE_META');
-    const emptyState = widgetSrc.slice(
-      widgetSrc.indexOf('_buildEmptyStateKeys()'),
-      widgetSrc.indexOf('private _buildOfflineState()'),
+    expect(keysSrc).toContain('MODE_META');
+    const emptyState = keysSrc.slice(
+      keysSrc.indexOf('export function buildEmptyStateKeys('),
+      keysSrc.indexOf('export function buildOfflineState('),
     );
     expect(emptyState).toContain('MODE_META[mode]');
     // No parallel prose describing what a mode does.
@@ -69,9 +71,9 @@ describe('chat empty state — advertises only what exists', () => {
   });
 
   it('opens the live menus instead of pasting literal command text', () => {
-    const emptyState = widgetSrc.slice(
-      widgetSrc.indexOf('_buildEmptyStateKeys()'),
-      widgetSrc.indexOf('private _buildOfflineState()'),
+    const emptyState = keysSrc.slice(
+      keysSrc.indexOf('export function buildEmptyStateKeys('),
+      keysSrc.indexOf('export function buildOfflineState('),
     );
     expect(emptyState).toContain("insertTrigger('/')");
     expect(emptyState).toContain("insertTrigger('@')");

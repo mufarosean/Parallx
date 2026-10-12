@@ -49,7 +49,7 @@
   "src/built-in/chat/rendering/chatContentParts.ts": 1830,
   "src/built-in/chat/rendering/chatListRenderer.ts": 870,
   "src/built-in/chat/widgets/chatWidget.css": 3124,
-  "src/built-in/chat/widgets/chatWidget.ts": 1618,
+  "src/built-in/chat/widgets/chatWidget.ts": 1556,
   "src/built-in/dashboard/dashboard.css": 2462,
   "src/built-in/dashboard/dashboardEditorProvider.ts": 1419,
   "src/built-in/explorer/main.ts": 2031,

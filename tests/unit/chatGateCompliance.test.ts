@@ -111,6 +111,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'widgets/chatEngineChip.ts':     ['widgets/'],  // model + context + usage in one chip
   'widgets/chatView.ts':          ['providers/', 'widgets/'],
   'widgets/chatWidget.ts':        ['chatIcons', 'input/', 'rendering/', 'pickers/', 'providers/', 'widgets/'],
+  'widgets/chatEmptyStateKeys.ts': ['pickers/'],  // the empty state's strip reads the mode picker's metadata
 
   // ── providers/ — LLM providers ──────────────────────────────────────────
   'providers/ollamaProvider.ts': [],

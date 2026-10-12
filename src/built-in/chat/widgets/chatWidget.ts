@@ -24,7 +24,9 @@ import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
 import { ChatEngineChip } from './chatEngineChip.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
-import { ChatModePicker, MODE_META } from '../pickers/chatModePicker.js';
+import { ChatModePicker } from '../pickers/chatModePicker.js';
+import { buildEmptyStateKeys, buildOfflineState } from './chatEmptyStateKeys.js';
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import { ChatContextWindowPicker } from '../pickers/chatContextWindowPicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type {
@@ -839,11 +841,13 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // Actions — always visible so Steer is a first-class peer to the queue.
     const actions = $('div.parallx-chat-pending-message-actions');
+    createSurface(el, { id: 'chat.pending', owner: 'chat', label: 'Queued message', instance: pending.id });
 
     // Steer = interrupt + redirect the agent now (labelled accent pill).
     const steerBtn = $('button.parallx-chat-pending-action-steer');
     steerBtn.innerHTML = `${chatIcons.send}<span>Steer</span>`;
     steerBtn.title = 'Steer now: interrupt and redirect the agent with this message';
+    declareControl(steerBtn, { id: 'chat.pending.steer', label: 'Steer', hint: steerBtn.title });
     steerBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this._session && this._services.removePendingRequest && this._services.queueRequest) {
@@ -859,6 +863,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const removeBtn = $('button.parallx-chat-pending-action-remove');
     removeBtn.innerHTML = '\u00D7'; // ×
     removeBtn.title = 'Remove queued message';
+    declareControl(removeBtn, { id: 'chat.pending.remove', label: 'Remove queued message', kind: 'iconButton' });
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this._session && this._services.removePendingRequest) {
@@ -1137,6 +1142,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // especially — forget; the user must never be stuck with a stale card.
     const clearBtn = $('button.parallx-chat-plan-clear');
     clearBtn.title = 'Clear this plan';
+    declareControl(clearBtn, { id: 'chat.plan.clear', label: 'Clear this plan', kind: 'iconButton' });
     clearBtn.textContent = '✕';
     clearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1357,10 +1363,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // No keybinding claim here: Ctrl+L is chat.focus (reveal + focus the input),
     // NOT new-session — chat.newSession has no binding at all.
     const newBtn = createBtn(chatIcons.newChat, 'New Chat', 'parallx-chat-title-action--new');
+    declareControl(newBtn, { id: 'chat.newSession', label: 'New Chat', kind: 'iconButton', command: 'chat.newSession' });
     newBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleNewChat(); });
     container.appendChild(newBtn);
 
     const historyBtn = createBtn(chatIcons.history, 'Chat History', 'parallx-chat-title-action--history');
+    declareControl(historyBtn, { id: 'chat.sessions.toggle', label: 'Chat History', kind: 'iconButton' });
     historyBtn.addEventListener('click', (e) => { e.stopPropagation(); this._sessionSidebar.toggle(); });
     container.appendChild(historyBtn);
     this._historyBtn = historyBtn;
@@ -1368,6 +1376,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // System prompt viewer button (Task 4.10)
     if (this._services.getSystemPrompt) {
       const promptBtn = createBtn(chatIcons.scrollText, 'View System Prompt', 'parallx-chat-title-action--prompt');
+      declareControl(promptBtn, { id: 'chat.viewSystemPrompt', label: 'View System Prompt', kind: 'iconButton' });
       promptBtn.addEventListener('click', (e) => { e.stopPropagation(); this._showSystemPromptViewer(); });
       container.appendChild(promptBtn);
     }
@@ -1375,6 +1384,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // AI Settings gear button (C2)
     if (this._services.openAISettings) {
       const gearBtn = createBtn(chatIcons.gear, 'AI Settings (Ctrl+Shift+A)', 'parallx-chat-title-action--settings');
+      declareControl(gearBtn, { id: 'chat.openAiSettings', label: 'AI Settings', kind: 'iconButton', hint: 'Ctrl+Shift+A' });
       gearBtn.addEventListener('click', (e) => { e.stopPropagation(); this._services.openAISettings!(); });
       container.appendChild(gearBtn);
     }
@@ -1394,6 +1404,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const close = (): void => { detach(); overlay.remove(); };
 
     const modal = $('div.parallx-system-prompt-modal');
+    createSurface(modal, { id: 'chat.systemPrompt', owner: 'chat', label: 'System Prompt' });
 
     // Header
     const header = $('div.parallx-system-prompt-header');
@@ -1409,6 +1420,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     closeBtn.className = 'parallx-system-prompt-close';
     closeBtn.type = 'button';
     closeBtn.title = 'Close';
+    declareControl(closeBtn, { id: 'chat.systemPrompt.close', label: 'Close', kind: 'iconButton' });
     closeBtn.innerHTML = chatIcons.close;
     closeBtn.addEventListener('click', () => close());
     header.appendChild(closeBtn);
@@ -1429,6 +1441,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     copyBtn.className = 'parallx-system-prompt-copy';
     copyBtn.type = 'button';
     copyBtn.textContent = 'Copy to Clipboard';
+    declareControl(copyBtn, { id: 'chat.systemPrompt.copy', label: 'Copy to Clipboard' });
     copyBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(promptText).then(() => {
         copyBtn.textContent = 'Copied!';
@@ -1478,93 +1491,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   /** The hairline strip: `/ commands` · `@ context` · `<mode>`. */
   private _buildEmptyStateKeys(): HTMLElement {
-    const strip = $('div.parallx-chat-empty-keys');
-
-    const cell = (
-      glyphHtml: string,
-      glyphIsText: boolean,
-      label: string,
-      title: string,
-      onClick: () => void,
-    ): HTMLElement => {
-      const btn = $('button.parallx-chat-empty-key') as HTMLButtonElement;
-      btn.type = 'button';
-      btn.title = title;
-      btn.setAttribute('aria-label', title);
-      const g = $(`span.parallx-chat-empty-key__glyph${glyphIsText ? '.is-text' : ''}`);
-      if (glyphIsText) { g.textContent = glyphHtml; } else { g.innerHTML = glyphHtml; }
-      const l = $('span.parallx-chat-empty-key__label', label);
-      append(btn, g, l);
-      // LOAD-BEARING: the textarea is focused whenever the empty state is up
-      // (_inputPart.focus() on session bind). Letting this button take focus
-      // would blur it, and the autocomplete's blur handler schedules an
-      // unconditional close 150ms later — which would snuff out the menu this
-      // very click just opened. Keep focus in the textarea.
-      btn.addEventListener('mousedown', (e) => e.preventDefault());
-      btn.addEventListener('click', onClick);
-      return btn;
-    };
-
-    // Typing the trigger opens the real menu — nothing is hard-coded here, so
-    // this can never advertise a command that does not exist.
-    strip.appendChild(cell('/', true, 'commands',
-      'Type / for the command list: /init, /context, /compact and more',
-      () => this._inputPart.insertTrigger('/')));
-
-    strip.appendChild(cell('@', true, 'context',
-      'Type @ to pull in a file, folder, or terminal output',
-      () => this._inputPart.insertTrigger('@')));
-
-    // The mode cell reads from the picker's own metadata and opens the picker
-    // itself, so the two can never disagree about what a mode does.
-    if (this._services.modePicker) {
-      const modeCell = $('button.parallx-chat-empty-key.parallx-chat-empty-key--mode') as HTMLButtonElement;
-      modeCell.type = 'button';
-      const paintMode = () => {
-        const mode = this._services.modePicker!.getMode();
-        const meta = MODE_META[mode];
-        modeCell.innerHTML = '';
-        const g = $('span.parallx-chat-empty-key__glyph');
-        g.innerHTML = meta.icon;
-        const l = $('span.parallx-chat-empty-key__label', `${meta.label} mode`);
-        append(modeCell, g, l);
-        const title = `${meta.label} mode: ${meta.description}. Click to change.`;
-        modeCell.title = title;
-        modeCell.setAttribute('aria-label', title);
-      };
-      paintMode();
-      this._register(this._services.modePicker.onDidChangeMode(() => paintMode()));
-      modeCell.addEventListener('mousedown', (e) => e.preventDefault());
-      modeCell.addEventListener('click', () => this._modePicker?.openDropdown());
-      strip.appendChild(modeCell);
-    }
-
-    return strip;
+    return buildEmptyStateKeys({
+      insertTrigger: (c) => this._inputPart.insertTrigger(c),
+      modePicker: this._services.modePicker,
+      openModeDropdown: () => this._modePicker?.openDropdown(),
+      register: (d) => this._register(d),
+    });
   }
 
   private _buildOfflineState(): HTMLElement {
-    const root = $('div.parallx-chat-offline-state');
-
-    const spinner = $('div.parallx-chat-offline-spinner');
-    const title = $('div.parallx-chat-offline-title', 'Connecting to Ollama\u2026');
-    this._offlineTitleEl = title;
-
-    const instruction = $('div.parallx-chat-offline-instruction');
-    instruction.innerHTML = [
-      'Parallx\u2019s AI runs on your computer through <strong>Ollama</strong>.',
-      'Install it from <a href="https://ollama.com">ollama.com</a> and it connects on its own,',
-      'or set up a cloud model in AI settings.',
-    ].join(' ');
-
-    append(root, spinner, title, instruction);
-
-    if (this._services.openAiSettings) {
-      const open = $('button.parallx-chat-offline-action', 'Open AI Settings') as HTMLButtonElement;
-      open.type = 'button';
-      open.addEventListener('click', () => this._services.openAiSettings?.());
-      root.appendChild(open);
-    }
-    return root;
+    const built = buildOfflineState(this._services.openAiSettings);
+    this._offlineTitleEl = built.title;
+    return built.root;
   }
 
   /**

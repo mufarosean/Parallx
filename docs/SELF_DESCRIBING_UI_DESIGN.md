@@ -760,13 +760,9 @@ refresh, filter, search box, the session list, and each session row as
 (`chat.context`, pressed while open) and each pill as `chat.contextPill`
 with restore or remove; each attachment chip as `chat.attachment` with
 remove and Switch Model, and each suggested file as `chat.suggestedFile`
-with add and dismiss. Not done: `chatWidget.ts` (1617 lines, over the
-limit) holds the empty state's shortcut keys, the offline notice's Open
-AI Settings, the pending-action steer and remove, the plan's clear and
-the thread panel's close and copy; declare them when a module is
-extracted from it (the empty state, lines 1480 to 1570, is the natural
-cut). The probe checks the input, send, add context, mode, engine and
-context ids.
+with add and dismiss. The probe checks the input, send, add context, mode, engine and
+context ids (and, since the widget's own commit below, new chat and
+the strip's commands cell).
 
 Canvas page chrome and bubble menu done 2026-10-12, in the cloud. The
 page menu's Font section moved to `header/pageFontMenu.ts` (the gate
@@ -796,6 +792,17 @@ delete, and the new-property name, type and create. Left in canvas:
 the sidebar and the property editors (`properties/propertyEditors.ts`,
 one editor per property, so ids need the property name from
 `createPropertyEditor`'s caller).
+
+Chat widget done 2026-10-12, in the cloud. The empty state's strip and
+the offline notice moved to `widgets/chatEmptyStateKeys.ts` (the chat
+gate test lists it) so the widget could take its declarations under
+the size limit: the title actions (new chat carrying `chat.newSession`,
+history, view system prompt, AI settings), each queued message as
+`chat.pending` by id with steer and remove, the plan card's clear, the
+system prompt viewer as `chat.systemPrompt` with close and copy, the
+strip's `/`, `@` and mode cells (`chat.empty.*`, the mode cell's value
+is the mode's label) and the offline notice's Open AI Settings. The
+message list and its content parts stay undeclared by design.
 
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
@@ -986,8 +993,8 @@ Sessions append here. Each line: date, step, what was left and why.
   worksheet, planner, PDF, explorer, search, dashboard, settings panels,
   welcome, terminal, activity log, tool gallery, theme editor, the
   Agents view, run pane and routine form, the workflow editor, AI
-  settings, the three panel logs, the chat chrome outside
-  `chatWidget.ts`, and the canvas page chrome and bubble menu). Left in
+  settings, the three panel logs, the chat chrome, the chat widget, and
+  the canvas page chrome, bubble menu and pickers). Left in
   step 5, in this order, one commit each, each verified by the probe
   (section 13; in the cloud run it as
   `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
@@ -999,8 +1006,7 @@ Sessions append here. Each line: date, step, what was left and why.
      extract first) and `properties/propertyEditors.ts`. Never the
      Tiptap document.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
-  4. chat: done except `chatWidget.ts` (see step 5's notes); the
-     message list's markdown is never declared.
+  4. chat: done; the message list's markdown is never declared.
   Steps 6, 8 and 10 are done, and step 11's script exists (run it after
   step 7). Then steps 7 and 9 (local), then 4 and the step 11 audit.
 
