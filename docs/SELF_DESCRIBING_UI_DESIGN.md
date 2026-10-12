@@ -485,6 +485,9 @@ writes what is left into section 11.
 
 ### Step 1. The scene and the kit contract (cloud)
 
+Done 2026-10-12 (77177bce). Everything below is in; the probe ran here
+under xvfb and wrote an empty scene, as expected before step 2.
+
 - `src/ui/scene.ts` as in section 4, with `tests/unit/scene.test.ts`
   under jsdom covering register, find, under, describe, the pending
   path (register before connect), removal by observer, duplicates.
@@ -508,6 +511,14 @@ writes what is left into section 11.
 Nothing in the app is converted. The app behaves exactly as before.
 
 ### Step 2. The three base classes register surfaces (local)
+
+Done 2026-10-12. The scene probe shows 16 surfaces at boot and 21 with
+the built-ins open: the seven parts, every view under its part with its
+tool as owner, every pane under the editor part with its type as id,
+its input as instance and its tool as owner. No controls yet: none has
+an id until step 3. One deviation from the text below: a tool editor
+input carries its tool as `ownerToolId`, so the pane reads that, with
+no lookup in the editors bridge.
 
 Three insertions, nothing else:
 

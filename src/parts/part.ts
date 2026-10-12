@@ -5,6 +5,7 @@ import { IGridView } from '../layout/gridView.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Dimensions, Orientation } from '../layout/layoutTypes.js';
 import { IPart, PartPosition, PartState } from './partTypes.js';
 import { $ } from '../ui/dom.js';
+import { createSurface } from '../ui/kit.js';
 
 /**
  * Abstract base class for all structural workbench parts.
@@ -132,6 +133,9 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     this._element.setAttribute('role', 'region');
     this._element.setAttribute('aria-label', this._name);
     this._element.setAttribute('data-part-id', this.id);
+    // The part is a surface in the scene (docs/SELF_DESCRIBING_UI_DESIGN.md
+    // section 4): the controls built inside it register under it.
+    this._register(createSurface(this._element, { id: this.id, owner: 'core', label: this._name }));
     if (!this._visible) {
       this._element.classList.add('hidden');
     }

@@ -7,6 +7,7 @@
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
 import { $,  hide, show } from '../../ui/dom.js';
+import { createSurface } from '../../ui/kit.js';
 import type { ViewManager } from '../../views/viewManager.js';
 import type { IView, ViewState } from '../../views/viewTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../../layout/layoutTypes.js';
@@ -86,7 +87,7 @@ export class ViewsBridge {
       constraints: DEFAULT_SIZE_CONSTRAINTS,
       focusOnActivate: false,
       order: 100,
-      factory: () => _createToolView(viewId, name, provider),
+      factory: () => _createToolView(viewId, name, provider, this._toolId),
     };
 
     this._viewManager.register(descriptor);
@@ -134,7 +135,7 @@ export class ViewsBridge {
 /**
  * Adapts a tool's ViewProvider into the internal IView interface.
  */
-function _createToolView(viewId: string, name: string, provider: ToolViewProvider): IView {
+function _createToolView(viewId: string, name: string, provider: ToolViewProvider, toolId: string): IView {
   let _element: HTMLElement | undefined;
   let _providerDisposable: IDisposable | undefined;
   let _disposed = false;
@@ -173,8 +174,11 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
       _element.className = 'tool-view-content fill-container-scroll';
       container.appendChild(_element);
 
+      // The view is a surface in the scene, owned by its tool.
+      const surface = createSurface(_element, { id: viewId, owner: toolId.slice(toolId.lastIndexOf('.') + 1), label: name });
       try {
-        _providerDisposable = provider.createView(_element);
+        const inner = provider.createView(_element);
+        _providerDisposable = { dispose: () => { surface.dispose(); inner.dispose(); } };
       } catch (err) {
         console.error(`[ViewsBridge] Error rendering view "${viewId}":`, err);
         _element.textContent = `Error loading view: ${err}`;

@@ -13,6 +13,7 @@ import './viewContribution.css';
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $ } from '../ui/dom.js';
+import { createSurface } from '../ui/kit.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -165,7 +166,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
             constraints: DEFAULT_SIZE_CONSTRAINTS,
             focusOnActivate: false,
             order: 100,
-            factory: () => this._createContributedView(v.id, v.name, v.icon),
+            factory: () => this._createContributedView(v.id, v.name, v.icon, v.toolId),
           });
         }
       }
@@ -263,7 +264,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
             constraints: DEFAULT_SIZE_CONSTRAINTS,
             focusOnActivate: false,
             order: 100,
-            factory: () => this._createContributedView(v.id, v.name, v.icon),
+            factory: () => this._createContributedView(v.id, v.name, v.icon, toolId),
           });
         }
 
@@ -412,7 +413,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
    * If a provider is already registered, the view renders immediately.
    * Otherwise, a placeholder is shown until `registerProvider()` is called.
    */
-  private _createContributedView(viewId: string, name: string, icon?: string): IView {
+  private _createContributedView(viewId: string, name: string, icon: string | undefined, toolId: string): IView {
     // Check if provider is already available when the factory runs
     let _provider = this._providers.get(viewId);
 
@@ -452,11 +453,13 @@ export class ViewContributionProcessor extends Disposable implements IContributi
           _contentEl.style.height = `${_height}px`;
         }
 
+        // The view is a surface in the scene, owned by its tool
+        // (docs/SELF_DESCRIBING_UI_DESIGN.md section 4).
+        const surface = createSurface(_contentEl, { id: viewId, owner: toolId.slice(toolId.lastIndexOf('.') + 1), label: name });
         try {
           const result = provider.resolveView(viewId, _contentEl);
-          if (result && typeof (result as IDisposable).dispose === 'function') {
-            _providerDisposable = result as IDisposable;
-          }
+          const inner = result && typeof (result as IDisposable).dispose === 'function' ? (result as IDisposable) : undefined;
+          _providerDisposable = { dispose: () => { surface.dispose(); inner?.dispose(); } };
         } catch (err) {
           console.error(`[ViewContribution] Error resolving view "${viewId}":`, err);
           _contentEl.textContent = `Error loading view: ${err}`;

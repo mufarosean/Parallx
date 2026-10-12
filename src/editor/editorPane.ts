@@ -15,6 +15,7 @@ import type { IEditorInput } from './editorInput.js';
 import type { SizeConstraints } from '../layout/layoutTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
 import { $ } from '../ui/dom.js';
+import { createSurface, type IKitSurface } from '../ui/kit.js';
 
 // ─── View State ──────────────────────────────────────────────────────────────
 
@@ -74,6 +75,8 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
   private _width = 0;
   private _height = 0;
   private _created = false;
+  /** The pane's scene surface, registered on the first input (the pane's own id is generated). */
+  private _surface: IKitSurface | undefined;
 
   private readonly _onDidChangeViewState = this._register(new Emitter<void>());
   readonly onDidChangeViewState: Event<void> = this._onDidChangeViewState.event;
@@ -112,13 +115,44 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
   async setInput(input: IEditorInput): Promise<void> {
     const previous = this._input;
     this._input = input;
+    this._declareSurface(input);
     await this.renderInput(input, previous);
   }
+
+  /**
+   * The pane as a scene surface: id is the editor type, instance the
+   * input's id, owner the tool whose input this is (a tool editor input
+   * carries `ownerToolId`; a core input has none). The same surface follows the
+   * pane from input to input; only the instance changes.
+   */
+  private _declareSurface(input: IEditorInput): void {
+    if (!this._element) return;
+    const typeId = input.typeId;
+    if (this._surface && this._surfaceTypeId === typeId) {
+      this._surface.setInstance(input.id);
+      return;
+    }
+    this._surface?.dispose();
+    const toolId = (input as { ownerToolId?: unknown }).ownerToolId;
+    const owner = typeof toolId === 'string' && toolId ? toolId.slice(toolId.lastIndexOf('.') + 1) : 'core';
+    this._surfaceTypeId = typeId;
+    this._surface = createSurface(this._element, { id: typeId, owner, label: input.name || typeId, instance: input.id });
+  }
+  private _surfaceTypeId: string | undefined;
 
   clearInput(): void {
     const previous = this._input;
     this._input = undefined;
+    this._surface?.dispose();
+    this._surface = undefined;
+    this._surfaceTypeId = undefined;
     this.clearPaneContent(previous);
+  }
+
+  override dispose(): void {
+    this._surface?.dispose();
+    this._surface = undefined;
+    super.dispose();
   }
 
   // ── Lifecycle — layout ──
