@@ -7,7 +7,7 @@
 
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
-import { createButton, createSectionLabel } from '../../ui/kit.js';
+import { createButton, createSectionLabel, createSurface, declareControl, sceneSlug } from '../../ui/kit.js';
 import { svc } from './agentsServices.js';
 import type { WorkflowDoc } from '../../services/workflows/workflowTypes.js';
 
@@ -52,6 +52,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   const form = document.createElement('form');
   form.className = 'agents-routine';
   form.noValidate = true;
+  createSurface(form, { id: 'agents.routineForm', owner: 'agents', label: 'New Routine' });
 
   const field = (label: string, control: HTMLElement, id: string, hint?: string): HTMLElement => {
     const wrap = $('div.agents-routine__field');
@@ -70,16 +71,19 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   name.className = 'agents-routine__input';
   name.placeholder = 'Morning Brief';
   name.maxLength = 60;
+  declareControl(name, { id: 'agents.routineForm.name', label: 'Name', kind: 'input', state: () => ({ kind: 'value', value: name.value }) });
 
   const what = document.createElement('textarea');
   what.className = 'agents-routine__input agents-routine__what';
   what.rows = 3;
   what.placeholder = 'Look over what changed since yesterday and sum it up in a few lines, with anything due today first.';
+  declareControl(what, { id: 'agents.routineForm.what', label: 'What should it do', kind: 'input', state: () => ({ kind: 'value', value: what.value }) });
 
   const page = document.createElement('input');
   page.type = 'text';
   page.className = 'agents-routine__input';
   page.placeholder = 'Daily Brief';
+  declareControl(page, { id: 'agents.routineForm.page', label: 'Where it writes', kind: 'input', state: () => ({ kind: 'value', value: page.value }) });
 
   form.appendChild(field('Name', name, 'agents-routine-name'));
   form.appendChild(field('What should it do', what, 'agents-routine-what'));
@@ -97,6 +101,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
     b.className = 'agents-routine__day';
     b.textContent = d.label;
     b.setAttribute('aria-pressed', String(days.has(d.dow)));
+    declareControl(b, { id: `agents.routineForm.day.${sceneSlug(d.label)}`, label: d.label, kind: 'toggle', state: () => ({ kind: 'pressed', value: days.has(d.dow) }) });
     b.addEventListener('click', () => {
       if (days.has(d.dow)) days.delete(d.dow); else days.add(d.dow);
       b.setAttribute('aria-pressed', String(days.has(d.dow)));
@@ -109,6 +114,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   time.className = 'agents-routine__input agents-routine__time';
   time.value = '07:45';
   time.setAttribute('aria-label', 'Time');
+  declareControl(time, { id: 'agents.routineForm.time', label: 'Time', kind: 'input', state: () => ({ kind: 'value', value: time.value }) });
   const whenRow = $('div.agents-routine__when');
   whenRow.append(chips, time);
   when.append(whenLabel, whenRow);
@@ -127,9 +133,9 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   form.appendChild(error);
 
   const bar = $('div.agents-routine__actions');
-  createButton(bar, { label: 'Cancel', kind: 'ghost', size: 'sm', onClick: () => onClose(false) });
-  const tryNow = createButton(bar, { label: 'Try It Once Now', kind: 'secondary', size: 'sm', onClick: () => save(true) });
-  const saveBtn = createButton(bar, { label: 'Save Routine', kind: 'primary', size: 'sm', onClick: () => save(false) });
+  createButton(bar, { id: 'agents.routineForm.cancel', label: 'Cancel', kind: 'ghost', size: 'sm', onClick: () => onClose(false) });
+  const tryNow = createButton(bar, { id: 'agents.routineForm.tryNow', label: 'Try It Once Now', kind: 'secondary', size: 'sm', onClick: () => save(true) });
+  const saveBtn = createButton(bar, { id: 'agents.routineForm.save', label: 'Save Routine', kind: 'primary', size: 'sm', onClick: () => save(false) });
   form.appendChild(bar);
 
   const parseTime = (): [number, number] | null => {

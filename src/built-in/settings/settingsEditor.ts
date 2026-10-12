@@ -23,7 +23,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { Overlay } from '../../ui/overlay.js';
-import { createSurface, declareControl } from '../../ui/kit.js';
+import { createSurface, declareControl, sceneSlug } from '../../ui/kit.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { Toggle } from '../../ui/toggle.js';
 import { Dropdown } from '../../ui/dropdown.js';
@@ -757,7 +757,3 @@ export class SettingsEditor extends Disposable {
   }
 }
 
-/** A nav entry's id as a scene id segment: lower case, words joined by dashes ('schema:Agents / Heartbeat' is 'schema-agents-heartbeat'). */
-function sceneSlug(id: string): string {
-  return id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}

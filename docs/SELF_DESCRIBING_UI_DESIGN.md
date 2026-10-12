@@ -698,6 +698,26 @@ size baseline, so its details and status tabs moved to
 search and install, the appearance panel's dark mode, hue, name and
 save, and the two panel views through `workbench.view.show`.
 
+Agents view done 2026-10-12, in the cloud (the workflow editor is not:
+it is over the size limit and needs a module extracted first). The
+header's new-routine and settings buttons carry their commands, the tab
+switch is `agents.tab`, and on the Now tab each approval and running
+card is a surface (`agents.approval` by request id, `agents.run` by task
+id) with its buttons under it. Routines: the heartbeat card's action,
+heartbeat settings, each suggestion and each routine row as a surface
+(`agents.suggestion`, `agents.routine` by key) with run, edit, the
+on/off button (pressed while on), delete and the openable head; the add
+section's two buttons and the template buttons (`agents.template.<key>`).
+History: the filter, mark-all-read (carrying `autonomyLog.markAllRead`),
+clear, the list, and each heartbeat finding's action bar as a surface
+(`agents.finding`, shared with the Now tab) with Do It, Tell Me More and
+Dismiss. Mind: each belief and each standing approval as a surface with
+its forget or revoke, and the forget-all and revoke-all buttons. The run
+pane's pause, continue, answer, note and send; the New Routine form as
+`agents.routineForm` with its fields, day toggles, time and buttons.
+`sceneSlug` moved into the kit; the four local copies use it. The probe
+checks the header, the Routines tab and the form.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the

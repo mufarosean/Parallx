@@ -13,7 +13,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten, openFile, tinyPdf } from './scene.mjs';
+import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten, click, openFile, tinyPdf } from './scene.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-scene'));
 
@@ -37,6 +37,7 @@ const BUILTIN_IDS = {
   search: ['search.query', 'search.replace', 'search.toggleReplace', 'search.match-case', 'search.results'],
   planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
+  agents: ['agents.newRoutine', 'agents.openSettings', 'agents.tab', 'agents.showHistory'],
   welcome: ['welcome.workbench.action.showCommands', 'welcome.settings.open', 'welcome.workbench.action.files.openFolder'],
   tools: ['tools.search', 'tools.install'],
   appearance: ['appearance.mode.dark', 'appearance.hue', 'appearance.themeName', 'appearance.saveTheme'],
@@ -115,6 +116,24 @@ async function main() {
     for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
     for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
     for (const [viewId, id] of Object.entries(PANEL_VIEWS)) if (!ids.has(id)) stats.problems.push(`${viewId}: no "${id}"`);
+    // The appearance panel opened as a centred overlay over everything; it closes on Escape, so the clicks below land.
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    // Agents (design step 5): the Routines tab's buttons, then the New Routine form as a surface.
+    const routines = await cmd(page, 'agents.showRoutines');
+    await page.waitForTimeout(800);
+    if (routines === true) {
+      const rt = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of ['agents.routines.new', 'workflows.new', 'agents.heartbeatSettings']) if (!rt.has(id)) stats.problems.push(`agents: no "${id}" on the Routines tab`);
+    }
+    const routine = await cmd(page, 'agents.newRoutine');
+    await page.waitForTimeout(800);
+    if (routine === true) {
+      const form = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of ['agents.routineForm', 'agents.routineForm.name', 'agents.routineForm.day.mon', 'agents.routineForm.time', 'agents.routineForm.save']) if (!form.has(id)) stats.problems.push(`agents: no "${id}" in the New Routine form`);
+      if (form.has('agents.routineForm.cancel')) await click(page, 'agents.routineForm.cancel');
+      await page.waitForTimeout(300);
+    }
     // The task popover (design step 5, Planner): a surface with its fields and buttons.
     const task = await cmd(page, 'planner.newTask');
     await page.waitForTimeout(800);

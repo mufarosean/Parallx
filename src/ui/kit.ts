@@ -681,3 +681,8 @@ function declareCollection(element: HTMLElement, kind: 'list' | 'tree', role: st
     dispose() { reg.dispose(); },
   };
 }
+
+/** A dynamic value as a scene id segment: lower case, words joined by dashes ('Match Case' is 'match-case'; empty is 'none'). Section 4.3. */
+export function sceneSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'none';
+}

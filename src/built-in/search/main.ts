@@ -11,7 +11,7 @@
 //   src/vs/workbench/contrib/search/browser/searchView.ts
 //   src/vs/workbench/services/search/common/textSearchManager.ts
 
-import { declareControl, createList } from '../../ui/kit.js';
+import { declareControl, createList, sceneSlug } from '../../ui/kit.js';
 import './search.css';
 
 import { SEARCH_EMPTY_STATES } from './searchEmptyStates.js';
@@ -393,7 +393,7 @@ function createToggleButton(
   btn.title = title;
   btn.textContent = label;
   if (initial) btn.classList.add('active');
-  declareControl(btn, { id: `search.${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, label: title, kind: 'toggle', state: () => ({ kind: 'pressed', value: btn.classList.contains('active') }) });
+  declareControl(btn, { id: `search.${sceneSlug(title)}`, label: title, kind: 'toggle', state: () => ({ kind: 'pressed', value: btn.classList.contains('active') }) });
 
   btn.addEventListener('click', () => {
     btn.classList.toggle('active');

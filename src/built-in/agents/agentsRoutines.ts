@@ -11,7 +11,7 @@
 import { appDateTimeString } from '../../services/localTime.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { $ } from '../../ui/dom.js';
-import { createButton, createSectionLabel } from '../../ui/kit.js';
+import { createButton, createSectionLabel, createSurface, declareControl, sceneSlug } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { describeSchedule } from '../../openclaw/cronScheduleSpec.js';
 import type { ICronJob } from '../../openclaw/openclawCronService.js';
@@ -66,7 +66,7 @@ function jobWords(job: ICronJob): string {
 }
 
 /** One status card: a dot, a name, a line, and at most one action. */
-function statusCard(host: HTMLElement, state: 'on' | 'off' | 'paused', name: string, line: string, action?: { label: string; run: () => void }): HTMLElement {
+function statusCard(host: HTMLElement, state: 'on' | 'off' | 'paused', name: string, line: string, action?: { id: string; command?: string; label: string; run: () => void }): HTMLElement {
   const card = $(`div.agents-rt__status.agents-rt__status--${state}`);
   card.appendChild($('span.agents-dot'));
   const text = $('div.agents-rt__status-text');
@@ -74,7 +74,7 @@ function statusCard(host: HTMLElement, state: 'on' | 'off' | 'paused', name: str
   const l = $('div.agents-rt__line'); l.textContent = line;
   text.append(n, l);
   card.appendChild(text);
-  if (action) createButton(card, { label: action.label, kind: 'secondary', size: 'sm', onClick: action.run });
+  if (action) createButton(card, { id: action.id, command: action.command, label: action.label, kind: 'secondary', size: 'sm', onClick: action.run });
   host.appendChild(card);
   return card;
 }
@@ -94,7 +94,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   if (paused) {
     statusCard(top, 'paused', 'Heartbeat', 'Paused with everything else');
   } else if (hb?.enabled) {
-    const card = statusCard(top, 'on', 'Heartbeat', `Looks over your workspace ${every(hb.intervalMs)}`, { label: 'Wake Now', run: () => run('parallx.wakeAgent') });
+    const card = statusCard(top, 'on', 'Heartbeat', `Looks over your workspace ${every(hb.intervalMs)}`, { id: 'parallx.wakeAgent', command: 'parallx.wakeAgent', label: 'Wake Now', run: () => run('parallx.wakeAgent') });
     void api.commands.executeCommand<{ lastRunMs?: number; nextDueMs?: number }>('parallx.heartbeat.status').then((s) => {
       const line = card.querySelector('.agents-rt__line');
       if (!s || !line) return;
@@ -105,7 +105,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
     }).catch(() => undefined);
   } else {
     statusCard(top, 'off', 'Heartbeat', 'Off. It can look over your workspace now and then and suggest things.', {
-      label: 'Turn On', run: () => { void svc.config?.updateConfig({ heartbeat: { enabled: true } }); },
+      id: 'agents.heartbeat.turnOn', label: 'Turn On', run: () => { void svc.config?.updateConfig({ heartbeat: { enabled: true } }); },
     });
   }
   const cronOn = svc.flags?.isEnabled(FLAG_CRON_ENABLED) ?? false;
@@ -113,7 +113,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   const foot = $('div.agents-rt__level');
   const lv = $('span'); lv.textContent = level ? `How much it may do alone: ${level.replace(/-/g, ' ')}` : '';
   foot.appendChild(lv);
-  createButton(foot, { label: 'Heartbeat Settings…', kind: 'ghost', size: 'sm', onClick: () => run('agents.openSettings', 'schema:Agents / Heartbeat') });
+  createButton(foot, { id: 'agents.heartbeatSettings', command: 'agents.openSettings', label: 'Heartbeat Settings…', kind: 'ghost', size: 'sm', onClick: () => run('agents.openSettings', 'schema:Agents / Heartbeat') });
   top.appendChild(foot);
   host.appendChild(top);
 
@@ -129,12 +129,13 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
     sec.appendChild(hint);
     for (const wf of suggested) {
       const card = $('div.agents-card');
+      createSurface(card, { id: 'agents.suggestion', owner: 'agents', label: wf.name, instance: wf.id });
       const name = $('div.agents-card__name'); name.textContent = wf.name;
       const det = $('div.agents-card__detail'); det.textContent = wf.description ?? triggerWords(wf);
       const bar = $('div.agents-card__actions');
-      createButton(bar, { label: 'Add', kind: 'primary', size: 'sm', title: 'Keep it and turn it on', onClick: () => { try { svc.workflows?.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch (err) { void api.window.showErrorMessage(`Could not add "${wf.name}": ${errorText(err)}`); } } });
-      createButton(bar, { label: 'Review', kind: 'secondary', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
-      createButton(bar, { label: 'Dismiss', kind: 'ghost', size: 'sm', title: 'Delete the suggestion; this habit is not suggested again', onClick: () => { try { svc.workflows?.removeWorkflow(wf.id); } catch (err) { void api.window.showErrorMessage(`Could not dismiss "${wf.name}": ${errorText(err)}`); } } });
+      createButton(bar, { id: 'agents.suggestion.add', label: 'Add', kind: 'primary', size: 'sm', title: 'Keep it and turn it on', onClick: () => { try { svc.workflows?.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch (err) { void api.window.showErrorMessage(`Could not add "${wf.name}": ${errorText(err)}`); } } });
+      createButton(bar, { id: 'agents.suggestion.review', command: 'workflows.openEditor', label: 'Review', kind: 'secondary', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
+      createButton(bar, { id: 'agents.suggestion.dismiss', label: 'Dismiss', kind: 'ghost', size: 'sm', title: 'Delete the suggestion; this habit is not suggested again', onClick: () => { try { svc.workflows?.removeWorkflow(wf.id); } catch (err) { void api.window.showErrorMessage(`Could not dismiss "${wf.name}": ${errorText(err)}`); } } });
       card.append(name, det, bar);
       sec.appendChild(card);
     }
@@ -169,11 +170,11 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       repaint,
     });
     const bar = row.querySelector('.agents-card__actions') as HTMLElement;
-    createButton(bar, { label: 'Run Now', kind: 'secondary', size: 'sm', onClick: () => { void service.runNow(wf.id).catch((err) => console.warn('[Agents] workflow run failed:', err)).finally(repaint); } });
-    createButton(bar, { label: 'Edit Steps', kind: 'ghost', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
-    createButton(bar, { label: wf.enabled ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: () => { try { service.setEnabled(wf.id, !wf.enabled); } catch { /* repaint */ } } });
+    createButton(bar, { id: 'agents.routine.runNow', label: 'Run Now', kind: 'secondary', size: 'sm', onClick: () => { void service.runNow(wf.id).catch((err) => console.warn('[Agents] workflow run failed:', err)).finally(repaint); } });
+    createButton(bar, { id: 'agents.routine.editSteps', command: 'workflows.openEditor', label: 'Edit Steps', kind: 'ghost', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
+    onOff(bar, wf.enabled, () => { try { service.setEnabled(wf.id, !wf.enabled); } catch { /* repaint */ } });
     createButton(bar, {
-      label: 'Delete…', kind: 'ghost', size: 'sm',
+      id: 'agents.routine.delete', label: 'Delete…', kind: 'ghost', size: 'sm',
       onClick: () => {
         void api.window.showWarningMessage(`Delete "${wf.name}"? Its run history goes with it.`, { title: 'Delete' }, { title: 'Cancel' })
           .then((res) => { if (res?.title === 'Delete') service.removeWorkflow(wf.id); });
@@ -198,10 +199,10 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       repaint,
     });
     const bar = row.querySelector('.agents-card__actions') as HTMLElement;
-    createButton(bar, { label: 'Run Now', kind: 'secondary', size: 'sm', onClick: () => { void cron.runJob(job.id).catch((err) => console.warn('[Agents] routine run failed:', err)).finally(repaint); } });
-    createButton(bar, { label: job.enabled ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: () => { try { cron.updateJob(job.id, { enabled: !job.enabled }); } catch { /* repaint */ } } });
+    createButton(bar, { id: 'agents.routine.runNow', label: 'Run Now', kind: 'secondary', size: 'sm', onClick: () => { void cron.runJob(job.id).catch((err) => console.warn('[Agents] routine run failed:', err)).finally(repaint); } });
+    onOff(bar, job.enabled, () => { try { cron.updateJob(job.id, { enabled: !job.enabled }); } catch { /* repaint */ } });
     createButton(bar, {
-      label: 'Delete…', kind: 'ghost', size: 'sm',
+      id: 'agents.routine.delete', label: 'Delete…', kind: 'ghost', size: 'sm',
       onClick: () => {
         void api.window.showWarningMessage(`Delete the routine "${job.name}"?`, { title: 'Delete' }, { title: 'Cancel' })
           .then((res) => { if (res?.title === 'Delete') cron.removeJob(job.id); });
@@ -214,8 +215,8 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   const add = $('section.agents-section');
   createSectionLabel(add, 'Add a routine');
   const choices = $('div.agents-rt__add');
-  createButton(choices, { label: 'New Routine…', kind: 'primary', size: 'sm', title: 'Say what to do and when', onClick: openNewRoutine });
-  if (svc.workflows) createButton(choices, { label: 'Build Steps…', kind: 'secondary', size: 'sm', title: 'Draw the steps yourself: triggers, context, agents, notifications', onClick: () => run('workflows.new') });
+  createButton(choices, { id: 'agents.routines.new', command: 'agents.newRoutine', label: 'New Routine…', kind: 'primary', size: 'sm', title: 'Say what to do and when', onClick: openNewRoutine });
+  if (svc.workflows) createButton(choices, { id: 'workflows.new', command: 'workflows.new', label: 'Build Steps…', kind: 'secondary', size: 'sm', title: 'Draw the steps yourself: triggers, context, agents, notifications', onClick: () => run('workflows.new') });
   add.appendChild(choices);
   if (svc.workflows) {
     const hint = $('div.agents-rt__hint'); hint.textContent = 'Or start from one of these:';
@@ -224,6 +225,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'agents-rt__tpl';
+      declareControl(b, { id: `agents.template.${sceneSlug(t.key)}`, label: t.name, hint: t.description });
       const trig = t.nodes.find((n) => n.kind.startsWith('trigger.'));
       const thumb = createIconElement(trig?.kind === 'trigger.schedule' ? 'calendar-clock' : trig?.kind === 'trigger.event' ? 'radio' : 'play', 16);
       thumb.classList.add('agents-rt__tpl-icon');
@@ -254,8 +256,15 @@ interface IRoutineRow {
   readonly repaint: () => void;
 }
 
+/** Turn Off / Turn On for one routine; in the scene, pressed while it is on. */
+function onOff(bar: HTMLElement, on: boolean, flip: () => void): void {
+  const btn = createButton(bar, { label: on ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: flip });
+  declareControl(btn, { id: 'agents.routine.enabled', label: on ? 'Turn Off' : 'Turn On', state: () => ({ kind: 'pressed', value: on }) });
+}
+
 function routineRow(host: HTMLElement, r: IRoutineRow): HTMLElement {
   const card = $(`div.agents-card.agents-rt__row${r.on ? '' : '.agents-rt__row--off'}`);
+  createSurface(card, { id: 'agents.routine', owner: 'agents', label: r.name, instance: r.key });
   const head = $('div.agents-card__top');
   head.appendChild($(`span.agents-dot${r.on ? '' : '.agents-dot--off'}`));
   const name = $('span.agents-card__name'); name.textContent = r.name;
@@ -280,6 +289,7 @@ function routineRow(host: HTMLElement, r: IRoutineRow): HTMLElement {
   card.appendChild(bar);
   if (r.trace) {
     card.classList.add('agents-rt__row--openable');
+    declareControl(head, { id: 'agents.routine.open', label: r.name, hint: 'Show the last run', state: () => ({ kind: 'pressed', value: openRoutine === r.key }) });
     head.addEventListener('click', () => { openRoutine = openRoutine === r.key ? null : r.key; r.repaint(); });
   }
   host.appendChild(card);

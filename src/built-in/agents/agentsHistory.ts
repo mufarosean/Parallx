@@ -9,7 +9,7 @@
 
 import { addAppDays, appDateParts, appDateString, isSameAppDay } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
-import { createButton, createEmptyState, createSegmented } from '../../ui/kit.js';
+import { createButton, createEmptyState, createList, createSegmented, createSurface } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { showConfirmModal } from '../../api/notificationService.js';
 import type { IAutonomyLogEntry } from '../../services/autonomyLogService.js';
@@ -54,6 +54,7 @@ export function heartbeatSeedPrompt(content: string, instruction: string): strin
 /** Do It / Tell Me More / Dismiss for a heartbeat finding. */
 export function heartbeatActions(api: ParallxApi, entry: IAutonomyLogEntry, onHandled: () => void): HTMLElement {
   const bar = $('div.agents-hist__actions');
+  createSurface(bar, { id: 'agents.finding', owner: 'agents', label: 'Heartbeat finding', instance: entry.id });
   const handle = (prompt: string | null): void => {
     handledHeartbeat.add(entry.id);
     if (prompt) void api.commands.executeCommand('chat.submitPrompt', { text: prompt });
@@ -63,9 +64,9 @@ export function heartbeatActions(api: ParallxApi, entry: IAutonomyLogEntry, onHa
     svc.log?.markRead([entry.id]);
     onHandled();
   };
-  createButton(bar, { label: 'Do It', kind: 'primary', size: 'sm', title: 'Open Chat and have the agent act on this', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Please go ahead and handle it.')) });
-  createButton(bar, { label: 'Tell Me More', kind: 'secondary', size: 'sm', title: 'Open Chat and ask the agent to explain first', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Tell me more about this before I decide what to do.')) });
-  createButton(bar, { label: 'Dismiss', kind: 'ghost', size: 'sm', onClick: () => handle(null) });
+  createButton(bar, { id: 'agents.finding.doIt', label: 'Do It', kind: 'primary', size: 'sm', title: 'Open Chat and have the agent act on this', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Please go ahead and handle it.')) });
+  createButton(bar, { id: 'agents.finding.tellMeMore', label: 'Tell Me More', kind: 'secondary', size: 'sm', title: 'Open Chat and ask the agent to explain first', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Tell me more about this before I decide what to do.')) });
+  createButton(bar, { id: 'agents.finding.dismiss', label: 'Dismiss', kind: 'ghost', size: 'sm', onClick: () => handle(null) });
   return bar;
 }
 
@@ -94,6 +95,7 @@ function outcomeWords(outcome: string): string {
 export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () => void): void {
   const head = $('div.agents-hist__head');
   createSegmented(head, {
+    id: 'agents.history.filter',
     ariaLabel: 'Show runs from',
     value: currentFilter,
     items: [
@@ -111,8 +113,9 @@ export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () =>
   const count = $('span.agents-hist__count');
   count.textContent = unread > 0 ? `${unread} new` : '';
   tools.appendChild(count);
-  createButton(tools, { label: 'Mark All Read', kind: 'ghost', size: 'sm', disabled: unread === 0, onClick: () => { svc.log?.markRead(); } });
+  createButton(tools, { id: 'autonomyLog.markAllRead', command: 'autonomyLog.markAllRead', label: 'Mark All Read', kind: 'ghost', size: 'sm', disabled: unread === 0, onClick: () => { svc.log?.markRead(); } });
   createButton(tools, {
+    id: 'agents.history.clear',
     label: 'Clear…',
     kind: 'ghost',
     size: 'sm',
@@ -127,6 +130,7 @@ export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () =>
 
   const list = $('div.agents-hist__list');
   host.appendChild(list);
+  createList(list, { id: 'agents.history.list', label: 'History', rows: () => Array.from(list.querySelectorAll<HTMLElement>('.agents-hist__row')), selected: () => [] });
   const loading = $('div.agents-hist__empty'); loading.textContent = 'Reading history…';
   list.appendChild(loading);
 
@@ -210,7 +214,10 @@ function renderRow(r: IRailRow, api: ParallxApi, repaint: () => void): HTMLEleme
     row.appendChild(heartbeatActions(api, entry, repaint));
   } else if (entry?.sessionId && String(entry.sessionId).startsWith('ephemeral-')) {
     const bar = $('div.agents-hist__actions');
+    createSurface(bar, { id: 'agents.history.run', owner: 'agents', label: who.textContent ?? 'Run', instance: r.id });
     createButton(bar, {
+      id: 'agents.history.run.view',
+      command: 'chat.openArchivedRun',
       label: 'View Full Run',
       kind: 'ghost',
       size: 'sm',

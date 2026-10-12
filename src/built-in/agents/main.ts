@@ -19,7 +19,7 @@ import './agents.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { createButton, createEmptyState, createIconButton, createSectionLabel, createSegmented } from '../../ui/kit.js';
+import { createButton, createEmptyState, createIconButton, createSectionLabel, createSegmented, createSurface } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import type { AgentApprovalResolution } from '../../agent/agentTypes.js';
 import type { IAgentsSnapshot } from './agentsModel.js';
@@ -213,12 +213,13 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   // ── New Routine. Running in the background is a setting (Settings ›
   // Agents); when it is off, the body says so with a way there. ──
   const head = $('div.agents-head');
-  createIconButton(head, { icon: 'plus', title: 'New Routine', size: 'sm', onClick: () => openRoutine() });
-  createIconButton(head, { icon: 'settings', title: 'Agent Settings', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings'); } });
+  createIconButton(head, { id: 'agents.newRoutine', command: 'agents.newRoutine', icon: 'plus', title: 'New Routine', size: 'sm', onClick: () => openRoutine() });
+  createIconButton(head, { id: 'agents.openSettings', command: 'agents.openSettings', icon: 'settings', title: 'Agent Settings', size: 'sm' });
   root.appendChild(head);
 
   const tabs = $('div.agents-tabs');
   const tabSwitch = createSegmented(tabs, {
+    id: 'agents.tab',
     ariaLabel: 'Agents',
     value: currentTab,
     items: [
@@ -307,11 +308,12 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
         line.append(who, what);
         card.appendChild(line);
         if (n.detail) { const d = $('div.agents-card__detail'); d.textContent = n.detail; card.appendChild(d); }
+        createSurface(card, { id: 'agents.approval', owner: 'agents', label: `${n.who} wants to ${lowerFirst(n.what)}`, instance: n.requestId });
         const bar = $('div.agents-card__actions');
         const waiting = busy.has(n.requestId);
-        createButton(bar, { label: 'Allow', kind: 'primary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-once') });
-        createButton(bar, { label: 'Allow This Task', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Don’t ask again until this task finishes', onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-for-task') });
-        createButton(bar, { label: 'Reject', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'deny') });
+        createButton(bar, { id: 'agents.approval.allow', label: 'Allow', kind: 'primary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-once') });
+        createButton(bar, { id: 'agents.approval.allowTask', label: 'Allow This Task', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Don’t ask again until this task finishes', onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-for-task') });
+        createButton(bar, { id: 'agents.approval.reject', label: 'Reject', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'deny') });
         card.appendChild(bar);
         sec.appendChild(card);
       }
@@ -321,6 +323,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
       const sec = section(body, 'Running now');
       for (const r of s.running) {
         const card = $(`div.agents-card.agents-card--${r.state}`);
+        createSurface(card, { id: 'agents.run', owner: 'agents', label: r.name, instance: r.taskId });
         const top = $('div.agents-card__top');
         top.appendChild($('span.agents-dot'));
         const name = $('span.agents-card__name'); name.textContent = r.name;
@@ -339,13 +342,13 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
         {
           const bar = $('div.agents-card__actions');
           const waiting = busy.has(r.taskId);
-          if (r.kind !== 'run') createButton(bar, { label: 'Watch', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
+          if (r.kind !== 'run') createButton(bar, { id: 'agents.run.watch', command: 'agents.openRun', label: 'Watch', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
           if (!r.action) { /* waiting on you, or already pausing */ } else if (r.action === 'stop') {
-            createButton(bar, { label: 'Stop', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop this run now', onClick: () => act(r.taskId, async () => { svc.chat?.cancelRequest(r.taskId); }) });
+            createButton(bar, { id: 'agents.run.stop', label: 'Stop', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop this run now', onClick: () => act(r.taskId, async () => { svc.chat?.cancelRequest(r.taskId); }) });
           } else if (r.action === 'pause') {
-            createButton(bar, { label: 'Pause', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop after the current step', onClick: () => act(r.taskId, () => svc.sessions!.requestStopAfterCurrentStep(r.taskId)) });
+            createButton(bar, { id: 'agents.run.pause', label: 'Pause', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop after the current step', onClick: () => act(r.taskId, () => svc.sessions!.requestStopAfterCurrentStep(r.taskId)) });
           } else {
-            createButton(bar, { label: 'Continue', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => act(r.taskId, async () => { await svc.sessions!.continueTask(r.taskId); await svc.execution?.runTask(r.taskId); }) });
+            createButton(bar, { id: 'agents.run.continue', label: 'Continue', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => act(r.taskId, async () => { await svc.sessions!.continueTask(r.taskId); await svc.execution?.runTask(r.taskId); }) });
           }
           card.appendChild(bar);
         }
@@ -384,7 +387,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     }
 
     const foot = $('div.agents-foot');
-    createButton(foot, { label: 'See All History', kind: 'ghost', size: 'sm', onClick: () => _showTab?.('history') });
+    createButton(foot, { id: 'agents.showHistory', command: 'agents.showHistory', label: 'See All History', kind: 'ghost', size: 'sm', onClick: () => _showTab?.('history') });
     body.appendChild(foot);
   }
 
@@ -460,7 +463,7 @@ function pausedNotice(host: HTMLElement, api: ParallxApi): void {
   const text = $('span.agents-paused__text');
   text.textContent = 'Agents are paused. Nothing runs on its own until Run In The Background is back on.';
   note.appendChild(text);
-  createButton(note, { label: 'Open Settings', kind: 'ghost', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings', 'schema:Agents'); } });
+  createButton(note, { id: 'agents.paused.openSettings', command: 'agents.openSettings', label: 'Open Settings', kind: 'ghost', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings', 'schema:Agents'); } });
   host.appendChild(note);
 }
 

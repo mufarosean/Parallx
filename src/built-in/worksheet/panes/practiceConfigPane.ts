@@ -1,6 +1,6 @@
 // Worksheets: the quiz builder.
 
-import { declareControl } from '../../../ui/kit.js';
+import { declareControl, sceneSlug } from '../../../ui/kit.js';
 import { createButton, createEmptyState, createFilterChip, createIconButton, createPageHeader, createSectionLabel, createSegmented } from '../../../ui/kit.js';
 import { listItems, type WorksheetItemSummary } from '../worksheetData.js';
 import { paperLabel, SOURCE_LABELS, KIND_LABELS } from '../problemImport.js';
@@ -233,7 +233,3 @@ export function createPracticeConfigPane(container: HTMLElement) {
   return { dispose: () => { disposed = true; for (const d of disposables) d.dispose(); root.remove(); } };
 }
 
-/** A filter value as a scene id segment: lower case, words joined by dashes. */
-function sceneSlug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'none';
-}

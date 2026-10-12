@@ -9,7 +9,7 @@
 // Same constructor signature as the old ThemeEditorPanel so every entry point
 // (command palette, Ctrl+Shift+T, Tools menu, editor pane) keeps working.
 
-import { declareControl } from '../../ui/kit.js';
+import { declareControl, sceneSlug } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IThemeService } from '../../services/serviceTypes.js';
 import type { IStorage } from '../../platform/storage.js';
@@ -216,7 +216,7 @@ export class PxAppearancePanel implements IDisposable {
     host.appendChild(row);
     const toggle = new Toggle(slot, { checked, ariaLabel: title });
     toggle.onDidChange(onChange);
-    declareControl(toggle.element, { id: `appearance.comfort.${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`, label: title, kind: 'toggle', hint, state: () => ({ kind: 'pressed', value: toggle.checked }) });
+    declareControl(toggle.element, { id: `appearance.comfort.${sceneSlug(title)}`, label: title, kind: 'toggle', hint, state: () => ({ kind: 'pressed', value: toggle.checked }) });
     return toggle;
   }
 

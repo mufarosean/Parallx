@@ -9,7 +9,7 @@
 import { appDateParts } from '../../services/localTime.js';
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { createButton } from '../../ui/kit.js';
+import { createButton, declareControl } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import type { AgentPlanStep, AgentTaskRecord } from '../../agent/agentTypes.js';
 import { nameFrom } from './agentsModel.js';
@@ -99,13 +99,13 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
     const paused = task.status === 'paused' || task.status === 'blocked';
     const active = !['completed', 'failed', 'cancelled'].includes(task.status);
     if (active && !paused && !task.stopAfterCurrentStep && task.status !== 'awaiting-approval') {
-      createButton(bar, { label: 'Pause', kind: 'secondary', size: 'sm', title: 'Stop after the current step', onClick: () => { void svc.sessions?.requestStopAfterCurrentStep(taskId); } });
+      createButton(bar, { id: 'agents.run.pause', label: 'Pause', kind: 'secondary', size: 'sm', title: 'Stop after the current step', onClick: () => { void svc.sessions?.requestStopAfterCurrentStep(taskId); } });
     }
     if (paused) {
-      createButton(bar, { label: 'Continue', kind: 'primary', size: 'sm', onClick: () => { void svc.sessions?.continueTask(taskId).then(() => svc.execution?.runTask(taskId)); } });
+      createButton(bar, { id: 'agents.run.continue', label: 'Continue', kind: 'primary', size: 'sm', onClick: () => { void svc.sessions?.continueTask(taskId).then(() => svc.execution?.runTask(taskId)); } });
     }
     if (task.status === 'awaiting-approval') {
-      createButton(bar, { label: 'Answer In Agents', kind: 'primary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.show'); } });
+      createButton(bar, { id: 'agents.show', command: 'agents.show', label: 'Answer In Agents', kind: 'primary', size: 'sm' });
     }
     if (bar.childElementCount) head.appendChild(bar);
     if (task.blockerReason && paused) {
@@ -174,6 +174,7 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
     input.rows = 2;
     input.placeholder = 'Tell it something, like "leave the archive folder alone"';
     input.setAttribute('aria-label', 'A note for the agent');
+    declareControl(input, { id: 'agents.run.note', label: 'A note for the agent', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
     if (waiting) { input.value = waiting; input.disabled = true; } else input.value = drafts.get(taskId) ?? '';
     input.addEventListener('input', () => { drafts.set(taskId, input.value); });
     const row = $('div.agents-run__steer-row');
@@ -200,7 +201,7 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
     });
     row.appendChild(hint);
-    createButton(row, { label: 'Send Note', kind: 'secondary', size: 'sm', disabled: !!waiting, onClick: send });
+    createButton(row, { id: 'agents.run.sendNote', label: 'Send Note', kind: 'secondary', size: 'sm', disabled: !!waiting, onClick: send });
     box.append(input, row);
     return box;
   };
