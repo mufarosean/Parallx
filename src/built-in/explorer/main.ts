@@ -10,6 +10,8 @@
 //   src/vs/workbench/contrib/files/browser/views/explorerViewer.ts
 //   src/vs/workbench/contrib/files/browser/explorerService.ts
 
+import { declareControl, createTree, createList } from '../../ui/kit.js';
+import { getUniqueDestName } from './uniqueName.js';
 import './explorer.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -326,6 +328,8 @@ function createExplorerView(container: HTMLElement): IDisposable {
   container.tabIndex = 0;
 
   _treeContainer = container;
+  // The tree as one scene entry: its selection is the selected node's uri.
+  const treeEntry = createTree(container, { id: 'explorer.tree', label: 'Files', rows: () => Array.from(container.querySelectorAll<HTMLElement>('.tree-node')), selected: () => (_selectedNode ? [_selectedNode.uri] : []) });
 
   // Keyboard navigation
   container.addEventListener('keydown', handleTreeKeydown);
@@ -343,6 +347,7 @@ function createExplorerView(container: HTMLElement): IDisposable {
       container.removeEventListener('keydown', handleTreeKeydown);
       container.removeEventListener('contextmenu', handleContextMenu);
       _treeContainer = null;
+      treeEntry.dispose();
     },
   };
 }
@@ -364,6 +369,7 @@ function rebuildTree(): void {
     const openBtn = $('button');
     openBtn.className = 'explorer-empty-open-btn';
     openBtn.textContent = 'Open Folder';
+    declareControl(openBtn, { id: 'explorer.openFolder', label: 'Open Folder', command: 'workspace.openFolder' });
     openBtn.addEventListener('click', () => {
       _api.commands.executeCommand('workspace.openFolder');
     });
@@ -619,6 +625,7 @@ function createErrorElement(node: TreeNode, depth: number): HTMLElement {
   const retry = $('button');
   retry.className = 'tree-node-error-retry';
   retry.textContent = 'Retry';
+  declareControl(retry, { id: 'explorer.retry', label: 'Retry' });
   retry.addEventListener('click', (e) => {
     e.stopPropagation();
     node.error = undefined;
@@ -1060,52 +1067,6 @@ async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> 
   }
 }
 
-/**
- * Generate a unique name in a directory if the target name already exists.
- * For copy operations: "file.txt" → "file - Copy.txt" → "file - Copy 2.txt" etc.
- */
-async function getUniqueDestName(
-  destFolder: string,
-  name: string,
-  electronFs: any,
-): Promise<string> {
-  // Check if the name conflicts
-  const destPath = destFolder + '/' + name;
-  const exists = await electronFs.stat(destPath).then(
-    (r: any) => !r?.error,
-    () => false,
-  );
-  if (!exists) return name;
-
-  // Split into stem and extension
-  const dotIdx = name.lastIndexOf('.');
-  const hasDot = dotIdx > 0;
-  const stem = hasDot ? name.slice(0, dotIdx) : name;
-  const ext = hasDot ? name.slice(dotIdx) : '';
-
-  // Try "stem - Copy.ext", "stem - Copy 2.ext", etc.
-  let candidate = `${stem} - Copy${ext}`;
-  let checkPath = destFolder + '/' + candidate;
-  let checkExists = await electronFs.stat(checkPath).then(
-    (r: any) => !r?.error,
-    () => false,
-  );
-  if (!checkExists) return candidate;
-
-  for (let i = 2; i < 100; i++) {
-    candidate = `${stem} - Copy ${i}${ext}`;
-    checkPath = destFolder + '/' + candidate;
-    checkExists = await electronFs.stat(checkPath).then(
-      (r: any) => !r?.error,
-      () => false,
-    );
-    if (!checkExists) return candidate;
-  }
-
-  // Fallback: timestamp
-  return `${stem} - Copy ${Date.now()}${ext}`;
-}
-
 // ─── Drag & Drop ─────────────────────────────────────────────────────────────
 
 function setupDragAndDrop(el: HTMLElement, node: TreeNode): void {
@@ -1541,6 +1502,7 @@ function startInlineRename(node: TreeNode): void {
   input.type = 'text';
   input.className = 'tree-inline-input';
   input.value = node.name;
+  declareControl(input, { id: 'explorer.rename', label: 'New name', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
 
   labelEl.textContent = '';
   labelEl.appendChild(input);
@@ -1617,6 +1579,7 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
   input.type = 'text';
   input.className = 'tree-inline-input';
   input.placeholder = kind === 'folder' ? 'Folder name' : 'File name';
+  declareControl(input, { id: kind === 'folder' ? 'explorer.newFolder' : 'explorer.newFile', label: input.placeholder, kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
   inputRow.appendChild(input);
 
   // Insert after the parent's element
@@ -1725,6 +1688,8 @@ async function confirmDelete(node: TreeNode): Promise<void> {
 function createOpenEditorsView(container: HTMLElement): IDisposable {
   container.classList.add('open-editors-view');
   _openEditorsContainer = container;
+  // The open editors as one scene entry: the active one is its selection.
+  const openEditorsEntry = createList(container, { id: 'explorer.openEditors', label: 'Open Editors', rows: () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item')), selected: () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item--active')).map((r) => r.textContent?.trim() ?? '') });
 
   // Initial render
   renderOpenEditors();
@@ -1738,6 +1703,7 @@ function createOpenEditorsView(container: HTMLElement): IDisposable {
     dispose() {
       sub.dispose();
       _openEditorsContainer = null;
+      openEditorsEntry.dispose();
     },
   };
 }

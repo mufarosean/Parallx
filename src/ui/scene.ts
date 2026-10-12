@@ -124,7 +124,10 @@ function SCHEDULE(fn: () => void): void {
 }
 
 class Scene implements IScene {
+  /** Surfaces by element. */
   private readonly _mounted = new Map<HTMLElement, Mounted>();
+  /** Controls by element. A view's root can be both its surface and, say, its tree. */
+  private readonly _controls = new Map<HTMLElement, Mounted>();
   private readonly _pending = new Map<HTMLElement, ISceneEntry>();
   private readonly _roots: Mounted[] = [];
   private _seq = 0;
@@ -148,12 +151,15 @@ class Scene implements IScene {
     if (el.isConnected) this._add(entry);
     else this._pending.set(el, entry);
     let disposed = false;
+    const map = entry.kind === 'surface' ? this._mounted : this._controls;
     return {
       dispose: () => {
         if (disposed) return;
         disposed = true;
         this._pending.delete(el);
-        this._remove(el);
+        // Only this entry: a view's root can hold a surface and a control.
+        const m = map.get(el);
+        if (m) this._drop(el, m, map);
       },
     };
   }
@@ -217,6 +223,7 @@ class Scene implements IScene {
 
   reset(): void {
     this._mounted.clear();
+    this._controls.clear();
     this._pending.clear();
     this._roots.length = 0;
     this._observer?.disconnect();
@@ -227,9 +234,9 @@ class Scene implements IScene {
 
   private _add(entry: ISceneEntry): void {
     const el = entry.element;
-    if (this._mounted.has(el)) return;
-    const host = el.parentElement?.closest(`[${SURFACE_ATTR}]`);
-    const parent = host instanceof HTMLElement ? this._mounted.get(host) : undefined;
+    const map = entry.kind === 'surface' ? this._mounted : this._controls;
+    if (map.has(el)) return;
+    const parent = this._parentFor(entry);
     const siblings = parent ? parent.children : this._roots;
     // Two controls with one id under one surface is a mistake. Two surfaces
     // with one id and instance is not: the same file open in two editor
@@ -246,7 +253,7 @@ class Scene implements IScene {
       }
     }
     const m: Mounted = { entry, parent, children: [], seq: this._seq++ };
-    this._mounted.set(el, m);
+    map.set(el, m);
     if (parent) parent.children.push(m); else this._roots.push(m);
     // A surface whose host surface is not yet mounted (registered out of
     // order) is parented when the host arrives: section _reparent.
@@ -267,10 +274,29 @@ class Scene implements IScene {
     }
   }
 
+  /**
+   * The surface an entry sits under: for a control declared on a surface's
+   * own element, that surface; otherwise the nearest surface ancestor.
+   */
+  private _parentFor(entry: ISceneEntry): Mounted | undefined {
+    const el = entry.element;
+    if (entry.kind !== 'surface') {
+      const own = this._mounted.get(el);
+      if (own) return own;
+    }
+    const host = el.parentElement?.closest(`[${SURFACE_ATTR}]`);
+    return host instanceof HTMLElement ? this._mounted.get(host) : undefined;
+  }
+
   private _remove(el: HTMLElement): void {
-    const m = this._mounted.get(el);
-    if (!m) return;
-    this._mounted.delete(el);
+    const control = this._controls.get(el);
+    if (control) this._drop(el, control, this._controls);
+    const surface = this._mounted.get(el);
+    if (surface) this._drop(el, surface, this._mounted);
+  }
+
+  private _drop(el: HTMLElement, m: Mounted, map: Map<HTMLElement, Mounted>): void {
+    map.delete(el);
     const siblings = m.parent ? m.parent.children : this._roots;
     const i = siblings.indexOf(m);
     if (i >= 0) siblings.splice(i, 1);
@@ -333,6 +359,8 @@ class Scene implements IScene {
   }
 
   private _flush(): void {
+    // A batch delivered after a test window was torn down has nothing to do.
+    if (typeof HTMLElement === 'undefined') { this._removed.clear(); this._added.clear(); return; }
     const removed = [...this._removed]; this._removed.clear();
     const added = [...this._added]; this._added.clear();
     for (const n of removed) {
@@ -346,8 +374,8 @@ class Scene implements IScene {
         const pending = this._pending.get(el);
         if (pending) { this._pending.delete(el); this._add(pending); continue; }
         // A moved element: re-parent to where it now is.
-        const m = this._mounted.get(el);
-        if (m) this._reparent(m);
+        const moved = this._mounted.get(el) ?? this._controls.get(el);
+        if (moved) this._reparent(moved);
       }
     }
     // Pending entries whose element connected inside a subtree the observer
@@ -358,8 +386,7 @@ class Scene implements IScene {
   }
 
   private _reparent(m: Mounted): void {
-    const host = m.entry.element.parentElement?.closest(`[${SURFACE_ATTR}]`);
-    const parent = host instanceof HTMLElement ? this._mounted.get(host) : undefined;
+    const parent = this._parentFor(m.entry);
     if (parent === m.parent) return;
     const from = m.parent ? m.parent.children : this._roots;
     const i = from.indexOf(m);

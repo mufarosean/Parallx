@@ -116,6 +116,17 @@ describe('scene', () => {
     expect(scene.find('editorGroup.tabs').map((e) => e.element)).toEqual([second.el]);
   });
 
+  it('lets a view\'s root be both its surface and a control, the control under the surface', () => {
+    const s = surface('view.explorer', { owner: 'explorer' });
+    const reg = scene.register({ id: 'explorer.tree', kind: 'tree', owner: '', label: 'Files', element: s.el });
+    expect(scene.find('explorer.tree')).toHaveLength(1);
+    expect(scene.under(scene.find('view.explorer')[0]).map((e) => e.id)).toEqual(['explorer.tree']);
+    expect(scene.describe('view.explorer').surfaces[0].children?.[0]).toMatchObject({ id: 'explorer.tree', kind: 'tree', owner: 'explorer' });
+    reg.dispose();
+    expect(scene.find('explorer.tree')).toHaveLength(0);
+    expect(scene.find('view.explorer')).toHaveLength(1);
+  });
+
   it('fires onDidChange once per batch of changes', async () => {
     let fired = 0;
     scene.onDidChange(() => { fired++; });

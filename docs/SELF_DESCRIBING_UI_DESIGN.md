@@ -143,6 +143,12 @@ A list, a tree or a tab bar registers once, as one entry whose state is
 a selection with a count. Its rows are never entries; a tree of 400 notes
 is one entry. This is the rule that keeps the scene small and cheap.
 
+One element may hold a surface and one control: a view whose root is
+its tree (the explorer) is the surface `view.explorer` and the control
+`explorer.tree`, the control under the surface. The scene keeps
+surfaces and controls in separate maps by element for this, and a
+registration's dispose removes only its own entry.
+
 ### 4.3 Ids
 
 - An id is `<owner>.<name>`, with the prefix dropped when the owner is
@@ -650,6 +656,18 @@ copy, ask AI, add to note, more) are declared. Undeclared: outline rows,
 thumbnails, highlight tabs in the margin, canvas-link rows. The probe
 writes a one-page PDF by hand (`tinyPdf` in `tests/probes/scene.mjs`),
 opens it through quick open, and checks the toolbar's ids.
+
+Explorer and Search done 2026-10-12, in the cloud. The explorer's tree
+is one entry (`explorer.tree`, selection the selected node's uri), its
+open editors list another (`explorer.openEditors`, selection the active
+row), with Open Folder (its command recorded), Retry, and the inline
+rename and new-file or new-folder fields declared. Search's query,
+replace, include and exclude fields, its replace and details toggles,
+the three option toggles (match case, whole word, regular expression;
+ids from their labels) and its results list are declared. Tree rows,
+open-editor rows and result rows are not. The explorer, a giant, lost
+its unique-name helper to `uniqueName.ts` and ended smaller. The probe
+opens Search by command and checks both panes' ids.
 
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer

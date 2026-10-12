@@ -11,6 +11,7 @@
 //   src/vs/workbench/contrib/search/browser/searchView.ts
 //   src/vs/workbench/services/search/common/textSearchManager.ts
 
+import { declareControl, createList } from '../../ui/kit.js';
 import './search.css';
 
 import { SEARCH_EMPTY_STATES } from './searchEmptyStates.js';
@@ -204,6 +205,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   _toggleReplaceBtn = $('button');
   _toggleReplaceBtn.className = 'search-toggle-replace';
   _toggleReplaceBtn.title = 'Toggle Replace';
+  declareControl(_toggleReplaceBtn, { id: 'search.toggleReplace', label: 'Toggle Replace', kind: 'iconButton', state: () => ({ kind: 'pressed', value: !!_replaceInput && _replaceInput.offsetParent !== null }) });
   _toggleReplaceBtn.innerHTML = getIcon('toggle-replace')!;
   _toggleReplaceBtn.addEventListener('click', () => {
     _showReplace = !_showReplace;
@@ -224,6 +226,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   _queryInput.type = 'text';
   _queryInput.className = 'search-input';
   _queryInput.placeholder = 'Search';
+  declareControl(_queryInput, { id: 'search.query', label: 'Search', kind: 'input', state: () => ({ kind: 'value', value: _queryInput?.value ?? '' }) });
   _queryInput.spellcheck = false;
   _queryInput.value = _query;
   searchRow.appendChild(_queryInput);
@@ -266,6 +269,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   _replaceInput.type = 'text';
   _replaceInput.className = 'search-input';
   _replaceInput.placeholder = 'Replace';
+  declareControl(_replaceInput, { id: 'search.replace', label: 'Replace', kind: 'input', state: () => ({ kind: 'value', value: _replaceInput?.value ?? '' }) });
   _replaceInput.spellcheck = false;
   _replaceInput.value = _replaceText;
   _replaceRow.appendChild(_replaceInput);
@@ -283,6 +287,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   filtersToggle.className = 'search-filters-toggle';
   filtersToggle.textContent = '⋯ files to include/exclude';
   filtersToggle.title = 'Toggle Search Details';
+  declareControl(filtersToggle, { id: 'search.toggleDetails', label: 'Toggle Search Details' });
 
   const filtersBody = $('div');
   filtersBody.className = 'search-filters-body';
@@ -292,6 +297,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   includeInput.type = 'text';
   includeInput.className = 'search-input search-filter-input';
   includeInput.placeholder = 'files to include (e.g. *.ts, src/**)';
+  declareControl(includeInput, { id: 'search.include', label: 'Files to include', kind: 'input', state: () => ({ kind: 'value', value: includeInput.value }) });
   includeInput.value = _options.includePattern;
   includeInput.addEventListener('input', () => {
     _options.includePattern = includeInput.value;
@@ -303,6 +309,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   excludeInput.type = 'text';
   excludeInput.className = 'search-input search-filter-input';
   excludeInput.placeholder = 'files to exclude (e.g. *.min.js)';
+  declareControl(excludeInput, { id: 'search.exclude', label: 'Files to exclude', kind: 'input', state: () => ({ kind: 'value', value: excludeInput.value }) });
   excludeInput.value = _options.excludePattern;
   excludeInput.addEventListener('input', () => {
     _options.excludePattern = excludeInput.value;
@@ -331,6 +338,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   // ── Results ──
   _resultsContainer = $('div');
   _resultsContainer.className = 'search-results';
+  createList(_resultsContainer, { id: 'search.results', label: 'Results', rows: () => Array.from(_resultsContainer?.querySelectorAll<HTMLElement>('.search-result-item, .search-file-group') ?? []), selected: () => [] });
   container.appendChild(_resultsContainer);
 
   // ── Event handlers ──
@@ -385,6 +393,7 @@ function createToggleButton(
   btn.title = title;
   btn.textContent = label;
   if (initial) btn.classList.add('active');
+  declareControl(btn, { id: `search.${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, label: title, kind: 'toggle', state: () => ({ kind: 'pressed', value: btn.classList.contains('active') }) });
 
   btn.addEventListener('click', () => {
     btn.classList.toggle('active');
