@@ -60,7 +60,7 @@ describe('the lazy vendor bundles', () => {
       writeFileSync(entry, `export { loadPdfjs, loadHljs, loadJsZip } from '${lazy}';\n`);
       const out = await build({ entryPoints: [entry], bundle: true, write: false, format: 'iife', platform: 'browser', target: 'es2022', plugins: [lazyVendorPlugin()], logLevel: 'silent' });
       const text = out.outputFiles[0].text;
-      for (const name of ['pdfjs', 'hljs', 'jszip']) expect(text).toContain(`import("./dist/renderer/vendor-${name}.js")`);
+      for (const name of ['pdfjs', 'hljs', 'jszip']) expect(text).toContain(`import("./vendor-${name}.js")`);
       expect(text).not.toContain('GlobalWorkerOptions');
     } finally {
       rmSync(dir, { recursive: true, force: true });

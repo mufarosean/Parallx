@@ -2,10 +2,10 @@
 //
 // Each entry in src/vendor/ builds as its own ESM bundle,
 // dist/renderer/vendor-<name>.js. In the main bundle an import that resolves
-// to one of them stays a dynamic import of that file, resolved against the
-// page (electron/index.html) like the worksheet and Mermaid bundles, so the
-// page parses the library when something needs it (src/vendor/lazy.ts holds
-// the loaders). Under vitest the same import loads the package.
+// to one of them stays a dynamic import of that file. A script's import()
+// resolves against the script's own URL (dist/renderer/main.js), not the
+// page, so the request names the sibling file. The page parses the library
+// when something needs it (src/vendor/lazy.ts holds the loaders). Under vitest the same import loads the package.
 
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +27,7 @@ export function lazyVendorPlugin() {
       build.onResolve({ filter: /\.js$/ }, (args) => {
         if (args.kind === 'entry-point') return null;
         const name = byPath.get(path.resolve(args.resolveDir, args.path).replace(/\.js$/, ''));
-        return name ? { path: `./dist/renderer/vendor-${name}.js`, external: true } : null;
+        return name ? { path: `./vendor-${name}.js`, external: true } : null;
       });
     },
   };

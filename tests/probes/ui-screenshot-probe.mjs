@@ -662,7 +662,11 @@ async function moArtScene(appRoot, workspace, errors) {
 // panel, night reading, light mode and a narrow window.
 async function pdfScene(appRoot, workspace, errors) {
   const pdfPath = path.join(workspace, 'probe-reading.pdf');
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  // The cloud container keeps its browser outside Playwright's cache; locally
+  // Playwright finds its own.
+  const cloudChrome = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+  const hasCloudChrome = await fs.access(cloudChrome).then(() => true, () => false);
+  const browser = await chromium.launch(hasCloudChrome ? { executablePath: cloudChrome } : {});
   try {
     const p = await browser.newPage();
     const para = 'Excess loss development follows the reported pattern closely in the early years and then flattens. The tail factor is chosen from the industry curve and checked against the company triangle. ';
