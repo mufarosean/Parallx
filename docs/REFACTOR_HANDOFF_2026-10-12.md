@@ -154,7 +154,20 @@ move the same code.
    persistence. Each becomes a class in its own file taking the pane's DOM
    and pdf.js objects through a small host interface; the pane constructs
    them. The pure parts (icons, types, highlight model) are already out.
-2. **Worksheets panes.** `src/built-in/worksheet/main.ts` (4,020 lines):
+2. **Worksheets panes** (done 2026-10-12). `main.ts` is the activation
+   (about 200 lines). Each `create*Pane` is in `panes/<name>Pane.ts`, with
+   `dashboardPane` and `planPane` moved beside them; `state.ts` holds the
+   shared state (one `state` object for the api, the running quiz, the
+   review walk, the builder preset and the import hooks; the caches,
+   listener sets and settings beside it), `widgets.ts` the buttons and
+   `el`, `actions.ts` the moves between tabs (open a tab, start or reopen
+   a quiz, import a plan, the plan pane's actions), `chatReview.ts` the
+   chat hand-off. No pane imports another except the sheet pane (the quiz
+   and review panes embed it) and the bank pane (the sidebar draws its
+   snapshot, the import pane calls its recipe reader). The split was mechanical, verified by
+   typecheck and build; the app has not been run since, so walk the
+   section 2 Worksheets rows first. The plan as written:
+   `src/built-in/worksheet/main.ts` (4,020 lines):
    each `create*Pane` function into `panes/<name>Pane.ts`, with the module
    state they share (`_practice`, listener sets, caches) in a `state.ts`
    they import. Keep `main.ts` as the activation that registers them.

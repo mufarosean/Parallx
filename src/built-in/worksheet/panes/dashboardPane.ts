@@ -7,14 +7,14 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession, getStudySecondsByDay, getXpCashouts } from './worksheetData.js';
-import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
-import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type Campaign, type CampaignProgress, type DayStory } from './campaign.js';
-import { syncRewards, type RewardState } from './rewardsSync.js';
-import { REWARDS } from './rewards.js';
-import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from './problemImport.js';
-import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../ui/kit.js';
-import { appTime } from '../../services/localTime.js';
+import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession, getStudySecondsByDay, getXpCashouts } from '../worksheetData.js';
+import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from '../progressInsights.js';
+import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type Campaign, type CampaignProgress, type DayStory } from '../campaign.js';
+import { syncRewards, type RewardState } from '../rewardsSync.js';
+import { REWARDS } from '../rewards.js';
+import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from '../problemImport.js';
+import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../../ui/kit.js';
+import { appTime } from '../../../services/localTime.js';
 
 export interface DashboardActions {
   openItem(id: number, title: string): void;

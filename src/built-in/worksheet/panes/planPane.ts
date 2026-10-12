@@ -11,17 +11,17 @@
 import {
   listItems, listAttemptHistory, onWorksheetDataChanged, getPlanJson, listPlanBlocks, savePlanBlock,
   getSessionFinishes, listRewardUnlocks, unlockRewards, getItem, type PlanBlockRow,
-} from './worksheetData.js';
-import { dayKey, type InsightAttempt, type InsightItem } from './progressInsights.js';
+} from '../worksheetData.js';
+import { dayKey, type InsightAttempt, type InsightItem } from '../progressInsights.js';
 import {
   parsePlan, planProgress, drawBlock, drawnOnMap, examItems, resolveBlock, blockKey, clockLabel, earnedPlanRewards, planRewardXp, PLAN_REWARDS,
   type StudyPlan, type PlanDay, type PlanBlock, type BlockState, type BlockView, type DayView, type PlanProgress, type ResolveContext,
-} from './plan.js';
-import { normalizeRating } from './problemImport.js';
-import { LEVEL_TITLES } from './campaign.js';
+} from '../plan.js';
+import { normalizeRating } from '../problemImport.js';
+import { LEVEL_TITLES } from '../campaign.js';
 import { el, tile, card, makeTooltip, fmtStudyTime } from './dashboardPane.js';
-import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../ui/kit.js';
-import { appTimeString } from '../../services/localTime.js';
+import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../../ui/kit.js';
+import { appTimeString } from '../../../services/localTime.js';
 
 export interface PlanActions {
   openItem(id: number, title: string): void;
