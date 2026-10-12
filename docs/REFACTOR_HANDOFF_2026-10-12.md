@@ -97,7 +97,15 @@ Each item below is a class or a file taken apart. Do one per session, run
 the app after it (the row above that matches, plus the feature itself),
 then commit.
 
-### First, the dead-code sweep
+### First, the dead-code sweep (done 2026-10-12)
+
+Done, one commit per group (34a938c5, fb98f8b3, 69d786c1, 728f472b,
+6127278a); the sweep now prints only the eight `_...ForTest` hooks. Two
+things it turned up: the chat list showed archived autonomous runs
+(`loadSessionMetas` had lost the filter the dead `loadSessions` kept;
+fixed in c823cb60), and the `customDragHandle` capability on canvas
+block definitions has no reader now (left for the canvas split). What
+follows is the plan as it was written.
 
 The cloud sessions removed what the audit named. They did not sweep the
 whole code base for unused code, and a sweep run afterwards still finds
@@ -127,7 +135,19 @@ move the same code.
 
 ### Phase 6, the splits
 
-1. **PDF pane collaborators.** `src/editor/panes/pdf/pdfEditorPane.ts`
+1. **PDF pane collaborators** (done 2026-10-12, 2a20d0cc to 896ee7e3). The
+   pane is 1,000 lines; each section is a module in `pdf/`: pdfThumbnails,
+   pdfOutline, pdfSearchBar, pdfHighlightStore and pdfHighlightPopover,
+   pdfSelectionOverlay, pdfSelectionMenu and pdfSelectionActions,
+   pdfToolbar and pdfToolbarMenus, pdfViewState, pdfDebugHook (pdfButtons
+   is their shared button helper). Two bugs went with it: the outline's
+   arrow keys moved one row more per PDF opened in the same pane, and
+   undo crossed from one PDF to the next. What is left in the pane is its
+   own work (its DOM, loading pdf.js, the side panel, keys, layout); taking
+   it under 800 lines would mean splitting `renderInput`, which the plan
+   did not list. `tests/probes/refactor-verify-probe.mjs pdf` drives
+   every section hidden. The plan as written:
+   `src/editor/panes/pdf/pdfEditorPane.ts`
    (3,139 lines) by its sections: highlights and margin notes (lines
    ~850 to 1,640), the outline sidebar, the search bar, the toolbar and
    overflow menu, thumbnails, the text-selection menu, view-state

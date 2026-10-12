@@ -12,11 +12,10 @@
 //   - Annotation layer (links, form fields)
 //   - Internal link navigation
 //
-// Custom additions:
-//   - Toolbar (page nav, zoom, search toggle, outline toggle, rotation)
-//   - Search bar (Ctrl+F)
-//   - Outline sidebar (document TOC)
-//   - Keyboard shortcuts
+// The pane builds its DOM, loads pdf.js and owns the side panel and keys;
+// each other part is a module in this folder: pdfToolbar(+Menus),
+// pdfSearchBar, pdfOutline, pdfThumbnails, pdfHighlightStore(+Popover),
+// pdfSelectionOverlay, -Menu and -Actions, pdfViewState, pdfDebugHook.
 
 // ── pdf.js: types here, the library on the first PDF ───────────────────
 // The display and viewer layers are their own bundle (src/vendor/pdfjs.ts),
