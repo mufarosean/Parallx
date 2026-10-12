@@ -858,6 +858,59 @@ Sessions append here. Each line: date, step, what was left and why.
   `ContextMenu.show` itself, once, when `src/ui/contextMenu.ts` is next
   touched.
 
+- 2026-10-12, step 5, hand-off at commit 222b7ca8 (steps 1, 2, 3 done;
+  step 5 done for worksheet, planner, PDF, explorer, search, dashboard,
+  settings panels, welcome, terminal, activity log, tool gallery, theme
+  editor, and the Agents view, run pane and routine form). Left in
+  step 5, in this order, one commit each, each verified by the probe
+  (section 13; in the cloud run it as
+  `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
+  after `npm run build`) and the full suite:
+  1. `src/built-in/agents/workflowEditorPane.ts` (1108 lines, over the
+     800 limit, so it must not grow): first extract a coherent module
+     (the inspector's field helpers around lines 840 to 1030, or the
+     coach box around 560 to 600, are the natural cut), refresh the
+     file-size baseline for the fall, then declare: the name input (line
+     185), Run Now and the enabled button (234 to 240), the palette
+     items (`workflows.editor.add.<kind>`, line 267), the coach dismiss
+     (582), the inspector's inputs, textarea, Delete Node, Delete
+     Connection, Preview Compiled Prompt, Back and Back To Editing. The
+     pane is an editor, so its surface already exists (typeId); ids go
+     under `workflows.editor.*`. `tests/unit/workflowEditorPane.test.ts`
+     covers it.
+  2. ai-settings (`src/built-in/ai-settings/main.ts`, 273 lines),
+     output (240), diagnostics (221), indexing-log (548): small; one
+     commit for the four is fine. Probe: `ai-settings.open` is already
+     in OPENERS; the other three are panel views, add them to
+     `PANEL_VIEWS` with one id each.
+  3. canvas: only the toolbar, menus and property editors, never the
+     Tiptap document. Inventory with
+     `grep -n "createElement('button')\|\$('button" src/canvas -r`.
+  4. chat: header, input chips, mode switch, tool cards; never the
+     message list's markdown.
+  Then steps 6, 7, 8, 9, 4, 10, 11 as section 9 orders them.
+
+  What this session learned, for whoever continues:
+  - A repeated card (a widget, a routine row, an approval) is a surface
+    with the row's id as `instance`, and its buttons sit under it with
+    fixed ids. A row with no actions is not declared; a list of rows is
+    one `createList` entry.
+  - A kit button whose scene state is not "enabled" (an on/off button)
+    is made without an id and then `declareControl`ed with the state;
+    `createButton` with an id plus a second `declareControl` on the
+    same element is silently ignored.
+  - A control that runs a command with arguments (Heartbeat Settings…
+    runs `agents.openSettings` with a group) keeps its own id and
+    records the command; only a control that runs the bare command
+    takes the command id as its id, and that at most once per surface.
+  - `sceneSlug` lives in the kit now; use it for every dynamic id
+    segment.
+  - Probe: the appearance panel opens as a centred overlay and swallows
+    clicks; the probe presses Escape after reading the full scene. A
+    test that leaves a declared element in the document after its
+    owner is disposed collides with the next test under the window:
+    clear the body and `scene.reset()` in `afterEach`.
+
 ## 12. Glossary for a new reader
 
 - **Part**: one of the seven fixed regions of the window (title bar,

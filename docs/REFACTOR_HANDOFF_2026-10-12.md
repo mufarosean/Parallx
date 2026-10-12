@@ -236,8 +236,9 @@ move the same code.
 `docs/SELF_DESCRIBING_UI_DESIGN.md` is the full design and build order
 for the next phase: every control made through the kit from a
 declaration, a live scene of what is on screen, three ratchets, probes
-by id, docs from the registries. Its section 9 is the step list; start
-at step 1 once the splits above are done.
+by id, docs from the registries. Its section 9 is the step list. Steps
+1 to 3 are done and step 5 is part way; section 11 of that document
+says exactly where it stands and what comes next.
 
 ### Phases 7 to 10
 
