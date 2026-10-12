@@ -21,7 +21,7 @@ import type { IIntrospectionService } from '../../../services/introspectionServi
 
 const TOPICS = [
   'summary', 'tools', 'commands', 'keybindings', 'key-conflicts',
-  'layout', 'editors', 'settings', 'context', 'services',
+  'layout', 'editors', 'settings', 'context', 'services', 'scene',
 ] as const;
 type Topic = typeof TOPICS[number];
 
@@ -31,7 +31,7 @@ export function createAppDescribeTool(
   return {
     name: 'app__describe',
     displaySummary: 'Describe the running app.',
-    description: 'Ask the app about itself: which tools are running (with activation timing and errors), what commands and keybindings exist, how the layout is arranged, which editors are open, what every setting is, the live context keys, and the registered services. Default topic "summary" returns compact counts plus the layout; pass a specific topic for the full list.',
+    description: 'Ask the app about itself: which tools are running (with activation timing and errors), what commands and keybindings exist, how the layout is arranged, which editors are open, what is on screen right now ("scene": every mounted surface and control with its id, label and state), what every setting is, the live context keys, and the registered services. Default topic "summary" returns compact counts plus the layout; pass a specific topic for the full list.',
     parameters: {
       type: 'object',
       properties: {
@@ -72,6 +72,7 @@ export function createAppDescribeTool(
           case 'settings': return introspection.describeSettings();
           case 'context': return introspection.describeContext();
           case 'services': return introspection.describeServices();
+          case 'scene': return introspection.describeScene();
           case 'summary': {
             const tools = describeEnabledTools();
             const failing = tools.filter((t) => t.errorCount > 0);

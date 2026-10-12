@@ -1,0 +1,112 @@
+// scene.mjs: what every probe shares. Launching the hidden app, and driving
+// it by the ids the kit declares (docs/SELF_DESCRIBING_UI_DESIGN.md
+// section 7) instead of by CSS class names.
+//
+// import { launchApp, sceneOf, click, type, cmd } from './scene.mjs';
+
+import { _electron as electron } from 'playwright';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+
+/** The hidden app's environment: test mode, its own data folder, no real workspace. */
+export function launchEnv(appRoot) {
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
+  Object.assign(env, {
+    PARALLX_TEST_MODE: '1', PARALLX_RENDERER_PORT: '0', PARALLX_HIDDEN_PROBE: '1',
+    PARALLX_APP_ROOT: appRoot, PARALLX_USER_DATA: path.join(appRoot, 'data', 'chromium-cache'),
+  });
+  return env;
+}
+
+/**
+ * Starts the app on `appRoot` and returns `{ app, page, errors }` once the
+ * workbench is up. Software WebGL, because a container has no GPU. The
+ * hidden copy never reaches the Ollama the real app uses.
+ */
+export async function launchApp(appRoot) {
+  const errors = [];
+  const app = await electron.launch({ args: ['.', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
+  const page = await app.firstWindow();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${String(e).slice(0, 400)}`));
+  // The refused Ollama route above shows as a resource error; it is not one.
+  page.on('console', (m) => { if (m.type() === 'error' && !/ERR_CONNECTION_REFUSED/.test(m.text())) errors.push(`console: ${m.text().slice(0, 400)}`); });
+  await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
+  await page.waitForSelector('[data-part-id="workbench.parts.titlebar"]', { state: 'attached', timeout: 90_000 });
+  await page.waitForTimeout(2_500);
+  return { app, page, errors };
+}
+
+/** Runs a command by id in the page. Resolves true, or the error's message. */
+export async function cmd(page, id, ...args) {
+  return page.evaluate(async ({ id, args }) => {
+    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'ICommandService' });
+    if (!svc) return 'no command service';
+    try { await svc.executeCommand(id, ...args); return true; } catch (e) { return String(e?.message || e); }
+  }, { id, args });
+}
+
+/** `scene.describe(scope)` from the page, as plain data. */
+export async function sceneOf(page, scope) {
+  return page.evaluate(({ scope }) => {
+    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IIntrospectionService' });
+    if (!svc) throw new Error('no introspection service');
+    return svc.describeScene(scope);
+  }, { scope });
+}
+
+/** Every node of a description, flattened, with its parent surface id. */
+export function flatten(description) {
+  const out = [];
+  const walk = (node, parent) => {
+    out.push({ ...node, parent });
+    for (const c of node.children ?? []) walk(c, node.id);
+  };
+  for (const s of description.surfaces) walk(s, undefined);
+  return out;
+}
+
+/**
+ * The element with data-px-id === id. When several are mounted, the one
+ * whose surface is visible; `opts.instance` picks a specific surface
+ * instance. Throws naming the ids under the same surface when none is found.
+ */
+async function locate(page, id, opts = {}) {
+  const selector = opts.instance
+    ? `[data-px-instance="${opts.instance}"] [data-px-id="${id}"]`
+    : `[data-px-id="${id}"]`;
+  const all = page.locator(selector);
+  const n = await all.count();
+  if (n === 0) {
+    const nodes = flatten(await sceneOf(page));
+    const owner = id.includes('.') ? id.slice(0, id.indexOf('.')) : id;
+    const near = nodes.filter((x) => x.id !== id && (x.parent === owner || x.id.startsWith(owner + '.'))).map((x) => x.id).slice(0, 20);
+    throw new Error(`no control "${id}" on screen; near it: ${near.join(', ') || 'nothing'}`);
+  }
+  for (let i = 0; i < n; i++) {
+    const one = all.nth(i);
+    if (await one.isVisible()) return one;
+  }
+  return all.first();
+}
+
+/** A real click on the control with this id. */
+export async function click(page, id, opts) {
+  const el = await locate(page, id, opts);
+  await el.click();
+}
+
+/** Focus the input with this id, select all, type, and blur. */
+export async function type(page, id, text, opts) {
+  const el = await locate(page, id, opts);
+  const input = el.locator('input, textarea').first();
+  const target = (await input.count()) ? input : el;
+  await target.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type(text);
+  await target.blur().catch(() => {});
+}

@@ -256,7 +256,7 @@ Every kit function's options object starts with these fields:
 
 ```ts
 export interface IKitControlDeclaration {
-  /** Section 4.3. Required from step 4 on; optional and warned about before. */
+  /** Section 4.3. Required from step 4 on; optional before, and a control without one registers nothing. */
   readonly id: string;
   /** What a person reads. Required. For an icon button it is the tooltip (`title` today). */
   readonly label: string;
@@ -448,9 +448,9 @@ a vitest test.
 
 The probes in `tests/probes/` drive the app with Playwright through
 `window.__parallx_workbench__` and CSS class names. A shared
-`tests/probes/scene.mjs` gets the launch code (`launchEnv` and `seed`
-move there from `refactor-verify-probe.mjs`, which imports them) and
-three helpers:
+`tests/probes/scene.mjs` holds the launch code (`launchEnv`, `launchApp`,
+`cmd`; the older probes keep their own copies until step 9 moves them)
+and three helpers:
 
 ```js
 // scene.describe(scope) from the page, as JSON.
@@ -488,10 +488,11 @@ writes what is left into section 11.
 - `src/ui/scene.ts` as in section 4, with `tests/unit/scene.test.ts`
   under jsdom covering register, find, under, describe, the pending
   path (register before connect), removal by observer, duplicates.
-- `IKitControlDeclaration`, `IKitSurfaceDeclaration` and `KitAction` in
-  `kit.ts`. The seven existing functions accept `id` as an optional
-  field until step 4; a missing `id` logs one warning per label and
-  registers nothing. Nothing else about them changes.
+- `IKitControlDeclaration`, `IKitSurfaceDeclaration` and the command
+  fields in `kit.ts`. The seven existing functions accept `id` as an
+  optional field until step 4; a missing `id` registers nothing (the
+  scene sweep in step 11 lists such controls). Nothing else about them
+  changes.
 - `installKitCommands(service)` exported from `kit.ts` and called once
   in `src/workbench/workbench.ts` right after the command service is
   registered.

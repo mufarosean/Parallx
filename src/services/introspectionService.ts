@@ -16,6 +16,7 @@
 // so the same descriptions serve the Tool Gallery, the diagnostics
 // checks, and the model's app__describe tool.
 
+import { scene, type SceneDescription } from '../ui/scene.js';
 import { createServiceIdentifier } from '../platform/types.js';
 import type { ServiceCollection } from './serviceCollection.js';
 import {
@@ -122,6 +123,8 @@ export interface IIntrospectionService {
   describeSettings(): readonly ISettingDescription[];
   describeContext(): Record<string, ContextKeyValue>;
   describeServices(): readonly string[];
+  /** What is on screen now: the scene of mounted surfaces and controls (src/ui/scene.ts). */
+  describeScene(scope?: string): SceneDescription;
   snapshot(): IAppSnapshot;
 }
 
@@ -257,6 +260,10 @@ export class IntrospectionService implements IIntrospectionService {
       }
       return { key: schema.key, type: schema.type, scope: schema.scope, value, isDefault };
     });
+  }
+
+  describeScene(scope?: string): SceneDescription {
+    return scene.describe(scope);
   }
 
   describeContext(): Record<string, ContextKeyValue> {

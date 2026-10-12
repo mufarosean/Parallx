@@ -31,6 +31,7 @@ function fakeIntrospection(overrides: Partial<IIntrospectionService> = {}): IInt
     describeSettings: () => [{ key: 'k', type: 'string', scope: 'user', value: 'v', isDefault: true }],
     describeContext: () => ({ sidebarVisible: true }),
     describeServices: () => ['ICommandService'],
+    describeScene: () => ({ surfaces: [] }),
     snapshot: () => { throw new Error('unused'); },
   };
   return { ...base, ...overrides };

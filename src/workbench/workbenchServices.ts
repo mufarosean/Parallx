@@ -1,5 +1,6 @@
 // workbenchServices.ts — service registration and initialization
 
+import { installKitCommands } from '../ui/kit.js';
 import { setAssistantTimeZone } from '../services/localTime.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager, ISettingsRegistryService } from '../services/serviceTypes.js';
@@ -80,6 +81,8 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // ── Command (Capability 7) ──
   services.registerInstance(ICommandService, new CommandService(services));
+  // A kit control that declares a command runs it through this service.
+  installKitCommands(services.get(ICommandService));
 
   // ── Tool Registry (M2 Capability 1) ──
   services.registerInstance(IToolRegistryService, new ToolRegistry());

@@ -7,18 +7,118 @@
 // ui.css (`.px-empty`); this file only assembles DOM and enforces the rules
 // that CSS cannot: at most one primary action per header, the rest overflow.
 //
+// Every control made here is also a declaration: an id, a label, and the
+// command it runs or the handler it calls. The kit writes `data-px-id`, the
+// role and the label into the DOM and registers the control in the scene
+// (scene.ts) while it is mounted, so a screen reader, a probe, the
+// introspection service and the model read the same thing. A control's DOM
+// is otherwise exactly what it was before it declared itself.
+// docs/SELF_DESCRIBING_UI_DESIGN.md section 5 is the contract.
+//
 // Before this existed the extension API offered a dropdown and a menu, so
 // every extension cloned its own buttons and headers (media-organizer carried
 // 22 button classes); DESIGN_UNIFICATION.md lever 3.
 
 import { createIconElement } from './iconRegistry.js';
-import { showExtensionContextMenu, type IExtensionMenuItem } from './contextMenu.js';
+import { showExtensionContextMenu, type IExtensionMenuItem, type IExtensionMenuOptions, type IExtensionMenuHandle, type ExtensionMenuAnchor } from './contextMenu.js';
 import { SegmentedControl } from './segmentedControl.js';
+import { Toggle } from './toggle.js';
+import { InputBox } from './inputBox.js';
+import { createSelect as createSelectControl, type SelectOption } from './dropdown.js';
+import { Slider } from './slider.js';
+import { TabBar, type ITabBarItem, type ITabBarOptions } from './tabBar.js';
+import { scene, type SceneKind, type SceneState, type ISceneEntry } from './scene.js';
+import type { IDisposable } from '../platform/lifecycle.js';
 
 export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'md' | 'sm';
 
-export interface IKitButtonOptions {
+// ── Declarations ─────────────────────────────────────────────────────────────
+
+/** What every control declares. `id` is optional until every caller has one. */
+export interface IKitControlDeclaration {
+  /** Stable within its surface: 'planner.addTask'. docs/SELF_DESCRIBING_UI_DESIGN.md section 4.3. */
+  readonly id?: string;
+  readonly hint?: string;
+  /** Recorded for the docs. Not evaluated. */
+  readonly when?: string;
+}
+
+/** A control runs a command or calls a handler, never both. */
+export interface IKitCommandAction {
+  readonly command: string;
+  readonly args?: readonly unknown[];
+}
+
+export interface IKitSurfaceDeclaration {
+  readonly id: string;
+  /** The tool that owns it: 'core', or the last segment of the manifest id. */
+  readonly owner: string;
+  readonly label: string;
+  /** Tells two open copies apart (an editor input's id). */
+  readonly instance?: string;
+  readonly state?: () => SceneState;
+}
+
+export interface IKitSurface {
+  readonly element: HTMLElement;
+  setInstance(instance: string | undefined): void;
+  dispose(): void;
+}
+
+// ── Commands ─────────────────────────────────────────────────────────────────
+
+type CommandRunner = (id: string, ...args: unknown[]) => Promise<unknown>;
+let _runCommand: CommandRunner | undefined;
+
+/** Called once at boot with the command service, so a control can run a command by id. */
+export function installKitCommands(service: { executeCommand(id: string, ...args: unknown[]): Promise<unknown> }): void {
+  _runCommand = (id, ...args) => service.executeCommand(id, ...args);
+}
+
+function runCommand(action: IKitCommandAction): void {
+  if (!_runCommand) { console.warn(`[kit] no command service yet; "${action.command}" not run`); return; }
+  void _runCommand(action.command, ...(action.args ?? [])).catch((err) => console.warn(`[kit] command "${action.command}" failed:`, err));
+}
+
+/** The click handler a control gets from its options; throws on a handler and a command together. */
+function actionOf(options: { readonly command?: IKitCommandAction['command']; readonly args?: readonly unknown[]; readonly onClick?: (e: MouseEvent) => void }, what: string): ((e: MouseEvent) => void) | undefined {
+  if (options.command && options.onClick) throw new Error(`[kit] ${what} has both a command and a handler; keep one`);
+  if (options.command) return () => runCommand({ command: options.command!, args: options.args });
+  return options.onClick;
+}
+
+// ── Registration ─────────────────────────────────────────────────────────────
+
+/**
+ * Registers a control in the scene when it has an id. Without one nothing is
+ * registered (the scene sweep lists such controls); from step 4 of the
+ * design the id is required and this branch goes.
+ */
+function declare(element: HTMLElement, kind: SceneKind, options: IKitControlDeclaration, label: string, extra: { command?: string; state?: () => SceneState } = {}): IDisposable {
+  if (!options.id) return { dispose: () => { /* nothing registered */ } };
+  const entry: ISceneEntry = {
+    id: options.id,
+    kind,
+    owner: '',
+    label,
+    ...(options.hint ? { hint: options.hint } : {}),
+    ...(options.when ? { when: options.when } : {}),
+    ...(extra.command ? { command: extra.command } : {}),
+    element,
+    ...(extra.state ? { state: extra.state } : {}),
+  };
+  return scene.register(entry);
+}
+
+/** The role a kind implies; a native <button> needs none. */
+function setRole(element: HTMLElement, role: string | undefined): void {
+  if (role && !element.hasAttribute('role')) element.setAttribute('role', role);
+}
+
+// ── Buttons ──────────────────────────────────────────────────────────────────
+
+export interface IKitButtonOptions extends IKitControlDeclaration {
   readonly label: string;
   /** Default 'secondary'. A view has at most one 'primary'. */
   readonly kind?: ButtonKind;
@@ -28,16 +128,21 @@ export interface IKitButtonOptions {
   readonly icon?: string;
   readonly title?: string;
   readonly disabled?: boolean;
+  /** The command this button runs. Not with `onClick`. */
+  readonly command?: string;
+  readonly args?: readonly unknown[];
   readonly onClick?: (e: MouseEvent) => void;
 }
 
-export interface IKitIconButtonOptions {
+export interface IKitIconButtonOptions extends IKitControlDeclaration {
   /** Registry icon id. */
   readonly icon: string;
   /** Required: an icon button's only words are its tooltip and aria-label. */
   readonly title: string;
   readonly size?: ButtonSize;
   readonly disabled?: boolean;
+  readonly command?: string;
+  readonly args?: readonly unknown[];
   readonly onClick?: (e: MouseEvent) => void;
 }
 
@@ -63,7 +168,7 @@ export interface IKitPageHeaderOptions {
   readonly more?: readonly IExtensionMenuItem[];
 }
 
-export interface IKitFilterChipOptions {
+export interface IKitFilterChipOptions extends IKitControlDeclaration {
   readonly label: string;
   /** A count drawn after the label in a fainter tone. */
   readonly count?: number;
@@ -84,7 +189,7 @@ export interface IKitSegmentedItem {
   readonly label: string;
 }
 
-export interface IKitSegmentedOptions {
+export interface IKitSegmentedOptions extends IKitControlDeclaration {
   readonly items: readonly IKitSegmentedItem[];
   readonly value?: string;
   /** Required: the group's name for screen readers. */
@@ -114,6 +219,8 @@ function mount<T extends HTMLElement>(container: HTMLElement | null | undefined,
   return el;
 }
 
+const enabledState = (el: HTMLButtonElement) => (): SceneState => ({ kind: 'enabled', value: !el.disabled });
+
 export function createButton(container: HTMLElement | null | undefined, options: IKitButtonOptions): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -126,8 +233,11 @@ export function createButton(container: HTMLElement | null | undefined, options:
   btn.appendChild(label);
   if (options.title) btn.title = options.title;
   if (options.disabled) btn.disabled = true;
-  if (options.onClick) btn.addEventListener('click', options.onClick);
-  return mount(container, btn);
+  const onClick = actionOf(options, `button "${options.label}"`);
+  if (onClick) btn.addEventListener('click', onClick);
+  mount(container, btn);
+  declare(btn, 'button', options, options.label, { command: options.command, state: enabledState(btn) });
+  return btn;
 }
 
 export function createIconButton(container: HTMLElement | null | undefined, options: IKitIconButtonOptions): HTMLButtonElement {
@@ -138,8 +248,11 @@ export function createIconButton(container: HTMLElement | null | undefined, opti
   btn.title = options.title;
   btn.setAttribute('aria-label', options.title);
   if (options.disabled) btn.disabled = true;
-  if (options.onClick) btn.addEventListener('click', options.onClick);
-  return mount(container, btn);
+  const onClick = actionOf(options, `icon button "${options.title}"`);
+  if (onClick) btn.addEventListener('click', onClick);
+  mount(container, btn);
+  declare(btn, 'iconButton', options, options.title, { command: options.command, state: enabledState(btn) });
+  return btn;
 }
 
 /**
@@ -176,6 +289,7 @@ export function createFilterChip(container: HTMLElement | null | undefined, opti
     options.onToggle?.(chip.pressed);
   });
   mount(container, btn);
+  declare(btn, 'chip', options, options.label, { state: () => ({ kind: 'pressed', value: chip.pressed }) });
   return chip;
 }
 
@@ -191,11 +305,12 @@ export function createSegmented(container: HTMLElement | null | undefined, optio
   element.remove();
   if (options.onChange) control.onDidChange(options.onChange);
   mount(container, element);
+  const reg = declare(element, 'segmented', options, options.ariaLabel, { state: () => ({ kind: 'value', value: control.value }) });
   return {
     element,
     get value() { return control.value; },
     set value(v: string) { control.value = v; },
-    dispose() { control.dispose(); element.remove(); },
+    dispose() { reg.dispose(); control.dispose(); element.remove(); },
   };
 }
 
@@ -291,4 +406,237 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
   }
   if (actions.childElementCount) header.appendChild(actions);
   return mount(container, header);
+}
+
+// ── Surfaces ─────────────────────────────────────────────────────────────────
+
+/**
+ * Declares `element` as a surface: a region that holds controls. Adds no
+ * DOM. The three base classes (parts, editor panes, views) call it for
+ * every subclass, so a feature never does.
+ */
+export function createSurface(element: HTMLElement, declaration: IKitSurfaceDeclaration): IKitSurface {
+  let instance = declaration.instance;
+  let reg: IDisposable | undefined;
+  const register = (): void => {
+    reg?.dispose();
+    reg = scene.register({
+      id: declaration.id,
+      kind: 'surface',
+      owner: declaration.owner,
+      ...(instance !== undefined ? { instance } : {}),
+      label: declaration.label,
+      element,
+      ...(declaration.state ? { state: declaration.state } : {}),
+    });
+  };
+  register();
+  return {
+    element,
+    setInstance(next) {
+      if (next === instance) return;
+      instance = next;
+      if (next === undefined) element.removeAttribute('data-px-instance');
+      register();
+    },
+    dispose() { reg?.dispose(); reg = undefined; },
+  };
+}
+
+// ── Wrapped components ───────────────────────────────────────────────────────
+
+export interface IKitToggleOptions extends IKitControlDeclaration {
+  readonly label: string;
+  readonly checked?: boolean;
+  readonly disabled?: boolean;
+  readonly onChange?: (checked: boolean) => void;
+}
+
+export interface IKitToggle {
+  readonly element: HTMLElement;
+  checked: boolean;
+  dispose(): void;
+}
+
+/** An on/off switch, the `Toggle` component declared. */
+export function createToggle(container: HTMLElement | null | undefined, options: IKitToggleOptions): IKitToggle {
+  const host = container ?? document.createElement('div');
+  const toggle = new Toggle(host, { checked: options.checked, ariaLabel: options.label, disabled: options.disabled });
+  if (options.onChange) toggle.onDidChange(options.onChange);
+  setRole(toggle.element, 'switch');
+  const reg = declare(toggle.element, 'toggle', options, options.label, { state: () => ({ kind: 'pressed', value: toggle.checked }) });
+  return {
+    element: toggle.element,
+    get checked() { return toggle.checked; },
+    set checked(v: boolean) { toggle.checked = v; },
+    dispose() { reg.dispose(); toggle.dispose(); toggle.element.remove(); },
+  };
+}
+
+export interface IKitInputOptions extends IKitControlDeclaration {
+  readonly label: string;
+  readonly placeholder?: string;
+  readonly value?: string;
+  readonly type?: 'text' | 'password';
+  readonly validationFn?: (value: string) => string | null | undefined | Promise<string | null | undefined>;
+}
+
+export interface IKitInput {
+  readonly element: HTMLElement;
+  value: string;
+  dispose(): void;
+}
+
+/** A single-line text field, the `InputBox` component declared. */
+export function createInput(container: HTMLElement | null | undefined, options: IKitInputOptions): IKitInput {
+  const host = container ?? document.createElement('div');
+  const box = new InputBox(host, { placeholder: options.placeholder, value: options.value, type: options.type, ariaLabel: options.label, validationFn: options.validationFn });
+  const reg = declare(box.element, 'input', options, options.label, { state: () => ({ kind: 'value', value: box.value }) });
+  return {
+    element: box.element,
+    get value() { return box.value; },
+    set value(v: string) { box.value = v; },
+    dispose() { reg.dispose(); box.dispose(); box.element.remove(); },
+  };
+}
+
+export interface IKitSelectOptions extends IKitControlDeclaration {
+  readonly label: string;
+  readonly items: readonly SelectOption[];
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}
+
+export interface IKitSelect {
+  readonly element: HTMLElement;
+  value: string;
+  dispose(): void;
+}
+
+/** One choice of many, the dropdown's `createSelect` declared. */
+export function createSelect(container: HTMLElement | null | undefined, options: IKitSelectOptions): IKitSelect {
+  const select = createSelectControl([...options.items], options.value, options.onChange);
+  select.el.setAttribute('aria-label', options.label);
+  setRole(select.el, 'combobox');
+  mount(container, select.el);
+  const reg = declare(select.el, 'select', options, options.label, { state: () => ({ kind: 'value', value: select.getValue() }) });
+  return {
+    element: select.el,
+    get value() { return select.getValue(); },
+    set value(v: string) { select.setValue(v); },
+    dispose() { reg.dispose(); select.dispose(); select.el.remove(); },
+  };
+}
+
+export interface IKitSliderOptions extends IKitControlDeclaration {
+  readonly label: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly value?: number;
+  readonly disabled?: boolean;
+  readonly onChange?: (value: number) => void;
+}
+
+export interface IKitSlider {
+  readonly element: HTMLElement;
+  readonly value: number;
+  dispose(): void;
+}
+
+/** A number on a range, the `Slider` component declared. */
+export function createSlider(container: HTMLElement | null | undefined, options: IKitSliderOptions): IKitSlider {
+  const host = container ?? document.createElement('div');
+  const slider = new Slider(host, { min: options.min, max: options.max, step: options.step, value: options.value, ariaLabel: options.label, disabled: options.disabled });
+  if (options.onChange) slider.onDidChange(options.onChange);
+  setRole(slider.element, 'slider');
+  const reg = declare(slider.element, 'slider', options, options.label, { state: () => ({ kind: 'number', value: slider.value }) });
+  return {
+    element: slider.element,
+    get value() { return slider.value; },
+    dispose() { reg.dispose(); slider.dispose(); slider.element.remove(); },
+  };
+}
+
+export interface IKitTabsOptions extends IKitControlDeclaration, ITabBarOptions {
+  readonly label: string;
+  readonly items?: readonly ITabBarItem[];
+  readonly active?: string;
+  readonly onSelect?: (id: string) => void;
+}
+
+export interface IKitTabs {
+  readonly element: HTMLElement;
+  readonly bar: TabBar;
+  readonly selected: string | undefined;
+  dispose(): void;
+}
+
+/** A row of tabs, the `TabBar` component declared. The bar is exposed for what it does beyond selection. */
+export function createTabs(container: HTMLElement | null | undefined, options: IKitTabsOptions): IKitTabs {
+  const host = container ?? document.createElement('div');
+  const { label, items, active, onSelect, id: _id, hint: _hint, when: _when, ...barOptions } = options;
+  const bar = new TabBar(host, barOptions);
+  if (items) bar.setItems([...items]);
+  if (active) bar.setActive(active);
+  if (onSelect) bar.onDidSelect(onSelect);
+  bar.element.setAttribute('aria-label', label);
+  setRole(bar.element, 'tablist');
+  const reg = declare(bar.element, 'tabs', options, label, { state: () => { const a = bar.getActive(); return { kind: 'selection', value: a ? [a] : [], count: bar.element.querySelectorAll('.ui-tab').length }; } });
+  return {
+    element: bar.element,
+    bar,
+    get selected() { return bar.getActive(); },
+    dispose() { reg.dispose(); bar.dispose(); bar.element.remove(); },
+  };
+}
+
+/** A context menu opened now, declared while it is open. */
+export function createMenu(anchor: ExtensionMenuAnchor, options: IKitControlDeclaration & { readonly label: string; readonly items: ReadonlyArray<IExtensionMenuItem>; readonly menu?: IExtensionMenuOptions }): IExtensionMenuHandle {
+  const handle = showExtensionContextMenu(anchor, options.items, options.menu, (icon, c) => c.appendChild(createIconElement(icon, 14)));
+  const menus = document.querySelectorAll<HTMLElement>('.context-menu');
+  const menuEl = menus.length ? menus[menus.length - 1] : undefined;
+  const reg = menuEl ? declare(menuEl, 'menu', options, options.label) : undefined;
+  return {
+    update: (items) => handle.update(items),
+    dispose: () => { reg?.dispose(); handle.dispose(); },
+  };
+}
+
+export interface IKitListOptions extends IKitControlDeclaration {
+  readonly label: string;
+  /** The row elements, read when the state is asked for. */
+  readonly rows: () => readonly HTMLElement[];
+  /** The selected rows' ids, read when the state is asked for. */
+  readonly selected: () => readonly string[];
+}
+
+export interface IKitList {
+  readonly element: HTMLElement;
+  readonly selected: readonly string[];
+  dispose(): void;
+}
+
+/**
+ * A list the caller renders itself, declared as one entry with a selection.
+ * Rows are never entries; a tree of 400 notes is one entry.
+ */
+export function createList(element: HTMLElement, options: IKitListOptions): IKitList {
+  return declareCollection(element, 'list', 'listbox', options);
+}
+
+/** A tree the caller renders itself; the same declaration as a list with kind `tree`. */
+export function createTree(element: HTMLElement, options: IKitListOptions): IKitList {
+  return declareCollection(element, 'tree', 'tree', options);
+}
+
+function declareCollection(element: HTMLElement, kind: 'list' | 'tree', role: string, options: IKitListOptions): IKitList {
+  setRole(element, role);
+  if (!element.hasAttribute('aria-label')) element.setAttribute('aria-label', options.label);
+  const reg = declare(element, kind, options, options.label, { state: () => ({ kind: 'selection', value: [...options.selected()], count: options.rows().length }) });
+  return {
+    element,
+    get selected() { return options.selected(); },
+    dispose() { reg.dispose(); },
+  };
 }
