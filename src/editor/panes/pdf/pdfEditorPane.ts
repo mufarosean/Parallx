@@ -44,33 +44,17 @@ import { getEditorTitleActions } from '../../../contributions/menuContribution.j
 import { toDisposable } from '../../../platform/lifecycle.js';
 import type { IStorage } from '../../../platform/storage.js';
 import { ICON } from './pdfIcons.js';
-import type { PdfOutlineItem, SelectionOverlayRect } from './pdfTypes.js';
-import { HIGHLIGHT_COLORS, highlightRgba, highlightSolid, rectsOverlap, cloneHighlight } from './pdfHighlights.js';
-import type { PdfHighlightRect, PdfHighlightCanvasLink, PdfHighlight, PdfHighlightAction } from './pdfHighlights.js';
+import type { IPaneCommandService, PdfOutlineItem, SelectionOverlayRect } from './pdfTypes.js';
+import { HIGHLIGHT_COLORS, highlightSolid } from './pdfHighlights.js';
+import type { PdfHighlightCanvasLink, PdfHighlight } from './pdfHighlights.js';
+import { PdfHighlightStore } from './pdfHighlightStore.js';
 import { setupTooltip } from '../../../ui/tooltip.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
-import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
 import { PdfOutline } from './pdfOutline.js';
 import { PdfSearchBar } from './pdfSearchBar.js';
 import { pdfButton, labelButton } from './pdfButtons.js';
-
-// Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
-type InlineAISendChat = (
-  messages: readonly IChatMessage[],
-  options?: { temperature?: number; maxTokens?: number; think?: boolean },
-  signal?: AbortSignal,
-) => AsyncIterable<IChatResponseChunk>;
-type InlineAIProvider = {
-  sendChatRequest: InlineAISendChat;
-  retrieveContext?: (query: string) => Promise<string | undefined>;
-};
-
-// Minimal command-service shape the pane needs (avoids a hard service import).
-interface IPaneCommandService {
-  executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
-}
 
 const PANE_ID = 'pdf-editor-pane';
 const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
@@ -153,24 +137,22 @@ export class PdfEditorPane extends EditorPane {
   private _readingDark = false;
 
   // ── Highlights / margin notes ────────────────────────────────────────
-  private _highlights: PdfHighlight[] = [];
-  private _highlightColor = 'yellow';   // last-used color
-  private _fileKey = '';                // storage key suffix (file path)
-  private _highlightSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  private _activeHighlightPopover: HTMLElement | null = null;
-  /** Cleanup for the active popover's outside-click dismiss listener. */
-  private _highlightPopoverDismiss: (() => void) | null = null;
-  // Undo/redo for highlight create + delete. Each entry holds the action kind
-  // and a deep copy of the affected highlights so it can be replayed in either
-  // direction. A single selection can span pages → several highlights per entry.
-  private _highlightUndoStack: PdfHighlightAction[] = [];
-  private _highlightRedoStack: PdfHighlightAction[] = [];
+  private readonly _highlightStore = new PdfHighlightStore({
+    storage: () => this._globalStorage,
+    commands: () => this._commandService,
+    viewerContainer: () => this._viewerContainer ?? null,
+    pageView: (pageNumber) => this._getPageView(pageNumber),
+    selectionRects: (selection, textLayer) => {
+      const rects = this._collectSelectionRectsForTextLayer(selection, textLayer);
+      return rects.length ? this._mergeSelectionOverlayRects(rects) : [];
+    },
+    capturedText: () => this._capturedSelection,
+    clearSelectionOverlay: () => this._clearSelectionOverlay(),
+    continueInChat: (hl) => this._continueHighlightInChat(hl),
+  });
 
   // ── M84: inline AI + canvas partnership ──────────────────────────────
   private _commandService: IPaneCommandService | undefined;
-  private _inlineAIProvider: InlineAIProvider | null = null;
-  private _inlineAILoaded = false;
-  private _aiAbort: AbortController | null = null;
 
   // ── View state (page + scale persistence) ────────────────────────────
 
@@ -485,11 +467,11 @@ export class PdfEditorPane extends EditorPane {
     // preventDefault) only when this pane holds focus.
     const onEditUndo = (e: Event): void => {
       if (!this._ownsEditFocus()) return;
-      if (this._undoHighlight()) e.preventDefault();
+      if (this._highlightStore.undo()) e.preventDefault();
     };
     const onEditRedo = (e: Event): void => {
       if (!this._ownsEditFocus()) return;
-      if (this._redoHighlight()) e.preventDefault();
+      if (this._highlightStore.redo()) e.preventDefault();
     };
     document.addEventListener('parallx:edit-undo', onEditUndo);
     document.addEventListener('parallx:edit-redo', onEditRedo);
@@ -751,35 +733,6 @@ export class PdfEditorPane extends EditorPane {
     return overlayRoot;
   }
 
-  // ── Persistent highlights / margin notes ─────────────────────────────
-
-  private _highlightStorageKey(): string {
-    return `parallx.pdfHighlights:${this._fileKey}`;
-  }
-
-  private async _loadHighlights(): Promise<void> {
-    this._highlights = [];
-    if (!this._globalStorage || !this._fileKey) return;
-    try {
-      const raw = await this._globalStorage.get(this._highlightStorageKey());
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) this._highlights = parsed as PdfHighlight[];
-      }
-    } catch (err) {
-      console.warn('[PdfEditorPane] Failed to load highlights:', err);
-    }
-  }
-
-  private _saveHighlights(): void {
-    if (!this._globalStorage || !this._fileKey) return;
-    if (this._highlightSaveTimer) clearTimeout(this._highlightSaveTimer);
-    this._highlightSaveTimer = setTimeout(() => {
-      this._highlightSaveTimer = null;
-      void this._globalStorage?.set(this._highlightStorageKey(), JSON.stringify(this._highlights));
-    }, 300);
-  }
-
   private _getPageView(pageNumber: number): any | null {
     const viewer = this._pdfViewer as any;
     if (!viewer?.getPageView) return null;
@@ -790,501 +743,6 @@ export class PdfEditorPane extends EditorPane {
     }
   }
 
-  /** Create highlight(s) from the live text selection, one per spanned page. */
-  private _createHighlightFromSelection(colorKey: string): PdfHighlight[] {
-    const selection = globalThis.getSelection?.();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !this._viewerContainer) return [];
-    this._highlightColor = colorKey;
-
-    const textLayers = Array.from(this._viewerContainer.querySelectorAll<HTMLElement>('.textLayer'));
-    const created: PdfHighlight[] = [];
-    const removed: PdfHighlight[] = [];
-    for (const textLayer of textLayers) {
-      const pageEl = textLayer.closest<HTMLElement>('.page');
-      const pageNumber = pageEl ? parseInt(pageEl.dataset.pageNumber ?? '', 10) : NaN;
-      if (!Number.isFinite(pageNumber)) continue;
-
-      const rects = this._collectSelectionRectsForTextLayer(selection, textLayer);
-      if (rects.length === 0) continue;
-      const merged = this._mergeSelectionOverlayRects(rects);
-      if (merged.length === 0) continue;
-
-      const viewport = this._getPageView(pageNumber)?.viewport;
-      if (!viewport?.convertToPdfPoint) continue;
-
-      const pdfRects: PdfHighlightRect[] = merged.map((r) => {
-        const [x1, y1] = viewport.convertToPdfPoint(r.left, r.top);
-        const [x2, y2] = viewport.convertToPdfPoint(r.left + r.width, r.top + r.height);
-        return { x1, y1, x2, y2 };
-      });
-
-      // No layering: re-highlighting an overlapping region toggles or recolors
-      // the existing highlight instead of stacking a second one on top.
-      //   • same color  → remove it (toggle off)
-      //   • diff color  → replace it (the new color takes over)
-      const existing = this._highlights.find(
-        (h) => h.page === pageNumber && rectsOverlap(h.rects, pdfRects),
-      );
-      if (existing) {
-        removed.push(existing);
-        if (existing.color === colorKey) continue; // toggle off — nothing new
-      }
-
-      created.push({
-        id: `hl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-        page: pageNumber,
-        color: colorKey,
-        rects: pdfRects,
-        text: this._capturedSelection,
-        note: existing?.note ?? '',
-        thread: existing?.thread,
-        canvasLinks: existing?.canvasLinks,
-        createdAt: existing?.createdAt ?? Date.now(),
-      });
-    }
-
-    // Apply removals first (toggle-off), then additions.
-    if (removed.length > 0) {
-      const removedIds = new Set(removed.map((h) => h.id));
-      this._highlights = this._highlights.filter((h) => !removedIds.has(h.id));
-      this._pushUndo({ kind: 'delete', highlights: removed });
-    }
-    if (created.length > 0) {
-      this._highlights.push(...created);
-      this._pushUndo({ kind: 'create', highlights: created });
-    }
-
-    if (removed.length === 0 && created.length === 0) return [];
-    this._saveHighlights();
-    selection.removeAllRanges();
-    this._clearSelectionOverlay();
-    const touchedPages = new Set([...created, ...removed].map((h) => h.page));
-    for (const page of touchedPages) {
-      this._renderHighlightsForPage(page);
-    }
-    return created;
-  }
-
-  /**
-   * Whether two highlight rect-sets overlap enough to be considered the "same"
-   * highlight (for toggle-off). Uses intersection area over the smaller
-   * rect-set's area, so re-selecting roughly the same passage matches even if
-   * the new selection is a little tighter or looser.
-   */
-  private _renderAllHighlights(): void {
-    if (!this._viewerContainer) return;
-    for (const page of new Set(this._highlights.map((h) => h.page))) {
-      this._renderHighlightsForPage(page);
-    }
-  }
-
-  private _renderHighlightsForPage(pageNumber: number): void {
-    const pageView = this._getPageView(pageNumber);
-    const pageEl: HTMLElement | undefined = pageView?.div;
-    const viewport = pageView?.viewport;
-    if (!pageEl || !viewport?.convertToViewportPoint) return;
-
-    // Remove the previous box layer AND any previously-rendered margin tabs.
-    pageEl.querySelector('.pdf-highlight-layer')?.remove();
-    pageEl.querySelectorAll('.pdf-highlight-tab').forEach((n) => n.remove());
-
-    const pageHighlights = this._highlights.filter((h) => h.page === pageNumber);
-    if (pageHighlights.length === 0) return;
-
-    const layer = document.createElement('div');
-    layer.classList.add('pdf-highlight-layer');
-
-    // Tabs are appended directly to the page (a sibling of the box layer), NOT
-    // inside the `pointer-events: none` layer — keeping them in an interactive
-    // container guarantees clicks land even though the box layer ignores them.
-    const tabs: HTMLButtonElement[] = [];
-
-    for (const hl of pageHighlights) {
-      let firstBox: { left: number; top: number } | null = null;
-      for (const r of hl.rects) {
-        const [vx1, vy1] = viewport.convertToViewportPoint(r.x1, r.y1);
-        const [vx2, vy2] = viewport.convertToViewportPoint(r.x2, r.y2);
-        const left = Math.min(vx1, vx2);
-        const top = Math.min(vy1, vy2);
-        const box = document.createElement('div');
-        box.classList.add('pdf-highlight-box');
-        box.style.left = `${left}px`;
-        box.style.top = `${top}px`;
-        box.style.width = `${Math.abs(vx2 - vx1)}px`;
-        box.style.height = `${Math.abs(vy2 - vy1)}px`;
-        box.style.backgroundColor = highlightRgba(hl.color);
-        layer.appendChild(box);
-        if (!firstBox) firstBox = { left, top };
-      }
-
-      if (firstBox) {
-        const hasThread = (hl.thread?.length ?? 0) > 0;
-        const hasCanvas = (hl.canvasLinks?.length ?? 0) > 0;
-        const tab = document.createElement('button');
-        tab.classList.add('pdf-highlight-tab');
-        if (hl.note) tab.classList.add('has-note');
-        if (hasThread) tab.classList.add('has-discussion');
-        if (hasCanvas) tab.classList.add('has-canvas-link');
-        // Bake the margin offset into the pixel position (no CSS transform), so
-        // the tab sits at the exact same spot on every render and never shifts
-        // as the SVG icon loads or the page re-renders.
-        tab.style.left = `${firstBox.left - 18}px`;
-        tab.style.top = `${firstBox.top - 2}px`;
-        // Icon reflects the richest state: discussion > note > plain highlight.
-        tab.innerHTML = hasThread ? ICON.chat : hl.note ? ICON.note : ICON.highlighter;
-        // Open the review panel on mousedown (which always fires for this
-        // element) rather than click, so a re-render of the box layer between
-        // mousedown and mouseup can never swallow the gesture. stopPropagation
-        // keeps the viewer's selection/mouseup handlers from reacting.
-        tab.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this._showHighlightPopover(hl, (e.currentTarget as HTMLElement).getBoundingClientRect());
-        });
-        tab.addEventListener('mouseup', (e) => { e.stopPropagation(); });
-        tab.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-        tabs.push(tab);
-      }
-    }
-
-    pageEl.appendChild(layer);
-    for (const tab of tabs) pageEl.appendChild(tab);
-  }
-
-  private _showHighlightPopover(hl: PdfHighlight, anchor: DOMRect): void {
-    this._dismissHighlightPopover();
-    const pop = document.createElement('div');
-    pop.classList.add('pdf-highlight-popover');
-
-    const swatches = document.createElement('div');
-    swatches.classList.add('pdf-highlight-swatches');
-    for (const c of HIGHLIGHT_COLORS) {
-      const sw = document.createElement('button');
-      sw.classList.add('pdf-highlight-swatch');
-      if (c.key === hl.color) sw.classList.add('selected');
-      sw.style.backgroundColor = highlightSolid(c.rgba);
-      sw.setAttribute('aria-label', c.label);
-      setupTooltip(sw, c.label);
-      sw.addEventListener('click', () => {
-        hl.color = c.key;
-        this._highlightColor = c.key;
-        this._saveHighlights();
-        this._renderHighlightsForPage(hl.page);
-        swatches.querySelectorAll('.pdf-highlight-swatch').forEach((n) => n.classList.remove('selected'));
-        sw.classList.add('selected');
-      });
-      swatches.appendChild(sw);
-    }
-    // Delete sits at the end of the colour row, out of the reading path; Ctrl+Z
-    // still brings the highlight back.
-    const spacer = document.createElement('span');
-    spacer.classList.add('pdf-highlight-spacer');
-    const del = pdfButton(ICON.trash, 'Delete Highlight');
-    del.classList.add('pdf-highlight-delete');
-    del.addEventListener('click', () => {
-      this._deleteHighlight(hl.id);
-      this._dismissHighlightPopover();
-    });
-    swatches.append(spacer, del);
-    pop.appendChild(swatches);
-
-    const body = document.createElement('div');
-    body.classList.add('pdf-highlight-body');
-    pop.appendChild(body);
-
-    const ta = document.createElement('textarea');
-    ta.classList.add('pdf-highlight-note');
-    ta.placeholder = 'Add a note\u2026';
-    ta.value = hl.note;
-    ta.addEventListener('input', () => {
-      hl.note = ta.value;
-      this._saveHighlights();
-    });
-    body.appendChild(ta);
-
-    // linked canvas pages — open them in the canvas editor.
-    if (hl.canvasLinks && hl.canvasLinks.length > 0) {
-      const section = document.createElement('div');
-      section.classList.add('pdf-highlight-section');
-      const label = document.createElement('div');
-      label.classList.add('pdf-highlight-section-label');
-      label.textContent = 'On canvas';
-      section.appendChild(label);
-      for (const link of hl.canvasLinks) {
-        const row = document.createElement('button');
-        row.classList.add('pdf-highlight-link');
-        row.innerHTML = `<span class="pdf-highlight-link-icon">${ICON.openExtSm}</span><span class="pdf-highlight-link-title"></span>`;
-        row.querySelector('.pdf-highlight-link-title')!.textContent = link.title || 'Untitled';
-        row.addEventListener('click', () => {
-          void this._commandService?.executeCommand('canvas.openPage', link.pageId);
-        });
-        section.appendChild(row);
-      }
-      body.appendChild(section);
-    }
-
-    // AI discussion thread anchored to this highlight.
-    this._buildHighlightThreadSection(body, hl);
-
-    document.body.appendChild(pop);
-    // Hide until positioned so it never paints once at its default flow
-    // position (bottom of <body>) and then visibly jump to the anchor.
-    pop.style.visibility = 'hidden';
-    const margin = 8;
-    const maxH = window.innerHeight - margin * 2;
-    const pw = pop.offsetWidth;
-    const ph = Math.min(pop.offsetHeight, maxH);
-
-    // Horizontal: prefer anchor.left, clamp into the viewport.
-    let left = anchor.left;
-    if (left + pw > window.innerWidth - margin) left = window.innerWidth - pw - margin;
-    left = Math.max(margin, left);
-
-    // Vertical: try below the anchor; if it doesn't fit, try above; otherwise
-    // pin to whichever side has more room and clamp so it never leaves screen.
-    const spaceBelow = window.innerHeight - anchor.bottom - margin;
-    const spaceAbove = anchor.top - margin;
-    let top: number;
-    if (ph <= spaceBelow) {
-      top = anchor.bottom + 4;
-    } else if (ph <= spaceAbove) {
-      top = anchor.top - ph - 4;
-    } else {
-      // Taller than both gaps — fill the viewport and let content scroll.
-      top = margin;
-    }
-    top = Math.min(Math.max(margin, top), window.innerHeight - ph - margin);
-
-    pop.style.left = `${left}px`;
-    pop.style.top = `${top}px`;
-    pop.style.maxHeight = `${maxH}px`;
-    pop.style.visibility = '';
-    this._activeHighlightPopover = pop;
-
-    const dismiss = (e: MouseEvent) => {
-      if (!this._activeHighlightPopover || this._activeHighlightPopover.contains(e.target as Node)) return;
-      // Refresh the margin-tab icon state on dismiss, but NOT when the user is
-      // pressing another tab — re-rendering would remove that tab mid-gesture
-      // and swallow the click that should open its popover.
-      const onTab = !!(e.target as HTMLElement | null)?.closest('.pdf-highlight-tab');
-      this._dismissHighlightPopover();
-      if (!onTab) this._renderHighlightsForPage(hl.page);
-    };
-    // Defer registration one tick so the mousedown that opened this popover
-    // doesn't immediately dismiss it.
-    let registered = false;
-    const timer = setTimeout(() => {
-      registered = true;
-      document.addEventListener('mousedown', dismiss, true);
-    }, 0);
-    // Register cleanup so any dismiss path (delete, undo, re-open, pane teardown)
-    // removes this global capture-phase listener — it must never leak.
-    this._highlightPopoverDismiss = () => {
-      clearTimeout(timer);
-      if (registered) document.removeEventListener('mousedown', dismiss, true);
-    };
-  }
-
-  /**
-   * Build the AI-discussion section of a highlight's review panel: the saved
-   * transcript plus an input that streams a fresh answer from the inline-AI
-   * provider. Each turn is appended to `hl.thread` and persisted, so the
-   * conversation about a passage lives on the highlight forever.
-   */
-  private _buildHighlightThreadSection(pop: HTMLElement, hl: PdfHighlight): void {
-    const section = document.createElement('div');
-    section.classList.add('pdf-highlight-section', 'pdf-highlight-thread');
-
-    const header = document.createElement('div');
-    header.classList.add('pdf-highlight-thread-header');
-    const label = document.createElement('div');
-    label.classList.add('pdf-highlight-section-label');
-    label.textContent = 'Discuss';
-    header.appendChild(label);
-
-    // "Continue in Chat" — hand the passage + full thread to the main chat
-    // panel for a larger conversation (mirrors canvas inline-AI "Send to Chat").
-    const continueBtn = document.createElement('button');
-    continueBtn.classList.add('pdf-highlight-continue-chat');
-    continueBtn.innerHTML = `<span class="pdf-highlight-continue-icon">${ICON.messages}</span>Continue in Chat`;
-    setupTooltip(continueBtn, 'Open this discussion in the main chat panel');
-    continueBtn.addEventListener('click', () => {
-      this._continueHighlightInChat(hl);
-      this._dismissHighlightPopover();
-    });
-    header.appendChild(continueBtn);
-    section.appendChild(header);
-
-    const transcript = document.createElement('div');
-    transcript.classList.add('pdf-highlight-transcript');
-    section.appendChild(transcript);
-
-    const renderTurns = (): void => {
-      transcript.replaceChildren();
-      for (const turn of hl.thread ?? []) {
-        const bubble = document.createElement('div');
-        bubble.classList.add('pdf-highlight-turn', `is-${turn.role}`);
-        bubble.textContent = turn.text;
-        transcript.appendChild(bubble);
-      }
-      transcript.scrollTop = transcript.scrollHeight;
-      // Only offer "Continue in Chat" once there's something to continue.
-      continueBtn.style.display = (hl.thread?.length ?? 0) > 0 ? '' : 'none';
-    };
-    renderTurns();
-
-    const inputRow = document.createElement('div');
-    inputRow.classList.add('pdf-highlight-ask-row');
-    const input = document.createElement('textarea');
-    input.classList.add('pdf-highlight-ask');
-    input.rows = 1;
-    input.placeholder = 'Ask about this passage\u2026';
-    input.setAttribute('aria-label', 'Ask AI about this passage');
-    const sendBtn = document.createElement('button');
-    sendBtn.classList.add('pdf-highlight-ask-send');
-    sendBtn.innerHTML = ICON.send;
-    sendBtn.setAttribute('aria-label', 'Ask AI');
-    setupTooltip(sendBtn, 'Ask AI');
-    inputRow.appendChild(input);
-    inputRow.appendChild(sendBtn);
-    section.appendChild(inputRow);
-
-    let streaming = false;
-    const ask = async (): Promise<void> => {
-      const question = input.value.trim();
-      if (!question || streaming) return;
-      const provider = await this._loadInlineAIProvider();
-      if (!provider) {
-        const warn = document.createElement('div');
-        warn.classList.add('pdf-highlight-turn', 'is-ai');
-        warn.textContent = 'AI is not available right now.';
-        transcript.appendChild(warn);
-        return;
-      }
-      input.value = '';
-      input.style.height = 'auto';
-      streaming = true;
-
-      // Persist + render the user turn.
-      (hl.thread ??= []).push({ role: 'user', text: question, at: Date.now() });
-      renderTurns();
-      this._saveHighlights();
-
-      // Build the message list: system anchors the passage, prior turns give
-      // continuity (decision A — feed the saved thread back as context).
-      const messages: IChatMessage[] = [{
-        role: 'system',
-        content: 'You are helping a reader understand a passage from a PDF document. '
-          + 'The passage is:\n\n---\n' + (hl.text || '(image selection)') + '\n---\n\n'
-          + 'Answer their questions about it clearly and concisely.',
-      }];
-      for (const turn of hl.thread) {
-        messages.push({ role: turn.role === 'ai' ? 'assistant' : 'user', content: turn.text });
-      }
-
-      const aiBubble = document.createElement('div');
-      aiBubble.classList.add('pdf-highlight-turn', 'is-ai');
-      transcript.appendChild(aiBubble);
-      transcript.scrollTop = transcript.scrollHeight;
-
-      this._aiAbort?.abort();
-      this._aiAbort = new AbortController();
-      const signal = this._aiAbort.signal;
-      let answer = '';
-      try {
-        // The model reasons first; until its answer starts, the bubble says so.
-        for await (const chunk of provider.sendChatRequest(messages, { temperature: 0.4, think: true }, signal)) {
-          if (signal.aborted) return;
-          if (chunk.thinking && !answer) {
-            aiBubble.textContent = 'Thinking\u2026';
-            aiBubble.classList.add('pdf-highlight-turn--thinking');
-          }
-          if (chunk.content) {
-            aiBubble.classList.remove('pdf-highlight-turn--thinking');
-            answer += chunk.content;
-            aiBubble.textContent = answer;
-            transcript.scrollTop = transcript.scrollHeight;
-          }
-        }
-      } catch (err) {
-        aiBubble.textContent = `Error: ${err instanceof Error ? err.message : 'request failed'}`;
-        aiBubble.classList.add('pdf-highlight-turn-error');
-        streaming = false;
-        return;
-      }
-      if (signal.aborted) { streaming = false; return; }
-
-      // A model can spend its whole turn reasoning and answer nothing. Say so,
-      // and keep neither the question nor an empty answer in the thread.
-      if (!answer.trim()) {
-        aiBubble.classList.remove('pdf-highlight-turn--thinking');
-        aiBubble.textContent = 'The model gave no answer. Try again.';
-        aiBubble.classList.add('pdf-highlight-turn-error');
-        hl.thread.pop();
-        this._saveHighlights();
-        streaming = false;
-        return;
-      }
-
-      // Persist the AI turn.
-      hl.thread.push({ role: 'ai', text: answer, at: Date.now() });
-      this._saveHighlights();
-      streaming = false;
-    };
-
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 72) + 'px';
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(); }
-    });
-    sendBtn.addEventListener('click', () => void ask());
-
-    pop.appendChild(section);
-  }
-
-  private _deleteHighlight(id: string): void {
-    const hl = this._highlights.find((h) => h.id === id);
-    if (!hl) return;
-    this._pushUndo({ kind: 'delete', highlights: [cloneHighlight(hl)] });
-    this._highlights = this._highlights.filter((h) => h.id !== id);
-    this._saveHighlights();
-    this._renderHighlightsForPage(hl.page);
-  }
-
-  /** Structured deep copy of a highlight so undo/redo can restore it verbatim. */
-  /** Record a reversible action and invalidate the redo stack. */
-  private _pushUndo(action: PdfHighlightAction): void {
-    this._highlightUndoStack.push({
-      kind: action.kind,
-      highlights: action.highlights.map((h) => cloneHighlight(h)),
-    });
-    this._highlightRedoStack = [];
-  }
-
-  /** Apply an action's effect (create→add, delete→remove); inverse undoes it. */
-  private _applyHighlightAction(action: PdfHighlightAction, inverse: boolean): void {
-    const ids = new Set(action.highlights.map((h) => h.id));
-    const adding = inverse ? action.kind === 'delete' : action.kind === 'create';
-    if (adding) {
-      // Restore copies so later edits don't mutate the stacked snapshots.
-      for (const h of action.highlights) {
-        if (!this._highlights.some((e) => e.id === h.id)) {
-          this._highlights.push(cloneHighlight(h));
-        }
-      }
-    } else {
-      this._highlights = this._highlights.filter((h) => !ids.has(h.id));
-    }
-    this._saveHighlights();
-    for (const page of new Set(action.highlights.map((h) => h.page))) {
-      this._renderHighlightsForPage(page);
-    }
-  }
-
-  /**
-   * Whether this pane should claim a delegated undo/redo. True when focus is
   /**
    * Whether this pane should claim a delegated undo/redo. True ONLY when DOM
    * focus is genuinely inside the pane container. We deliberately do NOT claim
@@ -1297,45 +755,6 @@ export class PdfEditorPane extends EditorPane {
     if (!c) return false;
     const active = document.activeElement;
     return !!active && c.contains(active);
-  }
-
-  /** Undo the most recent highlight action (Ctrl+Z). Returns true if applied. */
-  private _undoHighlight(): boolean {
-    const action = this._highlightUndoStack.pop();
-    if (!action) return false;
-    this._dismissHighlightPopover();
-    this._applyHighlightAction(action, true);
-    this._highlightRedoStack.push(action);
-    return true;
-  }
-
-  /** Redo the most recently undone action (Ctrl+Y / Ctrl+Shift+Z). */
-  private _redoHighlight(): boolean {
-    const action = this._highlightRedoStack.pop();
-    if (!action) return false;
-    this._dismissHighlightPopover();
-    this._applyHighlightAction(action, false);
-    this._highlightUndoStack.push(action);
-    return true;
-  }
-
-  private _dismissHighlightPopover(): void {
-    // Always tear down the global outside-click listener, regardless of which
-    // path dismisses the popover, so capture-phase mousedown listeners never
-    // leak and accumulate on document.
-    if (this._highlightPopoverDismiss) {
-      this._highlightPopoverDismiss();
-      this._highlightPopoverDismiss = null;
-    }
-    if (this._activeHighlightPopover) {
-      this._activeHighlightPopover.remove();
-      this._activeHighlightPopover = null;
-    }
-  }
-
-  private _clearAllHighlightOverlays(): void {
-    this._viewerContainer?.querySelectorAll('.pdf-highlight-layer').forEach((n) => n.remove());
-    this._dismissHighlightPopover();
   }
 
   /**
@@ -1361,34 +780,9 @@ export class PdfEditorPane extends EditorPane {
     } else {
       window.dispatchEvent(new CustomEvent('parallx:capture-to-canvas', { detail }));
     }
-    if (!result || anchors.length === 0) return;
+    if (!result) return;
     const link: PdfHighlightCanvasLink = { pageId: result.pageId, title: result.title, at: Date.now() };
-    for (const hl of anchors) {
-      (hl.canvasLinks ??= []).push(link);
-    }
-    this._saveHighlights();
-    for (const page of new Set(anchors.map((h) => h.page))) {
-      this._renderHighlightsForPage(page);
-    }
-  }
-
-  /**
-   * Lazily fetch the inline-AI provider from the chat extension. Cached after
-   * the first attempt; returns null if the chat extension isn't available.
-   */
-  private async _loadInlineAIProvider(): Promise<InlineAIProvider | null> {
-    if (this._inlineAILoaded) return this._inlineAIProvider;
-    this._inlineAILoaded = true;
-    if (!this._commandService) return null;
-    try {
-      this._inlineAIProvider = await this._commandService.executeCommand<InlineAIProvider | null>(
-        'chat.getInlineAIProvider',
-      ) ?? null;
-    } catch (err) {
-      console.warn('[PdfEditorPane] chat.getInlineAIProvider failed:', err);
-      this._inlineAIProvider = null;
-    }
-    return this._inlineAIProvider;
+    this._highlightStore.addCanvasLink(anchors, link);
   }
 
   /** Send the current selection to a Canvas study note and link it back. */
@@ -1407,7 +801,7 @@ export class PdfEditorPane extends EditorPane {
     const fileName = this._currentInput.name;
 
     // Auto-anchor a highlight on the captured passage so the link has a home.
-    const anchors = this._createHighlightFromSelection(this._highlightColor);
+    const anchors = this._highlightStore.createFromSelection();
     void this._captureToCanvas({ text, fileName, page, sourceUri }, anchors);
   }
 
@@ -1419,17 +813,13 @@ export class PdfEditorPane extends EditorPane {
   private _askAIAboutSelection(): void {
     const sel = window.getSelection();
     const rect = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
-    const anchors = this._createHighlightFromSelection(this._highlightColor);
+    const anchors = this._highlightStore.createFromSelection();
     const hl = anchors[0];
     if (!hl) return;
     const anchorRect = rect && rect.width + rect.height > 0
       ? rect
       : new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
-    this._showHighlightPopover(hl, anchorRect);
-    setTimeout(() => {
-      this._activeHighlightPopover
-        ?.querySelector<HTMLTextAreaElement>('.pdf-highlight-ask')?.focus();
-    }, 0);
+    this._highlightStore.openPopover(hl, anchorRect, true);
   }
 
   /**
@@ -1504,7 +894,7 @@ export class PdfEditorPane extends EditorPane {
       const fileName = this._currentInput.name;
 
       // Auto-anchor a highlight on the cropped region so the link has a home.
-      const anchors = this._createHighlightFromSelection(this._highlightColor);
+      const anchors = this._highlightStore.createFromSelection();
       void this._captureToCanvas({ imageDataUrl, fileName, page: pageNumber, sourceUri }, anchors);
       return; // one region per invocation
     }
@@ -1853,7 +1243,6 @@ export class PdfEditorPane extends EditorPane {
     }
 
     this._currentInput = input;
-    this._fileKey = input.uri.fsPath;
     show(this._loadingEl);
     hide(this._errorEl);
     show(this._toolbar);
@@ -1864,7 +1253,7 @@ export class PdfEditorPane extends EditorPane {
       if (!electron?.fs?.readFile) throw new Error('File-system bridge unavailable');
 
       // Load persisted highlights for this document (best-effort).
-      await this._loadHighlights();
+      await this._highlightStore.load(input.uri.fsPath);
 
       const result = await electron.fs.readFile(input.uri.fsPath);
       if (result.error) throw new Error(result.error.message || 'Read failed');
@@ -1940,7 +1329,7 @@ export class PdfEditorPane extends EditorPane {
         this._updateFitButton();
         this._pdfViewer?.update();
         this._scheduleSelectionOverlayUpdate();
-        this._renderAllHighlights();
+        this._highlightStore.renderAll();
         if (this._currentInput && this._pdfViewer) {
           this._currentInput.scaleValue = this._pdfViewer.currentScaleValue;
         }
@@ -1949,7 +1338,7 @@ export class PdfEditorPane extends EditorPane {
       this._eventBus.on('textlayerrendered', (evt: any) => {
         this._scheduleSelectionOverlayUpdate();
         const pageNumber = evt?.pageNumber;
-        if (typeof pageNumber === 'number') this._renderHighlightsForPage(pageNumber);
+        if (typeof pageNumber === 'number') this._highlightStore.renderPage(pageNumber);
       });
 
       this._search?.attach(this._eventBus, pdf.FindState.NOT_FOUND);
@@ -2004,7 +1393,7 @@ export class PdfEditorPane extends EditorPane {
         this._updateFitButton();
         this._pdfViewer!.update();
         this._scheduleSelectionOverlayUpdate();
-        this._renderAllHighlights();
+        this._highlightStore.renderAll();
 
         // A citation link that opened this file: its page and quote win over
         // the restored reading position. Not yet shown, the group's didShow
@@ -2272,7 +1661,7 @@ export class PdfEditorPane extends EditorPane {
       dot.setAttribute('aria-label', `Highlight ${c.label}`);
       setupTooltip(dot, `Highlight ${c.label}`);
       dot.addEventListener('click', () => {
-        this._createHighlightFromSelection(c.key);
+        this._highlightStore.createFromSelection(c.key);
         this._dismissContextMenu();
       });
       bubble.appendChild(dot);
@@ -2372,9 +1761,9 @@ export class PdfEditorPane extends EditorPane {
           void navigator.clipboard.writeText(this._capturedSelection);
         }
       } else if (e.item.id === 'pdf.highlight') {
-        this._createHighlightFromSelection(this._highlightColor);
+        this._highlightStore.createFromSelection();
       } else if (e.item.id.startsWith('pdf.highlight.')) {
-        this._createHighlightFromSelection(e.item.id.slice('pdf.highlight.'.length));
+        this._highlightStore.createFromSelection(e.item.id.slice('pdf.highlight.'.length));
       } else if (e.item.id === 'pdf.findInDocument') {
         const sel = this._capturedSelection.trim();
         if (sel) this._search?.find(sel);
@@ -2491,7 +1880,7 @@ export class PdfEditorPane extends EditorPane {
       case 'h': case 'H':
         if (!e.ctrlKey && !e.metaKey) {
           const sel = window.getSelection()?.toString()?.trim() ?? '';
-          if (sel) { this._capturedSelection = sel; this._createHighlightFromSelection(this._highlightColor); e.preventDefault(); }
+          if (sel) { this._capturedSelection = sel; this._highlightStore.createFromSelection(); e.preventDefault(); }
         }
         break;
       case 'g':
@@ -2550,7 +1939,7 @@ export class PdfEditorPane extends EditorPane {
           }
 
           this._scheduleSelectionOverlayUpdate();
-          this._renderAllHighlights();
+          this._highlightStore.renderAll();
         }
       }, 150);
     }
@@ -2565,17 +1954,8 @@ export class PdfEditorPane extends EditorPane {
     this._dismissContextMenu();
     if (this._resizeTimer) { clearTimeout(this._resizeTimer); this._resizeTimer = null; }
 
-    // Flush + tear down highlight state
-    if (this._highlightSaveTimer) {
-      clearTimeout(this._highlightSaveTimer);
-      this._highlightSaveTimer = null;
-      if (this._globalStorage && this._fileKey) {
-        void this._globalStorage.set(this._highlightStorageKey(), JSON.stringify(this._highlights));
-      }
-    }
-    this._clearAllHighlightOverlays();
-    this._highlights = [];
-    this._fileKey = '';
+    // Write pending highlights and forget them.
+    this._highlightStore.close();
 
     // Tear down viewer components. Once the first page has rendered, pdf.js
     // looks up every other page; destroying the document while those lookups
