@@ -97,6 +97,34 @@ Each item below is a class or a file taken apart. Do one per session, run
 the app after it (the row above that matches, plus the feature itself),
 then commit.
 
+### First, the dead-code sweep
+
+The cloud sessions removed what the audit named. They did not sweep the
+whole code base for unused code, and a sweep run afterwards still finds
+some. `node scripts/dead-code-sweep.mjs` lists it by name in five groups:
+
+- `exports`: an export in `src/` nothing references, its own file included
+  (23 at the time of writing: helpers left behind when their last caller
+  was rewritten, such as `getBuiltinFonts`, `uriCompare`, `boxWidth`).
+- `testOnly`: an export only tests reference (30). The `_...ForTest` hooks
+  are meant to be; the rest (`cosineSimilarity`, `loadSessions`,
+  `isParallxUri`, ...) are production code with no production caller, so
+  delete the function and its test together, or find the caller it was
+  meant for.
+- `ext`: a top-level function or const in `ext/` referenced nowhere (21:
+  ten `budgetTool*` handlers in Budget that no tool registers, three
+  Study data helpers, two in Media Organizer, three in Creations).
+- `settings`: a declared setting nothing reads (0 after the AI Settings
+  work on 2026-10-12).
+- `css`: a stylesheet nothing imports (1: `settingsEditorPane.css`, whose
+  pane was removed on 2026-10-01).
+
+Every hit is a candidate: read the file first, since a name reached only
+through a string or the extension API also shows up. Delete in one commit
+per group, run the four checks, and re-run the sweep until it prints only
+the test hooks. Do this before the splits: it is small, and the splits
+move the same code.
+
 ### Phase 6, the splits
 
 1. **PDF pane collaborators.** `src/editor/panes/pdf/pdfEditorPane.ts`
