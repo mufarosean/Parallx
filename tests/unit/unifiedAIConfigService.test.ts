@@ -2,20 +2,17 @@
 //
 // Tests for:
 //   - IUnifiedAIConfig types and defaults
-//   - Migration helpers (fromLegacyProfile, fromLegacyParallxConfig, tolegacyProfile)
+//   - Conversion helpers (fromLegacyParallxConfig, tolegacyProfile)
 //   - UnifiedAIConfigService: preset management, workspace overrides,
 //     effective config resolution, legacy compatibility, clone-on-write
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   DEFAULT_UNIFIED_CONFIG,
-  fromLegacyProfile,
   fromLegacyParallxConfig,
   tolegacyProfile,
 } from '../../src/aiSettings/unifiedConfigTypes';
 import type { IUnifiedPreset } from '../../src/aiSettings/unifiedConfigTypes';
-import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
-import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from './fixtures/aiSettingsDefaults';
 import { UnifiedAIConfigService, deepMerge } from '../../src/aiSettings/unifiedAIConfigService';
 import { DEFAULT_CONFIG } from '../../src/services/parallxConfigService';
 
@@ -76,44 +73,6 @@ describe('IUnifiedAIConfig defaults', () => {
 // Migration Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('fromLegacyProfile', () => {
-  it('converts an AISettingsProfile to IUnifiedPreset', () => {
-    const preset = fromLegacyProfile(DEFAULT_PROFILE);
-
-    expect(preset.id).toBe('default');
-    expect(preset.presetName).toBe('Default');
-    expect(preset.isBuiltIn).toBe(true);
-    expect(preset.config.model.chatModel).toBe(''); // was defaultModel
-    expect(preset.config.model.temperature).toBe(-1);
-  });
-
-  it('fills new sections from defaults', () => {
-    const preset = fromLegacyProfile(DEFAULT_PROFILE);
-
-    // Sections not in legacy profiles should come from defaults
-    expect(preset.config.retrieval.autoRag).toBe(true);
-    expect(preset.config.retrieval.ragTopK).toBe(20);
-    expect(preset.config.agent.maxIterations).toBe(25);
-    expect(preset.config.memory.memoryEnabled).toBe(true);
-    expect(preset.config.indexing.autoIndex).toBe(true);
-  });
-
-  it('preserves custom profile values', () => {
-    const custom: AISettingsProfile = {
-      ...structuredClone(DEFAULT_PROFILE),
-      id: 'my-custom',
-      presetName: 'My Custom',
-      isBuiltIn: false,
-      model: { defaultModel: 'llama3.1', temperature: 0.5, maxTokens: 2048, contextWindow: 4096 },
-    };
-
-    const preset = fromLegacyProfile(custom);
-    expect(preset.config.model.chatModel).toBe('llama3.1');
-    expect(preset.config.model.temperature).toBe(0.5);
-    expect(preset.config.model.maxTokens).toBe(2048);
-  });
-});
-
 describe('fromLegacyParallxConfig', () => {
   it('converts IParallxConfig to workspace override patch', () => {
     const override = fromLegacyParallxConfig(DEFAULT_CONFIG);
@@ -151,18 +110,6 @@ describe('tolegacyProfile', () => {
     expect(profile.presetName).toBe('Test');
     expect(profile.chat.systemPrompt).toBe('');
     expect(profile.model.defaultModel).toBe(''); // chatModel → defaultModel
-  });
-
-  it('round-trips: fromLegacyProfile → tolegacyProfile preserves key fields', () => {
-    for (const builtIn of BUILT_IN_PRESETS) {
-      const preset = fromLegacyProfile(builtIn);
-      const backToProfile = tolegacyProfile(preset);
-
-      expect(backToProfile.id).toBe(builtIn.id);
-      expect(backToProfile.presetName).toBe(builtIn.presetName);
-      expect(backToProfile.chat.systemPrompt).toBe(builtIn.chat.systemPrompt);
-      expect(backToProfile.model.temperature).toBe(builtIn.model.temperature);
-    }
   });
 });
 
@@ -227,25 +174,6 @@ describe('UnifiedAIConfigService', () => {
       expect(stored).toBeDefined();
       const parsed = JSON.parse(stored!);
       expect(parsed.length).toBe(3);
-    });
-
-    it('migrates legacy M15 profiles on first load', async () => {
-      const legacyStorage = createMockStorage();
-      // Seed with legacy format
-      await legacyStorage.set('ai-settings.profiles', JSON.stringify(BUILT_IN_PRESETS.map(p => structuredClone(p))));
-      await legacyStorage.set('ai-settings.activeProfileId', 'finance-focus');
-
-      const svc = new UnifiedAIConfigService(legacyStorage as any, undefined);
-      await svc.initialize();
-
-      expect(svc.getActivePreset().id).toBe('finance-focus');
-      expect(svc.getAllPresets().length).toBe(3);
-
-      // Should have written new-format keys
-      const newFormat = await legacyStorage.get('unified-ai.presets');
-      expect(newFormat).toBeDefined();
-
-      svc.dispose();
     });
   });
 

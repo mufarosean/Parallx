@@ -889,22 +889,6 @@ app.whenReady().then(async () => {
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
   // Local video and audio, streamed with range requests (parallx-media://).
   setupMediaStreamBridge(protocol, (absPath) => _isAllowedMediaReadPath(absPath));
-  // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
-  const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
-  try {
-    const oldEntries = await fs.readdir(oldToolsDir).catch(() => []);
-    for (const entry of oldEntries) {
-      const oldPath = path.join(oldToolsDir, entry);
-      const newPath = path.join(USER_EXTENSIONS_DIR, entry);
-      const stat = await fs.stat(oldPath).catch(() => null);
-      if (stat && stat.isDirectory()) {
-        const exists = await fs.stat(newPath).catch(() => null);
-        if (!exists) {
-          await fs.cp(oldPath, newPath, { recursive: true });
-        }
-      }
-    }
-  } catch { /* old dir doesn't exist — nothing to migrate */ }
 
   await createWindow();
 });

@@ -570,46 +570,6 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Convert a legacy AISettingsProfile into a unified preset.
- * Fields that don't exist in the old profile are filled from defaults.
- */
-export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
-  return {
-    id: profile.id,
-    presetName: profile.presetName,
-    isBuiltIn: profile.isBuiltIn,
-    createdAt: profile.createdAt,
-    updatedAt: profile.updatedAt,
-    config: {
-      chat: {
-        systemPrompt: profile.chat.systemPrompt,
-        systemPromptIsCustom: profile.chat.systemPromptIsCustom,
-        timeZone: profile.chat.timeZone ?? '',
-      },
-      model: {
-        chatModel: profile.model.defaultModel,
-        embeddingModel: DEFAULT_UNIFIED_CONFIG.model.embeddingModel,
-        temperature: profile.model.temperature,
-        maxTokens: profile.model.maxTokens,
-        contextWindow: profile.model.contextWindow,
-      },
-      retrieval: { ...DEFAULT_UNIFIED_CONFIG.retrieval },
-      agent: { ...DEFAULT_UNIFIED_CONFIG.agent },
-      runtime: { ...DEFAULT_UNIFIED_CONFIG.runtime },
-      memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
-      indexing: { ...DEFAULT_UNIFIED_CONFIG.indexing },
-      tools: { ...DEFAULT_UNIFIED_CONFIG.tools },
-      heartbeat: {
-        ...DEFAULT_UNIFIED_CONFIG.heartbeat,
-        reasons: [...DEFAULT_UNIFIED_CONFIG.heartbeat.reasons],
-        watchIncludeExtensions: [...DEFAULT_UNIFIED_CONFIG.heartbeat.watchIncludeExtensions],
-        watchExcludeGlobs: [...DEFAULT_UNIFIED_CONFIG.heartbeat.watchExcludeGlobs],
-      },
-    },
-  };
-}
-
-/**
  * Convert a legacy IParallxConfig into a sparse
  * workspace override. Only imports fields that config.json controls.
  */

@@ -352,53 +352,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     if (n > 0) console.log(`[Canvas] Single-home reconciliation: merged ${n} multi-membership page(s).`);
   }).catch((err) => console.warn('[Canvas] Single-home reconciliation failed:', err));
 
-  // 2z-ii. One-time legacy property migration (workspace-gated): moves the old
-  // per-page property data into databases (tags → "Tags", custom → "Migrated
-  // properties"), writing a JSON backup FIRST. Legacy tables stay on disk
-  // untouched as an archive. Runs in the background; never blocks activation.
-  const runLegacyMigrationNow = async (): Promise<void> => {
-    const dbService = _databaseService;
-    if (!dbService) return;
-    try {
-      const { runLegacyPropertyMigration } = await import('./database/legacyPropertyMigration.js');
-      const bridge = (window as unknown as { parallxElectron?: { database?: never } }).parallxElectron?.database;
-      if (!bridge) return; // no DB open yet — retry next activation
-      const result = await runLegacyPropertyMigration({
-        bridge,
-        db: dbService,
-        writeBackup: async (json) => {
-          const fs = api.workspace.fs;
-          const root = api.workspace.workspaceFolders?.[0]?.uri;
-          if (!fs || !root) throw new Error('workspace fs unavailable — cannot write the migration backup');
-          const dir = `${root}/.parallx-backups`;
-          if (!(await fs.exists(dir))) await fs.mkdir(dir);
-          await fs.writeFile(`${dir}/legacy-properties-${new Date().toISOString().slice(0, 10)}.json`, json);
-        },
-      });
-      context.workspaceState.update('canvas.legacyPropsMigrated', true);
-      if (result !== 'nothing-to-migrate') {
-        console.log(
-          `[Canvas] Legacy property migration complete: ${result.migratedTagPages} tagged page(s) → "Tags", ` +
-          `${result.migratedCustomValues} custom value(s) → "Migrated properties" (backup in .parallx-backups/).`,
-        );
-      }
-    } catch (err) {
-      // Backup failed or migration errored — DO NOT mark migrated; we retry
-      // on next activation. Nothing was deleted (legacy tables untouched).
-      console.error('[Canvas] Legacy property migration failed (will retry next launch):', err);
-    }
-  };
-  if (!context.workspaceState.get<boolean>('canvas.legacyPropsMigrated', false)) {
-    void runLegacyMigrationNow();
-  }
-  // Support/dev hook (same pattern as parallx:capture-to-canvas): force a
-  // re-run — e.g. after restoring legacy data — regardless of the memento.
-  const onForceLegacyMigration = (): void => { void runLegacyMigrationNow(); };
-  window.addEventListener('parallx:canvas-run-legacy-migration', onForceLegacyMigration);
-  context.subscriptions.push({
-    dispose: () => window.removeEventListener('parallx:canvas-run-legacy-migration', onForceLegacyMigration),
-  });
-
   // 2a. What other tools and Quick Open see of the pages (no bodies).
   registerCanvasPageSources(api, context.subscriptions, _dataService, openPageInEditor);
   // Publish the FULL data service too, so the dashboard's notes widget can host
@@ -568,10 +521,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 2b. The LEGACY per-page property system (PropertyDataService + property
   //     bar + page_properties/property_definitions tables) is RETIRED:
-  //     properties live in DATABASES (Notion model). Existing data is moved
-  //     by runLegacyPropertyMigration (below, one-time, backup-first); the
-  //     legacy tables stay on disk untouched as an archive. created/modified
-  //     are derived from pages.created_at/updated_at — no seeding needed.
+  //     properties live in DATABASES (Notion model). The legacy tables stay
+  //     on disk untouched as an archive (the one-time migration that moved
+  //     them is retired). created/modified are derived from
+  //     pages.created_at/updated_at — no seeding needed.
   context.subscriptions.push(
     dataServiceRef.onDidChangePage((event) => {
       if (event.kind !== PageChangeKind.Created) return;

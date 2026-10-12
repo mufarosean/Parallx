@@ -21,7 +21,6 @@ import type {
 } from './unifiedConfigTypes.js';
 import {
   DEFAULT_UNIFIED_CONFIG,
-  fromLegacyProfile,
   tolegacyProfile,
 } from './unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatResponseChunk } from '../services/chatTypes.js';
@@ -31,8 +30,6 @@ import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
 const STORAGE_KEY_PRESETS = 'unified-ai.presets';
 const STORAGE_KEY_ACTIVE_ID = 'unified-ai.activePresetId';
-const LEGACY_KEY_PROFILES = 'ai-settings.profiles';
-const LEGACY_KEY_ACTIVE_ID = 'ai-settings.activeProfileId';
 
 // ─── Deep Merge ────────────────────────────────────────────────────────────
 
@@ -559,20 +556,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
         }
       }
 
-      // Try migrating from legacy M15 format
-      const legacyJson = await this._storage.get(LEGACY_KEY_PROFILES);
-      const legacyActiveId = await this._storage.get(LEGACY_KEY_ACTIVE_ID);
-
-      if (legacyJson) {
-        const parsed = JSON.parse(legacyJson);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this._presets = this._migrateLegacyProfiles(parsed);
-          this._activePresetId = legacyActiveId ?? 'default';
-          console.log(`[UnifiedAIConfigService] Migrated ${parsed.length} legacy profiles`);
-          await this._persist();
-          return;
-        }
-      }
     } catch (e) {
       console.warn('[UnifiedAIConfigService] Failed to load presets, resetting to defaults:', e);
     }
@@ -700,34 +683,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
         );
         const filled: IUnifiedPreset = { ...merged, isBuiltIn: false };
         result.push(filled);
-      }
-    }
-
-    return result;
-  }
-
-  private _migrateLegacyProfiles(raw: unknown[]): IUnifiedPreset[] {
-    const result: IUnifiedPreset[] = [];
-    const builtInIds = new Set(BUILT_IN_PRESETS.map(p => p.id));
-
-    for (const item of raw) {
-      if (typeof item !== 'object' || item === null || !('id' in item)) continue;
-
-      const legacy = item as AISettingsProfile;
-      if (builtInIds.has(legacy.id)) {
-        // Built-in: use our new defaults, merge any customizations
-        const builtIn = BUILT_IN_PRESETS.find(p => p.id === legacy.id)!;
-        result.push(structuredClone(builtIn));
-      } else {
-        // Custom profile: convert via migration helper
-        result.push(fromLegacyProfile(legacy));
-      }
-    }
-
-    // Ensure all built-in presets exist
-    for (const builtIn of BUILT_IN_PRESETS) {
-      if (!result.find(p => p.id === builtIn.id)) {
-        result.push(structuredClone(builtIn));
       }
     }
 
