@@ -18,7 +18,7 @@ import {
   deserializeEditorInput,
 } from '../../src/editor/editorInputDeserializer.js';
 import { FileEditorInput } from '../../src/editor/panes/fileEditorInput.js';
-import { PdfEditorInput } from '../../src/editor/panes/pdfEditorInput.js';
+import { PdfEditorInput } from '../../src/editor/panes/pdf/pdfEditorInput.js';
 import { EpubEditorInput } from '../../src/editor/panes/epubEditorInput.js';
 import { ImageEditorInput } from '../../src/editor/panes/imageEditorInput.js';
 import { MarkdownPreviewInput } from '../../src/editor/panes/markdownPreviewInput.js';

@@ -15,7 +15,7 @@ const root = resolve(__dirname, '../..');
 
 describe('PDF find controller document', () => {
   it('the pane never gives the find controller its document', () => {
-    const pane = readFileSync(resolve(root, 'src/editor/panes/pdfEditorPane.ts'), 'utf8');
+    const pane = readFileSync(resolve(root, 'src/editor/panes/pdf/pdfEditorPane.ts'), 'utf8');
     expect(pane).toMatch(/findController:\s*this\._findController/);
     expect(pane).not.toMatch(/_findController\??\.setDocument\(/);
   });

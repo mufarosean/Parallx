@@ -3,9 +3,9 @@
 // Simple URI holder for PDFs. The PdfEditorPane reads the binary
 // data and renders it with PDF.js.
 
-import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
-import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
-import { URI } from '../../platform/uri.js';
+import { EditorInput, type IEditorInput } from '../../../editor/editorInput.js';
+import type { SerializedEditorEntry } from '../../../editor/editorTypes.js';
+import { URI } from '../../../platform/uri.js';
 
 export class PdfEditorInput extends EditorInput {
   static readonly TYPE_ID = 'parallx.editor.pdf';

@@ -34,7 +34,7 @@ import { UntitledEditorInput } from '../editor/panes/untitledEditorInput.js';
 import { MarkdownPreviewInput } from '../editor/panes/markdownPreviewInput.js';
 import { ReadonlyMarkdownInput } from '../editor/panes/readonlyMarkdownInput.js';
 import { ImageEditorInput } from '../editor/panes/imageEditorInput.js';
-import { PdfEditorInput } from '../editor/panes/pdfEditorInput.js';
+import { PdfEditorInput } from '../editor/panes/pdf/pdfEditorInput.js';
 import { EpubEditorInput } from '../editor/panes/epubEditorInput.js';
 import { WordEditorInput } from '../editor/panes/wordEditorInput.js';
 import { ExcelEditorInput } from '../editor/panes/excelEditorInput.js';
@@ -52,7 +52,7 @@ import {
 } from '../editor/panes/notebook/notebookEditorPane.js';
 import { MarkdownEditorPane } from '../editor/panes/markdownEditorPane.js';
 import { ImageEditorPane } from '../editor/panes/imageEditorPane.js';
-import { PdfEditorPane } from '../editor/panes/pdfEditorPane.js';
+import { PdfEditorPane } from '../editor/panes/pdf/pdfEditorPane.js';
 import { EpubEditorPane } from '../editor/panes/epubEditorPane.js';
 import { WordEditorPane } from '../editor/panes/wordEditorPane.js';
 import { ExcelEditorPane } from '../editor/panes/excelEditorPane.js';

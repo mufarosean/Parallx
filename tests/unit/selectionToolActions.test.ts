@@ -19,7 +19,7 @@ describe('selection actions from tools', () => {
   });
   it('no editor hardcodes a tool\'s action', async () => {
     const { readFileSync } = await import('node:fs');
-    for (const f of ['src/editor/panes/pdfEditorPane.ts', 'src/editor/panes/markdownEditorPane.ts', 'src/editor/panes/textEditorPane.ts', 'src/built-in/canvas/menus/bubbleMenu.ts']) {
+    for (const f of ['src/editor/panes/pdf/pdfEditorPane.ts', 'src/editor/panes/markdownEditorPane.ts', 'src/editor/panes/textEditorPane.ts', 'src/built-in/canvas/menus/bubbleMenu.ts']) {
       expect(readFileSync(f, 'utf8'), f).not.toMatch(/create-flashcard|Flashcard/);
     }
   });

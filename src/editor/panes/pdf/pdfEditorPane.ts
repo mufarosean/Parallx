@@ -23,31 +23,34 @@
 // loaded by renderInput, so a boot with no PDF open never parses them.
 import type { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { loadPdfjs } from '../../vendor/lazy.js';
+import { loadPdfjs } from '../../../vendor/lazy.js';
 
 type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
-import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
+import { getToolSelectionActions } from '../../../services/selectionActionDispatcher.js';
 
 // ── CSS ─────────────────────────────────────────────────────────────────
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdfEditorPane.css';
 
 // ── App imports ─────────────────────────────────────────────────────────
-import { EditorPane } from '../../editor/editorPane.js';
-import type { IEditorInput } from '../../editor/editorInput.js';
+import { EditorPane } from '../../../editor/editorPane.js';
+import type { IEditorInput } from '../../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
-import { $, hide, show } from '../../ui/dom.js';
-import { beginPointerDrag } from '../../ui/interactionMode.js';
-import { ContextMenu } from '../../ui/contextMenu.js';
-import type { IContextMenuItem } from '../../ui/contextMenu.js';
-import { getEditorTitleActions } from '../../contributions/menuContribution.js';
-import { toDisposable } from '../../platform/lifecycle.js';
-import type { IStorage } from '../../platform/storage.js';
-import { getIcon } from '../../ui/iconRegistry.js';
-import { setupTooltip } from '../../ui/tooltip.js';
-import { SegmentedControl } from '../../ui/segmentedControl.js';
-import type { IChatMessage, IChatResponseChunk } from '../../services/chatTypes.js';
-import { takeFileReveal } from '../fileReveal.js';
+import { $, hide, show } from '../../../ui/dom.js';
+import { beginPointerDrag } from '../../../ui/interactionMode.js';
+import { ContextMenu } from '../../../ui/contextMenu.js';
+import type { IContextMenuItem } from '../../../ui/contextMenu.js';
+import { getEditorTitleActions } from '../../../contributions/menuContribution.js';
+import { toDisposable } from '../../../platform/lifecycle.js';
+import type { IStorage } from '../../../platform/storage.js';
+import { ICON } from './pdfIcons.js';
+import type { PdfOutlineItem, SelectionOverlayRect } from './pdfTypes.js';
+import { HIGHLIGHT_COLORS, highlightRgba, highlightSolid, rectsOverlap, cloneHighlight } from './pdfHighlights.js';
+import type { PdfHighlightRect, PdfHighlightCanvasLink, PdfHighlight, PdfHighlightAction } from './pdfHighlights.js';
+import { setupTooltip } from '../../../ui/tooltip.js';
+import { SegmentedControl } from '../../../ui/segmentedControl.js';
+import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
+import { takeFileReveal } from '../../fileReveal.js';
 
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
 type InlineAISendChat = (
@@ -74,116 +77,6 @@ const PDFJS_WASM_URL = './dist/renderer/pdfjs/wasm/';
 const TEXT_LAYER_ENABLE = 1;
 /** How long a closed document waits for pdf.js's page lookups before it is destroyed anyway. */
 const PDF_DESTROY_GRACE_MS = 3000;
-
-// ─── SVG icons — from the central Lucide icon registry ─────────────────────
-
-const ICON = {
-  chevronLeft:  getIcon('chevron-left')!,
-  chevronRight: getIcon('chevron-right')!,
-  chevronUp:    getIcon('chevron-up')!,
-  chevronDown:  getIcon('chevron-down')!,
-  zoomOut:      getIcon('zoom-out')!,
-  zoomIn:       getIcon('zoom-in')!,
-  fitWidth:     getIcon('fit-width')!,
-  fitPage:      getIcon('fit-page')!,
-  search:       getIcon('search')!,
-  listTree:     getIcon('list-tree')!,
-  panelLeft:    getIcon('panel-left')!,
-  trash:        getIcon('trash-2')!,
-  copy:         getIcon('copy')!,
-  send:         getIcon('send')!,
-  canvasNote:   getIcon('file-plus')!,
-  messages:     getIcon('message-square')!,
-  grid:         getIcon('grid')!,
-  more:         getIcon('ellipsis')!,
-  check:        getIcon('check')!,
-  close:        getIcon('close')!,
-  chevronDownSm:getIcon('chevron-down')!,
-  highlighter:  getIcon('highlighter')!,
-  note:         getIcon('sticky-note')!,
-  moon:         getIcon('moon')!,
-  sun:          getIcon('sun')!,
-  chat:         getIcon('px-ai-mark')!,
-  sparkles:     getIcon('px-ai-mark')!,
-  openExtSm:    getIcon('external-link')!,
-} as const;
-
-// ─── Highlight palette ─────────────────────────────────────────────────────
-// Stored by key; rendered with the rgba value. Order = swatch order.
-const HIGHLIGHT_COLORS: ReadonlyArray<{ key: string; label: string; rgba: string }> = [
-  { key: 'yellow', label: 'Yellow', rgba: 'rgba(255, 214, 64, 0.40)' },
-  { key: 'green',  label: 'Green',  rgba: 'rgba(118, 214, 122, 0.40)' },
-  { key: 'blue',   label: 'Blue',   rgba: 'rgba(96, 170, 255, 0.38)' },
-  { key: 'pink',   label: 'Pink',   rgba: 'rgba(255, 128, 191, 0.38)' },
-  { key: 'orange', label: 'Orange', rgba: 'rgba(255, 167, 64, 0.40)' },
-];
-function highlightRgba(key: string): string {
-  return (HIGHLIGHT_COLORS.find((c) => c.key === key) ?? HIGHLIGHT_COLORS[0]).rgba;
-}
-/** The same colour at full strength, for swatches (a see-through dot turns muddy on a dark panel). */
-function highlightSolid(rgba: string): string {
-  return rgba.replace(/^rgba\((\s*\d+\s*,\s*\d+\s*,\s*\d+)\s*,\s*[\d.]+\s*\)$/, 'rgb($1)');
-}
-
-// ─── Outline types ───────────────────────────────────────────────────────
-
-interface PdfOutlineItem {
-  title: string;
-  bold: boolean;
-  italic: boolean;
-  dest: string | any[] | null;
-  url: string | null;
-  items: PdfOutlineItem[];
-}
-
-interface SelectionOverlayRect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-// A highlight rectangle stored in PDF user-space (rotation/scale independent).
-interface PdfHighlightRect {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
-// one saved turn of the per-highlight AI discussion (a review record,
-// not a live session).
-interface PdfHighlightThreadTurn {
-  role: 'user' | 'ai';
-  text: string;
-  at: number;
-}
-
-// a canvas page this highlight's passage was captured to.
-interface PdfHighlightCanvasLink {
-  pageId: string;
-  title: string;
-  at: number;
-}
-
-interface PdfHighlight {
-  id: string;
-  page: number;          // 1-based
-  color: string;         // HIGHLIGHT_COLORS key
-  rects: PdfHighlightRect[];
-  text: string;          // captured selection text (for reference/export)
-  note: string;          // optional margin note
-  thread?: PdfHighlightThreadTurn[];      // saved AI discussion
-  canvasLinks?: PdfHighlightCanvasLink[]; // pages this became
-  createdAt: number;
-}
-
-// One reversible highlight action for the undo/redo stacks. `highlights` is a
-// deep copy so a deleted highlight can be fully restored on undo.
-interface PdfHighlightAction {
-  kind: 'create' | 'delete';
-  highlights: PdfHighlight[];
-}
 
 // ─── PdfEditorPane ───────────────────────────────────────────────────────
 
@@ -923,7 +816,7 @@ export class PdfEditorPane extends EditorPane {
       //   • same color  → remove it (toggle off)
       //   • diff color  → replace it (the new color takes over)
       const existing = this._highlights.find(
-        (h) => h.page === pageNumber && this._rectsOverlap(h.rects, pdfRects),
+        (h) => h.page === pageNumber && rectsOverlap(h.rects, pdfRects),
       );
       if (existing) {
         removed.push(existing);
@@ -971,25 +864,6 @@ export class PdfEditorPane extends EditorPane {
    * rect-set's area, so re-selecting roughly the same passage matches even if
    * the new selection is a little tighter or looser.
    */
-  private _rectsOverlap(a: readonly PdfHighlightRect[], b: readonly PdfHighlightRect[]): boolean {
-    const area = (rs: readonly PdfHighlightRect[]): number =>
-      rs.reduce((sum, r) => sum + Math.abs(r.x2 - r.x1) * Math.abs(r.y2 - r.y1), 0);
-    let intersection = 0;
-    for (const r1 of a) {
-      const ax1 = Math.min(r1.x1, r1.x2), ax2 = Math.max(r1.x1, r1.x2);
-      const ay1 = Math.min(r1.y1, r1.y2), ay2 = Math.max(r1.y1, r1.y2);
-      for (const r2 of b) {
-        const bx1 = Math.min(r2.x1, r2.x2), bx2 = Math.max(r2.x1, r2.x2);
-        const by1 = Math.min(r2.y1, r2.y2), by2 = Math.max(r2.y1, r2.y2);
-        const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(ax1, bx1));
-        const iy = Math.max(0, Math.min(ay2, by2) - Math.max(ay1, by1));
-        intersection += ix * iy;
-      }
-    }
-    const smaller = Math.min(area(a), area(b));
-    return smaller > 0 && intersection / smaller >= 0.5;
-  }
-
   private _renderAllHighlights(): void {
     if (!this._viewerContainer) return;
     for (const page of new Set(this._highlights.map((h) => h.page))) {
@@ -1366,27 +1240,18 @@ export class PdfEditorPane extends EditorPane {
   private _deleteHighlight(id: string): void {
     const hl = this._highlights.find((h) => h.id === id);
     if (!hl) return;
-    this._pushUndo({ kind: 'delete', highlights: [this._cloneHighlight(hl)] });
+    this._pushUndo({ kind: 'delete', highlights: [cloneHighlight(hl)] });
     this._highlights = this._highlights.filter((h) => h.id !== id);
     this._saveHighlights();
     this._renderHighlightsForPage(hl.page);
   }
 
   /** Structured deep copy of a highlight so undo/redo can restore it verbatim. */
-  private _cloneHighlight(hl: PdfHighlight): PdfHighlight {
-    return {
-      ...hl,
-      rects: hl.rects.map((r) => ({ ...r })),
-      thread: hl.thread?.map((t) => ({ ...t })),
-      canvasLinks: hl.canvasLinks?.map((l) => ({ ...l })),
-    };
-  }
-
   /** Record a reversible action and invalidate the redo stack. */
   private _pushUndo(action: PdfHighlightAction): void {
     this._highlightUndoStack.push({
       kind: action.kind,
-      highlights: action.highlights.map((h) => this._cloneHighlight(h)),
+      highlights: action.highlights.map((h) => cloneHighlight(h)),
     });
     this._highlightRedoStack = [];
   }
@@ -1399,7 +1264,7 @@ export class PdfEditorPane extends EditorPane {
       // Restore copies so later edits don't mutate the stacked snapshots.
       for (const h of action.highlights) {
         if (!this._highlights.some((e) => e.id === h.id)) {
-          this._highlights.push(this._cloneHighlight(h));
+          this._highlights.push(cloneHighlight(h));
         }
       }
     } else {

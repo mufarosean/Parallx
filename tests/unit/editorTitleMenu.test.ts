@@ -97,7 +97,7 @@ describe('editor More Actions (editor/title)', () => {
   it('the PDF pane names no tool', () => {
     // "study" as a plain word ("a study note") is fine; the tool's id, its
     // commands and its menu label are not.
-    const src = readFileSync(resolve(root, 'src/editor/panes/pdfEditorPane.ts'), 'utf8');
+    const src = readFileSync(resolve(root, 'src/editor/panes/pdf/pdfEditorPane.ts'), 'utf8');
     expect(src).not.toMatch(/parallx-community\.study|['"`]study\.[a-zA-Z]+|Study This Document|flashcards\./);
     expect(src).toMatch(/getEditorTitleActions\(\)/);
   });
