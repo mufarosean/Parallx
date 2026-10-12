@@ -31,6 +31,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { CONTAINER_DRAG_TYPE } from '../platform/dragTypes.js';
 import type { ContainerDragData } from '../platform/dragTypes.js';
+import { declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import { setupTooltip } from '../ui/tooltip.js';
 
@@ -580,6 +581,8 @@ export class ActivityBarPart extends Part {
 
     // Custom themed tooltip (replaces native title attribute)
     setupTooltip(btn, descriptor.label, { placement: this._tooltipPlacement });
+    // In the scene as the tab it is: pressed while its view container is the active one.
+    declareControl(btn, { id: `activitybar.${descriptor.id}`, label: descriptor.label, kind: 'iconButton', state: () => ({ kind: 'pressed', value: btn.getAttribute('aria-selected') === 'true' }) });
 
     btn.addEventListener('click', () => {
       this._onDidClickIcon.fire({

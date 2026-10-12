@@ -23,6 +23,7 @@ import { SizeConstraints } from '../layout/layoutTypes.js';
 import { StatusBarAlignment, StatusBarEntry, StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { toDisposable } from '../platform/lifecycle.js';
+import { declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import { setupTooltip } from '../ui/tooltip.js';
 
@@ -139,6 +140,7 @@ export class StatusBarPart extends Part {
         }
       });
     }
+    this._declare(label, entry);
 
     // Store view-model entry
     const vmEntry: StatusBarViewModelEntry = {
@@ -184,12 +186,23 @@ export class StatusBarPart extends Part {
           }
           existing.container.replaceChild(newLabel, existing.label);
           existing.label = newLabel;
+          this._declare(newLabel, updated);
         }
       },
       dispose: () => {
         this._removeEntryElement(entry.id);
       },
     };
+  }
+
+  /** The item in the scene: its id, its name (or tooltip, or text) as label, its command, its text as state. */
+  private _declare(label: HTMLElement, entry: StatusBarEntry): void {
+    declareControl(label, {
+      id: entry.id,
+      label: entry.name || entry.tooltip || entry.text,
+      ...(entry.command ? { command: entry.command } : {}),
+      state: () => ({ kind: 'value', value: label.textContent?.trim() ?? '' }),
+    });
   }
 
   /**

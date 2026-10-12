@@ -16,6 +16,7 @@ import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
 import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { ContextMenu } from '../ui/contextMenu.js';
+import { createSurface, declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import { getIcon } from '../ui/iconRegistry.js';
 import type { IEditorInput } from '../editor/editorInput.js';
@@ -253,6 +254,7 @@ export class StatusBarController extends Disposable {
 
       const panel = $('div');
       panel.className = 'parallx-notification-center';
+      createSurface(panel, { id: 'notificationCenter', owner: 'core', label: 'Notifications' });
 
       const history = notifService.history;
 
@@ -288,6 +290,7 @@ export class StatusBarController extends Disposable {
           hideCenter();
         });
         header.appendChild(clearBtn);
+        declareControl(clearBtn, { id: 'notificationCenter.clearAll', label: 'Clear All', hint: 'Clears every notification.' });
       }
       panel.appendChild(header);
 

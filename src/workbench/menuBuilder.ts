@@ -12,6 +12,7 @@ import { ICommandService, IKeybindingService } from '../services/serviceTypes.js
 import { CommandService } from '../commands/commandRegistry.js';
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import { ContextMenu } from '../ui/contextMenu.js';
+import { declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';
 import type { ActivityBarPart } from '../parts/activityBarPart.js';
@@ -185,6 +186,7 @@ export class MenuBuilder extends Disposable {
     iconLabel.classList.add('activity-bar-icon-label');
     iconLabel.innerHTML = getIcon('gear');
     gearBtn.appendChild(iconLabel);
+    declareControl(gearBtn, { id: 'activitybar.manage', label: 'Manage', kind: 'iconButton', hint: 'Opens the manage menu: settings, keyboard shortcuts, tools.' });
 
     // Toggle: click opens menu, click again closes it
     gearBtn.addEventListener('click', (e) => {

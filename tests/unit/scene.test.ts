@@ -108,6 +108,14 @@ describe('scene', () => {
     expect(scene.under(scene.find('sidebar')[0]).map((e) => e.id)).toEqual(['explorer.refresh']);
   });
 
+  it('lets a control replace one with the same id whose element already left, in the same frame', () => {
+    const s = surface('editor');
+    const first = button('editorGroup.tabs', s.el);
+    first.el.remove();
+    const second = button('editorGroup.tabs', s.el);
+    expect(scene.find('editorGroup.tabs').map((e) => e.element)).toEqual([second.el]);
+  });
+
   it('fires onDidChange once per batch of changes', async () => {
     let fired = 0;
     scene.onDidChange(() => { fired++; });

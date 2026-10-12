@@ -187,7 +187,7 @@ export interface IScene {
   entries(): readonly ISceneEntry[];
   /** The entries under one surface entry, recursively. */
   under(surface: ISceneEntry): readonly ISceneEntry[];
-  /** Fires once per animation frame at most, after any change (`Event` from `platform/events.ts`). */
+  /** Fires once per task at most, after any change (`Event` from `platform/events.ts`). */
   readonly onDidChange: Event<void>;
   /** Section 4.6. */
   describe(scope?: string): SceneDescription;
@@ -318,6 +318,7 @@ Nothing is rewritten. Return types are unchanged for the existing seven.
 | `createList` | new, thin (below) | list | selection | `{ element, selected, dispose }` |
 | `createTree` | same code as `createList`, kind `tree` | tree | selection | same |
 | `createSurface` | itself | surface | optional | `{ element, setInstance, dispose }` |
+| `declareControl` | an element the caller built | any but surface | caller's | `IDisposable` |
 | `createPageHeader`, `createSectionLabel`, `createEmptyState` | themselves | none | none | as today |
 
 `createSurface(element, declaration)` adds no DOM. It sets
@@ -326,6 +327,14 @@ element, registers the surface entry and returns a handle. `setInstance`
 changes the instance later (an editor pane learns its input after it is
 created). The three base classes call it for their subclasses (section
 9, step 2), so a pane author never does.
+
+`declareControl(element, { id, label, kind, command, state })` declares a
+control the kit did not build and keeps its DOM and listeners: a window
+button, a menu bar item, an editor tab, anything whose look the kit does
+not have. The rule of no visual change wins over the rule of kit-only
+DOM, so such a control is declared in place; its raw DOM stays counted
+by the ratchet, which accepts a count that did not fall. `command` on
+it is recorded, never run: the element's own listener runs it.
 
 `createList(container, { id, label, rows, selected })` is the one new
 piece of UI code. `rows` is `() => HTMLElement[]` and `selected` is
@@ -359,8 +368,9 @@ functions with one example each, in the same commit as the bridge.
 ### 5.6 Registration and removal
 
 One `MutationObserver` on `document.body` (`childList: true, subtree:
-true`), created the first time the kit registers anything, batched to one
-callback per animation frame. On each batch:
+true`), created the first time the kit registers anything, handled in the
+observer's own callback (one batch per task; never on an animation frame,
+which a hidden or covered window throttles). On each batch:
 
 - For every added node, and every descendant of it with `data-px-id` or
   `data-px-surface`: if the kit holds a pending entry for that element,
@@ -425,8 +435,8 @@ assert: `data-px-id` set; role as 5.4 says; a readable label
 (`aria-label` or text content); `scene.find(id)` has one entry under the
 `test` surface with the right kind; `state()` returns the shape the
 table says; `dispose()` empties `scene.find(id)`; removing the element
-from the document without disposing also empties it after one
-animation frame. Also: a declaration with both `command` and `onClick`
+from the document without disposing also empties it once the observer
+has run. Also: a declaration with both `command` and `onClick`
 throws; a missing `label` throws; a duplicate id under one surface
 throws and is not added.
 
@@ -551,6 +561,26 @@ message's summary (counts only). Verify in the app: in chat, ask for the
 
 ### Step 3. The frame (local, two sessions)
 
+Done 2026-10-12, in the cloud, verified by the scene probe in a real
+window under xvfb: the title bar's five menus and three window buttons
+(with their commands), the activity bar's icons (pressed while active)
+and its manage gear, the status bar's items (with their commands and
+their text as state), the notification centre as a surface with its
+Clear All, each editor group as a surface with the group id as instance
+and its tab bar as one entry, quick access as a surface with its input
+and list, and the settings editor as a surface with its search, nav items
+and every setting's control. The frame's ids are the probe's `FRAME_IDS`
+list. The side bar, panel and auxiliary bar have no controls of their
+own. Four things learned on the way, all now in the text above: bespoke
+chrome is declared in place (`declareControl`); two controls with one id
+in one frame, one replacing the other, are not duplicates; the scene
+flushes in the observer's callback, never on an animation frame, because
+a hidden window throttles frames; and the two giants touched
+(`quickAccess.ts`, `editorGroupView.ts`) each lost a module
+(`quickAccessMatch.ts`, `editorTabContextMenu.ts`) so they ended smaller.
+The tab strip a view container draws to switch between its views is
+declared too (`<container>.views`, kind `tabs`), in `src/views/viewContainer.ts`.
+
 Convert, in this order, with the recipe in section 10:
 `src/parts/titlebarPart.ts`, `src/parts/activityBarPart.ts`,
 `src/parts/statusBarPart.ts` and `src/workbench/statusBarController.ts`,
@@ -638,7 +668,10 @@ For one file. Follow it in order, every time.
    way its neighbours are.
 3. Pass one, construction. Replace each control's element construction
    with the kit call, keeping the existing handler as `onClick` and the
-   returned element or handle in the same variable. Run section 13.
+   returned element or handle in the same variable. A control whose
+   look the kit does not have (a window button, a tab, a menu bar item)
+   is declared in place with `declareControl` instead, and both passes
+   are one commit for it. Run section 13.
    Open the app and use the feature. Commit: `<Feature>: controls
    through the kit`.
 4. Pass two, declaration. Replace `onClick` with `command` wherever step
@@ -701,7 +734,12 @@ untouched, the class names are untouched.
 
 Sessions append here. Each line: date, step, what was left and why.
 
-(none yet)
+- 2026-10-12, step 3: an open context menu (`ContextMenu.show` in
+  `src/ui/contextMenu.ts`) is not a scene entry yet; `createMenu` exists
+  for callers but the title bar's dropdowns and the tab menu call
+  `ContextMenu.show` directly. Register the open menu inside
+  `ContextMenu.show` itself, once, when `src/ui/contextMenu.ts` is next
+  touched.
 
 ## 12. Glossary for a new reader
 

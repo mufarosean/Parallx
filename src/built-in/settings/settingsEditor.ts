@@ -23,6 +23,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { Overlay } from '../../ui/overlay.js';
+import { createSurface, declareControl } from '../../ui/kit.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { Toggle } from '../../ui/toggle.js';
 import { Dropdown } from '../../ui/dropdown.js';
@@ -193,6 +194,7 @@ export class SettingsEditor extends Disposable {
     }));
 
     this._root = $('div.settings-editor');
+    this._register(createSurface(this._root, { id: 'settings', owner: 'settings', label: 'Settings' }));
     this._overlay.contentElement.appendChild(this._root);
 
     // ── Header ───────────────────────────────────────────
@@ -219,6 +221,7 @@ export class SettingsEditor extends Disposable {
       ariaLabel: 'Search settings',
     });
     this._register(search);
+    this._register(declareControl(search.element, { id: 'settings.search', label: 'Search settings', kind: 'input', state: () => ({ kind: 'value', value: search.value }) }));
     this._register(search.onDidChange((value) => {
       this._searchValue = value.trim().toLowerCase();
       this._renderNav();
@@ -409,6 +412,7 @@ export class SettingsEditor extends Disposable {
       if (entry.id === this._selectedId && !this._searchValue) {
         item.classList.add('settings-editor__nav-item--active');
       }
+      this._register(declareControl(item, { id: `settings.nav.${sceneSlug(entry.id)}`, label, state: () => ({ kind: 'pressed', value: item.classList.contains('settings-editor__nav-item--active') }) }));
       this._register(addDisposableListener(item, 'click', () => {
         if (this._selectedId === entry.id && !this._searchValue) return;
         this._pendingDeepLink = null;
@@ -590,6 +594,7 @@ export class SettingsEditor extends Disposable {
           ariaLabel: schema.key,
         });
         this._controlDisposables.push(toggle);
+        this._controlDisposables.push(declareControl(toggle.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'toggle', hint: schema.description, state: () => ({ kind: 'pressed', value: toggle.checked }) }));
         this._controlDisposables.push(toggle.onDidChange(async (val) => {
           try {
             await this._registry.setValue(schema.key, val);
@@ -607,6 +612,7 @@ export class SettingsEditor extends Disposable {
           ariaLabel: schema.key,
         });
         this._controlDisposables.push(inputBox);
+        this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
         const tryWrite = async (raw: string) => {
           const num = Number(raw);
           if (!Number.isFinite(num)) return;
@@ -634,6 +640,7 @@ export class SettingsEditor extends Disposable {
           type: schema.secret ? 'password' : 'text',
         });
         this._controlDisposables.push(inputBox);
+        this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
         const write = async (raw: string) => {
           try {
             await this._registry.setValue(schema.key, raw);
@@ -693,6 +700,7 @@ export class SettingsEditor extends Disposable {
           ariaLabel: schema.key,
         });
         this._controlDisposables.push(dropdown);
+        this._controlDisposables.push(declareControl(dropdown.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'select', hint: schema.description, state: () => ({ kind: 'value', value: dropdown.value ?? '' }) }));
         this._controlDisposables.push(dropdown.onDidChange(async (val) => {
           try {
             await this._registry.setValue(schema.key, val);
@@ -747,4 +755,9 @@ export class SettingsEditor extends Disposable {
     }));
     host.appendChild(resetBtn);
   }
+}
+
+/** A nav entry's id as a scene id segment: lower case, words joined by dashes ('schema:Agents / Heartbeat' is 'schema-agents-heartbeat'). */
+function sceneSlug(id: string): string {
+  return id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }

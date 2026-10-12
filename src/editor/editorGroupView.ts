@@ -24,7 +24,8 @@ import {
 } from './editorTypes.js';
 import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
-import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
+import { showEditorTabContextMenu, workspaceRelativePath } from './editorTabContextMenu.js';
+import { createSurface, createTabs } from '../ui/kit.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 import { $, addDisposableListener } from '../ui/dom.js';
 import { getIcon, getFileTypeIcon } from '../ui/iconRegistry.js';
@@ -244,7 +245,13 @@ export class EditorGroupView extends Disposable implements IGridView {
     tabBarHost.style.minHeight = `${TAB_HEIGHT}px`;
     this._element.appendChild(tabBarHost);
 
-    this._tabs = this._register(new TabBar(tabBarHost, {
+    // The group is a surface with the group's id as instance, so two groups'
+    // tabs and panes never collide; its tab bar is one entry whose selection
+    // is the active editor.
+    this._register(createSurface(this._element, { id: 'editorGroup', owner: 'core', label: 'Editor Group', instance: this.model.id }));
+    const tabs = this._register(createTabs(tabBarHost, {
+      id: 'editorGroup.tabs',
+      label: 'Open Editors',
       reorderable: true,
       dragType: EDITOR_TAB_DRAG_TYPE,
       scrollable: true,
@@ -259,6 +266,7 @@ export class EditorGroupView extends Disposable implements IGridView {
         return JSON.stringify(data);
       },
     }));
+    this._tabs = tabs.bar;
 
     // Wire TabBar events → model
     this._register(this._tabs.onDidSelect((id) => {
@@ -613,105 +621,11 @@ export class EditorGroupView extends Disposable implements IGridView {
    *  7_reveal — Reveal in Explorer
    */
   private _showTabContextMenu(editor: IEditorInput, _index: number, e: MouseEvent): void {
-    const currentIdx = this.model.editors.indexOf(editor);
-    if (currentIdx < 0) return;
-
-    const editorCount = this.model.count;
-    const isLast = currentIdx === editorCount - 1;
-    const uri: URI | undefined = editor.uri;
-
-    // ── Build menu items ──
-    const items: IContextMenuItem[] = [];
-
-    // Group 1: Close operations
-    items.push({ id: 'close', label: 'Close', keybinding: 'Ctrl+W', group: '1_close', order: 10 });
-    items.push({
-      id: 'closeOthers', label: 'Close Others', group: '1_close', order: 20,
-      disabled: editorCount <= 1,
-    });
-    items.push({
-      id: 'closeRight', label: 'Close to the Right', group: '1_close', order: 30,
-      disabled: isLast,
-    });
-    items.push({ id: 'closeSaved', label: 'Close Saved', group: '1_close', order: 40 });
-    items.push({ id: 'closeAll', label: 'Close All', group: '1_close', order: 50 });
-
-    // Group 6: Path operations (only when editor has a URI)
-    if (uri) {
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '6_path', order: 10 });
-      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '6_path', order: 20 });
-    }
-
-    // Group 7: Reveal (only when editor has a URI)
-    if (uri) {
-      items.push({ id: 'revealInExplorer', label: 'Reveal in Explorer', group: '7_reveal', order: 10 });
-    }
-
-    // ── Show menu ──
-    const menu = ContextMenu.show({
-      items,
-      anchor: { x: e.clientX, y: e.clientY },
-    });
-
-    // ── Handle selection ──
-    menu.onDidSelect(({ item }) => {
-      // Re-resolve index in case model changed between show and click
-      const idx = this.model.editors.indexOf(editor);
-      if (idx < 0 && item.id !== 'closeAll' && item.id !== 'closeSaved') return;
-
-      switch (item.id) {
-        case 'close':
-          this.model.closeEditor(idx);
-          break;
-        case 'closeOthers':
-          this.model.closeOthers(idx);
-          break;
-        case 'closeRight':
-          this.model.closeToTheRight(idx);
-          break;
-        case 'closeSaved':
-          this.model.closeSaved();
-          break;
-        case 'closeAll':
-          this.model.closeAllEditors();
-          break;
-        case 'copyPath':
-          if (uri) {
-            navigator.clipboard.writeText(uri.fsPath).catch(() => {});
-          }
-          break;
-        case 'copyRelativePath':
-          if (uri) {
-            const relativePath = this._getRelativePath(uri);
-            navigator.clipboard.writeText(relativePath).catch(() => {});
-          }
-          break;
-        case 'revealInExplorer':
-          if (uri) {
-            this._onDidRequestRevealInExplorer.fire(uri);
-          }
-          break;
-      }
-    });
-  }
-
-  /**
-   * Compute a workspace-relative path for a URI.
-   * Falls back to the full fsPath if no workspace folder matches.
-   */
-  private _getRelativePath(uri: URI): string {
-    const fsPath = uri.fsPath;
-    for (const folder of this._workspaceFolders) {
-      const folderPath = folder.uri.fsPath;
-      if (fsPath.startsWith(folderPath)) {
-        let relative = fsPath.substring(folderPath.length);
-        if (relative.startsWith('/') || relative.startsWith('\\')) {
-          relative = relative.substring(1);
-        }
-        return relative;
-      }
-    }
-    return fsPath;
+    showEditorTabContextMenu({
+      model: this.model,
+      relativePathOf: (uri) => workspaceRelativePath(uri, this._workspaceFolders),
+      revealInExplorer: (uri) => this._onDidRequestRevealInExplorer.fire(uri),
+    }, editor, e);
   }
 
   private _populateToolbar(slot: HTMLElement): void {

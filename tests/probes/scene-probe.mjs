@@ -24,6 +24,12 @@ const OPENERS = [
   'theme-editor.open', 'chat.show',
 ];
 
+/** Ids the frame declares (design step 3); the probe fails when one is missing. */
+const FRAME_IDS = [
+  'titlebar.menu.file', 'workbench.action.closeWindow', 'activitybar.manage', 'activitybar.explorer-container',
+  'editorGroup.tabs', 'status.workspace', 'status.notifications', 'settings', 'settings.search',
+];
+
 async function seed() {
   const stamp = Date.now();
   const appRoot = path.join(os.tmpdir(), `parallx-scene-root-${stamp}`);
@@ -81,6 +87,15 @@ async function main() {
     await fs.writeFile(path.join(outDir, 'scene-full.json'), JSON.stringify(full, null, 2));
     const stats = check(full);
     console.log(`[full] surfaces=${stats.surfaces} controls=${stats.controls}`);
+
+    // The frame (design step 3): the controls every feature hangs in, by id.
+    const ids = new Set(flatten(full).map((n) => n.id));
+    for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
+    const r = await cmd(page, 'workbench.action.quickOpen');
+    await page.waitForTimeout(500);
+    const quick = flatten(await sceneOf(page)).map((n) => n.id);
+    if (r === true && (!quick.includes('quickAccess.input') || !quick.includes('quickAccess.list'))) stats.problems.push('frame: quick access opened without its input and list');
+    await page.keyboard.press('Escape');
     for (const p of stats.problems) console.log(`[problem] ${p}`);
     for (const e of errors) console.log(`[error] ${e}`);
     if (stats.problems.length || bootStats.problems.length) process.exitCode = 1;

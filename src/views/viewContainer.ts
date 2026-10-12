@@ -5,10 +5,11 @@ import { Emitter, Event } from '../platform/events.js';
 import { CONTAINER_DRAG_TYPE, VIEW_TAB_DRAG_TYPE } from '../platform/dragTypes.js';
 import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show } from '../ui/dom.js';
+import { declareControl } from '../ui/kit.js';
+import { showTabVisibilityMenu } from './viewTabVisibilityMenu.js';
 import { beginPointerDrag } from '../ui/interactionMode.js';
 import { IGridView } from '../layout/gridView.js';
 import type { IView } from './viewTypes.js';
-import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import type { ViewContainerState } from './viewTypes.js';
 export type { ViewContainerState } from './viewTypes.js';
 
@@ -118,6 +119,9 @@ export class ViewContainer extends Disposable implements IGridView {
     this._tabBar.setAttribute('role', 'tablist');
     this._tabBar.setAttribute('aria-orientation', 'horizontal');
     this._element.appendChild(this._tabBar);
+    // The strip that switches between this container's views, as one scene
+    // entry whose selection is the active view.
+    this._register(declareControl(this._tabBar, { id: `${id}.views`, label: 'Views', kind: 'tabs', state: () => ({ kind: 'selection', value: this._activeViewId ? [this._activeViewId] : [], count: this.visibleViewIds.length }) }));
 
     // Keyboard navigation for tabs (VS Code parity: ArrowLeft/Right, Home/End)
     this._register(addDisposableListener(this._tabBar, 'keydown', (e) => {
@@ -1042,35 +1046,12 @@ export class ViewContainer extends Disposable implements IGridView {
   }
 
   private _showTabVisibilityMenu(x: number, y: number): void {
-    // Build items: one row per registered view with a checkmark for visible ones
-    const items: IContextMenuItem[] = this._tabOrder.map(viewId => {
-      const view = this._views.get(viewId);
-      const isVisible = !this._hiddenTabs.has(viewId);
-      return {
-        id: viewId,
-        label: view?.name ?? viewId,
-        renderIcon: isVisible
-          ? (container: HTMLElement) => { container.textContent = '✓'; container.style.width = '16px'; }
-          : (container: HTMLElement) => { container.style.width = '16px'; },
-      };
-    });
-
-    const menu = ContextMenu.show({
-      items,
-      anchor: { x, y },
-    });
-
-    menu.onDidSelect(({ item }) => {
-      const isCurrentlyHidden = this._hiddenTabs.has(item.id);
-
-      // Don't allow hiding the last visible tab
-      if (!isCurrentlyHidden) {
-        const visibleCount = this._tabOrder.filter(id => !this._hiddenTabs.has(id)).length;
-        if (visibleCount <= 1) return; // must keep at least one visible
-      }
-
-      this.setTabHidden(item.id, !isCurrentlyHidden);
-    });
+    showTabVisibilityMenu({
+      tabOrder: this._tabOrder,
+      isHidden: (viewId) => this._hiddenTabs.has(viewId),
+      nameOf: (viewId) => this._views.get(viewId)?.name ?? viewId,
+      setTabHidden: (viewId, hidden) => this.setTabHidden(viewId, hidden),
+    }, x, y);
   }
 
   // ── Helpers ──

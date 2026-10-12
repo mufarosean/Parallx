@@ -85,7 +85,7 @@ export interface IScene {
   under(surface: ISceneEntry): readonly ISceneEntry[];
   /** The surface entry an element sits in, if any. */
   surfaceOf(element: HTMLElement): ISceneEntry | undefined;
-  /** Fires once per animation frame at most, after any change. */
+  /** Fires once per task at most, after any change. */
   readonly onDidChange: Event<void>;
   /** The tree as plain data; `scope` is a surface id. */
   describe(scope?: string): SceneDescription;
@@ -114,10 +114,13 @@ function complain(message: string): void {
   console.warn(`[scene] ${message}`);
 }
 
-/** Next frame, or next tick where there is no frame (tests, a torn-down window). */
+/**
+ * After the current task, never on an animation frame: a window that is
+ * hidden or behind another throttles frames, and a probe reading the scene
+ * from such a window must not wait on one.
+ */
 function SCHEDULE(fn: () => void): void {
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fn);
-  else setTimeout(fn, 0);
+  queueMicrotask(fn);
 }
 
 class Scene implements IScene {
@@ -126,7 +129,6 @@ class Scene implements IScene {
   private readonly _roots: Mounted[] = [];
   private _seq = 0;
   private _observer: MutationObserver | undefined;
-  private _flushQueued = false;
   private _changeQueued = false;
   private readonly _onDidChange = new Emitter<void>();
   readonly onDidChange: Event<void> = this._onDidChange.event;
@@ -233,6 +235,10 @@ class Scene implements IScene {
     // with one id and instance is not: the same file open in two editor
     // groups is two regions on screen, and both are listed.
     if (entry.kind !== 'surface') {
+      // A sibling whose element already left the document is on its way out
+      // (the observer drops it next frame); a control replacing it in the
+      // same frame is not a duplicate.
+      for (const stale of siblings.filter((s) => !s.entry.element.isConnected)) this._remove(stale.entry.element);
       const dup = siblings.find((s) => s.entry.id === entry.id && s.entry.instance === entry.instance);
       if (dup) {
         complain(`"${entry.id}" is registered twice under ${parent ? parent.entry.id : 'the window'}`);
@@ -308,11 +314,11 @@ class Scene implements IScene {
 
   private _ensureObserver(): void {
     if (this._observer || typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    // The observer already delivers one batch per task; the batch is
+    // handled where it arrives.
     this._observer = new MutationObserver((records) => {
-      if (this._flushQueued) { this._queue(records); return; }
       this._queue(records);
-      this._flushQueued = true;
-      SCHEDULE(() => { this._flushQueued = false; this._flush(); });
+      this._flush();
     });
     this._observer.observe(document.body, { childList: true, subtree: true });
   }

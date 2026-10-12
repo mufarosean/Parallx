@@ -15,6 +15,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { IWindowService } from '../services/serviceTypes.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
+import { declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import { getIcon } from '../ui/iconRegistry.js';
 
@@ -285,6 +286,7 @@ export class TitlebarPart extends Part {
       });
 
       this._menuBarContainer.appendChild(el);
+      declareControl(el, { id: `titlebar.menu.${item.id}`, label: item.label, hint: 'Opens this menu.' });
     }
   }
 
@@ -577,6 +579,7 @@ export class TitlebarPart extends Part {
     minimizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 1"><path d="M0 0h10v1H0z" fill="currentColor"/></svg>';
     minimizeBtn.addEventListener('click', () => run('workbench.action.minimizeWindow', () => svc.minimize()));
     controls.appendChild(minimizeBtn);
+    declareControl(minimizeBtn, { id: 'workbench.action.minimizeWindow', label: 'Minimize', command: 'workbench.action.minimizeWindow', kind: 'iconButton' });
 
     // Maximize / Restore
     this._maximizeBtn = $('button');
@@ -585,6 +588,7 @@ export class TitlebarPart extends Part {
     this._maximizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0v10h10V0H0zm1 1h8v8H1V1z" fill="currentColor"/></svg>';
     this._maximizeBtn.addEventListener('click', () => run('workbench.action.toggleMaximizeWindow', () => svc.maximize()));
     controls.appendChild(this._maximizeBtn);
+    declareControl(this._maximizeBtn, { id: 'workbench.action.toggleMaximizeWindow', label: 'Maximize', command: 'workbench.action.toggleMaximizeWindow', kind: 'iconButton', state: () => ({ kind: 'pressed', value: this._isMaximized }) });
 
     // Close
     const closeBtn = $('button');
@@ -593,6 +597,7 @@ export class TitlebarPart extends Part {
     closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.41 0L5 3.59 8.59 0 10 1.41 6.41 5 10 8.59 8.59 10 5 6.41 1.41 10 0 8.59 3.59 5 0 1.41z" fill="currentColor"/></svg>';
     closeBtn.addEventListener('click', () => run('workbench.action.closeWindow', () => svc.close()));
     controls.appendChild(closeBtn);
+    declareControl(closeBtn, { id: 'workbench.action.closeWindow', label: 'Close', command: 'workbench.action.closeWindow', kind: 'iconButton' });
 
     container.appendChild(controls);
 

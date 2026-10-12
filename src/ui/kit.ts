@@ -408,6 +408,37 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
   return mount(container, header);
 }
 
+// ── Declaring in place ───────────────────────────────────────────────────────
+
+export interface IKitInPlaceDeclaration extends IKitControlDeclaration {
+  readonly id: string;
+  readonly label: string;
+  /** Default 'button'. */
+  readonly kind?: Exclude<SceneKind, 'surface'>;
+  /** The command the element's own listener runs, recorded for the scene. */
+  readonly command?: string;
+  readonly state?: () => SceneState;
+}
+
+/**
+ * Declares a control the kit did not build: a window button, a menu bar
+ * item, a tab. The element keeps its DOM and its listeners; this only
+ * writes data-px-id, the role and the label and registers it in the
+ * scene. For a control whose look the kit has, use the kit function
+ * instead so its raw DOM goes.
+ */
+export function declareControl(element: HTMLElement, declaration: IKitInPlaceDeclaration): IDisposable {
+  const kind = declaration.kind ?? 'button';
+  if (element.tagName !== 'BUTTON') setRole(element, ROLE_OF[kind]);
+  if (!element.hasAttribute('aria-label') && !element.textContent?.trim()) element.setAttribute('aria-label', declaration.label);
+  return declare(element, kind, declaration, declaration.label, { command: declaration.command, state: declaration.state });
+}
+
+const ROLE_OF: Record<Exclude<SceneKind, 'surface'>, string | undefined> = {
+  button: 'button', iconButton: 'button', chip: 'button', segmented: 'radiogroup', toggle: 'switch',
+  input: undefined, select: 'combobox', slider: 'slider', list: 'listbox', tree: 'tree', tabs: 'tablist', menu: 'menu',
+};
+
 // ── Surfaces ─────────────────────────────────────────────────────────────────
 
 /**
