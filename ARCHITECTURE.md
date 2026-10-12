@@ -226,7 +226,7 @@ Lines are counted at the time of writing; the point is the shape, not the number
 | `src/api/` (7.1K) | The `parallx.*` API a tool sees: `apiFactory.ts` builds it per tool; `bridges/` connect each namespace to the services; `parallx.d.ts` is the public type | `platform`, `ui`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, service interfaces |
 | `src/configuration/` (1K) | Settings schemas tools contribute and per-tool storage | `platform`, service interfaces |
 | `src/contributions/` (2.3K) | Processors for manifest contribution points: commands, keybindings, menus, icons, views | `platform`, `ui`, `views`, `commands`, `context` |
-| `src/services/` (38K) | Service interfaces (`serviceTypes.ts`) and implementations: files, editors, layout, settings, indexing and search, embeddings, language models, agents, autonomy, policies | anything below the tools and the workbench; never a built-in tool |
+| `src/services/` (38K) | Service interfaces (`serviceTypes.ts`, one file per area under `types/`) and implementations: files, editors, layout, settings, indexing and search, embeddings, language models, agents, autonomy, policies | anything below the tools and the workbench; never a built-in tool |
 | `src/openclaw/` (19K) | The chat runtime: the turn loop (`openclawTurnRunner`, `openclawAttempt`), the context engine, participants, slash commands, routines (cron, heartbeat), MCP clients, the agent "mind" | `platform`, `services`, `agent`; never a built-in tool |
 | `src/agent/` (0.4K) | The agent task model and lifecycle types | `platform` |
 | `src/aiSettings/` (4.4K) | The AI configuration service (presets, profiles) and the AI Settings panel sections | `platform`, `ui`, `services` |
