@@ -12,7 +12,7 @@
 // proven wake path), and any built-in that owns views must be eager.
 
 import { describe, it, expect } from 'vitest';
-import * as manifests from '../../src/tools/builtinManifests.js';
+import * as manifests from '../../src/workbench/builtinManifests.js';
 import type { IToolManifest } from '../../src/tools/toolManifest.js';
 
 function allBuiltinManifests(): IToolManifest[] {

@@ -7,6 +7,7 @@ imports, so an extension may be many files); `activationEventService.ts`
 decides when a tool activates; `toolActivator.ts` runs `activate()` with
 `toolErrorIsolation.ts` around it; `toolRegistry.ts` and
 `toolEnablementService.ts` track what is installed and turned on.
-`builtinManifests.ts` lists the 18 built-in tools.
+each built-in tool's manifest is `src/built-in/<tool>/manifest.ts`, listed
+in `src/workbench/builtinManifests.ts`.
 
 May import: `platform`, `api`, `configuration`, service interfaces.

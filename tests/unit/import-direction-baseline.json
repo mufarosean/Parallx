@@ -4,6 +4,5 @@
   "src/built-in/chat/data/chatDataService.ts": 2,
   "src/built-in/chat/main.ts": 1,
   "src/services/chatAgentService.ts": 1,
-  "src/services/chatService.ts": 8,
-  "src/tools/builtinManifests.ts": 2
+  "src/services/chatService.ts": 8
 }

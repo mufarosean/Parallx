@@ -216,7 +216,7 @@ describe('container rails (one contributed sidebar path)', () => {
     // Field regression after the 4a cut: the manifest listed Open Editors
     // first, so the Explorer sidebar flipped. Views seat in contribution
     // order; the explorer manifest must keep the files view first.
-    const { EXPLORER_MANIFEST } = await import('../../src/tools/builtinManifests');
+    const { EXPLORER_MANIFEST } = await import('../../src/workbench/builtinManifests');
     const viewIds = EXPLORER_MANIFEST.contributes?.views?.map((v) => v.id) ?? [];
     expect(viewIds.indexOf('view.explorer')).toBeGreaterThanOrEqual(0);
     expect(viewIds.indexOf('view.explorer')).toBeLessThan(viewIds.indexOf('view.openEditors'));

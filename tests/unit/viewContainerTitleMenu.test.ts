@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MenuContributionProcessor } from '../../src/contributions/menuContribution';
 import { ContextKeyService } from '../../src/context/contextKey';
-import { EXPLORER_MANIFEST } from '../../src/tools/builtinManifests';
+import { EXPLORER_MANIFEST } from '../../src/workbench/builtinManifests';
 import type { IToolDescription, IToolManifest } from '../../src/tools/toolManifest';
 
 const root = resolve(__dirname, '../..');

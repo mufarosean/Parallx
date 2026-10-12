@@ -709,7 +709,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const unifiedModelDefault = unifiedConfigService?.getEffectiveConfig().model.chatModel ?? '';
   const unifiedContextLength = unifiedConfigService?.getEffectiveConfig().model.contextWindow ?? 0;
   // Retirement: the chatConfig fallback read a key deliberately never
-  // registered (builtinManifests excludes chat.defaultModel as superseded),
+  // registered (the chat manifest excludes chat.defaultModel as superseded),
   // so it could only ever return '' — a constant in config costume.
   const defaultModel = unifiedModelDefault || '';
   const defaultMode = chatConfig.get<string>('defaultMode', 'agent') as import('../../services/chatTypes.js').ChatMode;

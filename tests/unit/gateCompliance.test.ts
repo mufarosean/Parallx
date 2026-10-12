@@ -63,6 +63,7 @@ const EXEMPT_FILES = new Set([
   'markdownImport.ts',             // Import utility (M64 Iter 1)
   'dashboardWidgets.ts',           // Dashboard widget contribution (data service + markdownExport only; no gate interaction)
   'pageSources.ts',                // What tools and Quick Open see of the pages (data service only; no gate interaction)
+  'manifest.ts',                   // The tool's manifest: declarative data, no gate interaction
   'main.ts',                       // Activation entry point
   'canvas.css',                    // Stylesheet
   'database/databaseTypes.ts',     // Database type definitions (M8)

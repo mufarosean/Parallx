@@ -10,7 +10,7 @@ import { BRAND_ICONS } from '../../src/ui/brandIcons';
 import { EMPTY_STATES } from '../../src/ui/emptyStates';
 import { IconContributionProcessor } from '../../src/contributions/iconContribution';
 import { getIcon, hasIcon } from '../../src/ui/iconRegistry';
-import * as builtins from '../../src/tools/builtinManifests';
+import * as builtins from '../../src/workbench/builtinManifests';
 import type { IToolDescription, IToolManifest } from '../../src/tools/toolManifest';
 import { validateManifest } from '../../src/tools/toolValidator';
 

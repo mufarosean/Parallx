@@ -1,8 +1,8 @@
 # built-in
 
 The 18 first-party tools, one folder each, with `main.ts` as the
-activation. Their manifests are in `src/tools/builtinManifests.ts`; those
-with `required: true` are always on, the rest can be turned off.
+activation and `manifest.ts` as the manifest; those with `required: true`
+are always on, the rest can be turned off.
 
 Everything a tool adds goes through `api.*` while it runs: editors, views,
 commands, menus, settings, page blocks, dashboard widgets, AI tools.

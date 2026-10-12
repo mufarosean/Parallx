@@ -69,11 +69,12 @@ describe('copy compliance — UI-shaped strings', () => {
 
   it('keeps built-in manifest descriptions free of em dashes and emoji', () => {
     // Manifest descriptions render in the Tool Gallery and the palette.
-    const src = readFileSync(resolve(ROOT, 'src/tools/builtinManifests.ts'), 'utf8');
-    const bad = src.split('\n')
-      .map((line, i) => ({ line, n: i + 1 }))
-      .filter(({ line }) => /\bdescription\s*:\s*'[^']*(?:—|\p{Extended_Pictographic})/u.test(line))
-      .map(({ n, line }) => `builtinManifests.ts:${n} → ${line.trim()}`);
+    const bad: string[] = [];
+    for (const file of globSync('src/built-in/*/manifest.ts', { cwd: ROOT, posix: true })) {
+      readFileSync(resolve(ROOT, file), 'utf8').split('\n').forEach((line, i) => {
+        if (/\bdescription\s*:\s*'[^']*(?:—|\p{Extended_Pictographic})/u.test(line)) bad.push(`${file}:${i + 1} → ${line.trim()}`);
+      });
+    }
     expect(bad, bad.join('\n')).toEqual([]);
   });
 });

@@ -130,7 +130,7 @@ export class CommandContributionProcessor extends Disposable implements IContrib
       // verbatim. The opt-in policy refuses commands without aiDescription,
       // so an extension that sets aiInvocable without it will silently fail
       // (logged in the policy layer). Belt-and-braces: the manifest schema
-      // already enforces presence in builtinManifests.ts validation.
+      // already enforces presence when the built-in manifests are validated.
       const descriptor: CommandDescriptor = {
         id: cmd.id,
         title: cmd.title,
