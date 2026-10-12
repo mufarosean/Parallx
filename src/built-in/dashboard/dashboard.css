@@ -1302,17 +1302,6 @@ video.vw__fill { object-fit: contain; background: #000; }
   background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 90%, white);
 }
 
-/* ═══ Dropdown host ═══
-   The dropdown is the core .ui-dropdown component, mounted inside this wrapper by
-   createSelect(). ~65 lines of trigger/chevron/popup/option styling used to live
-   here for a second implementation of it; all of it is dropdown.css now.
-
-   Only the sizing bridge remains: .ui-dropdown is inline-block with its own
-   min-width, so it has to be told to fill a settings field. */
-.dashboard-select { position: relative; width: 100%; }
-.dashboard-select .ui-dropdown { width: 100%; min-width: 0; }
-.dashboard-select .ui-dropdown__button { padding: 8px 10px; border-radius: 6px; }
-
 .dashboard-field__checkbox-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .dashboard-field__checkbox-row input { width: 16px; height: 16px; accent-color: var(--vscode-button-background, #0e639c); }
 

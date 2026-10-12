@@ -5,13 +5,9 @@
 // dashboard card gets: fields rendered from the type's configSchema
 // (string, number, boolean, enum, textarea, markdown with live preview,
 // string-list), saved through whichever host owns persistence.
-//
-// Same deliberate runtime-only module cycle as the appearance drawer:
-// createSelect comes from the editor provider, which imports this module —
-// both directions execute inside functions long after module evaluation.
 
 import type { WidgetTypeRegistration } from '../../api/bridges/dashboardBridge.js';
-import { createSelect } from './dashboardEditorProvider.js';
+import { createSelect } from '../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../ui/dom.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 

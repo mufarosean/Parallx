@@ -17,7 +17,6 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import { escapeHtml } from '../../ui/format.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { Emitter } from '../../platform/events.js';
-import { Dropdown } from '../../ui/dropdown.js';
 import type { DashboardDataService } from './dashboardDataService.js';
 import type { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
 import type { DashboardRefreshScheduler } from './dashboardRefreshScheduler.js';
@@ -30,6 +29,7 @@ import {
   type WidgetPlacement,
   type WidgetTypeRegistration,
 } from './dashboardTypes.js';
+import { Dropdown } from '../../ui/dropdown.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { openAppearanceDrawer } from './appearanceDrawer.js';
@@ -91,45 +91,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
 
 /** Resize handle direction — cardinal edges + corners. */
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
-
-interface SelectOption { value: string; label: string; }
-interface CustomSelect {
-  el: HTMLElement;
-  getValue(): string;
-  setValue(value: string): void;
-  dispose(): void;
-}
-
-/**
- * A dropdown, backed by the shared `.ui-dropdown` component.
- *
- * This was a ~70-line self-styled dropdown — a second implementation of the one
- * the workbench already ships, and it carried the bugs that come with that. Its
- * `window.addEventListener('scroll', close, true)` had no containment guard, and
- * capture propagation runs window -> document -> ... -> target, so the listener
- * fired for scroll events targeting the popup's OWN scroller: any option list
- * past `max-height: 240px` dismissed itself on the first wheel tick. Widget
- * config `enum` fields come from a contributed schema and are unbounded, so that
- * was reachable. It also left its popup on `document.body` when a drawer closed
- * while open, since only `close()` removed it.
- *
- * Kept as a shim rather than deleted outright because the call sites want
- * `getValue`/`setValue` rather than an event, and the shape is load-bearing at
- * three of them.
- */
-export function createSelect(options: SelectOption[], initial: string, onChange: (value: string) => void): CustomSelect {
-  const wrap = el('div', 'dashboard-select');
-  const dropdown = new Dropdown(wrap, { items: options, selected: initial });
-  dropdown.onDidChange(v => onChange(v));
-  return {
-    el: wrap,
-    getValue: () => dropdown.value ?? '',
-    // Deliberately does not fire onChange — matches the previous behaviour, and
-    // the call sites use it to sync UI from a draft they already own.
-    setValue: (v: string) => { dropdown.value = v; },
-    dispose: () => dropdown.dispose(),
-  };
-}
 
 const DASHBOARD_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
 

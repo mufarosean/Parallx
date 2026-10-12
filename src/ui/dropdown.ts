@@ -477,3 +477,33 @@ export function createDropdownHandle(
     dispose(): void { dropdown.dispose(); },
   };
 }
+
+// ── A select field over the dropdown ─────────────────────────────────────────
+
+export interface SelectOption { value: string; label: string; }
+export interface CustomSelect {
+  el: HTMLElement;
+  getValue(): string;
+  setValue(value: string): void;
+  dispose(): void;
+}
+
+/**
+ * A settings field that holds a Dropdown and answers with a value rather than
+ * an event: `getValue`/`setValue` for call sites that sync a form from a draft
+ * they own (the dashboard's drawers). The host is `.ui-select`, which makes
+ * the inline-block dropdown fill its field; `setValue` deliberately does not
+ * fire `onChange`.
+ */
+export function createSelect(options: SelectOption[], initial: string, onChange: (value: string) => void): CustomSelect {
+  const wrap = document.createElement('div');
+  wrap.className = 'ui-select';
+  const dropdown = new Dropdown(wrap, { items: options, selected: initial });
+  dropdown.onDidChange((v) => onChange(v));
+  return {
+    el: wrap,
+    getValue: () => dropdown.value ?? '',
+    setValue: (v: string) => { dropdown.value = v; },
+    dispose: () => dropdown.dispose(),
+  };
+}

@@ -141,3 +141,8 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* A select field (createSelect): the dropdown fills the field it sits in. */
+.ui-select { position: relative; width: 100%; }
+.ui-select .ui-dropdown { width: 100%; min-width: 0; }
+.ui-select .ui-dropdown__button { padding: 8px 10px; border-radius: 6px; }

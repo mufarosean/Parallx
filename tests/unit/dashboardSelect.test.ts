@@ -2,18 +2,19 @@
 //
 // dashboardSelect.test.ts — the dashboard's settings/appearance dropdowns.
 //
-// `createSelect` in dashboardEditorProvider.ts was a second implementation of the
-// workbench's `.ui-dropdown`, and it carried the bugs that come with a copy: a
+// `createSelect` was once a second implementation of the workbench's
+// `.ui-dropdown`, and it carried the bugs that come with a copy: a
 // capture-phase `window` scroll listener with no containment guard (so any option
 // list past its 240px cap dismissed itself on the first wheel tick), and a popup
 // left on `document.body` whenever a drawer closed while it was open.
 //
-// It is now a shim over the shared component. These tests import the REAL
-// createSelect rather than rebuilding it, so a future edit that quietly forks the
-// component again fails here instead of passing against a stand-in.
+// It is a shim over the shared component, in ui/dropdown.ts beside it. These
+// tests import the REAL createSelect rather than rebuilding it, so a future edit
+// that quietly forks the component again fails here instead of passing against
+// a stand-in.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createSelect } from '../../src/built-in/dashboard/dashboardEditorProvider.js';
+import { createSelect } from '../../src/ui/dropdown.js';
 
 const APPEARANCE = [
   { value: 'default', label: 'Theme default' },
@@ -43,8 +44,9 @@ function select(options = APPEARANCE, initial = 'default', onChange: (v: string)
 }
 
 describe('dashboard select uses the shared component', () => {
-  it('renders .ui-dropdown inside the .dashboard-select host', () => {
+  it('renders .ui-dropdown inside the .ui-select host', () => {
     const s = select();
+    expect(s.el.classList.contains('ui-select')).toBe(true);
     expect(s.el.querySelector('.ui-dropdown')).not.toBeNull();
   });
 

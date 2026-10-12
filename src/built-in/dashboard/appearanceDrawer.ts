@@ -7,15 +7,10 @@
 // host owns persistence. The drawer's DOM classes are the dashboard's
 // settings-sheet family; dashboard.css is a global stylesheet, so the
 // sheet renders identically wherever it opens.
-//
-// The createSelect import forms a module cycle with the editor provider
-// (it imports this drawer). Safe by construction: both sides touch each
-// other only inside functions called long after module evaluation — no
-// init-time binding reads, no TDZ.
 
 import type { WidgetAppearance } from './dashboardTypes.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
-import { createSelect } from './dashboardEditorProvider.js';
+import { createSelect } from '../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../ui/dom.js';
 
 export interface AppearanceDrawerHost {
