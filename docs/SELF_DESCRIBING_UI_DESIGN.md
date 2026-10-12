@@ -1004,12 +1004,13 @@ untouched, the class names are untouched.
 
 Sessions append here. Each line: date, step, what was left and why.
 
-- 2026-10-12, step 3: an open context menu (`ContextMenu.show` in
-  `src/ui/contextMenu.ts`) is not a scene entry yet; `createMenu` exists
-  for callers but the title bar's dropdowns and the tab menu call
-  `ContextMenu.show` directly. Register the open menu inside
-  `ContextMenu.show` itself, once, when `src/ui/contextMenu.ts` is next
-  touched.
+- 2026-10-12, step 3: an open context menu was not a scene entry.
+  Closed the same day: `ContextMenu` registers itself as a surface
+  `contextMenu` (label from the new `label` option, 'Menu' otherwise)
+  and each row as `contextMenu.<item id>` (a toggle when the item is
+  checkable, with its pressed state; else a button with its enabled
+  state and the tooltip as hint), all disposed with the menu.
+  `tests/unit/contextMenuScene.test.ts` covers it.
 
 - 2026-10-12, step 5, hand-off (steps 1, 2, 3 done; step 5 done for
   worksheet, planner, PDF, explorer, search, dashboard, settings panels,

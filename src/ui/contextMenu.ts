@@ -12,6 +12,7 @@
 import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { layoutPopup } from './dom.js';
+import { scene } from './scene.js';
 import { enterMode, type ModeHandle } from './interactionMode.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -71,6 +72,8 @@ export interface IContextMenuOptions {
   readonly anchorPosition?: 'below' | 'above' | 'right' | 'right-end' | 'left';
   /** Whether to auto-select the first item. Default false. */
   readonly autoSelectFirst?: boolean;
+  /** The menu's name in the scene (docs/SELF_DESCRIBING_UI_DESIGN.md); 'Menu' when absent. */
+  readonly label?: string;
   /** Additional CSS class(es) for the root element. */
   readonly className?: string;
 }
@@ -140,6 +143,10 @@ export class ContextMenu extends Disposable {
     }
     this._el.setAttribute('role', 'menu');
     this._items = _options.items;
+
+    // An open menu is a surface of the scene while it is open; its rows are
+    // its controls. Both leave with the menu.
+    this._register(scene.register({ id: 'contextMenu', kind: 'surface', owner: 'core', label: _options.label ?? 'Menu', element: this._el }));
 
     // Render items
     this._renderItems(_options.items);
@@ -310,6 +317,11 @@ export class ContextMenu extends Disposable {
       row.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
       if (item.checked !== undefined) row.setAttribute('aria-checked', String(!!item.checked));
       if (item.tooltip) row.title = item.tooltip;
+      this._register(scene.register({
+        id: `contextMenu.${item.id}`, kind: item.checked === undefined ? 'button' : 'toggle', owner: '', label: item.label, element: row,
+        hint: item.tooltip,
+        state: () => (item.checked === undefined ? { kind: 'enabled', value: !item.disabled } : { kind: 'pressed', value: row.getAttribute('aria-checked') === 'true' }),
+      }));
 
       // Mark column (present on every row once any item in this menu is checkable)
       if (this._el.classList.contains('context-menu--has-checks')) {
