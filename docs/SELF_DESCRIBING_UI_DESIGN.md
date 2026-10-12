@@ -718,6 +718,18 @@ pane's pause, continue, answer, note and send; the New Routine form as
 `sceneSlug` moved into the kit; the four local copies use it. The probe
 checks the header, the Routines tab and the form.
 
+Workflow editor done 2026-10-12, in the cloud. The palette entries, the
+hidden kinds and the node summary moved to `workflowPalette.ts` so the
+pane could take its declarations under the size limit. Declared: the
+name input, Run Now, the enabled button (pressed while the routine is
+on), each palette item (`workflows.editor.add.<kind>`), the coach's Got
+It, the inspector's fields (`workflows.editor.field.<label>`, text,
+number and text area alike), Delete Node and Delete Connection as one
+`workflows.editor.deleteSelection`, Preview Compiled Prompt, Back and
+Back To Editing. The node cards on the canvas and the run picker
+dropdown are not. The probe opens a new workflow and checks the header
+and one palette item.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the
@@ -858,26 +870,15 @@ Sessions append here. Each line: date, step, what was left and why.
   `ContextMenu.show` itself, once, when `src/ui/contextMenu.ts` is next
   touched.
 
-- 2026-10-12, step 5, hand-off at commit 222b7ca8 (steps 1, 2, 3 done;
-  step 5 done for worksheet, planner, PDF, explorer, search, dashboard,
-  settings panels, welcome, terminal, activity log, tool gallery, theme
-  editor, and the Agents view, run pane and routine form). Left in
+- 2026-10-12, step 5, hand-off (steps 1, 2, 3 done; step 5 done for
+  worksheet, planner, PDF, explorer, search, dashboard, settings panels,
+  welcome, terminal, activity log, tool gallery, theme editor, the
+  Agents view, run pane and routine form, and the workflow editor). Left in
   step 5, in this order, one commit each, each verified by the probe
   (section 13; in the cloud run it as
   `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
   after `npm run build`) and the full suite:
-  1. `src/built-in/agents/workflowEditorPane.ts` (1108 lines, over the
-     800 limit, so it must not grow): first extract a coherent module
-     (the inspector's field helpers around lines 840 to 1030, or the
-     coach box around 560 to 600, are the natural cut), refresh the
-     file-size baseline for the fall, then declare: the name input (line
-     185), Run Now and the enabled button (234 to 240), the palette
-     items (`workflows.editor.add.<kind>`, line 267), the coach dismiss
-     (582), the inspector's inputs, textarea, Delete Node, Delete
-     Connection, Preview Compiled Prompt, Back and Back To Editing. The
-     pane is an editor, so its surface already exists (typeId); ids go
-     under `workflows.editor.*`. `tests/unit/workflowEditorPane.test.ts`
-     covers it.
+  1. (done, see step 5's notes) the workflow editor.
   2. ai-settings (`src/built-in/ai-settings/main.ts`, 273 lines),
      output (240), diagnostics (221), indexing-log (548): small; one
      commit for the four is fine. Probe: `ai-settings.open` is already

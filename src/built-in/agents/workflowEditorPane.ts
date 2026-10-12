@@ -32,102 +32,12 @@ import {
   type WorkflowNode,
   type WorkflowRun,
 } from '../../services/workflows/workflowTypes.js';
-import { describeTriggerNode, validateWorkflow } from '../../services/workflows/workflowGraph.js';
+import { validateWorkflow } from '../../services/workflows/workflowGraph.js';
+import { KIND_META, PALETTE, nodeSummary, oneLine, type PaletteEntry } from './workflowPalette.js';
+import { declareControl, sceneSlug } from '../../ui/kit.js';
 import { WEEKDAY_LABELS, type AutomationScheduleSpec } from '../../openclaw/cronScheduleSpec.js';
 
 // ── Node palette (the kind vocabulary as UI) ────────────────────────────────
-
-interface PaletteEntry {
-  readonly kind: WorkflowNode['kind'];
-  readonly label: string;
-  readonly icon: string;
-  readonly family: 'trigger' | 'context' | 'control' | 'action';
-  readonly make: (id: string, x: number, y: number) => WorkflowNode;
-}
-
-/** Kinds kept OUT of the palette (prompt-compiler thesis: tools live in
- *  the mission text, by exact name; prescriptive nodes are power-user
- *  compat only). Existing documents still render via HIDDEN_META. */
-const HIDDEN_META: readonly PaletteEntry[] = [
-  {
-    kind: 'action.command', label: 'Command', icon: 'terminal', family: 'action',
-    make: (id, x, y) => ({ id, x, y, label: 'Command', kind: 'action.command', commandId: '' }),
-  },
-  {
-    kind: 'action.tool', label: 'Tool', icon: 'wrench', family: 'action',
-    make: (id, x, y) => ({ id, x, y, label: 'Tool', kind: 'action.tool', toolName: '' }),
-  },
-];
-
-const PALETTE: readonly PaletteEntry[] = [
-  {
-    kind: 'trigger.schedule', label: 'Schedule', icon: 'calendar-clock', family: 'trigger',
-    make: (id, x, y) => ({ id, x, y, label: 'Schedule', kind: 'trigger.schedule', spec: { kind: 'daily', time: '09:00' } }),
-  },
-  {
-    kind: 'trigger.manual', label: 'Manual', icon: 'play', family: 'trigger',
-    make: (id, x, y) => ({ id, x, y, label: 'Manual', kind: 'trigger.manual' }),
-  },
-  {
-    kind: 'trigger.event', label: 'Event', icon: 'radio', family: 'trigger',
-    make: (id, x, y) => ({ id, x, y, label: 'Event', kind: 'trigger.event', source: 'tool' }),
-  },
-  {
-    kind: 'context.facts', label: 'App Facts', icon: 'list-checks', family: 'context',
-    make: (id, x, y) => ({ id, x, y, label: 'App Facts', kind: 'context.facts' }),
-  },
-  {
-    kind: 'context.exemplar', label: 'Format', icon: 'layout-template', family: 'context',
-    make: (id, x, y) => ({ id, x, y, label: 'Format', kind: 'context.exemplar', ref: { kind: 'template', id: '' } }),
-  },
-  {
-    kind: 'control.cooldown', label: 'Cooldown', icon: 'timer', family: 'control',
-    make: (id, x, y) => ({ id, x, y, label: 'Cooldown', kind: 'control.cooldown', hours: 24 }),
-  },
-  {
-    kind: 'action.agentTurn', label: 'Agent Turn', icon: 'px-ai-mark', family: 'action',
-    make: (id, x, y) => ({ id, x, y, label: 'Agent Turn', kind: 'action.agentTurn', prompt: 'Describe the task here.' }),
-  },
-  {
-    kind: 'action.notify', label: 'Notify', icon: 'bell', family: 'action',
-    make: (id, x, y) => ({ id, x, y, label: 'Notify', kind: 'action.notify', message: 'Something happened.' }),
-  },
-];
-
-const KIND_META = new Map([...PALETTE, ...HIDDEN_META].map((p) => [p.kind, p]));
-
-/** One line of a node's configuration for the card face. */
-function nodeSummary(n: WorkflowNode): string {
-  switch (n.kind) {
-    case 'trigger.schedule': return describeTriggerNode(n);
-    case 'trigger.manual': return 'Run manually';
-    case 'trigger.event': {
-      const parts = [n.source && `source ${n.source}`, n.verb && `verb ${n.verb}`, n.actor && `actor ${n.actor}`]
-        .filter(Boolean);
-      return parts.length ? parts.join(' · ') : 'Matches everything.';
-    }
-    case 'context.facts': {
-      const inc = normalizeFactsInclude(n.include);
-      const all = inc.schedule === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
-      const parts = all
-        ? ['schedule', 'activity', 'sync', 'pages']
-        : Object.entries(inc).filter(([, v]) => v).map(([k]) => k);
-      return parts.length ? `injects ${parts.join(' · ')}` : 'Nothing selected.';
-    }
-    case 'context.exemplar':
-      return n.ref?.id ? `format: ${n.ref.name ?? n.ref.id}` : 'no format picked';
-    case 'control.cooldown': return n.hours > 0 ? `${n.hours}h between deliveries` : 'always open';
-    case 'action.agentTurn': return oneLine(n.prompt, 64);
-    case 'action.command': return n.commandId || 'no command set';
-    case 'action.tool': return n.toolName || 'no tool set';
-    case 'action.notify': return oneLine(n.message, 64);
-  }
-}
-
-function oneLine(text: string, max: number): string {
-  const line = text.replace(/\s+/g, ' ').trim();
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
-}
 
 export interface WorkflowEditorDeps {
   readonly service: WorkflowService;
@@ -184,6 +94,7 @@ export class WorkflowEditorPane implements IDisposable {
 
     this._nameInput = $('input.wfe__name') as HTMLInputElement;
     this._nameInput.placeholder = 'Untitled Routine';
+    declareControl(this._nameInput, { id: 'workflows.editor.name', label: 'Routine name', kind: 'input', state: () => ({ kind: 'value', value: this._nameInput.value }) });
     this._nameInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter' || e.key === 'Escape') this._nameInput.blur();
@@ -233,10 +144,12 @@ export class WorkflowEditorPane implements IDisposable {
 
     this._runBtn = $('button.wfe__btn.wfe__btn--primary') as HTMLButtonElement;
     this._runBtn.textContent = 'Run Now';
+    declareControl(this._runBtn, { id: 'workflows.editor.runNow', label: 'Run Now' });
     this._runBtn.addEventListener('click', () => { void this._runNow(); });
     header.appendChild(this._runBtn);
 
     this._enabledBtn = $('button.wfe__btn') as HTMLButtonElement;
+    declareControl(this._enabledBtn, { id: 'workflows.editor.enabled', label: 'Enabled', state: () => ({ kind: 'pressed', value: this._doc?.enabled === true }) });
     this._enabledBtn.addEventListener('click', () => {
       if (this._doc) this._commit({ enabled: !this._doc.enabled });
     });
@@ -265,6 +178,7 @@ export class WorkflowEditorPane implements IDisposable {
         palette.appendChild(fam);
       }
       const btn = $('button.wfe__palette-item') as HTMLButtonElement;
+      declareControl(btn, { id: `workflows.editor.add.${sceneSlug(entry.kind)}`, label: `Add ${entry.label}` });
       btn.appendChild($(`span.wfe__palette-dot.is-${entry.family}`));
       const ic = $('span.wfe__palette-ic');
       ic.innerHTML = getIcon(entry.icon);
@@ -581,6 +495,7 @@ export class WorkflowEditorPane implements IDisposable {
     });
     const dismiss = $('button.wfe__coach-dismiss') as HTMLButtonElement;
     dismiss.textContent = 'Got It';
+    declareControl(dismiss, { id: 'workflows.editor.coach.dismiss', label: 'Got It' });
     dismiss.addEventListener('click', () => {
       this._coachDismissed = true;
       coach.remove();
@@ -658,6 +573,7 @@ export class WorkflowEditorPane implements IDisposable {
         this._inspector.appendChild(line);
         const del = $('button.wfe__btn.wfe__btn--danger') as HTMLButtonElement;
         del.textContent = 'Delete Connection';
+        declareControl(del, { id: 'workflows.editor.deleteSelection', label: 'Delete Connection' });
         del.addEventListener('click', () => this._deleteSelection());
         this._inspector.appendChild(del);
       }
@@ -743,6 +659,7 @@ export class WorkflowEditorPane implements IDisposable {
           (v) => this._patchNode(node.id, { contextMessages: v }), 'recent chat lines to include');
         const prev = $('button.wfe__btn') as HTMLButtonElement;
         prev.textContent = 'Preview Compiled Prompt';
+        declareControl(prev, { id: 'workflows.editor.previewPrompt', label: 'Preview Compiled Prompt' });
         prev.addEventListener('click', () => { void this._showCompiledPreview(node.id); });
         this._inspector.appendChild(prev);
         break;
@@ -796,6 +713,7 @@ export class WorkflowEditorPane implements IDisposable {
 
     const del = $('button.wfe__btn.wfe__btn--danger') as HTMLButtonElement;
     del.textContent = 'Delete Node';
+    declareControl(del, { id: 'workflows.editor.deleteSelection', label: 'Delete Node' });
     del.addEventListener('click', () => this._deleteSelection());
     this._inspector.appendChild(del);
   }
@@ -851,6 +769,7 @@ export class WorkflowEditorPane implements IDisposable {
     const input = $('input.wfe-ins__input') as HTMLInputElement;
     input.value = this._doc.mutexGroup ?? '';
     input.placeholder = 'e.g. planner';
+    declareControl(input, { id: 'workflows.editor.field.mutex-group', label: 'Mutex Group', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
     input.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') input.blur();
@@ -897,6 +816,7 @@ export class WorkflowEditorPane implements IDisposable {
     }
     const back = $('button.wfe__btn') as HTMLButtonElement;
     back.textContent = 'Back To Editing';
+    declareControl(back, { id: 'workflows.editor.backToEditing', label: 'Back To Editing' });
     back.addEventListener('click', () => {
       this._mode = 'edit';
       this._runPicker.value = 'edit';
@@ -951,6 +871,7 @@ export class WorkflowEditorPane implements IDisposable {
     this._inspector.appendChild(pre);
     const back = $('button.wfe__btn') as HTMLButtonElement;
     back.textContent = 'Back';
+    declareControl(back, { id: 'workflows.editor.back', label: 'Back' });
     back.addEventListener('click', () => this._paintInspector());
     this._inspector.appendChild(back);
     try {
@@ -978,6 +899,7 @@ export class WorkflowEditorPane implements IDisposable {
     const wrap = $('div.wfe-ins__field');
     wrap.appendChild(this._fieldLabel(label));
     const input = $('input.wfe-ins__input') as HTMLInputElement;
+    declareControl(input, { id: `workflows.editor.field.${sceneSlug(label)}`, label, kind: 'input', hint, state: () => ({ kind: 'value', value: input.value }) });
     input.value = value;
     if (hint) input.placeholder = hint;
     input.addEventListener('keydown', (e) => {
@@ -1000,6 +922,7 @@ export class WorkflowEditorPane implements IDisposable {
     wrap.appendChild(this._fieldLabel(label));
     const input = $('input.wfe-ins__input') as HTMLInputElement;
     input.type = 'number';
+    declareControl(input, { id: `workflows.editor.field.${sceneSlug(label)}`, label, kind: 'input', hint, state: () => ({ kind: 'number', value: Number(input.value) }) });
     input.min = String(min);
     input.max = String(max);
     input.value = String(value);
@@ -1022,6 +945,7 @@ export class WorkflowEditorPane implements IDisposable {
     const wrap = $('div.wfe-ins__field');
     wrap.appendChild(this._fieldLabel(label));
     const ta = $('textarea.wfe-ins__textarea') as HTMLTextAreaElement;
+    declareControl(ta, { id: `workflows.editor.field.${sceneSlug(label)}`, label, kind: 'input', hint, state: () => ({ kind: 'value', value: ta.value }) });
     ta.value = value;
     ta.rows = rows;
     ta.addEventListener('keydown', (e) => e.stopPropagation());

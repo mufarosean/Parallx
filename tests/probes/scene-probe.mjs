@@ -21,7 +21,7 @@ const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-s
 const OPENERS = [
   'worksheet.open', 'planner.open', 'explorer.open', 'search.findInFiles', 'dashboard.open', 'settings.open',
   'welcome.openWelcome', 'agents.show', 'ai-settings.open', 'tools.showInstalled',
-  'theme-editor.open', 'chat.show',
+  'theme-editor.open', 'chat.show', 'workflows.new',
 ];
 
 /** Ids the frame declares (design step 3); the probe fails when one is missing. */
@@ -38,6 +38,7 @@ const BUILTIN_IDS = {
   planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
   agents: ['agents.newRoutine', 'agents.openSettings', 'agents.tab', 'agents.showHistory'],
+  workflows: ['workflows.editor.name', 'workflows.editor.runNow', 'workflows.editor.enabled', 'workflows.editor.add.trigger-schedule'],
   welcome: ['welcome.workbench.action.showCommands', 'welcome.settings.open', 'welcome.workbench.action.files.openFolder'],
   tools: ['tools.search', 'tools.install'],
   appearance: ['appearance.mode.dark', 'appearance.hue', 'appearance.themeName', 'appearance.saveTheme'],
