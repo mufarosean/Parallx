@@ -748,7 +748,7 @@ export namespace ui {
     | { readonly kind: 'enabled'; readonly value: boolean }
     | { readonly kind: 'value'; readonly value: string }
     | { readonly kind: 'number'; readonly value: number }
-    | { readonly kind: 'selection'; readonly value: readonly string[]; readonly count?: number };
+    | { readonly kind: 'selection'; readonly value: readonly string[]; readonly count: number };
   export type SceneControlKind = 'button' | 'iconButton' | 'chip' | 'segmented' | 'toggle' | 'input' | 'select' | 'slider' | 'tabs' | 'menu' | 'list' | 'tree';
 
   export interface SurfaceDeclaration {

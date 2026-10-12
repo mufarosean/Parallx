@@ -841,6 +841,16 @@ One line on the latest user turn, where `formatTurnClock` is prepended in
 and its selection, from `describeScene`. Never in the system prompt, so
 the prompt cache stays warm.
 
+Done 2026-10-12, in the cloud. `formatSceneLine` in `src/ui/scene.ts`
+turns a description into `[Scene: editor "Reading" (pdf); focused
+"Explorer" (view.explorer); explorer.tree: notes/alpha.md]`: the first
+visible pane inside an editor group, the deepest focused surface (not
+repeated when it is the editor), and each non-empty selection directly
+under it (five values, then a count). It is empty when nothing is
+mounted, so a turn built outside a window adds nothing.
+`openclawAttempt` puts it on its own line after the turn clock, on the
+latest user message only. `tests/unit/sceneLine.test.ts` covers it.
+
 ### Step 9. The probes move to ids (local)
 
 `refactor-verify-probe.mjs` and `ui-screenshot-probe.mjs` lose their
@@ -968,7 +978,7 @@ Sessions append here. Each line: date, step, what was left and why.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done except `chatWidget.ts` (see step 5's notes); the
      message list's markdown is never declared.
-  Step 6 is done. Then steps 7, 8, 9, 4, 10, 11 as section 9 orders them.
+  Steps 6 and 8 are done. Then steps 7, 9, 4, 10, 11 as section 9 orders them.
 
   What this session learned, for whoever continues:
   - A repeated card (a widget, a routine row, an approval) is a surface

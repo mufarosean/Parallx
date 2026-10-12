@@ -192,7 +192,8 @@ class Scene implements IScene {
 
   describe(scope?: string): SceneDescription {
     const active = typeof document !== 'undefined' ? document.activeElement : null;
-    const focusedSurface = active instanceof HTMLElement ? this.surfaceOf(active) : undefined;
+    // Outside a window (a node test, a turn built before the DOM) there is no HTMLElement and nothing mounted.
+    const focusedSurface = typeof HTMLElement !== 'undefined' && active instanceof HTMLElement ? this.surfaceOf(active) : undefined;
     const toNode = (m: Mounted): SceneNode => {
       const e = m.entry;
       let state: SceneState | undefined;
@@ -412,3 +413,60 @@ export function isVisible(element: HTMLElement): boolean {
 }
 
 export const scene: IScene = new Scene();
+
+/**
+ * The scene in one line for the model's turn: the editor in front, the
+ * surface that has focus and what is selected in it. Empty when nothing is
+ * mounted, so a turn outside the window adds nothing.
+ */
+export function formatSceneLine(description: SceneDescription): string {
+  const parts: string[] = [];
+  const editor = findActiveEditor(description.surfaces);
+  if (editor) parts.push(`editor "${editor.label}" (${editor.id})`);
+  const focused = findFocused(description.surfaces);
+  if (focused && focused !== editor) parts.push(`focused "${focused.label}" (${focused.id})`);
+  if (focused) {
+    for (const sel of selectionsUnder(focused)) {
+      const shown = sel.value.slice(0, 5).join(', ');
+      parts.push(`${sel.id}: ${shown}${sel.value.length > 5 ? `, +${sel.value.length - 5}` : ''}`);
+    }
+  }
+  if (!parts.length) return '';
+  const line = `[Scene: ${parts.join('; ')}]`;
+  return line.length > 400 ? `${line.slice(0, 399)}…` : line;
+}
+
+/** The first visible surface inside an editor group: the editor in front. */
+function findActiveEditor(nodes: readonly SceneNode[]): SceneNode | undefined {
+  for (const n of nodes) {
+    if (n.kind !== 'surface') continue;
+    if (n.id === 'editorGroup' && n.visible) {
+      const pane = (n.children ?? []).find((c) => c.kind === 'surface' && c.visible);
+      if (pane) return pane;
+    }
+    const deeper = findActiveEditor(n.children ?? []);
+    if (deeper) return deeper;
+  }
+  return undefined;
+}
+
+/** The deepest surface that holds the focus. */
+function findFocused(nodes: readonly SceneNode[]): SceneNode | undefined {
+  for (const n of nodes) {
+    if (n.kind !== 'surface') continue;
+    const deeper = findFocused(n.children ?? []);
+    if (deeper) return deeper;
+    if (n.focused) return n;
+  }
+  return undefined;
+}
+
+/** Non-empty selections of the controls directly under a surface. */
+function selectionsUnder(surface: SceneNode): { id: string; value: readonly string[] }[] {
+  const out: { id: string; value: readonly string[] }[] = [];
+  for (const c of surface.children ?? []) {
+    if (c.kind === 'surface') continue;
+    if (c.state?.kind === 'selection' && c.state.value.length) out.push({ id: c.id, value: c.state.value });
+  }
+  return out;
+}
