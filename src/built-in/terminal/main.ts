@@ -4,6 +4,7 @@
 // Spawns a shell via Electron IPC and streams output to the UI.
 // Recent output is captured for @terminal mention context injection.
 
+import { declareControl } from '../../ui/kit.js';
 import './terminal.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -244,6 +245,7 @@ async function refreshEnvBar(): Promise<void> {
   restart.type = 'button';
   restart.className = 'parallx-terminal-env__action';
   restart.textContent = 'Restart Shell';
+  declareControl(restart, { id: 'terminal.restart', label: 'Restart Shell', command: 'terminal.restart' });
   restart.addEventListener('click', () => { clearTerminalOutput(); void spawnShell(); });
   _envBar.appendChild(restart);
 }
@@ -434,6 +436,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       input.type = 'text';
       input.className = 'parallx-terminal-input';
       input.placeholder = 'Enter command…';
+      declareControl(input, { id: 'terminal.input', label: 'Command', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
       input.spellcheck = false;
       input.autocomplete = 'off';
       inputLine.appendChild(input);

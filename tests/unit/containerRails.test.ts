@@ -15,13 +15,14 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import {
   WorkbenchContributionHandler,
   resolveLegacyContainerId,
   type ContributionHandlerHost,
 } from '../../src/workbench/workbenchContributionHandler';
 import { ActivityBarPart } from '../../src/parts/activityBarPart';
+import { scene } from '../../src/ui/scene.js';
 import { ViewContainer } from '../../src/views/viewContainer';
 import { ViewManager } from '../../src/views/viewManager';
 import { ViewContributionProcessor } from '../../src/contributions/viewContribution';
@@ -287,6 +288,13 @@ describe('container rails (one contributed sidebar path)', () => {
 // ── The ribbon as a drag surface ────────────────────────────────────────────
 
 describe('activity bar as a container drag surface', () => {
+  // Each bar's host leaves with its test: an icon left connected after its
+  // bar is disposed would sit in the scene beside the next test's icon.
+  afterEach(() => {
+    document.body.innerHTML = '';
+    scene.reset();
+  });
+
   function makeBar(id: PartId, tooltip: 'left' | 'right'): ActivityBarPart {
     const bar = new ActivityBarPart(id, 'Bar', tooltip, PartPosition.Right);
     const host = document.createElement('div');

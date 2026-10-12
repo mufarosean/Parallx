@@ -4,6 +4,7 @@
 // their current shortcut, supports live rebinding (with a reserved-key +
 // duplicate guard) and reset, and persists overrides across relaunch.
 
+import { declareControl } from '../../ui/kit.js';
 import { Disposable } from '../../platform/lifecycle.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
@@ -39,6 +40,7 @@ export class KeyboardShortcutsPanel extends Disposable {
       placeholder: 'Search commands…',
       ariaLabel: 'Search keyboard shortcuts',
     }));
+    this._register(declareControl(search.element, { id: 'settings.keyboard.search', label: 'Search shortcuts', kind: 'input', state: () => ({ kind: 'value', value: search.value }) }));
     this._register(search.onDidChange((v) => { this._search = v.trim().toLowerCase(); this._renderList(); }));
     this._root.appendChild(searchHost);
 

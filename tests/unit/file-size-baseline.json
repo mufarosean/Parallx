@@ -55,7 +55,7 @@
   "src/built-in/explorer/main.ts": 2031,
   "src/built-in/planner/planner.css": 2057,
   "src/built-in/planner/plannerDataService.ts": 1401,
-  "src/built-in/tool-gallery/main.ts": 1102,
+  "src/built-in/tool-gallery/main.ts": 985,
   "src/built-in/worksheet/ooxml.ts": 1034,
   "src/built-in/worksheet/univerHost.ts": 1027,
   "src/built-in/worksheet/worksheetData.ts": 895,

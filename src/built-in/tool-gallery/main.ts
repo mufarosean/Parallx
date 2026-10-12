@@ -8,8 +8,9 @@
 //   VS Code extensionsViewlet.ts — sidebar list, search, grouping
 //   VS Code extensionEditor.ts — editor pane, header, tabs, contribution tables
 
+import { renderDetailsTab, renderStatusTab } from './toolEditorTabs.js';
+import { declareControl } from '../../ui/kit.js';
 import './toolGallery.css';
-import { appDateTimeString, appTimeString } from '../../services/localTime.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
@@ -30,7 +31,7 @@ interface ToolContributions {
   icons?: { id: string; svg: string }[];
 }
 
-interface ToolInfo {
+export interface ToolInfo {
   id: string;
   name: string;
   version: string;
@@ -180,6 +181,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   searchInput.type = 'text';
   searchInput.placeholder = 'Search tools…';
   searchInput.title = 'Filter with @enabled, @disabled or @builtin';
+  declareControl(searchInput, { id: 'tools.search', label: 'Search tools', kind: 'input', hint: searchInput.title, state: () => ({ kind: 'value', value: searchInput.value }) });
   searchInput.spellcheck = false;
   searchWrap.appendChild(searchInput);
 
@@ -187,6 +189,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   installBtn.classList.add('tool-gallery-install-btn');
   installBtn.innerHTML = SVG_ICON_INSTALL;
   installBtn.title = 'Install from .plx file';
+  declareControl(installBtn, { id: 'tools.install', label: 'Install from .plx file', kind: 'iconButton' });
   installBtn.addEventListener('click', async () => {
     installBtn.disabled = true;
     try {
@@ -507,6 +510,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
 
   const toggleBtn = $('button');
   toggleBtn.classList.add('tool-editor-action-btn');
+  declareControl(toggleBtn, { id: 'tools.toggleEnabled', label: 'Enable or disable', state: () => ({ kind: 'value', value: toggleBtn.textContent?.trim() ?? '' }) });
   if (!api.tools.canChangeEnablement(tool.id)) {
     toggleBtn.textContent = 'Disable';
     toggleBtn.title = 'Required by the app and cannot be disabled';
@@ -533,6 +537,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
     uninstallBtn.classList.add('tool-editor-action-btn', 'tool-editor-action-uninstall');
     uninstallBtn.textContent = 'Uninstall';
     uninstallBtn.title = `Uninstall ${tool.name}`;
+    declareControl(uninstallBtn, { id: 'tools.uninstall', label: 'Uninstall', hint: uninstallBtn.title });
     uninstallBtn.addEventListener('click', async () => {
       // Ask the user whether to keep or delete associated data
       const keepData = { title: 'Keep Data' };
@@ -641,7 +646,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
         renderContributionsTab(content, tool, api);
         break;
       case 'Runtime Status':
-        renderStatusTab(content, tool);
+        renderStatusTab(content, tool, _getIntrospection);
         break;
     }
   }
@@ -729,51 +734,6 @@ function renderMembershipBanner(container: HTMLElement, api: ParallxApi, tool: T
   banner.appendChild(chipsRow);
   container.appendChild(banner);
 }
-
-function renderDetailsTab(container: HTMLElement, tool: ToolInfo): void {
-  const section = $('div');
-  section.classList.add('tool-editor-details');
-
-  if (tool.description) {
-    const desc = $('div');
-    desc.classList.add('tool-editor-details-desc');
-    desc.textContent = tool.description;
-    section.appendChild(desc);
-  }
-
-  const fields: [string, string][] = [
-    ['Publisher', tool.publisher],
-    ['Version', tool.version],
-    ['Tool ID', tool.id],
-    ['Built-in', tool.isBuiltin ? 'Yes' : 'No'],
-    ['State', tool.state],
-    ['Path', tool.toolPath],
-  ];
-
-  const table = $('div');
-  table.classList.add('tool-editor-details-table');
-  for (const [label, value] of fields) {
-    const row = $('div');
-    row.classList.add('tool-editor-details-row');
-
-    const lbl = $('span');
-    lbl.classList.add('tool-editor-details-label');
-    lbl.textContent = label;
-    row.appendChild(lbl);
-
-    const val = $('span');
-    val.classList.add('tool-editor-details-value');
-    val.textContent = value;
-    row.appendChild(val);
-
-    table.appendChild(row);
-  }
-  section.appendChild(table);
-
-  container.appendChild(section);
-}
-
-// ─── Feature Contributions Tab ───────────────────────────────────────────────
 
 function renderContributionsTab(container: HTMLElement, tool: ToolInfo, api: ParallxApi): void {
   const contrib = tool.contributes;
@@ -893,83 +853,6 @@ function renderContributionsTab(container: HTMLElement, tool: ToolInfo, api: Par
 
 // ─── Runtime Status Tab ──────────────────────────────────────────────────────
 
-function renderStatusTab(container: HTMLElement, tool: ToolInfo): void {
-  const section = $('div');
-  section.classList.add('tool-editor-status');
-
-  // The runtime facts the audit found missing from this tab (Phase C):
-  // WHEN the tool activated, how long that took, and what has failed —
-  // joined for us by the introspection service.
-  const runtime = _getIntrospection?.()?.describeTools().find((t) => t.id === tool.id);
-
-  const fields: [string, string][] = [
-    ['State', tool.state],
-    ['Activation Events', (tool.activationEvents ?? []).join(', ') || 'none'],
-    ...(runtime?.activatedAt !== undefined
-      ? [['Activated At', appTimeString(runtime.activatedAt)] as [string, string]]
-      : []),
-    ...(runtime?.activationDurationMs !== undefined
-      ? [['Activation Took', `${Math.round(runtime.activationDurationMs)} ms`] as [string, string]]
-      : []),
-    ...(runtime
-      ? [['Recorded Errors', String(runtime.errorCount)] as [string, string]]
-      : []),
-    ['Tool Path', tool.toolPath],
-    ['Built-in', tool.isBuiltin ? 'Yes' : 'No'],
-  ];
-
-  for (const [label, value] of fields) {
-    const row = $('div');
-    row.classList.add('tool-editor-status-row');
-
-    const lbl = $('span');
-    lbl.classList.add('tool-editor-status-label');
-    lbl.textContent = label;
-    row.appendChild(lbl);
-
-    const val = $('span');
-    val.classList.add('tool-editor-status-value');
-    val.textContent = value;
-    row.appendChild(val);
-
-    section.appendChild(row);
-  }
-
-  // The most recent recorded error, in full — the count row says how many,
-  // this says what.
-  if (runtime?.lastError) {
-    const err = $('div');
-    err.classList.add('tool-editor-status-error');
-    err.textContent = `Last error (${runtime.lastError.context}, ${appDateTimeString(runtime.lastError.timestamp)}): ${runtime.lastError.message}`;
-    section.appendChild(err);
-  }
-
-  // State indicator
-  const stateIndicator = $('div');
-  stateIndicator.classList.add('tool-editor-status-indicator');
-  const dot = $('span');
-  dot.classList.add('tool-editor-status-dot');
-  if (tool.state === 'activated') {
-    dot.classList.add('tool-editor-status-dot-active');
-  } else if (tool.state === 'deactivated' || tool.state === 'disposed') {
-    dot.classList.add('tool-editor-status-dot-inactive');
-  } else {
-    dot.classList.add('tool-editor-status-dot-pending');
-  }
-  stateIndicator.appendChild(dot);
-  const stateText = $('span');
-  stateText.textContent = tool.state === 'activated' ? 'Active' :
-    tool.state === 'deactivated' ? 'Inactive' :
-    tool.state === 'disposed' ? 'Disposed' : 'Pending';
-  stateIndicator.appendChild(stateText);
-  section.insertBefore(stateIndicator, section.firstChild);
-
-  container.appendChild(section);
-}
-
-// ─── Shared Helpers ──────────────────────────────────────────────────────────
-
-/** Render a collapsible contribution section with header and lazy content. */
 function renderContributionSection(
   container: HTMLElement,
   title: string,

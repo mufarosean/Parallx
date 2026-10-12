@@ -682,6 +682,22 @@ notes widget's open-in-canvas, the coin, and the timer's task box.
 Rows (sidebar pages, task rows, picker tiles, tracker rows) are not.
 The probe checks the header's and the sidebar's ids.
 
+Settings panels, Welcome, Terminal, Activity Log, Tool Gallery and
+Theme Editor done 2026-10-12, in the cloud, as one batch because each is
+small. The keyboard shortcuts search and the Python panel's toggle,
+environment and package controls; the welcome page's rows, each
+carrying the command it runs (`welcome.<command>`); the terminal's
+restart button (it carries `terminal.restart`, the command it runs) and
+its input line; the activity log's filter buttons with their pressed
+state; the tool gallery's search, install, enable and uninstall; the
+appearance panel's text sizes, modes, themes, fonts, accents, custom
+hue slider, comfort toggles, theme name and save. Tool rows, shortcut
+rows and log rows are not. The tool gallery's editor grew past its
+size baseline, so its details and status tabs moved to
+`toolEditorTabs.ts`. The probe checks the welcome rows, the gallery's
+search and install, the appearance panel's dark mode, hue, name and
+save, and the two panel views through `workbench.view.show`.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the

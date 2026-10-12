@@ -9,6 +9,7 @@
 // Same constructor signature as the old ThemeEditorPanel so every entry point
 // (command palette, Ctrl+Shift+T, Tools menu, editor pane) keeps working.
 
+import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IThemeService } from '../../services/serviceTypes.js';
 import type { IStorage } from '../../platform/storage.js';
@@ -148,6 +149,7 @@ export class PxAppearancePanel implements IDisposable {
       btn.type = 'button';
       btn.className = 'px-mode-btn';
       btn.dataset.textSize = String(size);
+      declareControl(btn, { id: `appearance.textSize.${size}`, label: `Text size ${size}`, state: () => ({ kind: 'pressed', value: btn.classList.contains('is-active') || btn.getAttribute('aria-pressed') === 'true' }) });
       btn.textContent = `${Math.round(size * 100)}%`;
       btn.addEventListener('click', () => {
         this._state.textSize = size === DEFAULT_TEXT_SIZE ? undefined : size;
@@ -214,6 +216,7 @@ export class PxAppearancePanel implements IDisposable {
     host.appendChild(row);
     const toggle = new Toggle(slot, { checked, ariaLabel: title });
     toggle.onDidChange(onChange);
+    declareControl(toggle.element, { id: `appearance.comfort.${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`, label: title, kind: 'toggle', hint, state: () => ({ kind: 'pressed', value: toggle.checked }) });
     return toggle;
   }
 
@@ -236,6 +239,7 @@ export class PxAppearancePanel implements IDisposable {
       chip.className = 'px-font-chip';
       chip.style.fontFamily = font.stack;
       chip.setAttribute('aria-label', `Font: ${font.label}`);
+      declareControl(chip, { id: `appearance.font.${font.id}`, label: `Font: ${font.label}`, state: () => ({ kind: 'pressed', value: chip.classList.contains('is-selected') }) });
       if (font.id === current) chip.classList.add('is-selected');
       const sample = document.createElement('span');
       sample.className = 'px-font-chip-sample';
@@ -283,6 +287,7 @@ export class PxAppearancePanel implements IDisposable {
       btn.type = 'button';
       btn.className = 'px-mode-btn';
       btn.dataset.mode = m.id;
+      declareControl(btn, { id: `appearance.mode.${m.id}`, label: m.label, state: () => ({ kind: 'pressed', value: btn.classList.contains('is-active') || btn.getAttribute('aria-pressed') === 'true' }) });
       btn.innerHTML = `${m.icon}<span>${m.label}</span>`;
       btn.addEventListener('click', () => {
         if (m.id === 'system') {
@@ -342,6 +347,7 @@ export class PxAppearancePanel implements IDisposable {
       card.type = 'button';
       card.className = 'px-base-card';
       card.dataset.theme = theme.id;
+      declareControl(card, { id: `appearance.theme.${theme.id}`, label: theme.label ?? theme.id, state: () => ({ kind: 'pressed', value: card.classList.contains('is-active') || card.getAttribute('aria-pressed') === 'true' }) });
       if (this._state.base === theme.id) card.classList.add('is-selected');
 
       // Mini surface preview rendered in the theme's own colors (light/dark aware).
@@ -400,6 +406,7 @@ export class PxAppearancePanel implements IDisposable {
       chip.className = 'px-accent-chip';
       chip.title = accent.label;
       chip.setAttribute('aria-label', `Accent: ${accent.label}`);
+      declareControl(chip, { id: `appearance.accent.${accent.id}`, label: `Accent: ${accent.label}`, state: () => ({ kind: 'pressed', value: chip.classList.contains('is-selected') }) });
       chip.style.setProperty('--chip', `hsl(${accent.h} ${accent.s}% ${accent.l}%)`);
       if (this._state.accent === accent.id) chip.classList.add('is-selected');
 
@@ -427,6 +434,7 @@ export class PxAppearancePanel implements IDisposable {
     custom.className = 'px-accent-chip px-accent-chip--custom';
     custom.title = 'Custom hue';
     custom.setAttribute('aria-label', 'Custom accent hue');
+    declareControl(custom, { id: 'appearance.accent.custom', label: 'Custom accent hue' });
     if (this._state.accent === 'custom') custom.classList.add('is-selected');
     const wheel = document.createElement('span');
     wheel.className = 'px-accent-chip-dot px-accent-chip-dot--wheel';
@@ -454,6 +462,7 @@ export class PxAppearancePanel implements IDisposable {
     hueInput.min = '0';
     hueInput.max = '360';
     hueInput.step = '1';
+    declareControl(hueInput, { id: 'appearance.hue', label: 'Accent hue', kind: 'slider', state: () => ({ kind: 'number', value: Number(hueInput.value) }) });
     hueInput.className = 'px-hue-slider';
     hueInput.value = String(this._state.customHue ?? 265);
     hueInput.addEventListener('input', () => {
@@ -528,10 +537,12 @@ export class PxAppearancePanel implements IDisposable {
     nameInput.className = 'px-appearance-name-input';
     nameInput.placeholder = 'Name this look…';
     nameInput.maxLength = 32;
+    declareControl(nameInput, { id: 'appearance.themeName', label: 'Theme name', kind: 'input', state: () => ({ kind: 'value', value: nameInput.value }) });
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'px-appearance-save-btn';
     saveBtn.textContent = 'Save Current';
+    declareControl(saveBtn, { id: 'appearance.saveTheme', label: 'Save Current' });
     const doSave = () => {
       const name = nameInput.value.trim();
       if (!name) { nameInput.focus(); return; }

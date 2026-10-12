@@ -12,6 +12,7 @@
 // plainly, once, near the switch — because a security claim the software
 // cannot keep is worse than no claim at all.
 
+import { declareControl } from '../../ui/kit.js';
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { formatBytes } from '../../ui/format.js';
 import type { ISettingsPanel } from '../../services/settingsPanelRegistry.js';
@@ -121,6 +122,7 @@ class PythonSettingsPanel implements IDisposable {
       checked: this._service.isEnabled,
       ariaLabel: 'Enable Python for this workspace',
     });
+    declareControl(toggle.element, { id: 'settings.python.enabled', label: 'Python', kind: 'toggle', state: () => ({ kind: 'pressed', value: toggle.checked }) });
     this._store.add(toggle);
     this._store.add(toggle.onDidChange((on) => {
       void this._service.setEnabled(on);
@@ -199,6 +201,7 @@ class PythonSettingsPanel implements IDisposable {
     const actions = el('div', 'pysettings__actions');
     if (!status.envExists) {
       const create = el('button', 'pysettings__btn pysettings__btn--primary', 'Create environment');
+      declareControl(create, { id: 'settings.python.createEnvironment', label: 'Create environment' });
       create.type = 'button';
       create.disabled = !this._service.isEnabled || this._busy;
       create.addEventListener('click', () => void this._withBusy(create, 'Creating…', async () => {
@@ -215,6 +218,7 @@ class PythonSettingsPanel implements IDisposable {
       remove.type = 'button';
       remove.disabled = this._busy;
       remove.title = 'Removes .parallx/venv only. Your scripts and outputs are left alone.';
+      declareControl(remove, { id: 'settings.python.deleteEnvironment', label: 'Delete environment', hint: remove.title });
       remove.addEventListener('click', () => void this._withBusy(remove, 'Deleting…', async () => {
         const res = await this._service.removeEnv();
         if (!res.ok) this._showError(this._statusHost, res.error);
@@ -243,6 +247,8 @@ class PythonSettingsPanel implements IDisposable {
     this._store.add(input);
 
     const addBtn = el('button', 'pysettings__btn pysettings__btn--primary', 'Install');
+    declareControl(addBtn, { id: 'settings.python.install', label: 'Install' });
+    declareControl(input.element, { id: 'settings.python.package', label: 'Package to install', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
     addBtn.type = 'button';
     const doInstall = () => {
       const spec = input.value.trim();

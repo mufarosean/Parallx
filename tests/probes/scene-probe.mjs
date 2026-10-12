@@ -37,7 +37,12 @@ const BUILTIN_IDS = {
   search: ['search.query', 'search.replace', 'search.toggleReplace', 'search.match-case', 'search.results'],
   planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
+  welcome: ['welcome.workbench.action.showCommands', 'welcome.settings.open', 'welcome.workbench.action.files.openFolder'],
+  tools: ['tools.search', 'tools.install'],
+  appearance: ['appearance.mode.dark', 'appearance.hue', 'appearance.themeName', 'appearance.saveTheme'],
 };
+/** Panel views shown by `workbench.view.show`, and an id each declares once its view is rendered. */
+const PANEL_VIEWS = { 'view.terminal': 'terminal.input', 'view.activityLog': 'activityLog.filter.all' };
 /** Ids present once a scratch sheet is open (`worksheet.openScratch`). */
 const SCRATCH_IDS = ['worksheet.sheetTheme', 'worksheet.sheet.export'];
 
@@ -94,6 +99,11 @@ async function main() {
       if (r !== true) console.log(`[open] ${id}: ${r}`);
       await page.waitForTimeout(700);
     }
+    for (const viewId of Object.keys(PANEL_VIEWS)) {
+      const r = await cmd(page, 'workbench.view.show', viewId);
+      if (r !== true) console.log(`[open] ${viewId}: ${r}`);
+      await page.waitForTimeout(700);
+    }
     await page.waitForTimeout(1_500);
     const full = await sceneOf(page);
     await fs.writeFile(path.join(outDir, 'scene-full.json'), JSON.stringify(full, null, 2));
@@ -104,6 +114,7 @@ async function main() {
     const ids = new Set(flatten(full).map((n) => n.id));
     for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
     for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
+    for (const [viewId, id] of Object.entries(PANEL_VIEWS)) if (!ids.has(id)) stats.problems.push(`${viewId}: no "${id}"`);
     // The task popover (design step 5, Planner): a surface with its fields and buttons.
     const task = await cmd(page, 'planner.newTask');
     await page.waitForTimeout(800);

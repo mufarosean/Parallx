@@ -9,6 +9,7 @@
 // Pattern: panel view contribution, incremental append (indexing-log model —
 // never a full re-render per event).
 
+import { declareControl } from '../../ui/kit.js';
 import './activityLog.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -167,6 +168,7 @@ function renderActivityView(container: HTMLElement): IDisposable {
     btn.textContent = f.label;
     btn.title = f.title;
     btn.classList.toggle('is-active', _filter === f.id);
+    declareControl(btn, { id: `activityLog.filter.${f.id}`, label: f.label, hint: f.title, state: () => ({ kind: 'pressed', value: btn.classList.contains('is-active') }) });
     btn.addEventListener('click', () => {
       _filter = f.id;
       for (const b of filterBtns) b.classList.remove('is-active');

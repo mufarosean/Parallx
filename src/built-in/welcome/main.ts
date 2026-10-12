@@ -3,6 +3,7 @@
 // Shows a welcome page in the editor area on first launch.
 // Demonstrates: editor opening API, command contribution, globalState.
 
+import { declareControl } from '../../ui/kit.js';
 import './welcome.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -230,6 +231,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
       row.addEventListener('click', () => {
         api.commands.executeCommand(item.command).catch(() => {});
       });
+      declareControl(row, { id: `welcome.${item.command}`, label: item.text, command: item.command });
       startList.appendChild(row);
     }
   };
@@ -271,6 +273,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
     row.addEventListener('click', () => {
       api.commands.executeCommand(item.command).catch(() => {});
     });
+    declareControl(row, { id: `welcome.${item.command}`, label: item.text, command: item.command });
     leftCol.appendChild(row);
   }
 
@@ -314,6 +317,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
     row.addEventListener('click', () => {
       api.commands.executeCommand(item.command).catch(() => {});
     });
+    declareControl(row, { id: `welcome.${item.command}`, label: item.text, command: item.command });
     leftCol.appendChild(row);
   }
 
