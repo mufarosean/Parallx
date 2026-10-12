@@ -29,7 +29,6 @@ import { Readability } from './readability.js';
 // SECTION 1: CONSTANTS AND MODULE STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PARTITION = 'persist:parallx-browser';
 const EDITOR_TYPE = 'browser.page';
 const NEWTAB = 'about:newtab';
 /** In-memory session for Private tabs (no persist: prefix); cleared when the last one closes. */

@@ -264,15 +264,6 @@ function ensureNameNotEmpty(name) {
   }
 }
 
-async function ensureUnique(tableName, column, value, excludeId = null) {
-  const sql = excludeId != null
-    ? `SELECT id FROM ${tableName} WHERE ${column} = ? AND id != ?`
-    : `SELECT id FROM ${tableName} WHERE ${column} = ?`;
-  const params = excludeId != null ? [value, excludeId] : [value];
-  const row = await db.get(sql, params);
-  if (row) throw new DuplicateError(tableName, column, value);
-}
-
 /**
  * Ensure each alias is unique across all tag names and all other tags' aliases.
  * Adapted from stash: pkg/tag/validate.go — EnsureTagNameUnique() + EnsureAliasesUnique()
@@ -9168,12 +9159,11 @@ function moInjectStyles() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 23: GRID CARD RENDERING
 // ═══════════════════════════════════════════════════════════════════════════════
-// Adapted from stash: ui/v2.5/src/components/Shared/GridCard/ — calculateCardWidth + card DOM
+// Adapted from stash: ui/v2.5/src/components/Shared/GridCard/ — card DOM
 
 const MO_ZOOM_MIN = 150;
 const MO_ZOOM_MAX = 800;
 const MO_ZOOM_DEFAULT = 280;
-const MO_CARD_GAP = 8;
 const MO_DEFAULT_PER_PAGE = 120;
 
 /**
@@ -9246,12 +9236,6 @@ let _sessionZoomWidth = MO_ZOOM_DEFAULT;
 // Date groups are on until the user turns them off (the choice is saved).
 let _sessionGroupBy = 'date';
 const _sessionGridState = new Map(); // keyed by instanceId
-
-// Adapted from stash: GridCard.tsx — calculateCardWidth()
-function calculateCardWidth(containerWidth, preferredWidth) {
-  const count = Math.max(1, Math.floor((containerWidth + MO_CARD_GAP) / (preferredWidth + MO_CARD_GAP)));
-  return Math.floor((containerWidth - (count - 1) * MO_CARD_GAP) / count);
-}
 
 function formatDuration(seconds) {
   if (!seconds || seconds <= 0) return '';

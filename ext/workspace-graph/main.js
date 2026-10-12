@@ -517,7 +517,6 @@ const EXT_COLORS = {
   '.cjs': '#a8c97a',
 };
 
-const DEFAULT_COLOR = '#6bd385';
 const IDEA_CLUSTER_COLORS = [
   '#6baad3',
   '#c98aaa',

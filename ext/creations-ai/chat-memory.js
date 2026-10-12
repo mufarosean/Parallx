@@ -198,8 +198,6 @@ export function earlierBlock({ beats = [], excerpts = [], maxBeats = 25, maxExce
   return parts.join('\n');
 }
 
-export function memoryRule() { return RULE; }
-
 // ── When the extractor runs, and reading what it returns ──────────────────
 
 /** A reply the story counts: the AI speaking in the scene (not out of character, not hidden from it). */

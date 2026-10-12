@@ -173,10 +173,6 @@ export function storyWords(story) {
   return story.beats.reduce((n, b) => n + countWords(b.text), 0);
 }
 
-export function chapterBeats(story, chapterId) {
-  return story.beats.filter((b) => b.chapterId === chapterId);
-}
-
 /** The whole story as Markdown: a title, a heading per chapter, beats as paragraphs. */
 export function storyMarkdown(story) {
   const lines = [`# ${story.title || 'Untitled'}`, ''];

@@ -3467,21 +3467,6 @@ function computeDroppedMessages(messages, budgetTokens) {
 }
 
 /**
- * Stable, fast string hash (FNV-1a 32-bit) used to key the summarisation
- * cache against the actual content of dropped messages. Keying by count
- * alone left stale summaries lingering after deletes / edits / regenerates.
- */
-function hashDroppedMessages(messages) {
-  const joined = messages.map((m) => `${m.role}|${m.content || ''}`).join('\n---\n');
-  let h = 0x811c9dc5;
-  for (let i = 0; i < joined.length; i++) {
-    h ^= joined.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16);
-}
-
-/**
  * Assemble context for multi-character threads with composable files.
  * Supports: multiple characters, shared style file, shared reminders,
  * hiddenFrom filtering, and author→role mapping.
