@@ -9,21 +9,10 @@
 // for cleanup.
 
 import { assistantTimeZone } from '../services/localTime.js';
-import {
-  type IKitFilterChipOptions,
-  type IKitFilterChip,
-  type IKitSegmentedOptions,
-  type IKitSegmented,
-  type IKitButtonOptions,
-  type IKitIconButtonOptions,
-  type IKitPageHeaderOptions,
-  type IKitEmptyStateOptions,
-} from '../ui/kit.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
-import { createUiApi } from './bridges/uiBridge.js';
+import { createUiApi, type UiApi } from './bridges/uiBridge.js';
 import { createLmApi } from './bridges/languageModelBridge.js';
-import type { ExtensionMenuAnchor, IExtensionMenuHandle, IExtensionMenuItem, IExtensionMenuOptions } from '../ui/contextMenu.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -134,45 +123,8 @@ export interface ParallxApiObject {
     registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): IDisposable }, options?: { name?: string; icon?: string; defaultContainerId?: string; when?: string }): IDisposable;
     setBadge(containerId: string, badge: { count?: number; dot?: boolean } | undefined): void;
   };
-  /** Shared UI performance helpers (see parallx.d.ts `ui` namespace). */
-  readonly ui: {
-    rafThrottle<A extends unknown[]>(fn: (...args: A) => void): ((...args: A) => void) & { dispose(): void; flush(): void };
-    debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): ((...args: A) => void) & { cancel(): void; flush(): void; readonly pending: boolean };
-    escapeHtml(text: unknown): string;
-    formatBytes(bytes: number): string;
-    titleCase(text: string): string;
-    formatRelativeTime(when: number | string | Date, style?: 'long' | 'short'): string;
-    createDropdown(container: HTMLElement, options?: {
-      readonly items?: readonly { value: string; label: string }[];
-      readonly selected?: string;
-      readonly placeholder?: string;
-      readonly ariaLabel?: string;
-      readonly disabled?: boolean;
-    }): {
-      readonly element: HTMLElement;
-      value: string;
-      setItems(items: readonly { value: string; label: string }[]): void;
-      onDidChange(listener: (value: string) => void): IDisposable;
-      focus(): void;
-      setDisabled(disabled: boolean): void;
-      dispose(): void;
-    };
-    renderMarkdown(markdown: string): HTMLElement;
-    createAiButton(container: HTMLElement, options: {
-      readonly label: string;
-      readonly compact?: boolean;
-      readonly ariaLabel?: string;
-      readonly title?: string;
-    }): HTMLButtonElement;
-    showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): IExtensionMenuHandle;
-    createButton(container: HTMLElement | null, options: IKitButtonOptions): HTMLButtonElement;
-    createIconButton(container: HTMLElement | null, options: IKitIconButtonOptions): HTMLButtonElement;
-    createPageHeader(container: HTMLElement | null, options: IKitPageHeaderOptions): HTMLElement;
-    createEmptyState(container: HTMLElement | null, options: IKitEmptyStateOptions): HTMLElement;
-    createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
-    createFilterChip(container: HTMLElement | null, options: IKitFilterChipOptions): IKitFilterChip;
-    createSegmented(container: HTMLElement | null, options: IKitSegmentedOptions): IKitSegmented;
-  };
+  /** The app's widgets, formatters and the scene, for extensions (see parallx.d.ts `ui` namespace). */
+  readonly ui: UiApi;
   /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
   readonly keybindings: {
     register(key: string, commandId: string, when?: string): IDisposable;

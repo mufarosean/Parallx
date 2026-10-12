@@ -813,6 +813,18 @@ recipe and adds its probe row.
 examples; `createAiButton` and `createDropdown` are reimplemented on the
 kit. No extension changes yet.
 
+Done 2026-10-12, in the cloud. `api.ui` now has `createSurface`,
+`declareControl`, `createToggle`, `createInput`, `createSelect`,
+`createSlider`, `createTabs`, `createMenu`, `createList` and
+`createTree`, and every kit option type takes `id`, `hint` and (for
+buttons) `command`. `createDropdown` with an id is in the scene as a
+select whose value is the chosen item, and its dispose removes the
+entry; `createAiButton` with an id is a button that records its
+command; without ids both behave exactly as before. `parallx.d.ts`
+declares all of it under `ui` with a `SceneState` type, the authoring
+guide's section 6.3 shows one example of each, and
+`tests/unit/uiBridgeScene.test.ts` checks the bridge against the scene.
+
 ### Step 7. Extensions, one per session (local)
 
 In this order: workspace-graph, web-research, budget, flashcards,
@@ -956,7 +968,7 @@ Sessions append here. Each line: date, step, what was left and why.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done except `chatWidget.ts` (see step 5's notes); the
      message list's markdown is never declared.
-  Then steps 6, 7, 8, 9, 4, 10, 11 as section 9 orders them.
+  Step 6 is done. Then steps 7, 8, 9, 4, 10, 11 as section 9 orders them.
 
   What this session learned, for whoever continues:
   - A repeated card (a widget, a routine row, an approval) is a surface

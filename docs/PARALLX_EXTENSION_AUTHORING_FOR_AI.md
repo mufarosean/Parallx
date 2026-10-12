@@ -876,6 +876,43 @@ const ok = await api.window.showConfirmModal({ message: 'Delete this deck?', det
 
 If the kit lacks something you need, the kit grows (ask for it); the extension never clones a component.
 
+#### The scene: give every control an id
+
+The app keeps a live list of what is on screen (the scene), which the
+assistant and the probes read. A kit control with an `id` is in it; one
+without is drawn but not listed. Ids are stable within their surface and
+read `<tool>.<name>`; a control that runs a bare command takes the
+command's id. Your view or pane is already a surface owned by your tool.
+
+```js
+// Every kit function takes id (and hint); a button that runs a command records it.
+api.ui.createButton(toolbar, { id: 'budget.sync', label: 'Sync Now', command: 'budget.sync' });
+api.ui.createIconButton(toolbar, { id: 'budget.filter', icon: 'filter', title: 'Filter', onClick: openFilter });
+api.ui.createFilterChip(bar, { id: 'budget.noted', label: 'Noted', onToggle: refilter });
+api.ui.createSegmented(row, { id: 'budget.period', ariaLabel: 'Period', items, value: 'month', onChange: save });
+api.ui.createDropdown(row, { id: 'budget.account', items, selected: 'main', ariaLabel: 'Account' });
+
+// A repeated region (one card per account) is a surface with the row's id as instance;
+// its buttons keep fixed ids. A list you render yourself is one entry.
+const card = document.createElement('article');
+api.ui.createSurface(card, { id: 'budget.account', owner: 'budget', label: account.name, instance: account.id });
+api.ui.createButton(card, { id: 'budget.account.remove', label: 'Remove', kind: 'danger', size: 'sm', onClick: remove });
+api.ui.createList(listEl, { id: 'budget.transactions', label: 'Transactions', rows: () => [...listEl.children], selected: () => selectedIds });
+
+// Form controls: each declares its state (pressed, value, number, selection) itself.
+api.ui.createToggle(form, { id: 'budget.roundUp', label: 'Round up', checked: true, onChange: save });
+api.ui.createInput(form, { id: 'budget.name', label: 'Name', value: name });
+api.ui.createSelect(form, { id: 'budget.currency', label: 'Currency', items, value: 'USD', onChange: save });
+api.ui.createSlider(form, { id: 'budget.limit', label: 'Monthly limit', min: 0, max: 5000, value: 1200, onChange: save });
+api.ui.createTabs(head, { id: 'budget.tabs', label: 'Sections', items: [{ id: 'spend', label: 'Spending' }], active: 'spend', onSelect: show });
+
+// A menu you open is in the scene while it is open.
+api.ui.createMenu(btn, { id: 'budget.more', label: 'More', items: [{ label: 'Export', onSelect: exportCsv }] });
+
+// Chrome you drew yourself (a tab, a chip) keeps its DOM; declare it in place.
+api.ui.declareControl(myTab, { id: 'budget.tab.accounts', label: 'Accounts', state: () => ({ kind: 'pressed', value: active }) });
+```
+
 ### 6.4 Colour tokens (the only colours you may use)
 
 | Token | Use for |

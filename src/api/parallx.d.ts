@@ -628,7 +628,18 @@ export namespace ui {
 
   /** primary: the one main action of a view. secondary: other worded actions. ghost: toolbars and rows. danger: destructive. */
   export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
-  export interface ButtonOptions {
+  /**
+   * What a control says about itself to the scene (the app's live list of
+   * what is on screen, which the assistant and the probes read). An id is
+   * stable within its surface ('budget.sync'); without one the control is
+   * drawn but not listed.
+   */
+  export interface ControlDeclaration {
+    readonly id?: string;
+    /** One sentence more than the label, when the label is not enough. */
+    readonly hint?: string;
+  }
+  export interface ButtonOptions extends ControlDeclaration {
     readonly label: string;
     /** Default 'secondary'. A view has at most one 'primary'. */
     readonly kind?: ButtonKind;
@@ -638,16 +649,21 @@ export namespace ui {
     readonly icon?: string;
     readonly title?: string;
     readonly disabled?: boolean;
+    /** The command this button runs; with `onClick` too, the handler runs and the command is recorded. */
+    readonly command?: string;
+    readonly args?: readonly unknown[];
     readonly onClick?: (e: MouseEvent) => void;
   }
   export function createButton(container: HTMLElement | null, options: ButtonOptions): HTMLButtonElement;
 
-  export interface IconButtonOptions {
+  export interface IconButtonOptions extends ControlDeclaration {
     readonly icon: string;
     /** Required: the tooltip and aria-label are the button's only words. */
     readonly title: string;
     readonly size?: 'md' | 'sm';
     readonly disabled?: boolean;
+    readonly command?: string;
+    readonly args?: readonly unknown[];
     readonly onClick?: (e: MouseEvent) => void;
   }
   /** A toolbar action: icon only, tooltip required. */
@@ -689,7 +705,7 @@ export namespace ui {
   /** A section label inside a page or sidebar: sentence case, never uppercase. */
   export function createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
 
-  export interface FilterChipOptions {
+  export interface FilterChipOptions extends ControlDeclaration {
     readonly label: string;
     /** Drawn after the label in a fainter tone. */
     readonly count?: number;
@@ -706,7 +722,7 @@ export namespace ui {
   /** A filter chip: narrows a list; several can be on at once (aria-pressed). */
   export function createFilterChip(container: HTMLElement | null, options: FilterChipOptions): FilterChip;
 
-  export interface SegmentedOptions {
+  export interface SegmentedOptions extends ControlDeclaration {
     readonly items: readonly { readonly value: string; readonly label: string }[];
     readonly value?: string;
     /** Required: the group's name for screen readers. */
@@ -720,6 +736,119 @@ export namespace ui {
   }
   /** A segmented switch: one choice of a few (a setting, a rating, Any / Starred). */
   export function createSegmented(container: HTMLElement | null, options: SegmentedOptions): Segmented;
+
+  // ── The scene ──────────────────────────────────────────────
+  // Your view or pane is already a surface (the app registers it with your
+  // tool as owner). Declare a region of your own when it repeats (a card
+  // per account) or floats (a popover), and declare controls the kit does
+  // not draw. docs/SELF_DESCRIBING_UI_DESIGN.md has the rules.
+
+  export type SceneState =
+    | { readonly kind: 'pressed'; readonly value: boolean }
+    | { readonly kind: 'enabled'; readonly value: boolean }
+    | { readonly kind: 'value'; readonly value: string }
+    | { readonly kind: 'number'; readonly value: number }
+    | { readonly kind: 'selection'; readonly value: readonly string[]; readonly count?: number };
+  export type SceneControlKind = 'button' | 'iconButton' | 'chip' | 'segmented' | 'toggle' | 'input' | 'select' | 'slider' | 'tabs' | 'menu' | 'list' | 'tree';
+
+  export interface SurfaceDeclaration {
+    /** Stable: 'budget.account'. */
+    readonly id: string;
+    /** Your tool's short id (the last segment of the manifest id). */
+    readonly owner: string;
+    readonly label: string;
+    /** Tells repeated copies apart: the account's id. */
+    readonly instance?: string;
+    readonly state?: () => SceneState;
+  }
+  export interface Surface {
+    readonly element: HTMLElement;
+    setInstance(instance: string | undefined): void;
+    dispose(): void;
+  }
+  /** Marks `element` as a region of the scene; controls inside it list under it. */
+  export function createSurface(element: HTMLElement, declaration: SurfaceDeclaration): Surface;
+
+  export interface InPlaceDeclaration extends ControlDeclaration {
+    readonly id: string;
+    readonly label: string;
+    /** Default 'button'. */
+    readonly kind?: SceneControlKind;
+    /** The command your own listener runs, recorded for the scene. */
+    readonly command?: string;
+    readonly state?: () => SceneState;
+  }
+  /** Declares a control you drew yourself. It keeps its DOM and listeners; this writes the id, a role and a label. */
+  export function declareControl(element: HTMLElement, declaration: InPlaceDeclaration): IDisposable;
+
+  export interface ToggleOptions extends ControlDeclaration {
+    readonly label: string;
+    readonly checked?: boolean;
+    readonly disabled?: boolean;
+    readonly onChange?: (checked: boolean) => void;
+  }
+  export interface Toggle { readonly element: HTMLElement; checked: boolean; dispose(): void; }
+  /** An on/off switch (role switch). */
+  export function createToggle(container: HTMLElement | null, options: ToggleOptions): Toggle;
+
+  export interface InputOptions extends ControlDeclaration {
+    readonly label: string;
+    readonly placeholder?: string;
+    readonly value?: string;
+    readonly type?: 'text' | 'password';
+  }
+  export interface Input { readonly element: HTMLElement; value: string; dispose(): void; }
+  /** A single-line text field. */
+  export function createInput(container: HTMLElement | null, options: InputOptions): Input;
+
+  export interface SelectOptions extends ControlDeclaration {
+    readonly label: string;
+    readonly items: readonly { readonly value: string; readonly label: string }[];
+    readonly value: string;
+    readonly onChange: (value: string) => void;
+  }
+  export interface Select { readonly element: HTMLElement; value: string; dispose(): void; }
+  /** One choice of many (role combobox). */
+  export function createSelect(container: HTMLElement | null, options: SelectOptions): Select;
+
+  export interface SliderOptions extends ControlDeclaration {
+    readonly label: string;
+    readonly min?: number;
+    readonly max?: number;
+    readonly step?: number;
+    readonly value?: number;
+    readonly disabled?: boolean;
+    readonly onChange?: (value: number) => void;
+  }
+  export interface Slider { readonly element: HTMLElement; readonly value: number; dispose(): void; }
+  /** A number on a range (role slider). */
+  export function createSlider(container: HTMLElement | null, options: SliderOptions): Slider;
+
+  export interface TabsOptions extends ControlDeclaration {
+    readonly label: string;
+    readonly items?: readonly { readonly id: string; readonly label: string; readonly icon?: string }[];
+    readonly active?: string;
+    readonly onSelect?: (id: string) => void;
+  }
+  export interface Tabs { readonly element: HTMLElement; readonly selected: string | undefined; dispose(): void; }
+  /** A row of tabs (role tablist). */
+  export function createTabs(container: HTMLElement | null, options: TabsOptions): Tabs;
+
+  /** The context menu, open and in the scene as a menu until it closes. */
+  export function createMenu(anchor: ContextMenuAnchor, options: ControlDeclaration & { readonly label: string; readonly items: ReadonlyArray<ContextMenuItem>; readonly menu?: ContextMenuOptions }): ContextMenuHandle;
+
+  export interface ListOptions extends ControlDeclaration {
+    readonly label: string;
+    /** The row elements, read when the state is asked for. */
+    readonly rows: () => readonly HTMLElement[];
+    /** The selected rows' ids, read when the state is asked for. */
+    readonly selected: () => readonly string[];
+  }
+  export interface List { readonly element: HTMLElement; readonly selected: readonly string[]; dispose(): void; }
+  /** A list you render yourself, in the scene as one entry with a selection; rows are never entries. */
+  export function createList(element: HTMLElement, options: ListOptions): List;
+  /** As createList, with role tree. */
+  export function createTree(element: HTMLElement, options: ListOptions): List;
 }
 
 /**
