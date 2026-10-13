@@ -27,7 +27,7 @@ import {
 } from '../../services/workflows/workflowTypes.js';
 import { validateWorkflow } from '../../services/workflows/workflowGraph.js';
 import { KIND_META, PALETTE, connectTargets, nodeSummary, oneLine, type PaletteEntry } from './workflowPalette.js';
-import { declareControl, sceneSlug } from '../../ui/kit.js';
+import { createList, declareControl, sceneSlug } from '../../ui/kit.js';
 import { WEEKDAY_LABELS, type AutomationScheduleSpec } from '../../openclaw/cronScheduleSpec.js';
 
 // ── Node palette (the kind vocabulary as UI) ────────────────────────────────
@@ -252,10 +252,10 @@ export class WorkflowEditorPane implements IDisposable {
         },
         onNodeDoubleClick: () => {
           const labelInput = this._inspector.querySelector('input[data-wfe-label]') as HTMLInputElement | null;
-          labelInput?.focus();
-          labelInput?.select();
+          labelInput?.focus(); labelInput?.select();
         },
       });
+      this._disposables.push(createList(this._canvasHost.querySelector<HTMLElement>('.px-node-canvas')!, { id: 'workflows.editor.graph', label: 'Graph', rows: () => Array.from(this._canvasHost.querySelectorAll<HTMLElement>('.px-node-canvas__node')), selected: () => this._canvas?.getSelection().nodes ?? [] }));
     }
     this._paintAll();
     if (first) {

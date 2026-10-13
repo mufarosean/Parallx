@@ -52,63 +52,105 @@ and 19 with only part of one.
 - Found on the way: Enter on the activity bar's gear clicked the last view icon instead (the bar activated its tracked icon, not the focused button). Fixed.
 - The confirm modal, input box and quick pick focus at once instead of on the next frame, so focus is never left on the opener.
 
-### 2. Keyboard reach
-- [ ] Editor tabs (none focusable): the active tab in the Tab order, arrows move, Enter opens.
-- [ ] Bottom panel's view tabs: the same.
-- [ ] Welcome page's 12 action cards.
-- [ ] Open Editors list: focusable, arrows move, Enter opens.
-- [ ] Status bar: every item reachable (arrows from the one F6 lands on).
-- [ ] Segmented switches (Agents' Now / Routines / History and every other): arrows move.
-- [ ] Right activity bar (Chat, Agents): in F6's cycle, and its icons reachable.
-- [ ] Canvas page's Version History stamp.
-- [ ] Chat's scroll-to-bottom button.
-- [ ] Planner's month calendar cells (31, mouse-only): a grid the arrow keys move in, Enter opens the day.
-- [ ] Canvas block "+", table Add Row / Add Column: confirm the keyboard ways and make them findable.
-- [ ] Tab-order holes: chat view (7), auxiliary bar header (4), routine editor fields (5), diagnostics' Re-run (1).
-- [ ] Spreadsheet: F6 (and Escape) leave the sheet.
-- [ ] Planner's task popover: F6 still moves between areas, or Escape first.
+### 2. Keyboard reach (done 2026-10-13)
+- [x] Editor tabs (none focusable): the active tab in the Tab order, arrows move, Enter opens.
+- [x] Bottom panel's view tabs: the same.
+- [x] Welcome page's 12 action cards.
+- [x] Open Editors list: focusable, arrows move, Enter opens.
+- [x] Status bar: every item reachable (arrows from the one F6 lands on).
+- [x] Segmented switches (Agents' Now / Routines / History and every other): arrows move.
+- [x] Right activity bar (Chat, Agents): in F6's cycle, and its icons reachable.
+- [x] Canvas page's Version History stamp.
+- [x] Chat's scroll-to-bottom button.
+- [x] Planner's month calendar cells (31, mouse-only): a grid the arrow keys move in, Enter opens the day.
+- [x] Canvas block "+", table Add Row / Add Column: confirm the keyboard ways and make them findable.
+- [x] Tab-order holes: chat view (7), auxiliary bar header (4), routine editor fields (5), diagnostics' Re-run (1).
+- [x] Spreadsheet: F6 (and Escape) leave the sheet.
+- [x] Planner's task popover: F6 still moves between areas, or Escape first.
 
-### 3. Names for a screen reader
-- [ ] Dropdowns whose role sits on a wrapper (routine editor's three, Budget's account): role and name on the focusable button.
-- [ ] Title bar menu bar: a name.
-- [ ] The unnamed button in the editor tab strip.
-- [ ] Canvas page title and page body: names.
+### 3. Names for a screen reader (done 2026-10-13)
+- [x] Dropdowns whose role sits on a wrapper (routine editor's three, Budget's account): role and name on the focusable button.
+- [x] Title bar menu bar: a name.
+- [x] The unnamed button in the editor tab strip.
+- [x] Canvas page title and page body: names.
 
-### 4. Visible focus (45)
-- [ ] Fields (search boxes, inputs, text areas), Appearance's buttons and switches, AI settings' switches and nav, activity bar icons, panel tabs, the tab strip's scroll button, Creations' cast card, the chat's offline link, the explorer tree.
+### 4. Visible focus (45) (done 2026-10-13)
+- [x] Fields (search boxes, inputs, text areas), Appearance's buttons and switches, AI settings' switches and nav, activity bar icons, panel tabs, the tab strip's scroll button, Creations' cast card, the chat's offline link, the explorer tree.
 
-### 5. Contrast
-- [ ] Concept Lab's paper lines and guide title (4.26:1 dark, 4.47:1 light).
-- [ ] Light mode: title bar menu (1.60:1), sidebar section titles (2.62:1), status bar text (2.32:1), the dashboard's "Click to rename" (1.10:1).
+### 5. Contrast (done 2026-10-13)
+- [x] Concept Lab's paper lines and guide title (4.26:1 dark, 4.47:1 light).
+- [x] Light mode: title bar menu (1.60:1), sidebar section titles (2.62:1), status bar text (2.32:1), the dashboard's "Click to rename" (1.10:1).
 
-### 6. Drags with no keyboard way (39), and partial ones (19)
-Each gets a keyboard way that does the same thing (keys on the focused
-item, a menu item, or a field), listed with the inventory below.
-- Workbench: part sash resize; view section sash; PDF sidebar sash; chat
-  history sash; activity bar icon reorder and dock; view tab reorder and
-  detach; editor tab reorder; editor tab to another group (partial);
-  part, floating container and widget "beside another part" (partial).
-- Canvas: drop into a column layout; move a block into a page card;
-  table column width; layout column width; cover reposition; concept-map
-  box resize and frame selection (partial); database column width;
-  database board card (partial); sidebar page reorder among siblings
-  (partial).
-- Dashboard: widget move; widget resize.
-- Planner: event bars, all-day bars and month chips are click-only (partial).
-- Routine editor: node move; port connect; pan.
-- Media Organizer: album reorder; detail, lightbox, compare, image editor
-  and enlarged preview pan; blur box move and resize; trim segment
-  reorder; crop keyframe retime; export queue reorder; plan crop box;
-  image editor split bar, Remove brush, tone curve points, colour wheels
-  (role slider with no keys); caption position, timeline block trim,
-  clip crop window, image crop frame, tag nesting, album re-parenting,
-  drag-out to the OS (partial).
-- Concept Lab: MeanMachine's bar heights.
-- Workspace Graph: node move (editor and sidebar); pan (partial).
-- File drops with no button: worksheet Generate (paste only), Media
-  Organizer single files (folders only).
+### 6. Drags with no keyboard way (39), and partial ones (19) (done 2026-10-13)
+Each has a keyboard way that does the same thing (keys on the focused
+item, a menu item, or a field), through the same save the drag uses.
+- [x] Workbench: every divider (part sashes, view sections, the PDF
+  outline, chat history) with View: Make Focused Area Wider / Narrower /
+  Taller / Shorter (Ctrl+Alt+Shift+arrows; extensions join through
+  `api.ui.registerKeyboardResize`). Activity bar icons Ctrl+Shift+Up/Down;
+  view tabs and editor tabs Ctrl+Shift+Left/Right. Docking, floating,
+  "beside another part" and edges: the layout commands, which ask which
+  area and where when run bare. An editor tab to another group: the tab
+  menu's Move to Previous / Next Group (Shift+F10 on the tab) and the two
+  palette commands; next with none splits one off.
+- [x] Canvas: the block menu's Move Beside Block Above (the column drop)
+  and Move Into Page… (the page-card drop). Table and layout column
+  widths, and database column widths from the header: Wider / Narrower.
+  The cover: the reposition overlay is a slider (arrows, Page keys, Home,
+  End; Enter saves). Sidebar pages: Ctrl+Shift+Up/Down among siblings,
+  Right into the page above, Left out after the parent. Board cards:
+  Enter opens, Ctrl+Shift+Left/Right move a column. Concept maps: Page
+  Down / Up pick a box (Shift adds: the frame), Ctrl+Left/Right resize.
+- [x] Dashboard: Alt+arrows move a widget a cell, Alt+Shift+arrows size it.
+- [x] Planner: Enter or Space edits an event; Alt+arrows move it (15
+  minutes or a day in week and day views, a day or a week in month view,
+  a day for all-day bars); Alt+Shift+arrows move only its end.
+- [x] Routine editor: the graph is a list of its nodes (arrows walk,
+  Enter edits, Alt+arrows move, + - 0 zoom and fit, arrows pan from the
+  canvas); the inspector's Connect To makes an edge.
+- [x] Media Organizer: viewers zoom and pan with + - 0 and the arrows
+  (compare picks its pane with 1-4); blur boxes, captions, the clip crop
+  window, the image crop frame and the plan crop box move with the arrows
+  and size with Alt; timeline segments and export rows are focusable
+  (Enter, Delete, Ctrl+Shift+Up/Down); crop keyframes retime with the
+  arrows; the export queue menu has Move Up / Down; the image editor's
+  split bar and Straighten are sliders, the Remove brush moves with the
+  arrows (Enter removes), tone-curve points are picked with Page keys,
+  the grading wheels turn with the arrows; albums reorder with
+  Ctrl+Shift+Left/Right; Move Into Album… and File Under Tag… nest; Apply
+  To N Selected Items applies a tag branch. Drag-out to the OS: Open File
+  Location (Ctrl+Shift+E) selects the file in the system's file manager,
+  where Ctrl+C copies it for any app.
+- [x] Concept Lab: the Mean Machine chart is a slider (Left/Right pick a
+  bar, Up/Down set its mass).
+- [x] Workspace Graph (editor and sidebar): the canvas takes focus; Page
+  Down / Up pick a node, the arrows move it (or pan with none picked),
+  Enter opens, Space pins, + - 0 zoom and fit.
+- [x] File drops: Worksheet Generate's Choose File… (Worksheets: Generate
+  Items From a File…); Media Organizer's Import Files… for single files.
+- Not Parallx's: moving the window by its title bar is the system's
+  (Win+arrows, or Alt+Space then Move).
+- Proof in the hidden app: `mo-keys-probe.mjs`, `mo-parent-tags-probe.mjs`
+  and `a11y-drags-probe.mjs`; unit tests beside each.
 
 ### 7. Done when
 The audit reports 0 in every kind, every dialog passes, every drag has a
 keyboard way, the scene coverage probe reports 0 undeclared, and the
 checks pass.
+
+Met 2026-10-13. The full audit, 105 screens (dark and light): 0 not
+focusable, 0 Tab holes, 0 areas F6 misses, 0 without a visible focus, 0
+nameless, 0 mouse-only, 0 low contrast in either mode, 0 traps, 0
+incomplete runs; dialogs 8 of 8. Scene coverage: 2132 declared, 387 rows
+of declared lists, 80 third-party (the spreadsheet engine), 0
+undeclared. typecheck, vitest, build and the scene probe pass.
+
+The last run's findings and their fixes: Planner's task and event
+popovers said they were modal but let Tab out (they keep it inside now,
+by the Settings overlay's rule, shared as `keepTabInside`); an
+overflowing tab strip's scroll buttons took a Tab stop inside the tab
+list (pointer helpers now; the arrows reach every tab); the routine
+editor's graph was not declared (it is a list now, its nodes rows).
+
+Still the owner's: a listen-through with a real screen reader (NVDA or
+Narrator), which no probe replaces.
