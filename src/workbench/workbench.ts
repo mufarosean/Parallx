@@ -78,6 +78,7 @@ import { RecentsService, IRecentsService } from '../services/recentsService.js';
 
 // Context (Capability 8)
 import { ContextKeyService } from '../context/contextKey.js';
+import { declareControl } from '../ui/kit.js';
 import { FocusTracker } from '../context/focusTracker.js';
 import {
   WorkbenchContextManager,
@@ -2145,7 +2146,6 @@ export class Workbench extends Layout {
       this.showQuickOpen();
     }));
 
-
     // ── Title-bar layout controls — toggle the side bars + bottom panel ──
     // The titlebar's right slot is created in TitlebarPart.createContent, which
     // can run AFTER this wiring — so wait (retry per frame) until the slot
@@ -2173,7 +2173,7 @@ export class Workbench extends Layout {
           btn.className = 'titlebar-layout-btn';
           btn.type = 'button';
           btn.title = label;
-          btn.setAttribute('aria-label', label);
+          btn.setAttribute('aria-label', label); this._register(declareControl(btn, { id: `titlebar.layout.${area}`, label, kind: 'toggle', state: () => ({ kind: 'pressed', value: btn.classList.contains('is-on') }) }));
           btn.innerHTML = svg;
           btn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleArea(area); });
           const syncState = () => btn.classList.toggle('is-on', this.isAreaOccupied(area));
@@ -2190,7 +2190,7 @@ export class Workbench extends Layout {
           btn.type = 'button';
           const key = this._keybindingHint('workbench.action.showCommands') ?? formatKeybindingForDisplay('ctrl+shift+p');
           btn.title = `Search Commands (${key})`;
-          btn.setAttribute('aria-label', 'Search Commands');
+          btn.setAttribute('aria-label', 'Search Commands'); this._register(declareControl(btn, { id: 'titlebar.searchCommands', label: 'Search Commands', kind: 'iconButton' }));
           btn.innerHTML = ICON_SEARCH;
           btn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleCommandPalette(); });
           layoutGroup.appendChild(btn);
