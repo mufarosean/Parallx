@@ -60,7 +60,7 @@
 //   44. ACTIVATION
 //
 
-import { moDeclare, moEl, moList, moSlug, moSurface, setSceneUi } from './dom.js';
+import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -10654,11 +10654,11 @@ function renderBrowserSidebar(container, api) {
   browseSeg.append(folderSegBtn, tagSegBtn);
   const folderPane = moEl('div', 'mo-browse-pane', { 'data-mo-browse': 'folders' });
   const folderBar = moEl('div', 'mo-browse-bar');
-  const folderBody = moEl('div', 'mo-browse-list');
+  const folderBody = moEl('div', 'mo-browse-list'); moList(folderBody, 'media-organizer.side.folderList', 'Folders', () => [...folderBody.querySelectorAll('.is-current .mo-sidebar-item-label, .mo-sidebar-item.is-current > .mo-sidebar-item-label')].map((e) => e.textContent));
   folderPane.append(folderBar, folderBody);
   const tagPane = moEl('div', 'mo-browse-pane', { 'data-mo-browse': 'tags' });
   const tagBar = moEl('div', 'mo-browse-bar');
-  const tagBody = moEl('div', 'mo-browse-list');
+  const tagBody = moEl('div', 'mo-browse-list'); moTree(tagBody, 'media-organizer.side.tagTree', 'Tags', () => [...tagBody.querySelectorAll('.is-current .mo-sidebar-item-label, .mo-sidebar-item.is-current > .mo-sidebar-item-label')].map((e) => e.textContent));
   tagPane.append(tagBar, tagBody);
   browseBody.append(browseSeg, folderPane, tagPane);
   let browseMode = 'folders';
@@ -13791,7 +13791,7 @@ function renderGridBrowser(container, api, input) {
   // respond to selection requests + grid refresh broadcasts
   const _selectionReplyHandler = () => {
     document.dispatchEvent(new CustomEvent('mo:reply-selection', {
-      detail: { selectedIds: new Set(state.selectedIds) },
+      detail: { selectedIds: new Set(state.selectedIds), shown: root.isConnected && root.getClientRects().length > 0 },
     }));
   };
   document.addEventListener('mo:request-selection', _selectionReplyHandler);
@@ -35815,6 +35815,14 @@ function moBulkSelection() {
   try { document.dispatchEvent(new CustomEvent('mo:request-selection')); } finally { document.removeEventListener('mo:reply-selection', handler); }
   return best;
 }
+// The library tab on screen's selection; hidden tabs answer too, and acting on theirs would trash photos nobody sees.
+function moSelectionOnScreen() {
+  let sel = new Set();
+  const handler = (e) => { if (e.detail && e.detail.shown) sel = e.detail.selectedIds || new Set(); };
+  document.addEventListener('mo:reply-selection', handler);
+  try { document.dispatchEvent(new CustomEvent('mo:request-selection')); } finally { document.removeEventListener('mo:reply-selection', handler); }
+  return sel;
+}
 let _moBulkPending = null;             // photos chosen in the library for a removal whose example is still to be brushed
 
 async function moOpenBulkRemove(api, exampleId) {
@@ -38766,11 +38774,11 @@ export async function activate(api, context) {
   );
   // The one photo selected in the library, or the several: asked of whichever grid is showing.
   const moEditSelection = () => new Promise((resolve) => {
-    let answered = false;
-    const handler = (e) => { answered = true; resolve([...((e.detail && e.detail.selectedIds) || [])].filter((s) => String(s).startsWith('photo:')).map((s) => parseInt(String(s).split(':')[1], 10)).filter((n) => n > 0)); };
-    document.addEventListener('mo:reply-selection', handler, { once: true });
-    document.dispatchEvent(new CustomEvent('mo:request-selection'));
-    setTimeout(() => { document.removeEventListener('mo:reply-selection', handler); if (!answered) resolve(null); }, 500);
+    let pick = null; // every open tab answers, hidden ones too: the one on screen is meant, else the first
+    const handler = (e) => { if (pick === null || (e.detail && e.detail.shown)) pick = [...((e.detail && e.detail.selectedIds) || [])].filter((s) => String(s).startsWith('photo:')).map((s) => parseInt(String(s).split(':')[1], 10)).filter((n) => n > 0); };
+    document.addEventListener('mo:reply-selection', handler);
+    try { document.dispatchEvent(new CustomEvent('mo:request-selection')); } finally { document.removeEventListener('mo:reply-selection', handler); }
+    resolve(pick);
   });
   const moEditDo = (fn) => () => { const e = moEditActive(); if (e) fn(e); };
   _commandDisposables.push(
@@ -38971,24 +38979,15 @@ export async function activate(api, context) {
 
   // trash
   _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.moveToTrash', () => {
-      const ev = new CustomEvent('mo:request-selection');
-      const handler = async (e) => {
-        document.removeEventListener('mo:reply-selection', handler);
-        const sel = (e.detail && e.detail.selectedIds) || new Set();
-        const items = [...sel].map(s => { const [type, id] = s.split(':'); return { type, id: parseInt(id, 10) }; });
-        if (!items.length) {
-          api.window.showInformationMessage('Select photos or videos in the library first, then Move to Trash.');
-          return;
-        }
-        const n = await moMoveToTrash(api, items);
-        api.window.showInformationMessage(`Moved ${n} item${n === 1 ? '' : 's'} to Trash. Restore brings them back; after ${MO_TRASH_DAYS} days they are deleted.`);
-        const refresh = new CustomEvent('mo:refresh-grid');
-        document.dispatchEvent(refresh);
-      };
-      document.addEventListener('mo:reply-selection', handler, { once: true });
-      document.dispatchEvent(ev);
-      setTimeout(() => document.removeEventListener('mo:reply-selection', handler), 500);
+    api.commands.registerCommand('media-organizer.moveToTrash', async () => {
+      const items = [...moSelectionOnScreen()].map(s => { const [type, id] = s.split(':'); return { type, id: parseInt(id, 10) }; });
+      if (!items.length) {
+        api.window.showInformationMessage('Select photos or videos in the library first, then Move to Trash.');
+        return;
+      }
+      const n = await moMoveToTrash(api, items);
+      api.window.showInformationMessage(`Moved ${n} item${n === 1 ? '' : 's'} to Trash. Restore brings them back; after ${MO_TRASH_DAYS} days they are deleted.`);
+      document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
     })
   );
   _commandDisposables.push(

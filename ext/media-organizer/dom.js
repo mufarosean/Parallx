@@ -69,6 +69,12 @@ export function moSurface(node, id, label, instance) {
   return node;
 }
 
+/** A tree the extension renders (the tag hierarchy), one entry, as moList is for a list. */
+export function moTree(node, id, label, selected) {
+  if (ui?.createTree) ui.createTree(node, { id, label, rows: () => [...node.children], selected });
+  return node;
+}
+
 /** A list the extension renders, one entry; `selected` returns the chosen keys. */
 export function moList(node, id, label, selected) {
   if (ui?.createList) ui.createList(node, { id, label, rows: () => [...node.children], selected });
