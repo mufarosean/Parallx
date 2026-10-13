@@ -6299,7 +6299,7 @@ function createSidebarView(container) {
         icon: 'px-study',
         headline: 'Nothing to study yet.',
         hint: 'Open a PDF and choose Study This Document, or add one here.',
-        action: { label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
+        action: { id: 'study.addPdf', label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
       });
       return;
     }
@@ -7282,7 +7282,7 @@ async function renderSetup(host, route, ctx) {
       icon: 'px-study',
       headline: 'Nothing to study yet.',
       hint: 'Open a PDF and choose Study This Document, or add one here.',
-      action: { label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
+      action: { id: 'study.addPdf', label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
     });
     return;
   }
