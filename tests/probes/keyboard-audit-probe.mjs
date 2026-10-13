@@ -35,7 +35,7 @@ import { PROJECT_ROOT, launchApp, cmd, cmdNoWait, setToolEnabled, openFile, tiny
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-keyboard-audit'));
 const only = process.argv.slice(3);
-const TAB_LIMIT = 900;
+
 const SCREENS = [
   ['boot'], ['welcome.openWelcome'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
   ['dashboard.open'], ['agents.show'], ['agents.showRoutines'], ['tools.showInstalled'], ['chat.show'], ['workflows.new'],
@@ -57,15 +57,19 @@ function install() {
   const COMPOSITE = '[role=listbox], [role=tree], [role=tablist], [role=menu], [role=menubar], [role=radiogroup], [role=grid], [role=toolbar]';
   const shown = (e) => { if (!e || !e.isConnected) return false; const r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden], [aria-hidden="true"], [inert]'); };
   const third = (e) => !!e.closest('[class*="univer-"]');
-  const look = (e) => { if (!e) return ''; const cs = getComputedStyle(e); return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderTopColor, cs.borderBottomColor, cs.borderLeftColor, cs.backgroundColor, cs.color, cs.textDecorationLine].join('|'); };
+  const settle = () => { for (const a of document.getAnimations()) { try { if (a.effect?.getComputedTiming().iterations !== Infinity) a.finish(); } catch { /* infinite or detached */ } } };
+  const look = (e) => { if (!e) return ''; settle(); const cs = getComputedStyle(e); return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderTopColor, cs.borderBottomColor, cs.borderLeftColor, cs.backgroundColor, cs.color, cs.textDecorationLine].join('|'); };
+  const around = (e) => [e?.parentElement, e?.parentElement?.parentElement, e?.parentElement?.parentElement?.parentElement].map(look).join('#');
   const where = (e) => { const s = e.closest('[data-px-surface]'); return s ? s.getAttribute('data-px-surface') : '(window)'; };
   const label = (e) => (e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('placeholder') || (e.tagName === 'INPUT' ? '' : e.textContent) || '').trim().replace(/\s+/g, ' ').slice(0, 40);
   const describe = (e) => `${where(e)} :: ${e.tagName.toLowerCase()}${e.getAttribute('role') ? `[role=${e.getAttribute('role')}]` : ''}${e.getAttribute('data-px-id') ? `#${e.getAttribute('data-px-id')}` : (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : '')} "${label(e)}"`;
   // With a dialog open, only the dialog is the screen.
   const scope = () => Array.from(document.querySelectorAll('[aria-modal="true"], [role="dialog"], [role="alertdialog"]')).filter(shown).pop() || document.body;
   window.__kb = {
+    // Tab stops on this screen, to size the Tab run.
+    stops() { return Array.from(this.scope.querySelectorAll('*')).filter((e) => e.tabIndex >= 0 && shown(e) && !e.disabled).length; },
     start() {
-      Object.assign(this, { seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
+      Object.assign(this, { first: null, seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
       let a = document.getElementById('__kb_start');
       if (!a) { a = document.createElement('div'); a.id = '__kb_start'; a.tabIndex = -1; a.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;outline:none'; }
       this.scope.prepend(a);
@@ -74,13 +78,14 @@ function install() {
     step() {
       const a = document.activeElement;
       if (this.prev && this.prev !== a && shown(this.prev) && !third(this.prev)) {
-        if (look(this.prev) === this.prevLook && look(this.prev.parentElement) === this.prevParentLook) this.noRing.push(describe(this.prev));
+        if (look(this.prev) === this.prevLook && around(this.prev) === this.prevParentLook) this.noRing.push(describe(this.prev));
       }
       if (!a || a === document.body || a === document.documentElement || a.id === '__kb_start') { this.prev = null; this.wrapped = true; return 'wrap'; }
       if (a === this.prev) { this.stuck++; return this.stuck > 4 ? 'stuck' : 'same'; }
       this.stuck = 0;
-      this.prev = a; this.prevLook = look(a); this.prevParentLook = look(a.parentElement);
-      if (this.seen.has(a)) return 'seen';
+      this.prev = a; this.prevLook = look(a); this.prevParentLook = around(a);
+      if (this.seen.has(a)) return a === this.first ? 'cycled' : 'seen';
+      if (!this.first) this.first = a;
       this.seen.add(a);
       return 'new';
     },
@@ -98,7 +103,7 @@ function install() {
         || c.parentElement?.querySelector('input');
       if (!m || !shown(m)) return false;
       m.focus();
-      this.prev = m; this.prevLook = look(m); this.prevParentLook = look(m.parentElement); this.stuck = 0;
+      this.prev = m; this.prevLook = look(m); this.prevParentLook = around(m); this.stuck = 0;
       this.driver = m.tagName === 'INPUT' || m === c ? c : null;
       return true;
     },
@@ -111,6 +116,7 @@ function install() {
     },
     // Text against what it sits on (WCAG AA: 4.5:1, or 3:1 for large text).
     contrast() {
+      settle();
       const rgb = (s) => { const m = s.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(',').map((x) => parseFloat(x)); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
       const lum = ({ r, g, b }) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
       const ground = (e) => { for (let p = e; p; p = p.parentElement) { const c = rgb(getComputedStyle(p).backgroundColor); if (c && c.a > 0.5) return c; } return { r: 30, g: 30, b: 30, a: 1 }; };
@@ -138,7 +144,7 @@ function install() {
       if (this.prev && shown(this.prev) && !third(this.prev)) {
         const fl = this.prevLook, pl = this.prevParentLook, p = this.prev;
         p.blur();
-        if (look(p) === fl && look(p.parentElement) === pl) this.noRing.push(describe(p));
+        if (look(p) === fl && around(p) === pl) this.noRing.push(describe(p));
       }
       document.getElementById('__kb_start')?.remove();
       const all = Array.from(this.scope.querySelectorAll(INTERACTIVE)).filter((e) => shown(e) && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !e.closest('[contenteditable="true"]') && e.id !== '__kb_start');
@@ -220,13 +226,18 @@ async function mouseOnly(count) {
 async function auditScreen(label) {
   await page.evaluate(install);
   await page.evaluate(() => window.__kb.start());
-  let trap = null, tabs = 0;
+  const limit = 2 * (await page.evaluate(() => window.__kb.stops())) + 20;
+  let trap = null, tabs = 0, wrapped = false, repeats = 0;
   // 1. One unbroken Tab run, until focus comes round to what it already met.
-  for (; tabs < TAB_LIMIT; tabs++) {
+  for (; tabs < limit; tabs++) {
     await page.keyboard.press('Tab');
     const r = await page.evaluate(() => window.__kb.step());
     if (r === 'stuck') { trap = await page.evaluate(() => { const a = document.activeElement; const s = a?.closest('[data-px-surface]'); return `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${a?.tagName.toLowerCase()} "${(a?.getAttribute('aria-label') || a?.textContent || '').trim().slice(0, 40)}"`; }); break; }
-    if (r === 'seen' && tabs > 3) break;
+    // Done when the order has come round: after a wrap to the top, the first element met again; a
+    // dialog keeps Tab inside, so 40 repeats in a row with no wrap also ends it.
+    if (r === 'wrap') wrapped = true;
+    repeats = r === 'seen' ? repeats + 1 : 0;
+    if (r === 'cycled' || (r === 'seen' && wrapped) || repeats >= 40) break;
   }
   // 2. F6: which visible areas it reaches (not inside a dialog).
   const f6 = await page.evaluate(() => {
@@ -253,7 +264,7 @@ async function auditScreen(label) {
   // 3. The arrow keys inside each composite.
   const comps = await page.evaluate(() => window.__kb.composites());
   for (let c = 0; c < comps; c++) {
-    for (const dir of ['ArrowDown', 'ArrowRight', 'End']) {
+    for (const dir of ['ArrowRight', 'ArrowDown', 'End']) {
       if (!(await page.evaluate((i) => window.__kb.enter(i), c))) break;
       let stale = 0;
       for (let i = 0; i < 60 && stale < 3; i++) {
@@ -261,7 +272,9 @@ async function auditScreen(label) {
         const r = await page.evaluate(() => { window.__kb.activeOption(); return window.__kb.step(); });
         stale = r === 'new' ? 0 : stale + 1;
       }
-      await page.keyboard.press('Escape');
+      // Close only what the arrows opened (a dropdown's list, a menu); an
+      // Escape otherwise moves focus out of the area being walked.
+      if (await page.evaluate(() => Array.from(document.querySelectorAll('.ui-dropdown__list, [data-px-surface="contextMenu"]')).some((e) => e.getClientRects().length))) await page.keyboard.press('Escape');
     }
   }
   await page.evaluate(() => document.activeElement?.blur());
@@ -273,9 +286,9 @@ async function auditScreen(label) {
   });
   const noName = await namelessNodes();
   const mouse = await mouseOnly(res.pointerCount);
-  const row = { screen: label, tabs, trap, f6Missing, notFocusable: res.notFocusable, tabHole: res.tabHole, noRing: res.noRing, noName, mouseOnly: mouse, lowContrast, lowContrastLight: [], thirdParty: res.thirdParty.length, reached: res.reached, interactive: res.interactive };
+  const row = { screen: label, tabs, trap, incomplete: tabs >= limit, f6Missing, notFocusable: res.notFocusable, tabHole: res.tabHole, noRing: res.noRing, noName, mouseOnly: mouse, lowContrast, lowContrastLight: [], thirdParty: res.thirdParty.length, reached: res.reached, interactive: res.interactive };
   report.push(row);
-  console.log(`[screen] ${label}: tabs=${tabs} reached=${res.reached}/${res.interactive} notFocusable=${res.notFocusable.length} tabHole=${res.tabHole.length} f6Missing=${f6Missing.length} noFocusRing=${res.noRing.length} noName=${noName.length} mouseOnly=${mouse.length} lowContrast=${lowContrast.length} thirdParty=${res.thirdParty.length}${trap ? ` TRAP at ${trap}` : ''}${tabs >= TAB_LIMIT ? ' (Tab limit)' : ''}`);
+  console.log(`[screen] ${label}: tabs=${tabs} reached=${res.reached}/${res.interactive} notFocusable=${res.notFocusable.length} tabHole=${res.tabHole.length} f6Missing=${f6Missing.length} noFocusRing=${res.noRing.length} noName=${noName.length} mouseOnly=${mouse.length} lowContrast=${lowContrast.length} thirdParty=${res.thirdParty.length}${trap ? ` TRAP at ${trap}` : ''}${tabs >= limit ? ' INCOMPLETE (Tab never came round)' : ''}`);
 }
 
 /** Light mode: the same screens, text contrast only. */
@@ -393,6 +406,7 @@ try {
   for (const [first, ...args] of SCREENS) {
     const label = [first, ...args].join(' ');
     if (only.length && !only.some((o) => label.includes(o))) continue;
+    console.log(`[open] ${label}`);
     await open(first, args);
     await page.waitForTimeout(1_500);
     await auditScreen(label);
@@ -404,6 +418,7 @@ try {
       await page.waitForTimeout(800);
       const ok = await page.evaluate((id) => { const els = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)); const e = els.find((x) => x.getClientRects().length); if (!e) return false; e.click(); return true; }, id);
       if (!ok) continue;
+      console.log(`[open] ${label} > ${id}`);
       await page.waitForTimeout(1_000);
       await auditScreen(`${label} > ${id}`);
     }
@@ -427,10 +442,12 @@ for (const k of kinds) {
 }
 const traps = report.filter((r) => r.trap).map((r) => `${r.screen}: ${r.trap}`);
 console.log(`\n# traps (${traps.length})\n  ${traps.join('\n  ')}`);
+const incomplete = report.filter((r) => r.incomplete).map((r) => r.screen);
+console.log(`\n# incomplete Tab runs (${incomplete.length})\n  ${incomplete.join('\n  ')}`);
 // A modal must say it is a dialog and modal; a prompt must be announced.
 const srProblem = (d) => !d.screenReader || (DIALOGS.find((x) => x.name === d.name)?.modal && (!/dialog/.test(d.screenReader.role) || d.screenReader.modal !== 'true')) || (d.name === 'prompt toast' && !d.screenReader.announced && !(d.screenReader.role === 'alertdialog' && d.focusMovedIn)) || d.screenReader.role === 'none';
 const dialogProblems = dialogs.filter((d) => d.problem || !d.opened || !d.escapeCloses || !d.focusReturned || (!d.focusMovedIn && !d.reachableByTab) || d.tabStaysInside === false || srProblem(d));
 console.log(`\n# dialogs (${dialogs.length} checked, ${dialogProblems.length} with a problem)\n  ${dialogProblems.map((d) => JSON.stringify(d)).join('\n  ')}`);
 console.log(`\n[screens] ${report.length}`);
-console.log(`[totals] ${JSON.stringify(totals)} traps=${traps.length}`);
+console.log(`[totals] ${JSON.stringify(totals)} traps=${traps.length} incomplete=${incomplete.length}`);
 await fs.writeFile(path.join(outDir, 'keyboard-audit.json'), JSON.stringify(report, null, 2));
