@@ -20,7 +20,7 @@ const env = { ...process.env, PARALLX_TEST_MODE: '1', PARALLX_RENDERER_PORT: '0'
 delete env.ELECTRON_RUN_AS_NODE;
 const results = [];
 const check = (label, ok, detail) => { results.push(ok); console.log(`[probe] ${ok ? 'ok  ' : 'FAIL'} ${label}${detail !== undefined ? ` ${JSON.stringify(detail)}` : ''}`); };
-const app = await electron.launch({ args: ['.', '--no-sandbox', '--disable-gpu'], cwd: repo, env, timeout: 90000 });
+const app = await electron.launch({ args: ['.', '--mute-audio', '--no-sandbox', '--disable-gpu'], cwd: repo, env, timeout: 90000 });
 try {
   const page = await app.firstWindow();
   await page.waitForSelector('.parallx-ready', { state: 'attached', timeout: 120000 });

@@ -173,7 +173,7 @@ async function main() {
   await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.stringify({ path: workspace }));
   await fs.symlink(path.join(ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction');
   const report = { started: new Date().toISOString(), model: MODEL, trialsPerTask: TRIALS, timeoutMs: TIMEOUT_MS, visible: VISIBLE, setup: {}, trials: [] };
-  const app = await electron.launch({ args: ['.'], cwd: ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: ROOT, env: launchEnv(appRoot) });
   // Page dialogs are the broker's to answer; keep Playwright from dismissing them.
   app.context().on('dialog', () => {});
   try {

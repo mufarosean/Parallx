@@ -42,7 +42,7 @@ async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace } = await makeRoots();
   console.log(`[probe] workspace ${workspace}`);
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = [];
   const shot = async (page, name) => { const f = path.join(outDir, name); await page.screenshot({ path: f }); console.log(`[probe] screenshot -> ${f}`); };
   try {

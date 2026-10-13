@@ -25,7 +25,7 @@ await fs.writeFile(path.join(workspace, '.parallx/ai-config.json'), JSON.stringi
 
 const env = { ...process.env, PARALLX_TEST_MODE: '1', PARALLX_RENDERER_PORT: '0', PARALLX_APP_ROOT: appRoot, PARALLX_USER_DATA: path.join(appRoot, 'data/chromium-cache') };
 delete env.ELECTRON_RUN_AS_NODE;
-const app = await electron.launch({ args: ['.', '--no-sandbox', '--disable-gpu'], cwd: repo, env, timeout: 90000 });
+const app = await electron.launch({ args: ['.', '--mute-audio', '--no-sandbox', '--disable-gpu'], cwd: repo, env, timeout: 90000 });
 const results = [];
 const errors = [];
 try {

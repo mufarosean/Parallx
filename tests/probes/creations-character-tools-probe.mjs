@@ -162,7 +162,7 @@ async function main() {
   const charsDir = path.join(workspace, '.parallx', 'extensions', 'text-generator', 'characters');
   console.log(`[probe] workspace ${workspace}`);
 
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = [];
   const page = await app.firstWindow();
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));

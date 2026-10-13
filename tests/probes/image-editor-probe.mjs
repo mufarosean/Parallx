@@ -327,7 +327,7 @@ async function main() {
   const hasModel = existsSync(path.join(MODELS, MODEL));
   const hasUpscaler = existsSync(UPSCALER);
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}\n[probe] remove model ${hasModel ? 'on disk' : 'NOT on disk: Remove is not checked'}; upscaler ${hasUpscaler ? 'installed' : 'NOT installed: Enhance is not checked'}`);
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   APP = app;
   const errors = [];
   try {

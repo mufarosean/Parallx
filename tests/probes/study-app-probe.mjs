@@ -160,7 +160,7 @@ async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace } = await makeRoots();
   // Chromium refuses to run as root with its sandbox on (a container's user).
-  const args = process.getuid?.() === 0 ? ['--no-sandbox', '.'] : ['.'];
+  const args = process.getuid?.() === 0 ? ['--no-sandbox', '.', '--mute-audio'] : ['.', '--mute-audio'];
   const app = await electron.launch({ executablePath: ELECTRON, args, cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = []; let failures = 0; let n = 0;
   const check = (label, ok, detail) => { console.log(`[probe] ${ok ? 'ok  ' : 'FAIL'} ${label}${detail !== undefined ? ' :: ' + String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 400) : ''}`); if (!ok) failures++; };

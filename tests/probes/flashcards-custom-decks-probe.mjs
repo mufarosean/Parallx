@@ -47,7 +47,7 @@ async function tool(page, name, args) {
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace } = await makeRoots();
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = [];
   // A picture is a help, not a check: a hidden window that will not paint must not stop the run.
   const shot = async (page, name) => { const f = path.join(outDir, name); try { await page.screenshot({ path: f, timeout: 8_000 }); console.log(`[probe] screenshot -> ${f}`); } catch { console.log(`[probe] no screenshot for ${name}`); } };

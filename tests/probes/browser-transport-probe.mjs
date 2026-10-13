@@ -89,7 +89,7 @@ async function main() {
   await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.stringify({ path: workspace }));
   await fs.symlink(path.join(ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction');
 
-  const app = await electron.launch({ args: ['.'], cwd: ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: ROOT, env: launchEnv(appRoot) });
   // Keep Playwright from answering page dialogs itself (it dismisses any nobody listens for).
   app.context().on('dialog', () => {});
   const result = { scope: 'Actual app, actual Browser bridge, real agent-partition view, its existing debugger; hidden window.', baseUrl, checks: {} };

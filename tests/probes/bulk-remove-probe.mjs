@@ -325,7 +325,7 @@ async function main() {
   const { appRoot, workspace, photos, set, exampleId, backgrounds: nbg } = await makeRoots();
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}\n[probe] ${set.length} photos in the set over ${nbg} backgrounds, ${set.reduce((n, p) => n + p.marks.length, 0)} marks stamped`);
   const sizes = new Map(set.map((p) => [p.name, statSync(p.file).size]));
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   APP = app;
   const errors = [];
   try {

@@ -25,7 +25,7 @@ const results = [];
 const check = (label, ok, detail) => { results.push({ label, ok }); console.log(`[probe] ${ok ? 'ok  ' : 'FAIL'} ${label}${detail !== undefined ? ` (${JSON.stringify(detail)})` : ''}`); };
 
 async function launch() {
-  const app = await electron.launch({ args: ['.', '--no-sandbox', '--disable-gpu'], cwd: repo, env, timeout: 90000 });
+  const app = await electron.launch({ args: ['.', '--mute-audio', '--no-sandbox', '--disable-gpu'], cwd: repo, env, timeout: 90000 });
   const page = await app.firstWindow();
   await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(1280, 800); });
   await page.waitForSelector('.parallx-ready', { state: 'attached', timeout: 120000 });

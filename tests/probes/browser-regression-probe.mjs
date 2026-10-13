@@ -226,7 +226,7 @@ async function main() {
   await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.stringify({ path: workspace }));
   await fs.symlink(path.join(ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction');
 
-  const app = await electron.launch({ args: ['.', ...(SCALE ? [`--force-device-scale-factor=${SCALE}`] : []), ...(SOFTWARE ? ['--disable-gpu', '--in-process-gpu'] : [])], cwd: ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio', ...(SCALE ? [`--force-device-scale-factor=${SCALE}`] : []), ...(SOFTWARE ? ['--disable-gpu', '--in-process-gpu'] : [])], cwd: ROOT, env: launchEnv(appRoot) });
   for (const stream of [app.process().stdout, app.process().stderr]) stream?.on('data', (chunk) => appendFileSync(path.join(OUT, 'electron.log'), chunk));
   app.process().on('exit', (code, signal) => log(`Electron exited: code=${code}, signal=${signal}`));
   await app.evaluate(({ app, webContents }) => {

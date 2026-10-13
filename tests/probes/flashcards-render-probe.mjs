@@ -75,7 +75,7 @@ async function main() {
   const plan = JSON.parse(await fs.readFile(planPath, 'utf8'));
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace } = await makeRoots();
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = [];
   let failures = 0;
   const check = (label, ok, detail) => { console.log(`[probe] ${ok ? 'ok  ' : 'FAIL'} ${label}${detail !== undefined ? ' :: ' + String(detail).slice(0, 300) : ''}`); if (!ok) failures++; };
