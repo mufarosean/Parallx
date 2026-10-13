@@ -5407,7 +5407,7 @@ const CL_CSS = `
 .cl-guide-title {
   font-size: var(--px-text-sm);
   font-weight: 600;
-  color: var(--px-text-secondary);
+  color: var(--px-text); /* readable on the inset ground (WCAG AA 4.5:1) */
   letter-spacing: 0.06em;
   color: var(--px-text-faint);
   margin-bottom: var(--px-space-3);
@@ -5484,7 +5484,7 @@ const CL_CSS = `
 }
 .cl-card-paper {
   font-size: var(--px-text-2xs);
-  color: var(--px-text-faint);
+  color: var(--px-text); /* a citation is read: AA contrast on the inset ground; its size keeps it quiet */
   border-top: 1px solid var(--px-divider);
   padding-top: var(--px-space-2);
 }
