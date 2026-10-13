@@ -692,18 +692,18 @@ export class Grid extends Disposable {
    * moving the sash it shares with a neighbour. Zero-sum with that
    * neighbour and clamped by both sides' minimums, exactly like a drag.
    *
-   * This replaces the callers that used to walk `root.children` for a sash
-   * index by hand — an index-based dance that broke the moment the view sat
-   * one branch deeper. Works wherever the view is in the tree.
+   * Works wherever the view is in the tree (an index walk by hand broke the
+   * moment the view sat one branch deeper).
    */
-  resizeView(viewId: string, size: number): void {
+  resizeView(viewId: string, size: number, axis?: Orientation): void {
     const leaf = this._views.get(viewId);
     if (!leaf) return;
-    const parent = this._findParent(leaf);
+    // Given an axis, the nearest branch running that way: a panel under the editor widens with its column.
+    let node: GridNode = leaf, parent = this._findParent(leaf);
+    while (axis && parent && parent.orientation !== axis) { node = parent; parent = this._findParent(parent); }
     if (!parent || parent.childCount < 2) return;
-
-    const index = parent.indexOfChild(leaf);
-    const delta = size - this._getNodeSize(leaf);
+    const index = parent.indexOfChild(node);
+    const delta = size - this._getNodeSize(node);
     if (delta === 0) return;
 
     // resizeSash grows its FIRST child on a positive delta. Prefer the sash

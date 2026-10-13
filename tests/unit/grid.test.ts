@@ -807,3 +807,23 @@ describe('resizeSash in a nested branch — cross axis stays truthful', () => {
     grid.dispose();
   });
 });
+
+describe('resizeView along an axis — the keyboard resize', () => {
+  it('widens a panel under the editor by moving its column, not its own divider', () => {
+    const grid = new Grid(Orientation.Horizontal, 1000, 600);
+    // H[ side(200), V[ editor(400), panel(200) ] ]: widening the panel is widening the column.
+    grid.addView(createMockView('side'), 200);
+    grid.addView(createMockView('editor'), 800);
+    grid.splitView('editor', createMockView('panel'), 200, Orientation.Vertical);
+    grid.layout();
+    grid.resizeView('panel', 200);
+    const before = grid.getViewRect('panel')!;
+    grid.resizeView('panel', before.width + 24, Orientation.Horizontal);
+    expect(grid.getViewRect('panel')!.width).toBe(before.width + 24);
+    expect(grid.getViewRect('panel')!.height).toBe(before.height);
+    expect(grid.getViewRect('side')!.width).toBe(200 - 24);
+    grid.resizeView('panel', before.height - 24, Orientation.Vertical);
+    expect(grid.getViewRect('panel')!.height).toBe(before.height - 24);
+    grid.dispose();
+  });
+});

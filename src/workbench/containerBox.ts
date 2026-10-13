@@ -79,6 +79,7 @@ export class ContainerBox extends Disposable implements IGridView {
     // The generic drop machinery targets grid views by this attribute; a
     // box is as much a drop target as a part is.
     this.element.setAttribute('data-part-id', this.id);
+    this.element.dataset.containerId = containerId; // what the layout commands ask about
 
     const card = $('div');
     card.classList.add('container-box-card');

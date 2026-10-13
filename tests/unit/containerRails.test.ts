@@ -357,4 +357,24 @@ describe('activity bar as a container drag surface', () => {
     left.dispose();
     right.dispose();
   });
+
+  it('moves the focused icon with Ctrl+Shift+Up/Down, as a drag would', () => {
+    const bar = makeBar(PartId.ActivityBar, 'right');
+    for (const id of ['a', 'b', 'c']) bar.addIcon({ id, icon: id, label: id, source: 'contributed' });
+    const order = () => Array.from(bar.element.querySelectorAll<HTMLElement>('.activity-bar-item')).map((b) => b.dataset.iconId);
+    const a = bar.element.querySelector<HTMLElement>('[data-icon-id="a"]')!;
+    a.focus();
+    const press = (key: string) => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    press('ArrowDown');
+    expect(order()).toEqual(['b', 'a', 'c']);
+    press('ArrowDown');
+    expect(order()).toEqual(['b', 'c', 'a']);
+    press('ArrowDown');
+    expect(order()).toEqual(['b', 'c', 'a']);
+    press('ArrowUp');
+    expect(order()).toEqual(['b', 'a', 'c']);
+    expect(document.activeElement).toBe(a);
+    expect(a.tabIndex).toBe(0);
+    bar.dispose();
+  });
 });

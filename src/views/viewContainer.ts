@@ -131,7 +131,12 @@ export class ViewContainer extends Disposable implements IGridView {
       const focused = document.activeElement as HTMLElement;
       const currentIdx = tabs.indexOf(focused);
       if (currentIdx < 0) return;
-
+      // Ctrl+Shift+Left/Right moves the focused tab, the keyboard's drag (as editor tabs do).
+      if (e.ctrlKey && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const a = this._tabOrder.indexOf(focused.dataset.viewId ?? ''), b = this._tabOrder.indexOf(tabs[currentIdx + (e.key === 'ArrowLeft' ? -1 : 1)]?.dataset.viewId ?? '');
+        if (a >= 0 && b >= 0) { [this._tabOrder[a], this._tabOrder[b]] = [this._tabOrder[b], this._tabOrder[a]]; this._rebuildTabBar(); focused.focus(); }
+        e.preventDefault(); e.stopPropagation(); return;
+      }
       let nextIdx = -1;
       switch (e.key) {
         case 'ArrowRight':
@@ -724,61 +729,54 @@ export class ViewContainer extends Disposable implements IGridView {
   }
 
   /**
-   * Handle mousedown on a section sash for vertical resize between stacked sections.
+   * Grow one expanded section by `delta` px, taken from the section below it
+   * (above it, for the last one): the keyboard's Taller and Shorter.
    */
-  private _onSectionSashMouseDown(sashIndex: number, startY: number): void {
-
+  resizeSection(viewId: string, delta: number): boolean {
     const expandedIds = this._tabOrder.filter(id => !this._collapsedSections.has(id));
-    if (expandedIds.length < 2) return;
+    const i = expandedIds.indexOf(viewId);
+    if (i < 0 || expandedIds.length < 2) return false;
+    const last = i === expandedIds.length - 1;
+    return this._moveSectionSash(last ? i - 1 : i, last ? -delta : delta);
+  }
 
-    // Find which two expanded sections this sash is between
-    const aboveId = expandedIds[sashIndex];
-    const belowId = expandedIds[sashIndex + 1];
-    if (!aboveId || !belowId) return;
-
-    const aboveSection = this._sectionElements.get(aboveId);
-    const belowSection = this._sectionElements.get(belowId);
-    if (!aboveSection || !belowSection) return;
-
-    const singleView = this._views.size <= 1;
-    const headerH = singleView ? 0 : ViewContainer.SECTION_HEADER_HEIGHT;
-    const minH = ViewContainer.SECTION_MIN_BODY_HEIGHT;
-    let aboveH = aboveSection.body.offsetHeight;
-    let belowH = belowSection.body.offsetHeight;
-
-    const onMouseMove = (e: MouseEvent): void => {
-      const delta = e.clientY - startY;
-      startY = e.clientY;
-
-      const newAbove = Math.max(minH, aboveH + delta);
-      const newBelow = Math.max(minH, belowH - delta);
-
-      // Update wrapper flex-basis so CSS flex layout handles scroll/overflow
-      aboveSection.wrapper.style.flex = `0 0 ${newAbove + headerH}px`;
-      belowSection.wrapper.style.flex = `0 0 ${newBelow + headerH}px`;
-
-      aboveH = newAbove;
-      belowH = newBelow;
-
-      // Persist custom heights so _layoutStacked() respects them
-      this._customSectionHeights.set(aboveId, newAbove);
-      this._customSectionHeights.set(belowId, newBelow);
-
-      // Layout views within resized sections
-      const aboveView = this._views.get(aboveId);
-      const belowView = this._views.get(belowId);
-      aboveView?.layout(this._width, newAbove);
-      belowView?.layout(this._width, newBelow);
-    };
-
-    // Guarded drag (interactionMode.ts): Escape/blur/lost-pointer all end
-    // it through one cleanup that restores the app-wide drag styles.
+  /** A section sash drag, guarded (interactionMode.ts): Escape, blur or a lost pointer end it. */
+  private _onSectionSashMouseDown(sashIndex: number, startY: number): void {
     beginPointerDrag(null, {
       id: 'section-sash',
       cursor: 'row-resize',
-      onMove: onMouseMove,
+      onMove: (e: MouseEvent) => { this._moveSectionSash(sashIndex, e.clientY - startY); startY = e.clientY; },
       onEnd: () => {},
     });
+  }
+
+  /**
+   * Move the sash between expanded sections `sashIndex` and `sashIndex + 1`
+   * by `delta` px, zero-sum and clamped so neither body drops below its minimum.
+   */
+  private _moveSectionSash(sashIndex: number, delta: number): boolean {
+    const expandedIds = this._tabOrder.filter(id => !this._collapsedSections.has(id));
+    const aboveId = expandedIds[sashIndex];
+    const belowId = expandedIds[sashIndex + 1];
+    const aboveSection = aboveId ? this._sectionElements.get(aboveId) : undefined;
+    const belowSection = belowId ? this._sectionElements.get(belowId) : undefined;
+    if (!aboveSection || !belowSection) return false;
+    const headerH = this._views.size <= 1 ? 0 : ViewContainer.SECTION_HEADER_HEIGHT;
+    const minH = ViewContainer.SECTION_MIN_BODY_HEIGHT;
+    // Remembered heights after the first move: no layout read per pointer frame.
+    const aboveH = this._customSectionHeights.get(aboveId) ?? aboveSection.body.offsetHeight;
+    const belowH = this._customSectionHeights.get(belowId) ?? belowSection.body.offsetHeight;
+    const d = Math.max(minH - aboveH, Math.min(belowH - minH, delta));
+    if (d === 0) return false;
+    // Wrapper flex-basis, so CSS flex layout handles scroll and overflow.
+    aboveSection.wrapper.style.flex = `0 0 ${aboveH + d + headerH}px`;
+    belowSection.wrapper.style.flex = `0 0 ${belowH - d + headerH}px`;
+    // Persisted so _layoutStacked() respects them.
+    this._customSectionHeights.set(aboveId, aboveH + d);
+    this._customSectionHeights.set(belowId, belowH - d);
+    this._views.get(aboveId)?.layout(this._width, aboveH + d);
+    this._views.get(belowId)?.layout(this._width, belowH - d);
+    return true;
   }
 
   /**

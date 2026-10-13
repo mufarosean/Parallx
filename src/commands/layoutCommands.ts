@@ -10,12 +10,15 @@
 //
 // Target-taking commands follow the adoptWidget convention: the first
 // argument names the target (widget instance id, container id, part id,
-// layout id); invalid or missing arguments no-op rather than throw, since
-// the palette can invoke any titled command bare.
+// layout id); invalid arguments no-op rather than throw. Run bare from the
+// palette, the move commands ASK (which area, the focused one first; then
+// where), so every drag of the layout layer has a keyboard way
+// (docs/ACCESSIBILITY.md, section 6).
 
 import type { CommandDescriptor } from './commandTypes.js';
 import { wb } from './structuralCommandTypes.js';
 import type { IWindowService } from '../services/serviceTypes.js';
+import { showQuickPickModal } from '../api/notificationService.js';
 
 type Edge = 'left' | 'right' | 'bottom';
 type ContentAlign = 'start' | 'start-padded' | 'center';
@@ -26,6 +29,40 @@ const ALIGNS: readonly ContentAlign[] = ['start', 'start-padded', 'center'];
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
+
+// ─── Asking, for a bare palette run ──────────────────────────────────────────
+
+interface IChoice { readonly id: string; readonly label: string; readonly focused?: boolean }
+
+/** One question as a quick pick; the chosen id, or undefined when dismissed. */
+async function ask(placeholder: string, choices: readonly IChoice[]): Promise<string | undefined> {
+  if (!choices.length) return undefined;
+  const picked = await showQuickPickModal(document.body, choices.map((c) => ({ label: c.label, description: c.focused ? 'Focused' : undefined })), { placeholder });
+  const one = Array.isArray(picked) ? picked[0] : picked;
+  return one ? choices.find((c) => c.label === one.label)?.id : undefined;
+}
+
+
+/**
+ * The areas of the layout on screen, the focused one first: every grid area
+ * by its id, or (given `key`) only the floating boxes carrying that data key.
+ */
+function areas(key?: 'containerId' | 'instanceId', except?: string): IChoice[] {
+  const out: IChoice[] = [];
+  // The grid area holding focus: a part, a floating container or a seated widget.
+  const focused = document.activeElement?.closest<HTMLElement>('.grid-branch > [data-part-id]');
+  for (const el of document.querySelectorAll<HTMLElement>('.grid-branch > [data-part-id]')) {
+    const id = key ? el.dataset[key] : el.getAttribute('data-part-id')!;
+    if (!id || id === except || !el.getClientRects().length || out.some((c) => c.id === id)) continue;
+    const label = el.getAttribute('aria-label') || el.querySelector('[class*="-title"]')?.textContent?.trim() || id;
+    out.push({ id, label, focused: el === focused });
+  }
+  return out.sort((a, b) => Number(!!b.focused) - Number(!!a.focused));
+}
+
+const EDGE_CHOICES: readonly IChoice[] = [
+  { id: 'left', label: 'Left Edge' }, { id: 'right', label: 'Right Edge' }, { id: 'bottom', label: 'Bottom Edge' },
+];
 
 // ─── Widget seats ────────────────────────────────────────────────────────────
 
@@ -82,9 +119,9 @@ export const widgetMoveToEdge: CommandDescriptor = {
   title: 'Move Widget to Edge',
   category: 'View',
   aiDescription: 'Move a seated widget to a window edge (instance id, then "left", "right", or "bottom").',
-  handler(ctx, ...args) {
-    const id = str(args[0]);
-    const edge = args[1];
+  async handler(ctx, ...args) {
+    const id = str(args[0]) ?? await ask('Move which widget?', areas('instanceId'));
+    const edge = args[1] ?? (id ? await ask('To which edge?', EDGE_CHOICES) : undefined);
     if (id && EDGES.includes(edge as Edge)) {
       wb(ctx)._widgetBoxes.moveToEdge(id, edge as Edge);
     }
@@ -120,8 +157,12 @@ export const containerFloat: CommandDescriptor = {
   title: 'Float Container',
   category: 'View',
   aiDescription: 'Detach a docked view container (by container id) into a floating box in the workbench grid.',
-  handler(ctx, ...args) {
-    const id = str(args[0]);
+  async handler(ctx, ...args) {
+    // Bare: the rails' containers, then the panel's views (a view floats alone).
+    const id = str(args[0]) ?? await ask('Float which?', [
+      ...Array.from(document.querySelectorAll<HTMLElement>('.activity-bar-item[data-icon-id]')).map((b) => ({ id: b.dataset.iconId!, label: b.getAttribute('aria-label') || b.dataset.iconId! })),
+      ...Array.from(document.querySelectorAll<HTMLElement>('[data-part-id="workbench.parts.panel"] .view-tab[data-view-id]')).map((t) => ({ id: `panelview:${t.dataset.viewId}`, label: `${t.textContent?.trim() || t.dataset.viewId} (Panel)` })),
+    ]);
     if (id) wb(ctx)._containerBoxes.float(id);
   },
 };
@@ -131,9 +172,9 @@ export const containerDock: CommandDescriptor = {
   title: 'Dock Container to Rail',
   category: 'View',
   aiDescription: 'Dock a floating container back to a rail (container id, then "left" or "right"). A detached panel view returns to the panel.',
-  handler(ctx, ...args) {
-    const id = str(args[0]);
-    const rail = args[1];
+  async handler(ctx, ...args) {
+    const id = str(args[0]) ?? await ask('Dock which container?', areas('containerId'));
+    const rail = args[1] ?? (id ? await ask('To which rail?', [{ id: 'left', label: 'Left Rail' }, { id: 'right', label: 'Right Rail' }]) : undefined);
     if (id && (rail === 'left' || rail === 'right')) {
       wb(ctx)._containerBoxes.dock(id, rail);
     }
@@ -145,9 +186,9 @@ export const containerMoveToEdge: CommandDescriptor = {
   title: 'Move Container to Edge',
   category: 'View',
   aiDescription: 'Move a floating container to a window edge (container id, then "left", "right", or "bottom").',
-  handler(ctx, ...args) {
-    const id = str(args[0]);
-    const edge = args[1];
+  async handler(ctx, ...args) {
+    const id = str(args[0]) ?? await ask('Move which container?', areas('containerId'));
+    const edge = args[1] ?? (id ? await ask('To which edge?', EDGE_CHOICES) : undefined);
     if (id && EDGES.includes(edge as Edge)) {
       wb(ctx)._containerBoxes.moveToEdge(id, edge as Edge);
     }
@@ -161,9 +202,9 @@ export const movePartToEdge: CommandDescriptor = {
   title: 'Move Part to Edge',
   category: 'View',
   aiDescription: 'Move any workbench part to a window edge (partId, then "left", "right", or "bottom"). The fixed-part forms (layout.moveSidebarLeft and friends) remain for the common cases.',
-  handler(ctx, ...args) {
-    const partId = str(args[0]);
-    const edge = args[1];
+  async handler(ctx, ...args) {
+    const partId = str(args[0]) ?? await ask('Move which area?', areas());
+    const edge = args[1] ?? (partId ? await ask('To which edge?', EDGE_CHOICES) : undefined);
     if (partId && EDGES.includes(edge as Edge)) {
       wb(ctx).movePartToEdge(
         partId,
@@ -190,12 +231,21 @@ export const movePartBeside: CommandDescriptor = {
   title: 'Move Part Beside Another',
   category: 'View',
   aiDescription: 'Place one workbench part next to another (partId, targetId, "horizontal" or "vertical", before as boolean); the drag gesture\'s command equivalent.',
-  handler(ctx, ...args) {
-    const partId = str(args[0]);
-    const targetId = str(args[1]);
-    const orientation = args[2];
+  async handler(ctx, ...args) {
+    let [partId, targetId, orientation, before] = [str(args[0]), str(args[1]), args[2], args[3] === true];
+    if (!partId) {
+      // Bare: which area, beside which, and on which side of it.
+      partId = await ask('Move which area?', areas());
+      targetId = partId ? await ask('Beside which?', areas(undefined, partId)) : undefined;
+      const side = targetId ? await ask('On which side?', [
+        { id: 'left', label: 'Left Of It' }, { id: 'right', label: 'Right Of It' }, { id: 'above', label: 'Above It' }, { id: 'below', label: 'Below It' },
+      ]) : undefined;
+      if (!side) return;
+      orientation = side === 'left' || side === 'right' ? 'horizontal' : 'vertical';
+      before = side === 'left' || side === 'above';
+    }
     if (partId && targetId && (orientation === 'horizontal' || orientation === 'vertical')) {
-      wb(ctx).movePartBeside(partId, targetId, orientation, args[3] === true);
+      wb(ctx).movePartBeside(partId, targetId, orientation, before);
     }
   },
 };

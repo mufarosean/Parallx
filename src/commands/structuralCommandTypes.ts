@@ -7,6 +7,7 @@
 import type { CommandExecutionContext } from './commandTypes.js';
 import type { IWorkspaceService, IFileService } from '../services/serviceTypes.js';
 import { URI } from '../platform/uri.js';
+import type { Orientation } from '../layout/layoutTypes.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -63,7 +64,8 @@ export interface WorkbenchLike {
     layout(): void;
     hasView(viewId: string): boolean;
     getViewSize(viewId: string): number | undefined;
-    resizeView(viewId: string, size: number): void;
+    resizeView(viewId: string, size: number, axis?: Orientation): void;
+    getViewRect(viewId: string): { width: number; height: number } | undefined;
   };
   /** Rebuild the default shape — the reset command's whole implementation. */
   resetLayout(): void;
@@ -117,6 +119,8 @@ export interface ViewContainerLike {
   addView(view: unknown, index?: number): void;
   removeView(viewId: string): unknown | undefined;
   getView(viewId: string): unknown | undefined;
+  /** Grow a stacked section, taken from its neighbour; false when it cannot. */
+  resizeSection?(viewId: string, delta: number): boolean;
 }
 
 export function wb(ctx: CommandExecutionContext): WorkbenchLike {

@@ -27,6 +27,7 @@ import {
   showCommands, quickOpen, gotoLine,
   toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode, saveLayout, addWidget, adoptWidget,
   viewMoveToSidebar, viewMoveToPanel, partResize,
+  increaseViewWidth, decreaseViewWidth, increaseViewHeight, decreaseViewHeight,
   showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
 import {
@@ -376,6 +377,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   viewMoveToSidebar,
   viewMoveToPanel,
   partResize,
+  increaseViewWidth, decreaseViewWidth, increaseViewHeight, decreaseViewHeight,
   // Focus (Cap 8)
   focusNextPart,
   focusPreviousPart,

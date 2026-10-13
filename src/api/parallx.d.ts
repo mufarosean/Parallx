@@ -781,6 +781,13 @@ export namespace ui {
   /** Declares a control you drew yourself. It keeps its DOM and listeners; this writes the id, a role and a label. */
   export function declareControl(element: HTMLElement, declaration: InPlaceDeclaration): IDisposable;
 
+  /**
+   * Lets the resize keys (View: Make Focused Area Wider, Narrower, Taller,
+   * Shorter) move a divider you drew: while focus is inside `element`, they
+   * call `resize` with a step in px (negative shrinks). Return false at a limit.
+   */
+  export function registerKeyboardResize(element: HTMLElement, target: { readonly axis: 'width' | 'height'; resize(delta: number): boolean }): IDisposable;
+
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;
     readonly checked?: boolean;

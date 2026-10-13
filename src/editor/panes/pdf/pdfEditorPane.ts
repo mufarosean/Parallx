@@ -35,6 +35,7 @@ import type { IEditorInput } from '../../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show } from '../../../ui/dom.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
+import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
 import { toDisposable } from '../../../platform/lifecycle.js';
 import type { IStorage } from '../../../platform/storage.js';
@@ -516,32 +517,31 @@ export class PdfEditorPane extends EditorPane {
     else this._togglePanel(false);
   }
 
-  /** Wire drag-to-resize on the outline sash. */
+  /** Resize the outline by dragging its sash, or by the resize keys while focus is in it. */
   private _wireOutlineSash(): void {
-    const MIN_W = 150;
-    const MAX_W = 500;
-
+    const setWidth = (w: number): number => {
+      const next = Math.max(150, Math.min(500, w));
+      this._outlineSidebar.style.width = `${next}px`;
+      return next;
+    };
+    const save = (w: number) => this._globalStorage?.set('parallx.pdfOutlineWidth', String(w)); // fire-and-forget
+    this._register(registerKeyboardResize(this._outlineSidebar, { axis: 'width', resize: (d) => {
+      const before = this._outlineSidebar.offsetWidth, after = setWidth(before + d);
+      save(after);
+      return after !== before;
+    } }));
     this._outlineSash.addEventListener('mousedown', (startEvt: MouseEvent) => {
       startEvt.preventDefault();
       let startX = startEvt.clientX;
       let currentW = this._outlineSidebar.offsetWidth;
       this._outlineSash.classList.add('active');
-
       // Guarded drag (interactionMode.ts): every end path — release,
       // Escape, window blur — runs the one cleanup.
       beginPointerDrag(startEvt, {
         id: 'pdf-outline-sash',
         cursor: 'col-resize',
-        onMove: (e) => {
-          const delta = e.clientX - startX;
-          startX = e.clientX;
-          currentW = Math.max(MIN_W, Math.min(MAX_W, currentW + delta));
-          this._outlineSidebar.style.width = `${currentW}px`;
-        },
-        onEnd: () => {
-          this._outlineSash.classList.remove('active');
-          this._globalStorage?.set('parallx.pdfOutlineWidth', String(currentW)); // fire-and-forget
-        },
+        onMove: (e) => { currentW = setWidth(currentW + e.clientX - startX); startX = e.clientX; },
+        onEnd: () => { this._outlineSash.classList.remove('active'); save(currentW); },
       });
     });
   }

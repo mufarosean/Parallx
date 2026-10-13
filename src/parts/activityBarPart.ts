@@ -472,6 +472,21 @@ export class ActivityBarPart extends Part {
 
     let handled = true;
 
+    // Ctrl+Shift+Up/Down moves the focused icon, the keyboard's drag (as editor tabs do sideways).
+    if (e.ctrlKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const btn = document.activeElement as HTMLButtonElement;
+      const sib = e.key === 'ArrowUp' ? btn.previousElementSibling : btn.nextElementSibling;
+      if (btn.parentElement === this._iconSection && sib?.classList.contains('activity-bar-item')) {
+        this._iconSection.insertBefore(btn, e.key === 'ArrowUp' ? sib : sib.nextSibling);
+        this._persistIconOrder();
+        this._focusedIndex = this._getAllButtons().indexOf(btn);
+        this._syncRovingTabindex();
+        btn.focus();
+      }
+      e.preventDefault(); e.stopPropagation();
+      return;
+    }
+
     switch (e.key) {
       case 'ArrowDown':
         this._focusRelative(buttons, 1);

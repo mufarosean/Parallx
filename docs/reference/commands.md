@@ -116,6 +116,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.container.float` | Float Container | core | View |  |  |
 | `workbench.action.container.moveToEdge` | Move Container to Edge | core | View |  |  |
 | `workbench.action.decreaseTextSize` | Decrease Text Size | core | View | Ctrl+- |  |
+| `workbench.action.decreaseViewHeight` | View: Make Focused Area Shorter | core | View | Ctrl+Alt+Shift+ArrowDown |  |
+| `workbench.action.decreaseViewWidth` | View: Make Focused Area Narrower | core | View | Ctrl+Alt+Shift+ArrowLeft |  |
 | `workbench.action.deleteLayout` | Delete Saved Layout | core | View |  |  |
 | `workbench.action.focusActivityBar` | Focus Activity Bar | core | View |  |  |
 | `workbench.action.focusFirstEditorGroup` | Focus First Editor Group | core | View | Ctrl+1 |  |
@@ -128,6 +130,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.focusThirdEditorGroup` | Focus Third Editor Group | core | View | Ctrl+3 |  |
 | `workbench.action.gotoLine` | Go to Line/Column… | core | Go | Ctrl+G |  |
 | `workbench.action.increaseTextSize` | Increase Text Size | core | View | Ctrl+= |  |
+| `workbench.action.increaseViewHeight` | View: Make Focused Area Taller | core | View | Ctrl+Alt+Shift+ArrowUp |  |
+| `workbench.action.increaseViewWidth` | View: Make Focused Area Wider | core | View | Ctrl+Alt+Shift+ArrowRight |  |
 | `workbench.action.minimizeWindow` | Minimize Window | core | Window |  |  |
 | `workbench.action.movePartBeside` | Move Part Beside Another | core | View |  |  |
 | `workbench.action.movePartToEdge` | Move Part to Edge | core | View |  |  |

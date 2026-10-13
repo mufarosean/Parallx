@@ -67,6 +67,7 @@ export class WidgetBox extends Disposable implements IGridView {
     this.element = $('div');
     this.element.classList.add('widget-box');
     this.element.setAttribute('data-part-id', this.id);
+    this.element.dataset.instanceId = instanceId; // what the layout commands ask about
 
     this._card = $('div');
     this._card.classList.add('widget-box-card');

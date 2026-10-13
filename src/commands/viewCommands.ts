@@ -5,6 +5,8 @@
 import type { CommandDescriptor } from './commandTypes.js';
 import { wb } from './structuralCommandTypes.js';
 import type { WorkbenchLike, ViewContainerLike } from './structuralCommandTypes.js';
+import { Orientation } from '../layout/layoutTypes.js';
+import { resizeFromFocus } from '../ui/keyboardResize.js';
 
 // ─── View Commands ───────────────────────────────────────────────────────────
 
@@ -239,6 +241,32 @@ export const partResize: CommandDescriptor = {
     console.log('[Command] Resized part "%s" by %dpx', partId, delta);
   },
 };
+
+// Resize the area holding focus from the keyboard: the same move as dragging
+// the divider beside it. Width moves the nearest left-right divider, height
+// the nearest top-bottom one.
+const RESIZE_STEP = 24;
+function resizeFocusedPart(ctx: Parameters<CommandDescriptor['handler']>[0], axis: Orientation, sign: 1 | -1): void {
+  const w = wb(ctx);
+  // A pane with its own divider (keyboardResize.ts) comes first.
+  if (resizeFromFocus(axis === Orientation.Horizontal ? 'width' : 'height', sign * RESIZE_STEP)) return;
+  // Height inside a stack of sections: the section holding focus, against its neighbour.
+  const section = document.activeElement?.closest<HTMLElement>('.view-section[data-view-id]')?.dataset.viewId;
+  if (axis === Orientation.Vertical && section && _findViewContainer(w, section)?.resizeSection?.(section, sign * RESIZE_STEP)) return;
+  const partId = document.activeElement?.closest('[data-part-id]')?.getAttribute('data-part-id');
+  const rect = partId && w._grid.hasView(partId) ? w._grid.getViewRect(partId) : undefined;
+  if (!partId || !rect) return;
+  const size = axis === Orientation.Horizontal ? rect.width : rect.height;
+  w._grid.resizeView(partId, size + sign * RESIZE_STEP, axis);
+  w._layoutViewContainers();
+}
+const resizeCommand = (id: string, title: string, keybinding: string, axis: Orientation, sign: 1 | -1): CommandDescriptor => ({
+  id, title, category: 'View', keybinding, handler: (ctx) => resizeFocusedPart(ctx, axis, sign),
+});
+export const increaseViewWidth = resizeCommand('workbench.action.increaseViewWidth', 'View: Make Focused Area Wider', 'Ctrl+Alt+Shift+ArrowRight', Orientation.Horizontal, 1);
+export const decreaseViewWidth = resizeCommand('workbench.action.decreaseViewWidth', 'View: Make Focused Area Narrower', 'Ctrl+Alt+Shift+ArrowLeft', Orientation.Horizontal, -1);
+export const increaseViewHeight = resizeCommand('workbench.action.increaseViewHeight', 'View: Make Focused Area Taller', 'Ctrl+Alt+Shift+ArrowUp', Orientation.Vertical, 1);
+export const decreaseViewHeight = resizeCommand('workbench.action.decreaseViewHeight', 'View: Make Focused Area Shorter', 'Ctrl+Alt+Shift+ArrowDown', Orientation.Vertical, -1);
 
 // ─── Sidebar view switch ─────────────────────────────────────────────────────
 
