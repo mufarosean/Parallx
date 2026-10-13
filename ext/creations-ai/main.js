@@ -8582,12 +8582,12 @@ function renderHomePage(container, parallx) {
   conceptInput.placeholder = pick(1)[0];
   conceptInput.setAttribute('aria-label', 'Describe a character');
   prompt.appendChild(conceptInput);
-  const surprise = ui.createButton(prompt, { label: 'Surprise Me', kind: 'ghost', icon: 'dices', title: 'Fill in a concept rolled from your Character Seeds table', onClick: () => { conceptInput.value = roller.one(); conceptInput.focus(); } });
+  const surprise = ui.createButton(prompt, { id: 'textGenerator.home.surprise', label: 'Surprise Me', kind: 'ghost', icon: 'dices', title: 'Fill in a concept rolled from your Character Seeds table', onClick: () => { conceptInput.value = roller.one(); conceptInput.focus(); } });
   surprise.classList.add('cr-dice');
-  ui.createButton(prompt, { label: 'Make Character', kind: 'primary', icon: 'wand-sparkles', title: 'Open the Studio and write this character', onClick: () => makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder) });
+  ui.createButton(prompt, { id: 'textGenerator.home.makeCharacter', label: 'Make Character', kind: 'primary', icon: 'wand-sparkles', title: 'Open the Studio and write this character', onClick: () => makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder) });
   conceptInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder); } });
   ask.appendChild(prompt);
-  const tries = el('div', 'cr-tries');
+  const tries = el('div', 'cr-tries'); ui.createList(tries, { id: 'textGenerator.home.tries', label: 'Try', rows: () => [...tries.querySelectorAll('.cr-try')], selected: () => [] });
   const renderTries = () => {
     tries.replaceChildren(el('span', 'cr-tries-label', { text: 'Try' }));
     for (const c of pick(2)) {
@@ -8615,7 +8615,7 @@ function renderHomePage(container, parallx) {
   // ── Quick start ──
   const quick = el('div', 'cr-quick');
   const quickCard = (iconName, label, hint, onClick) => {
-    const b = el('button', 'cr-quick-card');
+    const b = el('button', 'cr-quick-card', { sceneId: `textGenerator.home.quick.${tgSlug(label)}`, sceneLabel: label });
     b.type = 'button';
     b.appendChild(el('span', 'cr-quick-icon', { html: icon(iconName, 18) }));
     const t = el('span', 'cr-quick-text');
@@ -8674,13 +8674,13 @@ function renderHomePage(container, parallx) {
     rollHost.replaceChildren();
     const head = el('div', 'cr-roll-head');
     head.appendChild(el('span', 'cr-roll-label', { text: `${titleCaseName(table.name)} rolled` }));
-    const again = ui.createIconButton(head, { icon: 'dices', title: 'Roll another table', size: 'sm', onClick: () => void rollOnHome(settings) });
+    const again = ui.createIconButton(head, { id: 'textGenerator.home.roll.again', icon: 'dices', title: 'Roll another table', size: 'sm', onClick: () => void rollOnHome(settings) });
     again.classList.add('cr-dice');
     rollHost.appendChild(head);
     rollHost.appendChild(el('div', 'cr-roll-text', { text: String(text) }));
     const acts = el('div', 'cr-roll-actions');
-    ui.createButton(acts, { label: 'Use As A Concept', kind: 'secondary', size: 'sm', icon: 'user', onClick: () => { conceptInput.value = String(text); conceptInput.focus(); } });
-    ui.createIconButton(acts, { icon: 'copy', title: 'Copy', size: 'sm', onClick: () => { void navigator.clipboard?.writeText(String(text)); showToastLite('Copied'); } });
+    ui.createButton(acts, { id: 'textGenerator.home.roll.useAsConcept', label: 'Use As A Concept', kind: 'secondary', size: 'sm', icon: 'user', onClick: () => { conceptInput.value = String(text); conceptInput.focus(); } });
+    ui.createIconButton(acts, { id: 'textGenerator.home.roll.copy', icon: 'copy', title: 'Copy', size: 'sm', onClick: () => { void navigator.clipboard?.writeText(String(text)); showToastLite('Copied'); } });
     rollHost.appendChild(acts);
     rollHost.style.display = '';
   }
@@ -8757,11 +8757,11 @@ function renderHomePage(container, parallx) {
       const card = el('div', 'cr-cast-card');
       card.tabIndex = 0;
       card.setAttribute('role', 'button');
-      card.setAttribute('aria-label', `Open ${name}`);
+      card.setAttribute('aria-label', `Open ${name}`); tgSurface(card, 'textGenerator.castCard', name, ch.fileName);
       card.appendChild(createPortrait(name, { size: 44, hue: hueOf(ch.rawData) }));
       card.appendChild(el('div', 'cr-cast-name', { text: name }));
       card.appendChild(el('div', 'cr-cast-tag', { text: characterTagline(ch.rawData) }));
-      const chat = el('button', 'cr-cast-chat', { html: `${icon('message-circle', 13)}<span>Chat</span>` });
+      const chat = el('button', 'cr-cast-chat', { sceneId: 'textGenerator.castCard.chat', sceneLabel: `Chat With ${name}`, html: `${icon('message-circle', 13)}<span>Chat</span>` });
       chat.type = 'button';
       chat.addEventListener('click', (e) => { e.stopPropagation(); void startChatWith(parallx, fs, workspaceUri, ch.fileName, name); });
       card.appendChild(chat);
