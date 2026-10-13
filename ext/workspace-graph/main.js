@@ -7,6 +7,7 @@
 
 import { EDGE_KINDS, EDGE_KIND_LABEL, EDGE_KIND_RGB, EDGE_KIND_DASH, isConceptEdge } from './edgeKinds.js';
 import { _el, _btn, _iconBtn, _setIconBtn, _miniBtn } from './chrome.js';
+import { wgGraphKeys } from './keys.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STORAGE
@@ -2117,6 +2118,8 @@ function createGraphEditor(container, api) {
     view.y = my - (my - view.y) * (ns / view.s);
     view.s = ns;
   }, { passive: false });
+  wgGraphKeys(cvs, { label: 'Workspace graph', nodes: () => m.nodes, view, pick: (n) => { hovered = n; }, moved: resetSimulation,
+    redraw: () => drawGraph(ctx, cvs, m.nodes, m.edges, m.byId, view, selected, hovered, showEdges), open: _openInspector, fit: _fitAndDraw });
 
   // ── Inspector ──
   function _openInspector(node) {
@@ -2616,8 +2619,7 @@ function createGraphSidebar(container, api) {
   btnBar.append(refreshBtn, expandBtn);
   container.appendChild(btnBar);
 
-  // Interaction — same model as the full editor: click a node to drag it,
-  // click empty space to pan. Shift+click pins/unpins a node.
+  // Interaction as in the full editor: drag a node or the empty space (pan); Shift+click pins a node.
   let dragNode = null;
   let panning = false;
   let panStart = null;
@@ -2665,11 +2667,7 @@ function createGraphSidebar(container, api) {
     }
   });
 
-  cvs.addEventListener('pointerup', () => {
-    if (dragNode) { dragNode = null; }
-    panning = false; panStart = null;
-    cvs.style.cursor = 'grab';
-  });
+  cvs.addEventListener('pointerup', () => { dragNode = null; panning = false; panStart = null; cvs.style.cursor = 'grab'; });
 
   cvs.addEventListener('wheel', (ev) => {
     ev.preventDefault();
@@ -2681,6 +2679,8 @@ function createGraphSidebar(container, api) {
     view.y = my - (my - view.y) * (ns / view.s);
     view.s = ns;
   }, { passive: false });
+  wgGraphKeys(cvs, { label: 'Workspace graph', nodes: () => m.nodes, view, pick: (n) => { hovered = n; }, moved: resetSimulation,
+    redraw: () => drawGraph(ctx, cvs, m.nodes, m.edges, m.byId, view, null, hovered, true), fit: () => Object.assign(view, fitAll(m.nodes, cvs.clientWidth, cvs.clientHeight)) });
 
   // Animation — uses shared model data, doesn't run its own physics
   // (editor's loop runs physics, sidebar just renders the same node positions)
