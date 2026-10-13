@@ -12,6 +12,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { $ } from '../ui/dom.js';
 import { enterMode } from '../ui/interactionMode.js';
 import { getIcon } from '../ui/iconRegistry.js';
+import { createList, createSurface, declareControl, sceneSlug } from '../ui/kit.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -280,6 +281,7 @@ export class NotificationService extends Disposable {
       el.classList.add('parallx-notification--prompt');
     }
     el.dataset.notificationId = notification.id;
+    createSurface(el, { id: 'notification', owner: 'core', label: notification.message, instance: notification.id });
 
     // Content row
     const content = $('div');
@@ -334,6 +336,7 @@ export class NotificationService extends Disposable {
           btn.classList.add('parallx-notification-action-btn--primary');
         }
         btn.textContent = action.title;
+        declareControl(btn, { id: `notification.${sceneSlug(action.title)}`, label: action.title });
         btn.addEventListener('click', () => {
           this._dismiss(notification.id, action);
         });
@@ -349,6 +352,7 @@ export class NotificationService extends Disposable {
     closeBtn.innerHTML = getIcon('x');
     closeBtn.title = 'Dismiss';
     closeBtn.setAttribute('aria-label', 'Dismiss notification');
+    declareControl(closeBtn, { id: 'notification.dismiss', label: 'Dismiss notification', kind: 'iconButton' });
     closeBtn.addEventListener('click', () => {
       this._dismiss(notification.id, undefined);
     });
@@ -422,6 +426,7 @@ export function showConfirmModal(
     const box = $('div');
     box.className = 'parallx-modal-box';
     box.setAttribute('role', 'alertdialog');
+    createSurface(box, { id: 'confirm', owner: 'core', label: options.message, instance: String(++_modalSeq) });
     box.addEventListener('mousedown', (e) => e.stopPropagation());
     box.addEventListener('click', (e) => e.stopPropagation());
 
@@ -454,6 +459,7 @@ export function showConfirmModal(
       cancelBtn.type = 'button';
       cancelBtn.textContent = options.cancelLabel ?? 'Cancel';
       cancelBtn.className = 'parallx-modal-btn parallx-modal-btn--secondary';
+      declareControl(cancelBtn, { id: 'confirm.cancel', label: cancelBtn.textContent });
       cancelBtn.addEventListener('click', () => finish(false));
       btnRow.appendChild(cancelBtn);
     }
@@ -464,6 +470,7 @@ export function showConfirmModal(
     okBtn.className = options.danger
       ? 'parallx-modal-btn parallx-modal-btn--danger'
       : 'parallx-modal-btn parallx-modal-btn--primary';
+    declareControl(okBtn, { id: 'confirm.ok', label: okBtn.textContent });
     okBtn.addEventListener('click', () => finish(true));
     btnRow.appendChild(okBtn);
 
@@ -532,6 +539,7 @@ export function showInputBoxModal(
 
     const box = $('div');
     box.className = 'parallx-modal-box';
+    createSurface(box, { id: 'inputBox', owner: 'core', label: options.prompt || options.placeholder || 'Input', instance: String(++_modalSeq) });
 
     // Prevent any mouse interaction inside the box from bubbling to the
     // overlay's click-to-dismiss handler.
@@ -550,6 +558,7 @@ export function showInputBoxModal(
     input.value = options.value ?? '';
     input.placeholder = options.placeholder ?? '';
     input.className = 'parallx-modal-input';
+    declareControl(input, { id: 'inputBox.input', label: options.prompt || options.placeholder || 'Input', kind: 'input', state: () => ({ kind: 'value', value: options.password ? '' : input.value }) });
     // Disable any drag-region interference from parent containers
     (input.style as any).webkitAppRegion = 'no-drag';
     box.appendChild(input);
@@ -572,6 +581,8 @@ export function showInputBoxModal(
     okBtn.textContent = 'OK';
     okBtn.className = 'parallx-modal-btn parallx-modal-btn--primary';
 
+    declareControl(cancelBtn, { id: 'inputBox.cancel', label: 'Cancel' });
+    declareControl(okBtn, { id: 'inputBox.ok', label: 'OK' });
     btnRow.appendChild(cancelBtn);
     btnRow.appendChild(okBtn);
     box.appendChild(btnRow);
@@ -638,12 +649,14 @@ export function showQuickPickModal(
 
     const box = $('div');
     box.className = 'parallx-quickpick-box';
+    createSurface(box, { id: 'quickPick', owner: 'core', label: options.placeholder ?? 'Select an item...', instance: String(++_modalSeq) });
 
     // Search input
     const input = $('input');
     input.type = 'text';
     input.placeholder = options.placeholder ?? 'Select an item...';
     input.className = 'parallx-quickpick-input';
+    declareControl(input, { id: 'quickPick.filter', label: 'Filter', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
     box.appendChild(input);
 
     // Items list
@@ -653,6 +666,8 @@ export function showQuickPickModal(
 
     const selected = new Set<number>();
     let highlightIndex = 0;
+    const rowsOf = () => Array.from(list.querySelectorAll<HTMLElement>('[data-index]'));
+    createList(list, { id: 'quickPick.list', label: 'Items', rows: rowsOf, selected: () => options.canPickMany ? [...selected].map(String) : rowsOf().slice(highlightIndex, highlightIndex + 1).map((r) => r.dataset.index ?? '') });
 
     const renderItems = (filter: string) => {
       list.innerHTML = '';
@@ -746,6 +761,8 @@ export function showQuickPickModal(
 }
 
 // ── Modal overlay helper ──
+
+let _modalSeq = 0;
 
 function _createModalOverlay(parent: HTMLElement): HTMLElement {
   const overlay = $('div');
