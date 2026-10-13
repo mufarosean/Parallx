@@ -87,7 +87,8 @@ function install() {
       return out;
     },
     // Tab stops on this screen, to size the Tab run.
-    stops() { return Array.from(this.scope.querySelectorAll('*')).filter((e) => e.tabIndex >= 0 && shown(e) && !e.disabled).length; },
+    // A date or time field takes a Tab per part (month, day, year): count them.
+    stops() { return Array.from(this.scope.querySelectorAll('*')).filter((e) => e.tabIndex >= 0 && shown(e) && !e.disabled).reduce((n, e) => n + (/^(date|time|datetime-local|month|week)$/.test(e.type ?? '') ? 4 : 1), 0); },
     start() {
       Object.assign(this, { seenIds: new Set(), atTabEnd: null, pointerAtTabEnd: null, first: null, seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
       let a = document.getElementById('__kb_start');
@@ -252,6 +253,12 @@ async function auditScreen(label) {
   for (; tabs < limit; tabs++) {
     await page.keyboard.press('Tab');
     const r = await page.evaluate(() => window.__kb.step());
+    // Stuck where Tab has a meaning of its own (a spreadsheet's cells) is no trap when the place says how to leave (F6) and F6 does.
+    if (r === 'stuck' && process.env.KB_DEBUG) console.log('[debug] stuck at:', await page.evaluate(() => { const out = []; for (let p = document.activeElement; p && out.length < 10; p = p.parentElement) out.push(p.tagName.toLowerCase() + (p.id ? '#' + p.id : '') + '.' + String(p.className).split(' ')[0].slice(0, 24) + (p.hasAttribute('aria-keyshortcuts') ? '{F6}' : '')); return out.join(' < '); }));
+    if (r === 'stuck' && await page.evaluate(() => !!document.activeElement?.closest('[aria-keyshortcuts~="F6"]'))) {
+      await page.keyboard.press('F6');
+      if (await page.evaluate(() => { const left = !document.activeElement?.closest('[aria-keyshortcuts~="F6"]'); window.__kb.stuck = 0; window.__kb.prev = document.activeElement; return left; })) { wrapped = true; continue; } // the run has passed the region: the next element met again ends it
+    }
     if (r === 'stuck') { trap = await page.evaluate(() => { const a = document.activeElement; const s = a?.closest('[data-px-surface]'); return `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${a?.tagName.toLowerCase()} "${(a?.getAttribute('aria-label') || a?.textContent || '').trim().slice(0, 40)}"`; }); break; }
     // Done when the order has come round: after a wrap to the top, the first element met again; a
     // dialog keeps Tab inside, so 40 repeats in a row with no wrap also ends it.
@@ -304,6 +311,7 @@ async function auditScreen(label) {
     // Arrowing a radio group chose its last option (a setting, say text size): choose back.
     if (checked) await page.evaluate((id) => Array.from(document.querySelectorAll(`[data-px-id="${id}"]`)).find((e) => e.getClientRects().length)?.click(), checked);
   }
+  if (process.env.KB_DEBUG) console.log('[debug] after arrows, tabs reached:', await page.evaluate(() => Array.from(window.__kb.seen).filter((e) => e.getAttribute('role') === 'tab').map((e) => (e.textContent || '').trim().slice(0, 16) + (e.isConnected ? '' : '(gone)')).join(' | ')));
   await page.evaluate(() => document.activeElement?.blur());
   const lowContrast = await page.evaluate(() => window.__kb.contrast());
   const res = await page.evaluate(() => {
@@ -423,7 +431,8 @@ async function navIds() {
   // The scene's own `visible` reads document.hidden, which a hidden window
   // always reports; the page's layout says what is on screen.
   const ids = flatten(await sceneOf(page)).filter((n) => NAV.test(n.id) && n.kind !== 'surface').map((n) => n.id);
-  return page.evaluate((ids) => [...new Set(ids)].filter((id) => Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)).some((e) => e.getClientRects().length && !e.closest('[hidden], [aria-hidden="true"]'))), ids);
+  // Behind an open modal nothing is reachable: follow only the navigation inside it.
+  return page.evaluate((ids) => { const modal = Array.from(document.querySelectorAll('[aria-modal="true"]')).filter((m) => m.getClientRects().length).pop(); return [...new Set(ids)].filter((id) => Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)).some((e) => e.getClientRects().length && !e.closest('[hidden], [aria-hidden="true"]') && (!modal || modal.contains(e)))); }, ids);
 }
 
 try {
