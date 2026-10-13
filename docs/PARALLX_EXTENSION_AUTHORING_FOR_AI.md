@@ -911,6 +911,9 @@ api.ui.createMenu(btn, { id: 'budget.more', label: 'More', items: [{ label: 'Exp
 
 // Chrome you drew yourself (a tab, a chip) keeps its DOM; declare it in place.
 api.ui.declareControl(myTab, { id: 'budget.tab.accounts', label: 'Accounts', state: () => ({ kind: 'pressed', value: active }) });
+
+// A dynamic id segment (a field's label, a category name) goes through sceneSlug: 'Saved So Far' is 'saved-so-far'.
+api.ui.declareControl(input, { id: `budget.goal.${api.ui.sceneSlug(labelText)}`, label: labelText, kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
 ```
 
 ### 6.4 Colour tokens (the only colours you may use)

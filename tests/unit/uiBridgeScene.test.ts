@@ -68,4 +68,9 @@ describe('api.ui and the scene', () => {
     expect(tab.getAttribute('role')).toBe('button');
     expect(scene.find('budget.tab.accounts')[0].state?.()).toEqual({ kind: 'pressed', value: true });
   });
+
+  it('sceneSlug is the kit one, for dynamic id segments', () => {
+    expect(ui.sceneSlug('Saved So Far')).toBe('saved-so-far');
+    expect(ui.sceneSlug('')).toBe('none');
+  });
 });

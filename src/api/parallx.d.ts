@@ -849,6 +849,8 @@ export namespace ui {
   export function createList(element: HTMLElement, options: ListOptions): List;
   /** As createList, with role tree. */
   export function createTree(element: HTMLElement, options: ListOptions): List;
+  /** A dynamic value as an id segment: lower case, words joined by dashes ('Match Case' is 'match-case'; empty is 'none'). */
+  export function sceneSlug(value: string): string;
 }
 
 /**

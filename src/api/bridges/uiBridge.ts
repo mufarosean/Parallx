@@ -23,6 +23,7 @@ import {
   createMenu as kitCreateMenu,
   createList as kitCreateList,
   createTree as kitCreateTree,
+  sceneSlug as kitSceneSlug,
   type IKitButtonOptions,
   type IKitInPlaceDeclaration,
   type IKitInputOptions,
@@ -138,5 +139,6 @@ export function createUiApi() {
     createMenu: (anchor: ExtensionMenuAnchor, options: Parameters<typeof kitCreateMenu>[1]) => kitCreateMenu(anchor, options),
     createList: (element: HTMLElement, options: IKitListOptions) => kitCreateList(element, options),
     createTree: (element: HTMLElement, options: IKitListOptions) => kitCreateTree(element, options),
+    sceneSlug: (value: string) => kitSceneSlug(value),
   });
 }
