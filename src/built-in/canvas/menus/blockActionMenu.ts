@@ -20,7 +20,7 @@ import {
   applyTextColorToBlock,
   deleteBlockAt,
   duplicateBlockAt,
-  turnBlockWithSharedStrategy,
+  turnBlockWithSharedStrategy, moveBlockBesidePrevious,
   canTakeTextColor,
   canTakeBackgroundColor,
   canTurnInto,
@@ -65,6 +65,8 @@ export interface BlockActionMenuHost {
   copyLabelledLink?(href: string, label: string): Promise<void>;
   /** Move these blocks into a new synced block (Turn Into Synced Block). */
   makeSyncedBlock?(positions: number[]): Promise<void>;
+  /** Ask which of this page's sub-pages, and move these blocks into it (Move Into Page…). */
+  moveIntoPage?(positions: number[]): Promise<void>;
 }
 
 // ── Submenu hover-handoff helper ────────────────────────────────────────────
@@ -377,6 +379,34 @@ export class BlockActionMenuController implements ICanvasMenu {
         void this._host.makeSyncedBlock?.(positions);
       });
       this._blockActionMenu.appendChild(syncItem);
+    }
+
+    // The keyboard's drags: beside the block above (a column drop), and into
+    // a sub-page (a drop on its card). Shift+F10 opens this menu at the caret.
+    const editor = this._host.editor;
+    const $at = editor?.state.doc.resolve(this._actionBlockPos);
+    if (!isBatch && editor && $at && $at.depth === 0 && $at.index() > 0 && this._actionBlockNode.type.name !== 'columnList') {
+      const besideItem = this._createActionItem('Move Beside Block Above', svgIcon('columns-2'), false);
+      besideItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const pos = this._actionBlockPos;
+        this._hideBlockActionMenu();
+        moveBlockBesidePrevious(editor, pos);
+      });
+      this._blockActionMenu.appendChild(besideItem);
+    }
+    if (this._host.moveIntoPage) {
+      const intoItem = this._createActionItem('Move Into Page…', svgIcon('file-input'), false);
+      intoItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const sel = this._host.blockSelection;
+        const positions = (sel?.hasSelection && sel.positions.includes(this._actionBlockPos))
+          ? [...sel.positions] : [this._actionBlockPos];
+        this._host.blockSelection?.clear();
+        this._hideBlockActionMenu();
+        void this._host.moveIntoPage?.(positions);
+      });
+      this._blockActionMenu.appendChild(intoItem);
     }
 
     // Send to Chat — attach a LIVE reference to the targeted block(s) so the AI

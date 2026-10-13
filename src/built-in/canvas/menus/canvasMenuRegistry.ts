@@ -77,7 +77,7 @@ export {
   applyTextColorToBlock,
   deleteBlockAt,
   duplicateBlockAt,
-  turnBlockWithSharedStrategy,
+  turnBlockWithSharedStrategy, moveBlockBesidePrevious,
   canTakeTextColor,
   canTakeBackgroundColor,
   canTurnInto,

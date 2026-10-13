@@ -278,3 +278,25 @@ export function addColumnToLayoutFromDrop(
 
   return true;
 }
+
+/**
+ * The keyboard's column drop (block menu, Move Beside Block Above): the
+ * page-level block at `pos` becomes a column to the right of the block
+ * above it. That block turns into a two-column layout, or, when it is a
+ * layout already, gains a column. False when there is no block above.
+ */
+export function moveBlockBesidePrevious(editor: Editor, pos: number): boolean {
+  const { state } = editor;
+  const node = state.doc.nodeAt(pos);
+  const $pos = state.doc.resolve(pos);
+  if (!node || $pos.depth !== 0 || $pos.index() === 0 || node.type.name === 'columnList') return false;
+  const prev = $pos.parent.child($pos.index() - 1);
+  const prevPos = pos - prev.nodeSize;
+  const tr = state.tr;
+  const content = Fragment.from(node);
+  const ok = prev.type.name === 'columnList' && prev.lastChild
+    ? addColumnToLayoutFromDrop(tr, state.doc, state.schema, content, pos - 1 - prev.lastChild.nodeSize, prevPos, 'right', pos, pos + node.nodeSize, false)
+    : createColumnLayoutFromDrop(tr, state.schema, content, prevPos, prev, 'right', pos, pos + node.nodeSize, false);
+  if (ok) editor.view.dispatch(tr);
+  return ok;
+}

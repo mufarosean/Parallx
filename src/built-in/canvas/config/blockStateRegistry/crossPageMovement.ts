@@ -13,6 +13,7 @@ import type { Editor } from '@tiptap/core';
 import { Fragment } from '@tiptap/pm/model';
 import {
   getActiveCanvasDragSession,
+  setActiveCanvasDragSession,
   clearActiveCanvasDragSession,
   CANVAS_BLOCK_DRAG_MIME,
   deleteDraggedRanges,
@@ -357,4 +358,61 @@ function _sourceDeleteTr(editor: Editor, blockIds: string[], hints: DragRange[])
   tr.setMeta(CANVAS_CROSS_PAGE_MOVE_META, true);
   deleteDraggedRanges(tr, ranges);
   return tr;
+}
+
+/**
+ * The keyboard's card drop (block menu, Move Into Page…): the blocks at
+ * `positions` go into the page `targetPageId` exactly as a drop on its card
+ * would move them, through the same path.
+ */
+export async function moveBlocksIntoPage(
+  editor: Editor,
+  positions: readonly number[],
+  targetPageId: string,
+  currentPageId: string,
+  dataService: ICrossPageMoveDataAccess,
+): Promise<boolean> {
+  const doc = editor.state.doc;
+  const blocks = [...new Set(positions)].sort((a, b) => a - b)
+    .map((pos) => ({ pos, node: doc.nodeAt(pos) }))
+    .filter((b): b is { pos: number; node: NonNullable<typeof b.node> } => !!b.node);
+  if (blocks.length === 0) return false;
+  const last = blocks[blocks.length - 1]!;
+  setActiveCanvasDragSession({
+    sourcePageId: currentPageId,
+    from: blocks[0]!.pos,
+    to: last.pos + last.node.nodeSize,
+    ranges: blocks.map((b) => ({ from: b.pos, to: b.pos + b.node.nodeSize })),
+    nodes: blocks.map((b) => b.node.toJSON()),
+    startedAt: Date.now(),
+  });
+  try {
+    // No pointer, no data transfer: a move (never Alt's copy).
+    return await moveBlockToLinkedPage({ editor, event: { altKey: false, dataTransfer: null } as unknown as DragEvent, targetPageId, currentPageId, dataService });
+  } finally {
+    clearActiveCanvasDragSession();
+  }
+}
+
+/**
+ * Move Into Page…: ask which of this page's sub-pages (the page cards on it)
+ * and move the blocks there. Says so when the page has none.
+ */
+export async function askAndMoveBlocksIntoPage(
+  editor: Editor,
+  positions: readonly number[],
+  currentPageId: string,
+  dataService: ICrossPageMoveDataAccess,
+  ask: (items: { label: string; description?: string }[]) => Promise<{ label: string } | undefined>,
+  say: (message: string) => void,
+): Promise<boolean> {
+  const moving = new Set(positions);
+  const cards: { label: string; pageId: string }[] = [];
+  editor.state.doc.descendants((n, pos) => {
+    if (n.type.name === 'pageBlock' && typeof n.attrs.pageId === 'string' && !moving.has(pos)) cards.push({ label: n.attrs.title || 'Untitled', pageId: n.attrs.pageId });
+  });
+  if (cards.length === 0) { say('This page has no sub-pages to move blocks into.'); return false; }
+  const picked = await ask(cards.map((c) => ({ label: c.label })));
+  const target = picked && (cards.find((c) => c === picked) ?? cards.find((c) => c.label === picked.label));
+  return target ? moveBlocksIntoPage(editor, positions, target.pageId, currentPageId, dataService) : false;
 }

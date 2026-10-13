@@ -48,7 +48,7 @@ import {
 import { isDropInsideDragged } from '../../src/built-in/canvas/config/blockStateRegistry/dragSession';
 import { duplicateBlockAt } from '../../src/built-in/canvas/config/blockStateRegistry/blockLifecycle';
 import { outdentBlock } from '../../src/built-in/canvas/config/blockStateRegistry/blockNesting';
-import { moveBlockToLinkedPage } from '../../src/built-in/canvas/config/blockStateRegistry/crossPageMovement';
+import { moveBlockToLinkedPage, askAndMoveBlocksIntoPage } from '../../src/built-in/canvas/config/blockStateRegistry/crossPageMovement';
 import { BlockSelectionController, createBlockSelectionPlugin } from '../../src/built-in/canvas/handles/blockSelection';
 import {
   setActiveCanvasDragSession,
@@ -668,6 +668,23 @@ describe('cross-page move', () => {
     clearActiveCanvasDragSession();
     expect(calls.atomic.appendedNodes.map((n: any) => n.type)).toEqual(['orderedList']);
     expect(body(ed.state.doc)).toBe('orderedList[listItem[paragraph("one")]]');
+  });
+
+  // The keyboard's drop on a card (block menu, Move Into Page…).
+  it('Move Into Page offers the page cards and moves the block like a drop', async () => {
+    const ed = mk(withIds({ type: 'doc', content: [{ type: 'pageBlock', attrs: { pageId: 'child-1', title: 'Child' } }, p('mover'), p('end')] }, base().schema));
+    const r = find(ed, (n) => n.textContent === 'mover' && n.type.name === 'paragraph')!;
+    const { calls, service } = fakeData();
+    let offered: string[] = [];
+    const moved = await askAndMoveBlocksIntoPage(ed, [r.pos], 'src', service, async (items) => { offered = items.map((i) => i.label); return items[0]; }, () => {});
+    expect(moved).toBe(true);
+    expect(offered).toEqual(['Child']);
+    expect(calls.atomic.targetPageId).toBe('child-1');
+    expect(textOf(ed)).toEqual(['end']);
+    let said = '';
+    const none = mk({ type: 'doc', content: [p('alone')] });
+    expect(await askAndMoveBlocksIntoPage(none, [0], 'src', service, async () => undefined, (m) => { said = m; })).toBe(false);
+    expect(said).toMatch(/no sub-pages/);
   });
 });
 

@@ -28,6 +28,7 @@ import { moveBlockAboveBelow } from '../../src/built-in/canvas/config/blockState
 import {
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,
+  moveBlockBesidePrevious,
 } from '../../src/built-in/canvas/config/blockStateRegistry/columnCreation';
 import { getZone } from '../../src/built-in/canvas/plugins/columnDropPlugin';
 
@@ -457,5 +458,35 @@ describe('backspace/delete at columnList boundaries', () => {
     expect(ed.state.selection).not.toBeInstanceOf(NodeSelection);
     const a1 = findBlock(ed, 'paragraph', 'a1');
     expect(ed.state.selection.head).toBe(a1.pos + 1);
+  });
+});
+
+// ── The keyboard's column drop (block menu, Move Beside Block Above) ──────
+
+describe('moveBlockBesidePrevious', () => {
+  const shape = (editor: Editor) => editor.getJSON().content!.map((n: any) =>
+    n.type === 'columnList' ? n.content.map((c: any) => c.content.map((b: any) => b.content?.[0]?.text ?? '')) : n.content?.[0]?.text ?? '');
+  const posOf = (editor: Editor, index: number) => { let p = 0; for (let i = 0; i < index; i++) p += editor.state.doc.child(i).nodeSize; return p; };
+
+  it('makes the block above and this one a two-column layout', () => {
+    const editor = makeEditor({ type: 'doc', content: [p('A'), p('B'), p('C')] });
+    expect(moveBlockBesidePrevious(editor, posOf(editor, 1))).toBe(true);
+    expect(shape(editor)).toEqual([[['A'], ['B']], 'C']);
+    editor.destroy();
+  });
+
+  it('adds a column when the block above is a layout already', () => {
+    const editor = makeEditor({ type: 'doc', content: [{ type: 'columnList', content: [col(p('A')), col(p('B'))] }, p('C')] });
+    expect(moveBlockBesidePrevious(editor, posOf(editor, 1))).toBe(true);
+    // A layout last on the page keeps an empty line after it, as a drag leaves it.
+    expect(shape(editor)).toEqual([[['A'], ['B'], ['C']], '']);
+    editor.destroy();
+  });
+
+  it('does nothing for the first block', () => {
+    const editor = makeEditor({ type: 'doc', content: [p('A'), p('B')] });
+    expect(moveBlockBesidePrevious(editor, 0)).toBe(false);
+    expect(shape(editor)).toEqual(['A', 'B']);
+    editor.destroy();
   });
 });

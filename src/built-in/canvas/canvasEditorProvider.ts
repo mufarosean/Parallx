@@ -38,7 +38,7 @@ import { createButton } from '../../ui/kit.js';
 import { Editor, getSchema } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
-import { createEditorExtensions, PageChromeController, renderPageIconHtml } from './config/blockRegistry.js';
+import { createEditorExtensions, PageChromeController, renderPageIconHtml, askAndMoveBlocksIntoPage } from './config/blockRegistry.js';
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, BlockClipboardController, TableControlsController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
@@ -82,6 +82,7 @@ interface CanvasWindowApi {
   showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+  showQuickPick?(items: readonly { label: string; description?: string }[], options?: { placeholder?: string }): Promise<{ label: string } | undefined>;
 }
 
 interface ElectronLinkBridge {
@@ -606,9 +607,13 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     }
   }
 
-  /** BlockActionMenuHost: these blocks become one new synced block in their
-   *  place. Page and database cards stay out (their pages belong to this
-   *  page; moved into shared content they would be read as deleted). */
+  /** BlockActionMenuHost: Move Into Page…, the keyboard's drop on a sub-page card. */
+  async moveIntoPage(positions: number[]): Promise<void> {
+    const editor = this._editor, w = this._provider.window;
+    if (editor?.isEditable && w?.showQuickPick) await askAndMoveBlocksIntoPage(editor, positions, this._pageId, this._dataService, (items) => w.showQuickPick!(items, { placeholder: 'Move into which page?' }), (m) => void w.showInformationMessage(m));
+  }
+
+  /** BlockActionMenuHost: these blocks become one synced block in their place (cards stay out: their pages belong here). */
   async makeSyncedBlock(positions: number[]): Promise<void> {
     const editor = this._editor;
     const create = this._dataService.createSyncedContent;
@@ -956,17 +961,11 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       this._tableControls.setup();
     }
 
-    // Wire block-selection callbacks into the extension storage.
-    //
-    // The keymap handlers in `BlockKeyboardShortcuts.addKeyboardShortcuts()`
-    // read from `this.storage.<fn>` which Tiptap resolves to
-    // `editor.storage.blockKeyboardShortcuts.<fn>`. We MUST mutate that
-    // object directly — `extensionManager.extensions[i].storage` is the
-    // extension *descriptor's* storage and is a distinct instance from the
-    // per-editor storage the keymap reads, so writes there never reach the
-    // keymap. Caught by the diagnostic spec on 2026-05-27: every storage
-    // function was null at runtime, breaking Mod-Shift-Arrow movement (and
-    // by extension every other shortcut that bootstraps from cursor).
+    // Wire block-selection callbacks into the extension storage. The keymap
+    // reads `editor.storage.blockKeyboardShortcuts.<fn>`, so mutate THAT
+    // object: `extensionManager.extensions[i].storage` is the descriptor's,
+    // a distinct instance the keymap never reads (2026-05-27: every storage
+    // function was null at runtime, breaking Mod-Shift-Arrow movement).
     const kbStorage = (this._editor.storage as any).blockKeyboardShortcuts;
     if (kbStorage) {
       kbStorage.selectAtCursor = () => this._blockSelection.selectAtCursor();
