@@ -25,7 +25,6 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { loadPdfjs } from '../../../vendor/lazy.js';
 
 type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
-
 // ── CSS ─────────────────────────────────────────────────────────────────
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdfEditorPane.css';
@@ -49,6 +48,7 @@ import { showOverflowMenu, showZoomPresets } from './pdfToolbarMenus.js';
 import { applyViewState, parseViewState, readViewState, type PdfViewState } from './pdfViewState.js';
 import { installPdfDebugHook, removePdfDebugHook } from './pdfDebugHook.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
+import { declareControl } from '../../../ui/kit.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
 import { PdfOutline } from './pdfOutline.js';
@@ -249,9 +249,9 @@ export class PdfEditorPane extends EditorPane {
     this._outlineSidebar.appendChild(panelHeader);
     this._panelSwitch = this._register(new SegmentedControl(panelHeader, {
       segments: [{ value: 'outline', label: 'Outline' }, { value: 'pages', label: 'Pages' }],
-      selected: this._panelSide,
-      ariaLabel: 'Show',
+      selected: this._panelSide, ariaLabel: 'Show',
     }));
+    this._register(declareControl(this._panelSwitch.element, { id: 'pdf.panelSide', label: 'Show', kind: 'segmented', state: () => ({ kind: 'value', value: this._panelSwitch.value }) }));
     this._register(this._panelSwitch.onDidChange((v) => {
       this._setPanelSide(v === 'pages' ? 'pages' : 'outline', true);
     }));
