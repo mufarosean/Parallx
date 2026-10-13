@@ -207,7 +207,7 @@ const STEER_EXAMPLES = {
  */
 export function renderStudioPane(container, parallx, ctx, deps) {
   injectStudioStyles();
-  const { el, icon, tgSelect } = deps;
+  const { el, icon, tgSelect, tgDeclare = (node) => node } = deps;
   const { fs, workspaceUri } = ctx;
   const root = el('div', 'cs');
   container.appendChild(root);
@@ -260,13 +260,13 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   title.addEventListener('input', () => { setField('name', title.value, { fromTitle: true }); });
   const status = el('span', 'cs-chip', { text: 'Draft' });
   const actions = el('div', 'cs-actions');
-  const chatBtn = button('Open Chat', 'message-circle', () => void openChat());
+  const chatBtn = button('Open Chat', 'message-circle', () => void openChat(), false, 'textGenerator.studio.openChat');
   chatBtn.title = 'Start a chat with this character';
-  const exportBtn = button('Export As Markdown', 'file-down', () => void exportMarkdown());
+  const exportBtn = button('Export As Markdown', 'file-down', () => void exportMarkdown(), false, 'textGenerator.studio.exportMarkdown');
   exportBtn.title = 'Save a Markdown copy of this character';
-  const behaviourBtn = button('Chat Behaviour', 'sliders-horizontal', () => void openBehaviour());
+  const behaviourBtn = button('Chat Behaviour', 'sliders-horizontal', () => void openBehaviour(), false, 'textGenerator.studio.chatBehaviour');
   behaviourBtn.title = 'Writing preset, reply length, lorebooks, memory and the other chat settings';
-  const twistAgainBtn = button('Twist Again', 'git-branch', () => void twistAgain());
+  const twistAgainBtn = button('Twist Again', 'git-branch', () => void twistAgain(), false, 'textGenerator.studio.twistAgain');
   twistAgainBtn.title = 'A new character that starts from this one, with a new change';
   twistAgainBtn.style.display = 'none';
   actions.append(chatBtn, exportBtn, behaviourBtn, twistAgainBtn);
@@ -318,7 +318,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
 
   const conceptField = el('div', 'cs-field');
   const conceptLabel = el('div', 'cs-label', { text: 'Concept' });
-  const conceptArea = el('textarea', 'cs-textarea');
+  const conceptArea = el('textarea', 'cs-textarea'); tgDeclare(conceptArea, 'textGenerator.studio.concept', { label: 'Concept' });
   conceptArea.rows = 3;
   conceptArea.placeholder = 'Describe them in your own words, e.g. "A retired forensic accountant who hears music in ledgers." Your words win over everything else.';
   conceptArea.addEventListener('input', () => { state.concept = conceptArea.value; autogrow(conceptArea); markDirty(); });
@@ -336,10 +336,10 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const addRow = el('div', 'cs-add');
   const inlineHost = el('div');
   addRow.append(
-    smallButton('Add Link', 'link', () => showInline('link')),
-    smallButton('Add Canvas Page', 'file-text', () => void addCanvasPage()),
-    smallButton('Add File', 'file', () => void addFile()),
-    smallButton('Add Text', 'clipboard', () => showInline('text')),
+    smallButton('Add Link', 'link', () => showInline('link'), 'textGenerator.studio.addLink'),
+    smallButton('Add Canvas Page', 'file-text', () => void addCanvasPage(), 'textGenerator.studio.addCanvasPage'),
+    smallButton('Add File', 'file', () => void addFile(), 'textGenerator.studio.addFile'),
+    smallButton('Add Text', 'clipboard', () => showInline('text'), 'textGenerator.studio.addText'),
   );
   sourcesField.append(sourcesList, sourcesHint, addRow, inlineHost);
   make.body.appendChild(sourcesField);
@@ -352,7 +352,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const connList = el('div', 'cs-sources cs-connections');
   const connHint = el('div', 'cs-hint', { text: 'A character this one stands beside, and one line on how, from this character\'s side. Their card is read at every generation: who they are and their world come along, nothing retyped.' });
   const connAdd = el('div', 'cs-add');
-  connAdd.append(smallButton('Add Person', 'user-plus', () => void addConnection()));
+  connAdd.append(smallButton('Add Person', 'user-plus', () => void addConnection(), 'textGenerator.studio.addPerson'));
   connField.append(connList, connHint, connAdd);
   make.body.appendChild(connField);
 
@@ -360,7 +360,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   // Every change from the sources goes here, and only here: it rewrites the
   // canon fact by fact (the Twist), so the canon shows what was asked.
   twistField.appendChild(el('div', 'cs-label', { text: 'Changes' }));
-  const twistArea = el('textarea', 'cs-textarea');
+  const twistArea = el('textarea', 'cs-textarea'); tgDeclare(twistArea, 'textGenerator.studio.twist', { label: 'Twist' });
   twistArea.rows = 2;
   twistArea.placeholder = 'What to change from the sources, e.g. "Ten years older, and he never made it as an actor." Everything you do not change stays true to the sources, and the canon shows each change.';
   twistArea.addEventListener('input', () => { state.twist = twistArea.value; autogrow(twistArea); markDirty(); });
@@ -389,11 +389,11 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   make.body.appendChild(engine);
 
   const makeActions = el('div', 'cs-actions');
-  const diceBtn = button('Roll The Dice', 'dices', () => { void rollDice(); });
+  const diceBtn = button('Roll The Dice', 'dices', () => { void rollDice(); }, false, 'textGenerator.studio.rollDice');
   diceBtn.title = 'Randomise every unlocked dial, and roll a want, a fear and a secret from your Character Seeds table';
-  const genBtn = button('Generate', 'sparkles', () => void generate(), true);
+  const genBtn = button('Generate', 'sparkles', () => void generate(), true, 'textGenerator.studio.generate');
   genBtn.title = 'Write the whole sheet. Locked rows stay as they are.';
-  const pitchBtn = button('Pitch Ideas', 'lightbulb', () => void pitchIdeas());
+  const pitchBtn = button('Pitch Ideas', 'lightbulb', () => void pitchIdeas(), false, 'textGenerator.studio.pitchIdeas');
   pitchBtn.title = 'Several different takes on the concept first; the sheet is written from the one you pick';
   makeActions.append(genBtn, pitchBtn, diceBtn);
   diceBtn.classList.add('cr-dice');
@@ -408,7 +408,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   pitchesSec.root.style.display = 'none';
   mainCol.appendChild(pitchesSec.root);
   const pitchList = el('div', 'cs-pitches');
-  const pitchMore = smallButton('More Pitches', 'lightbulb', () => void pitchIdeas());
+  const pitchMore = smallButton('More Pitches', 'lightbulb', () => void pitchIdeas(), 'textGenerator.studio.morePitches');
   pitchMore.title = 'Another set of takes';
   pitchesSec.body.append(pitchList, pitchMore);
 
@@ -435,11 +435,11 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const trySec = section('Try A Line', 'Say something to them and hear the voice before you commit to it.');
   sideCol.appendChild(trySec.root);
   const tryRow = el('div', 'cs-inline');
-  const tryInput = el('input', 'cs-input');
+  const tryInput = el('input', 'cs-input'); tgDeclare(tryInput, 'textGenerator.studio.tryLine', { label: 'Try a line' });
   tryInput.type = 'text';
   tryInput.placeholder = 'Say something to them';
   tryInput.setAttribute('aria-label', 'A line to the character');
-  const tryBtn = button('Send', 'send', () => void tryLine());
+  const tryBtn = button('Send', 'send', () => void tryLine(), false, 'textGenerator.studio.tryLine.send');
   tryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void tryLine(); } });
   tryRow.append(tryInput, tryBtn);
   const tryReply = el('div', 'cs-try-reply');
@@ -452,13 +452,13 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   trySec.body.append(tryThread, tryRow);
 
   // ── Helpers: DOM ───────────────────────────────────────────────────────
-  function button(label, iconName, onClick, primary = false) {
-    const b = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { html: `${iconName ? icon(iconName, 14) : ''}<span>${label}</span>` });
+  function button(label, iconName, onClick, primary = false, id) {
+    const b = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { ...(id ? { sceneId: id, sceneLabel: label } : {}), html: `${iconName ? icon(iconName, 14) : ''}<span>${label}</span>` });
     b.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
     return b;
   }
-  function smallButton(label, iconName, onClick) {
-    const b = button(label, iconName, onClick);
+  function smallButton(label, iconName, onClick, id) {
+    const b = button(label, iconName, onClick, false, id);
     b.classList.add('cs-btn--small');
     return b;
   }
@@ -706,8 +706,8 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     text.append(document.createTextNode(`The chat changed ${what}.`));
     if (p.entry.request) text.append(document.createTextNode(' '), el('span', 'cs-chat-edit-asked', { text: `Asked for: ${p.entry.request}` }));
     chatEditLine.append(el('span', null, { html: icon('message-circle', 14) }), text,
-      smallButton('Undo Chat Edit', 'undo-2', () => undoChatEdit()),
-      smallButton('Keep', 'check', () => keepChatEdit()));
+      smallButton('Undo Chat Edit', 'undo-2', () => undoChatEdit(), 'textGenerator.studio.undoChatEdit'),
+      smallButton('Keep', 'check', () => keepChatEdit(), 'textGenerator.studio.keepChatEdit'));
     chatEditLine.style.display = '';
   }
   function undoChatEdit() {
@@ -1046,7 +1046,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       inlineHost.replaceChildren();
       if (kind === 'link') void addLink(v); else void addSource('text', `Pasted text (${formatWords(v.split(/\s+/).length)})`, '', async () => ({ title: '', text: v }));
     });
-    const cancel = button('Cancel', 'x', () => inlineHost.replaceChildren());
+    const cancel = button('Cancel', 'x', () => inlineHost.replaceChildren(), false, 'textGenerator.studio.inline.cancel');
     cancel.classList.add('cs-btn--quiet');
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (kind === 'link' || e.ctrlKey || e.metaKey)) { e.preventDefault(); add.click(); } if (e.key === 'Escape') cancel.click(); });
     wrap.append(input, add, cancel);

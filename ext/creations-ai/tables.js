@@ -142,7 +142,7 @@ export function renderTablesPage(container, parallx, input, deps) {
   const rail = el('div', 'tg-cc-rail');
   const head = el('div', 'tg-cc-rail-head');
   head.appendChild(el('span', 'tg-cc-rail-title', { text: 'Tables' }));
-  const newBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
+  const newBtn = el('button', 'tg-cc-rail-add', { sceneId: 'textGenerator.tables.new', sceneLabel: 'New Table', html: icon('plus', 14) });
   newBtn.title = 'New Table';
   head.appendChild(newBtn);
   rail.appendChild(head);
@@ -228,7 +228,7 @@ export function renderTablesPage(container, parallx, input, deps) {
 
 export function renderTablePane(container, parallx, ctx, deps) {
   injectTablesStyles();
-  const { el, icon, tgSelect } = deps;
+  const { el, icon, tgSelect, tgDeclare = (node) => node } = deps;
   const { fs, workspaceUri, name } = ctx;
   const root = el('div', 'cs');
   container.appendChild(root);
@@ -244,7 +244,7 @@ export function renderTablePane(container, parallx, ctx, deps) {
   root.appendChild(cols);
   const editorSec = section('Source', 'Lists, one per block. Indent the items. The first list, or output, is what rolls.');
   cols.appendChild(editorSec.root);
-  const editor = el('textarea', 'tb-editor');
+  const editor = el('textarea', 'tb-editor'); tgDeclare(editor, 'textGenerator.table.editor', { label: 'Table' });
   editor.spellcheck = false;
   editor.setAttribute('aria-label', 'Table source');
   editor.addEventListener('input', () => { state.source = editor.value; state.dirty = true; scheduleSave(); refreshLists(); });
@@ -265,7 +265,7 @@ export function renderTablePane(container, parallx, ctx, deps) {
   rollSec.root.classList.add('tb-roll-sec');
   cols.appendChild(rollSec.root);
   const controls = el('div', 'tb-controls');
-  const rollBtn = button('Roll', 'dices', () => void doRoll(), true);
+  const rollBtn = button('Roll', 'dices', () => void doRoll(), true, 'textGenerator.table.roll');
   rollBtn.classList.add('tb-roll-big', 'cr-dice');
   const countSel = tgSelect(parallx, { layout: 'inline', title: 'How many results', items: COUNTS.map((n) => ({ value: String(n), label: `${n}` })), value: '5', onChange: (v) => { state.count = Number(v) || 5; } });
   const listSel = tgSelect(parallx, { layout: 'inline', title: 'Which list to roll', items: [{ value: 'output', label: 'output' }], value: 'output', onChange: (v) => { state.list = v || 'output'; } });
@@ -288,8 +288,8 @@ export function renderTablePane(container, parallx, ctx, deps) {
     history.style.display = '';
   }
 
-  function button(label, iconName, onClick, primary = false) {
-    const b = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { html: `${icon(iconName, 14)}<span>${label}</span>` });
+  function button(label, iconName, onClick, primary = false, id) {
+    const b = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { ...(id ? { sceneId: id, sceneLabel: label } : {}), html: `${icon(iconName, 14)}<span>${label}</span>` });
     b.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
     return b;
   }

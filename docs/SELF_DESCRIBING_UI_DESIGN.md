@@ -975,7 +975,34 @@ shortcuts sheet and the duplicate finder with no errors; it found the
 detail header's favourite button created with an empty title, which
 is declared after its title is set. Selection actions, compare and
 practice were not reached by that run. The probe row opens the library.
-Next are creations-ai, browser and study, in that order.
+
+creations-ai done 2026-10-12, on the owner's machine, ids under
+`textGenerator.` (its command prefix). `el` moved from `main.js` to
+`ext/creations-ai/dom.js` (`main.js` fell from 11243 to 11231) and
+learned the same `sceneId` / `sceneLabel` attributes as Media
+Organizer's; `story.js`, `studio.js` and `tables.js` get `el` and
+`tgDeclare` through `deps` (an import would have grown `studio.js` past
+its baseline; the tests' own deps leave `tgDeclare` a no-op). Their
+`button` and `smallButton` helpers take an optional id, given only at
+singleton call sites, because the per-field rows reuse the same labels
+(Cancel, Rewrite, Try Again). The form helpers declare their fields by
+label: the chat drawer's `fieldWrap`, the character editor's `field`,
+Settings' `formGroup` (by key) and the feel rows (by key). Declared: the
+sidebar's search and New Chat; Home's concept and See All; Characters'
+search, view and back; the chat's toolbar, scene fields, composer,
+director, directions, shortcuts and their dialogs, the regenerate
+direction, and each message as a surface (`textGenerator.message`, its
+id as instance) with edit, remember, fork, regenerate, copy,
+visibility, delete, variants and the inline editor; the chat settings
+drawer and page; the character editor; Settings; the studio's bar,
+concept, twist, sources and try-a-line; a story's bar, memory and
+direction; a table's editor and Roll. Left raw: per-row chips and
+remove buttons, roster and continue cards, sidebar chat rows. A hidden
+run through Home, Characters, the studio, Settings, a chat with a
+seeded character (drawer, shortcuts), Stories and Tables listed no
+errors; it caught the two Settings feel rows sharing one id, which now
+take their keys. The probe row opens Home.
+Next are browser and study, in that order.
 
 ### Step 8. The scene line in the prompt (cloud)
 

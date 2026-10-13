@@ -119,7 +119,7 @@ export function renderStoriesPage(container, parallx, input, deps) {
   const rail = el('div', 'tg-cc-rail');
   const head = el('div', 'tg-cc-rail-head');
   head.appendChild(el('span', 'tg-cc-rail-title', { text: 'Stories' }));
-  const newBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
+  const newBtn = el('button', 'tg-cc-rail-add', { sceneId: 'textGenerator.stories.new', sceneLabel: 'New Story', html: icon('plus', 14) });
   newBtn.title = 'New Story';
   head.appendChild(newBtn);
   rail.appendChild(head);
@@ -197,7 +197,7 @@ export function renderStoriesPage(container, parallx, input, deps) {
 
 export function renderStoryPane(container, parallx, ctx, deps) {
   injectStoryStyles();
-  const { el, icon, tgSelect } = deps;
+  const { el, icon, tgSelect, tgDeclare = (node) => node } = deps;
   const { fs, workspaceUri } = ctx;
   const root = el('div', 'cs st');
   container.appendChild(root);
@@ -225,9 +225,9 @@ export function renderStoryPane(container, parallx, ctx, deps) {
   const status = el('span', 'cs-chip', { text: 'Draft' });
   const words = el('span', 'cs-section-meta');
   const actions = el('div', 'cs-actions');
-  const exportBtn = button('Export As Markdown', 'file-down', () => void exportMarkdown());
+  const exportBtn = button('Export As Markdown', 'file-down', () => void exportMarkdown(), false, 'textGenerator.story.exportMarkdown');
   exportBtn.title = 'Save the whole story as a Markdown file, a heading per chapter';
-  const chapterBtn = button('New Chapter', 'bookmark', () => addChapter());
+  const chapterBtn = button('New Chapter', 'bookmark', () => addChapter(), false, 'textGenerator.story.newChapter');
   chapterBtn.title = 'Start the next chapter; new beats go there';
   actions.append(exportBtn, chapterBtn);
   bar.append(title, status, words, actions);
@@ -283,13 +283,13 @@ export function renderStoryPane(container, parallx, ctx, deps) {
   // ── Memory ─────────────────────────────────────────────────────────────
   const memory = section('Story Memory', 'What has happened, kept short so the writer never forgets past its context.', true);
   side.appendChild(memory.root);
-  const memoryArea = el('textarea', 'cs-textarea st-memory');
+  const memoryArea = el('textarea', 'cs-textarea st-memory'); tgDeclare(memoryArea, 'textGenerator.story.memory', { label: 'Memory' });
   memoryArea.rows = 4;
   memoryArea.placeholder = 'Written from the beats as they go. Edit it if the writer got something wrong.';
   memoryArea.setAttribute('aria-label', 'Story memory');
   memoryArea.addEventListener('input', () => { state.story.memory = memoryArea.value; autogrow(memoryArea); markDirty(); });
   const memoryActions = el('div', 'cs-actions');
-  const memoryBtn = button('Update Memory', 'brain', () => void updateMemory(true));
+  const memoryBtn = button('Update Memory', 'brain', () => void updateMemory(true), false, 'textGenerator.story.updateMemory');
   memoryBtn.title = 'Fold every beat since the last update into the memory now';
   memoryActions.appendChild(memoryBtn);
   memory.body.append(memoryArea, memoryActions);
@@ -300,14 +300,14 @@ export function renderStoryPane(container, parallx, ctx, deps) {
 
   // ── Composer ───────────────────────────────────────────────────────────
   const composer = el('div', 'st-composer');
-  const direction = el('input', 'cs-input');
+  const direction = el('input', 'cs-input'); tgDeclare(direction, 'textGenerator.story.direction', { label: 'Direction' });
   direction.type = 'text';
   direction.placeholder = 'What happens next?';
   direction.setAttribute('aria-label', 'Direction for the next beat');
   direction.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void writeBeat(); } });
-  const continueBtn = button('Continue', 'sparkles', () => void writeBeat(), true);
+  const continueBtn = button('Continue', 'sparkles', () => void writeBeat(), true, 'textGenerator.story.continue');
   continueBtn.title = 'Write the next beat';
-  const stopBtn = button('Stop', 'square', () => { state.stop = true; });
+  const stopBtn = button('Stop', 'square', () => { state.stop = true; }, false, 'textGenerator.story.stop');
   stopBtn.style.display = 'none';
   composer.append(direction, continueBtn, stopBtn);
   // Directions to reach for: a click fills the line, Continue writes it.
@@ -330,8 +330,8 @@ export function renderStoryPane(container, parallx, ctx, deps) {
   manuscript.appendChild(composerCard);
 
   // ── Helpers ────────────────────────────────────────────────────────────
-  function button(label, iconName, onClick, primary = false) {
-    const btn = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { html: `${icon(iconName, 14)}<span>${label}</span>` });
+  function button(label, iconName, onClick, primary = false, id) {
+    const btn = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { ...(id ? { sceneId: id, sceneLabel: label } : {}), html: `${icon(iconName, 14)}<span>${label}</span>` });
     btn.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
     return btn;
   }

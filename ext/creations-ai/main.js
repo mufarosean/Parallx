@@ -9,6 +9,7 @@
 //   - History trimming       ← openclawContextEngine.ts
 
 import { renderStudioPane } from './studio.js';
+import { el, setSceneUi, tgDeclare, tgDeclareField, tgSlug, tgSurface } from './dom.js';
 import { renderStoriesPage, listStories } from './story.js';
 import { renderTablesPage, attachTableRoll, listTables, loadTable, loadTableByName, rollList, shipCharacterSeeds } from './tables.js';
 import { CHARACTER_SEEDS_NAME } from './tables-core.js';
@@ -4899,19 +4900,6 @@ function tgSelect(parallx, { className = '', layout = 'full', title = '', items 
   };
 }
 
-function el(tag, className, attrs) {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (attrs) {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === 'text') e.textContent = v;
-      else if (k === 'html') e.innerHTML = v;
-      else e.setAttribute(k, v);
-    }
-  }
-  return e;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 9: SIDEBAR
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4932,7 +4920,7 @@ function renderSidebar(container, parallx) {
   searchWrap.innerHTML = icon('search', 14);
   const searchInput = el('input', 'tg-search');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search chats\u2026';
+  searchInput.placeholder = 'Search chats\u2026'; tgDeclare(searchInput, 'textGenerator.side.search', { label: 'Search chats' });
   searchWrap.appendChild(searchInput);
   root.appendChild(searchWrap);
 
@@ -4977,7 +4965,7 @@ function renderSidebar(container, parallx) {
 
   // ── New Chat button ──
   const newChatBtn = el('button', 'tg-new-chat-btn');
-  newChatBtn.innerHTML = icon('plus', 14) + ' <span>New Chat</span>';
+  newChatBtn.innerHTML = icon('plus', 14) + ' <span>New Chat</span>'; tgDeclare(newChatBtn, 'textGenerator.newChat');
   newChatBtn.addEventListener('click', () => parallx.commands.executeCommand('textGenerator.newChat'));
   root.appendChild(newChatBtn);
 
@@ -5161,18 +5149,18 @@ function renderChatEditor(container, parallx, input) {
   const spacer = el('span', 'tg-chat-toolbar-spacer');
   const summaryEl = el('span', 'tg-chat-toolbar-charname');
   const tokenCountEl = el('span', 'tg-token-count');
-  const viewPromptBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('eye', 16) });
+  const viewPromptBtn = el('button', 'tg-chat-toolbar-btn', { sceneId: 'textGenerator.chat.viewPrompt', html: icon('eye', 16) });
   viewPromptBtn.title = 'Inspect prompt: see exactly what the model receives';
   // Scene state edit panel toggle. The AI emits scene
   // updates via the `<scene-update/>` tag and they're
   // auto-stored on `thread.sceneState`; this button lets the user view
   // and override the current scene without having to drop into the
   // thread JSON.
-  const sceneBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('map', 16) });
+  const sceneBtn = el('button', 'tg-chat-toolbar-btn', { sceneId: 'textGenerator.chat.scene', html: icon('map', 16) });
   sceneBtn.title = 'View / edit scene state';
   // The memory file, opened in the editor: Facts, Timeline, Notes. What the
   // model must not forget, in the user's hands.
-  const memoryBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('brain', 16) });
+  const memoryBtn = el('button', 'tg-chat-toolbar-btn', { sceneId: 'textGenerator.chat.memory', html: icon('brain', 16) });
   memoryBtn.title = 'Memory: the facts and timeline this chat keeps';
   memoryBtn.setAttribute('aria-label', 'Memory');
   const openMemoryFile = async () => {
@@ -5189,11 +5177,11 @@ function renderChatEditor(container, parallx, input) {
   memoryPanel.setAttribute('aria-label', 'Memory');
   const memHead = el('div', 'cr-memory-head');
   memHead.appendChild(el('span', 'cr-memory-title', { html: `${icon('brain', 15)}<span>Memory</span>` }));
-  const memOpen = el('button', 'cr-memory-open', { text: 'Open memories.md' });
+  const memOpen = el('button', 'cr-memory-open', { sceneId: 'textGenerator.chat.memory.open', text: 'Open memories.md' });
   memOpen.type = 'button';
   memOpen.addEventListener('click', () => void openMemoryFile());
   // Read the recent chat now instead of waiting for the next extraction.
-  const memUpdate = el('button', 'cr-memory-open', { text: 'Update Now' });
+  const memUpdate = el('button', 'cr-memory-open', { sceneId: 'textGenerator.chat.memory.update', text: 'Update Now' });
   memUpdate.type = 'button';
   memUpdate.title = 'Read the recent chat now and add what it should remember';
   memUpdate.addEventListener('click', async () => {
@@ -5217,7 +5205,7 @@ function renderChatEditor(container, parallx, input) {
   memoryPanel.appendChild(memHead);
   let memTab = 'facts';
   const memSeg = parallx.ui?.createSegmented
-    ? parallx.ui.createSegmented(memoryPanel, { ariaLabel: 'Memory section', items: [{ value: 'facts', label: 'Facts' }, { value: 'timeline', label: 'Timeline' }, { value: 'notes', label: 'Notes' }], value: memTab, onChange: (v) => { memTab = v; void renderMemoryPanel(); } })
+    ? parallx.ui.createSegmented(memoryPanel, { id: 'textGenerator.chat.memory.section', ariaLabel: 'Memory section', items: [{ value: 'facts', label: 'Facts' }, { value: 'timeline', label: 'Timeline' }, { value: 'notes', label: 'Notes' }], value: memTab, onChange: (v) => { memTab = v; void renderMemoryPanel(); } })
     : null;
   memSeg?.element.classList.add('cr-memory-seg');
   const memList = el('div', 'cr-memory-list');
@@ -5277,7 +5265,7 @@ function renderChatEditor(container, parallx, input) {
     const lbl = el('label', 'tg-scene-label', { text: labelText });
     const inp = el('input', 'tg-scene-input');
     inp.type = 'text';
-    inp.dataset.sceneKey = key;
+    inp.dataset.sceneKey = key; tgDeclare(inp, `textGenerator.chat.scene.${tgSlug(key)}`, { label: lbl.textContent || key });
     row.append(lbl, inp);
     return { row, input: inp };
   };
@@ -5285,7 +5273,7 @@ function renderChatEditor(container, parallx, input) {
   const sceneTime = sceneRow('Time', 'time');
   const sceneMood = sceneRow('Mood', 'mood');
   const scenePresent = sceneRow('Present (comma-separated)', 'present');
-  const sceneClearBtn = el('button', 'tg-scene-clear-btn', { text: 'Clear scene' });
+  const sceneClearBtn = el('button', 'tg-scene-clear-btn', { sceneId: 'textGenerator.chat.scene.clear', text: 'Clear scene' });
   sceneClearBtn.title = 'Reset all scene state to empty';
   scenePanel.append(sceneLocation.row, sceneTime.row, sceneMood.row, scenePresent.row, sceneClearBtn);
   root.appendChild(scenePanel);
@@ -5356,7 +5344,7 @@ function renderChatEditor(container, parallx, input) {
   const inputWrap = el('div', 'tg-input-wrap');
   const inputCard = el('div', 'tg-input-card');
   const textarea = el('textarea', 'tg-input-textarea');
-  textarea.placeholder = 'Type your message… (use /ai, /nar, /sys for commands)';
+  textarea.placeholder = 'Type your message… (use /ai, /nar, /sys for commands)'; tgDeclare(textarea, 'textGenerator.chat.input', { label: 'Message' });
   textarea.rows = 1;
   textarea.addEventListener('input', () => {
     textarea.style.height = 'auto';
@@ -5364,7 +5352,7 @@ function renderChatEditor(container, parallx, input) {
   });
 
   const inputToolbar = el('div', 'tg-input-toolbar');
-  const optionsBtn = el('button', 'tg-input-options-btn', { html: icon('sliders', 16) });
+  const optionsBtn = el('button', 'tg-input-options-btn', { sceneId: 'textGenerator.chat.settings', html: icon('sliders', 16) });
   optionsBtn.title = 'Chat settings';
 
   // OOC toggle. When active, the next message is logged
@@ -5372,7 +5360,7 @@ function renderChatEditor(container, parallx, input) {
   // styled as a muted "Backstage" entry so the user can scan their
   // notes alongside the in-character conversation.
   let oocMode = false;
-  const oocBtn = el('button', 'tg-input-ooc-btn', { html: icon('eye-off', 16) });
+  const oocBtn = el('button', 'tg-input-ooc-btn', { sceneId: 'textGenerator.chat.ooc', html: icon('eye-off', 16) });
   oocBtn.title = 'OOC (the AI will not see this message)';
   function setOocMode(next) {
     oocMode = !!next;
@@ -5389,7 +5377,7 @@ function renderChatEditor(container, parallx, input) {
   // in the strongest attention position, but a slash command is
   // invisible; this promotes it to a first-class affordance. The note
   // applies to the NEXT generated turn only, then clears.
-  const directorBtn = el('button', 'tg-input-ooc-btn', { html: icon('megaphone', 16) });
+  const directorBtn = el('button', 'tg-input-ooc-btn', { sceneId: 'textGenerator.chat.director', html: icon('megaphone', 16) });
   directorBtn.title = 'Director\'s note (steer the next AI turn)';
   const directorRow = el('div', 'tg-director-row');
   directorRow.style.display = 'none';
@@ -5418,12 +5406,12 @@ function renderChatEditor(container, parallx, input) {
     return note;
   }
 
-  const sendBtn = el('button', 'tg-input-send', { html: icon('send', 16) });
+  const sendBtn = el('button', 'tg-input-send', { sceneId: 'textGenerator.chat.send', html: icon('send', 16) });
   sendBtn.title = 'Send (Enter)';
   // Directions: on request, the director reads the scene and offers each
   // character four short notes for their next turn (director.js). A pick
   // becomes "/ai @Name note" in the composer, the chat's own way to steer.
-  const directionsBtn = el('button', 'tg-input-ooc-btn', { html: icon('clapperboard', 16) });
+  const directionsBtn = el('button', 'tg-input-ooc-btn', { sceneId: 'textGenerator.chat.directions', html: icon('clapperboard', 16) });
   directionsBtn.title = 'Suggest Directions';
   directionsBtn.setAttribute('aria-label', 'Suggest Directions');
   inputToolbar.append(optionsBtn, oocBtn, directionsBtn, directorBtn, sendBtn);
@@ -5932,12 +5920,12 @@ function renderChatEditor(container, parallx, input) {
     const head = el('div', 'cr-directions-head');
     head.appendChild(el('span', 'cr-directions-title', { html: `${icon('clapperboard', 14)} Directions for the next turn` }));
     const actions = el('div', 'cr-directions-actions');
-    const again = el('button', 'cr-directions-icon', { html: icon('rotate-ccw', 14) });
+    const again = el('button', 'cr-directions-icon', { sceneId: 'textGenerator.chat.directions.again', html: icon('rotate-ccw', 14) });
     again.title = 'Suggest Again';
     again.setAttribute('aria-label', 'Suggest Again');
     again.disabled = busy;
     again.addEventListener('click', () => void suggestDirections());
-    const close = el('button', 'cr-directions-icon', { html: icon('x', 14) });
+    const close = el('button', 'cr-directions-icon', { sceneId: 'textGenerator.chat.directions.close', html: icon('x', 14) });
     close.title = 'Close';
     close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', () => closeDirections());
@@ -5947,7 +5935,7 @@ function renderChatEditor(container, parallx, input) {
 
     if (error) {
       const line = el('div', 'cr-directions-status cr-directions-status--error', { text: error });
-      const retry = el('button', 'cr-directions-retry', { text: 'Try Again' });
+      const retry = el('button', 'cr-directions-retry', { sceneId: 'textGenerator.chat.directions.retry', text: 'Try Again' });
       retry.addEventListener('click', () => void suggestDirections());
       line.appendChild(retry);
       directionsCard.appendChild(line);
@@ -5971,7 +5959,7 @@ function renderChatEditor(container, parallx, input) {
         box.appendChild(who);
         for (const o of g.options) {
           const key = `${g.name}\n${o.text}`;
-          const btn = el('button', `cr-direction${_directionsPicked === key ? ' cr-direction--picked' : ''}`);
+          const btn = el('button', `cr-direction${_directionsPicked === key ? ' cr-direction--picked' : ''}`, { sceneId: `textGenerator.chat.direction.${tgSlug(key)}` });
           btn.title = g.name === NARRATOR
             ? 'The Narrator takes the next turn with this note: the story moves on. Edit it before you send.'
             : `${g.name} takes the next turn with this note. Edit it before you send.`;
@@ -6152,7 +6140,7 @@ function renderChatEditor(container, parallx, input) {
     }
 
     // ── "+" button to manage shortcuts ──
-    const addBtn = el('button', 'tg-shortcut-btn tg-shortcut-btn--add', { text: '+' });
+    const addBtn = el('button', 'tg-shortcut-btn tg-shortcut-btn--add', { sceneId: 'textGenerator.chat.shortcuts.manage', text: '+' });
     addBtn.title = 'Manage shortcut buttons';
     addBtn.addEventListener('click', () => showShortcutManagementMenu());
     shortcutBar.appendChild(addBtn);
@@ -6174,19 +6162,19 @@ function renderChatEditor(container, parallx, input) {
     body.style.alignItems = 'center';
     body.style.gap = '10px';
 
-    const charBtn = el('button', 'tg-shortcut-btn', { html: `${icon('message-circle', 14)} add a character shortcut` });
+    const charBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.shortcuts.addCharacter', html: `${icon('message-circle', 14)} add a character shortcut` });
     charBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     charBtn.addEventListener('click', () => { overlay.remove(); showAddCharacterShortcutDialog(); });
 
-    const customBtn = el('button', 'tg-shortcut-btn', { html: `${icon('px-ai-mark', 14)} add a custom shortcut` });
+    const customBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.shortcuts.addCustom', html: `${icon('px-ai-mark', 14)} add a custom shortcut` });
     customBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     customBtn.addEventListener('click', () => { overlay.remove(); showAddCustomShortcutDialog(); });
 
-    const bulkBtn = el('button', 'tg-shortcut-btn', { html: `${icon('pencil', 14)} Bulk Edit/Delete Shortcuts` });
+    const bulkBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.shortcuts.bulkEdit', html: `${icon('pencil', 14)} Bulk Edit/Delete Shortcuts` });
     bulkBtn.style.cssText = 'width:100%; justify-content:center; padding:8px 16px; font-size:12px;';
     bulkBtn.addEventListener('click', () => { overlay.remove(); showBulkEditShortcutsDialog(); });
 
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.shortcuts.cancel', text: 'Cancel' });
     cancelBtn.style.cssText = 'padding:4px 16px; font-size:11px; margin-top:4px;';
     cancelBtn.addEventListener('click', () => overlay.remove());
 
@@ -6211,7 +6199,7 @@ function renderChatEditor(container, parallx, input) {
 
     const header = el('div', 'tg-modal-header');
     header.appendChild(el('span', 'tg-modal-title', { text: 'Add Character Shortcut' }));
-    const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
+    const closeBtn = el('button', 'tg-modal-close', { sceneId: 'textGenerator.chat.characterShortcut.close', sceneLabel: 'Close', html: icon('x', 16) });
     closeBtn.addEventListener('click', () => overlay.remove());
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -6261,7 +6249,7 @@ function renderChatEditor(container, parallx, input) {
 
     const footer = el('div', 'tg-modal-footer');
     footer.style.cssText = 'display:flex; justify-content:flex-end; padding:8px 16px;';
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.characterShortcut.cancel', text: 'Cancel' });
     cancelBtn.addEventListener('click', () => overlay.remove());
     footer.appendChild(cancelBtn);
 
@@ -6285,7 +6273,7 @@ function renderChatEditor(container, parallx, input) {
 
     const header = el('div', 'tg-modal-header');
     header.appendChild(el('span', 'tg-modal-title', { text: 'Add Custom Shortcut' }));
-    const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
+    const closeBtn = el('button', 'tg-modal-close', { sceneId: 'textGenerator.chat.customShortcut.close', sceneLabel: 'Close', html: icon('x', 16) });
     closeBtn.addEventListener('click', () => overlay.remove());
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -6310,14 +6298,14 @@ function renderChatEditor(container, parallx, input) {
     labelInput.type = 'text';
     labelInput.placeholder = 'e.g. silly reply';
     labelInput.style.cssText = inputStyle + ' min-height:auto;';
-    body.appendChild(mkField('Shortcut button label:', labelInput));
+    body.appendChild(mkField('Shortcut button label:', labelInput)); tgDeclare(labelInput, 'textGenerator.chat.customShortcut.label', { label: 'Shortcut button label' });
 
     // Message
     const msgInput = el('textarea');
     msgInput.placeholder = 'e.g. /ai write a really silly reply';
     msgInput.rows = 3;
     msgInput.style.cssText = inputStyle + ' min-height:60px; max-height:120px; resize:vertical;';
-    body.appendChild(mkField('Message text to add/send when button is clicked:', msgInput));
+    body.appendChild(mkField('Message text to add/send when button is clicked:', msgInput)); tgDeclare(msgInput, 'textGenerator.chat.customShortcut.message', { label: 'Message text' });
 
     // Insertion type
     const insertSelect = tgSelect(parallx, {
@@ -6358,9 +6346,9 @@ function renderChatEditor(container, parallx, input) {
     // Footer
     const footer = el('div', 'tg-modal-footer');
     footer.style.cssText = 'display:flex; justify-content:space-between; padding:8px 16px;';
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.customShortcut.cancel', text: 'Cancel' });
     cancelBtn.addEventListener('click', () => overlay.remove());
-    const createBtn = el('button', 'tg-shortcut-btn', { text: 'Create' });
+    const createBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.customShortcut.create', text: 'Create' });
     createBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-button-background);';
     createBtn.addEventListener('click', async () => {
       const label = labelInput.value.trim();
@@ -6401,7 +6389,7 @@ function renderChatEditor(container, parallx, input) {
 
     const header = el('div', 'tg-modal-header');
     header.appendChild(el('span', 'tg-modal-title', { text: 'Bulk Edit Shortcuts' }));
-    const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
+    const closeBtn = el('button', 'tg-modal-close', { sceneId: 'textGenerator.chat.bulkShortcuts.close', sceneLabel: 'Close', html: icon('x', 16) });
     closeBtn.addEventListener('click', () => overlay.remove());
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -6418,16 +6406,16 @@ function renderChatEditor(container, parallx, input) {
     bulkInput.value = serializeShortcuts(shortcuts);
     bulkInput.rows = 16;
     bulkInput.style.cssText = 'width:100%; box-sizing:border-box; padding:10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:monospace; line-height:1.5; resize:vertical; min-height:200px;';
-    body.appendChild(bulkInput);
+    body.appendChild(bulkInput); tgDeclare(bulkInput, 'textGenerator.chat.bulkShortcuts.text', { label: 'Shortcuts' });
 
     modal.appendChild(body);
 
     // Footer
     const footer = el('div', 'tg-modal-footer');
     footer.style.cssText = 'display:flex; justify-content:space-between; padding:8px 16px;';
-    const cancelBtn = el('button', 'tg-shortcut-btn', { text: 'Cancel' });
+    const cancelBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.bulkShortcuts.cancel', text: 'Cancel' });
     cancelBtn.addEventListener('click', () => overlay.remove());
-    const saveBtn = el('button', 'tg-shortcut-btn', { text: 'Save' });
+    const saveBtn = el('button', 'tg-shortcut-btn', { sceneId: 'textGenerator.chat.bulkShortcuts.save', text: 'Save' });
     saveBtn.style.cssText = 'background:var(--vscode-button-background); color:var(--vscode-button-foreground); border-color:var(--vscode-button-background)';
     saveBtn.addEventListener('click', async () => {
       const parsed = parseShortcutsFromBulkText(bulkInput.value);
@@ -6499,7 +6487,7 @@ function renderChatEditor(container, parallx, input) {
     const modal = el('div', 'tg-modal');
     const header = el('div', 'tg-modal-header');
     header.appendChild(el('span', 'tg-modal-title', { text: 'Prompt Inspector' }));
-    const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
+    const closeBtn = el('button', 'tg-modal-close', { sceneId: 'textGenerator.chat.promptInspector.close', sceneLabel: 'Close', html: icon('x', 16) });
     closeBtn.addEventListener('click', () => overlay.remove());
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -6617,7 +6605,7 @@ function renderChatEditor(container, parallx, input) {
     // so the user can scan them at a glance without confusing them
     // for in-character beats.
     const oocClass = msg.kind === 'ooc' ? ' tg-msg--ooc' : '';
-    const messageEl = el('div', `tg-msg tg-msg--${msg.author || 'system'}${isTransient ? ' tg-msg--streaming' : ''}${hiddenClass}${oocClass}`);
+    const messageEl = el('div', `tg-msg tg-msg--${msg.author || 'system'}${isTransient ? ' tg-msg--streaming' : ''}${hiddenClass}${oocClass}`); tgSurface(messageEl, 'textGenerator.message', msg.name || msg.author || 'Message', msg.id ?? index ?? 'streaming');
     const nameRow = el('div', 'tg-msg-name-row');
     const displayName = msg.kind === 'ooc'
       ? `${getVisibleName(msg)} · Backstage`
@@ -6628,7 +6616,7 @@ function renderChatEditor(container, parallx, input) {
     if (!isTransient && index !== null) {
       actions = el('div', 'tg-msg-inline-actions');
 
-      const editBtn = el('button', 'tg-msg-action-btn', { html: icon('pencil-line', 13) });
+      const editBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.edit', html: icon('pencil-line', 13) });
       editBtn.title = 'Edit message';
       editBtn.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -6643,7 +6631,7 @@ function renderChatEditor(container, parallx, input) {
       // until the user removes it manually from memory.semantic.jsonl.
       // Auto-extracted facts ride the same pipeline; this is just the
       // explicit user channel.
-      const rememberBtn = el('button', 'tg-msg-action-btn', { html: icon('pin', 13) });
+      const rememberBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.remember', html: icon('pin', 13) });
       rememberBtn.title = 'Remember this (pin to memory)';
       rememberBtn.addEventListener('click', async (event) => {
         event.stopPropagation();
@@ -6684,7 +6672,7 @@ function renderChatEditor(container, parallx, input) {
         // the original is preserved untouched. This lets users explore
         // alternative narrative paths without losing the original
         // timeline.
-        const forkBtn = el('button', 'tg-msg-action-btn', { html: icon('git-branch', 13) });
+        const forkBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.fork', html: icon('git-branch', 13) });
         forkBtn.title = 'Fork chat from here';
         forkBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
@@ -6720,7 +6708,7 @@ function renderChatEditor(container, parallx, input) {
         });
         actions.appendChild(forkBtn);
 
-        const regenBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
+        const regenBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.regenerate', html: icon('refresh-cw', 13) });
         regenBtn.title = 'Regenerate this turn, with a direction if you like';
         regenBtn.addEventListener('click', (event) => {
           event.stopPropagation();
@@ -6730,7 +6718,7 @@ function renderChatEditor(container, parallx, input) {
         actions.appendChild(regenBtn);
 
       } else if (msg.author === 'user') {
-        const regenBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
+        const regenBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.regenerate', html: icon('refresh-cw', 13) });
         regenBtn.title = 'Regenerate this message, with a direction if you like';
         regenBtn.addEventListener('click', (event) => {
           event.stopPropagation();
@@ -6740,7 +6728,7 @@ function renderChatEditor(container, parallx, input) {
         actions.appendChild(regenBtn);
       }
 
-      const copyBtn = el('button', 'tg-msg-action-btn', { html: icon('clipboard', 13) });
+      const copyBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.copy', html: icon('clipboard', 13) });
       copyBtn.title = 'Copy to clipboard';
       copyBtn.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -6750,7 +6738,7 @@ function renderChatEditor(container, parallx, input) {
 
       // hiddenFrom visibility toggle — cycles null → 'ai' → 'user' → null
       const visLabel = msg.hiddenFrom === 'ai' ? 'Hidden from AI' : msg.hiddenFrom === 'user' ? 'Hidden from display' : '';
-      const visBtn = el('button', 'tg-msg-action-btn', { html: icon('eye', 13) });
+      const visBtn = el('button', 'tg-msg-action-btn', { sceneId: 'textGenerator.message.visibility', html: icon('eye', 13) });
       visBtn.title = msg.hiddenFrom ? `Visibility: hidden from ${msg.hiddenFrom} (click to cycle)` : 'Toggle visibility (click to hide from AI/display)';
       if (msg.hiddenFrom) visBtn.style.opacity = '0.5';
       visBtn.addEventListener('click', async (event) => {
@@ -6764,7 +6752,7 @@ function renderChatEditor(container, parallx, input) {
       });
       actions.appendChild(visBtn);
 
-      const deleteBtn = el('button', 'tg-msg-action-btn tg-msg-action-btn--danger', { html: icon('trash', 13) });
+      const deleteBtn = el('button', 'tg-msg-action-btn tg-msg-action-btn--danger', { sceneId: 'textGenerator.message.delete', html: icon('trash', 13) });
       deleteBtn.title = 'Delete message (the AI will forget this exchange)';
       deleteBtn.addEventListener('click', async (event) => {
         event.stopPropagation();
@@ -6805,7 +6793,7 @@ function renderChatEditor(container, parallx, input) {
       if (msg.variants && msg.variants.length > 1) {
         const varNav = el('div', 'tg-variant-nav');
         const vi = msg.variantIndex ?? (msg.variants.length - 1);
-        const prevBtn = el('button', 'tg-variant-nav-btn', { text: '‹' });
+        const prevBtn = el('button', 'tg-variant-nav-btn', { sceneId: 'textGenerator.message.previousVariant', text: '‹' });
         prevBtn.title = 'Previous variant';
         prevBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
@@ -6815,7 +6803,7 @@ function renderChatEditor(container, parallx, input) {
           await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
           renderMessages();
         });
-        const nextBtn = el('button', 'tg-variant-nav-btn', { text: '›' });
+        const nextBtn = el('button', 'tg-variant-nav-btn', { sceneId: 'textGenerator.message.nextVariant', text: '›' });
         nextBtn.title = 'Next variant';
         nextBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
@@ -6856,14 +6844,14 @@ function renderChatEditor(container, parallx, input) {
       const open = contentWrap.querySelector('.tg-regen-box');
       if (open) { open.remove(); return; }
       const box = el('div', 'tg-regen-box');
-      const input = el('input', 'tg-regen-input');
+      const input = el('input', 'tg-regen-input'); tgDeclare(input, 'textGenerator.chat.regenerate.direction', { label: 'Direction' });
       input.type = 'text';
       input.value = regenDirectionFor(target);
       input.placeholder = 'Direction for the new version (optional)';
       input.setAttribute('aria-label', 'Direction for the regenerated message');
-      const go = el('button', 'tg-msg-edit-save', { html: `${icon('refresh-cw', 12)} Regenerate` });
+      const go = el('button', 'tg-msg-edit-save', { sceneId: 'textGenerator.chat.regenerate.go', sceneLabel: 'Regenerate', html: `${icon('refresh-cw', 12)} Regenerate` });
       go.type = 'button';
-      const cancel = el('button', 'tg-msg-edit-cancel', { text: 'Cancel' });
+      const cancel = el('button', 'tg-msg-edit-cancel', { sceneId: 'textGenerator.chat.regenerate.cancel', text: 'Cancel' });
       cancel.type = 'button';
       const run = () => { const direction = input.value.trim(); box.remove(); void regenerateMessage(msgIndex, direction || null); };
       go.addEventListener('click', (e) => { e.stopPropagation(); run(); });
@@ -6889,7 +6877,7 @@ function renderChatEditor(container, parallx, input) {
       bodyEl.innerHTML = '';
 
       const editArea = el('textarea', 'tg-inline-edit-area');
-      editArea.value = currentContent;
+      editArea.value = currentContent; tgDeclare(editArea, 'textGenerator.message.text', { label: 'Message text' });
       bodyEl.appendChild(editArea);
 
       // Autocomplete button — outside the edit body, in the contentWrap
@@ -6898,7 +6886,7 @@ function renderChatEditor(container, parallx, input) {
       const isAiMsg = messageHistory[msgIndex]?.author === 'ai';
       if (isAiMsg) {
         autoRow = el('div', 'tg-inline-auto-row');
-        const autoBtn = el('button', 'tg-inline-edit-btn tg-inline-edit-btn--auto', { html: `${icon('px-ai-mark', 12)} Autocomplete` });
+        const autoBtn = el('button', 'tg-inline-edit-btn tg-inline-edit-btn--auto', { sceneId: 'textGenerator.message.autocomplete', sceneLabel: 'Autocomplete', html: `${icon('px-ai-mark', 12)} Autocomplete` });
         autoBtn.title = 'Save edits and AI continues writing from where the text ends';
         // mousedown preventDefault keeps textarea focused so blur doesn't race
         autoBtn.addEventListener('mousedown', (e) => e.preventDefault());
@@ -8046,7 +8034,7 @@ function renderChatEditor(container, parallx, input) {
 
     const head = el('div', 'tg-drawer-head');
     head.appendChild(el('span', 'tg-drawer-title', { text: 'Chat Settings' }));
-    const closeBtn = el('button', 'tg-modal-close', { html: icon('x', 16) });
+    const closeBtn = el('button', 'tg-modal-close', { sceneId: 'textGenerator.chat.drawer.close', sceneLabel: 'Close', html: icon('x', 16) });
     closeBtn.addEventListener('click', closeChatDrawer);
     head.appendChild(closeBtn);
     drawer.appendChild(head);
@@ -8056,7 +8044,7 @@ function renderChatEditor(container, parallx, input) {
 
     const fieldWrap = (labelText, inputEl, hintText) => {
       const wrap = el('div', 'tg-drawer-field');
-      wrap.appendChild(el('label', 'tg-drawer-label', { text: labelText }));
+      wrap.appendChild(el('label', 'tg-drawer-label', { text: labelText })); tgDeclareField(inputEl, `textGenerator.chat.drawer.${tgSlug(labelText)}`, labelText);
       wrap.appendChild(inputEl);
       if (hintText) wrap.appendChild(el('div', 'tg-drawer-hint', { text: hintText }));
       return wrap;
@@ -8136,7 +8124,7 @@ function renderChatEditor(container, parallx, input) {
         }
         chipList.appendChild(chip);
       }
-      const addBtn = el('button', 'tg-drawer-add-btn', { text: '+ Add' });
+      const addBtn = el('button', 'tg-drawer-add-btn', { sceneId: 'textGenerator.chat.drawer.addCharacter', text: '+ Add' });
       addBtn.addEventListener('click', async () => {
         const allChars = await scanCharacters(fs, workspaceUri);
         const available = allChars.filter((c) => !thread.characters.find((tc) => tc.file === c.fileName));
@@ -8186,7 +8174,7 @@ function renderChatEditor(container, parallx, input) {
         chip.appendChild(rm);
         castList.appendChild(chip);
       }
-      const fromRoster = el('button', 'tg-drawer-add-btn', { text: '+ From Roster' });
+      const fromRoster = el('button', 'tg-drawer-add-btn', { sceneId: 'textGenerator.chat.drawer.addFromRoster', text: '+ From Roster' });
       fromRoster.title = 'A character from your roster, as a supporting person in this chat';
       fromRoster.addEventListener('click', async () => {
         const allChars = await scanCharacters(fs, workspaceUri);
@@ -8204,7 +8192,7 @@ function renderChatEditor(container, parallx, input) {
         thread.supportingCast = [...(thread.supportingCast || []), { id: generateId().slice(0, 8), file: picked.description.replace(/ \(connected\)$/, ''), addedAt: Date.now() }];
         await saveCast();
       });
-      const someone = el('button', 'tg-drawer-add-btn', { text: '+ Someone New' });
+      const someone = el('button', 'tg-drawer-add-btn', { sceneId: 'textGenerator.chat.drawer.addSomeoneNew', text: '+ Someone New' });
       someone.title = 'A person who exists only in this chat';
       someone.addEventListener('click', async () => {
         const typed = await parallx.window?.showInputBox({
@@ -8252,7 +8240,7 @@ function renderChatEditor(container, parallx, input) {
         chip.appendChild(rm);
         loreList.appendChild(chip);
       }
-      const addLore = el('button', 'tg-drawer-add-btn', { text: '+ Add Lorebook' });
+      const addLore = el('button', 'tg-drawer-add-btn', { sceneId: 'textGenerator.chat.drawer.addLorebook', text: '+ Add Lorebook' });
       addLore.title = 'A lorebook for this whole chat, whoever is in it';
       addLore.addEventListener('click', async () => {
         allLorebooks = await scanLorebooks(fs, workspaceUri);
@@ -8282,7 +8270,7 @@ function renderChatEditor(container, parallx, input) {
     bodyEl.appendChild(loreField);
 
     // ── Edit character shortcut ──
-    const editCharBtn = el('button', 'tg-drawer-btn', { html: `${icon('pencil-line', 13)} Edit ${escapeHtml(getCharacterName(characters[0]) || 'character')}` });
+    const editCharBtn = el('button', 'tg-drawer-btn', { sceneId: 'textGenerator.chat.drawer.editCharacter', html: `${icon('pencil-line', 13)} Edit ${escapeHtml(getCharacterName(characters[0]) || 'character')}` });
     editCharBtn.addEventListener('click', () => {
       const primaryChar = characters[0];
       if (!primaryChar) return;
@@ -8589,7 +8577,7 @@ function renderHomePage(container, parallx) {
   ask.appendChild(el('h1', 'cr-hero-title', { text: 'Who do you want to meet?' }));
   const prompt = el('div', 'cr-prompt');
   prompt.appendChild(el('span', 'cr-prompt-icon', { html: icon('sparkles', 18) }));
-  const conceptInput = el('input', 'cr-prompt-input');
+  const conceptInput = el('input', 'cr-prompt-input'); tgDeclare(conceptInput, 'textGenerator.home.concept', { label: 'Concept' });
   conceptInput.type = 'text';
   conceptInput.placeholder = pick(1)[0];
   conceptInput.setAttribute('aria-label', 'Describe a character');
@@ -8754,7 +8742,7 @@ function renderHomePage(container, parallx) {
     // Your cast.
     cast.head.querySelector('.cr-section-link')?.remove();
     if (characters.length > 6) {
-      const all = el('button', 'cr-section-link', { text: `See All ${characters.length}` });
+      const all = el('button', 'cr-section-link', { sceneId: 'textGenerator.home.seeAllCharacters', text: `See All ${characters.length}` });
       all.type = 'button';
       all.addEventListener('click', () => void parallx.commands.executeCommand('textGenerator.openCharacters'));
       cast.head.appendChild(all);
@@ -8865,7 +8853,7 @@ function renderCharactersPage(container, parallx, input) {
   });
   const subtitleEl = header.querySelector('.px-page-header__subtitle');
   const tools = el('div', 'cr-gallery-tools');
-  const seg = ui.createSegmented(tools, {
+  const seg = ui.createSegmented(tools, { id: 'textGenerator.characters.view',
     ariaLabel: 'Show',
     items: [{ value: 'characters', label: 'Characters' }, { value: 'lorebooks', label: 'Lorebooks' }],
     value: view,
@@ -8875,7 +8863,7 @@ function renderCharactersPage(container, parallx, input) {
   search.innerHTML = icon('search', 14);
   const searchInput = el('input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search';
+  searchInput.placeholder = 'Search'; tgDeclare(searchInput, 'textGenerator.characters.search', { label: 'Search characters' });
   searchInput.setAttribute('aria-label', 'Search characters');
   searchInput.addEventListener('input', () => { query = searchInput.value.trim().toLowerCase(); renderGallery(); });
   search.appendChild(searchInput);
@@ -8886,7 +8874,7 @@ function renderCharactersPage(container, parallx, input) {
   galleryView.appendChild(grid);
 
   // ── Detail: the Studio, full width ──
-  const back = el('button', 'cr-back', { html: `${icon('chevron-left', 14)}<span>Characters</span>` });
+  const back = el('button', 'cr-back', { sceneId: 'textGenerator.characters.back', sceneLabel: 'Characters', html: `${icon('chevron-left', 14)}<span>Characters</span>` });
   back.type = 'button';
   back.addEventListener('click', () => showGallery());
   const detailHost = el('div', 'cr-detail-host');
@@ -9662,7 +9650,7 @@ function registerChatCharacterTools(parallx, context) {
 
 function studioDeps() {
   return {
-    el, icon, tgSelect, loadSettings, saveSettings, saveCharacter, createCharacterJson, exportCharacterToMarkdown,
+    el, icon, tgSelect, tgDeclare, loadSettings, saveSettings, saveCharacter, createCharacterJson, exportCharacterToMarkdown,
     ensureNestedDirs, generateId, scanCharacters, resolveUri, extRoot: EXT_ROOT, extFolder: 'text-generator', ctxPresets: CTX_WINDOW_PRESETS,
     injectStyles, refreshSidebar: () => _refreshSidebar?.(), exportMarkdown: exportMarkdownFile,
     // The Studio's dice: one roll of a Character Seeds list (want, fear, secret), '' when the table is gone.
@@ -9816,7 +9804,7 @@ function renderSettingsPage(container, parallx) {
     text.appendChild(el('div', 'cr-feel-label', { text: label }));
     text.appendChild(el('div', 'cr-feel-hint', { text: hint }));
     row.appendChild(text);
-    const seg = parallx.ui.createSegmented(row, {
+    const seg = parallx.ui.createSegmented(row, { id: `textGenerator.settings.${tgSlug(key)}`,
       ariaLabel: label,
       items: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
       value: 'on',
@@ -9857,7 +9845,7 @@ function renderSettingsPage(container, parallx) {
     if (opts.min !== undefined) input.min = opts.min;
     if (opts.max !== undefined) input.max = opts.max;
     if (opts.step !== undefined) input.step = opts.step;
-    input.dataset.key = key;
+    input.dataset.key = key; tgDeclare(input, `textGenerator.settings.${tgSlug(key)}`, { label });
     group.appendChild(input);
     form.appendChild(group);
     return input;
@@ -9929,7 +9917,7 @@ function renderSettingsPage(container, parallx) {
   rulesInput.style.minHeight = '150px';
   rulesInput.placeholder = 'Leave empty for no dialogue rules.';
   rulesGroup.appendChild(rulesInput);
-  const rulesReset = el('button', 'tg-form-reset', { text: 'Reset To Default' });
+  const rulesReset = el('button', 'tg-form-reset', { sceneId: 'textGenerator.settings.rules.reset', text: 'Reset To Default' });
   rulesReset.type = 'button';
   rulesReset.title = 'Put the shipped dialogue rules back';
   rulesReset.addEventListener('click', () => { rulesInput.value = DEFAULT_DIALOGUE_RULES; });
@@ -9945,7 +9933,7 @@ function renderSettingsPage(container, parallx) {
   structureInput.style.minHeight = '180px';
   structureInput.placeholder = 'Leave empty for the usual one-paragraph fields.';
   structureGroup.appendChild(structureInput);
-  const structureReset = el('button', 'tg-form-reset', { text: 'Reset To Default' });
+  const structureReset = el('button', 'tg-form-reset', { sceneId: 'textGenerator.settings.structure.reset', text: 'Reset To Default' });
   structureReset.type = 'button';
   structureReset.title = 'Put the shipped sheet structure back';
   structureReset.addEventListener('click', () => { structureInput.value = DEFAULT_SHEET_STRUCTURE; });
@@ -10009,7 +9997,7 @@ function renderSettingsPage(container, parallx) {
   saveRow.style.display = 'flex';
   saveRow.style.alignItems = 'center';
   saveRow.style.marginTop = '8px';
-  const saveBtn = el('button', 'tg-form-save', { text: 'Save Settings' });
+  const saveBtn = el('button', 'tg-form-save', { sceneId: 'textGenerator.settings.save', text: 'Save Settings' });
   const savedLabel = el('span', 'tg-form-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   form.appendChild(saveRow);
@@ -10131,7 +10119,7 @@ function renderCharacterEditor(container, parallx, input) {
     const lbl = el('label', 'tg-ce-label', { html: labelHtml });
     wrap.appendChild(lbl);
     if (hintText) wrap.appendChild(el('div', 'tg-ce-hint', { text: hintText }));
-    wrap.appendChild(inputEl);
+    wrap.appendChild(inputEl); tgDeclareField(inputEl, `textGenerator.characterEditor.${tgSlug(lbl.textContent)}`, lbl.textContent);
     return wrap;
   }
 
@@ -10326,7 +10314,7 @@ function renderCharacterEditor(container, parallx, input) {
   root.appendChild(genRow);
 
   // ── "show more settings" / collapsed section ──
-  const moreBtn = el('button', 'tg-ce-more-btn', { text: 'Show More Settings' });
+  const moreBtn = el('button', 'tg-ce-more-btn', { sceneId: 'textGenerator.characterEditor.moreSettings', text: 'Show More Settings' });
   root.appendChild(moreBtn);
   const moreSection = el('div', 'tg-ce-more-section');
   root.appendChild(moreSection);
@@ -10416,14 +10404,14 @@ function renderCharacterEditor(container, parallx, input) {
 
   // ── Footer: cancel + sandbox + save ──
   const footer = el('div', 'tg-ce-footer');
-  const cancelBtn = el('button', 'tg-ce-cancel-btn', { text: 'Revert' });
+  const cancelBtn = el('button', 'tg-ce-cancel-btn', { sceneId: 'textGenerator.characterEditor.revert', text: 'Revert' });
   cancelBtn.title = 'Discard unsaved changes (re-load from disk)';
-  const sandboxBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('play', 13)} Test In Chat` });
+  const sandboxBtn = el('button', 'tg-ce-cancel-btn', { sceneId: 'textGenerator.characterEditor.testInChat', sceneLabel: 'Test In Chat', html: `${icon('play', 13)} Test In Chat` });
   sandboxBtn.title = 'Save then open a fresh chat with this character';
-  const exportBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('file-down', 13)} Export As Markdown` });
+  const exportBtn = el('button', 'tg-ce-cancel-btn', { sceneId: 'textGenerator.characterEditor.exportMarkdown', sceneLabel: 'Export As Markdown', html: `${icon('file-down', 13)} Export As Markdown` });
   exportBtn.title = 'Save a markdown copy of this form, unsaved edits included';
   const savedLabel = el('span', 'tg-ce-saved', { text: 'Saved!' });
-  const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save Character' });
+  const saveBtn = el('button', 'tg-ce-save-btn', { sceneId: 'textGenerator.characterEditor.save', text: 'Save Character' });
   footer.append(cancelBtn, sandboxBtn, exportBtn, savedLabel, saveBtn);
   root.appendChild(footer);
 
@@ -10635,12 +10623,12 @@ function renderChatSettingsPage(container, parallx, input) {
   const titleRow = el('div', 'tg-cs-row');
   titleRow.appendChild(el('div', 'tg-cs-label', { text: 'Chat Title' }));
   const titleInput = el('input', 'tg-cs-input');
-  titleRow.appendChild(titleInput);
+  titleRow.appendChild(titleInput); tgDeclare(titleInput, 'textGenerator.chatSettings.title', { label: 'Chat Title' });
   identitySection.appendChild(titleRow);
   const nameRow = el('div', 'tg-cs-row');
   nameRow.appendChild(el('div', 'tg-cs-label', { text: 'Your Name' }));
   const nameInput = el('input', 'tg-cs-input');
-  nameRow.appendChild(nameInput);
+  nameRow.appendChild(nameInput); tgDeclare(nameInput, 'textGenerator.chatSettings.yourName', { label: 'Your Name' });
   identitySection.appendChild(nameRow);
   const personaRow = el('div', 'tg-cs-row');
   personaRow.appendChild(el('div', 'tg-cs-label', { text: 'Type As' }));
@@ -10673,7 +10661,7 @@ function renderChatSettingsPage(container, parallx, input) {
   root.appendChild(generationSection);
 
   const saveRow = el('div', 'tg-cs-save-row');
-  const saveBtn = el('button', 'tg-cs-save-btn', { text: 'Save Chat Info' });
+  const saveBtn = el('button', 'tg-cs-save-btn', { sceneId: 'textGenerator.chatSettings.save', text: 'Save Chat Info' });
   const savedLabel = el('span', 'tg-cs-saved', { text: 'Saved!' });
   saveRow.append(saveBtn, savedLabel);
   root.appendChild(saveRow);
@@ -10730,7 +10718,7 @@ function renderChatSettingsPage(container, parallx, input) {
       charChipList.appendChild(chip);
     }
 
-    const addBtn = el('button', 'tg-cs-add-btn', { text: '+ Add Character' });
+    const addBtn = el('button', 'tg-cs-add-btn', { sceneId: 'textGenerator.chatSettings.addCharacter', text: '+ Add Character' });
     addBtn.addEventListener('click', async () => {
       const available = allCharacters.filter((char) => !thread.characters.find((item) => item.file === char.fileName));
       if (available.length === 0) return;
@@ -10930,7 +10918,7 @@ A reference for the world of Victorian-era science and invention.
 
 export function activate(parallx, context) {
   console.log('[TextGenerator] Extension activated');
-  _parallx = parallx;
+  _parallx = parallx; setSceneUi(parallx.ui);
   {
     const fs0 = parallx.workspace?.fs;
     const ws0 = parallx.workspace?.workspaceFolders?.[0]?.uri;
