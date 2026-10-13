@@ -14,7 +14,7 @@ import { markListeners, persistPractice, resolveSheetDark, setSheetAppearance, s
 export function iconBtn(iconId: string, label: string, opts: { id?: string; hint?: string; primary?: boolean; danger?: boolean; onClick?: () => void } = {}): HTMLButtonElement {
   // The kit's icon button; an accent glyph for the primary one, red on hover for a danger one.
   // `id` declares it in the scene: given for the one button of its kind on a pane, never for one in a row.
-  const b = createIconButton(null, { id: opts.id, icon: iconId, title: label, hint: opts.hint });
+  const b = createIconButton(null, { id: opts.id ?? null, icon: iconId, title: label, hint: opts.hint });
   if (opts.primary) b.classList.add('ws-icon--accent');
   if (opts.danger) b.classList.add('ws-icon--danger');
   paintIconBtn(b, iconId, label, opts.hint);

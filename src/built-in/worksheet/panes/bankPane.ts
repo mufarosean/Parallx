@@ -90,8 +90,8 @@ export function createBankPane(container: HTMLElement) {
     info.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
     row.appendChild(info);
     const actions = el('div', 'ws-list__end ws-list__hover');
-    createButton(actions, { label: 'Practice', size: 'sm', onClick: () => void openWorksheet(`item:${item.id}`, item.title) });
-    const more = createIconButton(actions, { icon: 'ellipsis', title: `More actions for ${item.title}`, size: 'sm' });
+    createButton(actions, { id: null, label: 'Practice', size: 'sm', onClick: () => void openWorksheet(`item:${item.id}`, item.title) });
+    const more = createIconButton(actions, { id: null, icon: 'ellipsis', title: `More actions for ${item.title}`, size: 'sm' });
     more.addEventListener('click', () => showMenu(more, [
       { label: 'Quiz This Problem', icon: 'play', onSelect: () => startQuizWith([item.id], 0, item.title) },
       { label: item.starred ? 'Unstar' : 'Star', icon: 'star', onSelect: () => void setItemStarred(item.id, !item.starred).catch(() => {}) },

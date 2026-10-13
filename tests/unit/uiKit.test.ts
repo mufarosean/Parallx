@@ -6,17 +6,17 @@ import { createButton, createEmptyState, createFilterChip, createIconButton, cre
 describe('ui kit — the one set of chrome components', () => {
   it('a button carries its kind and size as classes, secondary/md by default', () => {
     const host = document.createElement('div');
-    const b = createButton(host, { label: 'Save' });
+    const b = createButton(host, { id: null, label: 'Save' });
     expect(b.parentElement).toBe(host);
     expect(b.className).toBe('px-btn px-btn--secondary');
     expect(b.type).toBe('button');
-    const p = createButton(null, { label: 'Go', kind: 'primary', size: 'sm' });
+    const p = createButton(null, { id: null, label: 'Go', kind: 'primary', size: 'sm' });
     expect(p.className).toBe('px-btn px-btn--primary px-btn--sm');
     expect(p.parentElement).toBeNull();
   });
 
   it('an icon button always has words: its title is the tooltip and aria-label', () => {
-    const b = createIconButton(null, { icon: 'settings', title: 'Settings' });
+    const b = createIconButton(null, { id: null, icon: 'settings', title: 'Settings' });
     expect(b.title).toBe('Settings');
     expect(b.getAttribute('aria-label')).toBe('Settings');
     expect(b.classList.contains('px-btn--icon')).toBe(true);
@@ -70,7 +70,7 @@ describe('ui kit — the one set of chrome components', () => {
 
   it('a filter chip toggles aria-pressed and reports the new state', () => {
     const onToggle = vi.fn();
-    const chip = createFilterChip(null, { label: 'Noted', count: 5, onToggle });
+    const chip = createFilterChip(null, { id: null, label: 'Noted', count: 5, onToggle });
     expect(chip.element.getAttribute('aria-pressed')).toBe('false');
     expect(chip.element.textContent).toBe('Noted5');
     chip.element.click();
@@ -83,7 +83,7 @@ describe('ui kit — the one set of chrome components', () => {
   it('a segmented switch is a named radiogroup that reports changes', () => {
     const host = document.createElement('div');
     const onChange = vi.fn();
-    const seg = createSegmented(host, { ariaLabel: 'Rating', items: [{ value: 'easy', label: 'Easy' }, { value: 'hard', label: 'Hard' }], value: 'easy', onChange });
+    const seg = createSegmented(host, { id: null, ariaLabel: 'Rating', items: [{ value: 'easy', label: 'Easy' }, { value: 'hard', label: 'Hard' }], value: 'easy', onChange });
     expect(seg.element.parentElement).toBe(host);
     expect(seg.element.getAttribute('role')).toBe('radiogroup');
     expect(seg.element.getAttribute('aria-label')).toBe('Rating');

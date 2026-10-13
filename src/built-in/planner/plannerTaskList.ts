@@ -214,7 +214,7 @@ export class PlannerTaskList {
       plan.setAttribute('aria-label', `Plan “${task.title}”`);
       for (const opt of quickPlanOptions(Date.now())) {
         const day = appDateString(opt.dueAt, { weekday: 'short', month: 'short', day: 'numeric' });
-        createButton(plan, {
+        createButton(plan, { id: null,
           label: opt.label, size: 'sm', kind: 'secondary', title: `Plan for ${day}`,
           onClick: () => {
             row.classList.add('planner-task--leaving');

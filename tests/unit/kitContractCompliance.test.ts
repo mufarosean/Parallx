@@ -65,8 +65,8 @@ describe('kit contract', () => {
     expect(scene.find('test.both')[0].command).toBe('x.both');
   });
 
-  it('button without an id registers nothing and renders as before', () => {
-    const btn = createButton(host, { label: 'Plain' });
+  it('a row button (id: null) registers nothing and renders as before', () => {
+    const btn = createButton(host, { id: null, label: 'Plain' });
     expect(btn.hasAttribute('data-px-id')).toBe(false);
     expect(btn.className).toBe('px-btn px-btn--secondary');
     expect(scene.entries().map((e) => e.id)).toEqual(['test']);

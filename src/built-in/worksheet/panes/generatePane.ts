@@ -231,7 +231,7 @@ export function createGeneratePane(container: HTMLElement) {
       if (item.tags.length) meta.push(item.tags.map((t) => `#${t}`).join(' '));
       row.appendChild(el('div', 'ws-list__meta', meta.join(' · ')));
       const entry = { item, titleIn, partIns, dropped: false, row };
-      const dropBtn = createButton(null, { label: 'Drop', kind: 'ghost', size: 'sm' });
+      const dropBtn = createButton(null, { id: null, label: 'Drop', kind: 'ghost', size: 'sm' });
       const dropLabel = dropBtn.querySelector('.px-btn__label') as HTMLElement;
       dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;

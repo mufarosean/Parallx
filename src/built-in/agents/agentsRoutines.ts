@@ -258,7 +258,7 @@ interface IRoutineRow {
 
 /** Turn Off / Turn On for one routine; in the scene, pressed while it is on. */
 function onOff(bar: HTMLElement, on: boolean, flip: () => void): void {
-  const btn = createButton(bar, { label: on ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: flip });
+  const btn = createButton(bar, { id: null, label: on ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: flip });
   declareControl(btn, { id: 'agents.routine.enabled', label: on ? 'Turn Off' : 'Turn On', state: () => ({ kind: 'pressed', value: on }) });
 }
 

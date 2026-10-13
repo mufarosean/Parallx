@@ -91,7 +91,7 @@ export function createQuizzesPane(container: HTMLElement) {
         prog.append(bar, el('span', 'ws-list__meta', q.position >= n ? 'At the summary' : `${q.position + 1} of ${n}`));
         end.appendChild(prog);
       }
-      createButton(end, {
+      createButton(end, { id: null,
         label: q.finishedAt ? 'Review' : 'Resume',
         icon: q.finishedAt ? undefined : 'play',
         kind: q.finishedAt ? 'secondary' : 'primary',
@@ -139,7 +139,7 @@ export function createQuizzesPane(container: HTMLElement) {
           for (const fn of practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
         }
       };
-      const more = createIconButton(end, { icon: 'ellipsis', title: `More actions for ${q.name || started}`, size: 'sm' });
+      const more = createIconButton(end, { id: null, icon: 'ellipsis', title: `More actions for ${q.name || started}`, size: 'sm' });
       more.addEventListener('click', () => showMenu(more, [
         { label: 'Rename…', icon: 'pencil', onSelect: rename },
         { label: 'Copy as New Quiz', icon: 'copy', tooltip: 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', onSelect: () => startQuizWith(q.itemIds, 0, `${q.name || 'Quiz'} Copy`) },

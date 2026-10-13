@@ -610,6 +610,22 @@ the person converting it knows the feature. Once typecheck lists no
 caller without one, the field turns required and a kit call without a
 declaration is a type error from then on.
 
+Done 2026-10-13, on the owner's machine. `id` is required on the four
+original control options (`IKitButtonOptions`, `IKitIconButtonOptions`,
+`IKitFilterChipOptions`, `IKitSegmentedOptions`) as `string | null`.
+`null` says the control is a row's and the scene never holds it, so the
+choice is written at the call site instead of being an omission. The
+other three of the seven (page header, section label, empty state)
+declare nothing. Eighteen callers took `null` or a forwarded id: row
+buttons (worksheet bank and quizzes rows, plan rows, Planner's Today
+and task list, Agents routine rows, Generate's Drop) say `id: null`,
+and pass-throughs (worksheet `widgets.ts`' `iconBtn`, the dashboard
+pane's quiet actions, the launcher's actions, the page header's actions
+and the empty state's action in `kit.ts`) forward `a.id ?? null`. The
+page header's ⋯ gained the fixed id `pageHeader.more`, since every page
+header has one. The extension API (`parallx.d.ts`) keeps `id` optional:
+extensions are JavaScript, and step 7 gave theirs ids by hand.
+
 ### Step 5. Built-ins, one per session (local or cloud)
 
 Either place: the scene probe runs in the cloud container under xvfb,

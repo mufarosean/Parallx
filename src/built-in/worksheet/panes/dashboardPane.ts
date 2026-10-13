@@ -440,7 +440,7 @@ function campaignSection(root: HTMLElement, items: InsightItem[], attempts: Insi
   colLevel.appendChild(lvl);
   if (plan.actions.quiet.length) {
     const quiet = el('div', 'ws-camp__more');
-    for (const a of plan.actions.quiet) createButton(quiet, { id: a.id, label: a.label, title: a.title, kind: 'ghost', size: 'sm', onClick: () => a.onClick() });
+    for (const a of plan.actions.quiet) createButton(quiet, { id: a.id ?? null, label: a.label, title: a.title, kind: 'ghost', size: 'sm', onClick: () => a.onClick() });
     colLevel.appendChild(quiet);
   }
 

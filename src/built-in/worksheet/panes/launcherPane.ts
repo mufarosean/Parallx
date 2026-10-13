@@ -110,10 +110,10 @@ export function createLauncherPane(container: HTMLElement) {
     today.appendChild(text);
     const acts = el('div', 'ws-home__todayacts');
     const first = plan.actions.secondary.find((a) => !a.label.startsWith('Review Due Flashcards'));
-    if (first) createButton(acts, { id: first.id, label: first.label, title: first.title, onClick: () => first.onClick() });
+    if (first) createButton(acts, { id: first.id ?? null, label: first.label, title: first.title, onClick: () => first.onClick() });
     if (plan.actions.primary) {
       const a = plan.actions.primary;
-      createButton(acts, { id: a.id, label: a.label, icon: a.icon, title: a.title, kind: 'primary', onClick: () => a.onClick() });
+      createButton(acts, { id: a.id ?? null, label: a.label, icon: a.icon, title: a.title, kind: 'primary', onClick: () => a.onClick() });
     }
     if (acts.childElementCount) today.appendChild(acts);
     col.appendChild(today);

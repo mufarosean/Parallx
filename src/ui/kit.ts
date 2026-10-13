@@ -37,8 +37,8 @@ export type ButtonSize = 'md' | 'sm';
 
 /** What every control declares. `id` is optional until every caller has one. */
 export interface IKitControlDeclaration {
-  /** Stable within its surface: 'planner.addTask'. docs/SELF_DESCRIBING_UI_DESIGN.md section 4.3. */
-  readonly id?: string;
+  /** Stable within its surface: 'planner.addTask'. docs/SELF_DESCRIBING_UI_DESIGN.md section 4.3. Null: a row's control, which the scene never holds. */
+  readonly id?: string | null;
   readonly hint?: string;
   /** Recorded for the docs. Not evaluated. */
   readonly when?: string;
@@ -124,6 +124,7 @@ function setRole(element: HTMLElement, role: string | undefined): void {
 // ── Buttons ──────────────────────────────────────────────────────────────────
 
 export interface IKitButtonOptions extends IKitControlDeclaration {
+  readonly id: string | null;
   readonly label: string;
   /** Default 'secondary'. A view has at most one 'primary'. */
   readonly kind?: ButtonKind;
@@ -140,6 +141,7 @@ export interface IKitButtonOptions extends IKitControlDeclaration {
 }
 
 export interface IKitIconButtonOptions extends IKitControlDeclaration {
+  readonly id: string | null;
   /** Registry icon id. */
   readonly icon: string;
   /** Required: an icon button's only words are its tooltip and aria-label. */
@@ -178,6 +180,7 @@ export interface IKitPageHeaderOptions {
 }
 
 export interface IKitFilterChipOptions extends IKitControlDeclaration {
+  readonly id: string | null;
   readonly label: string;
   /** A count drawn after the label in a fainter tone. */
   readonly count?: number;
@@ -199,6 +202,7 @@ export interface IKitSegmentedItem {
 }
 
 export interface IKitSegmentedOptions extends IKitControlDeclaration {
+  readonly id: string | null;
   readonly items: readonly IKitSegmentedItem[];
   readonly value?: string;
   /** Required: the group's name for screen readers. */
@@ -350,7 +354,7 @@ export function createEmptyState(container: HTMLElement | null | undefined, opti
   }
   if (options.action) {
     const a = options.action;
-    const btn = createButton(root, { id: a.id, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
+    const btn = createButton(root, { id: a.id ?? null, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
     btn.classList.add('px-empty__action');
   }
   return mount(container, root);
@@ -402,14 +406,14 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
   const more = [...overflow, ...(overflow.length && options.more?.length ? [{ separator: true }] : []), ...(options.more ?? [])];
 
   for (const a of visible) {
-    createButton(actions, { id: a.id, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'secondary', onClick: () => a.onClick() });
+    createButton(actions, { id: a.id ?? null, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'secondary', onClick: () => a.onClick() });
   }
   if (options.primary) {
     const a = options.primary;
-    createButton(actions, { id: a.id, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
+    createButton(actions, { id: a.id ?? null, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
   }
   if (more.length) {
-    const btn = createIconButton(actions, { icon: 'ellipsis', title: 'More Actions' });
+    const btn = createIconButton(actions, { id: 'pageHeader.more', icon: 'ellipsis', title: 'More Actions' });
     btn.addEventListener('click', () => {
       showExtensionContextMenu(btn, more, { anchorPosition: 'below' }, (icon, c) => c.appendChild(createIconElement(icon, 14)));
     });

@@ -425,7 +425,7 @@ export class PlannerTodayView implements IDisposable {
       row.setAttribute('role', 'group');
       row.setAttribute('aria-label', `Plan “${task.title}”`);
       for (const opt of options) {
-        createButton(row, {
+        createButton(row, { id: null,
           label: opt.label, size: 'sm', kind: 'secondary',
           title: `Plan for ${dayFmt(opt.dueAt)}`,
           onClick: () => {
@@ -462,7 +462,7 @@ export class PlannerTodayView implements IDisposable {
       name.addEventListener('click', () => this._deps.openTask(task, name.getBoundingClientRect()));
       text.append(name, el('span', 'planner-today__meta', `Due ${dayFmt(task.dueAt!)}`));
       item.appendChild(text);
-      createButton(item, {
+      createButton(item, { id: null,
         label: 'Move to Today', size: 'sm', kind: 'secondary',
         onClick: () => {
           // Keep the time of day it had; only the date moves.
