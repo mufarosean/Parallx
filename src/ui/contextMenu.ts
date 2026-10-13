@@ -396,8 +396,11 @@ export class ContextMenu extends Disposable {
         }
       }
 
-      // Hover highlight + submenu management
-      row.addEventListener('mouseenter', () => {
+      // Hover highlight + submenu management. A pointer that only sat still
+      // while the menu appeared under it (Chromium sends that a hover with no
+      // movement) does not take the highlight from the keyboard.
+      row.addEventListener('mousemove', (e) => {
+        if ((e.movementX === 0 && e.movementY === 0) || this._highlightIndex === this._itemEls.indexOf(row)) return;
         if (!item.disabled) {
           this._highlight(this._itemEls.indexOf(row));
         }
