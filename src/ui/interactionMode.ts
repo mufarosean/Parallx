@@ -150,8 +150,9 @@ function _exitMode(mode: ActiveMode, reason: ModeExitReason): void {
  */
 function _pruneOrphans(): void {
   for (const mode of [..._stack].reverse()) {
+    // Gone, or no longer drawn (its pane hidden behind another tab): either way nothing of it is reachable.
     const owner = mode.options.ownedRoots()[0];
-    if (owner && !owner.isConnected) _exitMode(mode, 'orphaned');
+    if (owner && (!owner.isConnected || owner.checkVisibility?.() === false)) _exitMode(mode, 'orphaned');
   }
 }
 

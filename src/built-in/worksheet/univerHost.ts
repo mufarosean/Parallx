@@ -38,7 +38,7 @@ import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
 import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
-
+import { ensureUniverEditorExits } from './univerKeyboard.js';
 export { ATHENA_ROWS, ATHENA_COLUMNS };
 
 export interface IWorksheetHostOptions {
@@ -245,18 +245,18 @@ const POPUP_ROOT_ID = 'ws-univer-popup-root';
 function ensurePopupRoot(): void {
   if (document.getElementById(POPUP_ROOT_ID)) return;
   const root = document.createElement('div');
-  root.id = POPUP_ROOT_ID;
+  root.id = POPUP_ROOT_ID; root.setAttribute('aria-keyshortcuts', 'F6'); // the sheet's popups and side panel: F6 leaves them too
   root.style.position = 'relative';
   root.style.zIndex = '10005';
   document.body.appendChild(root);
 }
 
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
-  ensurePopupRoot();
-  // The sheet zooms its cells with Ctrl+= / Ctrl+- / Ctrl+0, as Excel does;
-  // this marks it so the app's Text size keys step aside while focus is in
-  // it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
+  ensurePopupRoot(); ensureUniverEditorExits();
+  // Ctrl+= / - / 0 zoom the cells (as Excel does): the app's Text size keys step aside
+  // while focus is in it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
   opts.container.setAttribute('data-px-owns-zoom', '');
+  opts.container.setAttribute('role', 'region'); opts.container.setAttribute('aria-keyshortcuts', 'F6'); opts.container.setAttribute('aria-label', 'Spreadsheet. Tab moves between cells; F6 moves to the next area.'); // Tab moves cells, as in Excel: say how to leave (WCAG 2.1.2)
   const sheetsPresetConfig = {
     container: opts.container,
     // Workbook model (Mufaro): items carry parts on separate tabs, so the

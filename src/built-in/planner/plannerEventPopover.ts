@@ -42,6 +42,7 @@ export class PlannerEventPopover {
 
       const pop = el('div', 'planner-popover planner-scope-menu');
       pop.style.position = 'fixed';
+      pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.setAttribute('aria-label', kind === 'delete' ? 'Delete recurring event' : 'Edit recurring event');
       const head = el('div', 'planner-popover__head');
       const heading = el('h3', 'planner-popover__title');
       heading.textContent = kind === 'delete' ? 'Delete recurring event' : 'Edit recurring event';
@@ -109,10 +110,13 @@ export class PlannerEventPopover {
 
     // Dropdowns own document-level listeners — every close path disposes them.
     const popupDisposables: IDisposable[] = [];
+    // A modal dialog: focus goes back where it was when it closes.
+    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     const close = () => {
       for (const d of popupDisposables) { try { d.dispose(); } catch { /* noop */ } }
       popupDisposables.length = 0;
       try { overlay.remove(); } catch { /* noop */ }
+      if (returnFocus?.isConnected && (!document.activeElement || document.activeElement === document.body)) returnFocus.focus();
       if (pendingGhost && pendingGhost.parentElement) {
         try { pendingGhost.remove(); } catch { /* noop */ }
       }
@@ -130,6 +134,7 @@ export class PlannerEventPopover {
     createSurface(pop, { id: 'planner.eventPopover', owner: 'planner', label: 'Event' });
 
     const isEdit = init.mode === 'edit';
+    pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.setAttribute('aria-label', isEdit ? 'Edit Event' : 'New Event');
     const seed: { title: string; startAt: number; endAt: number; allDay: boolean; location: string; description: string; eventId: string | null } = isEdit
       ? {
           title: init.event.title,

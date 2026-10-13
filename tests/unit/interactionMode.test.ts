@@ -70,6 +70,16 @@ describe('enterMode — the exit contract', () => {
     expect(_activeModeIdsForTest()).not.toContain('orphan');
   });
 
+  it('so does one whose owner is no longer drawn (its pane hidden behind another tab)', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const reasons: ModeExitReason[] = [];
+    enterMode({ id: 'hidden-owner', ownedRoots: () => [root], onExit: (r) => reasons.push(r), onKeydown: () => true });
+    (root as HTMLElement & { checkVisibility: () => boolean }).checkVisibility = () => false;
+    expect(key('Enter').defaultPrevented).toBe(false);
+    expect(reasons).toEqual(['orphaned']);
+  });
+
   it('Escape exits the TOPMOST mode only', async () => {
     const rootA = document.createElement('div');
     const rootB = document.createElement('div');

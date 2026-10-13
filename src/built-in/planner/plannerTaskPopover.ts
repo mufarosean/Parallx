@@ -34,11 +34,14 @@ export class PlannerTaskPopover {
   ): void {
     // Dropdowns own document-level listeners — every close path disposes them.
     const popupDisposables: IDisposable[] = [];
+    // A modal dialog: focus goes back where it was when it closes.
+    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     const close = () => {
       for (const d of popupDisposables) { try { d.dispose(); } catch { /* noop */ } }
       popupDisposables.length = 0;
       try { overlay.remove(); } catch { /* noop */ }
       document.removeEventListener('keydown', onKey);
+      if (returnFocus?.isConnected && (!document.activeElement || document.activeElement === document.body)) returnFocus.focus();
     };
 
     const overlay = el('div', 'planner-popover-overlay');
@@ -49,6 +52,7 @@ export class PlannerTaskPopover {
     createSurface(pop, { id: 'planner.taskPopover', owner: 'planner', label: 'Task' });
 
     const isEdit = init.mode === 'edit';
+    pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.setAttribute('aria-label', isEdit ? 'Edit Task' : 'New Task');
     // Defaults on create: +5d due, 'reviewing' (the journaling flow).
     // Calendar drags pass seedDueAt + seedStatus='planned' to override.
     const seed: {
