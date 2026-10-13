@@ -450,3 +450,39 @@ export function isWholeTableSelected(state: EditorState): boolean {
   return frame.rect.top === 0 && frame.rect.left === 0
     && frame.rect.bottom === frame.rows && frame.rect.right === frame.cols;
 }
+
+// ── Column width ────────────────────────────────────────────────────────────
+
+/**
+ * Widen the caret's column by `deltaPx` (negative narrows), as dragging its
+ * edge does: every cell in the column takes the new width. The keyboard's
+ * column-width drag (View: Make Focused Area Wider and Narrower). Undefined
+ * outside a table, so the key passes on.
+ */
+export function resizeColumnBy(editor: Editor, deltaPx: number, minWidth = 80): boolean | undefined {
+  const frame = resolveTableFrame(editor.state);
+  if (!frame) return undefined;
+  const { map, table, tableStart } = frame;
+  const col = frame.rect.left;
+  const first = map.map[col]!;
+  const cell0 = table.nodeAt(first);
+  const stored = cell0?.attrs.colwidth?.[col - map.colCount(first)];
+  const dom = editor.view.nodeDOM(tableStart + first) as HTMLElement | null;
+  const current = stored || (dom ? Math.round(dom.getBoundingClientRect().width / (cell0?.attrs.colspan ?? 1)) : minWidth);
+  const width = Math.max(minWidth, Math.round(current + deltaPx));
+  if (width === current) return false;
+  const tr = editor.state.tr;
+  const done = new Set<number>();
+  for (let row = 0; row < map.height; row++) {
+    const pos = map.map[row * map.width + col]!;
+    if (done.has(pos)) continue;
+    done.add(pos);
+    const cell = table.nodeAt(pos);
+    if (!cell) continue;
+    const colwidth: number[] = cell.attrs.colwidth ? [...cell.attrs.colwidth] : new Array(cell.attrs.colspan ?? 1).fill(0);
+    colwidth[col - map.colCount(pos)] = width;
+    tr.setNodeMarkup(tableStart + pos, undefined, { ...cell.attrs, colwidth });
+  }
+  editor.view.dispatch(tr);
+  return true;
+}

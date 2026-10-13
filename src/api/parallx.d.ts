@@ -784,9 +784,11 @@ export namespace ui {
   /**
    * Lets the resize keys (View: Make Focused Area Wider, Narrower, Taller,
    * Shorter) move a divider you drew: while focus is inside `element`, they
-   * call `resize` with a step in px (negative shrinks). Return false at a limit.
+   * call `resize` with a step in px (negative shrinks). Return true when it
+   * changed, false at a limit, undefined when focus is on nothing it sizes
+   * (the key then passes on to the divider around it).
    */
-  export function registerKeyboardResize(element: HTMLElement, target: { readonly axis: 'width' | 'height'; resize(delta: number): boolean }): IDisposable;
+  export function registerKeyboardResize(element: HTMLElement, target: { readonly axis: 'width' | 'height'; resize(delta: number): boolean | undefined }): IDisposable;
 
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;

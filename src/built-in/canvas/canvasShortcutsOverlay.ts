@@ -51,6 +51,7 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { keys: 'Ctrl+Shift+← / Ctrl+Shift+→', label: 'Move the column' },
       { keys: 'Ctrl+Alt+↑ / Ctrl+Alt+↓',     label: 'Insert a row above / below' },
       { keys: 'Ctrl+Alt+← / Ctrl+Alt+→',     label: 'Insert a column left / right' },
+      { keys: 'Ctrl+Alt+Shift+← / →',      label: 'Narrow / widen the column (a layout column too)' },
       { keys: 'Backspace',                 label: 'Clear the selected cells' },
     ],
   },

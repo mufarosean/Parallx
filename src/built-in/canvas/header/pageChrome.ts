@@ -889,14 +889,23 @@ export class PageChromeController {
 
     this._isRepositioning = true;
 
+    // The overlay is also the keyboard's way: a slider the arrows move (Page keys
+    // farther, Home and End to the ends), Enter saves and Escape cancels.
     const overlay = $('div.canvas-cover-reposition-overlay');
-    overlay.textContent = 'Drag image to reposition';
+    overlay.textContent = 'Drag the image, or use the arrow keys, to reposition';
+    overlay.tabIndex = 0;
+    overlay.setAttribute('role', 'slider');
+    overlay.setAttribute('aria-label', 'Cover position');
     this._coverEl.appendChild(overlay);
+    const setOffset = (v: number) => {
+      const offset = Math.max(0, Math.min(1, v));
+      if (this._coverEl) this._coverEl.style.backgroundPosition = `center ${(offset * 100).toFixed(1)}%`;
+      if (this._currentPage) (this._currentPage as any).coverYOffset = offset;
+      overlay.setAttribute('aria-valuenow', String(Math.round(offset * 100)));
+    };
     this._coverEl.classList.add('canvas-cover--repositioning');
 
-    if (this._coverControls) {
-      this._coverControls.style.display = 'none';
-    }
+    if (this._coverControls) this._coverControls.style.display = 'none';
 
     let startY = 0;
     let startOffset = this._currentPage?.coverYOffset ?? 0.5;
@@ -911,15 +920,7 @@ export class PageChromeController {
 
     const onMouseMove = (e: MouseEvent) => {
       e.preventDefault();
-      const delta = (startY - e.clientY) / (this._coverEl?.offsetHeight ?? 200);
-      const newOffset = Math.max(0, Math.min(1, startOffset + delta));
-      const yPct = (newOffset * 100).toFixed(1);
-      if (this._coverEl) {
-        this._coverEl.style.backgroundPosition = `center ${yPct}%`;
-      }
-      if (this._currentPage) {
-        (this._currentPage as any).coverYOffset = newOffset;
-      }
+      setOffset(startOffset + (startY - e.clientY) / (this._coverEl?.offsetHeight ?? 200));
     };
 
     // A drag only moves the picture; Save Position stores it and Cancel puts
@@ -932,6 +933,15 @@ export class PageChromeController {
     const originalOffset = this._currentPage?.coverYOffset ?? 0.5;
 
     overlay.addEventListener('mousedown', onMouseDown);
+    overlay.addEventListener('keydown', (e) => {
+      const at = this._currentPage?.coverYOffset ?? 0.5;
+      const to = ({ ArrowUp: at - 0.05, ArrowDown: at + 0.05, PageUp: at - 0.2, PageDown: at + 0.2, Home: 0, End: 1 } as Record<string, number>)[e.key];
+      if (to !== undefined) setOffset(to);
+      else if (e.key === 'Enter') saveBtn.click();
+      else if (e.key === 'Escape') cancelBtn.click();
+      else return;
+      e.preventDefault(); e.stopPropagation();
+    });
 
     const actionBar = $('div.canvas-cover-reposition-actions');
 
@@ -942,19 +952,11 @@ export class PageChromeController {
       e.stopPropagation();
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      if (this._currentPage) {
-        (this._currentPage as any).coverYOffset = originalOffset;
-      }
-      const yPct = (originalOffset * 100).toFixed(1);
-      if (this._coverEl) {
-        this._coverEl.style.backgroundPosition = `center ${yPct}%`;
-      }
+      setOffset(originalOffset);
       overlay.remove();
       actionBar.remove();
       this._coverEl?.classList.remove('canvas-cover--repositioning');
-      if (this._coverControls) {
-        this._coverControls.style.display = '';
-      }
+      if (this._coverControls) this._coverControls.style.display = '';
       this._isRepositioning = false;
     });
     actionBar.appendChild(cancelBtn);
@@ -969,9 +971,7 @@ export class PageChromeController {
       overlay.remove();
       actionBar.remove();
       this._coverEl?.classList.remove('canvas-cover--repositioning');
-      if (this._coverControls) {
-        this._coverControls.style.display = '';
-      }
+      if (this._coverControls) this._coverControls.style.display = '';
       this._isRepositioning = false;
       const finalOffset = this._currentPage?.coverYOffset ?? 0.5;
       this._host.dataService.updatePage(this._host.pageId, { coverYOffset: finalOffset });
@@ -979,6 +979,7 @@ export class PageChromeController {
     actionBar.appendChild(saveBtn);
 
     this._coverEl.appendChild(actionBar);
+    overlay.focus();
   }
 
   // ── Cover Picker ────────────────────────────────────────────────────────
@@ -986,13 +987,9 @@ export class PageChromeController {
   private _resolvePopupAnchor(preferred: HTMLElement | null | undefined, fallbacks: Array<HTMLElement | null | undefined>): HTMLElement {
     const candidates = [preferred, ...fallbacks];
     for (const candidate of candidates) {
-      if (!candidate || !candidate.isConnected) {
-        continue;
-      }
+      if (!candidate || !candidate.isConnected) continue;
       const rect = candidate.getBoundingClientRect();
-      if (rect.width > 0 || rect.height > 0) {
-        return candidate;
-      }
+      if (rect.width > 0 || rect.height > 0) return candidate;
     }
     return this._host.container;
   }

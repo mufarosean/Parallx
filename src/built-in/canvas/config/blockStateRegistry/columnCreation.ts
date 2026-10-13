@@ -300,3 +300,36 @@ export function moveBlockBesidePrevious(editor: Editor, pos: number): boolean {
   if (ok) editor.view.dispatch(tr);
   return ok;
 }
+
+/**
+ * Widen the caret's layout column by `deltaPx`, taking it from the column to
+ * its right (to its left, for the last), as dragging the boundary does: the
+ * pair keeps its sum and neither drops under 10%. The keyboard's column-width
+ * drag. Undefined outside a column layout, so the key passes on.
+ */
+export function resizeLayoutColumnBy(editor: Editor, deltaPx: number): boolean | undefined {
+  const $from = editor.state.selection.$from;
+  let d = $from.depth;
+  while (d > 0 && $from.node(d).type.name !== 'column') d--;
+  if (d <= 0) return undefined;
+  const list = $from.node(d - 1);
+  const listPos = $from.before(d - 1);
+  const index = $from.index(d - 1);
+  if (list.childCount < 2) return false;
+  const other = index < list.childCount - 1 ? index + 1 : index - 1;
+  const total = (editor.view.nodeDOM(listPos) as HTMLElement | null)?.getBoundingClientRect().width ?? 0;
+  if (!total) return false;
+  // Unset widths share what the set ones leave.
+  let set = 0, unset = 0;
+  list.forEach((c) => { if (c.attrs.width != null) set += c.attrs.width; else unset++; });
+  const width = (i: number): number => list.child(i).attrs.width ?? (unset ? (100 - set) / unset : 0);
+  const a = width(index), b = width(other);
+  const move = Math.max(10 - a, Math.min(b - 10, (deltaPx / total) * 100));
+  if (Math.abs(move) < 0.05) return false;
+  const posOf = (i: number): number => { let p = listPos + 1; for (let k = 0; k < i; k++) p += list.child(k).nodeSize; return p; };
+  const tr = editor.state.tr;
+  tr.setNodeMarkup(posOf(index), undefined, { ...list.child(index).attrs, width: Math.round((a + move) * 10) / 10 });
+  tr.setNodeMarkup(posOf(other), undefined, { ...list.child(other).attrs, width: Math.round((b - move) * 10) / 10 });
+  editor.view.dispatch(tr);
+  return true;
+}

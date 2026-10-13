@@ -26,7 +26,8 @@
 // single vocabulary shared with the row/column grips.
 
 import { Extension } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import { CellSelection } from '@tiptap/pm/tables';
 import {
   duplicateRow,
@@ -37,6 +38,7 @@ import {
   insertRowBelow,
   moveColumnBy,
   moveRowBy,
+  resizeColumnBy,
   resolveTableFrame,
   selectWholeTable,
   selectionIsInTable,
@@ -165,5 +167,17 @@ export const TableKeyboardPolicy = Extension.create({
         return focusTableCell(editor, frame.tablePos, frame.rect.top, frame.rect.left);
       },
     };
+  },
+
+  // The keyboard's column-width drag: with the caret in a cell, View: Make
+  // Focused Area Wider / Narrower (Ctrl+Alt+Shift+Right / Left) size its column.
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+    return [new Plugin({
+      view: (view) => {
+        const reg = registerKeyboardResize(view.dom as HTMLElement, { axis: 'width', resize: (px) => resizeColumnBy(editor, px) });
+        return { destroy: () => reg.dispose() };
+      },
+    })];
   },
 });

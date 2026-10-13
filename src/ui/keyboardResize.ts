@@ -12,8 +12,12 @@ export type ResizeAxis = 'width' | 'height';
 
 export interface IKeyboardResizable {
   readonly axis: ResizeAxis;
-  /** Grow by `delta` px (negative shrinks); false when it is at its limit. */
-  resize(delta: number): boolean;
+  /**
+   * Grow by `delta` px (negative shrinks): true when it changed, false at its
+   * limit (it still owns the key), undefined when focus is not on anything it
+   * sizes (a page's table column, say, with the caret outside any table).
+   */
+  resize(delta: number): boolean | undefined;
 }
 
 const targets = new WeakMap<Element, IKeyboardResizable[]>();
@@ -32,8 +36,9 @@ export function registerKeyboardResize(element: HTMLElement, target: IKeyboardRe
  */
 export function resizeFromFocus(axis: ResizeAxis, delta: number): boolean {
   for (let el: Element | null = document.activeElement; el; el = el.parentElement) {
-    const t = targets.get(el)?.find((x) => x.axis === axis);
-    if (t) { t.resize(delta); return true; }
+    for (const t of targets.get(el) ?? []) {
+      if (t.axis === axis && t.resize(delta) !== undefined) return true;
+    }
   }
   return false;
 }

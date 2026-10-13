@@ -1574,7 +1574,7 @@ export {
   turnBlockWithSharedStrategy,
   turnBlockIntoColumns,
   createColumnLayoutFromDrop,
-  addColumnToLayoutFromDrop,
+  addColumnToLayoutFromDrop, resizeLayoutColumnBy,
   areAllDraggedNodesListItems,
   wrapDraggedListItemsForDrop,
 } from './blockStateRegistry/blockStateRegistry.js';

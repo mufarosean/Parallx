@@ -14,7 +14,8 @@
 // plugins/ directory.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import {
   COLUMN_CONTENT_EXPRESSION,
   columnResizePlugin,
@@ -31,6 +32,7 @@ import {
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
   normalizeColumnList,
+  resizeLayoutColumnBy,
 } from '../config/blockRegistry.js';
 
 export const Column = Node.create({
@@ -364,6 +366,14 @@ export const ColumnList = Node.create({
   },
 
   addProseMirrorPlugins() {
-    return [columnResizePlugin(), columnDropPlugin(), columnAutoDissolvePlugin()];
+    const editor = this.editor;
+    // The keyboard's boundary drag: with the caret in a column, Wider / Narrower size it.
+    const keys = new Plugin({
+      view: (view) => {
+        const reg = registerKeyboardResize(view.dom as HTMLElement, { axis: 'width', resize: (px) => resizeLayoutColumnBy(editor, px) });
+        return { destroy: () => reg.dispose() };
+      },
+    });
+    return [columnResizePlugin(), columnDropPlugin(), columnAutoDissolvePlugin(), keys];
   },
 });
