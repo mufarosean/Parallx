@@ -429,3 +429,49 @@ describe('SettingsEditor — a deep link to a panel that registers late', () => 
     }
   });
 });
+
+describe('SettingsEditor — a save keeps the reader in place', () => {
+  beforeEach(() => { document.body.replaceChildren(); });
+
+  // A field saves when it loses focus, and the save re-renders the page:
+  // the control Tab moved to must come back focused, not drop to the body.
+  it('re-renders with focus back on the same control', async () => {
+    const { registry, root } = await setup();
+    const content = root.querySelector<HTMLElement>('.settings-editor__content')!;
+    const stops = () => Array.from(content.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]')).filter((e) => e.tabIndex >= 0);
+    // The category holding the three autonomy settings.
+    for (const item of root.querySelectorAll<HTMLElement>('.settings-editor__nav-item')) { item.click(); if (stops().length >= 3) break; }
+    const target = stops()[2];
+    const name = target.getAttribute('aria-label') ?? target.textContent;
+    target.focus();
+    await registry.setValue('autonomy.flag', true);
+    expect(target.isConnected).toBe(false);
+    expect(content.contains(document.activeElement)).toBe(true);
+    expect((document.activeElement as HTMLElement).getAttribute('aria-label') ?? document.activeElement!.textContent).toBe(name);
+  });
+});
+
+describe('SettingsEditor — a field saving on blur', () => {
+  beforeEach(() => { document.body.replaceChildren(); });
+
+  // The save lands while focus is still moving: the page re-renders before
+  // focus arrives, so the control it was heading to must be found again.
+  it('lands focus on the control Tab was moving to', async () => {
+    const { root } = await setup([{ key: 'autonomy.name', type: 'string', default: '', scope: 'user', description: 'A name', category: 'Agent' }]);
+    const content = root.querySelector<HTMLElement>('.settings-editor__content')!;
+    const stops = () => Array.from(content.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]')).filter((e) => e.tabIndex >= 0);
+    for (const item of root.querySelectorAll<HTMLElement>('.settings-editor__nav-item')) { item.click(); if (content.querySelector('[data-px-id="settings.autonomy.name"] input')) break; }
+    const field = content.querySelector<HTMLInputElement>('[data-px-id="settings.autonomy.name"] input')!;
+    const next = stops()[stops().indexOf(field) + 1] ?? stops()[stops().indexOf(field) - 1];
+    const name = next.getAttribute('aria-label') ?? next.textContent;
+    field.focus();
+    field.value = 'Ada';
+    // The browser's order: blur (heading to next), the save lands, then focus arrives.
+    field.dispatchEvent(new FocusEvent('blur', { relatedTarget: next }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(next.isConnected).toBe(false);
+    next.focus();
+    expect(content.contains(document.activeElement)).toBe(true);
+    expect((document.activeElement as HTMLElement).getAttribute('aria-label') ?? document.activeElement!.textContent).toBe(name);
+  });
+});

@@ -37,6 +37,7 @@ import {
   selectTableNode,
   selectTableRow,
   tableFrameAt,
+  resolveTableFrame,
   resolveBlockUnitFromDOM,
 } from './handleRegistry.js';
 import type { ITableActionMenu } from './handleRegistry.js';
@@ -184,7 +185,26 @@ export class TableControlsController {
     ec.addEventListener('mousemove', this._onMove as unknown as EventListener);
     ec.addEventListener('mouseleave', this._onContainerLeave);
     ec.addEventListener('scroll', this._onScroll as EventListener, { passive: true });
+    ec.addEventListener('keydown', this._onMenuKey, true);
   }
+
+  /**
+   * Shift+F10 (or the menu key) in a cell opens the caret's row menu, and with
+   * Alt the column's: the keyboard way to the grips, whose menus hold Delete,
+   * Duplicate, Clear, Merge and Split. The arrows, Enter and Esc work in them.
+   */
+  private readonly _onMenuKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+    const editor = this._host.editor;
+    const frame = editor ? resolveTableFrame(editor.state) : null;
+    if (!editor || !frame) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const axis = e.altKey ? 'column' : 'row';
+    const at = editor.view.domAtPos(editor.state.selection.from).node;
+    const cell = (at.nodeType === 1 ? at as HTMLElement : at.parentElement)?.closest('td, th') ?? editor.view.dom;
+    this._menu.show(axis, frame.tablePos, axis === 'row' ? frame.rect.top : frame.rect.left, cell.getBoundingClientRect());
+  };
 
   dispose(): void {
     const ec = this._host.editorContainer;
@@ -192,6 +212,7 @@ export class TableControlsController {
       if (this._onMove) ec.removeEventListener('mousemove', this._onMove as unknown as EventListener);
       ec.removeEventListener('mouseleave', this._onContainerLeave);
       if (this._onScroll) ec.removeEventListener('scroll', this._onScroll as EventListener);
+      ec.removeEventListener('keydown', this._onMenuKey, true);
     }
     this._onMove?.dispose();
     this._onScroll?.dispose();
@@ -220,6 +241,8 @@ export class TableControlsController {
   private _makeControl(className: string, title: string): HTMLElement {
     const el = document.createElement('div');
     el.className = className;
+    // A pointer helper: the keyboard has the same through Shift+F10 (the menus), Tab and Ctrl+Alt+arrows.
+    el.setAttribute('aria-hidden', 'true');
     if (title) el.title = title;
     this._layer!.appendChild(el);
     return el;

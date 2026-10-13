@@ -36,6 +36,7 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { keys: 'Backspace / Delete',        label: 'Delete the selected block(s)' },
       { keys: 'Ctrl+D',                    label: 'Duplicate the selected block(s)' },
       { keys: 'Ctrl+Shift+↑ / Ctrl+Shift+↓', label: 'Move the selected block(s)' },
+      { keys: 'Shift+F10',                 label: 'Block menu: turn into, colour, move, delete' },
     ],
   },
   {
@@ -48,6 +49,8 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { keys: 'Ctrl+D',                    label: 'Duplicate the row' },
       { keys: 'Ctrl+Shift+↑ / Ctrl+Shift+↓', label: 'Move the row' },
       { keys: 'Ctrl+Shift+← / Ctrl+Shift+→', label: 'Move the column' },
+      { keys: 'Ctrl+Alt+↑ / Ctrl+Alt+↓',     label: 'Insert a row above / below' },
+      { keys: 'Ctrl+Alt+← / Ctrl+Alt+→',     label: 'Insert a column left / right' },
       { keys: 'Backspace',                 label: 'Clear the selected cells' },
     ],
   },

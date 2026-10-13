@@ -31,6 +31,9 @@ import { CellSelection } from '@tiptap/pm/tables';
 import {
   duplicateRow,
   focusTableCell,
+  insertColumnLeft,
+  insertColumnRight,
+  insertRowAbove,
   insertRowBelow,
   moveColumnBy,
   moveRowBy,
@@ -117,6 +120,14 @@ export const TableKeyboardPolicy = Extension.create({
         policyApplies(editor) ? moveColumnBy(editor, -1) || true : false,
       'Mod-Shift-ArrowRight': ({ editor }) =>
         policyApplies(editor) ? moveColumnBy(editor, 1) || true : false,
+
+      // ── Mod-Alt-Arrow — insert a row or column on that side ──
+      // The keyboard way to the table grip's Insert Above / Below / Left /
+      // Right (docs/ACCESSIBILITY.md): the + buttons are pointer-only.
+      'Mod-Alt-ArrowUp': ({ editor }) => (policyApplies(editor) ? insertRowAbove(editor) || true : false),
+      'Mod-Alt-ArrowDown': ({ editor }) => (policyApplies(editor) ? insertRowBelow(editor) || true : false),
+      'Mod-Alt-ArrowLeft': ({ editor }) => (policyApplies(editor) ? insertColumnLeft(editor) || true : false),
+      'Mod-Alt-ArrowRight': ({ editor }) => (policyApplies(editor) ? insertColumnRight(editor) || true : false),
 
       // ── Mod-d — duplicate the ROW ──
       // Rows carrying merged cells can't be copied without desynchronising

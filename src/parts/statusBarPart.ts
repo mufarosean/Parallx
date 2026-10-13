@@ -255,6 +255,24 @@ export class StatusBarPart extends Part {
     };
     container.addEventListener('contextmenu', handler);
     this._register(toDisposable(() => container.removeEventListener('contextmenu', handler)));
+
+    // The keyboard: F6 lands on an item; Left/Right and Home/End move along
+    // the bar in the order it is drawn, and Enter or Space runs the item.
+    const onKeydown = (e: KeyboardEvent) => {
+      const current = (e.target as HTMLElement | null)?.closest?.('.statusbar-item-label') as HTMLElement | null;
+      if (!current) return;
+      const labels = Array.from(container.querySelectorAll<HTMLElement>('.statusbar-item-label'))
+        .filter((l) => l.getClientRects().length)
+        .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+      const at = labels.indexOf(current);
+      const to = ({ ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: labels.length - 1 } as Record<string, number>)[e.key];
+      if (to !== undefined) labels[Math.max(0, Math.min(labels.length - 1, to))]?.focus();
+      else if (e.key === 'Enter' || e.key === ' ') current.click();
+      else return;
+      e.preventDefault();
+    };
+    container.addEventListener('keydown', onKeydown);
+    this._register(toDisposable(() => container.removeEventListener('keydown', onKeydown)));
   }
 
   // ── Internals ──

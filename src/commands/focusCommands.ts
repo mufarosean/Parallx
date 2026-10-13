@@ -11,13 +11,15 @@ import type { WorkbenchLike } from './structuralCommandTypes.js';
 
 /**
  * Cycling order for F6/Shift+F6 (matches VS Code navigationActions.ts):
- *   Editor → Panel → AuxiliaryBar → StatusBar → ActivityBar → Sidebar → Editor
+ *   Editor → Panel → AuxiliaryBar → right ActivityBar → StatusBar → ActivityBar → Sidebar → Editor
+ * (the right activity bar holds the auxiliary bar's icons: Chat, Agents).
  * Hidden parts are skipped automatically.
  */
 const FOCUS_CYCLE_ORDER: string[] = [
   PartId.Editor,
   PartId.Panel,
   PartId.AuxiliaryBar,
+  PartId.ActivityBarRight,
   PartId.StatusBar,
   PartId.ActivityBar,
   PartId.Sidebar,

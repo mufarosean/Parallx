@@ -38,4 +38,22 @@ describe('overlay as a dialog', () => {
     expect(document.activeElement).toBe(other);
     overlay.dispose();
   });
+
+  it('keeps Tab inside: past the last control to the first, Shift+Tab back to the last', () => {
+    const overlay = new Overlay(document.body, { label: 'Settings' });
+    const [a, b] = [document.createElement('button'), document.createElement('button')];
+    overlay.contentElement.append(a, b);
+    // jsdom lays nothing out; the trap counts only controls on screen.
+    for (const el of [a, b]) el.getClientRects = () => [{}] as unknown as DOMRectList;
+    overlay.show();
+    const tab = (shiftKey: boolean) => (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }));
+    tab(false);
+    expect(document.activeElement).toBe(a);
+    b.focus();
+    tab(false);
+    expect(document.activeElement).toBe(a);
+    tab(true);
+    expect(document.activeElement).toBe(b);
+    overlay.dispose();
+  });
 });

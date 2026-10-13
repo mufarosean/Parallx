@@ -312,6 +312,20 @@ export class PlannerCalendarViews {
     grid.appendChild(weekdayRow);
 
     const cells = el('div', 'planner-month__cells');
+    // From the keyboard the month is a grid: the arrows move a day or a week,
+    // Home/End to the week's ends, Enter or Space opens the day.
+    cells.setAttribute('role', 'grid');
+    cells.setAttribute('aria-label', appDateString(this._pane._cursorDate, { month: 'long', year: 'numeric' }));
+    cells.addEventListener('keydown', (e) => {
+      const all = Array.from(cells.querySelectorAll<HTMLElement>('.planner-month__cell'));
+      const at = all.indexOf(document.activeElement as HTMLElement);
+      if (at < 0) return;
+      const to = ({ ArrowRight: at + 1, ArrowLeft: at - 1, ArrowDown: at + 7, ArrowUp: at - 7, Home: at - (at % 7), End: at - (at % 7) + 6 } as Record<string, number>)[e.key];
+      if (to !== undefined) { const next = all[Math.max(0, Math.min(all.length - 1, to))]; next.focus(); all.forEach((c) => { c.tabIndex = c === next ? 0 : -1; }); }
+      else if (e.key === 'Enter' || e.key === ' ') all[at].click();
+      else return;
+      e.preventDefault();
+    });
     const firstOfMonth = startOfMonth(this._pane._cursorDate);
     const gridStart = startOfWeek(firstOfMonth);
     const lastOfMonth = endOfMonth(this._pane._cursorDate);
@@ -329,6 +343,9 @@ export class PlannerCalendarViews {
       cell.dataset.dayStart = String(dayStart);
       if (appDateParts(day).month !== appDateParts(this._pane._cursorDate).month) cell.classList.add('planner-month__cell--other-month');
       if (sameDay(day, new Date())) cell.classList.add('planner-month__cell--today');
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-label', `${appDateString(day, { weekday: 'long', month: 'long', day: 'numeric' })}${dayEvents.length + dayTasks.length ? `, ${dayEvents.length + dayTasks.length} items` : ''}`);
+      cell.tabIndex = sameDay(day, this._pane._cursorDate) ? 0 : -1;
 
       const number = el('span', 'planner-month__cellnum');
       number.textContent = String(appDateParts(day).day);

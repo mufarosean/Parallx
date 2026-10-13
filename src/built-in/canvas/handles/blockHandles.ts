@@ -23,7 +23,7 @@ import {
   CANVAS_BLOCK_DRAG_MIME,
   clearActiveCanvasDragSession,
   setActiveCanvasDragSession,
-  resolveBlockAncestry,
+  resolveBlockAncestry, selectionIsInTable,
   resolveMovableBlock,
   resolveBlockUnitFromDOM,
   listItemContentElement,
@@ -97,7 +97,7 @@ export class BlockHandlesController {
     this._dragHandleEl = document.createElement('div');
     this._dragHandleEl.draggable = true;
     this._dragHandleEl.dataset.dragHandle = '';
-    this._dragHandleEl.classList.add('drag-handle', 'hide');
+    this._dragHandleEl.classList.add('drag-handle', 'hide'); this._dragHandleEl.setAttribute('aria-hidden', 'true'); // pointer helper: Shift+F10 opens its menu
     ec.appendChild(this._dragHandleEl);
 
     // ── Create + button ──
@@ -106,7 +106,7 @@ export class BlockHandlesController {
     this._blockAddBtn.innerHTML = svgIcon('plus');
     const svg = this._blockAddBtn.querySelector('svg');
     if (svg) { svg.setAttribute('width', '14'); svg.setAttribute('height', '14'); }
-    this._blockAddBtn.title = 'Click to add below\nAlt-click to add a block above';
+    this._blockAddBtn.title = 'Click to add below\nAlt-click to add a block above'; this._blockAddBtn.setAttribute('aria-hidden', 'true'); // pointer helper: Enter and / add blocks
     ec.appendChild(this._blockAddBtn);
 
     // ── Handle-area hover (keep both + and ⠿ visible together) ──
@@ -270,8 +270,18 @@ export class BlockHandlesController {
     this._hideHandle();
   };
 
-  private readonly _onEditorKeyDown = (): void => {
+  private readonly _onEditorKeyDown = (e: KeyboardEvent): void => {
     this._hideHandle();
+    // Shift+F10 or the menu key: the block menu for the block the caret is in, the
+    // keyboard way to the handle (docs/ACCESSIBILITY.md). Arrows, Enter and Esc work in it.
+    const view = this._host.editor?.view; // in a table the table controls take the key (row and column menus)
+    if ((e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) || (view && selectionIsInTable(view.state))) return;
+    const at = view ? view.coordsAtPos(view.state.selection.from) : null;
+    const block = view && at ? this._resolveBlockAtCoords(view, at.left + 1, (at.top + at.bottom) / 2) : null;
+    if (!view || !block) return;
+    e.preventDefault();
+    this._host.blockSelection.select(block.pos);
+    this._actionMenu.show(block.pos, block.node, ((view.nodeDOM(block.pos) as HTMLElement | null) ?? view.dom).getBoundingClientRect());
   };
 
   private readonly _onEditorWheel = (): void => {
@@ -351,27 +361,17 @@ export class BlockHandlesController {
     const block = this._resolveBlockFromHandle();
     if (!block) return;
 
-    // Select the block (Shift+Click → extend selection).
-    //
-    // If the user has an active multi-block selection and clicks the handle
-    // of a block that is already part of it, preserve the selection — this
-    // is what opens the action menu in "batch mode" (Notion-parity: bulk
-    // Turn-Into / colors / delete / duplicate across all highlighted blocks).
-    // Replacing the selection here would silently downgrade the operation
-    // to single-block before the menu's action handlers even run.
-    //
-    // Plain click on a handle OUTSIDE the current selection → replace with
-    // single-block (existing behavior, matches Notion).
+    // Select the block (Shift+Click extends). A click on a block already in a
+    // multi-block selection keeps it: that is the menu's batch mode (Notion), and
+    // replacing it would downgrade the action to one block. Outside it, replace.
     const sel = this._host.blockSelection;
     let menuPos = block.pos;
     let menuNode = block.node;
     if (e.shiftKey) {
       sel.extendTo(block.pos);
     } else {
-      // Containment-aware guard: the selection is normalized to TOP-MOST
-      // units, so a click on a nested row inside a selected parent must
-      // resolve to the parent (exact-membership would wrongly collapse the
-      // multi-selection to the clicked child).
+      // The selection holds TOP-MOST units: a nested row in a selected parent resolves
+      // to the parent (exact membership would collapse the selection to the child).
       const owner = sel.hasSelection ? sel.owningSelectedBlock(block.pos) : null;
       if (owner !== null && (sel.count > 1 || owner !== block.pos)) {
         // Preserve the selection; anchor the menu on the OWNING selected

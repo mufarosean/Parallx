@@ -154,6 +154,8 @@ export class SettingsEditor extends Disposable {
   private readonly _overlay: Overlay;
   private readonly _root: HTMLElement;
   private _navEl!: HTMLElement;
+  /** Where focus is going while it moves (a field saves on blur, before focus lands). */
+  private _focusGoingTo: HTMLElement | null = null;
   private _contentEl!: HTMLElement;
   private _searchValue = '';
   private _scopeFilter: ScopeFilter = 'all';
@@ -259,27 +261,22 @@ export class SettingsEditor extends Disposable {
     body.appendChild(this._navEl);
     body.appendChild(this._contentEl);
     this._root.appendChild(body);
+    this._register(addDisposableListener(this._root, 'blur', (e) => { this._focusGoingTo = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null; }, true));
+    this._register(addDisposableListener(this._root, 'focusin', () => { this._focusGoingTo = null; }));
 
     // ── Live external-mutation re-render ──
     this._register(this._registry.onDidChange(() => {
       // External mutations (e.g. another extension calls setValue) — re-render
       // the content (controls reflect new values). Cheap: bounded by registry
       // size. Nav rebuild is also cheap.
-      this._renderNav();
-      this._renderContent();
+      this._rerenderInPlace();
     }));
     // A tool turned on or off brings or takes its settings.
     if (this._registry.onDidChangeSchemas) {
-      this._register(this._registry.onDidChangeSchemas(() => {
-        this._renderNav();
-        this._renderContent();
-      }));
+      this._register(this._registry.onDidChangeSchemas(() => this._rerenderInPlace()));
     }
     // Rebuild when a tool registers/removes a custom panel.
-    this._register(settingsPanelRegistry.onDidChange(() => {
-      this._renderNav();
-      this._renderContent();
-    }));
+    this._register(settingsPanelRegistry.onDidChange(() => this._rerenderInPlace()));
 
     // Focus search on open
     queueMicrotask(() => search.inputElement.focus());
@@ -442,6 +439,33 @@ export class SettingsEditor extends Disposable {
     }
   }
 
+  /**
+   * Re-render after a change without losing the reader's place. A setting
+   * saves when its field loses focus, and the save re-renders the page: the
+   * control Tab was moving to would be gone, dropping focus on the body. So
+   * focus comes back to the same control (by scene id, else by its place in
+   * the Tab order) and the page keeps its scroll.
+   */
+  private _rerenderInPlace(): void {
+    // Mid-move (a field saving on blur), the place is where focus was going.
+    const active = this._focusGoingTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    const host = active && [this._navEl, this._contentEl].find((el) => el.contains(active));
+    const stops = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]')).filter((e) => e.tabIndex >= 0);
+    // A scene id names one control; a list's id names many, so a row in one goes back by place.
+    const owner = active?.closest<HTMLElement>('[data-px-id]');
+    const id = owner && stops(owner).length <= 1 ? owner.getAttribute('data-px-id') : null;
+    const index = host ? stops(host).indexOf(active!) : -1;
+    const scroll = this._contentEl.scrollTop;
+    this._renderNav();
+    this._renderContent();
+    this._contentEl.scrollTop = scroll;
+    if (!host || (document.activeElement !== document.body && active.isConnected)) return;
+    this._focusGoingTo = null;
+    const byId = id ? Array.from(host.querySelectorAll<HTMLElement>('[data-px-id]')).find((e) => e.getAttribute('data-px-id') === id) : null;
+    const target = byId && byId.matches('button, input, select, textarea, a[href], [tabindex]') ? byId : byId?.querySelector<HTMLElement>('button, input, select, textarea') ?? stops(host)[index];
+    target?.focus({ preventScroll: true });
+  }
+
   /** Render the right pane for the current selection (or search results). */
   private _renderContent(): void {
     this._disposeActivePanel();
@@ -588,15 +612,17 @@ export class SettingsEditor extends Disposable {
 
   private _renderControl(schema: ISettingSchema, host: HTMLElement): void {
     const current = this._registry.getValue(schema.key);
+    // A control is named by its row's title, never the dotted key a screen reader would spell out.
+    const name = schema.label ?? humanizeSettingKey(schema.key);
 
     switch (schema.type) {
       case 'boolean': {
         const toggle = new Toggle(host, {
           checked: current as boolean,
-          ariaLabel: schema.key,
+          ariaLabel: name,
         });
         this._controlDisposables.push(toggle);
-        this._controlDisposables.push(declareControl(toggle.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'toggle', hint: schema.description, state: () => ({ kind: 'pressed', value: toggle.checked }) }));
+        this._controlDisposables.push(declareControl(toggle.element, { id: `settings.${schema.key}`, label: name, kind: 'toggle', hint: schema.description, state: () => ({ kind: 'pressed', value: toggle.checked }) }));
         this._controlDisposables.push(toggle.onDidChange(async (val) => {
           try {
             await this._registry.setValue(schema.key, val);
@@ -611,10 +637,10 @@ export class SettingsEditor extends Disposable {
       case 'number': {
         const inputBox = new InputBox(host, {
           value: String(current),
-          ariaLabel: schema.key,
+          ariaLabel: name,
         });
         this._controlDisposables.push(inputBox);
-        this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
+        this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: name, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
         const tryWrite = async (raw: string) => {
           const num = Number(raw);
           if (!Number.isFinite(num)) return;
@@ -638,11 +664,11 @@ export class SettingsEditor extends Disposable {
       case 'string': {
         const inputBox = new InputBox(host, {
           value: current as string,
-          ariaLabel: schema.key,
+          ariaLabel: name,
           type: schema.secret ? 'password' : 'text',
         });
         this._controlDisposables.push(inputBox);
-        this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
+        this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: name, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
         const write = async (raw: string) => {
           try {
             await this._registry.setValue(schema.key, raw);
@@ -662,7 +688,7 @@ export class SettingsEditor extends Disposable {
         textarea.spellcheck = false;
         textarea.rows = schema.rows ?? 4;
         textarea.value = current as string;
-        textarea.setAttribute('aria-label', schema.key);
+        textarea.setAttribute('aria-label', name);
         host.appendChild(textarea);
         const write = async () => {
           try {
@@ -679,7 +705,7 @@ export class SettingsEditor extends Disposable {
         btn.className = 'settings-editor__action';
         btn.type = 'button';
         btn.textContent = schema.actionLabel ?? 'Open…';
-        btn.setAttribute('aria-label', schema.actionLabel ?? schema.key);
+        btn.setAttribute('aria-label', schema.actionLabel ?? name);
         this._controlDisposables.push(addDisposableListener(btn, 'click', () => {
           if (!this._commands || !schema.command) {
             console.warn(`[SettingsEditor] no command runner for ${schema.key}`);
@@ -699,10 +725,10 @@ export class SettingsEditor extends Disposable {
         const dropdown = new Dropdown(host, {
           items: schema.enumValues!.map((v) => ({ value: v, label: enumOptionLabel(schema, v) })),
           selected: current as string,
-          ariaLabel: schema.key,
+          ariaLabel: name,
         });
         this._controlDisposables.push(dropdown);
-        this._controlDisposables.push(declareControl(dropdown.element, { id: `settings.${schema.key}`, label: schema.key, kind: 'select', hint: schema.description, state: () => ({ kind: 'value', value: dropdown.value ?? '' }) }));
+        this._controlDisposables.push(declareControl(dropdown.element, { id: `settings.${schema.key}`, label: name, kind: 'select', hint: schema.description, state: () => ({ kind: 'value', value: dropdown.value ?? '' }) }));
         this._controlDisposables.push(dropdown.onDidChange(async (val) => {
           try {
             await this._registry.setValue(schema.key, val);
@@ -719,7 +745,7 @@ export class SettingsEditor extends Disposable {
         textarea.spellcheck = false;
         textarea.rows = 4;
         textarea.value = JSON.stringify(current, null, 2);
-        textarea.setAttribute('aria-label', schema.key);
+        textarea.setAttribute('aria-label', name);
         host.appendChild(textarea);
 
         const status = $('span.settings-editor__json-status');
@@ -747,7 +773,7 @@ export class SettingsEditor extends Disposable {
     const resetBtn = document.createElement('button');
     resetBtn.className = 'settings-editor__reset';
     resetBtn.textContent = 'Reset';
-    resetBtn.setAttribute('aria-label', `Reset ${schema.key} to default`);
+    resetBtn.setAttribute('aria-label', `Reset ${schema.label ?? humanizeSettingKey(schema.key)} to default`);
     this._controlDisposables.push(addDisposableListener(resetBtn, 'click', async () => {
       try {
         await this._registry.reset(schema.key);

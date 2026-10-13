@@ -278,6 +278,26 @@ describe('KeybindingService', () => {
 
   // ── Editable target exclusion ──
 
+  describe('the keyboard way out of a text field', () => {
+    it('F6, Shift+F6 and F1 fire from an editable target (the spreadsheet, a page, an input); F2 does not', async () => {
+      for (const id of ['part.next', 'part.prev', 'workbench.action.showCommands', 'rename']) commandService.addCommand(id);
+      service.registerKeybinding('F6', 'part.next');
+      service.registerKeybinding('Shift+F6', 'part.prev');
+      service.registerKeybinding('F1', 'workbench.action.showCommands');
+      service.registerKeybinding('F2', 'rename');
+      const input = document.createElement('input');
+      input.type = 'text';
+      document.body.appendChild(input);
+      fireKeydown('F6', { target: input });
+      fireKeydown('F6', { shiftKey: true, target: input });
+      fireKeydown('F1', { target: input });
+      fireKeydown('F2', { target: input });
+      await vi.runAllTimersAsync();
+      expect(commandService.getExecuted()).toEqual(['part.next', 'part.prev', 'workbench.action.showCommands']);
+      document.body.removeChild(input);
+    });
+  });
+
   describe('editable target exclusion', () => {
     it('does NOT skip Ctrl-modifier keybinding when target is a text input (modifier combos can’t conflict with typing)', async () => {
       commandService.addCommand('cmd.modkey');

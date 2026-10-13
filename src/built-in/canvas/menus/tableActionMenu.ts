@@ -58,6 +58,9 @@ interface MenuItemSpec {
   readonly run: (editor: Editor) => void;
 }
 
+/** Gives each menu row a page-unique id, for aria-activedescendant. */
+let _rowSeq = 0;
+
 // ── Controller ──────────────────────────────────────────────────────────────
 
 export class TableActionMenuController implements ICanvasMenu {
@@ -80,6 +83,9 @@ export class TableActionMenuController implements ICanvasMenu {
    */
   private _detachDismiss: (() => void) | null = null;
 
+  /** The row the arrow keys are on (-1: none yet). */
+  private _kbIndex = -1;
+
   constructor(
     private readonly _host: TableActionMenuHost,
     private readonly _registry: CanvasMenuRegistry,
@@ -87,6 +93,7 @@ export class TableActionMenuController implements ICanvasMenu {
 
   create(): void {
     this._menu = $('div.block-action-menu.table-action-menu');
+    this._menu.setAttribute('role', 'menu');
     this._menu.style.display = 'none';
     document.body.appendChild(this._menu);
     this._registration = this._registry.register(this);
@@ -103,6 +110,9 @@ export class TableActionMenuController implements ICanvasMenu {
   }
 
   hide(): void {
+    document.removeEventListener('keydown', this._onKeys, true);
+    this._host.editor?.view.dom.removeAttribute('aria-activedescendant');
+    this._kbIndex = -1;
     this._detachDismiss?.();
     this._detachDismiss = null;
     if (this._menu) this._menu.style.display = 'none';
@@ -118,6 +128,7 @@ export class TableActionMenuController implements ICanvasMenu {
   }
 
   dispose(): void {
+    document.removeEventListener('keydown', this._onKeys, true);
     this._detachDismiss?.();
     this._detachDismiss = null;
     this._registration?.dispose();
@@ -175,7 +186,29 @@ export class TableActionMenuController implements ICanvasMenu {
     this._detachDismiss = attachPopupDismiss(roots, () => this.hide());
 
     this._registry.notifyShow(this.id);
+    this._kbIndex = -1;
+    document.addEventListener('keydown', this._onKeys, true);
   }
+
+  /**
+   * The keyboard, as in the block menu: the caret stays in the page, Up and
+   * Down move along the rows, Enter runs one (Esc closes, through the popup
+   * dismissal). The page names the row it is on for a screen reader.
+   */
+  private readonly _onKeys = (e: KeyboardEvent): void => {
+    if (!this.visible || !this._menu) return;
+    const rows = [...this._menu.querySelectorAll<HTMLElement>(':scope > .block-action-item')];
+    if (rows.length === 0) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      this._kbIndex = (this._kbIndex + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+      rows.forEach((r, i) => r.classList.toggle('block-action-item--active', i === this._kbIndex));
+      this._host.editor?.view.dom.setAttribute('aria-activedescendant', rows[this._kbIndex].id);
+    } else if (e.key === 'Enter' && rows[this._kbIndex]) {
+      e.preventDefault(); e.stopPropagation();
+      rows[this._kbIndex].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    }
+  };
 
   // ── Item sets ───────────────────────────────────────────────────────────
 
@@ -297,6 +330,8 @@ export class TableActionMenuController implements ICanvasMenu {
 
   private _renderItem(spec: MenuItemSpec): HTMLElement {
     const item = $('div.block-action-item');
+    item.setAttribute('role', 'menuitem');
+    item.id = `table-action-${++_rowSeq}`;
     if (spec.danger) item.classList.add('block-action-item--danger');
 
     const iconEl = $('span.block-action-icon');

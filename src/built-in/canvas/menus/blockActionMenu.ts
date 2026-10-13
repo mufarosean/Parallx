@@ -124,6 +124,9 @@ class SubmenuHoverHandoff {
 
 // ── Controller ──────────────────────────────────────────────────────────────
 
+/** Gives each highlighted menu row a page-unique id, for aria-activedescendant. */
+let _blockRowSeq = 0;
+
 export class BlockActionMenuController implements ICanvasMenu {
   readonly id = 'block-action-menu';
   // DOM elements
@@ -163,6 +166,7 @@ export class BlockActionMenuController implements ICanvasMenu {
 
   create(): void {
     this._blockActionMenu = $('div.block-action-menu');
+    this._blockActionMenu.setAttribute('role', 'menu');
     this._blockActionMenu.style.display = 'none';
     document.body.appendChild(this._blockActionMenu);
     this._registration = this._registry.register(this);
@@ -215,7 +219,8 @@ export class BlockActionMenuController implements ICanvasMenu {
     const move = (delta: number) => {
       if (rows.length === 0) return;
       this._kbIndex = (this._kbIndex + delta + rows.length) % rows.length;
-      rows.forEach((r, i) => r.classList.toggle('block-action-item--active', i === this._kbIndex));
+      rows.forEach((r, i) => { r.classList.toggle('block-action-item--active', i === this._kbIndex); r.setAttribute('role', 'menuitem'); if (!r.id) r.id = `block-action-${++_blockRowSeq}`; });
+      this._host.editor?.view.dom.setAttribute('aria-activedescendant', rows[this._kbIndex].id);
     };
     const current = rows[this._kbIndex];
     if (e.key === 'Escape') {
@@ -394,6 +399,7 @@ export class BlockActionMenuController implements ICanvasMenu {
   }
 
   private _hideBlockActionMenu(): void {
+    this._host.editor?.view.dom.removeAttribute('aria-activedescendant');
     document.removeEventListener('keydown', this._onEscape, true);
     window.removeEventListener('scroll', this._onScroll, true);
     if (!this._blockActionMenu) return;

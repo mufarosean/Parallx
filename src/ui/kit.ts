@@ -443,9 +443,34 @@ export interface IKitInPlaceDeclaration extends IKitControlDeclaration {
  */
 export function declareControl(element: HTMLElement, declaration: IKitInPlaceDeclaration): IDisposable {
   const kind = declaration.kind ?? 'button';
-  if (element.tagName !== 'BUTTON') setRole(element, ROLE_OF[kind]);
+  // A select or field declared on its wrapper (a dropdown's host, an input box's
+  // frame): the control inside is what a screen reader meets, so it carries the
+  // name, and the wrapper takes no role of its own.
+  const inner = (kind === 'select' || kind === 'input') && !element.matches(NATIVE_FOCUS) ? element.querySelector<HTMLElement>('button, input, select, textarea') : null;
+  if (inner) { if (!inner.getAttribute('aria-label')) inner.setAttribute('aria-label', declaration.label); }
+  else if (element.tagName !== 'BUTTON') setRole(element, ROLE_OF[kind]);
+  makeKeyboardReachable(element, kind);
   if (!element.hasAttribute('aria-label') && !element.textContent?.trim()) element.setAttribute('aria-label', declaration.label);
   return declare(element, kind, declaration, declaration.label, { command: declaration.command, state: declaration.state });
+}
+
+const NATIVE_FOCUS = 'button, input, select, textarea, a[href], [contenteditable="true"], [tabindex]';
+
+/**
+ * A pressable control the keyboard cannot reach is not a control to a
+ * keyboard user. An element that is not natively focusable, has no
+ * tabindex of its own and holds nothing focusable (a div or span with a
+ * click listener) joins the Tab order and answers Enter and Space with a
+ * click: the WAI-ARIA button pattern. An element that already set a
+ * tabindex handles its own keys and is left alone. docs/ACCESSIBILITY.md.
+ */
+function makeKeyboardReachable(element: HTMLElement, kind: SceneKind): void {
+  if (kind !== 'button' && kind !== 'iconButton' && kind !== 'chip' && kind !== 'toggle') return;
+  if (element.matches(NATIVE_FOCUS) || element.querySelector(NATIVE_FOCUS)) return;
+  element.tabIndex = 0;
+  element.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === element) { e.preventDefault(); element.click(); }
+  });
 }
 
 const ROLE_OF: Record<Exclude<SceneKind, 'surface'>, string | undefined> = {

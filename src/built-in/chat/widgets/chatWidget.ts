@@ -188,7 +188,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // Scroll-to-bottom button (overlaid on message list)
     this._scrollBtn = $('div.parallx-chat-scroll-btn');
-    this._scrollBtn.innerHTML = chatIcons.chevronDown;
+    this._scrollBtn.innerHTML = chatIcons.chevronDown; this._scrollBtn.tabIndex = -1; this._scrollBtn.setAttribute('aria-hidden', 'true'); this._scrollBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this._scrollBtn.click(); } }); this._register(declareControl(this._scrollBtn, { id: 'chat.scrollToBottom', label: 'Scroll to Latest', kind: 'iconButton' }));
     this._mainArea.appendChild(this._scrollBtn);
 
     // Active plan card (the agent's durable working plan). Docked just
@@ -1191,7 +1191,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     this._isAtBottom = distanceFromBottom < 30;
 
-    this._scrollBtn.classList.toggle('parallx-chat-scroll-btn--visible', !this._isAtBottom);
+    this._scrollBtn.classList.toggle('parallx-chat-scroll-btn--visible', !this._isAtBottom); this._scrollBtn.tabIndex = this._isAtBottom ? -1 : 0; this._scrollBtn.setAttribute('aria-hidden', String(this._isAtBottom)); // reachable only while shown
   }
 
   private _scrollToBottom(): void {
@@ -1206,7 +1206,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     el.scrollTop = el.scrollHeight;
     el.style.scrollBehavior = prev;
     this._isAtBottom = true;
-    this._scrollBtn.classList.remove('parallx-chat-scroll-btn--visible');
+    this._scrollBtn.classList.remove('parallx-chat-scroll-btn--visible'); this._scrollBtn.tabIndex = -1; this._scrollBtn.setAttribute('aria-hidden', 'true');
   }
 
   // ── Header Action Handlers ──

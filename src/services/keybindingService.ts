@@ -303,8 +303,12 @@ export class KeybindingService extends Disposable implements IKeybindingService 
     // Bare-key bindings (no Ctrl/Alt/Meta) are blocked from editable targets so
     // typing isn't hijacked. Bindings with a non-Shift modifier can never be
     // produced by typing, so they fire even from inputs/textareas/contenteditable.
+    // F6 / Shift+F6 (move between areas) and F1 (commands) are the keyboard's way out of
+    // any text field, a page, the chat box or the spreadsheet, so they always reach the
+    // dispatcher: no typing makes them. docs/ACCESSIBILITY.md.
     const hasCommandModifier = e.ctrlKey || e.altKey || e.metaKey;
-    if (!hasCommandModifier && this._isEditableTarget(target)) {
+    const isEscapeHatch = e.key === 'F6' || e.key === 'F1';
+    if (!hasCommandModifier && !isEscapeHatch && this._isEditableTarget(target)) {
       return;
     }
 

@@ -10,7 +10,7 @@
 //   src/vs/workbench/contrib/files/browser/views/explorerViewer.ts
 //   src/vs/workbench/contrib/files/browser/explorerService.ts
 
-import { declareControl, createTree, createList } from '../../ui/kit.js';
+import { declareControl, createTree } from '../../ui/kit.js';
 import { getUniqueDestName } from './uniqueName.js';
 import './explorer.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
@@ -26,6 +26,7 @@ import { URI } from '../../platform/uri.js';
 import type { IFileLocateResult } from '../../services/fileLocator.js';
 import type { IFileRevealTarget } from '../../editor/fileReveal.js';
 import { checkFileLink, findLinkedFile, revealTargetOf, type IFileLinkHost } from './fileLink.js';
+import { createOpenEditorsView } from './openEditorsView.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -126,7 +127,6 @@ let _showHidden = true;
 let _selectedNode: TreeNode | null = null;
 let _roots: TreeNode[] = [];
 let _treeContainer: HTMLElement | null = null;
-let _openEditorsContainer: HTMLElement | null = null;
 let _openEditorsCountKey: ReturnType<ParallxApi['context']['createContextKey']>;
 let _activeContextMenu: ContextMenu | null = null;
 let _inlineEditActive = false;
@@ -168,7 +168,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.views.registerViewProvider('view.openEditors', {
       createView(container: HTMLElement): IDisposable {
-        return createOpenEditorsView(container);
+        return createOpenEditorsView(container, api.editors, (count) => _openEditorsCountKey.set(count));
       },
     }),
   );
@@ -289,7 +289,6 @@ export function deactivate(): void {
   _roots = [];
   _selectedNode = null;
   _treeContainer = null;
-  _openEditorsContainer = null;
 }
 
 // ─── Explorer View ───────────────────────────────────────────────────────────
@@ -1681,150 +1680,6 @@ async function confirmDelete(node: TreeNode): Promise<void> {
       _api.window.showErrorMessage(`Failed to delete "${node.name}": ${err}`);
     }
   }
-}
-
-// ─── Open Editors View ───────────────────────────────────────────────────────
-
-function createOpenEditorsView(container: HTMLElement): IDisposable {
-  container.classList.add('open-editors-view');
-  _openEditorsContainer = container;
-  // The open editors as one scene entry: the active one is its selection.
-  const openEditorsEntry = createList(container, { id: 'explorer.openEditors', label: 'Open Editors', rows: () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item')), selected: () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item--active')).map((r) => r.textContent?.trim() ?? '') });
-
-  // Initial render
-  renderOpenEditors();
-
-  // Subscribe to editor changes for reactive updates
-  const sub = _api.editors.onDidChangeOpenEditors(() => {
-    renderOpenEditors();
-  });
-
-  return {
-    dispose() {
-      sub.dispose();
-      _openEditorsContainer = null;
-      openEditorsEntry.dispose();
-    },
-  };
-}
-
-function renderOpenEditors(): void {
-  if (!_openEditorsContainer) return;
-  _openEditorsContainer.innerHTML = '';
-
-  const editors = _api.editors.openEditors;
-
-  if (editors.length === 0) {
-    const placeholder = $('div');
-    placeholder.className = 'open-editors-placeholder';
-    placeholder.textContent = 'No open editors.';
-    _openEditorsContainer.appendChild(placeholder);
-    _openEditorsCountKey.set(0);
-    return;
-  }
-
-  _openEditorsCountKey.set(editors.length);
-
-  // Group editors by group ID (preserving order)
-  const groupedEditors = new Map<string, typeof editors[number][]>();
-  for (const editor of editors) {
-    const groupId = editor.groupId;
-    if (!groupedEditors.has(groupId)) {
-      groupedEditors.set(groupId, []);
-    }
-    groupedEditors.get(groupId)!.push(editor);
-  }
-
-  const multipleGroups = groupedEditors.size > 1;
-  let groupIndex = 0;
-
-  for (const [_groupId, groupEditors] of groupedEditors) {
-    groupIndex++;
-
-    // Show group header when there are multiple groups (VS Code parity)
-    if (multipleGroups) {
-      const header = $('div');
-      header.className = 'open-editors-group-header';
-      header.textContent = `Group ${groupIndex}`;
-      _openEditorsContainer.appendChild(header);
-    }
-
-    for (const editor of groupEditors) {
-      _openEditorsContainer.appendChild(createOpenEditorRow(editor, multipleGroups));
-    }
-  }
-}
-
-/** Create a single row element for an open editor entry. */
-function createOpenEditorRow(
-  editor: { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; iconHtml?: string },
-  indented: boolean
-): HTMLElement {
-  const row = $('div');
-  row.className = 'open-editors-item';
-  if (indented) {
-    row.classList.add('open-editors-item--grouped');
-  }
-  if (editor.isActive) {
-    row.classList.add('open-editors-item--active');
-  }
-  row.setAttribute('role', 'treeitem');
-  row.tabIndex = -1;
-
-  // Dirty indicator
-  if (editor.isDirty) {
-    const dot = $('span');
-    dot.className = 'open-editors-dirty';
-    dot.title = 'Unsaved changes';
-    row.appendChild(dot);
-  }
-
-  // Icon: prefer the editor's own pre-rendered icon (canvas pages,
-  // databases, etc.); otherwise derive from filename extension (PDFs,
-  // text files, …) and fall through to the generic file icon.
-  const icon = $('span');
-  icon.className = 'open-editors-icon';
-  if (editor.iconHtml) {
-    icon.innerHTML = editor.iconHtml;
-  } else {
-    const extMatch = editor.name.match(/\.([a-zA-Z0-9]+)$/);
-    icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
-  }
-  row.appendChild(icon);
-
-  // Label
-  const label = $('span');
-  label.className = 'open-editors-label';
-  label.textContent = editor.name;
-  if (editor.description) {
-    label.title = editor.description;
-  }
-  row.appendChild(label);
-
-  // Close button
-  const closeBtn = $('span');
-  closeBtn.className = 'open-editors-close';
-  closeBtn.textContent = '×';
-  closeBtn.title = 'Close';
-  closeBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    _api.commands.executeCommand('workbench.action.closeActiveEditor');
-  });
-  row.appendChild(closeBtn);
-
-  // Click → focus that editor. The editor is already open (it's in the
-  // Open Editors list), so we activate its group + tab by id rather than
-  // re-resolving from a URI. The previous openFileEditor(description)
-  // path broke for non-file editors (canvas pages, databases, …) where
-  // `description` is something like "Tool editor: canvas" and not a URI,
-  // which made a blank fallback text editor appear after app restart.
-  row.addEventListener('click', () => {
-    _api.editors.focusEditor(editor.id).catch((err) => {
-      console.warn('[Explorer] focusEditor failed for', editor.name, err);
-    });
-  });
-
-  return row;
 }
 
 // ─── Commands Registration ───────────────────────────────────────────────────

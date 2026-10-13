@@ -158,6 +158,7 @@ export class TabBar extends Disposable {
 
     this.element = $('div.ui-tab-bar');
     this.element.setAttribute('role', 'tablist');
+    this._register(addDisposableListener(this.element, 'keydown', (e) => this._onTabKeydown(e)));
 
     // Scroll left button
     if (options?.scrollable) {
@@ -234,15 +235,18 @@ export class TabBar extends Disposable {
       if (prev) {
         prev.classList.remove('ui-tab--active');
         prev.setAttribute('aria-selected', 'false');
+        prev.tabIndex = -1;
       }
     }
 
-    // Activate new
+    // Activate new: the only tab in the Tab order.
+    for (const el of this._tabElements.values()) el.tabIndex = -1;
     this._activeId = id;
     const next = this._tabElements.get(id);
     if (next) {
       next.classList.add('ui-tab--active');
       next.setAttribute('aria-selected', 'true');
+      next.tabIndex = 0;
     }
   }
 
@@ -313,6 +317,37 @@ export class TabBar extends Disposable {
     toggleClass(this._scrollRight, 'hidden', !hasOverflow || atEnd);
   }
 
+  // ─── Internal: Keyboard ────────────────────────────────────────────────
+
+  /**
+   * On a focused tab: Left/Right (and Home/End) move focus along the strip,
+   * Enter or Space opens it, Delete closes it, Shift+F10 or the menu key
+   * opens its context menu, and Ctrl+Shift+Left/Right moves it, the keyboard
+   * way to what dragging a tab does.
+   */
+  private _onTabKeydown(e: KeyboardEvent): void {
+    const tab = (e.target as HTMLElement | null)?.closest?.('.ui-tab') as HTMLElement | null;
+    const id = tab?.dataset.tabId;
+    if (!tab || !id) return;
+    const ids = this._items.map((i) => i.id);
+    const at = ids.indexOf(id);
+    const focusAt = (i: number) => { const el = this._tabElements.get(ids[i]); if (el) { el.focus(); el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } };
+    const move = e.ctrlKey && e.shiftKey;
+    if (move && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      const to = ids[at + (e.key === 'ArrowLeft' ? -1 : 1)];
+      if (to) this._onDidReorder.fire({ fromId: id, targetId: to, position: e.key === 'ArrowLeft' ? 'before' : 'after' });
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') focusAt(Math.max(0, Math.min(ids.length - 1, at + (e.key === 'ArrowLeft' ? -1 : 1))));
+    else if (e.key === 'Home' || e.key === 'End') focusAt(e.key === 'Home' ? 0 : ids.length - 1);
+    else if (e.key === 'Enter' || e.key === ' ') this._onDidSelect.fire(id);
+    else if (e.key === 'Delete' && (this._items[at]?.closable ?? true)) this._onDidClose.fire(id);
+    else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      const r = tab.getBoundingClientRect();
+      this._onDidContextMenu.fire({ id, event: new MouseEvent('contextmenu', { clientX: r.left + 8, clientY: r.bottom }) });
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   // ─── Internal: Rebuild ─────────────────────────────────────────────────
 
   private _rebuild(): void {
@@ -320,6 +355,7 @@ export class TabBar extends Disposable {
     // that went away leaves a ghost that shrinks shut, so the row makes room
     // instead of jumping. The first paint (and a bar going empty) just lands.
     const before = [...this._tabElements.entries()];
+    const focusedId = (document.activeElement as HTMLElement | null)?.closest?.('.ui-tab')?.getAttribute('data-tab-id') ?? null;
     const nextIds = new Set(this._items.map((i) => i.id));
     const animate = before.length > 0 && this._items.length > 0 && !TabBar._still();
     const leaving = animate
@@ -358,8 +394,11 @@ export class TabBar extends Disposable {
       if (activeTab) {
         activeTab.classList.add('ui-tab--active');
         activeTab.setAttribute('aria-selected', 'true');
+        activeTab.tabIndex = 0;
       }
     }
+    if (!this._activeId || !this._tabElements.get(this._activeId)) { const first = this._tabElements.values().next().value; if (first) first.tabIndex = 0; }
+    if (focusedId) this._tabElements.get(focusedId)?.focus();
 
     // Update scroll buttons after rebuild
     requestAnimationFrame(() => this._updateScrollButtons());
@@ -390,6 +429,7 @@ export class TabBar extends Disposable {
     const tab = $('div.ui-tab');
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', 'false');
+    tab.tabIndex = -1;
     tab.dataset.tabId = item.id;
 
     if (item.tooltip) setupTooltip(tab, item.tooltip);
