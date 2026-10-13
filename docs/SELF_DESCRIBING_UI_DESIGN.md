@@ -863,6 +863,18 @@ under `ext/study/src/` and re-bundle). Each session converts one
 extension's controls to `api.ui` calls with the recipe and its probe row.
 `extStyleRatchet` and `extUndefinedNames` stay green throughout.
 
+workspace-graph done 2026-10-12, in the cloud, with `api.ui.declareControl`
+on the chrome it draws itself (its DOM and styles unchanged): the
+toolbar's search, view switch (value is its text), pause physics, hide
+edges, fit all, refresh, AI refresh and settings; the settings panel's
+refresh action and re-cluster; the sidebar's refresh and open. The
+per-concept merge dropdowns are rows and carry no id. Its DOM helpers
+moved to `chrome.js` (the loader resolves relative imports) to keep
+`main.js` under its size baseline. The scene probe
+now turns an extension on through the enablement service (the seeded
+workspace has none on) and checks one surface per extension; its
+`EXTENSION_IDS` map gains a row per converted extension.
+
 ### Step 8. The scene line in the prompt (cloud)
 
 One line on the latest user turn, where `formatTurnClock` is prepended in
@@ -1028,7 +1040,8 @@ Sessions append here. Each line: date, step, what was left and why.
      sidebar). Never the Tiptap document.
   4. chat: done; the message list's markdown is never declared.
   Steps 6, 8 and 10 are done, and step 11's script exists (run it after
-  step 7). Then steps 7 and 9 (local), then 4 and the step 11 audit.
+  step 7). Step 7 has started (workspace-graph); its remaining
+  extensions and step 9 are local, then 4 and the step 11 audit.
 
   What this session learned, for whoever continues:
   - A repeated card (a widget, a routine row, an approval) is a surface

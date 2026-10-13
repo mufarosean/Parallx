@@ -118,6 +118,20 @@ async function main() {
     for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
     for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
     for (const [viewId, id] of Object.entries(PANEL_VIEWS)) if (!ids.has(id)) stats.problems.push(`${viewId}: no "${id}"`);
+    // Extensions (design step 7): turned on here, since the seeded workspace has none on; one id each once its surface opens.
+    const EXTENSION_IDS = { 'parallx.workspace-graph': ['workspaceGraph.open', ['workspaceGraph.search', 'workspaceGraph.refresh', 'workspaceGraph.viewMode']] };
+    await page.evaluate(async (ids) => {
+      const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
+      for (const id of ids) { try { await svc?.setEnablement(id, true); } catch (e) { console.warn('enable', id, String(e)); } }
+    }, Object.keys(EXTENSION_IDS));
+    await page.waitForTimeout(3_000);
+    for (const [ext, [open, want]] of Object.entries(EXTENSION_IDS)) {
+      const r = await cmd(page, open);
+      await page.waitForTimeout(1_500);
+      if (r !== true) { stats.problems.push(`${ext}: ${open} did not run: ${r}`); continue; }
+      const extIds = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of want) if (!extIds.has(id)) stats.problems.push(`${ext}: no "${id}"`);
+    }
     // The settings editor (showing the appearance panel) is a centred overlay over everything; it closes on Escape, so the clicks below land.
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);

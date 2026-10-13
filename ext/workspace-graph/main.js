@@ -6,6 +6,7 @@
 // below can become modules beside main.js.
 
 import { EDGE_KINDS, EDGE_KIND_LABEL, EDGE_KIND_RGB, EDGE_KIND_DASH, isConceptEdge } from './edgeKinds.js';
+import { _el, _btn, _iconBtn, _setIconBtn, _miniBtn } from './chrome.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STORAGE
@@ -490,7 +491,6 @@ function snapToClusters(nodes, cx, cy) {
   }
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 2: DATA SERVICE
 // Collects graph nodes and edges from workspace data sources.
@@ -897,7 +897,6 @@ async function _collectProviders(api, nodes, edges) {
     }
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 const SEMANTIC_GRAPH_SERVICE_ID = { id: 'ISemanticGraphService' };
@@ -1352,45 +1351,10 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
   ctx.restore();
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 4: GRAPH EDITOR PANE
 // Full editor with inspector, search, legend, controls, interaction.
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function _el(tag, style) {
-  const el = document.createElement(tag);
-  if (style) el.style.cssText = style;
-  return el;
-}
-
-function _btn(text) {
-  const btn = document.createElement('button');
-  btn.textContent = text;
-  btn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;height:var(--px-control-h-sm);padding:0 10px;white-space:nowrap;flex-shrink:0;background:var(--px-bg-elevated);color:var(--px-text);border:1px solid var(--px-border);border-radius:var(--px-radius-sm);font-size:var(--px-text-sm);cursor:pointer;font-family:var(--parallx-fontFamily-ui);';
-  btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--px-surface-hover)'; });
-  btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--px-bg-elevated)'; });
-  return btn;
-}
-
-// Toolbar actions are icons with a tooltip: seven text buttons wrapped onto
-// three lines at ordinary widths. Text stays for the two things a label
-// actually explains (the view switch and the AI refresh).
-function _iconBtn(api, icon, title) {
-  const btn = document.createElement('button');
-  btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:var(--px-control-h-sm);height:var(--px-control-h-sm);padding:0;flex-shrink:0;background:transparent;color:var(--px-text-secondary);border:1px solid transparent;border-radius:var(--px-radius-sm);cursor:pointer;';
-  btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--px-surface-hover)'; btn.style.color = 'var(--px-text)'; });
-  btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; btn.style.color = 'var(--px-text-secondary)'; });
-  _setIconBtn(api, btn, icon, title);
-  return btn;
-}
-
-function _setIconBtn(api, btn, icon, title) {
-  const html = api && api.icons && api.icons.createIconHtml ? api.icons.createIconHtml(icon, 15) : '';
-  if (html) btn.innerHTML = html; else btn.textContent = title;
-  btn.title = title;
-  btn.setAttribute('aria-label', title);
-}
 
 function _esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1449,6 +1413,16 @@ function createGraphEditor(container, api) {
 
   toolbar.append(searchInput, modeBtn, physBtn, edgesBtn, fitBtn, refreshBtn, aiRefreshBtn, settingsBtn, nodeCount);
   container.appendChild(toolbar);
+
+  // In the scene (the app's live list of what is on screen), by id.
+  api.ui.declareControl(searchInput, { id: 'workspaceGraph.search', label: 'Search nodes', kind: 'input', state: () => ({ kind: 'value', value: searchInput.value }) });
+  api.ui.declareControl(modeBtn, { id: 'workspaceGraph.viewMode', label: 'View', state: () => ({ kind: 'value', value: modeBtn.textContent || '' }) });
+  api.ui.declareControl(physBtn, { id: 'workspaceGraph.pausePhysics', label: 'Pause Physics', kind: 'iconButton' });
+  api.ui.declareControl(edgesBtn, { id: 'workspaceGraph.hideEdges', label: 'Hide Edges', kind: 'iconButton' });
+  api.ui.declareControl(fitBtn, { id: 'workspaceGraph.fitAll', label: 'Fit All', kind: 'iconButton' });
+  api.ui.declareControl(refreshBtn, { id: 'workspaceGraph.refresh', label: 'Refresh', kind: 'iconButton' });
+  api.ui.declareControl(aiRefreshBtn, { id: 'workspaceGraph.aiRefresh', label: 'AI Refresh', state: () => ({ kind: 'value', value: aiRefreshBtn.textContent || '' }) });
+  api.ui.declareControl(settingsBtn, { id: 'workspaceGraph.settings', label: 'Graph Settings', kind: 'iconButton' });
 
   // ── Main area ──
   const main = _el('div', 'display:flex;flex:1;overflow:hidden;position:relative;');
@@ -1680,6 +1654,7 @@ function createGraphEditor(container, api) {
 
       const actionBtn = settingsInner.querySelector('#__gs_refresh_action');
       if (actionBtn) {
+        api.ui.declareControl(actionBtn, { id: 'workspaceGraph.settings.refreshAction', label: 'Refresh mind map', state: () => ({ kind: 'value', value: actionBtn.textContent || '' }) });
         actionBtn.addEventListener('click', async () => {
           const cur = _orch.getStatus();
           if (cur.isRefreshing) {
@@ -1746,6 +1721,7 @@ function createGraphEditor(container, api) {
 
       const rebuildBtn = settingsInner.querySelector('#__gs_concept_rebuild');
       if (rebuildBtn) {
+        api.ui.declareControl(rebuildBtn, { id: 'workspaceGraph.settings.rebuild', label: 'Force full re-cluster' });
         rebuildBtn.addEventListener('click', async () => {
           if (!(await api.window.showConfirmModal({ message: 'Force a full re-cluster?', detail: 'Every concept rename, merge and deletion is deleted. The next refresh rebuilds every cluster from scratch using only DBSCAN output.', confirmLabel: 'Re-cluster', danger: true }))) return;
           const svc = _getSemanticGraphService(api);
@@ -2594,20 +2570,10 @@ Respond using this exact JSON with no other text before or after it:
   };
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 5: SIDEBAR MINI-GRAPH
 // Compact view for the explorer sidebar panel.
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function _miniBtn(text) {
-  const btn = document.createElement('button');
-  btn.textContent = text;
-  btn.style.cssText = 'background:none;border:none;color:var(--vscode-descriptionForeground,#666);cursor:pointer;font-size:14px;padding:2px 4px;font-family:var(--parallx-fontFamily-ui);';
-  btn.addEventListener('mouseenter', () => { btn.style.color = 'var(--vscode-editor-foreground,#aaa)'; });
-  btn.addEventListener('mouseleave', () => { btn.style.color = 'var(--vscode-descriptionForeground,#666)'; });
-  return btn;
-}
 
 function createGraphSidebar(container, api) {
   // Use shared model — same data as editor
@@ -2639,9 +2605,11 @@ function createGraphSidebar(container, api) {
   const btnBar = _el('div', 'position:absolute;top:8px;right:12px;display:flex;gap:6px;z-index:2;');
   const refreshBtn = _miniBtn('\u27f3');
   refreshBtn.title = 'Refresh';
+  api.ui.declareControl(refreshBtn, { id: 'workspaceGraph.side.refresh', label: 'Refresh', kind: 'iconButton' });
   refreshBtn.addEventListener('click', () => m.refresh());
   const expandBtn = _miniBtn('\u2922');
   expandBtn.title = 'Open full graph';
+  api.ui.declareControl(expandBtn, { id: 'workspaceGraph.side.expand', label: 'Open full graph', kind: 'iconButton' });
   expandBtn.addEventListener('click', () => {
     api.editors.openEditor({ typeId: 'workspace-graph', title: 'Workspace Graph', icon: 'codicon-graph', instanceId: 'main' });
   });
@@ -2766,7 +2734,6 @@ function createGraphSidebar(container, api) {
     },
   };
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 6: EXTENSION ENTRY POINT
