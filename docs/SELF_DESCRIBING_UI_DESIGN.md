@@ -927,8 +927,24 @@ their cards, source chips and generated or suggested cards
 days and per-answer history rows are rows and carry no id. A hidden run
 that made a deck, added a card, edited it, studied and graded it, and
 opened every page listed no errors. The probe row opens Flashcards.
-Next are concept-lab, media-organizer, creations-ai,
-browser and study, in that order.
+
+concept-lab done 2026-10-12, on the owner's machine. `svgEl` (with
+`SVG_NS`) moved to `ext/concept-lab/dom.js` beside `clDeclare`, which
+declares the lab's own buttons and sliders in place; `main.js` fell from
+10703 to 10697. Ids: the home grid's module cards
+(`conceptLab.home.<module>`) and the sidebar's rows
+(`conceptLab.side.home`, `conceptLab.side.<module>`), and in a module
+the back button, the story's arrows and steps
+(`conceptLab.story.step.<n>`), presets (`conceptLab.preset.<id>`),
+parameter sliders (`conceptLab.param.<key>`, a slider with its number),
+Pin Ghost and each ghost's remove, connections
+(`conceptLab.connection.<group>.<module>`), the prediction's options and
+the scenes' own buttons (`conceptLab.scene.*`). Only one module shows at
+a time, so these are fixed ids under the pane. A hidden run through the
+home grid and five modules listed no errors. The probe row opens the
+lab.
+Next are media-organizer, creations-ai, browser and study, in that
+order.
 
 ### Step 8. The scene line in the prompt (cloud)
 

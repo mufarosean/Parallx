@@ -29,6 +29,8 @@
 // exhibit values, so keep signatures stable and side-effect free.
 // ============================================================================
 
+import { clDeclare, clSlug, setSceneUi, svgEl } from './dom.js';
+
 /** Deterministic RNG — simulations must replay identically for tests. */
 function clMulberry32(seed) {
   let a = seed >>> 0;
@@ -5617,7 +5619,6 @@ const CL_CSS = `
 // SECTION 4: UI FRAMEWORK (tween engine, formula renderer, SVG stage)
 // ============================================================================
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 function clFmt(v, fmt) {
   if (!Number.isFinite(v)) return '—';
@@ -5804,13 +5805,6 @@ function createAnimator(onFrame) {
 
 // --- SVG helpers -----------------------------------------------------------
 
-function svgEl(tag, attrs, cls) {
-  const el = document.createElementNS(SVG_NS, tag);
-  if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  if (cls) el.setAttribute('class', cls);
-  return el;
-}
-
 function clScale(d0, d1, r0, r1) {
   const dd = d1 - d0 || 1;
   const f = (v) => r0 + ((v - d0) / dd) * (r1 - r0);
@@ -5942,7 +5936,7 @@ function buildSlider(container, def, range, value, onInput, linkRoot) {
   input.max = String(range.max);
   input.step = String(range.step);
   input.value = String(value);
-  input.setAttribute('aria-label', def.label);
+  input.setAttribute('aria-label', def.label); clDeclare(input, `conceptLab.param.${clSlug(def.key)}`, { kind: 'slider', state: () => ({ kind: 'number', value: parseFloat(input.value) }) });
   row.appendChild(input);
 
   const paint = (v) => {
@@ -6861,7 +6855,7 @@ function buildValidationScenes(stageRow, ctx) {
   const replay = document.createElement('button');
   replay.className = 'cl-scene-btn';
   replay.innerHTML = clIcon('play', 12) + '<span>Replay Sampling</span>';
-  head2.appendChild(replay);
+  head2.appendChild(replay); clDeclare(replay, 'conceptLab.scene.replay');
   const axesPp = createAxes(s2.svg, { xFmt: (v) => String(v), yFmt: (v) => String(v), xTicks: 4, yTicks: 4 });
   const diag = svgEl('line', {}, 'cl-marker-line');
   const bandLo = svgEl('line', { stroke: 'var(--cl-ink-2)' }, 'cl-curve cl-ref');
@@ -7152,7 +7146,7 @@ function buildMcmcScenes(stageRow, ctx) {
   const btnReset = document.createElement('button');
   btnReset.className = 'cl-scene-btn';
   btnReset.innerHTML = clIcon('rotate-ccw', 12) + '<span>Reset</span>';
-  head1.appendChild(btnPlay); head1.appendChild(btnStep); head1.appendChild(btnReset);
+  head1.appendChild(btnPlay); head1.appendChild(btnStep); head1.appendChild(btnReset); clDeclare(btnPlay, 'conceptLab.scene.play', { label: 'Play' }); clDeclare(btnStep, 'conceptLab.scene.step'); clDeclare(btnReset, 'conceptLab.scene.reset');
 
   const axes1 = createAxes(s1.svg, { xFmt: (v) => v.toFixed(2), yFmt: (v) => v.toFixed(2), xTicks: 4, yTicks: 4 });
   const contours = [1, 2, 3].map((lvl) => {
@@ -7636,7 +7630,7 @@ function buildBootstrapScenes(stageRow, ctx) {
   const replay = document.createElement('button');
   replay.className = 'cl-scene-btn';
   replay.innerHTML = clIcon('play', 12) + '<span>Replay</span>';
-  head2.appendChild(replay);
+  head2.appendChild(replay); clDeclare(replay, 'conceptLab.scene.replay');
   const axes2 = createAxes(s2.svg, { xFmt: (v) => clFmt(v / 1e6, 'num') + 'M', yFmt: () => '', yTicks: 0, xTicks: 5 });
   const histPool = makeBarPool(s2.svg, 'cl-bar');
   histPool.g.dataset.clLink = 'hist';
@@ -8021,7 +8015,7 @@ function buildRandomVariableScenes(stageRow, ctx) {
     const b = document.createElement('button');
     b.className = 'cl-scene-btn';
     b.innerHTML = clIcon(icon, 12) + `<span>${label}</span>`;
-    head.appendChild(b);
+    head.appendChild(b); clDeclare(b, `conceptLab.scene.${clSlug(label)}`);
     return b;
   };
   const btnOne = mkBtn('Draw A Year', 'dice-5');
@@ -9041,7 +9035,7 @@ function buildLikelihoodScenes(stageRow, ctx) {
   const btnMle = document.createElement('button');
   btnMle.className = 'cl-scene-btn';
   btnMle.innerHTML = clIcon('target', 12) + '<span>Find MLE</span>';
-  head2.appendChild(btnMle);
+  head2.appendChild(btnMle); clDeclare(btnMle, 'conceptLab.scene.findMle');
 
   const axes1 = createAxes(s1.svg, { xFmt: (v) => clFmt(v, 'num'), yTicks: 0, yFmt: () => '' });
   const gGhosts = svgEl('g'); s1.svg.appendChild(gGhosts);
@@ -10013,7 +10007,7 @@ function renderHomeView(root) {
         foot.textContent = feeds.length ? 'Feeds ' + feeds.join(' · ') : lvl.tagline;
       }
       card.appendChild(chead); card.appendChild(s); card.appendChild(foot);
-      card.addEventListener('click', () => {
+      clDeclare(card, `conceptLab.home.${clSlug(mod.id)}`, { label: mod.title }); card.addEventListener('click', () => {
         _paneState.route = { view: 'module', moduleId: mod.id };
         _paneRerender?.();
       });
@@ -10038,7 +10032,7 @@ function renderModuleView(root, mod) {
   const back = document.createElement('button');
   back.className = 'cl-back';
   back.innerHTML = clIcon('arrow-left', 16);
-  back.setAttribute('aria-label', 'Back To Modules');
+  back.setAttribute('aria-label', 'Back To Modules'); clDeclare(back, 'conceptLab.back');
   back.addEventListener('click', () => {
     _paneState.route = { view: 'home', moduleId: null };
     _paneRerender?.();
@@ -10078,20 +10072,20 @@ function renderModuleView(root, mod) {
   const prevBtn = document.createElement('button');
   prevBtn.className = 'cl-story-btn';
   prevBtn.innerHTML = clIcon('chevron-left', 14);
-  prevBtn.setAttribute('aria-label', 'Previous Step');
+  prevBtn.setAttribute('aria-label', 'Previous Step'); clDeclare(prevBtn, 'conceptLab.story.prev');
   const dots = [];
   for (let i = 0; i < mod.story.length; i++) {
     const dot = document.createElement('button');
     dot.className = 'cl-story-dot';
     dot.setAttribute('aria-label', 'Step ' + (i + 1));
-    dot.addEventListener('click', () => applyStory(i));
+    clDeclare(dot, `conceptLab.story.step.${i + 1}`); dot.addEventListener('click', () => applyStory(i));
     nav.appendChild(dot);
     dots.push(dot);
   }
   const nextBtn = document.createElement('button');
   nextBtn.className = 'cl-story-btn';
   nextBtn.innerHTML = clIcon('chevron-right', 14);
-  nextBtn.setAttribute('aria-label', 'Next Step');
+  nextBtn.setAttribute('aria-label', 'Next Step'); clDeclare(nextBtn, 'conceptLab.story.next');
   const storyText = document.createElement('div');
   storyText.className = 'cl-story-text';
   nav.insertBefore(prevBtn, nav.firstChild);
@@ -10153,7 +10147,7 @@ function renderModuleView(root, mod) {
     const c = document.createElement('button');
     c.className = 'cl-preset-chip';
     c.textContent = preset.label;
-    c.addEventListener('click', () => applyPreset(preset, true));
+    clDeclare(c, `conceptLab.preset.${clSlug(preset.id)}`); c.addEventListener('click', () => applyPreset(preset, true));
     chips.appendChild(c);
     chipEls.set(preset.id, c);
   }
@@ -10229,7 +10223,7 @@ function renderModuleView(root, mod) {
     ghostRow.innerHTML = '';
     const pin = document.createElement('button');
     pin.className = 'cl-ghost-btn';
-    pin.textContent = 'Pin Ghost';
+    pin.textContent = 'Pin Ghost'; clDeclare(pin, 'conceptLab.ghost.pin');
     pin.addEventListener('click', () => {
       const snap = sceneApi.snapshot?.(st, lastD);
       if (!snap) return;
@@ -10243,7 +10237,7 @@ function renderModuleView(root, mod) {
       const c = document.createElement('button');
       c.className = 'cl-ghost-chip';
       c.innerHTML = clIcon('x', 10) + `<span>${g.label}</span>`;
-      c.title = 'Remove This Ghost';
+      c.title = 'Remove This Ghost'; clDeclare(c, `conceptLab.ghost.remove.${i + 1}`, { label: `Remove ${g.label}` });
       c.addEventListener('click', () => {
         st.ghosts.splice(i, 1);
         paintGhosts();
@@ -10279,7 +10273,7 @@ function renderModuleView(root, mod) {
       text.className = 'cl-conn-text';
       text.textContent = item.text;
       row.appendChild(head);
-      row.appendChild(text);
+      row.appendChild(text); clDeclare(row, `conceptLab.connection.${clSlug(group.label)}.${clSlug(target.id)}`, { label: target.title });
       row.addEventListener('click', () => {
         _paneState.route = { view: 'module', moduleId: target.id };
         _paneRerender?.();
@@ -10385,7 +10379,7 @@ function renderModuleView(root, mod) {
     step.predict.options.forEach((optText, j) => {
       const b = document.createElement('button');
       b.className = 'cl-predict-opt';
-      b.appendChild(clMd(optText));
+      b.appendChild(clMd(optText)); clDeclare(b, `conceptLab.predict.${j + 1}`);
       if (answered !== undefined) {
         b.disabled = true;
         if (j === step.predict.answer) b.classList.add('cl-right');
@@ -10500,7 +10494,7 @@ function renderSidebar(container) {
   const home = document.createElement('div');
   home.className = 'cl-side-row';
   home.innerHTML = `<span class="cl-side-icon">${clIcon('layout-grid', 15)}</span><span>All Modules</span>`;
-  home.addEventListener('click', () => openLab(null, true));
+  clDeclare(home, 'conceptLab.side.home'); home.addEventListener('click', () => openLab(null, true));
   root.appendChild(home);
   LEVELS.forEach((lvl, li) => {
     const mods = MODULES.filter((m) => m.level === lvl.id)
@@ -10519,7 +10513,7 @@ function renderSidebar(container) {
       label.textContent = mod.title;
       row.appendChild(label);
       row.title = mod.subtitle;
-      row.addEventListener('click', () => openLab(mod.id));
+      clDeclare(row, `conceptLab.side.${clSlug(mod.id)}`, { label: mod.title }); row.addEventListener('click', () => openLab(mod.id));
       root.appendChild(row);
     }
   });
@@ -10546,7 +10540,7 @@ async function openLab(moduleId, goHome) {
 // ============================================================================
 
 export async function activate(api, context) {
-  _api = api;
+  _api = api; setSceneUi(api.ui);
 
   context.subscriptions.push(
     api.commands.registerCommand('conceptLab.open', () => openLab(null)),

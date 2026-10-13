@@ -123,6 +123,7 @@ async function main() {
       'parallx.workspace-graph': ['workspaceGraph.open', ['workspaceGraph.search', 'workspaceGraph.refresh', 'workspaceGraph.viewMode']],
       'parallx.budget': ['budget.openTransactions', ['budget.tx.search', 'budget.tx.list', 'budget.tx.view.all', 'budget.month.prev', 'budget.addTransaction']],
       'parallx-community.flashcards': ['flashcards.open', ['flashcards.decks.stats', 'flashcards.decks.import', 'flashcards.decks.generate', 'flashcards.newDeck']],
+      'parallx.concept-lab': ['conceptLab.open', ['conceptLab.home.mcmc-watch', 'conceptLab.home.mack-machinery', 'conceptLab.side.home']],
     };
     await page.evaluate(async (ids) => {
       const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
