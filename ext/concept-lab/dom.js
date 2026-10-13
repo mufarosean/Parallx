@@ -39,3 +39,45 @@ export function clDeclare(node, id, extra = {}) {
   });
   return node;
 }
+
+/**
+ * A drag on bars, from the keyboard: the chart takes focus as a slider,
+ * Left/Right pick a bar (outlined while focused), Up/Down change its value
+ * (Shift: five steps), Home/End set its least and most. `read()` gives each
+ * bar's { value, label, text }; `write(i, v)` sets one.
+ */
+export function clKeyBars(svg, barsG, { read, write, min, max, step, label }) {
+  let at = 0;
+  let keyed = false; // a click focuses the chart too; the outlines are the keyboard's
+  for (const [k, v] of Object.entries({ tabindex: 0, role: 'slider', 'aria-label': label, 'aria-valuemin': min, 'aria-valuemax': max, 'aria-keyshortcuts': 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End' })) svg.setAttribute(k, String(v));
+  const show = () => {
+    const on = document.activeElement === svg && (keyed || svg.matches(':focus-visible'));
+    svg.style.boxShadow = on ? 'var(--px-ring-accent)' : '';
+    Array.from(barsG.children).forEach((r, i) => {
+      if (on && i === at) { r.setAttribute('stroke', 'var(--px-text)'); r.setAttribute('stroke-width', '2'); }
+      else { r.removeAttribute('stroke'); r.removeAttribute('stroke-width'); }
+    });
+    const bar = read()[at];
+    if (bar) { svg.setAttribute('aria-valuenow', String(bar.value)); svg.setAttribute('aria-valuetext', `${bar.label}: ${bar.text}`); }
+  };
+  svg.addEventListener('focus', show);
+  svg.addEventListener('blur', show);
+  svg.addEventListener('pointerdown', () => { keyed = false; show(); });
+  svg.addEventListener('keydown', (e) => {
+    const bars = read();
+    if (!bars.length || e.ctrlKey || e.altKey || e.metaKey) return;
+    at = Math.min(at, bars.length - 1);
+    const was = bars[at].value;
+    let v = was;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') at = Math.max(0, Math.min(bars.length - 1, at + (e.key === 'ArrowLeft' ? -1 : 1)));
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') v += (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 5 : 1);
+    else if (e.key === 'Home') v = min;
+    else if (e.key === 'End') v = max;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    keyed = true;
+    if (v !== was) write(at, Number(Math.max(min, Math.min(max, Math.round(v / step) * step)).toFixed(6)));
+    show();
+  });
+}

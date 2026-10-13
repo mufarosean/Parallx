@@ -29,7 +29,7 @@
 // exhibit values, so keep signatures stable and side-effect free.
 // ============================================================================
 
-import { clDeclare, clSlug, setSceneUi, svgEl } from './dom.js';
+import { clDeclare, clKeyBars, clSlug, setSceneUi, svgEl } from './dom.js';
 
 /** Deterministic RNG — simulations must replay identically for tests. */
 function clMulberry32(seed) {
@@ -8214,27 +8214,27 @@ function buildMeanMachineScenes(stageRow, ctx) {
   const fulcrumPos = animator.smooth(2.31, 90);
   let lastFrame = null;
 
+  const shown = () => { const st = ctx.getState(); return Array.isArray(st.data) && st.data.length ? st.data : MM_SEVERITY; };
+  // Cloned before the first change, so presets stay pristine (applyPreset's swap drops the flag).
+  const owned = () => {
+    let masses = shown();
+    if (!masses._owned) { masses = masses.map((m) => ({ ...m })); masses._owned = true; ctx.getState().data = masses; }
+    return masses;
+  };
   clDragOnSvg(svg, (e) => {
     if (!lastFrame) return;
-    const st = ctx.getState();
-    let masses = Array.isArray(st.data) && st.data.length ? st.data : MM_SEVERITY;
-    // Clone before the first mutation so preset constants stay pristine;
-    // applyPreset swaps in the shared array again, which drops the flag.
-    if (!masses._owned) {
-      masses = masses.map((m) => ({ ...m }));
-      masses._owned = true;
-      st.data = masses;
-    }
+    const masses = owned();
     const { sx, sy } = lastFrame;
     const pt = clSvgPoint(svg, e);
     let best = 0, bd = Infinity;
-    masses.forEach((m, i) => {
-      const dx = Math.abs(sx(m.x) - pt.x);
-      if (dx < bd) { bd = dx; best = i; }
-    });
+    masses.forEach((m, i) => { const dx = Math.abs(sx(m.x) - pt.x); if (dx < bd) { bd = dx; best = i; } });
     masses[best].p = Math.max(0, Math.min(0.6, sy.invert(pt.y)));
     animator.invalidate();
   });
+  // The keyboard's way: Left/Right pick a bar, Up/Down set its mass.
+  clKeyBars(svg, bars.g, { label: 'Probability mass', min: 0, max: 0.6, step: 0.01,
+    read: () => shown().map((m) => ({ value: m.p, label: `x = ${m.x}`, text: Math.round(m.p * 100) + '%' })),
+    write: (i, v) => { owned()[i].p = v; animator.invalidate(); } });
 
   return {
     update(st, d) {
