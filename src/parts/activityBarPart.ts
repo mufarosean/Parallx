@@ -487,8 +487,8 @@ export class ActivityBarPart extends Part {
         break;
       case 'Enter':
       case ' ':
-        // Activate the focused item
-        buttons[this._focusedIndex]?.click();
+        // Activate the button that has focus (the gear too, which the arrows do not walk).
+        (document.activeElement instanceof HTMLButtonElement && this.element.contains(document.activeElement) ? document.activeElement : buttons[this._focusedIndex])?.click();
         break;
       default:
         handled = false;

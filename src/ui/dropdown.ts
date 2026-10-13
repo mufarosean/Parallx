@@ -133,6 +133,8 @@ export class Dropdown extends Disposable {
     // Options list — built now, attached to document.body only while open.
     this._list = $('div.ui-dropdown__list');
     this._list.setAttribute('role', 'listbox');
+    this._list.id = `ui-dropdown-list-${++_dropdownSeq}`;
+    this._button.setAttribute('aria-controls', this._list.id);
     this._renderItems();
 
     // Toggle on click
@@ -278,6 +280,7 @@ export class Dropdown extends Disposable {
     this._items.forEach((item) => {
       const el = $('div.ui-dropdown__item');
       el.setAttribute('role', 'option');
+      el.id = `${this._list.id}-${this._list.childElementCount}`;
       el.dataset.value = item.value;
       if (item.color) {
         const sw = $('span.ui-dropdown__swatch');
@@ -361,6 +364,7 @@ export class Dropdown extends Disposable {
     this._isOpen = false;
     this.element.classList.remove('ui-dropdown--open');
     this._button.setAttribute('aria-expanded', 'false');
+    this._button.removeAttribute('aria-activedescendant');
     this._focusedIndex = -1;
     this._updateFocusedClass();
     this._list.remove();
@@ -400,6 +404,14 @@ export class Dropdown extends Disposable {
         this._focusedIndex = Math.max(this._focusedIndex - 1, 0);
         this._updateFocusedClass();
         return true;
+      case 'Home':
+      case 'End':
+        this._focusedIndex = e.key === 'Home' ? 0 : this._items.length - 1;
+        this._updateFocusedClass();
+        return true;
+      case 'Tab':
+        this._close();
+        return false;
       case 'Enter':
       case ' ':
         if (this._focusedIndex >= 0 && this._focusedIndex < this._items.length) {
@@ -418,6 +430,7 @@ export class Dropdown extends Disposable {
       const focused = idx === this._focusedIndex;
       (el as HTMLElement).classList.toggle('ui-dropdown__item--focused', focused);
       if (focused) {
+        this._button.setAttribute('aria-activedescendant', (el as HTMLElement).id);
         // The list scrolls now, so arrowing past the fold has to bring the row
         // into view or keyboard navigation walks into invisible options.
         // Optional-called: jsdom does not implement scrollIntoView, and a missing
@@ -427,6 +440,9 @@ export class Dropdown extends Disposable {
     });
   }
 }
+
+/** Gives each dropdown's list a page-unique id. */
+let _dropdownSeq = 0;
 
 // ─── Extension-facing handle ─────────────────────────────────────────────────
 

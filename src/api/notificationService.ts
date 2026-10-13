@@ -63,6 +63,7 @@ export class NotificationService extends Disposable {
     element: HTMLElement;
     timer: ReturnType<typeof setTimeout> | undefined;
     resolve: (result: NotificationResult) => void;
+    returnFocus?: HTMLElement | null;
   }>();
 
   /** Recent notification history for the notification center (newest first). */
@@ -102,7 +103,7 @@ export class NotificationService extends Disposable {
     if (this._container) return;
 
     this._container = $('div');
-    this._container.className = 'parallx-notifications-container';
+    this._container.className = 'parallx-notifications-container'; this._container.setAttribute('aria-live', 'polite');
     parent.appendChild(this._container);
 
     this._promptContainer = $('div');
@@ -132,6 +133,16 @@ export class NotificationService extends Disposable {
     e.stopPropagation();
     this._cancelTopPrompt();
   };
+
+  /** A prompt is a dialog: focus goes to its safe button, Tab stays on its buttons, and closing gives focus back. */
+  private _focusPrompt(id: string, el: HTMLElement): void {
+    const entry = this._activeNotifications.get(id);
+    if (entry) entry.returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    const buttons = Array.from(el.querySelectorAll<HTMLButtonElement>('.parallx-notification-actions button'));
+    const risky = el.classList.contains('parallx-notification-warning') || el.classList.contains('parallx-notification-error');
+    ((risky ? buttons.find((b) => b.classList.contains('parallx-notification-action-btn--secondary')) : undefined) ?? buttons[0])?.focus();
+    el.addEventListener('keydown', (e) => { if (e.key !== 'Tab' || !buttons.length) return; const at = buttons.indexOf(document.activeElement as HTMLButtonElement); buttons[(at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus(); e.preventDefault(); });
+  }
 
   private _cancelTopPrompt(): void {
     if (!this._promptContainer) return;
@@ -185,6 +196,7 @@ export class NotificationService extends Disposable {
       if (targetContainer) {
         // Insert at top (newest first)
         targetContainer.prepend(element);
+        if (actions.length > 0) this._focusPrompt(id, element);
       } else if (timeoutMs === 0) {
         // No container and no auto-dismiss timeout: the notification would be
         // invisible and uninteractable, so resolve immediately to prevent a
@@ -240,6 +252,7 @@ export class NotificationService extends Disposable {
   private _dismiss(id: string, action: NotificationAction | undefined): void {
     const entry = this._activeNotifications.get(id);
     if (!entry) return;
+    if (entry.returnFocus?.isConnected && entry.element.contains(document.activeElement)) entry.returnFocus.focus();
 
     if (entry.timer !== undefined) {
       clearTimeout(entry.timer);
@@ -279,7 +292,8 @@ export class NotificationService extends Disposable {
     el.className = `parallx-notification parallx-notification-${notification.severity}`;
     if (notification.actions.length > 0) {
       el.classList.add('parallx-notification--prompt');
-    }
+      el.setAttribute('role', 'alertdialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', notification.message);
+    } else el.setAttribute('role', notification.severity === NotificationSeverity.Error ? 'alert' : 'status');
     el.dataset.notificationId = notification.id;
     createSurface(el, { id: 'notification', owner: 'core', label: notification.message, instance: notification.id });
 
@@ -513,10 +527,8 @@ export function showConfirmModal(
     box.setAttribute('aria-modal', 'true');
     box.setAttribute('aria-label', options.message);
 
-    // Focus the SAFE button by default on destructive confirms.
-    requestAnimationFrame(() => {
-      (options.danger && cancelBtn ? cancelBtn : okBtn).focus();
-    });
+    // Focus the SAFE button by default on destructive confirms (now, not on the next frame).
+    (options.danger && cancelBtn ? cancelBtn : okBtn).focus();
   });
 }
 
@@ -540,6 +552,8 @@ export function showInputBoxModal(
     const box = $('div');
     box.className = 'parallx-modal-box';
     createSurface(box, { id: 'inputBox', owner: 'core', label: options.prompt || options.placeholder || 'Input', instance: String(++_modalSeq) });
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', options.prompt || options.placeholder || 'Input');
+    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
 
     // Prevent any mouse interaction inside the box from bubbling to the
     // overlay's click-to-dismiss handler.
@@ -592,7 +606,7 @@ export function showInputBoxModal(
     const cleanup = () => {
       if (resolved) return;
       resolved = true;
-      overlay.remove();
+      overlay.remove(); if (returnFocus?.isConnected) returnFocus.focus();
     };
 
     const accept = async () => {
@@ -613,10 +627,11 @@ export function showInputBoxModal(
       resolve(undefined);
     };
 
-    // Keyboard
-    input.addEventListener('keydown', (e) => {
+    // Keyboard: Escape anywhere in the box, Enter in the field, Tab around the field and the two buttons.
+    box.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { cancel(); }
-      else if (e.key === 'Enter') { accept(); }
+      else if (e.key === 'Enter' && e.target === input) { accept(); }
+      else if (e.key === 'Tab') { const stops: HTMLElement[] = [input, cancelBtn, okBtn]; const at = stops.indexOf(document.activeElement as HTMLElement); stops[(at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length].focus(); e.preventDefault(); }
     });
 
     // Buttons
@@ -628,11 +643,11 @@ export function showInputBoxModal(
       if (e.target === overlay) cancel();
     });
 
-    // Focus input and pre-select all text so the user can type immediately
-    requestAnimationFrame(() => {
-      input.focus();
-      input.select();
-    });
+    // Focus input and pre-select all text so the user can type immediately:
+    // now, not on the next frame, so focus is never left behind on the opener.
+    input.focus();
+    input.select();
+
   });
 }
 
@@ -650,18 +665,20 @@ export function showQuickPickModal(
     const box = $('div');
     box.className = 'parallx-quickpick-box';
     createSurface(box, { id: 'quickPick', owner: 'core', label: options.placeholder ?? 'Select an item...', instance: String(++_modalSeq) });
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', options.placeholder ?? 'Select an item');
+    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
 
     // Search input
     const input = $('input');
     input.type = 'text';
     input.placeholder = options.placeholder ?? 'Select an item...';
-    input.className = 'parallx-quickpick-input';
+    input.className = 'parallx-quickpick-input'; input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'true');
     declareControl(input, { id: 'quickPick.filter', label: 'Filter', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
     box.appendChild(input);
 
     // Items list
     const list = $('div');
-    list.className = 'parallx-quickpick-list';
+    list.className = 'parallx-quickpick-list'; list.setAttribute('role', 'listbox'); list.id = `quick-pick-list-${_modalSeq}`; input.setAttribute('aria-controls', list.id);
     box.appendChild(list);
 
     const selected = new Set<number>();
@@ -679,10 +696,10 @@ export function showQuickPickModal(
 
         const row = $('div');
         row.className = 'parallx-quickpick-row';
-        row.dataset.index = String(i);
+        row.dataset.index = String(i); row.setAttribute('role', 'option'); row.id = `${list.id}-${i}`;
 
         if (visibleIndex === highlightIndex) {
-          row.classList.add('parallx-quickpick-row--active');
+          row.classList.add('parallx-quickpick-row--active'); row.setAttribute('aria-selected', 'true'); input.setAttribute('aria-activedescendant', row.id);
         }
 
         const labelEl = $('span');
@@ -717,7 +734,7 @@ export function showQuickPickModal(
       renderItems(input.value);
     });
 
-    const cleanup = () => { overlay.remove(); };
+    const cleanup = () => { overlay.remove(); if (returnFocus?.isConnected) returnFocus.focus(); };
 
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -735,6 +752,8 @@ export function showQuickPickModal(
             resolve(items[idx]);
           }
         }
+      } else if (e.key === 'Tab') {
+        e.preventDefault(); // the field is the dialog's one stop; the arrows move the list
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         const visibleCount = list.querySelectorAll('[data-index]').length;
@@ -756,7 +775,7 @@ export function showQuickPickModal(
 
     overlay.appendChild(box);
     renderItems('');
-    requestAnimationFrame(() => input.focus());
+    input.focus(); // now, so focus is never left behind on the opener
   });
 }
 

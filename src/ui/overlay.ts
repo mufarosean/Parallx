@@ -23,6 +23,8 @@ export interface IOverlayOptions {
   readonly contentClass?: string;
   /** Center the content vertically as well as horizontally. Default: false (top-aligned with `padding-top: 20vh`). */
   readonly centered?: boolean;
+  /** The dialog's name for a screen reader. Default: 'Dialog'. */
+  readonly label?: string;
 }
 
 // ─── Overlay ─────────────────────────────────────────────────────────────────
@@ -50,6 +52,8 @@ export class Overlay extends Disposable {
   readonly contentElement: HTMLElement;
 
   private _visible = false;
+  /** Where focus was before show(), given back on hide(). */
+  private _returnFocus: HTMLElement | null = null;
 
   private readonly _onDidClose = this._register(new Emitter<void>());
   readonly onDidClose: Event<void> = this._onDidClose.event;
@@ -72,6 +76,10 @@ export class Overlay extends Disposable {
 
     // Content area
     this.contentElement = $('div.ui-overlay-content');
+    // A modal dialog to a screen reader: what it is, that the rest waits, its name.
+    this.contentElement.setAttribute('role', 'dialog');
+    this.contentElement.setAttribute('aria-modal', 'true');
+    this.contentElement.setAttribute('aria-label', options?.label ?? 'Dialog');
     if (options?.contentClass) {
       this.contentElement.classList.add(options.contentClass);
     }
@@ -107,6 +115,7 @@ export class Overlay extends Disposable {
   show(): void {
     if (this._visible) return;
     this._visible = true;
+    this._returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     this._parent.appendChild(this.element);
     // Focusable so Escape works
     this.element.tabIndex = -1;
@@ -116,7 +125,12 @@ export class Overlay extends Disposable {
   hide(): void {
     if (!this._visible) return;
     this._visible = false;
+    const inside = this.element.contains(document.activeElement);
     this.element.remove();
+    // Focus goes back where it was, unless something else already took it.
+    const active = document.activeElement;
+    if ((inside || !active || active === document.body) && this._returnFocus?.isConnected) this._returnFocus.focus();
+    this._returnFocus = null;
     this._onDidClose.fire();
   }
 

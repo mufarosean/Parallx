@@ -870,7 +870,7 @@ export class QuickAccessWidget extends Disposable {
     input.className = 'command-palette-input';
     input.type = 'text';
     input.spellcheck = false;
-    input.autocomplete = 'off';
+    input.autocomplete = 'off'; input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-controls', 'quick-access-list'); input.setAttribute('aria-expanded', 'true');
     input.addEventListener('input', () => this._resolveProviderAndUpdate());
     input.addEventListener('keydown', (e) => this._onInputKeydown(e));
     declareControl(input, { id: 'quickAccess.input', label: 'Quick Access', kind: 'input', hint: 'Type > for commands, @ for symbols, or a file name.', state: () => ({ kind: 'value', value: input.value }) });
@@ -878,7 +878,7 @@ export class QuickAccessWidget extends Disposable {
     // List
     const list = $('div');
     list.className = 'command-palette-list';
-    list.setAttribute('role', 'listbox');
+    list.setAttribute('role', 'listbox'); list.id = 'quick-access-list';
     createList(list, { id: 'quickAccess.list', label: 'Results', rows: () => Array.from(list.querySelectorAll<HTMLElement>('.command-palette-item')), selected: () => { const it = this._items[this._selectedIndex]; return it ? [it.label] : []; } });
 
     // Focus-trap keydown on list items: Tab returns to input, Escape closes (Cap 8.3)
@@ -1018,8 +1018,8 @@ export class QuickAccessWidget extends Disposable {
       row.className = 'command-palette-item';
       row.tabIndex = -1; // Focusable for keyboard navigation (Cap 8.3)
       if (i === this._selectedIndex) row.classList.add('selected');
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false');
+      row.setAttribute('role', 'option'); row.id = `quick-access-item-${i}`;
+      row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false'); if (i === this._selectedIndex) this._input?.setAttribute('aria-activedescendant', row.id);
 
       // Label
       const labelEl = $('span');
@@ -1099,7 +1099,7 @@ export class QuickAccessWidget extends Disposable {
     glideHighlight(this._listEl, from, to, 'command-palette-glide');
     rows.forEach((row, i) => {
       row.classList.toggle('selected', i === this._selectedIndex);
-      row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false');
+      row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false'); if (i === this._selectedIndex) this._input?.setAttribute('aria-activedescendant', (row as HTMLElement).id);
     });
   }
 

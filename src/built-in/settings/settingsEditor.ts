@@ -189,7 +189,7 @@ export class SettingsEditor extends Disposable {
     this._overlay = this._register(new Overlay(parent, {
       closeOnClickOutside: true,
       closeOnEscape: true,
-      contentClass: 'settings-editor-overlay',
+      contentClass: 'settings-editor-overlay', label: 'Settings',
       centered: true,
     }));
 

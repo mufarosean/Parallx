@@ -247,6 +247,23 @@ describe('ContextMenu under the contract — the first citizen', () => {
     expect(selected.mock.calls[0][0].item.id).toBe('one');
   });
 
+  it('opened from a focused button: focus goes to the first row, Tab closes, focus returns to the button', () => {
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    button.focus();
+    const menu = show();
+    const dismissed = vi.fn();
+    menu.onDidDismiss(dismissed);
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('.context-menu [role=menuitem]'));
+    expect(document.activeElement).toBe(rows[0]);
+    key('ArrowDown');
+    expect(document.activeElement).toBe(rows[1]);
+    key('Tab');
+    expect(dismissed).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(button);
+    button.remove();
+  });
+
   it('a pointer LEAVING the menu un-arms it — grazing cannot prime Enter', () => {
     const menu = show(true); // armed on open (keyboard-open path)
     const selected = vi.fn();

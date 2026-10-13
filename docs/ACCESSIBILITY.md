@@ -41,13 +41,16 @@ and 19 with only part of one.
 
 ## The list, in the order it is fixed
 
-### 1. Dialogs
-- [ ] Command palette and quick open: a dialog (role, modal, name) around the list.
-- [ ] Context menu: focus moves into the menu on open; returns to the opener on close.
-- [ ] Dropdown: focus returns to the dropdown on close.
-- [ ] Settings: a modal dialog; focus returns to where it was on close.
-- [ ] Input box: a modal dialog; Tab stays inside; Escape closes from anywhere in it; focus returns.
-- [ ] Prompt toast: announced (live region); focus returns on close.
+### 1. Dialogs (done 2026-10-13: the dialog pass reports 0 of 8)
+- [x] Command palette and quick open: already a modal dialog; the field is now a combobox naming the highlighted result (aria-activedescendant).
+- [x] Context menu: opened from a focused control, focus moves to its first row and follows the arrows; Tab closes it; focus returns to the opener. Opened while typing, or with nothing focused, focus stays put (the Enter-passes-through contract).
+- [x] Dropdown: the button names the highlighted option and the list it drives; Home and End jump; Tab closes; focus stays on the button.
+- [x] Settings (every Overlay): a named modal dialog; focus returns to where it was on close.
+- [x] Input box: a named modal dialog; Tab cycles the field and the two buttons; Escape closes from anywhere in it; focus returns.
+- [x] Prompt toast: a named modal alert dialog that takes focus (Cancel first on a warning), keeps Tab on its buttons and gives focus back; ordinary toasts sit in a polite live region (errors as alerts).
+- [x] Quick pick: a modal dialog; the field names the highlighted row; Tab stays on the field; focus returns.
+- Found on the way: Enter on the activity bar's gear clicked the last view icon instead (the bar activated its tracked icon, not the focused button). Fixed.
+- The confirm modal, input box and quick pick focus at once instead of on the next frame, so focus is never left on the opener.
 
 ### 2. Keyboard reach
 - [ ] Editor tabs (none focusable): the active tab in the Tab order, arrows move, Enter opens.

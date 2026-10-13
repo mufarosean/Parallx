@@ -347,8 +347,11 @@ async function auditDialogs() {
       // What a screen reader is told about the dialog: its role, whether it
       // is modal, and for a message whether it is announced (a live region).
       const live = r && (r.closest('[aria-live], [role=status], [role=alert]') || r.querySelector('[aria-live], [role=status], [role=alert]'));
-      const sr = r ? { role: r.getAttribute('role') || r.querySelector('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')?.getAttribute('role') || 'none', modal: r.getAttribute('aria-modal') || r.querySelector('[aria-modal]')?.getAttribute('aria-modal') || 'no', announced: !!live } : null;
-      return { sr, open: !!r, inside: !!r && (r === a || r.contains(a)), atOpener: !!opEl && a === opEl, active: `${a?.tagName.toLowerCase()}${a?.getAttribute('data-px-id') ? '#' + a.getAttribute('data-px-id') : ''} "${(a?.getAttribute('aria-label') || a?.textContent || '').trim().slice(0, 30)}"` };
+      const box = r && (r.closest('[role=dialog], [role=alertdialog]') || r);
+      const sr = r ? { role: box.getAttribute('role') || r.querySelector('[role=dialog], [role=alertdialog], [role=menu], [role=listbox]')?.getAttribute('role') || 'none', modal: box.getAttribute('aria-modal') || r.querySelector('[aria-modal]')?.getAttribute('aria-modal') || 'no', announced: !!live } : null;
+      // A combobox keeps focus on its field or button and names the list it drives.
+      const drives = !!r && !!a && !!r.id && a.getAttribute('aria-controls') === r.id;
+      return { sr, open: !!r, inside: !!r && (r === a || r.contains(a) || drives), atOpener: !!opEl && a === opEl, active: `${a?.tagName.toLowerCase()}${a?.getAttribute('data-px-id') ? '#' + a.getAttribute('data-px-id') : ''} "${(a?.getAttribute('aria-label') || a?.textContent || '').trim().slice(0, 30)}"` };
     }, { root: d.root, opener: d.opener });
     const s1 = await state();
     const row = { name: d.name, opened: s1.open, focusMovedIn: s1.inside, focusOnOpen: s1.active, screenReader: s1.sr };
@@ -425,7 +428,7 @@ for (const k of kinds) {
 const traps = report.filter((r) => r.trap).map((r) => `${r.screen}: ${r.trap}`);
 console.log(`\n# traps (${traps.length})\n  ${traps.join('\n  ')}`);
 // A modal must say it is a dialog and modal; a prompt must be announced.
-const srProblem = (d) => !d.screenReader || (DIALOGS.find((x) => x.name === d.name)?.modal && (!/dialog/.test(d.screenReader.role) || d.screenReader.modal !== 'true')) || (d.name === 'prompt toast' && !d.screenReader.announced) || d.screenReader.role === 'none';
+const srProblem = (d) => !d.screenReader || (DIALOGS.find((x) => x.name === d.name)?.modal && (!/dialog/.test(d.screenReader.role) || d.screenReader.modal !== 'true')) || (d.name === 'prompt toast' && !d.screenReader.announced && !(d.screenReader.role === 'alertdialog' && d.focusMovedIn)) || d.screenReader.role === 'none';
 const dialogProblems = dialogs.filter((d) => d.problem || !d.opened || !d.escapeCloses || !d.focusReturned || (!d.focusMovedIn && !d.reachableByTab) || d.tabStaysInside === false || srProblem(d));
 console.log(`\n# dialogs (${dialogs.length} checked, ${dialogProblems.length} with a problem)\n  ${dialogProblems.map((d) => JSON.stringify(d)).join('\n  ')}`);
 console.log(`\n[screens] ${report.length}`);

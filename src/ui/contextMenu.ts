@@ -121,6 +121,8 @@ export class ContextMenu extends Disposable {
   /** The items shown now: the options' at first, then each setItems(). */
   private _items: readonly IContextMenuItem[];
   private _highlightIndex = -1;
+  /** Opened from a button or another menu, not while typing: the highlighted row has focus. */
+  private _focusRows = false;
 
   // ── Submenus ──
 
@@ -179,6 +181,18 @@ export class ContextMenu extends Disposable {
       onExit: () => this._completeDismiss(),
       onKeydown: (e) => this._handleKeydown(e),
     });
+
+    // Opened from a button or from another menu, focus moves into the menu,
+    // so a screen reader reads each row as the arrows move and Escape hands
+    // focus back (the mode's focus return). Opened while typing in a field
+    // or a page, or with nothing focused, focus stays where it is, as before.
+    const opener = document.activeElement;
+    this._focusRows = opener instanceof HTMLElement && opener !== document.body && !opener.isContentEditable && !/^(INPUT|TEXTAREA|SELECT)$/.test(opener.tagName);
+    if (this._focusRows) {
+      const first = this._getEnabledIndices()[0];
+      if (this._highlightIndex >= 0) this._itemEls[this._highlightIndex]?.focus({ preventScroll: true });
+      else if (first !== undefined) this._highlight(first);
+    }
 
     // A pointer that LEAVES the menu un-arms it: merely grazing a row on
     // the way elsewhere must not leave that row primed for Enter.
@@ -267,6 +281,11 @@ export class ContextMenu extends Disposable {
         this._mode?.exit();
         return false;
       }
+      // Tab leaves a menu: it closes, and focus goes back to its opener.
+      case 'Tab': {
+        this.dismiss();
+        return true;
+      }
       default:
         return false;
     }
@@ -315,6 +334,7 @@ export class ContextMenu extends Disposable {
         row.classList.add(item.className);
       }
       row.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+      row.tabIndex = -1;
       if (item.checked !== undefined) row.setAttribute('aria-checked', String(!!item.checked));
       if (item.tooltip) row.title = item.tooltip;
       this._register(scene.register({
@@ -401,6 +421,7 @@ export class ContextMenu extends Disposable {
     }
     this._highlightIndex = index;
     this._itemEls[index]?.scrollIntoView?.({ block: 'nearest' });
+    if (this._focusRows) this._itemEls[index]?.focus({ preventScroll: true });
   }
 
   private _select(item: IContextMenuItem): void {
