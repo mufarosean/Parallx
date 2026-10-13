@@ -8,9 +8,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $, addDisposableListener, toggleClass } from './dom.js';
-
-const TABBABLE = 'button:not(:disabled), input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex], [contenteditable="true"]';
+import { $, addDisposableListener, keepTabInside, toggleClass } from './dom.js';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -107,20 +105,8 @@ export class Overlay extends Disposable {
       }));
     }
 
-    // A modal dialog keeps Tab inside it: past the last control, focus goes
-    // round to the first, and Shift+Tab from the first to the last.
-    this._register(addDisposableListener(this.element, 'keydown', (e) => {
-      if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey) return;
-      const stops = Array.from(this.contentElement.querySelectorAll<HTMLElement>(TABBABLE))
-        .filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && !el.closest('[hidden], [inert]'));
-      if (!stops.length) { e.preventDefault(); return; }
-      const at = stops.indexOf(document.activeElement as HTMLElement);
-      const inside = this.contentElement.contains(document.activeElement);
-      if (e.shiftKey ? (at === 0 || !inside) : (at === stops.length - 1 || !inside)) {
-        e.preventDefault();
-        (e.shiftKey ? stops[stops.length - 1] : stops[0]).focus();
-      }
-    }));
+    // A modal dialog keeps Tab inside it.
+    this._register(keepTabInside(this.contentElement, this.element));
   }
 
   // ─── Public API ────────────────────────────────────────────────────────

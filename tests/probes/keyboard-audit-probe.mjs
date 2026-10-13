@@ -257,7 +257,24 @@ async function auditScreen(label) {
     if (r === 'stuck' && process.env.KB_DEBUG) console.log('[debug] stuck at:', await page.evaluate(() => { const out = []; for (let p = document.activeElement; p && out.length < 10; p = p.parentElement) out.push(p.tagName.toLowerCase() + (p.id ? '#' + p.id : '') + '.' + String(p.className).split(' ')[0].slice(0, 24) + (p.hasAttribute('aria-keyshortcuts') ? '{F6}' : '')); return out.join(' < '); }));
     if (r === 'stuck' && await page.evaluate(() => !!document.activeElement?.closest('[aria-keyshortcuts~="F6"]'))) {
       await page.keyboard.press('F6');
-      if (await page.evaluate(() => { const left = !document.activeElement?.closest('[aria-keyshortcuts~="F6"]'); window.__kb.stuck = 0; window.__kb.prev = document.activeElement; return left; })) { wrapped = true; continue; } // the run has passed the region: the next element met again ends it
+      if (await page.evaluate(() => !document.activeElement?.closest('[aria-keyshortcuts~="F6"]'))) {
+        // F6 lands on the next area's own focus (the chat's body, say): what
+        // stands before it in that area is Shift+Tab away, so walk back to it.
+        const landing = await page.evaluateHandle(() => document.activeElement);
+        for (let i = 0; i < 30; i++) {
+          await page.keyboard.press('Shift+Tab');
+          const inArea = await page.evaluate((l) => {
+            const area = l.closest('[data-part-id]'); const a = document.activeElement;
+            if (!area || !area.contains(a) || a === l) return false;
+            window.__kb.seen.add(a); if (a.getAttribute('data-px-id')) window.__kb.seenIds.add(a.getAttribute('data-px-id'));
+            return true;
+          }, landing);
+          if (!inArea) break;
+        }
+        await page.evaluate((l) => { l.focus(); window.__kb.stuck = 0; window.__kb.prev = l; }, landing);
+        wrapped = true; continue; // the run has passed the region: the next element met again ends it
+      }
+      await page.evaluate(() => { window.__kb.stuck = 0; window.__kb.prev = document.activeElement; });
     }
     if (r === 'stuck') { trap = await page.evaluate(() => { const a = document.activeElement; const s = a?.closest('[data-px-surface]'); return `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${a?.tagName.toLowerCase()} "${(a?.getAttribute('aria-label') || a?.textContent || '').trim().slice(0, 40)}"`; }); break; }
     // Done when the order has come round: after a wrap to the top, the first element met again; a
@@ -403,6 +420,12 @@ async function auditDialogs() {
     }, { root: d.root, opener: d.opener });
     const s1 = await state();
     const row = { name: d.name, opened: s1.open, focusMovedIn: s1.inside, focusOnOpen: s1.active, screenReader: s1.sr };
+    // Not opened: what the page held, so the cause is a finding rather than a guess.
+    if (!s1.open) row.seen = await page.evaluate(({ root, opener }) => {
+      const a = document.activeElement;
+      const openers = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`));
+      return { roots: Array.from(document.querySelectorAll(root)).map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), openers: openers.map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), activeShown: !!a?.getClientRects().length, expanded: a?.getAttribute('aria-expanded') };
+    }, { root: d.root, opener: d.opener });
     if (s1.open && d.modal) {
       let stayed = true;
       for (let i = 0; i < 12; i++) { await page.keyboard.press('Tab'); if (!(await state()).inside) { stayed = false; break; } }

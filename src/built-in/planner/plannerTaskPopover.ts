@@ -4,6 +4,7 @@
 // open it.
 
 import { createSurface, declareControl } from '../../ui/kit.js';
+import { keepTabInside } from '../../ui/dom.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerTask, TaskStatus } from './plannerTypes.js';
 import { Dropdown } from '../../ui/dropdown.js';
@@ -53,6 +54,7 @@ export class PlannerTaskPopover {
 
     const isEdit = init.mode === 'edit';
     pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.setAttribute('aria-label', isEdit ? 'Edit Task' : 'New Task');
+    keepTabInside(pop); // modal: Tab goes round inside it (its listener goes with the element)
     // Defaults on create: +5d due, 'reviewing' (the journaling flow).
     // Calendar drags pass seedDueAt + seedStatus='planned' to override.
     const seed: {

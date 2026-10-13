@@ -4,6 +4,7 @@
 // to (askSeriesScope, which dragging an occurrence also uses).
 
 import { createSurface, declareControl } from '../../ui/kit.js';
+import { keepTabInside } from '../../ui/dom.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerEvent, SeriesEditScope, UpdateEventInput } from './plannerTypes.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
@@ -43,6 +44,7 @@ export class PlannerEventPopover {
       const pop = el('div', 'planner-popover planner-scope-menu');
       pop.style.position = 'fixed';
       pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.setAttribute('aria-label', kind === 'delete' ? 'Delete recurring event' : 'Edit recurring event');
+      keepTabInside(pop);
       const head = el('div', 'planner-popover__head');
       const heading = el('h3', 'planner-popover__title');
       heading.textContent = kind === 'delete' ? 'Delete recurring event' : 'Edit recurring event';
@@ -135,6 +137,7 @@ export class PlannerEventPopover {
 
     const isEdit = init.mode === 'edit';
     pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-modal', 'true'); pop.setAttribute('aria-label', isEdit ? 'Edit Event' : 'New Event');
+    keepTabInside(pop); // modal: Tab goes round inside it (its listener goes with the element)
     const seed: { title: string; startAt: number; endAt: number; allDay: boolean; location: string; description: string; eventId: string | null } = isEdit
       ? {
           title: init.event.title,

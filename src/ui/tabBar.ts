@@ -166,6 +166,9 @@ export class TabBar extends Disposable {
       this._scrollLeft.textContent = '\u2039'; // ‹
       this._scrollLeft.title = 'Scroll Tabs Left';
       this._scrollLeft.classList.add('hidden');
+      // A pointer helper: the arrow keys reach every tab, so it takes no Tab stop.
+      this._scrollLeft.tabIndex = -1;
+      this._scrollLeft.setAttribute('aria-hidden', 'true');
       this.element.appendChild(this._scrollLeft);
       this._register(addDisposableListener(this._scrollLeft, 'click', () => {
         this._tabsWrap.scrollBy({ left: -200, behavior: 'smooth' });
@@ -186,6 +189,9 @@ export class TabBar extends Disposable {
       this._scrollRight.textContent = '\u203A'; // ›
       this._scrollRight.title = 'Scroll Tabs Right';
       this._scrollRight.classList.add('hidden');
+      // A pointer helper: the arrow keys reach every tab, so it takes no Tab stop.
+      this._scrollRight.tabIndex = -1;
+      this._scrollRight.setAttribute('aria-hidden', 'true');
       this.element.appendChild(this._scrollRight);
       this._register(addDisposableListener(this._scrollRight, 'click', () => {
         this._tabsWrap.scrollBy({ left: 200, behavior: 'smooth' });

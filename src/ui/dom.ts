@@ -355,3 +355,24 @@ export function attachPopupDismiss(
     handle.exit();
   };
 }
+const TABBABLE = 'button:not(:disabled), input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex], [contenteditable="true"]';
+
+/**
+ * A modal dialog keeps Tab inside it: past the last control focus goes
+ * round to the first, and Shift+Tab from the first to the last. `listenOn`
+ * takes the key (the dialog, or a wrapper round it); `within` holds the stops.
+ */
+export function keepTabInside(within: HTMLElement, listenOn: HTMLElement = within): IDisposable {
+  return addDisposableListener(listenOn, 'keydown', (e) => {
+    if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey) return;
+    const stops = Array.from(within.querySelectorAll<HTMLElement>(TABBABLE))
+      .filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && !el.closest('[hidden], [inert]'));
+    if (!stops.length) { e.preventDefault(); return; }
+    const at = stops.indexOf(document.activeElement as HTMLElement);
+    const inside = within.contains(document.activeElement);
+    if (e.shiftKey ? (at === 0 || !inside) : (at === stops.length - 1 || !inside)) {
+      e.preventDefault();
+      (e.shiftKey ? stops[stops.length - 1] : stops[0]).focus();
+    }
+  });
+}
