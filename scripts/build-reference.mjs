@@ -8,6 +8,8 @@ import { spawnSync } from 'child_process';
 const r = spawnSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['vitest', 'run', 'tests/unit/referenceDocs.test.ts'], {
   stdio: 'inherit',
   env: { ...process.env, UPDATE_REFERENCE: '1' },
+  // Node refuses to spawn a .cmd without a shell on Windows (EINVAL).
+  shell: process.platform === 'win32',
 });
 if (r.status !== 0) {
   console.error('[build-reference] writing docs/reference failed');

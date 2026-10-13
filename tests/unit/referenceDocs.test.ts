@@ -132,12 +132,13 @@ describe('reference docs', () => {
     it(`docs/reference/${name} matches the registries`, () => {
       const path = resolve(OUT, name);
       const text = render();
+      // A Windows checkout has CRLF line ends (core.autocrlf); the content is what counts.
+      const onDisk = existsSync(path) ? readFileSync(path, 'utf8').replace(/\r\n/g, '\n') : '';
       if (process.env.UPDATE_REFERENCE) {
         mkdirSync(OUT, { recursive: true });
-        writeFileSync(path, text);
+        if (onDisk !== text) writeFileSync(path, text);
         return;
       }
-      const onDisk = existsSync(path) ? readFileSync(path, 'utf8') : '';
       expect(onDisk, `${name} is stale: run npm run build (or UPDATE_REFERENCE=1 npx vitest run tests/unit/referenceDocs.test.ts)`).toBe(text);
     });
   }
