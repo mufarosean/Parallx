@@ -28,6 +28,7 @@ import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { pageLinkHref } from './pageLinks.js';
 import { createButton, createSurface, createTree, declareControl, sceneSlug } from '../../ui/kit.js';
 import { UndoToast } from './canvasSidebarToast.js';
+import { pageMoveForKey } from './canvasSidebarKeyboardMove.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -527,7 +528,7 @@ export class CanvasSidebar {
       const hintList: { kbd: string; text: string }[] = [
         { kbd: '/', text: 'inside a page for the block menu' },
         { kbd: 'Ctrl+/', text: 'anywhere for keyboard shortcuts' },
-        { kbd: 'Drag', text: 'pages in the sidebar to reorder' },
+        { kbd: 'Ctrl+Shift+↑ ↓', text: 'or drag, to reorder pages in the sidebar' },
       ];
       for (const h of hintList) {
         const row = $('div.canvas-empty-hint');
@@ -1802,21 +1803,15 @@ export class CanvasSidebar {
     const pageId = draggedPageId;
     const { parentId: newParentId, afterSiblingId } = dropTarget;
 
-    // read the old parent from the drag-time snapshot so
-    // a concurrent DB event can't shift our view of where the page used
-    // to be. The data service will read the canonical previous parent
-    // from the DB anyway, but having a snapshot-consistent old parent
-    // matters for any UI logic that wants to know.
+    // The old parent from the drag-time snapshot: a concurrent DB event cannot
+    // shift where the page used to be (the service reads the real one anyway).
     const oldParentId = this._dragState.getOldParentId(pageId);
 
     this._dragState.end();
-    // Mark drop-in-flight so refreshes fired by the move's own DB events
-    // are deferred until the async work completes.
+    // Drop in flight: refreshes from the move's own DB events wait for it.
     this._dragState.beginDrop();
 
-    // capture the pre-move siblings so Undo can restore
-    // the page to its exact prior position (parent + after-sibling).
-    // Read from the live tree BEFORE the drop fires.
+    // The pre-move siblings, read before the drop, so Undo restores the exact spot.
     const oldNode = this._findNode(this._tree, pageId);
     const oldSiblings: IPageSummaryTreeNode[] = oldNode
       ? (oldParentId
@@ -1929,7 +1924,12 @@ export class CanvasSidebar {
       return;
     }
     if (this._handleTreeNavKey(e)) return;
-    if (e.key === 'Delete' && this._selectedPageId) {
+    // Ctrl+Shift+arrows move the selected page: the keyboard's drag (canvasSidebarKeyboardMove.ts).
+    const move = this._selectedPageId ? pageMoveForKey(this._tree, this._selectedPageId, e) : null;
+    if (move) {
+      e.preventDefault();
+      void this._performDrop(this._selectedPageId!, null, move.newParentId, move.afterSiblingId).catch((err) => this._surfaceError('Move', err));
+    } else if (e.key === 'Delete' && this._selectedPageId) {
       e.preventDefault();
       this._deletePage(this._selectedPageId);
     } else if (e.key === 'F2' && this._selectedPageId) {

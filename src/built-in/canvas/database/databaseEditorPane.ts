@@ -5,10 +5,10 @@
 //   view tabs row (type icon + name per view, + add view) ··· toolbar:
 //     [Filter] [Sort] [New]
 //   active-rule chips row (when the view has filters/sorts)
-//   body → TABLE view (typed column headers with menus, pinned title column
-//     with hover-OPEN, inline cell editors, + new column, + New row) or
-//     BOARD view (columns per group option: colored pill header + count,
-//     cards, drag between columns writes the group property, + add card).
+//   body → TABLE view (typed headers with menus, pinned title column, inline
+//     editors, + new column, + New row) or
+//     BOARD view (a column per group option, cards; dragging a card, or
+//     Ctrl+Shift+Left/Right on it, writes the group property).
 //
 // View state (filter/sort/groupBy/column widths/hidden props) is VIEW-LOCAL
 // and persisted through DatabaseDataService.updateView — matching Notion.
@@ -29,6 +29,8 @@ import { createButton, createIconButton } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
+import { wireBoardCardKeys } from './boardCardKeys.js';
+import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 
 function renderPageIconHtml(icon: string | null | undefined): string {
   const id = resolvePageIcon(icon);
@@ -493,6 +495,9 @@ export class DatabaseEditorPane implements IDisposable {
 
   private _attachResize(th: HTMLElement, key: string, view: IDatabaseView): void {
     const grip = el('div', 'canvas-db-resize');
+    const save = (w: number) => void this._updateActiveView({ config: { ...view.config, widths: { ...((view.config.widths as Record<string, number>) ?? {}), [key]: Math.max(80, Math.round(w)) } } });
+    // The keyboard's drag: with focus on the header, View: Make Focused Area Wider / Narrower size the column.
+    registerKeyboardResize(th, { axis: 'width', resize: (d) => { const w = th.getBoundingClientRect().width; if (d < 0 && w <= 80) return false; save(w + d); return true; } });
     grip.addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
       const startX = e.clientX;
@@ -505,11 +510,8 @@ export class DatabaseEditorPane implements IDisposable {
         if (col) col.style.width = `${w}px`;
       };
       const onUp = (ev: MouseEvent) => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        const w = Math.max(80, Math.round(startW + (ev.clientX - startX)));
-        const widths = { ...((view.config.widths as Record<string, number>) ?? {}), [key]: w };
-        void this._updateActiveView({ config: { ...view.config, widths } });
+        document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+        save(startW + (ev.clientX - startX));
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
@@ -567,6 +569,8 @@ export class DatabaseEditorPane implements IDisposable {
           card.appendChild(line);
         }
         card.addEventListener('click', () => this._deps.openPage(row.pageId));
+        wireBoardCardKeys(card, { open: () => this._deps.openPage(row.pageId), menu: (x, y) => this._openRowMenu(new MouseEvent('contextmenu', { clientX: x, clientY: y }), row),
+          move: (step) => { const to = groups[groups.indexOf(group) + step]; if (to) void this._deps.db.setCellValue(this._databaseId, row.pageId, groupProp.id, boardDropValue(row.values[groupProp.id], group.key, to.key, groupProp.type === 'tags')); } });
         card.addEventListener('dragstart', (e) => {
           e.dataTransfer?.setData('text/parallx-db-row', row.pageId);
           // The column it leaves: a tags card stands in one column per tag.
@@ -639,12 +643,8 @@ export class DatabaseEditorPane implements IDisposable {
     pop.style.left = `${Math.min(rect.left, window.innerWidth - pop.offsetWidth - 12)}px`;
     pop.style.top = `${rect.bottom + 4}px`;
     this._activePopover = pop;
-    // Standard popup contract via the mode subsystem. The hand-rolled
-    // listener this replaces removed itself ONLY in its own outside-click
-    // branch — closing via a menu-item click or a re-open leaked it bound
-    // to the OLD popover, and the stale check then closed the NEXT
-    // popover on its first inside click (the "header rename input cannot
-    // be clicked on the 2nd open" bug).
+    // The popup contract (mode subsystem): a hand-rolled listener leaked on
+    // close and shut the NEXT popover on its first click.
     const detach = attachPopupDismiss(pop, () => this._closePopover());
     this._popoverDisposables.push({ dispose: detach });
   }

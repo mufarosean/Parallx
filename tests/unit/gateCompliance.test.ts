@@ -72,6 +72,7 @@ const EXEMPT_FILES = new Set([
   'database/databaseViewModel.ts', // Pure filter/sort/group evaluation
   'database/cellValues.ts',        // One stored shape per property type
   'database/databaseEditorPane.ts', // Full-page database editor (table/board)
+  'database/boardCardKeys.ts',     // A board card from the keyboard (no imports)
   'database/rowPropertiesSection.ts', // Row-page database properties section
   'database/legacyPropertyMigration.ts', // One-time legacy property migration
   'canvasDocDiff.ts',              // Pure block-diff core for surgical live updates
@@ -118,12 +119,13 @@ const GATE_RULES: Record<string, string[]> = {
   // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
   'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog', 'config/fontRegistry', 'header/pageFontMenu'],
   'canvasSidebarToast.ts':                 [],  // the sidebar's undo toast, split out of canvasSidebar
+  'canvasSidebarKeyboardMove.ts':          ['canvasTypes'],  // Ctrl+Shift+arrows in the page tree, split out of canvasSidebar
   // The page menu's Font section, split out of pageChrome.
   'header/pageFontMenu.ts':                ['config/blockRegistry', 'config/fontRegistry', 'canvasTypes'],
   // contentSchema: the versioned-envelope decoder for the md-export action
   // (raw JSON.parse of page.content hands the wrapper to the converter and
   // silently exports title-only markdown — the M93 flashcards bug).
-  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks', 'canvasSidebarToast'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks', 'canvasSidebarToast', 'canvasSidebarKeyboardMove'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
