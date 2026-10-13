@@ -3057,8 +3057,8 @@ async function runScan(rootPath, api) {
     // (e.g. all photos in a folder were deleted between scans).
     await moPruneOrphanFolderAlbums();
 
-    // Refresh sidebar sections (folders, tags, albums)
-    _notifySidebarRefresh();
+    // Refresh the sidebar and an open library: Add Folder… runs from the library, and its photos must show there
+    _notifySidebarRefresh(); try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no library open */ }
 
     // rebuild FTS search index (best-effort)
     if (!stats.cancelled) {
