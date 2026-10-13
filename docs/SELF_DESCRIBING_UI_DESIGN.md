@@ -875,6 +875,26 @@ now turns an extension on through the enablement service (the seeded
 workspace has none on) and checks one surface per extension; its
 `EXTENSION_IDS` map gains a row per converted extension.
 
+web-research checked 2026-10-13, in the cloud: it draws no chrome (an
+AI tool and a bridge, no buttons or fields), so there is nothing to
+declare; it is done as it stands.
+
+Next is budget, on the owner's machine as planned. What the next
+session needs to know: `ext/budget/main.js` is at its size baseline
+(9060 lines), so every id goes inside an existing kit call's options on
+the same line, or a module is extracted first (the drawers at lines
+1850 to 1910, 3696 to 3735 and 4040 to 4065 are the natural cut; the
+loader resolves relative imports). Of its 31 kit calls, give ids only
+to the singletons (the sidebar's sync, the undo bar, the month
+navigation, the rules editor's cancel and save, the plan view switch,
+the drawers' close buttons with one id per drawer); the per-row calls
+(category, account and rule actions, review confirm and skip, the
+"use suggested" buttons) repeat and need a surface per row first.
+Raw inputs (the drawers' fields, the search box) take
+`api.ui.declareControl` with a value state. Then flashcards,
+concept-lab, media-organizer, creations-ai, browser and study, in that
+order.
+
 ### Step 8. The scene line in the prompt (cloud)
 
 One line on the latest user turn, where `formatTurnClock` is prepended in
