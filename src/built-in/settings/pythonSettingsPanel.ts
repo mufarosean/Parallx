@@ -122,7 +122,7 @@ class PythonSettingsPanel implements IDisposable {
       checked: this._service.isEnabled,
       ariaLabel: 'Enable Python for this workspace',
     });
-    declareControl(toggle.element, { id: 'settings.python.enabled', label: 'Python', kind: 'toggle', state: () => ({ kind: 'pressed', value: toggle.checked }) });
+    declareControl(toggle.element, { id: 'settings.python.consent', label: 'Python in this workspace', kind: 'toggle', state: () => ({ kind: 'pressed', value: toggle.checked }) });
     this._store.add(toggle);
     this._store.add(toggle.onDidChange((on) => {
       void this._service.setEnabled(on);

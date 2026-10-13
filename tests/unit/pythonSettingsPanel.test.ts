@@ -144,4 +144,16 @@ describe('Python settings panel', () => {
     (disposable as { dispose(): void }).dispose();
     expect(container.querySelector('.pysettings')).toBeNull();
   });
+
+  it('declares its toggle apart from the python.enabled row the settings editor draws under it', () => {
+    // The editor lists the Python category's rows under this panel, and each
+    // row is `settings.<key>`; the panel's own switch sharing that id was one
+    // id twice under the Settings surface.
+    const booted = bootInRealOrder();
+    service = booted.service;
+    createPythonSettingsPanel(service).render(container);
+    const toggle = container.querySelector('.ui-toggle');
+    expect(toggle!.getAttribute('data-px-id')).toBe('settings.python.consent');
+    expect(container.querySelector(`[data-px-id="settings.${PYTHON_ENABLED_KEY}"]`)).toBeNull();
+  });
 });
