@@ -1099,8 +1099,40 @@ and the widget drawers' dropdowns were not declared. The search message
 gained `role="status"`. The canvas page picker (`showQuickPick`) is not
 in the scene yet; the probe answers it with Enter.
 
-`ui-screenshot-probe.mjs` is left (2001 lines, about 330 class or
-workbench reaches): the next session converts it the same way.
+`ui-screenshot-probe.mjs` done 2026-10-13, on the owner's machine:
+no `__parallx_workbench__` reach is left (settings, the settings
+registry and the message history moved behind `scene.mjs`'s
+`setSetting`, `settingSchema` and `messages`), menus are read and picked
+from the scene (`menuRows`, `pickMenu`), controls are driven by id, and
+what the app draws but does not declare (photo cards, a clip's
+timeline, pdf.js pages, the breadcrumbs being measured) is read under
+its surface through a small page helper (`__px.pane`, `__px.all`).
+Every scene completes. Against the run before the change: the
+Media Organizer scenes threw "registered twice" (each library tab's
+View popover sits in the page body, so two tabs collided at the top
+level; it is a surface per tab now), and with that fixed Trash works end
+to end, where before Delete Permanently, Empty Trash and the 30-day
+purge all failed. Autonomy, Planner and canvas failed before and pass now.
+Planner's Scheduled tab is gone; the probe shoots Tasks. The conversion
+also declared what it found undeclared: the title bar's layout
+toggles and Search Commands, toasts, confirms, input boxes and the
+quick pick (`notificationService.ts`), the PDF panel's Outline/Pages
+switch, the kit page header's ⋯, and in Media Organizer the sidebar's
+fixed places, the clip editor's format, frame rate and destination
+switches, its blur and text editors (one region or caption at a time,
+so fixed ids) and queue rows (surfaces), the clip project's sequence row
+and its Format, Size and Frame rate, a filter pill's clear, the viewer
+(a surface), the View popover, and the image editor's clipping marks
+and crop ratios.
+
+Three readings are the same before and after, and not looked into:
+the audit's Delete key with everything selected opens no dialog, its
+"selected before Move to Trash" counts 0, and a folder row's right-click
+shows no menu. Each may be the probe's way of reaching the row rather
+than the app.
+
+Hidden probes play their test videos' tones through the speakers
+unless muted: every probe now launches with `--mute-audio`.
 
 ### Step 10. Reference docs (cloud)
 
@@ -1338,6 +1370,37 @@ Sessions append here. Each line: date, step, what was left and why.
     ones too (Planner's New Task, the dashboard commands).
   - In a Bash heredoc, `\\` and `\n` inside JS strings collapse; write
     patch scripts with the Write tool.
+
+- 2026-10-13, hand-off (on the owner's machine; last commit of the
+  session is the one that adds this item). Steps 4 and 9 are done (their
+  notes say how), and the frame-level item above is closed: toasts,
+  confirms, input boxes and the quick pick are in the scene. Steps 1 to
+  10 are complete. Also fixed along the way, each in its own commit: a
+  folder scan now shows its photos in an open Media Organizer library
+  (the scan never told the library to reload), the Media Organizer View
+  popover's double registration (a step 7 fault), and probes launch
+  with `--mute-audio`.
+
+  Step 11's audit, rerun on this session's scene probe output: unlabeled
+  0, twoParents 0, onClick 0, rawDom 250 files, the same list as the
+  item above. What is left is that raw DOM, most of it layout; it shrinks
+  as files are touched for other reasons, under the raw DOM ratchet. Not
+  declared yet and worth doing when next nearby: the editor
+  breadcrumbs, Media Organizer's sidebar folder and tag rows (a tree
+  each), and the three audit readings step 9's note lists.
+
+  What this session learned, for whoever continues:
+  - Converting a probe finds undeclared controls the way the hidden
+    checks did: each control the probe cannot reach by id is a gap,
+    fixed in the app, not worked around in the probe.
+  - A popover or overlay a pane appends to the page body has no surface
+    above it, so two mounted panes collide at the top level; give it a
+    surface with the pane's instance.
+  - In the hidden window a real click can wait forever on a control
+    whose bar fades out or sits under an overlay; the probes press such
+    controls in the page (`element.click()` on the element found by id).
+  - Background probe runs started detached outlive the task that
+    started them; run probes one at a time, and never unmuted.
 
 ## 12. Glossary for a new reader
 

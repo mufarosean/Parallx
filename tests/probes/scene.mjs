@@ -29,7 +29,7 @@ export function launchEnv(appRoot) {
  */
 export async function launchApp(appRoot) {
   const errors = [];
-  const app = await electron.launch({ args: ['.', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const app = await electron.launch({ args: ['.', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
   const page = await app.firstWindow();
   page.on('pageerror', (e) => errors.push(`pageerror: ${String(e).slice(0, 400)}`));
@@ -75,6 +75,74 @@ export async function setToolEnabled(page, id, on) {
     if (!en) return 'no enablement service';
     try { await en.setEnablement(id, on); return true; } catch (e) { return String(e?.message || e); }
   }, { id, on });
+}
+
+/**
+ * Sets a setting as the Settings page would. Like toolList, a reach into the
+ * workbench a probe makes only through this file.
+ */
+export async function setSetting(page, key, value) {
+  return page.evaluate(async ({ key, value }) => {
+    const c = window.__parallx_workbench__?._services?.get?.({ id: 'IConfigurationService' });
+    if (!c) return 'no configuration service';
+    try { await c._updateValue(key, value); return true; } catch (e) { return String(e?.message || e); }
+  }, { key, value });
+}
+
+/** A registered setting as `key type [choices]`, or 'not registered'. */
+export async function settingSchema(page, key) {
+  return page.evaluate((key) => {
+    const r = window.__parallx_workbench__?._services?.get?.({ id: 'ISettingsRegistryService' });
+    const sc = r?.getSchema?.(key);
+    return sc ? `${sc.key} ${sc.type} [${(sc.enumValues || sc.enum || []).join(',')}]` : 'not registered';
+  }, key);
+}
+
+/** The messages the app showed since the last call, each with its actions; reading clears them. */
+export async function messages(page) {
+  return page.evaluate(() => {
+    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'INotificationService' });
+    const out = (svc?.history ?? []).map((n) => n.message + (n.actions?.length ? ` [${n.actions.map((a) => a.title || a).join(' | ')}]` : ''));
+    svc?.clearHistory?.();
+    return out;
+  });
+}
+
+/**
+ * The topmost open context menu's rows, from the scene: `{ id, label, off,
+ * checked, key, separatorBefore }`. The key and the group breaks are read
+ * from the row's element. Null with no menu open.
+ */
+export async function menuRows(page) {
+  const menus = (await sceneOf(page)).surfaces.filter((s) => s.id === 'contextMenu');
+  const rows = menus[menus.length - 1]?.children ?? [];
+  if (!menus.length) return null;
+  const dom = await page.evaluate((ids) => ids.map((id) => {
+    const els = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`));
+    const el = els[els.length - 1];
+    const prev = el?.previousElementSibling;
+    return { text: el?.textContent ?? '', sep: !!prev && !prev.hasAttribute('data-px-id') };
+  }), rows.map((r) => r.id));
+  return rows.map((r, i) => ({
+    id: r.id,
+    label: r.label,
+    off: r.state?.kind === 'enabled' && r.state.value === false,
+    checked: r.state?.kind === 'pressed' ? r.state.value : undefined,
+    key: dom[i].text.replace(r.label, '').replace('✓', '').trim(),
+    separatorBefore: i > 0 && dom[i].sep,
+  }));
+}
+
+/**
+ * Picks the topmost menu's row by label (a string matches exactly, a RegExp
+ * tests), pressing it in the page: a menu opened at a card's corner can sit
+ * where the hidden window takes no real click. Resolves whether one matched.
+ */
+export async function pickMenu(page, label) {
+  const row = (await menuRows(page))?.find((r) => (typeof label === 'string' ? r.label === label : label.test(r.label)));
+  if (!row) return false;
+  await page.evaluate((id) => { const els = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)); els[els.length - 1]?.click(); }, row.id);
+  return true;
 }
 
 /** `scene.describe(scope)` from the page, as plain data. */
