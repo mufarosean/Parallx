@@ -150,6 +150,8 @@ export interface IEditorGroupService extends IDisposable {
 
   /** Find a group adjacent to the source in the given direction. */
   findGroup(direction: GroupDirection, sourceGroupId?: string): EditorGroupView | undefined;
+  /** Move an editor to the group before or after its own (after with none splits one off). */
+  moveEditorToGroup(sourceGroupId: string, inputId: string, where: 'previous' | 'next'): EditorGroupView | undefined;
 
   /** Activate a group by ID. */
   activateGroup(groupId: string): void;

@@ -133,6 +133,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.increaseViewHeight` | View: Make Focused Area Taller | core | View | Ctrl+Alt+Shift+ArrowUp |  |
 | `workbench.action.increaseViewWidth` | View: Make Focused Area Wider | core | View | Ctrl+Alt+Shift+ArrowRight |  |
 | `workbench.action.minimizeWindow` | Minimize Window | core | Window |  |  |
+| `workbench.action.moveEditorToNextGroup` | Move Editor to Next Group | core | Editor |  |  |
+| `workbench.action.moveEditorToPreviousGroup` | Move Editor to Previous Group | core | Editor |  |  |
 | `workbench.action.movePartBeside` | Move Part Beside Another | core | View |  |  |
 | `workbench.action.movePartToEdge` | Move Part to Edge | core | View |  |  |
 | `workbench.action.nextEditor` | Open Next Editor | core | Editor | Ctrl+PageDown |  |

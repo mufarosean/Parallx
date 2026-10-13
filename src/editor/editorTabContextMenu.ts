@@ -1,5 +1,6 @@
 // editorTabContextMenu.ts — the menu on an editor tab: close this one,
-// the others, those to the right, the saved ones or all; copy the path;
+// the others, those to the right, the saved ones or all; move it to the
+// group before or after (the keyboard's way for a tab drag); copy the path;
 // reveal in the explorer. The group view hands it its model and two
 // callbacks and nothing else.
 
@@ -12,6 +13,10 @@ export interface IEditorTabMenuHost {
   readonly model: Pick<EditorGroupModel, 'editors' | 'count' | 'closeEditor' | 'closeOthers' | 'closeToTheRight' | 'closeSaved' | 'closeAllEditors'>;
   relativePathOf(uri: URI): string;
   revealInExplorer(uri: URI): void;
+  /** Whether a group sits before and after this one. */
+  neighbors?(): { previous: boolean; next: boolean };
+  /** Move the editor to the group before or after; after with none splits one off. */
+  moveToGroup?(editor: IEditorInput, where: 'previous' | 'next'): void;
 }
 
 export function showEditorTabContextMenu(host: IEditorTabMenuHost, editor: IEditorInput, e: MouseEvent): void {
@@ -37,6 +42,13 @@ export function showEditorTabContextMenu(host: IEditorTabMenuHost, editor: IEdit
   });
   items.push({ id: 'closeSaved', label: 'Close Saved', group: '1_close', order: 40 });
   items.push({ id: 'closeAll', label: 'Close All', group: '1_close', order: 50 });
+
+  // Group 2: Move to another group (a tab drag, from the keyboard)
+  if (host.moveToGroup && host.neighbors) {
+    const around = host.neighbors();
+    items.push({ id: 'moveToPreviousGroup', label: 'Move to Previous Group', group: '2_move', order: 10, disabled: !around.previous });
+    items.push({ id: 'moveToNextGroup', label: 'Move to Next Group', group: '2_move', order: 20, disabled: !around.next && editorCount <= 1 });
+  }
 
   // Group 6: Path operations (only when editor has a URI)
   if (uri) {
@@ -76,6 +88,12 @@ export function showEditorTabContextMenu(host: IEditorTabMenuHost, editor: IEdit
         break;
       case 'closeAll':
         host.model.closeAllEditors();
+        break;
+      case 'moveToPreviousGroup':
+        host.moveToGroup?.(editor, 'previous');
+        break;
+      case 'moveToNextGroup':
+        host.moveToGroup?.(editor, 'next');
         break;
       case 'copyPath':
         if (uri) {

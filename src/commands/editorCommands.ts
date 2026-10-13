@@ -94,6 +94,35 @@ export const splitEditorOrthogonal: CommandDescriptor = {
   },
 };
 
+/** The active editor to the group before or after (a tab drag, from the keyboard). */
+function moveActiveEditor(where: 'previous' | 'next') {
+  return (ctx: Parameters<CommandDescriptor['handler']>[0]) => {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    const group = editorGroupService?.activeGroup;
+    const editor = group?.model.activeEditor;
+    if (!editorGroupService || !group || !editor) return;
+    editorGroupService.moveEditorToGroup(group.id, editor.id, where);
+  };
+}
+
+export const moveEditorToNextGroup: CommandDescriptor = {
+  id: 'workbench.action.moveEditorToNextGroup',
+  title: 'Move Editor to Next Group',
+  category: 'Editor',
+  aiInvocable: true,
+  aiDescription: 'Move the active editor tab into the editor group after its own, splitting one off when there is none.',
+  handler: moveActiveEditor('next'),
+};
+
+export const moveEditorToPreviousGroup: CommandDescriptor = {
+  id: 'workbench.action.moveEditorToPreviousGroup',
+  title: 'Move Editor to Previous Group',
+  category: 'Editor',
+  aiInvocable: true,
+  aiDescription: 'Move the active editor tab into the editor group before its own.',
+  handler: moveActiveEditor('previous'),
+};
+
 export const closeActiveEditor: CommandDescriptor = {
   id: 'workbench.action.closeActiveEditor',
   title: 'Close Editor',

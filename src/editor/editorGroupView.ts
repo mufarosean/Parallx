@@ -24,7 +24,7 @@ import {
 } from './editorTypes.js';
 import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
-import { showEditorTabContextMenu, workspaceRelativePath } from './editorTabContextMenu.js';
+import { showEditorTabContextMenu, workspaceRelativePath, type IEditorTabMenuHost } from './editorTabContextMenu.js';
 import { createSurface, createTabs } from '../ui/kit.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 import { $, addDisposableListener } from '../ui/dom.js';
@@ -137,6 +137,7 @@ export class EditorGroupView extends Disposable implements IGridView {
   private readonly _onDidRequestMarkdownPreview = this._register(new Emitter<void>());
   readonly onDidRequestMarkdownPreview: Event<void> = this._onDidRequestMarkdownPreview.event;
 
+  tabMenuMoves: Pick<IEditorTabMenuHost, 'neighbors' | 'moveToGroup'> | undefined; // the tab menu's moves; the editor area sets them
   /** Fires when user selects "Reveal in Explorer" from a tab context menu. */
   private readonly _onDidRequestRevealInExplorer = this._register(new Emitter<URI>());
   readonly onDidRequestRevealInExplorer: Event<URI> = this._onDidRequestRevealInExplorer.event;
@@ -621,11 +622,8 @@ export class EditorGroupView extends Disposable implements IGridView {
    *  7_reveal — Reveal in Explorer
    */
   private _showTabContextMenu(editor: IEditorInput, _index: number, e: MouseEvent): void {
-    showEditorTabContextMenu({
-      model: this.model,
-      relativePathOf: (uri) => workspaceRelativePath(uri, this._workspaceFolders),
-      revealInExplorer: (uri) => this._onDidRequestRevealInExplorer.fire(uri),
-    }, editor, e);
+    showEditorTabContextMenu({ ...this.tabMenuMoves, model: this.model, revealInExplorer: (uri) => this._onDidRequestRevealInExplorer.fire(uri),
+      relativePathOf: (uri) => workspaceRelativePath(uri, this._workspaceFolders) }, editor, e);
   }
 
   private _populateToolbar(slot: HTMLElement): void {

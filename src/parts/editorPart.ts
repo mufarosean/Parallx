@@ -248,6 +248,12 @@ export class EditorPart extends Part {
     // Close-group request
     store.add(group.onDidRequestClose(() => this.removeGroup(group.id)));
 
+    // The tab menu's Move to Previous/Next Group (a tab drag from the keyboard)
+    group.tabMenuMoves = {
+      neighbors: () => ({ previous: !!this._screenNeighbor(group.id, 'previous'), next: !!this._screenNeighbor(group.id, 'next') }),
+      moveToGroup: (editor, where) => { this.moveEditorToGroup(group.id, editor.id, where); },
+    };
+
     // Cross-group tab drop: move editor from source group to this group.
     // VS Code parity: resolve by inputId, not stale editorIndex.
     store.add(group.onDidRequestCrossGroupDrop((data) => {
@@ -447,6 +453,49 @@ export class EditorPart extends Part {
     if (source.isEmpty && this._groups.size > 1) {
       this._removeEmptyGroup(sourceGroupId);
     }
+  }
+
+  /**
+   * Move one editor to the group before or after its own, as a tab dropped
+   * there does: pinned, the target active, an emptied source closed. With no
+   * group after, it splits one off to the right (the editor's own tab moves
+   * there). Returns the group it landed in.
+   */
+  moveEditorToGroup(sourceGroupId: string, inputId: string, where: 'previous' | 'next'): EditorGroupView | undefined {
+    const source = this._groups.get(sourceGroupId);
+    if (!source) return undefined;
+    const idx = source.model.editors.findIndex(e => e.id === inputId);
+    if (idx < 0) return undefined;
+    const editor = source.model.editors[idx];
+    let target = this._screenNeighbor(sourceGroupId, where);
+    if (!target) {
+      if (where === 'previous' || source.model.count <= 1) return undefined;
+      source.model.setActive(idx);
+      target = this.splitGroup(sourceGroupId, GroupDirection.Right);
+      if (!target) return undefined;
+    } else {
+      target.openEditor(editor, { pinned: true });
+    }
+    source.model.closeEditor(source.model.editors.indexOf(editor), true);
+    this._setActiveGroup(target);
+    if (source.isEmpty && this._groups.size > 1) this.removeGroup(source.id);
+    return target;
+  }
+
+  /** The group before or after this one as the screen shows them (the registry keeps creation order). */
+  private _screenNeighbor(groupId: string, where: 'previous' | 'next'): EditorGroupView | undefined {
+    const grid = this._grid?.serialize();
+    if (!grid) return undefined;
+    const ids: string[] = [];
+    const walk = (node: SerializedGridNode): void => {
+      if (node.type === SerializedNodeType.Leaf) ids.push(node.viewId);
+      else node.children.forEach(walk);
+    };
+    walk(grid.root);
+    const at = ids.indexOf(groupId);
+    if (at < 0) return undefined;
+    const id = ids[where === 'previous' ? at - 1 : at + 1];
+    return id ? this._groups.get(id) : undefined;
   }
 
   /**

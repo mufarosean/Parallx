@@ -32,7 +32,7 @@ import {
 } from './viewCommands.js';
 import {
   toggleWordWrap, changeEncoding,
-  splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
+  splitEditor, splitEditorOrthogonal, moveEditorToNextGroup, moveEditorToPreviousGroup, closeActiveEditor, nextEditor, previousEditor,
   markdownOpenPreviewToSide, markdownOpenPreview,
   addSelectionToChat,
 } from './editorCommands.js';
@@ -326,6 +326,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   changeEncoding,
   splitEditor,
   splitEditorOrthogonal,
+  moveEditorToNextGroup,
+  moveEditorToPreviousGroup,
   closeActiveEditor,
   // Markdown
   markdownOpenPreviewToSide,
