@@ -53,12 +53,12 @@ const NAV = /\.(side|nav|tab|tabs)\.[\w-]+$/;
 
 // ── Page side ───────────────────────────────────────────────────────────────
 function install() {
-  const INTERACTIVE = 'button, input:not([type=hidden]), select, textarea, a[href], [role=button], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=checkbox], [role=switch], [role=option], [role=radio], [role=slider], [role=treeitem], [role=link], [role=combobox], [role=spinbutton], [role=searchbox], [role=textbox]';
+  const INTERACTIVE = 'button, input:not([type=hidden]), select, textarea, a[href], [role=button], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=checkbox], [role=switch], [role=option], [role=radio], [role=slider], [role=gridcell], [role=treeitem], [role=link], [role=combobox], [role=spinbutton], [role=searchbox], [role=textbox]';
   const COMPOSITE = '[role=listbox], [role=tree], [role=tablist], [role=menu], [role=menubar], [role=radiogroup], [role=grid], [role=toolbar]';
   const shown = (e) => { if (!e || !e.isConnected) return false; const r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden], [aria-hidden="true"], [inert]'); };
   const third = (e) => !!e.closest('[class*="univer-"]');
   const settle = () => { for (const a of document.getAnimations()) { try { if (a.effect?.getComputedTiming().iterations !== Infinity) a.finish(); } catch { /* infinite or detached */ } } };
-  const look = (e) => { if (!e) return ''; settle(); const cs = getComputedStyle(e); return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderTopColor, cs.borderBottomColor, cs.borderLeftColor, cs.backgroundColor, cs.color, cs.textDecorationLine].join('|'); };
+  const look = (e) => { if (!e) return ''; settle(); const cs = getComputedStyle(e); return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderTopColor, cs.borderBottomColor, cs.borderLeftColor, cs.backgroundColor, cs.color, cs.textDecorationLine, ...[...Array.from(e.children).slice(0, 3), e.querySelector('[aria-selected="true"], [class*="--selected"]')].filter(Boolean).map((c) => { const k = getComputedStyle(c); return k.outlineStyle + k.boxShadow + k.borderTopColor; })].join('|'); };
   const around = (e) => [e?.parentElement, e?.parentElement?.parentElement, e?.parentElement?.parentElement?.parentElement].map(look).join('#');
   const where = (e) => { const s = e.closest('[data-px-surface]'); return s ? s.getAttribute('data-px-surface') : '(window)'; };
   const label = (e) => (e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('placeholder') || (e.tagName === 'INPUT' ? '' : e.textContent) || '').trim().replace(/\s+/g, ' ').slice(0, 40);
@@ -66,10 +66,30 @@ function install() {
   // With a dialog open, only the dialog is the screen.
   const scope = () => Array.from(document.querySelectorAll('[aria-modal="true"], [role="dialog"], [role="alertdialog"]')).filter(shown).pop() || document.body;
   window.__kb = {
+    interactive() { return Array.from(this.scope.querySelectorAll(INTERACTIVE)).filter((e) => shown(e) && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !e.closest('[contenteditable="true"]') && e.id !== '__kb_start'); },
+    // The screen as the Tab run left it: the arrow pass after it may change
+    // a setting (a segmented switch), and a re-render then replaces every control.
+    tabEnd() { this.atTabEnd = this.interactive(); this.pointerAtTabEnd = this.pointerCandidates(); },
+    // A radio group's checked option (arrows select as they move), to put back after.
+    checkedOf(i) { const c = this.comps[i]; if (c?.getAttribute('role') !== 'radiogroup') return null; return c.querySelector('[aria-checked="true"], [aria-pressed="true"]')?.getAttribute('data-px-id') ?? null; },
+    // Mouse-only candidates: a pointer cursor, unreached, inside nothing reached.
+    pointerCandidates() {
+      const reached = (e) => this.seen.has(e) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
+      const out = [];
+      for (const e of this.scope.querySelectorAll('*')) {
+        if (!shown(e) || third(e) || e.closest('[contenteditable="true"]') || e.id === '__kb_start') continue;
+        if (getComputedStyle(e).cursor !== 'pointer') continue;
+        if (e.parentElement && getComputedStyle(e.parentElement).cursor === 'pointer') continue;
+        if (reached(e) || e.matches(INTERACTIVE) || e.closest(INTERACTIVE)) continue;
+        if (Array.from(this.seen).some((s) => e.contains(s))) continue;
+        out.push(e);
+      }
+      return out;
+    },
     // Tab stops on this screen, to size the Tab run.
     stops() { return Array.from(this.scope.querySelectorAll('*')).filter((e) => e.tabIndex >= 0 && shown(e) && !e.disabled).length; },
     start() {
-      Object.assign(this, { first: null, seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
+      Object.assign(this, { atTabEnd: null, pointerAtTabEnd: null, first: null, seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
       let a = document.getElementById('__kb_start');
       if (!a) { a = document.createElement('div'); a.id = '__kb_start'; a.tabIndex = -1; a.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;outline:none'; }
       this.scope.prepend(a);
@@ -84,6 +104,10 @@ function install() {
       if (a === this.prev) { this.stuck++; return this.stuck > 4 ? 'stuck' : 'same'; }
       this.stuck = 0;
       this.prev = a; this.prevLook = look(a); this.prevParentLook = around(a);
+      // Focus on something drawn see-through (actions shown only on hover): no visible focus at all.
+      let alpha = 1;
+      for (let p = a; p && p !== document.body; p = p.parentElement) alpha *= parseFloat(getComputedStyle(p).opacity);
+      if (alpha < 0.15 && !third(a)) this.noRing.push(`${describe(a)} (invisible while focused)`);
       if (this.seen.has(a)) return a === this.first ? 'cycled' : 'seen';
       if (!this.first) this.first = a;
       this.seen.add(a);
@@ -109,10 +133,12 @@ function install() {
     },
     // A list a field drives marks its current option without moving focus.
     activeOption() {
-      const c = this.driver; if (!c) return;
+      const c = this.driver; if (!c) return false;
       const id = c.getAttribute('aria-activedescendant') || document.activeElement?.getAttribute('aria-activedescendant');
       const o = id ? document.getElementById(id) : c.querySelector('[aria-selected="true"], [class*="active"], [class*="focused"]');
-      if (o) this.seen.add(o);
+      if (!o || this.seen.has(o)) return false;
+      this.seen.add(o);
+      return true;
     },
     // Text against what it sits on (WCAG AA: 4.5:1, or 3:1 for large text).
     contrast() {
@@ -147,7 +173,7 @@ function install() {
         if (look(p) === fl && around(p) === pl) this.noRing.push(describe(p));
       }
       document.getElementById('__kb_start')?.remove();
-      const all = Array.from(this.scope.querySelectorAll(INTERACTIVE)).filter((e) => shown(e) && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !e.closest('[contenteditable="true"]') && e.id !== '__kb_start');
+      const all = this.atTabEnd ?? this.interactive();
       const reached = (e) => this.seen.has(e) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
       const notFocusable = [], tabHole = [], thirdParty = [];
       for (const e of all) {
@@ -155,16 +181,8 @@ function install() {
         if (third(e)) { thirdParty.push(describe(e)); continue; }
         (e.tabIndex >= 0 ? tabHole : notFocusable).push(describe(e));
       }
-      // Mouse-only candidates: a pointer cursor, unreached, inside nothing reached.
-      this.pointerCands = [];
-      for (const e of this.scope.querySelectorAll('*')) {
-        if (!shown(e) || third(e) || e.closest('[contenteditable="true"]') || e.id === '__kb_start') continue;
-        if (getComputedStyle(e).cursor !== 'pointer') continue;
-        if (e.parentElement && getComputedStyle(e.parentElement).cursor === 'pointer') continue;
-        if (reached(e) || e.matches(INTERACTIVE) || e.closest(INTERACTIVE)) continue;
-        if (Array.from(this.seen).some((s) => e.contains(s))) continue;
-        this.pointerCands.push(e);
-      }
+      // Taken as the Tab run left the screen; what the arrow pass reached since is not mouse-only.
+      this.pointerCands = (this.pointerAtTabEnd ?? this.pointerCandidates()).filter((e) => !reached(e));
       return { reached: this.seen.size, interactive: all.length, notFocusable, tabHole, thirdParty, noRing: [...new Set(this.noRing)], pointerCount: this.pointerCands.length, describePointer: this.pointerCands.map(describe) };
     },
   };
@@ -239,6 +257,7 @@ async function auditScreen(label) {
     repeats = r === 'seen' ? repeats + 1 : 0;
     if (r === 'cycled' || (r === 'seen' && wrapped) || repeats >= 40) break;
   }
+  await page.evaluate(() => window.__kb.tabEnd());
   // 2. F6: which visible areas it reaches (not inside a dialog).
   const f6 = await page.evaluate(() => {
     if (window.__kb.scope !== document.body) return null;
@@ -264,18 +283,21 @@ async function auditScreen(label) {
   // 3. The arrow keys inside each composite.
   const comps = await page.evaluate(() => window.__kb.composites());
   for (let c = 0; c < comps; c++) {
-    for (const dir of ['ArrowRight', 'ArrowDown', 'End']) {
+    const checked = await page.evaluate((i) => window.__kb.checkedOf(i), c);
+    for (const dir of ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'End', 'Home']) {
       if (!(await page.evaluate((i) => window.__kb.enter(i), c))) break;
       let stale = 0;
-      for (let i = 0; i < 60 && stale < 3; i++) {
+      for (let i = 0; i < 300 && stale < 3; i++) {
         await page.keyboard.press(dir);
-        const r = await page.evaluate(() => { window.__kb.activeOption(); return window.__kb.step(); });
+        const r = await page.evaluate(() => { const moved = window.__kb.activeOption(); const s = window.__kb.step(); return moved ? 'new' : s; });
         stale = r === 'new' ? 0 : stale + 1;
       }
       // Close only what the arrows opened (a dropdown's list, a menu); an
       // Escape otherwise moves focus out of the area being walked.
       if (await page.evaluate(() => Array.from(document.querySelectorAll('.ui-dropdown__list, [data-px-surface="contextMenu"]')).some((e) => e.getClientRects().length))) await page.keyboard.press('Escape');
     }
+    // Arrowing a radio group chose its last option (a setting, say text size): choose back.
+    if (checked) await page.evaluate((id) => Array.from(document.querySelectorAll(`[data-px-id="${id}"]`)).find((e) => e.getClientRects().length)?.click(), checked);
   }
   await page.evaluate(() => document.activeElement?.blur());
   const lowContrast = await page.evaluate(() => window.__kb.contrast());
