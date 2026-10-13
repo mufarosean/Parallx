@@ -943,8 +943,39 @@ the scenes' own buttons (`conceptLab.scene.*`). Only one module shows at
 a time, so these are fixed ids under the pane. A hidden run through the
 home grid and five modules listed no errors. The probe row opens the
 lab.
-Next are media-organizer, creations-ai, browser and study, in that
-order.
+
+media-organizer done 2026-10-12, on the owner's machine, ids under
+`media-organizer.`. `moEl` moved to `ext/media-organizer/dom.js`
+(`main.js` fell from 39207 to 39193) and learned a `sceneId` attribute
+(with an optional `sceneLabel`): the element is declared in a microtask,
+after the caller's own setup has set its text or aria-label. Beside it
+are `moDeclare` (a checkbox or an aria-pressed button is a toggle, a
+range a slider, a field an input), `moSurface` and `moList`. Declared:
+the sidebar's header buttons, Folders and Tags, and filters; the
+library's page header (Add Folder… and Empty Trash with their
+commands), search, type and filter pills, the filter popovers, sort,
+zoom, layout, view options and paging; the grid as one list whose
+selection is the selected cards' keys (cards are rows: their favourite
+and select boxes carry no id); a photo's header and the video player;
+the selection bar; the lightbox and compare view; albums; the bulk-tag,
+add-to-album, bulk-delete, create-tag, optimize-GIF, upscale and
+duplicate dialogs; clip projects; the clip editor's toolbar, transport,
+tabs, crop, segments, timeline, queue, text, end card and export
+fields; tag review (each photo's row a surface with its approve, retry,
+skip and add-tag); practice, its player and history strip; the painting
+plan editor; the save prompt; Remove From Other Photos; and the image
+editor (top bar, tools, sections, sliders by their own ids, mixer,
+crop). Left raw: repeated rows whose ids could collide (blur regions,
+segment rows, caption cards, preset chips, tag chips, bulk-remove photo
+cards, the per-row ⋯ buttons in clip projects and the queue), the
+sidebar trees, and a few buttons with no label of their own. A hidden
+run that scanned a folder of generated PNGs opened the library, a
+photo's detail, the image editor (Edit and Crop), tag review, the
+shortcuts sheet and the duplicate finder with no errors; it found the
+detail header's favourite button created with an empty title, which
+is declared after its title is set. Selection actions, compare and
+practice were not reached by that run. The probe row opens the library.
+Next are creations-ai, browser and study, in that order.
 
 ### Step 8. The scene line in the prompt (cloud)
 

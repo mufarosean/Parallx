@@ -60,6 +60,7 @@
 //   44. ACTIVATION
 //
 
+import { moDeclare, moEl, moList, moSlug, moSurface, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5058,22 +5059,6 @@ async function deleteEntityThumbnails(api, checksum) {
 
 let _moStyleInjected = false;
 
-function moEl(tag, className, attrs) {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (attrs) {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === 'textContent') e.textContent = v;
-      else if (k === 'innerHTML') e.innerHTML = v;
-      else if (k === 'onclick') e.addEventListener('click', v);
-      else if (k === 'onchange') e.addEventListener('change', v);
-      else if (k === 'oninput') e.addEventListener('input', v);
-      else e.setAttribute(k, v);
-    }
-  }
-  return e;
-}
-
 function moIcon(name, size) {
   if (_api?.icons) return _api.icons.createIconHtml(name, size || 16);
   return '';
@@ -9955,7 +9940,7 @@ function _moDateGroupLabel(key) {
 
 function renderCardGrid(container, items, options) {
   const { zoomWidth, selecting, selectedIds, onSelect, onClick, onDblClick } = options;
-  const grid = moEl('div', 'mo-grid');
+  const grid = moEl('div', 'mo-grid'); moList(grid, 'media-organizer.grid', 'Library', () => [...grid.querySelectorAll('.mo-selected')].map((c) => c.dataset.key));
   grid.style.setProperty('--mo-card-min-width', `${zoomWidth || MO_ZOOM_DEFAULT}px`);
   container.appendChild(grid);
 
@@ -10336,7 +10321,7 @@ function moShowShortcutsCheatSheet() {
 
   const header = moEl('div', 'mo-modal-header');
   header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Keyboard Shortcuts' }));
-  const closeBtn = moEl('button', 'mo-modal-close', { type: 'button', textContent: '×', title: 'Close' });
+  const closeBtn = moEl('button', 'mo-modal-close', { sceneId: 'media-organizer.shortcuts.close', sceneLabel: 'Close', type: 'button', textContent: '×', title: 'Close' });
   closeBtn.addEventListener('click', dismissShortcutsCheatSheet);
   header.appendChild(closeBtn);
   modal.appendChild(header);
@@ -10387,7 +10372,7 @@ function moShowShortcutsCheatSheet() {
 
 /** A section-header action: the kit's small icon button; clicking it never folds the section. */
 function moSidebarHeaderBtn(api, icon, title) {
-  const b = api.ui.createIconButton(null, { icon, title, size: 'sm' });
+  const b = api.ui.createIconButton(null, { id: `media-organizer.side.${moSlug(title)}`, icon, title, size: 'sm' });
   b.classList.add('mo-sidebar-header-btn');
   b.addEventListener('click', (e) => e.stopPropagation());
   return b;
@@ -10659,7 +10644,7 @@ function renderBrowserSidebar(container, api) {
   sections.appendChild(browseSection);
   const browseSeg = moEl('div', 'mo-browse-seg', { role: 'tablist', 'aria-label': 'Browse by' });
   const segBtn = (icon, label) => {
-    const b = moEl('button', 'mo-browse-segbtn', { type: 'button', role: 'tab' });
+    const b = moEl('button', 'mo-browse-segbtn', { sceneId: `media-organizer.side.${moSlug(label)}`, sceneLabel: `${label}`, type: 'button', role: 'tab' });
     const n = moEl('span', 'mo-browse-segcount');
     b.append(moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(icon, 13) }), moEl('span', null, { textContent: label }), n);
     return { b, n };
@@ -10697,9 +10682,9 @@ function renderBrowserSidebar(container, api) {
   const folderAddBtn = moSidebarHeaderBtn(api, 'plus', 'Add Folder…');
   folderAddBtn.addEventListener('click', () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); });
   const folderSearchWrap = moEl('div', 'mo-folder-search-wrap mo-sidebar-search-wrap');
-  const folderSearchInput = moEl('input', 'mo-folder-search mo-sidebar-search', { type: 'text', placeholder: 'Filter folders' });
+  const folderSearchInput = moEl('input', 'mo-folder-search mo-sidebar-search', { sceneId: 'media-organizer.side.folderFilter', type: 'text', placeholder: 'Filter folders' });
   folderSearchInput.setAttribute('aria-label', 'Filter folders');
-  const folderSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
+  const folderSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { sceneId: 'media-organizer.side.folderFilterClear', type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
   folderSearchClearBtn.style.display = 'none';
   const clearFolderFilter = () => {
     folderSearchInput.value = '';
@@ -10866,9 +10851,9 @@ function renderBrowserSidebar(container, api) {
 
   // The filter, always there, with a clear-× control.
   const tagSearchWrap = moEl('div', 'mo-tag-search-wrap mo-sidebar-search-wrap');
-  const tagSearchInput = moEl('input', 'mo-tag-search mo-sidebar-search', { type: 'text', placeholder: 'Filter tags (/)' });
+  const tagSearchInput = moEl('input', 'mo-tag-search mo-sidebar-search', { sceneId: 'media-organizer.side.tagFilter', type: 'text', placeholder: 'Filter tags (/)' });
   tagSearchInput.setAttribute('aria-label', 'Filter tags');
-  const tagSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
+  const tagSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { sceneId: 'media-organizer.side.tagFilterClear', type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
   tagSearchClearBtn.style.display = 'none';
   const clearTagFilter = () => {
     tagSearchInput.value = '';
@@ -11124,7 +11109,7 @@ function renderBrowserSidebar(container, api) {
   // cancel on Escape.
   function startInlineRename(row, label, tag) {
     if (row.querySelector('.mo-tag-rename-input')) return;
-    const input = moEl('input', 'mo-tag-rename-input mo-tag-name-input', { type: 'text', value: tag.name || '' });
+    const input = moEl('input', 'mo-tag-rename-input mo-tag-name-input', { sceneId: 'media-organizer.side.tagRename', sceneLabel: 'Rename tag', type: 'text', value: tag.name || '' });
     input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,var(--px-accent));border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
     label.style.display = 'none';
     label.parentNode.insertBefore(input, label.nextSibling);
@@ -11974,8 +11959,8 @@ function renderGridBrowser(container, api, input) {
     subtitle: '\u00a0',
     // In Trash the one main action is to empty it; everywhere else, Add Folder….
     primary: filterType === 'trash'
-      ? { label: 'Empty Trash\u2026', icon: 'trash-2', title: 'Delete everything in Trash now (it asks first)', onClick: () => { api.commands.executeCommand('media-organizer.emptyTrash').catch(() => {}); } }
-      : { label: 'Add Folder…', icon: 'plus', title: 'Add a folder of photos and videos to the library', onClick: () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); } },
+      ? { id: 'media-organizer.emptyTrash', command: 'media-organizer.emptyTrash', label: 'Empty Trash\u2026', icon: 'trash-2', title: 'Delete everything in Trash now (it asks first)', onClick: () => { api.commands.executeCommand('media-organizer.emptyTrash').catch(() => {}); } }
+      : { id: 'media-organizer.scan', command: 'media-organizer.scan', label: 'Add Folder…', icon: 'plus', title: 'Add a folder of photos and videos to the library', onClick: () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); } },
     more: [
       { label: 'Rescan Library', icon: 'refresh-cw', onSelect: () => { api.commands.executeCommand('media-organizer.rescan').catch(() => {}); } },
       { label: 'Find Duplicates', icon: 'copy', onSelect: () => { api.commands.executeCommand('media-organizer.findDuplicates').catch(() => {}); } },
@@ -12020,7 +12005,7 @@ function renderGridBrowser(container, api, input) {
   // looking at (search), which of it (type, filter), how it's shown (sort,
   // layout, view). Everything used rarely is behind a menu.
   const searchWrap = moEl('div', 'mo-search-wrap');
-  const searchInput = moEl('input', 'mo-toolbar-search', {
+  const searchInput = moEl('input', 'mo-toolbar-search', { sceneId: 'media-organizer.search', sceneLabel: 'Search the library',
     type: 'text',
     placeholder: 'Search title, tags, folder, filename…',
     title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, is:favorite, folder:TERM, taken:2024 (or 2024-06), type:photo/video',
@@ -12030,7 +12015,7 @@ function renderGridBrowser(container, api, input) {
 
   // #5 Search-operator help — a "?" button next to the search opens a popover
   // documenting tag:/rating:/folder:/taken:/type: with click-to-insert examples.
-  const searchHelpBtn = moEl('button', 'mo-toolbar-btn mo-search-help-btn', { type: 'button', title: 'Search syntax' });
+  const searchHelpBtn = moEl('button', 'mo-toolbar-btn mo-search-help-btn', { sceneId: 'media-organizer.searchHelp', type: 'button', title: 'Search syntax' });
   searchHelpBtn.innerHTML = moIcon('circle-help', 12);
   searchHelpBtn.setAttribute('aria-label', 'Search syntax help');
   searchWrap.appendChild(searchHelpBtn);
@@ -12100,7 +12085,7 @@ function renderGridBrowser(container, api, input) {
   const typeChips = new Map();
   const TYPE_PILLS = [['photos', 'image', 'Photos', 'Still photos'], ['gifs', 'image-play', 'GIFs', 'Animated GIFs'], ['videos', 'film', 'Videos', 'Videos']];
   for (const [k, icon, label, what] of TYPE_PILLS) {
-    const b = moEl('button', 'mo-filter-pill mo-filter-pill--type', { type: 'button', 'data-pill': k });
+    const b = moEl('button', 'mo-filter-pill mo-filter-pill--type', { sceneId: `media-organizer.filter.type.${moSlug(k)}`, sceneLabel: `${label}`, type: 'button', 'data-pill': k });
     b.insertAdjacentHTML('beforeend', moIcon(icon, 12));
     b.appendChild(moEl('span', null, { textContent: label }));
     b.addEventListener('click', (e) => {
@@ -12133,7 +12118,7 @@ function renderGridBrowser(container, api, input) {
     ['created_at', 'Date Added'], ['taken_at', 'Date Taken'], ['file_mod_time', 'File Modified'],
     ['title', 'Title'], ['rating', 'Favorite'], ['shuffle', 'Shuffled'],
   ];
-  const sortBtn = moEl('button', 'mo-toolbar-btn mo-menu-btn', { type: 'button', title: 'Sort and group' });
+  const sortBtn = moEl('button', 'mo-toolbar-btn mo-menu-btn', { sceneId: 'media-organizer.sort', sceneLabel: 'Sort and group', type: 'button', title: 'Sort and group' });
   sortBtn.setAttribute('aria-haspopup', 'menu');
   const sortLabel = moEl('span', 'mo-menu-btn-label');
   sortBtn.append(moEl('span', 'mo-menu-btn-icon', { innerHTML: moIcon('arrow-down-wide-narrow', 14) }), sortLabel, moEl('span', 'mo-menu-btn-caret', { innerHTML: moIcon('chevron-down', 10) }));
@@ -12179,7 +12164,7 @@ function renderGridBrowser(container, api, input) {
   // Zoom: a row of the View popover (and Ctrl+wheel), not of the toolbar.
   const zoomGroup = moEl('div', 'mo-view-row');
   zoomGroup.appendChild(moEl('span', 'mo-toolbar-label', { textContent: 'Zoom' }));
-  const zoomSlider = moEl('input', 'mo-zoom-slider', { type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(state.zoomWidth) });
+  const zoomSlider = moEl('input', 'mo-zoom-slider', { sceneId: 'media-organizer.zoom', sceneLabel: 'Zoom', type: 'range', min: String(MO_ZOOM_MIN), max: String(MO_ZOOM_MAX), step: '10', value: String(state.zoomWidth) });
   function updateSliderFill() {
     const pct = ((state.zoomWidth - MO_ZOOM_MIN) / (MO_ZOOM_MAX - MO_ZOOM_MIN)) * 100;
     zoomSlider.style.setProperty('--slider-fill', pct + '%');
@@ -12191,13 +12176,13 @@ function renderGridBrowser(container, api, input) {
   const modeGroup = moEl('div', 'mo-segment');
   modeGroup.setAttribute('role', 'group');
   modeGroup.setAttribute('aria-label', 'Layout');
-  const feedModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'Feed' });
+  const feedModeBtn = moEl('button', 'mo-segment-btn', { sceneId: 'media-organizer.layout.feed', type: 'button', title: 'Feed' });
   feedModeBtn.innerHTML = moIcon('layout-dashboard', 12);
   feedModeBtn.setAttribute('aria-label', 'Feed view');
-  const gridModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'Grid' });
+  const gridModeBtn = moEl('button', 'mo-segment-btn', { sceneId: 'media-organizer.layout.grid', type: 'button', title: 'Grid' });
   gridModeBtn.innerHTML = moIcon('grid', 12);
   gridModeBtn.setAttribute('aria-label', 'Grid view');
-  const listModeBtn = moEl('button', 'mo-segment-btn', { type: 'button', title: 'List' });
+  const listModeBtn = moEl('button', 'mo-segment-btn', { sceneId: 'media-organizer.layout.list', type: 'button', title: 'List' });
   listModeBtn.innerHTML = moIcon('list', 12);
   listModeBtn.setAttribute('aria-label', 'List view');
   modeGroup.append(feedModeBtn, gridModeBtn, listModeBtn);
@@ -12208,7 +12193,7 @@ function renderGridBrowser(container, api, input) {
 
   // The rest of how it's shown: a View popover with zoom, Show Tags On
   // Cards, and Save As Smart Album. None of them earns a place on the row.
-  const viewBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', title: 'View options' });
+  const viewBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.viewOptions', type: 'button', title: 'View options' });
   viewBtn.innerHTML = moIcon('sliders-horizontal', 12);
   viewBtn.setAttribute('aria-label', 'View options');
   viewBtn.setAttribute('aria-haspopup', 'dialog');
@@ -12243,7 +12228,7 @@ function renderGridBrowser(container, api, input) {
 
   // Show-card-tags toggle (#16) — flips the workspace setting; affects all
   // grids globally via the existing onDidChangeConfiguration listener.
-  const showTagsBtn = moEl('button', 'mo-view-row mo-view-toggle', { type: 'button' });
+  const showTagsBtn = moEl('button', 'mo-view-row mo-view-toggle', { sceneId: 'media-organizer.view.showTags', type: 'button' });
   function refreshShowTagsBtn() {
     showTagsBtn.classList.toggle('is-on', _showCardTags);
     showTagsBtn.innerHTML = moIcon(_showCardTags ? 'square-check' : 'square', 12) + '<span>Show Tags On Cards</span>';
@@ -12271,7 +12256,7 @@ function renderGridBrowser(container, api, input) {
   });
   viewPop.appendChild(showTagsBtn);
   // Save Smart Album (#15) — the registered command reads the grid's query state via custom event.
-  const saveSmartBtn = moEl('button', 'mo-view-row mo-view-action', { type: 'button', title: 'Save this search and its filters as a smart album' });
+  const saveSmartBtn = moEl('button', 'mo-view-row mo-view-action', { sceneId: 'media-organizer.view.saveSmartAlbum', type: 'button', title: 'Save this search and its filters as a smart album' });
   saveSmartBtn.innerHTML = moIcon('bookmark', 12) + '<span>Save As Smart Album</span>';
   saveSmartBtn.addEventListener('click', () => {
     closeViewPop();
@@ -12310,7 +12295,7 @@ function renderGridBrowser(container, api, input) {
     }
     const mkPill = (key, icon, label, value, onClick, onClear) => {
       const set = value !== null && value !== undefined && value !== false;
-      const pill = moEl('button', 'mo-filter-pill' + (set ? ' is-set' : ''), { type: 'button', 'data-pill': key, 'aria-pressed': set ? 'true' : 'false' });
+      const pill = moEl('button', 'mo-filter-pill' + (set ? ' is-set' : ''), { sceneId: `media-organizer.filter.${moSlug(key)}`, sceneLabel: `${label}`, type: 'button', 'data-pill': key, 'aria-pressed': set ? 'true' : 'false' });
       pill.insertAdjacentHTML('beforeend', moIcon(icon, 12));
       pill.appendChild(moEl('span', null, { textContent: label }));
       if (typeof value === 'string' && value) pill.appendChild(moEl('span', 'mo-filter-pill-value', { textContent: value }));
@@ -12334,7 +12319,7 @@ function renderGridBrowser(container, api, input) {
     favPill.title = favOn ? 'Showing favorites only (click to show all)' : 'Show favorites only';
     mkPill('date', 'calendar', 'Date', moFilterDateLabel(f), (pill) => toggleFilterPop('date', pill), () => { setDateRange(null, null, null); });
     if (moActiveFilterCount(state) > 0) {
-      const clear = moEl('button', 'mo-filter-pills-clear', { type: 'button', textContent: 'Clear', title: 'Clear every filter' });
+      const clear = moEl('button', 'mo-filter-pills-clear', { sceneId: 'media-organizer.filter.clearPills', type: 'button', textContent: 'Clear', title: 'Clear every filter' });
       clear.addEventListener('click', () => { closeFilterPop(); clearFiltersBtn.click(); });
       chipBar.appendChild(clear);
     }
@@ -12399,15 +12384,15 @@ function renderGridBrowser(container, api, input) {
   // Tags: a quiet filter line, Match All · Any and Include sub-tags, then the
   // list. A click includes a tag, a second leaves it out, a third clears it.
   const tagPopBody = moEl('div', 'mo-filter-pop-body');
-  const tagPickerSearch = moEl('input', 'mo-tagpick-search', { type: 'text', placeholder: 'Filter tags' });
+  const tagPickerSearch = moEl('input', 'mo-tagpick-search', { sceneId: 'media-organizer.filter.tagSearch', type: 'text', placeholder: 'Filter tags' });
   tagPickerSearch.setAttribute('aria-label', 'Filter tags');
   const tagMatchWrap = moEl('div', 'mo-tagmatch');
   tagMatchWrap.appendChild(moEl('span', 'mo-tagmatch-label', { textContent: 'Match' }));
-  const tagMatchAnd = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'All', title: 'Items that have every tag ticked' });
-  const tagMatchOr = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Any', title: 'Items that have any tag ticked' });
+  const tagMatchAnd = moEl('button', 'mo-tagmatch-btn', { sceneId: 'media-organizer.filter.tagMatch.all', type: 'button', textContent: 'All', title: 'Items that have every tag ticked' });
+  const tagMatchOr = moEl('button', 'mo-tagmatch-btn', { sceneId: 'media-organizer.filter.tagMatch.any', type: 'button', textContent: 'Any', title: 'Items that have any tag ticked' });
   tagMatchWrap.append(tagMatchAnd, moEl('span', 'mo-tagmatch-dot', { textContent: '·' }), tagMatchOr);
   const tagDepthCb = moEl('input', null, { type: 'checkbox' });
-  tagDepthCb.setAttribute('aria-label', 'Include sub-tags');
+  tagDepthCb.setAttribute('aria-label', 'Include sub-tags'); moDeclare(tagDepthCb, 'media-organizer.filter.subTags');
   const tagDepthLabel = moEl('label', 'mo-filter-depth-label');
   tagDepthLabel.append(tagDepthCb, document.createTextNode(' Include sub-tags'));
   const tagOptRow = moEl('div', 'mo-filter-pop-opts');
@@ -12421,8 +12406,8 @@ function renderGridBrowser(container, api, input) {
   // Date: on the date added or taken; quick choices, or Custom… with two dates.
   const datePopBody = moEl('div', 'mo-filter-pop-body');
   const dateFieldRow = moEl('div', 'mo-filter-pop-opts');
-  const dateAddedBtn = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Added', title: 'The date each item came into the library' });
-  const dateTakenBtn = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Taken', title: 'The date each photo was taken (its added date when it has none; videos use their added date)' });
+  const dateAddedBtn = moEl('button', 'mo-tagmatch-btn', { sceneId: 'media-organizer.filter.date.added', type: 'button', textContent: 'Added', title: 'The date each item came into the library' });
+  const dateTakenBtn = moEl('button', 'mo-tagmatch-btn', { sceneId: 'media-organizer.filter.date.taken', type: 'button', textContent: 'Taken', title: 'The date each photo was taken (its added date when it has none; videos use their added date)' });
   const dateFieldWrap = moEl('div', 'mo-tagmatch');
   dateFieldWrap.append(dateAddedBtn, moEl('span', 'mo-tagmatch-dot', { textContent: '·' }), dateTakenBtn);
   dateFieldRow.appendChild(dateFieldWrap);
@@ -12430,22 +12415,22 @@ function renderGridBrowser(container, api, input) {
   const DATE_PRESETS = [[null, 'Any time'], ['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['year', 'This year'], ['custom', 'Custom…']];
   const datePresetBtns = new Map();
   for (const [key, label] of DATE_PRESETS) {
-    const b = moEl('button', 'mo-filter-pop-opt', { type: 'button' });
+    const b = moEl('button', 'mo-filter-pop-opt', { sceneId: `media-organizer.filter.date.${moSlug(key)}`, sceneLabel: `${label}`, type: 'button' });
     b.append(moEl('span', 'mo-filter-pop-check', { innerHTML: moIcon('check', 12) }), moEl('span', null, { textContent: label }));
     b.addEventListener('click', () => pickDatePreset(key));
     datePresetBtns.set(key, b);
     datePresetList.appendChild(b);
   }
   const dateRow = moEl('div', 'mo-filter-date-row');
-  const dateFrom = moEl('input', 'mo-filter-date', { type: 'date', title: 'From' });
+  const dateFrom = moEl('input', 'mo-filter-date', { sceneId: 'media-organizer.filter.date.from', sceneLabel: 'From date', type: 'date', title: 'From' });
   dateFrom.setAttribute('aria-label', 'From date');
-  const dateTo = moEl('input', 'mo-filter-date', { type: 'date', title: 'To' });
+  const dateTo = moEl('input', 'mo-filter-date', { sceneId: 'media-organizer.filter.date.to', sceneLabel: 'To date', type: 'date', title: 'To' });
   dateTo.setAttribute('aria-label', 'To date');
   dateRow.append(dateFrom, moEl('span', 'mo-filter-row-label', { textContent: '–' }), dateTo);
   datePopBody.append(dateFieldRow, datePresetList, dateRow);
 
   // -- Clear all (the pills' Clear runs it) --
-  const clearFiltersBtn = moEl('button', 'mo-toolbar-btn mo-filter-clear', { textContent: 'Clear All Filters' });
+  const clearFiltersBtn = moEl('button', 'mo-toolbar-btn mo-filter-clear', { sceneId: 'media-organizer.filter.clearAll', textContent: 'Clear All Filters' });
 
   // ── Filter panel helpers ──
   let _filterTagCache = null;
@@ -12751,11 +12736,11 @@ function renderGridBrowser(container, api, input) {
 
   // ── Pagination ──
   const paginationBar = moEl('div', 'mo-pagination');
-  const pageFirst = moEl('button', 'mo-page-btn', { textContent: '\u00AB', title: 'First page' });
-  const pagePrev = moEl('button', 'mo-page-btn', { textContent: '\u2039', title: 'Previous page' });
+  const pageFirst = moEl('button', 'mo-page-btn', { sceneId: 'media-organizer.page.first', sceneLabel: 'First page', textContent: '\u00AB', title: 'First page' });
+  const pagePrev = moEl('button', 'mo-page-btn', { sceneId: 'media-organizer.page.previous', sceneLabel: 'Previous page', textContent: '\u2039', title: 'Previous page' });
   const pageInfo = moEl('span', 'mo-page-info');
-  const pageNext = moEl('button', 'mo-page-btn', { textContent: '\u203A', title: 'Next page' });
-  const pageLast = moEl('button', 'mo-page-btn', { textContent: '\u00BB', title: 'Last page' });
+  const pageNext = moEl('button', 'mo-page-btn', { sceneId: 'media-organizer.page.next', sceneLabel: 'Next page', textContent: '\u203A', title: 'Next page' });
+  const pageLast = moEl('button', 'mo-page-btn', { sceneId: 'media-organizer.page.last', sceneLabel: 'Last page', textContent: '\u00BB', title: 'Last page' });
   const perPageDropdown = moDropdown({
     items: [
       { value: '20', label: '20' },
@@ -15274,12 +15259,12 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   // The kit's buttons: Edit Image labelled (the one action that opens
   // somewhere else), the rest icon buttons with their names as tooltips.
   const actions = moEl('div', 'mo-detail-header-actions');
-  if (callbacks.onPrev) api.ui.createIconButton(actions, { icon: 'chevron-left', title: 'Previous', onClick: callbacks.onPrev });
-  if (callbacks.onNext) api.ui.createIconButton(actions, { icon: 'chevron-right', title: 'Next', onClick: callbacks.onNext });
+  if (callbacks.onPrev) api.ui.createIconButton(actions, { id: 'media-organizer.viewer.previous', icon: 'chevron-left', title: 'Previous', onClick: callbacks.onPrev });
+  if (callbacks.onNext) api.ui.createIconButton(actions, { id: 'media-organizer.viewer.next', icon: 'chevron-right', title: 'Next', onClick: callbacks.onNext });
   // Add to Chat: the primary file goes to the chat composer as an attachment
   // (an image becomes a vision attachment there, a video a file).
   if (ctx.fullPath) {
-    api.ui.createIconButton(actions, { icon: 'message-square-plus', title: 'Add to Chat', onClick: () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); } });
+    api.ui.createIconButton(actions, { id: 'media-organizer.viewer.addToChat', icon: 'message-square-plus', title: 'Add to Chat', onClick: () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); } });
   }
   {
     // Favorite: one star, on or off (the old 1–5 scale is gone).
@@ -15291,7 +15276,7 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
       favBtn.title = on ? 'Remove From Favorites' : 'Add to Favorites';
       favBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     };
-    syncFav();
+    syncFav(); moDeclare(favBtn, 'media-organizer.viewer.favorite', { label: 'Favorite' });
     favBtn.addEventListener('click', async () => {
       const on = !moIsFavorite(ctx.entity);
       await moSetFavorite([`${ctx.type}:${ctx.entity.id}`], on);
@@ -15299,7 +15284,7 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
       syncFav();
     });
   }
-  const toggleBtn = api.ui.createIconButton(actions, { icon: 'panel-right', title: 'Hide Details' });
+  const toggleBtn = api.ui.createIconButton(actions, { id: 'media-organizer.viewer.toggleDetails', icon: 'panel-right', title: 'Hide Details' });
   toggleBtn.setAttribute('aria-pressed', 'true');
   toggleBtn.addEventListener('click', () => {
     const panel = headerEl.closest('.mo-detail-editor')?.querySelector('.mo-detail-panel');
@@ -15311,11 +15296,11 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   });
   // Edit Image (docs/IMAGE_EDITOR.md): still photos only.
   if (ctx.type === 'photo' && ctx.fullPath && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
-    api.ui.createButton(actions, { label: 'Edit Image', icon: 'sliders-horizontal', kind: 'secondary', onClick: () => { void moOpenImageEditor(api, ctx.entity.id); } });
+    api.ui.createButton(actions, { id: 'media-organizer.viewer.editImage', label: 'Edit Image', icon: 'sliders-horizontal', kind: 'secondary', onClick: () => { void moOpenImageEditor(api, ctx.entity.id); } });
   }
   // Edit Clip: the clip editor on this video, with the player's marks as the trim.
   if (ctx.type === 'video' && ctx.fullPath) {
-    api.ui.createButton(actions, { label: 'Edit Clip', icon: 'clapperboard', kind: 'secondary', title: 'Open in the clip editor; the marked range becomes the trim', onClick: () => { moEditClipFromPlayer(api, ctx.fullPath, ctx._player, (ctx.videoFile && ctx.videoFile.duration) || ctx.entity.duration || 0); } });
+    api.ui.createButton(actions, { id: 'media-organizer.viewer.editClip', label: 'Edit Clip', icon: 'clapperboard', kind: 'secondary', title: 'Open in the clip editor; the marked range becomes the trim', onClick: () => { moEditClipFromPlayer(api, ctx.fullPath, ctx._player, (ctx.videoFile && ctx.videoFile.duration) || ctx.entity.duration || 0); } });
   }
   headerEl.appendChild(actions);
 }
@@ -15552,8 +15537,8 @@ function buildVideoPlayer(container, fullPath, ctx, opts = {}) {
   dock.appendChild(strip);
 
   const row = moEl('div', 'mo-player-row');
-  const iconBtn = (icon, title, onClick) => api.ui.createIconButton(row, { icon, title, size: 'sm', onClick: (e) => { e.stopPropagation(); onClick(); } });
-  const textBtn = (label, icon, title, onClick) => api.ui.createButton(row, { label, icon, title, kind: 'ghost', size: 'sm', onClick: (e) => { e.stopPropagation(); onClick(); } });
+  const iconBtn = (icon, title, onClick) => api.ui.createIconButton(row, { id: `media-organizer.player.${moSlug(icon)}`, icon, title, size: 'sm', onClick: (e) => { e.stopPropagation(); onClick(); } });
+  const textBtn = (label, icon, title, onClick) => api.ui.createButton(row, { id: `media-organizer.player.${moSlug(label)}`, label, icon, title, kind: 'ghost', size: 'sm', onClick: (e) => { e.stopPropagation(); onClick(); } });
   const sep = () => row.appendChild(moEl('span', 'mo-player-sep'));
 
   const playBtn = iconBtn('play', 'Play (Space)', () => togglePlay());
@@ -15580,7 +15565,7 @@ function buildVideoPlayer(container, fullPath, ctx, opts = {}) {
   speedDd.onChange = (v) => { const s = parseFloat(v); if (Number.isFinite(s) && s > 0) video.playbackRate = s; };
   row.appendChild(speedDd.el);
   const volWrap = moEl('div', 'mo-player-vol');
-  const muteBtn = api.ui.createIconButton(volWrap, { icon: 'volume-2', title: 'Mute (M)', size: 'sm', onClick: (e) => { e.stopPropagation(); video.muted = !video.muted; updateVolIcon(); } });
+  const muteBtn = api.ui.createIconButton(volWrap, { id: 'media-organizer.player.mute', icon: 'volume-2', title: 'Mute (M)', size: 'sm', onClick: (e) => { e.stopPropagation(); video.muted = !video.muted; updateVolIcon(); } });
   const volSlider = document.createElement('input');
   volSlider.type = 'range'; volSlider.min = '0'; volSlider.max = '1'; volSlider.step = '0.01'; volSlider.value = '1';
   volSlider.className = 'mo-player-vol-slider';
@@ -16662,7 +16647,7 @@ function buildAlbumUI(root, album, api, isNew) {
   header.appendChild(titleEl);
 
   if (isNew) {
-    const saveBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Create' });
+    const saveBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.album.create', textContent: 'Create' });
     saveBtn.addEventListener('click', async () => {
       const titleInput = root.querySelector('.mo-album-title-input');
       const descInput = root.querySelector('.mo-album-desc-input');
@@ -16682,7 +16667,7 @@ function buildAlbumUI(root, album, api, isNew) {
     });
     header.appendChild(saveBtn);
   } else {
-    const deleteBtn = moEl('button', 'mo-toolbar-btn', { textContent: 'Delete', title: 'Delete album' });
+    const deleteBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.album.delete', textContent: 'Delete', title: 'Delete album' });
     deleteBtn.addEventListener('click', async () => {
       const confirmed = await api.window.showWarningMessage(
         `Delete album "${album.title}"? This cannot be undone.`,
@@ -16711,7 +16696,7 @@ function buildAlbumUI(root, album, api, isNew) {
   // Title field
   const titleField = moEl('div', 'mo-album-field');
   titleField.appendChild(moEl('label', null, { textContent: 'Title' }));
-  const titleInput = moEl('input', 'mo-album-title-input', { type: 'text', value: album.title || '' });
+  const titleInput = moEl('input', 'mo-album-title-input', { sceneId: 'media-organizer.album.title', sceneLabel: 'Album title', type: 'text', value: album.title || '' });
   if (!isNew) {
     let titleTimer = null;
     titleInput.addEventListener('input', () => {
@@ -16991,13 +16976,13 @@ function openLightbox(items, startIndex, resolveFilePath) {
   overlay.appendChild(content);
 
   // Close button
-  const closeBtn = moEl('button', 'mo-lightbox-close', { type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', innerHTML: moIcon('x', 18) });
+  const closeBtn = moEl('button', 'mo-lightbox-close', { sceneId: 'media-organizer.lightbox.close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', innerHTML: moIcon('x', 18) });
   closeBtn.addEventListener('click', dismissLightbox);
   content.appendChild(closeBtn);
 
   // Nav buttons
-  const prevBtn = moEl('button', 'mo-lightbox-nav prev', { type: 'button', title: 'Previous (←)', 'aria-label': 'Previous', innerHTML: moIcon('chevron-left', 22) });
-  const nextBtn = moEl('button', 'mo-lightbox-nav next', { type: 'button', title: 'Next (→)', 'aria-label': 'Next', innerHTML: moIcon('chevron-right', 22) });
+  const prevBtn = moEl('button', 'mo-lightbox-nav prev', { sceneId: 'media-organizer.lightbox.previous', type: 'button', title: 'Previous (←)', 'aria-label': 'Previous', innerHTML: moIcon('chevron-left', 22) });
+  const nextBtn = moEl('button', 'mo-lightbox-nav next', { sceneId: 'media-organizer.lightbox.next', type: 'button', title: 'Next (→)', 'aria-label': 'Next', innerHTML: moIcon('chevron-right', 22) });
   prevBtn.addEventListener('click', () => navigate(-1));
   nextBtn.addEventListener('click', () => navigate(1));
   content.appendChild(prevBtn);
@@ -17038,12 +17023,12 @@ function openLightbox(items, startIndex, resolveFilePath) {
   });
   bar.append(playBtn, speedDropdown.el);
   // Add To Chat: the item on screen goes to the chat composer.
-  const chatBtn = moEl('button', null, { type: 'button', title: 'Attach this file to the chat composer', innerHTML: moIcon('message-square-plus', 14) + '<span>Add to Chat</span>' });
+  const chatBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.addToChat', sceneLabel: 'Add to Chat', type: 'button', title: 'Attach this file to the chat composer', innerHTML: moIcon('message-square-plus', 14) + '<span>Add to Chat</span>' });
   chatBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it) void moAttachItemsToChat([it]); });
-  const upscaleBtn = moEl('button', null, { type: 'button', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.', innerHTML: moIcon('maximize-2', 14) + '<span>Upscale…</span>' });
+  const upscaleBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.upscale', sceneLabel: 'Upscale', type: 'button', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.', innerHTML: moIcon('maximize-2', 14) + '<span>Upscale…</span>' });
   upscaleBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it && _api) void moUpscaleItems([it], _api, null); });
   // Edit Clip (videos): the clip editor on this video, the marks as the trim.
-  const editClipBtn = moEl('button', null, { type: 'button', title: 'Open in the clip editor; the marked range becomes the trim', innerHTML: moIcon('clapperboard', 14) + '<span>Edit Clip</span>' });
+  const editClipBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.editClip', sceneLabel: 'Edit Clip', type: 'button', title: 'Open in the clip editor; the marked range becomes the trim', innerHTML: moIcon('clapperboard', 14) + '<span>Edit Clip</span>' });
   editClipBtn.addEventListener('click', () => {
     const it = items[currentIdx];
     if (!it || !_api || !activePlayer || !activePlayerPath) return;
@@ -17402,12 +17387,12 @@ function openCompareView(items, resolveFilePath) {
 
   const zoomIndicator = moEl('span', 'mo-cmp-zoom-indicator', { textContent: '100%' });
 
-  const fitBtn = moEl('button', null, { textContent: 'Fit', title: 'Fit to pane' });
-  const oneToOneBtn = moEl('button', null, { textContent: '100%', title: 'Actual size' });
-  const zoomInBtn = moEl('button', null, { textContent: '+', title: 'Zoom in' });
-  const zoomOutBtn = moEl('button', null, { textContent: '−', title: 'Zoom out' });
-  const syncBtn = moEl('button', 'active', { textContent: 'Sync', title: 'Mirror zoom & pan across panes' });
-  const closeBtn = moEl('button', 'mo-compare-close', { textContent: '×', title: 'Close (Esc)' });
+  const fitBtn = moEl('button', null, { sceneId: 'media-organizer.compare.fit', textContent: 'Fit', title: 'Fit to pane' });
+  const oneToOneBtn = moEl('button', null, { sceneId: 'media-organizer.compare.actualSize', sceneLabel: 'Actual size', textContent: '100%', title: 'Actual size' });
+  const zoomInBtn = moEl('button', null, { sceneId: 'media-organizer.compare.zoomIn', sceneLabel: 'Zoom in', textContent: '+', title: 'Zoom in' });
+  const zoomOutBtn = moEl('button', null, { sceneId: 'media-organizer.compare.zoomOut', sceneLabel: 'Zoom out', textContent: '−', title: 'Zoom out' });
+  const syncBtn = moEl('button', 'active', { sceneId: 'media-organizer.compare.sync', textContent: 'Sync', title: 'Mirror zoom & pan across panes' });
+  const closeBtn = moEl('button', 'mo-compare-close', { sceneId: 'media-organizer.compare.close', sceneLabel: 'Close', textContent: '×', title: 'Close (Esc)' });
 
   bar.append(fitBtn, oneToOneBtn, zoomOutBtn, zoomIndicator, zoomInBtn, syncBtn);
   overlay.appendChild(bar);
@@ -17755,7 +17740,7 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
     const b = moEl('button', 'mo-sel-btn', { type: 'button', ...(title ? { title } : {}) });
     if (icon) b.insertAdjacentHTML('beforeend', moIcon(icon, 14));
     b.appendChild(moEl('span', 'mo-sel-label', { textContent: label }));
-    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-label', label); moDeclare(b, `media-organizer.selection.${moSlug(label)}`);
     return b;
   };
   const selMenuBtn = (label, title, icon) => {
@@ -17767,7 +17752,7 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   };
 
   const countBtn = selMenuBtn('0 selected', 'Select all, none, or invert');
-  countBtn.classList.add('mo-sel-count');
+  countBtn.classList.add('mo-sel-count'); moDeclare(countBtn, 'media-organizer.selection.count', { label: 'Selection' });
   const countEl = countBtn.querySelector('.mo-menu-btn-label');
   countBtn.addEventListener('click', () => menuAt(countBtn, [
     { label: 'Select All', handler: () => {
@@ -17843,13 +17828,13 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   });
   bar.appendChild(chatBtn);
 
-  const upscaleBtn = moEl('button', null, { textContent: 'Upscale…', title: 'Upscale the selected photos with Real-ESRGAN. Originals are never changed.' });
+  const upscaleBtn = moEl('button', null, { sceneId: 'media-organizer.selection.upscale', textContent: 'Upscale…', title: 'Upscale the selected photos with Real-ESRGAN. Originals are never changed.' });
   upscaleBtn.addEventListener('click', () => {
     const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
     void moUpscaleItems(items, api, () => { if (typeof refreshFn === 'function') refreshFn(); });
   });
 
-  const compareBtn = moEl('button', null, { textContent: 'Compare' });
+  const compareBtn = moEl('button', null, { sceneId: 'media-organizer.selection.compare', textContent: 'Compare' });
   compareBtn.addEventListener('click', () => {
     const keys = Array.from(state.selectedIds);
     if (keys.length < 2 || keys.length > 4) return;
@@ -17874,11 +17859,11 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   });
 
   // F9: Export button
-  const exportBtn = moEl('button', null, { textContent: 'Export…' });
+  const exportBtn = moEl('button', null, { sceneId: 'media-organizer.selection.export', textContent: 'Export…' });
   exportBtn.addEventListener('click', () => {
     exportSelectedItems(state, api);
   });
-  const moreBtn = moEl('button', 'mo-sel-btn mo-sel-more', { type: 'button', title: 'More Actions', 'aria-label': 'More Actions' });
+  const moreBtn = moEl('button', 'mo-sel-btn mo-sel-more', { sceneId: 'media-organizer.selection.more', type: 'button', title: 'More Actions', 'aria-label': 'More Actions' });
   moreBtn.innerHTML = moIcon('ellipsis', 16);
   moreBtn.setAttribute('aria-haspopup', 'menu');
   moreBtn.addEventListener('click', () => {
@@ -17924,7 +17909,7 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
     bar.insertBefore(restoreBtn, bulkTagBtn);
   }
   bar.appendChild(deleteBtn);
-  const doneBtn = api.ui.createButton(bar, { label: 'Done', kind: 'secondary', title: 'Clear the selection (Esc)' });
+  const doneBtn = api.ui.createButton(bar, { id: 'media-organizer.selection.done', label: 'Done', kind: 'secondary', title: 'Clear the selection (Esc)' });
   doneBtn.addEventListener('click', () => {
     state.selectedIds.clear();
     state.selecting = false;
@@ -18069,13 +18054,13 @@ function showBulkTagDialog(state, api, onComplete) {
   modeSection.appendChild(moEl('label', null, { textContent: 'Mode' }));
   const modeBtns = moEl('div', 'mo-bulk-mode-btns');
   let mode = 'ADD';
-  const addBtn = moEl('button', 'active', { textContent: 'Add', type: 'button' });
+  const addBtn = moEl('button', 'active', { sceneId: 'media-organizer.bulkTag.mode.add', textContent: 'Add', type: 'button' });
   addBtn.title = 'Add picked tags to all selected items. Existing tags are kept.';
   diagnostics.push('showBulkTagDialog: created Add button');
-  const removeBtn = moEl('button', null, { textContent: 'Remove', type: 'button' });
+  const removeBtn = moEl('button', null, { sceneId: 'media-organizer.bulkTag.mode.remove', textContent: 'Remove', type: 'button' });
   removeBtn.title = 'Remove picked tags from all selected items. Other tags are kept.';
   diagnostics.push('showBulkTagDialog: created Remove button');
-  const replaceBtn = moEl('button', null, { textContent: 'Replace', type: 'button' });
+  const replaceBtn = moEl('button', null, { sceneId: 'media-organizer.bulkTag.mode.replace', textContent: 'Replace', type: 'button' });
   replaceBtn.title = 'Replace each item\u2019s tags with exactly the picked set. Destructive.';
   diagnostics.push('showBulkTagDialog: created Replace button');
   modeBtns.append(addBtn, removeBtn, replaceBtn);
@@ -18099,7 +18084,7 @@ function showBulkTagDialog(state, api, onComplete) {
   // ── Search / create ──
   const searchSection = moEl('div', 'mo-bulk-dialog-section');
   searchSection.appendChild(moEl('label', null, { textContent: 'Search or create' }));
-  const searchInput = moEl('input', 'mo-bulk-tag-search mo-tag-name-input', { type: 'text', placeholder: 'Type to filter tags or create a new one…' });
+  const searchInput = moEl('input', 'mo-bulk-tag-search mo-tag-name-input', { sceneId: 'media-organizer.bulkTag.search', sceneLabel: 'Filter tags', type: 'text', placeholder: 'Type to filter tags or create a new one…' });
   searchInput.setAttribute('aria-label', 'Search or create tag');
   searchSection.appendChild(searchInput);
   dialog.appendChild(searchSection);
@@ -18366,10 +18351,10 @@ function showBulkTagDialog(state, api, onComplete) {
 
   // Footer
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel', type: 'button' });
+  const cancelBtn = moEl('button', null, { sceneId: 'media-organizer.bulkTag.cancel', textContent: 'Cancel', type: 'button' });
   diagnostics.push('showBulkTagDialog: created Cancel button');
   cancelBtn.addEventListener('click', () => overlay.remove());
-  const applyBtn = moEl('button', 'primary', { textContent: 'Apply', type: 'button' });
+  const applyBtn = moEl('button', 'primary', { sceneId: 'media-organizer.bulkTag.apply', textContent: 'Apply', type: 'button' });
   diagnostics.push('showBulkTagDialog: created Apply button');
 
   applyBtn.addEventListener('click', async () => {
@@ -18521,9 +18506,9 @@ function showAddToAlbumDialog(state, api, onComplete) {
     .catch(() => {});
 
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  const cancelBtn = moEl('button', null, { sceneId: 'media-organizer.addToAlbum.cancel', textContent: 'Cancel' });
   cancelBtn.addEventListener('click', () => overlay.remove());
-  const applyBtn = moEl('button', 'primary', { textContent: 'Add' });
+  const applyBtn = moEl('button', 'primary', { sceneId: 'media-organizer.addToAlbum.add', textContent: 'Add' });
   applyBtn.addEventListener('click', async () => {
     const albumId = parseInt(bulkAlbumDropdown.getValue(), 10);
     if (!albumId) { api.window.showWarningMessage('Please select an album.'); return; }
@@ -18591,9 +18576,9 @@ function showBulkDeleteDialog(state, api, onComplete, opts = {}) {
   dialog.appendChild(optsRow);
 
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
+  const cancelBtn = moEl('button', null, { sceneId: 'media-organizer.bulkDelete.cancel', textContent: 'Cancel' });
   cancelBtn.addEventListener('click', () => overlay.remove());
-  const confirmBtn = moEl('button', 'mo-sel-delete primary', { textContent: 'Delete' });
+  const confirmBtn = moEl('button', 'mo-sel-delete primary', { sceneId: 'media-organizer.bulkDelete.confirm', textContent: 'Delete' });
   confirmBtn.addEventListener('click', async () => {
     confirmBtn.disabled = true;
     cancelBtn.disabled = true;
@@ -18679,7 +18664,7 @@ function showCreateTagDialog(api, onComplete, opts = {}) {
 
   const section = moEl('div', 'mo-bulk-dialog-section');
   section.appendChild(moEl('label', null, { textContent: 'Names' }));
-  const input = moEl('textarea', 'mo-bulk-tag-search mo-tag-name-input', {
+  const input = moEl('textarea', 'mo-bulk-tag-search mo-tag-name-input', { sceneId: 'media-organizer.createTag.names', sceneLabel: 'Tag names',
     rows: 4,
     placeholder: 'One tag per line, or comma-separated.\nUse Parent/Child/Grandchild to nest\u2026',
   });
@@ -18702,8 +18687,8 @@ function showCreateTagDialog(api, onComplete, opts = {}) {
   dialog.appendChild(section);
 
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel', type: 'button' });
-  const createBtn = moEl('button', 'primary', { textContent: 'Create', type: 'button' });
+  const cancelBtn = moEl('button', null, { sceneId: 'media-organizer.createTag.cancel', textContent: 'Cancel', type: 'button' });
+  const createBtn = moEl('button', 'primary', { sceneId: 'media-organizer.createTag.create', textContent: 'Create', type: 'button' });
   createBtn.disabled = true;
   footer.append(cancelBtn, createBtn);
   dialog.appendChild(footer);
@@ -18864,8 +18849,8 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
 
   // Footer
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
-  const optimizeBtn = moEl('button', 'primary', { textContent: 'Optimize' });
+  const cancelBtn = moEl('button', null, { sceneId: 'media-organizer.optimizeGif.cancel', textContent: 'Cancel' });
+  const optimizeBtn = moEl('button', 'primary', { sceneId: 'media-organizer.optimizeGif.optimize', textContent: 'Optimize' });
   optimizeBtn.disabled = true;
   footer.append(cancelBtn, optimizeBtn);
   dialog.appendChild(footer);
@@ -19792,7 +19777,7 @@ function renderClipProject(container, api, projectId, input) {
   const head = moEl('div', 'mo-cp-head');
   const nameEl = moEl('div', 'mo-cp-name', { textContent: '' });
   const headBtns = moEl('div', 'mo-cp-head-btns');
-  api.ui.createIconButton(headBtns, { icon: 'ellipsis', title: 'Project Actions', size: 'sm', onClick: (e) => {
+  api.ui.createIconButton(headBtns, { id: 'media-organizer.clipProject.actions', icon: 'ellipsis', title: 'Project Actions', size: 'sm', onClick: (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     showContextMenu(r.left, r.bottom + 2, [
       { label: 'Add Videos…', handler: () => void addFromFiles() },
@@ -19802,7 +19787,7 @@ function renderClipProject(container, api, projectId, input) {
       { label: 'Delete Project…', danger: true, handler: () => void deleteProject() },
     ]);
   } });
-  api.ui.createIconButton(headBtns, { icon: 'panel-left-close', title: 'Hide the Videos', size: 'sm', onClick: () => setBinClosed(true, false) });
+  api.ui.createIconButton(headBtns, { id: 'media-organizer.clipProject.hideVideos', icon: 'panel-left-close', title: 'Hide the Videos', size: 'sm', onClick: () => setBinClosed(true, false) });
   head.append(moEl('span', 'mo-ce-ico', { innerHTML: moIcon('clapperboard', 16) }), nameEl, headBtns);
   const sub = moEl('div', 'mo-cp-sub');
   // The sequence sits above the videos: what the project becomes.
@@ -19823,13 +19808,13 @@ function renderClipProject(container, api, projectId, input) {
   list.setAttribute('role', 'listbox');
   list.setAttribute('aria-label', 'Videos in this project');
   const foot = moEl('div', 'mo-cp-foot');
-  const addBtn = api.ui.createButton(foot, { label: 'Add Videos…', icon: 'plus', title: 'Add videos from your files. You can also right-click videos in the library and choose Add to Clip Project.', onClick: () => void addFromFiles() });
+  const addBtn = api.ui.createButton(foot, { id: 'media-organizer.clipProject.addVideos', label: 'Add Videos…', icon: 'plus', title: 'Add videos from your files. You can also right-click videos in the library and choose Add to Clip Project.', onClick: () => void addFromFiles() });
   addBtn.classList.add('mo-cp-add');
   bin.append(head, sub, seqRow, listLabel, list, foot);
 
   // The closed bin is a rail with one button to bring it back.
   const rail = moEl('div', 'mo-cp-rail');
-  api.ui.createIconButton(rail, { icon: 'panel-left-open', title: 'Show the Videos', onClick: () => setBinClosed(false, false) });
+  api.ui.createIconButton(rail, { id: 'media-organizer.clipProject.showVideos', icon: 'panel-left-open', title: 'Show the Videos', onClick: () => setBinClosed(false, false) });
   const railCount = moEl('span', 'mo-cp-rail-count');
   rail.appendChild(railCount);
   page.insertBefore(rail, stage);
@@ -20124,7 +20109,7 @@ function renderClipProject(container, api, projectId, input) {
     const bar = moEl('div', 'mo-ce-toolbar mo-cs-toolbar');
     const meta = moEl('span', 'mo-ce-meta');
     bar.append(ico('list-video'), moEl('span', 'mo-ce-name', { textContent: 'Sequence' }), meta, moEl('span', 'mo-ce-spacer'));
-    const exportBtn = api.ui.createButton(bar, { label: 'Export Sequence…', kind: 'primary', title: 'Render every clip that is in and join them into one video' });
+    const exportBtn = api.ui.createButton(bar, { id: 'media-organizer.clipProject.exportSequence', label: 'Export Sequence…', kind: 'primary', title: 'Render every clip that is in and join them into one video' });
     exportBtn.classList.add('mo-cs-export');
     root.appendChild(bar);
 
@@ -20338,7 +20323,7 @@ function renderClipProject(container, api, projectId, input) {
         // Said where the work is, like the editor's own note: no dialog to dismiss.
         statusEl.textContent = '';
         statusEl.append(moEl('span', 'mo-cs-status-text', { textContent: `Exported ${outName}${sizeText}`, title: out }));
-        api.ui.createButton(statusEl, { label: 'Show in Folder', kind: 'ghost', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(out); } catch { /* ignore */ } } });
+        api.ui.createButton(statusEl, { id: 'media-organizer.clipProject.showInFolder', label: 'Show in Folder', kind: 'ghost', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(out); } catch { /* ignore */ } } });
         if (api.statusBar) api.statusBar.setMessage(`Sequence exported: ${outName}`, 4000);
       } catch (err) {
         if (scope.cancelled) {
@@ -21814,15 +21799,15 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     metaEl.textContent = `${moTimeStr(duration)} · ${preview.videoWidth} × ${preview.videoHeight}`;
   });
   toolbar.appendChild(moEl('span', 'mo-ce-spacer'));
-  const undoBtn = api.ui.createIconButton(toolbar, { icon: 'undo-2', title: 'Undo (Ctrl+Z)', onClick: () => undoEdit() });
-  const redoBtn = api.ui.createIconButton(toolbar, { icon: 'redo-2', title: 'Redo (Ctrl+Shift+Z)', onClick: () => redoEdit() });
+  const undoBtn = api.ui.createIconButton(toolbar, { id: 'media-organizer.clipEditor.undo', icon: 'undo-2', title: 'Undo (Ctrl+Z)', onClick: () => undoEdit() });
+  const redoBtn = api.ui.createIconButton(toolbar, { id: 'media-organizer.clipEditor.redo', icon: 'redo-2', title: 'Redo (Ctrl+Shift+Z)', onClick: () => redoEdit() });
   undoBtn.disabled = true; redoBtn.disabled = true;
   toolbar.appendChild(moEl('span', 'mo-ce-sep'));
-  const queueToggle = api.ui.createButton(toolbar, { label: 'Queue', icon: 'list-video', kind: 'secondary', title: 'The clips waiting to export together' });
+  const queueToggle = api.ui.createButton(toolbar, { id: 'media-organizer.clipEditor.queue', label: 'Queue', icon: 'list-video', kind: 'secondary', title: 'The clips waiting to export together' });
   const queueBadge = moEl('span', 'mo-ce-badge', { textContent: '0' });
   queueToggle.appendChild(queueBadge);
   const exportSplit = moEl('span', 'mo-ce-split');
-  const exportBtn = api.ui.createButton(exportSplit, { label: 'Export…', kind: 'primary', title: 'Export the clip, or every queued clip' });
+  const exportBtn = api.ui.createButton(exportSplit, { id: 'media-organizer.clipEditor.export', label: 'Export…', kind: 'primary', title: 'Export the clip, or every queued clip' });
   // The button's words: what it does, then the estimate, quieter. A progress
   // fill (--mo-ce-progress) runs under them while a clip renders.
   const estimateEl = moEl('span', 'mo-ce-btn-sub');
@@ -21832,7 +21817,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     estimateEl.textContent = sub || '';
     if (sub) exportBtn.appendChild(estimateEl);
   }
-  const exportMenuBtn = api.ui.createIconButton(exportSplit, { icon: 'chevron-down', title: 'Format, size and quality' });
+  const exportMenuBtn = api.ui.createIconButton(exportSplit, { id: 'media-organizer.clipEditor.exportOptions', icon: 'chevron-down', title: 'Format, size and quality' });
   exportMenuBtn.classList.add('mo-ce-split-menu');
   toolbar.appendChild(exportSplit);
   overlay.appendChild(toolbar);
@@ -21889,21 +21874,21 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const floatCrop = moEl('div', 'mo-ce-float-group');
   const floatObjects = moEl('div', 'mo-ce-float-group');
   floatBar.append(floatCrop, floatObjects);
-  const addTextFloat = moEl('button', 'mo-ce-float-btn', { title: 'Add a title, lower third or caption at the playhead (T)' });
+  const addTextFloat = moEl('button', 'mo-ce-float-btn', { sceneId: 'media-organizer.clipEditor.float.addText', sceneLabel: 'Add Text', title: 'Add a title, lower third or caption at the playhead (T)' });
   addTextFloat.append(ico('type', 14), moEl('span', null, { textContent: 'Add Text' }), moEl('span', 'mo-ce-float-key', { textContent: 'T' }));
   addTextFloat.addEventListener('click', (e) => { e.stopPropagation(); addCapBtn.click(); });
-  const addBlurFloat = moEl('button', 'mo-ce-float-btn', { title: 'Add a box that blurs or pixelates what is under it' });
+  const addBlurFloat = moEl('button', 'mo-ce-float-btn', { sceneId: 'media-organizer.clipEditor.float.addBlur', sceneLabel: 'Add Blur Region', title: 'Add a box that blurs or pixelates what is under it' });
   addBlurFloat.append(ico('grid-2x2', 14), moEl('span', null, { textContent: 'Add Blur Region' }));
   addBlurFloat.addEventListener('click', (e) => { e.stopPropagation(); addBlurBtn.click(); setTab('blur'); });
   floatObjects.append(addTextFloat, addBlurFloat);
-  const camBtn = moEl('button', 'mo-ce-float-btn', {
+  const camBtn = moEl('button', 'mo-ce-float-btn', { sceneId: 'media-organizer.clipEditor.float.previewCrop', sceneLabel: 'Preview Crop',
     title: 'The cropped view fills the stage and follows crop keyframes during playback',
   });
   camBtn.append(ico('eye', 14), moEl('span', null, { textContent: 'Preview Crop' }));
 
   // Play/pause lives on the transport; clicking the video toggles too, like
   // every media player. Pausing is how keyframes get placed.
-  const playBtn = moEl('button', 'mo-ce-play', { title: 'Play (Space, or click the video)', innerHTML: moIcon('play', 16) });
+  const playBtn = moEl('button', 'mo-ce-play', { sceneId: 'media-organizer.clipEditor.play', sceneLabel: 'Play', title: 'Play (Space, or click the video)', innerHTML: moIcon('play', 16) });
   function togglePlayback() {
     if (preview.paused) {
       // Starting playback with the playhead OUTSIDE [in, out] (or after the
@@ -21943,11 +21928,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   // Transport: set In, frame back, play, frame forward, set Out, timecode.
   const transport = moEl('div', 'mo-ce-transport');
-  api.ui.createButton(transport, { label: 'In', icon: 'arrow-right-to-line', kind: 'ghost', size: 'sm', title: 'Set In at the playhead (I)', onClick: () => setInBtn.click() });
-  api.ui.createIconButton(transport, { icon: 'step-back', size: 'sm', title: 'Previous frame (,)', onClick: () => stepFrame(-1) });
+  api.ui.createButton(transport, { id: 'media-organizer.clipEditor.transport.in', label: 'In', icon: 'arrow-right-to-line', kind: 'ghost', size: 'sm', title: 'Set In at the playhead (I)', onClick: () => setInBtn.click() });
+  api.ui.createIconButton(transport, { id: 'media-organizer.clipEditor.transport.previousFrame', icon: 'step-back', size: 'sm', title: 'Previous frame (,)', onClick: () => stepFrame(-1) });
   transport.appendChild(playBtn);
-  api.ui.createIconButton(transport, { icon: 'step-forward', size: 'sm', title: 'Next frame (.)', onClick: () => stepFrame(1) });
-  const outTBtn = api.ui.createButton(transport, { label: 'Out', kind: 'ghost', size: 'sm', title: 'Set Out at the playhead (O)', onClick: () => setOutBtn.click() });
+  api.ui.createIconButton(transport, { id: 'media-organizer.clipEditor.transport.nextFrame', icon: 'step-forward', size: 'sm', title: 'Next frame (.)', onClick: () => stepFrame(1) });
+  const outTBtn = api.ui.createButton(transport, { id: 'media-organizer.clipEditor.transport.out', label: 'Out', kind: 'ghost', size: 'sm', title: 'Set Out at the playhead (O)', onClick: () => setOutBtn.click() });
   outTBtn.appendChild(ico('arrow-left-to-line', 14));
   const stageTime = moEl('span', 'mo-ce-tc', { textContent: moTcStr(0) + ' / ' + moTcStr(duration) });
   transport.appendChild(stageTime);
@@ -21958,18 +21943,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // Loop: on, playback wraps inside the range (or the segments); off, it
   // stops at Out. Remembered per user.
   let loopOn = true;
-  const loopBtn = api.ui.createIconButton(transport, { icon: 'repeat', size: 'sm', title: 'Loop the range' });
+  const loopBtn = api.ui.createIconButton(transport, { id: 'media-organizer.clipEditor.transport.loop', icon: 'repeat', size: 'sm', title: 'Loop the range' });
   const syncLoopBtn = () => { loopBtn.classList.toggle('mo-active', loopOn); loopBtn.title = loopOn ? 'Looping the range (click to stop at Out)' : 'Stops at Out (click to loop the range)'; };
   loopBtn.addEventListener('click', () => { loopOn = !loopOn; syncLoopBtn(); moSetSetting('clipEditorLoop_v1', loopOn ? '1' : '0').catch(() => {}); });
   moGetSetting('clipEditorLoop_v1', '1').then((v) => { loopOn = v !== '0'; syncLoopBtn(); }).catch(() => {});
   syncLoopBtn();
-  const volBtn = api.ui.createIconButton(transport, { icon: 'volume-2', size: 'sm', title: 'Mute the preview' });
+  const volBtn = api.ui.createIconButton(transport, { id: 'media-organizer.clipEditor.transport.mute', icon: 'volume-2', size: 'sm', title: 'Mute the preview' });
   volBtn.addEventListener('click', () => {
     preview.muted = !preview.muted;
     volBtn.innerHTML = moIcon(preview.muted ? 'volume-x' : 'volume-2', 14);
     volBtn.title = preview.muted ? 'Unmute the preview' : 'Mute the preview';
   });
-  api.ui.createIconButton(transport, { icon: 'camera', size: 'sm', title: 'Save Frame: the frame under the playhead as a photo (cropped when the crop is on)', onClick: () => { void saveFrame(); } });
+  api.ui.createIconButton(transport, { id: 'media-organizer.clipEditor.transport.saveFrame', icon: 'camera', size: 'sm', title: 'Save Frame: the frame under the playhead as a photo (cropped when the crop is on)', onClick: () => { void saveFrame(); } });
   stageCol.appendChild(transport);
 
   // Stage chips: the source (bottom right) and, while cropping with keys,
@@ -22063,7 +22048,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const panels = moEl('div', 'mo-ce-panels');
   const sheetBar = moEl('div', 'mo-ce-sheetbar');
   sheetBar.appendChild(moEl('span', 'mo-ce-sheetbar-grip'));
-  api.ui.createIconButton(sheetBar, { icon: 'x', size: 'sm', title: 'Close', onClick: () => setSheetOpen(false) });
+  api.ui.createIconButton(sheetBar, { id: 'media-organizer.clipEditor.sheet.close', icon: 'x', size: 'sm', title: 'Close', onClick: () => setSheetOpen(false) });
   insp.append(tabsRow, sheetBar, panels);
   const TABS = [
     ['trim', 'scissors', 'Trim'],
@@ -22077,7 +22062,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const tabEls = {};
   let activeTab = 'trim';
   for (const [id, icon, label] of TABS) {
-    const tab = moEl('button', 'mo-ce-tab', { role: 'tab', title: label });
+    const tab = moEl('button', 'mo-ce-tab', { sceneId: `media-organizer.clipEditor.tab.${moSlug(id)}`, sceneLabel: `${label}`, role: 'tab', title: label });
     tab.append(ico(icon, 16), moEl('span', null, { textContent: label }), moEl('span', 'mo-ce-tab-dot'));
     tab.addEventListener('click', () => {
       // In a narrow pane the active tab's icon closes its sheet again.
@@ -22146,14 +22131,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   queuePanelHead.appendChild(moEl('span', 'mo-ce-spacer'));
   const queueSaveSlot = moEl('span');
   queuePanelHead.appendChild(queueSaveSlot);
-  api.ui.createIconButton(queuePanelHead, { icon: 'x', size: 'sm', title: 'Close the queue', onClick: () => setQueueOpen(false) });
+  api.ui.createIconButton(queuePanelHead, { id: 'media-organizer.clipEditor.queue.close', icon: 'x', size: 'sm', title: 'Close the queue', onClick: () => setQueueOpen(false) });
   const queuePanelBody = moEl('div', 'mo-ce-queue-body');
   const queueFoot = moEl('div', 'mo-ce-queue-foot');
-  const queueUpdateBtn = api.ui.createButton(queueFoot, { label: 'Update Clip', title: 'Replace the clip being edited with the current settings (Q)', onClick: () => addBtn.click() });
-  const queueStopBtn = api.ui.createButton(queueFoot, { label: 'Stop Editing', kind: 'ghost', title: 'Stop editing this clip (settings stay as they are)', onClick: () => stopEditBtn.click() });
+  const queueUpdateBtn = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.update', label: 'Update Clip', title: 'Replace the clip being edited with the current settings (Q)', onClick: () => addBtn.click() });
+  const queueStopBtn = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.stopEditing', label: 'Stop Editing', kind: 'ghost', title: 'Stop editing this clip (settings stay as they are)', onClick: () => stopEditBtn.click() });
   const queueSize = moEl('span', 'mo-ce-sum mo-ce-sum--left');
   queueFoot.append(moEl('span', 'mo-ce-spacer'), queueSize);
-  const queueExportAll = api.ui.createButton(queueFoot, { label: 'Export All…', kind: 'primary', title: 'Export every queued clip into one folder', onClick: () => exportBtn.click() });
+  const queueExportAll = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.exportAll', label: 'Export All…', kind: 'primary', title: 'Export every queued clip into one folder', onClick: () => exportBtn.click() });
   queuePanel.append(queuePanelHead, queuePanelBody, queueFoot);
   function syncQueueFoot() {
     const editing = editingId != null && clipQueue.some((x) => x.id === editingId);
@@ -22178,9 +22163,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   toast.style.display = 'none';
   const toastText = moEl('span', 'mo-ce-toast-text');
   toast.append(ico('check', 14), toastText);
-  const revealBtn = api.ui.createButton(toast, { label: 'Reveal', icon: 'folder', size: 'sm', title: 'Show the exported file in your file manager.' });
-  const copyPathBtn = api.ui.createButton(toast, { label: 'Copy Path', icon: 'copy', size: 'sm', title: 'Copy the exported file’s path.' });
-  api.ui.createIconButton(toast, { icon: 'x', size: 'sm', title: 'Dismiss', onClick: () => { toast.style.display = 'none'; } });
+  const revealBtn = api.ui.createButton(toast, { id: 'media-organizer.clipEditor.toast.reveal', label: 'Reveal', icon: 'folder', size: 'sm', title: 'Show the exported file in your file manager.' });
+  const copyPathBtn = api.ui.createButton(toast, { id: 'media-organizer.clipEditor.toast.copyPath', label: 'Copy Path', icon: 'copy', size: 'sm', title: 'Copy the exported file’s path.' });
+  api.ui.createIconButton(toast, { id: 'media-organizer.clipEditor.toast.dismiss', icon: 'x', size: 'sm', title: 'Dismiss', onClick: () => { toast.style.display = 'none'; } });
   overlay.appendChild(toast);
 
   const lbl = (t) => moEl('label', 'mo-clip-label', { textContent: t });
@@ -22314,9 +22299,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (document.activeElement !== outTc) outTc.value = moTcStr(b);
     if (document.activeElement !== lenTc) lenTc.value = moTcStr(b - a);
   }
-  const setInBtn = api.ui.createButton(null, { label: 'Set', icon: 'arrow-right-to-line', size: 'sm', title: 'Set In at the playhead (I)' });
+  const setInBtn = api.ui.createButton(null, { id: 'media-organizer.clipEditor.setIn', label: 'Set', icon: 'arrow-right-to-line', size: 'sm', title: 'Set In at the playhead (I)' });
   setInBtn.appendChild(moEl('span', 'mo-ce-kbd', { textContent: 'I' }));
-  const setOutBtn = api.ui.createButton(null, { label: 'Set', icon: 'arrow-left-to-line', size: 'sm', title: 'Set Out at the playhead (O)' });
+  const setOutBtn = api.ui.createButton(null, { id: 'media-organizer.clipEditor.setOut', label: 'Set', icon: 'arrow-left-to-line', size: 'sm', title: 'Set Out at the playhead (O)' });
   setOutBtn.appendChild(moEl('span', 'mo-ce-kbd', { textContent: 'O' }));
   const inRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
   inRow.append(lbl('In'), inTc, setInBtn);
@@ -22361,7 +22346,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const sizeInput = document.createElement('input');
   sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
   sizeInput.className = 'mo-clip-input mo-clip-input--num';
-  sizeRow.appendChild(sizeInput);
+  sizeRow.appendChild(sizeInput); moDeclare(sizeInput, 'media-organizer.clipEditor.size', { label: 'Size (%)' });
   secOutput.appendChild(sizeRow);
   addSlider(sizeInput, 10, 200, 5);
 
@@ -22379,7 +22364,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const quickSpeeds = ['0.5', '1', '1.5', '2'];
   let speedMore = false;
   const speedBtns = quickSpeeds.map((v) => {
-    const b = moEl('button', null, { textContent: v + '×' });
+    const b = moEl('button', null, { sceneId: `media-organizer.clipEditor.speed.${moSlug(String(v))}`, textContent: v + '×' });
     b.addEventListener('click', () => {
       speedMore = false;
       fitSel.value = '0'; fitSel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -22389,7 +22374,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     speedSeg.appendChild(b);
     return [v, b];
   });
-  const fitBtn = moEl('button', null, { textContent: 'Fit…', title: 'Fit the clip to a length (a timelapse), or pick any speed up to 64×' });
+  const fitBtn = moEl('button', null, { sceneId: 'media-organizer.clipEditor.speed.fit', textContent: 'Fit…', title: 'Fit the clip to a length (a timelapse), or pick any speed up to 64×' });
   fitBtn.addEventListener('click', () => { speedMore = true; syncSpeedSeg(); });
   speedSeg.appendChild(fitBtn);
   timingGroup.appendChild(speedSeg);
@@ -22442,7 +22427,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const filterSel = moSelect(MO_CLIP_FILTERS.map((f) => [f.id, f.label]), 'none');
   const looksGrid = moEl('div', 'mo-ce-looks');
   const lookSwatches = MO_CLIP_FILTERS.map((f) => {
-    const sw = moEl('button', 'mo-ce-look', { title: f.label });
+    const sw = moEl('button', 'mo-ce-look', { sceneId: `media-organizer.clipEditor.look.${moSlug(f.id)}`, sceneLabel: `${f.label}`, title: f.label });
     const img = document.createElement('img');
     img.alt = '';
     img.style.filter = f.css === 'none' ? '' : f.css;
@@ -22486,7 +22471,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // seconds from the playhead with every current setting and plays them back
   // over the stage. What you see here is what the file will be.
   const renderRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  const renderBtn = moEl('button', 'mo-mark-btn', { textContent: 'Preview Render', title: 'Render three real seconds from the playhead with the current settings (look, crop, blur, text) and play them over the stage.' });
+  const renderBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.previewRender', textContent: 'Preview Render', title: 'Render three real seconds from the playhead with the current settings (look, crop, blur, text) and play them over the stage.' });
   renderRow.append(renderBtn);
   secLook.appendChild(renderRow);
   secLook.appendChild(moEl('div', 'mo-clip-note', { textContent: 'Renders three real seconds from the playhead, so what you see is what exports.' }));
@@ -22544,7 +22529,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       v.src = url; v.loop = true; v.muted = true; v.autoplay = true; v.controls = false;
       const bar = moEl('div', 'mo-render-preview-bar');
       bar.appendChild(moEl('span', null, { textContent: `Real render · ${moTimeStr(t0)} → ${moTimeStr(t1)} · ${previewScale}%` }));
-      const close = moEl('button', 'mo-mark-btn', { textContent: 'Close', title: 'Back to the live preview' });
+      const close = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.previewRender.close', textContent: 'Close', title: 'Back to the live preview' });
       close.addEventListener('click', (e) => { e.stopPropagation(); void closeRenderPreview(); });
       bar.appendChild(close);
       renderOverlay.append(v, bar);
@@ -22563,7 +22548,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // ── Blur regions: hide something, still or moving ──
   // The tab edits the selected region (Region i of n) and lists them all,
   // like the Text tab. Times are source times; blank means the whole video.
-  const addBlurBtn = moEl('button', 'mo-mark-btn', { title: 'A box over the video that blurs or pixelates what is under it. Drag it on the video; Shows limits it in time; Track makes it follow a moving subject.' });
+  const addBlurBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.blur.add', sceneLabel: 'Add Blur Region', title: 'A box over the video that blurs or pixelates what is under it. Drag it on the video; Shows limits it in time; Track makes it follow a moving subject.' });
   addBlurBtn.append(ico('grid-2x2', 14), moEl('span', null, { textContent: 'Add Blur Region' }));
   const blurCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
   const blurEmpty = moEl('div', 'mo-ce-empty');
@@ -22795,7 +22780,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   cropChk.type = 'checkbox'; cropChk.id = 'mo-clip-crop'; cropChk.className = 'mo-clip-check';
   cropChk.title = 'Crop: frame part of the video';
   const cropLabel = moEl('label', 'mo-ce-group-title', { textContent: 'Crop' }); cropLabel.htmlFor = 'mo-clip-crop';
-  cropHead.append(cropLabel, cropChk);
+  cropHead.append(cropLabel, cropChk); moDeclare(cropChk, 'media-organizer.clipEditor.crop', { label: 'Crop' });
   cropGroup.appendChild(cropHead);
   const cropOffNote = moEl('div', 'mo-clip-note', { textContent: 'Turn on to frame part of the video, move the frame over time, or follow a subject.' });
   cropGroup.appendChild(cropOffNote);
@@ -22827,7 +22812,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (a.ratio != null && cropEnabled) applyAspectRatio(a.ratio);
   };
   const aspectBtns = aspects.map(a => {
-    const b = moEl('button', 'mo-ce-float-btn', { textContent: a.label, title: a.ratio == null ? 'Free crop, no aspect-ratio constraint' : `Constrain crop to ${a.label}` });
+    const b = moEl('button', 'mo-ce-float-btn', { sceneId: `media-organizer.clipEditor.crop.aspect.${moSlug(a.label)}`, textContent: a.label, title: a.ratio == null ? 'Free crop, no aspect-ratio constraint' : `Constrain crop to ${a.label}` });
     b.addEventListener('click', (e) => { e.stopPropagation(); setAspect(a); });
     aspectRow.appendChild(b);
     return b;
@@ -22846,7 +22831,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const vw0 = preview.videoWidth || 0, vh0 = preview.videoHeight || 0;
     outputField.textContent = vw0 ? `${Math.round(cropBase.w * vw0)} × ${Math.round(cropBase.h * vh0)} px` : '';
   }
-  const cropResetBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reset to Full Frame', title: 'Start the crop over: the whole frame, no keyframes' });
+  const cropResetBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.crop.reset', textContent: 'Reset to Full Frame', title: 'Start the crop over: the whole frame, no keyframes' });
   const resetRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
   resetRow.appendChild(cropResetBtn);
   cropBody.append(aspectRowPanel, outputRow, resetRow);
@@ -22857,21 +22842,21 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const keyCount = moEl('span', 'mo-ce-sum', { textContent: '' });
   motionHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Motion' }), keyCount);
   const keyRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  const addKeyBtn = moEl('button', 'mo-mark-btn', {
+  const addKeyBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.crop.addKeyframe', sceneLabel: 'Add Keyframe',
     title: 'Add/update a crop keyframe at the playhead (K). Two or more keyframes animate the crop window between them.',
   });
   addKeyBtn.append(ico('diamond', 14), moEl('span', null, { textContent: 'Add Keyframe' }), moEl('span', 'mo-ce-kbd', { textContent: 'K' }));
-  const clearKeysBtn = moEl('button', 'mo-mark-btn mo-ce-ghostbtn', { textContent: 'Clear Keys', title: 'Remove all crop keyframes (back to a static crop)' });
+  const clearKeysBtn = moEl('button', 'mo-mark-btn mo-ce-ghostbtn', { sceneId: 'media-organizer.clipEditor.crop.clearKeys', textContent: 'Clear Keys', title: 'Remove all crop keyframes (back to a static crop)' });
   keyRow.append(addKeyBtn, clearKeysBtn);
   motionGroup.append(motionHead, keyRow, moEl('div', 'mo-clip-note', { textContent: 'Two or more keyframes move the crop between them. Drag a diamond on the Motion lane to change its time.' }));
 
   // Follow a subject: the tracker writes the keys.
   const followGroup = moEl('div', 'mo-ce-group');
-  const trackBtn = moEl('button', 'mo-mark-btn', {
+  const trackBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.crop.track',
     textContent: 'Auto-Track',
     title: 'Follow the subject inside the crop window across the In→Out range and generate keyframes automatically. Position the window over the subject first; click again to cancel.',
   });
-  const pointBtn = moEl('button', 'mo-mark-btn', {
+  const pointBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.crop.point',
     textContent: 'Point Track',
     title: 'Pick the exact thing to follow: click this, then click the subject on the video, size the crop window, and click again to run. Right-click the marker to clear the point.',
   });
@@ -22889,7 +22874,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const smartRow = moEl('div', 'mo-ce-group');
   const smartHead = moEl('div', 'mo-ce-group-head');
   smartHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Smart Zoom' }), moEl('span', 'mo-ce-sum', { textContent: 'From the cursor path' }));
-  const smartZoomBtn = moEl('button', 'mo-mark-btn', { title: 'Zoom in around the places the mouse rested while recording, glide between them, and zoom back out. Uses the cursor path the recorder captured. You can edit the keys after.' });
+  const smartZoomBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.smartZoom.add', sceneLabel: 'Add Smart Zoom', title: 'Zoom in around the places the mouse rested while recording, glide between them, and zoom back out. Uses the cursor path the recorder captured. You can edit the keys after.' });
   smartZoomBtn.append(ico('sparkles', 14), moEl('span', null, { textContent: 'Add Smart Zoom' }));
   const smartBtnRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
   smartBtnRow.appendChild(smartZoomBtn);
@@ -23050,7 +23035,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // are on the exported clip. On the video each text is an object: click
   // selects it, drag moves it (cx/cy, burned in where you put it).
   let activeCapId = null;
-  const addCapBtn = moEl('button', 'mo-mark-btn', { title: 'A title card, a lower-third label, or a caption line at the playhead (T)' });
+  const addCapBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.text.add', sceneLabel: 'Add Text', title: 'A title card, a lower-third label, or a caption line at the playhead (T)' });
   addCapBtn.append(ico('type', 14), moEl('span', null, { textContent: 'Add Text' }), moEl('span', 'mo-ce-kbd', { textContent: 'T' }));
   const capEmpty = moEl('div', 'mo-ce-empty');
   capEmpty.append(moEl('div', 'mo-clip-note', { textContent: 'No text yet. Add a title, a lower third or a caption; it shows on the video and as a bar on the Text lane.' }), addCapBtn);
@@ -23302,7 +23287,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   holdInput.className = 'mo-clip-input mo-clip-input--num';
   const holdLbl = lbl('Hold the last frame');
   holdLbl.title = 'Keep the finished picture on screen for a moment before the clip ends.';
-  holdRow.append(holdLbl, holdInput, moEl('span', 'mo-clip-unit', { textContent: 's' }));
+  holdRow.append(holdLbl, holdInput, moEl('span', 'mo-clip-unit', { textContent: 's' })); moDeclare(holdInput, 'media-organizer.clipEditor.holdEnd', { label: `${holdLbl.textContent}` });
   finishGroup.appendChild(holdRow);
   addSlider(holdInput, 0, 10, 0.5);
   holdInput.addEventListener('input', () => { holdEnd = Math.max(0, Math.min(10, parseFloat(holdInput.value) || 0)); updateAccordionSummaries(); try { updateEstimate(); } catch { /* pre-init */ } });
@@ -23310,12 +23295,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const baChk = document.createElement('input'); baChk.type = 'checkbox'; baChk.id = 'mo-clip-before-after'; baChk.className = 'mo-clip-check';
   const baLbl = lbl('Before and after'); baLbl.htmlFor = 'mo-clip-before-after';
   baLbl.title = 'A still of the first frame beside the last, labelled Before and After. Side by side for a wide picture, one above the other for a tall one.';
-  baRow.append(baLbl, baChk);
+  baRow.append(baLbl, baChk); moDeclare(baChk, 'media-organizer.clipEditor.beforeAfter', { label: `${baLbl.textContent}` });
   finishGroup.appendChild(baRow);
   const baSecsRow = moEl('div', 'mo-clip-row');
   const baSecs = document.createElement('input'); baSecs.type = 'number'; baSecs.min = '1'; baSecs.max = '10'; baSecs.step = '0.5'; baSecs.value = '3';
   baSecs.className = 'mo-clip-input mo-clip-input--num';
-  baSecsRow.append(lbl('Shown for'), baSecs, moEl('span', 'mo-clip-unit', { textContent: 's' }));
+  baSecsRow.append(lbl('Shown for'), baSecs, moEl('span', 'mo-clip-unit', { textContent: 's' })); moDeclare(baSecs, 'media-organizer.clipEditor.beforeAfter.seconds', { label: 'Shown for' });
   finishGroup.appendChild(baSecsRow);
   addSlider(baSecs, 1, 10, 0.5);
   const syncBa = () => {
@@ -23346,7 +23331,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const cardHead = moEl('div', 'mo-ce-group-head');
   const cardChk = document.createElement('input'); cardChk.type = 'checkbox'; cardChk.id = 'mo-clip-card'; cardChk.className = 'mo-clip-check';
   const cardLbl = moEl('label', 'mo-ce-group-title', { textContent: 'End card', title: 'A closing card with a title and a line under it, after the last segment.' }); cardLbl.htmlFor = 'mo-clip-card';
-  cardHead.append(cardLbl, cardChk);
+  cardHead.append(cardLbl, cardChk); moDeclare(cardChk, 'media-organizer.clipEditor.endCard', { label: `${cardLbl.textContent}` });
   cardGroup.appendChild(cardHead);
   const cardBody = moEl('div', 'mo-clip-cardbody');
   cardBody.style.display = 'none';
@@ -23365,7 +23350,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     updateAccordionSummaries();
     try { updateEstimate(); } catch { /* pre-init */ }
   };
-  for (const el of [cardChk, cardTitle, cardSub, cardSecs, cardBg]) { el.addEventListener('input', syncCard); el.addEventListener('change', syncCard); }
+  for (const el of [cardChk, cardTitle, cardSub, cardSecs, cardBg]) { el.addEventListener('input', syncCard); el.addEventListener('change', syncCard); } moDeclare(cardTitle, 'media-organizer.clipEditor.endCard.title', { label: 'Title' }); moDeclare(cardSub, 'media-organizer.clipEditor.endCard.subtitle', { label: 'Subtitle' }); moDeclare(cardSecs, 'media-organizer.clipEditor.endCard.length', { label: 'Length' }); moDeclare(cardBg, 'media-organizer.clipEditor.endCard.colour', { label: 'Colour' });
 
   // Destination presets: one click sets format, size and quality for where
   // the clip is going. "Custom" leaves everything as it is.
@@ -23423,7 +23408,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   muteRow.appendChild(muteChk);
   const muteLabel = lbl('Mute audio'); muteLabel.htmlFor = 'mo-clip-mute';
   muteLabel.title = 'Export without sound (MP4 and WebM); mutes the preview too.';
-  muteRow.appendChild(muteLabel);
+  muteRow.appendChild(muteLabel); moDeclare(muteChk, 'media-organizer.clipEditor.muteAudio', { label: 'Mute audio' });
   secOutput.appendChild(muteRow);
 
   // Reverse playback
@@ -23431,7 +23416,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const revChk = document.createElement('input');
   revChk.type = 'checkbox'; revChk.id = 'mo-clip-rev'; revChk.className = 'mo-clip-check';
   const revLabel = lbl('Reverse'); revLabel.htmlFor = 'mo-clip-rev';
-  revRow.append(revLabel, revChk);
+  revRow.append(revLabel, revChk); moDeclare(revChk, 'media-organizer.clipEditor.reverse', { label: `${revLabel.textContent}` });
   timingGroup.appendChild(revRow);
 
   // GIF-only: loop (ffmpeg's -loop: 0 forever, -1 play once, N repeat N times)
@@ -23463,7 +23448,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   autoOptThreshold.type = 'number'; autoOptThreshold.min = '1'; autoOptThreshold.max = '500'; autoOptThreshold.step = '1';
   autoOptThreshold.value = '8';
   autoOptThreshold.className = 'mo-clip-input mo-clip-input--num';
-  autoOptRow.append(autoOptLabel, autoOptChk, autoOptThreshold, moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
+  autoOptRow.append(autoOptLabel, autoOptChk, autoOptThreshold, moEl('span', 'mo-clip-unit', { textContent: 'MB' })); moDeclare(autoOptChk, 'media-organizer.clipEditor.gif.autoOptimize', { label: `${autoOptLabel.textContent}` }); moDeclare(autoOptThreshold, 'media-organizer.clipEditor.gif.autoOptimizeLimit', { label: 'Size limit (MB)' });
   secExport.appendChild(autoOptRow);
 
   // GIF-only: the frames row's edits (drops, delays) and frame order.
@@ -23481,7 +23466,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   };
   revFrChk.addEventListener('change', () => { revFrames = revFrChk.checked; syncFramesSummary(); });
   const revFrLabel = lbl('Frames'); revFrLabel.htmlFor = 'mo-clip-rev-frames';
-  revFrRow.append(revFrLabel, framesSummaryEl, revFrChk);
+  revFrRow.append(revFrLabel, framesSummaryEl, revFrChk); moDeclare(revFrChk, 'media-organizer.clipEditor.gif.reverseFrames', { label: `${revFrLabel.textContent}` });
   secExport.appendChild(revFrRow);
   syncFramesSummary();
   // Persist the user's last choice so it survives across dialog opens.
@@ -23520,7 +23505,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const crfInput = document.createElement('input');
   crfInput.type = 'number'; crfInput.min = '15'; crfInput.max = '35'; crfInput.value = '23';
   crfInput.className = 'mo-clip-input mo-clip-input--num'; crfInput.title = 'Lower CRF = better quality, larger file';
-  crfRow.appendChild(crfInput);
+  crfRow.appendChild(crfInput); moDeclare(crfInput, 'media-organizer.clipEditor.quality', { label: 'Quality' });
   secExport.appendChild(crfRow);
   addSlider(crfInput, 15, 35, 1);
 
@@ -23533,11 +23518,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   sizeInputMB.value = '8';
   sizeInputMB.className = 'mo-clip-input mo-clip-input--num';
   sizeInputMB.title = 'Target size in megabytes. Two-pass encode; actual size is usually within 5%';
-  sizeMbRow.appendChild(sizeInputMB);
+  sizeMbRow.appendChild(sizeInputMB); moDeclare(sizeInputMB, 'media-organizer.clipEditor.targetSize', { label: 'Target size' });
   sizeMbRow.appendChild(moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
   const sizeChips = moEl('span', 'mo-clip-chiprow');
   for (const [label, mb] of [['8', 8], ['25', 25], ['50', 50], ['100', 100]]) {
-    const chip = moEl('button', 'mo-clip-chip', { textContent: label });
+    const chip = moEl('button', 'mo-clip-chip', { sceneId: `media-organizer.clipEditor.targetSize.${label}`, sceneLabel: `${label} MB`, textContent: label });
     chip.addEventListener('click', () => {
       sizeInputMB.value = String(mb);
       sizeInputMB.dispatchEvent(new Event('input', { bubbles: true }));
@@ -23569,7 +23554,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const nameRow = moEl('div', 'mo-clip-row');
   const nameInput = document.createElement('input');
   nameInput.type = 'text'; nameInput.className = 'mo-clip-input mo-clip-input--grow'; nameInput.placeholder = 'Optional, used as the file name';
-  nameRow.append(lbl('Name'), nameInput);
+  nameRow.append(lbl('Name'), nameInput); moDeclare(nameInput, 'media-organizer.clipEditor.name', { label: 'Name' });
   secExport.appendChild(nameRow);
   const safeFileName = (v) => String(v || '').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 64);
   // Populate GPU dropdown asynchronously \u2014 detection runs ffmpeg, so we
@@ -23665,21 +23650,21 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   // ── Segments: several In→Out ranges become ONE clip ──
   const segRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  const addSegBtn = moEl('button', 'mo-mark-btn', {
+  const addSegBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.segments.add',
     textContent: 'Add Segment',
     title: 'Keep the current In→Out range as a segment. Two or more segments export as one clip, in list order.',
   });
-  const deadAirBtn = moEl('button', 'mo-mark-btn', {
+  const deadAirBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.segments.cutDeadAir',
     textContent: 'Cut Dead Air',
     title: 'Inside In→Out, find where the picture froze and the sound went quiet, and keep only the rest as segments.',
   });
-  const clearSegBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear', title: 'Remove every segment (back to one In→Out range).' });
+  const clearSegBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.segments.clear', textContent: 'Clear', title: 'Remove every segment (back to one In→Out range).' });
   clearSegBtn.style.display = 'none';
   const segCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
   // Segments come from Split (and Cut Dead Air); Add Segment and Clear stay
   // as functions (the queue's old snapshots and the probe use them) but the
   // panel offers what the mockup does. Undo replaces Clear.
-  const splitBtn = moEl('button', 'mo-mark-btn', { title: 'Split the kept part at the playhead (S)' });
+  const splitBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.segments.split', sceneLabel: 'Split at Playhead', title: 'Split the kept part at the playhead (S)' });
   splitBtn.append(ico('scissors', 14), moEl('span', null, { textContent: 'Split at Playhead' }), moEl('span', 'mo-ce-kbd', { textContent: 'S' }));
   splitBtn.addEventListener('click', () => splitAtPlayhead());
   deadAirBtn.prepend(ico('audio-waveform', 14));
@@ -23971,7 +23956,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   keysSheet.style.display = 'none';
   const keysHead = moEl('div', 'mo-ce-keys-head');
   keysHead.append(moEl('span', 'mo-ce-pop-title', { textContent: 'Keyboard shortcuts' }), moEl('span', 'mo-ce-spacer'));
-  api.ui.createIconButton(keysHead, { icon: 'x', size: 'sm', title: 'Close (Esc)', onClick: () => toggleKeysSheet(false) });
+  api.ui.createIconButton(keysHead, { id: 'media-organizer.clipEditor.keys.close', icon: 'x', size: 'sm', title: 'Close (Esc)', onClick: () => toggleKeysSheet(false) });
   keysSheet.appendChild(keysHead);
   for (const [k, what] of [
     ['Space', 'Play or pause (or click the video)'], [', and .', 'Previous and next frame'],
@@ -24191,13 +24176,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const tlPct = (t) => (duration > 0 ? (Math.max(0, Math.min(duration, t)) / duration) * 100 : 0) + '%';
 
   const zoomRow = moEl('div', 'mo-ce-zoom');
-  const zoomOutBtn = api.ui.createIconButton(zoomRow, { icon: 'zoom-out', size: 'sm', title: 'Zoom out (Ctrl+scroll on the timeline)' });
+  const zoomOutBtn = api.ui.createIconButton(zoomRow, { id: 'media-organizer.clipEditor.timeline.zoomOut', icon: 'zoom-out', size: 'sm', title: 'Zoom out (Ctrl+scroll on the timeline)' });
   const zoomSlider = document.createElement('input');
   zoomSlider.type = 'range'; zoomSlider.min = '0'; zoomSlider.max = '1000'; zoomSlider.step = '1'; zoomSlider.value = '0';
   zoomSlider.className = 'mo-clip-slider'; zoomSlider.title = 'Timeline zoom';
-  zoomRow.appendChild(zoomSlider);
-  const zoomInBtn = api.ui.createIconButton(zoomRow, { icon: 'zoom-in', size: 'sm', title: 'Zoom in (Ctrl+scroll on the timeline)' });
-  api.ui.createButton(zoomRow, { label: 'Fit', kind: 'ghost', size: 'sm', title: 'Show the whole video', onClick: () => setZoom(1) });
+  zoomRow.appendChild(zoomSlider); moDeclare(zoomSlider, 'media-organizer.clipEditor.timeline.zoom', { label: 'Timeline zoom' });
+  const zoomInBtn = api.ui.createIconButton(zoomRow, { id: 'media-organizer.clipEditor.timeline.zoomIn', icon: 'zoom-in', size: 'sm', title: 'Zoom in (Ctrl+scroll on the timeline)' });
+  api.ui.createButton(zoomRow, { id: 'media-organizer.clipEditor.timeline.fit', label: 'Fit', kind: 'ghost', size: 'sm', title: 'Show the whole video', onClick: () => setZoom(1) });
 
   function setZoom(z, anchorT) {
     const anchor = anchorT == null ? preview.currentTime : anchorT;
@@ -24583,14 +24568,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (selSeg >= 0) selectSegment(selSeg, false);
     status.textContent = `Split at ${moTcStr(t)}: ${segments.length} segments. Click a block to edit it; Delete removes the selected one.`;
   }
-  const tlSplitBtn = api.ui.createButton(tlBar, { label: 'Split', icon: 'scissors', kind: 'ghost', size: 'sm', title: 'Split the kept part at the playhead (S)', onClick: () => splitAtPlayhead() });
+  const tlSplitBtn = api.ui.createButton(tlBar, { id: 'media-organizer.clipEditor.timeline.split', label: 'Split', icon: 'scissors', kind: 'ghost', size: 'sm', title: 'Split the kept part at the playhead (S)', onClick: () => splitAtPlayhead() });
   tlSplitBtn.appendChild(moEl('span', 'mo-ce-kbd', { textContent: 'S' }));
-  api.ui.createButton(tlBar, { label: 'Cut Dead Air', icon: 'audio-waveform', kind: 'ghost', size: 'sm', title: 'Inside In→Out, cut where the picture froze and the sound went quiet', onClick: () => deadAirBtn.click() });
+  api.ui.createButton(tlBar, { id: 'media-organizer.clipEditor.timeline.cutDeadAir', label: 'Cut Dead Air', icon: 'audio-waveform', kind: 'ghost', size: 'sm', title: 'Inside In→Out, cut where the picture froze and the sound went quiet', onClick: () => deadAirBtn.click() });
   tlBar.appendChild(moEl('span', 'mo-ce-sep'));
   // Snap: drags settle on the playhead, In/Out, segment edges, keys and bar
   // edges when they come within a few pixels. Remembered per user.
   let snapOn = true;
-  const snapBtn = api.ui.createIconButton(tlBar, { icon: 'magnet', size: 'sm', title: 'Snap' });
+  const snapBtn = api.ui.createIconButton(tlBar, { id: 'media-organizer.clipEditor.timeline.snap', icon: 'magnet', size: 'sm', title: 'Snap' });
   const syncSnapBtn = () => { snapBtn.classList.toggle('mo-active', snapOn); snapBtn.title = snapOn ? 'Snapping on (click to drag freely)' : 'Snapping off'; };
   snapBtn.addEventListener('click', () => { snapOn = !snapOn; syncSnapBtn(); moSetSetting('clipEditorSnap_v1', snapOn ? '1' : '0').catch(() => {}); });
   moGetSetting('clipEditorSnap_v1', '1').then((v) => { snapOn = v !== '0'; syncSnapBtn(); }).catch(() => {});
@@ -24630,9 +24615,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     banner.appendChild(moEl('span', 'mo-ce-banner-text', { textContent: 'From your recording: ' + bits.join(', ') + '.' }));
     banner.appendChild(moEl('span', 'mo-ce-spacer'));
     if (cursorTrack && !cropEnabled) {
-      api.ui.createButton(banner, { label: 'Add Smart Zoom', icon: 'sparkles', size: 'sm', title: 'Zoom in where the mouse rested, glide between those places', onClick: () => { smartZoomBtn.click(); setTab('crop'); banner.style.display = 'none'; } });
+      api.ui.createButton(banner, { id: 'media-organizer.clipEditor.banner.addSmartZoom', label: 'Add Smart Zoom', icon: 'sparkles', size: 'sm', title: 'Zoom in where the mouse rested, glide between those places', onClick: () => { smartZoomBtn.click(); setTab('crop'); banner.style.display = 'none'; } });
     }
-    api.ui.createIconButton(banner, { icon: 'x', size: 'sm', title: 'Dismiss', onClick: () => { banner.style.display = 'none'; } });
+    api.ui.createIconButton(banner, { id: 'media-organizer.clipEditor.banner.dismiss', icon: 'x', size: 'sm', title: 'Dismiss', onClick: () => { banner.style.display = 'none'; } });
     banner.style.display = '';
   }
 
@@ -25630,14 +25615,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   queueHeadActions.style.gap = '6px';
   queueHeadActions.style.alignItems = 'center';
   queueHeadActions.style.marginLeft = 'auto';
-  const stopEditBtn = moEl('button', 'mo-mark-btn', { textContent: 'Stop Editing', title: 'Stop editing this clip (settings stay as they are)' });
+  const stopEditBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.stopEditing', textContent: 'Stop Editing', title: 'Stop editing this clip (settings stay as they are)' });
   stopEditBtn.style.display = 'none';
   stopEditBtn.addEventListener('click', () => {
     editingId = null;
     renderQueue();
     updateAddBtnLabel();
   });
-  const addBtn = moEl('button', 'mo-mark-btn', { textContent: 'Add to Queue', title: 'Snapshot current settings as a clip in the batch (Q)' });
+  const addBtn = moEl('button', 'mo-mark-btn', { sceneId: 'media-organizer.clipEditor.queue.add', textContent: 'Add to Queue', title: 'Snapshot current settings as a clip in the batch (Q)' });
   // addBtn sits in the Export menu's footer (and answers Q anywhere).
   queueHeadActions.append(stopEditBtn);
   queueHead.appendChild(queueHeadActions);
@@ -25651,7 +25636,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // \u2014 in/out times can therefore exceed the source duration; we clamp at
   // load. Save uses whatever is currently in the queue.
   const presetsRow = moEl('div', 'mo-clip-presets-row');
-  const saveBtn = api.ui.createButton(queueSaveSlot, { label: 'Save as Preset…', kind: 'ghost', size: 'sm', title: 'Save the queued clips as a named preset' });
+  const saveBtn = api.ui.createButton(queueSaveSlot, { id: 'media-organizer.clipEditor.queue.savePreset', label: 'Save as Preset…', kind: 'ghost', size: 'sm', title: 'Save the queued clips as a named preset' });
   presetsRow.appendChild(moEl('span', 'mo-ce-group-title', { textContent: 'Presets' }));
   const presetsHost = moEl('div');
   presetsHost.style.display = 'flex';
@@ -25755,7 +25740,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const secQueue = addSection('queue', 'Queue');
   popFoot.appendChild(addBtn);
   popFoot.appendChild(moEl('span', 'mo-ce-spacer'));
-  api.ui.createButton(popFoot, { label: 'Export…', kind: 'primary', title: 'Export now with these settings', onClick: () => { setPopOpen(false); exportBtn.click(); } });
+  api.ui.createButton(popFoot, { id: 'media-organizer.clipEditor.exportPopover.export', label: 'Export…', kind: 'primary', title: 'Export now with these settings', onClick: () => { setPopOpen(false); exportBtn.click(); } });
 
   secQueue.appendChild(queueWrap);
 
@@ -27912,7 +27897,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
   scaleRow.style.cssText = 'display:flex;gap:6px;margin-top:4px;';
   const scaleBtns = new Map();
   for (const s of [2, 4]) {
-    const b = moEl('button', null, { type: 'button', textContent: `${s}x` });
+    const b = moEl('button', null, { sceneId: `media-organizer.upscale.scale.${s}`, type: 'button', textContent: `${s}x` });
     b.addEventListener('click', () => { if (running) return; scale = s; refreshChoice(); });
     scaleRow.appendChild(b);
     scaleBtns.set(s, b);
@@ -27964,8 +27949,8 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
 
   // Footer
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
-  const runBtn = moEl('button', 'primary', { textContent: 'Upscale' });
+  const cancelBtn = moEl('button', null, { sceneId: 'media-organizer.upscale.cancel', textContent: 'Cancel' });
+  const runBtn = moEl('button', 'primary', { sceneId: 'media-organizer.upscale.run', textContent: 'Upscale' });
   footer.append(cancelBtn, runBtn);
   dialog.appendChild(footer);
 
@@ -28176,15 +28161,15 @@ function showUpscaleSetupDialog(api) {
   status.style.cssText = 'font-size:12px;opacity:0.8;';
   dialog.appendChild(status);
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const copyBtn = moEl('button', null, { textContent: 'Copy Command' });
+  const copyBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.copyCommand', textContent: 'Copy Command' });
   copyBtn.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(command); status.textContent = 'Command copied. Run it, then press Check Again.'; } catch { status.textContent = 'Could not copy. Select the command above and copy it.'; }
   });
-  const openBtn = moEl('button', null, { textContent: 'Open Bin Folder' });
+  const openBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.openBinFolder', textContent: 'Open Bin Folder' });
   openBtn.addEventListener('click', () => {
     if (window.parallxElectron?.shell?.showItemInFolder) window.parallxElectron.shell.showItemInFolder(p.script);
   });
-  const checkBtn = moEl('button', null, { textContent: 'Check Again' });
+  const checkBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.checkAgain', textContent: 'Check Again' });
   checkBtn.addEventListener('click', async () => {
     _toolsDetected = false;
     _toolsRetryAfter = 0;
@@ -28192,7 +28177,7 @@ function showUpscaleSetupDialog(api) {
     if (ready) { overlay.remove(); api.window.showInformationMessage('The upscaler is ready. Choose Upscale on a photo.'); }
     else status.textContent = `Not found yet at ${p.exe}.`;
   });
-  const closeBtn = moEl('button', 'primary', { textContent: 'Close' });
+  const closeBtn = moEl('button', 'primary', { sceneId: 'media-organizer.upscaleSetup.close', textContent: 'Close' });
   closeBtn.addEventListener('click', () => overlay.remove());
   footer.append(copyBtn, openBtn, checkBtn, closeBtn);
   dialog.appendChild(footer);
@@ -28732,7 +28717,7 @@ async function moOpenDuplicateFinder(api) {
   overlay.appendChild(dialog);
   const header = moEl('div', 'mo-modal-header');
   header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Duplicate Finder' }));
-  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
+  const closeBtn = moEl('button', 'mo-modal-close', { sceneId: 'media-organizer.duplicates.close', sceneLabel: 'Close', textContent: '×' });
   closeBtn.addEventListener('click', () => overlay.remove());
   header.appendChild(closeBtn);
   dialog.appendChild(header);
@@ -28771,7 +28756,7 @@ async function moOpenDuplicateFinder(api) {
   }
 
   const footer = moEl('div', 'mo-modal-footer');
-  const close2 = moEl('button', 'mo-btn-secondary', { textContent: 'Close' });
+  const close2 = moEl('button', 'mo-btn-secondary', { sceneId: 'media-organizer.duplicates.done', textContent: 'Close' });
   close2.addEventListener('click', () => overlay.remove());
   footer.appendChild(close2);
   dialog.appendChild(footer);
@@ -30675,15 +30660,15 @@ function renderTagReview(container, api) {
   const cropsBox = moEl('input', null, { type: 'checkbox' });
   cropsLabel.append(cropsBox, moEl('span', null, { textContent: 'Detail Crops' }));
   moGetSetting(MO_TAG_CROPS_KEY, '0').then((v) => { cropsBox.checked = v === '1'; }).catch(() => {});
-  cropsBox.addEventListener('change', () => { moSetSetting(MO_TAG_CROPS_KEY, cropsBox.checked ? '1' : '0').catch(() => {}); });
+  cropsBox.addEventListener('change', () => { moSetSetting(MO_TAG_CROPS_KEY, cropsBox.checked ? '1' : '0').catch(() => {}); }); moDeclare(cropsBox, 'media-organizer.tagReview.detailCrops', { label: 'Detail Crops' });
 
-  const rulesBtn = moEl('button', 'mo-tr-btn', {
+  const rulesBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.tagReview.rules',
     type: 'button', textContent: 'Rules', 'aria-expanded': 'false',
     title: 'Rules the tagger follows in this library, sent with every tagging request. Say which of two similar tags wins, when a parent is enough, what never gets tagged.',
   });
-  const resumeBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Resume', title: 'Tag the photos that are waiting' });
-  const stopBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop. The rest wait for Resume.' });
-  const approveAllBtn = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve All', title: 'Approve every photo that has suggestions' });
+  const resumeBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.tagReview.resume', type: 'button', textContent: 'Resume', title: 'Tag the photos that are waiting' });
+  const stopBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.tagReview.stop', type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop. The rest wait for Resume.' });
+  const approveAllBtn = moEl('button', 'mo-tr-btn primary', { sceneId: 'media-organizer.tagReview.approveAll', type: 'button', textContent: 'Approve All', title: 'Approve every photo that has suggestions' });
   const bar = moEl('div', 'mo-tr-actions-bar');
   bar.append(cropsLabel, rulesBtn, resumeBtn, stopBtn, approveAllBtn);
   head.appendChild(bar);
@@ -30698,7 +30683,7 @@ function renderTagReview(container, api) {
   // every request (moTagPrompt). Saved as typed; the runner reads it per photo.
   const rulesWrap = moEl('div', 'mo-tr-rules');
   rulesWrap.hidden = true;
-  const rulesBox = moEl('textarea', 'mo-tr-rules-box', {
+  const rulesBox = moEl('textarea', 'mo-tr-rules-box', { sceneId: 'media-organizer.tagReview.rulesText', sceneLabel: 'Tag rules',
     'aria-label': 'Tagging Rules', rows: '5', maxlength: String(MO_TAG_RULES_MAX), spellcheck: 'true',
     placeholder: 'One rule per line. For example: use CORGI only when the breed is unmistakable, otherwise DOG. Never tag people by name.',
   });
@@ -30790,7 +30775,7 @@ function renderTagReview(container, api) {
   }
 
   function buildAddInput(r, ids, hasIds) {
-    const input = moEl('input', 'mo-tr-add-input mo-tag-name-input', { type: 'text', placeholder: 'Add a tag' });
+    const input = moEl('input', 'mo-tr-add-input mo-tag-name-input', { sceneId: 'media-organizer.tagReview.photo.addTag', type: 'text', placeholder: 'Add a tag' });
     input.setAttribute('aria-label', 'Add one of your tags');
     let items = [];
     let active = 0;
@@ -30864,7 +30849,7 @@ function renderTagReview(container, api) {
     // multi-parent commit: the renderer threw on the first row and Tag Review stayed empty.
     const picks = moTagPicksOf(r).filter((p) => ids.includes(p.id));
     const row = moEl('div', `mo-tr-row is-${r.status}`);
-    row.dataset.reviewId = String(r.id);
+    row.dataset.reviewId = String(r.id); moSurface(row, 'media-organizer.tagReview.photo', r.name || `Photo ${r.photo_id}`, r.id);
 
     const thumb = moEl('div', 'mo-tr-thumb', { title: 'View full size' });
     const img = moEl('img', null, { alt: '' });
@@ -30906,7 +30891,7 @@ function renderTagReview(container, api) {
 
     const actions = moEl('div', 'mo-tr-row-actions');
     if (r.status === 'pending') {
-      const approve = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Approve', title: retag ? 'Replace the photo\'s tags with these and their parents' : 'Add these tags and their parents to the photo' });
+      const approve = moEl('button', 'mo-tr-btn primary', { sceneId: 'media-organizer.tagReview.photo.approve', type: 'button', textContent: 'Approve', title: retag ? 'Replace the photo\'s tags with these and their parents' : 'Add these tags and their parents to the photo' });
       approve.disabled = ids.length === 0;
       approve.addEventListener('click', async () => {
         approve.disabled = true;
@@ -30918,12 +30903,12 @@ function renderTagReview(container, api) {
       actions.appendChild(approve);
     }
     if (r.status === 'failed' || r.status === 'nomatch') {
-      const retry = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Retry', title: 'Ask the model again' });
+      const retry = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.tagReview.photo.retry', type: 'button', textContent: 'Retry', title: 'Ask the model again' });
       retry.addEventListener('click', () => { void moTagRetry(r.id); });
       actions.appendChild(retry);
     }
     if (r.status !== 'running') {
-      const skip = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Skip', title: 'Leave the photo as it is and take it off the list' });
+      const skip = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.tagReview.photo.skip', type: 'button', textContent: 'Skip', title: 'Leave the photo as it is and take it off the list' });
       skip.addEventListener('click', () => { void moTagSkip(r.id); });
       actions.appendChild(skip);
     }
@@ -31590,7 +31575,7 @@ function moBuildDailyCard(api) {
   const title = moEl('div', 'mo-daily-title', { textContent: 'Daily Study' });
   const sub = moEl('div', 'mo-daily-sub');
   text.appendChild(title); text.appendChild(sub);
-  const btn = moEl('button', 'mo-practice-start', { type: 'button', textContent: 'Start' });
+  const btn = moEl('button', 'mo-practice-start', { sceneId: 'media-organizer.daily.start', type: 'button', textContent: 'Start' });
   el.appendChild(img); el.appendChild(text); el.appendChild(btn);
   let disposed = false;
   let photoId = 0;
@@ -31706,7 +31691,7 @@ function renderPracticeSetup(container, api) {
     form.appendChild(r);
     return r;
   };
-  const smallBtn = (label, onClick) => { const b = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', onClick); return b; };
+  const smallBtn = (label, onClick) => { const b = moEl('button', 'mo-toolbar-btn', { sceneId: `media-organizer.practice.${moSlug(label)}`, type: 'button', textContent: label }); b.addEventListener('click', onClick); return b; };
 
   // Preset
   const presetRow = row('Preset');
@@ -31792,7 +31777,7 @@ function renderPracticeSetup(container, api) {
     if (kind === 'tag') {
       if (!tags) tags = await db.all('SELECT id, name FROM mo_tags ORDER BY name COLLATE NOCASE ASC');
       if (disposed) return;
-      const input = moEl('input', 'mo-clip-input mo-clip-input--grow', { type: 'text', placeholder: 'Type a tag', 'aria-label': 'Tag' });
+      const input = moEl('input', 'mo-clip-input mo-clip-input--grow', { sceneId: 'media-organizer.practice.tag', type: 'text', placeholder: 'Type a tag', 'aria-label': 'Tag' });
       input.value = s.pool.label || '';
       let items = []; let active = 0;
       const pick = (t) => { closeSuggest(); s.pool = { kind: 'tag', id: t.id, label: t.name }; input.value = t.name; refreshPoolCount(); };
@@ -31836,7 +31821,7 @@ function renderPracticeSetup(container, api) {
       albumDrop.onChange = (v) => { const a = albums.find((x) => String(x.id) === v); if (a) { s.pool = { kind: 'album', id: a.id, label: a.title }; refreshPoolCount(); } };
       poolDetail.appendChild(albumDrop.el);
     } else if (kind === 'search') {
-      const input = moEl('input', 'mo-clip-input mo-clip-input--grow', { type: 'text', placeholder: 'Search the library', 'aria-label': 'Search' });
+      const input = moEl('input', 'mo-clip-input mo-clip-input--grow', { sceneId: 'media-organizer.practice.search', type: 'text', placeholder: 'Search the library', 'aria-label': 'Search' });
       input.value = s.pool.query || '';
       input.addEventListener('input', () => { s.pool = { kind: 'search', query: input.value }; refreshPoolCount(); });
       poolDetail.appendChild(input);
@@ -31854,7 +31839,7 @@ function renderPracticeSetup(container, api) {
   const chips = moEl('div', 'mo-home-chips');
   const chipEls = {};
   for (const [k, label] of [['count', 'Pictures And Time'], ['total', 'Total Time']]) {
-    const b = moEl('button', 'mo-home-chip', { type: 'button', textContent: label });
+    const b = moEl('button', 'mo-home-chip', { sceneId: `media-organizer.practice.mode.${k}`, type: 'button', textContent: label });
     b.addEventListener('click', () => { s.mode = k; syncControls(); });
     chipEls[k] = b;
     chips.appendChild(b);
@@ -31863,7 +31848,7 @@ function renderPracticeSetup(container, api) {
   const perItems = MO_PRACTICE_PER_OPTIONS.map((v) => ({ value: String(v), label: moPracticeFormatDuration(v) }));
   const totalItems = MO_PRACTICE_TOTAL_OPTIONS.map((v) => ({ value: String(v), label: moPracticeFormatDuration(v * 60) }));
   const countRow = row('Pictures');
-  const countInput = moEl('input', 'mo-clip-input mo-clip-input--num', { type: 'number', min: '1', max: '500', step: '1', 'aria-label': 'Pictures' });
+  const countInput = moEl('input', 'mo-clip-input mo-clip-input--num', { sceneId: 'media-organizer.practice.count', type: 'number', min: '1', max: '500', step: '1', 'aria-label': 'Pictures' });
   countInput.addEventListener('input', () => { s.count = Math.max(1, Math.min(500, parseInt(countInput.value, 10) || 1)); syncSummary(); });
   countRow.appendChild(countInput);
   const totalRow = row('Total Time');
@@ -31899,7 +31884,7 @@ function renderPracticeSetup(container, api) {
   // Start
   const startRow = moEl('div', 'mo-practice-row');
   startRow.appendChild(moEl('span', 'mo-practice-label'));
-  const startBtn = moEl('button', 'mo-practice-start', { type: 'button', textContent: 'Start' });
+  const startBtn = moEl('button', 'mo-practice-start', { sceneId: 'media-organizer.practice.start', type: 'button', textContent: 'Start' });
   startBtn.addEventListener('click', () => void start());
   startRow.appendChild(startBtn);
   form.appendChild(startRow);
@@ -32046,7 +32031,7 @@ function renderPracticePlayer(container, api, sessionId) {
   root.appendChild(notice);
   const controls = moEl('div', 'mo-practice-controls');
   const btn = (icon, title, fn) => {
-    const b = moEl('button', 'mo-practice-btn', { type: 'button', title, 'aria-label': title, innerHTML: moIcon(icon, 16) });
+    const b = moEl('button', 'mo-practice-btn', { sceneId: `media-organizer.practice.player.${moSlug(icon)}`, type: 'button', title, 'aria-label': title, innerHTML: moIcon(icon, 16) });
     b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     return b;
   };
@@ -32236,7 +32221,7 @@ function renderPracticePlayer(container, api, sessionId) {
     });
     end.appendChild(endStrip);
     const actions = moEl('div', 'mo-practice-end-actions');
-    const again = moEl('button', 'mo-practice-start', { type: 'button', textContent: daily ? 'Draw Again' : 'Practice Again' });
+    const again = moEl('button', 'mo-practice-start', { sceneId: 'media-organizer.practice.again', type: 'button', textContent: daily ? 'Draw Again' : 'Practice Again' });
     again.addEventListener('click', async () => {
       again.disabled = true;
       try {
@@ -32253,7 +32238,7 @@ function renderPracticePlayer(container, api, sessionId) {
     });
     actions.appendChild(again);
     if (!daily) {
-      const setup = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Open Practice Setup' });
+      const setup = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.practice.openSetup', type: 'button', textContent: 'Open Practice Setup' });
       setup.addEventListener('click', () => moOpenPracticeSetup(api));
       actions.appendChild(setup);
     }
@@ -32307,15 +32292,15 @@ function buildPracticeHistoryStrip(ctx, api) {
   const head = moEl('div', 'mo-practice-history-head');
   head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Drawing and Painting' }));
   const actions = moEl('div', 'mo-practice-history-actions');
-  const addBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Add To Plan' });
+  const addBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.history.addToPlan', type: 'button', textContent: 'Add To Plan' });
   addBtn.addEventListener('click', () => void moPlanPickAndAdd(api, ctx.type === 'video' ? 'video' : 'photo', id));
   if (ctx.type === 'video') {
     actions.appendChild(addBtn); head.appendChild(actions); wrap.appendChild(head);
     return wrap;
   }
-  const planBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Plan Painting' });
+  const planBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.history.planPainting', type: 'button', textContent: 'Plan Painting' });
   planBtn.addEventListener('click', () => void moPlanCreate(api, id));
-  const drawBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Draw This' });
+  const drawBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.history.drawThis', type: 'button', textContent: 'Draw This' });
   drawBtn.addEventListener('click', async () => {
     drawBtn.disabled = true;
     try {
@@ -33100,7 +33085,7 @@ function renderPlanEditor(container, api, planId) {
   const TOOLS = [['crop', 'crop', 'Crop'], ['light', 'sun', 'Light'], ['colour', 'droplet', 'Colour'], ['values', 'contrast', 'Values'], ['grids', 'grid-3x3', 'Composition'], ['palette', 'palette', 'Palette'], ['compare', 'columns', 'Compare'], ['process', 'layers', 'Process'], ['info', 'pencil', 'Plan']];
   const toolBtns = {};
   for (const [id, icon, label] of TOOLS) {
-    const b = moEl('button', 'mo-plan-tool', { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 16) });
+    const b = moEl('button', 'mo-plan-tool', { sceneId: `media-organizer.plan.tool.${moSlug(id)}`, type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 16) });
     b.addEventListener('click', () => setTool(id));
     toolBtns[id] = b;
     tools.appendChild(b);
@@ -33109,13 +33094,13 @@ function renderPlanEditor(container, api, planId) {
   // Top bar: title, undo/redo, export.
   const titleEl = moEl('div', 'mo-plan-title');
   const sizeEl = moEl('div', 'mo-practice-dim');
-  const undoBtn = moEl('button', 'mo-practice-btn', { type: 'button', title: 'Undo', 'aria-label': 'Undo', innerHTML: moIcon('rotate-cw', 14) });
+  const undoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.undo', type: 'button', title: 'Undo', 'aria-label': 'Undo', innerHTML: moIcon('rotate-cw', 14) });
   undoBtn.style.transform = 'scaleX(-1)';
-  const redoBtn = moEl('button', 'mo-practice-btn', { type: 'button', title: 'Redo', 'aria-label': 'Redo', innerHTML: moIcon('rotate-cw', 14) });
+  const redoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.redo', type: 'button', title: 'Redo', 'aria-label': 'Redo', innerHTML: moIcon('rotate-cw', 14) });
   undoBtn.addEventListener('click', () => undo()); redoBtn.addEventListener('click', () => redo());
-  const exportBtn = moEl('button', 'mo-practice-start', { type: 'button', textContent: 'Export Plan' });
-  const exportGridBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Export With Grid' });
-  const printBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Print With Grid' });
+  const exportBtn = moEl('button', 'mo-practice-start', { sceneId: 'media-organizer.plan.export', type: 'button', textContent: 'Export Plan' });
+  const exportGridBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.exportWithGrid', type: 'button', textContent: 'Export With Grid' });
+  const printBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.printWithGrid', type: 'button', textContent: 'Print With Grid' });
   exportBtn.addEventListener('click', () => void exportPlan(false));
   exportGridBtn.addEventListener('click', () => void exportPlan(true));
   printBtn.addEventListener('click', () => void printPlan());
@@ -33281,8 +33266,8 @@ function renderPlanEditor(container, api, planId) {
     if (t === 'crop') {
       const s = section('Canvas');
       const row = moEl('div', 'mo-plan-row');
-      const wIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Width' });
-      const hIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Height' });
+      const wIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { sceneId: 'media-organizer.plan.canvasWidth', type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Width' });
+      const hIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { sceneId: 'media-organizer.plan.canvasHeight', type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Height' });
       wIn.value = String(state.plan.canvas_w); hIn.value = String(state.plan.canvas_h);
       const applySize = () => {
         const w = Math.max(1, Number(wIn.value) || 1); const h = Math.max(1, Number(hIn.value) || 1);
@@ -33370,7 +33355,7 @@ function renderPlanEditor(container, api, planId) {
       s.appendChild(toggle('Before And After', () => state.split >= 0, (v) => { state.split = v ? 0.5 : -1; requestRender(); renderPanel(); }));
       if (state.split >= 0) {
         const row = moEl('div', 'mo-plan-slider');
-        const input = moEl('input', null, { type: 'range', min: '0', max: '1', step: '0.01', 'aria-label': 'Split' });
+        const input = moEl('input', null, { sceneId: 'media-organizer.plan.split', type: 'range', min: '0', max: '1', step: '0.01', 'aria-label': 'Split' });
         input.value = String(state.split);
         input.addEventListener('input', () => { state.split = Number(input.value); requestRender(); });
         row.appendChild(input);
@@ -33398,11 +33383,11 @@ function renderPlanEditor(container, api, planId) {
       s.appendChild(list);
     } else if (t === 'info') {
       const s = section('Plan');
-      const tIn = moEl('input', 'mo-clip-input mo-clip-input--grow', { type: 'text', 'aria-label': 'Title', placeholder: 'Title' });
+      const tIn = moEl('input', 'mo-clip-input mo-clip-input--grow', { sceneId: 'media-organizer.plan.title', type: 'text', 'aria-label': 'Title', placeholder: 'Title' });
       tIn.value = state.plan.title || '';
       tIn.addEventListener('change', () => { state.plan.title = tIn.value.trim() || 'Painting'; titleEl.textContent = state.plan.title; scheduleSave(); });
       s.appendChild(tIn);
-      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { 'aria-label': 'Notes', placeholder: 'Notes: what the painting is about, the light, the mood, what to keep and what to leave out.' });
+      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { sceneId: 'media-organizer.plan.notes', 'aria-label': 'Notes', placeholder: 'Notes: what the painting is about, the light, the mood, what to keep and what to leave out.' });
       notes.value = state.plan.notes || '';
       notes.addEventListener('change', () => { state.plan.notes = notes.value; scheduleSave(); });
       s.appendChild(notes);
@@ -35325,9 +35310,9 @@ function moEditAskSave(n, overable) {
     text.style.cssText = 'font-size:12px;line-height:1.5;';
     dialog.appendChild(text);
     const footer = moEl('div', 'mo-bulk-dialog-footer');
-    const later = moEl('button', null, { type: 'button', textContent: 'Not Now' });
-    const over = moEl('button', null, { type: 'button', textContent: overable === 1 ? 'Save Over Original' : `Save Over ${overable} Originals` });
-    const copy = moEl('button', 'primary', { type: 'button', textContent: n === 1 ? 'Save As Copy' : `Save ${n} Copies` });
+    const later = moEl('button', null, { sceneId: 'media-organizer.askSave.notNow', type: 'button', textContent: 'Not Now' });
+    const over = moEl('button', null, { sceneId: 'media-organizer.askSave.saveOver', type: 'button', textContent: overable === 1 ? 'Save Over Original' : `Save Over ${overable} Originals` });
+    const copy = moEl('button', 'primary', { sceneId: 'media-organizer.askSave.saveCopy', type: 'button', textContent: n === 1 ? 'Save As Copy' : `Save ${n} Copies` });
     over.disabled = !overable;
     footer.append(later, over, copy);
     dialog.appendChild(footer);
@@ -35902,11 +35887,11 @@ function renderBulkRemove(container, api) {
   const scopeDd = moDropdown({ items: [{ value: 'folder', label: 'This Folder' }], selected: 'folder', ariaLabel: 'Photos To Look In' });
   const whatDd = moDropdown({ items: MO_BULK_WHAT, selected: _moBulkUi.what, ariaLabel: 'What To Remove' });
   whatDd.el.title = 'Mark Only removes the mark\'s own shape, worked out from the photos that have it, and leaves what lies beside it. Whole Brushed Area removes all that was brushed on the example.';
-  const findBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Find Marks', title: 'Look for the marks in these photos. Nothing is changed yet.' });
-  const stopBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop' });
+  const findBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.bulkRemove.find', type: 'button', textContent: 'Find Marks', title: 'Look for the marks in these photos. Nothing is changed yet.' });
+  const stopBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.bulkRemove.stop', type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop' });
   const saveDd = moDropdown({ items: MO_BULK_SAVE, selected: _moBulkUi.save, ariaLabel: 'How To Save' });
   saveDd.el.title = 'Save As Copies writes a copy of each photo beside its original. Save Over Originals replaces each photo\'s file, which cannot be brought back.';
-  const removeBtn = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Remove And Save Copies' });
+  const removeBtn = moEl('button', 'mo-tr-btn primary', { sceneId: 'media-organizer.bulkRemove.remove', type: 'button', textContent: 'Remove And Save Copies' });
   bar.append(scopeDd.el, whatDd.el, findBtn, stopBtn, saveDd.el, removeBtn);
   head.appendChild(bar);
   const progress = moEl('div', 'mo-tr-progress', { role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' });
@@ -35917,8 +35902,8 @@ function renderBulkRemove(container, api) {
 
   const marksEl = moEl('div', 'mo-br-marks');
   const pickEl = moEl('div', 'mo-br-pickbar');
-  const allBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Select All', title: 'Tick every photo shown' });
-  const noneBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Select None', title: 'Untick every photo shown' });
+  const allBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.bulkRemove.selectAll', type: 'button', textContent: 'Select All', title: 'Tick every photo shown' });
+  const noneBtn = moEl('button', 'mo-tr-btn', { sceneId: 'media-organizer.bulkRemove.selectNone', type: 'button', textContent: 'Select None', title: 'Untick every photo shown' });
   const pickedEl = moEl('span', 'mo-br-picked');
   pickEl.append(allBtn, noneBtn, pickedEl);
   pickEl.title = 'Click a photo to tick it. Shift-click ticks every photo from the last one clicked to this one.';
@@ -35999,7 +35984,7 @@ function renderBulkRemove(container, api) {
       for (const [id, label] of MO_BULK_FILTERS) {
         const n2 = id === 'all' ? state.photos.length : counts[id];
         if (id !== 'all' && !n2) continue;
-        const b = moEl('button', 'mo-tr-btn', { type: 'button', textContent: `${label} ${n2}`, 'aria-pressed': state.filter === id ? 'true' : 'false' });
+        const b = moEl('button', 'mo-tr-btn', { sceneId: `media-organizer.bulkRemove.filter.${moSlug(id)}`, sceneLabel: `${label}`, type: 'button', textContent: `${label} ${n2}`, 'aria-pressed': state.filter === id ? 'true' : 'false' });
         b.classList.toggle('is-on', state.filter === id);
         b.addEventListener('click', () => { state.filter = id; sync(); applyFilter(); });
         filtersEl.appendChild(b);
@@ -36543,11 +36528,11 @@ function renderImageEditor(container, api) {
   // Presets toggle and the name · Undo, Redo · Compare · Zoom · ⋯ · Save.
   // Every icon names itself and its key; toggles look like toggles, never like Save.
   const iconBtn = (icon, label, fn, key) => {
-    const b = api.ui.createIconButton(null, { icon, title: key ? `${label} (${key})` : label, onClick: fn });
+    const b = api.ui.createIconButton(null, { id: `media-organizer.imageEditor.${moSlug(label)}`, icon, title: key ? `${label} (${key})` : label, onClick: fn });
     b.setAttribute('aria-label', label);
     return b;
   };
-  const textBtn = (label, fn, kind) => api.ui.createButton(null, { label, kind: kind || 'secondary', size: 'sm', onClick: fn });
+  const textBtn = (label, fn, kind) => api.ui.createButton(null, { id: `media-organizer.imageEditor.${moSlug(label)}`, label, kind: kind || 'secondary', size: 'sm', onClick: fn });
   const presetsBtn = iconBtn('panel-left', 'Presets', () => togglePresets(), 'P');
   presetsBtn.classList.add('mo-edit-toggle');
   const titleEl = moEl('div', 'mo-edit-title');
@@ -36557,9 +36542,9 @@ function renderImageEditor(container, api) {
   const redoBtn = iconBtn('redo-2', 'Redo', () => redo(), 'Ctrl+Shift+Z');
   // Compare: Hold shows the original while pressed (\ switches it); Split draws a handle to drag.
   const compareSeg = moEl('div', 'mo-edit-seg', { role: 'group', 'aria-label': 'Compare with the original' });
-  const holdBtn = moEl('button', 'mo-edit-segbtn', { type: 'button', title: 'Hold to see the original (\\ switches it)', 'aria-pressed': 'false' });
+  const holdBtn = moEl('button', 'mo-edit-segbtn', { sceneId: 'media-organizer.imageEditor.hold', sceneLabel: 'Hold', type: 'button', title: 'Hold to see the original (\\ switches it)', 'aria-pressed': 'false' });
   holdBtn.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon('eye', 14) }), moEl('span', null, { textContent: 'Hold' }), moEl('kbd', 'mo-edit-kbd', { textContent: '\\' }));
-  const splitBtn = moEl('button', 'mo-edit-segbtn', { type: 'button', title: 'Split: before and after side by side (Shift+\\)', 'aria-pressed': 'false' });
+  const splitBtn = moEl('button', 'mo-edit-segbtn', { sceneId: 'media-organizer.imageEditor.split', sceneLabel: 'Split', type: 'button', title: 'Split: before and after side by side (Shift+\\)', 'aria-pressed': 'false' });
   splitBtn.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon('columns-2', 14) }), moEl('span', null, { textContent: 'Split' }));
   compareSeg.append(holdBtn, splitBtn);
   let holding = false;
@@ -36571,7 +36556,7 @@ function renderImageEditor(container, api) {
   holdBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOriginal(); } });
   splitBtn.addEventListener('click', () => toggleSplit());
   // Zoom: one control; the percentage opens Fit, 50%, 100%, 200%.
-  const zoomBtn = moEl('button', 'mo-edit-zoombtn', { type: 'button', title: 'Zoom' });
+  const zoomBtn = moEl('button', 'mo-edit-zoombtn', { sceneId: 'media-organizer.imageEditor.zoom', sceneLabel: 'Zoom', type: 'button', title: 'Zoom' });
   const zoomEl = moEl('span', 'mo-edit-zoomval');
   zoomBtn.append(zoomEl, moEl('span', 'mo-edit-ico', { innerHTML: moIcon('chevron-down', 12) }));
   zoomBtn.addEventListener('click', () => {
@@ -36612,8 +36597,8 @@ function renderImageEditor(container, api) {
   });
   // Save: Save As Copy is the safe main action; Save Over Original… is in its menu, in red, and still asks.
   const saveSplit = moEl('span', 'mo-edit-split');
-  const saveBtn = api.ui.createButton(saveSplit, { label: 'Save As Copy', kind: 'primary', size: 'sm', title: 'Write the edited picture beside the original (Ctrl+S)', onClick: () => void saveCopy() });
-  const saveMenuBtn = api.ui.createIconButton(saveSplit, { icon: 'chevron-down', size: 'sm', title: 'Save options' });
+  const saveBtn = api.ui.createButton(saveSplit, { id: 'media-organizer.imageEditor.saveCopy', label: 'Save As Copy', kind: 'primary', size: 'sm', title: 'Write the edited picture beside the original (Ctrl+S)', onClick: () => void saveCopy() });
+  const saveMenuBtn = api.ui.createIconButton(saveSplit, { id: 'media-organizer.imageEditor.saveOptions', icon: 'chevron-down', size: 'sm', title: 'Save options' });
   saveMenuBtn.classList.add('mo-edit-split-menu');
   saveMenuBtn.addEventListener('click', () => {
     const r = saveMenuBtn.getBoundingClientRect();
@@ -36635,7 +36620,7 @@ function renderImageEditor(container, api) {
   // The panel's tool tabs: labelled, with a dot on a tool that holds changes.
   const toolBtns = {};
   for (const [id, icon, label] of MO_EDIT_TOOLS) {
-    const b = moEl('button', 'mo-edit-tab', { type: 'button', role: 'tab', title: label, 'aria-label': label });
+    const b = moEl('button', 'mo-edit-tab', { sceneId: `media-organizer.imageEditor.tool.${moSlug(id)}`, type: 'button', role: 'tab', title: label, 'aria-label': label });
     b.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon(icon, 16) }), moEl('span', 'mo-edit-tab-label', { textContent: MO_EDIT_TAB_LABEL[id] || label }), moEl('span', 'mo-edit-tab-dot'));
     b.addEventListener('click', () => setTool(id));
     toolBtns[id] = b;
@@ -37070,7 +37055,7 @@ function renderImageEditor(container, api) {
   const openSection = (parent, id, title, o = {}) => {
     const section = moEl('div', 'mo-edit-section');
     const head = moEl('div', 'mo-edit-section-head');
-    const fold = moEl('button', 'mo-edit-section-fold', { type: 'button' });
+    const fold = moEl('button', 'mo-edit-section-fold', { sceneId: `media-organizer.imageEditor.section.${moSlug(id)}`, sceneLabel: `${title}`, type: 'button' });
     fold.appendChild(moEl('span', 'mo-edit-chevron', { innerHTML: moIcon('chevron-down', 12) }));
     fold.appendChild(moEl('span', 'mo-edit-section-title', { textContent: title }));
     if (o.dot) fold.appendChild(moEl('span', 'mo-edit-section-dot', { title: 'Changed' }));
@@ -37107,7 +37092,7 @@ function renderImageEditor(container, api) {
     const row = moEl('div', 'mo-edit-slider' + (o.dim ? ' is-dim' : ''));
     const name = moEl('span', 'mo-edit-slider-name', { textContent: o.label, title: `${o.label}: double-click to reset` });
     const val = moEl('button', 'mo-edit-value', { type: 'button', title: 'Click to type a value' });
-    const input = moEl('input', 'mo-edit-range' + (o.tint ? ` mo-edit-range--${o.tint}` : ''), { type: 'range', min: String(o.min), max: String(o.max), step: String(o.step || 0.01), 'aria-label': o.aria || o.label, 'data-slider': o.id || o.label });
+    const input = moEl('input', 'mo-edit-range' + (o.tint ? ` mo-edit-range--${o.tint}` : ''), { sceneId: `media-organizer.imageEditor.slider.${moSlug(o.id)}`, sceneLabel: `${o.label}`, type: 'range', min: String(o.min), max: String(o.max), step: String(o.step || 0.01), 'aria-label': o.aria || o.label, 'data-slider': o.id || o.label });
     input.value = String(o.value);
     const span = Math.max(1e-9, o.max - o.min);
     const show = () => {
@@ -37154,7 +37139,7 @@ function renderImageEditor(container, api) {
     onChange: (v) => { state.recipe[key] = v; afterChange(true); },
   }).row;
   function miniBtn(icon, label, fn, on) {
-    const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) });
+    const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { sceneId: `media-organizer.imageEditor.mini.${moSlug(label)}`, type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) });
     if (on !== undefined) b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     return b;
@@ -37205,7 +37190,7 @@ function renderImageEditor(container, api) {
     const isOff = (id) => r.off.includes(id);
     const eye = (id, title, rest) => ({ off: isOff(id), disabled: rest && !isOff(id), title, toggle: () => { r.off = isOff(id) ? r.off.filter((x) => x !== id) : r.off.concat(id); afterChange(true); } });
     // Light: Auto sits in its header.
-    const autoBtn = api.ui.createButton(null, { label: 'Auto', icon: 'sparkles', kind: 'ghost', size: 'sm', title: 'Auto: set the light from the picture (Ctrl+U)', onClick: () => autoTone() });
+    const autoBtn = api.ui.createButton(null, { id: 'media-organizer.imageEditor.auto', label: 'Auto', icon: 'sparkles', kind: 'ghost', size: 'sm', title: 'Auto: set the light from the picture (Ctrl+U)', onClick: () => autoTone() });
     autoBtn.classList.add('mo-edit-headbtn');
     const lightRest = slidersRest(MO_EDIT_LIGHT);
     const light = openSection(panelBody, 'light', 'Light', { dot: !lightRest, acts: [autoBtn],
@@ -37366,7 +37351,7 @@ function renderImageEditor(container, api) {
     const r = state.recipe;
     const dots = moEl('div', 'mo-edit-dots');
     for (const [key, label, hue] of MO_EDIT_MIX) {
-      const d = moEl('button', 'mo-edit-dot', { type: 'button', title: label, 'aria-label': label });
+      const d = moEl('button', 'mo-edit-dot', { sceneId: `media-organizer.imageEditor.mix.${moSlug(key)}`, type: 'button', title: label, 'aria-label': label });
       d.style.background = `hsl(${hue}, 80%, 55%)`;
       d.classList.toggle('is-on', state.mixColour === key);
       d.classList.toggle('is-set', r.mixer[key].some((v) => Math.abs(v) > 1e-6));
@@ -37456,7 +37441,7 @@ function renderImageEditor(container, api) {
     });
     const swapRest = r.aspect === 'free' || r.aspect === '1:1';
     const box = chips(items, r.aspect, (val) => { r.aspect = val; r.aspectFlip = false; if (val !== 'free') refit(); afterChange(true); });
-    const swap = moEl('button', 'mo-edit-chipbtn' + (r.aspectFlip ? ' is-on' : ''), { type: 'button', title: 'Swap Orientation', 'aria-label': 'Swap Orientation', innerHTML: moIcon('repeat', 14) });
+    const swap = moEl('button', 'mo-edit-chipbtn' + (r.aspectFlip ? ' is-on' : ''), { sceneId: 'media-organizer.imageEditor.crop.swap', type: 'button', title: 'Swap Orientation', 'aria-label': 'Swap Orientation', innerHTML: moIcon('repeat', 14) });
     swap.disabled = swapRest;
     swap.addEventListener('click', () => { r.aspectFlip = !r.aspectFlip; refit(); afterChange(true); });
     box.appendChild(swap);
@@ -37628,7 +37613,7 @@ function renderImageEditor(container, api) {
       }
       const others = openSection(panelBody, 'remove-others', 'Other Photos');
       others.appendChild(hint('The same mark on other photos? Find it there and remove it the same way. You choose the photos and see every find before anything changes.'));
-      const bulk = api.ui.createButton(null, { label: 'Remove From Other Photos…', kind: 'primary', size: 'sm', onClick: () => removeFromOthers() });
+      const bulk = api.ui.createButton(null, { id: 'media-organizer.imageEditor.removeFromOthers', label: 'Remove From Other Photos…', kind: 'primary', size: 'sm', onClick: () => removeFromOthers() });
       bulk.disabled = !moEditShownRemovals(r).length;
       bulk.title = bulk.disabled ? 'Remove a mark on this photo first' : 'Look for these marks in other photos and remove them there too';
       others.appendChild(row(bulk));
@@ -37659,7 +37644,7 @@ function renderImageEditor(container, api) {
         card.appendChild(hint(`Downloading · ${Math.round(state.download.received / 1048576)} of ${mb} MB`));
         card.appendChild(row(textBtn('Cancel Download', () => void moBridge()?.invoke('models:cancelDownload', MO_EDIT_REMOVE_MODEL.sha256))));
       } else {
-        card.appendChild(row(api.ui.createButton(null, { label: 'Download', kind: 'primary', size: 'sm', onClick: () => void downloadModel() }), textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
+        card.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.imageEditor.downloadModel', label: 'Download', kind: 'primary', size: 'sm', onClick: () => void downloadModel() }), textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
         if (state.downloadError) card.appendChild(hint(state.downloadError));
       }
     } else {
@@ -37706,7 +37691,7 @@ function renderImageEditor(container, api) {
       const card = moEl('div', 'mo-edit-setup');
       card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Enhance needs the upscaler' }),
         moEl('p', null, { textContent: 'Enhance makes a larger, sharper copy of the photo. It runs on this computer once the upscaler is set up.' }));
-      card.appendChild(row(api.ui.createButton(null, { label: 'Set Up the Upscaler…', kind: 'primary', size: 'sm', onClick: () => showUpscaleSetupDialog(api) }),
+      card.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.imageEditor.setUpUpscaler', label: 'Set Up the Upscaler…', kind: 'primary', size: 'sm', onClick: () => showUpscaleSetupDialog(api) }),
         textBtn('Check Again', () => { _toolsDetected = false; _toolsRetryAfter = 0; state.upscaler = null; renderPanel(); }, 'ghost')));
       panelBody.appendChild(card);
       return;
@@ -37726,7 +37711,7 @@ function renderImageEditor(container, api) {
       s.appendChild(fact('Takes about', upscaleRate ? moEditDuration(upscaleRate * mp) + ' on this computer' : 'measured on the first enlargement'));
       if (!ok) s.appendChild(hint(`Enlarged ${sc}× this picture would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels. Crop it or choose a smaller size.`));
       else {
-        const prev = api.ui.createButton(null, { label: state.preview ? 'Close Preview' : 'Preview Enlarged', icon: state.preview ? 'x' : 'maximize-2', size: 'sm', onClick: () => (state.preview ? closePreview() : void previewEnlarge()) });
+        const prev = api.ui.createButton(null, { id: 'media-organizer.imageEditor.previewEnlarged', label: state.preview ? 'Close Preview' : 'Preview Enlarged', icon: state.preview ? 'x' : 'maximize-2', size: 'sm', onClick: () => (state.preview ? closePreview() : void previewEnlarge()) });
         prev.disabled = !!state.busy;
         s.appendChild(row(prev));
         s.appendChild(hint('The enlarged picture is previewed here first; nothing is written until you save. Saved copies are PNG.'));
@@ -37837,7 +37822,7 @@ function renderImageEditor(container, api) {
     head.appendChild(btns);
     presetsEl.appendChild(head);
     if (presetSearchOpen) {
-      const box = moEl('input', 'mo-edit-presets-filter', { type: 'text', placeholder: 'Filter presets', 'aria-label': 'Filter presets' });
+      const box = moEl('input', 'mo-edit-presets-filter', { sceneId: 'media-organizer.imageEditor.presets.filter', type: 'text', placeholder: 'Filter presets', 'aria-label': 'Filter presets' });
       box.value = presetFilter;
       box.addEventListener('input', () => { presetFilter = box.value.trim().toLowerCase(); fillPresets(); });
       box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') { presetSearchOpen = false; presetFilter = ''; renderPresets(); } });
@@ -37968,9 +37953,9 @@ function renderImageEditor(container, api) {
   function showToast(text, path, photoId) {
     toast.innerHTML = '';
     toast.append(moEl('span', 'mo-edit-ico mo-edit-toast-ok', { innerHTML: moIcon('check', 14) }), moEl('span', 'mo-edit-toast-text', { textContent: text, title: path || '' }));
-    if (path) api.ui.createButton(toast, { label: 'Show in Folder', icon: 'folder-open', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(path); } catch { /* ignore */ } } });
-    if (photoId) api.ui.createButton(toast, { label: 'Open', size: 'sm', onClick: () => void openPhotoTab(photoId, (path || '').split(/[\\/]/).pop()) });
-    api.ui.createIconButton(toast, { icon: 'x', size: 'sm', title: 'Close', onClick: () => toast.classList.add('mo-hidden') });
+    if (path) api.ui.createButton(toast, { id: 'media-organizer.imageEditor.toast.showInFolder', label: 'Show in Folder', icon: 'folder-open', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(path); } catch { /* ignore */ } } });
+    if (photoId) api.ui.createButton(toast, { id: 'media-organizer.imageEditor.toast.open', label: 'Open', size: 'sm', onClick: () => void openPhotoTab(photoId, (path || '').split(/[\\/]/).pop()) });
+    api.ui.createIconButton(toast, { id: 'media-organizer.imageEditor.toast.close', icon: 'x', size: 'sm', title: 'Close', onClick: () => toast.classList.add('mo-hidden') });
     toast.classList.remove('mo-hidden');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.add('mo-hidden'), 12000);
@@ -38386,6 +38371,7 @@ function moGalleryBlock(api) {
 }
 
 export async function activate(api, context) {
+    setSceneUi(api.ui);
     try {
       console.log('[MediaOrganizer] activate() called');
     } catch (e) {
