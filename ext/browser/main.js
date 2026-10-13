@@ -23,6 +23,7 @@
 //  10. Activation
 //  11. Agent browsing (tools on the agent partition)
 
+import { brDeclare, brSlug, el, setSceneUi } from './dom.js';
 import { Readability } from './readability.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -197,21 +198,9 @@ function isWebUrl(url) { return /^https?:\/\//i.test(url || ''); }
 // SECTION 4: DOM HELPERS AND STYLES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function el(tag, className, attrs) {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (attrs) {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === 'text') e.textContent = v;
-      else if (k === 'html') e.innerHTML = v;
-      else if (v != null) e.setAttribute(k, v);
-    }
-  }
-  return e;
-}
 function icon(name, size) { try { return _api.icons.createIconHtml(name, size || 14); } catch { return ''; } }
-function iconBtn(name, title, onClick, className) {
-  const b = el('button', `br-btn${className ? ` ${className}` : ''}`, { type: 'button', title, 'aria-label': title });
+function iconBtn(name, title, onClick, className, id, command) {
+  const b = el('button', `br-btn${className ? ` ${className}` : ''}`, { type: 'button', title, 'aria-label': title, sceneId: id, sceneCommand: command });
   b.innerHTML = icon(name, 14);
   if (onClick) b.addEventListener('click', onClick);
   return b;
@@ -491,13 +480,13 @@ function createPagePane(container, input, opts = {}) {
 
   // ── Toolbar ──
   const toolbar = el('div', 'br-toolbar');
-  const backBtn = iconBtn('arrow-left', 'Back', () => goBack());
-  const fwdBtn = iconBtn('arrow-right', 'Forward', () => goForward());
-  const reloadBtn = iconBtn('rotate-cw', 'Reload', () => { if (pane.loading) stop(); else reload(); });
-  const homeBtn = iconBtn('home', 'Home', () => navigate(homepage()));
+  const backBtn = iconBtn('arrow-left', 'Back', () => goBack(), undefined, 'browser.back', 'browser.back');
+  const fwdBtn = iconBtn('arrow-right', 'Forward', () => goForward(), undefined, 'browser.forward', 'browser.forward');
+  const reloadBtn = iconBtn('rotate-cw', 'Reload', () => { if (pane.loading) stop(); else reload(); }, undefined, 'browser.reload', 'browser.reload');
+  const homeBtn = iconBtn('home', 'Home', () => navigate(homepage()), undefined, 'browser.home');
   // Everything opened from inside a private tab is private: the plus button,
   // links and images in new tabs, searches, popups the page opens, Ctrl+T.
-  const newTabBtn = iconBtn('plus', 'New Tab', () => openTab(undefined, { private: isPrivate }));
+  const newTabBtn = iconBtn('plus', 'New Tab', () => openTab(undefined, { private: isPrivate }), undefined, 'browser.newTab');
   const addressWrap = el('div', 'br-address-wrap');
   const privateChip = el('span', 'br-private-chip', { title: 'Private tab: nothing is kept after the last private tab closes, and nothing goes into history.' });
   privateChip.innerHTML = icon('eye-closed', 11);
@@ -505,17 +494,17 @@ function createPagePane(container, input, opts = {}) {
   privateChip.hidden = !(isPrivate || (opts.agent && _agentPrivate.has(instanceId)));
   addressWrap.appendChild(privateChip);
   const lock = el('span', 'br-lock');
-  const address = el('input', 'br-address', { type: 'text', spellcheck: 'false', autocomplete: 'off', placeholder: 'Search or enter an address', 'aria-label': 'Address' });
+  const address = el('input', 'br-address', { sceneId: 'browser.address', type: 'text', spellcheck: 'false', autocomplete: 'off', placeholder: 'Search or enter an address', 'aria-label': 'Address' });
   const suggestBox = el('div', 'br-suggest');
   suggestBox.hidden = true;
   addressWrap.append(lock, address, suggestBox);
-  const shieldBtn = iconBtn('shield', 'Shields', () => toggleShieldPanel(), 'br-shield');
+  const shieldBtn = iconBtn('shield', 'Shields', () => toggleShieldPanel(), 'br-shield', 'browser.shields');
   const shieldBadge = el('span', 'br-badge');
   shieldBadge.hidden = true;
   shieldBtn.appendChild(shieldBadge);
-  const starBtn = iconBtn('star', 'Bookmark This Page', () => toggleBookmark());
-  const readerBtn = iconBtn('book-open', 'Reader Mode', () => toggleReader());
-  const menuBtn = iconBtn('ellipsis', 'Page Menu', () => showPageMenu(menuBtn));
+  const starBtn = iconBtn('star', 'Bookmark This Page', () => toggleBookmark(), undefined, 'browser.bookmark', 'browser.bookmark');
+  const readerBtn = iconBtn('book-open', 'Reader Mode', () => toggleReader(), undefined, 'browser.toggleReader', 'browser.toggleReader');
+  const menuBtn = iconBtn('ellipsis', 'Page Menu', () => showPageMenu(menuBtn), undefined, 'browser.pageMenu');
   toolbar.append(backBtn, fwdBtn, reloadBtn, homeBtn, newTabBtn, addressWrap, shieldBtn, starBtn, readerBtn, menuBtn);
   root.appendChild(toolbar);
 
@@ -562,11 +551,11 @@ function createPagePane(container, input, opts = {}) {
 
   const findBar = el('div', 'br-bar');
   findBar.hidden = true;
-  const findInput = el('input', null, { type: 'text', placeholder: 'Find in page', 'aria-label': 'Find in page' });
+  const findInput = el('input', null, { sceneId: 'browser.find.input', type: 'text', placeholder: 'Find in page', 'aria-label': 'Find in page' });
   const findCount = el('span', 'br-muted');
-  const findPrev = iconBtn('arrow-left', 'Previous match', () => findNext(false));
-  const findNextBtn = iconBtn('arrow-right', 'Next match', () => findNext(true));
-  const findClose = iconBtn('x', 'Close', () => closeFind());
+  const findPrev = iconBtn('arrow-left', 'Previous match', () => findNext(false), undefined, 'browser.find.previous');
+  const findNextBtn = iconBtn('arrow-right', 'Next match', () => findNext(true), undefined, 'browser.find.next');
+  const findClose = iconBtn('x', 'Close', () => closeFind(), undefined, 'browser.find.close');
   findBar.append(el('span', null, { text: 'Find' }), findInput, findCount, findPrev, findNextBtn, findClose);
   root.appendChild(findBar);
 
@@ -617,15 +606,15 @@ function createPagePane(container, input, opts = {}) {
     if (description) errorView.appendChild(el('p', null, { text: description }));
     if (failedUrl) errorView.appendChild(el('p', null, { text: failedUrl }));
     const row = el('div', 'br-row');
-    const retry = el('button', 'primary', { type: 'button', text: 'Try Again' });
+    const retry = el('button', 'primary', { sceneId: 'browser.error.retry', type: 'button', text: 'Try Again' });
     retry.addEventListener('click', () => navigate(failedUrl || pane.url));
     row.appendChild(retry);
     if (allowHttpOnce) {
-      const http = el('button', null, { type: 'button', text: 'Load Over HTTP Once', title: 'This site did not answer over HTTPS. Load the unencrypted page this one time.' });
+      const http = el('button', null, { sceneId: 'browser.error.loadOverHttp', type: 'button', text: 'Load Over HTTP Once', title: 'This site did not answer over HTTPS. Load the unencrypted page this one time.' });
       http.addEventListener('click', async () => { const b = bridge(); if (b) await b.allowHttpOnce(allowHttpOnce); loadInView(allowHttpOnce); });
       row.appendChild(http);
     }
-    const back = el('button', null, { type: 'button', text: 'Back' });
+    const back = el('button', null, { sceneId: 'browser.error.back', type: 'button', text: 'Back' });
     back.addEventListener('click', () => goBack());
     row.appendChild(back);
     errorView.appendChild(row);
@@ -644,11 +633,11 @@ function createPagePane(container, input, opts = {}) {
     try { toHost = new URL(to).hostname; } catch { toHost = to; }
     notice.innerHTML = '';
     const text = el('span', 'br-notice-text', { text: `${fromHost || 'This page'} wants to send you to ${toHost}`, title: to });
-    const go = el('button', 'primary', { type: 'button', text: 'Continue', title: to });
+    const go = el('button', 'primary', { sceneId: 'browser.redirect.continue', type: 'button', text: 'Continue', title: to });
     go.addEventListener('click', () => { hideNotice(); loadInView(to); });
-    const stay = el('button', null, { type: 'button', text: 'Stay' });
+    const stay = el('button', null, { sceneId: 'browser.redirect.stay', type: 'button', text: 'Stay' });
     stay.addEventListener('click', () => hideNotice());
-    const always = el('button', null, { type: 'button', text: 'Always Allow Here', title: `Let ${fromHost || 'this site'} send you to other sites on its own. The shield panel has the switch to undo it.` });
+    const always = el('button', null, { sceneId: 'browser.redirect.alwaysAllow', type: 'button', text: 'Always Allow Here', title: `Let ${fromHost || 'this site'} send you to other sites on its own. The shield panel has the switch to undo it.` });
     always.addEventListener('click', async () => { const b = bridge(); if (b) await b.setSite(pane.url, { redirects: true }); hideNotice(); loadInView(to); });
     notice.append(text, go, stay, always);
     notice.hidden = false;
@@ -661,7 +650,7 @@ function createPagePane(container, input, opts = {}) {
     errorView.appendChild(el('h2', null, { text: 'This assistant tab has ended' }));
     errorView.appendChild(el('p', null, { text: 'Its page closed when Parallx restarted or the Browser was turned off. The assistant opens a new tab when it browses again.' }));
     const row = el('div', 'br-row');
-    const close = el('button', 'primary', { type: 'button', text: 'Close Tab' });
+    const close = el('button', 'primary', { sceneId: 'browser.crash.closeTab', type: 'button', text: 'Close Tab' });
     close.addEventListener('click', () => { if (editorId) _api.editors.closeEditor(editorId).catch(() => {}); });
     row.appendChild(close);
     errorView.appendChild(row);
@@ -686,7 +675,7 @@ function createPagePane(container, input, opts = {}) {
     errorView.appendChild(el('p', null, { text: `${why} ${pane.isAgent ? 'Reload it, or let the assistant open it again.' : 'Reload it to try again.'}` }));
     if (isWebUrl(pane.viewUrl)) errorView.appendChild(el('p', null, { text: pane.viewUrl }));
     const row = el('div', 'br-row');
-    const again = el('button', 'primary', { type: 'button', text: 'Reload' });
+    const again = el('button', 'primary', { sceneId: 'browser.crash.reload', type: 'button', text: 'Reload' });
     again.addEventListener('click', () => reload());
     row.appendChild(again);
     errorView.appendChild(row);
@@ -1015,7 +1004,7 @@ function createPagePane(container, input, opts = {}) {
     const rowSwitch = (label, on, onToggle) => {
       const row = el('div', 'br-panel-row');
       row.appendChild(el('span', null, { text: label }));
-      const sw = el('button', `br-switch${on ? ' is-on' : ''}`, { type: 'button', role: 'switch', 'aria-checked': String(on), 'aria-label': label });
+      const sw = el('button', `br-switch${on ? ' is-on' : ''}`, { sceneId: `browser.shields.${brSlug(label)}`, type: 'button', role: 'switch', 'aria-checked': String(on), 'aria-label': label });
       sw.addEventListener('click', () => onToggle(!on));
       row.appendChild(sw);
       return row;
@@ -1032,14 +1021,14 @@ function createPagePane(container, input, opts = {}) {
     try {
       const dd = _api.ui.createDropdown(slot, {
         items: [{ value: 'block-third-party', label: 'Block Third-Party' }, { value: 'block-all', label: 'Block All' }, { value: 'allow', label: 'Allow All' }],
-        selected: s.cookies, ariaLabel: 'Cookies',
+        selected: s.cookies, ariaLabel: 'Cookies', id: 'browser.shields.cookies',
       });
       dd.onDidChange((v) => apply({ cookies: v }));
     } catch { slot.textContent = s.cookies; }
     const foot = el('div', 'br-panel-foot');
-    const clearBtn = el('button', 'br-action', { type: 'button', text: 'Clear Site Data', title: 'Remove this site’s cookies and storage.' });
+    const clearBtn = el('button', 'br-action', { sceneId: 'browser.shields.clearSiteData', type: 'button', text: 'Clear Site Data', title: 'Remove this site’s cookies and storage.' });
     clearBtn.addEventListener('click', async () => { if (b) { await b.clearSiteData(pane.url); reload(); } });
-    const resetBtn = el('button', 'br-action', { type: 'button', text: 'Reset Site', title: 'Forget this site’s shield settings and permission answers.' });
+    const resetBtn = el('button', 'br-action', { sceneId: 'browser.shields.resetSite', type: 'button', text: 'Reset Site', title: 'Forget this site’s shield settings and permission answers.' });
     resetBtn.addEventListener('click', async () => { if (b) { await b.resetSite(pane.url); reload(); refreshShieldPanel(); notifySidebar(); } });
     foot.append(clearBtn, resetBtn);
     shieldPanel.appendChild(foot);
@@ -1057,11 +1046,11 @@ function createPagePane(container, input, opts = {}) {
     permBar.appendChild(el('span', null, { text: `${hostOf(req.origin) || 'This site'} wants to ${what}.` }));
     permBar.appendChild(el('span', 'br-spacer'));
     const remember = el('label');
-    const cb = el('input', null, { type: 'checkbox' });
+    const cb = el('input', null, { sceneId: 'browser.permission.remember', sceneLabel: 'Remember this decision', type: 'checkbox' });
     cb.checked = true;
     remember.append(cb, el('span', null, { text: 'Remember for this site' }));
-    const allow = el('button', 'primary', { type: 'button', text: 'Allow' });
-    const block = el('button', null, { type: 'button', text: 'Block' });
+    const allow = el('button', 'primary', { sceneId: 'browser.permission.allow', type: 'button', text: 'Allow' });
+    const block = el('button', null, { sceneId: 'browser.permission.block', type: 'button', text: 'Block' });
     const reply = async (ok) => { const b = bridge(); if (b) await b.permissionReply(req.requestId, ok, cb.checked); pendingPrompts.shift(); renderPermission(); notifySidebar(); };
     allow.addEventListener('click', () => reply(true));
     block.addEventListener('click', () => reply(false));
@@ -1097,10 +1086,10 @@ function createPagePane(container, input, opts = {}) {
     if (!req.isProxy && /^http:/i.test(req.url || '')) text += ' The connection is not encrypted.';
     authBar.appendChild(el('span', 'br-auth-text', { text, title: req.url || '' }));
     authBar.appendChild(el('span', 'br-spacer'));
-    const user = el('input', null, { type: 'text', placeholder: 'Username', 'aria-label': 'Username', autocomplete: 'off', spellcheck: 'false' });
-    const pass = el('input', null, { type: 'password', placeholder: 'Password', 'aria-label': 'Password', autocomplete: 'off' });
-    const signIn = el('button', 'primary', { type: 'button', text: 'Sign In' });
-    const cancel = el('button', null, { type: 'button', text: 'Cancel' });
+    const user = el('input', null, { sceneId: 'browser.auth.username', type: 'text', placeholder: 'Username', 'aria-label': 'Username', autocomplete: 'off', spellcheck: 'false' });
+    const pass = el('input', null, { sceneId: 'browser.auth.password', type: 'password', placeholder: 'Password', 'aria-label': 'Password', autocomplete: 'off' });
+    const signIn = el('button', 'primary', { sceneId: 'browser.auth.signIn', type: 'button', text: 'Sign In' });
+    const cancel = el('button', null, { sceneId: 'browser.auth.cancel', type: 'button', text: 'Cancel' });
     const answer = (ok) => {
       if (pendingAuth[0] !== req) return;
       pendingAuth.shift();
@@ -1462,7 +1451,7 @@ function buildNewTabView(pane, onNavigate) {
   const view = el('div', 'br-newtab');
   const search = el('div', 'br-newtab-search');
   search.innerHTML = icon('search', 16);
-  const input = el('input', null, { type: 'text', placeholder: 'Search or enter an address', 'aria-label': 'Search or enter an address', spellcheck: 'false' });
+  const input = el('input', null, { sceneId: 'browser.newTabPage.search', type: 'text', placeholder: 'Search or enter an address', 'aria-label': 'Search or enter an address', spellcheck: 'false' });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); onNavigate(input.value); } });
   search.appendChild(input);
   view.appendChild(search);
@@ -1566,7 +1555,7 @@ function watchData(view, refresh) {
 function buildBookmarksPage(ctx) {
   const view = pageShell('Bookmarks', 'Everything you starred. Click a title to open it here.');
   const tools = pageTools(view);
-  const q = el('input', null, { type: 'text', placeholder: 'Filter bookmarks', 'aria-label': 'Filter bookmarks' });
+  const q = el('input', null, { sceneId: 'browser.bookmarks.filter', type: 'text', placeholder: 'Filter bookmarks', 'aria-label': 'Filter bookmarks' });
   tools.appendChild(q);
   const body = el('div');
   view.appendChild(body);
@@ -1597,8 +1586,8 @@ function buildBookmarksPage(ctx) {
 function buildHistoryPage(ctx) {
   const view = pageShell('History', 'Pages you visited in normal tabs. Private tabs leave nothing here.');
   const tools = pageTools(view);
-  const q = el('input', null, { type: 'text', placeholder: 'Search history', 'aria-label': 'Search history' });
-  const clear = el('button', 'br-action', { type: 'button', text: 'Clear History' });
+  const q = el('input', null, { sceneId: 'browser.history.search', type: 'text', placeholder: 'Search history', 'aria-label': 'Search history' });
+  const clear = el('button', 'br-action', { sceneId: 'browser.history.clear', type: 'button', text: 'Clear History' });
   clear.addEventListener('click', async () => {
     const pick = await _api.window.showWarningMessage('Clear all browsing history?', { title: 'Clear History' }, { title: 'Cancel' });
     if (pick && pick.title === 'Clear History') { await History.clear(); notifySidebar(); }
@@ -1636,10 +1625,10 @@ function buildHistoryPage(ctx) {
 function buildShieldsPage() {
   const view = pageShell('Blocked Trackers', 'Every request the shields refused, from which page, and the lifetime totals. Nothing here ever reached the network.');
   const tools = pageTools(view);
-  const refreshBtn = el('button', 'br-action', { type: 'button', text: 'Refresh' });
-  const clearBtn = el('button', 'br-action', { type: 'button', text: 'Clear Log' });
+  const refreshBtn = el('button', 'br-action', { sceneId: 'browser.shieldsLog.refresh', type: 'button', text: 'Refresh' });
+  const clearBtn = el('button', 'br-action', { sceneId: 'browser.shieldsLog.clear', type: 'button', text: 'Clear Log' });
   // The filter lists live here with the totals they produce, not in the sidebar.
-  const listsBtn = el('button', 'br-action', { type: 'button', text: 'Refresh Lists', title: 'Fetch the latest filter lists now.' });
+  const listsBtn = el('button', 'br-action', { sceneId: 'browser.refreshLists', sceneCommand: 'browser.refreshLists', type: 'button', text: 'Refresh Lists', title: 'Fetch the latest filter lists now.' });
   listsBtn.addEventListener('click', async () => {
     const b = bridge();
     if (!b) return;
@@ -1755,17 +1744,17 @@ function createSidebar(container) {
   const root = el('div', 'br-sidebar');
   container.appendChild(root);
   const top = el('div', 'br-sidebar-top');
-  const newTab = el('button', 'br-action primary', { type: 'button', title: 'Open a new tab (Ctrl+T in a page)' });
+  const newTab = el('button', 'br-action primary', { sceneId: 'browser.side.newTab', sceneCommand: 'browser.newTab', type: 'button', title: 'Open a new tab (Ctrl+T in a page)' });
   newTab.innerHTML = icon('plus', 14) + '<span>New Tab</span>';
   newTab.addEventListener('click', () => openTab());
   top.appendChild(newTab);
-  const privateTab = el('button', 'br-action', { type: 'button', title: 'Open a private tab: no history, and its cookies vanish when the last private tab closes' });
+  const privateTab = el('button', 'br-action', { sceneId: 'browser.side.newPrivateTab', sceneCommand: 'browser.newPrivateTab', type: 'button', title: 'Open a private tab: no history, and its cookies vanish when the last private tab closes' });
   privateTab.innerHTML = icon('eye-closed', 14);
   privateTab.setAttribute('aria-label', 'New Private Tab');
   privateTab.addEventListener('click', () => openTab(undefined, { private: true }));
   top.appendChild(privateTab);
   // History is a page, not a sidebar list: no browser puts it in the sidebar.
-  const historyBtn = el('button', 'br-action', { type: 'button', title: 'History (Ctrl+H in a page)' });
+  const historyBtn = el('button', 'br-action', { sceneId: 'browser.side.history', sceneCommand: 'browser.openHistory', type: 'button', title: 'History (Ctrl+H in a page)' });
   historyBtn.innerHTML = icon('clock', 14);
   historyBtn.setAttribute('aria-label', 'History');
   historyBtn.addEventListener('click', () => openTab('about:history'));
@@ -1822,7 +1811,7 @@ function createSidebar(container) {
   const bookmarks = section('Bookmarks', 'star', async (body) => {
     body.innerHTML = '';
     const tools = el('div', 'br-section-tools');
-    const q = el('input', null, { type: 'text', placeholder: 'Filter bookmarks', 'aria-label': 'Filter bookmarks' });
+    const q = el('input', null, { sceneId: 'browser.side.filter', type: 'text', placeholder: 'Filter bookmarks', 'aria-label': 'Filter bookmarks' });
     q.value = bookmarkQuery;
     q.addEventListener('input', () => { bookmarkQuery = q.value.trim(); bookmarks.refresh(); });
     tools.appendChild(q);
@@ -1842,7 +1831,7 @@ function createSidebar(container) {
     let rows = [];
     try { rows = await Downloads.list(); } catch { rows = []; }
     const tools = el('div', 'br-section-tools');
-    const clear = el('button', 'br-action', { type: 'button', text: 'Clear List' });
+    const clear = el('button', 'br-action', { sceneId: 'browser.side.clearList', type: 'button', text: 'Clear List' });
     clear.addEventListener('click', async () => { await Downloads.clear(); notifySidebar(); });
     tools.appendChild(el('span', 'br-empty', { text: rows.length ? `${rows.length} download${rows.length === 1 ? '' : 's'}` : 'No downloads yet.' }));
     if (rows.length) tools.appendChild(clear);
@@ -2001,7 +1990,7 @@ function installDragHooks() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function activate(api, context) {
-  _api = api;
+  _api = api; setSceneUi(api.ui);
   if (!api.database) { console.error('[browser] api.database is required'); return; }
   const open = await api.database.open();
   if (open.error) { console.error('[browser] database open failed:', open.error.message); return; }
@@ -2220,7 +2209,7 @@ function renderAgentBanner(banner, s) {
   banner.dataset.key = key;
   actions.innerHTML = '';
   const button = (text, title, action, primary) => {
-    const b = el('button', primary ? 'primary' : null, { type: 'button', text, title });
+    const b = el('button', primary ? 'primary' : null, { sceneId: `browser.agent.${brSlug(action)}`, type: 'button', text, title });
     b.addEventListener('click', () => agentControl(action));
     actions.appendChild(b);
   };

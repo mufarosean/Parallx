@@ -1002,7 +1002,25 @@ run through Home, Characters, the studio, Settings, a chat with a
 seeded character (drawer, shortcuts), Stories and Tables listed no
 errors; it caught the two Settings feel rows sharing one id, which now
 take their keys. The probe row opens Home.
-Next are browser and study, in that order.
+
+browser done 2026-10-12, on the owner's machine. `el` moved to
+`ext/browser/dom.js` (`main.js` fell from 2289 to 2278) with the same
+`sceneId` / `sceneLabel` attributes and a `sceneCommand` for a control
+that does what a command does; `iconBtn` takes an optional id and
+command, given at singleton call sites only (bookmark and history rows
+reuse its titles). Declared: a page's toolbar (`browser.back`,
+`browser.forward`, `browser.reload`, `browser.bookmark` and
+`browser.toggleReader` with their commands; home, new tab, address,
+shields, page menu), the find bar, the error, redirect and crash pages'
+buttons, the shield panel (each switch by its label, the cookies
+dropdown, clear and reset), the permission and sign-in prompts, the new
+tab page's search, the Bookmarks, History and Blocked Trackers pages'
+filters and actions, the sidebar's New Tab, New Private Tab and History
+(with their commands), filter and Clear List, and the assistant
+banner's buttons. Bookmark chips, tiles and list rows are rows. A hidden
+run through a new tab, the find bar and the three pages (no navigation)
+listed no errors. The probe row opens a new tab.
+Next is study.
 
 ### Step 8. The scene line in the prompt (cloud)
 
