@@ -62,7 +62,6 @@
 
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
-import { moApplyParentTags } from './parentTags.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -628,12 +627,12 @@ function moTagViaOrphanOps({ via = null, tagId = null } = {}) {
   return ops;
 }
 
-
 // Which items a tag view shows. A tag's own view is everything in its subtree;
 // a branch view (the tag as listed under one parent) is the leaf in the sense
 // of that parent. Bare assignments belong to every sense: they said nothing,
-// so no view excludes them. Applying a tag writes its parents (parentTags.js);
-// ancestors are also inferred here, for items tagged before a tag was filed.
+// so no view excludes them. Ancestors are inferred from the tree, so an item
+// tagged CORGI via DOG shows under DOG and under ANIMALS without carrying
+// them, and moving DOG in the tree changes no item.
 //   subtree(T): T and every descendant, through every parent link.
 //   own view of T: an assignment of T in any sense, or of a descendant of T
 //     said bare or in a sense inside subtree(T).
@@ -1323,9 +1322,12 @@ const PhotoQueries = {
 
     // Optionally link tags
     if (input.tagIds && input.tagIds.length > 0) {
-      const ops = input.tagIds.map((tid) => ({ type: 'run', sql: `INSERT INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)`, params: [photoId, tid] }));
+      const ops = input.tagIds.map((tid) => ({
+        type: 'run',
+        sql: `INSERT INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)`,
+        params: [photoId, tid],
+      }));
       await db.transaction(ops);
-      await moApplyParentTags(db, 'photo', [photoId]);
     }
 
     return this.findById(photoId);
@@ -1505,7 +1507,6 @@ const PhotoQueries = {
   async updateTags(photoId, updateIDs) {
     const ops = buildRelationOps('mo_photos_tags', 'photo_id', 'tag_id', photoId, updateIDs);
     if (ops.length > 0) await db.transaction(ops);
-    if (updateIDs.mode !== 'REMOVE') await moApplyParentTags(db, 'photo', [photoId]);
   },
 
   /** One assignment off the photo: the tag in one sense (via 0 = the bare one). */
@@ -1584,9 +1585,12 @@ const VideoQueries = {
     }
 
     if (input.tagIds && input.tagIds.length > 0) {
-      const ops = input.tagIds.map((tid) => ({ type: 'run', sql: `INSERT INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)`, params: [videoId, tid] }));
+      const ops = input.tagIds.map((tid) => ({
+        type: 'run',
+        sql: `INSERT INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)`,
+        params: [videoId, tid],
+      }));
       await db.transaction(ops);
-      await moApplyParentTags(db, 'video', [videoId]);
     }
 
     return this.findById(videoId);
@@ -1753,7 +1757,6 @@ const VideoQueries = {
   async updateTags(videoId, updateIDs) {
     const ops = buildRelationOps('mo_videos_tags', 'video_id', 'tag_id', videoId, updateIDs);
     if (ops.length > 0) await db.transaction(ops);
-    if (updateIDs.mode !== 'REMOVE') await moApplyParentTags(db, 'video', [videoId]);
   },
 
   async loadFiles(videoId) {
@@ -1913,7 +1916,6 @@ const AlbumQueries = {
   async updateTags(albumId, updateIDs) {
     const ops = buildRelationOps('mo_albums_tags', 'album_id', 'tag_id', albumId, updateIDs);
     if (ops.length > 0) await db.transaction(ops);
-    if (updateIDs.mode !== 'REMOVE') await moApplyParentTags(db, 'album', [albumId]);
   },
 
   async loadPhotos(albumId) {
@@ -9707,13 +9709,13 @@ function renderMediaCard(item, options) {
       // selection regardless of which card the user dropped on. When the
       // selection has 0\u20131 items, fall back to single-target drop.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      // The branch dragged from is the sense: the leaf goes on via its parent
-      // (Portrait › Face, not Pose › Face); its parents come with it.
-      const pick = moTagPickFromChain(tagIds);
-      const n = await moApplyTagsToKeys([pick], targetKeys);
+      // Store exactly the branch dragged from: every tag on its path, each in the sense
+      // of the one above it (Portrait › Face, not Pose › Face); never a tag's other parents.
+      const picks = moTagPicksFromChain(tagIds);
+      const n = await moApplyTagsToKeys(picks, targetKeys);
       const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: pick.tagId, keys: targetKeys } }));
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${picks.length === 1 ? 'tag' : picks.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      for (const p of picks) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: p.tagId, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -9896,13 +9898,13 @@ function renderMediaListRow(item, options) {
       const selSet = new Set(selectedKeys);
       // Same rule as the card variant: active multi-selection always wins.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      // The branch dragged from is the sense: the leaf goes on via its parent
-      // (Portrait › Face, not Pose › Face); its parents come with it.
-      const pick = moTagPickFromChain(tagIds);
-      const n = await moApplyTagsToKeys([pick], targetKeys);
+      // Store exactly the branch dragged from: every tag on its path, each in the sense
+      // of the one above it (Portrait › Face, not Pose › Face); never a tag's other parents.
+      const picks = moTagPicksFromChain(tagIds);
+      const n = await moApplyTagsToKeys(picks, targetKeys);
       const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: pick.tagId, keys: targetKeys } }));
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${picks.length === 1 ? 'tag' : picks.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      for (const p of picks) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: p.tagId, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -16062,7 +16064,7 @@ function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
   buildTagAutocomplete(wrap, () => currentTags, async (selectedTag) => {
     try {
       await Queries.updateTags(entityId, { mode: 'ADD', ids: [selectedTag.id] });
-      currentTags.splice(0, currentTags.length, ...(await Queries.loadTags(entityId))); // its parents came with it
+      currentTags.push(selectedTag);
       renderPills();
       _notifySidebarRefresh();
     } catch (err) { console.error('[MO-Detail] Tag add failed:', err); }
@@ -17948,10 +17950,10 @@ function parseSelectedIds(selectedIds) {
 // of media keys in one transaction. Used by cascade-on-apply (#9): dropping a
 // child tag from the tree onto a card stores Italy + 2024 + Building as real
 // independent tags.
-/** The pick a dragged branch means: its leaf, in the sense of the parent it hung under (0 at the top). */
-function moTagPickFromChain(chain) {
+/** The picks a dragged branch means: every tag on its root-to-leaf path, each in the sense of the one above it (0 at the top). */
+function moTagPicksFromChain(chain) {
   const ids = (chain || []).map((n) => parseInt(n, 10)).filter(Number.isFinite);
-  return { tagId: ids[ids.length - 1], via: ids.length >= 2 ? ids[ids.length - 2] : 0 };
+  return ids.map((tagId, i) => ({ tagId, via: i > 0 ? ids[i - 1] : 0 }));
 }
 
 // Each pick is { tagId, via } (a bare number means via 0).
@@ -17976,10 +17978,6 @@ async function moApplyTagsToKeys(picks, keys) {
   }
   if (ops.length === 0) return 0;
   await db.transaction(ops);
-  // The picks' parents come with them; open cards show them at once.
-  const idsOf = (type) => keys.filter((k) => String(k).startsWith(`${type}:`)).map((k) => parseInt(String(k).split(':')[1], 10));
-  const added = [...new Set([...(await moApplyParentTags(db, 'photo', idsOf('photo'))), ...(await moApplyParentTags(db, 'video', idsOf('video')))])];
-  if (added.length) document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', { detail: { op: 'ADD', tagIds: added, keys } }));
   return keys.length;
 }
 
@@ -18387,7 +18385,8 @@ function showBulkTagDialog(state, api, onComplete) {
       const txnOps = [];
 
       if (mode === 'ADD' || mode === 'REMOVE') {
-        // Per (item, picked tag); tags not picked are never touched.
+        // Pure per-(item, picked_tag) ops. No reads of existing tags.
+        // Tags not in `tagIds` are never touched on any item.
         for (const photoId of photos) {
           for (const tagId of tagIds) {
             if (mode === 'ADD') {
@@ -18407,7 +18406,9 @@ function showBulkTagDialog(state, api, onComplete) {
           }
         }
       } else {
-        // REPLACE: each item ends with exactly the picked set (and their parents, below).
+        // REPLACE: per-item DELETE-all-tags then INSERT picked set.
+        // Each item ends with EXACTLY the picked set. Items are independent —
+        // one item's prior tags never bleed into another.
         for (const photoId of photos) {
           txnOps.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ?', params: [photoId] });
           for (const tagId of tagIds) {
@@ -18423,8 +18424,6 @@ function showBulkTagDialog(state, api, onComplete) {
       }
 
       if (txnOps.length > 0) await db.transaction(txnOps);
-      // Applied tags bring their parents (Add and Replace); the cards are patched with both.
-      const parentIds = mode === 'REMOVE' ? [] : [...new Set([...(await moApplyParentTags(db, 'photo', photos)), ...(await moApplyParentTags(db, 'video', videos))])];
 
       let summary;
       if (mode === 'ADD') {
@@ -18437,10 +18436,14 @@ function showBulkTagDialog(state, api, onComplete) {
       api.window.showInformationMessage(summary);
       overlay.remove();
       _notifySidebarRefresh();
-      // Patch the affected cards in place (a full reload snapped the grid's scroll).
+      // Surgical, scroll-stable refresh: dispatch a bulk-tags-changed event
+      // that patches state.items[*].tags in place and re-renders ONLY the
+      // affected cards. Replaces the old `mo:refresh-grid` dispatch which
+      // ran loadPage() — a full DB reload that snapped grid scroll. Tag
+      // mutations never shift the viewport.
       const targetKeys = [...state.selectedIds];
       document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', {
-        detail: { op: mode, tagIds: [...new Set([...tagIds, ...parentIds])], keys: targetKeys },
+        detail: { op: mode, tagIds, keys: targetKeys },
       }));
       onComplete();
     } catch (err) {
@@ -29948,20 +29951,13 @@ async function moAutoEmptyTrashIfStale(api) {
 // SECTION 43: AI TAGGING (one tool, Tag Review)
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// docs/AI_TAGGING.md. One chat tool (mediaOrganizer.tagPhotos) and one menu
-// action (Tag With AI) queue photos; a background runner sends each photo to
-// the chat model together with the user's tag tree; the suggestions wait in
-// the Tag Review tab until the user approves them.
-//
-// This replaced twenty chat tools that made the chat model look at a photo on
-// one turn and tag it on the next. The pixels carried no id, so in a loop the
-// model had to remember which picture was which, and it tagged the wrong ones.
-// Here the photo and its id never separate: the runner holds both.
-//
-// The rules are code, not prompt: only existing tags (a JSON schema whose only
-// allowed values are the tag paths, then validation against the tree), parents
-// added on Approve, photos only (no GIFs, no videos), tags only ever added,
-// nothing applied without Approve.
+// docs/AI_TAGGING.md. One chat tool (mediaOrganizer.tagPhotos) and Tag With AI
+// queue photos; a runner sends each photo with the tag tree to the chat model;
+// suggestions wait in Tag Review for Approve. The runner holds each photo with
+// its id (twenty older tools let the model lose which picture was which).
+// The rules are code, not prompt: only existing tags (a schema of the tag paths,
+// then validation), parents added on Approve, photos only, nothing applied
+// without Approve.
 
 // @mo-tag-pure-begin (pure AI-tagging logic, extracted verbatim by tests/unit/moAiTagging.test.ts)
 
@@ -30078,11 +30074,8 @@ function moTagRulesText(raw) {
 }
 
 /**
- * The user turn. `rules` is the library's own guidance (Tag Review, Rules):
- * its own section between the instructions and the tag list, so the model
- * reads how to choose before it sees what it may choose from. The rules can
- * steer a choice; they cannot add a tag, because the schema and the
- * validation still allow only the listed ones.
+ * The user turn. `rules` (Tag Review, Rules) sits between the instructions and
+ * the tag list: it steers a choice but cannot add a tag (schema and validation).
  */
 function moTagPrompt({ entries, existing, crops, rules }) {
   const lines = [
@@ -30195,7 +30188,14 @@ function moQuarterRects(w, h, overlap = 0.1) {
  * 'retag' makes the target the photo's whole tag set: what it has and the
  * target lacks is removed. Nothing is ever removed on 'add'.
  */
-function moTagApprovePlan({ mode, current, picks, liveIds }) {
+/** Every ancestor of a tag, through every parent (cycle-safe). */
+function moTagAncestorIds(tagId, parentsOf) {
+  const self = Number(tagId), out = new Set(), stack = [...((parentsOf && parentsOf.get(self)) || [])];
+  while (stack.length) { const p = stack.pop(); if (p !== self && !out.has(p)) { out.add(p); stack.push(...(parentsOf.get(p) || [])); } }
+  return out;
+}
+
+function moTagApprovePlan({ mode, current, picks, liveIds, parentsOf }) {
   const live = liveIds instanceof Set ? liveIds : new Set((liveIds || []).map(Number));
   const key = (p) => `${p.id}:${p.via}`;
   // Only live tags, in a live sense; the same sense once.
@@ -30212,12 +30212,18 @@ function moTagApprovePlan({ mode, current, picks, liveIds }) {
   const cur = (current || []).map((c) => ({ id: Number(c.id), via: Number(c.via) || 0 }));
   const curKeys = new Set(cur.map(key));
   const chosenKeys = new Set(chosen.map(key));
+  // Picking a child adds all of its parents. An ancestor the photo already
+  // carries, in any sense, stays as it is; a missing one goes on bare.
+  const chosenIds = new Set(chosen.map((p) => p.id));
+  const ancestors = new Set();
+  for (const p of chosen) for (const a of moTagAncestorIds(p.id, parentsOf)) if (live.has(a) && !chosenIds.has(a)) ancestors.add(a);
+  const curIds = new Set(cur.map((c) => c.id));
   return {
     picks: chosen,
     // The tags touched, for the grid's card patch.
-    target: [...new Set(chosen.map((p) => p.id))],
-    add: chosen.filter((p) => !curKeys.has(key(p))),
-    remove: mode === 'retag' ? cur.filter((c) => !chosenKeys.has(key(c))) : [],
+    target: [...new Set([...chosenIds, ...ancestors])],
+    add: [...chosen.filter((p) => !curKeys.has(key(p))), ...[...ancestors].filter((a) => !curIds.has(a)).map((a) => ({ id: a, via: 0 }))],
+    remove: mode === 'retag' ? cur.filter((c) => !chosenKeys.has(key(c)) && !ancestors.has(c.id)) : [],
   };
 }
 
@@ -30544,11 +30550,9 @@ async function moTagEncode(bmp, sx, sy, sw, sh, maxEdge) {
 }
 
 /**
- * The whole photo at up to MO_TAG_OVERVIEW_EDGE, plus four quarters when
- * Detail Crops is on and the photo is large. Decoded and re-encoded in
- * memory: the original is never touched and nothing is written to disk.
- * Formats the renderer cannot decode (or files over the read limit) use the
- * library's own thumbnail instead.
+ * The photo at up to MO_TAG_OVERVIEW_EDGE, plus four quarters with Detail Crops on a
+ * large photo; re-encoded in memory, never on disk. Undecodable or over-limit files
+ * use the library's thumbnail.
  */
 async function moTagImages(photoId, filePath, crops) {
   let blob = null;
@@ -30592,7 +30596,7 @@ async function moTagApprove(id, { quiet = false } = {}) {
   const tree = await moTagTree();
   const live = new Set(tree.tags.map((t) => Number(t.id)));
   const current = (await db.all('SELECT tag_id, via_parent_id FROM mo_photos_tags WHERE photo_id = ?', [row.photo_id])).map((r) => ({ id: Number(r.tag_id), via: Number(r.via_parent_id) || 0 }));
-  const plan = moTagApprovePlan({ mode: row.mode, current, picks: moTagPicksOf(row), liveIds: live });
+  const plan = moTagApprovePlan({ mode: row.mode, current, picks: moTagPicksOf(row), liveIds: live, parentsOf: tree.parentsOf });
   if (plan.picks.length === 0) return 0;
   // A retag removes first, then adds; an add only adds. One transaction with the row's deletion.
   const ops = [];
@@ -30600,11 +30604,10 @@ async function moTagApprove(id, { quiet = false } = {}) {
   for (const p of plan.add) ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id, via_parent_id) VALUES (?, ?, ?)', params: [row.photo_id, p.id, p.via] });
   ops.push({ type: 'run', sql: 'DELETE FROM mo_ai_tag_reviews WHERE id = ?', params: [id] });
   await db.transaction(ops);
-  const parentIds = await moApplyParentTags(db, 'photo', [row.photo_id]);
   // Same event the Tag dialog sends: open grids patch the one card in place.
   // A retag replaces the card's tags outright; an add only adds to them.
   document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', {
-    detail: { op: row.mode === 'retag' ? 'REPLACE' : 'ADD', tagIds: [...new Set([...plan.target, ...parentIds])], keys: [`photo:${row.photo_id}`] },
+    detail: { op: row.mode === 'retag' ? 'REPLACE' : 'ADD', tagIds: plan.target, keys: [`photo:${row.photo_id}`] },
   }));
   if (!quiet) { _notifySidebarRefresh(); moTagNotify(); }
   return 1;

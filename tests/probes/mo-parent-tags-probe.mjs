@@ -3,9 +3,10 @@
 //
 // Seeds a throwaway workspace (tag-review-seed.cjs: four images, a tag tree
 // ANIMALS › DOG › CORGI, SPORTS › BOXING, PEOPLE › CROWD …, review rows),
-// approves two AI tag reviews through Tag Review, adds a tag through the
-// photo's Tags field in the detail panel, then reads the database back: each
-// applied tag's parents must be on the photo too.
+// approves two AI tag reviews through Tag Review, then reads the database
+// back: the picks and all their parents must be on the photo, as before the
+// multi-parent change (3019f3b2) lost them. (Dragging a branch onto items is
+// tested in tests/unit/moTagDrag.test.ts: this seeded library is not in the grid.)
 //
 // Usage: node tests/probes/mo-parent-tags-probe.mjs <outDir>
 // Requires `npm run build` first (the app loads dist/).
@@ -85,7 +86,7 @@ for (const db of dbPaths(workspace)) {
   const r = spawnSync(ELECTRON, [SEED, 'verify', db], { env: nodeEnv(), encoding: 'utf8', windowsHide: true });
   let out;
   try { out = JSON.parse(r.stdout); } catch { console.log(`[probe] ${db}: ${(r.stderr || r.stdout).trim()}`); continue; }
-  const touched = Object.keys(want).some((k) => (out.tagsOf[k] || []).length > 0);
+  const touched = (out.tagsOf['boxing.jpg'] || []).length > 0; // the copy the app opened: Approve wrote there
   if (!touched) continue; // the copy the app did not open
   for (const [photo, tags] of Object.entries(want)) {
     const got = (out.tagsOf[photo] || []).slice().sort();

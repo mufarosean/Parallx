@@ -253,4 +253,17 @@ describe('moTagApprovePlan', () => {
     // No live pick: the caller returns before writing, so the photo keeps its tags.
     expect(gone.remove).toEqual([{ id: 4, via: 1 }]);
   });
+  // ANIMALS(1) › DOG(2) › CORGI(3); DOG also under PETS(5).
+  const parentsOf = new Map([[2, [1, 5]], [3, [2]]]);
+  it('picking a child adds all of its parents, as before the multi-parent change', () => {
+    const plan = P.moTagApprovePlan({ mode: 'add', current: [], picks: [{ id: 3, via: 2 }], liveIds: live, parentsOf });
+    expect(plan.target.sort()).toEqual([1, 2, 3, 5]);
+    expect(plan.add[0]).toEqual({ id: 3, via: 2 });
+    expect(plan.add.slice(1).sort((x: { id: number }, y: { id: number }) => x.id - y.id)).toEqual([{ id: 1, via: 0 }, { id: 2, via: 0 }, { id: 5, via: 0 }]);
+  });
+  it('a parent the photo already carries, in any sense, is kept and not added again; a retag keeps it', () => {
+    const plan = P.moTagApprovePlan({ mode: 'retag', current: [{ id: 2, via: 1 }, { id: 6, via: 0 }], picks: [{ id: 3, via: 2 }], liveIds: live, parentsOf });
+    expect(ids(plan.add)).toEqual([1, 3, 5]);
+    expect(plan.remove).toEqual([{ id: 6, via: 0 }]);
+  });
 });
