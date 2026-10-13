@@ -122,6 +122,7 @@ async function main() {
     const EXTENSION_IDS = {
       'parallx.workspace-graph': ['workspaceGraph.open', ['workspaceGraph.search', 'workspaceGraph.refresh', 'workspaceGraph.viewMode']],
       'parallx.budget': ['budget.openTransactions', ['budget.tx.search', 'budget.tx.list', 'budget.tx.view.all', 'budget.month.prev', 'budget.addTransaction']],
+      'parallx-community.flashcards': ['flashcards.open', ['flashcards.decks.stats', 'flashcards.decks.import', 'flashcards.decks.generate', 'flashcards.newDeck']],
     };
     await page.evaluate(async (ids) => {
       const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });

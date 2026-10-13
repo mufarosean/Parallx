@@ -30,6 +30,7 @@
 // tests/unit/flashcards.test.ts — keep those functions side-effect free.
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
+import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -1374,13 +1375,6 @@ function fcAutoGrow(textarea, { maxPx = 320 } = {}) {
   // reads 0 before then — measure after the current paint, not inline.
   requestAnimationFrame(fit);
   return fit;
-}
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
 }
 
 const FC_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>';
@@ -5802,7 +5796,7 @@ function createSidebarView(container) {
     item.type = 'button';
     item.setAttribute('role', 'tab');
     item.setAttribute('aria-selected', 'false');
-    item.dataset.view = def.view;
+    item.dataset.view = def.view; fcDeclareToggle(item, `flashcards.side.${def.view}`, 'aria-selected', def.label);
     const glyph = el('span', 'fc-sb__nav-icon');
     glyph.innerHTML = icon(def.iconName, 14);
     item.appendChild(glyph);
@@ -5847,7 +5841,7 @@ function createSidebarView(container) {
   sectionAdd.title = 'New Deck';
   sectionAdd.setAttribute('aria-label', 'New Deck');
   sectionAdd.innerHTML = icon('plus', 14);
-  sectionAdd.addEventListener('click', () => void _cmdNewDeck());
+  fcDeclare(sectionAdd, 'flashcards.newDeck', { command: 'flashcards.newDeck' }); sectionAdd.addEventListener('click', () => void _cmdNewDeck());
   decksHead.appendChild(sectionAdd);
   decksSection.appendChild(decksHead);
   const filter = el('label', 'fc-sb__filter');
@@ -5855,7 +5849,7 @@ function createSidebarView(container) {
   const search = el('input', 'px-input-bare');
   search.type = 'search';
   search.placeholder = 'Find a deck';
-  search.setAttribute('aria-label', 'Find a sidebar deck');
+  search.setAttribute('aria-label', 'Find a sidebar deck'); fcDeclare(search, 'flashcards.side.search');
   filter.appendChild(search);
   decksSection.appendChild(filter);
   const columns = el('div', 'fc-sb__columns');
@@ -5951,7 +5945,7 @@ function createSidebarView(container) {
       studyBtn.type = 'button';
       studyBtn.innerHTML = `${icon('play', 13)}<span>Study ${served} ${served === 1 ? 'card' : 'cards'}</span>`;
       studyBtn.disabled = served === 0; // a zeroed daily limit — Custom Study is the way through
-      studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
+      fcDeclare(studyBtn, 'flashcards.side.today.study'); studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
       panel.appendChild(studyBtn);
       const memo = await fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null);
       if (memo && memo.total > 0) {
@@ -5959,7 +5953,7 @@ function createSidebarView(container) {
         memoBtn.type = 'button';
         memoBtn.innerHTML = `${icon('play', 12)}<span>Memorize · ${memo.dueTotal} of ${memo.total} due</span>`;
         memoBtn.title = 'The cards tagged memorize, as their own session across every deck.';
-        memoBtn.addEventListener('click', () => void openFlashcards({ view: 'study', tag: FC_MEMORIZE_TAG }));
+        fcDeclare(memoBtn, 'flashcards.side.today.memorize'); memoBtn.addEventListener('click', () => void openFlashcards({ view: 'study', tag: FC_MEMORIZE_TAG }));
         panel.appendChild(memoBtn);
       }
       if (served < today.dueTotal) {
@@ -5967,7 +5961,7 @@ function createSidebarView(container) {
         overflow.type = 'button';
         overflow.textContent = `Custom study · ${today.dueTotal - served} more available`;
         overflow.title = 'Open Custom Study to work ahead of the daily batch.';
-        overflow.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
+        fcDeclare(overflow, 'flashcards.side.today.moreDue'); overflow.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
         panel.appendChild(overflow);
       }
     } else {
@@ -5978,7 +5972,7 @@ function createSidebarView(container) {
         aheadBtn.type = 'button';
         aheadBtn.textContent = 'Custom Study';
         aheadBtn.title = 'Review ahead, add new cards, or cram.';
-        aheadBtn.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
+        fcDeclare(aheadBtn, 'flashcards.side.today.custom'); aheadBtn.addEventListener('click', () => void openFlashcards({ view: 'custom' }));
         panel.appendChild(aheadBtn);
       }
     }
@@ -5994,7 +5988,7 @@ function createSidebarView(container) {
         'Your decks live here. Use + for a new deck, or Create to turn a page or PDF into cards.'));
     } else {
       for (const deck of customDecks) {
-        const row = el('div', 'fc-deck-row fc-deck-row--custom');
+        const row = el('div', 'fc-deck-row fc-deck-row--custom'); fcSurface(row, 'flashcards.side.customDeck', deck.name, deck.id);
         row.setAttribute('role', 'button');
         row.tabIndex = 0;
         const ic = el('span', 'fc-deck-row__icon');
@@ -6020,7 +6014,7 @@ function createSidebarView(container) {
         more.type = 'button';
         more.title = 'Custom deck actions';
         more.setAttribute('aria-label', `Actions for ${deck.name}`);
-        more.innerHTML = icon('more-horizontal', 15);
+        more.innerHTML = icon('more-horizontal', 15); fcDeclare(more, 'flashcards.side.customDeck.more');
         more.addEventListener('click', (e) => {
           e.stopPropagation();
           if (!_api.ui.showContextMenu) return;
@@ -6043,7 +6037,7 @@ function createSidebarView(container) {
         deckList.appendChild(row);
       }
       for (const deck of decks) {
-        const row = el('div', 'fc-deck-row');
+        const row = el('div', 'fc-deck-row'); fcSurface(row, 'flashcards.side.deck', deck.name, deck.id);
         row.setAttribute('role', 'button');
         row.tabIndex = 0;
         const ic = el('span', 'fc-deck-row__icon');
@@ -6070,7 +6064,7 @@ function createSidebarView(container) {
         more.type = 'button';
         more.title = 'Deck actions';
         more.setAttribute('aria-label', `Actions for ${deck.name}`);
-        more.innerHTML = icon('more-horizontal', 15);
+        more.innerHTML = icon('more-horizontal', 15); fcDeclare(more, 'flashcards.side.deck.more');
         more.addEventListener('click', (e) => {
           e.stopPropagation();
           const r = more.getBoundingClientRect();
@@ -6203,12 +6197,12 @@ function fcCalendarEl({ selected = 0, onPick }) {
   const prev = el('button', 'fc-cal__nav');
   prev.type = 'button';
   prev.title = 'Previous Month';
-  prev.innerHTML = icon('chevron-left', 14) || '‹';
+  prev.innerHTML = icon('chevron-left', 14) || '‹'; fcDeclare(prev, 'flashcards.calendar.prev');
   const label = el('div', 'fc-cal__label');
   const next = el('button', 'fc-cal__nav');
   next.type = 'button';
   next.title = 'Next Month';
-  next.innerHTML = icon('chevron-right', 14) || '›';
+  next.innerHTML = icon('chevron-right', 14) || '›'; fcDeclare(next, 'flashcards.calendar.next');
   head.append(prev, label, next);
   root.appendChild(head);
 
@@ -6259,7 +6253,7 @@ function fcDateDialog(title, build) {
     const overlay = el('div', 'fc-datedlg-overlay');
     const dlg = el('div', 'fc-datedlg');
     dlg.setAttribute('role', 'dialog');
-    dlg.setAttribute('aria-label', title);
+    dlg.setAttribute('aria-label', title); fcSurface(dlg, 'flashcards.dateDialog', title);
     dlg.appendChild(el('div', 'fc-datedlg__title', title));
     const close = (result) => {
       document.removeEventListener('keydown', onKey, true);
@@ -6294,12 +6288,12 @@ async function _setExamDateFlow(deck) {
     if (deck.examDate) {
       const clearBtn = el('button', 'fc-btn');
       clearBtn.textContent = 'Clear Date';
-      clearBtn.addEventListener('click', () => close(0));
+      fcDeclare(clearBtn, 'flashcards.dateDialog.clear'); clearBtn.addEventListener('click', () => close(0));
       foot.appendChild(clearBtn);
     }
     const cancelBtn = el('button', 'fc-btn');
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => close(undefined));
+    fcDeclare(cancelBtn, 'flashcards.dateDialog.cancel'); cancelBtn.addEventListener('click', () => close(undefined));
     foot.appendChild(cancelBtn);
     dlg.appendChild(foot);
   });
@@ -6350,14 +6344,14 @@ async function _setExamDatesBulkFlow() {
     const clearBtn = el('button', 'fc-btn');
     clearBtn.textContent = 'Clear Dates';
     clearBtn.title = 'Remove the exam date from every ticked deck.';
-    clearBtn.addEventListener('click', () => {
+    fcDeclare(clearBtn, 'flashcards.dateDialog.clear'); clearBtn.addEventListener('click', () => {
       const ids = checkedIds();
       if (ids.length > 0) close({ ids, ms: 0 });
     });
     foot.appendChild(clearBtn);
     const cancelBtn = el('button', 'fc-btn');
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => close(undefined));
+    fcDeclare(cancelBtn, 'flashcards.dateDialog.cancel'); cancelBtn.addEventListener('click', () => close(undefined));
     foot.appendChild(cancelBtn);
     dlg.appendChild(foot);
   });
@@ -6405,11 +6399,11 @@ function renderViewError(body, route, err, setRoute, retry) {
   box.appendChild(el('div', 'px-empty__hint', String(err?.message || err)));
   const again = el('button', 'fc-btn fc-btn--primary');
   again.textContent = 'Try Again';
-  again.addEventListener('click', () => retry());
+  fcDeclare(again, 'flashcards.error.retry'); again.addEventListener('click', () => retry());
   box.appendChild(again);
   const back = el('button', 'fc-btn');
   back.textContent = 'Back to Decks';
-  back.addEventListener('click', () => setRoute({ view: 'decks' }));
+  fcDeclare(back, 'flashcards.error.toDecks'); back.addEventListener('click', () => setRoute({ view: 'decks' }));
   box.appendChild(back);
   view.appendChild(box);
   body.appendChild(view);
@@ -6673,7 +6667,7 @@ async function renderDecks(body, setRoute) {
   const statsBtn = el('button', 'fc-btn');
   statsBtn.textContent = 'Stats';
   statsBtn.title = 'Retention, workload, and review history.';
-  statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
+  fcDeclare(statsBtn, 'flashcards.decks.stats'); statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
   head.appendChild(statsBtn);
   view.appendChild(head);
 
@@ -6705,14 +6699,14 @@ async function renderDecks(body, setRoute) {
     studyAll.innerHTML = `${icon('play', 12)}<span>${studyLabel}</span>`;
     // A zeroed daily limit still leaves work reachable — through Custom Study.
     studyAll.disabled = served === 0;
-    studyAll.addEventListener('click', () => setRoute({ view: 'study' }));
+    fcDeclare(studyAll, 'flashcards.decks.study'); studyAll.addEventListener('click', () => setRoute({ view: 'study' }));
     cta.appendChild(studyAll);
     const memo = await fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null);
     if (memo && memo.total > 0) {
       const memorize = el('button', 'fc-btn');
       memorize.innerHTML = `${icon('play', 12)}<span>${memo.dueTotal > 0 ? `Memorize ${memo.dueTotal} Due` : `Memorize · ${memo.total} Cards`}</span>`;
       memorize.title = `${memo.total} cards tagged memorize, as their own session across every deck.`;
-      memorize.addEventListener('click', () => setRoute({ view: 'study', tag: FC_MEMORIZE_TAG }));
+      fcDeclare(memorize, 'flashcards.decks.memorize'); memorize.addEventListener('click', () => setRoute({ view: 'study', tag: FC_MEMORIZE_TAG }));
       cta.appendChild(memorize);
     }
     const customAll = el('button', 'fc-btn');
@@ -6720,7 +6714,7 @@ async function renderDecks(body, setRoute) {
     customAll.title = behind > 0
       ? `${behind} more cards sit behind today's batch. Custom Study reaches them.`
       : 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
-    customAll.addEventListener('click', () => setRoute({ view: 'custom' }));
+    fcDeclare(customAll, 'flashcards.decks.custom'); customAll.addEventListener('click', () => setRoute({ view: 'custom' }));
     cta.appendChild(customAll);
     if (behind > 0) {
       cta.appendChild(el('span', 'fc-home__behind', `${behind} more behind today's batch`));
@@ -6738,37 +6732,37 @@ async function renderDecks(body, setRoute) {
     filterInput = el('input', 'px-input-bare');
     filterInput.type = 'search';
     filterInput.placeholder = 'Find a deck';
-    filterInput.setAttribute('aria-label', 'Find a deck');
+    filterInput.setAttribute('aria-label', 'Find a deck'); fcDeclare(filterInput, 'flashcards.decks.filter');
     search.appendChild(filterInput);
     actions.appendChild(search);
   }
   const newDeckBtn = el('button', decks.length === 0 ? 'fc-btn fc-btn--primary' : 'fc-btn');
   newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New Deck</span>`;
-  newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
+  fcDeclare(newDeckBtn, 'flashcards.newDeck', { command: 'flashcards.newDeck' }); newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newDeckBtn);
   if (decks.length) {
     const newCustomBtn = el('button', 'fc-btn');
     newCustomBtn.innerHTML = `${icon('plus', 12)}<span>New Custom Deck</span>`;
     newCustomBtn.title = 'A custom deck gathers cards from any deck. The cards stay in their own decks and keep one schedule.';
-    newCustomBtn.addEventListener('click', () => { void _newCustomDeckFlow().then((id) => { if (id != null) setRoute({ view: 'customDeck', customId: id }); }); });
+    fcDeclare(newCustomBtn, 'flashcards.decks.newCustom'); newCustomBtn.addEventListener('click', () => { void _newCustomDeckFlow().then((id) => { if (id != null) setRoute({ view: 'customDeck', customId: id }); }); });
     actions.appendChild(newCustomBtn);
   }
   const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(actions, { label: 'Generate Cards' })
+    ? _api.ui.createAiButton(actions, { id: 'flashcards.decks.generate', label: 'Generate Cards' })
     : el('button', 'fc-btn');
   if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; actions.appendChild(genBtn); }
   genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
   const importBtn = el('button', 'fc-btn');
   importBtn.textContent = 'Import Cards';
   importBtn.title = 'Bring in an Anki export, a front/back PDF, or pasted rows.';
-  importBtn.addEventListener('click', () => setRoute({ view: 'import' }));
+  fcDeclare(importBtn, 'flashcards.decks.import'); importBtn.addEventListener('click', () => setRoute({ view: 'import' }));
   actions.appendChild(importBtn);
   const datesBtn = el('button', 'fc-btn');
   datesBtn.textContent = 'Exam Dates';
   datesBtn.title = 'Set or clear the exam date on several decks at once.';
   // Nothing to date on an empty shelf: show the button once a deck exists.
   if (decks.length === 0) datesBtn.style.display = 'none';
-  datesBtn.addEventListener('click', () => void _setExamDatesBulkFlow());
+  fcDeclare(datesBtn, 'flashcards.decks.examDates'); datesBtn.addEventListener('click', () => void _setExamDatesBulkFlow());
   actions.appendChild(datesBtn);
   view.appendChild(actions);
 
@@ -6798,7 +6792,7 @@ async function renderDecks(body, setRoute) {
     const customList = el('div', 'fc-home__decks fc-home__decks--custom');
     view.appendChild(customList);
     for (const deck of customDecks) {
-      const card = el('div', 'fc-deck-card fc-deck-card--custom');
+      const card = el('div', 'fc-deck-card fc-deck-card--custom'); fcSurface(card, 'flashcards.customDeck', deck.name, deck.id);
       card.dataset.customId = String(deck.id);
       const info = el('div', 'fc-deck-card__info');
       info.setAttribute('role', 'button');
@@ -6826,19 +6820,19 @@ async function renderDecks(body, setRoute) {
       studyBtn.textContent = 'Study';
       studyBtn.title = fcCustomStudyLabel(deck).hint;
       studyBtn.disabled = deck.served === 0 && !_fcStudySessions.has(`tag:${deck.tag}`);
-      studyBtn.addEventListener('click', () => setRoute({ view: 'study', tag: deck.tag }));
+      fcDeclare(studyBtn, 'flashcards.customDeck.study'); studyBtn.addEventListener('click', () => setRoute({ view: 'study', tag: deck.tag }));
       btns.appendChild(studyBtn);
       const allBtn = el('button', 'fc-btn');
       allBtn.textContent = 'Study All';
       allBtn.title = 'Every card of this custom deck now, whatever is due. Grading will not change your schedule.';
       allBtn.disabled = deck.total === 0;
-      allBtn.addEventListener('click', () => setRoute(fcCustomDeckCramRoute(deck)));
+      fcDeclare(allBtn, 'flashcards.customDeck.studyAll'); allBtn.addEventListener('click', () => setRoute(fcCustomDeckCramRoute(deck)));
       btns.appendChild(allBtn);
       const moreBtn = el('button', 'fc-btn');
       moreBtn.innerHTML = icon('more-horizontal', 12);
       moreBtn.title = 'Custom deck actions';
       moreBtn.setAttribute('aria-label', `Actions for ${deck.name}`);
-      moreBtn.addEventListener('click', () => {
+      fcDeclare(moreBtn, 'flashcards.customDeck.more'); moreBtn.addEventListener('click', () => {
         if (!_api.ui.showContextMenu) return;
         const r = moreBtn.getBoundingClientRect();
         _api.ui.showContextMenu({ x: r.left, y: r.bottom + 4 }, fcCustomDeckMenuItems(deck, setRoute));
@@ -6862,7 +6856,7 @@ async function renderDecks(body, setRoute) {
   view.appendChild(list);
 
   for (const deck of decks) {
-    const card = el('div', 'fc-deck-card');
+    const card = el('div', 'fc-deck-card'); fcSurface(card, 'flashcards.deck', deck.name, deck.id);
 
     const info = el('div', 'fc-deck-card__info');
     info.setAttribute('role', 'button');
@@ -6874,7 +6868,7 @@ async function renderDecks(body, setRoute) {
       const chip = el('button', 'fc-exam-chip', `${daysLeft}d to exam`);
       chip.type = 'button';
       chip.title = `Exam ${new Date(deck.examDate).toLocaleDateString()}. Intervals are capped so every card gets a final review in time. Click to change.`;
-      chip.addEventListener('click', (e) => { e.stopPropagation(); void _setExamDateFlow(deck); });
+      fcDeclare(chip, 'flashcards.deck.examDate'); chip.addEventListener('click', (e) => { e.stopPropagation(); void _setExamDateFlow(deck); });
       nameRow.appendChild(chip);
     }
     info.appendChild(nameRow);
@@ -6929,13 +6923,13 @@ async function renderDecks(body, setRoute) {
     // A live session (learning card pending its 1m step) must stay
     // reachable even when the due badges read zero.
     studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0 && !_fcStudySessions.has(String(deck.id));
-    studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deck.id }));
+    fcDeclare(studyBtn, 'flashcards.deck.study'); studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deck.id }));
     btns.appendChild(studyBtn);
     const deckCustomBtn = el('button', 'fc-btn');
     deckCustomBtn.textContent = 'Custom';
     deckCustomBtn.title = `Custom Study scoped to ${deck.name}`;
     deckCustomBtn.disabled = deck.total === 0;
-    deckCustomBtn.addEventListener('click', () => setRoute({ view: 'custom', deckId: deck.id }));
+    fcDeclare(deckCustomBtn, 'flashcards.deck.custom'); deckCustomBtn.addEventListener('click', () => setRoute({ view: 'custom', deckId: deck.id }));
     btns.appendChild(deckCustomBtn);
     // Rename / Delete / Merge / Score / Coverage all live in the ONE deck
     // menu the sidebar rows already use, instead of a second set of buttons
@@ -6944,7 +6938,7 @@ async function renderDecks(body, setRoute) {
     more.title = 'Deck actions';
     more.setAttribute('aria-label', `Actions for ${deck.name}`);
     more.innerHTML = icon('more-horizontal', 15);
-    more.addEventListener('click', () => {
+    fcDeclare(more, 'flashcards.deck.more'); more.addEventListener('click', () => {
       if (!_api.ui.showContextMenu) { openDeck(); return; }
       const r = more.getBoundingClientRect();
       _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, fcDeckMenuItems(deck));
@@ -7032,9 +7026,9 @@ function fcCreateStudyNotes(card, {
   // Notes own their keyboard while editing; E/1-4 must not edit or grade the card.
   root.addEventListener('keydown', (e) => e.stopPropagation());
   let mode = 'read', draft = '', error = '', request = 0, saving = false, aiDraft = false;
-  const textButton = (host, label, action) => {
+  const textButton = (host, label, action, id) => {
     const btn = el('button', 'fc-btn fc-btn--ghost fc-btn--small', label);
-    btn.type = 'button'; btn.addEventListener('click', action); host.appendChild(btn); return btn;
+    btn.type = 'button'; btn.addEventListener('click', action); host.appendChild(btn); if (id) fcDeclare(btn, id); return btn;
   };
   const cancel = () => { request++; mode = 'read'; error = ''; paint(); };
   const edit = () => { mode = 'edit'; paint(); root.querySelector('textarea')?.focus(); };
@@ -7066,21 +7060,21 @@ function fcCreateStudyNotes(card, {
     const head = el('div', 'fc-study__notes-head');
     const actions = el('div', 'fc-study__notes-actions');
     if (mode === 'read' && !card.notes?.trim()) {
-      textButton(head, '+ Add notes', () => { draft = ''; aiDraft = false; edit(); });
+      textButton(head, '+ Add notes', () => { draft = ''; aiDraft = false; edit(); }, 'flashcards.notes.add');
     } else head.appendChild(el('span', 'fc-study__notes-label', mode === 'draft' ? (aiDraft ? 'Notes · AI draft' : 'Notes · Preview') : 'Notes'));
     head.appendChild(actions); root.appendChild(head);
     if (mode === 'read') {
-      if (card.notes?.trim()) fcIconBtn(actions, { iconName: 'pencil', label: 'Edit Notes', onClick: () => { draft = card.notes; aiDraft = false; edit(); } });
+      if (card.notes?.trim()) fcIconBtn(actions, { id: 'flashcards.notes.edit', iconName: 'pencil', label: 'Edit Notes', onClick: () => { draft = card.notes; aiDraft = false; edit(); } });
       const aiOptions = { label: 'Draft Notes with AI', iconOnly: true, compact: true, title: 'Draft notes with AI using this card and its source excerpt' };
       if (_api?.ui?.createAiButton) {
-        const ai = _api.ui.createAiButton(actions, aiOptions);
+        const ai = _api.ui.createAiButton(actions, { ...aiOptions, id: 'flashcards.notes.draftWithAi' });
         ai.addEventListener('click', () => { void startDraft(); });
-      } else fcIconBtn(actions, { ...aiOptions, iconName: 'sparkles', onClick: () => { void startDraft(); } });
+      } else fcIconBtn(actions, { ...aiOptions, id: 'flashcards.notes.draftWithAi', iconName: 'sparkles', onClick: () => { void startDraft(); } });
     }
     if (mode === 'generating') {
       const status = el('span', 'fc-study__notes-status', 'Drafting notes…');
       status.setAttribute('role', 'status'); root.appendChild(status);
-      textButton(actions, 'Cancel', cancel);
+      textButton(actions, 'Cancel', cancel, 'flashcards.notes.cancel');
     }
     const body = el('div', 'fc-study__notes-body');
     root.appendChild(body);
@@ -7093,7 +7087,7 @@ function fcCreateStudyNotes(card, {
       const input = el('textarea', 'fc-textarea fc-study__notes-input');
       input.value = draft; input.rows = 4; input.disabled = saving;
       input.placeholder = 'Write notes in Markdown. Use $…$ for formulas.';
-      input.setAttribute('aria-label', 'Card notes');
+      input.setAttribute('aria-label', 'Card notes'); fcDeclare(input, 'flashcards.notes.input');
       input.addEventListener('input', () => { draft = input.value; });
       input.addEventListener('keydown', (e) => {
         if (saving) return;
@@ -7105,10 +7099,10 @@ function fcCreateStudyNotes(card, {
     }
     if (mode === 'edit' || mode === 'draft') {
       const foot = el('div', 'fc-study__notes-foot'); root.appendChild(foot);
-      if (mode === 'edit') textButton(foot, 'Preview', () => { mode = 'draft'; paint(); }).disabled = saving;
-      else textButton(foot, 'Edit Notes', edit).disabled = saving;
-      textButton(foot, 'Discard', cancel).disabled = saving;
-      const keep = textButton(foot, saving ? 'Saving…' : 'Save notes', () => { void save(); });
+      if (mode === 'edit') textButton(foot, 'Preview', () => { mode = 'draft'; paint(); }, 'flashcards.notes.preview').disabled = saving;
+      else textButton(foot, 'Edit Notes', edit, 'flashcards.notes.editDraft').disabled = saving;
+      textButton(foot, 'Discard', cancel, 'flashcards.notes.discard').disabled = saving;
+      const keep = textButton(foot, saving ? 'Saving…' : 'Save notes', () => { void save(); }, 'flashcards.notes.save');
       keep.disabled = saving;
     }
     if (error) {
@@ -7120,7 +7114,7 @@ function fcCreateStudyNotes(card, {
 }
 
 function fcCardEditorEl(card, { onSave, onCancel }) {
-  const form = el('div', 'fc-edit');
+  const form = el('div', 'fc-edit'); fcSurface(form, 'flashcards.cardEditor', 'Edit Card', card.id);
   if (card.id != null) form.appendChild(fcIdChip(card.id, 'fc-edit__id'));
 
   const err = el('div', 'fc-error');
@@ -7140,7 +7134,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
     const grid = el('div', 'fc-edit__row');
     const ta = el('textarea', 'fc-textarea');
     ta.value = value;
-    ta.rows = 4;
+    ta.rows = 4; fcDeclare(ta, `flashcards.cardEditor.${fcSlug(label)}`, { label });
     const pv = el('div', 'fc-edit__preview');
     preview(pv, value);
     let timer = null;
@@ -7161,13 +7155,13 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   notesIn.value = card.notes || '';
   notesIn.rows = 2;
   notesIn.placeholder = 'Optional. Shown with the answer during study; the AI rewrite prompt reads them too.';
-  form.appendChild(notesIn);
+  form.appendChild(notesIn); fcDeclare(notesIn, 'flashcards.cardEditor.notes', { label: 'Notes' });
 
   form.appendChild(el('div', 'fc-label', 'Tags'));
   const tagsIn = el('input', 'fc-input');
   tagsIn.value = fcParseTags(card.tags).join(' ');
   tagsIn.placeholder = 'space-separated';
-  form.appendChild(tagsIn);
+  form.appendChild(tagsIn); fcDeclare(tagsIn, 'flashcards.cardEditor.tags', { label: 'Tags' });
 
   form.appendChild(el('div', 'fc-label', 'Importance'));
   const impRow = el('div', 'fc-row');
@@ -7175,7 +7169,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   impIn.type = 'number';
   impIn.min = '0';
   impIn.max = '100';
-  impIn.value = String(card.importance || 0);
+  impIn.value = String(card.importance || 0); fcDeclare(impIn, 'flashcards.cardEditor.importance', { label: 'Importance' });
   impIn.title = 'Exam criticality, 1-100. 0 = unscored. High-importance cards introduce first when pacing is on; your value overrides the AI score.';
   impRow.appendChild(impIn);
   impRow.appendChild(el('span', 'fc-hint',
@@ -7206,7 +7200,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   rubricIn.value = (card.rubric || [])
     .map((p) => (p.required ? p.text : `${p.text} (optional)`))
     .join('\n');
-  rubricWrap.appendChild(rubricIn);
+  rubricWrap.appendChild(rubricIn); fcDeclare(rubricIn, 'flashcards.cardEditor.rubric', { label: 'Rubric' });
   rubricWrap.appendChild(el('div', 'fc-hint',
     'Left empty on a production card, one is written from the answer the first time you are graded.'));
   form.appendChild(rubricWrap);
@@ -7216,7 +7210,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
     rubricWrap.style.display = fcIsProductionMode(recallMode) ? '' : 'none';
     modeHint.textContent = FC_RECALL_MODE_HINTS[recallMode];
   };
-  const modeDd = _api.ui.createDropdown(modeHost, {
+  const modeDd = _api.ui.createDropdown(modeHost, { id: 'flashcards.cardEditor.mode',
     items: [
       { value: 'recognition', label: 'Recognition' },
       { value: 'conceptual', label: 'Conceptual' },
@@ -7236,7 +7230,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   saveBtn.textContent = 'Save';
   const cancelBtn = el('button', 'fc-btn');
   cancelBtn.textContent = 'Cancel';
-  actions.append(saveBtn, cancelBtn);
+  actions.append(saveBtn, cancelBtn); fcDeclare(saveBtn, 'flashcards.cardEditor.save'); fcDeclare(cancelBtn, 'flashcards.cardEditor.cancel');
   actions.appendChild(el('span', 'fc-hint', 'Ctrl+Enter saves · Esc cancels · $…$ renders math'));
   form.appendChild(actions);
 
@@ -7284,7 +7278,7 @@ async function renderCustomDeck(body, route, setRoute) {
   const head = el('div', 'fc-row');
   const backBtn = el('button', 'fc-btn');
   backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Decks</span>`;
-  backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
+  fcDeclare(backBtn, 'flashcards.customView.toDecks'); backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
   head.appendChild(backBtn);
   head.appendChild(el('div', 'fc-view__title', deck.name));
   const spacer = el('div'); spacer.style.flex = '1';
@@ -7294,19 +7288,19 @@ async function renderCustomDeck(body, route, setRoute) {
   studyBtn.innerHTML = `${icon('play', 12)}<span>${studySays.label}</span>`;
   studyBtn.title = studySays.hint;
   studyBtn.disabled = live.served === 0 && !_fcStudySessions.has(`tag:${deck.tag}`);
-  studyBtn.addEventListener('click', () => setRoute({ view: 'study', tag: deck.tag }));
+  fcDeclare(studyBtn, 'flashcards.customView.study'); studyBtn.addEventListener('click', () => setRoute({ view: 'study', tag: deck.tag }));
   head.appendChild(studyBtn);
   const allBtn = el('button', 'fc-btn');
   allBtn.innerHTML = `${icon('play', 12)}<span>Study All ${live.total}</span>`;
   allBtn.title = 'Every card of this custom deck now, whatever is due. Grading will not change your schedule.';
   allBtn.disabled = live.total === 0;
-  allBtn.addEventListener('click', () => setRoute(fcCustomDeckCramRoute(live)));
+  fcDeclare(allBtn, 'flashcards.customView.studyAll'); allBtn.addEventListener('click', () => setRoute(fcCustomDeckCramRoute(live)));
   head.appendChild(allBtn);
   const moreBtn = el('button', 'fc-btn');
   moreBtn.innerHTML = icon('more-horizontal', 12);
   moreBtn.setAttribute('aria-label', 'Custom deck actions');
   moreBtn.title = 'Custom deck actions';
-  moreBtn.addEventListener('click', () => {
+  fcDeclare(moreBtn, 'flashcards.customView.more'); moreBtn.addEventListener('click', () => {
     if (!_api.ui.showContextMenu) return;
     const r = moreBtn.getBoundingClientRect();
     _api.ui.showContextMenu({ x: r.left, y: r.bottom + 4 }, fcCustomDeckMenuItems(live, setRoute).slice(4));
@@ -7329,7 +7323,7 @@ async function renderCustomDeck(body, route, setRoute) {
     groupHead.appendChild(el('span', 'fc-custom__group-count', String(group.length)));
     section.appendChild(groupHead);
     for (const c of group) {
-      const row = el('div', 'fc-custom__card');
+      const row = el('div', 'fc-custom__card'); fcSurface(row, 'flashcards.customCard', String(c.front || '').slice(0, 80) || 'Card', c.id);
       row.dataset.cardId = String(c.id);
       // The front as the deck list shows it: markdown and equations rendered.
       const text = el('div', 'fc-custom__front');
@@ -7350,7 +7344,7 @@ async function renderCustomDeck(body, route, setRoute) {
       const remove = el('button', 'fc-btn fc-custom__remove');
       remove.textContent = 'Remove';
       remove.title = `Take this card out of ${deck.name}. It stays in ${name}.`;
-      remove.addEventListener('click', () => { void fcBulkTag([c.id], deck.tag, true); });
+      fcDeclare(remove, 'flashcards.customCard.remove'); remove.addEventListener('click', () => { void fcBulkTag([c.id], deck.tag, true); });
       row.appendChild(remove);
       section.appendChild(row);
     }
@@ -7368,7 +7362,7 @@ async function renderBrowse(body, route, setRoute) {
   const head = el('div', 'fc-row');
   const backBtn = el('button', 'fc-btn');
   backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Decks</span>`;
-  backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
+  fcDeclare(backBtn, 'flashcards.browse.toDecks'); backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
   head.appendChild(backBtn);
   const title = el('div', 'fc-view__title', deckRow.name);
   head.appendChild(title);
@@ -7376,16 +7370,16 @@ async function renderBrowse(body, route, setRoute) {
   head.appendChild(spacer);
   const studyBtn = el('button', 'fc-btn fc-btn--primary');
   studyBtn.innerHTML = `${icon('play', 12)}<span>Study This Deck</span>`;
-  studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deckRow.id }));
+  fcDeclare(studyBtn, 'flashcards.browse.study'); studyBtn.addEventListener('click', () => setRoute({ view: 'study', deckId: deckRow.id }));
   head.appendChild(studyBtn);
   const addBtn = el('button', 'fc-btn');
-  addBtn.innerHTML = `${icon('plus', 12)}<span>Add Card</span>`;
+  addBtn.innerHTML = `${icon('plus', 12)}<span>Add Card</span>`; fcDeclare(addBtn, 'flashcards.browse.addCard');
   // The full deck menu (incl. Find Duplicates / Coverage Review) from
   // Browse too — same items as the sidebar rows, one source of truth.
   const moreBtn = el('button', 'fc-btn');
   moreBtn.innerHTML = icon('more-horizontal', 12);
   moreBtn.setAttribute('aria-label', 'Deck actions');
-  moreBtn.addEventListener('click', () => {
+  fcDeclare(moreBtn, 'flashcards.browse.more'); moreBtn.addEventListener('click', () => {
     if (!_api.ui.showContextMenu) return;
     const r = moreBtn.getBoundingClientRect();
     _api.ui.showContextMenu({ x: r.left, y: r.bottom + 4 }, fcDeckMenuItems({
@@ -7398,24 +7392,24 @@ async function renderBrowse(body, route, setRoute) {
   const addForm = el('div', 'fc-form');
   addForm.style.display = 'none';
   const frontIn = el('textarea', 'fc-textarea');
-  frontIn.placeholder = 'Front: the question';
+  frontIn.placeholder = 'Front: the question'; fcDeclare(frontIn, 'flashcards.browse.new.front', { label: 'Front' });
   frontIn.rows = 2;
   const backIn = el('textarea', 'fc-textarea');
-  backIn.placeholder = 'Back: the answer';
+  backIn.placeholder = 'Back: the answer'; fcDeclare(backIn, 'flashcards.browse.new.back', { label: 'Back' });
   backIn.rows = 2;
   const tagsIn = el('input', 'fc-input');
-  tagsIn.placeholder = 'Tags (comma separated, optional)';
+  tagsIn.placeholder = 'Tags (comma separated, optional)'; fcDeclare(tagsIn, 'flashcards.browse.new.tags', { label: 'Tags' });
   const addErr = el('div', 'fc-error');
   addErr.style.display = 'none';
   const addRow = el('div', 'fc-row');
   const saveCard = el('button', 'fc-btn fc-btn--primary');
-  saveCard.textContent = 'Save Card';
+  saveCard.textContent = 'Save Card'; fcDeclare(saveCard, 'flashcards.browse.new.save');
   // reverse pair option + cloze affordance. Cloze wins over reverse
   // when markers are present (a cloze note is already multi-card).
   const reverseWrap = el('label', 'fc-check');
   const reverseIn = el('input');
   reverseIn.type = 'checkbox';
-  reverseWrap.append(reverseIn, document.createTextNode(' Also create the reversed card (back asks for front)'));
+  reverseWrap.append(reverseIn, document.createTextNode(' Also create the reversed card (back asks for front)')); fcDeclare(reverseIn, 'flashcards.browse.new.reverse', { label: 'Also create the reversed card' });
   const clozeHint = el('div', 'fc-hint',
     'Cloze: wrap answers as {{c1::answer}} or {{c1::answer::hint}} in the front. Each numbered blank becomes its own card; the back is optional extra context.');
   saveCard.addEventListener('click', () => {
@@ -7461,11 +7455,11 @@ async function renderBrowse(body, route, setRoute) {
   // dressing controls as chips made them read as slop.
   const toolbar = el('div', 'fc-browse-toolbar');
   const searchIn = el('input', 'fc-input');
-  searchIn.placeholder = 'Search cards… (#tag searches tags)';
+  searchIn.placeholder = 'Search cards… (#tag searches tags)'; fcDeclare(searchIn, 'flashcards.browse.search', { label: 'Search cards' });
   // Arrived from another tool's Show Source: the list opens narrowed to that card.
   if (typeof route.search === 'string' && route.search) searchIn.value = route.search;
   toolbar.appendChild(searchIn);
-  const groupDd = _api.ui.createDropdown(toolbar, {
+  const groupDd = _api.ui.createDropdown(toolbar, { id: 'flashcards.browse.group',
     items: [
       { value: 'none', label: 'No Grouping' },
       { value: 'tag', label: 'Group by Tag' },
@@ -7478,7 +7472,7 @@ async function renderBrowse(body, route, setRoute) {
     _fcBrowseGroupTag = groupByTag;
     void renderList();
   });
-  const viewDd = _api.ui.createDropdown(toolbar, {
+  const viewDd = _api.ui.createDropdown(toolbar, { id: 'flashcards.browse.view',
     items: [
       { value: 'full', label: 'Full View' },
       { value: 'compact', label: 'Compact View' },
@@ -7500,7 +7494,7 @@ async function renderBrowse(body, route, setRoute) {
 
   // Tag bar: every tag in the deck as a filter chip (click to narrow;
   // multiple active tags = ALL must match).
-  const tagBar = el('div', 'fc-tagbar');
+  const tagBar = el('div', 'fc-tagbar'); fcList(tagBar, 'flashcards.browse.tags', 'Tags', () => [...activeTags]);
   view.appendChild(tagBar);
 
   // Bulk bar: appears while cards are selected (user ask: move/copy cards
@@ -7530,7 +7524,7 @@ async function renderBrowse(body, route, setRoute) {
     const mk = (label, handler) => {
       const b = el('button', 'fc-btn fc-btn--small');
       b.textContent = label;
-      b.addEventListener('click', () => void handler());
+      fcDeclare(b, `flashcards.browse.bulk.${fcSlug(label)}`); b.addEventListener('click', () => void handler());
       bulkBar.appendChild(b);
     };
     mk('Move to Deck…', async () => {
@@ -7635,7 +7629,7 @@ async function renderBrowse(body, route, setRoute) {
       chip.appendChild(el('span', `fc-flag-dot fc-flag-dot--${f.cls}`));
       chip.appendChild(el('span', '', `${f.name} ${counts.get(f.value)}`));
       chip.classList.toggle('fc-tagchip--active', activeFlags.has(f.value));
-      chip.setAttribute('aria-pressed', activeFlags.has(f.value) ? 'true' : 'false');
+      chip.setAttribute('aria-pressed', activeFlags.has(f.value) ? 'true' : 'false'); fcDeclareToggle(chip, `flashcards.browse.flag.${f.cls}`, 'aria-pressed', `${f.name} flag`);
       chip.addEventListener('click', () => {
         if (activeFlags.has(f.value)) activeFlags.delete(f.value); else activeFlags.add(f.value);
         void renderList();
@@ -7725,7 +7719,7 @@ async function renderBrowse(body, route, setRoute) {
   };
 
   const buildCardRow = (card, number) => {
-    const row = el('div', 'fc-cardrow');
+    const row = el('div', 'fc-cardrow'); fcSurface(row, 'flashcards.card', String(card.front || '').slice(0, 80) || `Card ${number}`, card.id);
     row.dataset.cardId = String(card.id);
     if (card.suspended) row.classList.add('fc-cardrow--suspended');
 
@@ -7862,7 +7856,7 @@ async function renderBrowse(body, route, setRoute) {
       const studyBtn = el('button', 'fc-btn');
       studyBtn.textContent = 'Study';
       studyBtn.title = 'Study this card on its own. Grading it updates its schedule as usual.';
-      studyBtn.addEventListener('click', () => setRoute({
+      fcDeclare(studyBtn, 'flashcards.card.study'); studyBtn.addEventListener('click', () => setRoute({
         view: 'study',
         deckId: deckRow.id,
         // startedAt keys the session, so this never resumes into — or is
@@ -7875,7 +7869,7 @@ async function renderBrowse(body, route, setRoute) {
       const histBtn = el('button', 'fc-btn');
       histBtn.textContent = 'Answers';
       let loaded = false;
-      histBtn.addEventListener('click', () => {
+      fcDeclare(histBtn, 'flashcards.card.answers'); histBtn.addEventListener('click', () => {
         const showing = historyHost.style.display !== 'none';
         historyHost.style.display = showing ? 'none' : '';
         if (showing || loaded) return;
@@ -7896,7 +7890,7 @@ async function renderBrowse(body, route, setRoute) {
     }
     const editBtn = el('button', 'fc-btn');
     editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => {
+    fcDeclare(editBtn, 'flashcards.card.edit'); editBtn.addEventListener('click', () => {
       row.classList.add('fc-cardrow--editing');
       row.replaceChildren(fcCardEditorEl(card, {
         onSave: async (patch) => {
@@ -7909,7 +7903,7 @@ async function renderBrowse(body, route, setRoute) {
     btns.appendChild(editBtn);
     const suspendBtn = el('button', 'fc-btn');
     suspendBtn.textContent = card.suspended ? 'Unsuspend' : 'Suspend';
-    suspendBtn.addEventListener('click', () => {
+    fcDeclare(suspendBtn, 'flashcards.card.suspend'); suspendBtn.addEventListener('click', () => {
       // Explicit arrows: fcUpdateCard resolves undefined, and a bare
       // .then(renderList) would pass it as keepCardId's stand-in.
       void fcUpdateCard(card.id, { suspended: !card.suspended }).then(() => renderList(card.id));
@@ -7917,7 +7911,7 @@ async function renderBrowse(body, route, setRoute) {
     btns.appendChild(suspendBtn);
     const delBtn = el('button', 'fc-btn fc-btn--danger');
     delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => {
+    fcDeclare(delBtn, 'flashcards.card.delete'); delBtn.addEventListener('click', () => {
       void fcDeleteCard(card.id).then(() => renderList());
     });
     btns.appendChild(delBtn);
@@ -7946,7 +7940,7 @@ async function renderDedup(body, route, setRoute) {
   const head = el('div', 'fc-row');
   const backBtn = el('button', 'fc-btn');
   backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Back</span>`;
-  backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
+  fcDeclare(backBtn, 'flashcards.dedup.back'); backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
   head.appendChild(backBtn);
   head.appendChild(el('div', 'fc-view__title', `Find Duplicates - ${deckRow.name}`));
   view.appendChild(head);
@@ -7979,7 +7973,7 @@ async function renderDedup(body, route, setRoute) {
   retryBtn.title = 'Run the AI judge again over the groups it has not reviewed.';
   retryBtn.style.display = 'none';
   status.after(retryBtn);
-  retryBtn.addEventListener('click', () => void judgePass());
+  fcDeclare(retryBtn, 'flashcards.dedup.retry'); retryBtn.addEventListener('click', () => void judgePass());
 
   const unjudgedCount = () => currentClusters.filter((c) => !c.verdict).length;
 
@@ -8018,7 +8012,7 @@ async function renderDedup(body, route, setRoute) {
     const actionable = ordered.filter((c) => c.verdict !== 'distinct');
 
     const buildGroup = (cluster) => {
-      const group = el('div', 'fc-dupgroup');
+      const group = el('div', 'fc-dupgroup'); fcSurface(group, 'flashcards.dupGroup', 'Look-alike cards', cluster.cardIds.join('-'));
       const groupHead = el('div', 'fc-row');
       const judgedBad = cluster.verdict === 'duplicate' || cluster.verdict === 'overlap';
       const simChip = el('span', judgedBad ? 'fc-chip fc-chip--warn' : 'fc-chip', `${Math.round(cluster.similarity * 100)}% Similar`);
@@ -8034,7 +8028,7 @@ async function renderDedup(body, route, setRoute) {
       for (const id of cluster.cardIds) {
         const card = cardById.get(id);
         if (!card) continue;
-        const row = el('div', 'fc-duprow');
+        const row = el('div', 'fc-duprow'); fcSurface(row, 'flashcards.dupCard', String(card.front || '').slice(0, 80) || 'Card', id);
         const check = el('input');
         check.type = 'checkbox';
         check.title = 'Delete this card when changes are applied';
@@ -8042,7 +8036,7 @@ async function renderDedup(body, route, setRoute) {
         // user always confirms via Apply.
         check.checked = cluster.verdict === 'duplicate' && cluster.keepId != null && id !== cluster.keepId;
         if (check.checked) staged.add(id);
-        check.addEventListener('change', () => {
+        fcDeclare(check, 'flashcards.dupCard.delete', { label: 'Delete this card' }); check.addEventListener('change', () => {
           if (check.checked) staged.add(id); else staged.delete(id);
           row.classList.toggle('fc-duprow--staged', check.checked);
           syncFooter();
@@ -8069,7 +8063,7 @@ async function renderDedup(body, route, setRoute) {
       const actions = el('div', 'fc-row');
       const keepAll = el('button', 'fc-btn');
       keepAll.textContent = 'Keep All';
-      keepAll.addEventListener('click', () => {
+      fcDeclare(keepAll, 'flashcards.dupGroup.keepAll'); keepAll.addEventListener('click', () => {
         for (const [id, check] of checks) {
           if (check.checked) { check.checked = false; staged.delete(id); }
           check.closest('.fc-duprow')?.classList.remove('fc-duprow--staged');
@@ -8082,7 +8076,7 @@ async function renderDedup(body, route, setRoute) {
         const mergeBtn = el('button', 'fc-btn');
         mergeBtn.textContent = 'Merge Into One';
         mergeBtn.title = 'Edit the AI-merged card; saving replaces this group with it.';
-        mergeBtn.addEventListener('click', () => {
+        fcDeclare(mergeBtn, 'flashcards.dupGroup.merge'); mergeBtn.addEventListener('click', () => {
           const survivor = cardById.get(cluster.keepId);
           const editHost = el('div');
           group.appendChild(editHost);
@@ -8126,7 +8120,7 @@ async function renderDedup(body, route, setRoute) {
       let shown = false;
       const label = () => `${shown ? 'Hide' : 'Show'} ${cleared.length} Cleared ${cleared.length === 1 ? 'Group' : 'Groups'}`;
       toggle.textContent = label();
-      toggle.addEventListener('click', () => {
+      fcDeclare(toggle, 'flashcards.dedup.showCleared'); toggle.addEventListener('click', () => {
         shown = !shown;
         host.style.display = shown ? '' : 'none';
         toggle.textContent = label();
@@ -8142,7 +8136,7 @@ async function renderDedup(body, route, setRoute) {
       applyBtn.textContent = staged.size > 0 ? `Apply Changes - Delete ${staged.size}` : 'Apply Changes';
       applyBtn.disabled = staged.size === 0;
     };
-    applyBtn.addEventListener('click', () => {
+    fcDeclare(applyBtn, 'flashcards.dedup.apply'); applyBtn.addEventListener('click', () => {
       void (async () => {
         const ok = await _api.window.showConfirmModal?.({
           message: `Delete ${staged.size} ${staged.size === 1 ? 'card' : 'cards'}?`,
@@ -8235,7 +8229,7 @@ async function renderCoverage(body, route, setRoute) {
   const head = el('div', 'fc-row');
   const backBtn = el('button', 'fc-btn');
   backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Back</span>`;
-  backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
+  fcDeclare(backBtn, 'flashcards.coverage.back'); backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
   head.appendChild(backBtn);
   head.appendChild(el('div', 'fc-view__title', `Coverage Review - ${deckRow.name}`));
   view.appendChild(head);
@@ -8253,12 +8247,12 @@ async function renderCoverage(body, route, setRoute) {
   const renderChips = () => {
     chipsHost.replaceChildren();
     sources.forEach((s, i) => {
-      const chip = el('span', 'fc-chip fc-srcchip');
+      const chip = el('span', 'fc-chip fc-srcchip'); fcSurface(chip, 'flashcards.source', s.label, i);
       const pages = Array.isArray(s.pageTexts) && s.pageTexts.length ? ` · ${s.pageTexts.length}p` : '';
       chip.appendChild(document.createTextNode(`${s.label}${pages} `));
       const x = el('button', 'fc-srcchip__remove');
       x.type = 'button'; x.textContent = '×'; x.title = `Remove ${s.label}`;
-      x.addEventListener('click', () => { sources.splice(i, 1); renderChips(); });
+      fcDeclare(x, 'flashcards.source.remove'); x.addEventListener('click', () => { sources.splice(i, 1); renderChips(); });
       chip.appendChild(x);
       chipsHost.appendChild(chip);
     });
@@ -8309,7 +8303,7 @@ async function renderCoverage(body, route, setRoute) {
   const srcBtn = (label, iconName, loader) => {
     const b = el('button', 'fc-btn');
     b.innerHTML = `${icon(iconName, 12)}<span>${label}</span>`;
-    b.addEventListener('click', () => {
+    fcDeclare(b, `flashcards.coverage.add.${fcSlug(label)}`); b.addEventListener('click', () => {
       void (async () => {
         try { b.disabled = true; addSource(await loader()); }
         catch (e) { srcStatus.textContent = `Failed: ${e.message}`; }
@@ -8333,7 +8327,7 @@ async function renderCoverage(body, route, setRoute) {
   const genRow = el('div', 'fc-row');
   genRow.style.marginTop = '10px';
   const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(genRow, { label: 'Generate Report' })
+    ? _api.ui.createAiButton(genRow, { id: 'flashcards.coverage.generate', label: 'Generate Report' })
     : el('button', 'fc-btn fc-btn--primary');
   if (!genBtn.parentElement) { genBtn.textContent = 'Generate Report'; genRow.appendChild(genBtn); }
   const genLabel = genBtn.querySelector('.px-ai-btn__label');
@@ -8379,7 +8373,7 @@ async function renderCoverage(body, route, setRoute) {
           const dups = await fcFindDuplicates(deckRow.id, missing);
           const rows = [];
           missing.forEach((c, ci) => {
-            const row = el('div', 'fc-genrow');
+            const row = el('div', 'fc-genrow'); fcSurface(row, 'flashcards.draft', `Suggested card ${ci + 1}`, ci);
             const fields = el('div', 'fc-genrow__fields');
             const dup = dups[ci];
             if (c.page || c.doc || dup) {
@@ -8395,12 +8389,12 @@ async function renderCoverage(body, route, setRoute) {
             }
             const { grid: frontGrid, ta: front } = fcPreviewTextarea(c.front);
             const { grid: backGrid, ta: back } = fcPreviewTextarea(c.back);
-            fields.append(frontGrid, backGrid);
+            fields.append(frontGrid, backGrid); fcDeclare(front, 'flashcards.draft.front', { label: 'Front' }); fcDeclare(back, 'flashcards.draft.back', { label: 'Back' });
             row.appendChild(fields);
             const dropBtn = el('button', 'fc-btn fc-btn--danger');
             dropBtn.textContent = 'Drop';
             const entry = { front, back, tags: c.tags || '', page: c.page || 0, doc: c.doc || 0, dropped: false };
-            dropBtn.addEventListener('click', () => {
+            fcDeclare(dropBtn, 'flashcards.draft.drop'); dropBtn.addEventListener('click', () => {
               entry.dropped = !entry.dropped;
               row.classList.toggle('fc-genrow--dropped', entry.dropped);
               dropBtn.textContent = entry.dropped ? 'Keep' : 'Drop';
@@ -8413,7 +8407,7 @@ async function renderCoverage(body, route, setRoute) {
           importRow.style.marginTop = '10px';
           const importBtn = el('button', 'fc-btn fc-btn--primary');
           importBtn.textContent = 'Import Missing Cards';
-          importBtn.addEventListener('click', () => {
+          fcDeclare(importBtn, 'flashcards.coverage.import'); importBtn.addEventListener('click', () => {
             void (async () => {
               const keep = rows.filter((r) => !r.dropped && r.front.value.trim() && r.back.value.trim());
               if (keep.length === 0) { errEl.textContent = 'No cards left to import.'; errEl.style.display = ''; return; }
@@ -8462,7 +8456,7 @@ async function renderCoverage(body, route, setRoute) {
  * an empty string — which would render an invisible, unclickable control. Both
  * are handled here so no call site has to remember them.
  */
-function fcIconBtn(host, { iconName, label, title, danger, onClick }) {
+function fcIconBtn(host, { iconName, label, title, danger, onClick, id }) {
   const btn = el('button', `fc-btn fc-btn--ghost fc-btn--icon${danger ? ' fc-btn--danger' : ''}`);
   btn.type = 'button';
   const svg = icon(iconName, 15);
@@ -8470,7 +8464,7 @@ function fcIconBtn(host, { iconName, label, title, danger, onClick }) {
   else btn.textContent = label; // registry missing — degrade to the word
   btn.title = title || label;
   btn.setAttribute('aria-label', label);
-  btn.addEventListener('click', onClick);
+  btn.addEventListener('click', onClick); if (id) fcDeclare(btn, id);
   host.appendChild(btn);
   return btn;
 }
@@ -8506,7 +8500,7 @@ function fcCreateFlagPicker(host, opts = {}) {
     const btn = el('button', `fc-flag fc-flag--${f.cls}`);
     btn.type = 'button';
     btn.setAttribute('role', 'radio');
-    btn.setAttribute('aria-label', `${f.name} flag`);
+    btn.setAttribute('aria-label', `${f.name} flag`); fcDeclareToggle(btn, `flashcards.flag.${f.cls}`, 'aria-checked');
     btn.title = opts.shortcutHint
       ? `${f.name} flag · Alt+${f.value} · click again to clear`
       : `${f.name} flag · click again to clear`;
@@ -8613,7 +8607,7 @@ async function renderCustomStudy(body, route, setRoute) {
 
   // ── Scope: deck + tags ──
   view.appendChild(el('div', 'fc-label', 'Deck'));
-  const deckDd = _api.ui.createDropdown(view, {
+  const deckDd = _api.ui.createDropdown(view, { id: 'flashcards.custom.deck',
     items: [
       { value: '__all__', label: 'All Decks' },
       ...decks.map((d) => ({ value: String(d.id), label: d.name })),
@@ -8631,7 +8625,7 @@ async function renderCustomStudy(body, route, setRoute) {
 
   const tagLabel = el('div', 'fc-label', 'Tags');
   view.appendChild(tagLabel);
-  const tagBar = el('div', 'fc-tagbar');
+  const tagBar = el('div', 'fc-tagbar'); fcList(tagBar, 'flashcards.custom.tags', 'Tags', () => [...state.tags]);
   view.appendChild(tagBar);
   const tagHint = el('div', 'fc-hint', 'No tags on these cards yet.');
   view.appendChild(tagHint);
@@ -8655,7 +8649,7 @@ async function renderCustomStudy(body, route, setRoute) {
   countIn.min = '1';
   countIn.max = '9999';
   countIn.value = String(state.count);
-  countField.appendChild(countIn);
+  countField.appendChild(countIn); fcDeclare(countIn, 'flashcards.custom.count', { label: 'Cards' });
   sizeRow.appendChild(countField);
 
   const aheadField = el('div', 'fc-cs__field');
@@ -8665,7 +8659,7 @@ async function renderCustomStudy(body, route, setRoute) {
   aheadIn.min = '1';
   aheadIn.max = '365';
   aheadIn.value = String(state.aheadDays);
-  aheadField.appendChild(aheadIn);
+  aheadField.appendChild(aheadIn); fcDeclare(aheadIn, 'flashcards.custom.aheadDays', { label: 'Days Ahead' });
   sizeRow.appendChild(aheadField);
 
   // ── Availability + actions ──
@@ -8675,10 +8669,10 @@ async function renderCustomStudy(body, route, setRoute) {
   const actions = el('div', 'fc-row fc-cs__actions');
   const startBtn = el('button', 'fc-btn fc-btn--primary');
   startBtn.textContent = 'Start Studying';
-  actions.appendChild(startBtn);
+  actions.appendChild(startBtn); fcDeclare(startBtn, 'flashcards.custom.start');
   const cancelBtn = el('button', 'fc-btn');
   cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
+  fcDeclare(cancelBtn, 'flashcards.custom.cancel'); cancelBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
   actions.appendChild(cancelBtn);
   view.appendChild(actions);
 
@@ -8725,7 +8719,7 @@ async function renderCustomStudy(body, route, setRoute) {
       text.appendChild(nameRow);
       text.appendChild(el('span', 'fc-cs__mode-blurb', d.blurb));
       opt.appendChild(text);
-      opt.addEventListener('click', () => {
+      fcDeclareToggle(opt, `flashcards.custom.mode.${d.mode}`, 'aria-checked', d.label); opt.addEventListener('click', () => {
         state.mode = d.mode;
         paintModes();
         syncFields();
@@ -8772,7 +8766,7 @@ async function renderCustomStudy(body, route, setRoute) {
       chip.appendChild(dot);
       chip.appendChild(el('span', '', `${f.name} (${counts.get(f.value)})`));
       chip.classList.toggle('fc-tagchip--active', state.flags.has(f.value));
-      chip.setAttribute('aria-pressed', state.flags.has(f.value) ? 'true' : 'false');
+      chip.setAttribute('aria-pressed', state.flags.has(f.value) ? 'true' : 'false'); fcDeclareToggle(chip, `flashcards.custom.flag.${f.cls}`, 'aria-pressed', `${f.name} flag`);
       chip.addEventListener('click', () => {
         if (state.flags.has(f.value)) state.flags.delete(f.value); else state.flags.add(f.value);
         renderFlags();
@@ -9085,7 +9079,7 @@ function fcVerdictEl(verdict, rubric, rating, { onDiscuss = null, aiRating = nul
     const btn = el('button', 'fc-btn fc-btn--small');
     btn.textContent = 'Discuss This Marking';
     btn.title = 'Stage a question in the chat with your answer, the marking, and the source attached.';
-    btn.addEventListener('click', () => onDiscuss());
+    fcDeclare(btn, 'flashcards.study.discussMarking'); btn.addEventListener('click', () => onDiscuss());
     foot.appendChild(btn);
     root.appendChild(foot);
   }
@@ -9148,13 +9142,13 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       : `No ${customDef.noun} match this scope. Widen the tags, raise the range, or pick another mode.`));
     const again = el('button', 'fc-btn fc-btn--primary');
     again.textContent = isSingle ? 'Back to Cards' : 'Change Filters';
-    again.addEventListener('click', () => setRoute(isSingle
+    fcDeclare(again, 'flashcards.study.none.again'); again.addEventListener('click', () => setRoute(isSingle
       ? { view: 'browse', deckId: route.deckId }
       : { view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
     none.appendChild(again);
     const backDecks = el('button', 'fc-btn');
     backDecks.textContent = 'Back to Decks';
-    backDecks.addEventListener('click', () => setRoute({ view: 'decks' }));
+    fcDeclare(backDecks, 'flashcards.study.none.toDecks'); backDecks.addEventListener('click', () => setRoute({ view: 'decks' }));
     none.appendChild(backDecks);
     main.appendChild(none);
     return;
@@ -9194,7 +9188,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       aheadBtn.textContent = 'Study Now';
       aheadBtn.title = 'Serve the learning card early instead of waiting.';
       // Learn-ahead: build the queue as of the card's due time.
-      aheadBtn.addEventListener('click', () => {
+      fcDeclare(aheadBtn, 'flashcards.study.done.studyNow'); aheadBtn.addEventListener('click', () => {
         if (!body.isConnected) return;
         body.innerHTML = '';
         void renderStudy(body, route, paneState, setRoute, soon.dueAt - Date.now() + 1000);
@@ -9213,12 +9207,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       const customBtn = el('button', 'fc-btn');
       customBtn.textContent = 'Custom Study';
       customBtn.title = 'Review ahead, add new cards, or cram, without waiting for the schedule.';
-      customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
+      fcDeclare(customBtn, 'flashcards.study.done.custom'); customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
       done.appendChild(customBtn);
     }
     const back = el('button', 'fc-btn');
     back.textContent = 'Back to Decks';
-    back.addEventListener('click', () => setRoute({ view: 'decks' }));
+    fcDeclare(back, 'flashcards.study.done.toDecks'); back.addEventListener('click', () => setRoute({ view: 'decks' }));
     done.appendChild(back);
     main.appendChild(done);
     return;
@@ -9324,7 +9318,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     const nowBtn = el('button', 'fc-btn fc-btn--primary');
     nowBtn.textContent = 'Show Now';
     nowBtn.title = 'Serve the next learning card early instead of waiting.';
-    nowBtn.addEventListener('click', () => {
+    fcDeclare(nowBtn, 'flashcards.study.wait.showNow'); nowBtn.addEventListener('click', () => {
       session.queue.splice(session.index, 0, session.pending.shift());
       session.total++;
       showCard();
@@ -9333,12 +9327,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     if (session.history.length > 0) {
       const undoBtn = el('button', 'fc-btn');
       undoBtn.textContent = 'Undo Last Grade';
-      undoBtn.addEventListener('click', undoLast);
+      fcDeclare(undoBtn, 'flashcards.study.wait.undo'); undoBtn.addEventListener('click', undoLast);
       wait.appendChild(undoBtn);
     }
     const back = el('button', 'fc-btn');
     back.textContent = 'Back to Decks';
-    back.addEventListener('click', () => setRoute({ view: 'decks' }));
+    fcDeclare(back, 'flashcards.study.wait.toDecks'); back.addEventListener('click', () => setRoute({ view: 'decks' }));
     wait.appendChild(back);
     main.appendChild(wait);
     session.waitTimer = setInterval(() => {
@@ -9409,12 +9403,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
       const statsBtn = el('button', 'fc-btn');
       statsBtn.textContent = 'View Stats';
-      statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
+      fcDeclare(statsBtn, 'flashcards.study.complete.stats'); statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
       done.appendChild(statsBtn);
       const customBtn = el('button', 'fc-btn');
       customBtn.textContent = 'Custom Study';
       customBtn.title = 'Review ahead, add new cards, or cram, without waiting for the schedule.';
-      customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
+      fcDeclare(customBtn, 'flashcards.study.complete.custom'); customBtn.addEventListener('click', () => setRoute({ view: 'custom', ...(route.deckId != null ? { deckId: route.deckId } : {}) }));
       done.appendChild(customBtn);
       main.appendChild(done);
 
@@ -9448,7 +9442,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         const go = el('button', 'fc-btn fc-btn--primary');
         go.textContent = 'Keep Going';
         go.title = 'Start another session on what is left.';
-        go.addEventListener('click', () => {
+        fcDeclare(go, 'flashcards.study.complete.keepGoing'); go.addEventListener('click', () => {
           if (session.custom) {
             // Dropping the custom descriptor is a REAL route change, so it
             // goes through setRoute — otherwise a later tab switch restores
@@ -9575,7 +9569,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     // first), or back to schedule order. The card on screen stays put. The
     // choice is remembered so the next session starts the way this one ran.
     const shuffleBtn = fcIconBtn(cardActions, {
-      iconName: 'shuffle',
+      id: 'flashcards.study.shuffle', iconName: 'shuffle',
       label: 'Shuffle',
       title: '',
       onClick: () => {
@@ -9597,21 +9591,21 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     };
     paintShuffle();
     const undoBtn = fcIconBtn(cardActions, {
-      iconName: 'undo-2',
+      id: 'flashcards.study.undo', iconName: 'undo-2',
       label: 'Undo',
       title: 'Take back the last grade and return to that card (Z)',
       onClick: undoLast,
     });
     undoBtn.disabled = session.history.length === 0;
     const editBtn = fcIconBtn(cardActions, {
-      iconName: 'pencil',
+      id: 'flashcards.study.edit', iconName: 'pencil',
       label: 'Edit',
       title: 'Fix this card without leaving the session (E)',
       onClick: openEdit,
     });
     const moreBtn = fcIconBtn(cardActions, {
       iconName: 'more-horizontal',
-      label: 'More Card Actions',
+      id: 'flashcards.study.more', label: 'More Card Actions',
       title: 'More Card Actions',
       onClick: () => {
         const r = moreBtn.getBoundingClientRect();
@@ -9688,7 +9682,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         aHead.appendChild(leech);
         const rewriteBtn = el('button', 'fc-btn fc-btn--small');
         rewriteBtn.textContent = 'Rewrite with AI';
-        rewriteBtn.addEventListener('click', () => {
+        fcDeclare(rewriteBtn, 'flashcards.study.rewrite'); rewriteBtn.addEventListener('click', () => {
           rewriteBtn.disabled = true;
           rewriteBtn.textContent = 'Rewriting…';
           void (async () => {
@@ -9733,7 +9727,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       const aiHost = el('div', 'fc-card__ai');
       const discussBtn = _api.ui.createAiButton
         ? _api.ui.createAiButton(aiHost, {
-          label: 'Discuss with AI',
+          id: 'flashcards.study.discuss', label: 'Discuss with AI',
           iconOnly: true,
           compact: true,
           title: 'Stage a grounded question in the chat, card and source attached. Edit it, then send.',
@@ -9770,7 +9764,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       ];
       for (const g of grades) {
         const btn = el('button', `fc-grade fc-grade--${g.cls}`);
-        btn.setAttribute('aria-keyshortcuts', String(g.r));
+        btn.setAttribute('aria-keyshortcuts', String(g.r)); fcDeclare(btn, `flashcards.study.grade.${g.cls}`, { label: g.label });
         const shortcut = el('span', 'fc-grade__key', String(g.r));
         shortcut.setAttribute('aria-hidden', 'true');
         btn.appendChild(shortcut);
@@ -10014,13 +10008,13 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
             btn.appendChild(el('span', 'fc-grade__dot'));
             btn.appendChild(el('span', 'fc-grade__label', g.label));
             btn.appendChild(el('span', 'fc-grade__ivl', fcIntervalPreview(base, g.r, now, optsFor(base))));
-            btn.title = g.r === rating ? 'The grade on this card' : `Change the grade to ${g.label}`;
+            btn.title = g.r === rating ? 'The grade on this card' : `Change the grade to ${g.label}`; fcDeclare(btn, `flashcards.study.regrade.${g.cls}`, { label: g.label });
             btn.addEventListener('click', () => overrideGrade(g.r, paintSettled));
             controls.appendChild(btn);
           }
           const next = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
           next.textContent = 'Next Card';
-          next.addEventListener('click', advance);
+          fcDeclare(next, 'flashcards.study.next'); next.addEventListener('click', advance);
           controls.appendChild(next);
         };
         onSettled = () => paintSettled(result.rating);
@@ -10054,7 +10048,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       wrap.appendChild(el('div', 'fc-study__produce-label', spec.label));
       answerInput = el('textarea', 'fc-textarea fc-study__produce-input');
       answerInput.placeholder = spec.placeholder;
-      answerInput.rows = spec.rows;
+      answerInput.rows = spec.rows; fcDeclare(answerInput, 'flashcards.study.answer', { label: spec.label });
       // Grows with the answer instead of scrolling inside a fixed box — you
       // need to see the whole thing to judge whether it is complete before
       // submitting it.
@@ -10064,7 +10058,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
       const submitBtn = el('button', 'fc-btn fc-btn--primary fc-study__reveal');
       submitBtn.textContent = 'Submit Answer';
-      submitBtn.addEventListener('click', () => submitAnswer());
+      fcDeclare(submitBtn, 'flashcards.study.submit'); submitBtn.addEventListener('click', () => submitAnswer());
       controls.appendChild(submitBtn);
 
       // The textarea owns Enter (answers are multi-line), so submission is
@@ -10079,7 +10073,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       queueMicrotask(() => answerInput.focus());
     } else {
       const revealBtn = fcIconBtn(controls, {
-        iconName: 'rotate-ccw-square', label: 'Show Answer',
+        id: 'flashcards.study.reveal', iconName: 'rotate-ccw-square', label: 'Show Answer',
         title: 'Flip card · Show answer (Space)', onClick: reveal,
       });
       revealBtn.classList.remove('fc-btn--ghost');
@@ -10091,7 +10085,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     // silently does nothing on the last card of a session reads as broken.
     if (canSkip()) {
       const skipBtn = fcIconBtn(controls, {
-        iconName: 'skip-forward', label: 'Skip',
+        id: 'flashcards.study.skip', iconName: 'skip-forward', label: 'Skip',
         title: 'Skip card (S) · Move to the end of the session without grading', onClick: skip,
       });
       skipBtn.classList.remove('fc-btn--ghost');
@@ -10184,7 +10178,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const deckRow = el('div', 'fc-row');
   const deckHost = el('div');
   deckHost.style.minWidth = '220px';
-  const deckDropdown = _api.ui.createDropdown(deckHost, {
+  const deckDropdown = _api.ui.createDropdown(deckHost, { id: 'flashcards.create.deck',
     items: [
       ...decks.map((d) => ({ value: String(d.id), label: d.name })),
       { value: '__new__', label: '+ New Deck…' },
@@ -10209,14 +10203,14 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     chipsHost.replaceChildren();
     for (let i = 0; i < sources.length; i++) {
       const s = sources[i];
-      const chip = el('span', 'fc-chip fc-srcchip');
+      const chip = el('span', 'fc-chip fc-srcchip'); fcSurface(chip, 'flashcards.source', s.label, i);
       const pages = Array.isArray(s.pageTexts) && s.pageTexts.length ? ` · ${s.pageTexts.length}p` : '';
       chip.appendChild(document.createTextNode(`${s.label}${pages} `));
       const x = el('button', 'fc-srcchip__remove');
       x.type = 'button';
       x.textContent = '×';
       x.title = `Remove ${s.label}`;
-      x.addEventListener('click', () => { sources.splice(i, 1); renderSourceChips(); });
+      fcDeclare(x, 'flashcards.source.remove'); x.addEventListener('click', () => { sources.splice(i, 1); renderSourceChips(); });
       chip.appendChild(x);
       chipsHost.appendChild(chip);
     }
@@ -10282,7 +10276,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const srcBtn = (label, iconName, loader) => {
     const b = el('button', 'fc-btn');
     b.innerHTML = `${icon(iconName, 12)}<span>${label}</span>`;
-    b.addEventListener('click', () => {
+    fcDeclare(b, `flashcards.create.add.${fcSlug(label)}`); b.addEventListener('click', () => {
       void (async () => {
         try { b.disabled = true; applyLoaded(await loader()); }
         catch (err) { srcStatus.textContent = `Failed: ${err.message}`; }
@@ -10303,7 +10297,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   view.appendChild(srcStatus);
 
   const pasteIn = el('textarea', 'fc-textarea');
-  pasteIn.placeholder = 'Or paste study material here…';
+  pasteIn.placeholder = 'Or paste study material here…'; fcDeclare(pasteIn, 'flashcards.create.paste', { label: 'Study material' });
   pasteIn.rows = 5;
   pasteIn.style.marginTop = '8px';
   view.appendChild(pasteIn);
@@ -10314,14 +10308,14 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const countIn = el('input', 'fc-input');
   countIn.type = 'number';
   countIn.min = '1'; countIn.max = '50';
-  countIn.placeholder = 'Auto';
+  countIn.placeholder = 'Auto'; fcDeclare(countIn, 'flashcards.create.count', { label: 'Cards' });
   countIn.style.width = '70px';
   optRow.appendChild(el('span', 'fc-hint', 'Cards:'));
   optRow.appendChild(countIn);
   // Density: shapes SELECTIVITY in auto mode. Writes straight to the
   // setting so the choice sticks across runs and surfaces in Settings too.
   optRow.appendChild(el('span', 'fc-hint', 'Density:'));
-  const densityDd = _api.ui.createDropdown(optRow, {
+  const densityDd = _api.ui.createDropdown(optRow, { id: 'flashcards.create.density',
     items: [
       { value: 'thorough', label: 'Thorough' },
       { value: 'balanced', label: 'Balanced' },
@@ -10348,7 +10342,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   guideIn.placeholder = 'Tell the model what you want, e.g. "every formula as its own card" or "test when each method applies, not definitions".';
   const GUIDE_KEY = 'flashcards.generateGuidance';
   guideIn.value = localStorage.getItem(GUIDE_KEY) || '';
-  guideIn.addEventListener('input', () => localStorage.setItem(GUIDE_KEY, guideIn.value));
+  fcDeclare(guideIn, 'flashcards.create.guide', { label: 'Steer the cards' }); guideIn.addEventListener('input', () => localStorage.setItem(GUIDE_KEY, guideIn.value));
   view.appendChild(guideIn);
   const chipRow = el('div', 'fc-row');
   chipRow.style.marginTop = '6px';
@@ -10360,7 +10354,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   ]) {
     const chip = el('button', 'fc-btn');
     chip.textContent = label;
-    chip.addEventListener('click', () => {
+    fcDeclare(chip, `flashcards.create.preset.${fcSlug(label)}`); chip.addEventListener('click', () => {
       guideIn.value = text;
       localStorage.setItem(GUIDE_KEY, guideIn.value);
     });
@@ -10375,7 +10369,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const genRow = el('div', 'fc-row');
   genRow.style.marginTop = '10px';
   const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(genRow, { label: 'Generate Cards' })
+    ? _api.ui.createAiButton(genRow, { id: 'flashcards.create.generate', label: 'Generate Cards' })
     : el('button', 'fc-btn fc-btn--primary');
   if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; genRow.appendChild(genBtn); }
   const genLabel = genBtn.querySelector('.px-ai-btn__label');
@@ -10459,7 +10453,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     const rows = [];
     for (let ci = 0; ci < cards.length; ci++) {
       const c = cards[ci];
-      const row = el('div', 'fc-genrow');
+      const row = el('div', 'fc-genrow'); fcSurface(row, 'flashcards.draft', `Generated card ${ci + 1}`, ci);
       const fields = el('div', 'fc-genrow__fields');
       // Provenance + importance + duplicate chips above the editors.
       const dup = dups[ci];
@@ -10491,7 +10485,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       }
       const { grid: frontGrid, ta: front } = fcPreviewTextarea(c.front);
       const { grid: backGrid, ta: back } = fcPreviewTextarea(c.back);
-      fields.append(frontGrid, backGrid);
+      fields.append(frontGrid, backGrid); fcDeclare(front, 'flashcards.draft.front', { label: 'Front' }); fcDeclare(back, 'flashcards.draft.back', { label: 'Back' });
       row.appendChild(fields);
       const dropBtn = el('button', 'fc-btn fc-btn--danger');
       dropBtn.textContent = 'Drop';
@@ -10499,7 +10493,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         row, front, back, tags: c.tags || '', page: c.page || 0, doc: c.doc || 0,
         importance: c.importance || 0, importanceReason: c.importanceReason || '', dropped: false,
       };
-      dropBtn.addEventListener('click', () => {
+      fcDeclare(dropBtn, 'flashcards.draft.drop'); dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;
         row.classList.toggle('fc-genrow--dropped', entry.dropped);
         dropBtn.textContent = entry.dropped ? 'Keep' : 'Drop';
@@ -10513,7 +10507,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
     importRow.style.marginTop = '10px';
     const importBtn = el('button', 'fc-btn fc-btn--primary');
     importBtn.textContent = 'Import Cards';
-    importBtn.addEventListener('click', () => {
+    fcDeclare(importBtn, 'flashcards.create.import'); importBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => !r.dropped && r.front.value.trim() && r.back.value.trim());
         if (keep.length === 0) {
@@ -10597,7 +10591,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
   const srcRow = el('div', 'fc-row');
   srcRow.style.marginTop = '8px';
   const pickBtn = el('button', 'fc-btn');
-  pickBtn.innerHTML = `${icon('hard-drive', 12)}<span>Browse Device…</span>`;
+  pickBtn.innerHTML = `${icon('hard-drive', 12)}<span>Browse Device…</span>`; fcDeclare(pickBtn, 'flashcards.import.browse');
   srcRow.appendChild(pickBtn);
   const srcStatus = el('span', 'fc-hint');
   srcRow.appendChild(srcStatus);
@@ -10605,11 +10599,11 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
 
   const pasteIn = el('textarea', 'fc-textarea');
   pasteIn.placeholder = 'Or paste rows: front and back separated by a tab, " | ", or " :: ", one card per line.';
-  pasteIn.rows = 4;
+  pasteIn.rows = 4; fcDeclare(pasteIn, 'flashcards.import.paste', { label: 'Pasted rows' });
   pasteIn.style.marginTop = '8px';
   view.appendChild(pasteIn);
   const pasteBtn = el('button', 'fc-btn');
-  pasteBtn.textContent = 'Preview Pasted Rows';
+  pasteBtn.textContent = 'Preview Pasted Rows'; fcDeclare(pasteBtn, 'flashcards.import.previewPasted');
   pasteBtn.style.marginTop = '6px';
   view.appendChild(pasteBtn);
 
@@ -10734,7 +10728,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
         offIn.type = 'number'; offIn.min = '0'; offIn.max = String(Math.max(0, loaded.pageTexts.length - 1));
         offIn.value = String(pdfState.offset);
         offIn.style.width = '60px';
-        offIn.addEventListener('change', () => {
+        fcDeclare(offIn, 'flashcards.import.skipPages', { label: 'Pages to skip' }); offIn.addEventListener('change', () => {
           pdfState.offset = Math.max(0, parseInt(offIn.value, 10) || 0);
           void build();
         });
@@ -10751,7 +10745,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
         aiIn.type = 'checkbox';
         aiIn.checked = pdfState.ai;
         aiToggle.append(aiIn, document.createTextNode(' Rebuild with AI: same cards and wording, formulas restored as math, page clutter dropped'));
-        aiIn.addEventListener('change', () => {
+        fcDeclare(aiIn, 'flashcards.import.rebuildWithAi', { label: 'Rebuild with AI' }); aiIn.addEventListener('change', () => {
           pdfState.ai = aiIn.checked;
           void build();
         });
@@ -10810,7 +10804,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
       }
       items.push({ value: '__new__', label: '+ New Deck…' });
       for (const d of decks) items.push({ value: String(d.id), label: `Into: ${d.name}` });
-      const destDropdown = _api.ui.createDropdown(destHost, {
+      const destDropdown = _api.ui.createDropdown(destHost, { id: 'flashcards.import.destination',
         items,
         selected: route.deckId ? String(route.deckId) : items[0].value,
         ariaLabel: 'Import destination',
@@ -10861,7 +10855,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
       goRow.appendChild(progress);
       previewHost.appendChild(goRow);
 
-      goBtn.addEventListener('click', () => {
+      fcDeclare(goBtn, 'flashcards.import.run'); goBtn.addEventListener('click', () => {
         void (async () => {
           // `committed` survives a mid-import failure: a retry click must only
           // replay the groups that did NOT land, or every retry doubles them.
@@ -11108,7 +11102,7 @@ function registerDashboardWidget(context) {
           }
           const btn = el('button', 'fc-btn fc-btn--primary');
           btn.textContent = 'Study Now';
-          btn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
+          fcDeclare(btn, 'flashcards.widget.study'); btn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
           root.appendChild(btn);
         };
         paint(ctx.cachedOutput);
@@ -12084,7 +12078,7 @@ async function ensureDatabase(api) {
 export async function activate(api, context) {
   if (_activated) return;
   _activated = true;
-  _api = api;
+  _api = api; setSceneUi(api.ui);
 
   if (!api.database) {
     console.error('[Flashcards] api.database unavailable; cannot activate.');

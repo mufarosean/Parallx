@@ -899,8 +899,36 @@ pickers. Rows with buttons are surfaces with the row's id as instance:
 `budget.limit` (amount and use-suggested), `budget.bill` (cancel and
 confirm) and `budget.rule` (⋯). Every id is inline on an existing line;
 the DOM, styles and handlers are unchanged. The probe row opens
-Transactions. Next are flashcards, concept-lab, media-organizer,
-creations-ai, browser and study, in that order.
+Transactions.
+
+flashcards done 2026-10-12, on the owner's machine. Its controls are
+its own `el('button')` and `el('input')`, so they are declared in place:
+`el()` moved to `ext/flashcards/dom.js` (which freed the lines
+`main.js` needed; it fell from 12394 to 12388), next to `fcDeclare`
+(label from the accessible name, the text, the placeholder or the
+tooltip; a checkbox is a toggle, a field an input with its value),
+`fcDeclareToggle` (on state from an ARIA attribute), `fcSurface` and
+`fcList`, all reading `api.ui` set at activate. Each declaration sits on
+the control's existing listener or setup line. Ids by page: the sidebar
+(`flashcards.side.<view>` tabs, `.today.*`, search, New Deck with its
+command), the decks home (`flashcards.decks.*`), the date dialog (a
+surface, with the calendar's arrows), the card editor (a surface per
+card), study notes, a custom deck's page (`flashcards.customView.*`),
+Browse (header, add form, toolbar, bulk actions, flag chips, the tag
+bar as one list), Find Duplicates, the coverage check, Custom Study
+(modes, flags, the tag bar as one list), Study (card actions, reveal,
+skip, grades, the answer box, the done, wait and empty states), Create,
+Import and the dashboard widget. Rows with buttons are surfaces with the
+row's id as instance: deck cards and sidebar rows (custom and plain),
+custom-deck cards, browse rows (`flashcards.card`), duplicate groups and
+their cards, source chips and generated or suggested cards
+(`flashcards.draft`); the flag picker's swatches are toggles
+(`flashcards.flag.<colour>`) under whichever of those holds it. Calendar
+days and per-answer history rows are rows and carry no id. A hidden run
+that made a deck, added a card, edited it, studied and graded it, and
+opened every page listed no errors. The probe row opens Flashcards.
+Next are concept-lab, media-organizer, creations-ai,
+browser and study, in that order.
 
 ### Step 8. The scene line in the prompt (cloud)
 
