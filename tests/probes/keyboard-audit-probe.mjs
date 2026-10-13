@@ -74,7 +74,7 @@ function install() {
     checkedOf(i) { const c = this.comps[i]; if (c?.getAttribute('role') !== 'radiogroup') return null; return c.querySelector('[aria-checked="true"], [aria-pressed="true"]')?.getAttribute('data-px-id') ?? null; },
     // Mouse-only candidates: a pointer cursor, unreached, inside nothing reached.
     pointerCandidates() {
-      const reached = (e) => this.seen.has(e) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
+      const reached = (e) => this.seen.has(e) || (e.id && this.seenIds.has(e.id)) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
       const out = [];
       for (const e of this.scope.querySelectorAll('*')) {
         if (!shown(e) || third(e) || e.closest('[contenteditable="true"]') || e.id === '__kb_start') continue;
@@ -89,7 +89,7 @@ function install() {
     // Tab stops on this screen, to size the Tab run.
     stops() { return Array.from(this.scope.querySelectorAll('*')).filter((e) => e.tabIndex >= 0 && shown(e) && !e.disabled).length; },
     start() {
-      Object.assign(this, { atTabEnd: null, pointerAtTabEnd: null, first: null, seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
+      Object.assign(this, { seenIds: new Set(), atTabEnd: null, pointerAtTabEnd: null, first: null, seen: new Set(), prev: null, prevLook: '', prevParentLook: '', noRing: [], stuck: 0, wrapped: false, scope: scope() });
       let a = document.getElementById('__kb_start');
       if (!a) { a = document.createElement('div'); a.id = '__kb_start'; a.tabIndex = -1; a.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;outline:none'; }
       this.scope.prepend(a);
@@ -137,7 +137,9 @@ function install() {
       const id = c.getAttribute('aria-activedescendant') || document.activeElement?.getAttribute('aria-activedescendant');
       const o = id ? document.getElementById(id) : c.querySelector('[aria-selected="true"], [class*="active"], [class*="focused"]');
       if (!o || this.seen.has(o)) return false;
+      // A list that redraws its rows as the highlight moves: remember the row by id too.
       this.seen.add(o);
+      if (o.id) this.seenIds.add(o.id);
       return true;
     },
     // Text against what it sits on (WCAG AA: 4.5:1, or 3:1 for large text).
@@ -174,7 +176,7 @@ function install() {
       }
       document.getElementById('__kb_start')?.remove();
       const all = this.atTabEnd ?? this.interactive();
-      const reached = (e) => this.seen.has(e) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
+      const reached = (e) => this.seen.has(e) || (e.id && this.seenIds.has(e.id)) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
       const notFocusable = [], tabHole = [], thirdParty = [];
       for (const e of all) {
         if (reached(e)) continue;
@@ -258,6 +260,8 @@ async function auditScreen(label) {
     if (r === 'cycled' || (r === 'seen' && wrapped) || repeats >= 40) break;
   }
   await page.evaluate(() => window.__kb.tabEnd());
+  // KB_DEBUG=1: the Tab path as the run met it, and the composites the arrows will walk.
+  if (process.env.KB_DEBUG) console.log('[debug] tab path:', await page.evaluate(() => Array.from(window.__kb.seen).map((e) => `${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : '.' + String(e.className).split(' ')[0]} "${(e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 24)}"`).join(' | ')));
   // 2. F6: which visible areas it reaches (not inside a dialog).
   const f6 = await page.evaluate(() => {
     if (window.__kb.scope !== document.body) return null;
@@ -282,6 +286,7 @@ async function auditScreen(label) {
   }
   // 3. The arrow keys inside each composite.
   const comps = await page.evaluate(() => window.__kb.composites());
+  if (process.env.KB_DEBUG) console.log('[debug] composites:', await page.evaluate(() => window.__kb.comps.map((c, i) => `${i}:${c.getAttribute('role')}${c.id ? '#' + c.id : ''} enter=${!!(Array.from(window.__kb.seen).find((s) => c.contains(s)) || (c.id && document.querySelector('[aria-controls="' + c.id + '"]')))}`).join(' ')));
   for (let c = 0; c < comps; c++) {
     const checked = await page.evaluate((i) => window.__kb.checkedOf(i), c);
     for (const dir of ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'End', 'Home']) {
