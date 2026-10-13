@@ -91,6 +91,8 @@ export class PlannerAllDay {
       bar.title = ev.title;
       // Series occurrences drag too — the commit prompts this/following/all.
       this._installAllDayBarInteractions(bar, ev, grid, weekStartMs);
+      // The keyboard: Enter edits it, Alt+Left/Right move it a day, Alt+Shift+Left/Right change its last day.
+      this._pane.eventBars.installEventKeys(bar, ev, { ArrowLeft: -24 * 3_600_000, ArrowRight: 24 * 3_600_000 }, true, { allDay: true });
       grid.appendChild(bar);
     }
 

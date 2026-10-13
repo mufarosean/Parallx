@@ -11,6 +11,8 @@ import { startOfDay, formatTimeShort, formatTimeRange } from './plannerDates.js'
 import { TASK_DOT_SVG, TASK_DONE_SVG, el } from './plannerUi.js';
 import type { PlannerEditorPane } from './plannerEditorProvider.js';
 
+const DAY = 24 * 3_600_000;
+
 export class PlannerEventBars {
   constructor(private readonly _pane: PlannerEditorPane) {}
 
@@ -106,6 +108,8 @@ export class PlannerEventBars {
     chip.classList.add('planner-month__chip--draggable');
     // Swallow the click so a chip press never drills the cell into day view.
     chip.addEventListener('click', (e) => e.stopPropagation());
+    // The keyboard: Enter edits it; Alt+Left/Right move it a day, Alt+Up/Down a week (the drop's move).
+    this.installEventKeys(chip, ev, { ArrowLeft: -DAY, ArrowRight: DAY, ArrowUp: -7 * DAY, ArrowDown: 7 * DAY }, false);
 
     chip.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -159,6 +163,33 @@ export class PlannerEventBars {
     });
   }
 
+  /**
+   * An event's bar or chip from the keyboard: Enter or Space opens its editor
+   * (the press a click makes), Alt+arrows move it by `steps`, and with
+   * `resize`, Alt+Shift+arrows move only its end. Committed as a drag's
+   * drop is (with `extra`, an all-day bar's allDay); focus comes back to the
+   * event's bar when the view redraws.
+   */
+  installEventKeys(el: HTMLElement, ev: PlannerEvent, steps: Record<string, number>, resize: boolean, extra: Partial<UpdateEventInput> = {}): void {
+    el.dataset.eventId = ev.id;
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault(); e.stopPropagation();
+        this._pane.eventPopover.openEventPopover({ mode: 'edit', event: ev }, el.getBoundingClientRect());
+        return;
+      }
+      const step = e.altKey && !e.ctrlKey && !e.metaKey ? steps[e.key] : undefined;
+      if (step === undefined) return;
+      e.preventDefault(); e.stopPropagation();
+      const endOnly = resize && e.shiftKey;
+      const startAt = endOnly ? ev.startAt : ev.startAt + step;
+      const endAt = Math.max(startAt + 15 * 60_000, ev.endAt + step);
+      void this.commitEventMove(ev, { ...extra, startAt, endAt }, el.getBoundingClientRect()).then(() => {
+        setTimeout(() => (document.querySelector(`[data-event-id="${ev.id}"]`) as HTMLElement | null)?.focus(), 80);
+      });
+    });
+  }
+
   private _installEventInteractions(bar: HTMLElement, ev: PlannerEvent, variant: 'week' | 'day'): void {
     const SNAP_MS = 15 * 60_000;
     const DAY_MS = 24 * 3_600_000;
@@ -169,6 +200,8 @@ export class PlannerEventBars {
     const botHandle = el('div', 'planner-evt-handle planner-evt-handle--bottom');
     bar.appendChild(topHandle);
     bar.appendChild(botHandle);
+    // The keyboard: Enter edits it; Alt+Up/Down move it 15 minutes (Alt+Shift: its end), Alt+Left/Right a day.
+    this.installEventKeys(bar, ev, { ArrowUp: -SNAP_MS, ArrowDown: SNAP_MS, ArrowLeft: -DAY_MS, ArrowRight: DAY_MS }, true);
 
     bar.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
