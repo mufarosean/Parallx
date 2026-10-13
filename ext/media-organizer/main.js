@@ -9709,13 +9709,7 @@ function renderMediaCard(item, options) {
       // selection regardless of which card the user dropped on. When the
       // selection has 0\u20131 items, fall back to single-target drop.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      // Store exactly the branch dragged from: every tag on its path, each in the sense
-      // of the one above it (Portrait › Face, not Pose › Face); never a tag's other parents.
-      const picks = moTagPicksFromChain(tagIds);
-      const n = await moApplyTagsToKeys(picks, targetKeys);
-      const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${picks.length === 1 ? 'tag' : picks.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      for (const p of picks) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: p.tagId, keys: targetKeys } }));
+      await moApplyTagBranch(tagIds, targetKeys, options.api || _api);
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -9898,13 +9892,7 @@ function renderMediaListRow(item, options) {
       const selSet = new Set(selectedKeys);
       // Same rule as the card variant: active multi-selection always wins.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      // Store exactly the branch dragged from: every tag on its path, each in the sense
-      // of the one above it (Portrait › Face, not Pose › Face); never a tag's other parents.
-      const picks = moTagPicksFromChain(tagIds);
-      const n = await moApplyTagsToKeys(picks, targetKeys);
-      const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${picks.length === 1 ? 'tag' : picks.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      for (const p of picks) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: p.tagId, keys: targetKeys } }));
+      await moApplyTagBranch(tagIds, targetKeys, options.api || _api);
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -11032,7 +11020,7 @@ function renderBrowserSidebar(container, api) {
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      showTagContextMenu(e.clientX, e.clientY, tag, tag._count, { parentId, parentName });
+      showTagContextMenu(e.clientX, e.clientY, tag, tag._count, { parentId, parentName, chain: [...path, tag.id] });
     });
 
     // Inline rename on double-click.
@@ -11306,6 +11294,11 @@ function renderBrowserSidebar(container, api) {
   // Uses the already-tested TagQueries primitives.
   function showTagContextMenu(x, y, tag, usageCount, ctx = {}) {
     const actions = [];
+    // The keyboard's drop (Shift+F10 on the row): the selected items on screen get what a drop gives.
+    const selected = Array.from(document.querySelectorAll('.mo-card.mo-selected[data-key], .mo-list-row.mo-selected[data-key], .mo-feed-card.is-selected')).filter((el) => el.getClientRects().length).map((el) => el.dataset.key || (el._moItem && `${el._moItem.type}:${el._moItem.id}`)).filter(Boolean);
+    if (selected.length && ctx.chain) {
+      actions.push({ label: `Apply To ${selected.length} Selected Item${selected.length === 1 ? '' : 's'}`, icon: 'tag', handler: () => moApplyTagBranch(ctx.chain, selected, api) }, { separator: true });
+    }
     // Nested tags: left-click opens the Branch view (this exact path); the menu
     // offers the Unique view — every item with this tag, ignoring the branch.
     if (ctx.parentId != null) {
@@ -17950,6 +17943,15 @@ function parseSelectedIds(selectedIds) {
 // of media keys in one transaction. Used by cascade-on-apply (#9): dropping a
 // child tag from the tree onto a card stores Italy + 2024 + Building as real
 // independent tags.
+/** A tag branch onto items (a drop, or Apply To Selected Items): every tag on its path, each in
+ *  the sense of the one above it (Portrait › Face, not Pose › Face), never a tag's other parents. */
+async function moApplyTagBranch(chain, keys, api) {
+  const picks = moTagPicksFromChain(chain);
+  const n = await moApplyTagsToKeys(picks, keys);
+  if (api && api.statusBar) api.statusBar.setMessage(`Applied ${picks.length === 1 ? 'tag' : picks.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
+  for (const p of picks) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: p.tagId, keys } }));
+}
+
 /** The picks a dragged branch means: every tag on its root-to-leaf path, each in the sense of the one above it (0 at the top). */
 function moTagPicksFromChain(chain) {
   const ids = (chain || []).map((n) => parseInt(n, 10)).filter(Number.isFinite);
@@ -30212,8 +30214,7 @@ function moTagApprovePlan({ mode, current, picks, liveIds, parentsOf }) {
   const cur = (current || []).map((c) => ({ id: Number(c.id), via: Number(c.via) || 0 }));
   const curKeys = new Set(cur.map(key));
   const chosenKeys = new Set(chosen.map(key));
-  // Picking a child adds all of its parents. An ancestor the photo already
-  // carries, in any sense, stays as it is; a missing one goes on bare.
+  // Picking a child adds all of its parents; one the photo carries in any sense stays as it is.
   const chosenIds = new Set(chosen.map((p) => p.id));
   const ancestors = new Set();
   for (const p of chosen) for (const a of moTagAncestorIds(p.id, parentsOf)) if (live.has(a) && !chosenIds.has(a)) ancestors.add(a);

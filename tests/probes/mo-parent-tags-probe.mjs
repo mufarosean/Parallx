@@ -71,6 +71,41 @@ try {
   await page.waitForTimeout(800);
   await row('card.jpg').locator('.mo-tr-row-actions button', { hasText: 'Approve' }).click();
   await page.waitForTimeout(1_500);
+
+  // 3. The keyboard's drop: select the fractal photo, focus the sidebar's
+  // ANIMALS › DOG row, Shift+F10, Enter on Apply To 1 Selected Item.
+  if ((await cmd(page, 'media-organizer.openGrid')) !== true) throw new Error('media-organizer.openGrid not available');
+  await page.waitForSelector('.mo-feed-card, .mo-card', { timeout: 20_000 });
+  await page.waitForTimeout(1_500);
+  const picked = await page.evaluate(() => {
+    const tile = Array.from(document.querySelectorAll('.mo-feed-card')).find((t) => t.querySelector('img')?.alt === 'fractal' && t.getClientRects().length);
+    if (tile) { tile.querySelector('.mo-feed-pick')?.click(); return tile.classList.contains('is-selected') ? 'feed' : 'feed, not selected'; }
+    return 'no fractal tile';
+  });
+  const rail = await page.evaluate(() => { const b = Array.from(document.querySelectorAll('.activity-bar-item')).find((x) => /media|atelier/i.test((x.getAttribute('aria-label') || '') + ' ' + (x.dataset.iconId || ''))); if (!b) return 'no rail icon: ' + Array.from(document.querySelectorAll('.activity-bar-item')).map((x) => x.getAttribute('aria-label')).join(','); if (!b.classList.contains('active')) b.click(); return 'opened ' + b.getAttribute('aria-label'); });
+  console.log('[probe] sidebar: ' + rail);
+  await page.waitForTimeout(1_200);
+  const tagsSeg = page.locator('.mo-browse-segbtn', { hasText: 'Tags' }).first();
+  if (await tagsSeg.isVisible().catch(() => false)) await tagsSeg.click();
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    const animals = Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'ANIMALS' && r.getClientRects().length);
+    animals?.querySelector('.mo-tag-chevron')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await page.waitForTimeout(1_000);
+  const focused = await page.evaluate(() => {
+    const dog = Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'DOG' && r.getClientRects().length);
+    if (!dog) return 'no DOG row; rows: ' + Array.from(document.querySelectorAll('.mo-sidebar-item')).filter((r) => r.getClientRects().length).map((r) => (r.querySelector('.mo-sidebar-item-label')?.textContent || '?') + (r.querySelector('.mo-tag-chevron:not(.mo-tag-chevron-spacer)') ? '>' : '')).join(', ') + ' | segs: ' + Array.from(document.querySelectorAll('.mo-browse-segbtn')).map((b) => b.textContent + (b.getClientRects().length ? '' : '(hidden)')).join('/');
+    if (dog.tabIndex < 0) dog.tabIndex = -1;
+    dog.focus();
+    return document.activeElement === dog ? 'DOG focused' : 'DOG not focusable';
+  });
+  await page.keyboard.press('Shift+F10');
+  await page.waitForTimeout(600);
+  const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.context-menu .context-menu-item')).map((i) => i.textContent.trim()).slice(0, 3).join(' | '));
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1_500);
+  console.log(`[probe] keyboard drop: ${picked}; ${focused}; menu: ${menu}`);
   console.log(`[probe] renderer errors: ${errors.length ? errors.join(' | ') : 'none'}`);
 } catch (err) {
   failed = true;
@@ -81,7 +116,7 @@ try {
 
 // Read the database back.
 let ok = !failed;
-const want = { 'boxing.jpg': ['BOXING', 'CAMERA', 'CROWD', 'EQUIPMENT', 'PEOPLE', 'SPORTS'], 'card.jpg': ['PATTERNS', 'TEST CARD'] };
+const want = { 'boxing.jpg': ['BOXING', 'CAMERA', 'CROWD', 'EQUIPMENT', 'PEOPLE', 'SPORTS'], 'card.jpg': ['PATTERNS', 'TEST CARD'], 'fractal.jpg': ['ANIMALS', 'DOG', 'PATTERNS'] };
 for (const db of dbPaths(workspace)) {
   const r = spawnSync(ELECTRON, [SEED, 'verify', db], { env: nodeEnv(), encoding: 'utf8', windowsHide: true });
   let out;

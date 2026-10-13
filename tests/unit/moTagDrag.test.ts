@@ -26,14 +26,21 @@ describe('dropping a tag branch on items', () => {
     sql.exec(`CREATE TABLE mo_photos_tags (photo_id INTEGER, tag_id INTEGER, via_parent_id INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (photo_id, tag_id, via_parent_id));
               CREATE TABLE mo_videos_tags (video_id INTEGER, tag_id INTEGER, via_parent_id INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (video_id, tag_id, via_parent_id));`);
     const db = { transaction: async (ops: { sql: string; params: unknown[] }[]) => { for (const o of ops) sql.prepare(o.sql).run(...(o.params as never[])); } };
+    const events: Event[] = [];
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const m = new Function('db', `${fn('moTagPicksFromChain')}\n${fn('moApplyTagsToKeys')}\nreturn { moTagPicksFromChain, moApplyTagsToKeys };`)(db);
+    const m = new Function('db', 'document', `${fn('moTagPicksFromChain')}\n${fn('moApplyTagsToKeys')}\n${fn('moApplyTagBranch')}\nreturn { moTagPicksFromChain, moApplyTagsToKeys, moApplyTagBranch };`)(db, { dispatchEvent: (e: Event) => events.push(e) });
     // PETS(5) › DOG(2) › CORGI(3), dragged from the PETS branch, onto a photo and a video.
     const picks = m.moTagPicksFromChain(['5', '2', '3']);
     expect(picks).toEqual([{ tagId: 5, via: 0 }, { tagId: 2, via: 5 }, { tagId: 3, via: 2 }]);
     expect(await m.moApplyTagsToKeys(picks, ['photo:1', 'video:7'])).toBe(2);
     expect(sql.prepare('SELECT tag_id, via_parent_id AS via FROM mo_photos_tags ORDER BY tag_id').all()).toEqual([{ tag_id: 2, via: 5 }, { tag_id: 3, via: 2 }, { tag_id: 5, via: 0 }]);
     expect(sql.prepare('SELECT COUNT(*) AS n FROM mo_videos_tags').get()).toEqual({ n: 3 });
+    // The drop and the keyboard's Apply To Selected Items share one function: the same rows, the cards told.
+    const said: string[] = [];
+    await m.moApplyTagBranch(['5', '2', '3'], ['photo:4'], { statusBar: { setMessage: (t: string) => said.push(t) } });
+    expect(sql.prepare('SELECT tag_id, via_parent_id AS via FROM mo_photos_tags WHERE photo_id = 4 ORDER BY tag_id').all()).toEqual([{ tag_id: 2, via: 5 }, { tag_id: 3, via: 2 }, { tag_id: 5, via: 0 }]);
+    expect(said).toEqual(['Applied 3 tags to 1 item']);
+    expect(events.length).toBe(3);
     // A top-level tag on its own is just itself.
     expect(m.moTagPicksFromChain(['9'])).toEqual([{ tagId: 9, via: 0 }]);
   });
