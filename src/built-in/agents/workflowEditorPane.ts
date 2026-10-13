@@ -764,7 +764,8 @@ export class WorkflowEditorPane implements IDisposable {
       if (e.key === 'Enter') input.blur();
     });
     input.addEventListener('blur', () => {
-      this._commit({ mutexGroup: input.value.trim() || undefined });
+      const next = input.value.trim() || undefined;
+      if (next !== this._doc?.mutexGroup) this._commit({ mutexGroup: next }); // unchanged: no save, no repaint
     });
     wrap.appendChild(input);
     const h = $('div.wfe-ins__hint');

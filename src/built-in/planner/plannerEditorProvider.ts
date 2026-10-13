@@ -193,6 +193,8 @@ export class PlannerEditorPane implements IDisposable {
       // canvas page open beside a planner tab handed its first keystrokes to
       // these shortcuts ("n" opened a task popover over the page).
       if ((!active || active === document.body) && !this._pointerInside) return;
+      // A key a control already handled (the month grid's arrows) is not a shortcut too.
+      if (e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
       // Skip when focus is inside any input / textarea / contenteditable —
       // those characters belong to the user's typing.

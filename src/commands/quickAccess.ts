@@ -957,10 +957,9 @@ export class QuickAccessWidget extends Disposable {
       case 'Tab':
         // Focus trap — Tab cycles only within Quick Access (Cap 8.3)
         e.preventDefault();
-        // Only two focusable elements: input and list.
-        // Tab from input focuses first visible item, Shift+Tab stays on input.
+        // Two stops, input and list: Tab goes to the highlighted row, Shift+Tab stays on input.
         if (!e.shiftKey && this._listEl) {
-          const firstItem = this._listEl.querySelector('.command-palette-item') as HTMLElement | null;
+          const firstItem = (this._listEl.querySelector('.command-palette-item.selected') ?? this._listEl.querySelector('.command-palette-item')) as HTMLElement | null;
           if (firstItem) {
             firstItem.focus();
           }
@@ -1101,6 +1100,7 @@ export class QuickAccessWidget extends Disposable {
       row.classList.toggle('selected', i === this._selectedIndex);
       row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false'); if (i === this._selectedIndex) this._input?.setAttribute('aria-activedescendant', (row as HTMLElement).id);
     });
+    if (this._listEl.contains(document.activeElement)) to?.focus(); // focus in the list follows the highlight
   }
 
   // ── Acceptance / execution ─────────────────────────────────────────────

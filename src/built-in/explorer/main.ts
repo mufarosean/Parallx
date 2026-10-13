@@ -125,6 +125,7 @@ const REVEAL_LABEL = (() => {
 let _context: ToolContext;
 let _showHidden = true;
 let _selectedNode: TreeNode | null = null;
+let _rowSeq = 0; // row ids, for the tree's aria-activedescendant (focus stays on the tree)
 let _roots: TreeNode[] = [];
 let _treeContainer: HTMLElement | null = null;
 let _openEditorsCountKey: ReturnType<ParallxApi['context']['createContextKey']>;
@@ -473,7 +474,7 @@ function renderTree(): void {
     if (restored) {
       _selectedNode = restored;
       if (restored.element) {
-        restored.element.classList.add('tree-node--selected');
+        restored.element.classList.add('tree-node--selected'); _treeContainer.setAttribute('aria-activedescendant', restored.element.id);
       }
     }
   }
@@ -505,10 +506,8 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   const depth = Math.max(0, node.depth - shift);
   const el = $('div');
   el.className = 'tree-node';
-  if (_selectedNode === node) {
-    el.classList.add('tree-node--selected');
-  }
-  el.setAttribute('role', 'treeitem');
+  if (_selectedNode === node) el.classList.add('tree-node--selected');
+  el.setAttribute('role', 'treeitem'); el.id = `explorer-row-${++_rowSeq}`;
   el.setAttribute('data-uri', node.uri);
   // Computed layout dimension — allowed inline per project rules
   el.style.paddingLeft = `${depth * INDENT_PX + 4}px`;
@@ -639,13 +638,12 @@ function createErrorElement(node: TreeNode, depth: number): HTMLElement {
 
 function selectNode(node: TreeNode): void {
   const prevEl = _selectedNode?.element ?? null;
-  // Deselect previous
   if (_selectedNode?.element) {
     _selectedNode.element.classList.remove('tree-node--selected');
   }
   _selectedNode = node;
   if (node.element) {
-    node.element.classList.add('tree-node--selected');
+    node.element.classList.add('tree-node--selected'); _treeContainer?.setAttribute('aria-activedescendant', node.element.id);
     node.element.scrollIntoView({ block: 'nearest' });
     // The selection slides from the old row to the new one.
     if (_treeContainer) glideHighlight(_treeContainer, prevEl, node.element, 'tree-glide');
