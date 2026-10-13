@@ -421,7 +421,7 @@ export class PageChromeController {
     this._ribbonEditedLabel = $('span.canvas-top-ribbon-edited');
     this._ribbonEditedLabel.textContent = this._formatRelativeTime(this._currentPage?.updatedAt);
     this._ribbonEditedLabel.title = 'Version History';
-    this._ribbonEditedLabel.setAttribute('role', 'button');
+    this._ribbonEditedLabel.setAttribute('role', 'button'); declareControl(this._ribbonEditedLabel, { id: 'canvas.page.versionHistory', label: 'Version History' });
     this._ribbonEditedLabel.addEventListener('click', () => {
       this.dismissPopups();
       void showVersionHistoryPanel({

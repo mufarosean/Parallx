@@ -8,7 +8,7 @@
 
 import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { createButton, createIconButton, createPageHeader, createSectionLabel } from '../../ui/kit.js';
+import { createButton, createIconButton, createList, createPageHeader, createSectionLabel } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerEvent, PlannerTask } from './plannerTypes.js';
@@ -376,6 +376,8 @@ export class PlannerTodayView implements IDisposable {
     for (const t of tasks) if (t.dueAt != null && isVisible(t.calendarId)) bump(t.dueAt);
 
     const grid = el('div', 'planner-today__month-grid');
+    // The month's days are rows of one list in the scene; each names itself by its aria-label.
+    createList(grid, { id: 'planner.today.month', label: 'Month', rows: () => Array.from(grid.querySelectorAll<HTMLElement>('.planner-today__day')), selected: () => [] });
     for (let i = 0; i < 7; i++) {
       const dow = appDateString(addLocalDays(gridStart, i), { weekday: 'narrow' });
       grid.appendChild(el('span', 'planner-today__dow', dow));

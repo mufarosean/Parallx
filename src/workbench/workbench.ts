@@ -2334,7 +2334,7 @@ export class Workbench extends Layout {
       const moreBtn = $('button');
       moreBtn.classList.add('sidebar-header-action-btn');
       moreBtn.title = 'More Actions…';
-      moreBtn.setAttribute('aria-label', 'More Actions…');
+      moreBtn.setAttribute('aria-label', 'More Actions…'); this._register(declareControl(moreBtn, { id: 'sidebar.more', label: 'More Actions…', kind: 'iconButton' }));
       moreBtn.textContent = '⋯';
       this._register(addDisposableListener(moreBtn, 'click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();

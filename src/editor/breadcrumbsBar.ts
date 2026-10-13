@@ -22,6 +22,7 @@ import { URI } from '../platform/uri.js';
 import { BreadcrumbsWidget, BreadcrumbsItem } from '../ui/breadcrumbs.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import { $ } from '../ui/dom.js';
+import { createList } from '../ui/kit.js';
 import { getFileTypeIcon, getFolderIcon } from '../ui/iconRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -136,6 +137,12 @@ export class BreadcrumbsBar extends Disposable {
 
     // Widget
     this._widget = this._register(new BreadcrumbsWidget(this.domNode));
+    // In the scene the path is one list; its segments, rebuilt for each file, are its rows.
+    this._register(createList(this._widget.domNode, {
+      id: 'editor.breadcrumbs', label: 'Path',
+      rows: () => Array.from(this._widget.domNode.querySelectorAll<HTMLElement>('.parallx-breadcrumb-item')),
+      selected: () => [],
+    }));
 
     // When a breadcrumb item is selected, fire our event
     this._register(this._widget.onDidSelectItem((e) => {

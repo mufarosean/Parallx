@@ -116,6 +116,7 @@ export class ModelSection extends SettingsSection {
       selected: '',
       ariaLabel: 'Default model',
     }));
+    this._register(declareControl(this._modelDropdown.element, { id: 'aiSettings.model.default', label: 'Default model', kind: 'select', state: () => ({ kind: 'value', value: this._modelDropdown.value ?? '' }) }));
     this._register(this._modelDropdown.onDidChange((value: string) => {
       void this._writeWorkspace({ model: { chatModel: value } })
         .then(() => this._notifySaved('model.chatModel'));
@@ -158,6 +159,7 @@ export class ModelSection extends SettingsSection {
         return null;
       },
     }));
+    this._register(declareControl(this._contextInput.element, { id: 'aiSettings.model.contextLength', label: 'Default context length in tokens', kind: 'input', state: () => ({ kind: 'value', value: this._contextInput.value }) }));
     this._contextInput.element.classList.add('ai-settings-number-input');
     this._contextInput.inputElement.type = 'number';
     this._contextInput.inputElement.min = '0';

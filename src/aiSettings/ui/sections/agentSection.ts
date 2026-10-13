@@ -56,6 +56,7 @@ export class AgentSection extends SettingsSection {
         { value: 50, label: '50' },
       ],
     }));
+    this._register(declareControl(this._maxIterationsSlider.element, { id: 'aiSettings.agent.maxIterations', label: 'Max iterations', kind: 'slider', state: () => ({ kind: 'number', value: this._maxIterationsSlider.value }) }));
     this._maxIterationsValue = $('span.ai-settings-row__value', String(defaults.maxIterations));
     iterRow.controlSlot.appendChild(this._maxIterationsValue);
     this._register(this._maxIterationsSlider.onDidChange((value) => {

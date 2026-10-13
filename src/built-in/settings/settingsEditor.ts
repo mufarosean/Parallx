@@ -207,6 +207,7 @@ export class SettingsEditor extends Disposable {
     closeBtn.className = 'settings-editor__close';
     closeBtn.setAttribute('aria-label', 'Close settings');
     closeBtn.textContent = '×';
+    this._register(declareControl(closeBtn, { id: 'settings.close', label: 'Close Settings' }));
     this._register(addDisposableListener(closeBtn, 'click', () => this.hide()));
     header.appendChild(closeBtn);
 
@@ -240,6 +241,7 @@ export class SettingsEditor extends Disposable {
       ariaLabel: 'Scope filter',
     });
     this._register(scopeControl);
+    this._register(declareControl(scopeControl.element, { id: 'settings.scope', label: 'Scope filter', kind: 'segmented', state: () => ({ kind: 'value', value: scopeControl.value }) }));
     this._register(scopeControl.onDidChange((id) => {
       this._scopeFilter = id as ScopeFilter;
       this._renderContent();

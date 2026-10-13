@@ -500,6 +500,7 @@ export class PxAppearancePanel implements IDisposable {
 
     const card = document.createElement('div');
     card.className = 'px-appearance-preview';
+    card.setAttribute('aria-hidden', 'true'); // a picture of the theme: its button and link do nothing
     card.innerHTML = `
       <div class="px-pv-toolbar">
         <span class="px-pv-dot"></span>

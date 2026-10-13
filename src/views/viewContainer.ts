@@ -648,7 +648,7 @@ export class ViewContainer extends Disposable implements IGridView {
     view.createElement(body);
 
     // Track section listeners in a DisposableStore for explicit cleanup
-    const sectionStore = new DisposableStore();
+    const sectionStore = new DisposableStore(); sectionStore.add(declareControl(header, { id: `${view.id}.fold`, label: view.name || view.id, kind: 'toggle', state: () => ({ kind: 'pressed', value: header.getAttribute('aria-expanded') === 'true' }) }));
 
     // Click header toggles collapse
     const clickHandler = () => this.toggleSectionCollapse(view.id);

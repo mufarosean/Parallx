@@ -384,6 +384,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         label: 'Restart',
         onClick: () => { clearTerminalOutput(); void spawnShell(); },
       }));
+      const [clearBtn, restartBtn] = Array.from(actions.querySelectorAll('button'));
+      declareControl(clearBtn, { id: 'terminal.clear', label: 'Clear' });
+      declareControl(restartBtn, { id: 'terminal.restartShell', label: 'Restart Shell' });
       root.appendChild(actions);
 
       // ── Environment strip — hidden unless there is something to say ──

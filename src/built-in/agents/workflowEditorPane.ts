@@ -126,7 +126,7 @@ export class WorkflowEditorPane implements IDisposable {
     this._disposables.push(this._classDropdown.onDidChange((v) => {
       this._commit({ class: v as WorkflowClass });
     }));
-    header.appendChild(classWrap);
+    header.appendChild(classWrap); this._disposables.push(declareControl(this._classDropdown.element, { id: 'workflows.editor.class', label: 'Routine class', kind: 'select', state: () => ({ kind: 'value', value: this._classDropdown.value }) }));
 
     // Run picker — Editing, or a recorded run whose trace paints the graph.
     const pickerWrap = $('div.wfe__field');
@@ -140,7 +140,7 @@ export class WorkflowEditorPane implements IDisposable {
       this._mode = v || 'edit';
       this._paintAll();
     }));
-    header.appendChild(pickerWrap);
+    header.appendChild(pickerWrap); this._disposables.push(declareControl(this._runPicker.element, { id: 'workflows.editor.view', label: 'View a recorded run', kind: 'select', state: () => ({ kind: 'value', value: this._runPicker.value }) }));
 
     this._runBtn = $('button.wfe__btn.wfe__btn--primary') as HTMLButtonElement;
     this._runBtn.textContent = 'Run Now';
@@ -738,7 +738,7 @@ export class WorkflowEditorPane implements IDisposable {
       selected: this._doc.model ?? '',
       ariaLabel: 'Model for this routine',
     });
-    this._inspector.appendChild(modelWrap);
+    this._inspector.appendChild(modelWrap); this._disposables.push(declareControl(modelDd.element, { id: 'workflows.editor.model', label: 'Model for this routine', kind: 'select', state: () => ({ kind: 'value', value: modelDd.value }) }));
     void (async () => {
       const items: IDropdownItem[] = [{ value: '', label: 'Active Model (default)' }];
       try {

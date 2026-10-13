@@ -89,6 +89,7 @@ export class ToolsSection extends SettingsSection {
       placeholder: 'Filter tools…',
       ariaLabel: 'Filter tools',
     }));
+    this._register(declareControl(this._searchInput.element, { id: 'aiSettings.tools.filter', label: 'Filter tools', kind: 'input', state: () => ({ kind: 'value', value: this._searchInput.value }) }));
     this._register(this._searchInput.onDidChange((query) => {
       this._renderTree(query);
     }));

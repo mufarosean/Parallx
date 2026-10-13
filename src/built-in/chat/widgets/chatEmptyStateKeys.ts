@@ -97,6 +97,8 @@ export function buildOfflineState(openAiSettings: (() => void) | undefined): { r
     'Install it from <a href="https://ollama.com">ollama.com</a> and it connects on its own,',
     'or set up a cloud model in AI settings.',
   ].join(' ');
+  const link = instruction.querySelector('a');
+  if (link) declareControl(link, { id: 'chat.offline.ollamaLink', label: 'Ollama website' });
 
   append(root, spinner, title, instruction);
 
