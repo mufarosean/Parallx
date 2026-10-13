@@ -1074,6 +1074,8 @@ async function moAuditScene(appRoot, workspace, errors) {
   const rightClickCard = async (name) => { const ok = await moCard(page, name, 'menu'); await page.waitForTimeout(400); return ok; };
   try {
     await enableMediaOrganizer(page);
+    // The trash scene, run before in the same data root, leaves Delete set to Trash; the audit reads the permanent dialog.
+    await setSetting(page, 'mediaOrganizer.deleteMode', 'permanent');
     await moScan(app, page, media, 6_000);
     await moPlace(page, 'All Media');
     await page.waitForTimeout(3_000);
@@ -1115,7 +1117,8 @@ async function moAuditScene(appRoot, workspace, errors) {
     await page.keyboard.press('Control+a');
     await page.waitForTimeout(400);
     await page.keyboard.press('Delete');
-    await page.waitForTimeout(500);
+    // The dialog counts what it will delete first, so it can take a moment.
+    await page.waitForSelector(`${ctl('media-organizer.bulkDelete.confirm')} >> visible=true`, { timeout: 3_000 }).catch(() => {});
     log('Delete key opens', await page.evaluate(() => {
       const b = __px.ctl('media-organizer.bulkDelete.confirm');
       if (!b?.getClientRects().length) return 'no dialog';

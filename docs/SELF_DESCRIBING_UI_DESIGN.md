@@ -1402,6 +1402,38 @@ Sessions append here. Each line: date, step, what was left and why.
   - Background probe runs started detached outlive the task that
     started them; run probes one at a time, and never unmuted.
 
+- 2026-10-13, later the same day: the open ends of the item above.
+  The three audit readings: the Delete key's dialog opens, a moment
+  late (the probe now waits for it); the folder rows have no right-click
+  menu because none was ever built (a feature, not a fault); and "Move to
+  Trash" acted on the selection of a library tab that was not on screen
+  (every mounted tab answered `mo:request-selection`, the first answer
+  won). That was a real fault: running it on the Favorites tab trashed
+  the four photos selected in the hidden All Media tab. Each tab now
+  says whether it is shown, and Move to Trash and Edit Image use the
+  shown tab's selection, never a hidden one's. Declared: the editor's
+  path bar (`editor.breadcrumbs`, a list), Media Organizer's folder list
+  and tag tree, Planner's month grid (a list of days), Creations' home
+  (Surprise Me, Make Character, the suggested lines, the quick-start
+  cards, the rolled table's actions, cast cards as surfaces with Chat),
+  Settings' Close and scope switch, AI settings' default model, context
+  length, max iterations and tool filter, the sidebar's ⋯ and each view
+  section's fold, the routine editor's three dropdowns, the canvas
+  page's Version History stamp, the terminal's Clear and Restart Shell,
+  Study's Add PDF…, and the chat's offline link. The theme preview in
+  Appearance is `aria-hidden`: its button and link are a picture.
+
+  New: `tests/probes/scene-coverage-probe.mjs` walks 31 screens (every
+  built-in, every extension, canvas, a PDF, a scratch sheet, quick open)
+  and sorts every visible interactive element into declared, a row of a
+  declared list, third-party, or undeclared. Before these changes it
+  found 99 undeclared; now 0 of what Parallx draws: 2,089 declared and
+  407 rows, summed over the screens. The 80 third-party ones are the
+  spreadsheet engine's own toolbar, sheet tabs and menus (Univer), read
+  as content like pdf.js. The probe covers each screen's first state,
+  not every dialog under it; the screenshot probe and step 7's hidden
+  checks reach further in.
+
 ## 12. Glossary for a new reader
 
 - **Part**: one of the seven fixed regions of the window (title bar,
