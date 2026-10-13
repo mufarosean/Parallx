@@ -103,7 +103,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
       preview();
     },
   );
-  selects.push(bgSelect);
+  selects.push(bgSelect); declareControl(bgSelect.el, { id: 'dashboard.appearance.background', label: 'Background', kind: 'select', state: () => ({ kind: 'value', value: bgSelect.getValue() }) });
   bgBlock.appendChild(bgSelect.el);
   bgBlock.appendChild(bgColor);
   bgColor.addEventListener('input', () => { draft.backgroundColor = bgColor.value; preview(); });
@@ -129,7 +129,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
       preview();
     },
   );
-  selects.push(bdSelect);
+  selects.push(bdSelect); declareControl(bdSelect.el, { id: 'dashboard.appearance.border', label: 'Border', kind: 'select', state: () => ({ kind: 'value', value: bdSelect.getValue() }) });
   bdBlock.appendChild(bdSelect.el);
   bdBlock.appendChild(bdColor);
   bdColor.addEventListener('input', () => { draft.borderColor = bdColor.value; preview(); });
@@ -152,7 +152,7 @@ export function openAppearanceDrawer(host: AppearanceDrawerHost): void {
       preview();
     },
   );
-  selects.push(alignSelect);
+  selects.push(alignSelect); declareControl(alignSelect.el, { id: 'dashboard.appearance.content', label: 'Content', kind: 'select', state: () => ({ kind: 'value', value: alignSelect.getValue() }) });
   alignBlock.appendChild(alignSelect.el);
   body.appendChild(alignBlock);
 

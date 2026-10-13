@@ -107,6 +107,7 @@ export function openWidgetSettingsDrawer(host: SettingsDrawerHost): void {
       const sel = createSelect(opts, cur, () => {});
       selects.push(sel);
       block.appendChild(sel.el);
+      declareControl(sel.el, { id: `dashboard.widgetSettings.${name}`, label: field.label, kind: 'select', state: () => ({ kind: 'value', value: sel.getValue() }) });
       inputs.set(name, () => sel.getValue());
     } else if (field.type === 'textarea') {
       addLabelAndHint();
