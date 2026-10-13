@@ -13,7 +13,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten, click, openFile, tinyPdf } from './scene.mjs';
+import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten, click, openFile, tinyPdf, setToolEnabled } from './scene.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-scene'));
 
@@ -129,10 +129,7 @@ async function main() {
       'parallx.browser': ['browser.newTab', ['browser.address', 'browser.back', 'browser.newTabPage.search']],
       'parallx-community.study': ['study.open', ['study.side.addMaterial']],
     };
-    await page.evaluate(async (ids) => {
-      const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
-      for (const id of ids) { try { await svc?.setEnablement(id, true); } catch (e) { console.warn('enable', id, String(e)); } }
-    }, Object.keys(EXTENSION_IDS));
+    for (const id of Object.keys(EXTENSION_IDS)) { const r = await setToolEnabled(page, id, true); if (r !== true) stats.problems.push(`${id}: could not turn it on: ${r}`); }
     await page.waitForTimeout(3_000);
     for (const [ext, [open, want]] of Object.entries(EXTENSION_IDS)) {
       const r = await cmd(page, open);

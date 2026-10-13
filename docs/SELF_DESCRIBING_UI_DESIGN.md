@@ -1061,6 +1061,31 @@ latest user message only. `tests/unit/sceneLine.test.ts` covers it.
 class-name queries and `__parallx_workbench__` reaches except `cmd()`;
 they use `tests/probes/scene.mjs`.
 
+The rule as applied: a probe drives a control by its scene id (`click`,
+`type`, or `[data-px-id]` to fill or read an attribute) and reads state
+from `sceneOf`; it reaches the workbench only through `scene.mjs`'s
+helpers (`cmd`, `sceneOf`, and `toolList` / `setToolEnabled` for turning
+tools on and off). What the app renders but does not declare (pdf.js
+pages and text layer, a Tiptap page body, Mermaid's drawing, code
+highlighting, a sheet's test host, the highlight boxes over a PDF) is
+read as content, under the surface that holds it
+(`[data-px-surface="<editor type id>"]`).
+
+refactor-verify done 2026-10-12, on the owner's machine: its launch, `cmd`
+and `openFile` come from `scene.mjs`, every row drives controls by id,
+and all eleven rows pass with no renderer errors (before: markdown and
+mermaid failed, and nine renderer errors). Driving by id found three
+app faults, fixed in their own commits: the Python panel's switch shared
+the `python.enabled` row's id; Add Widget and Refresh All went to every
+mounted dashboard, so with two open the widget landed on the hidden one
+(`dashboardCommandTarget.ts`: the command names the active dashboard);
+and the widget drawers' dropdowns were not declared. The search message
+gained `role="status"`. The canvas page picker (`showQuickPick`) is not
+in the scene yet; the probe answers it with Enter.
+
+`ui-screenshot-probe.mjs` is left (2001 lines, about 330 class or
+workbench reaches): the next session converts it the same way.
+
 ### Step 10. Reference docs (cloud)
 
 Section 8.

@@ -50,6 +50,33 @@ export async function cmd(page, id, ...args) {
   }, { id, args });
 }
 
+/**
+ * Every tool the app knows: `{ id, builtin, required, enabled }`. With
+ * setToolEnabled, the one other reach into the workbench besides cmd and
+ * sceneOf: probes turn tools on and off through these, never directly.
+ */
+export async function toolList(page) {
+  return page.evaluate(() => {
+    const services = window.__parallx_workbench__?._services;
+    const reg = services?.get?.({ id: 'IToolRegistryService' });
+    const en = services?.get?.({ id: 'IToolEnablementService' });
+    return (reg?.getAll?.() ?? []).map((t) => {
+      const d = t.description ?? t;
+      const m = d.manifest ?? d;
+      return { id: m.id, builtin: !!d.isBuiltin, required: !!m.required, enabled: en?.isEnabled?.(m.id) ?? true };
+    });
+  });
+}
+
+/** Turns a tool on or off. Resolves true, or the error's message. */
+export async function setToolEnabled(page, id, on) {
+  return page.evaluate(async ({ id, on }) => {
+    const en = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
+    if (!en) return 'no enablement service';
+    try { await en.setEnablement(id, on); return true; } catch (e) { return String(e?.message || e); }
+  }, { id, on });
+}
+
 /** `scene.describe(scope)` from the page, as plain data. */
 export async function sceneOf(page, scope) {
   return page.evaluate(({ scope }) => {

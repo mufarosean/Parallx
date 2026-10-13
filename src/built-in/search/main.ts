@@ -333,6 +333,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   // ── Message area ──
   _messageEl = $('div');
   _messageEl.className = 'search-message';
+  _messageEl.setAttribute('role', 'status');
   container.appendChild(_messageEl);
 
   // ── Results ──

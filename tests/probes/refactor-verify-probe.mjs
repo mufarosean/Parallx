@@ -2,33 +2,28 @@
 // docs/REFACTOR_HANDOFF_2026-10-12.md section 2, hidden, on a throwaway
 // workspace. No model calls: rows that need a model are left to a person.
 //
+// Controls are driven by their scene ids and read through the scene
+// (tests/probes/scene.mjs, docs/SELF_DESCRIBING_UI_DESIGN.md section 7);
+// the workbench is reached only through scene.mjs's helpers. What the app
+// renders but does not declare (pdf.js pages and text, a Mermaid drawing,
+// code highlighting, a sheet's cells) is read as content, under the
+// surface that holds it.
+//
 // Usage: node tests/probes/refactor-verify-probe.mjs <outDir> [row ...]
 // Rows: pdf markdown find quickopen mermaid dashboard icons tools docling worksheet exts
 // (default: all). Requires `npm run build` first (the app loads dist/).
 
-import { _electron as electron, chromium } from 'playwright';
+import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten, click, openFile, toolList, setToolEnabled } from './scene.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-verify'));
 const ALL = ['pdf', 'markdown', 'find', 'quickopen', 'mermaid', 'dashboard', 'icons', 'tools', 'docling', 'worksheet', 'exts'];
 const rows = process.argv.slice(3).length ? process.argv.slice(3) : ALL;
 
 const log = (row, msg) => console.log(`[${row}] ${msg}`);
-
-function launchEnv(appRoot) {
-  const env = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
-  Object.assign(env, {
-    PARALLX_TEST_MODE: '1', PARALLX_RENDERER_PORT: '0', PARALLX_HIDDEN_PROBE: '1',
-    PARALLX_APP_ROOT: appRoot, PARALLX_USER_DATA: path.join(appRoot, 'data', 'chromium-cache'),
-  });
-  return env;
-}
 
 async function seed() {
   const stamp = Date.now();
@@ -56,14 +51,6 @@ async function seed() {
   return { appRoot, ws };
 }
 
-async function cmd(page, id, ...args) {
-  return page.evaluate(async ({ id, args }) => {
-    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'ICommandService' });
-    if (!svc) return 'no command service';
-    try { await svc.executeCommand(id, ...args); return true; } catch (e) { return String(e?.message || e); }
-  }, { id, args });
-}
-
 async function repaint(page) {
   await page.evaluate(() => {
     let d = document.getElementById('__probe_repaint');
@@ -78,15 +65,16 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(outDir, `${name}.png`), timeout: 8_000 }).catch(() => {});
 }
 
-async function openFile(page, name) {
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Control+P');
-  await page.waitForSelector('.command-palette-input', { timeout: 5_000 });
-  await page.keyboard.type(name);
-  await page.waitForTimeout(800);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(1_500);
+/** The scene, flattened; `entry(id)` is its first entry with that id. */
+async function entries(page) {
+  const nodes = flatten(await sceneOf(page));
+  return Object.assign(nodes, { entry: (id) => nodes.filter((n) => n.id === id)[0] });
 }
+
+/** The element of a scene id, for reading its attributes or typing in it. */
+const byId = (id) => `[data-px-id="${id}"]`;
+/** A surface's element, by its id (an editor surface is its type id). */
+const surface = (id) => `[data-px-surface="${id}"]`;
 
 const errors = [];
 let currentRow = 'boot';
@@ -94,16 +82,9 @@ let currentRow = 'boot';
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, ws } = await seed();
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
-  // The hidden copy never reaches the Ollama the real app uses: indexing a
-  // fresh workspace would load the embedding model into it.
-  await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
-  const page = await app.firstWindow();
+  const { app, page } = await launchApp(appRoot);
   page.on('pageerror', (e) => errors.push(`[${currentRow}] pageerror: ${String(e).slice(0, 400)}`));
   page.on('console', (m) => { if (m.type() === 'warning' && currentRow === 'markdown') errors.push(`[markdown] warn: ${m.text().slice(0, 300)}`); if (m.type() === 'error') errors.push(`[${currentRow}] console: ${m.text().slice(0, 400)}`); });
-  await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
-  await page.waitForSelector('[data-part-id="workbench.parts.titlebar"]', { state: 'attached', timeout: 90_000 });
-  await page.waitForTimeout(3_000);
 
   const run = async (row, fn) => {
     if (!rows.includes(row)) return;
@@ -112,76 +93,78 @@ async function main() {
   };
 
   await run('quickopen', async () => {
-    // Recent files first: open beta, then alpha; an empty Ctrl+P lists alpha, beta.
+    // Recent files first: open beta, then alpha; an empty quick open lists alpha, beta.
     await openFile(page, 'beta.md');
     await openFile(page, 'alpha.md');
-    await page.keyboard.press('Control+P');
-    await page.waitForSelector('.command-palette-item', { timeout: 5_000 });
+    await cmd(page, 'workbench.action.quickOpen');
+    await page.waitForSelector(byId('quickAccess.list'), { timeout: 5_000 });
     await page.waitForTimeout(500);
-    const items = await page.evaluate(() => Array.from(document.querySelectorAll('.command-palette-list > *')).slice(0, 8).map((x) => `${x.className.split(' ')[0]}:${x.textContent.trim().slice(0, 40)}`));
+    const items = await page.evaluate((sel) => Array.from(document.querySelector(sel)?.children ?? []).slice(0, 8).map((x) => `${x.getAttribute('role') || x.tagName.toLowerCase()}:${x.textContent.trim().slice(0, 40)}`), byId('quickAccess.list'));
     log('quickopen', items.join(' | '));
     await page.keyboard.press('Escape');
   });
 
   await run('markdown', async () => {
     await openFile(page, 'code-notes.md');
-    log('markdown', await page.evaluate(() => { const g = window.__parallx_workbench__?._services?.get?.({ id: 'IEditorGroupService' }); const e = g?.activeGroup?.model?.activeEditor; return `active editor: ${e?.typeId} ${e?.name} panes=${Array.from(document.querySelectorAll('[class*="-editor-pane"], .markdown-editor-pane')).map((x) => x.className.split(' ')[0]).join(',')}`; }));
+    const groups = async () => (await entries(page)).filter((n) => n.id === 'editorGroup.tabs').map((n) => n.state?.value?.join(',')).join(' / ');
+    log('markdown', `active editors: ${await groups()}`);
     const r = await cmd(page, 'markdown.showPreviewToSide');
     log('markdown', `showPreviewToSide: ${r}`);
     await page.waitForTimeout(2_000);
-    log('markdown', await page.evaluate(() => { const g = window.__parallx_workbench__?._services?.get?.({ id: 'IEditorGroupService' }); return `groups=${g?.groups?.map((x) => `${x.model.activeEditor?.typeId}:${x.model.activeEditor?.name}`).join(',')} md=${document.querySelectorAll('.markdown-editor-pane').length} content="${(document.querySelector('.markdown-content')?.innerHTML || '').slice(0, 200)}"`; }));
-    await page.waitForSelector('.markdown-content pre', { timeout: 10_000 });
+    log('markdown', `active editors: ${await groups()}`);
+    const preview = surface('parallx.editor.markdownPreview');
+    await page.waitForSelector(`${preview} pre`, { timeout: 10_000 });
     await page.waitForTimeout(300);
-    const first = await page.evaluate(() => {
-      const pre = document.querySelector('.markdown-content pre');
+    const first = await page.evaluate((sel) => {
+      const pre = document.querySelector(`${sel} pre`);
       return `spans=${pre?.querySelectorAll('[class^="hljs-"]').length} html=${pre?.innerHTML.slice(0, 120)}`;
-    });
+    }, preview);
     log('markdown', `first paint: ${first}`);
     // Type in the source; the preview follows.
-    const src = page.locator('.cm-content').first();
+    const src = page.locator(`${surface('parallx.editor.file')} [contenteditable="true"]`).filter({ visible: true }).first();
     if (await src.count()) {
       await src.click();
       await page.keyboard.press('Control+End');
       await page.keyboard.type('\nTyped line here.\n');
       await page.waitForTimeout(800);
       await repaint(page);
-      const has = await page.evaluate(() => /Typed line here/.test(document.querySelector('.markdown-content')?.textContent || ''));
+      const has = await page.evaluate((sel) => /Typed line here/.test(document.querySelector(sel)?.textContent || ''), preview);
       log('markdown', `preview follows typing: ${has}`);
-    } else log('markdown', 'no .cm-content source editor found');
+    } else log('markdown', 'no editable source in the file editor');
     await shot(page, 'markdown');
   });
 
   await run('find', async () => {
     const r = await cmd(page, 'search.findInFiles');
     log('find', `findInFiles: ${r}`);
-    await page.waitForSelector('.search-input', { timeout: 5_000 });
-    const input = page.locator('.search-input').first();
-    await input.fill('tail factor');
+    await page.waitForSelector(byId('search.query'), { timeout: 5_000 });
+    await page.fill(`${byId('search.query')} input, input${byId('search.query')}`, 'tail factor').catch(async () => { await page.fill(byId('search.query'), 'tail factor'); });
     await page.keyboard.press('Enter');
     const samples = [];
     const t0 = Date.now();
     for (let i = 0; i < 20; i++) {
       await page.waitForTimeout(150);
       await repaint(page);
-      const s = await page.evaluate(() => ({ files: document.querySelectorAll('.search-file-group').length, msg: document.querySelector('.search-message')?.textContent?.trim() || '' }));
-      samples.push(`${Date.now() - t0}ms:${s.files}`);
-      if (i === 19) log('find', `final: files=${s.files} message="${s.msg}"`);
+      const rowsShown = (await entries(page)).entry('search.results')?.state?.count ?? 0;
+      samples.push(`${Date.now() - t0}ms:${rowsShown}`);
+      if (i === 19) log('find', `final: rows=${rowsShown} message="${await page.evaluate((sel) => document.querySelector(`${sel} [role="status"]`)?.textContent?.trim() || '', surface('view.search'))}"`);
     }
-    log('find', `files over time: ${samples.join(' ')}`);
+    log('find', `rows over time: ${samples.join(' ')}`);
     await shot(page, 'find');
   });
 
   await run('pdf', async () => {
     await openFile(page, 'reading.pdf');
-    await page.waitForSelector('.pdf-editor-pane .pdfViewer .page canvas', { timeout: 20_000 });
+    const pdf = surface('parallx.editor.pdf');
+    await page.waitForSelector(`${pdf} .page canvas`, { timeout: 20_000 });
     await page.waitForTimeout(1_500);
-    log('pdf', `opened, pages=${await page.evaluate(() => document.querySelectorAll('.pdfViewer .page').length)}`);
+    log('pdf', `opened, pages=${await page.evaluate((sel) => document.querySelectorAll(`${sel} .page`).length, pdf)}`);
     // Highlight, then undo it.
-    const box = await page.evaluate(() => {
-      const spans = Array.from(document.querySelectorAll('.pdfViewer .page .textLayer span')).filter((s) => s.textContent.trim().length > 20);
+    const box = await page.evaluate((sel) => {
+      const spans = Array.from(document.querySelectorAll(`${sel} .page .textLayer span`)).filter((s) => s.textContent.trim().length > 20);
       const r = spans[2]?.getBoundingClientRect();
       return r ? { x: r.left + 2, y: r.top + r.height / 2, w: r.width } : null;
-    });
+    }, pdf);
     if (!box) log('pdf', 'no text span to select');
     await page.mouse.move(box.x, box.y);
     await page.mouse.down();
@@ -191,114 +174,87 @@ async function main() {
     await page.evaluate((b) => { if (String(getSelection()).trim()) return; const s = document.elementFromPoint(b.x + 5, b.y); const tn = s?.firstChild; if (!tn) return; const r = document.createRange(); r.setStart(tn, 0); r.setEnd(tn, Math.min(30, tn.textContent.length)); getSelection().removeAllRanges(); getSelection().addRange(r); s.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: b.x + 100, clientY: b.y })); }, box);
     await repaint(page);
     await page.waitForTimeout(500);
-    log('pdf', `selection="${await page.evaluate(() => String(getSelection()).slice(0, 60))}" bubble=${await page.evaluate(() => !!document.querySelector('.pdf-selection-bubble'))} hit=${await page.evaluate((b) => { const e = document.elementFromPoint(b.x + 5, b.y); return e ? e.tagName + '.' + String(e.className).slice(0, 50) + ' in ' + String(e.parentElement?.className).slice(0, 40) : 'none'; }, box)} box=${JSON.stringify(box)}`);
-    await page.evaluate(() => document.querySelector('.pdf-selection-bubble [aria-label="Highlight Yellow"]')?.click());
+    const bubble = !!(await entries(page)).entry('pdf.selection.highlight.yellow');
+    log('pdf', `selection="${await page.evaluate(() => String(getSelection()).slice(0, 60))}" bubble=${bubble} box=${JSON.stringify(box)}`);
+    // The highlight boxes are content the pane draws over the page, not controls.
+    const boxes = () => page.evaluate((sel) => document.querySelectorAll(`${sel} .pdf-highlight-box`).length, pdf);
+    await click(page, 'pdf.selection.highlight.yellow');
     await page.waitForTimeout(900);
-    const made = await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length);
+    const made = await boxes();
     // Focus the PDF pane itself (it may sit in a split group) before Ctrl+Z.
-    const pane = await page.evaluate(() => { const r = document.querySelector('.pdf-viewer-container').getBoundingClientRect(); return { x: r.left + 20, y: r.bottom - 20 }; });
-    await page.mouse.click(pane.x, pane.y);
+    const at = await page.evaluate((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + 20, y: r.bottom - 20 }; }, pdf);
+    await page.mouse.click(at.x, at.y);
     await page.keyboard.press('Control+Z');
     await page.waitForTimeout(800);
-    const after = await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length);
+    const after = await boxes();
     await page.keyboard.press('Control+Shift+Z');
     await page.waitForTimeout(800);
-    const redo = await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length);
-    log('pdf', `highlight boxes: made=${made} afterUndo=${after} afterRedo=${redo}`);
+    log('pdf', `highlight boxes: made=${made} afterUndo=${after} afterRedo=${await boxes()}`);
     // The toolbar's own controls: fit, a typed zoom, a preset, night reading, the page field.
-    const bar = () => page.evaluate(() => {
-      const label = (sel) => document.querySelector(sel)?.getAttribute('aria-label');
-      return `zoom=${document.querySelector('.pdf-toolbar-zoom-input')?.value} fitBtn="${Array.from(document.querySelectorAll('.pdf-toolbar .pdf-toolbar-btn')).map((b) => b.getAttribute('aria-label')).find((l) => /^Fit/.test(l))}" night="${Array.from(document.querySelectorAll('.pdf-toolbar .pdf-toolbar-btn')).map((b) => b.getAttribute('aria-label')).find((l) => /Reading$/.test(l))}" page=${document.querySelector('.pdf-toolbar-page-input')?.value}`;
-    });
-    const clickLabel = (l) => page.evaluate((l) => Array.from(document.querySelectorAll('.pdf-toolbar .pdf-toolbar-btn')).find((b) => b.getAttribute('aria-label') === l)?.click(), l);
+    const bar = async () => {
+      const e = await entries(page);
+      const fit = await page.getAttribute(byId('pdf.fit'), 'aria-label');
+      return `zoom=${e.entry('pdf.zoom')?.state?.value} fitBtn="${fit}" night=${e.entry('pdf.nightReading')?.state?.value} page=${e.entry('pdf.page')?.state?.value}`;
+    };
+    const setField = async (id, v) => { await page.fill(byId(id), v); await page.press(byId(id), 'Enter'); await page.waitForTimeout(500); };
     log('pdf', `toolbar start: ${await bar()}`);
-    await clickLabel('Fit Width'); await page.waitForTimeout(500);
+    await click(page, 'pdf.fit'); await page.waitForTimeout(500);
     log('pdf', `after Fit Width: ${await bar()}`);
-    await page.fill('.pdf-toolbar-zoom-input', '150'); await page.press('.pdf-toolbar-zoom-input', 'Enter'); await page.waitForTimeout(500);
+    await setField('pdf.zoom', '150');
     log('pdf', `after typing 150: ${await bar()}`);
-    await clickLabel('Zoom Presets'); await page.waitForTimeout(400);
-    await page.evaluate(() => Array.from(document.querySelectorAll('.context-menu .context-menu-item')).find((x) => x.textContent.trim().startsWith('75%'))?.click());
+    await click(page, 'pdf.zoomPresets'); await page.waitForTimeout(400);
+    await click(page, 'contextMenu.zoom.75');
     await page.waitForTimeout(500);
     log('pdf', `after preset 75%: ${await bar()}`);
-    await clickLabel('Night Reading'); await page.waitForTimeout(300);
-    log('pdf', `after Night Reading: ${await bar()} dark=${await page.evaluate(() => document.querySelector('.pdf-viewer-container')?.classList.contains('pdf-reading-dark'))}`);
-    await clickLabel('Day Reading'); await page.waitForTimeout(300);
-    await page.fill('.pdf-toolbar-page-input', '3'); await page.press('.pdf-toolbar-page-input', 'Enter'); await page.waitForTimeout(600);
+    await click(page, 'pdf.nightReading'); await page.waitForTimeout(300);
+    log('pdf', `after Night Reading: ${await bar()}`);
+    await click(page, 'pdf.nightReading'); await page.waitForTimeout(300);
+    await setField('pdf.page', '3');
     log('pdf', `after page 3: ${await bar()}`);
-    await clickLabel('Fit Page'); await page.waitForTimeout(300);
-    // Overflow menu: list it, then pick spread and scroll modes.
+    await click(page, 'pdf.fit'); await page.waitForTimeout(300);
+    // Overflow menu: list it, then pick spread and scroll modes from their submenus.
     const openMore = async () => {
-      await page.evaluate(() => document.querySelector('.pdf-toolbar [aria-label="More Actions"]')?.click());
+      await click(page, 'pdf.more');
       await page.waitForTimeout(500);
-      return page.evaluate(() => Array.from(document.querySelectorAll('.context-menu .context-menu-item, .context-menu [role="menuitem"], .context-menu [role="menuitemcheckbox"], .context-menu [role="menuitemradio"]')).map((x) => x.textContent.trim()).filter(Boolean));
+      return (await entries(page)).filter((n) => n.parent === 'contextMenu').map((n) => n.label);
     };
-    const items = await openMore();
-    log('pdf', `more menu: ${items.join(' | ')}`);
+    log('pdf', `more menu: ${(await openMore()).join(' | ')}`);
     await page.keyboard.press('Escape');
-    const pick = async (re) => {
+    // How pdf.js lays the pages out is content: its viewer's classes and spread count.
+    const viewer = () => page.evaluate((sel) => {
+      const v = document.querySelector(`${sel} .pdfViewer`);
+      return `viewer="${v?.className}" spreads=${v?.querySelectorAll('.spread').length}`;
+    }, pdf);
+    log('pdf', `before modes: ${await viewer()}`);
+    const subPick = async (parent, child) => {
       await openMore();
-      const hit = await page.evaluate((src) => {
-        const re = new RegExp(src, 'i');
-        const all = Array.from(document.querySelectorAll('.context-menu *')).filter((x) => x.childElementCount === 0 && re.test(x.textContent.trim()));
-        const el = all[0]?.closest('[role^="menuitem"], .context-menu-item') || all[0];
-        if (!el) return null;
-        el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-        el.click();
-        return el.textContent.trim();
-      }, re.source);
-      await page.waitForTimeout(400);
-      return hit;
-    };
-    const viewerClass = () => page.evaluate(() => {
-      const v = document.querySelector('.pdfViewer');
-      const spreads = v?.querySelectorAll('.spread').length;
-      return `viewer="${v?.className}" spreads=${spreads} container="${document.querySelector('.pdf-viewer-container')?.className}"`;
-    });
-    log('pdf', `before modes: ${await viewerClass()}`);
-    // Each mode sits in a submenu: hover its parent, list it, click one entry.
-    const subPick = async (parent, index) => {
-      await openMore();
-      const at = await page.evaluate((p) => {
-        const row = Array.from(document.querySelectorAll('.context-menu .context-menu-item')).find((x) => x.textContent.trim().startsWith(p));
-        if (!row) return null;
-        const r = row.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 };
-      }, parent);
-      if (!at) return `no "${parent}" row`;
-      await page.mouse.move(at.x, at.y);
+      await page.hover(byId(`contextMenu.${parent}`));
       await page.waitForTimeout(700);
-      const sub = await page.evaluate(() => {
-        const menus = Array.from(document.querySelectorAll('.context-menu'));
-        const last = menus[menus.length - 1];
-        return menus.length > 1 ? Array.from(last.querySelectorAll('.context-menu-item')).map((x) => x.textContent.trim()) : [];
-      });
-      const clicked = await page.evaluate((i) => {
-        const menus = Array.from(document.querySelectorAll('.context-menu'));
-        if (menus.length < 2) return null;
-        const item = menus[menus.length - 1].querySelectorAll('.context-menu-item')[i];
-        item?.click(); return item?.textContent.trim() ?? null;
-      }, index);
+      const sub = (await entries(page)).filter((n) => n.id.startsWith(`contextMenu.${parent}.`)).map((n) => n.label);
+      await click(page, `contextMenu.${parent}.${child}`);
       await page.waitForTimeout(800);
-      return `submenu=[${sub.join(' | ')}] clicked=${clicked}`;
+      return `submenu=[${sub.join(' | ')}] clicked=${child}`;
     };
-    for (const [parent, i] of [['Two-page spread', 1], ['Two-page spread', 0], ['Scroll Direction', 1], ['Scroll Direction', 0]]) {
-      log('pdf', `${parent}#${i}: ${await subPick(parent, i)} -> ${await viewerClass()}`);
+    for (const [parent, child] of [['pdf.spread', 'odd'], ['pdf.spread', 'none'], ['pdf.scroll', 'horizontal'], ['pdf.scroll', 'vertical']]) {
+      log('pdf', `${parent}.${child}: ${await subPick(parent, child)} -> ${await viewer()}`);
       await page.keyboard.press('Escape');
     }
     // Away and back: the reader returns to the same page and scroll offset.
-    await page.evaluate(() => { const c = document.querySelector('.pdf-viewer-container'); c.scrollTop = c.scrollHeight * 0.6; });
+    const scroller = `${pdf} .pdf-viewer-container`;
+    await page.evaluate((sel) => { const c = document.querySelector(sel); c.scrollTop = c.scrollHeight * 0.6; }, scroller);
     await page.waitForTimeout(800);
-    const beforeAway = await page.evaluate(() => ({ top: Math.round(document.querySelector('.pdf-viewer-container').scrollTop), page: document.querySelector('.pdf-toolbar-page-input')?.value }));
+    const where = async () => ({ top: await page.evaluate((sel) => Math.round(document.querySelector(sel)?.scrollTop ?? -1), scroller), page: (await entries(page)).entry('pdf.page')?.state?.value });
+    const beforeAway = await where();
     await openFile(page, 'alpha.md');
     await page.waitForTimeout(800);
     await openFile(page, 'reading.pdf');
     await page.waitForTimeout(1_500);
-    const afterBack = await page.evaluate(() => ({ top: Math.round(document.querySelector('.pdf-viewer-container')?.scrollTop ?? -1), page: document.querySelector('.pdf-toolbar-page-input')?.value }));
-    log('pdf', `away and back: before=${JSON.stringify(beforeAway)} after=${JSON.stringify(afterBack)}`);
+    log('pdf', `away and back: before=${JSON.stringify(beforeAway)} after=${JSON.stringify(await where())}`);
     log('pdf', `test hook: ${await page.evaluate(() => { const d = window.__parallxPdfDebug; if (typeof d?.getState !== 'function') return 'not installed'; const s = d.getState(); return `pages=${s.pagesCount} scale=${s.currentScaleValue} canvas=${!!s.canvas}`; })}`);
     // Add to Canvas Note: the passage goes to a canvas page and its new
     // highlight links back. Last, since the canvas page it opens hides the PDF.
-    const noted = await page.evaluate(async () => {
-      const spans = Array.from(document.querySelectorAll('.pdfViewer .page .textLayer span')).filter((s) => s.textContent.trim().length > 20);
+    const noted = await page.evaluate((sel) => {
+      const spans = Array.from(document.querySelectorAll(`${sel} .page .textLayer span`)).filter((s) => s.textContent.trim().length > 20);
       const s = spans[6];
       if (!s?.firstChild) return 'no span';
       const r = document.createRange();
@@ -307,45 +263,41 @@ async function main() {
       const b = s.getBoundingClientRect();
       s.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: b.left + 40, clientY: b.top + 4 }));
       return 'selected';
-    });
+    }, pdf);
     await repaint(page);
     await page.waitForTimeout(600);
-    const clicked = await page.evaluate(() => { const b = document.querySelector('.pdf-selection-bubble [aria-label="Add to Canvas Note"]'); b?.click(); return !!b; });
+    await click(page, 'pdf.selection.addToNote');
     await page.waitForTimeout(1_200);
-    // Canvas asks which page the note goes to: take the first offer (a new page).
-    log('pdf', `canvas asks: ${await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.parallx-quickpick-row')).filter((x) => x.offsetParent);
-      const first = items[0];
-      const text = items.slice(0, 4).map((x) => x.textContent.trim().slice(0, 40)).join(' | ');
-      first?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      first?.click();
-      return text || 'nothing offered';
-    })}`);
+    // Canvas asks which page the note goes to (a quick pick, not yet in the scene): the first offer, a new page.
+    await page.keyboard.press('Enter');
     await page.waitForTimeout(2_500);
     await repaint(page);
-    log('pdf', `canvas note: ${noted} bubbleButton=${clicked} linkedTabs=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-tab.has-canvas-link').length)} tabs=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-tab').length)}`);
+    log('pdf', `canvas note: ${noted} linkedTabs=${await page.evaluate((sel) => document.querySelectorAll(`${sel} .pdf-highlight-tab.has-canvas-link`).length, pdf)} tabs=${await page.evaluate((sel) => document.querySelectorAll(`${sel} .pdf-highlight-tab`).length, pdf)}`);
     await shot(page, 'pdf');
   });
 
   await run('mermaid', async () => {
     const r = await cmd(page, 'canvas.newPage');
     log('mermaid', `canvas.newPage: ${r}`);
-    await page.waitForSelector('.ProseMirror', { timeout: 10_000 });
+    const canvas = surface('canvas');
+    // The page body is the editor (Tiptap on ProseMirror), which the scene never declares.
+    // A canvas page opened earlier (the PDF row's note) stays mounted, hidden: wait for the visible one.
+    await page.locator(`${canvas} [contenteditable="true"]`).filter({ visible: true }).first().waitFor({ timeout: 10_000 });
     await page.waitForTimeout(800);
-    const ins = await page.evaluate(() => {
-      const ed = Array.from(document.querySelectorAll('.ProseMirror')).map((x) => x.editor).find(Boolean);
-      if (!ed) return 'no editor on .ProseMirror';
+    const ins = await page.evaluate((sel) => {
+      const ed = Array.from(document.querySelectorAll(`${sel} [contenteditable="true"]`)).filter((x) => x.offsetParent).map((x) => x.editor).find(Boolean);
+      if (!ed) return 'no editor on the page body';
       return ed.commands.insertContent({ type: 'mermaidDiagram' }) ? 'inserted' : 'insert refused';
-    });
+    }, canvas);
     log('mermaid', ins);
-    await page.waitForSelector('.canvas-mermaid svg', { timeout: 15_000 }).catch(() => {});
+    await page.waitForSelector(`${canvas} .canvas-mermaid svg`, { timeout: 15_000 }).catch(() => {});
     await page.waitForTimeout(800);
-    log('mermaid', `drawn: ${await page.evaluate(() => `${document.querySelectorAll('.canvas-mermaid svg').length} svg, message="${document.querySelector('.canvas-mermaid__message')?.textContent || ''}"`)}`);
-    await page.evaluate(() => {
+    log('mermaid', `drawn: ${await page.evaluate((sel) => `${document.querySelectorAll(`${sel} .canvas-mermaid svg`).length} svg, message="${document.querySelector(`${sel} .canvas-mermaid__message`)?.textContent || ''}"`, canvas)}`);
+    await page.evaluate((sel) => {
       window.__mmDraws = 0;
-      const host = document.querySelector('.canvas-mermaid');
-      new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeName.toLowerCase() === 'svg') window.__mmDraws++; }).observe(host, { childList: true, subtree: true });
-    });
+      const host = document.querySelector(`${sel} .canvas-mermaid`);
+      if (host) new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeName.toLowerCase() === 'svg') window.__mmDraws++; }).observe(host, { childList: true, subtree: true });
+    }, canvas);
     const modes = [];
     for (const mode of ['light', 'dark', 'light']) {
       await page.evaluate((m) => document.documentElement.setAttribute('data-px-mode', m), mode);
@@ -362,31 +314,36 @@ async function main() {
     const r = await cmd(page, 'dashboard.newPage');
     log('dashboard', `dashboard.newPage: ${r}`);
     await page.waitForTimeout(2_500);
-    log('dashboard', await page.evaluate(() => `header=${!!document.querySelector('.dashboard-header__title')} roots=${Array.from(document.querySelectorAll('[class*="dashboard"]')).slice(0, 8).map((x) => x.className.split(' ')[0]).join(',')}`));
+    const ids = async () => (await entries(page)).filter((n) => n.id.startsWith('dashboard.'));
+    log('dashboard', `controls: ${[...new Set((await ids()).map((n) => n.id))].join(',')}`);
     await cmd(page, 'dashboard.addWidget');
     await page.waitForTimeout(1_000);
-    log('dashboard', `picker: ${await page.evaluate(() => { const els = Array.from(document.querySelectorAll('[class*="picker"] button, [class*="picker"] [role="option"], [class*="gallery"] button, [class*="catalog"] [class*="item"], [class*="add-widget"] [class*="item"]')).filter((x) => x.offsetParent); const first = els[0]; first?.click(); return `${els.length} items, first="${first?.textContent.trim().slice(0, 40)}" class=${first?.className}`; })}`);
+    // The widget picker (a surface) lists templates as rows: its first one, as a person would pick it.
+    const picked = await page.evaluate((sel) => { const o = Array.from(document.querySelectorAll(`${sel} button:not([data-px-id])`)).find((x) => x.offsetParent && x.textContent.trim()); o?.click(); return o?.textContent.trim().slice(0, 40) ?? 'nothing offered'; }, surface('dashboard.picker'));
+    log('dashboard', `picker: first="${picked}"`);
     await page.waitForTimeout(1_500);
-    log('dashboard', `widgets=${await page.evaluate(() => document.querySelectorAll('.dashboard-widget').length)} buttons=${await page.evaluate(() => Array.from(new Set(Array.from(document.querySelectorAll('.dashboard-widget__btn')).map((b) => b.title))).join('|'))}`);
-    for (const title of ['Appearance', 'Configure']) {
-      const opened = await page.evaluate((t) => { const b = document.querySelector(`.dashboard-widget__btn[title="${t}"]`); b?.click(); return !!b; }, title);
+    const e = await entries(page);
+    log('dashboard', `widgets=${e.filter((n) => n.id === 'dashboard.widget').length} buttons=${[...new Set(e.filter((n) => n.parent === 'dashboard.widget').map((n) => n.label))].join('|')}`);
+    for (const id of ['dashboard.widget.appearance', 'dashboard.widget.configure']) {
+      const opened = !!(await entries(page)).entry(id);
+      // The widget's buttons show while the pointer is over it, as for a person.
+      if (opened) { await page.locator(surface('dashboard.widget')).filter({ visible: true }).first().hover(); await click(page, id); }
       await page.waitForTimeout(800);
-      const selects = await page.evaluate(() => Array.from(document.querySelectorAll('.ui-select')).filter((x) => x.offsetParent).length);
-      // Open the first visible select's dropdown and pick its second entry.
-      const before = await page.evaluate(() => Array.from(document.querySelectorAll('.ui-select')).find((x) => x.offsetParent)?.textContent.trim());
-      const at = await page.evaluate(() => { const s = Array.from(document.querySelectorAll('.ui-select')).find((x) => x.offsetParent); const r = s?.querySelector('button, [role="combobox"], .ui-dropdown')?.getBoundingClientRect() ?? s?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; });
+      // The drawer's dropdowns are selects in the scene, each with its value.
+      const selects = (await entries(page)).filter((n) => n.kind === 'select' && n.visible !== false && (n.parent === 'dashboard.widgetSettings' || n.parent === 'dashboard.appearance'));
+      const first = selects[0];
       let after = 'no select';
-      let listItems = 0;
-      if (at) {
-        await page.mouse.click(at.x, at.y);
+      let options = 0;
+      if (first) {
+        await click(page, first.id);
         await page.waitForTimeout(500);
-        listItems = await page.evaluate(() => document.querySelectorAll('.ui-dropdown__list [role="option"], .ui-dropdown__list .ui-dropdown__item').length);
-        await page.evaluate(() => { const items = document.querySelectorAll('.ui-dropdown__list [role="option"], .ui-dropdown__list .ui-dropdown__item'); (items[1] ?? items[0])?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); (items[1] ?? items[0])?.click(); });
+        options = await page.evaluate(() => Array.from(document.querySelectorAll('[role="listbox"] [role="option"]')).filter((x) => x.offsetParent).length);
+        await page.evaluate(() => { const items = Array.from(document.querySelectorAll('[role="listbox"] [role="option"]')).filter((x) => x.offsetParent); const it = items[1] ?? items[0]; it?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); it?.click(); });
         await page.waitForTimeout(500);
-        after = await page.evaluate(() => Array.from(document.querySelectorAll('.ui-select')).find((x) => x.offsetParent)?.textContent.trim());
+        after = (await entries(page)).entry(first.id)?.state?.value;
       }
-      log('dashboard', `${title}: button=${opened} visible selects=${selects} first="${before}" list items=${listItems} after pick="${after}"`);
-      await shot(page, `dashboard-${title.toLowerCase()}`);
+      log('dashboard', `${id}: button=${opened} selects=${selects.length} first=${first?.id}="${first?.state?.value}" options=${options} after pick="${after}"`);
+      await shot(page, `dashboard-${id.split('.').pop()}`);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(400);
     }
@@ -394,51 +351,45 @@ async function main() {
   });
 
   await run('icons', async () => {
-    log('icons', await page.evaluate(() => {
-      const holders = Array.from(document.querySelectorAll('.activity-bar-item, .codicon, [class*="icon"]')).filter((x) => x.offsetParent);
-      const withSvg = holders.filter((x) => x.querySelector('svg'));
-      const bad = Array.from(document.querySelectorAll('svg')).filter((s) => s.offsetParent !== null && s.getBoundingClientRect().width === 0).length;
-      const raw = Array.from(document.querySelectorAll('[class*="icon"]')).filter((x) => /<path|<svg/.test(x.textContent || '')).length;
-      return `visible icon holders=${holders.length} with svg=${withSvg.length} zero-width svgs=${bad} markup-as-text=${raw} activity items=${document.querySelectorAll('.activity-bar-item').length} activity with svg=${Array.from(document.querySelectorAll('.activity-bar-item')).filter((x) => x.querySelector('svg')).length}`;
-    }));
+    // Every visible icon button in the scene draws its icon: an svg with a width.
+    const ids = (await entries(page)).filter((n) => n.kind === 'iconButton' && n.visible !== false).map((n) => n.id);
+    log('icons', await page.evaluate((ids) => {
+      let shown = 0; let withSvg = 0; let zero = 0; const bad = [];
+      for (const id of new Set(ids)) {
+        for (const el of document.querySelectorAll(`[data-px-id="${id}"]`)) {
+          if (!el.offsetParent) continue;
+          shown++;
+          const svg = el.querySelector('svg');
+          if (svg) withSvg++; else bad.push(id);
+          if (svg && svg.getBoundingClientRect().width === 0) zero++;
+        }
+      }
+      return `visible icon buttons=${shown} with svg=${withSvg} zero-width svgs=${zero}${bad.length ? ` without svg: ${bad.slice(0, 8).join(', ')}` : ''}`;
+    }, ids));
   });
 
   await run('tools', async () => {
     const r = await cmd(page, 'tools.showInstalled');
     log('tools', `tools.showInstalled: ${r}`);
     await page.waitForTimeout(1_500);
-    const list = await page.evaluate(async () => {
-      const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolRegistryService' });
-      const all = svc?.getAll?.() ?? svc?.getTools?.() ?? [];
-      return all.map((t) => `${t.description?.manifest?.id ?? t.manifest?.id ?? t.id}${t.description?.isBuiltin || t.isBuiltin ? '' : '(ext)'}`);
-    });
-    log('tools', `registry (${list.length}): ${list.join(', ')}`);
-    log('tools', `view text: ${await page.evaluate(() => (document.querySelector('[data-view-id="view.tools"], .tool-gallery, .tools-view')?.textContent || 'no view element').replace(/\s+/g, ' ').slice(0, 600))}`);
+    const list = await toolList(page);
+    log('tools', `registry (${list.length}): ${list.map((t) => `${t.id}${t.builtin ? '' : '(ext)'}`).join(', ')}`);
+    log('tools', `view text: ${await page.evaluate((sel) => (document.querySelector(sel)?.textContent || 'no view element').replace(/\s+/g, ' ').slice(0, 600), surface('view.tools'))}`);
     // Each optional built-in off and on again.
-    const res = await page.evaluate(async () => {
-      const en = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
-      const reg = window.__parallx_workbench__?._services?.get?.({ id: 'IToolRegistryService' });
-      if (!en || !reg) return 'no enablement or registry service';
-      const all = (reg.getAll?.() ?? []).map((t) => t.description ?? t);
-      const out = [];
-      for (const d of all) {
-        const m = d.manifest ?? d;
-        if (!d.isBuiltin || m.required) continue;
-        try {
-          await en.setEnablement(m.id, false);
-          await new Promise((r) => setTimeout(r, 200));
-          await en.setEnablement(m.id, true);
-          await new Promise((r) => setTimeout(r, 200));
-          out.push(`${m.id}:ok`);
-        } catch (e) { out.push(`${m.id}:ERR ${String(e?.message || e).slice(0, 80)}`); }
-      }
-      return out.join(' ');
-    });
-    log('tools', `toggle: ${res}`);
+    const out = [];
+    for (const t of list) {
+      if (!t.builtin || t.required) continue;
+      const off = await setToolEnabled(page, t.id, false);
+      await page.waitForTimeout(200);
+      const on = await setToolEnabled(page, t.id, true);
+      await page.waitForTimeout(200);
+      out.push(`${t.id}:${off === true && on === true ? 'ok' : `ERR ${off === true ? on : off}`}`);
+    }
+    log('tools', `toggle: ${out.join(' ')}`);
   });
 
   await run('docling', async () => {
-    // The window must keep painting while Settings > Documents looks for Python.
+    // The window must keep painting while Settings looks for Python.
     await page.evaluate(() => {
       window.__gaps = [];
       let last = performance.now();
@@ -448,12 +399,8 @@ async function main() {
     const r = await cmd(page, 'workbench.action.openSettings', 'documents');
     log('docling', `openSettings: ${r}`);
     await page.waitForTimeout(1_000);
-    const hit = await page.evaluate(() => {
-      const el = Array.from(document.querySelectorAll('.settings-editor *')).find((x) => x.childElementCount === 0 && /^Python$/.test(x.textContent.trim()));
-      el?.click();
-      return !!el;
-    });
-    log('docling', `Documents section clicked: ${hit}`);
+    await click(page, 'settings.nav.panel-python');
+    log('docling', 'Python section clicked');
     await page.waitForTimeout(5_000);
     const gaps = await page.evaluate(() => { const g = window.__gaps; return { n: g.length, max: Math.round(Math.max(...g)), over200: g.filter((x) => x > 200).length }; });
     log('docling', `timer gaps: ticks=${gaps.n} max=${gaps.max}ms over200=${gaps.over200}`);
@@ -467,8 +414,11 @@ async function main() {
       const done = await status;
       return `status took ${done.ms}ms (${JSON.stringify(done.s).slice(0, 160)}); fs:exists pings ms=[${pings.join(',')}]`;
     })}`);
-    log('docling', `panel text: ${await page.evaluate(() => (document.querySelector('.settings-editor')?.textContent || '').replace(/\s+/g, ' ').match(/.{0,80}(Docling|Python).{0,160}/i)?.[0] || 'no Docling/Python text')}`);
+    const consent = (await entries(page)).entry('settings.python.consent');
+    log('docling', `python switch: ${consent ? `${consent.label} ${JSON.stringify(consent.state)}` : 'not in the scene'}`);
+    log('docling', `panel text: ${await page.evaluate((sel) => (document.querySelector(sel)?.textContent || '').replace(/\s+/g, ' ').match(/.{0,80}(Docling|Python).{0,160}/i)?.[0] || 'no Docling/Python text', surface('settings'))}`);
     await shot(page, 'docling');
+    await page.keyboard.press('Escape');
   });
 
   await run('worksheet', async () => {
@@ -478,8 +428,10 @@ async function main() {
     await app.evaluate(({ session }, dir) => {
       session.defaultSession.on('will-download', (_e, item) => item.setSavePath(`${dir}\\${item.getFilename()}`));
     }, dl).catch((e) => log('worksheet', `download hook failed: ${String(e).split('\n')[0]}`));
-    const waitHost = () => page.waitForFunction(() => !!document.querySelector('.ws-pane__sheet')?.__wsHost, null, { timeout: 60_000 });
-    const host = (fn, ...a) => page.evaluate(({ fn, a }) => document.querySelector('.ws-pane__sheet').__wsHost[fn](...a), { fn, a });
+    // The sheet's test host hangs on the element that holds the grid, inside the worksheet surface.
+    // (The window's content policy forbids evaluating strings, so each lookup is written out.)
+    const waitHost = () => page.waitForFunction(() => Array.from(document.querySelectorAll('[data-px-surface="worksheet"] *')).some((e) => e.__wsHost), null, { timeout: 60_000 });
+    const host = (fn, ...a) => page.evaluate(({ fn, a }) => Array.from(document.querySelectorAll('[data-px-surface="worksheet"] *')).find((e) => e.__wsHost).__wsHost[fn](...a), { fn, a });
     log('worksheet', `openScratch: ${await cmd(page, 'worksheet.openScratch')}`);
     await waitHost();
     await page.waitForTimeout(1_500);
@@ -503,19 +455,18 @@ async function main() {
     log('worksheet', `importExcel: ${await cmd(page, 'worksheet.importExcel', path.join(dl, xlsx))}`);
     await page.waitForTimeout(6_000);
     await repaint(page);
-    log('worksheet', `import pane: ${await page.evaluate(() => (Array.from(document.querySelectorAll('.ws-import__row, .ws-xlrow__title, .ws-import__grouphead, [class*="status"]')).filter((x) => x.offsetParent).map((x) => x.textContent.trim()).join(' / ') || 'no import rows').replace(/\s+/g, ' ').slice(0, 400))}`);
+    const imported = (await entries(page)).filter((n) => n.kind === 'surface' && n.id === 'worksheet').map((n) => n.instance);
+    log('worksheet', `worksheet surfaces: ${imported.join(' / ')}`);
+    log('worksheet', `import pane: ${await page.evaluate(() => { const panes = Array.from(document.querySelectorAll('[data-px-surface="worksheet"]')).filter((x) => x.offsetParent); return (panes.pop()?.textContent || 'no import pane').replace(/\s+/g, ' ').slice(0, 400); })}`);
     await shot(page, 'worksheet-import');
   });
 
   await run('exts', async () => {
     // Every extension the refactor touched activates cleanly.
     const ids = ['parallx-community.flashcards', 'parallx.budget', 'parallx-community.study', 'parallx-community.creations-ai', 'parallx.workspace-graph', 'parallx-community.media-organizer'];
-    log('exts', await page.evaluate(async (ids) => {
-      const en = window.__parallx_workbench__._services.get({ id: 'IToolEnablementService' });
-      const out = [];
-      for (const id of ids) { try { await en.setEnablement(id, true); out.push(`${id}:on`); } catch (e) { out.push(`${id}:ERR ${e.message}`); } }
-      return out.join(' ');
-    }, ids));
+    const out = [];
+    for (const id of ids) { const r = await setToolEnabled(page, id, true); out.push(`${id}:${r === true ? 'on' : `ERR ${r}`}`); }
+    log('exts', out.join(' '));
     await page.waitForTimeout(6_000);
     const x = (name, ops) => page.evaluate(async ({ name, ops }) => {
       const r = await window.parallxElectron.extensionDatabase.runTransaction(name, ops.map((o) => ({ ...o, params: (o.params || []).map((p) => (p && p.__vec ? new Uint8Array(new Float32Array(p.__vec).buffer.slice(0)) : p)) })));
