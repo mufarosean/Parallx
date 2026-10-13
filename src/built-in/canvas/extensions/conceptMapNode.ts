@@ -58,19 +58,14 @@ import {
   type HubChild,
   type MindMapDirection,
   type MindMapNode,
-  type MindMapOverrides, coerceMindMapDirection, MAP_GRID, MAP_CELL2,
+  type MindMapOverrides, coerceMindMapDirection, MAP_GRID,
 } from '../../../ui/conceptMap.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
+import { resizedOverrides, snapBoxWidth, stepSelection } from '../../../ui/conceptMapKeys.js';
 
-const renderMath = (tex: string): string =>
-  katex.renderToString(tex, { throwOnError: false });
+const renderMath = (tex: string): string => katex.renderToString(tex, { throwOnError: false });
 
-export const DEFAULT_CONCEPT_MAP_SRC = [
-  'Central idea',
-  '  First branch',
-  '    A detail',
-  '  Second branch',
-].join('\n');
+export const DEFAULT_CONCEPT_MAP_SRC = 'Central idea\n  First branch\n    A detail\n  Second branch';
 
 const CLICK_DIST = 4;
 const RESIZE_EDGE_PX = 8;
@@ -567,6 +562,7 @@ export const ConceptMap = Node.create({
         const sel = [...selected].filter((l) => drawn.has(l)).sort((a, b) => a - b);
         if (mod) {
           if (e.key === 'a' || e.key === 'A') { take(); selectOnly(drawn); }
+          if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && sel.length) { take(); resizeSelection(e.key === 'ArrowLeft' ? -1 : 1); }
           return;
         }
         if (e.key === 'Tab' && (e.shiftKey || sel.length !== 1)) return;
@@ -574,6 +570,7 @@ export const ConceptMap = Node.create({
         // reach the page, where they would replace or delete the block.
         take();
         if (e.key === 'Escape') { selectOnly([]); return; }
+        if (e.key === 'PageDown' || e.key === 'PageUp') { selectOnly(stepSelection([...drawn], sel, e.key === 'PageDown' ? 1 : -1, e.shiftKey)); return; }
         if (sel.length === 0) return;
         if ((e.key === 'Enter' || e.key === 'F2') && sel.length === 1) {
           const p = partsForLine(sel[0]);
@@ -607,6 +604,9 @@ export const ConceptMap = Node.create({
         nudgeSelection(cx, cy);
       };
 
+      /** Ctrl+Left/Right: the grip's resize on every selected box (conceptMapKeys.ts). */
+      const resizeSelection = (dir: 1 | -1): void => commitFromMap({ overrides: resizedOverrides(attrs.overrides, [...selected].map(partsForLine)
+        .flatMap((p) => (p ? [{ key: p.key, w: Number(p.rect.getAttribute('width')) || 120, floor: minCardWidth(p.label, branchOfEl(p.g)) }] : [])), dir) }, [...selected]);
       /** The right-edge grip resizes; text re-wraps on commit. */
       const beginBoxResize = (e: PointerEvent | MouseEvent, parts: NodeParts): void => {
         const startX = e.clientX;
@@ -619,7 +619,7 @@ export const ConceptMap = Node.create({
           id: 'conceptmap-resize',
           cursor: 'ew-resize',
           onMove: (ev) => {
-            w = Math.max(floor, MAP_CELL2, Math.round(Math.max(80, Math.min(420, startW + (ev.clientX - startX) / scale)) / MAP_CELL2) * MAP_CELL2);
+            w = snapBoxWidth(startW + (ev.clientX - startX) / scale, floor);
             parts.rect.setAttribute('width', String(w));
           },
           onEnd: (canceled) => {
@@ -1159,7 +1159,7 @@ export const ConceptMap = Node.create({
           dom.appendChild(body);
           const keys = document.createElement('div');
           keys.classList.add('canvas-conceptmap__keys');
-          keys.textContent = 'Click selects, Shift-click or a frame selects more. Click a selected box or press Enter to edit. Drag a box onto another to move it under it. Alt with the arrows reorders and re-nests; arrows nudge; Delete removes; Tab adds a child.';
+          keys.textContent = 'Click selects, Shift-click or a frame selects more. Click a selected box or press Enter to edit. Drag a box onto another to move it under it. Alt with the arrows reorders and re-nests; arrows nudge; Ctrl with Left or Right resizes; Page Down and Page Up pick the next box, with Shift add it; Delete removes; Tab adds a child.';
           dom.appendChild(keys);
           // Selection survives the repaint for every line still drawn.
           const drawn = new Set(Array.from(body.querySelectorAll('.parallx-mindmap__node[data-mm-line]'))
