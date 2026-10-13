@@ -276,15 +276,15 @@ export class DatabaseEditorPane implements IDisposable {
       tab.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openViewMenu(tab, view); });
       tabs.appendChild(tab);
     }
-    const addView = createIconButton(null, { icon: 'plus', title: 'Add a View…', size: 'sm', onClick: () => this._openAddViewMenu(addView) });
+    const addView = createIconButton(null, { id: 'database.addView', icon: 'plus', title: 'Add a View…', size: 'sm', onClick: () => this._openAddViewMenu(addView) });
     addView.classList.add('canvas-db-tab--add');
     tabs.appendChild(addView);
     bar.appendChild(tabs);
 
     const toolbar = el('div', 'canvas-db-toolbar');
-    const filterBtn = createButton(null, { label: 'Filter', kind: 'ghost', size: 'sm', icon: 'filter', onClick: () => this._openFilterPopover(filterBtn) });
-    const sortBtn = createButton(null, { label: 'Sort', kind: 'ghost', size: 'sm', icon: 'arrow-up-down', onClick: () => this._openSortPopover(sortBtn) });
-    const newBtn = createButton(null, { label: 'New', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => void this._addRow() });
+    const filterBtn = createButton(null, { id: 'database.filter', label: 'Filter', kind: 'ghost', size: 'sm', icon: 'filter', onClick: () => this._openFilterPopover(filterBtn) });
+    const sortBtn = createButton(null, { id: 'database.sort', label: 'Sort', kind: 'ghost', size: 'sm', icon: 'arrow-up-down', onClick: () => this._openSortPopover(sortBtn) });
+    const newBtn = createButton(null, { id: 'database.newRow', label: 'New', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => void this._addRow() });
     newBtn.classList.add('canvas-db-newbtn');
     toolbar.append(filterBtn, sortBtn, newBtn);
     bar.appendChild(toolbar);

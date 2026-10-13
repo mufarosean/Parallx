@@ -474,7 +474,7 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
 
     const paintBar = () => {
       bar.replaceChildren();
-      const prev = createIconButton(bar, { icon: 'chevron-left', title: 'Previous Problem', size: 'sm', onClick: () => goTo(session.index - 1) });
+      const prev = createIconButton(bar, { id: 'worksheet.run.previous', icon: 'chevron-left', title: 'Previous Problem', size: 'sm', onClick: () => goTo(session.index - 1) });
       prev.disabled = session.index === 0;
       const pos = el('span', 'ws-sessionbar__pos');
       pos.append(el('span', 'ws-sessionbar__name', session.name || 'Quiz'), el('span', 'ws-sessionbar__count', ` · ${session.index + 1} of ${session.ids.length}`));
@@ -483,7 +483,7 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
       // The last Next opens the summary, where Complete Quiz is a separate
       // decision; nothing here finishes the quiz.
       const last = session.index === session.ids.length - 1;
-      createIconButton(bar, { icon: last ? 'check' : 'chevron-right', title: last ? 'Quiz Summary' : 'Next Problem', size: 'sm', onClick: () => goTo(session.index + 1) });
+      createIconButton(bar, { id: 'worksheet.run.next', icon: last ? 'check' : 'chevron-right', title: last ? 'Quiz Summary' : 'Next Problem', size: 'sm', onClick: () => goTo(session.index + 1) });
       bar.appendChild(dots);
       void paintDots();
       if (session.finishedAt) {
@@ -513,7 +513,7 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
       markRepaint = () => { paintNextMarked(); void paintDots(); };
       // Skipping an item already rated or worked moves on without marking anything.
       createIconButton(bar, {
-        icon: 'chevron-last', title: 'Skip Problem', size: 'sm',
+        id: 'worksheet.run.skip', icon: 'chevron-last', title: 'Skip Problem', size: 'sm',
         onClick: () => {
           if (!(currentState?.grade || currentState?.attempted)) session.skipped.add(session.ids[session.index]);
           goTo(session.index + 1);

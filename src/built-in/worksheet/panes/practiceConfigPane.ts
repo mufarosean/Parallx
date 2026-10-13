@@ -74,9 +74,9 @@ export function createPracticeConfigPane(container: HTMLElement) {
     const n = Math.max(1, Math.min(Math.max(1, matching), parseInt(countIn.value, 10) || 10));
     countIn.value = String(n);
   };
-  const minus = createIconButton(stepper, { icon: 'minus', title: 'Fewer', size: 'sm', onClick: () => { countIn.value = String((parseInt(countIn.value, 10) || 1) - 1); clampCount(); } });
+  const minus = createIconButton(stepper, { id: 'worksheet.practice.fewer', icon: 'minus', title: 'Fewer', size: 'sm', onClick: () => { countIn.value = String((parseInt(countIn.value, 10) || 1) - 1); clampCount(); } });
   stepper.appendChild(countIn);
-  const plus = createIconButton(stepper, { icon: 'plus', title: 'More', size: 'sm', onClick: () => { countIn.value = String((parseInt(countIn.value, 10) || 0) + 1); clampCount(); } });
+  const plus = createIconButton(stepper, { id: 'worksheet.practice.more', icon: 'plus', title: 'More', size: 'sm', onClick: () => { countIn.value = String((parseInt(countIn.value, 10) || 0) + 1); clampCount(); } });
   void minus; void plus;
   countIn.addEventListener('change', clampCount);
   const lenRow = el('div', 'ws-builder__row');
@@ -152,7 +152,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
     from.g.style.display = presetIds ? '' : 'none';
     from.host.replaceChildren();
     if (presetIds) {
-      createFilterChip(from.host, { label: presetName, count: pool().length, pressed: true, title: 'The set handed over. Clear chooses from the whole bank.', onToggle: () => { presetIds = null; presetName = ''; renderFilters(); } });
+      createFilterChip(from.host, { id: 'worksheet.practice.preset', label: presetName, count: pool().length, pressed: true, title: 'The set handed over. Clear chooses from the whole bank.', onToggle: () => { presetIds = null; presetName = ''; renderFilters(); } });
     }
     const count = (pick: (it: WorksheetItemSummary) => string) => {
       const m = new Map<string, number>();

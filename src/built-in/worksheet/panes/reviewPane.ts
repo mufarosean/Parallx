@@ -38,12 +38,12 @@ export function createReviewPane(container: HTMLElement) {
     if (disposed) return;
     const title = titles.find((it) => it.id === id)?.title ?? `Problem ${walk.index + 1}`;
     bar.replaceChildren();
-    const prev = createIconButton(bar, { icon: 'chevron-left', title: 'Previous Problem', size: 'sm', onClick: () => goTo(walk.index - 1) });
+    const prev = createIconButton(bar, { id: 'worksheet.review.previous', icon: 'chevron-left', title: 'Previous Problem', size: 'sm', onClick: () => goTo(walk.index - 1) });
     prev.disabled = walk.index === 0;
     const pos = el('span', 'ws-sessionbar__pos');
     pos.append(el('span', 'ws-sessionbar__name', 'Review'), el('span', 'ws-sessionbar__count', ` · ${walk.index + 1} of ${walk.ids.length} · ${title}`));
     bar.appendChild(pos);
-    const next = createIconButton(bar, { icon: 'chevron-right', title: 'Next Problem', size: 'sm', onClick: () => goTo(walk.index + 1) });
+    const next = createIconButton(bar, { id: 'worksheet.review.next', icon: 'chevron-right', title: 'Next Problem', size: 'sm', onClick: () => goTo(walk.index + 1) });
     next.disabled = walk.index === walk.ids.length - 1;
     const spacer = el('div'); spacer.style.flex = '1';
     bar.appendChild(spacer);

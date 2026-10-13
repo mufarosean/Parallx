@@ -535,7 +535,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
         lastSavedCells = await settledSnapshotJson();
       };
-      const moreBtn = createIconButton(titleRow, { icon: 'ellipsis', title: 'More Actions' });
+      const moreBtn = createIconButton(titleRow, { id: 'worksheet.sheet.more', icon: 'ellipsis', title: 'More Actions' });
       moreBtn.addEventListener('click', () => {
         const dark = resolveSheetDark();
         showMenu(moreBtn, [
