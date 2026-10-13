@@ -38,6 +38,7 @@ import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 import { getIcon } from '../../ui/iconRegistry.js';
+import { isForPane } from './dashboardCommandTarget.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -194,13 +195,12 @@ class DashboardEditorPane implements IDisposable {
       }
     }));
 
-    // Command-side hooks (AI-invocable commands fire DOM events the active
-    // pane reacts to). We only respond if our root is connected — multiple
-    // dashboards open simultaneously each install these but only the focused
-    // one is in the DOM.
-    const onAdd = () => { if (this._root?.isConnected) void this._openWidgetPicker(); };
-    const onRefreshAll = () => {
-      if (!this._root?.isConnected) return;
+    // Command-side hooks: the commands fire DOM events naming the active
+    // dashboard; a pane left mounted behind another tab is still connected, so
+    // each answers only for itself (dashboardCommandTarget.ts).
+    const onAdd = (e: Event) => { if (this._root?.isConnected && isForPane(e, this._input?.id)) void this._openWidgetPicker(); };
+    const onRefreshAll = (e: Event) => {
+      if (!this._root?.isConnected || !isForPane(e, this._input?.id)) return;
       for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
     };
     document.addEventListener('parallx.dashboard.addWidget', onAdd);

@@ -27,6 +27,7 @@ import { DashboardDataService } from './dashboardDataService.js';
 import { DashboardWidgetRegistry } from './dashboardWidgetRegistry.js';
 import { DashboardRefreshScheduler, validateRefreshPolicy } from './dashboardRefreshScheduler.js';
 import { DashboardEditorProvider } from './dashboardEditorProvider.js';
+import { activeDashboardEditorId } from './dashboardCommandTarget.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration, WorkbenchWidgetHost } from './dashboardTypes.js';
 import { WORKBENCH_PAGE_ID } from './dashboardTypes.js';
@@ -638,12 +639,12 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   // (simpler than threading editor focus tracking now).
   context.subscriptions.push(
     api.commands.registerCommand('dashboard.addWidget', () => {
-      document.dispatchEvent(new CustomEvent('parallx.dashboard.addWidget'));
+      document.dispatchEvent(new CustomEvent('parallx.dashboard.addWidget', { detail: { editorId: activeDashboardEditorId(api.editors.openEditors) } }));
     }),
   );
   context.subscriptions.push(
     api.commands.registerCommand('dashboard.refreshAll', () => {
-      document.dispatchEvent(new CustomEvent('parallx.dashboard.refreshAll'));
+      document.dispatchEvent(new CustomEvent('parallx.dashboard.refreshAll', { detail: { editorId: activeDashboardEditorId(api.editors.openEditors) } }));
     }),
   );
 }
