@@ -50,6 +50,14 @@ export async function cmd(page, id, ...args) {
   }, { id, args });
 }
 
+/** Starts a command and returns at once: for one that opens a dialog and waits for its answer. */
+export async function cmdNoWait(page, id, ...args) {
+  await page.evaluate(({ id, args }) => {
+    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'ICommandService' });
+    void svc?.executeCommand(id, ...args)?.catch?.(() => {});
+  }, { id, args });
+}
+
 /**
  * Every tool the app knows: `{ id, builtin, required, enabled }`. With
  * setToolEnabled, the one other reach into the workbench besides cmd and
