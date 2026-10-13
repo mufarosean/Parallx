@@ -13,7 +13,13 @@
 //   • during a drag the canvas moves its own DOM (cheap transforms) and the
 //     tenant hears ONE `onMoveNodes` at commit — previews never touch the
 //     document, so undo history stays one-entry-per-gesture;
-//   • keyboard is the tenant's entirely (focus, Tab/Enter/Delete semantics);
+//   • the keyboard's way to the gestures is here (docs/ACCESSIBILITY.md,
+//     section 6): the canvas is a list of its nodes. The arrows walk them
+//     (focus does not select: Tab passes a node on its way to what follows),
+//     Space or Enter selects, Enter on the selected node is a double-click,
+//     Alt+arrows move the node (Shift: farther), Escape clears the selection
+//     and goes back to the canvas, where the arrows pan and + - 0 zoom and
+//     fit. Delete and connecting stay the tenant's;
 //   • every pointer gesture runs on `beginPointerDrag` (SYSTEM_INTEGRITY
 //     Phase A): Escape / window blur / lost capture cancel cleanly, and this
 //     file owns zero document-level listeners of its own.
@@ -114,6 +120,8 @@ export class NodeCanvas implements IDisposable {
   private _drag: PointerDragHandle | null = null;
   private _dragPreview: RafThrottledFn<[number, number]> | null = null;
   private _disposed = false;
+  /** The node Tab comes back to: the last one focused. */
+  private _focusStop: string | null = null;
 
   constructor(
     container: HTMLElement,
@@ -150,6 +158,11 @@ export class NodeCanvas implements IDisposable {
     this._root.addEventListener('pointerdown', this._onPointerDown);
     this._root.addEventListener('dblclick', this._onDoubleClick);
     this._root.addEventListener('wheel', this._onWheel, { passive: false });
+    this._root.tabIndex = 0;
+    this._root.setAttribute('role', 'listbox');
+    this._root.setAttribute('aria-label', 'Graph');
+    this._root.addEventListener('keydown', this._onKeyDown);
+    this._root.addEventListener('focusin', this._onFocusIn);
   }
 
   dispose(): void {
@@ -159,6 +172,8 @@ export class NodeCanvas implements IDisposable {
     this._root.removeEventListener('pointerdown', this._onPointerDown);
     this._root.removeEventListener('dblclick', this._onDoubleClick);
     this._root.removeEventListener('wheel', this._onWheel);
+    this._root.removeEventListener('keydown', this._onKeyDown);
+    this._root.removeEventListener('focusin', this._onFocusIn);
     this._root.remove();
     this._nodes.clear();
     this._edges.clear();
@@ -187,6 +202,7 @@ export class NodeCanvas implements IDisposable {
       view.el.style.transform = `translate(${n.x}px, ${n.y}px)`;
       this._applyExplicitWidth(view, n.w ?? null);
       this._delegate.renderNode(n.id, view.body);
+      view.el.setAttribute('aria-label', (view.body.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 80) || n.id);
       this._measure(n.id);
     }
 
@@ -278,6 +294,83 @@ export class NodeCanvas implements IDisposable {
     this._panY = (rect.height - (maxY - minY) * this._zoom) / 2 - minY * this._zoom;
     this._applyTransform();
   }
+
+  // ── Keyboard ────────────────────────────────────────────────────────────
+
+  /** Node ids top to bottom, then left to right: the order the arrows walk. */
+  private _readingOrder(): string[] {
+    return [...this._nodes.entries()].sort(([, a], [, b]) => (a.y - b.y) || (a.x - b.x)).map(([id]) => id);
+  }
+
+  /** Pan so a node is in view, when it is not. */
+  private _reveal(id: string): void {
+    const v = this._nodes.get(id);
+    const rect = this._root.getBoundingClientRect();
+    if (!v || rect.width < 10) return;
+    const left = this._panX + v.x * this._zoom, top = this._panY + v.y * this._zoom;
+    if (left >= 0 && top >= 0 && left + v.w * this._zoom <= rect.width && top + v.h * this._zoom <= rect.height) return;
+    this._panX = rect.width / 2 - (v.x + v.w / 2) * this._zoom;
+    this._panY = rect.height / 2 - (v.y + v.h / 2) * this._zoom;
+    this._applyTransform();
+  }
+
+  private readonly _onFocusIn = (e: FocusEvent): void => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('.px-node-canvas__node')?.dataset.nodeId;
+    if (!id || (e.target as HTMLElement).dataset.nodeId !== id) return;
+    this._reveal(id);
+    if (this._focusStop !== id) { this._focusStop = id; this._applySelectionClasses(); }
+  };
+
+  private readonly _onKeyDown = (e: KeyboardEvent): void => {
+    const target = e.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const id = target.dataset.nodeId && this._nodes.has(target.dataset.nodeId) ? target.dataset.nodeId : null;
+    const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
+    const handled = () => { e.preventDefault(); e.stopPropagation(); };
+    if (id && arrow && e.altKey && !e.ctrlKey && !e.metaKey) {
+      // Move the node: the keyboard's drag, one committed move per press.
+      const v = this._nodes.get(id)!;
+      const step = e.shiftKey ? 64 : 16;
+      v.x += arrow[0] * step;
+      v.y += arrow[1] * step;
+      v.el.style.transform = `translate(${v.x}px, ${v.y}px)`;
+      this._rePathTouching(id);
+      this._delegate.onMoveNodes?.([{ id, x: v.x, y: v.y }]);
+      this._reveal(id);
+      handled();
+    } else if (id && (arrow || e.key === 'Home' || e.key === 'End') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const order = this._readingOrder();
+      const at = order.indexOf(id);
+      const to = e.key === 'Home' ? 0 : e.key === 'End' ? order.length - 1 : Math.max(0, Math.min(order.length - 1, at + (arrow![0] + arrow![1] > 0 ? 1 : -1)));
+      this._nodes.get(order[to]!)?.el.focus();
+      handled();
+    } else if (id && (e.key === 'Enter' || e.key === ' ')) {
+      if (e.key === 'Enter' && this._selectedNodes.size === 1 && this._selectedNodes.has(id)) this._delegate.onNodeDoubleClick?.(id);
+      else this.setSelection([id]);
+      handled();
+    } else if (id && e.key === 'Escape') {
+      this.setSelection([]);
+      this._root.focus();
+      handled();
+    } else if (target === this._root && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      // On the canvas itself: the arrows pan, + and - zoom about the centre, 0 fits, Enter goes to a node.
+      const rect = this._root.getBoundingClientRect();
+      const zoomTo = (next: number) => {
+        next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+        this._panX = rect.width / 2 - ((rect.width / 2 - this._panX) / this._zoom) * next;
+        this._panY = rect.height / 2 - ((rect.height / 2 - this._panY) / this._zoom) * next;
+        this._zoom = next;
+        this._applyTransform();
+      };
+      if (arrow) { this._panX -= arrow[0] * 40; this._panY -= arrow[1] * 40; this._applyTransform(); }
+      else if (e.key === '+' || e.key === '=') zoomTo(this._zoom * 1.2);
+      else if (e.key === '-') zoomTo(this._zoom / 1.2);
+      else if (e.key === '0') this.fitToContent();
+      else if (e.key === 'Enter') { const first = [...this._selectedNodes][0] ?? this._readingOrder()[0]; if (first) this._nodes.get(first)?.el.focus(); }
+      else return;
+      handled();
+    }
+  };
 
   // ── Gestures ────────────────────────────────────────────────────────────
 
@@ -527,6 +620,8 @@ export class NodeCanvas implements IDisposable {
     const el = document.createElement('div');
     el.className = 'px-node-canvas__node';
     el.dataset.nodeId = id;
+    el.setAttribute('role', 'option');
+    el.tabIndex = -1;
     const body = document.createElement('div');
     body.className = 'px-node-canvas__node-body';
     el.appendChild(body);
@@ -640,7 +735,13 @@ export class NodeCanvas implements IDisposable {
   }
 
   private _applySelectionClasses(): void {
-    for (const [id, v] of this._nodes) v.el.classList.toggle('is-selected', this._selectedNodes.has(id));
+    for (const [id, v] of this._nodes) {
+      v.el.classList.toggle('is-selected', this._selectedNodes.has(id));
+      v.el.setAttribute('aria-selected', String(this._selectedNodes.has(id)));
+    }
+    // One node in the Tab order: the last one focused, else the selected one, else the first.
+    const stop = (this._focusStop && this._nodes.has(this._focusStop) ? this._focusStop : null) ?? [...this._selectedNodes][0] ?? this._readingOrder()[0];
+    for (const [id, v] of this._nodes) v.el.tabIndex = id === stop ? 0 : -1;
     for (const [id, v] of this._edges) {
       v.group.classList.toggle('is-selected', this._selectedEdges.has(id));
       v.labelEl.classList.toggle('is-selected', this._selectedEdges.has(id));

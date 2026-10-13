@@ -3,7 +3,7 @@
 // card shows for its configuration.
 
 import { describeTriggerNode } from '../../services/workflows/workflowGraph.js';
-import { normalizeFactsInclude, type WorkflowNode } from '../../services/workflows/workflowTypes.js';
+import { normalizeFactsInclude, isTriggerNode, type WorkflowDoc, type WorkflowNode } from '../../services/workflows/workflowTypes.js';
 
 export interface PaletteEntry {
   readonly kind: WorkflowNode['kind'];
@@ -63,6 +63,17 @@ export const PALETTE: readonly PaletteEntry[] = [
 ];
 
 export const KIND_META = new Map([...PALETTE, ...HIDDEN_META].map((p) => [p.kind, p]));
+
+/**
+ * Where the node `fromId` can connect (the inspector's Connect To, the
+ * keyboard's way to drag its dot onto another card): not itself, not a
+ * trigger (nothing points into one), not a node it already points to.
+ */
+export function connectTargets(doc: WorkflowDoc, fromId: string): { value: string; label: string }[] {
+  const linked = new Set(doc.edges.filter((e) => e.from === fromId).map((e) => e.to));
+  return doc.nodes.filter((n) => n.id !== fromId && !isTriggerNode(n) && !linked.has(n.id))
+    .map((n) => ({ value: n.id, label: n.label || KIND_META.get(n.kind)?.label || n.kind }));
+}
 
 /** One line of a node's configuration for the card face. */
 export function nodeSummary(n: WorkflowNode): string {

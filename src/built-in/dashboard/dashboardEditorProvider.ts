@@ -3,15 +3,10 @@
 // Each editor pane represents one dashboard page. The pane owns:
 //   - The 12-column grid host
 //   - The page chrome (title bar, edit-mode toggle, "+ Add widget" button)
-//   - Widget instance lifecycle (instantiate from DB → render → handle config /
-//     refresh / remove)
-//   - Drag-to-move + drag-to-resize in edit mode
+//   - Widget instance lifecycle (instantiate from DB → render → config / refresh / remove)
+//   - Drag-to-move + drag-to-resize, and their keys (widgetKeyboardPlacement.ts)
 //   - The "Add widget" picker overlay
 //   - The settings drawer overlay
-//
-// Phase 1 ships with the grid + chrome + empty state. Widgets land in
-// Phase 2 (clock-and-links), refresh in Phase 3, AI in Phase 4. The pane
-// is built so each phase plugs in without restructuring this file.
 
 import { openScheduleEditor } from './dashboardScheduleEditor.js';
 import { createSurface, declareControl } from '../../ui/kit.js';
@@ -39,6 +34,7 @@ import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { isForPane } from './dashboardCommandTarget.js';
+import { placementForKey } from './widgetKeyboardPlacement.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -442,7 +438,7 @@ class DashboardEditorPane implements IDisposable {
     // Header
     const header = el('header', 'dashboard-widget__header');
     const drag = el('span', 'dashboard-widget__drag');
-    drag.title = 'Drag to move';
+    drag.title = 'Drag to move (Alt+Arrow keys)';
     drag.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>';
     header.appendChild(drag);
 
@@ -524,30 +520,34 @@ class DashboardEditorPane implements IDisposable {
     header.appendChild(actions);
     card.appendChild(header);
 
-    // Resize handles — every edge and corner EXCEPT the top ('n'): the top edge
-    // is the universal move strip (below), so widgets with no title bar (bare
-    // image/video) are still draggable. The NW/NE corners still resize the top.
-    // Edge handles resize along one axis; corners resize both, moving the
-    // origin so the opposite edge stays pinned.
+    // Resize handles on every edge and corner but the top (the top edge is the
+    // move strip, so bare widgets still drag); corners keep the far edge pinned.
     const resizeDirs: ResizeDir[] = ['s', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
     for (const dir of resizeDirs) {
       const h = el('span', `dashboard-widget__resize dashboard-widget__resize--${dir}`);
       h.dataset.role = 'resize';
       h.dataset.dir = dir;
-      h.title = 'Drag to resize';
+      h.title = 'Drag to resize (Alt+Shift+Arrow keys)';
       card.appendChild(h);
       this._installDragResize(card, h, row.id, dir);
     }
 
-    // Move strip — the TOP EDGE is the drag-to-move surface for EVERY widget
-    // type (title bar or not), hover-revealed like the resize handles. The
-    // header grip drags too (a nicer target on widgets that show a header).
+    // Move strip: the top edge moves every widget type; the header grip does too.
     const moveStrip = el('span', 'dashboard-widget__move');
     moveStrip.dataset.role = 'move';
-    moveStrip.title = 'Drag to move';
+    moveStrip.title = 'Drag to move (Alt+Arrow keys)';
     card.appendChild(moveStrip);
     this._installDragMove(moveStrip, card, row.id);
     this._installDragMove(drag, card, row.id);
+    // The keyboard's drag: Alt+arrows move the widget, Alt+Shift+arrows size it.
+    card.setAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown Alt+Shift+ArrowRight Alt+Shift+ArrowDown');
+    card.addEventListener('keydown', (e) => {
+      const inst = this._instances.get(row.id);
+      const next = inst && placementForKey(inst.row.placement, e, inst.typeReg?.sizeBounds, DASHBOARD_GRID_COLS);
+      if (!next) return;
+      e.preventDefault(); e.stopPropagation();
+      void this._commitPlacement(card, row.id, next, e.shiftKey ? 'resized' : 'moved');
+    });
 
     // Body
     const body = el('div', 'dashboard-widget__body');
@@ -1164,16 +1164,7 @@ class DashboardEditorPane implements IDisposable {
         card.addEventListener('click', cancelClick, { capture: true, once: true });
         setTimeout(() => card.removeEventListener('click', cancelClick, { capture: true } as EventListenerOptions), 60);
         if (lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row) {
-          card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
-          card.style.setProperty('--dashboard-row-span', String(lastTarget.rowSpan));
-          card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
-          try {
-            await this._data.updateWidgetPlacement(widgetId, lastTarget);
-            inst.row = { ...inst.row, placement: lastTarget };
-            this._note('moved', `widget "${this._registry.getWidgetType(inst.row.widgetTypeId)?.displayName ?? widgetId}"`, `to column ${lastTarget.col + 1}, row ${lastTarget.row + 1}`);
-          } catch (err) {
-            console.warn('[Dashboard] commit placement failed:', err);
-          }
+          await this._commitPlacement(card, widgetId, lastTarget, 'moved');
         }
       };
 
@@ -1283,19 +1274,7 @@ class DashboardEditorPane implements IDisposable {
         card.classList.remove('dashboard-widget--resizing');
         const changed = lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row
           || lastTarget.colSpan !== origPlacement.colSpan || lastTarget.rowSpan !== origPlacement.rowSpan;
-        if (changed) {
-          try {
-            await this._data.updateWidgetPlacement(widgetId, lastTarget);
-            inst.row = { ...inst.row, placement: lastTarget };
-            this._note('resized', `widget "${this._registry.getWidgetType(inst.row.widgetTypeId)?.displayName ?? widgetId}"`, `to ${lastTarget.colSpan}×${lastTarget.rowSpan}`);
-          } catch (err) {
-            console.warn('[Dashboard] commit resize failed:', err);
-            // Revert to the original placement on failure.
-            card.style.gridColumn = `${origPlacement.col + 1} / span ${origPlacement.colSpan}`;
-            card.style.gridRow = `${origPlacement.row + 1} / span ${origPlacement.rowSpan}`;
-            card.style.setProperty('--dashboard-row-span', String(origPlacement.rowSpan));
-          }
-        }
+        if (changed) await this._commitPlacement(card, widgetId, lastTarget, 'resized');
       };
       handle.addEventListener('pointermove', onMove);
       handle.addEventListener('pointerup', onUp);
@@ -1306,6 +1285,24 @@ class DashboardEditorPane implements IDisposable {
   private _placeAt(el: HTMLElement, p: WidgetPlacement): void {
     el.style.gridRow = `${p.row + 1} / span ${p.rowSpan}`;
     el.style.gridColumn = `${p.col + 1} / span ${p.colSpan}`;
+  }
+
+  /** Put a widget at `target` and save it (a drop, or a keyboard move or resize); back where it was if the save fails. */
+  private async _commitPlacement(card: HTMLElement, widgetId: string, target: WidgetPlacement, verb: 'moved' | 'resized'): Promise<void> {
+    const inst = this._instances.get(widgetId);
+    if (!inst) return;
+    const place = (p: WidgetPlacement) => { this._placeAt(card, p); card.style.setProperty('--dashboard-row-span', String(p.rowSpan)); };
+    const before = inst.row.placement;
+    place(target);
+    try {
+      await this._data.updateWidgetPlacement(widgetId, target);
+      inst.row = { ...inst.row, placement: target };
+      const where = verb === 'moved' ? `to column ${target.col + 1}, row ${target.row + 1}` : `to ${target.colSpan}×${target.rowSpan}`;
+      this._note(verb, `widget "${this._registry.getWidgetType(inst.row.widgetTypeId)?.displayName ?? widgetId}"`, where);
+    } catch (err) {
+      console.warn(`[Dashboard] commit ${verb} failed:`, err);
+      place(before);
+    }
   }
 
   private _rowHeight(): number {

@@ -1,20 +1,13 @@
 // workflowEditorPane.ts — the workflow editor: the node canvas gets its
 // tenant (docs/WORKFLOWS_BRIEF.md, "the editor opens as a pane").
 //
-// What this pane is: the WorkflowService document rendered on
-// ui/nodeCanvas — palette to add typed nodes, connect gestures for
-// edges, an inspector that edits the selected node's real fields, and a
-// run picker that paints any recorded run's trace onto the same graph
-// (runs are documents; the trace view IS the debugger).
-//
-// Contract choices that matter:
-//   • every mutation writes THROUGH the service immediately — there is
-//     no local draft state to lose; validation warnings surface in the
-//     header, structural errors cannot be produced by this UI;
-//   • trace mode is read-only: gesture commits are refused with a
-//     visible hint, never silently dropped;
-//   • all popover-free: the inspector is a docked panel, the palette a
-//     docked rail — nothing to dismiss, nothing to leak.
+// The WorkflowService document on ui/nodeCanvas: a palette adds typed
+// nodes, connect gestures (or the inspector's Connect To) make edges, the
+// inspector edits the selected node's real fields, and a run picker paints
+// a recorded run's trace onto the same graph (the trace view IS the debugger).
+// Every mutation writes THROUGH the service at once (no draft to lose);
+// trace mode is read-only (gestures refused with a visible hint); nothing
+// pops over (inspector and palette are docked).
 
 import { appDateParts, appTimeString } from '../../services/localTime.js';
 import './workflowEditor.css';
@@ -33,7 +26,7 @@ import {
   type WorkflowRun,
 } from '../../services/workflows/workflowTypes.js';
 import { validateWorkflow } from '../../services/workflows/workflowGraph.js';
-import { KIND_META, PALETTE, nodeSummary, oneLine, type PaletteEntry } from './workflowPalette.js';
+import { KIND_META, PALETTE, connectTargets, nodeSummary, oneLine, type PaletteEntry } from './workflowPalette.js';
 import { declareControl, sceneSlug } from '../../ui/kit.js';
 import { WEEKDAY_LABELS, type AutomationScheduleSpec } from '../../openclaw/cronScheduleSpec.js';
 
@@ -192,7 +185,7 @@ export class WorkflowEditorPane implements IDisposable {
     body.appendChild(palette);
 
     this._canvasHost = $('div.wfe__canvas');
-    this._canvasHost.tabIndex = 0; // keyboard: Delete removes selection
+    // Delete removes the selection; it bubbles here from the canvas and its nodes (the focus stops).
     this._canvasHost.addEventListener('keydown', (e) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       const target = e.target as HTMLElement;
@@ -680,16 +673,8 @@ export class WorkflowEditorPane implements IDisposable {
       case 'action.tool': {
         const tools = this._deps.listTools?.() ?? [];
         if (tools.length > 0) {
-          const wrap = $('div.wfe-ins__field');
-          wrap.appendChild(this._fieldLabel('Tool'));
-          const dd = createDropdownHandle(wrap, {
-            items: tools.map((t) => ({ value: t.name, label: t.name })),
-            selected: node.toolName || undefined,
-            placeholder: 'Pick a tool',
-            ariaLabel: 'Tool to run',
-          });
-          this._disposables.push(dd.onDidChange((v) => this._patchNode(node.id, { toolName: v })));
-          this._inspector.appendChild(wrap);
+          this._dropdownField('Tool', { items: tools.map((t) => ({ value: t.name, label: t.name })), selected: node.toolName || undefined, placeholder: 'Pick a tool', ariaLabel: 'Tool to run' },
+            (v) => this._patchNode(node.id, { toolName: v }));
         } else {
           this._textField('Tool Name', node.toolName, (v) => this._patchNode(node.id, { toolName: v.trim() }));
         }
@@ -711,6 +696,10 @@ export class WorkflowEditorPane implements IDisposable {
       }
     }
 
+    const targets = this._doc ? connectTargets(this._doc, node.id) : []; // the keyboard's way to drag a dot onto a card
+    if (targets.length > 0 && this._mode === 'edit') {
+      this._dropdownField('Connect To', { items: targets, placeholder: 'Pick a node', ariaLabel: 'Connect to' }, (to) => { if (to) this._onConnect(node.id, to); });
+    }
     const del = $('button.wfe__btn.wfe__btn--danger') as HTMLButtonElement;
     del.textContent = 'Delete Node';
     declareControl(del, { id: 'workflows.editor.deleteSelection', label: 'Delete Node' });
@@ -723,7 +712,7 @@ export class WorkflowEditorPane implements IDisposable {
     if (!this._doc) return;
     this._inspector.appendChild(this._sectionHead('Routine'));
     const note = $('div.wfe-ins__note');
-    note.textContent = 'Select a node to edit it. Drag from a node’s dot to connect. Delete removes the selection.';
+    note.textContent = 'Select a node to edit it (Space on a focused node). Drag from a node’s dot, or use Connect To, to connect. Delete removes the selection.';
     this._inspector.appendChild(note);
 
     this._textArea('Description', this._doc.description ?? '', (v) => {
@@ -887,6 +876,14 @@ export class WorkflowEditorPane implements IDisposable {
     const el = $('div.wfe-ins__head');
     el.textContent = text;
     return el;
+  }
+
+  /** A labelled dropdown field in the inspector. */
+  private _dropdownField(label: string, options: Parameters<typeof createDropdownHandle>[1], onChange: (value: string) => void): void {
+    const wrap = $('div.wfe-ins__field');
+    wrap.appendChild(this._fieldLabel(label));
+    this._disposables.push(createDropdownHandle(wrap, options).onDidChange(onChange));
+    this._inspector.appendChild(wrap);
   }
 
   private _fieldLabel(text: string): HTMLElement {

@@ -239,3 +239,43 @@ describe('view & lifecycle', () => {
     host.remove();
   });
 });
+
+describe('the keyboard (docs/ACCESSIBILITY.md, section 6)', () => {
+  const press = (el: Element, key: string, init: KeyboardEventInit = {}) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+
+  it('walks the nodes in reading order without selecting; Space selects, Enter edits, Escape clears', () => {
+    const onSelectionChange = vi.fn();
+    const onNodeDoubleClick = vi.fn();
+    const { host, canvas } = make({ onSelectionChange, onNodeDoubleClick });
+    canvas.setModel([N('b', 200, 0), N('a', 0, 0), N('c', 0, 100)], []);
+    expect(nodeEl(host, 'a').tabIndex).toBe(0);
+    expect(nodeEl(host, 'b').tabIndex).toBe(-1);
+    nodeEl(host, 'a').focus();
+    press(nodeEl(host, 'a'), 'ArrowRight');
+    expect(document.activeElement).toBe(nodeEl(host, 'b'));
+    press(nodeEl(host, 'b'), 'End');
+    expect(document.activeElement).toBe(nodeEl(host, 'c'));
+    expect(canvas.getSelection().nodes).toEqual([]);
+    press(nodeEl(host, 'c'), ' ');
+    expect(canvas.getSelection().nodes).toEqual(['c']);
+    expect(nodeEl(host, 'c').getAttribute('aria-selected')).toBe('true');
+    press(nodeEl(host, 'c'), 'Enter');
+    expect(onNodeDoubleClick).toHaveBeenCalledWith('c');
+    press(nodeEl(host, 'c'), 'Escape');
+    expect(canvas.getSelection().nodes).toEqual([]);
+    canvas.dispose();
+  });
+
+  it('Alt+arrows move the focused node, one committed move per press', () => {
+    const onMoveNodes = vi.fn();
+    const { host, canvas } = make({ onMoveNodes });
+    canvas.setModel([N('a', 10, 10)], []);
+    nodeEl(host, 'a').focus();
+    press(nodeEl(host, 'a'), 'ArrowRight', { altKey: true });
+    expect(onMoveNodes).toHaveBeenLastCalledWith([{ id: 'a', x: 26, y: 10 }]);
+    press(nodeEl(host, 'a'), 'ArrowDown', { altKey: true, shiftKey: true });
+    expect(onMoveNodes).toHaveBeenLastCalledWith([{ id: 'a', x: 26, y: 74 }]);
+    canvas.dispose();
+  });
+});
