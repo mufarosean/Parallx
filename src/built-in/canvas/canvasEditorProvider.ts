@@ -811,7 +811,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       content: '',
       editorProps: {
         attributes: {
-          class: 'canvas-tiptap-editor',
+          class: 'canvas-tiptap-editor', 'aria-label': 'Page content', role: 'textbox', 'aria-multiline': 'true',
           spellcheck: 'true',
         },
         handleDOMEvents: {

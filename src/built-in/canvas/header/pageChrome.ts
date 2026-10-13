@@ -545,7 +545,7 @@ export class PageChromeController {
     this._titleEl = $('div.canvas-page-title');
     this._titleEl.contentEditable = 'true';
     this._titleEl.spellcheck = true;
-    this._titleEl.setAttribute('data-placeholder', 'Untitled');
+    this._titleEl.setAttribute('data-placeholder', 'Untitled'); this._titleEl.setAttribute('role', 'textbox'); this._titleEl.setAttribute('aria-label', 'Page title');
     const displayTitle = this._currentPage?.title;
     this._titleEl.textContent = (displayTitle && displayTitle !== 'Untitled') ? displayTitle : '';
 

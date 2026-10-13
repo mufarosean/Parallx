@@ -662,7 +662,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     } else {
       btn.textContent = content;
     }
-    setupTooltip(btn, title);
+    setupTooltip(btn, title); btn.setAttribute('aria-label', title);
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       onClick();

@@ -653,7 +653,7 @@ export class TitlebarPart extends Part {
     // Left slot: app icon + menu bar
     this._leftSlot = $('div');
     this._leftSlot.classList.add('titlebar-left', 'titlebar-menubar');
-    this._leftSlot.setAttribute('role', 'menubar');
+    this._leftSlot.setAttribute('role', 'menubar'); this._leftSlot.setAttribute('aria-label', 'Application Menu');
     rootContainer.appendChild(this._leftSlot);
 
     // App icon — the one logo (brandIcons px-mark); sized by CSS.
