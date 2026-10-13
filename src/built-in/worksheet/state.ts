@@ -84,6 +84,9 @@ export const state = {
    */
   pendingImportPath: null as string | null,
   importPaneHooks: null as { importPath(filePath: string): Promise<void> } | null,
+  /** The same for Generate Items' source document (`worksheet.generateFromFile`). */
+  pendingGeneratePath: null as string | null,
+  generatePaneHooks: null as { loadPath(filePath: string): Promise<void> } | null,
 };
 
 /** Scratch-sheet snapshots cached across pane rebuilds (in-memory only). */

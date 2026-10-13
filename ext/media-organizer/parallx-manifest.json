@@ -16,6 +16,7 @@
     ],
     "commands": [
       { "id": "media-organizer.scan", "title": "Scan Directory", "category": "Atelier" },
+      { "id": "media-organizer.importFiles", "title": "Import Files…", "category": "Atelier" },
       { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Atelier" },
       { "id": "media-organizer.rescan", "title": "Rescan Library", "category": "Atelier" },
       { "id": "media-organizer.generateThumbnails", "title": "Generate Thumbnails", "category": "Atelier" },

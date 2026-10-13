@@ -132,6 +132,11 @@ export function createGeneratePane(container: HTMLElement) {
       status.textContent = 'Drop a document file from the Explorer, or a page from the Canvas sidebar.';
     })();
   });
+  // The drop's keyboard way: the same file, from the system's picker.
+  createButton(drop, { id: 'worksheet.generate.chooseFile', label: 'Choose File…', icon: 'folder-open', kind: 'secondary', size: 'sm', command: 'worksheet.generateFromFile' });
+  const loadPath = (path: string): Promise<void> => extractFromPath(path, path.split(/[\\/]/).pop() || 'document');
+  state.generatePaneHooks = { loadPath };
+  if (state.pendingGeneratePath) { const p = state.pendingGeneratePath; state.pendingGeneratePath = null; void loadPath(p); }
   root.appendChild(drop);
   root.appendChild(status);
 
@@ -289,6 +294,7 @@ export function createGeneratePane(container: HTMLElement) {
   return {
     dispose: () => {
       disposed = true;
+      if (state.generatePaneHooks?.loadPath === loadPath) state.generatePaneHooks = null;
       root.remove();
     },
   };

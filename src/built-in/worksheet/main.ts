@@ -147,6 +147,21 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
   );
   context.subscriptions.push(
+    // Generate Items' source from the system's picker (its drop zone's keyboard way), or a path given.
+    api.commands.registerCommand('worksheet.generateFromFile', async (filePath?: unknown) => {
+      let path = typeof filePath === 'string' ? filePath : '';
+      if (!path) {
+        const dialog = (window as { parallxElectron?: { dialog?: { openFile?(opts: unknown): Promise<string[] | null> } } }).parallxElectron?.dialog;
+        const res = await dialog?.openFile?.({ title: 'Choose a document', filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'epub', 'xlsx', 'xls', 'csv'] }] });
+        path = Array.isArray(res) ? res[0] ?? '' : '';
+        if (!path) return;
+      }
+      await openWorksheet('create', 'Generate Items');
+      if (state.generatePaneHooks) void state.generatePaneHooks.loadPath(path);
+      else state.pendingGeneratePath = path;
+    }),
+  );
+  context.subscriptions.push(
     api.commands.registerCommand('worksheet.importExcel', async (filePath?: unknown) => {
       await openWorksheet('excel-import', 'Import Workbook');
       if (typeof filePath === 'string' && filePath) {

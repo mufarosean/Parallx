@@ -233,6 +233,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `media-organizer.emptyTrash` | Empty Trash | media-organizer | Atelier |  |  |
 | `media-organizer.findDuplicates` | Find Duplicates | media-organizer | Atelier |  |  |
 | `media-organizer.generateThumbnails` | Generate Thumbnails | media-organizer | Atelier |  |  |
+| `media-organizer.importFiles` | Import Files… | media-organizer | Atelier |  |  |
 | `media-organizer.moveToTrash` | Move Selected to Trash | media-organizer | Atelier |  |  |
 | `media-organizer.newClipProject` | New Clip Project… | media-organizer | Atelier |  |  |
 | `media-organizer.openClipEditor` | Open Clip Editor | media-organizer | Atelier |  |  |
@@ -282,6 +283,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |
 | `worksheet.dashboard` | Worksheets: Open Dashboard | worksheet |  |  |  |
 | `worksheet.generate` | Worksheets: Generate Items | worksheet |  |  |  |
+| `worksheet.generateFromFile` | Worksheets: Generate Items From a File… | worksheet |  |  |  |
 | `worksheet.importExcel` | Worksheets: Import from Excel | worksheet |  |  |  |
 | `worksheet.importPlan` | Worksheets: Import Plan… | worksheet |  |  |  |
 | `worksheet.open` | Worksheets: Open Practice Items | worksheet |  |  |  |

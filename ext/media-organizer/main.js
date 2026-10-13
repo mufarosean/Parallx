@@ -11442,6 +11442,7 @@ function renderGridBrowser(container, api, input) {
       ? { id: 'media-organizer.emptyTrash', command: 'media-organizer.emptyTrash', label: 'Empty Trash\u2026', icon: 'trash-2', title: 'Delete everything in Trash now (it asks first)', onClick: () => { api.commands.executeCommand('media-organizer.emptyTrash').catch(() => {}); } }
       : { id: 'media-organizer.scan', command: 'media-organizer.scan', label: 'Add Folder…', icon: 'plus', title: 'Add a folder of photos and videos to the library', onClick: () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); } },
     more: [
+      { label: 'Import Files…', icon: 'upload', onSelect: () => { api.commands.executeCommand('media-organizer.importFiles').catch(() => {}); } },
       { label: 'Rescan Library', icon: 'refresh-cw', onSelect: () => { api.commands.executeCommand('media-organizer.rescan').catch(() => {}); } },
       { label: 'Find Duplicates', icon: 'copy', onSelect: () => { api.commands.executeCommand('media-organizer.findDuplicates').catch(() => {}); } },
       { label: 'Save As Smart Album', icon: 'bookmark', onSelect: () => { api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {}); } },
@@ -14516,6 +14517,7 @@ async function moAttachItemsToChat(items) {
 // the library in one gesture. The import folder is "Imports" under the first
 // scan root; with no scan root yet, the user picks a folder once.
 const MO_IMPORT_EXTS = /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|avif|mp4|mov|mkv|webm|avi|m4v|mpe?g)$/i;
+const MO_IMPORT_EXT_LIST = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'heic', 'avif', 'mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'mpg', 'mpeg'];
 
 async function moPickImportFolder() {
   const roots = await getScanRoots();
@@ -14534,10 +14536,7 @@ async function moPickImportFolder() {
 /** Copy dropped OS files into the import folder and scan it. Returns the count copied. */
 async function moImportDroppedFiles(api, fileList) {
   const files = Array.from(fileList || []).filter((f) => f && f.path && MO_IMPORT_EXTS.test(f.name || f.path));
-  if (files.length === 0) {
-    try { api.window.showInformationMessage('Nothing to import: drop image or video files.'); } catch { /* ignore */ }
-    return 0;
-  }
+  if (files.length === 0) { try { api.window.showInformationMessage('Nothing to import: drop image or video files.'); } catch { /* ignore */ } return 0; }
   const dir = await moPickImportFolder();
   if (!dir) return 0;
   const sep = _isWindows ? '\\' : '/';
@@ -38225,12 +38224,13 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
     api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
-      const result = await window.parallxElectron.dialog.openFolder({
-        title: 'Select folder to scan',
-      });
-      if (!result || result.length === 0) return;
-      const folder = result[0];
-      await runScan(folder, api);
+      const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
+      if (result && result.length) await runScan(result[0], api);
+    }),
+    // Single files from the system's picker (a drop's keyboard way), copied in as a drop is.
+    api.commands.registerCommand('media-organizer.importFiles', async () => {
+      const picked = await window.parallxElectron.dialog.openFile({ multiSelect: true, filters: [{ name: 'Photos and Videos', extensions: MO_IMPORT_EXT_LIST }] });
+      if (Array.isArray(picked) && picked.length) await moImportDroppedFiles(api, picked.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() })));
     })
   );
 
