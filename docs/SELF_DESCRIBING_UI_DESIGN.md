@@ -1252,6 +1252,77 @@ Sessions append here. Each line: date, step, what was left and why.
     owner is disposed collides with the next test under the window:
     clear the body and `scene.reset()` in `afterEach`.
 
+- 2026-10-12, hand-off (on the owner's machine; last commit of the
+  session is the one that adds this item). Step 7 is complete: budget,
+  flashcards, concept-lab, media-organizer, creations-ai, browser and
+  study are declared, each with its probe row (step 7's notes say how).
+  Step 9 is half done: `refactor-verify-probe.mjs` drives the app by
+  id and all its rows pass (step 9's note has the rule as applied).
+  Also fixed along the way, each in its own commit: the reference-docs
+  check and build on Windows (CRLF, `npx.cmd` spawn), `api.ui.sceneSlug`,
+  Planner's New Task with the Planner closed, the Python panel's switch
+  id, dashboard commands reaching a hidden dashboard, the dashboard
+  drawers' selects, and the single controls step 5 left without ids.
+
+  Left, in this order:
+  1. Step 9: convert `tests/probes/ui-screenshot-probe.mjs` (2001 lines,
+     about 330 class or `__parallx_workbench__` reaches) the way
+     refactor-verify was: launch and helpers from `scene.mjs`, controls
+     by id, content under its surface. Run it before and after and
+     compare; driving by id has found a real fault every time so far.
+  2. Step 4 is not ready. Making `id` required (on
+     `IKitControlDeclaration` for a moment) leaves 18 callers without
+     one, all deliberate today: row buttons (worksheet bank and quizzes
+     rows' Practice and ⋯, plan rows, planner Today and task-list rows,
+     agents routine rows' Turn On / Turn Off, generate's Drop), and
+     pass-throughs whose id is optional by design (worksheet
+     `widgets.ts`' `iconBtn`, the dashboard pane's quiet actions, the
+     launcher's actions, and four places inside `kit.ts` that forward an
+     action's id). Making the field required needs a decision first:
+     either those rows become surfaces with fixed ids under them, or a
+     row control says so explicitly (for example `id: null`). This is a
+     proposal, not agreed.
+  3. The quick pick behind `api.window.showQuickPick` (the canvas
+     "which page" picker, the chat's character picker) is not in the
+     scene; it is frame-level, so it belongs with step 3's widgets.
+  4. Step 11's audit, rerun on the probe's scene at the end of this
+     session (`node scripts/scene-sweep.mjs <probeOutDir>`): unlabeled
+     0, twoParents 0, onClick 0, rawDom 250 files. The raw DOM list is
+     led by the extension mains (flashcards 782, creations-ai 539,
+     budget 494, media-organizer 457, browser 239, study's pane 218,
+     concept-lab 182), then the chat's content parts (118), the
+     database editor (109), the dashboard editor (106) and the canvas
+     sidebar (102). Most of it is layout, not controls: step 7 declared
+     the controls in place and left the DOM as it was, as the recipe
+     says. The full list is the script's output.
+
+  What this session learned, for whoever continues:
+  - An extension whose own `el(tag, class, attrs)` builds most
+    controls can learn a `sceneId` (and `sceneLabel`) attribute that
+    declares the element in a microtask, after the caller has set its
+    text or aria-label (media-organizer, creations-ai, browser). An
+    element still unlabelled then throws in dev mode, which is how the
+    hidden runs found the few that needed an explicit label.
+  - A helper that builds per-row buttons (studio's `button`, browser's
+    `iconBtn`) takes an optional id given only at singleton call sites;
+    an id derived from its label repeats across rows.
+  - A form helper that wraps a field with its label (`drawerField`,
+    `fieldWrap`, `formGroup`) is the cheapest place to declare every
+    field at once.
+  - A file at its size baseline makes room by moving its DOM helper
+    into a `dom.js` beside the scene helpers, then importing it: one
+    import line against six to fifteen removed.
+  - Hidden checks per extension: turn it on through `setToolEnabled`,
+    seed what it needs (a folder of generated PNGs behind a stubbed
+    folder dialog, a character file in the workspace), drive it, and
+    read errors: a duplicate id or an empty label throws in dev mode.
+  - The editor group keeps up to seven panes mounted, hidden: a probe
+    that looks for "the" pane of a type must take the visible one, and
+    an app event that "the pane in the DOM" answers reaches the hidden
+    ones too (Planner's New Task, the dashboard commands).
+  - In a Bash heredoc, `\\` and `\n` inside JS strings collapse; write
+    patch scripts with the Write tool.
+
 ## 12. Glossary for a new reader
 
 - **Part**: one of the seven fixed regions of the window (title bar,
