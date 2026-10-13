@@ -5109,7 +5109,7 @@ function moSelect(items, selected, opts = {}) {
   const dd = _api.ui.createDropdown(host, {
     items: _items,
     selected: selected == null ? (_items.length ? _items[0].value : '') : String(selected),
-    ariaLabel: opts.ariaLabel,
+    ariaLabel: opts.ariaLabel, id: opts.id,
   });
   dd.onDidChange(() => host.dispatchEvent(new Event('change', { bubbles: true })));
   let _disabled = false;
@@ -10464,7 +10464,7 @@ function renderBrowserSidebar(container, api) {
     return { section, body };
   }
 
-  function sidebarItem(iconName, label, count, onClick, caption, view) {
+  function sidebarItem(iconName, label, count, onClick, caption, view, place) {
     const item = moEl('div', 'mo-sidebar-item');
     // The editor this row opens, so the row can show when it is the one in front.
     if (view) item.dataset.view = view;
@@ -10476,7 +10476,7 @@ function renderBrowserSidebar(container, api) {
     if (count !== undefined && count !== null) {
       item.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(count) }));
     }
-    item.addEventListener('click', onClick);
+    item.addEventListener('click', onClick); if (place) moDeclare(item, `media-organizer.side.place.${moSlug(label)}`, { label }); // a fixed place has an id; a folder, tag or project row is a row
     return item;
   }
 
@@ -10484,22 +10484,22 @@ function renderBrowserSidebar(container, api) {
   // No header: all of it, the favourites, the latest. How to see them (feed,
   // grid or list; photos, GIFs or videos) is the view's own toolbar.
   const topNav = moEl('div', 'mo-sidebar-top');
-  const allItem = sidebarItem('library', 'All Media', '', () => openGrid('all', 'All Media', 'library'), null, 'grid:all');
-  const favItem = sidebarItem('star', 'Favorites', '', () => openGrid('favorites', 'Favorites'), null, 'grid:favorites');
-  topNav.append(allItem, favItem, sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent'), null, 'grid:recent'));
+  const allItem = sidebarItem('library', 'All Media', '', () => openGrid('all', 'All Media', 'library'), null, 'grid:all', true);
+  const favItem = sidebarItem('star', 'Favorites', '', () => openGrid('favorites', 'Favorites'), null, 'grid:favorites', true);
+  topNav.append(allItem, favItem, sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent'), null, 'grid:recent', true));
   sections.appendChild(topNav);
 
   // ── To sort ──
   // The jobs, each with what is left of it. A job with nothing left goes quiet.
   const { section: sortSection, body: sortBody } = sidebarSection('To sort', false);
   sortSection.classList.add('mo-section-fixed');
-  const untaggedItem = sidebarItem('circle-help', 'Untagged', '', () => openGrid('untagged', 'Untagged'), null, 'grid:untagged');
+  const untaggedItem = sidebarItem('circle-help', 'Untagged', '', () => openGrid('untagged', 'Untagged'), null, 'grid:untagged', true);
   // AI tagging (Section 43): the review list, counting photos waiting or to review.
   // The app's AI mark, as everywhere something calls the AI; the count is a badge.
-  const tagReviewItem = sidebarItem('px-ai-mark', 'Tag Review', null, () => moOpenTagReview(api), null, 'tag-review');
+  const tagReviewItem = sidebarItem('px-ai-mark', 'Tag Review', null, () => moOpenTagReview(api), null, 'tag-review', true);
   const tagReviewCount = moEl('span', 'mo-sidebar-item-count mo-sidebar-item-badge');
   tagReviewItem.appendChild(tagReviewCount);
-  const dupItem = sidebarItem('copy', 'Duplicates', '', () => openGrid('duplicates', 'Duplicates'), null, 'grid:duplicates');
+  const dupItem = sidebarItem('copy', 'Duplicates', '', () => openGrid('duplicates', 'Duplicates'), null, 'grid:duplicates', true);
   sortBody.append(untaggedItem, tagReviewItem, dupItem);
   sections.appendChild(sortSection);
   const refreshTagReviewCount = () => {
@@ -10598,9 +10598,9 @@ function renderBrowserSidebar(container, api) {
     stHeader.insertBefore(stBtns, stHeader.querySelector('.mo-chevron'));
   }
   artBody.append(
-    sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)),
-    sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api), null, 'practice:setup'),
-    sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api), null, 'plans:list'),
+    sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api), null, null, true),
+    sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api), null, 'practice:setup', true),
+    sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api), null, 'plans:list', true),
   );
   const syncStudioEmpty = () => { studioEmpty.classList.toggle('mo-hidden', !!cpBody.firstChild || _artToolsEnabled); };
   const syncPractice = () => { artBody.classList.toggle('mo-hidden', !_artToolsEnabled); syncStudioEmpty(); };
@@ -10707,7 +10707,7 @@ function renderBrowserSidebar(container, api) {
 
   // The trash, at the foot, out of the way of the places to look.
   const trashFoot = moEl('div', 'mo-sidebar-foot');
-  const trashItem = sidebarItem('trash', 'Trash', '', () => openGrid('trash', 'Trash'), null, 'grid:trash');
+  const trashItem = sidebarItem('trash', 'Trash', '', () => openGrid('trash', 'Trash'), null, 'grid:trash', true);
   trashFoot.appendChild(trashItem);
   root.appendChild(trashFoot);
 
@@ -12198,7 +12198,7 @@ function renderGridBrowser(container, api, input) {
   viewBtn.setAttribute('aria-label', 'View options');
   viewBtn.setAttribute('aria-haspopup', 'dialog');
   toolbar.appendChild(viewBtn);
-  const viewPop = moEl('div', 'mo-view-pop');
+  const viewPop = moEl('div', 'mo-view-pop'); moSurface(viewPop, 'media-organizer.viewPopover', 'View options', instanceId); // in the body, one per library tab
   viewPop.hidden = true;
   viewPop.appendChild(zoomGroup);
   let _viewPopOpen = false;
@@ -12300,7 +12300,7 @@ function renderGridBrowser(container, api, input) {
       pill.appendChild(moEl('span', null, { textContent: label }));
       if (typeof value === 'string' && value) pill.appendChild(moEl('span', 'mo-filter-pill-value', { textContent: value }));
       if (set && onClear) {
-        const x = moEl('span', 'mo-filter-pill-x', { role: 'button', title: `Clear ${label}`, 'aria-label': `Clear ${label}`, innerHTML: moIcon('x', 11) });
+        const x = moEl('span', 'mo-filter-pill-x', { sceneId: `media-organizer.filter.${moSlug(key)}.clear`, role: 'button', title: `Clear ${label}`, 'aria-label': `Clear ${label}`, innerHTML: moIcon('x', 11) });
         x.addEventListener('click', (e) => { e.stopPropagation(); closeFilterPop(); onClear(); });
         pill.appendChild(x);
       } else if (!set && key !== 'fav') {
@@ -16971,7 +16971,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
   let lbPanStartX = 0;
   let lbPanStartY = 0;
 
-  const overlay = moEl('div', 'mo-lightbox');
+  const overlay = moEl('div', 'mo-lightbox'); moSurface(overlay, 'media-organizer.lightbox', 'Viewer');
   const content = moEl('div', 'mo-lightbox-content');
   overlay.appendChild(content);
 
@@ -19793,7 +19793,7 @@ function renderClipProject(container, api, projectId, input) {
   // The sequence sits above the videos: what the project becomes.
   const seqRow = moEl('div', 'mo-cp-row mo-cp-seqrow');
   seqRow.tabIndex = 0;
-  seqRow.setAttribute('role', 'button');
+  seqRow.setAttribute('role', 'button'); moDeclare(seqRow, 'media-organizer.clipProject.sequence', { label: 'Sequence' });
   const seqThumb = moEl('div', 'mo-cp-thumb mo-cp-thumb--seq', { innerHTML: moIcon('list-video', 16) });
   const seqText = moEl('div', 'mo-cp-row-text');
   const seqName = moEl('div', 'mo-cp-row-name', { textContent: 'Sequence' });
@@ -20122,12 +20122,12 @@ function renderClipProject(container, api, projectId, input) {
       optsRow.appendChild(f);
       return f;
     };
-    const fmtSel = moSelect([['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']], seq.format, { ariaLabel: 'Format' });
+    const fmtSel = moSelect([['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']], seq.format, { ariaLabel: 'Format', id: 'media-organizer.clipProject.sequence.format' });
     const sizeSel = moSelect([
       ['first', 'As the first clip'], ['1920x1080', '1920 × 1080'], ['1280x720', '1280 × 720'],
       ['1080x1080', '1080 × 1080 square'], ['1080x1920', '1080 × 1920 vertical'], ['720x1280', '720 × 1280 vertical'],
-    ], seq.size, { ariaLabel: 'Size' });
-    const fpsSel = moSelect([['12', '12 fps'], ['15', '15 fps'], ['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']], String(seq.fps), { ariaLabel: 'Frame rate' });
+    ], seq.size, { ariaLabel: 'Size', id: 'media-organizer.clipProject.sequence.size' });
+    const fpsSel = moSelect([['12', '12 fps'], ['15', '15 fps'], ['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']], String(seq.fps), { ariaLabel: 'Frame rate', id: 'media-organizer.clipProject.sequence.fps' });
     const qSel = moSelect([['18', 'High'], ['23', 'Standard'], ['28', 'Small file']], String(seq.crf), { ariaLabel: 'Quality' });
     field('Format', fmtSel);
     field('Size', sizeSel, 'Clips of another shape are fitted inside, with black bars, never stretched.');
@@ -22236,10 +22236,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   // A segmented control bound to a moSelect: the select stays the value
   // source the form code reads; the buttons set it and fire its 'change'.
-  const segFor = (sel, items, className) => {
+  const segFor = (sel, items, className, sceneId) => {
     const wrap = moEl('div', className || 'mo-ce-seg');
     const btns = items.map(([v, label]) => {
-      const b = moEl('button', null, { textContent: label });
+      const b = moEl('button', null, { textContent: label, sceneId: `${sceneId}.${moSlug(v)}` });
       b.addEventListener('click', () => {
         if (sel.disabled || sel.value === String(v)) return;
         sel.value = String(v);
@@ -22325,14 +22325,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const fmtRow = moEl('div', 'mo-clip-row');
   fmtRow.appendChild(lbl('Format'));
   const fmtSel = moSelect(['mp4', 'webm', 'gif'].map((f) => [f, f.toUpperCase()]), 'mp4');
-  fmtRow.appendChild(segFor(fmtSel, [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']]));
+  fmtRow.appendChild(segFor(fmtSel, [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']], null, 'media-organizer.clipEditor.format'));
   secOutput.appendChild(fmtRow);
 
   // FPS
   const fpsRow = moEl('div', 'mo-clip-row');
   fpsRow.appendChild(lbl('Frame rate'));
   const fpsSel = moSelect([...[10, 15, 24, 30, 60].map((f) => [f, f]), ['src', 'Source']], '30');
-  fpsRow.appendChild(segFor(fpsSel, [...[10, 15, 24, 30].map((f) => [f, String(f)]), ['src', 'Source']]));
+  fpsRow.appendChild(segFor(fpsSel, [...[10, 15, 24, 30].map((f) => [f, String(f)]), ['src', 'Source']], null, 'media-organizer.clipEditor.fps'));
   // The frame rate a render uses: the chosen one, or the source's own.
   function outFps() {
     if (fpsSel.value === 'src') return Math.max(1, Math.min(120, Math.round(srcFps || 30)));
@@ -22576,10 +22576,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     blurEditor.style.display = blurRegions.length ? '' : 'none';
     blurListGroup.style.display = blurRegions.length ? '' : 'none';
     const r = blurRegions.find((x) => x.id === activeBlurId);
-    const segChoice = (choices, current, onPick) => {
+    const segChoice = (choices, current, onPick, sceneId) => {
       const wrap = moEl('div', 'mo-ce-seg mo-ce-seg--fill');
       for (const [v, l, tip] of choices) {
-        const btn = moEl('button', v === current ? 'mo-active' : null, { textContent: l, title: tip || '' });
+        const btn = moEl('button', v === current ? 'mo-active' : null, { textContent: l, title: tip || '', sceneId: `${sceneId}.${moSlug(v)}`, sceneLabel: l });
         btn.addEventListener('click', (e) => { e.stopPropagation(); onPick(v); for (const b of wrap.children) b.classList.toggle('mo-active', b === btn); syncOverlaysToPlayhead(); paintLanes(); });
         wrap.appendChild(btn);
       }
@@ -22589,7 +22589,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const head = moEl('div', 'mo-ce-group-head');
       head.appendChild(moEl('span', 'mo-ce-group-title', { textContent: `Region ${blurRegions.indexOf(r) + 1} of ${blurRegions.length}` }));
       head.appendChild(moEl('span', 'mo-ce-spacer'));
-      const more = api.ui.createIconButton(head, { icon: 'ellipsis', size: 'sm', title: 'More' });
+      const more = api.ui.createIconButton(head, { id: 'media-organizer.clipEditor.blur.more', icon: 'ellipsis', size: 'sm', title: 'More' });
       more.addEventListener('click', (e) => {
         e.stopPropagation();
         const rr = more.getBoundingClientRect();
@@ -22601,13 +22601,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         ]);
       });
       const modeRow = moEl('div', 'mo-clip-row');
-      modeRow.append(lbl('Effect'), segChoice([['blur', 'Blur', 'Soften what is under the box'], ['pixelate', 'Pixelate', 'Mosaic blocks over what is under the box']], r.mode === 'pixelate' ? 'pixelate' : 'blur', (v) => { r.mode = v; }));
+      modeRow.append(lbl('Effect'), segChoice([['blur', 'Blur', 'Soften what is under the box'], ['pixelate', 'Pixelate', 'Mosaic blocks over what is under the box']], r.mode === 'pixelate' ? 'pixelate' : 'blur', (v) => { r.mode = v; }, 'media-organizer.clipEditor.blur.effect'));
       const shapeRow = moEl('div', 'mo-clip-row');
-      shapeRow.append(lbl('Shape'), segChoice([['rect', 'Box', 'Hard-edged rectangle'], ['rounded', 'Rounded', 'Rounded corners, soft edge'], ['ellipse', 'Oval', 'Oval, soft edge']], r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect', (v) => { r.shape = v; }));
+      shapeRow.append(lbl('Shape'), segChoice([['rect', 'Box', 'Hard-edged rectangle'], ['rounded', 'Rounded', 'Rounded corners, soft edge'], ['ellipse', 'Oval', 'Oval, soft edge']], r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect', (v) => { r.shape = v; }, 'media-organizer.clipEditor.blur.shape'));
       const strRow = moEl('div', 'mo-clip-row');
       const str = document.createElement('input');
       str.type = 'range'; str.min = '1'; str.max = '10'; str.step = '1'; str.value = String(r.strength);
-      str.className = 'mo-clip-slider'; str.title = 'Strength';
+      str.className = 'mo-clip-slider'; str.title = 'Strength'; moDeclare(str, 'media-organizer.clipEditor.blur.strength', { label: 'Strength' });
       const strVal = moEl('span', 'mo-clip-slider-val', { textContent: String(r.strength) });
       str.addEventListener('input', () => { r.strength = parseInt(str.value, 10) || 5; strVal.textContent = str.value; syncOverlaysToPlayhead(); });
       str.addEventListener('change', () => { try { updateAccordionSummaries(); } catch { /* pre-init */ } });
@@ -22621,7 +22621,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const tracked = !!(r.keys && r.keys.length >= 2);
       const trackRow = moEl('div', 'mo-clip-row mo-ce-switchrow');
       const trackChk = document.createElement('input');
-      trackChk.type = 'checkbox'; trackChk.className = 'mo-clip-check'; trackChk.checked = tracked; trackChk.id = 'mo-ce-blurtrack';
+      trackChk.type = 'checkbox'; trackChk.className = 'mo-clip-check'; trackChk.checked = tracked; trackChk.id = 'mo-ce-blurtrack'; moDeclare(trackChk, 'media-organizer.clipEditor.blur.track', { label: 'Track' });
       trackChk.title = tracked ? 'Tracking. Turn off to make the box still again.' : 'Turn on to follow what is under the box through the clip.';
       const trackTxt = moEl('label', 'mo-clip-label', { textContent: tracked ? `Track · ${r.keys.length} keys` : 'Track' });
       trackTxt.htmlFor = 'mo-ce-blurtrack';
@@ -23102,7 +23102,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const head = moEl('div', 'mo-ce-group-head');
       head.appendChild(moEl('span', 'mo-ce-group-title', { textContent: `Text ${captions.indexOf(c) + 1} of ${captions.length}` }));
       head.appendChild(moEl('span', 'mo-ce-spacer'));
-      const more = api.ui.createIconButton(head, { icon: 'ellipsis', size: 'sm', title: 'More' });
+      const more = api.ui.createIconButton(head, { id: 'media-organizer.clipEditor.text.more', icon: 'ellipsis', size: 'sm', title: 'More' });
       more.addEventListener('click', (e) => {
         const r = more.getBoundingClientRect();
         showContextMenu(r.left, r.bottom + 4, [
@@ -23115,7 +23115,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         e.stopPropagation();
       });
       const ta = document.createElement('textarea');
-      ta.className = 'mo-clip-input mo-ce-textarea'; ta.rows = 2; ta.placeholder = 'Text (a second line sits under the first)'; ta.value = c.text;
+      ta.className = 'mo-clip-input mo-ce-textarea'; ta.rows = 2; ta.placeholder = 'Text (a second line sits under the first)'; ta.value = c.text; moDeclare(ta, 'media-organizer.clipEditor.text.value', { label: 'Text' });
       ta.addEventListener('input', () => { c.text = ta.value; syncOverlaysToPlayhead(); try { updateAccordionSummaries(); } catch { /* pre-init */ } refreshCapListRow(c); });
       const styleRow = moEl('div', 'mo-clip-row');
       const styleSeg = moEl('div', 'mo-ce-seg mo-ce-seg--fill');
@@ -23384,7 +23384,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       status.textContent = `Preset applied: ${d.label}.`;
     }
   });
-  destRow.appendChild(segFor(destSel, DESTS.map((d) => [d.id, d.label]), 'mo-ce-chips'));
+  destRow.appendChild(segFor(destSel, DESTS.map((d) => [d.id, d.label]), 'mo-ce-chips', 'media-organizer.clipEditor.destination'));
   // A field changed by hand: the settings are no longer that preset's.
   const presetFields = () => [fmtSel, fpsSel, encModeSel, sizeInputMB, crfInput, gpuSel, ditherSel, autoOptChk, autoOptThreshold, sizeInput];
   setTimeout(() => {
@@ -25798,7 +25798,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         const row = moEl('div', 'mo-clip-queue-row');
         if (c.id === editingId) row.classList.add('mo-active');
         row.draggable = true;
-        row.dataset.clipId = String(c.id);
+        row.dataset.clipId = String(c.id); moSurface(row, 'media-organizer.clipEditor.queueItem', c.name || `Clip ${idx + 1}`, c.id);
         row.appendChild(moEl('span', 'mo-clip-queue-handle', { innerHTML: moIcon('grip-vertical', 14), title: 'Drag to reorder' }));
         // Thumbnail (or placeholder)
         if (c.thumb) {
@@ -25823,7 +25823,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         if (c.mute) bits.push('muted');
         textCol.append(nameLine, moEl('div', 'mo-ce-qmeta', { textContent: bits.join(' · ') }));
         row.appendChild(textCol);
-        const more = api.ui.createIconButton(row, { icon: 'ellipsis', size: 'sm', title: 'More' });
+        const more = api.ui.createIconButton(row, { id: 'media-organizer.clipEditor.queueItem.more', icon: 'ellipsis', size: 'sm', title: 'More' });
         const rename = async () => {
           const v = await api.window.showInputBox({ prompt: 'Name this clip (also its file name)', value: c.name || '' });
           if (v === undefined) return;
@@ -36486,8 +36486,8 @@ function renderImageEditor(container, api) {
   const tabsEl = moEl('div', 'mo-edit-tabs', { role: 'tablist', 'aria-label': 'Tools' });
   const histWrap = moEl('div', 'mo-edit-hist');
   const histCanvas = moEl('canvas', 'mo-edit-hist-canvas');
-  const clipLo = moEl('button', 'mo-edit-clip mo-edit-clip--lo', { type: 'button', innerHTML: moIcon('triangle', 10) });
-  const clipHi = moEl('button', 'mo-edit-clip mo-edit-clip--hi', { type: 'button', innerHTML: moIcon('triangle', 10) });
+  const clipLo = moEl('button', 'mo-edit-clip mo-edit-clip--lo', { sceneId: 'media-organizer.imageEditor.clipping.shadows', sceneLabel: 'Shadow Clipping', type: 'button', innerHTML: moIcon('triangle', 10) });
+  const clipHi = moEl('button', 'mo-edit-clip mo-edit-clip--hi', { sceneId: 'media-organizer.imageEditor.clipping.highlights', sceneLabel: 'Highlight Clipping', type: 'button', innerHTML: moIcon('triangle', 10) });
   histWrap.appendChild(histCanvas); histWrap.appendChild(clipLo); histWrap.appendChild(clipHi);
   const histCap = moEl('div', 'mo-edit-histcap');
   const histExif = moEl('span', 'mo-edit-histcap-exif');
@@ -37147,10 +37147,10 @@ function renderImageEditor(container, api) {
   const hint = (text) => moEl('div', 'mo-edit-hint', { textContent: text });
   const row = (...els) => { const r = moEl('div', 'mo-edit-row'); for (const e of els) r.appendChild(e); return r; };
   // A row of choices drawn as chips. items: [{ value, label, icon?, shape?: [w, h], title? }].
-  const chips = (items, selected, onPick) => {
+  const chips = (items, selected, onPick, sceneId) => {
     const box = moEl('div', 'mo-edit-chips', { role: 'radiogroup' });
     for (const it of items) {
-      const c = moEl('button', 'mo-edit-chipbtn' + (String(it.value) === String(selected) ? ' is-on' : ''), { type: 'button', role: 'radio', 'aria-checked': String(it.value) === String(selected) ? 'true' : 'false', title: it.title || it.label });
+      const c = moEl('button', 'mo-edit-chipbtn' + (String(it.value) === String(selected) ? ' is-on' : ''), { ...(sceneId ? { sceneId: `${sceneId}.${moSlug(it.value)}`, sceneLabel: it.label || it.title || String(it.value) } : {}), type: 'button', role: 'radio', 'aria-checked': String(it.value) === String(selected) ? 'true' : 'false', title: it.title || it.label });
       if (it.shape) {
         const sh = moEl('i', 'mo-edit-shape' + (it.shape[0] === 0 ? ' mo-edit-shape--free' : ''));
         const k = 13 / Math.max(it.shape[0] || 1, it.shape[1] || 1);
@@ -37440,7 +37440,7 @@ function renderImageEditor(container, api) {
       return { value, label: text, shape: [rt, 1], title: value === 'original' ? 'The photo\u2019s own shape' : text };
     });
     const swapRest = r.aspect === 'free' || r.aspect === '1:1';
-    const box = chips(items, r.aspect, (val) => { r.aspect = val; r.aspectFlip = false; if (val !== 'free') refit(); afterChange(true); });
+    const box = chips(items, r.aspect, (val) => { r.aspect = val; r.aspectFlip = false; if (val !== 'free') refit(); afterChange(true); }, 'media-organizer.imageEditor.crop.aspect');
     const swap = moEl('button', 'mo-edit-chipbtn' + (r.aspectFlip ? ' is-on' : ''), { sceneId: 'media-organizer.imageEditor.crop.swap', type: 'button', title: 'Swap Orientation', 'aria-label': 'Swap Orientation', innerHTML: moIcon('repeat', 14) });
     swap.disabled = swapRest;
     swap.addEventListener('click', () => { r.aspectFlip = !r.aspectFlip; refit(); afterChange(true); });
