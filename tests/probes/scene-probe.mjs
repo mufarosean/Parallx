@@ -127,6 +127,7 @@ async function main() {
       'parallx-community.media-organizer': ['media-organizer.openGrid', ['media-organizer.search', 'media-organizer.scan', 'media-organizer.layout.grid', 'media-organizer.grid']],
       'parallx-community.creations-ai': ['textGenerator.openHome', ['textGenerator.home.concept', 'textGenerator.side.search', 'textGenerator.newChat']],
       'parallx.browser': ['browser.newTab', ['browser.address', 'browser.back', 'browser.newTabPage.search']],
+      'parallx-community.study': ['study.open', ['study.side.addMaterial']],
     };
     await page.evaluate(async (ids) => {
       const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });

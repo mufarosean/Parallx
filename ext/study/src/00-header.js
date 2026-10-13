@@ -159,6 +159,18 @@ function el(tag, className = '', text = '') {
   return node;
 }
 
+/** Puts a field or button the pane drew itself in the scene
+ *  (docs/SELF_DESCRIBING_UI_DESIGN.md step 7); its DOM is unchanged. */
+function stDeclare(node, id, label) {
+  if (!_api?.ui?.declareControl) return node;
+  const typed = node.tagName === 'INPUT' || node.tagName === 'TEXTAREA';
+  _api.ui.declareControl(node, {
+    id, label, kind: typed ? 'input' : 'button',
+    state: typed ? () => ({ kind: 'value', value: node.value }) : () => ({ kind: 'enabled', value: !node.disabled }),
+  });
+  return node;
+}
+
 /** Icon html from the registry, '' when the api is not bound yet. */
 function icon(id, size = 16) {
   try {

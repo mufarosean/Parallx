@@ -1020,7 +1020,23 @@ filters and actions, the sidebar's New Tab, New Private Tab and History
 banner's buttons. Bookmark chips, tiles and list rows are rows. A hidden
 run through a new tab, the find bar and the three pages (no navigation)
 listed no errors. The probe row opens a new tab.
-Next is study.
+
+study done 2026-10-12, on the owner's machine: its controls are nearly
+all kit calls, which take ids inline in `ext/study/src/` (then
+`scripts/bundle-study.mjs`): the sidebar's Select Materials, Add Material
+and Study Together; the session toolbar's close; the setup sheet's mode,
+answer format, scope, page range, Cancel and Start; Generating's Stop
+and Start Early; a session's hide, Skip, Next or Check, the answer field
+(`stDeclare`, beside `el` in `00-header.js`), Retry, the source and
+Explain; Results' Send Missed to Flashcards, Refresh and Review Answers;
+Learn's Practice This Chapter; and the dashboard widget's button
+(`study.weakSpots`, with its command). The model button (its label is
+filled in later) and the quote and missed-row page links are left raw.
+`studyPane.test.ts`'s mock editor host now gives each open pane a
+surface, as the workbench does, so two open sessions are two regions
+and not one id twice. The probe row opens Study.
+
+Step 7 is complete.
 
 ### Step 8. The scene line in the prompt (cloud)
 

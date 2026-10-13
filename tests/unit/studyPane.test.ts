@@ -428,6 +428,8 @@ function makeEnv(): Env {
       const host = document.createElement('div');
       document.body.appendChild(host);
       const id = `parallx-community.study:${o.typeId}:${o.instanceId}`;
+      // The workbench's editor pane is a scene surface per open editor; two open sessions are two regions.
+      kit.createSurface(host, { id: o.typeId, owner: 'study', label: o.title || 'Study', instance: id });
       const pane = editorProviders.get(o.typeId)?.createEditorPane(host, { id, instanceId: o.instanceId, title: o.title });
       open.set(o.instanceId, { id, instanceId: o.instanceId, title: o.title, host, pane, order: ++order });
     },

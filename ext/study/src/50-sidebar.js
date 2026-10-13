@@ -127,7 +127,7 @@ function createSidebarView(container) {
   const materialActions = (row, { withSelect }) => {
     row.appendChild(el('span', 'st-sp'));
     if (withSelect) {
-      const selectBtn = _api.ui.createIconButton(row, {
+      const selectBtn = _api.ui.createIconButton(row, { id: 'study.side.select',
         icon: selectIcon, title: state.selecting ? 'Stop Selecting' : 'Select Materials', size: 'sm',
         onClick: () => toggleSelecting(),
       });
@@ -135,7 +135,7 @@ function createSidebarView(container) {
       selectBtn.setAttribute('aria-pressed', state.selecting ? 'true' : 'false');
       selectBtn.classList.toggle('st-sb__btn--on', state.selecting);
     }
-    const addBtn = _api.ui.createIconButton(row, {
+    const addBtn = _api.ui.createIconButton(row, { id: 'study.side.addMaterial',
       icon: 'plus', title: 'Add Material', size: 'sm',
       onClick: () => {
         _api.ui.showContextMenu(addBtn, [
@@ -383,7 +383,7 @@ function createSidebarView(container) {
       left.appendChild(el('b', '', `${chosen.length} ${chosen.length === 1 ? 'material' : 'materials'}`));
       left.appendChild(el('small', '', `${concepts} concepts · ${weak} weak`));
       bar.appendChild(left);
-      _api.ui.createButton(bar, {
+      _api.ui.createButton(bar, { id: 'study.side.studyTogether',
         label: 'Study Together', kind: 'primary', size: 'sm', disabled: chosen.length === 0,
         title: chosen.length ? 'One session over the picked materials, interleaved.' : 'Pick at least one material.',
         onClick: () => {

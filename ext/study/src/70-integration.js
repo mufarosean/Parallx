@@ -929,7 +929,7 @@ function registerDashboardWidget(context) {
             row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
             root.appendChild(row);
           }
-          const foot = _api.ui.createButton(root, {
+          const foot = _api.ui.createButton(root, { id: 'study.weakSpots', command: 'study.weakSpots',
             label: `Study the Weakest ${data.size || 20}`, kind: 'ghost', size: 'sm',
             title: 'One session over the weakest concepts across every material.',
             onClick: () => void _api.commands.executeCommand('study.weakSpots'),

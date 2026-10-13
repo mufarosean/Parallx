@@ -250,7 +250,7 @@ function stToolbar(host, { name, meta, strand, closeTitle, onClose }) {
     strandEl.setAttribute('role', 'img');
     tb.appendChild(strandEl);
   }
-  if (onClose) _api.ui.createIconButton(tb, { icon: 'x', title: closeTitle || 'Close', size: 'sm', onClick: () => void onClose() });
+  if (onClose) _api.ui.createIconButton(tb, { id: 'study.close', icon: 'x', title: closeTitle || 'Close', size: 'sm', onClick: () => void onClose() });
   host.appendChild(tb);
   return { tb, strand: strandEl };
 }
@@ -650,7 +650,7 @@ function createEditorPane(container, input) {
           box.appendChild(el('div', 'st-error__t', 'Study could not open this view.'));
           box.appendChild(el('div', '', String(err && err.message ? err.message : err)));
           const acts = el('div', 'st-row');
-          _api.ui.createButton(acts, { label: 'Retry', icon: 'refresh-cw', onClick: () => void render() });
+          _api.ui.createButton(acts, { id: 'study.retry', label: 'Retry', icon: 'refresh-cw', onClick: () => void render() });
           box.appendChild(acts);
           root.appendChild(box);
         }
@@ -770,7 +770,7 @@ function stSheetFrame(host, ctx, subtitle) {
   sub.title = subtitle;
   titles.appendChild(sub);
   hd.appendChild(titles);
-  _api.ui.createIconButton(hd, { icon: 'x', title: 'Cancel', size: 'sm', onClick: () => void ctx.closeTab() });
+  _api.ui.createIconButton(hd, { id: 'study.sheet.close', icon: 'x', title: 'Cancel', size: 'sm', onClick: () => void ctx.closeTab() });
   sheet.appendChild(hd);
   const bd = el('div', 'st-sheet__bd');
   sheet.appendChild(bd);
@@ -801,7 +801,7 @@ function stModeAnswerRow(bd, ctx, st, { modes, noChoose = false, onChange }) {
       if (why) btn.title = why; else btn.removeAttribute('title');
     }
   };
-  const modeSeg = _api.ui.createSegmented(modePair, {
+  const modeSeg = _api.ui.createSegmented(modePair, { id: 'study.setup.mode',
     ariaLabel: 'Mode', items: modes, value: st.mode,
     onChange: (v) => { st.mode = v; sync(); onChange(); },
   });
@@ -809,7 +809,7 @@ function stModeAnswerRow(bd, ctx, st, { modes, noChoose = false, onChange }) {
     ? 'Practice marks as you go and lets you retry. Test is typed answers, no retry, results at the end. Learn is the chapter in a page.'
     : 'Practice marks as you go and lets you retry. Test is typed answers, no retry, results at the end.';
   ctx.add(modeSeg);
-  answerSeg = _api.ui.createSegmented(answerPair, {
+  answerSeg = _api.ui.createSegmented(answerPair, { id: 'study.setup.answer',
     ariaLabel: 'Answer format',
     items: [{ value: 'choose', label: 'Choose' }, { value: 'type', label: 'Type' }, { value: 'mixed', label: 'Mixed' }],
     value: st.answer,
@@ -836,8 +836,8 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
   chev.innerHTML = icon('chevron-down', 12);
   mdlBtn.appendChild(chev);
   const acts = el('span', 'st-sheet__acts');
-  _api.ui.createButton(acts, { label: 'Cancel', kind: 'ghost', onClick: () => void ctx.closeTab() });
-  const startBtn = _api.ui.createButton(acts, { label: 'Start', kind: 'primary', onClick: () => void onStart() });
+  _api.ui.createButton(acts, { id: 'study.setup.cancel', label: 'Cancel', kind: 'ghost', onClick: () => void ctx.closeTab() });
+  const startBtn = _api.ui.createButton(acts, { id: 'study.setup.start', label: 'Start', kind: 'primary', onClick: () => void onStart() });
   ft.appendChild(acts);
   sheet.appendChild(ft);
 
@@ -939,7 +939,7 @@ async function renderSetup(host, route, ctx) {
   // Scope row.
   const scopeRow = el('div', 'st-row');
   scopeRow.appendChild(el('span', 'st-row__lab', 'Scope'));
-  const scopeSeg = _api.ui.createSegmented(scopeRow, {
+  const scopeSeg = _api.ui.createSegmented(scopeRow, { id: 'study.setup.scope',
     ariaLabel: 'Scope', items: kinds, value: st.kind,
     onChange: (v) => { st.kind = v; paintList(); void paintCount(); },
   });
@@ -997,7 +997,7 @@ async function renderSetup(host, route, ctx) {
         input.type = 'number';
         input.min = '1';
         if (max) input.max = String(max);
-        input.value = String(st[key]);
+        input.value = String(st[key]); stDeclare(input, `study.setup.${key}`, key === 'pageTo' ? 'To page' : 'From page');
         input.setAttribute('aria-label', label === 'From' ? 'First page' : 'Last page');
         input.addEventListener('input', () => { st[key] = Number(input.value) || 1; void paintCount(); });
         row.appendChild(input);
@@ -1203,8 +1203,8 @@ async function renderGenerating(host, route, ctx) {
   unusable.appendChild(unusableN);
   if (!isBank) gen.appendChild(checks);
   const acts = el('div', 'st-gen__acts');
-  const stopBtn = _api.ui.createButton(acts, { label: 'Stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', onClick: () => void stop() });
-  const startBtn = _api.ui.createButton(acts, { label: `Start With ${size} Ready`, kind: 'primary', disabled: true, onClick: () => void startEarly() });
+  const stopBtn = _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', onClick: () => void stop() });
+  const startBtn = _api.ui.createButton(acts, { id: 'study.generating.start', label: `Start With ${size} Ready`, kind: 'primary', disabled: true, onClick: () => void startEarly() });
   gen.appendChild(acts);
   host.appendChild(gen);
 
@@ -1450,7 +1450,7 @@ async function renderSession(host, route, ctx) {
       eyebrow.appendChild(el('span', 'st-eyebrow__cpt', concept ? concept.title : (q.originLabel || 'Question')));
     }
     const eyeActs = el('span', 'st-eyebrow__acts');
-    _api.ui.createIconButton(eyeActs, { icon: 'thumbs-down', title: 'Hide This Question…', size: 'sm', onClick: () => void hideQuestion() });
+    _api.ui.createIconButton(eyeActs, { id: 'study.session.hide', icon: 'thumbs-down', title: 'Hide This Question…', size: 'sm', onClick: () => void hideQuestion() });
     eyebrow.appendChild(eyeActs);
     qwrap.appendChild(eyebrow);
 
@@ -1468,13 +1468,13 @@ async function renderSession(host, route, ctx) {
     cur.fb = fb;
 
     ctl.appendChild(el('span', 'st-sp'));
-    cur.skipBtn = _api.ui.createButton(ctl, {
+    cur.skipBtn = _api.ui.createButton(ctl, { id: 'study.session.skip',
       label: 'Skip', kind: 'ghost', title: 'Skip (K). Moves this question to the end of the session.',
       disabled: queue.length - index <= 1,
       onClick: () => void skip(),
     });
     cur.skipBtn.appendChild(el('span', 'st-k', 'K'));
-    cur.nextBtn = _api.ui.createButton(ctl, {
+    cur.nextBtn = _api.ui.createButton(ctl, { id: 'study.session.next',
       label: fmt === 'mc' || isTest ? 'Next' : 'Check', kind: 'primary', disabled: fmt === 'mc',
       title: isTest ? 'Next (Enter). Every answer is marked at the end.' : fmt === 'mc' ? 'Next (Enter)' : 'Check (Enter)',
       onClick: () => { if (cur.fmt !== 'mc' && !cur.answered) void check(); else void next(); },
@@ -1525,7 +1525,7 @@ async function renderSession(host, route, ctx) {
       field = el('input', 'st-ta__num');
       field.type = 'text';
       field.inputMode = 'decimal';
-      field.placeholder = 'Number';
+      field.placeholder = 'Number'; stDeclare(field, 'study.session.answer', 'Answer');
       row.appendChild(field);
       const units = q.numeric && q.numeric.units;
       if (units) row.appendChild(el('span', 'st-ta__units', String(units)));
@@ -1533,16 +1533,16 @@ async function renderSession(host, route, ctx) {
     } else if (fmt === 'formula') {
       field = el('input', 'st-ta__line');
       field.type = 'text';
-      field.placeholder = 'LaTeX or plain text';
+      field.placeholder = 'LaTeX or plain text'; stDeclare(field, 'study.session.answer', 'Answer');
       ta.appendChild(field);
     } else if (fmt === 'cloze') {
       field = el('input', 'st-ta__line');
       field.type = 'text';
-      field.placeholder = 'The missing term';
+      field.placeholder = 'The missing term'; stDeclare(field, 'study.session.answer', 'Answer');
       ta.appendChild(field);
     } else {
       field = el('textarea', `st-ta__field${fmt === 'essay' ? ' st-ta__field--essay' : ''}`);
-      field.placeholder = 'Write it out before it shows.';
+      field.placeholder = 'Write it out before it shows.'; stDeclare(field, 'study.session.answer', 'Answer');
       ta.appendChild(field);
     }
     field.setAttribute('aria-label', 'Your answer');
@@ -1571,10 +1571,10 @@ async function renderSession(host, route, ctx) {
   function feedbackActs(cur, { retry: withRetry }) {
     const acts = el('div', 'st-fb__acts');
     if (withRetry) {
-      cur.retryBtn = _api.ui.createButton(acts, { label: 'Retry', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
+      cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
     }
-    _api.ui.createButton(acts, { label: stSourceLabel(cur.q), kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
-    _api.ui.createButton(acts, { label: 'Explain', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
+    _api.ui.createButton(acts, { id: 'study.session.source', label: stSourceLabel(cur.q), kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
+    _api.ui.createButton(acts, { id: 'study.session.explain', label: 'Explain', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
     return acts;
   }
 
@@ -2053,7 +2053,7 @@ async function renderResults(host, route, ctx) {
   top.appendChild(left);
   const acts = el('div', 'st-res__acts');
   if (flashcards) {
-    const sendBtn = _api.ui.createButton(acts, {
+    const sendBtn = _api.ui.createButton(acts, { id: 'study.results.sendToFlashcards',
       label: 'Send Missed to Flashcards', icon: 'layers', kind: 'secondary', disabled: marking || cardCount === 0,
       title: marking ? 'Offered once every answer is marked.' : cardCount ? 'One card per missed concept, with the anchor as its source.' : 'Nothing missed this session.',
       onClick: async () => {
@@ -2070,7 +2070,7 @@ async function renderResults(host, route, ctx) {
     });
     if (!marking) sendBtn.appendChild(el('span', 'st-faint', `· ${cardCount}`));
   }
-  _api.ui.createButton(acts, {
+  _api.ui.createButton(acts, { id: 'study.results.refresh',
     label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: willRepeat ? `Draws ${sessionSize} again from the same scope, missed questions first.` : `Draws the next ${sessionSize} from the same scope, weak concepts first.`,
     onClick: async () => {
       await stUpdateSession(session.id, { refreshes: refreshes + 1, finishedAt: 0, position: 0 });
@@ -2174,7 +2174,7 @@ async function renderResults(host, route, ctx) {
   const ft = el('div', 'st-res__ft');
   // Said once: when the under line says Refresh repeats, the footer does not say otherwise.
   ft.appendChild(el('span', 'st-res__lhs', willRepeat ? '' : `Refresh draws the next ${sessionSize}, weak concepts first.`));
-  if (!isTest) _api.ui.createButton(ft, { label: 'Review Answers', kind: 'ghost', onClick: () => ctx.setRoute({ view: 'review', sessionId: session.id }) });
+  if (!isTest) _api.ui.createButton(ft, { id: 'study.results.review', label: 'Review Answers', kind: 'ghost', onClick: () => ctx.setRoute({ view: 'review', sessionId: session.id }) });
   res.appendChild(ft);
 }
 
@@ -2262,7 +2262,7 @@ async function renderLearn(host, route, ctx) {
 
   const ft = el('div', 'st-learn__ft');
   ft.appendChild(el('span', '', `${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}`));
-  _api.ui.createButton(ft, {
+  _api.ui.createButton(ft, { id: 'study.learn.practice',
     label: 'Practice This Chapter', kind: 'primary',
     onClick: () => void stOpenSetup({ materialIds: [material.id], sectionId: section ? section.id : undefined }),
   });
