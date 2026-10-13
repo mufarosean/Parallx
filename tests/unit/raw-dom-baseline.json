@@ -1,6 +1,7 @@
 {
   "ext/browser/main.js": 241,
-  "ext/budget/main.js": 503,
+  "ext/budget/drawer.js": 3,
+  "ext/budget/main.js": 494,
   "ext/concept-lab/main.js": 182,
   "ext/creations-ai/main.js": 541,
   "ext/creations-ai/portrait.js": 3,

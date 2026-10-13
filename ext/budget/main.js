@@ -1,6 +1,6 @@
 // Budget extension — main.js
 //
-//   • One module plus ./skills/budget-sync.js; no runtime build step.
+//   • One module plus ./skills/budget-sync.js and ./drawer.js; no runtime build step.
 //   • Per-extension SQLite via api.database. Migrations under ./db/migrations.
 //   • Money is INTEGER cents (D3). Dates are 'YYYY-MM-DD' local (D4).
 //
@@ -14,6 +14,7 @@
 //     Overview and Plan cannot disagree.
 
 import { BUDGET_SYNC_SKILL } from './skills/budget-sync.js';
+import { drawerField } from './drawer.js';
 
 // ─── Module-level state ────────────────────────────────────────────────────
 let _activated = false;
@@ -1218,7 +1219,7 @@ function renderSidebarNav(container, api) {
 
   const list = document.createElement('nav');
   list.className = 'budget-nav-list';
-  list.setAttribute('aria-label', 'Budget');
+  list.setAttribute('aria-label', 'Budget'); api.ui.createList(list, { id: 'budget.sections', label: 'Budget sections', rows: () => [...list.children], selected: () => [...rows].filter(([, r]) => r.row.hasAttribute('aria-current')).map(([sid]) => sid) });
   root.appendChild(list);
 
   const rows = new Map();
@@ -1254,7 +1255,7 @@ function renderSidebarNav(container, api) {
   const status = document.createElement('div');
   status.className = 'budget-nav-status';
   footer.appendChild(status);
-  const syncBtn = api.ui.createIconButton(footer, { icon: 'refresh-cw', title: 'Sync Now' });
+  const syncBtn = api.ui.createIconButton(footer, { id: 'budget.sync', command: 'budget.sync', icon: 'refresh-cw', title: 'Sync Now' });
   syncBtn.addEventListener('click', () => { api.commands.executeCommand('budget.sync').catch(err => console.error('[Budget] sync failed:', err)); });
   root.appendChild(footer);
 
@@ -1404,7 +1405,7 @@ function renderEditorPane(container, api, input) {
     body.innerHTML = '';
     body.dataset.section = section.id;
     _setCurrentSection(section.id);
-    const back = section.nav === false ? { label: 'Overview', onClick: () => show('overview') } : undefined;
+    const back = section.nav === false ? { id: 'budget.back', label: 'Overview', onClick: () => show('overview') } : undefined;
     // A page puts its own main action in the header (setPageActions), as
     // every Parallx page does, instead of a stray button in its body.
     const drawHeader = (actions = {}) => {
@@ -1475,8 +1476,8 @@ function renderWorthSection(body, api) {
   const a = renderAccountsSection(holdings, api, { manageHost: manage, actions });
   const g = renderGoalsSection(goals, api, { actions });
   setPageActions({
-    primary: { label: 'Add Asset or Debt…', icon: 'plus', onClick: () => actions.addHolding?.() },
-    secondary: [{ label: 'Add Goal…', icon: 'plus', onClick: () => actions.newGoal?.() }],
+    primary: { id: 'budget.addHolding', label: 'Add Asset or Debt…', icon: 'plus', onClick: () => actions.addHolding?.() },
+    secondary: [{ id: 'budget.addGoal', label: 'Add Goal…', icon: 'plus', onClick: () => actions.newGoal?.() }],
   });
   return () => { if (typeof a === 'function') a(); if (typeof g === 'function') g(); };
 }
@@ -1511,7 +1512,7 @@ function makeButton(label, opts = {}) {
     kind: opts.primary ? 'primary' : (opts.kind || 'secondary'),
     size: opts.size,
     icon: opts.icon,
-    title: opts.title,
+    title: opts.title, id: opts.id, command: opts.command,
     onClick: typeof opts.onClick === 'function' ? opts.onClick : undefined,
   });
 }
@@ -1561,7 +1562,7 @@ function makeDropdown(options, value, onChange, opts = {}) {
     items,
     selected: value == null ? '' : String(value),
     placeholder: opts.placeholder || 'Select…',
-    ariaLabel: opts.ariaLabel,
+    ariaLabel: opts.ariaLabel, id: opts.id,
   });
 
   if (typeof onChange === 'function') dd.onDidChange(v => onChange(v));
@@ -1838,7 +1839,7 @@ async function openTxEditor(api, opts = {}) {
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const titleWrap = document.createElement('div'); titleWrap.style.flex = '1';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title';
-  title.textContent = isCreate ? 'Add Transaction' : 'Edit Transaction';
+  title.textContent = isCreate ? 'Add Transaction' : 'Edit Transaction'; api.ui.createSurface(drawer, { id: 'budget.txEditor', owner: 'budget', label: title.textContent });
   titleWrap.appendChild(title);
   if (!isCreate) {
     const sub = document.createElement('div'); sub.className = 'budget-drawer-sub';
@@ -1847,18 +1848,12 @@ async function openTxEditor(api, opts = {}) {
   }
   head.appendChild(titleWrap);
   // The kit's icon button: a title and an accessible name, like every close.
-  api.ui.createIconButton(head, { icon: 'x', title: 'Close' }).addEventListener('click', close);
+  api.ui.createIconButton(head, { id: 'budget.txEditor.close', icon: 'x', title: 'Close' }).addEventListener('click', close);
   drawer.appendChild(head);
 
   // Body / form
   const form = document.createElement('div'); form.className = 'budget-drawer-body';
-  function field(labelText, control, hint) {
-    const f = document.createElement('label'); f.className = 'budget-field';
-    const l = document.createElement('span'); l.className = 'budget-field-label'; l.textContent = labelText;
-    f.appendChild(l); f.appendChild(control);
-    if (hint) { const h = document.createElement('span'); h.className = 'budget-field-hint'; h.textContent = hint; f.appendChild(h); }
-    return f;
-  }
+  const field = (labelText, control, hint) => drawerField(api, 'budget.txEditor', labelText, control, hint);
 
   const merchantInput = document.createElement('input');
   merchantInput.className = 'budget-input'; merchantInput.type = 'text';
@@ -1934,7 +1929,7 @@ async function openTxEditor(api, opts = {}) {
   const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
   if (!isCreate) {
     let armed = false; let armTimer = null;
-    const delBtn = makeButton('Delete', { onClick: async () => {
+    const delBtn = makeButton('Delete', { id: 'budget.txEditor.delete', onClick: async () => {
       if (!armed) {
         armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete';
         delBtn.classList.add('px-btn--danger');
@@ -1951,7 +1946,7 @@ async function openTxEditor(api, opts = {}) {
     foot.appendChild(delBtn);
   }
   const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
-  foot.appendChild(makeButton('Cancel', { onClick: close }));
+  foot.appendChild(makeButton('Cancel', { id: 'budget.txEditor.cancel', onClick: close }));
 
   let saving = false;
   async function save(forceStatus) {
@@ -2003,10 +1998,10 @@ async function openTxEditor(api, opts = {}) {
   }
 
   if (!isCreate && row.status === 'review') {
-    foot.appendChild(makeButton('Confirm', { primary: true, onClick: () => save('confirmed') }));
-    foot.appendChild(makeButton('Save', { onClick: () => save() }));
+    foot.appendChild(makeButton('Confirm', { id: 'budget.txEditor.confirm', primary: true, onClick: () => save('confirmed') }));
+    foot.appendChild(makeButton('Save', { id: 'budget.txEditor.save', onClick: () => save() }));
   } else {
-    foot.appendChild(makeButton(isCreate ? 'Add Transaction' : 'Save', { primary: true, onClick: () => save() }));
+    foot.appendChild(makeButton(isCreate ? 'Add Transaction' : 'Save', { id: 'budget.txEditor.save', primary: true, onClick: () => save() }));
   }
   drawer.appendChild(foot);
 
@@ -2193,7 +2188,7 @@ function renderTransactionsSection(body, api) {
   searchInput.type = 'search';
   searchInput.className = 'budget-input budget-tx-search';
   searchInput.placeholder = 'Search merchants';
-  searchInput.setAttribute('aria-label', 'Search merchants');
+  searchInput.setAttribute('aria-label', 'Search merchants'); api.ui.declareControl(searchInput, { id: 'budget.tx.search', label: 'Search merchants', kind: 'input', state: () => ({ kind: 'value', value: searchInput.value }) });
   searchInput.value = search;
   let searchTimer = null;
   searchInput.addEventListener('input', () => {
@@ -2205,7 +2200,7 @@ function renderTransactionsSection(body, api) {
   const acctSlot = document.createElement('span');
   acctSlot.className = 'budget-dd-slot';
   bar.appendChild(acctSlot);
-  setPageActions({ primary: { label: 'Add Transaction…', icon: 'plus', onClick: () => void openTxEditor(api, { onSaved: refresh }) } });
+  setPageActions({ primary: { id: 'budget.addTransaction', label: 'Add Transaction…', icon: 'plus', onClick: () => void openTxEditor(api, { onSaved: refresh }) } });
   root.appendChild(bar);
 
   // Quick filters, and the narrowing a link brought (category, day, type).
@@ -2215,7 +2210,7 @@ function renderTransactionsSection(body, api) {
   const chips = new Map();
   for (const v of TX_VIEWS) {
     const chip = api.ui.createFilterChip(chipsBar, {
-      label: v.label,
+      id: `budget.tx.view.${v.id}`, label: v.label,
       pressed: v.id === view,
       onToggle: () => { view = v.id; if (v.id !== 'spend') typeOnly = null; if (v.id !== 'transfer') aiTypedOnly = false; syncChips(); void refresh(); },
     });
@@ -2233,7 +2228,7 @@ function renderTransactionsSection(body, api) {
   }
   root.appendChild(head);
   const list = document.createElement('div');
-  list.className = 'budget-tx-list';
+  list.className = 'budget-tx-list'; api.ui.createList(list, { id: 'budget.tx.list', label: 'Transactions', rows: () => [...list.children], selected: () => [] });
   root.appendChild(list);
 
   let alive = true;
@@ -2249,23 +2244,23 @@ function renderTransactionsSection(body, api) {
     accountsList = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four').catch(() => []);
     const opts = [{ value: '', label: 'All accounts' }].concat(
       accountsList.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) })));
-    acctSlot.replaceChildren(makeDropdown(opts, accountId || '', (v) => { accountId = v || null; void refresh(); }, { ariaLabel: 'Account' }));
+    acctSlot.replaceChildren(makeDropdown(opts, accountId || '', (v) => { accountId = v || null; void refresh(); }, { ariaLabel: 'Account', id: 'budget.tx.account' }));
   }
 
   // A link's narrowing shows as pressed chips; clicking one lets it go.
   function drawNarrowing() {
     narrowHost.replaceChildren();
-    const add = (label, clear) => api.ui.createFilterChip(narrowHost, {
-      label, pressed: true, title: 'Remove this filter',
+    const add = (key, label, clear) => api.ui.createFilterChip(narrowHost, {
+      id: `budget.tx.narrow.${key}`, label, pressed: true, title: 'Remove this filter',
       onToggle: () => { clear(); drawNarrowing(); void refresh(); },
     });
     if (categoryId) {
       const cat = categoriesList.find(c => c.id === categoryId);
-      add(cat ? cat.name : 'One category', () => { categoryId = null; });
+      add('category', cat ? cat.name : 'One category', () => { categoryId = null; });
     }
-    if (dayYmd) add(shortDate(dayYmd), () => { dayYmd = null; });
-    if (typeOnly) add(typeOnly === 'fee' ? 'Fees only' : 'Purchases only', () => { typeOnly = null; });
-    if (aiTypedOnly) add('Typed by the AI', () => { aiTypedOnly = false; });
+    if (dayYmd) add('day', shortDate(dayYmd), () => { dayYmd = null; });
+    if (typeOnly) add('type', typeOnly === 'fee' ? 'Fees only' : 'Purchases only', () => { typeOnly = null; });
+    if (aiTypedOnly) add('aiTyped', 'Typed by the AI', () => { aiTypedOnly = false; });
   }
 
   async function refresh() {
@@ -2510,8 +2505,8 @@ function renderReviewQueueSection(body, api) {
     text.className = 'budget-ov-grow';
     text.textContent = message;
     undoBar.appendChild(text);
-    api.ui.createButton(undoBar, { label: 'Undo', kind: 'ghost', size: 'sm', onClick: () => { hideUndo(); void onUndo(); } });
-    api.ui.createIconButton(undoBar, { icon: 'x', title: 'Dismiss' }).addEventListener('click', hideUndo);
+    api.ui.createButton(undoBar, { id: 'budget.review.undo', label: 'Undo', kind: 'ghost', size: 'sm', onClick: () => { hideUndo(); void onUndo(); } });
+    api.ui.createIconButton(undoBar, { id: 'budget.review.dismissUndo', icon: 'x', title: 'Dismiss' }).addEventListener('click', hideUndo);
     undoBar.hidden = false;
     undoTimer = setTimeout(hideUndo, 12000);
   }
@@ -2747,7 +2742,7 @@ function renderReviewQueueSection(body, api) {
     seg.className = 'budget-rv-verdict';
     what.appendChild(seg);
     api.ui.createSegmented(seg, {
-      ariaLabel: 'What it is',
+      id: 'budget.review.verdict', ariaLabel: 'What it is',
       items: REVIEW_VERDICTS.filter(v => v.value !== 'duplicate' || dupLive(r)),
       value: d.verdict,
       onChange: (v) => {
@@ -2787,7 +2782,7 @@ function renderReviewQueueSection(body, api) {
         scopedCategoryOptions(categories, v, d.categoryId, 'Choose a category…'),
         d.categoryId || '',
         (val) => { d.categoryId = val || null; drawRemember(); syncConfirm(); },
-        { ariaLabel: 'Category', className: 'budget-rv-cat' },
+        { ariaLabel: 'Category', className: 'budget-rv-cat', id: 'budget.review.category' },
       );
       choice.append(catLabel, dd);
       const remember = document.createElement('div');
@@ -2822,7 +2817,7 @@ function renderReviewQueueSection(body, api) {
         box.addEventListener('change', () => { d.remember = box.checked; });
         const text = document.createElement('span');
         text.textContent = `Remember: ${r.merchant} goes in ${cat.name}`;
-        label.append(box, text);
+        label.append(box, text); api.ui.declareControl(box, { id: 'budget.review.remember', label: text.textContent, kind: 'toggle', state: () => ({ kind: 'pressed', value: box.checked }) });
         const sub = document.createElement('div');
         sub.className = 'budget-ov-faint';
         sub.textContent = rule
@@ -2836,7 +2831,7 @@ function renderReviewQueueSection(body, api) {
     // Confirm, Skip, where we are.
     const acts = document.createElement('div');
     acts.className = 'budget-rv-actions';
-    const confirmBtn = api.ui.createButton(acts, { label: 'Confirm', kind: 'primary', onClick: () => void confirmRow(r, d) });
+    const confirmBtn = api.ui.createButton(acts, { id: 'budget.review.confirm', label: 'Confirm', kind: 'primary', onClick: () => void confirmRow(r, d) });
     function syncConfirm() {
       const missing = needsCategory(d) && !d.categoryId;
       confirmBtn.disabled = missing;
@@ -2844,7 +2839,7 @@ function renderReviewQueueSection(body, api) {
     }
     drawChoice();
     if (rows.length > 1) {
-      api.ui.createButton(acts, { label: 'Skip', onClick: () => select(nextId(r.id)) });
+      api.ui.createButton(acts, { id: 'budget.review.skip', label: 'Skip', onClick: () => select(nextId(r.id)) });
     }
     const pos = document.createElement('span');
     pos.className = 'budget-ov-faint budget-rv-pos';
@@ -3015,7 +3010,7 @@ function renderSyncLogSection(body, api) {
 
 function renderCategoriesSection(body, api) {
   setPageActions({ primary: {
-    label: 'Add Category…',
+    id: 'budget.addCategory', label: 'Add Category…',
     icon: 'plus',
     onClick: async () => {
       const name = (await api.window?.showInputBox?.({ prompt: 'Category name', placeHolder: 'e.g. Pets' }) || '').trim();
@@ -3062,7 +3057,7 @@ function renderCategoriesSection(body, api) {
       </tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const r of rows) {
-      const tr = document.createElement('tr');
+      const tr = document.createElement('tr'); api.ui.createSurface(tr, { id: 'budget.category', owner: 'budget', label: r.name, instance: String(r.id) });
       if (r.archived) tr.className = 'is-archived';
 
       // Name (click to rename)
@@ -3100,7 +3095,7 @@ function renderCategoriesSection(body, api) {
       const limitInput = document.createElement('input');
       limitInput.type = 'number'; limitInput.step = '1'; limitInput.min = '0';
       limitInput.className = 'budget-input budget-cat-limit';
-      limitInput.placeholder = 'No limit';
+      limitInput.placeholder = 'No limit'; api.ui.declareControl(limitInput, { id: 'budget.category.limit', label: 'Default limit', kind: 'input', state: () => ({ kind: 'value', value: limitInput.value }) });
       limitInput.value = r.monthly_limit_cents != null ? (Number(r.monthly_limit_cents) / 100).toFixed(2) : '';
       limitInput.addEventListener('change', async () => {
         const v = limitInput.value.trim();
@@ -3120,7 +3115,7 @@ function renderCategoriesSection(body, api) {
       // display:flex stops being a table cell and pulls every column out of
       // line with its heading.)
       const tdAct = document.createElement('td'); tdAct.className = 'budget-cell-more';
-      const moreBtn = api.ui.createIconButton(tdAct, { icon: 'ellipsis', title: 'Category Actions', size: 'sm' });
+      const moreBtn = api.ui.createIconButton(tdAct, { id: 'budget.category.more', icon: 'ellipsis', title: 'Category Actions', size: 'sm' });
       moreBtn.addEventListener('click', () => api.ui.showContextMenu(moreBtn, [
         { label: 'Rename…', onSelect: async () => {
           const next = (await api.window?.showInputBox?.({ prompt: 'New name', value: r.name }) || '').trim();
@@ -3184,7 +3179,7 @@ function renderOverviewSection(body, api) {
         icon: 'wallet',
         headline: 'Nothing in the ledger yet.',
         hint: 'Sync your transaction emails from Gmail, or import a CSV, to see the month here.',
-        action: { label: 'Sync Now', onClick: () => api.commands.executeCommand('budget.sync') },
+        action: { id: 'budget.sync', command: 'budget.sync', label: 'Sync Now', onClick: () => api.commands.executeCommand('budget.sync') },
       });
       return;
     }
@@ -3337,7 +3332,7 @@ function drawSyncStrip(root, data, api) {
   if (data.review) {
     const act = document.createElement('div');
     act.className = 'budget-ov-sync-act';
-    api.ui.createButton(act, { label: `Review ${data.review}`, kind: 'primary', onClick: () => openBudgetSection(api, 'review') });
+    api.ui.createButton(act, { id: 'budget.overview.review', label: `Review ${data.review}`, kind: 'primary', onClick: () => openBudgetSection(api, 'review') });
     strip.appendChild(act);
   }
   root.appendChild(strip);
@@ -3690,20 +3685,14 @@ async function openManualBalanceEditor(api, opts = {}) {
 
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
-  title.textContent = isCreate ? 'Add Asset or Debt' : 'Edit Asset or Debt';
+  title.textContent = isCreate ? 'Add Asset or Debt' : 'Edit Asset or Debt'; api.ui.createSurface(drawer, { id: 'budget.holdingEditor', owner: 'budget', label: title.textContent });
   head.appendChild(title);
   // The kit's icon button: a title and an accessible name, like every close.
-  api.ui.createIconButton(head, { icon: 'x', title: 'Close' }).addEventListener('click', close);
+  api.ui.createIconButton(head, { id: 'budget.holdingEditor.close', icon: 'x', title: 'Close' }).addEventListener('click', close);
   drawer.appendChild(head);
 
   const form = document.createElement('div'); form.className = 'budget-drawer-body';
-  function field(labelText, control, hint) {
-    const f = document.createElement('label'); f.className = 'budget-field';
-    const l = document.createElement('span'); l.className = 'budget-field-label'; l.textContent = labelText;
-    f.appendChild(l); f.appendChild(control);
-    if (hint) { const h = document.createElement('span'); h.className = 'budget-field-hint'; h.textContent = hint; f.appendChild(h); }
-    return f;
-  }
+  const field = (labelText, control, hint) => drawerField(api, 'budget.holdingEditor', labelText, control, hint);
 
   const nameInput = document.createElement('input'); nameInput.className = 'budget-input'; nameInput.type = 'text';
   nameInput.placeholder = 'e.g. 401(k), House, Car loan'; nameInput.value = row?.name || '';
@@ -3745,7 +3734,7 @@ async function openManualBalanceEditor(api, opts = {}) {
   const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
   if (!isCreate) {
     let armed = false, armTimer = null;
-    const delBtn = makeButton('Delete', { onClick: async () => {
+    const delBtn = makeButton('Delete', { id: 'budget.holdingEditor.delete', onClick: async () => {
       if (!armed) {
         armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete';
         delBtn.classList.add('px-btn--danger');
@@ -3759,7 +3748,7 @@ async function openManualBalanceEditor(api, opts = {}) {
     foot.appendChild(delBtn);
   }
   const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
-  foot.appendChild(makeButton('Cancel', { onClick: close }));
+  foot.appendChild(makeButton('Cancel', { id: 'budget.holdingEditor.cancel', onClick: close }));
   async function save() {
     const name = nameInput.value.trim();
     if (!name) { nameInput.focus(); return; }
@@ -3783,7 +3772,7 @@ async function openManualBalanceEditor(api, opts = {}) {
       close(); opts.onSaved?.();
     } catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
   }
-  foot.appendChild(makeButton(isCreate ? 'Add Asset or Debt' : 'Save', { primary: true, onClick: onceAtATime(save) }));
+  foot.appendChild(makeButton(isCreate ? 'Add Asset or Debt' : 'Save', { id: 'budget.holdingEditor.save', primary: true, onClick: onceAtATime(save) }));
   drawer.appendChild(foot);
 
   document.body.appendChild(overlay);
@@ -3908,12 +3897,12 @@ function renderAccountsSection(body, api, opts = {}) {
       table.innerHTML = `<thead><tr><th>Name</th><th style="width:170px">Kind</th><th style="width:80px">Last 4</th><th style="text-align:right;width:110px">Transactions</th><th style="text-align:right;width:140px">Latest balance</th><th style="width:90px">As of</th><th style="width:48px"><span class="budget-sr">Actions</span></th></tr></thead>`;
       const tb = document.createElement('tbody');
       for (const a of allRows) {
-        const tr = document.createElement('tr');
+        const tr = document.createElement('tr'); api.ui.createSurface(tr, { id: 'budget.syncedAccount', owner: 'budget', label: a.display_name || defaultAccountName(a.kind, a.last_four), instance: String(a.id) });
         if (a.archived) tr.className = 'is-archived';
         const tdName = document.createElement('td');
         const inp = document.createElement('input'); inp.type = 'text'; inp.value = a.display_name || ''; inp.className = 'budget-input budget-inline-input';
         inp.placeholder = defaultAccountName(a.kind, a.last_four);
-        inp.title = 'Rename';
+        inp.title = 'Rename'; api.ui.declareControl(inp, { id: 'budget.syncedAccount.name', label: 'Name', kind: 'input', state: () => ({ kind: 'value', value: inp.value }) });
         inp.addEventListener('change', async () => {
           try { await db.run('UPDATE accounts SET display_name=?, updated_at=? WHERE id=?', [inp.value || null, new Date().toISOString(), a.id]); }
           catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
@@ -3933,7 +3922,7 @@ function renderAccountsSection(body, api, opts = {}) {
         const tdBal = document.createElement('td'); tdBal.className = 'budget-amount'; tdBal.textContent = a.bal != null ? fmtMoney(a.bal) : '—'; tr.appendChild(tdBal);
         const tdDate = document.createElement('td'); tdDate.textContent = a.bal_date ? shortDate(a.bal_date) : '—'; tr.appendChild(tdDate);
         const tdAct = document.createElement('td'); tdAct.className = 'budget-cell-more';
-        const moreBtn = api.ui.createIconButton(tdAct, { icon: 'ellipsis', title: 'Account Actions', size: 'sm' });
+        const moreBtn = api.ui.createIconButton(tdAct, { id: 'budget.syncedAccount.more', icon: 'ellipsis', title: 'Account Actions', size: 'sm' });
         moreBtn.addEventListener('click', () => api.ui.showContextMenu(moreBtn, [
           { label: a.archived ? 'Unarchive' : 'Archive', onSelect: async () => {
             try { await db.run('UPDATE accounts SET archived=?, updated_at=? WHERE id=?', [a.archived ? 0 : 1, new Date().toISOString(), a.id]); await refresh(); }
@@ -4034,20 +4023,14 @@ async function openGoalEditor(api, opts = {}) {
 
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
-  title.textContent = isCreate ? 'Add Goal' : 'Edit Goal';
+  title.textContent = isCreate ? 'Add Goal' : 'Edit Goal'; api.ui.createSurface(drawer, { id: 'budget.goalEditor', owner: 'budget', label: title.textContent });
   head.appendChild(title);
   // The kit's icon button: a title and an accessible name, like every close.
-  api.ui.createIconButton(head, { icon: 'x', title: 'Close' }).addEventListener('click', close);
+  api.ui.createIconButton(head, { id: 'budget.goalEditor.close', icon: 'x', title: 'Close' }).addEventListener('click', close);
   drawer.appendChild(head);
 
   const form = document.createElement('div'); form.className = 'budget-drawer-body';
-  function field(labelText, control, hint) {
-    const f = document.createElement('label'); f.className = 'budget-field';
-    const l = document.createElement('span'); l.className = 'budget-field-label'; l.textContent = labelText;
-    f.appendChild(l); f.appendChild(control);
-    if (hint) { const h = document.createElement('span'); h.className = 'budget-field-hint'; h.textContent = hint; f.appendChild(h); }
-    return f;
-  }
+  const field = (labelText, control, hint) => drawerField(api, 'budget.goalEditor', labelText, control, hint);
   const nameInput = document.createElement('input'); nameInput.className = 'budget-input'; nameInput.type = 'text';
   nameInput.placeholder = 'e.g. Emergency fund, Pay off Visa'; nameInput.value = row?.name || '';
   const kindSel = makeDropdown(
@@ -4074,7 +4057,7 @@ async function openGoalEditor(api, opts = {}) {
   const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
   if (!isCreate) {
     let armed = false, armTimer = null;
-    const delBtn = makeButton('Delete', { onClick: async () => {
+    const delBtn = makeButton('Delete', { id: 'budget.goalEditor.delete', onClick: async () => {
       if (!armed) { armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete'; delBtn.classList.add('px-btn--danger'); armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('px-btn--danger'); }, 3000); return; }
       if (armTimer) clearTimeout(armTimer);
       try { await db.run('DELETE FROM goals WHERE id=?', [opts.id]); close(); opts.onSaved?.(); }
@@ -4083,7 +4066,7 @@ async function openGoalEditor(api, opts = {}) {
     foot.appendChild(delBtn);
   }
   const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
-  foot.appendChild(makeButton('Cancel', { onClick: close }));
+  foot.appendChild(makeButton('Cancel', { id: 'budget.goalEditor.cancel', onClick: close }));
   async function save() {
     const name = nameInput.value.trim(); if (!name) { nameInput.focus(); return; }
     const target = parseFloat(targetInput.value); if (!Number.isFinite(target) || target <= 0) { targetInput.focus(); return; }
@@ -4100,7 +4083,7 @@ async function openGoalEditor(api, opts = {}) {
       close(); opts.onSaved?.();
     } catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
   }
-  foot.appendChild(makeButton(isCreate ? 'Add Goal' : 'Save', { primary: true, onClick: onceAtATime(save) }));
+  foot.appendChild(makeButton(isCreate ? 'Add Goal' : 'Save', { id: 'budget.goalEditor.save', primary: true, onClick: onceAtATime(save) }));
   drawer.appendChild(foot);
   document.body.appendChild(overlay);
   nameInput.focus();
@@ -4150,7 +4133,7 @@ function renderCashFlowSection(body, api) {
   const rangeSel = makeDropdown(
     [[3, 'Last 3 months'], [6, 'Last 6 months'], [12, 'Last 12 months']].map(([v, label]) => ({ value: String(v), label })),
     String(monthsBackN),
-    (val) => { monthsBackN = Number(val) || 6; void refresh(); });
+    (val) => { monthsBackN = Number(val) || 6; void refresh(); }, { ariaLabel: 'Range', id: 'budget.cashFlow.range' });
   toolbar.appendChild(rangeSel);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   body.appendChild(toolbar);
@@ -4250,7 +4233,7 @@ function renderReportsSection(body, api) {
   const rangeSel = makeDropdown(
     [[1, 'This month'], [3, 'Last 3 months'], [6, 'Last 6 months'], [12, 'Last 12 months']].map(([v, label]) => ({ value: String(v), label })),
     String(monthsBackN),
-    (val) => { monthsBackN = Number(val) || 3; void refresh(); });
+    (val) => { monthsBackN = Number(val) || 3; void refresh(); }, { ariaLabel: 'Range', id: 'budget.reports.range' });
   toolbar.appendChild(rangeSel);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   body.appendChild(toolbar);
@@ -4420,16 +4403,16 @@ async function readExpectedIncome(monthKey) {
 function drawMonthNav(host, api, monthKey, go) {
   host.replaceChildren();
   host.classList.add('budget-ov-month');
-  const prev = api.ui.createIconButton(host, { icon: 'chevron-left', title: 'Previous Month' });
+  const prev = api.ui.createIconButton(host, { id: 'budget.month.prev', icon: 'chevron-left', title: 'Previous Month' });
   const label = document.createElement('span');
   label.className = 'budget-ov-month-label';
   label.textContent = monthRange(monthKey).label;
   host.appendChild(label);
-  const next = api.ui.createIconButton(host, { icon: 'chevron-right', title: 'Next Month' });
+  const next = api.ui.createIconButton(host, { id: 'budget.month.next', icon: 'chevron-right', title: 'Next Month' });
   prev.addEventListener('click', () => go(monthShift(monthKey, -1)));
   next.addEventListener('click', () => go(monthShift(monthKey, 1)));
   if (monthKey !== monthRange().key) {
-    api.ui.createButton(host, { label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => go(monthRange().key) });
+    api.ui.createButton(host, { id: 'budget.month.current', label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => go(monthRange().key) });
   }
 }
 
@@ -4520,8 +4503,8 @@ function renderBudgetsSection(body, api) {
     bar.appendChild(nav);
     const acts = document.createElement('div');
     acts.className = 'budget-pl-acts';
-    api.ui.createButton(acts, { label: `Copy ${monthName(monthShift(monthKey, -1))}`, title: `Use ${monthName(monthShift(monthKey, -1))}'s limits for ${monthName(monthKey)}`, onClick: () => void copyPrevious() });
-    if (isCurrent) api.ui.createButton(acts, { label: `Plan ${monthName(monthShift(monthKey, 1))}`, onClick: () => go(monthShift(monthKey, 1)) });
+    api.ui.createButton(acts, { id: 'budget.plan.copyPrevious', label: `Copy ${monthName(monthShift(monthKey, -1))}`, title: `Use ${monthName(monthShift(monthKey, -1))}'s limits for ${monthName(monthKey)}`, onClick: () => void copyPrevious() });
+    if (isCurrent) api.ui.createButton(acts, { id: 'budget.plan.next', label: `Plan ${monthName(monthShift(monthKey, 1))}`, onClick: () => go(monthShift(monthKey, 1)) });
     bar.appendChild(acts);
     root.appendChild(bar);
 
@@ -4613,7 +4596,7 @@ function renderBudgetsSection(body, api) {
     for (const b of dueBills) billsByCat.set(b.categoryId, (billsByCat.get(b.categoryId) || 0) + (b.paid ? b.paidCents : b.toComeCents));
     for (const r of plan.categories) {
       const row = document.createElement('div');
-      row.className = 'budget-pl-cat';
+      row.className = 'budget-pl-cat'; api.ui.createSurface(row, { id: 'budget.limit', owner: 'budget', label: r.name, instance: String(r.id) });
       const nameCol = document.createElement('div');
       nameCol.className = 'budget-pl-catname';
       const top = document.createElement('span');
@@ -4635,7 +4618,7 @@ function renderBudgetsSection(body, api) {
       const input = document.createElement('input');
       input.type = 'number'; input.step = '1'; input.min = '0';
       input.className = 'budget-input budget-pl-input';
-      input.setAttribute('aria-label', `${r.name} limit for ${monthName(monthKey)}`);
+      input.setAttribute('aria-label', `${r.name} limit for ${monthName(monthKey)}`); api.ui.declareControl(input, { id: 'budget.limit.amount', label: input.getAttribute('aria-label'), kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
       input.placeholder = 'No limit';
       input.value = r.effective_limit_cents > 0 ? (r.effective_limit_cents / 100).toFixed(2) : '';
       input.addEventListener('change', async () => {
@@ -4647,7 +4630,7 @@ function renderBudgetsSection(body, api) {
       const useCol = document.createElement('div');
       useCol.className = 'budget-pl-use';
       if (suggested > 0 && suggested !== r.effective_limit_cents) {
-        api.ui.createButton(useCol, { label: `Use ${fmtMoney(suggested)}`, kind: 'ghost', size: 'sm', title: `Set the limit to ${fmtMoney(suggested)}, from the last three months`, onClick: async () => {
+        api.ui.createButton(useCol, { id: 'budget.limit.useSuggested', label: `Use ${fmtMoney(suggested)}`, kind: 'ghost', size: 'sm', title: `Set the limit to ${fmtMoney(suggested)}, from the last three months`, onClick: async () => {
           try { await writeLimit(r.id, suggested); notifyLedgerChanged(); }
           catch (e) { await api.window?.showErrorMessage?.('Could not save the limit: ' + (e instanceof Error ? e.message : String(e))); }
         } });
@@ -4723,10 +4706,10 @@ function renderRecurringSection(body, api) {
   let showCancelled = false;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  api.ui.createFilterChip(toolbar, { label: 'Show Cancelled', pressed: false, onToggle: (on) => { showCancelled = on; void refresh(); } });
+  api.ui.createFilterChip(toolbar, { id: 'budget.bills.showCancelled', label: 'Show Cancelled', pressed: false, onToggle: (on) => { showCancelled = on; void refresh(); } });
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   toolbar.appendChild(makeButton('Detect Bills', {
-    icon: 'refresh-cw',
+    id: 'budget.bills.detect', icon: 'refresh-cw',
     title: 'Look through the ledger for charges that repeat',
     onClick: async () => {
       try {
@@ -4795,7 +4778,7 @@ function renderRecurringSection(body, api) {
     // One clean list, soonest due first. Actions reveal on hover.
     for (const r of all) {
       const row = document.createElement('div');
-      row.className = 'budget-recur-row' + (r.cancelled ? ' is-cancelled' : '');
+      row.className = 'budget-recur-row' + (r.cancelled ? ' is-cancelled' : ''); api.ui.createSurface(row, { id: 'budget.bill', owner: 'budget', label: r.display_name || r.merchant_pattern, instance: String(r.id) });
 
       const main = document.createElement('div'); main.className = 'budget-recur-main';
       const lowHint = (!r.cancelled && r.detection_confidence === 'low') ? ' · <span class="budget-recur-low">unsure</span>' : '';
@@ -4810,7 +4793,7 @@ function renderRecurringSection(body, api) {
         `<span class="budget-recur-due">${escHtml(r.cancelled ? 'Cancelled' : dueLabel(r.next_due_date, today))}</span>`;
 
       const acts = document.createElement('div'); acts.className = 'budget-recur-acts';
-      acts.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Mark Cancelled', {
+      acts.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Mark Cancelled', { id: 'budget.bill.cancelled',
         onClick: async () => {
           await db.run('UPDATE recurring_series SET cancelled=?, updated_at=? WHERE id=?', [r.cancelled ? 0 : 1, new Date().toISOString(), r.id]);
           notifyLedgerChanged(); // bills feed what is left to spend
@@ -4818,7 +4801,7 @@ function renderRecurringSection(body, api) {
       }));
       if (!r.cancelled && !r.user_confirmed) {
         acts.appendChild(makeButton('Confirm', {
-          primary: true,
+          id: 'budget.bill.confirm', primary: true,
           onClick: async () => {
             await db.run('UPDATE recurring_series SET user_confirmed=1, updated_at=? WHERE id=?', [new Date().toISOString(), r.id]);
             notifyLedgerChanged(); // bills feed what is left to spend
@@ -4884,7 +4867,7 @@ function renderRulesSection(body, api) {
   root.className = 'budget-ru';
   body.appendChild(root);
 
-  setPageActions({ primary: { label: 'New Rule', icon: 'plus', onClick: () => showEditor(null) } });
+  setPageActions({ primary: { id: 'budget.newRule', label: 'New Rule', icon: 'plus', onClick: () => showEditor(null) } });
   const help = document.createElement('p');
   help.className = 'budget-ov-note budget-ru-help';
   help.textContent = 'A rule decides the category before the AI is asked. Merchants without a rule are left to the AI; three matching AI answers make a learned rule, as long as none disagree.';
@@ -4925,14 +4908,14 @@ function renderRulesSection(body, api) {
     const la = document.createElement('span'); la.className = 'budget-ov-label'; la.textContent = 'When the merchant';
     const seg = document.createElement('div');
     api.ui.createSegmented(seg, {
-      ariaLabel: 'How the merchant is matched',
+      id: 'budget.ruleEditor.match', ariaLabel: 'How the merchant is matched',
       items: [{ value: 'contains', label: 'Contains' }, { value: 'exact', label: 'Is Exactly' }, { value: 'regex', label: 'Matches Pattern' }],
       value: matchType,
       onChange: (v) => { matchType = v; schedule(); },
     });
     const patternInp = document.createElement('input');
     patternInp.className = 'budget-input budget-ru-input';
-    patternInp.setAttribute('aria-label', 'Merchant text');
+    patternInp.setAttribute('aria-label', 'Merchant text'); api.ui.declareControl(patternInp, { id: 'budget.ruleEditor.pattern', label: 'Merchant text', kind: 'input', state: () => ({ kind: 'value', value: patternInp.value }) });
     patternInp.placeholder = 'e.g. BLUE BOTTLE';
     patternInp.value = rule ? rule.pattern : (preset?.pattern || '');
     rowA.append(la, seg, patternInp);
@@ -4942,7 +4925,7 @@ function renderRulesSection(body, api) {
     rowB.className = 'budget-ru-field';
     const lb = document.createElement('span'); lb.className = 'budget-ov-label'; lb.textContent = 'File it under';
     const catSel = makeDropdown(categoryOptions(categories, 'Choose a category…'),
-      rule ? (rule.category_id || '') : (preset?.categoryId || ''), () => schedule(), { ariaLabel: 'Category', className: 'budget-ru-cat' });
+      rule ? (rule.category_id || '') : (preset?.categoryId || ''), () => schedule(), { ariaLabel: 'Category', className: 'budget-ru-cat', id: 'budget.ruleEditor.category' });
     rowB.append(lb, catSel);
     card.appendChild(rowB);
 
@@ -4956,7 +4939,7 @@ function renderRulesSection(body, api) {
     pastBox.type = 'checkbox';
     const pastText = document.createElement('span');
     pastText.textContent = 'Also change the past ones';
-    pastLabel.append(pastBox, pastText);
+    pastLabel.append(pastBox, pastText); api.ui.declareControl(pastBox, { id: 'budget.ruleEditor.past', label: pastText.textContent, kind: 'toggle', state: () => ({ kind: 'pressed', value: pastBox.checked }) });
     card.appendChild(pastLabel);
 
     let lastDry = null;
@@ -5003,8 +4986,8 @@ function renderRulesSection(body, api) {
 
     const acts = document.createElement('div');
     acts.className = 'budget-ru-acts';
-    api.ui.createButton(acts, { label: 'Cancel', onClick: () => editorWrap.replaceChildren() });
-    api.ui.createButton(acts, { label: 'Save Rule', kind: 'primary', onClick: onceAtATime(() => save()) });
+    api.ui.createButton(acts, { id: 'budget.ruleEditor.cancel', label: 'Cancel', onClick: () => editorWrap.replaceChildren() });
+    api.ui.createButton(acts, { id: 'budget.ruleEditor.save', label: 'Save Rule', kind: 'primary', onClick: onceAtATime(() => save()) });
     card.appendChild(acts);
     editorWrap.appendChild(card);
     void runDry();
@@ -5085,7 +5068,7 @@ function renderRulesSection(body, api) {
       cols(rulesWrap, ['Merchant', 'Category', 'Used', 'Made by', '']);
       for (const r of rules) {
         const row = document.createElement('div');
-        row.className = 'budget-ru-row' + (r.active ? '' : ' is-off');
+        row.className = 'budget-ru-row' + (r.active ? '' : ' is-off'); api.ui.createSurface(row, { id: 'budget.rule', owner: 'budget', label: r.pattern, instance: String(r.id) });
         const who = document.createElement('span');
         who.className = 'budget-ru-who';
         const p = document.createElement('span'); p.className = 'budget-ov-grow'; p.textContent = r.pattern;
@@ -5104,7 +5087,7 @@ function renderRulesSection(body, api) {
         const by = document.createElement('span'); by.className = 'budget-ov-muted'; by.textContent = ruleMadeBy(r);
         const more = document.createElement('span');
         more.className = 'budget-ru-more';
-        const btn = api.ui.createIconButton(more, { icon: 'ellipsis', title: 'Rule Actions' });
+        const btn = api.ui.createIconButton(more, { id: 'budget.rule.more', icon: 'ellipsis', title: 'Rule Actions' });
         btn.addEventListener('click', () => api.ui.showContextMenu(btn, [
           { label: 'Edit', onSelect: () => showEditor(r) },
           { label: r.active ? 'Turn Off' : 'Turn On', onSelect: async () => {
@@ -5249,12 +5232,12 @@ function renderReconcileSection(body, api) {
     // Form
     const h = document.createElement('h3'); h.textContent = 'Mark reconciled'; formWrap.appendChild(h);
     const form = document.createElement('div'); form.style.display = 'flex'; form.style.gap = '8px'; form.style.alignItems = 'center'; form.style.flexWrap = 'wrap';
-    const dateInp = document.createElement('input'); dateInp.type = 'date'; dateInp.className = 'budget-input'; dateInp.value = todayYmd();
-    const balInp = document.createElement('input'); balInp.type = 'number'; balInp.step = '0.01'; balInp.placeholder = 'Statement balance ($)'; balInp.className = 'budget-input'; balInp.style.width = '180px';
+    const dateInp = document.createElement('input'); dateInp.type = 'date'; dateInp.className = 'budget-input'; dateInp.value = todayYmd(); api.ui.declareControl(dateInp, { id: 'budget.reconcile.date', label: 'Statement date', kind: 'input', state: () => ({ kind: 'value', value: dateInp.value }) });
+    const balInp = document.createElement('input'); balInp.type = 'number'; balInp.step = '0.01'; balInp.placeholder = 'Statement balance ($)'; balInp.className = 'budget-input'; balInp.style.width = '180px'; api.ui.declareControl(balInp, { id: 'budget.reconcile.balance', label: 'Statement balance', kind: 'input', state: () => ({ kind: 'value', value: balInp.value }) });
     if (latestSnap) balInp.value = (Number(latestSnap.balance_cents) / 100).toFixed(2);
-    const noteInp = document.createElement('input'); noteInp.type = 'text'; noteInp.placeholder = 'Note (optional)'; noteInp.className = 'budget-input'; noteInp.style.flex = '1'; noteInp.style.minWidth = '160px';
+    const noteInp = document.createElement('input'); noteInp.type = 'text'; noteInp.placeholder = 'Note (optional)'; noteInp.className = 'budget-input'; noteInp.style.flex = '1'; noteInp.style.minWidth = '160px'; api.ui.declareControl(noteInp, { id: 'budget.reconcile.note', label: 'Note', kind: 'input', state: () => ({ kind: 'value', value: noteInp.value }) });
     const saveBtn = makeButton('Reconcile', {
-      primary: true,
+      id: 'budget.reconcile.save', primary: true,
       onClick: async () => {
         if (balInp.value.trim() === '') { await api.window?.showWarningMessage?.('Enter the statement balance.'); balInp.focus(); return; }
         const stmtCents = Math.round(parseFloat(balInp.value) * 100);
@@ -5351,7 +5334,7 @@ function renderImportExportSection(body, api) {
   ta.className = 'budget-input';
   ta.placeholder = 'date,merchant,amount,category,account,last_four,notes\n2026-05-01,Starbucks,4.75,Dining,Chase Checking,1234,';
   ta.rows = 10;
-  ta.spellcheck = false;
+  ta.spellcheck = false; api.ui.declareControl(ta, { id: 'budget.import.text', label: 'CSV to import', kind: 'input', state: () => ({ kind: 'value', value: ta.value }) });
   ta.style.width = '100%';
   ta.style.boxSizing = 'border-box';
   ta.style.fontFamily = 'var(--vscode-editor-font-family, ui-monospace, Consolas, monospace)';
@@ -5366,8 +5349,8 @@ function renderImportExportSection(body, api) {
   importBar.className = 'budget-toolbar';
   importWrap.appendChild(importBar);
 
-  const importBtn = makeButton('Import', { primary: true, onClick: doImport });
-  const clearBtn = makeButton('Clear', { onClick: () => { ta.value = ''; updatePreview(); status.textContent = ''; status.dataset.tone = ''; } });
+  const importBtn = makeButton('Import', { id: 'budget.import.run', primary: true, onClick: doImport });
+  const clearBtn = makeButton('Clear', { id: 'budget.import.clear', onClick: () => { ta.value = ''; updatePreview(); status.textContent = ''; status.dataset.tone = ''; } });
   importBar.appendChild(importBtn);
   importBar.appendChild(clearBtn);
 
@@ -5450,7 +5433,7 @@ function renderImportExportSection(body, api) {
   exportStatus.style.minHeight = '1.4em';
 
   const exportBtn = makeButton('Export Now', {
-    primary: true,
+    id: 'budget.export.run', primary: true,
     onClick: async () => {
       exportBtn.setAttribute('disabled', 'true');
       exportStatus.textContent = 'Exporting…';
@@ -8367,7 +8350,7 @@ function renderPlanSection(body, api, view) {
     } else if (v === 'reconcile') parts.push(renderReconcileSection(content, api));
     cleanup = () => { for (const p of parts) if (typeof p === 'function') p(); };
   }
-  api.ui.createSegmented(bar, { ariaLabel: 'Plan view', items: PLAN_VIEWS, value: active, onChange: mount });
+  api.ui.createSegmented(bar, { id: 'budget.plan.view', ariaLabel: 'Plan view', items: PLAN_VIEWS, value: active, onChange: mount });
   mount(active);
   return () => { if (typeof cleanup === 'function') cleanup(); };
 }

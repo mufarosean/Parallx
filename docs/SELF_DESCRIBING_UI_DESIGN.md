@@ -879,21 +879,28 @@ web-research checked 2026-10-13, in the cloud: it draws no chrome (an
 AI tool and a bridge, no buttons or fields), so there is nothing to
 declare; it is done as it stands.
 
-Next is budget, on the owner's machine as planned. What the next
-session needs to know: `ext/budget/main.js` is at its size baseline
-(9060 lines), so every id goes inside an existing kit call's options on
-the same line, or a module is extracted first (the drawers at lines
-1850 to 1910, 3696 to 3735 and 4040 to 4065 are the natural cut; the
-loader resolves relative imports). Of its 31 kit calls, give ids only
-to the singletons (the sidebar's sync, the undo bar, the month
-navigation, the rules editor's cancel and save, the plan view switch,
-the drawers' close buttons with one id per drawer); the per-row calls
-(category, account and rule actions, review confirm and skip, the
-"use suggested" buttons) repeat and need a surface per row first.
-Raw inputs (the drawers' fields, the search box) take
-`api.ui.declareControl` with a value state. Then flashcards,
-concept-lab, media-organizer, creations-ai, browser and study, in that
-order.
+budget done 2026-10-12, on the owner's machine. The three drawers'
+duplicate `field()` helpers became `drawerField` in `ext/budget/drawer.js`,
+which also declares each field's control as `<drawer>.<label slug>`
+(input or select, with its value); that freed the lines `main.js` needed
+and it fell from 9060 to 9043. Each drawer is a surface
+(`budget.txEditor`, `budget.holdingEditor`, `budget.goalEditor`) with
+fixed ids for close, delete, cancel, save and confirm. `makeButton` and
+`makeDropdown` pass `id` (and `command`) through to the kit. Singletons
+carry ids: the sidebar's section list (`budget.sections`, one list entry) and
+Sync Now (`budget.sync`, with its command), the back link, each page's
+own actions, the month arrows, Transactions' search, account, view and
+narrowing chips and its list (one entry), Review's undo bar, verdict,
+category, remember, confirm and skip, Plan's view switch and copy and
+plan-next, Bills' show-cancelled and detect, the rule editor's fields and
+buttons, Reconcile's form, Import / Export, and Trends' two range
+pickers. Rows with buttons are surfaces with the row's id as instance:
+`budget.category` (limit and ⋯), `budget.syncedAccount` (name and ⋯),
+`budget.limit` (amount and use-suggested), `budget.bill` (cancel and
+confirm) and `budget.rule` (⋯). Every id is inline on an existing line;
+the DOM, styles and handlers are unchanged. The probe row opens
+Transactions. Next are flashcards, concept-lab, media-organizer,
+creations-ai, browser and study, in that order.
 
 ### Step 8. The scene line in the prompt (cloud)
 

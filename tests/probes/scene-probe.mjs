@@ -119,7 +119,10 @@ async function main() {
     for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
     for (const [viewId, id] of Object.entries(PANEL_VIEWS)) if (!ids.has(id)) stats.problems.push(`${viewId}: no "${id}"`);
     // Extensions (design step 7): turned on here, since the seeded workspace has none on; one id each once its surface opens.
-    const EXTENSION_IDS = { 'parallx.workspace-graph': ['workspaceGraph.open', ['workspaceGraph.search', 'workspaceGraph.refresh', 'workspaceGraph.viewMode']] };
+    const EXTENSION_IDS = {
+      'parallx.workspace-graph': ['workspaceGraph.open', ['workspaceGraph.search', 'workspaceGraph.refresh', 'workspaceGraph.viewMode']],
+      'parallx.budget': ['budget.openTransactions', ['budget.tx.search', 'budget.tx.list', 'budget.tx.view.all', 'budget.month.prev', 'budget.addTransaction']],
+    };
     await page.evaluate(async (ids) => {
       const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
       for (const id of ids) { try { await svc?.setEnablement(id, true); } catch (e) { console.warn('enable', id, String(e)); } }
