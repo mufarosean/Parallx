@@ -165,16 +165,23 @@ export class SegmentedControl extends Disposable {
     const currentIdx = this._segments.findIndex(s => s.value === this._selectedValue);
     let nextIdx = currentIdx;
 
+    // A radio group (WAI-ARIA): the arrows go round, Home and End jump.
+    const n = this._segments.length;
     switch (e.key) {
       case 'ArrowRight':
       case 'ArrowDown':
         e.preventDefault();
-        nextIdx = Math.min(currentIdx + 1, this._segments.length - 1);
+        nextIdx = (currentIdx + 1) % n;
         break;
       case 'ArrowLeft':
       case 'ArrowUp':
         e.preventDefault();
-        nextIdx = Math.max(currentIdx - 1, 0);
+        nextIdx = (currentIdx - 1 + n) % n;
+        break;
+      case 'Home':
+      case 'End':
+        e.preventDefault();
+        nextIdx = e.key === 'Home' ? 0 : n - 1;
         break;
       default:
         return;

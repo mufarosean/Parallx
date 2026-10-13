@@ -56,6 +56,20 @@ describe('enterMode — the exit contract', () => {
     expect(_activeModeIdsForTest()).not.toContain('test');
   });
 
+  it('a mode whose owner left the page ends at the next key instead of taking it', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const reasons: ModeExitReason[] = [];
+    const onKeydown = vi.fn(() => true);
+    enterMode({ id: 'orphan', ownedRoots: () => [root], onExit: (r) => reasons.push(r), onKeydown });
+    root.remove(); // its component re-rendered while open, never closing it
+    const e = key('ArrowDown');
+    expect(onKeydown).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+    expect(reasons).toEqual(['orphaned']);
+    expect(_activeModeIdsForTest()).not.toContain('orphan');
+  });
+
   it('Escape exits the TOPMOST mode only', async () => {
     const rootA = document.createElement('div');
     const rootB = document.createElement('div');

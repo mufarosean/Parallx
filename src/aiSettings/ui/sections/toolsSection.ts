@@ -54,6 +54,17 @@ const CATEGORY_DISPLAY: Record<ToolCategoryKind, { label: string; order: number 
 
 // ─── ToolsSection ────────────────────────────────────────────────────────────
 
+/** A group's fold chevron: a button, so the keyboard can fold what a click on the header folds. */
+function foldButton(label: string, collapsed: boolean, id: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ai-settings-tools-chevron';
+  btn.textContent = collapsed ? '\u25B6' : '\u25BC';
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  declareControl(btn, { id, label: `${collapsed ? 'Expand' : 'Collapse'} ${label}`, kind: 'toggle', state: () => ({ kind: 'pressed', value: !collapsed }) });
+  return btn;
+}
+
 export class ToolsSection extends SettingsSection {
 
   private _toolServices: IToolPickerServices | undefined;
@@ -162,7 +173,18 @@ export class ToolsSection extends SettingsSection {
   }
 
   /** Render the tool tree into _treeContainer. */
+  /** Re-render the tree; ticking a box or folding a group re-renders it, so focus comes back to the same control. */
   private _renderTree(query: string): void {
+    if (!this._treeContainer) return;
+    const keep = this._treeContainer.contains(document.activeElement) ? document.activeElement?.getAttribute('data-px-id') : null;
+    try {
+      this._renderTreeNow(query);
+    } finally {
+      if (keep) Array.from(this._treeContainer.querySelectorAll<HTMLElement>('[data-px-id]')).find((e) => e.getAttribute('data-px-id') === keep)?.focus();
+    }
+  }
+
+  private _renderTreeNow(query: string): void {
     if (!this._treeContainer) return;
     this._treeContainer.innerHTML = '';
 
@@ -220,8 +242,7 @@ export class ToolsSection extends SettingsSection {
 
       const groupHeader = $('div.ai-settings-tools-group-header');
 
-      const groupChevron = $('span.ai-settings-tools-chevron');
-      groupChevron.textContent = groupCollapsed ? '\u25B6' : '\u25BC';
+      const groupChevron = foldButton(groupLabel, groupCollapsed, `aiSettings.tools.group.${sceneSlug(groupLabel)}.fold`);
       groupHeader.appendChild(groupChevron);
 
       const groupCb = document.createElement('input');
@@ -270,8 +291,7 @@ export class ToolsSection extends SettingsSection {
         if (renderCatHeader) {
           const catHeader = $('div.ai-settings-tools-cat-header');
 
-          const catChevron = $('span.ai-settings-tools-chevron');
-          catChevron.textContent = cat.collapsed ? '\u25B6' : '\u25BC';
+          const catChevron = foldButton(cat.label, cat.collapsed, `aiSettings.tools.category.${sceneSlug(cat.label)}.fold`);
           catHeader.appendChild(catChevron);
 
           const catCb = document.createElement('input');

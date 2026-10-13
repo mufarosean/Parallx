@@ -443,10 +443,10 @@ export interface IKitInPlaceDeclaration extends IKitControlDeclaration {
  */
 export function declareControl(element: HTMLElement, declaration: IKitInPlaceDeclaration): IDisposable {
   const kind = declaration.kind ?? 'button';
-  // A select or field declared on its wrapper (a dropdown's host, an input box's
+  // A select, field or slider declared on its wrapper (a dropdown's host, an input box's
   // frame): the control inside is what a screen reader meets, so it carries the
   // name, and the wrapper takes no role of its own.
-  const inner = (kind === 'select' || kind === 'input') && !element.matches(NATIVE_FOCUS) ? element.querySelector<HTMLElement>('button, input, select, textarea') : null;
+  const inner = (kind === 'select' || kind === 'input' || kind === 'slider') && !element.matches(NATIVE_FOCUS) ? element.querySelector<HTMLElement>('button, input, select, textarea') : null;
   if (inner) { if (!inner.getAttribute('aria-label')) inner.setAttribute('aria-label', declaration.label); }
   else if (element.tagName !== 'BUTTON') setRole(element, ROLE_OF[kind]);
   makeKeyboardReachable(element, kind);

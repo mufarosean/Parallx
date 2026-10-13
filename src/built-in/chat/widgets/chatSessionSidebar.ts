@@ -265,6 +265,8 @@ export class ChatSessionSidebar extends Disposable {
 
   private _applyVisibility(): void {
     this._root.classList.toggle('parallx-chat-session-sidebar--visible', this._visible);
+    // Closed, it only slides off and fades: inert keeps its controls out of Tab and a screen reader.
+    this._root.inert = !this._visible;
   }
 
   // ── Internal: Filter toggle ──

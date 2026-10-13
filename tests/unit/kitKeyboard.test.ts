@@ -53,3 +53,16 @@ describe('declared controls are keyboard controls', () => {
     expect(wrap.getAttribute('tabindex')).toBeNull();
   });
 });
+
+describe('a slider declared on its wrapper', () => {
+  it('names the range input inside and leaves the wrapper without a role', () => {
+    const wrap = document.createElement('div');
+    const range = document.createElement('input');
+    range.type = 'range';
+    wrap.appendChild(range);
+    document.body.appendChild(wrap);
+    declareControl(wrap, { id: 'aiSettings.agent.maxIterations', label: 'Max iterations', kind: 'slider' });
+    expect(wrap.hasAttribute('role')).toBe(false);
+    expect(range.getAttribute('aria-label')).toBe('Max iterations');
+  });
+});

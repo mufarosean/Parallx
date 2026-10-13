@@ -3247,7 +3247,7 @@
   transition: opacity var(--px-dur-fast) var(--px-ease);
 }
 
-.canvas-page-menu-font-row:hover .canvas-page-menu-font-actions,
+.canvas-page-menu-font-row:hover .canvas-page-menu-font-actions, .canvas-page-menu-font-row:focus-within .canvas-page-menu-font-actions,
 .canvas-page-menu-font-row--default .canvas-page-menu-font-actions {
   opacity: 1;
 }

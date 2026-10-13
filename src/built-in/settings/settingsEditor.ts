@@ -614,6 +614,8 @@ export class SettingsEditor extends Disposable {
     const current = this._registry.getValue(schema.key);
     // A control is named by its row's title, never the dotted key a screen reader would spell out.
     const name = schema.label ?? humanizeSettingKey(schema.key);
+    // Fields save as focus leaves them; an unchanged value is no save (a save re-renders the page).
+    const unchanged = (v: unknown) => JSON.stringify(v) === JSON.stringify(this._registry.getValue(schema.key));
 
     switch (schema.type) {
       case 'boolean': {
@@ -643,7 +645,7 @@ export class SettingsEditor extends Disposable {
         this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: name, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
         const tryWrite = async (raw: string) => {
           const num = Number(raw);
-          if (!Number.isFinite(num)) return;
+          if (!Number.isFinite(num) || unchanged(num)) return;
           try {
             await this._registry.setValue(schema.key, num);
           } catch (err) {
@@ -670,6 +672,7 @@ export class SettingsEditor extends Disposable {
         this._controlDisposables.push(inputBox);
         this._controlDisposables.push(declareControl(inputBox.element, { id: `settings.${schema.key}`, label: name, kind: 'input', hint: schema.description, state: () => ({ kind: 'value', value: inputBox.value }) }));
         const write = async (raw: string) => {
+          if (unchanged(raw)) return;
           try {
             await this._registry.setValue(schema.key, raw);
           } catch (err) {
@@ -691,6 +694,7 @@ export class SettingsEditor extends Disposable {
         textarea.setAttribute('aria-label', name);
         host.appendChild(textarea);
         const write = async () => {
+          if (unchanged(textarea.value)) return;
           try {
             await this._registry.setValue(schema.key, textarea.value);
           } catch (err) {
@@ -754,6 +758,7 @@ export class SettingsEditor extends Disposable {
         const tryParse = async () => {
           try {
             const parsed = JSON.parse(textarea.value) as unknown;
+            if (unchanged(parsed)) return;
             await this._registry.setValue(schema.key, parsed);
             status.textContent = 'Saved';
             status.classList.remove('settings-editor__json-status--error');

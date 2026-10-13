@@ -1914,9 +1914,9 @@ export abstract class Layout extends Disposable {
       case PartId.Panel: return this._panel.visible;
       case PartId.AuxiliaryBar: return this._auxBarVisible;
       case PartId.StatusBar: return this._statusBar!.visible;
-      case PartId.ActivityBar: return true; // always visible
-      case PartId.Titlebar: return true;    // always visible
-      case PartId.Editor: return true;      // always visible
+      case PartId.ActivityBar: case PartId.Titlebar: case PartId.Editor: return true; // always visible
+      // The right bar shows while it holds icons (Chat, Agents): F6 stops there then.
+      case PartId.ActivityBarRight: return !!this._activityBarRight?.element.isConnected && this._activityBarRight.element.getClientRects().length > 0;
       default: return false;
     }
   }

@@ -454,6 +454,17 @@ describe('SettingsEditor — a save keeps the reader in place', () => {
 describe('SettingsEditor — a field saving on blur', () => {
   beforeEach(() => { document.body.replaceChildren(); });
 
+  it('leaves the page alone when the field was not changed', async () => {
+    const { root } = await setup([{ key: 'autonomy.name', type: 'string', default: '', scope: 'user', description: 'A name', category: 'Agent' }]);
+    const content = root.querySelector<HTMLElement>('.settings-editor__content')!;
+    for (const item of root.querySelectorAll<HTMLElement>('.settings-editor__nav-item')) { item.click(); if (content.querySelector('[data-px-id="settings.autonomy.name"]')) break; }
+    const field = content.querySelector<HTMLInputElement>('[data-px-id="settings.autonomy.name"] input')!;
+    field.focus();
+    field.blur();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(field.isConnected).toBe(true);
+  });
+
   // The save lands while focus is still moving: the page re-renders before
   // focus arrives, so the control it was heading to must be found again.
   it('lands focus on the control Tab was moving to', async () => {

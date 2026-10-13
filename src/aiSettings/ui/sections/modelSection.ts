@@ -169,6 +169,7 @@ export class ModelSection extends SettingsSection {
       const raw = this._contextInput.value.trim();
       const n = raw === '' ? 0 : Math.max(0, Math.floor(Number(raw) || 0));
       this._contextInput.value = String(n);
+      if (n === this._currentContextWindow()) return; // unchanged: no save, no re-render
       void this._writeWorkspace({ model: { contextWindow: n } })
         .then(() => this._notifySaved('model.contextWindow'));
     };

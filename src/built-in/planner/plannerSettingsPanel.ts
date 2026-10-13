@@ -154,7 +154,7 @@ export function createPlannerSettingsPanel(
           color.addEventListener('change', () => void data.updateCalendar(cal.id, { color: color.value }));
 
           const name = el('input', 'planner-settings__cal-name') as HTMLInputElement;
-          name.type = 'text';
+          name.type = 'text'; name.setAttribute('aria-label', 'Calendar name');
           name.value = cal.name;
           const commit = (): void => { const v = name.value.trim(); if (v && v !== cal.name) void data.updateCalendar(cal.id, { name: v }); else if (!v) name.value = cal.name; };
           name.addEventListener('blur', commit);

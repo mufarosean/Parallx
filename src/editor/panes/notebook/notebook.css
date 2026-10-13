@@ -191,7 +191,8 @@
   transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease),
               visibility var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
-.nb-gap:hover .nb-gap__actions { visibility: visible; opacity: 1; }
+.nb-gap:hover .nb-gap__actions,
+.nb-gap:focus-within .nb-gap__actions { visibility: visible; opacity: 1; }
 
 .nb-gap__btn {
   display: inline-flex;

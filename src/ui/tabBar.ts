@@ -336,7 +336,7 @@ export class TabBar extends Disposable {
     if (move && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       const to = ids[at + (e.key === 'ArrowLeft' ? -1 : 1)];
       if (to) this._onDidReorder.fire({ fromId: id, targetId: to, position: e.key === 'ArrowLeft' ? 'before' : 'after' });
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') focusAt(Math.max(0, Math.min(ids.length - 1, at + (e.key === 'ArrowLeft' ? -1 : 1))));
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') focusAt((at + (e.key === 'ArrowLeft' ? -1 : 1) + ids.length) % ids.length); // round, as WAI-ARIA tabs go
     else if (e.key === 'Home' || e.key === 'End') focusAt(e.key === 'Home' ? 0 : ids.length - 1);
     else if (e.key === 'Enter' || e.key === ' ') this._onDidSelect.fire(id);
     else if (e.key === 'Delete' && (this._items[at]?.closable ?? true)) this._onDidClose.fire(id);

@@ -14,6 +14,18 @@
   user-select: none;
 }
 
+/* Keyboard focus in the tree shows on the row it acts on (the selected one),
+   or on the tree itself while nothing is selected. Sidebar containers draw
+   no ring of their own (workbench.css), so this one is explicit. */
+.part-workbench-parts-sidebar .explorer-tree:focus-visible .tree-node--selected {
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.part-workbench-parts-sidebar .explorer-tree:focus-visible:not(:has(.tree-node--selected)) {
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
 /* ── Multi-root workspace header ── */
 
 .explorer-workspace-header {

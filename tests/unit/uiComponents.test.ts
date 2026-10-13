@@ -487,6 +487,20 @@ describe('SegmentedControl', () => {
     sc.dispose();
   });
 
+  it('arrows go round as a radio group does; Home and End jump', () => {
+    const sc = new SegmentedControl(parent, { segments });
+    const key = (k: string) => sc.element.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    key('ArrowLeft');
+    expect(sc.value).toBe('month');
+    key('ArrowRight');
+    expect(sc.value).toBe('day');
+    key('End');
+    expect(sc.value).toBe('month');
+    key('Home');
+    expect(sc.value).toBe('day');
+    sc.dispose();
+  });
+
   it('renders all segments', () => {
     const sc = new SegmentedControl(parent, { segments });
     const segs = parent.querySelectorAll('.ui-segmented-control__segment');

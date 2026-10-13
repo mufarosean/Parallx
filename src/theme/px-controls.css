@@ -61,6 +61,13 @@ select:focus-visible {
   outline: none;
   border-color: var(--px-accent);
 }
+/* A checkbox, radio or range draws no border to recolour: it keeps a ring. */
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
+input[type="range"]:focus-visible {
+  outline: var(--px-focus-width) solid var(--px-accent);
+  outline-offset: 2px;
+}
 
 /* ── Opt-out: inline/toolbar inputs ──────────────────────────────────────── */
 /* The form skin below targets `input[type=...]` (specificity 0-1-1), which

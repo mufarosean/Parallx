@@ -112,7 +112,7 @@
   opacity: 0.35;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.dashboard-reveal:hover .dashboard-reveal__actions {
+.dashboard-reveal:hover .dashboard-reveal__actions, .dashboard-reveal:focus-within .dashboard-reveal__actions {
   opacity: 1;
 }
 .dashboard-btn--small {
@@ -376,7 +376,7 @@
   opacity: 0;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.dashboard-widget:hover .dashboard-widget__actions {
+.dashboard-widget:hover .dashboard-widget__actions, .dashboard-widget:focus-within .dashboard-widget__actions {
   opacity: 1;
 }
 

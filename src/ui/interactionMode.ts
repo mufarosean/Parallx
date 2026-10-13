@@ -43,6 +43,7 @@ export type ModeExitReason =
   | 'scroll'
   | 'resize'
   | 'selection'
+  | 'orphaned'
   | 'programmatic';
 
 export interface InteractionModeOptions {
@@ -142,6 +143,18 @@ function _exitMode(mode: ActiveMode, reason: ModeExitReason): void {
   }
 }
 
+/**
+ * A mode whose owner (its first root) left the page while it was open, its
+ * component re-rendered or disposed without closing it, is over: left on the
+ * stack it would go on taking every key in the window.
+ */
+function _pruneOrphans(): void {
+  for (const mode of [..._stack].reverse()) {
+    const owner = mode.options.ownedRoots()[0];
+    if (owner && !owner.isConnected) _exitMode(mode, 'orphaned');
+  }
+}
+
 function _topmost(): ActiveMode | undefined {
   return _stack[_stack.length - 1];
 }
@@ -150,6 +163,7 @@ function _installDocListeners(): void {
   if (_docListeners) return;
 
   const onKeydown = (e: KeyboardEvent): void => {
+    _pruneOrphans();
     const top = _topmost();
     if (!top) return;
     if (e.key === 'Escape') {

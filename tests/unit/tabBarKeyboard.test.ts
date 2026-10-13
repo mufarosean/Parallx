@@ -27,6 +27,10 @@ describe('tab bar from the keyboard', () => {
     tab('b').focus();
     key('ArrowRight');
     expect(document.activeElement).toBe(tab('c'));
+    key('ArrowRight'); // round to the first, as WAI-ARIA tabs go
+    expect(document.activeElement).toBe(tab('a'));
+    key('ArrowLeft');
+    expect(document.activeElement).toBe(tab('c'));
     key('Home');
     expect(document.activeElement).toBe(tab('a'));
     key('Enter');
