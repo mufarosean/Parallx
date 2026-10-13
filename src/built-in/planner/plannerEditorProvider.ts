@@ -11,7 +11,7 @@ import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
-import { takePendingPlannerTab } from './plannerNavState.js';
+import { takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { appDateParts } from '../../services/localTime.js';
@@ -163,6 +163,7 @@ export class PlannerEditorPane implements IDisposable {
     // the dedicated task popover.
     const onNewTask = () => {
       if (!this._root?.isConnected) return;
+      takePendingPlannerNewTask();
       this._setTab('tasks');
       // Open beside the Create button it stands for (the body's top-left
       // corner put the popover over the menu bar); centred if it is hidden.
@@ -172,6 +173,7 @@ export class PlannerEditorPane implements IDisposable {
       this.taskPopover.openTaskPopover({ mode: 'create' }, anchor);
     };
     document.addEventListener('parallx.planner.newTask', onNewTask);
+    if (takePendingPlannerNewTask()) onNewTask();
 
     // Keyboard shortcuts — Notion Calendar / Cron parity. Only fire when
     // the pane is connected and the user isn't typing in an input.

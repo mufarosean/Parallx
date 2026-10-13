@@ -19,6 +19,7 @@ import { IDatabaseService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider } from './plannerEditorProvider.js';
+import { setPendingPlannerNewTask } from './plannerNavState.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
@@ -427,7 +428,9 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       try {
         // Open the planner editor first (so the popover has a host pane to
         // render against), then dispatch — the active pane catches it and
-        // opens the full task popover with all fields wired up.
+        // opens the full task popover with all fields wired up. A pane
+        // still building misses the event; it takes the request once drawn.
+        setPendingPlannerNewTask(true);
         await api.editors.openEditor({
           typeId: 'planner',
           title: 'Planner',
@@ -436,6 +439,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         });
         document.dispatchEvent(new CustomEvent('parallx.planner.newTask'));
       } catch (err) {
+        setPendingPlannerNewTask(false);
         console.error('[Planner] newTask failed:', err);
         const msg = err instanceof Error ? err.message : String(err);
         await api.window.showErrorMessage(`Could not open new-task form: ${msg}`);

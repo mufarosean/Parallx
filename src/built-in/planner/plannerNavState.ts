@@ -25,3 +25,21 @@ export function takePendingPlannerTab(): PlannerTab | null {
   _pendingTab = null;
   return tab;
 }
+
+// planner.newTask has the same race: it opens the editor and then dispatches
+// `newTask`, which a pane still building misses, so the Planner opened with no
+// form. The command records the request first; the pane that opens the form
+// (an open one on the event, a new one once it has drawn) takes it.
+let _pendingNewTask = false;
+
+/** planner.newTask: record the request before invoking openEditor. */
+export function setPendingPlannerNewTask(pending: boolean): void {
+  _pendingNewTask = pending;
+}
+
+/** Pane: consume the request (one-shot). */
+export function takePendingPlannerNewTask(): boolean {
+  const pending = _pendingNewTask;
+  _pendingNewTask = false;
+  return pending;
+}
