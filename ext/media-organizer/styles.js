@@ -255,6 +255,11 @@ export const MO_CSS_MORE = `
 .mo-plan-variant:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-plan-variant.is-current { border-color: var(--vscode-focusBorder, var(--px-accent)); color: var(--vscode-foreground, var(--px-text)); }
 .mo-plan-variant-actions { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.mo-plan-variants { flex-wrap: wrap; row-gap: 6px; overflow-x: hidden; }
+.mo-pv-list { display: flex; gap: 8px; flex: 0 1 auto; min-width: 72px; overflow-x: auto; }
+.px-btn.mo-plan-variant { height: auto; flex: 0 0 auto; flex-direction: column; gap: 3px; padding: 4px; }
+.mo-pv-status { flex: 1 1 160px; min-width: 0; font-size: var(--px-text-xs); }
+.mo-plan-variants .mo-plan-variant-actions { flex-wrap: wrap; }
 .mo-plan-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
 .mo-plan-swatch { width: 28px; height: 28px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid rgba(0, 0, 0, 0.35); cursor: pointer; }
 /* Painting Plans: stages, the colour picker, saved colours and paint mixes (plan-colours.js) */

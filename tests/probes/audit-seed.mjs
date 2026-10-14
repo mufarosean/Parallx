@@ -132,6 +132,8 @@ export async function seedAfterLaunch(page, pre) {
   await page.waitForTimeout(1_000);
   log('plan', await run(page, 'media-organizer.planPainting', pre.photoId));
   await page.waitForTimeout(2_000);
+  log('variation', await run(page, 'media-organizer.plan.saveVariation'));
+  await page.waitForTimeout(800);
   // Its board, with a variation, its palette and a note on it.
   await run(page, 'media-organizer.openBoard', 1);
   await page.waitForTimeout(2_000);

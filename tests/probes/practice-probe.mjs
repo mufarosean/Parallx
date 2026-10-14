@@ -363,7 +363,7 @@ async function main() {
     await page.locator('.mo-plan-panel button', { hasText: 'Pull From Picture' }).click();
     await page.waitForTimeout(800);
     log('plan palette', await planState());
-    await page.locator('.mo-plan-variant-actions button', { hasText: 'Add Variation' }).click();
+    await page.locator('.mo-plan-variant-actions button', { hasText: 'Save As Variation' }).click();
     await page.waitForTimeout(800);
     log('plan variants', await planState());
     await page.locator('.mo-plan-topbar-right button', { hasText: 'Export Plan' }).click();

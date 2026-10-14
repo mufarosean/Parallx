@@ -529,7 +529,7 @@ export function moRenderBoard(container, ctx) {
     const el = els.get(n.id); if (el) el.focus({ preventScroll: true });
     return n;
   }
-  const variationSize = () => { const w = 290; return { w, h: Math.round(w / aspect() + 44) }; };
+  const variationSize = (v) => { const w = 290, c = v && v.recipe && v.recipe.canvas; return { w, h: Math.round(w / (c ? c.w / c.h : aspect()) + 44) }; };
   function menuAt(anchor, label, items) { ui.createMenu(anchor, { id: `media-organizer.board.menu.${label.toLowerCase().replace(/\s+/g, '-')}`, label, items }); }
 
   // ── popovers: a swatch's mix, the photo picker ──
@@ -555,7 +555,7 @@ export function moRenderBoard(container, ctx) {
     addNote() { add({ kind: 'note', text: '', w: 250, h: 160 }); },
     addFrame() { add({ kind: 'frame', title: 'Frame', w: 640, h: 420, z: -1 }); },
     addVariation(variantId) {
-      if (variantId != null) { const v = variantOf(variantId); if (v) add(Object.assign({ kind: 'variation', variantId: v.id }, variationSize())); return; }
+      if (variantId != null) { const v = variantOf(variantId); if (v) add(Object.assign({ kind: 'variation', variantId: v.id }, variationSize(v))); return; }
       menuAt(tVariation, 'Add A Variation', variants.map((v) => ({ label: v.name, onSelect: () => acts.addVariation(v.id) })));
     },
     addPalette(variantId) {

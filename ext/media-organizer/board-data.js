@@ -87,7 +87,7 @@ export function moBoardContext(d, planId) {
 // The plan editor's Add To Board menu. cur: the editor's state (plan, variants, variant).
 export function moBoardMenuItems(d, planId, cur) {
   const a = cur.plan && cur.plan.canvas_w > 0 && cur.plan.canvas_h > 0 ? cur.plan.canvas_w / cur.plan.canvas_h : 0.8;
-  const vSpec = (v) => ({ kind: 'variation', variantId: v.id, w: 290, h: Math.round(290 / a + 44) });
+  const vSpec = (v) => ({ kind: 'variation', variantId: v.id, w: 290, h: Math.round(290 / (v.recipe && v.recipe.canvas ? v.recipe.canvas.w / v.recipe.canvas.h : a) + 44) });
   const pSpec = (v, under) => ({ kind: 'palette', variantId: v.id, w: 290, h: 110, under });
   const done = async (specs, frame, what) => {
     const n = await moBoardAdd(d.db, planId, specs, frame);

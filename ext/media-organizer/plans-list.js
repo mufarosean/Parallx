@@ -92,7 +92,7 @@ export function moRenderPlansList(container, api) {
   async function load() {
     try {
       const plans = await deps.db.all(`SELECT p.*, (SELECT COUNT(*) FROM mo_plan_variants v WHERE v.plan_id = p.id) AS variations,
-        (SELECT recipe_json FROM mo_plan_variants v WHERE v.id = p.variant_id) AS kept FROM mo_plans p ORDER BY p.updated_at DESC`);
+        COALESCE((SELECT recipe_json FROM mo_plan_variants v WHERE v.id = p.variant_id), p.draft_json) AS kept FROM mo_plans p ORDER BY p.updated_at DESC`);
       if (disposed) return;
       const had = grid.contains(document.activeElement) && document.activeElement.getAttribute('data-px-id');
       grid.replaceChildren();

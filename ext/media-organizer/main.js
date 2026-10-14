@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -31886,7 +31886,7 @@ function moPlanDefaultRecipe() {
     exposure: 0, contrast: 0, highlights: 0, shadows: 0, warmth: 0, tint: 0, hue: 0, saturation: 0,
     grey: false, levels: 0, notan: 0, blur: 0, stage: 0, saved: [],
     overlays: { thirds: false, golden: false, diagonals: false, grid: false, gridInches: 1 },
-    palette: { count: 8, swatches: [], apply: false },
+    palette: { count: 8, swatches: [], apply: false }, canvas: null,
   };
 }
 
@@ -31900,6 +31900,7 @@ function moPlanNormalizeRecipe(r) {
   out.palette = Object.assign({}, d.palette, o.palette || {});
   out.palette.swatches = Array.isArray(out.palette.swatches) ? out.palette.swatches.slice(0, 16) : []; out.saved = Array.isArray(out.saved) ? out.saved.filter((c) => c && Array.isArray(c.rgb)).slice(-64) : [];
   out.rotate = ((Math.round(Number(out.rotate) || 0) % 4) + 4) % 4;
+  out.canvas = o.canvas && Number(o.canvas.w) > 0 && Number(o.canvas.h) > 0 ? { w: Number(o.canvas.w), h: Number(o.canvas.h) } : null;
   return out;
 }
 
@@ -31992,8 +31993,6 @@ async function moPlanCreate(api, photoId) {
   const now = new Date().toISOString();
   const res = await db.run('INSERT INTO mo_plans (title, photo_id, canvas_w, canvas_h, created_at, updated_at) VALUES (?, ?, 16, 20, ?, ?)', [title, photoId, now, now]);
   const planId = res.lastInsertRowid;
-  const v = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, 0)', [planId, 'Variation 1', JSON.stringify(moPlanDefaultRecipe())]);
-  await db.run('UPDATE mo_plans SET variant_id = ? WHERE id = ?', [v.lastInsertRowid, planId]);
   document.dispatchEvent(new CustomEvent('mo:plans-changed'));
   moOpenPlan(api, planId);
   return planId;
@@ -32605,7 +32604,7 @@ function renderPlanEditor(container, api, planId) {
   exportGridBtn.addEventListener('click', () => void exportPlan(true));
   printBtn.addEventListener('click', () => void printPlan());
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
   const left = moEl('div', 'mo-plan-topbar-left'); left.appendChild(titleEl); left.appendChild(sizeEl); main.insertBefore(colours.bar, stage);
   const right = moEl('div', 'mo-plan-topbar-right');
   for (const b of [undoBtn, redoBtn, exportGridBtn, printBtn, exportBtn]) right.appendChild(b);
@@ -32615,7 +32614,7 @@ function renderPlanEditor(container, api, planId) {
   const aspect = () => (state.plan.canvas_w > 0 && state.plan.canvas_h > 0) ? state.plan.canvas_w / state.plan.canvas_h : 0.8;
   const rotated = () => moPlanRotatedSize(state.imgW, state.imgH, state.recipe.rotate);
   function pushHistory() {
-    const snap = JSON.stringify(state.recipe);
+    const snap = JSON.stringify({ r: state.recipe, f: state.variant ? state.variant.id : null });
     if (history[histIdx] === snap) return;
     history.splice(histIdx + 1);
     history.push(snap);
@@ -32624,15 +32623,17 @@ function renderPlanEditor(container, api, planId) {
     syncUndo();
   }
   function syncUndo() { undoBtn.disabled = histIdx <= 0; redoBtn.disabled = histIdx >= history.length - 1; }
-  function undo() { if (histIdx > 0) { histIdx--; state.recipe = moPlanNormalizeRecipe(JSON.parse(history[histIdx])); state.variant.recipe = state.recipe; afterRecipeChange(false); } }
-  function redo() { if (histIdx < history.length - 1) { histIdx++; state.recipe = moPlanNormalizeRecipe(JSON.parse(history[histIdx])); state.variant.recipe = state.recipe; afterRecipeChange(false); } }
+  function restore(i) { histIdx = i; const h = JSON.parse(history[i]); state.recipe = moPlanNormalizeRecipe(h.r); state.variant = state.variants.find((v) => v.id === h.f) || null; canvasFromRecipe(); afterRecipeChange(false); variations.render(); }
+  function undo() { if (histIdx > 0) restore(histIdx - 1); }
+  function redo() { if (histIdx < history.length - 1) restore(histIdx + 1); }
+  // The plan's canvas follows the picture in the controls.
+  function canvasFromRecipe() { const c = state.recipe.canvas; if (c) { state.plan.canvas_w = c.w; state.plan.canvas_h = c.h; } else state.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; }
   function scheduleSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-      if (disposed || !state.variant) return;
+      if (disposed || !state.recipe) return;
       try {
-        await db.run('UPDATE mo_plan_variants SET recipe_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(state.recipe), new Date().toISOString(), state.variant.id]);
-        await db.run('UPDATE mo_plans SET title = ?, notes = ?, canvas_w = ?, canvas_h = ?, updated_at = ? WHERE id = ?', [state.plan.title, state.plan.notes || '', state.plan.canvas_w, state.plan.canvas_h, new Date().toISOString(), planId]);
+        await db.run('UPDATE mo_plans SET title = ?, notes = ?, canvas_w = ?, canvas_h = ?, draft_json = ?, draft_from = ?, updated_at = ? WHERE id = ?', [state.plan.title, state.plan.notes || '', state.plan.canvas_w, state.plan.canvas_h, JSON.stringify(state.recipe), state.variant ? state.variant.id : null, new Date().toISOString(), planId]);
         document.dispatchEvent(new CustomEvent('mo:plans-changed'));
       } catch (err) { console.warn('[media-organizer] plan save failed:', err && err.message); }
     }, 400);
@@ -32644,7 +32645,7 @@ function renderPlanEditor(container, api, planId) {
     requestRender();
     scheduleSave();
     if (!keepPanel) renderPanel();
-    refreshVariantThumb(state.variant);
+    variations.sync();
   }
   function bakeSource() {
     if (!renderer || !state.image) return;
@@ -32780,7 +32781,7 @@ function renderPlanEditor(container, api, planId) {
       wIn.value = String(state.plan.canvas_w); hIn.value = String(state.plan.canvas_h);
       const applySize = () => {
         const w = Math.max(1, Number(wIn.value) || 1); const h = Math.max(1, Number(hIn.value) || 1);
-        state.plan.canvas_w = w; state.plan.canvas_h = h;
+        state.plan.canvas_w = w; state.plan.canvas_h = h; r.canvas = { w, h };
         const rs = rotated();
         r.crop = moPlanClampCrop(r.crop, rs.w, rs.h, aspect());
         sizeEl.textContent = `${w} × ${h} in`;
@@ -32798,7 +32799,7 @@ function renderPlanEditor(container, api, planId) {
       const s2 = section('Picture');
       const rowR = moEl('div', 'mo-plan-row');
       // An uncropped picture turns with its canvas; a cropped one keeps the canvas and refits.
-      const turn = (q) => { const whole = r.crop.w > 0.999 && r.crop.h > 0.999; r.rotate = (r.rotate + q) % 4; if (whole) { const w = state.plan.canvas_w; state.plan.canvas_w = state.plan.canvas_h; state.plan.canvas_h = w; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; } const rs = rotated(); r.crop = whole ? { x: 0, y: 0, w: 1, h: 1 } : moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); };
+      const turn = (q) => { const whole = r.crop.w > 0.999 && r.crop.h > 0.999; r.rotate = (r.rotate + q) % 4; if (whole) { const w = state.plan.canvas_w; state.plan.canvas_w = state.plan.canvas_h; state.plan.canvas_h = w; r.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; } const rs = rotated(); r.crop = whole ? { x: 0, y: 0, w: 1, h: 1 } : moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); };
       rowR.appendChild(button('Rotate Left', () => turn(3)));
       rowR.appendChild(button('Rotate Right', () => turn(1)));
       s2.appendChild(rowR);
@@ -32909,84 +32910,30 @@ function renderPlanEditor(container, api, planId) {
     afterRecipeChange(true);
   }
 
-  // ── variations ──
-  const variantThumbs = new Map();
-  function renderVariants() {
-    variantsBar.innerHTML = '';
-    variantThumbs.clear();
-    for (const v of state.variants) {
-      const it = moEl('button', `mo-plan-variant${state.variant && v.id === state.variant.id ? ' is-current' : ''}${state.plan.variant_id === v.id ? ' is-kept' : ''}`, { type: 'button', 'aria-pressed': String(!!(state.variant && v.id === state.variant.id)), 'aria-label': v.name + (state.plan.variant_id === v.id ? ', kept' : '') });
-      const img = moEl('img', null, { alt: '' });
-      it.appendChild(img);
-      variantThumbs.set(v.id, img);
-      it.appendChild(moEl('span', null, { textContent: v.name }));
-      if (state.plan.variant_id === v.id) it.appendChild(moEl('span', 'mo-plan-variant-tag', { textContent: 'For export' }));
-      it.addEventListener('click', () => selectVariant(v));
-      variantsBar.appendChild(it);
-      refreshVariantThumb(v);
-    }
-    const actions = moEl('div', 'mo-plan-variant-actions');
-    for (const [label, fn] of [['Rename…', renameVariant], ['Use For Export', keepVariant], ['Make Stage Variations', stageVariants], ['Add Variation', addVariant]]) actions.appendChild(button(label, () => void fn()));
-    const toBoard = button('Add To Board', () => api.ui.createMenu(toBoard, { id: 'media-organizer.plan.addToBoard', label: 'Add To Board', items: moBoardMenuItems(moBoardDeps(api), planId, state) }), true); toBoard.setAttribute('aria-haspopup', 'menu'); actions.appendChild(toBoard);
-    if (state.variants.length > 1) actions.appendChild(button('Remove Variation…', () => void removeVariant()));
-    variantsBar.appendChild(actions);
-  }
-  function refreshVariantThumb(v) {
-    if (!v || !state.image) return;
-    const img = variantThumbs.get(v.id);
-    if (!img) return;
+  // ── variations (plan-variations.js) ──
+  function recipeThumb(recipe) {
+    if (!state.image) return '';
     try {
-      if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return; thumbRenderer.setSource(state.image, 0); }
-      const rs = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate);
-      const a = (rs.w * v.recipe.crop.w) / (rs.h * v.recipe.crop.h);
-      thumbRenderer.render(v.recipe, { width: Math.round(56 * Math.max(a, 0.3)), height: 56, full: false, split: -1 });
-      img.src = thumbCanvas.toDataURL('image/jpeg', 0.7);
-    } catch { /* no thumb */ }
+      if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return ''; thumbRenderer.setSource(state.image, 0); }
+      const rs = moPlanRotatedSize(state.imgW, state.imgH, recipe.rotate);
+      const a = (rs.w * recipe.crop.w) / (rs.h * recipe.crop.h);
+      thumbRenderer.render(recipe, { width: Math.round(56 * Math.max(a, 0.3)), height: 56, full: false, split: -1 });
+      return thumbCanvas.toDataURL('image/jpeg', 0.7);
+    } catch { return ''; }
   }
-  function selectVariant(v) {
-    state.variant = v; state.recipe = v.recipe;
-    history.length = 0; histIdx = -1; pushHistory();
+  // The untouched photo: every control at rest, the whole picture on a canvas of its proportions. Picked colours stay.
+  function startRecipe() {
+    const r = moPlanDefaultRecipe(), c = moPlanCanvasFor(state.imgW, state.imgH);
+    r.saved = state.recipe ? state.recipe.saved.slice() : []; r.canvas = { w: c.canvas_w, h: c.canvas_h };
+    return r;
+  }
+  function applyRecipe(recipe, from) {
+    state.recipe = moPlanNormalizeRecipe(recipe); state.variant = from || null;
+    canvasFromRecipe();
     if (state.recipe.blur !== state.blurBaked) bakeSource();
-    renderVariants(); renderPanel(); requestRender();
+    afterRecipeChange(true);
   }
-  async function addVariant() {
-    const pos = state.variants.length;
-    const name = `Variation ${pos + 1}`;
-    const res = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, ?)', [planId, name, JSON.stringify(state.recipe), pos]);
-    const v = { id: res.lastInsertRowid, plan_id: planId, name, position: pos, recipe: moPlanNormalizeRecipe(JSON.parse(JSON.stringify(state.recipe))) };
-    state.variants.push(v);
-    selectVariant(v);
-  }
-  async function renameVariant() {
-    const name = state.variant && await api.window.showInputBox({ prompt: 'Name this variation', value: state.variant.name });
-    if (!name || !String(name).trim()) return;
-    state.variant.name = String(name).trim().slice(0, 40); await db.run('UPDATE mo_plan_variants SET name = ? WHERE id = ?', [state.variant.name, state.variant.id]); renderVariants(); document.dispatchEvent(new CustomEvent('mo:plans-changed'));
-  }
-  // One variation per stage, named after it, each with its stage's squint and values; existing names are left alone.
-  async function stageVariants() {
-    const stages = await moPlanStages({ getSetting: moGetSetting, setSetting: moSetSetting });
-    for (const [i, s] of stages.entries()) {
-      if (state.variants.some((v) => v.name === s.name)) continue;
-      const recipe = moPlanNormalizeRecipe(Object.assign(JSON.parse(JSON.stringify(state.recipe)), { stage: i + 1, blur: s.blur, levels: s.levels, grey: s.grey, notan: s.notan }));
-      const res = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, ?)', [planId, s.name, JSON.stringify(recipe), state.variants.length]);
-      state.variants.push({ id: res.lastInsertRowid, plan_id: planId, name: s.name, position: state.variants.length, recipe });
-    }
-    renderVariants(); document.dispatchEvent(new CustomEvent('mo:plans-changed'));
-  }
-  async function keepVariant() {
-    if (!state.variant) return;
-    state.plan.variant_id = state.variant.id;
-    await db.run('UPDATE mo_plans SET variant_id = ?, updated_at = ? WHERE id = ?', [state.variant.id, new Date().toISOString(), planId]);
-    renderVariants();
-  }
-  async function removeVariant() {
-    if (!state.variant || state.variants.length <= 1 || (await _api.window.showWarningMessage(`Remove "${state.variant.name}" from this plan?`, { title: 'Remove' }, { title: 'Cancel' }))?.title !== 'Remove') return;
-    const gone = state.variant;
-    await db.run('DELETE FROM mo_plan_variants WHERE id = ?', [gone.id]);
-    state.variants = state.variants.filter((v) => v.id !== gone.id);
-    if (state.plan.variant_id === gone.id) { state.plan.variant_id = state.variants[0].id; await db.run('UPDATE mo_plans SET variant_id = ? WHERE id = ?', [state.plan.variant_id, planId]); }
-    selectVariant(state.variants[0]);
-  }
+  const variations = moPlanVariations({ api, db, planId, root, bar: variantsBar, state, io: { getSetting: moGetSetting, setSetting: moSetSetting }, normalize: moPlanNormalizeRecipe, startRecipe, apply: applyRecipe, record: () => pushHistory(), saveDraft: () => scheduleSave(), thumb: recipeThumb, boardItems: () => moBoardMenuItems(moBoardDeps(api), planId, state) });
 
   // ── export ──
   // Renders the recipe at full resolution into a JPEG beside the original and
@@ -33062,9 +33009,11 @@ function renderPlanEditor(container, api, planId) {
   // ── keys ──
   root.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
-    else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
   });
+  // Ctrl+Z and Ctrl+Shift+Z are the app's Edit Undo and Redo, offered to the focused pane.
+  root.addEventListener('parallx:edit-undo', (e) => { e.preventDefault(); undo(); });
+  root.addEventListener('parallx:edit-redo', (e) => { e.preventDefault(); redo(); });
 
   // ── load ──
   (async () => {
@@ -33082,15 +33031,19 @@ function renderPlanEditor(container, api, planId) {
       state.image = image; state.imgW = image.naturalWidth; state.imgH = image.naturalHeight;
       renderer = moPlanRenderer(glCanvas);
       if (!renderer) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'WebGL is not available, so the plan cannot be shown.' })); return; }
-      const v = state.variants.find((x) => x.id === state.plan.variant_id) || state.variants[0];
-      if (!v) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan has no variation.' })); return; }
+      for (const x of state.variants) if (!x.recipe.canvas) x.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h };
+      let draft = null; try { draft = state.plan.draft_json ? moPlanNormalizeRecipe(JSON.parse(state.plan.draft_json)) : null; } catch { draft = null; }
+      const kept = state.variants.find((x) => x.id === state.plan.variant_id) || state.variants[0] || null;
+      const from = draft ? state.variants.find((x) => x.id === state.plan.draft_from) || null : kept;
+      const v = { recipe: draft || (kept ? JSON.parse(JSON.stringify(kept.recipe)) : moPlanDefaultRecipe()) };
       // A plan starts with the whole picture: an uncropped one (or one still at the old automatic 16 × 20 cut) gets a canvas in the picture's proportions.
       const rs0 = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate), c0 = v.recipe.crop, auto = moPlanFitCrop(rs0.w, rs0.h, 0.8);
-      if ((c0.w === 1 && c0.h === 1) || (state.plan.canvas_w === 16 && state.plan.canvas_h === 20 && ['x', 'y', 'w', 'h'].every((k) => Math.abs(c0[k] - auto[k]) < 1e-4))) { Object.assign(state.plan, moPlanCanvasFor(rs0.w, rs0.h)); sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; for (const x of state.variants) if (x.recipe.rotate === v.recipe.rotate && ['x', 'y', 'w', 'h'].every((k) => Math.abs(x.recipe.crop[k] - c0[k]) < 1e-4)) { x.recipe.crop = { x: 0, y: 0, w: 1, h: 1 }; if (x !== v) void db.run('UPDATE mo_plan_variants SET recipe_json = ? WHERE id = ?', [JSON.stringify(x.recipe), x.id]); } scheduleSave(); }
-      state.variant = v; state.recipe = v.recipe;
+      if ((c0.w === 1 && c0.h === 1) || (state.plan.canvas_w === 16 && state.plan.canvas_h === 20 && ['x', 'y', 'w', 'h'].every((k) => Math.abs(c0[k] - auto[k]) < 1e-4))) { Object.assign(state.plan, moPlanCanvasFor(rs0.w, rs0.h)); sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; v.recipe.crop = { x: 0, y: 0, w: 1, h: 1 }; v.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; for (const x of state.variants) if (x.recipe.rotate === v.recipe.rotate && ['x', 'y', 'w', 'h'].every((k) => Math.abs(x.recipe.crop[k] - c0[k]) < 1e-4)) { x.recipe.crop = { x: 0, y: 0, w: 1, h: 1 }; x.recipe.canvas = { ...v.recipe.canvas }; void db.run('UPDATE mo_plan_variants SET recipe_json = ? WHERE id = ?', [JSON.stringify(x.recipe), x.id]); } scheduleSave(); }
+      state.variant = from; state.recipe = v.recipe;
+      canvasFromRecipe();
       bakeSource();
       pushHistory();
-      renderVariants();
+      variations.render();
       setTool('light');
       root.focus();
     } catch (err) {
@@ -33107,7 +33060,7 @@ function renderPlanEditor(container, api, planId) {
       for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
       if (renderer) renderer.dispose();
       if (thumbRenderer) thumbRenderer.dispose();
-      colours.dispose();
+      colours.dispose(); variations.dispose();
       container.innerHTML = '';
     },
   };
@@ -38194,7 +38147,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);
