@@ -681,6 +681,7 @@ async function auditDialogs() {
     for (const c of d.setup ?? []) { await cmd(page, c); await page.waitForTimeout(1_200); }
     const focused = await focusId(...d.opener);
     if (!focused) { out.push({ name: d.name, problem: `could not focus the opener ${d.opener.join(' ')}` }); continue; }
+    const modesBefore = await page.evaluate(() => document.documentElement.dataset.pxModes || '');
     if (d.open.key) await page.keyboard.press(d.open.key);
     else { const args = []; for (const a of d.open.cmd.slice(1)) args.push(a === '$page' ? await canvasPageId() : a); await cmdNoWait(page, d.open.cmd[0], ...args); }
     await page.waitForTimeout(700);
@@ -701,6 +702,7 @@ async function auditDialogs() {
     const s1 = await state();
     const row = { name: d.name, opened: s1.open, focusMovedIn: s1.inside, focusOnOpen: s1.active, screenReader: s1.sr };
     // Not opened: what the page held, so the cause is a finding rather than a guess.
+    if (!s1.open) row.modesBefore = modesBefore;
     if (!s1.open) row.seen = await page.evaluate(({ root, opener }) => {
       const a = document.activeElement;
       const openers = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`));

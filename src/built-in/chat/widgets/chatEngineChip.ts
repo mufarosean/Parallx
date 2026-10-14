@@ -168,6 +168,8 @@ export class ChatEngineChip extends Disposable {
     this._chip.setAttribute('aria-expanded', 'true');
     layoutPopup(pop, this._chip.getBoundingClientRect(), { position: 'above', gap: 6, margin: 8 });
     this._detach = attachPopupDismiss([pop, this._chip], () => this._close());
+    // Focus goes in, to the model in use (else the first control), so the keyboard is where the choices are.
+    (pop.querySelector<HTMLElement>('[aria-pressed="true"]') ?? pop.querySelector<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])'))?.focus();
   }
 
   /** The popover's sections, drawn again after a model pick (its maximum sets the sizes). */
@@ -181,11 +183,13 @@ export class ChatEngineChip extends Disposable {
   }
 
   private _close(): void {
+    const hadFocus = !!this._pop?.contains(document.activeElement);
     this._detach?.();
     this._detach = undefined;
     this._pop?.remove();
     this._pop = undefined;
     this._chip.setAttribute('aria-expanded', 'false');
+    if (hadFocus) this._chip.focus(); // back where the keyboard opened it
   }
 
   private _renderModels(pop: HTMLElement): void {

@@ -359,9 +359,12 @@ export function onAccentInk(h: number, s: number, l: number): string {
 const LIGHT_GROUNDS = [[0xf4, 0xf5, 0xf7], [0xec, 0xee, 0xf1], [0xff, 0xff, 0xff]];
 
 export function accentTextLightness(h: number, s: number, l: number): number {
+  // Accent text also sits on the accent's own tint (a selected row, an option that is on: up to 16%).
+  const accent = hslToRgbString(h, s, l).split(',').map(Number);
+  const grounds = [...LIGHT_GROUNDS, ...LIGHT_GROUNDS.map((g) => g.map((c, i) => Math.round(c * 0.84 + accent[i] * 0.16)))];
   for (let L = l; L >= 10; L--) {
     const ink = relativeLuminance(hslToRgbString(h, s, L).split(',').map(Number));
-    const worst = Math.min(...LIGHT_GROUNDS.map(g => (relativeLuminance(g) + 0.05) / (ink + 0.05)));
+    const worst = Math.min(...grounds.map(g => (relativeLuminance(g) + 0.05) / (ink + 0.05)));
     if (worst >= 4.5) return L;
   }
   return 10;
