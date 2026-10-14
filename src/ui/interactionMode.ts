@@ -80,6 +80,9 @@ export interface InteractionModeOptions {
   readonly exitOnFocusLoss?: boolean;
   /** Default false. Opt IN for popups anchored to scrollable content. */
   readonly exitOnScroll?: boolean;
+  /** With exitOnScroll: what the popup hangs from. Only a scroll that moves it
+   *  (its scroller, or the page) ends the mode; a log panel scrolling elsewhere does not. */
+  readonly scrollAnchor?: () => Element | null | undefined;
   /** Default true: restore focus on exit if the mode stranded it. */
   readonly restoreFocus?: boolean;
 }
@@ -98,7 +101,7 @@ interface ActiveMode {
   readonly options: Required<Pick<InteractionModeOptions,
     'id' | 'ownedRoots' | 'onExit' | 'exitOnEscape' | 'exitOnOutsidePointer'
     | 'exitOnWindowBlur' | 'exitOnFocusLoss' | 'exitOnScroll' | 'restoreFocus'>>
-    & Pick<InteractionModeOptions, 'onKeydown' | 'canExitOnOutsidePointer'>;
+    & Pick<InteractionModeOptions, 'onKeydown' | 'canExitOnOutsidePointer' | 'scrollAnchor'>;
   /** Where focus was when the mode began, for the restore contract. */
   readonly previousFocus: HTMLElement | null;
   /** Outside-pointer arming is deferred one tick past the opening press. */
@@ -123,6 +126,7 @@ function _exitMode(mode: ActiveMode, reason: ModeExitReason): void {
   const idx = _stack.indexOf(mode);
   if (idx >= 0) _stack.splice(idx, 1);
   _markStack();
+  if (typeof document !== 'undefined') document.documentElement.dataset.pxLastExit = `${mode.options.id}:${reason}`;
 
   try {
     mode.options.onExit(reason);
@@ -219,6 +223,8 @@ function _installDocListeners(): void {
       // Self-containment guard (the Dropdown lesson): scrolling INSIDE
       // the popup's own scroller must not dismiss it.
       if (target && _contains(mode, target)) continue;
+      const anchor = mode.options.scrollAnchor?.();
+      if (anchor && anchor.isConnected && target instanceof Element && target !== document.documentElement && target !== document.body && !target.contains(anchor)) continue;
       _exitMode(mode, 'scroll');
     }
   };
@@ -257,6 +263,7 @@ export function enterMode(options: InteractionModeOptions): ModeHandle {
       exitOnEscape: options.exitOnEscape ?? true,
       exitOnOutsidePointer: options.exitOnOutsidePointer ?? true,
       canExitOnOutsidePointer: options.canExitOnOutsidePointer,
+      scrollAnchor: options.scrollAnchor,
       exitOnWindowBlur: options.exitOnWindowBlur ?? true,
       exitOnFocusLoss: options.exitOnFocusLoss ?? false,
       exitOnScroll: options.exitOnScroll ?? false,

@@ -134,6 +134,8 @@ export class ContextMenu extends Disposable {
   private _dismissed = false;
   private _mode: ModeHandle | undefined;
 
+  private _scrollAnchor: Element | null = null;
+
   private constructor(private readonly _options: IContextMenuOptions) {
     super();
 
@@ -154,6 +156,9 @@ export class ContextMenu extends Disposable {
     this._renderItems(_options.items);
 
     // Mount (must be in DOM before layoutPopup can measure)
+    // What the menu hangs from, read before the menu covers the spot: a scroll that moves it closes the menu.
+    const anchorAt = { x: _options.anchor.x + 1, y: _options.anchor.y + 1 }; // a point, or a rect's corner
+    this._scrollAnchor = (document.activeElement && document.activeElement !== document.body ? document.activeElement : null) ?? document.elementFromPoint?.(anchorAt.x, anchorAt.y) ?? null;
     document.body.appendChild(this._el);
 
     // Position via universal viewport-aware utility
@@ -178,6 +183,7 @@ export class ContextMenu extends Disposable {
       id: 'context-menu',
       ownedRoots: () => [this._el],
       exitOnScroll: true,
+      scrollAnchor: () => this._scrollAnchor,
       onExit: () => this._completeDismiss(),
       onKeydown: (e) => this._handleKeydown(e),
     });

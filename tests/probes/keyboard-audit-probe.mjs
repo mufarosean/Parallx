@@ -683,7 +683,7 @@ async function auditDialogs() {
     if (!focused) { out.push({ name: d.name, problem: `could not focus the opener ${d.opener.join(' ')}` }); continue; }
     const modesBefore = await page.evaluate(() => document.documentElement.dataset.pxModes || '');
     // Where the opening key goes: who receives it, and whether anything cancels it on the way.
-    await page.evaluate(() => { const d = (t) => t ? `${t.tagName?.toLowerCase?.() ?? 'doc'}${t.getAttribute?.('data-px-id') ? '#' + t.getAttribute('data-px-id') : ''}` : 'none'; window.__keyTrail = []; const cap = (e) => { if (e.key === 'Enter') window.__keyTrail.push('capture:' + d(e.target) + ':active=' + d(document.activeElement)); }; const bub = (e) => { if (e.key === 'Enter') window.__keyTrail.push('bubble-end:prevented=' + e.defaultPrevented); }; window.addEventListener('keydown', cap, { capture: true, once: true }); window.addEventListener('keydown', bub, { once: true }); });
+    await page.evaluate(() => { const d = (t) => t ? `${t.tagName?.toLowerCase?.() ?? 'doc'}${t.getAttribute?.('data-px-id') ? '#' + t.getAttribute('data-px-id') : ''}` : 'none'; window.__keyTrail = []; const cap = (e) => { if (e.key === 'Enter') window.__keyTrail.push('capture:' + d(e.target) + ':active=' + d(document.activeElement)); }; const bub = (e) => { if (e.key === 'Enter') window.__keyTrail.push('bubble-end:prevented=' + e.defaultPrevented); }; window.addEventListener('keydown', cap, { capture: true, once: true }); window.addEventListener('keydown', bub, { once: true }); for (const m of ['stopPropagation', 'stopImmediatePropagation', 'preventDefault']) { const orig = Event.prototype[m]; if (orig.__kbWrapped) continue; const w = function () { if (this.type === 'keydown' && this.key === 'Enter' && window.__keyTrail.length < 6) window.__keyTrail.push(m + ' by ' + String(new Error().stack).split(String.fromCharCode(10)).slice(2, 5).map((l) => l.trim().split('/dist/renderer/').pop()).join(' < ')); return orig.apply(this, arguments); }; w.__kbWrapped = true; Event.prototype[m] = w; } });
     if (d.open.key) await page.keyboard.press(d.open.key);
     else { const args = []; for (const a of d.open.cmd.slice(1)) args.push(a === '$page' ? await canvasPageId() : a); await cmdNoWait(page, d.open.cmd[0], ...args); }
     await page.waitForTimeout(700);
@@ -708,7 +708,7 @@ async function auditDialogs() {
     if (!s1.open) row.seen = await page.evaluate(({ root, opener }) => {
       const a = document.activeElement;
       const openers = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`));
-      return { roots: Array.from(document.querySelectorAll(root)).map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), openers: openers.map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), activeShown: !!a?.getClientRects().length, expanded: a?.getAttribute('aria-expanded'), modes: document.documentElement.dataset.pxModes || '', disabled: !!a?.disabled };
+      return { roots: Array.from(document.querySelectorAll(root)).map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), openers: openers.map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), activeShown: !!a?.getClientRects().length, expanded: a?.getAttribute('aria-expanded'), modes: document.documentElement.dataset.pxModes || '', lastExit: document.documentElement.dataset.pxLastExit || '', disabled: !!a?.disabled };
     }, { root: d.root, opener: d.opener });
     if (s1.open && d.modal) {
       let stayed = true;
