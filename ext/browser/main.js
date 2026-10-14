@@ -730,7 +730,7 @@ function createPagePane(container, input, opts = {}) {
         const x = r.left + inset + ((r.width - 2 * inset) * i) / 3;
         const y = r.top + inset + ((r.height - 2 * inset) * j) / 3;
         const hit = document.elementFromPoint(x, y);
-        if (hit && hit !== content && !content.contains(hit)) return true;
+        if (hit && hit !== content && !content.contains(hit) && !hit.closest('.grid-sash, .view-section-sash')) return true; // a resize handle beside the page is not over it (on a touch screen its hit area reaches in: access.css)
       }
     }
     return false;
