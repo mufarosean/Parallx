@@ -197,12 +197,15 @@ The audit reports 0 in every kind, every dialog passes, every drag has a
 keyboard way, the scene coverage probe reports 0 undeclared, and the
 checks pass.
 
-Met 2026-10-13. The full audit, 105 screens (dark and light): 0 not
-focusable, 0 Tab holes, 0 areas F6 misses, 0 without a visible focus, 0
-nameless, 0 mouse-only, 0 low contrast in either mode, 0 traps, 0
-incomplete runs; dialogs 8 of 8. Scene coverage: 2132 declared, 387 rows
-of declared lists, 80 third-party (the spreadsheet engine), 0
-undeclared. typecheck, vitest, build and the scene probe pass.
+Met again 2026-10-14, with the wider audit: 279 screens (every built-in,
+every extension, the seeded places and their navigation; dark and light),
+the spreadsheet engine's own UI included, and the touch and popup passes:
+0 not focusable, 0 Tab holes, 0 areas F6 misses, 0 without visible focus,
+0 nameless, 0 mouse-only, 0 dead to a finger, 0 popup problems, 0 low
+contrast in either mode, 0 traps, 0 incomplete runs; dialogs 8 of 8.
+touch-drag-probe.mjs (10 finger drags and a swipe) and a11y-drags-probe.mjs
+(keyboard ways, the sheet's voice and menu, links) pass; typecheck, vitest,
+build and the scene probe pass.
 
 The last run's findings and their fixes: Planner's task and event
 popovers said they were modal but let Tab out (they keep it inside now,
