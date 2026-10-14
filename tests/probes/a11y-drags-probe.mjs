@@ -132,6 +132,19 @@ try {
   const spoken = await page.evaluate(() => Array.from(document.querySelectorAll('.ws-pane [role="status"]')).map((x) => x.textContent).join(' | '));
   check('the spreadsheet speaks the cell the arrow key moves to', /^[A-Z]+\d+, /.test(spoken), spoken || '(silent)');
 
+  // ── A sheet tab's menu from the keyboard ──
+  await page.evaluate(() => document.querySelector('[data-u-comp="slide-tab-bar"] [role="tab"]')?.focus());
+  await page.keyboard.press('Shift+F10');
+  await page.waitForTimeout(900);
+  const inMenu = await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem' ? document.activeElement.textContent.trim() : null);
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(200);
+  const nextItem = await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem' ? document.activeElement.textContent.trim() : null);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
+  const backOnTab = await page.evaluate(() => document.activeElement?.getAttribute('role') === 'tab');
+  check('a sheet tab menu opens on Shift+F10, the arrows move, Escape returns to the tab', !!inMenu && !!nextItem && nextItem !== inMenu && backOnTab, `${inMenu} -> ${nextItem}, back ${backOnTab}`);
+
   // ── A web link from the keyboard: it opens outside, and the app stays ──
   await app.evaluate(({ shell }) => { globalThis.__opened = []; shell.openExternal = async (u) => { globalThis.__opened.push(u); }; });
   await cmd(page, 'chat.show');
