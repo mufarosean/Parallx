@@ -122,6 +122,7 @@ function _exitMode(mode: ActiveMode, reason: ModeExitReason): void {
   mode.exited = true;
   const idx = _stack.indexOf(mode);
   if (idx >= 0) _stack.splice(idx, 1);
+  _markStack();
 
   try {
     mode.options.onExit(reason);
@@ -267,6 +268,7 @@ export function enterMode(options: InteractionModeOptions): ModeHandle {
     exited: false,
   };
   _stack.push(mode);
+  _markStack();
   _installDocListeners();
 
   // Skip the press that opened the mode; arm on the next tick.
@@ -278,6 +280,11 @@ export function enterMode(options: InteractionModeOptions): ModeHandle {
     get isTopmost() { return _topmost() === mode; },
     exit: (reason: ModeExitReason = 'programmatic') => _exitMode(mode, reason),
   };
+}
+
+/** The open modes, named on the root for a probe that must say why a key went nowhere. */
+function _markStack(): void {
+  if (typeof document !== 'undefined') document.documentElement.dataset.pxModes = _stack.map((m) => m.options.id).join(' ');
 }
 
 /** The compliance harness looks here; production code should not. */

@@ -38,7 +38,7 @@ import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
 import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
-import { ensureUniverEditorExits } from './univerKeyboard.js';
+import { ensureUniverEditorExits, installSheetAccess } from './univerKeyboard.js';
 export { ATHENA_ROWS, ATHENA_COLUMNS };
 
 export interface IWorksheetHostOptions {
@@ -546,8 +546,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     return null;
   };
   try {
-    const commands = univer.__getInjector().get(ICommandService);
-    let tabRunStepAt = 0;
+    const commands = univer.__getInjector().get(ICommandService); let tabRunStepAt = 0;
+    engineRegistrations.push(installSheetAccess(opts.container, () => { const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet(); const c = sheet?.getSelection()?.getCurrentCell(); if (!sheet || !c) return null; const r = sheet.getRange(c.actualRow, c.actualColumn); return { cell: r.getA1Notation(), value: String(r.getDisplayValue?.() ?? r.getValue() ?? ''), formula: r.getFormula?.() ?? '' }; }, (cb) => commands.onCommandExecuted((c) => { if (c.id === SetSelectionsOperation.id) cb(); }), [opts.container, document.getElementById(POPUP_ROOT_ID) ?? opts.container])); // a voice for the canvas grid (univerA11y.ts)
     const isTabStep = (c: { id: string; params?: unknown }): boolean =>
       (c.id === MoveSelectionEnterAndTabCommand.id && (c.params as { keycode?: number } | undefined)?.keycode === KeyCode.TAB)
       || (c.id === REVERSE_MOVE_ID && (c.params as { direction?: Direction } | undefined)?.direction === Direction.LEFT);

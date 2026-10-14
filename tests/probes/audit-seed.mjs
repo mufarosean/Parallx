@@ -101,8 +101,10 @@ export async function seedAfterLaunch(page, pre) {
   log('concept map', mapId);
 
   // A database.
-  log('database', await run(page, 'canvas.newDatabase'));
+  await run(page, 'canvas.newDatabase');
   await page.waitForTimeout(1_500);
+  const dbId = await page.evaluate(() => { const s = Array.from(document.querySelectorAll('[data-px-surface]')).find((e) => e.getClientRects().length && /database|canvas/.test(e.getAttribute('data-px-surface') || '') && e.getAttribute('data-px-instance')); return s ? (s.getAttribute('data-px-instance') || '').split(':').pop() || null : null; });
+  log('database', dbId);
 
   // Planner events: one timed and one all-day, today.
   log('planner events', await page.evaluate(async () => {
@@ -127,6 +129,7 @@ export async function seedAfterLaunch(page, pre) {
 
   return {
     'seed:page': async () => { if (pageId) await run(page, 'canvas.openPage', pageId); },
+    'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },
     'seed:conceptMap': async () => { if (typeof mapId === 'string' && !mapId.startsWith('failed')) await run(page, 'canvas.openPage', mapId); },
     'seed:imageEditor': async () => { await run(page, 'media-organizer.editImage', pre.photoId); },
     'seed:clipEditor': async () => { await run(page, 'media-organizer.openClipEditor', pre.video); },

@@ -121,6 +121,15 @@ try {
   await page.waitForTimeout(2_500);
   const registered = await page.evaluate(() => !!window.__parallx_workbench__._services.get({ id: 'ICommandService' }).getCommand?.('media-organizer.importFiles'));
   check('Media Organizer registers Import Files…', registered);
+  // ── A web link from the keyboard: it opens outside, and the app stays ──
+  await app.evaluate(({ shell }) => { globalThis.__opened = []; shell.openExternal = async (u) => { globalThis.__opened.push(u); }; });
+  await cmd(page, 'chat.show');
+  await page.waitForTimeout(1_500);
+  const linked = await page.evaluate(() => { const a = Array.from(document.querySelectorAll('[data-px-id="chat.offline.ollamaLink"]')).find((x) => x.getClientRects().length); if (!a) return false; a.focus(); return true; });
+  if (linked) { await page.keyboard.press('Enter'); await page.waitForTimeout(1_500); }
+  const stayed = await page.evaluate(() => !!window.__parallx_workbench__?._services).catch(() => false);
+  const opened = await app.evaluate(() => globalThis.__opened);
+  check('Enter on a web link opens it outside and the app stays', linked && stayed && opened.some((u) => /ollama\.com/.test(u)), `link ${linked}, app ${stayed}, opened ${JSON.stringify(opened)}`);
   console.log(`[probe] concept map page ${pageId}; renderer errors: ${errors.length ? errors.join(' | ') : 'none'}`);
 } catch (err) {
   check('the run', false, err && err.message);

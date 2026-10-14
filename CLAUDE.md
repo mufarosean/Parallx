@@ -77,6 +77,19 @@ for pages and PDFs gets exactly that. So:
   block), never a stray value. `docs/PARALLX_EXTENSION_AUTHORING_FOR_AI.md`
   §6 has the rules; the compliance tests in `tests/unit/*Compliance.test.ts`
   and `extStyleRatchet.test.ts` enforce them.
+- Accessibility is part of done, for every person: someone who cannot see
+  (a screen reader), who uses only a keyboard, or only a finger or pen.
+  Every control is reachable by keyboard, has a name, shows when focused;
+  every drag also works by keys and by touch. In code: make controls with
+  the kit (it names and focuses what it declares); start a drag with
+  `onDragPress` (`api.ui.onDragPress`), never a mousedown listener; a modal
+  uses `keepTabInside`; whatever `:hover` reveals, `:focus-within` and
+  `[data-input-modality="touch"]` reveal too. `mousePressRatchet` and
+  `hoverRevealCompliance` enforce that; after UI work run
+  `tests/probes/keyboard-audit-probe.mjs` (seeded workspace, keyboard,
+  screen-reader names, contrast, dialogs, touch) and
+  `tests/probes/touch-drag-probe.mjs`: both must report 0.
+  `docs/ACCESSIBILITY.md` has the rules and the record.
 - Copy: Title Case for actions and titles, sentence case for section labels
   and hints, no uppercase micro-labels, no em dashes in labels, `…` when an
   action opens a dialog.

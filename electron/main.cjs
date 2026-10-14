@@ -750,16 +750,11 @@ async function createWindow() {
   // denied — we never let the renderer spawn anything. Without this carve-
   // out, anchor clicks inside the PDF viewer (and any embedded content)
   // are silently swallowed.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (typeof url === 'string' && /^(https?:|mailto:)/i.test(url)) {
-      // The browser extension first, when it has claimed links; else the OS browser.
-      if (_browserBridge && _browserBridge.openInApp(url, false)) return { action: 'deny' };
-      shell.openExternal(url).catch((err) => {
-        console.warn('[main] openExternal failed for', url, err?.message);
-      });
-    }
-    return { action: 'deny' };
-  });
+  // The browser extension first, when it has claimed links; else the OS browser.
+  const openLinkOutside = (url) => { if (typeof url !== 'string' || !/^(https?:|mailto:)/i.test(url)) return; if (_browserBridge && _browserBridge.openInApp(url, false)) return; shell.openExternal(url).catch((err) => { console.warn('[main] openExternal failed for', url, err?.message); }); };
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => { openLinkOutside(url); return { action: 'deny' }; });
+  // A plain link (no target) navigates the window itself, which would replace the app: never leave the app's page; open the link as above.
+  mainWindow.webContents.on('will-navigate', (e, url) => { try { if (new URL(url).origin === new URL(mainWindow.webContents.getURL()).origin) return; } catch { /* unreadable: stay */ } e.preventDefault(); openLinkOutside(url); });
 
   if (saved?.isMaximized) {
     mainWindow.maximize();

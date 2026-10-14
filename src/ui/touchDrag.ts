@@ -17,6 +17,7 @@
 //   mouseup. The handle claims the finger (touch-action: none) unless it
 //   also scrolls.
 
+import './access.css';
 import type { IDisposable } from '../platform/lifecycle.js';
 import { installInputModality } from './inputModality.js';
 

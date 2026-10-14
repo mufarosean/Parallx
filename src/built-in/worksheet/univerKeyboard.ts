@@ -27,3 +27,6 @@ export function ensureUniverEditorExits(): void {
     box.setAttribute('aria-label', `${name}. F6 moves to the next area.`);
   }, true);
 }
+
+// The sheet for a screen reader (a voice for the canvas grid, names for the engine's controls).
+export { installSheetAccess } from './univerA11y.js';

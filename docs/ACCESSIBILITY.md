@@ -7,28 +7,41 @@ it found, worked through in order. An item is ticked only when the audit
 
 ## How it is measured
 
-- `tests/probes/keyboard-audit-probe.mjs` runs the app hidden and muted.
-  On every screen (each built-in, each extension, and the sub-screens
-  their navigation opens: 71 in the first run) it does one unbroken Tab
-  run from the top of the window, F6 through the window's areas, Alt for
-  the menu bar, and the arrow keys inside every list, tab strip, tree,
+Three people are the measure: someone who cannot see and uses a screen
+reader, someone who uses only a keyboard, and someone who uses only a
+finger or a pen. Each must be able to do everything.
+
+- `tests/probes/keyboard-audit-probe.mjs` runs the app hidden and muted,
+  in a seeded workspace (`audit-seed.mjs`: a page with every common block
+  and a cover, a concept map, a database, planner events, dashboard
+  widgets, a photo library and a clip), so the controls an empty
+  workspace never shows are on screen too. On every screen (each built-in,
+  each extension, each seeded place, and the sub-screens their navigation
+  opens) it does one unbroken Tab run, F6 through the window's areas, Alt
+  for the menu bar, and the arrow keys inside every list, tab strip, tree,
   toolbar and radio group. It reads the accessibility tree (what a screen
-  reader reads) for nameless controls, measures text contrast in dark and
-  light mode (WCAG AA: 4.5:1, 3:1 for large text), and opens each kind of
-  dialog from the keyboard to check focus goes in, stays in (modal),
-  Escape closes it, and focus comes back. A report, not a gate.
+  reader reads) for nameless controls and measures text contrast in dark
+  and light mode (WCAG AA). Then its passes: dialogs (each kind opened
+  from the keyboard: focus goes in, stays in when modal, Escape closes it,
+  focus comes back); touch (every drag handle dragged by a finger, and by
+  the mouse when the finger did nothing: touchDead); popups (on every
+  screen each button that is not destructive is pressed from the
+  keyboard, and whatever opens, with its submenus, gets the dialog checks
+  and the name check).
   `node tests/probes/keyboard-audit-probe.mjs [outDir] [screen filter…]`
-  (`dialogs` or `light` run just those passes).
+  (`dialogs`, `light`, `touch` or `popups` run just that pass).
+- `tests/probes/touch-drag-probe.mjs`: a finger test for each way a drag
+  starts (divider, tab, table grip, cover, planner event, concept map box,
+  widget corner, Straighten dial) and that a swipe still scrolls a page.
 - `tests/probes/scene-coverage-probe.mjs`: every visible interactive
   element is in the scene (0 undeclared of what Parallx draws).
-- Drag interactions: a code inventory of every pointer drag and whether
-  a keyboard way to do the same exists (listed below).
-- Not automated: listening with a real screen reader (NVDA, Narrator).
-  The accessibility tree the audit reads is what those read; a listen-
-  through is the owner's to do once the list below is clear.
-- Third-party: the spreadsheet engine (Univer) draws its own toolbar,
-  sheet tabs and grid; its own keyboard model is not Parallx's to change.
-  Parallx owns getting in and out of it.
+- Fast gates in the unit tests (`npx vitest run`): `mousePressRatchet`
+  (no new mouse-only press listener: a drag starts with `onDragPress`),
+  `hoverRevealCompliance` (what `:hover` reveals, keyboard focus and touch
+  reveal too), and the kit, raw DOM and style ratchets.
+- The spreadsheet engine (Univer) ships inside Parallx, so it is held to
+  the same standard (section 9): its grid speaks the active cell, and its
+  own controls are named and reachable.
 
 ## First run, 2026-10-13
 
@@ -132,6 +145,35 @@ item, a menu item, or a field), through the same save the drag uses.
   (Win+arrows, or Alt+Space then Move).
 - Proof in the hidden app: `mo-keys-probe.mjs`, `mo-parent-tags-probe.mjs`
   and `a11y-drags-probe.mjs`; unit tests beside each.
+
+### 8. Touch and pen (done 2026-10-13)
+- [x] The browser's drag and drop (tabs, tree rows, cards, extension items)
+  answers a finger: hold a moment, then move (`installTouchDragAndDrop`,
+  src/ui/touchDrag.ts, installed once for the window).
+- [x] Every drag the app tracks starts on any pointer (`onDragPress`;
+  `api.ui.onDragPress` for extensions). On a surface a finger scrolls (a
+  page, a calendar, a board, a photo grid) a finger holds first and a
+  swipe still scrolls; a tap is still a tap. Handles and canvases claim
+  the finger.
+- [x] Dividers take a 24px hit area on a touchscreen.
+- [x] Whatever a hover reveals (widget handles, row actions, block grips)
+  a finger and the keyboard reveal too (`data-input-modality`,
+  src/ui/inputModality.ts; 79 rules fixed).
+
+### 9. The spreadsheet (done 2026-10-13)
+- [x] The grid is a canvas a screen reader cannot read: the sheet speaks
+  the active cell as the selection moves ("B7, =A1*2, 42"), through a
+  polite live region (src/built-in/worksheet/univerA11y.ts).
+- [x] The engine's own toolbar, tabs and menus: a control drawn without
+  a name takes one from its tooltip, icon or title; one drawn
+  unreachable joins the Tab order.
+- [x] Getting in and out: Tab moves between cells, as in Excel; F6 and
+  Escape leave the sheet (the region says so).
+
+### 10. What keeps it so
+- The house rule in CLAUDE.md, and the gates above: the ratchets fail a
+  change that adds a mouse-only drag or a hover-only control; the audit
+  and the touch probe must read 0 after any UI work.
 
 ### 7. Done when
 The audit reports 0 in every kind, every dialog passes, every drag has a

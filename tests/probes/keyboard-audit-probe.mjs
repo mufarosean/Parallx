@@ -48,7 +48,7 @@ const SCREENS = [
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
-  ['seed:page'], ['seed:conceptMap'], ['seed:imageEditor'], ['seed:clipEditor'],
+  ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:imageEditor'], ['seed:clipEditor'],
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx.browser', 'parallx-community.study'];
 // A sub-screen is what a tool's own navigation opens: its sidebar's and its
@@ -60,7 +60,8 @@ function install() {
   const INTERACTIVE = 'button, input:not([type=hidden]), select, textarea, a[href], [role=button], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=checkbox], [role=switch], [role=option], [role=radio], [role=slider], [role=gridcell], [role=treeitem], [role=link], [role=combobox], [role=spinbutton], [role=searchbox], [role=textbox]';
   const COMPOSITE = '[role=listbox], [role=tree], [role=tablist], [role=menu], [role=menubar], [role=radiogroup], [role=grid], [role=toolbar]';
   const shown = (e) => { if (!e || !e.isConnected) return false; const r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden], [aria-hidden="true"], [inert]'); };
-  const third = (e) => !!e.closest('[class*="univer-"]');
+  // The spreadsheet engine's own DOM; KB_THIRD=1 holds it to the same checks (window.__kbAuditThird).
+  const third = (e) => !window.__kbAuditThird && !!e.closest('[class*="univer-"]');
   const settle = () => { for (const a of document.getAnimations()) { try { if (a.effect?.getComputedTiming().iterations !== Infinity) a.finish(); } catch { /* infinite or detached */ } } };
   const look = (e) => { if (!e) return ''; settle(); const cs = getComputedStyle(e); return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderTopColor, cs.borderBottomColor, cs.borderLeftColor, cs.backgroundColor, cs.color, cs.textDecorationLine, ...[...Array.from(e.children).slice(0, 3), e.querySelector('[aria-selected="true"], [class*="--selected"]')].filter(Boolean).map((c) => { const k = getComputedStyle(c); return k.outlineStyle + k.boxShadow + k.borderTopColor; })].join('|'); };
   const around = (e) => [e?.parentElement, e?.parentElement?.parentElement, e?.parentElement?.parentElement?.parentElement].map(look).join('#');
@@ -211,6 +212,8 @@ await fs.writeFile(path.join(ws, 'alpha.md'), '# Alpha\n\nA note.\n');
 await fs.writeFile(path.join(ws, 'reading.pdf'), tinyPdf());
 const seedPre = await seedBeforeLaunch(ws);
 const { app, page } = await launchApp(appRoot);
+if (process.env.KB_THIRD) await page.evaluate(() => { window.__kbAuditThird = true; });
+await stubNativeDialogs(); // file and message dialogs cancel, links and folders open nothing on the desktop
 let seedScreens = {};
 const cdp = await page.context().newCDPSession(page).catch(() => null);
 const report = [];
@@ -228,7 +231,7 @@ async function namelessNodes() {
     if (!n.backendDOMNodeId) continue;
     const desc = await cdp.send('DOM.resolveNode', { backendNodeId: n.backendDOMNodeId }).then(({ object }) => cdp.send('Runtime.callFunctionOn', {
       objectId: object.objectId, returnByValue: true,
-      functionDeclaration: 'function () { if (!this.getClientRects || !this.getClientRects().length || this.closest("[class*=univer-], [aria-hidden=true], [hidden]")) return null; const s = this.closest("[data-px-surface]"); return `${s ? s.getAttribute("data-px-surface") : "(window)"} :: ${this.tagName.toLowerCase()}${this.getAttribute("data-px-id") ? "#" + this.getAttribute("data-px-id") : (typeof this.className === "string" && this.className ? "." + this.className.split(" ")[0] : "")}`; }',
+      functionDeclaration: 'function () { if (!this.getClientRects || !this.getClientRects().length || this.closest(window.__kbAuditThird ? "[aria-hidden=true], [hidden]" : "[class*=univer-], [aria-hidden=true], [hidden]")) return null; const s = this.closest("[data-px-surface]"); return `${s ? s.getAttribute("data-px-surface") : "(window)"} :: ${this.tagName.toLowerCase()}${this.getAttribute("data-px-id") ? "#" + this.getAttribute("data-px-id") : (typeof this.className === "string" && this.className ? "." + this.className.split(" ")[0] : "")}`; }',
     })).then((r) => r.result.value).catch(() => null);
     if (desc) out.push(`${desc} [${n.role.value}]`);
   }
@@ -456,6 +459,131 @@ async function auditScreen(label) {
 }
 
 /** Light mode: the same screens, text contrast only. */
+// 5. Popups (its own pass): every state a screen opens. On each screen,
+// each button that is not destructive is pressed from the keyboard; what
+// opens (a dialog, a menu, a list, a popover) is checked as the dialog pass
+// checks the shared kinds: focus goes in, a modal keeps Tab inside, every
+// control in it has a name, Escape closes it, focus comes back. A menu's
+// submenus are opened with the arrow key and checked the same way. Native
+// file and message dialogs are stubbed to cancel at once (nothing could
+// close one in a hidden window).
+const popupTried = new Set();
+const DESTRUCTIVE = /delete|remove|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
+const POPUP_ROOTS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-px-surface="contextMenu"], [data-px-surface="quickAccess"], .ui-dropdown__list';
+async function stubNativeDialogs() {
+  await app.evaluate(({ shell }) => { shell.openExternal = async () => {}; shell.openPath = async () => ''; shell.showItemInFolder = () => {}; }).catch(() => {}); // a hidden run opens nothing on the desktop
+  await app.evaluate(({ dialog }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+    dialog.showSaveDialog = async () => ({ canceled: true, filePath: undefined });
+    dialog.showMessageBox = async (_w, o) => { const opts = o ?? _w; const n = (opts?.buttons ?? ['OK']).length; return { response: typeof opts?.cancelId === 'number' ? opts.cancelId : n - 1, checkboxChecked: false }; };
+    dialog.showOpenDialogSync = () => undefined; dialog.showSaveDialogSync = () => undefined; dialog.showMessageBoxSync = (_w, o) => { const opts = o ?? _w; return typeof opts?.cancelId === 'number' ? opts.cancelId : (opts?.buttons ?? ['OK']).length - 1; };
+  }).catch(() => {});
+}
+async function popupProblems(label) {
+  const problems = [];
+  const before = new Set(await namelessNodes());
+  const cands = await page.evaluate(({ DEST, roots }) => {
+    const re = new RegExp(DEST, 'i');
+    const modal = Array.from(document.querySelectorAll('[aria-modal="true"]')).filter((m) => m.getClientRects().length).pop();
+    const scope = modal ?? document.body;
+    const out = [];
+    let n = 0;
+    for (const e of scope.querySelectorAll('button, [role="button"], [aria-haspopup]:not([aria-haspopup="false"])')) {
+      if (!e.getClientRects().length || e.disabled || e.getAttribute('aria-disabled') === 'true') continue;
+      if (e.closest('[class*=univer-], [aria-hidden="true"], [hidden], [inert], [data-part-id="workbench.parts.titlebar"], [data-part-id="workbench.parts.activitybar"], [data-part-id="workbench.parts.activitybar.right"], [data-part-id="workbench.parts.statusbar"]')) continue;
+      if (e.closest(roots)) continue;
+      const name = (e.getAttribute('aria-label') || e.getAttribute('title') || e.textContent || '').trim().replace(/\s+/g, ' ');
+      if (!name || re.test(name)) continue;
+      if (e.getAttribute('role') === 'tab' || e.closest('[role="tablist"]')) continue; // navigation, visited as screens
+      const sur = e.closest('[data-px-surface]');
+      e.setAttribute('data-popup-cand', String(n));
+      out.push({ n: n++, sig: `${sur ? sur.getAttribute('data-px-surface') : '(window)'} :: ${e.getAttribute('data-px-id') || name.slice(0, 40)}` });
+    }
+    return out;
+  }, { DEST: DESTRUCTIVE.source, roots: POPUP_ROOTS });
+  for (const c of cands) {
+    if (popupTried.has(c.sig) || popupTried.size > 1500) continue;
+    popupTried.add(c.sig);
+    const opened = await page.evaluate(({ n, roots }) => {
+      const e = document.querySelector(`[data-popup-cand="${n}"]`);
+      if (!e || !e.getClientRects().length) return null;
+      window.__popupBefore = new Set(Array.from(document.querySelectorAll(roots)).filter((r) => r.getClientRects().length));
+      window.__popupOpener = e;
+      e.focus();
+      return document.activeElement === e || e.contains(document.activeElement);
+    }, { n: c.n, roots: POPUP_ROOTS });
+    if (!opened) continue;
+    if (process.env.KB_DEBUG) console.log(`[debug] popup press ${c.sig}`);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(450);
+    // A press that reloaded the window (a workspace switch): wait for it, then go on with the next screen.
+    if (!(await page.evaluate(() => !!window.__parallx_workbench__?._services).catch(() => false))) { problems.push(`${label} :: ${c.sig}: the window reloaded`); await page.waitForSelector('[data-part-id="workbench.parts.titlebar"]', { state: 'attached', timeout: 90_000 }).catch(() => {}); await page.waitForTimeout(3_000); break; }
+    const state = () => page.evaluate((roots) => {
+      const now = Array.from(document.querySelectorAll(roots)).filter((r) => r.getClientRects().length && !window.__popupBefore.has(r));
+      const r = now.pop();
+      const a = document.activeElement;
+      const drives = !!r && !!a && !!r.id && a.getAttribute('aria-controls') === r.id;
+      return { open: !!r, modal: !!r && (r.getAttribute('aria-modal') === 'true' || !!r.closest('[aria-modal="true"]')), inside: !!r && (r.contains(a) || drives), atOpener: a === window.__popupOpener, menu: !!r && (r.getAttribute('role') === 'menu' || r.matches('[data-px-surface="contextMenu"]')) };
+    }, POPUP_ROOTS);
+    const s1 = await state();
+    if (!s1.open) {
+      // Not a popup: it navigated or toggled. Put the screen back.
+      await page.keyboard.press('Escape');
+      continue;
+    }
+    const where = `${label} :: ${c.sig}`;
+    if (!s1.inside) problems.push(`${where}: focus did not move into what opened`);
+    if (s1.modal) {
+      for (let i = 0; i < 10; i++) { await page.keyboard.press('Tab'); if (!(await state()).inside) { problems.push(`${where}: Tab left the modal`); break; } }
+    }
+    for (const nm of await namelessNodes()) if (!before.has(nm)) problems.push(`${where}: nameless ${nm}`);
+    if (s1.menu) {
+      // A submenu: the first item that has one, opened with the arrow key.
+      const sub = await page.evaluate(() => { const items = Array.from(document.querySelectorAll('[role="menuitem"][aria-haspopup]')).filter((x) => x.getClientRects().length); const it = items[0]; if (!it) return false; it.focus(); return true; });
+      if (sub) {
+        await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(300);
+        const deeper = await page.evaluate(() => document.querySelectorAll('[role="menu"]').length);
+        if (deeper < 2) problems.push(`${where}: a submenu did not open with the arrow key`);
+        else { for (const nm of await namelessNodes()) if (!before.has(nm)) problems.push(`${where} > submenu: nameless ${nm}`); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(200); }
+      }
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(350);
+    const s2 = await state();
+    if (s2.open) { problems.push(`${where}: Escape did not close it`); await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); }
+    else if (!s2.atOpener && !s1.modal) problems.push(`${where}: focus did not come back to the opener`);
+    else if (!s2.atOpener) problems.push(`${where}: focus did not come back to the opener`);
+  }
+  return [...new Set(problems)];
+}
+async function auditPopups() {
+  await stubNativeDialogs();
+  const done = new Set();
+  const one = async (label) => {
+    const p = await popupProblems(label);
+    report.push({ screen: `${label} (popups)`, tabs: 0, trap: null, f6Missing: [], notFocusable: [], tabHole: [], noRing: [], noName: [], mouseOnly: [], touchDead: [], popups: p, lowContrast: [], lowContrastLight: [] });
+    console.log(`[popups] ${label}: tried=${popupTried.size} problems=${p.length}`);
+  };
+  for (const [first, ...args] of SCREENS) {
+    const label = [first, ...args].join(' ');
+    if (only.length && !only.some((o) => label.includes(o)) && !only.includes('popups')) continue;
+    await open(first, args);
+    await page.waitForTimeout(1_200);
+    await one(label);
+    for (const id of await navIds()) {
+      if (done.has(id)) continue;
+      done.add(id);
+      await open(first, args);
+      await page.waitForTimeout(800);
+      const ok = await page.evaluate((id) => { const e = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)).find((x) => x.getClientRects().length); if (!e) return false; e.click(); return true; }, id);
+      if (!ok) continue;
+      await page.waitForTimeout(1_000);
+      await one(`${label} > ${id}`);
+    }
+  }
+}
+
 async function auditTouch() {
   const done = new Set();
   const one = async (label) => {
@@ -563,7 +691,7 @@ async function auditDialogs() {
     if (!s1.open) row.seen = await page.evaluate(({ root, opener }) => {
       const a = document.activeElement;
       const openers = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`));
-      return { roots: Array.from(document.querySelectorAll(root)).map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), openers: openers.map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), activeShown: !!a?.getClientRects().length, expanded: a?.getAttribute('aria-expanded') };
+      return { roots: Array.from(document.querySelectorAll(root)).map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), openers: openers.map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), activeShown: !!a?.getClientRects().length, expanded: a?.getAttribute('aria-expanded'), modes: document.documentElement.dataset.pxModes || '', disabled: !!a?.disabled };
     }, { root: d.root, opener: d.opener });
     if (s1.open && d.modal) {
       let stayed = true;
@@ -623,17 +751,18 @@ try {
     }
   }
   if (!only.length || only.includes('dialogs')) dialogs = await auditDialogs();
-  if (!only.length || only.includes('touch') || only.some((o) => !['dialogs', 'light'].includes(o))) await auditTouch();
+  if (!only.length || only.includes('touch') || only.some((o) => !['dialogs', 'light', 'popups'].includes(o))) await auditTouch();
+  if (!only.length || only.includes('popups') || only.some((o) => !['dialogs', 'light', 'touch'].includes(o))) await auditPopups();
   if (!only.length || only.includes('light')) await auditLight();
 } finally {
   await app.close().catch(() => {});
 }
 
 // Distinct findings across screens, by kind and surface.
-const kinds = ['notFocusable', 'tabHole', 'f6Missing', 'noRing', 'noName', 'mouseOnly', 'touchDead', 'lowContrast', 'lowContrastLight'];
+const kinds = ['notFocusable', 'tabHole', 'f6Missing', 'noRing', 'noName', 'mouseOnly', 'touchDead', 'popups', 'lowContrast', 'lowContrastLight'];
 const totals = {};
 for (const k of kinds) {
-  const set = new Set(report.flatMap((r) => r[k].map(String)));
+  const set = new Set(report.flatMap((r) => (r[k] ?? []).map(String)));
   totals[k] = set.size;
   const bySurface = new Map();
   for (const d of set) { const [s, rest] = d.includes(' :: ') ? d.split(' :: ') : ['(area)', d]; bySurface.set(s, [...(bySurface.get(s) ?? []), rest]); }
