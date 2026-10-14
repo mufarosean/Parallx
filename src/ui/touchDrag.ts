@@ -20,12 +20,14 @@
 import './access.css';
 import type { IDisposable } from '../platform/lifecycle.js';
 import { installInputModality } from './inputModality.js';
+import { installExternalLinks } from './externalLinks.js';
 
-/** The document's pointer and keyboard access: drag and drop by finger, focus rings by modality. */
+/** The document's pointer and keyboard access: drag and drop by finger, focus rings by modality, links that never leave the app. */
 export function installInputAccess(doc: Document = document): IDisposable {
   const a = installTouchDragAndDrop(doc);
   const b = installInputModality(doc);
-  return { dispose: () => { a.dispose(); b.dispose(); } };
+  const c = installExternalLinks(doc.defaultView ?? window);
+  return { dispose: () => { a.dispose(); b.dispose(); c.dispose(); } };
 }
 
 /** How long a finger holds still before a draggable item lifts (ms). */

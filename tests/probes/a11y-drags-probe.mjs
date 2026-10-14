@@ -135,8 +135,7 @@ try {
   // ── A sheet tab's menu from the keyboard ──
   await page.evaluate(() => document.querySelector('[data-u-comp="slide-tab-bar"] [role="tab"]')?.focus());
   await page.keyboard.press('Shift+F10');
-  await page.waitForTimeout(900);
-  const inMenu = await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem' ? document.activeElement.textContent.trim() : null);
+  const inMenu = await until(page, () => document.activeElement?.getAttribute('role') === 'menuitem' ? document.activeElement.textContent.trim() : null, undefined, 3_500);
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(200);
   const nextItem = await page.evaluate(() => document.activeElement?.getAttribute('role') === 'menuitem' ? document.activeElement.textContent.trim() : null);
@@ -151,7 +150,8 @@ try {
   await page.waitForTimeout(1_500);
   const linked = await page.evaluate(() => { const a = Array.from(document.querySelectorAll('[data-px-id="chat.offline.ollamaLink"]')).find((x) => x.getClientRects().length); if (!a) return false; a.focus(); return true; });
   if (linked) { await page.keyboard.press('Enter'); await page.waitForTimeout(1_500); }
-  const stayed = await page.evaluate(() => !!window.__parallx_workbench__?._services).catch(() => false);
+  // The app stays and still works (a navigation that starts, even refused, shuts it down).
+  const stayed = await page.evaluate(async () => { try { const svc = window.__parallx_workbench__._services.get({ id: 'ICommandService' }); await svc.executeCommand('welcome.openWelcome'); return true; } catch { return false; } }).catch(() => false);
   const opened = await app.evaluate(() => globalThis.__opened);
   check('Enter on a web link opens it outside and the app stays', linked && stayed && opened.some((u) => /ollama\.com/.test(u)), `link ${linked}, app ${stayed}, opened ${JSON.stringify(opened)}`);
   console.log(`[probe] concept map page ${pageId}; renderer errors: ${errors.length ? errors.join(' | ') : 'none'}`);

@@ -488,6 +488,9 @@ async function stubNativeDialogs() {
     dialog.showOpenDialogSync = () => undefined; dialog.showSaveDialogSync = () => undefined; dialog.showMessageBoxSync = (_w, o) => { const opts = o ?? _w; return typeof opts?.cancelId === 'number' ? opts.cancelId : (opts?.buttons ?? ['OK']).length - 1; };
   }).catch(() => {});
 }
+/** The workbench is up and its services usable (a reload disposes them). */
+const workbenchAlive = () => page.evaluate(() => { try { return !!window.__parallx_workbench__._services.get({ id: 'ICommandService' }); } catch { return false; } }).catch(() => false);
+async function waitWorkbench() { for (let i = 0; i < 120 && !(await workbenchAlive()); i++) await page.waitForTimeout(500); await page.waitForTimeout(2_000); }
 async function popupProblems(label) {
   const problems = [];
   const before = new Set(await namelessNodes());
@@ -526,7 +529,7 @@ async function popupProblems(label) {
     await page.keyboard.press('Enter');
     await page.waitForTimeout(450);
     // A press that reloaded the window (a workspace switch): wait for it, then go on with the next screen.
-    if (!(await page.evaluate(() => !!window.__parallx_workbench__?._services).catch(() => false))) { problems.push(`${label} :: ${c.sig}: the window reloaded`); await page.waitForSelector('[data-part-id="workbench.parts.titlebar"]', { state: 'attached', timeout: 90_000 }).catch(() => {}); await page.waitForTimeout(3_000); break; }
+    if (!(await workbenchAlive())) { problems.push(`${label} :: ${c.sig}: the window reloaded`); await waitWorkbench(); break; }
     const state = () => page.evaluate((roots) => {
       const now = Array.from(document.querySelectorAll(roots)).filter((r) => r.getClientRects().length && !window.__popupBefore.has(r));
       const r = now.pop();
@@ -570,7 +573,8 @@ async function auditPopups() {
   await stubNativeDialogs();
   const done = new Set();
   const one = async (label) => {
-    const p = await popupProblems(label);
+    let p;
+    try { p = await popupProblems(label); } catch (err) { await waitWorkbench(); p = [`${label}: the popup pass failed here (${String(err?.message || err).slice(0, 120)})`]; }
     report.push({ screen: `${label} (popups)`, tabs: 0, trap: null, f6Missing: [], notFocusable: [], tabHole: [], noRing: [], noName: [], mouseOnly: [], touchDead: [], popups: p, lowContrast: [], lowContrastLight: [] });
     console.log(`[popups] ${label}: tried=${popupTried.size} problems=${p.length}`);
   };
@@ -580,7 +584,7 @@ async function auditPopups() {
     await open(first, args);
     await page.waitForTimeout(1_200);
     await one(label);
-    for (const id of await navIds()) {
+    for (const id of await navIds().catch(async () => { await waitWorkbench(); return []; })) {
       if (done.has(id)) continue;
       done.add(id);
       await open(first, args);
@@ -606,7 +610,7 @@ async function auditTouch() {
     await open(first, args);
     await page.waitForTimeout(1_200);
     await one(label);
-    for (const id of await navIds()) {
+    for (const id of await navIds().catch(async () => { await waitWorkbench(); return []; })) {
       if (done.has(id)) continue;
       done.add(id);
       await open(first, args);
@@ -747,7 +751,7 @@ try {
     await page.waitForTimeout(1_500);
     await auditScreen(label);
     // One level down: each navigation entry this screen shows.
-    for (const id of await navIds()) {
+    for (const id of await navIds().catch(async () => { await waitWorkbench(); return []; })) {
       if (done.has(id)) continue;
       done.add(id);
       await open(first, args);

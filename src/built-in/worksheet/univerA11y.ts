@@ -285,8 +285,8 @@ export function installSheetAccess(
       active.dispatchEvent(new PointerEvent('pointerup', { ...at, buttons: 0, pointerType: 'mouse', isPrimary: true }));
       active.dispatchEvent(new MouseEvent('mouseup', { ...at, buttons: 0 }));
       active.dispatchEvent(new MouseEvent('contextmenu', { ...at, buttons: 0 }));
-      // The engine shows it after its own delay: look until it does (1.5 s at most), then focus goes in.
-      const until = Date.now() + 1500;
+      // The engine shows it after its own delay: look until it does (3 s at most), then focus goes in.
+      const until = Date.now() + 3000;
       const look = (): void => { menus(container); const open = !!container.ownerDocument.activeElement?.closest('section[role="menu"]'); if (!open && Date.now() < until) setTimeout(look, 50); };
       setTimeout(look, 50);
       return;

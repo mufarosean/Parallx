@@ -33,6 +33,7 @@ const NOT_COUNTED = [
   'ext/study/main.js', 'ext/**/readability.js', 'ext/**/test/**',
   'src/ui/kit.ts', 'src/ui/scene.ts', 'src/ui/toggle.ts', 'src/ui/inputBox.ts', 'src/ui/dropdown.ts',
   'src/ui/slider.ts', 'src/ui/tabBar.ts', 'src/ui/segmentedControl.ts', 'src/ui/contextMenu.ts',
+  'src/ui/externalLinks.ts', // the window's link guard, not a control
 ];
 
 type Counts = Record<string, number>;
