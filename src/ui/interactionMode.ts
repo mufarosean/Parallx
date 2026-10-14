@@ -314,6 +314,8 @@ export interface PointerDragHandle {
  * with no button held and text selection dead. Every end path here
  * routes through one cleanup.
  */
+export { onDragPress } from './touchDrag.js';
+
 export function beginPointerDrag(start: PointerEvent | MouseEvent | null, options: PointerDragOptions): PointerDragHandle {
   let ended = false;
   const body = document.body;

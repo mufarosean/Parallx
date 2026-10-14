@@ -789,6 +789,15 @@ export namespace ui {
    * (the key then passes on to the divider around it).
    */
   export function registerKeyboardResize(element: HTMLElement, target: { readonly axis: 'width' | 'height'; resize(delta: number): boolean | undefined }): IDisposable;
+  /**
+   * A press that starts a drag, for a mouse, a pen or a finger: use it where
+   * you would add a mousedown listener that begins a drag. The handler runs
+   * for every kind of press; while a finger stays down, its moves and lift
+   * reach your document mousemove and mouseup listeners. The element claims
+   * the finger from scrolling, unless `scrolls` (a root that delegates to
+   * handles which set touch-action: none themselves).
+   */
+  export function onDragPress(element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean }): IDisposable;
 
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;

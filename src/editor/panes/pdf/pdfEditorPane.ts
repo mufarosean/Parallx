@@ -34,7 +34,7 @@ import { EditorPane } from '../../../editor/editorPane.js';
 import type { IEditorInput } from '../../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show } from '../../../ui/dom.js';
-import { beginPointerDrag } from '../../../ui/interactionMode.js';
+import { beginPointerDrag, onDragPress } from '../../../ui/interactionMode.js';
 import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
 import { toDisposable } from '../../../platform/lifecycle.js';
@@ -530,7 +530,7 @@ export class PdfEditorPane extends EditorPane {
       save(after);
       return after !== before;
     } }));
-    this._outlineSash.addEventListener('mousedown', (startEvt: MouseEvent) => {
+    this._register(onDragPress(this._outlineSash, (startEvt: MouseEvent) => {
       startEvt.preventDefault();
       let startX = startEvt.clientX;
       let currentW = this._outlineSidebar.offsetWidth;
@@ -543,7 +543,7 @@ export class PdfEditorPane extends EditorPane {
         onMove: (e) => { currentW = setWidth(currentW + e.clientX - startX); startX = e.clientX; },
         onEnd: () => { this._outlineSash.classList.remove('active'); save(currentW); },
       });
-    });
+    }));
   }
 
   // ── Load PDF ─────────────────────────────────────────────────────────

@@ -760,3 +760,39 @@
 /* Mark only — a circle, so it reads as one affordance and not a clipped pill. */
 .px-ai-btn--icon { width: 28px; padding: 0; justify-content: center; gap: 0; }
 .px-ai-btn--icon.px-ai-btn--compact { width: 24px; }
+
+/* touchDrag.ts: the item a finger is carrying (drag and drop by touch). */
+.px-touch-drag-ghost {
+  position: fixed;
+  z-index: var(--px-z-popup);
+  pointer-events: none;
+  opacity: 0.85;
+  box-shadow: var(--px-shadow-lg);
+  margin: 0;
+}
+
+/* Dividers and grips take a fingertip, not only a pointer's tip: on a
+   device with a touchscreen their hit area grows to 24px (WCAG 2.5.8)
+   while the drawn line stays 1px. touch-action keeps the finger off
+   scrolling while it drags. */
+.grid-sash, .view-section-sash, .pdf-outline-sash { touch-action: none; }
+@media (any-pointer: coarse) {
+  .view-section-sash, .pdf-outline-sash { position: relative; }
+  .grid-sash-vertical::before, .view-section-sash::before, .pdf-outline-sash::before,
+  .grid-sash-horizontal::before {
+    content: '';
+    position: absolute;
+  }
+  .grid-sash-vertical::before, .pdf-outline-sash::before { top: 0; bottom: 0; left: -9px; right: -9px; }
+  .grid-sash-horizontal::before, .view-section-sash::before { left: 0; right: 0; top: -9px; bottom: -9px; }
+}
+
+/* Rich text fields (a page title, a page body, any contenteditable) show
+   focus as other fields do when the keyboard brings it there; a click into
+   them shows only the caret (inputModality.ts). */
+[data-input-modality="keyboard"] [contenteditable="true"]:focus,
+[data-input-modality="keyboard"] [role="textbox"]:focus {
+  outline: none;
+  box-shadow: var(--px-ring-accent);
+  border-radius: var(--px-radius-sm);
+}

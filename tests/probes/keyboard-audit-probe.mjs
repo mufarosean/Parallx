@@ -20,6 +20,7 @@
 //   noName        interactive accessibility nodes with no name
 //   mouseOnly     elements with a click handler (on them or just above)
 //                 that no key can reach
+//   touchDead     drag handles a mouse can drag and a finger cannot
 //   trap          Tab stuck on one element
 // Then a dialog pass: each kind of dialog opened from the keyboard, checked
 // for focus moving in, staying in, Escape closing it and focus coming back.
@@ -244,6 +245,109 @@ async function mouseOnly(count) {
   return out;
 }
 
+// 4. Touch (its own pass, after the keyboard's, so its drags never colour
+// those results): every drag handle answers a finger as it answers the mouse.
+// A handle is a draggable item or anything with a resize, move or grab
+// cursor. Each is dragged by a finger first (held a moment when it is a
+// draggable item, as the touch gesture asks); if the page does not change
+// beyond its idle churn, the same drag by mouse decides: the mouse changes
+// it and the finger did not = touchDead. Each distinct handle is tried once.
+const touchTried = new Set();
+const DRAG_CURSOR = '^(col-resize|row-resize|ew-resize|ns-resize|nwse-resize|nesw-resize|[nsew]{1,2}-resize|grab|move)$';
+async function touchDead() {
+  if (!cdp) return [];
+  const cands = await page.evaluate((re) => {
+    const DRAG = new RegExp(re);
+    const vis = (e) => { const r = e.getBoundingClientRect(); if (r.width < 3 || r.height < 3) return false; const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.display === 'none' || cs.pointerEvents === 'none') return false; if (e.closest('[hidden], [aria-hidden="true"], [inert]')) return false; const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1), y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1); const top = document.elementFromPoint(x, y); return !!top && (top === e || e.contains(top)); };
+    const modal = Array.from(document.querySelectorAll('[aria-modal="true"]')).filter((m) => m.getClientRects().length).pop();
+    const scope = modal ?? document.body;
+    // A drag cursor set only on hover (a grip that shows when its row is
+    // pointed at) is in no computed style until then: read the stylesheets.
+    const hoverCursor = new Map();
+    const strip = (sel) => sel.replace(/:(hover|active|focus|focus-within|focus-visible)\b/g, '').replace(/::?(before|after)\b/g, '');
+    const walk = (rules) => { for (const r of rules) { if (r.cssRules && !r.selectorText) { try { walk(r.cssRules); } catch { /* cross-origin */ } continue; } if (!r.selectorText || !r.style?.cursor || !DRAG.test(r.style.cursor)) continue; for (const part of r.selectorText.split(',')) { try { for (const e of scope.querySelectorAll(strip(part.trim()) || '*:not(*)')) if (!hoverCursor.has(e)) hoverCursor.set(e, r.style.cursor); } catch { /* selector the DOM API refuses */ } } } };
+    for (const sh of document.styleSheets) { try { walk(sh.cssRules); } catch { /* cross-origin */ } }
+    const out = [];
+    let n = 0;
+    for (const e of scope.querySelectorAll('*')) {
+      const drag = e.getAttribute('draggable') === 'true';
+      let cur = getComputedStyle(e).cursor;
+      if (!DRAG.test(cur) && hoverCursor.has(e)) cur = hoverCursor.get(e);
+      if (!drag && !DRAG.test(cur)) continue;
+      if (!drag && e.parentElement && getComputedStyle(e.parentElement).cursor === cur) continue; // the handle, not what it holds
+      if (typeof e.className === 'string' && /(^|\s)univer-/.test(e.className)) continue;
+      if (e.closest('[hidden], [inert]') || !e.getClientRects().length) continue;
+      // Shown only while its container is pointed at: point there first.
+      let hover = null;
+      if (!vis(e)) {
+        let p = e.parentElement;
+        while (p && p !== document.body && !vis(p)) p = p.parentElement;
+        if (!p || p === document.body) continue;
+        const pr = p.getBoundingClientRect();
+        hover = { x: pr.left + Math.min(pr.width / 2, 40), y: pr.top + Math.min(pr.height / 2, 20) };
+      }
+      e.setAttribute('data-touch-cand', String(n));
+      const r = e.getBoundingClientRect();
+      const s = e.closest('[data-px-surface]');
+      const cls = typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/)[0] : '';
+      const label = (e.getAttribute('aria-label') || e.getAttribute('title') || '').trim().slice(0, 30);
+      out.push({ n: n++, hover, sig: `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : cls}${label ? ` "${label}"` : ''}`,
+        x: r.left + r.width / 2, y: r.top + r.height / 2, drag, axis: /col|ew|^[ew]-/.test(cur) ? 'x' : /row|ns|^[ns]-/.test(cur) ? 'y' : 'xy', canvas: e.tagName === 'CANVAS' });
+    }
+    return out;
+  }, DRAG_CURSOR);
+  const dead = [];
+  for (const c of cands) {
+    if (touchTried.has(c.sig) || touchTried.size > 400) continue;
+    if (c.hover) {
+      // Point at its container, then find it where it is drawn now.
+      await page.mouse.move(c.hover.x, c.hover.y);
+      await page.waitForTimeout(250);
+      const at = await page.evaluate((n) => { const e = document.querySelector(`[data-touch-cand="${n}"]`); if (!e) return null; const r = e.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = document.elementFromPoint(x, y); return r.width >= 3 && r.height >= 3 && top && (top === e || e.contains(top)) ? { x, y } : null; }, c.n);
+      if (!at) continue;
+      c.x = at.x; c.y = at.y;
+    }
+    touchTried.add(c.sig);
+    // What changed on the page: DOM churn, a drag begun, a canvas redrawn.
+    const watch = () => page.evaluate(({ x, y, canvas }) => {
+      const w = { n: 0, drag: false, pix: '' };
+      const pix = () => { if (!canvas) return ''; const el = document.elementFromPoint(x, y); try { return el?.tagName === 'CANVAS' ? el.toDataURL().slice(-200) : ''; } catch { return ''; } };
+      w.pix = pix();
+      const mo = new MutationObserver((m) => { w.n += m.length; });
+      mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      const ds = () => { w.drag = true; };
+      document.addEventListener('dragstart', ds, true);
+      window.__touchWatch = { done: () => { mo.disconnect(); document.removeEventListener('dragstart', ds, true); return { n: w.n, drag: w.drag, pixChanged: canvas && pix() !== w.pix }; } };
+    }, c);
+    const read = () => page.evaluate(() => window.__touchWatch.done());
+    const steps = 3, step = 4;
+    const at = (i) => ({ x: c.x + (c.axis === 'y' ? 0 : i * step), y: c.y + (c.axis === 'x' ? 0 : i * step) });
+    // Idle churn over the same span, as the baseline.
+    await watch(); await page.waitForTimeout(c.drag ? 700 : 300); const idle = await read();
+    await watch();
+    const touch = (type, p) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: p.x, y: p.y }] });
+    await touch('touchStart', at(0));
+    if (c.drag) await page.waitForTimeout(450);
+    for (let i = 1; i <= steps; i++) { await touch('touchMove', at(i)); await page.waitForTimeout(25); }
+    await touch('touchEnd', at(steps));
+    await page.waitForTimeout(150);
+    const byFinger = await read();
+    const moved = (w) => w.drag || w.pixChanged || w.n > idle.n + 2;
+    if (!moved(byFinger)) {
+      await watch();
+      await page.mouse.move(at(0).x, at(0).y); await page.mouse.down();
+      for (let i = 1; i <= steps; i++) { await page.mouse.move(at(i).x, at(i).y); await page.waitForTimeout(25); }
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      const byMouse = await read();
+      if (moved(byMouse)) dead.push(c.sig);
+    }
+    if (process.env.KB_DEBUG) console.log(`[debug] touch ${c.sig}: finger=${JSON.stringify(byFinger)} idle=${idle.n}`);
+    await page.keyboard.press('Escape');
+  }
+  return dead;
+}
+
 async function auditScreen(label) {
   await page.evaluate(install);
   await page.evaluate(() => window.__kb.start());
@@ -338,12 +442,38 @@ async function auditScreen(label) {
   });
   const noName = await namelessNodes();
   const mouse = await mouseOnly(res.pointerCount);
-  const row = { screen: label, tabs, trap, incomplete: tabs >= limit, f6Missing, notFocusable: res.notFocusable, tabHole: res.tabHole, noRing: res.noRing, noName, mouseOnly: mouse, lowContrast, lowContrastLight: [], thirdParty: res.thirdParty.length, reached: res.reached, interactive: res.interactive };
+  const row = { screen: label, tabs, trap, incomplete: tabs >= limit, f6Missing, notFocusable: res.notFocusable, tabHole: res.tabHole, noRing: res.noRing, noName, mouseOnly: mouse, touchDead: [], lowContrast, lowContrastLight: [], thirdParty: res.thirdParty.length, reached: res.reached, interactive: res.interactive };
   report.push(row);
   console.log(`[screen] ${label}: tabs=${tabs} reached=${res.reached}/${res.interactive} notFocusable=${res.notFocusable.length} tabHole=${res.tabHole.length} f6Missing=${f6Missing.length} noFocusRing=${res.noRing.length} noName=${noName.length} mouseOnly=${mouse.length} lowContrast=${lowContrast.length} thirdParty=${res.thirdParty.length}${trap ? ` TRAP at ${trap}` : ''}${tabs >= limit ? ' INCOMPLETE (Tab never came round)' : ''}`);
 }
 
 /** Light mode: the same screens, text contrast only. */
+async function auditTouch() {
+  const done = new Set();
+  const one = async (label) => {
+    const dead = await touchDead();
+    report.push({ screen: `${label} (touch)`, tabs: 0, trap: null, f6Missing: [], notFocusable: [], tabHole: [], noRing: [], noName: [], mouseOnly: [], touchDead: dead, lowContrast: [], lowContrastLight: [] });
+    console.log(`[touch] ${label}: tried=${touchTried.size} touchDead=${dead.length}`);
+  };
+  for (const [first, ...args] of SCREENS) {
+    const label = [first, ...args].join(' ');
+    if (only.length && !only.some((o) => label.includes(o)) && !only.includes('touch')) continue;
+    await open(first, args);
+    await page.waitForTimeout(1_200);
+    await one(label);
+    for (const id of await navIds()) {
+      if (done.has(id)) continue;
+      done.add(id);
+      await open(first, args);
+      await page.waitForTimeout(800);
+      const ok = await page.evaluate((id) => { const e = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)).find((x) => x.getClientRects().length); if (!e) return false; e.click(); return true; }, id);
+      if (!ok) continue;
+      await page.waitForTimeout(1_000);
+      await one(`${label} > ${id}`);
+    }
+  }
+}
+
 async function auditLight() {
   // Light mode as a person turns it on: Appearance's Light.
   const mode = async (m) => { await cmd(page, 'settings.openAppearance'); await page.waitForTimeout(800); await page.evaluate((m) => Array.from(document.querySelectorAll(`[data-px-id="appearance.mode.${m}"]`)).find((e) => e.getClientRects().length)?.click(), m); await page.waitForTimeout(800); await page.keyboard.press('Escape'); await page.waitForTimeout(300); };
@@ -355,7 +485,7 @@ async function auditLight() {
     await page.evaluate(install);
     await page.evaluate(() => { window.__kb.start(); document.getElementById('__kb_start')?.remove(); });
     const low = await page.evaluate(() => window.__kb.contrast());
-    report.push({ screen: `${label} (light)`, tabs: 0, trap: null, f6Missing: [], notFocusable: [], tabHole: [], noRing: [], noName: [], mouseOnly: [], lowContrast: [], lowContrastLight: low });
+    report.push({ screen: `${label} (light)`, tabs: 0, trap: null, f6Missing: [], notFocusable: [], tabHole: [], noRing: [], noName: [], mouseOnly: [], touchDead: [], lowContrast: [], lowContrastLight: low });
     console.log(`[light] ${label}: lowContrast=${low.length}`);
   }
   await mode('dark');
@@ -483,13 +613,14 @@ try {
     }
   }
   if (!only.length || only.includes('dialogs')) dialogs = await auditDialogs();
+  if (!only.length || only.includes('touch') || only.some((o) => !['dialogs', 'light'].includes(o))) await auditTouch();
   if (!only.length || only.includes('light')) await auditLight();
 } finally {
   await app.close().catch(() => {});
 }
 
 // Distinct findings across screens, by kind and surface.
-const kinds = ['notFocusable', 'tabHole', 'f6Missing', 'noRing', 'noName', 'mouseOnly', 'lowContrast', 'lowContrastLight'];
+const kinds = ['notFocusable', 'tabHole', 'f6Missing', 'noRing', 'noName', 'mouseOnly', 'touchDead', 'lowContrast', 'lowContrastLight'];
 const totals = {};
 for (const k of kinds) {
   const set = new Set(report.flatMap((r) => r[k].map(String)));

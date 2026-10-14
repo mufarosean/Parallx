@@ -2,7 +2,7 @@
 
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { beginPointerDrag } from '../ui/interactionMode.js';
+import { beginPointerDrag, onDragPress } from '../ui/interactionMode.js';
 import { Orientation, SizingMode, SashState } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { GridBranchNode, GridLeafNode, GridNode, GridNodeType } from './gridNode.js';
@@ -904,10 +904,8 @@ export class Grid extends Disposable {
    * Call after the grid element is mounted in the document.
    */
   initializeSashDrag(): void {
-    this._root.element.addEventListener('mousedown', this._onSashMouseDown);
-    this._disposables.add(toDisposable(() => {
-      this._root.element.removeEventListener('mousedown', this._onSashMouseDown);
-    }));
+    // Mouse, pen or finger; the root scrolls nothing itself, its sashes claim the finger (touch-action).
+    this._disposables.add(onDragPress(this._root.element, this._onSashMouseDown, { scrolls: true }));
 
     // Double-click on sash fires onDidSashReset (VS Code parity: Sash.onDidReset)
     const onDblClick = (e: MouseEvent): void => {

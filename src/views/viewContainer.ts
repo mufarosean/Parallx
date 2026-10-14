@@ -7,7 +7,7 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show } from '../ui/dom.js';
 import { declareControl } from '../ui/kit.js';
 import { showTabVisibilityMenu } from './viewTabVisibilityMenu.js';
-import { beginPointerDrag } from '../ui/interactionMode.js';
+import { beginPointerDrag, onDragPress } from '../ui/interactionMode.js';
 import { IGridView } from '../layout/gridView.js';
 import type { IView } from './viewTypes.js';
 import type { ViewContainerState } from './viewTypes.js';
@@ -717,7 +717,7 @@ export class ViewContainer extends Disposable implements IGridView {
       sash.classList.add('view-section-sash');
       sash.dataset.sashIndex = String(i);
 
-      sash.addEventListener('mousedown', (e) => {
+      onDragPress(sash, (e) => {
         e.preventDefault();
         this._onSectionSashMouseDown(i, e.clientY);
       });

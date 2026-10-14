@@ -3064,7 +3064,7 @@
   min-height: 22px;
 }
 
-.canvas-page-header:hover .canvas-page-affordances {
+.canvas-page-header:hover .canvas-page-affordances, .canvas-page-header:focus-within .canvas-page-affordances {
   opacity: 1;
 }
 

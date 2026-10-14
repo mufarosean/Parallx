@@ -99,6 +99,7 @@ import { WindowService } from '../services/windowService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { EditableContextMenu } from '../contributions/editableContextMenu.js';
 import { installScrollbarReveal } from '../ui/scrollbarReveal.js';
+import { installInputAccess } from '../ui/touchDrag.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -871,10 +872,9 @@ export class Workbench extends Layout {
       // Universal right-click context menu for all editable text surfaces
       this._register(new EditableContextMenu());
 
-      // App-wide scrollbar visibility: thumbs show while a scrollable
-      // surface is hovered or actively scrolling (workbench.css keys off
-      // the classes this controller toggles).
+      // Scrollbar thumbs on hover or scroll; drag and drop by finger; keyboard-only rings on rich text.
       this._register(installScrollbarReveal(document));
+      this._register(installInputAccess(document));
 
       // Initialize tool activator and fire startup finished
       await this._initializeToolLifecycle();

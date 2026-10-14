@@ -49,6 +49,7 @@ import { createAiButton } from '../../ui/aiButton.js';
 import { showExtensionContextMenu, type ExtensionMenuAnchor, type IExtensionMenuHandle, type IExtensionMenuItem, type IExtensionMenuOptions } from '../../ui/contextMenu.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { registerKeyboardResize, type IKeyboardResizable } from '../../ui/keyboardResize.js';
+import { onDragPress } from '../../ui/touchDrag.js';
 
 /** What `api.ui` is: the object `createUiApi` builds, typed once here. */
 export type UiApi = ReturnType<typeof createUiApi>;
@@ -133,6 +134,7 @@ export function createUiApi() {
     createSurface: (element: HTMLElement, declaration: IKitSurfaceDeclaration) => kitCreateSurface(element, declaration),
     declareControl: (element: HTMLElement, declaration: IKitInPlaceDeclaration) => kitDeclareControl(element, declaration),
     registerKeyboardResize: (element: HTMLElement, target: IKeyboardResizable) => registerKeyboardResize(element, target),
+    onDragPress: (element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean }) => onDragPress(element, handler, opts),
     createToggle: (container: HTMLElement | null, options: IKitToggleOptions) => kitCreateToggle(container, options),
     createInput: (container: HTMLElement | null, options: IKitInputOptions) => kitCreateInput(container, options),
     createSelect: (container: HTMLElement | null, options: IKitSelectOptions) => kitCreateSelect(container, options),
