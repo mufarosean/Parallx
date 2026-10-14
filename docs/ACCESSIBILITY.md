@@ -160,20 +160,37 @@ item, a menu item, or a field), through the same save the drag uses.
   a finger and the keyboard reveal too (`data-input-modality`,
   src/ui/inputModality.ts; 79 rules fixed).
 
-### 9. The spreadsheet (done 2026-10-13)
+### 9. The spreadsheet (done 2026-10-14)
+The engine (Univer) ships inside Parallx, so the audit holds its own DOM
+to every check (KB_SKIP_THIRD=1 sets it aside), and it passes:
 - [x] The grid is a canvas a screen reader cannot read: the sheet speaks
-  the active cell as the selection moves ("B7, =A1*2, 42"), through a
-  polite live region (src/built-in/worksheet/univerA11y.ts).
-- [x] The engine's own toolbar, tabs and menus: a control drawn without
-  a name takes one from its tooltip, icon or title; one drawn
-  unreachable joins the Tab order.
-- [x] Getting in and out: Tab moves between cells, as in Excel; F6 and
-  Escape leave the sheet (the region says so).
+  the active cell as the selection moves ("B7, =A1*2, 42") through a
+  polite live region beside it (src/built-in/worksheet/univerA11y.ts).
+- [x] Names: toolbar controls by their command (Font family, Add decimal),
+  the cell reference box and its named-range list, Insert function,
+  Expand formula bar, the bottom row (Add sheet, All sheets, Gridlines,
+  Zoom out, Zoom in, Zoom 100%).
+- [x] Reach and order: Tab goes through the toolbar, the formula bar's
+  controls, then into the grid (Tab there moves cells, as in Excel); F6
+  from the grid goes to the bottom row, Shift+F6 back; Tab steps through
+  the bottom row and leaves the sheet; the arrows move between sheet tabs.
+  The engine's buttons keep focus when the keyboard brings it (a click
+  still hands it back to the grid).
+- [x] Menus: a sheet tab's menu opens on Shift+F10 or the menu key, focus
+  goes in, the arrows move, Escape closes it and returns to the tab. The
+  engine's parked menus and its closed side panel are inert and hidden
+  from a screen reader until they open.
 
 ### 10. What keeps it so
 - The house rule in CLAUDE.md, and the gates above: the ratchets fail a
   change that adds a mouse-only drag or a hover-only control; the audit
-  and the touch probe must read 0 after any UI work.
+  (keyboard, names, focus, contrast in both modes, dialogs, touch, popups,
+  the spreadsheet engine included) and the probes (touch-drag-probe.mjs,
+  a11y-drags-probe.mjs) must read 0 after any UI work.
+- Found on the way and fixed: a plain web link navigated the app's own
+  window, which shuts the app down (externalLinks.ts now sends every such
+  link outside); the chat's model picker opened without taking focus;
+  accent text on its own tint fell under 4.5:1 in light mode.
 
 ### 7. Done when
 The audit reports 0 in every kind, every dialog passes, every drag has a

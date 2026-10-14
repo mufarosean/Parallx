@@ -68,6 +68,8 @@ export interface IDragPressOptions {
 
 /** Fingers carrying a drag that began by holding: the document's touchmove keeps them from scrolling. */
 let claimed = 0;
+/** A drag and drop is in flight (installTouchDragAndDrop): as with a mouse, no mouse moves are made meanwhile. */
+let dndInFlight = false;
 
 /**
  * A press that starts a drag, for every kind of pointer. `handler` is what
@@ -83,6 +85,13 @@ export function onDragPress(el: HTMLElement, handler: (e: MouseEvent) => void, o
   const onMouse = (e: MouseEvent): void => { if (!fromTouch(e)) handler(e); };
   const onPointer = (e: PointerEvent): void => {
     if (!e.isPrimary) return;
+    // One press, one drag: an inner handle that took it wins over the surface around it,
+    // and an item the browser's drag and drop owns is never also a held press on its surface.
+    const marked = e as PointerEvent & { __pxDragPress?: boolean };
+    if (marked.__pxDragPress) return;
+    const owned = (e.target as Element | null)?.closest?.('[draggable="true"]');
+    if (opts.hold && owned && owned !== el && el.contains(owned)) return; // an item inside this surface (not a draggable wrapper around it)
+    marked.__pxDragPress = true;
     if (e.pointerType === 'mouse') { if (opts.pointerEvents) handler(e); return; }
     const id = e.pointerId;
     const x0 = e.clientX, y0 = e.clientY;
@@ -103,7 +112,7 @@ export function onDragPress(el: HTMLElement, handler: (e: MouseEvent) => void, o
         if (Math.hypot(p.clientX - x0, p.clientY - y0) > TOUCH_SLOP_PX) stop();
         return;
       }
-      if (!opts.pointerEvents) target(p).dispatchEvent(mouseFrom('mousemove', p, 1));
+      if (!opts.pointerEvents && !dndInFlight) target(p).dispatchEvent(mouseFrom('mousemove', p, 1));
     };
     const up = (p: PointerEvent): void => {
       if (p.pointerId !== id) return;
@@ -116,7 +125,8 @@ export function onDragPress(el: HTMLElement, handler: (e: MouseEvent) => void, o
         begin();
       }
       if (opts.hold) claimed = Math.max(0, claimed - 1);
-      if (!opts.pointerEvents) target(p).dispatchEvent(mouseFrom('mouseup', p, 0));
+      // A mouse that drags and drops makes no mouseup (dragend ends it): neither does a finger that did.
+      if (!opts.pointerEvents && !dndInFlight) target(p).dispatchEvent(mouseFrom('mouseup', p, 0));
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);
@@ -144,7 +154,7 @@ export function onDragPress(el: HTMLElement, handler: (e: MouseEvent) => void, o
  */
 export function installTouchDragAndDrop(doc: Document = document): IDisposable {
   let pending: { src: HTMLElement; x: number; y: number; timer: number; lifted: boolean } | null = null;
-  let drag: { src: HTMLElement; dt: DataTransfer; ghost: HTMLElement; over: Element | null; accepted: boolean; dx: number; dy: number } | null = null;
+  let drag: { src: HTMLElement; dt: DataTransfer; ghost: HTMLElement; over: Element | null; accepted: boolean; dx: number; dy: number; at: { clientX: number; clientY: number }; beat: number } | null = null;
   let swallowMenu = false;
 
   const fire = (type: string, target: EventTarget, t: Touch | { clientX: number; clientY: number }, dt: DataTransfer, related?: Element | null): DragEvent => {
@@ -177,7 +187,10 @@ export function installTouchDragAndDrop(doc: Document = document): IDisposable {
     ghost.style.width = `${r.width}px`;
     ghost.style.height = `${r.height}px`;
     doc.body.appendChild(ghost);
-    drag = { src, dt, ghost, over: null, accepted: false, dx: t.clientX - r.left, dy: t.clientY - r.top };
+    drag = { src, dt, ghost, over: null, accepted: false, dx: t.clientX - r.left, dy: t.clientY - r.top, at: { clientX: t.clientX, clientY: t.clientY }, beat: 0 };
+    dndInFlight = true;
+    // As the browser does, dragover repeats while the finger rests: drop targets that time out their guides keep them.
+    drag.beat = window.setInterval(() => { if (drag) move(drag.at as Touch); }, 50);
     swallowMenu = true;
     placeGhost(t.clientX, t.clientY);
     move(t);
@@ -185,6 +198,7 @@ export function installTouchDragAndDrop(doc: Document = document): IDisposable {
 
   const move = (t: Touch): void => {
     if (!drag) return;
+    drag.at = { clientX: t.clientX, clientY: t.clientY };
     placeGhost(t.clientX, t.clientY);
     const over = doc.elementFromPoint(t.clientX, t.clientY);
     if (over !== drag.over) {
@@ -199,12 +213,22 @@ export function installTouchDragAndDrop(doc: Document = document): IDisposable {
     if (pending) { clearTimeout(pending.timer); pending = null; }
     if (!drag) return;
     const d = drag;
-    drag = null;
-    d.ghost.remove();
-    const at = t ?? { clientX: 0, clientY: 0 };
-    if (!canceled && d.over && d.accepted) fire('drop', d.over, at, d.dt);
-    else { if (d.over) fire('dragleave', d.over, at, d.dt); d.dt.dropEffect = 'none'; }
-    fire('dragend', d.src, at, d.dt);
+    clearInterval(d.beat);
+    const at = t ? { clientX: t.clientX, clientY: t.clientY } : d.at;
+    const end = (): void => {
+      if (drag !== d) return; // already ended (Escape in the frame before the drop)
+      drag = null;
+      dndInFlight = false;
+      d.ghost.remove();
+      if (!canceled && d.over && d.accepted) fire('drop', d.over, at, d.dt);
+      else { if (d.over) fire('dragleave', d.over, at, d.dt); d.dt.dropEffect = 'none'; }
+      fire('dragend', d.src, at, d.dt);
+    };
+    if (canceled) { end(); return; }
+    // The drop comes after a last dragover where the finger lifted, a couple of frames later, as with a mouse:
+    // a drop target that settles its guide on the next frame has settled it (a timer: a frame callback can stall).
+    move(at as Touch);
+    window.setTimeout(end, 40);
   };
 
   const onStart = (e: TouchEvent): void => {

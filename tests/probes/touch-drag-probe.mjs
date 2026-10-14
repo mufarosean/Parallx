@@ -80,6 +80,21 @@ try {
   const rows1 = await firstCol();
   check('a finger drags a table row by its grip', !!grip && rows1 !== rows0, `${rows0} -> ${rows1}${grip ? '' : ' (no grip)'}`);
 
+  // 3b. A block by its drag handle (the browser's drag and drop): held, then moved below the next block.
+  // The place of 'A paragraph with bold text.' among the page's blocks.
+  const blocks = () => page.evaluate(() => { const kids = Array.from(document.querySelectorAll('[data-px-surface="canvas"] .tiptap')).find((x) => x.getClientRects().length)?.children ?? []; return Array.from(kids).findIndex((k) => k.textContent.startsWith('A paragraph with')); });
+  const b0 = await blocks();
+  // No text selected (its formatting menu would sit over the handle): a caret at the end, as a tap leaves it.
+  await page.evaluate(() => { const ed = Array.from(document.querySelectorAll('[data-px-surface="canvas"] [contenteditable="true"]')).filter((x) => x.offsetParent).map((x) => x.editor).find(Boolean); ed?.commands.setTextSelection(ed.state.doc.content.size - 1); ed?.commands.blur(); });
+  await page.waitForTimeout(300);
+  const para = await page.evaluate(() => { const p = Array.from(document.querySelectorAll('[data-px-surface="canvas"] .tiptap > p')).find((x) => x.getClientRects().length && x.textContent.startsWith('A paragraph with')); p.scrollIntoView({ block: 'center' }); const r = p.getBoundingClientRect(); return { x: r.x + 40, y: r.y + r.height / 2 }; });
+  await page.mouse.move(para.x, para.y); // the handle draws for the block under the pointer
+  await page.waitForTimeout(400);
+  const handle = await page.evaluate(() => { const h = Array.from(document.querySelectorAll('.drag-handle')).find((x) => x.getClientRects().length && getComputedStyle(x).visibility !== 'hidden'); if (!h) return null; const r = h.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  if (handle) await finger(handle, 0, 140, { hold: 500 });
+  const b1 = await blocks();
+  check('a finger, held then moved, drags a block by its handle', !!handle && b1 > b0, `block at ${b0} -> ${b1}${handle ? '' : ' (no handle)'}`);
+
   // 4. The cover, repositioned.
   await page.evaluate(() => Array.from(document.querySelectorAll('[data-px-id="canvas.cover.reposition"]')).find((x) => x.isConnected)?.click());
   await page.waitForTimeout(500);

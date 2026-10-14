@@ -682,6 +682,8 @@ async function auditDialogs() {
     const focused = await focusId(...d.opener);
     if (!focused) { out.push({ name: d.name, problem: `could not focus the opener ${d.opener.join(' ')}` }); continue; }
     const modesBefore = await page.evaluate(() => document.documentElement.dataset.pxModes || '');
+    // Where the opening key goes: who receives it, and whether anything cancels it on the way.
+    await page.evaluate(() => { const d = (t) => t ? `${t.tagName?.toLowerCase?.() ?? 'doc'}${t.getAttribute?.('data-px-id') ? '#' + t.getAttribute('data-px-id') : ''}` : 'none'; window.__keyTrail = []; const cap = (e) => { if (e.key === 'Enter') window.__keyTrail.push('capture:' + d(e.target) + ':active=' + d(document.activeElement)); }; const bub = (e) => { if (e.key === 'Enter') window.__keyTrail.push('bubble-end:prevented=' + e.defaultPrevented); }; window.addEventListener('keydown', cap, { capture: true, once: true }); window.addEventListener('keydown', bub, { once: true }); });
     if (d.open.key) await page.keyboard.press(d.open.key);
     else { const args = []; for (const a of d.open.cmd.slice(1)) args.push(a === '$page' ? await canvasPageId() : a); await cmdNoWait(page, d.open.cmd[0], ...args); }
     await page.waitForTimeout(700);
@@ -702,7 +704,7 @@ async function auditDialogs() {
     const s1 = await state();
     const row = { name: d.name, opened: s1.open, focusMovedIn: s1.inside, focusOnOpen: s1.active, screenReader: s1.sr };
     // Not opened: what the page held, so the cause is a finding rather than a guess.
-    if (!s1.open) row.modesBefore = modesBefore;
+    if (!s1.open) { row.modesBefore = modesBefore; row.keyTrail = await page.evaluate(() => (window.__keyTrail || []).join(' | ')); }
     if (!s1.open) row.seen = await page.evaluate(({ root, opener }) => {
       const a = document.activeElement;
       const openers = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`));
