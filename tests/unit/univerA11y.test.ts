@@ -27,12 +27,14 @@ describe('the sheet for a screen reader', () => {
 
   it('speaks the cell as the selection moves, once per change', async () => {
     vi.useFakeTimers();
+    const host = document.createElement('div'); // the live region sits beside the sheet, in its parent
     const box = document.createElement('div');
-    document.body.appendChild(box);
+    host.appendChild(box);
+    document.body.appendChild(host);
     let cell: ISheetCell = { cell: 'A1', value: '3', formula: '' };
     let fire = (): void => {};
     const access = installSheetAccess(box, () => cell, (cb) => { fire = cb; return { dispose() {} }; });
-    const live = box.querySelector('[role="status"]')!;
+    const live = host.querySelector('[role="status"]')!;
     expect(live.getAttribute('aria-live')).toBe('polite');
     fire(); vi.advanceTimersByTime(200);
     expect(live.textContent).toBe('A1, 3');
@@ -40,7 +42,16 @@ describe('the sheet for a screen reader', () => {
     fire(); vi.advanceTimersByTime(200);
     expect(live.textContent).toBe('B2, =A1, empty');
     access.dispose();
-    expect(box.querySelector('[role="status"]')).toBeNull();
+    expect(host.querySelector('[role="status"]')).toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe('the engine toolbar by name', () => {
+  it('reads a command id as the words a person uses', async () => {
+    const { commandName } = await import('../../src/built-in/worksheet/univerA11y');
+    expect(commandName('sheet.command.set-range-font-family')).toBe('Font family');
+    expect(commandName('sheet.command.set-range-fontsize')).toBe('Font size');
+    expect(commandName('sheet.command.numfmt.add.decimal.command')).toBe('Add decimal');
   });
 });

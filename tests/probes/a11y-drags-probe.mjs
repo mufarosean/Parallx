@@ -121,6 +121,17 @@ try {
   await page.waitForTimeout(2_500);
   const registered = await page.evaluate(() => !!window.__parallx_workbench__._services.get({ id: 'ICommandService' }).getCommand?.('media-organizer.importFiles'));
   check('Media Organizer registers Import Files…', registered);
+  // ── The spreadsheet speaks the cell a keyboard moves to ──
+  await cmd(page, 'worksheet.openScratch');
+  await page.waitForTimeout(4_000);
+  const gridAt = await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.ws-pane__sheet canvas')).find((x) => x.getClientRects().length && !x.closest('[data-u-comp="formula-bar"]')); const r = c?.getBoundingClientRect(); return r ? { x: r.x + 120, y: r.y + 60 } : null; });
+  if (gridAt) await page.mouse.click(gridAt.x, gridAt.y);
+  await page.waitForTimeout(400);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(600);
+  const spoken = await page.evaluate(() => Array.from(document.querySelectorAll('.ws-pane [role="status"]')).map((x) => x.textContent).join(' | '));
+  check('the spreadsheet speaks the cell the arrow key moves to', /^[A-Z]+\d+, /.test(spoken), spoken || '(silent)');
+
   // ── A web link from the keyboard: it opens outside, and the app stays ──
   await app.evaluate(({ shell }) => { globalThis.__opened = []; shell.openExternal = async (u) => { globalThis.__opened.push(u); }; });
   await cmd(page, 'chat.show');

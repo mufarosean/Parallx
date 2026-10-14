@@ -188,6 +188,8 @@ export class ContextMenu extends Disposable {
     // or a page, or with nothing focused, focus stays where it is, as before.
     const opener = document.activeElement;
     this._focusRows = opener instanceof HTMLElement && opener !== document.body && !opener.isContentEditable && !/^(INPUT|TEXTAREA|SELECT)$/.test(opener.tagName);
+    // A screen reader names the menu: by the control that opened it ("More Actions"), else "Menu".
+    this._el.setAttribute('aria-label', (this._focusRows && ((opener as HTMLElement).getAttribute('aria-label') || (opener as HTMLElement).title || (opener as HTMLElement).textContent || '').trim().replace(/\s+/g, ' ').replace(/…$/, '').slice(0, 60)) || 'Menu');
     if (this._focusRows) {
       const first = this._getEnabledIndices()[0];
       if (this._highlightIndex >= 0) this._itemEls[this._highlightIndex]?.focus({ preventScroll: true });

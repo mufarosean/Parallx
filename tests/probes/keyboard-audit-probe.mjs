@@ -60,7 +60,7 @@ function install() {
   const INTERACTIVE = 'button, input:not([type=hidden]), select, textarea, a[href], [role=button], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=checkbox], [role=switch], [role=option], [role=radio], [role=slider], [role=gridcell], [role=treeitem], [role=link], [role=combobox], [role=spinbutton], [role=searchbox], [role=textbox]';
   const COMPOSITE = '[role=listbox], [role=tree], [role=tablist], [role=menu], [role=menubar], [role=radiogroup], [role=grid], [role=toolbar]';
   const shown = (e) => { if (!e || !e.isConnected) return false; const r = e.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && cs.display !== 'none' && !e.closest('[hidden], [aria-hidden="true"], [inert]'); };
-  // The spreadsheet engine's own DOM; KB_THIRD=1 holds it to the same checks (window.__kbAuditThird).
+  // The spreadsheet engine's own DOM: held to the same checks unless KB_SKIP_THIRD=1 (window.__kbAuditThird).
   const third = (e) => !window.__kbAuditThird && !!e.closest('[class*="univer-"]');
   const settle = () => { for (const a of document.getAnimations()) { try { if (a.effect?.getComputedTiming().iterations !== Infinity) a.finish(); } catch { /* infinite or detached */ } } };
   const look = (e) => { if (!e) return ''; settle(); const cs = getComputedStyle(e); return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderTopColor, cs.borderBottomColor, cs.borderLeftColor, cs.backgroundColor, cs.color, cs.textDecorationLine, ...[...Array.from(e.children).slice(0, 3), e.querySelector('[aria-selected="true"], [class*="--selected"]')].filter(Boolean).map((c) => { const k = getComputedStyle(c); return k.outlineStyle + k.boxShadow + k.borderTopColor; })].join('|'); };
@@ -192,6 +192,13 @@ function install() {
         if (third(e)) { thirdParty.push(describe(e)); continue; }
         (e.tabIndex >= 0 ? tabHole : notFocusable).push(describe(e));
       }
+      // A region that keeps Tab for itself and says F6 leaves it (a spreadsheet's grid) is a stop of its own:
+      // the Tab run must have entered it, or a keyboard user never reaches what it holds.
+      for (const r of this.scope.querySelectorAll('[role="region"][aria-keyshortcuts~="F6"]')) {
+        if (!shown(r)) continue;
+        const inside = Array.from(this.seen).some((s) => r.contains(s) && (s.isContentEditable || s.closest('[contenteditable="true"]') || s.tagName === 'CANVAS' || s.getAttribute('aria-keyshortcuts')));
+        if (!inside) tabHole.push(`${describe(r)} (its own area never entered)`);
+      }
       // Taken as the Tab run left the screen; what the arrow pass reached since is not mouse-only.
       this.pointerCands = (this.pointerAtTabEnd ?? this.pointerCandidates()).filter((e) => !reached(e));
       return { reached: this.seen.size, interactive: all.length, notFocusable, tabHole, thirdParty, noRing: [...new Set(this.noRing)], pointerCount: this.pointerCands.length, describePointer: this.pointerCands.map(describe) };
@@ -212,7 +219,7 @@ await fs.writeFile(path.join(ws, 'alpha.md'), '# Alpha\n\nA note.\n');
 await fs.writeFile(path.join(ws, 'reading.pdf'), tinyPdf());
 const seedPre = await seedBeforeLaunch(ws);
 const { app, page } = await launchApp(appRoot);
-if (process.env.KB_THIRD) await page.evaluate(() => { window.__kbAuditThird = true; });
+if (!process.env.KB_SKIP_THIRD) await page.evaluate(() => { window.__kbAuditThird = true; }); // the spreadsheet engine is held to the same checks (KB_SKIP_THIRD=1 to set it aside)
 await stubNativeDialogs(); // file and message dialogs cancel, links and folders open nothing on the desktop
 let seedScreens = {};
 const cdp = await page.context().newCDPSession(page).catch(() => null);
@@ -389,7 +396,9 @@ async function auditScreen(label) {
         await page.evaluate((l) => { l.focus(); window.__kb.stuck = 0; window.__kb.prev = l; }, landing);
         wrapped = true; continue; // the run has passed the region: the next element met again ends it
       }
-      await page.evaluate(() => { window.__kb.stuck = 0; window.__kb.prev = document.activeElement; });
+      // F6 moved focus within the region (a sheet's grid to its tabs bar): that is progress, not a trap.
+      const moved = await page.evaluate(() => { const was = window.__kb.prev; window.__kb.stuck = 0; const a = document.activeElement; window.__kb.prev = a; if (a && a !== was) { window.__kb.seen.add(a); return true; } return false; });
+      if (moved) continue;
     }
     if (r === 'stuck') { trap = await page.evaluate(() => { const a = document.activeElement; const s = a?.closest('[data-px-surface]'); return `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${a?.tagName.toLowerCase()} "${(a?.getAttribute('aria-label') || a?.textContent || '').trim().slice(0, 40)}"`; }); break; }
     // Done when the order has come round: after a wrap to the top, the first element met again; a
