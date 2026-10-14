@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -16015,13 +16015,11 @@ async function getOrCreateFolderAlbum(folderId) {
 }
 
 async function _getOrCreateFolderAlbumImpl(folderId) {
-  // Check if album already exists for this folder
-  const existing = await AlbumQueries.findMany({ folderId }, {}, { page: 1, perPage: 1 });
-  if (existing.items.length > 0) return existing.items[0];
-
-  // Resolve folder path for title
+  // The album this folder already has, under any spelling of its path (folder-albums.js)
   const folder = await FolderQueries.findById(folderId);
   const folderPath = folder ? folder.path : '';
+  const existingId = folder ? await moFindFolderAlbum(db, folderPath, _isWindows) : null;
+  if (existingId) return AlbumQueries.findById(existingId);
   const parts = folderPath.replace(/[\\/]+$/, '').split(/[\\/]/);
   const title = parts[parts.length - 1] || folderPath || `Folder ${folderId}`;
   return AlbumQueries.create({ title, folderId });
@@ -38598,7 +38596,7 @@ export async function activate(api, context) {
     .then(() => moPurgeMissingFiles())
     .catch(() => {});
   // One-shot sweep for phantom folder-backed albums left over from earlier sessions.
-  moPruneOrphanFolderAlbums().catch(() => {});
+  moMergeDuplicateFolderAlbums(db, _isWindows).then((n) => { if (n) _notifySidebarRefresh(); }).catch(() => {}).finally(() => moPruneOrphanFolderAlbums().catch(() => {}));
   // AI tagging (Section 43): the one chat tool. It replaced the nineteen
   // mediaOrganizer.* tools, which were switched off in 2026-06 and then deleted.
   moRegisterTagTool(api);
