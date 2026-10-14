@@ -9,7 +9,7 @@
 // colour that came from the palette).
 
 import { moEl, moSlug } from './dom.js';
-import { moPointKeys } from './keys.js';
+import { moPointKeys, moSliderKeys } from './keys.js';
 import { MO_COMMON_PAINTS, MO_MIX_RULES, MO_STARTER_PAINTS, moColourName, moHexRgb, moMixRecipes } from './colour.js';
 
 const STAGES_KEY = 'plan_stages_v1';
@@ -105,6 +105,24 @@ export function moPlanColours(ctx) {
   // Marks around and on the picture: the transfer grid's labels in the margin, Compare's split.
   const marks = moEl('div', 'mo-pc-marks', { 'aria-hidden': 'true' });
   ctx.frame.appendChild(marks);
+  // Before and after, over every tool but Crop: the line is the control. Drag it, or Tab to it and use the arrow keys.
+  const split = moEl('div', 'mo-pc-ba mo-hidden');
+  const tagBefore = moEl('span', 'mo-pc-ba-tag', { textContent: 'Before', 'aria-hidden': 'true' });
+  const tagAfter = moEl('span', 'mo-pc-ba-tag', { 'aria-hidden': 'true' });
+  const splitLine = moEl('div', 'mo-pc-ba-line');
+  splitLine.appendChild(moEl('span', 'mo-pc-ba-knob', { 'aria-hidden': 'true' }));
+  split.append(tagBefore, tagAfter, splitLine);
+  ctx.frame.appendChild(split);
+  disposers.push(moSliderKeys(splitLine, 'Before and after line', { min: 0, max: 1, step: 0.02, big: 0.1, get: () => Math.max(0, state.split), set: (v) => ctx.setSplit(v), text: (v) => `${Math.round(v * 100)}% shows the photo` }));
+  const splitDrag = api.ui.onDragPress(splitLine, (e) => {
+    e.preventDefault();
+    splitLine.focus({ preventScroll: true });
+    const move = (ev) => { const r = ctx.frame.getBoundingClientRect(), u = (ev.clientX - r.left) / Math.max(1, r.width); ctx.setSplit(Math.max(0, Math.min(1, state.mirror ? 1 - u : u))); };
+    const up = () => { splitLine.removeEventListener('pointermove', move); splitLine.removeEventListener('pointerup', up); splitLine.removeEventListener('pointercancel', up); };
+    try { splitLine.setPointerCapture(e.pointerId); } catch { /* the press is gone */ }
+    splitLine.addEventListener('pointermove', move); splitLine.addEventListener('pointerup', up); splitLine.addEventListener('pointercancel', up);
+  }, { pointerEvents: true });
+  disposers.push(() => splitDrag.dispose());
   disposers.push(moPointKeys(layer, 'Picture. Arrow keys move the picker, Enter saves the colour under it.', {
     move: (dx, dy) => { const p = point || { u: 0.5, v: 0.5 }; setPoint(Math.max(0, Math.min(1, p.u + dx / 100)), Math.max(0, Math.min(1, p.v + dy / 100)), false); },
     take: () => { if (!point) setPoint(0.5, 0.5, false); save(); },
@@ -556,10 +574,13 @@ export function moPlanColours(ctx) {
       for (let i = 0; i < g.cols; i++) add('mo-pc-gl mo-pc-gl--col', String(i + 1), { left: `${Math.min(100, ((i + 0.5) * step * 100) / state.plan.canvas_w)}%` });
       for (let j = 0; j < g.rows; j++) add('mo-pc-gl mo-pc-gl--row', String.fromCharCode(65 + (j % 26)), { top: `${Math.min(100, ((j + 0.5) * step * 100) / state.plan.canvas_h)}%` });
     }
-    if (state.tool === 'compare' && state.split >= 0) {
-      add('mo-pc-split-line', '', { left: `${state.split * 100}%` });
-      add('mo-pc-split-tag mo-pc-split-tag--before', 'Before', { right: `${(1 - state.split) * 100}%` });
-      add('mo-pc-split-tag mo-pc-split-tag--after', 'After', { left: `${state.split * 100}%` });
+    const splitOn = state.split >= 0 && state.tool !== 'crop';
+    split.classList.toggle('mo-hidden', !splitOn);
+    if (splitOn) {
+      splitLine.style.left = tagAfter.style.left = `${state.split * 100}%`;
+      tagBefore.style.right = `${(1 - state.split) * 100}%`;
+      tagAfter.textContent = ctx.sameBothSides() ? 'After, no edits yet' : 'After';
+      splitLine.setAttribute('aria-valuenow', String(Math.round(state.split * 1000) / 1000));
     }
   }
   function sync() {

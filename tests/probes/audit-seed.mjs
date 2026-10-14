@@ -147,12 +147,13 @@ export async function seedAfterLaunch(page, pre) {
     await page.waitForTimeout(800);
     if (then) await then();
   };
-  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Layout', 'Compare', 'Colours', 'Process', 'Notes'];
+  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Layout', 'Colours', 'Process', 'Notes'];
 
   return {
     'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
     'seed:plan.board': async () => { await run(page, 'media-organizer.openBoard', 1); },
     ...Object.fromEntries(PLAN_TOOLS.map((t) => [`seed:plan.${t}`, planTool(t)])),
+    'seed:plan.beforeAfter': planTool('Values', async () => { await page.locator('[data-px-id="media-organizer.plan.beforeAfter"]').first().click().catch(() => {}); await page.waitForTimeout(800); }),
     'seed:plan.myPaints': planTool('Colours', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
     'seed:page': async () => { if (pageId) await run(page, 'canvas.openPage', pageId); },
     'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },

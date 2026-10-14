@@ -314,8 +314,16 @@ export const MO_CSS_MORE = `
 .mo-pc-gl { position: absolute; font-size: var(--px-text-2xs); color: var(--px-text-muted); line-height: 1; transform: translate(-50%, -50%); }
 .mo-pc-gl--col { top: -12px; }
 .mo-pc-gl--row { left: -12px; }
-.mo-pc-split-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-bar); }
-.mo-pc-split-tag { position: absolute; top: var(--px-space-2); padding: 2px 8px; margin: 0 var(--px-space-2); border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-xs); }
+.mo-plan-topbar .mo-toolbar-btn[aria-pressed="true"] { background: var(--px-accent-soft); color: var(--px-accent-text); }
+.mo-pc-ba { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.mo-pc-ba-line { position: absolute; top: 0; bottom: 0; width: 24px; margin-left: -12px; pointer-events: auto; cursor: ew-resize; touch-action: none; }
+.mo-pc-ba-line::before { content: ''; position: absolute; top: 0; bottom: 0; left: 11px; width: 2px; background: var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-bar); }
+.mo-pc-ba-line:focus-visible { outline: var(--px-focus-width) solid var(--vscode-focusBorder, var(--px-accent)); outline-offset: -2px; }
+.mo-pc-ba-knob { position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; transform: translate(-50%, -50%); border-radius: var(--px-radius-full); background: var(--px-viewer-scrim); border: 2px solid var(--px-viewer-ink); box-sizing: border-box; }
+.mo-pc-ba-knob::before, .mo-pc-ba-knob::after { content: ''; position: absolute; top: 50%; width: 0; height: 0; margin-top: -4px; border: 4px solid transparent; }
+.mo-pc-ba-knob::before { left: 2px; border-right-color: var(--px-viewer-ink); }
+.mo-pc-ba-knob::after { right: 2px; border-left-color: var(--px-viewer-ink); }
+.mo-pc-ba-tag { position: absolute; top: var(--px-space-2); padding: 2px 8px; margin: 0 var(--px-space-3); white-space: nowrap; border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-xs); }
 .mo-plan-tool-gap { width: 36px; height: 1px; margin: var(--px-space-1) auto; background: var(--px-border); flex: none; }
 .mo-plan-field-label { font-size: var(--px-text-sm); margin-top: var(--px-space-1); }
 .mo-plan-danger { background: transparent; color: var(--px-danger); border: 1px solid color-mix(in srgb, var(--px-danger) 45%, transparent); }

@@ -32581,7 +32581,7 @@ function renderPlanEditor(container, api, planId) {
   main.appendChild(topbar); main.appendChild(stage); main.appendChild(variantsBar);
   root.appendChild(tools); root.appendChild(panel); root.appendChild(main);
 
-  const TOOLS = [['crop', 'crop', 'Crop'], ['light', 'sun', 'Light'], ['colour', 'droplet', 'Colour'], null, ['values', 'contrast', 'Values'], ['grids', 'grid-3x3', 'Layout'], ['compare', 'columns-2', 'Compare'], null, ['pick', 'palette', 'Colours'], null, ['process', 'layers', 'Process'], ['info', 'notebook-pen', 'Notes']];
+  const TOOLS = [['crop', 'crop', 'Crop'], ['light', 'sun', 'Light'], ['colour', 'droplet', 'Colour'], null, ['values', 'contrast', 'Values'], ['grids', 'grid-3x3', 'Layout'], null, ['pick', 'palette', 'Colours'], null, ['process', 'layers', 'Process'], ['info', 'notebook-pen', 'Notes']];
   const toolBtns = {};
   for (const t of TOOLS) {
     if (!t) { tools.appendChild(moEl('span', 'mo-plan-tool-gap', { 'aria-hidden': 'true' })); continue; } const [id, icon, label] = t;
@@ -32597,6 +32597,12 @@ function renderPlanEditor(container, api, planId) {
   const undoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.undo', type: 'button', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', innerHTML: moIcon('undo-2', 14) });
   const redoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.redo', type: 'button', title: 'Redo (Ctrl+Y)', 'aria-label': 'Redo', innerHTML: moIcon('redo-2', 14) });
   undoBtn.addEventListener('click', () => undo()); redoBtn.addEventListener('click', () => redo());
+  // Before And After and Mirror work over every tool; the split's line on the picture is its control (plan-colours.js).
+  const splitBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.beforeAfter', type: 'button', textContent: 'Before And After', 'aria-pressed': 'false', title: 'The photo on the left of a line, the plan on the right. Drag the line, or Tab to it and use the arrow keys.' });
+  const mirrorBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.mirror', type: 'button', textContent: 'Mirror', 'aria-pressed': 'false', title: 'Flip the view to see the picture with fresh eyes. The plan itself is not flipped.' });
+  const setSplit = (v) => { state.split = v; splitBtn.setAttribute('aria-pressed', String(v >= 0)); requestRender(); };
+  splitBtn.addEventListener('click', () => setSplit(state.split >= 0 ? -1 : 0.5));
+  mirrorBtn.addEventListener('click', () => { state.mirror = !state.mirror; mirrorBtn.setAttribute('aria-pressed', String(state.mirror)); requestRender(); });
   const exportBtn = moEl('button', 'mo-practice-start', { sceneId: 'media-organizer.plan.export', type: 'button', textContent: 'Export Plan' });
   const exportGridBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.exportWithGrid', type: 'button', textContent: 'Export With Grid' });
   const printBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.printWithGrid', type: 'button', textContent: 'Print With Grid' });
@@ -32604,10 +32610,10 @@ function renderPlanEditor(container, api, planId) {
   exportGridBtn.addEventListener('click', () => void exportPlan(true));
   printBtn.addEventListener('click', () => void printPlan());
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe, d = moPlanDefaultRecipe(); return MO_ENGINE_LOOK_KEYS.every((k) => JSON.stringify(r[k]) === JSON.stringify(d[k])) && !r.grey && !(r.levels >= 2) && !(r.notan > 0) && !r.palette.apply; }, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
   const left = moEl('div', 'mo-plan-topbar-left'); left.appendChild(titleEl); left.appendChild(sizeEl); main.insertBefore(colours.bar, stage);
   const right = moEl('div', 'mo-plan-topbar-right');
-  for (const b of [undoBtn, redoBtn, exportGridBtn, printBtn, exportBtn]) right.appendChild(b);
+  for (const b of [splitBtn, mirrorBtn, undoBtn, redoBtn, exportGridBtn, printBtn, exportBtn]) right.appendChild(b);
   topbar.appendChild(left); topbar.appendChild(right);
 
   // ── helpers ──
@@ -32674,7 +32680,7 @@ function renderPlanEditor(container, api, planId) {
     frame.style.width = cssW + 'px'; frame.style.height = cssH + 'px';
     frame.style.transform = state.mirror ? 'scaleX(-1)' : '';
     glCanvas.style.width = cssW + 'px'; glCanvas.style.height = cssH + 'px';
-    renderer.render(r, { width: Math.round(cssW * dpr), height: Math.round(cssH * dpr), full, split: state.tool === 'compare' ? state.split : -1 });
+    renderer.render(r, { width: Math.round(cssW * dpr), height: Math.round(cssH * dpr), full, split: state.tool !== 'crop' ? state.split : -1 });
     ovCanvas.width = Math.round(cssW * dpr); ovCanvas.height = Math.round(cssH * dpr);
     ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
     const octx = ovCanvas.getContext('2d');
@@ -32837,19 +32843,6 @@ function renderPlanEditor(container, api, planId) {
       panelDisposers.push(() => gd.dispose());
       s2.appendChild(gd.el);
       s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: `Rows are lettered, columns numbered, for a ${state.plan.canvas_w} × ${state.plan.canvas_h} in canvas.` }));
-    } else if (t === 'compare') {
-      const s = section('Compare');
-      s.appendChild(toggle('Before And After', () => state.split >= 0, (v) => { state.split = v ? 0.5 : -1; requestRender(); renderPanel(); }));
-      if (state.split >= 0) {
-        const row = moEl('div', 'mo-plan-slider'); row.appendChild(moEl('div', 'mo-plan-slider-head', { textContent: 'Split' }));
-        if (MO_ENGINE_LOOK_KEYS.every((k) => JSON.stringify(r[k]) === JSON.stringify(moPlanDefaultRecipe()[k]))) s.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'No light or colour edits yet, so both sides match.' }));
-        const input = moEl('input', null, { sceneId: 'media-organizer.plan.split', type: 'range', min: '0', max: '1', step: '0.01', 'aria-label': 'Split' });
-        input.value = String(state.split);
-        input.addEventListener('input', () => { state.split = Number(input.value); requestRender(); });
-        row.appendChild(input);
-        s.appendChild(row);
-      }
-      s.appendChild(toggle('Mirror Check', () => state.mirror, (v) => { state.mirror = v; requestRender(); }));
     } else if (t === 'process') {
       const s = section('Process Shelf');
       if (!state.media.length) s.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Progress photos and clips of this painting. Open one in the library and choose Add To Plan.' }));
