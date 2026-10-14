@@ -221,8 +221,9 @@ export const MO_CSS_MORE = `
 
 /* ── Painting plans ── */
 .mo-plan { position: absolute; inset: 0; display: flex; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; }
-.mo-plan-tools { flex: 0 0 40px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-plan-tools { flex: 0 0 64px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
 .mo-plan-tool { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; opacity: 0.75; }
+.mo-plan-tools .mo-plan-tool { width: 56px; height: auto; padding: 6px 0 5px; flex-direction: column; gap: 3px; font-size: var(--px-text-2xs); }
 .mo-plan-tool:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); opacity: 1; }
 .mo-plan-tool.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); opacity: 1; }
 .mo-plan-panel { flex: 0 0 232px; overflow-y: auto; padding: 10px 12px; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); display: flex; flex-direction: column; gap: 14px; }
@@ -304,6 +305,16 @@ export const MO_CSS_MORE = `
 .mo-pc-loupe { position: absolute; width: 84px; height: 84px; margin: -45px 0 0 -45px; border: 3px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar), var(--px-shadow-md); display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .mo-pc-loupe-box { border: 1.5px solid var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-bar); }
 .mo-pc-loupe-tag { position: absolute; padding: 3px 8px; border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-xs); white-space: nowrap; pointer-events: none; }
+.mo-pc-marks { position: absolute; inset: 0; pointer-events: none; }
+.mo-pc-gl { position: absolute; font-size: var(--px-text-2xs); color: var(--px-text-muted); line-height: 1; transform: translate(-50%, -50%); }
+.mo-pc-gl--col { top: -12px; }
+.mo-pc-gl--row { left: -12px; }
+.mo-pc-split-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-bar); }
+.mo-pc-split-tag { position: absolute; top: var(--px-space-2); padding: 2px 8px; margin: 0 var(--px-space-2); border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-xs); }
+.mo-plan-tool-gap { width: 36px; height: 1px; margin: var(--px-space-1) auto; background: var(--px-border); flex: none; }
+.mo-plan-field-label { font-size: var(--px-text-sm); margin-top: var(--px-space-1); }
+.mo-plan-danger { background: transparent; color: var(--px-danger); border: 1px solid color-mix(in srgb, var(--px-danger) 45%, transparent); }
+.mo-pc-chips .mo-pc-chip.is-picked { box-shadow: var(--px-ring), inset 0 -4px 0 var(--px-accent); }
 .mo-pc-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* The board (board.js) */
 .mo-bd { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--px-bg); color: var(--px-text); outline: none; }
@@ -372,10 +383,21 @@ export const MO_CSS_MORE = `
 .mo-plan-shelf-item img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; }
 .mo-plan-shelf-item span { flex: 1 1 auto; }
 .mo-plans-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
-.mo-plans-card { width: 160px; cursor: pointer; padding: 8px; text-align: left; color: inherit; font: inherit; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); font-size: 12px; }
-.mo-plans-card:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-plans-card img { width: 144px; height: 144px; object-fit: cover; display: block; border-radius: 2px; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); margin-bottom: 6px; }
+.mo-plans-head { display: flex; align-items: flex-end; gap: var(--px-space-4); margin-bottom: var(--px-space-4); }
+.mo-plans-words { flex: 1 1 auto; min-width: 0; }
+.mo-plans-picker { display: flex; flex-direction: column; gap: var(--px-space-3); max-width: 640px; padding: var(--px-space-4); margin-bottom: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.mo-plans-picker > .mo-clip-input, .mo-bd-picker > .mo-clip-input { flex: none; height: var(--px-control-h); }
+.mo-plans-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--px-space-2); }
+.mo-plans-picker-grid .mo-plans-pick { aspect-ratio: 1; height: auto; min-width: 0; padding: 0; overflow: hidden; border-radius: var(--px-radius-sm); }
+.mo-plans-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mo-plans-card { width: 200px; display: flex; flex-direction: column; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); overflow: hidden; }
+.mo-plans-card .mo-plans-open { height: auto; padding: var(--px-space-2); display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; border-radius: 0; font-size: var(--px-text-sm); white-space: normal; }
+.mo-plans-open img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; border-radius: var(--px-radius-sm); background: var(--px-bg-inset); margin-bottom: var(--px-space-1); }
 .mo-plans-card-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-plans-dots { display: flex; gap: 3px; min-height: 12px; margin-top: 2px; }
+.mo-plans-dots span { width: 12px; height: 12px; border-radius: var(--px-radius-full); box-shadow: var(--px-ring); }
+.mo-plans-actions { display: flex; align-items: center; gap: var(--px-space-1); padding: var(--px-space-1) var(--px-space-2) var(--px-space-2); }
+.mo-plans-actions > :first-child { margin-right: auto; }
 /* Image editor (docs/IMAGE_EDITOR.md, docs/mockups/image-editor-redesign.html):
    top bar · presets | the stage over the filmstrip | the panel with its tool
    tabs. --px-* tokens and the Tier 3 "Image editor" block in px-tokens.css. */

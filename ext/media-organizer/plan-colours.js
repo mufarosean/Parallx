@@ -56,7 +56,7 @@ const savePick = (io) => io.setSetting(PICK_KEY, JSON.stringify({ size: shared.p
 // focus) and every action of the panels, run on the plan in use ──
 const open = new Set();
 let lastUsed = null;
-const PLAN_ACTIONS = ['renameStage', 'addStage', 'removeStage', 'showSavedColour', 'showSavedColours', 'addPaletteColours', 'myPaints', 'backFromPaints',
+const PLAN_ACTIONS = ['renameStage', 'addStage', 'removeStage', 'showSavedColour', 'showSavedColours', 'pullPalette', 'pinColours', 'myPaints', 'backFromPaints',
   'copyRecipe', 'removeSavedColour', 'customPaint', 'starterPaints', 'removePaint'];
 const planInUse = () => [...open].find((x) => x.root.contains(document.activeElement)) || (lastUsed && lastUsed.root.isConnected ? lastUsed : null);
 export function moPlanColoursActivate(api) {
@@ -102,6 +102,9 @@ export function moPlanColours(ctx) {
   loupe.appendChild(loupeBox);
   layer.append(pins, loupe, loupeTag, live);
   ctx.frame.appendChild(layer);
+  // Marks around and on the picture: the transfer grid's labels in the margin, Compare's split.
+  const marks = moEl('div', 'mo-pc-marks', { 'aria-hidden': 'true' });
+  ctx.frame.appendChild(marks);
   disposers.push(moPointKeys(layer, 'Picture. Arrow keys move the picker, Enter saves the colour under it.', {
     move: (dx, dy) => { const p = point || { u: 0.5, v: 0.5 }; setPoint(Math.max(0, Math.min(1, p.u + dx / 100)), Math.max(0, Math.min(1, p.v + dy / 100)), false); },
     take: () => { if (!point) setPoint(0.5, 0.5, false); save(); },
@@ -291,8 +294,9 @@ export function moPlanColours(ctx) {
   }
 
   // ── the panel ──
+  const colours = () => [...(state.recipe.palette.swatches || []).map((rgb, i) => ({ rgb, pulled: true, at: i })), ...(state.recipe.saved || []).map((c, i) => Object.assign({}, c, { pulled: false, at: i }))];
   function pickPanel(panel, panelDisposers) {
-    if (view === 'detail' && state.recipe.saved && state.recipe.saved[detail]) return detailPanel(panel);
+    if (view === 'detail' && colours()[detail]) return detailPanel(panel);
     if (view === 'paints') return paintsPanel(panel, panelDisposers);
     view = 'list';
     const s1 = moEl('div', 'mo-plan-section');
@@ -313,36 +317,41 @@ export function moPlanColours(ctx) {
     panel.appendChild(s2);
 
     const s3 = moEl('div', 'mo-plan-section mo-pc-split');
-    const saved = state.recipe.saved || [];
+    const list = colours();
     const head = moEl('div', 'mo-pc-head');
-    head.append(moEl('div', 'mo-practice-section-title', { textContent: 'Saved colours' }), moEl('span', 'mo-practice-dim', { textContent: String(saved.length) }));
+    head.append(moEl('div', 'mo-practice-section-title', { textContent: 'Colours of this variation' }), moEl('span', 'mo-practice-dim', { textContent: String(list.length) }));
     s3.appendChild(head);
-    if (saved.length) {
+    if (list.length) {
       const grid = moEl('div', 'mo-pc-chips');
-      saved.forEach((c, i) => {
-        const name = moColourName(c.rgb).name;
-        const b = ui.createButton(grid, { id: `media-organizer.plan.saved.${i}`, label: `${name}, ${hexOf(c.rgb)}`, kind: 'ghost', title: `${name} · ${hexOf(c.rgb)}`, command: 'media-organizer.plan.showSavedColour', args: [i] });
+      list.forEach((c, i) => {
+        const name = moColourName(c.rgb).name, how = c.pulled ? 'pulled from the picture' : 'picked by hand';
+        const b = ui.createButton(grid, { id: `media-organizer.plan.colour.${i}`, label: `${name}, ${hexOf(c.rgb)}, ${how}`, kind: 'ghost', title: `${name} · ${hexOf(c.rgb)} · ${how}`, command: 'media-organizer.plan.showSavedColour', args: [i] });
         b.classList.add('mo-pc-chip');
-        b.setAttribute('aria-label', `${name}, ${hexOf(c.rgb)}`);
+        if (!c.pulled) b.classList.add('is-picked');
+        b.setAttribute('aria-label', `${name}, ${hexOf(c.rgb)}, ${how}`);
         b.replaceChildren();
         b.style.background = hexOf(c.rgb);
-        if (i === Math.min(Math.max(detail, 0), saved.length - 1)) focusIfPending('chip', b);
+        if (i === Math.min(Math.max(detail, 0), list.length - 1)) focusIfPending('chip', b);
       });
       s3.appendChild(grid);
-      s3.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Choose a saved colour to see its name and how to mix it.' }));
-    } else s3.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'No saved colours yet.' }));
-    const row = moEl('div', 'mo-plan-row');
-    const fromPalette = button('Add Palette Colours', 'addPaletteColours');
-    if (!(state.recipe.palette.swatches || []).length) { fromPalette.disabled = true; fromPalette.title = 'Pull a palette from the picture in Palette first'; }
-    row.append(fromPalette, focusIfPending('chip', button('My Paints…', 'myPaints')));
-    s3.appendChild(row);
+    } else s3.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'No colours yet: pull them from the picture, or click the picture to pick one.' }));
+    const pull = moEl('div', 'mo-plan-row');
+    pull.appendChild(button('Pull From Picture', 'pullPalette'));
+    const cnt = ui.createSegmented(pull, { id: 'media-organizer.plan.colourCount', ariaLabel: 'Colours to pull', value: String(state.recipe.palette.count || 8), items: [4, 6, 8, 12, 16].map((n) => ({ value: String(n), label: String(n) })), onChange: (v) => { state.recipe.palette.count = Number(v) || 8; ctx.afterRecipeChange(false, true); } });
+    panelDisposers.push(() => cnt.dispose());
+    s3.appendChild(pull);
+    s3.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Pulled and picked colours live together; a blue mark means picked by hand. Every swatch opens its mix.' }));
+    s3.appendChild(check('Limited Palette Preview', 'media-organizer.plan.limitedPreview', state.recipe.palette.apply, (v) => { state.recipe.palette.apply = v; ctx.afterRecipeChange(true, true); }));
     s3.appendChild(check('Show Where Colours Came From', 'media-organizer.plan.showPins', shared.pins, (v) => { shared.pins = v; void savePick(io); sync(); }));
+    const row = moEl('div', 'mo-plan-row');
+    row.append(focusIfPending('chip', button('My Paints…', 'myPaints')), button('Pin Colours To Board', 'pinColours'));
+    s3.appendChild(row);
     panel.appendChild(s3);
   }
 
   function detailPanel(panel) {
     readout = null;
-    const c = state.recipe.saved[detail];
+    const c = colours()[detail];
     focusIfPending('back', ui.createButton(panel, { id: 'media-organizer.plan.showSavedColours', label: 'Saved Colours', icon: 'chevron-left', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.showSavedColours' }));
     const n = moColourName(c.rgb);
     const top = moEl('div', 'mo-pc-colour');
@@ -473,26 +482,22 @@ export function moPlanColours(ctx) {
       state.recipe.stage = 0; // the picture keeps the look it has
       ctx.afterRecipeChange(true);
     },
-    showSavedColour(i) { if (!state.recipe || !(state.recipe.saved || [])[i]) return; detail = i; show('detail'); },
+    showSavedColour(i) { if (!state.recipe || !colours()[i]) return; detail = i; show('detail'); },
     showSavedColours() { show('list'); },
-    addPaletteColours() {
-      if (!state.recipe) return;
-      const saved = state.recipe.saved || [], have = new Set(saved.map((c) => hexOf(c.rgb)));
-      const add = (state.recipe.palette.swatches || []).filter((rgb) => !have.has(hexOf(rgb))).map((rgb) => ({ rgb: rgb.slice(0, 3), x: null, y: null }));
-      state.recipe.saved = saved.concat(add).slice(-64);
-      ctx.afterRecipeChange(true);
-    },
+    pullPalette() { if (state.recipe) ctx.pullPalette(); },
+    pinColours() { ctx.addToBoard('This Palette'); },
     myPaints() { paintsBack = view === 'detail' ? 'detail' : 'list'; show('paints'); },
-    backFromPaints() { show(paintsBack === 'detail' && (state.recipe.saved || [])[detail] ? 'detail' : 'list'); },
+    backFromPaints() { show(paintsBack === 'detail' && colours()[detail] ? 'detail' : 'list'); },
     async copyRecipe() {
-      const c = view === 'detail' && (state.recipe.saved || [])[detail]; if (!c) return;
+      const c = view === 'detail' && colours()[detail]; if (!c) return;
       const best = moMixRecipes(c.rgb, shared.paints, shared.rules).best; if (!best) return;
       try { await navigator.clipboard.writeText(`${moColourName(c.rgb).name} (${hexOf(c.rgb)}): ${recipeText(best)}`); live.textContent = 'Recipe copied'; } catch { /* no clipboard */ }
     },
     removeSavedColour(i) {
-      const at = Number.isInteger(i) ? i : detail;
-      if (!state.recipe || !(state.recipe.saved || [])[at]) return;
-      state.recipe.saved = state.recipe.saved.filter((_, k) => k !== at);
+      const c = state.recipe && colours()[Number.isInteger(i) ? i : detail];
+      if (!c) return;
+      if (c.pulled) state.recipe.palette.swatches = state.recipe.palette.swatches.filter((_, k) => k !== c.at);
+      else state.recipe.saved = state.recipe.saved.filter((_, k) => k !== c.at);
       view = 'list'; pendingFocus = 'chip'; ctx.afterRecipeChange(true);
     },
     async customPaint() {
@@ -541,8 +546,25 @@ export function moPlanColours(ctx) {
   };
 
   // After each draw: the stage bar, the picker's layer and the pins.
+  function drawMarks() {
+    marks.replaceChildren();
+    const r = state.recipe;
+    if (!r || !state.plan) return;
+    const add = (cls, text, css) => { const m = moEl('span', cls, { textContent: text }); Object.assign(m.style, css); marks.appendChild(m); };
+    if (r.overlays.grid && state.tool !== 'crop') {
+      const step = r.overlays.gridInches > 0 ? r.overlays.gridInches : 1, g = ctx.gridLines(state.plan.canvas_w, state.plan.canvas_h, step);
+      for (let i = 0; i < g.cols; i++) add('mo-pc-gl mo-pc-gl--col', String(i + 1), { left: `${Math.min(100, ((i + 0.5) * step * 100) / state.plan.canvas_w)}%` });
+      for (let j = 0; j < g.rows; j++) add('mo-pc-gl mo-pc-gl--row', String.fromCharCode(65 + (j % 26)), { top: `${Math.min(100, ((j + 0.5) * step * 100) / state.plan.canvas_h)}%` });
+    }
+    if (state.tool === 'compare' && state.split >= 0) {
+      add('mo-pc-split-line', '', { left: `${state.split * 100}%` });
+      add('mo-pc-split-tag mo-pc-split-tag--before', 'Before', { right: `${(1 - state.split) * 100}%` });
+      add('mo-pc-split-tag mo-pc-split-tag--after', 'After', { left: `${state.split * 100}%` });
+    }
+  }
   function sync() {
     renderBar();
+    drawMarks();
     const picking = state.tool === 'pick' && !!state.recipe;
     layer.classList.toggle('mo-hidden', !picking);
     if (!picking) { hideLoupe(); pins.replaceChildren(); return; }
@@ -576,7 +598,7 @@ export function moPlanColours(ctx) {
     pickPanel,
     sync,
     // A new variation or an undo: the colour shown may be gone.
-    reset() { if (view === 'detail' && !(state.recipe.saved || [])[detail]) view = 'list'; cache = null; },
+    reset() { if (view === 'detail' && !colours()[detail]) view = 'list'; cache = null; },
     dispose() {
       open.delete(handle);
       if (lastUsed === handle) lastUsed = null;

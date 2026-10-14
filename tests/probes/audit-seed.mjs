@@ -132,6 +132,10 @@ export async function seedAfterLaunch(page, pre) {
   await page.waitForTimeout(1_000);
   log('plan', await run(page, 'media-organizer.planPainting', pre.photoId));
   await page.waitForTimeout(2_000);
+  // Its board, with a variation, its palette and a note on it.
+  await run(page, 'media-organizer.openBoard', 1);
+  await page.waitForTimeout(2_000);
+  for (const [c, ...a] of [['media-organizer.board.addVariation', 1], ['media-organizer.board.addPalette', 1], ['media-organizer.board.addNote']]) { await run(page, c, ...a); await page.waitForTimeout(600); }
   const planTool = (label, then) => async () => {
     await run(page, 'media-organizer.paintingPlans');
     await page.waitForTimeout(1_200);
@@ -141,12 +145,13 @@ export async function seedAfterLaunch(page, pre) {
     await page.waitForTimeout(800);
     if (then) await then();
   };
-  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Pick Colours', 'Composition', 'Palette', 'Compare', 'Process', 'Plan'];
+  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Layout', 'Compare', 'Colours', 'Process', 'Notes'];
 
   return {
     'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
+    'seed:plan.board': async () => { await run(page, 'media-organizer.openBoard', 1); },
     ...Object.fromEntries(PLAN_TOOLS.map((t) => [`seed:plan.${t}`, planTool(t)])),
-    'seed:plan.myPaints': planTool('Pick Colours', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
+    'seed:plan.myPaints': planTool('Colours', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
     'seed:page': async () => { if (pageId) await run(page, 'canvas.openPage', pageId); },
     'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },
     'seed:conceptMap': async () => { if (typeof mapId === 'string' && !mapId.startsWith('failed')) await run(page, 'canvas.openPage', mapId); },

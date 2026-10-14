@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moColourName, moPalette } from './colour.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -32029,42 +32029,10 @@ function renderPlansTab(container, api, input) {
   }
   if (inputId.startsWith('plans:edit:')) return renderPlanEditor(container, api, parseInt(inputId.slice('plans:edit:'.length), 10) || 0);
   if (inputId.startsWith('plans:board:')) { moInjectStyles(); return moRenderBoard(container, moBoardContext(moBoardDeps(api), parseInt(inputId.slice('plans:board:'.length), 10) || 0)); }
-  return renderPlansList(container, api);
+  moInjectStyles(); return moRenderPlansList(container, api);
 }
 
 // ── The list ───────────────────────────────────────────────────────────────
-
-function renderPlansList(container, api) {
-  moInjectStyles();
-  const root = moEl('div', 'mo-practice-setup');
-  container.appendChild(root);
-  let disposed = false;
-  root.appendChild(moEl('div', 'mo-home-title', { textContent: 'Painting Plans' }));
-  root.appendChild(moEl('div', 'mo-home-sub', { textContent: 'Work the design out on the photo before the canvas. Open a photo and choose Plan Painting to start one.' }));
-  const grid = moEl('div', 'mo-plans-grid');
-  root.appendChild(grid);
-  async function load() {
-    try {
-      const plans = await db.all('SELECT * FROM mo_plans ORDER BY updated_at DESC');
-      if (disposed) return;
-      grid.innerHTML = '';
-      if (!plans.length) { grid.appendChild(moEl('div', 'mo-practice-poolcount', { textContent: 'No plans yet.' })); return; }
-      for (const p of plans) {
-        const card = moEl('button', 'mo-plans-card', { type: 'button' });
-        const img = moEl('img', null, { alt: '' });
-        card.appendChild(img);
-        void moPracticeThumb(img, p.photo_id, api);
-        card.appendChild(moEl('div', 'mo-plans-card-title', { textContent: p.title }));
-        card.appendChild(moEl('div', 'mo-practice-dim', { textContent: `${p.canvas_w} × ${p.canvas_h} in · ${moPracticeDate(p.updated_at)}` }));
-        card.addEventListener('click', () => moOpenPlan(api, p.id));
-        grid.appendChild(card);
-      }
-    } catch { /* leave empty */ }
-  }
-  document.addEventListener('mo:plans-changed', load);
-  void load();
-  return { dispose() { disposed = true; document.removeEventListener('mo:plans-changed', load); container.innerHTML = ''; } };
-}
 
 // ── The renderer ───────────────────────────────────────────────────────────
 // One WebGL program applies a whole recipe, for Painting Plans and for the
@@ -32517,7 +32485,7 @@ function moPlanRenderer(canvas) {
       return engine[opts.read ? 'sample' : 'draw']({ // read: the pixels back as RGBA bytes
         m: geo.m, look, opaque: true,
         grey: r.grey, levels: r.levels, notan: r.notan,
-        palette: r.palette && r.palette.apply ? r.palette.swatches : [],
+        palette: r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
         split: typeof opts.split === 'number' ? opts.split : -1,
       }, opts.width, opts.height);
     },
@@ -32526,20 +32494,23 @@ function moPlanRenderer(canvas) {
 }
 
 // Draw the composition overlays onto a 2D context the size of the crop.
-function moPlanDrawOverlays(ctx, W, H, recipe, canvasW, canvasH, scale) {
+function moPlanDrawOverlays(ctx, W, H, recipe, canvasW, canvasH, scale, labelsInside = true) {
   const o = recipe.overlays;
   ctx.clearRect(0, 0, W, H);
   const line = (x1, y1, x2, y2, color, width) => { ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
   const k = scale || 1;
   const white = 'rgba(255,255,255,0.85)'; const dark = 'rgba(0,0,0,0.45)';
   const dual = (x1, y1, x2, y2, w) => { line(x1, y1, x2, y2, dark, (w + 1.5) * k); line(x1, y1, x2, y2, white, w * k); };
-  if (o.thirds) { for (const f of [1 / 3, 2 / 3]) { dual(W * f, 0, W * f, H, 1); dual(0, H * f, W, H * f, 1); } }
-  if (o.golden) { for (const f of [0.382, 0.618]) { dual(W * f, 0, W * f, H, 1); dual(0, H * f, W, H * f, 1); } }
-  if (o.diagonals) { dual(0, 0, W, H, 1); dual(W, 0, 0, H, 1); }
+  const accent = getComputedStyle(document.body).getPropertyValue('--px-accent').trim() || 'dodgerblue';
+  const comp = (x1, y1, x2, y2) => { line(x1, y1, x2, y2, dark, 3.5 * k); line(x1, y1, x2, y2, accent, 2 * k); }; // composition lines stand out from the transfer grid
+  if (o.thirds) { for (const f of [1 / 3, 2 / 3]) { comp(W * f, 0, W * f, H); comp(0, H * f, W, H * f); } }
+  if (o.golden) { for (const f of [0.382, 0.618]) { comp(W * f, 0, W * f, H); comp(0, H * f, W, H * f); } }
+  if (o.diagonals) { comp(0, 0, W, H); comp(W, 0, 0, H); }
   if (o.grid) {
     const g = moPlanGridLines(canvasW, canvasH, o.gridInches);
     for (const x of g.xs) dual(W * x, 0, W * x, H, 0.8);
     for (const y of g.ys) dual(0, H * y, W, H * y, 0.8);
+    if (!labelsInside) return;
     ctx.font = `${Math.max(9, Math.round(11 * k))}px sans-serif`;
     ctx.textBaseline = 'top';
     const label = (t, x, y) => { ctx.fillStyle = dark; ctx.fillRect(x - 1, y - 1, ctx.measureText(t).width + 4, 12 * k + 2); ctx.fillStyle = white; ctx.fillText(t, x + 1, y); };
@@ -32578,10 +32549,11 @@ function renderPlanEditor(container, api, planId) {
   main.appendChild(topbar); main.appendChild(stage); main.appendChild(variantsBar);
   root.appendChild(tools); root.appendChild(panel); root.appendChild(main);
 
-  const TOOLS = [['crop', 'crop', 'Crop'], ['light', 'sun', 'Light'], ['colour', 'droplet', 'Colour'], ['values', 'contrast', 'Values'], ['pick', 'pipette', 'Pick Colours'], ['grids', 'grid-3x3', 'Composition'], ['palette', 'palette', 'Palette'], ['compare', 'columns', 'Compare'], ['process', 'layers', 'Process'], ['info', 'pencil', 'Plan']];
+  const TOOLS = [['crop', 'crop', 'Crop'], ['light', 'sun', 'Light'], ['colour', 'droplet', 'Colour'], null, ['values', 'contrast', 'Values'], ['grids', 'grid-3x3', 'Layout'], ['compare', 'columns-2', 'Compare'], null, ['pick', 'palette', 'Colours'], null, ['process', 'layers', 'Process'], ['info', 'notebook-pen', 'Notes']];
   const toolBtns = {};
-  for (const [id, icon, label] of TOOLS) {
-    const b = moEl('button', 'mo-plan-tool', { sceneId: `media-organizer.plan.tool.${moSlug(id)}`, type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 16) });
+  for (const t of TOOLS) {
+    if (!t) { tools.appendChild(moEl('span', 'mo-plan-tool-gap', { 'aria-hidden': 'true' })); continue; } const [id, icon, label] = t;
+    const b = moEl('button', 'mo-plan-tool', { sceneId: `media-organizer.plan.tool.${moSlug(id)}`, type: 'button', title: label, 'aria-label': label, innerHTML: `${moIcon(icon, 16)}<span>${label}</span>` });
     b.addEventListener('click', () => setTool(id));
     toolBtns[id] = b;
     tools.appendChild(b);
@@ -32590,9 +32562,8 @@ function renderPlanEditor(container, api, planId) {
   // Top bar: title, undo/redo, export.
   const titleEl = moEl('div', 'mo-plan-title');
   const sizeEl = moEl('div', 'mo-practice-dim');
-  const undoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.undo', type: 'button', title: 'Undo', 'aria-label': 'Undo', innerHTML: moIcon('rotate-cw', 14) });
-  undoBtn.style.transform = 'scaleX(-1)';
-  const redoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.redo', type: 'button', title: 'Redo', 'aria-label': 'Redo', innerHTML: moIcon('rotate-cw', 14) });
+  const undoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.undo', type: 'button', title: 'Undo (Ctrl+Z)', 'aria-label': 'Undo', innerHTML: moIcon('undo-2', 14) });
+  const redoBtn = moEl('button', 'mo-practice-btn', { sceneId: 'media-organizer.plan.redo', type: 'button', title: 'Redo (Ctrl+Y)', 'aria-label': 'Redo', innerHTML: moIcon('redo-2', 14) });
   undoBtn.addEventListener('click', () => undo()); redoBtn.addEventListener('click', () => redo());
   const exportBtn = moEl('button', 'mo-practice-start', { sceneId: 'media-organizer.plan.export', type: 'button', textContent: 'Export Plan' });
   const exportGridBtn = moEl('button', 'mo-toolbar-btn', { sceneId: 'media-organizer.plan.exportWithGrid', type: 'button', textContent: 'Export With Grid' });
@@ -32601,7 +32572,7 @@ function renderPlanEditor(container, api, planId) {
   exportGridBtn.addEventListener('click', () => void exportPlan(true));
   printBtn.addEventListener('click', () => void printPlan());
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
   const left = moEl('div', 'mo-plan-topbar-left'); left.appendChild(titleEl); left.appendChild(sizeEl); main.insertBefore(colours.bar, stage);
   const right = moEl('div', 'mo-plan-topbar-right');
   for (const b of [undoBtn, redoBtn, exportGridBtn, printBtn, exportBtn]) right.appendChild(b);
@@ -32651,7 +32622,7 @@ function renderPlanEditor(container, api, planId) {
   function requestRender() { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
 
   function stageBox() {
-    const sw = stage.clientWidth - 24; const sh = stage.clientHeight - 24;
+    const m = state.recipe && state.recipe.overlays.grid && state.tool !== 'crop' ? 64 : 24; const sw = stage.clientWidth - m; const sh = stage.clientHeight - m;
     return { w: Math.max(50, sw), h: Math.max(50, sh) };
   }
   // The frame holds the full rotated image in the crop tool, the crop elsewhere.
@@ -32684,7 +32655,7 @@ function renderPlanEditor(container, api, planId) {
       cropBox.style.width = (r.crop.w * cssW) + 'px'; cropBox.style.height = (r.crop.h * cssH) + 'px';
     } else {
       cropBox.classList.add('mo-hidden');
-      moPlanDrawOverlays(octx, ovCanvas.width, ovCanvas.height, r, state.plan.canvas_w, state.plan.canvas_h, dpr);
+      moPlanDrawOverlays(octx, ovCanvas.width, ovCanvas.height, r, state.plan.canvas_w, state.plan.canvas_h, dpr, false);
     }
     colours.sync();
   }
@@ -32830,28 +32801,12 @@ function renderPlanEditor(container, api, planId) {
       panelDisposers.push(() => gd.dispose());
       s2.appendChild(gd.el);
       s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: `Rows are lettered, columns numbered, for a ${state.plan.canvas_w} × ${state.plan.canvas_h} in canvas.` }));
-    } else if (t === 'palette') {
-      const s = section('Palette');
-      const cd = moDropdown({ items: [4, 6, 8, 12, 16].map((n) => ({ value: String(n), label: n + ' Colours' })), selected: String(r.palette.count || 8), ariaLabel: 'Colours' });
-      cd.onChange = (v) => { r.palette.count = Number(v) || 8; scheduleSave(); };
-      panelDisposers.push(() => cd.dispose());
-      s.appendChild(cd.el);
-      s.appendChild(button('Pull From Picture', () => { extractPalette(); }, true));
-      const sw = moEl('div', 'mo-plan-swatches');
-      for (const c of r.palette.swatches) {
-        const chip = moEl('button', 'mo-plan-swatch', { type: 'button', title: moPlanHex(c) + ' (click to copy)', 'aria-label': `Copy ${moColourName(c).name}, ${moPlanHex(c)}` });
-        chip.style.background = moPlanHex(c);
-        chip.addEventListener('click', () => { try { navigator.clipboard.writeText(moPlanHex(c)); } catch { /* no clipboard */ } });
-        sw.appendChild(chip);
-      }
-      if (!r.palette.swatches.length) sw.appendChild(moEl('div', 'mo-practice-dim', { textContent: 'No swatches yet.' }));
-      s.appendChild(sw);
-      s.appendChild(toggle('Limited Palette Preview', () => r.palette.apply, (v) => { r.palette.apply = v; afterRecipeChange(true); }));
     } else if (t === 'compare') {
       const s = section('Compare');
       s.appendChild(toggle('Before And After', () => state.split >= 0, (v) => { state.split = v ? 0.5 : -1; requestRender(); renderPanel(); }));
       if (state.split >= 0) {
-        const row = moEl('div', 'mo-plan-slider');
+        const row = moEl('div', 'mo-plan-slider'); row.appendChild(moEl('div', 'mo-plan-slider-head', { textContent: 'Split' }));
+        if (MO_ENGINE_LOOK_KEYS.every((k) => JSON.stringify(r[k]) === JSON.stringify(moPlanDefaultRecipe()[k]))) s.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'No light or colour edits yet, so both sides match.' }));
         const input = moEl('input', null, { sceneId: 'media-organizer.plan.split', type: 'range', min: '0', max: '1', step: '0.01', 'aria-label': 'Split' });
         input.value = String(state.split);
         input.addEventListener('input', () => { state.split = Number(input.value); requestRender(); });
@@ -32879,12 +32834,13 @@ function renderPlanEditor(container, api, planId) {
       }
       s.appendChild(list);
     } else if (t === 'info') {
-      const s = section('Plan');
-      const tIn = moEl('input', 'mo-clip-input mo-clip-input--grow', { sceneId: 'media-organizer.plan.title', type: 'text', 'aria-label': 'Title', placeholder: 'Title' });
+      const s = section('Notes'); s.appendChild(moEl('label', 'mo-plan-field-label', { textContent: 'Title', for: 'mo-plan-title-in' }));
+      const tIn = moEl('input', 'mo-clip-input mo-clip-input--grow', { sceneId: 'media-organizer.plan.title', id: 'mo-plan-title-in', type: 'text', placeholder: 'Title' });
       tIn.value = state.plan.title || '';
       tIn.addEventListener('change', () => { state.plan.title = tIn.value.trim() || 'Painting'; titleEl.textContent = state.plan.title; scheduleSave(); });
       s.appendChild(tIn);
-      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { sceneId: 'media-organizer.plan.notes', 'aria-label': 'Notes', placeholder: 'Notes: what the painting is about, the light, the mood, what to keep and what to leave out.' });
+      s.appendChild(moEl('label', 'mo-plan-field-label', { textContent: 'Notes', for: 'mo-plan-notes-in' }));
+      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { sceneId: 'media-organizer.plan.notes', id: 'mo-plan-notes-in', placeholder: 'Notes: what the painting is about, the light, the mood, what to keep and what to leave out.' });
       notes.value = state.plan.notes || '';
       notes.addEventListener('change', () => { state.plan.notes = notes.value; scheduleSave(); });
       s.appendChild(notes);
@@ -32895,7 +32851,7 @@ function renderPlanEditor(container, api, planId) {
         root.innerHTML = '';
         root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan was deleted. The photo is untouched.' }));
         disposed = true;
-      }));
+      })).classList.add('mo-plan-danger');
     }
   }
 
@@ -38202,7 +38158,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moBoardActivate(api), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);

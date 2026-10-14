@@ -50,7 +50,7 @@ const SCREENS = [
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
   ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:imageEditor'], ['seed:clipEditor'],
   // Painting Plans (behind the art tools setting, which the seed turns on).
-  ['seed:plans'], ...['Crop', 'Light', 'Colour', 'Values', 'Pick Colours', 'Composition', 'Palette', 'Compare', 'Process', 'Plan', 'myPaints'].map((t) => [`seed:plan.${t}`]),
+  ['seed:plans'], ...['Crop', 'Light', 'Colour', 'Values', 'Layout', 'Compare', 'Colours', 'Process', 'Notes', 'myPaints', 'board'].map((t) => [`seed:plan.${t}`]),
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx.browser', 'parallx-community.study'];
 // A sub-screen is what a tool's own navigation opens: its sidebar's and its
