@@ -33,6 +33,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { PROJECT_ROOT, launchApp, cmd, cmdNoWait, setToolEnabled, openFile, tinyPdf, sceneOf, flatten } from './scene.mjs';
+import { seedBeforeLaunch, seedAfterLaunch } from './audit-seed.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-keyboard-audit'));
 const only = process.argv.slice(3);
@@ -46,6 +47,8 @@ const SCREENS = [
   ['pdf'], ['worksheet.openScratch'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
+  // Seeded content (audit-seed.mjs): what an empty workspace never shows.
+  ['seed:page'], ['seed:conceptMap'], ['seed:imageEditor'], ['seed:clipEditor'],
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx.browser', 'parallx-community.study'];
 // A sub-screen is what a tool's own navigation opens: its sidebar's and its
@@ -107,6 +110,9 @@ function install() {
       this.stuck = 0;
       this.prev = a; this.prevLook = look(a); this.prevParentLook = around(a);
       // Focus on something drawn see-through (actions shown only on hover): no visible focus at all.
+      // Read after the fade a focus starts has run (reading first starts it; settle finishes it).
+      for (let p = a; p && p !== document.body; p = p.parentElement) void getComputedStyle(p).opacity;
+      settle();
       let alpha = 1;
       for (let p = a; p && p !== document.body; p = p.parentElement) alpha *= parseFloat(getComputedStyle(p).opacity);
       if (alpha < 0.15 && !third(a)) this.noRing.push(`${describe(a)} (invisible while focused)`);
@@ -203,7 +209,9 @@ await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.strin
 try { await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction'); } catch { /* ok */ }
 await fs.writeFile(path.join(ws, 'alpha.md'), '# Alpha\n\nA note.\n');
 await fs.writeFile(path.join(ws, 'reading.pdf'), tinyPdf());
+const seedPre = await seedBeforeLaunch(ws);
 const { app, page } = await launchApp(appRoot);
+let seedScreens = {};
 const cdp = await page.context().newCDPSession(page).catch(() => null);
 const report = [];
 let dialogs = [];
@@ -496,6 +504,7 @@ async function open(first, args) {
   await page.keyboard.press('Escape');
   if (first === 'pdf') return openFile(page, 'reading.pdf');
   if (first === 'boot') return;
+  if (first.startsWith('seed:')) return seedScreens[first]?.();
   const r = await cmd(page, first.replace(/^ext:/, ''), ...args);
   if (r !== true) console.log(`[open] ${first}: ${r}`);
 }
@@ -591,6 +600,7 @@ async function navIds() {
 try {
   for (const id of EXTS) await setToolEnabled(page, id, true);
   await page.waitForTimeout(3_000);
+  seedScreens = await seedAfterLaunch(page, seedPre);
   const done = new Set();
   for (const [first, ...args] of SCREENS) {
     const label = [first, ...args].join(' ');

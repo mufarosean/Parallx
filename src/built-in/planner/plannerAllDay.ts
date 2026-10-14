@@ -3,6 +3,7 @@
 // create one, drag a bar to move it or its ends to resize it) and the
 // all-day list at the top of the day view.
 
+import { onDragPress } from '../../ui/touchDrag.js';
 import { escapeHtml } from '../../ui/format.js';
 import type { PlannerEvent } from './plannerTypes.js';
 import { startOfDay, endOfDay, addDays, sameDay } from './plannerDates.js';
@@ -104,7 +105,7 @@ export class PlannerAllDay {
   /** Drag across empty all-day cells to create a multi-day all-day event. */
   private _installAllDayDragCreate(grid: HTMLElement, weekStart: Date): void {
     const THRESHOLD_PX = 3;
-    grid.addEventListener('pointerdown', (e) => {
+    onDragPress(grid, (me) => { const e = me as PointerEvent;
       if (e.button !== 0) return;
       if (!(e.target instanceof HTMLElement) || !e.target.classList.contains('planner-week__allday-cell')) return;
       e.preventDefault();
@@ -147,7 +148,7 @@ export class PlannerAllDay {
       grid.addEventListener('pointermove', onMove);
       grid.addEventListener('pointerup', onUp);
       grid.addEventListener('pointercancel', onUp);
-    });
+    }, { hold: true, pointerEvents: true });
   }
 
   /** Move / resize an existing all-day bar by whole-day steps. */
@@ -159,7 +160,7 @@ export class PlannerAllDay {
     bar.appendChild(leftHandle);
     bar.appendChild(rightHandle);
 
-    bar.addEventListener('pointerdown', (e) => {
+    onDragPress(bar, (me) => { const e = me as PointerEvent;
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -220,7 +221,7 @@ export class PlannerAllDay {
       bar.addEventListener('pointermove', onMove);
       bar.addEventListener('pointerup', onUp);
       bar.addEventListener('pointercancel', onUp);
-    });
+    }, { hold: true, pointerEvents: true });
   }
 
   /** Compact all-day strip for the single-day view. */

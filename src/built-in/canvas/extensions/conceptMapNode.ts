@@ -60,7 +60,7 @@ import {
   type MindMapNode,
   type MindMapOverrides, coerceMindMapDirection, MAP_GRID,
 } from '../../../ui/conceptMap.js';
-import { beginPointerDrag } from '../../../ui/interactionMode.js';
+import { beginPointerDrag, onDragPress } from '../../../ui/interactionMode.js';
 import { resizedOverrides, snapBoxWidth, stepSelection } from '../../../ui/conceptMapKeys.js';
 
 const renderMath = (tex: string): string => katex.renderToString(tex, { throwOnError: false });
@@ -1123,7 +1123,7 @@ export const ConceptMap = Node.create({
             pendingPhantom = null;
             queueMicrotask(() => beginPhantomAdd(queued.kind, queued.line));
           }
-          body.addEventListener('pointerdown', (e) => {
+          onDragPress(body, (me) => { const e = me as PointerEvent;
             if ((e as MouseEvent).button !== 0) return;
             if (boxEditTeardown) {
               // A press outside the open box editor commits it; the
@@ -1155,7 +1155,7 @@ export const ConceptMap = Node.create({
             }
             if (!selected.has(parts.line)) selectOnly([parts.line]);
             beginGroupDrag(e, parts, wasSole);
-          });
+          }, { hold: true, pointerEvents: true });
           dom.appendChild(body);
           const keys = document.createElement('div');
           keys.classList.add('canvas-conceptmap__keys');

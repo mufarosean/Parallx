@@ -57,7 +57,7 @@ export const MO_CSS_MORE = `
 .mo-feed-card--missing { display: flex; align-items: center; justify-content: center; opacity: 0.6; }
 .mo-feed-badge { position: absolute; top: 6px; right: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; background: rgba(0,0,0,0.6); color: #fff; pointer-events: none; }
 .mo-feed-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0)); color: #fff; opacity: 0; transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease); pointer-events: none; }
-.mo-feed-card:hover .mo-feed-cap { opacity: 1; }
+.mo-feed-card:hover .mo-feed-cap, .mo-feed-card:focus-within .mo-feed-cap, [data-input-modality="touch"] .mo-feed-card .mo-feed-cap { opacity: 1; }
 .mo-feed-cap-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-feed-cap-sub { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-feed-sentinel { height: 1px; }
@@ -66,7 +66,7 @@ export const MO_CSS_MORE = `
 /* Selection in the feed: a circle on hover, every circle while selecting; a picked tile shrinks in its cell with the accent around it, so nothing reflows. */
 .mo-feed-card { transition: transform 120ms ease, box-shadow 120ms ease; }
 .mo-feed-pick { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--vscode-editor-background, var(--px-bg)); background: color-mix(in srgb, var(--vscode-editor-background, var(--px-bg)) 55%, transparent); color: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 120ms ease; z-index: 2; }
-.mo-feed-card:hover .mo-feed-pick, .mo-feed.is-selecting .mo-feed-pick { opacity: 1; }
+.mo-feed-card:hover .mo-feed-pick, .mo-feed.is-selecting .mo-feed-pick, .mo-feed-card:focus-within .mo-feed-pick, [data-input-modality="touch"] .mo-feed-card .mo-feed-pick { opacity: 1; }
 .mo-feed-pick:hover { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-feed-card.is-selected .mo-feed-pick { opacity: 1; background: var(--vscode-focusBorder, var(--px-accent)); border-color: var(--vscode-focusBorder, var(--px-accent)); color: var(--vscode-button-foreground, #fff); }
 .mo-feed-card.is-selected { transform: scale(0.94); box-shadow: 0 0 0 3px var(--vscode-focusBorder, var(--px-accent)); }

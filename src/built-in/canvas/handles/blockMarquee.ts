@@ -7,6 +7,7 @@
 // Gate: handles/ — imports only from handleRegistry.ts.
 
 import type { Editor } from '@tiptap/core';
+import { onDragPress } from '../../../ui/touchDrag.js';
 import { enumerateBlockUnits } from './handleRegistry.js';
 import type { BlockSelectionController } from './handleRegistry.js';
 
@@ -36,6 +37,7 @@ export class BlockMarqueeController {
   private _marqueeEl: HTMLElement | null = null;
   private _origin: { x: number; y: number } | null = null;
   private _active = false;
+  private _press: { dispose(): void } | null = null;
 
   constructor(private readonly _host: BlockMarqueeHost) {}
 
@@ -50,14 +52,14 @@ export class BlockMarqueeController {
     this._marqueeEl.className = MARQUEE_CLASS;
     ec.appendChild(this._marqueeEl);
 
-    // Listen on the editor container for mousedown
-    ec.addEventListener('mousedown', this._onMouseDown);
+    // The editor container's press: a mouse at once; a finger holds a moment first, so a swipe still scrolls the page.
+    this._press = onDragPress(ec, this._onMouseDown, { hold: true });
   }
 
   dispose(): void {
     const ec = this._host.editorContainer;
     if (ec) {
-      ec.removeEventListener('mousedown', this._onMouseDown);
+      this._press?.dispose();
     }
     this._cleanup();
     if (this._marqueeEl?.parentElement) {

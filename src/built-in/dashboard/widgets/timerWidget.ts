@@ -121,7 +121,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
 
     // ── Skeleton ──
     const modes = h('div', 'dtimer__modes');
-    modes.setAttribute('role', 'tablist');
+    modes.setAttribute('role', 'tablist'); modes.setAttribute('aria-label', 'Timer mode');
     const modeBtns = new Map<TimerMode, HTMLButtonElement>();
     for (const m of ['focus', 'short', 'long'] as TimerMode[]) {
       const b = button(m === 'focus' ? cfg.label : MODE_LABEL[m], 'dtimer__mode', () => switchMode(m));

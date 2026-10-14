@@ -1408,7 +1408,7 @@
   transform: rotate(0deg); /* collapsed: points right */
 }
 
-.parallx-chat-thinking-toggle:hover .parallx-chat-thinking-arrow {
+.parallx-chat-thinking-toggle:hover .parallx-chat-thinking-arrow, .parallx-chat-thinking-toggle:focus-within .parallx-chat-thinking-arrow, [data-input-modality="touch"] .parallx-chat-thinking-toggle .parallx-chat-thinking-arrow {
   opacity: 0.9;
 }
 
@@ -2607,7 +2607,7 @@
   height: 12px;
 }
 
-.parallx-chat-session-sidebar-item:hover .parallx-chat-session-sidebar-item-delete {
+.parallx-chat-session-sidebar-item:hover .parallx-chat-session-sidebar-item-delete, .parallx-chat-session-sidebar-item:focus-within .parallx-chat-session-sidebar-item-delete, [data-input-modality="touch"] .parallx-chat-session-sidebar-item .parallx-chat-session-sidebar-item-delete {
   visibility: visible;
 }
 
@@ -2945,7 +2945,7 @@
   opacity: 0;
   transition: opacity var(--px-dur-fast) var(--px-ease);
 }
-.parallx-chat-plan-header:hover .parallx-chat-plan-clear {
+.parallx-chat-plan-header:hover .parallx-chat-plan-clear, .parallx-chat-plan-header:focus-within .parallx-chat-plan-clear, [data-input-modality="touch"] .parallx-chat-plan-header .parallx-chat-plan-clear {
   opacity: .7;
 }
 .parallx-chat-plan-clear:hover {

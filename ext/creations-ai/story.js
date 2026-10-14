@@ -62,8 +62,8 @@ export function injectStoryStyles() {
 .st-beat-text:focus { outline: none; border-color: var(--px-accent); background: var(--px-bg-inset); }
 .st-beat--live .st-beat-text { color: var(--px-text-secondary); }
 .st-beat-actions { position: absolute; top: -12px; right: 0; display: flex; gap: 1px; padding: 2px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); box-shadow: var(--px-shadow-md); opacity: 0; pointer-events: none; transition: opacity var(--px-dur-fast) var(--px-ease); z-index: 2; }
-.st-beat:hover .st-beat-actions, .st-beat:focus-within .st-beat-actions, .st-beat--undo .st-beat-actions, .st-beat--rewriting .st-beat-actions { pointer-events: auto; }
-.st-beat:hover .st-beat-actions, .st-beat:focus-within .st-beat-actions, .st-beat--undo .st-beat-actions, .st-beat--rewriting .st-beat-actions { opacity: 1; }
+.st-beat:hover .st-beat-actions, .st-beat:focus-within .st-beat-actions, .st-beat--undo .st-beat-actions, .st-beat--rewriting .st-beat-actions, [data-input-modality="touch"] .st-beat .st-beat-actions { pointer-events: auto; }
+.st-beat:hover .st-beat-actions, .st-beat:focus-within .st-beat-actions, .st-beat--undo .st-beat-actions, .st-beat--rewriting .st-beat-actions, [data-input-modality="touch"] .st-beat .st-beat-actions { opacity: 1; }
 .st-beat-steer { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-1); }
 .st-beat-steer .cs-input { flex: 1; }
 .st-beat-error { font-size: var(--px-text-xs); color: var(--px-danger); display: flex; gap: var(--px-space-2); align-items: center; margin-top: var(--px-space-1); }

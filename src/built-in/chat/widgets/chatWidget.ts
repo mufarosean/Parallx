@@ -15,7 +15,7 @@ import { rafThrottle } from '../../../platform/rafThrottle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $, append, addDisposableListener, attachPopupDismiss } from '../../../ui/dom.js';
-import { beginPointerDrag } from '../../../ui/interactionMode.js';
+import { beginPointerDrag, onDragPress } from '../../../ui/interactionMode.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import { ChatInputPart } from '../input/chatInputPart.js';
 import { chatIcons } from '../chatIcons.js';
@@ -1258,7 +1258,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       });
     };
 
-    this._register(addDisposableListener(this._sash, 'mousedown', (e: MouseEvent) => {
+    this._register(onDragPress(this._sash, (e: MouseEvent) => {
       // Only start drag when sidebar is visible
       if (!this._sessionSidebar.isVisible) return;
       e.preventDefault();

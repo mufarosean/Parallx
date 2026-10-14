@@ -26,7 +26,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { rafThrottle, type RafThrottledFn } from '../../../platform/rafThrottle.js';
-import { beginPointerDrag, type PointerDragHandle } from '../../../ui/interactionMode.js';
+import { beginPointerDrag, onDragPress, type PointerDragHandle } from '../../../ui/interactionMode.js';
 import {
   svgIcon,
   appendColumn,
@@ -360,7 +360,7 @@ export class TableControlsController {
       grip.dataset.index = String(pool.length);
       grip.title = axis === 'row' ? 'Click for row options, drag to reorder'
         : 'Click for column options, drag to reorder';
-      grip.addEventListener('mousedown', this._onGripDown);
+      onDragPress(grip, this._onGripDown); // mouse, pen or finger; the grip goes with its table
       this._layer!.appendChild(grip);
       pool.push(grip);
     }

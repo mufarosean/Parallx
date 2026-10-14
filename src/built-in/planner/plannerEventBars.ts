@@ -4,6 +4,7 @@
 // or resizes in 15-minute steps, a month chip moves to another day. A move
 // is saved through the series question when the event repeats.
 
+import { onDragPress } from '../../ui/touchDrag.js';
 import { escapeHtml } from '../../ui/format.js';
 import type { PlannerEvent, PlannerTask, UpdateEventInput } from './plannerTypes.js';
 import { packLanes } from './plannerLayout.js';
@@ -111,7 +112,7 @@ export class PlannerEventBars {
     // The keyboard: Enter edits it; Alt+Left/Right move it a day, Alt+Up/Down a week (the drop's move).
     this.installEventKeys(chip, ev, { ArrowLeft: -DAY, ArrowRight: DAY, ArrowUp: -7 * DAY, ArrowDown: 7 * DAY }, false);
 
-    chip.addEventListener('pointerdown', (e) => {
+    onDragPress(chip, (me) => { const e = me as PointerEvent;
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -160,7 +161,7 @@ export class PlannerEventBars {
       chip.addEventListener('pointermove', onMove);
       chip.addEventListener('pointerup', onUp);
       chip.addEventListener('pointercancel', onUp);
-    });
+    }, { hold: true, pointerEvents: true });
   }
 
   /**
@@ -203,7 +204,7 @@ export class PlannerEventBars {
     // The keyboard: Enter edits it; Alt+Up/Down move it 15 minutes (Alt+Shift: its end), Alt+Left/Right a day.
     this.installEventKeys(bar, ev, { ArrowUp: -SNAP_MS, ArrowDown: SNAP_MS, ArrowLeft: -DAY_MS, ArrowRight: DAY_MS }, true);
 
-    bar.addEventListener('pointerdown', (e) => {
+    onDragPress(bar, (me) => { const e = me as PointerEvent;
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -290,7 +291,7 @@ export class PlannerEventBars {
       bar.addEventListener('pointermove', onMove);
       bar.addEventListener('pointerup', onUp);
       bar.addEventListener('pointercancel', onUp);
-    });
+    }, { hold: true, pointerEvents: true });
   }
 
   /**

@@ -771,7 +771,7 @@
   transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .planner-task:hover .planner-task__plan,
-.planner-task:hover .planner-task__more { opacity: 1; }
+.planner-task:hover .planner-task__more, .planner-task:focus-within .planner-task__plan, .planner-task:focus-within .planner-task__more, [data-input-modality="touch"] .planner-task .planner-task__plan, [data-input-modality="touch"] .planner-task .planner-task__more { opacity: 1; }
 .planner-task__plan:hover { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 12%, transparent); }
 .planner-task__more:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
 
@@ -1111,7 +1111,7 @@
 }
 .planner-month__cell:nth-child(7n) { border-right: 0; }
 .planner-month__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
-.planner-month__cell:hover .planner-month__cellplus { opacity: 1; }
+.planner-month__cell:hover .planner-month__cellplus, .planner-month__cell:focus-within .planner-month__cellplus, [data-input-modality="touch"] .planner-month__cell .planner-month__cellplus { opacity: 1; }
 .planner-month__cell--other-month .planner-month__cellnum { color: var(--px-text-faint); }
 /* Today — Apple Calendar / Things 3 pattern: subtle cell tint, the
    number itself slightly stronger. No filled circle around the

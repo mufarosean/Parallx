@@ -429,7 +429,7 @@ html, body {
 }
 
 .view-section-header:hover .view-section-actions,
-.view-section-header:focus-within .view-section-actions {
+.view-section-header:focus-within .view-section-actions, [data-input-modality="touch"] .view-section-header .view-section-actions {
   opacity: 1;
 }
 
@@ -891,7 +891,7 @@ html, body {
   transition: opacity var(--px-dur-fast, 100ms) var(--px-ease, ease);
 }
 .container-box-header:hover .container-box-menu-btn,
-.container-box-menu-btn:focus-visible {
+.container-box-menu-btn:focus-visible, [data-input-modality="touch"] .container-box-header .container-box-menu-btn {
   opacity: 1;
 }
 .container-box-menu-btn:hover {
@@ -965,7 +965,7 @@ html, body {
   box-sizing: border-box;
 }
 .widget-box:hover .widget-box-grip,
-.widget-box-grip:focus-within {
+.widget-box-grip:focus-within, [data-input-modality="touch"] .widget-box .widget-box-grip {
   opacity: 1;
 }
 .widget-box-menu-btn {

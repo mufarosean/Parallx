@@ -1096,7 +1096,7 @@ class DashboardEditorPane implements IDisposable {
     // obvious target — while the body stays fully interactive. A small movement
     // threshold distinguishes a drag from a plain click (so the title can still
     // rename); buttons and resize handles opt out.
-    handle.addEventListener('pointerdown', (e) => {
+    handle.style.touchAction = 'none'; handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return; // primary button only
       const t = e.target as HTMLElement | null;
       if (t?.closest('.dashboard-widget__btn, .dashboard-widget__resize')) return;
@@ -1182,7 +1182,7 @@ class DashboardEditorPane implements IDisposable {
     const affectsCol = dir.includes('e') || dir.includes('w');
     const affectsRow = dir.includes('n') || dir.includes('s');
 
-    handle.addEventListener('pointerdown', (e) => {
+    handle.style.touchAction = 'none'; handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return; // primary button only
       e.preventDefault();
       e.stopPropagation();

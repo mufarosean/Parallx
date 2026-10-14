@@ -4,6 +4,7 @@
 // in them and the day-load badges tools add, and drag-create on an empty
 // slot. A narrow pane shows fewer days in the week view.
 
+import { onDragPress } from '../../ui/touchDrag.js';
 import { declareControl } from '../../ui/kit.js';
 import type { PlannerCalendar, PlannerTask } from './plannerTypes.js';
 import { googleSync } from './sync/googleClient.js';
@@ -566,7 +567,7 @@ export class PlannerCalendarViews {
     const MIN_EVENT_MS = 30 * 60_000;
     const DRAG_THRESHOLD_PX = 3;
 
-    col.addEventListener('pointerdown', (e) => {
+    onDragPress(col, (me) => { const e = me as PointerEvent;
       // Only start from a time-slot cell — not from an event bar that
       // happens to sit above. Event bars have their own click handlers.
       if (!(e.target instanceof HTMLElement)) return;
@@ -649,7 +650,7 @@ export class PlannerCalendarViews {
       col.addEventListener('pointermove', onMove);
       col.addEventListener('pointerup', onUp);
       col.addEventListener('pointercancel', onUp);
-    });
+    }, { hold: true, pointerEvents: true });
   }
 
   // ── Task popover (create + edit) ────────────────────────────────────

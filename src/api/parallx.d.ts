@@ -795,9 +795,13 @@ export namespace ui {
    * for every kind of press; while a finger stays down, its moves and lift
    * reach your document mousemove and mouseup listeners. The element claims
    * the finger from scrolling, unless `scrolls` (a root that delegates to
-   * handles which set touch-action: none themselves).
+   * handles which set touch-action: none themselves) or `hold` (on a surface
+   * a finger scrolls: the finger holds still a moment before the drag starts,
+   * and moving sooner scrolls). `capture` listens in the capture phase;
+   * `pointerEvents`: the handler works with pointer events (capture,
+   * pointermove), so every press arrives as its pointerdown.
    */
-  export function onDragPress(element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean }): IDisposable;
+  export function onDragPress(element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean; hold?: boolean; capture?: boolean; pointerEvents?: boolean }): IDisposable;
 
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;

@@ -5377,7 +5377,7 @@ const MO_CSS = `
   opacity: 0;
   transition: opacity var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.mo-card:hover .mo-card-fav, .mo-card-fav:focus-visible, .mo-card-fav.is-on { opacity: 1; }
+.mo-card:hover .mo-card-fav, .mo-card-fav:focus-visible, .mo-card-fav.is-on, [data-input-modality="touch"] .mo-card .mo-card-fav { opacity: 1; }
 .mo-card-fav.is-on { color: var(--mo-rating-color, var(--mo-star)); }
 .mo-card-fav.is-on svg { fill: currentColor; }
 .mo-card-fav:hover { color: var(--mo-rating-color, var(--mo-star)); }
@@ -5445,7 +5445,7 @@ const MO_CSS = `
 }
 .mo-card:hover .mo-card-select,
 .mo-card-select.mo-selecting,
-.mo-card.mo-selected .mo-card-select {
+.mo-card.mo-selected .mo-card-select, .mo-card:focus-within .mo-card-select, [data-input-modality="touch"] .mo-card .mo-card-select {
   opacity: 1;
 }
 .mo-card-select input { cursor: pointer; }
@@ -5456,7 +5456,7 @@ const MO_CSS = `
 }
 .mo-list-row:hover .mo-list-select,
 .mo-list-select.mo-selecting,
-.mo-list-row.mo-selected .mo-list-select {
+.mo-list-row.mo-selected .mo-list-select, .mo-list-row:focus-within .mo-list-select, [data-input-modality="touch"] .mo-list-row .mo-list-select {
   opacity: 1;
 }
 .mo-card-info {
@@ -5625,7 +5625,7 @@ const MO_CSS = `
   transition: transform var(--px-dur-fast) var(--px-ease);
 }
 .mo-sidebar-header-btns { display: flex; align-items: center; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.mo-sidebar:hover .mo-sidebar-header-btns, .mo-sidebar:focus-within .mo-sidebar-header-btns { opacity: 1; }
+.mo-sidebar:hover .mo-sidebar-header-btns, .mo-sidebar:focus-within .mo-sidebar-header-btns, [data-input-modality="touch"] .mo-sidebar .mo-sidebar-header-btns { opacity: 1; }
 .mo-sidebar-header-btn.is-active { background: var(--px-surface-selected); color: var(--px-text); }
 /* Browse: Folders | Tags, then the chosen list's filter and actions, then the list. */
 .mo-section-browse > .mo-sidebar-section-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 0; }
@@ -5981,7 +5981,7 @@ kbd.mo-key {
 .mo-toolbar .mo-search-wrap .mo-toolbar-search:hover { border-bottom-color: var(--px-border-strong); }
 .mo-toolbar .mo-search-wrap .mo-toolbar-search:focus { border-bottom-color: var(--px-accent); }
 .mo-toolbar .mo-search-wrap .mo-search-help-btn { opacity: 0; }
-.mo-toolbar .mo-search-wrap:hover .mo-search-help-btn, .mo-toolbar .mo-search-wrap:focus-within .mo-search-help-btn { opacity: 0.6; }
+.mo-toolbar .mo-search-wrap:hover .mo-search-help-btn, .mo-toolbar .mo-search-wrap:focus-within .mo-search-help-btn, [data-input-modality="touch"] .mo-toolbar .mo-search-wrap .mo-search-help-btn { opacity: 0.6; }
 .mo-toolbar .mo-search-wrap .mo-search-help-btn:hover, .mo-toolbar .mo-search-wrap .mo-search-help-btn:focus-visible { opacity: 1; }
 .mo-toolbar .mo-segment { border-color: transparent; background: transparent; padding: 0; }
 .mo-toolbar .mo-segment-btn.active { background: var(--px-surface-selected); box-shadow: none; color: var(--px-text); }
@@ -6068,7 +6068,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-list-head .mo-list-type, .mo-list-head .mo-list-dims, .mo-list-head .mo-list-size, .mo-list-head .mo-list-date { color: inherit; }
 .mo-list-rating { display: inline-flex; gap: 1px; color: var(--px-border-strong); }
 .mo-list-fav { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0; }
-.mo-list-row:hover .mo-list-fav, .mo-list-fav:focus-visible, .mo-list-fav.is-on { opacity: 1; }
+.mo-list-row:hover .mo-list-fav, .mo-list-fav:focus-visible, .mo-list-fav.is-on, [data-input-modality="touch"] .mo-list-row .mo-list-fav { opacity: 1; }
 .mo-list-fav:hover { background: var(--px-surface-hover); color: var(--mo-rating-color, var(--mo-star)); }
 .mo-list-fav.is-on { color: var(--mo-rating-color, var(--mo-star)); }
 .mo-list-fav.is-on svg { fill: currentColor; }
@@ -7020,7 +7020,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   transition: opacity 120ms ease;
   z-index: 1;
 }
-.mo-album-mini-card:hover .mo-album-drag-handle { opacity: 1; }
+.mo-album-mini-card:hover .mo-album-drag-handle, .mo-album-mini-card:focus-within .mo-album-drag-handle, [data-input-modality="touch"] .mo-album-mini-card .mo-album-drag-handle { opacity: 1; }
 .mo-album-drag-handle:active { cursor: grabbing; }
 .mo-album-mini-card.mo-dragging { opacity: 0.4; }
 .mo-album-mini-card.mo-drop-before {
@@ -7412,7 +7412,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-player-speed .ui-dropdown__button { height: 26px; font-size: var(--px-text-sm); }
 .mo-player-vol { position: relative; display: flex; align-items: center; flex: none; }
 .mo-player-vol-slider { width: 0; opacity: 0; margin: 0; accent-color: var(--px-accent); transition: width var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease); }
-.mo-player-vol:hover .mo-player-vol-slider, .mo-player-vol:focus-within .mo-player-vol-slider { width: 72px; opacity: 1; margin: 0 var(--px-space-1); }
+.mo-player-vol:hover .mo-player-vol-slider, .mo-player-vol:focus-within .mo-player-vol-slider, [data-input-modality="touch"] .mo-player-vol .mo-player-vol-slider { width: 72px; opacity: 1; margin: 0 var(--px-space-1); }
 /* Fullscreen: the picture alone, the dock floating over its foot. */
 .mo-player--fullscreen { background: var(--px-viewer-scrim); --mo-pl-ink: var(--px-viewer-ink); --mo-pl-muted: var(--px-viewer-ink-muted); --mo-pl-line: var(--px-viewer-line); }
 .mo-player--fullscreen .mo-player-stage { position: absolute; inset: 0; background: transparent; }
@@ -7823,7 +7823,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-ce-grip { color: var(--px-text-faint); display: inline-flex; cursor: grab; }
 .mo-ce-seglen { margin-left: auto; color: var(--px-text-muted); font-variant-numeric: tabular-nums; font-size: var(--px-text-xs); }
 .mo-ce .mo-clip-segrow .mo-ce-hoverbtn { visibility: hidden; }
-.mo-ce .mo-clip-segrow:hover .mo-ce-hoverbtn, .mo-ce .mo-clip-segrow.mo-active .mo-ce-hoverbtn { visibility: visible; }
+.mo-ce .mo-clip-segrow:hover .mo-ce-hoverbtn, .mo-ce .mo-clip-segrow.mo-active .mo-ce-hoverbtn, .mo-ce .mo-clip-segrow:focus-within .mo-ce-hoverbtn, [data-input-modality="touch"] .mo-ce .mo-clip-segrow .mo-ce-hoverbtn { visibility: visible; }
 .mo-ce .mo-clip-segrow.mo-dragging { opacity: 0.5; }
 .mo-ce .mo-clip-segrow.mo-drop-above { box-shadow: inset 0 2px 0 var(--px-accent); }
 .mo-ce .mo-clip-segrow.mo-drop-below { box-shadow: inset 0 -2px 0 var(--px-accent); }
@@ -8046,7 +8046,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border-radius: 1px; background: var(--px-accent);
 }
 .mo-cp-grip { display: inline-flex; flex: none; width: 14px; justify-content: center; color: var(--px-text-faint); cursor: grab; opacity: 0; }
-.mo-cp-row:hover .mo-cp-grip, .mo-cp-row--active .mo-cp-grip { opacity: 1; }
+.mo-cp-row:hover .mo-cp-grip, .mo-cp-row--active .mo-cp-grip, .mo-cp-row:focus-within .mo-cp-grip, [data-input-modality="touch"] .mo-cp-row .mo-cp-grip { opacity: 1; }
 .mo-cp-thumb {
   position: relative; flex: none; width: 64px; height: 36px; overflow: hidden;
   border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim);
@@ -8060,7 +8060,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-cp-row-meta { color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-cp-row--missing .mo-cp-row-meta { color: var(--px-warning); }
 .mo-cp-row-more { flex: none; opacity: 0; }
-.mo-cp-row:hover .mo-cp-row-more, .mo-cp-row--active .mo-cp-row-more, .mo-cp-row-more:focus-visible { opacity: 1; }
+.mo-cp-row:hover .mo-cp-row-more, .mo-cp-row--active .mo-cp-row-more, .mo-cp-row-more:focus-visible, [data-input-modality="touch"] .mo-cp-row .mo-cp-row-more { opacity: 1; }
 .mo-cp-foot { flex: none; padding: var(--px-space-2) var(--px-space-3) var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .mo-cp-add { width: 100%; justify-content: center; }
 .mo-cp-sidebar { max-height: 200px; overflow-y: auto; }
@@ -14278,7 +14278,7 @@ function renderGridBrowser(container, api, input) {
     _autoScrollV = 0;
   }
 
-  gridArea.addEventListener('pointerdown', (e) => {
+  _api.ui.onDragPress(gridArea, (e) => {
     // No drag-box in the feed: a rubber band over a masonry selects by geometry, and geometry lies there.
     if (state.displayMode === 'feed') return;
     // Only left button, only on grid background (not on a card/row/checkbox)
@@ -14297,7 +14297,7 @@ function renderGridBrowser(container, api, input) {
     _drag.priorSelection = _drag.additive ? new Set(state.selectedIds) : new Set();
 
     gridArea.setPointerCapture(e.pointerId);
-  });
+  }, { hold: true, pointerEvents: true });
 
   // Marquee updates coalesce to one per painted frame (house rafThrottle
   // rule): pointermove fires far faster than the display refreshes, and
@@ -14917,7 +14917,7 @@ function buildPhotoPreview(container, fullPath) {
     window.removeEventListener('mousemove', onPanMove);
     window.removeEventListener('mouseup', onPanUp);
   };
-  container.addEventListener('mousedown', (e) => {
+  _api.ui.onDragPress(container, (e) => {
     if (scale <= MIN_SCALE) return;
     dragging = true;
     dragStartX = e.clientX;
@@ -15291,7 +15291,7 @@ function buildVideoPlayer(container, fullPath, ctx, opts = {}) {
     return r.width > 0 ? Math.max(0, Math.min(1, (clientX - r.left) / r.width)) : 0;
   }
   let scrubbing = false;
-  strip.addEventListener('pointerdown', (e) => {
+  strip.style.touchAction = 'none'; strip.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const dur = video.duration || 0;
     if (dur <= 0) return;
@@ -16588,7 +16588,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
   });
 
   // Drag to pan when zoomed
-  content.addEventListener('mousedown', (e) => {
+  _api.ui.onDragPress(content, (e) => {
     if (lbZoom <= 1.01 || e.button !== 0) return;
     if (e.target === closeBtn || e.target === prevBtn || e.target === nextBtn) return;
     lbDragging = true;
@@ -16996,7 +16996,7 @@ function openCompareView(items, resolveFilePath) {
 
     // Drag-to-pan. Skip when the click target is the video element so its
     // native controls keep working.
-    canvas.addEventListener('mousedown', (e) => {
+    _api.ui.onDragPress(canvas, (e) => {
       if (e.target instanceof HTMLVideoElement) return;
       if (e.button !== 0) return;
       dragging = { pane: p, startX: e.clientX, startY: e.clientY, startTx: p.tx, startTy: p.ty };
@@ -19437,7 +19437,7 @@ function renderClipProject(container, api, projectId, input) {
       });
       row.addEventListener('contextmenu', (e) => { e.preventDefault(); showRowMenu(s, idx, e.clientX, e.clientY); });
       // Reorder by dragging the grip.
-      grip.addEventListener('pointerdown', (e) => beginDragReorder(e, list, '.mo-cp-row', idx, (to) => void move(idx, to)));
+      grip.style.touchAction = 'none'; grip.addEventListener('pointerdown', (e) => beginDragReorder(e, list, '.mo-cp-row', idx, (to) => void move(idx, to)));
       list.appendChild(row);
     });
   }
@@ -19716,7 +19716,7 @@ function renderClipProject(container, api, projectId, input) {
         row.title = 'Double-click to edit this clip';
         row.addEventListener('dblclick', () => void openSource(x.s.id, { editClipId: x.c.id }));
         row.addEventListener('contextmenu', (e) => { e.preventDefault(); showClipMenu(x, idx, entries.length, e.clientX, e.clientY); });
-        grip.addEventListener('pointerdown', (e) => beginDragReorder(e, listEl, '.mo-cs-row', idx, (to) => moveEntry(idx, to)));
+        grip.style.touchAction = 'none'; grip.addEventListener('pointerdown', (e) => beginDragReorder(e, listEl, '.mo-cs-row', idx, (to) => moveEntry(idx, to)));
         listEl.appendChild(row);
       });
     }
@@ -21545,7 +21545,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // ── Inspector: six tabs, one panel each ──
   const insp = moEl('div', 'mo-ce-insp');
   overlay.appendChild(insp);
-  const tabsRow = moEl('div', 'mo-ce-tabs', { role: 'tablist' });
+  const tabsRow = moEl('div', 'mo-ce-tabs', { role: 'tablist', 'aria-label': 'Clip editor sections' });
   const panels = moEl('div', 'mo-ce-panels');
   const sheetBar = moEl('div', 'mo-ce-sheetbar');
   sheetBar.appendChild(moEl('span', 'mo-ce-sheetbar-grip'));
@@ -22265,11 +22265,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         box.appendChild(moEl('div', 'mo-blur-frame'));
         for (const dir of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
           const h = moEl('div', 'mo-blur-handle mo-blur-handle--' + dir);
-          h.addEventListener('mousedown', (e) => begin(e, dir));
+          _api.ui.onDragPress(h, (e) => begin(e, dir));
           box.appendChild(h);
         }
       }
-      box.addEventListener('mousedown', (e) => { if (e.target && e.target.classList && e.target.classList.contains('mo-blur-handle')) return; begin(e, null); });
+      _api.ui.onDragPress(box, (e) => { if (e.target && e.target.classList && e.target.classList.contains('mo-blur-handle')) return; begin(e, null); });
       // The keyboard's drag (keys.js): arrows move the region, Alt+arrows size it, in 1% steps; focus follows the redrawn box.
       box.dataset.blurId = String(r.id);
       moBoxKeys(box, (r.mode === 'pixelate' ? 'Pixelate' : 'Blur') + ' region', { nudge: (dx, dy, size) => { activeBlurId = r.id; if (size) { r.w = Math.max(MIN, Math.min(1 - pos.x, r.w + dx / 100)); r.h = Math.max(MIN, Math.min(1 - pos.y, r.h + dy / 100)); place(pos.x, pos.y); } else place(pos.x + dx / 100, pos.y + dy / 100); },
@@ -22708,7 +22708,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const left = lay.align === 'left' ? rect.dx + rect.dw * 0.05 : rect.dx + (lay.cx != null ? lay.cx : 0.5) * rect.dw - bw / 2;
       block.style.left = left + 'px';
       block.style.alignItems = lay.align === 'left' ? 'flex-start' : 'center';
-      block.addEventListener('mousedown', (e) => {
+      _api.ui.onDragPress(block, (e) => {
         if (e.button !== 0 || pointPickArmed) return;
         e.preventDefault(); e.stopPropagation();
         const sx = e.clientX, sy = e.clientY;
@@ -22760,7 +22760,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const fadeField = (label, onSet) => {
     const row = moEl('div', 'mo-clip-row');
     const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.max = '10'; input.step = '0.1'; input.value = '0';
-    input.className = 'mo-clip-input mo-clip-input--num';
+    input.className = 'mo-clip-input mo-clip-input--num'; input.setAttribute('aria-label', label);
     row.append(lbl(label), input, moEl('span', 'mo-clip-unit', { textContent: 's' }));
     addSlider(input, 0, 10, 0.1);
     input.addEventListener('input', () => { onSet(Math.max(0, parseFloat(input.value) || 0)); updateAccordionSummaries(); });
@@ -22771,7 +22771,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const fadeOutInput = fadeField('Fade out', (v) => { audioFx.fadeOut = v; });
   const switchRow = (id, label, title) => {
     const row = moEl('div', 'mo-clip-row mo-ce-switchrow');
-    const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = id; chk.className = 'mo-clip-check';
+    const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = id; chk.className = 'mo-clip-check'; chk.setAttribute('aria-label', label); // named directly: a second editor repeats the id
     const l = lbl(label); l.htmlFor = id; l.title = title;
     row.append(l, chk);
     audioGroup.appendChild(row);
@@ -23638,7 +23638,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const r = scrub.getBoundingClientRect();
     return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
   }
-  scrub.addEventListener('mousedown', (e) => {
+  _api.ui.onDragPress(scrub, (e) => {
     if (e.button !== 0) return;
     if (e.target instanceof Element && e.target.closest('.mo-scrub-handle, .mo-scrub-key, .mo-ce-bar, .mo-ce-block')) return;
     e.preventDefault();
@@ -23649,7 +23649,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     window.addEventListener('mouseup', up);
   });
   function bindMarker(handle, role) {
-    handle.addEventListener('mousedown', (e) => {
+    _api.ui.onDragPress(handle, (e) => {
       e.preventDefault(); e.stopPropagation();
       const [a0, b0] = getInOut();
       const move = (ev) => {
@@ -23896,9 +23896,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           setTab('trim');
         });
       };
-      edgeL.addEventListener('mousedown', (e) => drag(e, 'l'));
-      edgeR.addEventListener('mousedown', (e) => drag(e, 'r'));
-      block.addEventListener('mousedown', (e) => { if (e.target === edgeL || e.target === edgeR) return; drag(e, 'm'); });
+      _api.ui.onDragPress(edgeL, (e) => drag(e, 'l'));
+      _api.ui.onDragPress(edgeR, (e) => drag(e, 'r'));
+      _api.ui.onDragPress(block, (e) => { if (e.target === edgeL || e.target === edgeR) return; drag(e, 'm'); });
       // The keyboard's trim and slide: Enter puts its In and Out in the fields (Edit In and Out), Shift+F10 gives the menu.
       block.tabIndex = 0; block.setAttribute('role', 'button'); block.setAttribute('aria-label', `Segment ${i + 1}, ${moTcStr(sg.in)} to ${moTcStr(sg.out)}`);
       block.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSegment(i, true); } });
@@ -23944,7 +23944,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       bar.style.width = (Math.max(0, t1 - t0) / Math.max(0.1, duration)) * 100 + '%';
       bar.textContent = (r.mode === 'pixelate' ? 'Pixelate' : 'Blur') + (r.keys && r.keys.length >= 2 ? ' · tracked' : '');
       bar.title = `${bar.textContent} · ${moTcStr(t0)} to ${moTcStr(t1)} · drag to move in time`;
-      bar.addEventListener('mousedown', (e) => {
+      _api.ui.onDragPress(bar, (e) => {
         if (e.button !== 0) return;
         const o0 = t0, o1 = t1;
         activeBlurId = r.id;
@@ -23976,7 +23976,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       bar.style.width = (Math.max(0, s1 - s0) / Math.max(0.1, duration)) * 100 + '%';
       bar.textContent = c.text.split(/\r?\n/)[0].trim() || 'Empty text';
       bar.title = `${bar.textContent} · ${moTcStr(c.t0)} to ${moTcStr(c.t1)} into the clip · drag to move`;
-      bar.addEventListener('mousedown', (e) => {
+      _api.ui.onDragPress(bar, (e) => {
         if (e.button !== 0) return;
         const o0 = c.t0, o1 = c.t1;
         setTab('text');
@@ -24197,7 +24197,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const cropResizeObs = new ResizeObserver(applyCropRect);
   cropResizeObs.observe(stage);
 
-  cropRect.addEventListener('mousedown', (e) => {
+  _api.ui.onDragPress(cropRect, (e) => {
     if (e.target !== cropRect) return;
     // Armed point pick takes priority: the subject usually sits INSIDE the
     // crop window, and starting a drag here would stamp lastCropDragEnd and
@@ -24242,7 +24242,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }, commit: () => { applyCropRect(); if (cropKeys.length) upsertKeyAtPlayhead(); } });
   function bindCropHandle(dir) {
     const handleEl = cropHandles[dir];
-    handleEl.addEventListener('mousedown', (e) => {
+    _api.ui.onDragPress(handleEl, (e) => {
       if (pointPickArmed) return; // armed pick owns the next click
       e.preventDefault(); e.stopPropagation();
       cropDragging = true;
@@ -24455,7 +24455,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       m.title = `Crop keyframe @ ${moTimeStr(k.t)}`
         + (zoomed ? ` · zoom ${Math.round((cropBase.w / k.w) * 100)}%` : '')
         + ' · click to seek · drag to retime · right-click to remove';
-      m.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); beginKeyDrag(k, m, e); });
+      _api.ui.onDragPress(m, (e) => { e.preventDefault(); e.stopPropagation(); beginKeyDrag(k, m, e); });
       m.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); removeKey(k); });
       // The keyboard's retime (keys.js): arrows move it 0.1 s (Page keys 1 s), Enter seeks to it, Delete removes it.
       moSliderKeys(m, 'Crop keyframe', { min: 0, max: duration, step: 0.1, big: 1, get: () => k.t, text: (v) => moTimeStr(v), set: (v) => { k.t = v; selKey = k; m.style.left = (duration > 0 ? (v / duration) * 100 : 0) + '%'; } });
@@ -32722,7 +32722,7 @@ function renderPlanEditor(container, api, planId) {
 
   // ── crop dragging ──
   let drag = null;
-  cropBox.addEventListener('pointerdown', (e) => {
+  cropBox.style.touchAction = 'none'; cropBox.addEventListener('pointerdown', (e) => {
     if (state.tool !== 'crop') return;
     e.preventDefault();
     const corner = e.target && e.target.dataset ? e.target.dataset.corner : null;
@@ -36087,7 +36087,7 @@ function renderImageEditor(container, api) {
   splitBtn.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon('columns-2', 14) }), moEl('span', null, { textContent: 'Split' }));
   compareSeg.append(holdBtn, splitBtn);
   let holding = false;
-  holdBtn.addEventListener('pointerdown', (e) => { if (e.button !== 0 || holdBtn.disabled) return; holding = true; state.original = true; state.split = -1; syncCompare(); requestRender(); });
+  holdBtn.style.touchAction = 'none'; holdBtn.addEventListener('contextmenu', (e) => e.preventDefault()); holdBtn.addEventListener('pointerdown', (e) => { if (e.button !== 0 || holdBtn.disabled) return; holding = true; state.original = true; state.split = -1; syncCompare(); requestRender(); });
   const letGo = () => { if (!holding) return; holding = false; state.original = false; syncCompare(); requestRender(); };
   holdBtn.addEventListener('pointerup', letGo);
   holdBtn.addEventListener('pointerleave', letGo);
@@ -36516,7 +36516,7 @@ function renderImageEditor(container, api) {
 
   // One pointer at a time on the stage; what it does depends on the tool.
   let drag = null;
-  stage.addEventListener('pointerdown', (e) => {
+  stage.style.touchAction = 'none'; stage.addEventListener('pointerdown', (e) => {
     root.focus({ preventScroll: true });
     if (!state.bitmap || !state.recipe || state.busy) return;
     const p = stagePoint(e);
@@ -36847,7 +36847,7 @@ function renderImageEditor(container, api) {
     const at = (e) => { const b = cv.getBoundingClientRect(); return [moEditClamp((e.clientX - b.left) / b.width, 0, 1), moEditClamp(1 - (e.clientY - b.top) / b.height, 0, 1)]; };
     const near = (x, y) => { const b = cv.getBoundingClientRect(); let best = -1; let bd = 14; pts().forEach((p, i) => { const d = Math.hypot((p[0] - x) * b.width, (p[1] - y) * b.height); if (d < bd) { bd = d; best = i; } }); return best; };
     let held = -1;
-    cv.addEventListener('pointerdown', (e) => {
+    cv.style.touchAction = 'none'; cv.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       const [x, y] = at(e);
       held = near(x, y);
@@ -36973,7 +36973,7 @@ function renderImageEditor(container, api) {
         r.grading[key].h = ((Math.atan2(y, x) / (Math.PI * 2)) + 1) % 1;
         place(); requestRender();
       };
-      wheel.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; on = true; wheel.setPointerCapture(e.pointerId); e.preventDefault(); set(e); });
+      wheel.style.touchAction = 'none'; wheel.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; on = true; wheel.setPointerCapture(e.pointerId); e.preventDefault(); set(e); });
       wheel.addEventListener('pointermove', (e) => { if (on) set(e); });
       const drop = () => { if (!on) return; on = false; afterChange(true); };
       wheel.addEventListener('pointerup', drop);
@@ -37071,7 +37071,7 @@ function renderImageEditor(container, api) {
   }
   // The dial: drag sideways, a tenth of a degree a pixel; double-click levels it.
   let dialDrag = null;
-  dial.addEventListener('pointerdown', (e) => {
+  dial.style.touchAction = 'none'; dial.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !state.recipe || state.tool !== 'crop') return;
     e.preventDefault(); e.stopPropagation();
     dialDrag = { x: e.clientX, a0: state.recipe.angle };
@@ -37367,7 +37367,7 @@ function renderImageEditor(container, api) {
   }
   // Drag to look around the enlarged picture.
   let previewDrag = null;
-  previewEl.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; previewDrag = { x: e.clientX, y: e.clientY, l: previewEl.scrollLeft, t: previewEl.scrollTop }; previewEl.setPointerCapture(e.pointerId); previewEl.classList.add('is-panning'); });
+  previewEl.style.touchAction = 'none'; previewEl.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; previewDrag = { x: e.clientX, y: e.clientY, l: previewEl.scrollLeft, t: previewEl.scrollTop }; previewEl.setPointerCapture(e.pointerId); previewEl.classList.add('is-panning'); });
   previewEl.addEventListener('pointermove', (e) => { if (!previewDrag) return; previewEl.scrollLeft = previewDrag.l - (e.clientX - previewDrag.x); previewEl.scrollTop = previewDrag.t - (e.clientY - previewDrag.y); });
   const previewUp = () => { previewDrag = null; previewEl.classList.remove('is-panning'); };
   previewEl.addEventListener('pointerup', previewUp);

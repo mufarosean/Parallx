@@ -39,7 +39,7 @@ export function injectStudioStyles() {
 .cs-portrait-btn { position: relative; flex: none; border: 0; background: none; padding: 0; cursor: pointer; border-radius: var(--px-radius-lg); }
 .cs-portrait-btn:focus-visible { outline: none; box-shadow: var(--px-ring); }
 .cs-portrait-edit { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; border-radius: var(--px-radius-full); border: 2px solid var(--px-bg); background: var(--px-bg-elevated); color: var(--px-text-secondary); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.cs-portrait-btn:hover .cs-portrait-edit, .cs-portrait-btn:focus-visible .cs-portrait-edit { opacity: 1; }
+.cs-portrait-btn:hover .cs-portrait-edit, .cs-portrait-btn:focus-visible .cs-portrait-edit, [data-input-modality="touch"] .cs-portrait-btn .cs-portrait-edit { opacity: 1; }
 .cs-tagline { font-size: var(--px-text-md); color: var(--px-text-secondary); min-height: 1.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-tagline:empty::before { content: 'A tagline appears here once the sheet has one.'; color: var(--px-text-faint); }
 .cs-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--px-space-5); align-items: start; }
@@ -128,7 +128,7 @@ export function injectStudioStyles() {
 .cs-row-text::placeholder { color: var(--px-text-faint); }
 .cs-row--busy .cs-row-text { opacity: .55; }
 .cs-row-actions { grid-area: acts; display: flex; gap: 2px; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.cs-row:hover .cs-row-actions, .cs-row:focus-within .cs-row-actions, .cs-row--locked .cs-row-actions, .cs-row--undo .cs-row-actions { opacity: 1; }
+.cs-row:hover .cs-row-actions, .cs-row:focus-within .cs-row-actions, .cs-row--locked .cs-row-actions, .cs-row--undo .cs-row-actions, [data-input-modality="touch"] .cs-row .cs-row-actions { opacity: 1; }
 .cs-icon-btn { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--px-text-muted); border-radius: var(--px-radius-xs); cursor: pointer; padding: 0; }
 .cs-icon-btn:hover { background: var(--px-bg-inset); color: var(--px-text); }
 .cs-icon-btn:disabled { opacity: .4; cursor: default; }
@@ -158,7 +158,7 @@ export function injectStudioStyles() {
 .cs-fact--off { opacity: .45; text-decoration: line-through; }
 .cs-fact-text { min-width: 0; flex: 1; }
 .cs-fact-edit { flex: none; visibility: hidden; border: 0; background: none; padding: 0 2px; color: var(--px-text-muted); cursor: pointer; line-height: 1; }
-.cs-fact:hover .cs-fact-edit, .cs-fact-edit:focus-visible { visibility: visible; }
+.cs-fact:hover .cs-fact-edit, .cs-fact-edit:focus-visible, [data-input-modality="touch"] .cs-fact .cs-fact-edit { visibility: visible; }
 .cs-fact-edit:hover { color: var(--px-text); }
 .cs-fact-input { flex: 1; min-width: 0; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: var(--px-bg); border: 1px solid var(--px-accent); border-radius: var(--px-radius-sm); padding: 2px 6px; }
 .cs-fact-was { display: block; color: var(--px-text-muted); font-size: var(--px-text-xs); text-decoration: none; }

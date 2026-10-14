@@ -5,6 +5,7 @@
  * (workflow node kinds) lives with the tenant. */
 
 .px-node-canvas {
+  touch-action: none; /* a pan and drag surface: a finger moves the graph, not the page */
   position: relative;
   width: 100%;
   height: 100%;
@@ -159,7 +160,7 @@ g.is-selected > .px-node-canvas__edge {
   transition: opacity var(--px-dur-fast) var(--px-ease), transform var(--px-dur-fast) var(--px-ease);
 }
 
-.px-node-canvas__node:hover > .px-node-canvas__port {
+.px-node-canvas__node:hover > .px-node-canvas__port, .px-node-canvas__node:focus-within > .px-node-canvas__port, [data-input-modality="touch"] .px-node-canvas__node > .px-node-canvas__port {
   opacity: 1;
 }
 

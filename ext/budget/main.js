@@ -1092,7 +1092,7 @@ function injectStyles() {
 .budget-btn-danger:hover { background: var(--px-danger, #e06c66); color: #fff; }
 .budget-table tbody tr.budget-row-clickable { cursor: pointer; }
 .budget-table tbody tr.budget-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.05))); }
-.budget-table tbody tr:hover .budget-row-edit, .budget-table tbody tr:focus-within .budget-row-edit { opacity: 1; }
+.budget-table tbody tr:hover .budget-row-edit, .budget-table tbody tr:focus-within .budget-row-edit, [data-input-modality="touch"] .budget-table tbody tr .budget-row-edit { opacity: 1; }
 /* ═══ Net Worth ═══ */
 .budget-networth-head { display: flex; flex-direction: column; gap: 2px; }
 .budget-networth-label { font-size: var(--px-text-xs, 11px); text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
@@ -1171,7 +1171,7 @@ function injectStyles() {
 .budget-recur-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
 .budget-recur-due { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-recur-acts { display: flex; gap: 6px; flex: 0 0 auto; opacity: 0; transition: opacity 120ms ease; }
-.budget-recur-row:hover .budget-recur-acts, .budget-recur-row:focus-within .budget-recur-acts { opacity: 1; }
+.budget-recur-row:hover .budget-recur-acts, .budget-recur-row:focus-within .budget-recur-acts, [data-input-modality="touch"] .budget-recur-row .budget-recur-acts { opacity: 1; }
 /* ═══ Category budget bars (actual vs target vs prior) ═══ */
 .budget-catrow-left .budget-cat-swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
 .budget-catrow-fill.is-over { background: var(--px-danger, #e06c66); }

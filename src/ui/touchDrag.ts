@@ -46,44 +46,91 @@ function mouseFrom(type: string, p: PointerEvent, buttons: number): MouseEvent {
   });
 }
 
+export interface IDragPressOptions {
+  /** The element also scrolls by finger (a root that delegates to its
+   *  handles): it keeps the browser's panning, and the handles set
+   *  touch-action: none themselves. */
+  readonly scrolls?: boolean;
+  /** On a surface a finger scrolls (a page, a list): the finger holds still
+   *  for TOUCH_HOLD_MS before the drag starts, and moving sooner scrolls,
+   *  as on a phone. Implies `scrolls`. */
+  readonly hold?: boolean;
+  /** Listen in the capture phase, as the mousedown listener it replaces did. */
+  readonly capture?: boolean;
+  /** The handler works with pointer events (capture, pointermove) rather
+   *  than the mouse's: every press arrives as its pointerdown and no mouse
+   *  events are made for it. With `hold`, a finger still holds first. */
+  readonly pointerEvents?: boolean;
+}
+
+/** Fingers carrying a drag that began by holding: the document's touchmove keeps them from scrolling. */
+let claimed = 0;
+
 /**
  * A press that starts a drag, for every kind of pointer. `handler` is what
  * the element's mousedown listener was: it runs for a mouse press as before,
  * and for a finger or pen press with the pointer event (a MouseEvent too).
  * While that finger stays down its moves and its lift are sent as mousemove
  * and mouseup where the finger is, so a drag that listens to the document's
- * mouse moves follows it. `scrolls`: the element also scrolls by finger
- * (a delegating root), so it keeps the browser's panning and its handles
- * set touch-action themselves.
+ * mouse moves follows it. The element claims the finger from scrolling
+ * (touch-action: none) unless `scrolls` or `hold`.
  */
-export function onDragPress(el: HTMLElement, handler: (e: MouseEvent) => void, opts: { scrolls?: boolean } = {}): IDisposable {
+export function onDragPress(el: HTMLElement, handler: (e: MouseEvent) => void, opts: IDragPressOptions = {}): IDisposable {
+  const capture = !!opts.capture;
   const onMouse = (e: MouseEvent): void => { if (!fromTouch(e)) handler(e); };
   const onPointer = (e: PointerEvent): void => {
-    if (e.pointerType === 'mouse' || !e.isPrimary) return;
-    handler(e);
+    if (!e.isPrimary) return;
+    if (e.pointerType === 'mouse') { if (opts.pointerEvents) handler(e); return; }
     const id = e.pointerId;
+    const x0 = e.clientX, y0 = e.clientY;
+    let started = false;
+    let timer = 0;
     const target = (p: PointerEvent): EventTarget => document.elementFromPoint(p.clientX, p.clientY) ?? document;
-    const move = (p: PointerEvent): void => { if (p.pointerId === id) target(p).dispatchEvent(mouseFrom('mousemove', p, 1)); };
-    const up = (p: PointerEvent): void => {
-      if (p.pointerId !== id) return;
+    const stop = (): void => {
+      clearTimeout(timer);
       document.removeEventListener('pointermove', move, true);
       document.removeEventListener('pointerup', up, true);
       document.removeEventListener('pointercancel', up, true);
-      target(p).dispatchEvent(mouseFrom('mouseup', p, 0));
+    };
+    const begin = (): void => { started = true; if (opts.hold) claimed++; handler(e); };
+    const move = (p: PointerEvent): void => {
+      if (p.pointerId !== id) return;
+      if (!started) {
+        // Moving before the hold is up: the finger is scrolling.
+        if (Math.hypot(p.clientX - x0, p.clientY - y0) > TOUCH_SLOP_PX) stop();
+        return;
+      }
+      if (!opts.pointerEvents) target(p).dispatchEvent(mouseFrom('mousemove', p, 1));
+    };
+    const up = (p: PointerEvent): void => {
+      if (p.pointerId !== id) return;
+      stop();
+      if (!started) {
+        // Lifted before the hold was up, without moving: a tap, which is a
+        // press and a release to the handler, as a mouse click is.
+        if (!opts.hold || p.type === 'pointercancel') return;
+        // (In pointer mode the real release, still on its way, reaches the handler's listeners.)
+        begin();
+      }
+      if (opts.hold) claimed = Math.max(0, claimed - 1);
+      if (!opts.pointerEvents) target(p).dispatchEvent(mouseFrom('mouseup', p, 0));
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);
     document.addEventListener('pointercancel', up, true);
+    if (opts.hold) timer = window.setTimeout(begin, TOUCH_HOLD_MS);
+    else begin();
   };
-  el.addEventListener('mousedown', onMouse);
-  el.addEventListener('pointerdown', onPointer);
+  if (!opts.pointerEvents) el.addEventListener('mousedown', onMouse, capture);
+  el.addEventListener('pointerdown', onPointer, capture);
+  const claims = !opts.scrolls && !opts.hold;
   const prevTouchAction = el.style.touchAction;
-  if (!opts.scrolls) el.style.touchAction = 'none';
+  if (claims) el.style.touchAction = 'none';
   return {
     dispose: () => {
-      el.removeEventListener('mousedown', onMouse);
-      el.removeEventListener('pointerdown', onPointer);
-      if (!opts.scrolls) el.style.touchAction = prevTouchAction;
+      if (!opts.pointerEvents) el.removeEventListener('mousedown', onMouse, capture);
+      el.removeEventListener('pointerdown', onPointer, capture);
+      if (claims) el.style.touchAction = prevTouchAction;
     },
   };
 }
@@ -168,6 +215,7 @@ export function installTouchDragAndDrop(doc: Document = document): IDisposable {
   const onMove = (e: TouchEvent): void => {
     const t = e.touches[0];
     if (!t) return;
+    if (claimed > 0 && !drag) { e.preventDefault(); return; } // a held press is dragging (onDragPress)
     if (drag) { e.preventDefault(); move(t); return; }
     if (!pending) return;
     if (!pending.lifted) {

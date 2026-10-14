@@ -295,7 +295,7 @@
 }
 
 /* Reveal the close affordance on hover for every tab (active included). */
-.ui-tab:hover .ui-tab-close {
+.ui-tab:hover .ui-tab-close, .ui-tab:focus-within .ui-tab-close, [data-input-modality="touch"] .ui-tab .ui-tab-close {
   opacity: 0.6;
   pointer-events: auto;
 }
@@ -470,7 +470,7 @@
 
 /* Highlight row when its submenu is open */
 .context-menu-item--has-submenu:hover .context-menu-submenu-arrow,
-.context-menu-item--selected .context-menu-submenu-arrow {
+.context-menu-item--selected .context-menu-submenu-arrow, .context-menu-item--has-submenu:focus-within .context-menu-submenu-arrow, [data-input-modality="touch"] .context-menu-item--has-submenu .context-menu-submenu-arrow {
   opacity: 1;
 }
 

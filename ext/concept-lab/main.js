@@ -6175,7 +6175,7 @@ function clDrawIn(path) {
 
 function clDragOnSvg(svg, onDrag) {
   let active = false;
-  svg.addEventListener('pointerdown', (e) => {
+  svg.style.touchAction = 'none'; svg.addEventListener('pointerdown', (e) => {
     active = true;
     try { svg.setPointerCapture(e.pointerId); } catch { /* jsdom */ }
     onDrag(e);

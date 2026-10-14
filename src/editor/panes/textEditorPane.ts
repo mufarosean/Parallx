@@ -18,6 +18,7 @@ import { rafThrottle } from '../../platform/rafThrottle.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';
 import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
+import { onDragPress } from '../../ui/touchDrag.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { $,  hide, show } from '../../ui/dom.js';
 import { getLanguageForFileName } from '../../services/languageDetection.js';
@@ -145,7 +146,7 @@ export class TextEditorPane extends EditorPane {
     this._editorBody.appendChild(this._minimapContainer);
 
     // Minimap interactions
-    this._minimapContainer.addEventListener('mousedown', this._onMinimapMouseDown);
+    this._register(onDragPress(this._minimapContainer, this._onMinimapMouseDown)); // mouse, pen or finger
 
     // Selection changes → redraw minimap to show highlight
     this._textarea.addEventListener('select', this._renderMinimap.bind(this));
@@ -875,7 +876,6 @@ export class TextEditorPane extends EditorPane {
     this._onTextareaScroll.dispose();
     this._textarea?.removeEventListener('contextmenu', this._onContextMenu);
     this._gutter?.removeEventListener('mousedown', this._onGutterClick);
-    this._minimapContainer?.removeEventListener('mousedown', this._onMinimapMouseDown);
     document.removeEventListener('mousemove', this._onMinimapMouseMove);
     document.removeEventListener('mouseup', this._onMinimapMouseUp);
     if (this._minimapRafId) cancelAnimationFrame(this._minimapRafId);

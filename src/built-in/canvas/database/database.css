@@ -88,7 +88,7 @@
   color: var(--vscode-descriptionForeground, #999);
   border-radius: 4px; padding: 2px 7px; cursor: pointer;
 }
-.canvas-db-row:hover .canvas-db-openbtn { visibility: visible; }
+.canvas-db-row:hover .canvas-db-openbtn, .canvas-db-row:focus-within .canvas-db-openbtn, [data-input-modality="touch"] .canvas-db-row .canvas-db-openbtn { visibility: visible; }
 .canvas-db-openbtn:hover { color: var(--vscode-editor-foreground, #ddd); }
 .canvas-db-row:hover .canvas-db-cell { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.06)); }
 .canvas-db-cell__value { min-height: 20px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; cursor: pointer; }

@@ -31,6 +31,7 @@ import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { wireBoardCardKeys } from './boardCardKeys.js';
 import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
+import { onDragPress } from '../../../ui/touchDrag.js';
 
 function renderPageIconHtml(icon: string | null | undefined): string {
   const id = resolvePageIcon(icon);
@@ -498,10 +499,9 @@ export class DatabaseEditorPane implements IDisposable {
     const save = (w: number) => void this._updateActiveView({ config: { ...view.config, widths: { ...((view.config.widths as Record<string, number>) ?? {}), [key]: Math.max(80, Math.round(w)) } } });
     // The keyboard's drag: with focus on the header, View: Make Focused Area Wider / Narrower size the column.
     registerKeyboardResize(th, { axis: 'width', resize: (d) => { const w = th.getBoundingClientRect().width; if (d < 0 && w <= 80) return false; save(w + d); return true; } });
-    grip.addEventListener('mousedown', (e) => {
+    onDragPress(grip, (e) => { // mouse, pen or finger
       e.preventDefault(); e.stopPropagation();
-      const startX = e.clientX;
-      const startW = th.getBoundingClientRect().width;
+      const startX = e.clientX, startW = th.getBoundingClientRect().width;
       const onMove = (ev: MouseEvent) => {
         const w = Math.max(80, Math.round(startW + (ev.clientX - startX)));
         const table = th.closest('table');

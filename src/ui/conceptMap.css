@@ -220,7 +220,7 @@
 }
 
 .parallx-mindmap:hover .parallx-mindmap__save,
-.parallx-mindmap__save:focus-visible {
+.parallx-mindmap__save:focus-visible, [data-input-modality="touch"] .parallx-mindmap .parallx-mindmap__save {
   opacity: 1;
 }
 
@@ -272,7 +272,7 @@
 
 .canvas-conceptmap:hover .canvas-conceptmap__tools,
 .canvas-conceptmap:focus-within .canvas-conceptmap__tools,
-.canvas-conceptmap.is-editing .canvas-conceptmap__tools {
+.canvas-conceptmap.is-editing .canvas-conceptmap__tools, [data-input-modality="touch"] .canvas-conceptmap .canvas-conceptmap__tools {
   opacity: 1;
 }
 
@@ -452,6 +452,11 @@
 
 .canvas-conceptmap__body {
   outline: none;
+}
+/* The board itself holds focus while the keys pick and move boxes: ring it. */
+.canvas-conceptmap__body:focus-visible {
+  box-shadow: inset 0 0 0 var(--px-focus-width) var(--px-accent);
+  border-radius: var(--px-radius-sm);
 }
 
 .parallx-mindmap__node--selected .parallx-mindmap__box,

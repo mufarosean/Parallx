@@ -16,6 +16,7 @@ import type { Editor } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { rafThrottle } from '../../../platform/rafThrottle.js';
+import { onDragPress } from '../../../ui/touchDrag.js';
 import type { BlockSelectionController } from './handleRegistry.js';
 import type { IBlockActionMenu } from './handleRegistry.js';
 import {
@@ -119,7 +120,7 @@ export class BlockHandlesController {
     this._blockAddBtn.addEventListener('click', this._onBlockAddClick);
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
     this._dragHandleEl.addEventListener('click', this._onDragHandleClick);
-    this._dragHandleEl.addEventListener('mousedown', this._onDragHandleMouseDown, true);
+    onDragPress(this._dragHandleEl, this._onDragHandleMouseDown, { capture: true }); // goes with the handle (dispose removes it)
     document.addEventListener('mouseup', this._onGlobalMouseUp, true);
 
     // ── Canvas-owned drag lifecycle ──
@@ -1274,7 +1275,6 @@ export class BlockHandlesController {
     window.removeEventListener('scroll', this._onScrollSync, true);
     this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart);
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
-    this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
     document.removeEventListener('mouseup', this._onGlobalMouseUp, true);
     this._blockAddBtn?.removeEventListener('mouseenter', this._onHandleAreaEnter);
     this._blockAddBtn?.removeEventListener('mouseleave', this._onHandleAreaLeave);

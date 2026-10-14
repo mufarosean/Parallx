@@ -2036,7 +2036,7 @@ function createGraphEditor(container, api) {
   let panStart = null;
   let didPan = false;
 
-  cvs.addEventListener('pointerdown', (ev) => {
+  cvs.style.touchAction = 'none'; cvs.addEventListener('pointerdown', (ev) => {
     const rect = cvs.getBoundingClientRect();
     const sx = ev.clientX - rect.left;
     const sy = ev.clientY - rect.top;
@@ -2624,7 +2624,7 @@ function createGraphSidebar(container, api) {
   let panning = false;
   let panStart = null;
 
-  cvs.addEventListener('pointerdown', (ev) => {
+  cvs.style.touchAction = 'none'; cvs.addEventListener('pointerdown', (ev) => {
     const rect = cvs.getBoundingClientRect();
     const sx = ev.clientX - rect.left;
     const sy = ev.clientY - rect.top;

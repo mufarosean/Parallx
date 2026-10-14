@@ -120,11 +120,11 @@
   transition: opacity var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
-.canvas-property-row:hover .canvas-property-row__delete {
+.canvas-property-row:hover .canvas-property-row__delete, .canvas-property-row:focus-within .canvas-property-row__delete, [data-input-modality="touch"] .canvas-property-row .canvas-property-row__delete {
   opacity: 1;
 }
 
-.canvas-property-row:hover .canvas-property-row__delete-definition {
+.canvas-property-row:hover .canvas-property-row__delete-definition, .canvas-property-row:focus-within .canvas-property-row__delete-definition, [data-input-modality="touch"] .canvas-property-row .canvas-property-row__delete-definition {
   opacity: 1;
 }
 
@@ -701,7 +701,7 @@
 }
 
 .canvas-property-picker__item:hover .canvas-property-picker__delete,
-.canvas-property-picker__delete:focus-visible {
+.canvas-property-picker__delete:focus-visible, [data-input-modality="touch"] .canvas-property-picker__item .canvas-property-picker__delete {
   opacity: 1;
 }
 

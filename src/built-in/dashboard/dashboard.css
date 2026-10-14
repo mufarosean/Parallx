@@ -112,7 +112,7 @@
   opacity: 0.35;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.dashboard-reveal:hover .dashboard-reveal__actions, .dashboard-reveal:focus-within .dashboard-reveal__actions {
+.dashboard-reveal:hover .dashboard-reveal__actions, .dashboard-reveal:focus-within .dashboard-reveal__actions, [data-input-modality="touch"] .dashboard-reveal .dashboard-reveal__actions {
   opacity: 1;
 }
 .dashboard-btn--small {
@@ -308,7 +308,7 @@
   opacity: 0;
   transition: opacity var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease);
 }
-.dashboard-widget:hover .dashboard-widget__drag {
+.dashboard-widget:hover .dashboard-widget__drag, .dashboard-widget:focus-within .dashboard-widget__drag, [data-input-modality="touch"] .dashboard-widget .dashboard-widget__drag {
   opacity: 1;
 }
 .dashboard-widget__drag:active { cursor: grabbing; }
@@ -335,7 +335,7 @@
   z-index: 3;
   border-radius: 6px;
 }
-.dashboard-widget:hover .dashboard-widget__move { opacity: 1; pointer-events: auto; }
+.dashboard-widget:hover .dashboard-widget__move, .dashboard-widget:focus-within .dashboard-widget__move, [data-input-modality="touch"] .dashboard-widget .dashboard-widget__move { opacity: 1; pointer-events: auto; }
 .dashboard-widget__move:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 45%, transparent); }
 .dashboard-widget--dragging .dashboard-widget__move { cursor: grabbing; }
 
@@ -376,7 +376,7 @@
   opacity: 0;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.dashboard-widget:hover .dashboard-widget__actions, .dashboard-widget:focus-within .dashboard-widget__actions {
+.dashboard-widget:hover .dashboard-widget__actions, .dashboard-widget:focus-within .dashboard-widget__actions, [data-input-modality="touch"] .dashboard-widget .dashboard-widget__actions {
   opacity: 1;
 }
 
@@ -488,8 +488,8 @@
   pointer-events: none;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.dashboard-widget[data-chrome="minimal"]:hover > .dashboard-widget__header,
-.dashboard-widget[data-chrome="bare"]:hover > .dashboard-widget__header {
+.dashboard-widget[data-chrome="minimal"]:hover > .dashboard-widget__header, .dashboard-widget[data-chrome="minimal"]:focus-within > .dashboard-widget__header,
+.dashboard-widget[data-chrome="bare"]:hover > .dashboard-widget__header, .dashboard-widget[data-chrome="bare"]:focus-within > .dashboard-widget__header, [data-input-modality="touch"] .dashboard-widget[data-chrome="minimal"] > .dashboard-widget__header, [data-input-modality="touch"] .dashboard-widget[data-chrome="bare"] > .dashboard-widget__header {
   opacity: 1;
   pointer-events: auto;
 }
@@ -548,7 +548,7 @@
   pointer-events: none;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.dashboard-widget[data-title-hidden="true"]:hover > .dashboard-widget__header {
+.dashboard-widget[data-title-hidden="true"]:hover > .dashboard-widget__header, .dashboard-widget[data-title-hidden="true"]:focus-within > .dashboard-widget__header, [data-input-modality="touch"] .dashboard-widget[data-title-hidden="true"] > .dashboard-widget__header {
   opacity: 1;
   pointer-events: auto;
 }
@@ -599,12 +599,12 @@
     linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--vscode-button-background, #0e639c) 70%, transparent) 50%) center / 12px 12px no-repeat;
   border-bottom-right-radius: 12px;
 }
-.dashboard-widget:hover .dashboard-widget__resize {
+.dashboard-widget:hover .dashboard-widget__resize, .dashboard-widget:focus-within .dashboard-widget__resize, [data-input-modality="touch"] .dashboard-widget__resize {
   opacity: 1;
   pointer-events: auto;
 }
-.dashboard-widget:hover .dashboard-widget__resize--se { opacity: 0.8; }
-.dashboard-widget:hover .dashboard-widget__resize--se:hover { opacity: 1; }
+.dashboard-widget:hover .dashboard-widget__resize--se, .dashboard-widget:focus-within .dashboard-widget__resize--se, [data-input-modality="touch"] .dashboard-widget .dashboard-widget__resize--se { opacity: 0.8; }
+.dashboard-widget:hover .dashboard-widget__resize--se:hover, .dashboard-widget:focus-within .dashboard-widget__resize--se:focus-within, [data-input-modality="touch"] .dashboard-widget .dashboard-widget__resize--se { opacity: 1; }
 /* Edge/corner handles (besides SE) reveal a subtle accent line on hover so
    the user can see which side they're grabbing. */
 .dashboard-widget:hover .dashboard-widget__resize--n:hover,
@@ -1093,7 +1093,7 @@
   opacity: 0;
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
-.iw:hover .iw__replace { opacity: 1; }
+.iw:hover .iw__replace, .iw:focus-within .iw__replace, [data-input-modality="touch"] .iw .iw__replace { opacity: 1; }
 .iw__replace:hover { background: rgba(8, 12, 16, 0.82); }
 .iw--loading { opacity: 0.6; pointer-events: none; }
 
@@ -1447,7 +1447,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .dashboard-sidebar__row:hover .dashboard-sidebar__row-more,
 .dashboard-sidebar__row:focus-within .dashboard-sidebar__row-more,
-.dashboard-sidebar__row--active .dashboard-sidebar__row-more {
+.dashboard-sidebar__row--active .dashboard-sidebar__row-more, [data-input-modality="touch"] .dashboard-sidebar__row .dashboard-sidebar__row-more {
   opacity: 1;
 }
 .dashboard-sidebar__row-more:hover {
@@ -1618,7 +1618,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .tkw__row:hover {
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
 }
-.tkw__row:hover .tkw__del { opacity: 0.7; }
+.tkw__row:hover .tkw__del, .tkw__row:focus-within .tkw__del, [data-input-modality="touch"] .tkw__row .tkw__del { opacity: 0.7; }
 
 .tkw__check {
   display: inline-flex;
@@ -1882,7 +1882,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__tasktitle { flex: 1; min-width: 0; text-align: left; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: transparent; border: 0; padding: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dtimer__taskcount { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; margin-left: auto; min-width: 2.6em; text-align: right; }
 .dtimer__tasksmall { width: 20px; height: 20px; flex: 0 0 auto; font: inherit; font-size: var(--px-text-sm); line-height: 1; color: var(--px-text-muted); background: transparent; border: 0; border-radius: var(--px-radius-sm); cursor: pointer; opacity: 0; }
-.dtimer__task:hover .dtimer__tasksmall, .dtimer__task:focus-within .dtimer__tasksmall { opacity: 1; }
+.dtimer__task:hover .dtimer__tasksmall, .dtimer__task:focus-within .dtimer__tasksmall, [data-input-modality="touch"] .dtimer__task .dtimer__tasksmall { opacity: 1; }
 .dtimer__tasksmall:hover { color: var(--px-text); background: color-mix(in srgb, var(--px-text) 10%, transparent); }
 .dtimer__add { display: flex; gap: 4px; flex: 0 0 auto; }
 .dtimer__input { flex: 1; min-width: 0; height: var(--px-control-h-sm); box-sizing: border-box; font: inherit; font-size: var(--px-text-sm); padding: 0 8px; border-radius: var(--px-radius-sm); border: 1px solid color-mix(in srgb, var(--px-text) 16%, transparent); background: color-mix(in srgb, var(--px-text) 5%, transparent); color: var(--px-text); }

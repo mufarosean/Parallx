@@ -705,7 +705,7 @@
   background: var(--px-bg-elevated);
 }
 .tool-gallery-row:hover .tool-gallery-toggle,
-.tool-gallery-row:focus-within .tool-gallery-toggle {
+.tool-gallery-row:focus-within .tool-gallery-toggle, [data-input-modality="touch"] .tool-gallery-row .tool-gallery-toggle {
   opacity: 1;
   pointer-events: auto;
 }

@@ -354,7 +354,7 @@ const CSS = `
 .br-item .br-item-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .br-item .br-item-meta { opacity: 0.55; font-size: 11px; white-space: nowrap; }
 .br-item .br-btn { width: 22px; height: 22px; opacity: 0; }
-.br-item:hover .br-btn { opacity: 1; }
+.br-item:hover .br-btn, .br-item:focus-within .br-btn, [data-input-modality="touch"] .br-item .br-btn { opacity: 1; }
 .br-empty { padding: 8px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .br-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; font-size: 12px; }
 .br-sidebar-top { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
@@ -1969,18 +1969,18 @@ function installDragHooks() {
     const t = e.target;
     if (!(t instanceof Element) || !t.closest('.grid-sash')) return;
     freezePages();
-    const up = () => { window.removeEventListener('mouseup', up, true); thawPages(); };
-    window.addEventListener('mouseup', up, true);
+    const up = () => { window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); thawPages(); };
+    window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true); // a mouse, pen or finger
   };
   document.addEventListener('dragstart', onDragStart, true);
   document.addEventListener('dragend', onDragDone, true);
   document.addEventListener('drop', onDragDone, true);
-  document.addEventListener('mousedown', onMouseDown, true);
+  document.addEventListener('pointerdown', onMouseDown, true);
   return () => {
     document.removeEventListener('dragstart', onDragStart, true);
     document.removeEventListener('dragend', onDragDone, true);
     document.removeEventListener('drop', onDragDone, true);
-    document.removeEventListener('mousedown', onMouseDown, true);
+    document.removeEventListener('pointerdown', onMouseDown, true);
     thawPages();
   };
 }

@@ -1269,7 +1269,7 @@
 
 .parallx-chat-context-item:hover .parallx-chat-context-item-action,
 .parallx-chat-context-item:focus-within .parallx-chat-context-item-action,
-.parallx-chat-context-pill--excluded .parallx-chat-context-item-action {
+.parallx-chat-context-pill--excluded .parallx-chat-context-item-action, [data-input-modality="touch"] .parallx-chat-context-item .parallx-chat-context-item-action {
   opacity: 0.72;
 }
 

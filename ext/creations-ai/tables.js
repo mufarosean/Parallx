@@ -40,7 +40,7 @@ export function injectTablesStyles() {
 @container (max-width: 820px) { .tb-cols { grid-template-columns: minmax(0, 1fr); } .tb-roll-sec { position: static; } }
 .tb-result-text { flex: 1; min-width: 0; white-space: pre-wrap; }
 .tb-result-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.tb-result:hover .tb-result-actions, .tb-result:focus-within .tb-result-actions { opacity: 1; }
+.tb-result:hover .tb-result-actions, .tb-result:focus-within .tb-result-actions, [data-input-modality="touch"] .tb-result .tb-result-actions { opacity: 1; }
 .tb-roll { display: inline-flex; align-items: center; }
 `;
   document.head.appendChild(style);

@@ -192,7 +192,7 @@
               visibility var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 .nb-gap:hover .nb-gap__actions,
-.nb-gap:focus-within .nb-gap__actions { visibility: visible; opacity: 1; }
+.nb-gap:focus-within .nb-gap__actions, [data-input-modality="touch"] .nb-gap .nb-gap__actions { visibility: visible; opacity: 1; }
 
 .nb-gap__btn {
   display: inline-flex;
@@ -327,7 +327,7 @@
 }
 .nb-cell:hover .nb-cell__run,
 .nb-cell--selected .nb-cell__run,
-.nb-cell__run:focus-visible { opacity: 1; }
+.nb-cell__run:focus-visible, [data-input-modality="touch"] .nb-cell .nb-cell__run { opacity: 1; }
 .nb-cell__run:hover { background: var(--px-surface-active); color: var(--px-text); }
 
 .nb-cell__prompt {
@@ -387,7 +387,7 @@
   transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 .nb-cell:hover .nb-cell__lang,
-.nb-cell--selected .nb-cell__lang { opacity: 1; }
+.nb-cell--selected .nb-cell__lang, .nb-cell:focus-within .nb-cell__lang, [data-input-modality="touch"] .nb-cell .nb-cell__lang { opacity: 1; }
 
 .nb-cell__placeholder {
   font-size: var(--px-text-sm, 12px);
@@ -406,7 +406,7 @@
 }
 .nb-cell:hover .nb-cell__actions,
 .nb-cell--selected .nb-cell__actions,
-.nb-cell__actions:focus-within { opacity: 1; }
+.nb-cell__actions:focus-within, [data-input-modality="touch"] .nb-cell .nb-cell__actions { opacity: 1; }
 
 .nb-cell__action {
   min-width: 22px;

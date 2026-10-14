@@ -327,7 +327,7 @@
   cursor: pointer;
 }
 
-.open-editors-item:hover .open-editors-close {
+.open-editors-item:hover .open-editors-close, .open-editors-item:focus-within .open-editors-close, [data-input-modality="touch"] .open-editors-item .open-editors-close {
   opacity: 1;
 }
 

@@ -623,7 +623,7 @@
 .pdf-editor-pane .page:hover .pdf-highlight-tab,
 .pdf-editor-pane .pdf-highlight-tab.has-note,
 .pdf-editor-pane .pdf-highlight-tab.has-discussion,
-.pdf-editor-pane .pdf-highlight-tab.has-canvas-link {
+.pdf-editor-pane .pdf-highlight-tab.has-canvas-link, .pdf-editor-pane .page:focus-within .pdf-highlight-tab, [data-input-modality="touch"] .pdf-editor-pane .page .pdf-highlight-tab {
   opacity: 0.85;
 }
 

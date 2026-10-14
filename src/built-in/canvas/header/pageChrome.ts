@@ -11,6 +11,7 @@ import type { IPage, ICanvasDataService, SaveStateEvent, PageChangeEvent, PageMu
 import { SaveStateKind, PageChangeKind } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { onDragPress } from '../../../ui/touchDrag.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
@@ -520,9 +521,7 @@ export class PageChromeController {
       this._iconEl.style.display = 'none';
     }
     this._iconEl.title = 'Change icon';
-    this._iconEl.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-    });
+    this._iconEl.addEventListener('mousedown', (e) => e.preventDefault());
     this._iconEl.addEventListener('click', (e) => {
       e.stopPropagation();
       this._showIconPicker(e.currentTarget as HTMLElement);
@@ -932,7 +931,7 @@ export class PageChromeController {
 
     const originalOffset = this._currentPage?.coverYOffset ?? 0.5;
 
-    overlay.addEventListener('mousedown', onMouseDown);
+    onDragPress(overlay, onMouseDown); // mouse, pen or finger
     overlay.addEventListener('keydown', (e) => {
       const at = this._currentPage?.coverYOffset ?? 0.5;
       const to = ({ ArrowUp: at - 0.05, ArrowDown: at + 0.05, PageUp: at - 0.2, PageDown: at + 0.2, Home: 0, End: 1 } as Record<string, number>)[e.key];

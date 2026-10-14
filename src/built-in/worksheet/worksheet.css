@@ -526,7 +526,7 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-list__note .svg-icon { flex: 0 0 auto; color: var(--px-text-muted); }
 .ws-list__end { margin-left: auto; display: flex; align-items: center; gap: var(--px-space-2); flex: 0 0 auto; }
 .ws-list__hover { opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.ws-list__row:hover .ws-list__hover, .ws-list__row:focus-within .ws-list__hover { opacity: 1; }
+.ws-list__row:hover .ws-list__hover, .ws-list__row:focus-within .ws-list__hover, [data-input-modality="touch"] .ws-list__row .ws-list__hover { opacity: 1; }
 .ws-list__group { background: color-mix(in srgb, var(--px-text) 3%, transparent); }
 .ws-list__group .svg-icon { color: var(--px-text-muted); }
 .ws-list__group .ws-bank__bar { width: 90px; }
@@ -536,7 +536,7 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-list__time { width: 44px; flex: 0 0 auto; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .ws-list__flag { width: 16px; flex: 0 0 auto; display: inline-flex; justify-content: center; color: var(--px-accent-text); }
 .ws-bankrow > .ws-star { opacity: 0.45; }
-.ws-bankrow:hover > .ws-star, .ws-bankrow:focus-within > .ws-star, .ws-bankrow > .ws-star--on { opacity: 1; }
+.ws-bankrow:hover > .ws-star, .ws-bankrow:focus-within > .ws-star, .ws-bankrow > .ws-star--on, [data-input-modality="touch"] .ws-bankrow > .ws-star { opacity: 1; }
 .ws-bar { height: 6px; border-radius: 3px; background: var(--px-surface-hover); overflow: hidden; }
 .ws-bar__fill { display: block; height: 100%; background: var(--px-accent); }
 

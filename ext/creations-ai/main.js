@@ -277,7 +277,7 @@ function injectStyles() {
   opacity: 0;
   transition: opacity 80ms ease, color 80ms ease, background 80ms ease;
 }
-.tg-chat-row:hover .tg-chat-row-delete { opacity: 1; }
+.tg-chat-row:hover .tg-chat-row-delete, .tg-chat-row:focus-within .tg-chat-row-delete, [data-input-modality="touch"] .tg-chat-row .tg-chat-row-delete { opacity: 1; }
 .tg-chat-row-delete:hover {
   color: var(--vscode-testing-iconFailed, #f14c4c);
   background: color-mix(in srgb, var(--vscode-testing-iconFailed, #f14c4c) 12%, transparent);
@@ -679,7 +679,7 @@ function injectStyles() {
   visibility: hidden;
   height: 22px;
 }
-.tg-msg:hover .tg-msg-inline-actions { visibility: visible; }
+.tg-msg:hover .tg-msg-inline-actions, .tg-msg:focus-within .tg-msg-inline-actions, [data-input-modality="touch"] .tg-msg .tg-msg-inline-actions { visibility: visible; }
 
 /* Message body — flat, no bubble */
 .tg-msg-body {
@@ -993,7 +993,7 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground);
   visibility: hidden;
 }
-.tg-msg:hover .tg-variant-nav { visibility: visible; }
+.tg-msg:hover .tg-variant-nav, .tg-msg:focus-within .tg-variant-nav, [data-input-modality="touch"] .tg-msg .tg-variant-nav { visibility: visible; }
 .tg-variant-nav-btn {
   display: flex;
   align-items: center;
@@ -2120,7 +2120,7 @@ ${CREATIONS_PARTS_CSS}
 .cr-card:focus-visible { box-shadow: var(--px-ring); }
 .cr-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--px-space-1); }
 .cr-card-top-right { display: flex; align-items: center; gap: var(--px-space-1); opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.cr-card:hover .cr-card-top-right, .cr-card:focus-within .cr-card-top-right { opacity: 1; }
+.cr-card:hover .cr-card-top-right, .cr-card:focus-within .cr-card-top-right, [data-input-modality="touch"] .cr-card .cr-card-top-right { opacity: 1; }
 .cr-card-name { font-weight: 600; font-size: var(--px-text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cr-card-tag { font-size: var(--px-text-sm); color: var(--px-text-muted); line-height: 1.45; height: calc(1.45em * 2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cr-card-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); border-top: 1px solid var(--px-divider); padding-top: var(--px-space-2); margin-top: auto; }
