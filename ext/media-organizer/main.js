@@ -10908,16 +10908,17 @@ function renderBrowserSidebar(container, api) {
   }
 
   // Albums (D8), in Collections above.
+  let _albumLoadSeq = 0;
   async function loadAlbums() {
+    const seq = ++_albumLoadSeq; // a newer load wins; this one stops at its next await
     try {
       // Load all albums in a single query, then build the tree client-side.
       // 200-row cap matches the prior flat behaviour; deeper hierarchies are paged
       // implicitly because the cap is applied to the full library, not per level.
       const result = await AlbumQueries.findMany({}, { field: 'title', direction: 'ASC' }, { page: 1, perPage: 200 });
-      albumBody.innerHTML = '';
-
+      if (seq !== _albumLoadSeq) return;
       const items = result.items || [];
-      if (items.length === 0) { syncCollectionsEmpty(); return; }
+      if (items.length === 0) { albumBody.innerHTML = ''; syncCollectionsEmpty(); return; }
 
       // Build an id→album map plus a parentId→[children] index.
       // Albums whose parent is missing (deleted, foreign, or set-null) are
@@ -10955,6 +10956,8 @@ function renderBrowserSidebar(container, api) {
       const persistExpanded = () => {
         moSetSetting('album_tree_expanded', [...expandedSet].join(',')).catch(() => {});
       };
+      if (seq !== _albumLoadSeq) return;
+      albumBody.innerHTML = ''; // only now, with every await behind it
 
       // Recursive renderer. `depth` controls left-padding so children indent
       // visually; 12px per level matches the VS Code tree visual rhythm.
@@ -11148,32 +11151,32 @@ function renderBrowserSidebar(container, api) {
       syncCollectionsEmpty();
       syncCurrentRow();
 
-      // Allow dragging an album onto the section body itself (outside any row)
-      // to move it to root.
-      albumBody.addEventListener('dragover', (e) => {
-        if (e.dataTransfer.types.includes('application/x-mo-album') && e.target === albumBody) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-        }
-      });
-      albumBody.addEventListener('drop', async (e) => {
-        if (e.target !== albumBody) return;
-        const albumPayload = e.dataTransfer.getData('application/x-mo-album');
-        if (!albumPayload) return;
-        e.preventDefault();
-        try {
-          const movedId = parseInt(albumPayload, 10);
-          if (!Number.isFinite(movedId)) return;
-          await AlbumQueries.update(movedId, { parentAlbumId: null });
-          loadAlbums();
-        } catch (err) {
-          console.error('[MO] drop-to-root error:', err);
-        }
-      });
     } catch {
       albumBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'Could not load albums' }));
     }
   }
+
+  // Dragging an album onto the section body itself (outside any row) moves it to the root. Added once, not per load.
+  albumBody.addEventListener('dragover', (e) => {
+    if (e.dataTransfer.types.includes('application/x-mo-album') && e.target === albumBody) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+  });
+  albumBody.addEventListener('drop', async (e) => {
+    if (e.target !== albumBody) return;
+    const albumPayload = e.dataTransfer.getData('application/x-mo-album');
+    if (!albumPayload) return;
+    e.preventDefault();
+    try {
+      const movedId = parseInt(albumPayload, 10);
+      if (!Number.isFinite(movedId)) return;
+      await AlbumQueries.update(movedId, { parentAlbumId: null });
+      loadAlbums();
+    } catch (err) {
+      console.error('[MO] drop-to-root error:', err);
+    }
+  });
 
   loadFolders();
   loadTags();
