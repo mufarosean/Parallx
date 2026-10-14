@@ -44,6 +44,10 @@ function loadShared(io) {
   }
   return shared.loading;
 }
+// The painter's paints and mixing rules, once loaded (the board reads them).
+export async function moPlanPaintSet(io) { await loadShared(io); return { paints: shared.paints, rules: shared.rules }; }
+// The stages, for a variation per stage.
+export async function moPlanStages(io) { await loadShared(io); return shared.stages.map((s) => ({ ...s })); }
 const saveStages = (io) => io.setSetting(STAGES_KEY, JSON.stringify(shared.stages)).catch(() => {});
 const savePaints = (io) => { shared.paintsSet = true; return io.setSetting(PAINTS_KEY, JSON.stringify({ paints: shared.paints, rules: shared.rules })).catch(() => {}); };
 const savePick = (io) => io.setSetting(PICK_KEY, JSON.stringify({ size: shared.pickSize, pins: shared.pins })).catch(() => {});
@@ -124,12 +128,16 @@ export function moPlanColours(ctx) {
     live.textContent = n ? `Stage ${n}, ${shared.stages[n - 1].name}` : 'The picture as it is';
   }
   // A change to squint or values: kept in the recipe, and in the stage when one is chosen.
-  function setAid(patch, record) {
+  function setAid(patch, record, keep) {
     const r = state.recipe;
     Object.assign(r, patch);
     const n = currentStage();
     if (n) { Object.assign(shared.stages[n - 1], patch); if (record) void saveStages(io); }
-    if (record) ctx.afterRecipeChange(true); else ctx.preview();
+    if (record) ctx.afterRecipeChange(true, keep); else ctx.preview();
+    if (keep && n) {
+      const b = ctx.root.querySelector(`.mo-pc-stages .mo-pc-stage:nth-child(${n})`);
+      if (b) { b.querySelector('.mo-pc-stage-sum').textContent = stageSummary(shared.stages[n - 1]); b.setAttribute('aria-label', `${shared.stages[n - 1].name}, ${stageSummary(shared.stages[n - 1])}`); }
+    }
   }
   // Rebuilt only when the stages change, so a focused choice keeps the focus. No choice is
   // shown while the picture has squint or values of its own.
@@ -138,7 +146,7 @@ export function moPlanColours(ctx) {
     if (!state.recipe) return;
     const n = currentStage();
     const value = n ? String(n) : aidsOff(state.recipe) ? '0' : '';
-    const key = JSON.stringify(shared.stages);
+    const key = JSON.stringify(shared.stages.map((st) => st.name));
     if (key !== barKey || !barSeg) {
       barKey = key;
       if (barSeg) barSeg.dispose();
@@ -183,7 +191,7 @@ export function moPlanColours(ctx) {
     const vl = moEl('div', 'mo-pc-field');
     vl.appendChild(moEl('span', null, { textContent: 'Values' }));
     const vg = ui.createSegmented(vl, { id: 'media-organizer.plan.values', ariaLabel: 'Values', value: r.notan > 0 ? '' : r.levels >= 2 ? String(r.levels) : '0',
-      items: [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['0', 'All']].map(([value, label]) => ({ value, label })), onChange: (v) => setAid({ levels: Number(v), notan: 0 }, true) });
+      items: [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['0', 'All']].map(([value, label]) => ({ value, label })), onChange: (v) => setAid({ levels: Number(v), notan: 0 }, true, !(r.notan > 0)) });
     panelDisposers.push(() => vg.dispose());
     s2.appendChild(vl);
     s2.appendChild(check('Greyscale', 'media-organizer.plan.greyscale', r.grey, (v) => setAid({ grey: v }, true)));
@@ -421,11 +429,13 @@ export function moPlanColours(ctx) {
     const R = shared.rules;
     const s2 = moEl('div', 'mo-plan-section mo-pc-split');
     s2.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Mixing rules' }));
-    s2.appendChild(segField('Most paints in one mix', [2, 3, 4, 5].map((v) => [String(v), String(v)]), String(R.max), (v) => { R.max = Number(v); changed(); }, 'maxPaints', panelDisposers));
-    s2.appendChild(segField('Lighten with', [['white', 'White'], ['water', 'Water']], R.lighten, (v) => { R.lighten = v; changed(); }, 'lighten', panelDisposers));
-    if (R.lighten === 'white') s2.appendChild(check('White does not count toward the limit', 'media-organizer.plan.whiteFree', R.whiteFree, (v) => { R.whiteFree = v; changed(); }));
-    s2.appendChild(check('Never use black', 'media-organizer.plan.noBlack', R.noBlack, (v) => { R.noBlack = v; changed(); }));
-    s2.appendChild(check('Prefer fewer paints', 'media-organizer.plan.preferFewer', R.preferFewer, (v) => { R.preferFewer = v; changed(); }));
+    s2.appendChild(segField('Most paints in one mix', [2, 3, 4, 5].map((v) => [String(v), String(v)]), String(R.max), (v) => { R.max = Number(v); changed(true); }, 'maxPaints', panelDisposers));
+    s2.appendChild(segField('Lighten with', [['white', 'White'], ['water', 'Water']], R.lighten, (v) => { R.lighten = v; changed(true); whiteRule.querySelector('input').disabled = v === 'water'; whiteRule.classList.toggle('is-off', v === 'water'); }, 'lighten', panelDisposers));
+    const whiteRule = check('White does not count toward the limit', 'media-organizer.plan.whiteFree', R.whiteFree, (v) => { R.whiteFree = v; changed(true); });
+    whiteRule.querySelector('input').disabled = R.lighten === 'water'; whiteRule.classList.toggle('is-off', R.lighten === 'water');
+    s2.appendChild(whiteRule);
+    s2.appendChild(check('Never use black', 'media-organizer.plan.noBlack', R.noBlack, (v) => { R.noBlack = v; changed(true); }));
+    s2.appendChild(check('Prefer fewer paints', 'media-organizer.plan.preferFewer', R.preferFewer, (v) => { R.preferFewer = v; changed(true); }));
     s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'With fewer paints preferred, a simpler mix that is nearly as close comes first. Water is for watercolour, where the paper lightens.' }));
     panel.appendChild(s2);
   }
@@ -438,7 +448,7 @@ export function moPlanColours(ctx) {
     return el;
   }
   function button(label, action) { return ui.createButton(null, { id: `media-organizer.plan.${action}`, label, kind: 'secondary', size: 'sm', command: `media-organizer.plan.${action}` }); }
-  const changed = () => { lastMix = null; void savePaints(io); ctx.afterRecipeChange(false); };
+  const changed = (keep) => { lastMix = null; void savePaints(io); ctx.afterRecipeChange(false, keep === true); };
   // What each command does on this plan (PLAN_ACTIONS). Panels follow the state.
   const show = (v) => { view = v; pendingFocus = v === 'list' ? 'chip' : 'back'; if (state.tool !== 'pick') ctx.setTool('pick'); else ctx.afterRecipeChange(false); };
   const acts = {

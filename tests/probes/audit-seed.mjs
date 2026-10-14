@@ -127,7 +127,26 @@ export async function seedAfterLaunch(page, pre) {
   await page.waitForTimeout(1_500);
   await page.keyboard.press('Escape');
 
+  // Painting Plans: the art tools on and one plan on the seeded photo.
+  await page.evaluate(async () => { await window.__parallx_workbench__._services.get({ id: 'IConfigurationService' }).getConfiguration('mediaOrganizer').update('enableArtTools', true); });
+  await page.waitForTimeout(1_000);
+  log('plan', await run(page, 'media-organizer.planPainting', pre.photoId));
+  await page.waitForTimeout(2_000);
+  const planTool = (label, then) => async () => {
+    await run(page, 'media-organizer.paintingPlans');
+    await page.waitForTimeout(1_200);
+    await page.locator('.mo-plans-card').first().click().catch(() => {});
+    await page.waitForTimeout(2_000);
+    if (label) await page.locator(`.mo-plan-tool[aria-label="${label}"]`).first().click().catch(() => {});
+    await page.waitForTimeout(800);
+    if (then) await then();
+  };
+  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Pick Colours', 'Composition', 'Palette', 'Compare', 'Process', 'Plan'];
+
   return {
+    'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
+    ...Object.fromEntries(PLAN_TOOLS.map((t) => [`seed:plan.${t}`, planTool(t)])),
+    'seed:plan.myPaints': planTool('Pick Colours', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
     'seed:page': async () => { if (pageId) await run(page, 'canvas.openPage', pageId); },
     'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },
     'seed:conceptMap': async () => { if (typeof mapId === 'string' && !mapId.startsWith('failed')) await run(page, 'canvas.openPage', mapId); },

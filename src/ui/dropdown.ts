@@ -133,6 +133,7 @@ export class Dropdown extends Disposable {
     // Options list — built now, attached to document.body only while open.
     this._list = $('div.ui-dropdown__list');
     this._list.setAttribute('role', 'listbox');
+    if (options?.ariaLabel) this._list.setAttribute('aria-label', options.ariaLabel); // the open list says what it chooses
     this._list.id = `ui-dropdown-list-${++_dropdownSeq}`;
     this._button.setAttribute('aria-controls', this._list.id);
     this._renderItems();
@@ -183,6 +184,9 @@ export class Dropdown extends Disposable {
       if (!this._isOpen) return;
       const target = e.target;
       if (target instanceof Node && this._list.contains(target)) return;
+      // Only a scroll that moves the dropdown closes it (its scroller, or the page):
+      // a log panel scrolling elsewhere must not shut a list the user just opened.
+      if (target instanceof Element && target !== document.documentElement && target !== document.body && !target.contains(this.element)) return;
       this._close();
     };
     const onResize = () => { if (this._isOpen) this._close(); };

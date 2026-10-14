@@ -49,6 +49,8 @@ const SCREENS = [
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
   ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:imageEditor'], ['seed:clipEditor'],
+  // Painting Plans (behind the art tools setting, which the seed turns on).
+  ['seed:plans'], ...['Crop', 'Light', 'Colour', 'Values', 'Pick Colours', 'Composition', 'Palette', 'Compare', 'Process', 'Plan', 'myPaints'].map((t) => [`seed:plan.${t}`]),
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx.browser', 'parallx-community.study'];
 // A sub-screen is what a tool's own navigation opens: its sidebar's and its
@@ -477,7 +479,7 @@ async function auditScreen(label) {
 // file and message dialogs are stubbed to cancel at once (nothing could
 // close one in a hidden window).
 const popupTried = new Set();
-const DESTRUCTIVE = /delete|remove|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
+const DESTRUCTIVE = /print|delete|remove|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
 const POPUP_ROOTS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-px-surface="contextMenu"], [data-px-surface="quickAccess"], .ui-dropdown__list';
 async function stubNativeDialogs() {
   await app.evaluate(({ shell }) => { shell.openExternal = async () => {}; shell.openPath = async () => ''; shell.showItemInFolder = () => {}; }).catch(() => {}); // a hidden run opens nothing on the desktop

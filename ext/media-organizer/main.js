@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moPlanColours, moPlanColoursActivate } from './plan-colours.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moColourName, moPalette } from './colour.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -32017,6 +32017,8 @@ function moOpenPlansList(api) {
 function moOpenPlan(api, planId) {
   (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Plan', icon: 'palette', instanceId: `plans:edit:${planId}` });
 }
+function moOpenBoard(api, planId) { (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Board', icon: 'layout-dashboard', instanceId: `plans:board:${planId}` }); }
+const moBoardDeps = (api) => ({ api, db, getSetting: moGetSetting, setSetting: moSetSetting, planLoad: moPlanLoad, planRenderer: moPlanRenderer, rotatedSize: moPlanRotatedSize, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, thumb: (img, id) => void moPracticeThumb(img, id, api), openPlan: (id) => moOpenPlan(api, id), openBoard: (id) => moOpenBoard(api, id), ingest: (p) => moIngestNewImage(p), searchPhotos: (t) => db.all(`SELECT p.id, COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.deleted_at IS NULL AND (? = '' OR p.title LIKE ? OR f.basename LIKE ?) ORDER BY p.id DESC LIMIT 24`, [t, `%${t}%`, `%${t}%`]) });
 
 function renderPlansTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
@@ -32026,6 +32028,7 @@ function renderPlansTab(container, api, input) {
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('plans:edit:')) return renderPlanEditor(container, api, parseInt(inputId.slice('plans:edit:'.length), 10) || 0);
+  if (inputId.startsWith('plans:board:')) { moInjectStyles(); return moRenderBoard(container, moBoardContext(moBoardDeps(api), parseInt(inputId.slice('plans:board:'.length), 10) || 0)); }
   return renderPlansList(container, api);
 }
 
@@ -32047,7 +32050,7 @@ function renderPlansList(container, api) {
       grid.innerHTML = '';
       if (!plans.length) { grid.appendChild(moEl('div', 'mo-practice-poolcount', { textContent: 'No plans yet.' })); return; }
       for (const p of plans) {
-        const card = moEl('div', 'mo-plans-card');
+        const card = moEl('button', 'mo-plans-card', { type: 'button' });
         const img = moEl('img', null, { alt: '' });
         card.appendChild(img);
         void moPracticeThumb(img, p.photo_id, api);
@@ -32551,7 +32554,7 @@ function moPlanDrawOverlays(ctx, W, H, recipe, canvasW, canvasH, scale) {
 function renderPlanEditor(container, api, planId) {
   moInjectStyles();
   const root = moEl('div', 'mo-plan');
-  root.tabIndex = 0;
+  root.tabIndex = -1; // takes the focus for its keys, but is no Tab stop: it draws no ring
   container.appendChild(root);
   let disposed = false;
   const state = { plan: null, variants: [], media: [], variant: null, recipe: null, tool: 'light', image: null, imgW: 0, imgH: 0, srcPath: null, split: -1, mirror: false, blurBaked: 0 };
@@ -32598,7 +32601,7 @@ function renderPlanEditor(container, api, planId) {
   exportGridBtn.addEventListener('click', () => void exportPlan(true));
   printBtn.addEventListener('click', () => void printPlan());
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec) => afterRecipeChange(rec), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
   const left = moEl('div', 'mo-plan-topbar-left'); left.appendChild(titleEl); left.appendChild(sizeEl); main.insertBefore(colours.bar, stage);
   const right = moEl('div', 'mo-plan-topbar-right');
   for (const b of [undoBtn, redoBtn, exportGridBtn, printBtn, exportBtn]) right.appendChild(b);
@@ -32631,12 +32634,12 @@ function renderPlanEditor(container, api, planId) {
     }, 400);
   }
   // record: true when the change is a user edit worth an undo step
-  function afterRecipeChange(record) {
+  function afterRecipeChange(record, keepPanel) {
     if (record !== false) pushHistory();
     if (state.recipe.blur !== state.blurBaked) bakeSource();
     requestRender();
     scheduleSave();
-    renderPanel();
+    if (!keepPanel) renderPanel();
     refreshVariantThumb(state.variant);
   }
   function bakeSource() {
@@ -32754,6 +32757,7 @@ function renderPlanEditor(container, api, planId) {
     return wrap;
   };
   const button = (label, fn, primary) => { const b = moEl('button', primary ? 'mo-practice-start' : 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', fn); return b; };
+  right.insertBefore(button('Open Board', () => moOpenBoard(api, planId)), exportGridBtn);
   const section = (title) => { const s = moEl('div', 'mo-plan-section'); if (title) s.appendChild(moEl('div', 'mo-practice-section-title', { textContent: title })); panel.appendChild(s); return s; };
   const panelDisposers = [];
   function renderPanel() {
@@ -32835,7 +32839,7 @@ function renderPlanEditor(container, api, planId) {
       s.appendChild(button('Pull From Picture', () => { extractPalette(); }, true));
       const sw = moEl('div', 'mo-plan-swatches');
       for (const c of r.palette.swatches) {
-        const chip = moEl('div', 'mo-plan-swatch', { title: moPlanHex(c) + ' (click to copy)' });
+        const chip = moEl('button', 'mo-plan-swatch', { type: 'button', title: moPlanHex(c) + ' (click to copy)', 'aria-label': `Copy ${moColourName(c).name}, ${moPlanHex(c)}` });
         chip.style.background = moPlanHex(c);
         chip.addEventListener('click', () => { try { navigator.clipboard.writeText(moPlanHex(c)); } catch { /* no clipboard */ } });
         sw.appendChild(chip);
@@ -32862,13 +32866,13 @@ function renderPlanEditor(container, api, planId) {
       for (const m of state.media) {
         const it = moEl('div', 'mo-plan-shelf-item');
         const img = moEl('img', null, { alt: '' });
-        it.appendChild(img);
+        const openBtn = moEl('button', 'mo-plan-shelf-open', { type: 'button', 'aria-label': `Open ${m.role === 'output' ? 'plan output' : m.kind === 'video' ? 'clip' : 'photo'}` }); openBtn.appendChild(img); it.appendChild(openBtn);
         if (m.kind === 'photo') void moPracticeThumb(img, m.item_id, api);
         else resolveThumbnail('video', m.item_id, api).then((rr) => { if (rr && (rr.path || rr.sourcePath)) setThumbImgSrc(img, rr.sourcePath || rr.path, {}); }).catch(() => {});
         it.appendChild(moEl('span', 'mo-practice-dim', { textContent: m.role === 'output' ? 'Plan output' : (m.kind === 'video' ? 'Clip' : 'Photo') }));
         const open = () => api.editors.openEditor({ typeId: 'media-organizer-grid', title: m.kind === 'video' ? 'Clip' : 'Photo', icon: m.kind === 'video' ? 'file-media' : 'image', instanceId: `detail:${m.kind}:${m.item_id}` });
-        img.addEventListener('click', open);
-        const rm = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Remove' });
+        openBtn.addEventListener('click', open);
+        const rm = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Remove', 'aria-label': `Remove this ${m.kind === 'video' ? 'clip' : 'photo'} from the plan` });
         rm.addEventListener('click', async () => { await db.run('DELETE FROM mo_plan_media WHERE id = ?', [m.id]); state.media = state.media.filter((x) => x.id !== m.id); renderPanel(); });
         it.appendChild(rm);
         list.appendChild(it);
@@ -32885,7 +32889,7 @@ function renderPlanEditor(container, api, planId) {
       notes.addEventListener('change', () => { state.plan.notes = notes.value; scheduleSave(); });
       s.appendChild(notes);
       s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id)));
-      s.appendChild(button('Delete Plan', async () => {
+      s.appendChild(button('Delete Plan…', async () => { if ((await api.window.showWarningMessage(`Delete the plan "${state.plan.title}"? Its variations, notes and saved colours go with it. The photo stays.`, { title: 'Delete' }, { title: 'Cancel' }))?.title !== 'Delete') return;
         await db.run('DELETE FROM mo_plans WHERE id = ?', [planId]);
         document.dispatchEvent(new CustomEvent('mo:plans-changed'));
         root.innerHTML = '';
@@ -32920,20 +32924,20 @@ function renderPlanEditor(container, api, planId) {
     variantsBar.innerHTML = '';
     variantThumbs.clear();
     for (const v of state.variants) {
-      const it = moEl('div', `mo-plan-variant${state.variant && v.id === state.variant.id ? ' is-current' : ''}${state.plan.variant_id === v.id ? ' is-kept' : ''}`);
+      const it = moEl('button', `mo-plan-variant${state.variant && v.id === state.variant.id ? ' is-current' : ''}${state.plan.variant_id === v.id ? ' is-kept' : ''}`, { type: 'button', 'aria-pressed': String(!!(state.variant && v.id === state.variant.id)), 'aria-label': v.name + (state.plan.variant_id === v.id ? ', kept' : '') });
       const img = moEl('img', null, { alt: '' });
       it.appendChild(img);
       variantThumbs.set(v.id, img);
-      const name = moEl('span', null, { textContent: v.name + (state.plan.variant_id === v.id ? ' ✓' : '') });
-      it.appendChild(name);
+      it.appendChild(moEl('span', null, { textContent: v.name }));
+      if (state.plan.variant_id === v.id) it.appendChild(moEl('span', 'mo-plan-variant-tag', { textContent: 'For export' }));
       it.addEventListener('click', () => selectVariant(v));
       variantsBar.appendChild(it);
       refreshVariantThumb(v);
     }
     const actions = moEl('div', 'mo-plan-variant-actions');
-    actions.appendChild(button('Add Variation', () => void addVariant()));
-    actions.appendChild(button('Keep This One', () => void keepVariant()));
-    if (state.variants.length > 1) actions.appendChild(button('Remove', () => void removeVariant()));
+    for (const [label, fn] of [['Rename…', renameVariant], ['Use For Export', keepVariant], ['Make Stage Variations', stageVariants], ['Add Variation', addVariant]]) actions.appendChild(button(label, () => void fn()));
+    const toBoard = button('Add To Board', () => api.ui.createMenu(toBoard, { id: 'media-organizer.plan.addToBoard', label: 'Add To Board', items: moBoardMenuItems(moBoardDeps(api), planId, state) }), true); toBoard.setAttribute('aria-haspopup', 'menu'); actions.appendChild(toBoard);
+    if (state.variants.length > 1) actions.appendChild(button('Remove Variation…', () => void removeVariant()));
     variantsBar.appendChild(actions);
   }
   function refreshVariantThumb(v) {
@@ -32962,6 +32966,22 @@ function renderPlanEditor(container, api, planId) {
     state.variants.push(v);
     selectVariant(v);
   }
+  async function renameVariant() {
+    const name = state.variant && await api.window.showInputBox({ prompt: 'Name this variation', value: state.variant.name });
+    if (!name || !String(name).trim()) return;
+    state.variant.name = String(name).trim().slice(0, 40); await db.run('UPDATE mo_plan_variants SET name = ? WHERE id = ?', [state.variant.name, state.variant.id]); renderVariants(); document.dispatchEvent(new CustomEvent('mo:plans-changed'));
+  }
+  // One variation per stage, named after it, each with its stage's squint and values; existing names are left alone.
+  async function stageVariants() {
+    const stages = await moPlanStages({ getSetting: moGetSetting, setSetting: moSetSetting });
+    for (const [i, s] of stages.entries()) {
+      if (state.variants.some((v) => v.name === s.name)) continue;
+      const recipe = moPlanNormalizeRecipe(Object.assign(JSON.parse(JSON.stringify(state.recipe)), { stage: i + 1, blur: s.blur, levels: s.levels, grey: s.grey, notan: s.notan }));
+      const res = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, ?)', [planId, s.name, JSON.stringify(recipe), state.variants.length]);
+      state.variants.push({ id: res.lastInsertRowid, plan_id: planId, name: s.name, position: state.variants.length, recipe });
+    }
+    renderVariants(); document.dispatchEvent(new CustomEvent('mo:plans-changed'));
+  }
   async function keepVariant() {
     if (!state.variant) return;
     state.plan.variant_id = state.variant.id;
@@ -32969,7 +32989,7 @@ function renderPlanEditor(container, api, planId) {
     renderVariants();
   }
   async function removeVariant() {
-    if (!state.variant || state.variants.length <= 1) return;
+    if (!state.variant || state.variants.length <= 1 || (await _api.window.showWarningMessage(`Remove "${state.variant.name}" from this plan?`, { title: 'Remove' }, { title: 'Cancel' }))?.title !== 'Remove') return;
     const gone = state.variant;
     await db.run('DELETE FROM mo_plan_variants WHERE id = ?', [gone.id]);
     state.variants = state.variants.filter((v) => v.id !== gone.id);
@@ -38182,7 +38202,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);

@@ -37,4 +37,20 @@ describe('dropdown for a screen reader', () => {
     expect(button.hasAttribute('aria-activedescendant')).toBe(false);
     dd.dispose();
   });
+
+  it('stays open when something else scrolls, and closes when its own scroller does', () => {
+    const scroller = document.createElement('div');
+    const host = document.createElement('div');
+    const log = document.createElement('div');
+    scroller.appendChild(host);
+    document.body.append(scroller, log);
+    const dd = new Dropdown(host, { items: [{ value: 'a', label: 'Alpha' }], selected: 'a', ariaLabel: 'Pick' });
+    const button = host.querySelector('button') as HTMLButtonElement;
+    button.click();
+    log.dispatchEvent(new Event('scroll'));
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    scroller.dispatchEvent(new Event('scroll'));
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    dd.dispose();
+  });
 });
