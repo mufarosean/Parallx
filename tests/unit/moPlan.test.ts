@@ -20,7 +20,7 @@ function loadPure(): Record<string, any> {
   const b = src.indexOf('// @mo-plan-pure-end');
   expect(a).toBeGreaterThan(0);
   expect(b).toBeGreaterThan(a);
-  const names = ['MO_PLAN_CANVAS_PRESETS', 'moPlanDefaultRecipe', 'moPlanNormalizeRecipe', 'moPlanRotatedSize', 'moPlanFitCrop', 'moPlanClampCrop',
+  const names = ['MO_PLAN_CANVAS_PRESETS', 'moPlanDefaultRecipe', 'moPlanNormalizeRecipe', 'moPlanRotatedSize', 'moPlanFitCrop', 'moPlanCanvasFor', 'moPlanClampCrop',
     'moPlanGridLines', 'moPlanHex', 'moPlanOutputName'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
@@ -60,6 +60,14 @@ describe('rotation and crop', () => {
     const d = P.moPlanFitCrop(2000, 3000, 20 / 16);
     expect(d.w).toBe(1);
     expect(d.h).toBeCloseTo((2000 / 1.25) / 3000, 6);
+  });
+  it('gives a new plan a canvas in the proportions of its picture, so the whole picture fits uncropped', () => {
+    expect(P.moPlanCanvasFor(3000, 2000)).toEqual({ canvas_w: 20, canvas_h: 13.3 });
+    expect(P.moPlanCanvasFor(2000, 3000)).toEqual({ canvas_w: 13.3, canvas_h: 20 });
+    expect(P.moPlanCanvasFor(4000, 4000)).toEqual({ canvas_w: 20, canvas_h: 20 });
+    const c = P.moPlanCanvasFor(4032, 3024);
+    const fit = P.moPlanFitCrop(4032, 3024, c.canvas_w / c.canvas_h);
+    expect(fit.w * fit.h).toBeGreaterThan(0.99);
   });
   it('clamps a crop back inside the image, keeping proportions', () => {
     const c = P.moPlanClampCrop({ x: 0.9, y: 0.5, w: 0.5, h: 0.2 }, 3000, 2000, 0.8);

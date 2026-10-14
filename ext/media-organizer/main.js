@@ -31923,6 +31923,12 @@ function moPlanFitCrop(w, h, aspect) {
   return { x: 0, y: (1 - ch) / 2, w: 1, h: ch };
 }
 
+// A canvas in the picture's own proportions (rotated size w×h): the long side 20 in, the short one to a tenth.
+function moPlanCanvasFor(w, h) {
+  const s = Math.round((20 * Math.min(w, h)) / Math.max(w, h) * 10) / 10 || 20;
+  return w >= h ? { canvas_w: 20, canvas_h: s } : { canvas_w: s, canvas_h: 20 };
+}
+
 // Keep a crop inside the image at the canvas proportions. Shrinks first,
 // then slides. w,h are the rotated image pixel size.
 function moPlanClampCrop(crop, w, h, aspect) {
@@ -32791,8 +32797,10 @@ function renderPlanEditor(container, api, planId) {
       s.appendChild(swap);
       const s2 = section('Picture');
       const rowR = moEl('div', 'mo-plan-row');
-      rowR.appendChild(button('Rotate Left', () => { r.rotate = (r.rotate + 3) % 4; const rs = rotated(); r.crop = moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); }));
-      rowR.appendChild(button('Rotate Right', () => { r.rotate = (r.rotate + 1) % 4; const rs = rotated(); r.crop = moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); }));
+      // An uncropped picture turns with its canvas; a cropped one keeps the canvas and refits.
+      const turn = (q) => { const whole = r.crop.w > 0.999 && r.crop.h > 0.999; r.rotate = (r.rotate + q) % 4; if (whole) { const w = state.plan.canvas_w; state.plan.canvas_w = state.plan.canvas_h; state.plan.canvas_h = w; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; } const rs = rotated(); r.crop = whole ? { x: 0, y: 0, w: 1, h: 1 } : moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); };
+      rowR.appendChild(button('Rotate Left', () => turn(3)));
+      rowR.appendChild(button('Rotate Right', () => turn(1)));
       s2.appendChild(rowR);
       const rowF = moEl('div', 'mo-plan-row');
       rowF.appendChild(button('Flip Horizontal', () => { r.flipH = !r.flipH; afterRecipeChange(true); }));
@@ -33076,8 +33084,9 @@ function renderPlanEditor(container, api, planId) {
       if (!renderer) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'WebGL is not available, so the plan cannot be shown.' })); return; }
       const v = state.variants.find((x) => x.id === state.plan.variant_id) || state.variants[0];
       if (!v) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan has no variation.' })); return; }
-      // A fresh plan starts with the largest crop at the canvas proportions.
-      if (v.recipe.crop.w === 1 && v.recipe.crop.h === 1) { const rs = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate); v.recipe.crop = moPlanFitCrop(rs.w, rs.h, aspect()); }
+      // A plan starts with the whole picture: an uncropped one (or one still at the old automatic 16 × 20 cut) gets a canvas in the picture's proportions.
+      const rs0 = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate), c0 = v.recipe.crop, auto = moPlanFitCrop(rs0.w, rs0.h, 0.8);
+      if ((c0.w === 1 && c0.h === 1) || (state.plan.canvas_w === 16 && state.plan.canvas_h === 20 && ['x', 'y', 'w', 'h'].every((k) => Math.abs(c0[k] - auto[k]) < 1e-4))) { Object.assign(state.plan, moPlanCanvasFor(rs0.w, rs0.h)); sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; for (const x of state.variants) if (x.recipe.rotate === v.recipe.rotate && ['x', 'y', 'w', 'h'].every((k) => Math.abs(x.recipe.crop[k] - c0[k]) < 1e-4)) { x.recipe.crop = { x: 0, y: 0, w: 1, h: 1 }; if (x !== v) void db.run('UPDATE mo_plan_variants SET recipe_json = ? WHERE id = ?', [JSON.stringify(x.recipe), x.id]); } scheduleSave(); }
       state.variant = v; state.recipe = v.recipe;
       bakeSource();
       pushHistory();
