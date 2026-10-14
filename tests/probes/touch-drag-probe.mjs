@@ -59,9 +59,10 @@ try {
   await cmd(page, 'welcome.openWelcome');
   await cmd(page, 'dashboard.open');
   await page.waitForTimeout(1_200);
-  const tabs = () => page.evaluate(() => Array.from(document.querySelectorAll('.editor-tab-bar .ui-tab')).filter((x) => x.getClientRects().length).map((x) => { const r = x.getBoundingClientRect(); return { name: x.textContent.trim().replace('×', ''), x: r.x + r.width / 2, y: r.y + r.height / 2, right: r.right }; }));
+  const tabs = () => page.evaluate(() => Array.from(document.querySelectorAll('.editor-tab-bar .ui-tab')).filter((x) => x.getClientRects().length).map((x) => { const r = x.getBoundingClientRect(); const s = x.parentElement.getBoundingClientRect(); return { name: x.textContent.trim().replace('×', ''), x: r.x + r.width / 2, y: r.y + r.height / 2, right: r.right, whole: r.x >= s.x - 1 && r.right <= s.right + 1 }; }));
   const t0 = await tabs();
-  const wi = t0.findIndex((t) => t.name === 'Welcome');
+  // Two neighbours in full view: with many tabs open the bar scrolls, and a tab half out of it sits over the sidebar.
+  const wi = t0.findIndex((t, i) => t.whole && t0[i + 1] && t0[i + 1].whole);
   const [a, b] = [t0[wi], t0[wi + 1]];
   await finger(a, b.right - 20 - a.x, 0, { hold: 500 });
   const t1 = (await tabs()).map((t) => t.name);
