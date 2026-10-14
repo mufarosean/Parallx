@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // @ts-expect-error plain ES module without types
-import { moPalette, moOklab, moFromOklab } from '../../ext/media-organizer/colour.js';
+import { moPalette, moOklab, moFromOklab, moColourName, moMixRecipes, moMixLinear, moPaintPrep, MO_COMMON_PAINTS, MO_STARTER_PAINTS } from '../../ext/media-organizer/colour.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -117,6 +117,36 @@ describe('palette', () => {
   it('round-trips sRGB through OKLab', () => {
     for (const c of [[0, 0, 0], [255, 255, 255], [200, 40, 90], [12, 140, 220]]) expect(moFromOklab(...(moOklab(c[0], c[1], c[2]) as [number, number, number]))).toEqual(c);
     expect(moOklab(255, 255, 255)[0]).toBeCloseTo(1, 4);
+  });
+});
+
+describe('colour names and paint mixing', () => {
+  const paint = (n: string) => moPaintPrep(MO_COMMON_PAINTS.find((p: { name: string }) => p.name === n));
+  const hue = (lin: number[]) => { const c = moOklab(...(lin.map((v) => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055))) as [number, number, number])); return ((Math.atan2(c[2], c[1]) * 180) / Math.PI + 360) % 360; };
+  it('names colours the way a painter would, with a value step', () => {
+    expect(moColourName([93, 111, 60]).name).toBe('Olive green');
+    expect(moColourName([245, 245, 245]).name).toBe('White');
+    expect(moColourName([20, 20, 20])).toMatchObject({ name: 'Black', value: 1 });
+    expect(moColourName([74, 47, 34]).name).toMatch(/brown/i);
+  });
+  it('mixes like pigment: blue and yellow make green, white lightens', () => {
+    const g = moMixLinear([paint('Cadmium Yellow Light'), paint('Ultramarine Blue')], [1, 1]);
+    expect(hue(g)).toBeGreaterThan(115);
+    expect(hue(g)).toBeLessThan(165);
+    const pale = moMixLinear([paint('Titanium White'), paint('Ultramarine Blue')], [1, 1]);
+    expect(pale[2]).toBeGreaterThan(moMixLinear([paint('Ultramarine Blue')], [1])[2]);
+    expect(moMixLinear([paint('Yellow Ochre')], [1]).map((v: number) => Math.round(v * 1000))).toEqual(moMixLinear([paint('Yellow Ochre')], [1]).map((v: number) => Math.round(v * 1000)));
+  });
+  it('finds a close recipe in whole parts within the rules', () => {
+    const { best, simpler } = moMixRecipes([93, 111, 60], MO_STARTER_PAINTS, { max: 3 });
+    expect(best.de).toBeLessThan(0.045);
+    expect(best.paints.filter((p: { name: string }) => p.name !== 'Titanium White').length).toBeLessThanOrEqual(3);
+    for (const p of best.paints) expect(p.touch || Number.isInteger(p.parts)).toBe(true);
+    if (simpler) expect(simpler.paints.length).toBeLessThan(best.paints.length + 1);
+    const two = moMixRecipes([93, 111, 60], MO_STARTER_PAINTS, { max: 2, whiteFree: false });
+    expect(two.best.paints.length).toBeLessThanOrEqual(2);
+    const noBlack = moMixRecipes([40, 40, 40], [...MO_STARTER_PAINTS, MO_COMMON_PAINTS[1]], { noBlack: true });
+    expect(noBlack.best.paints.some((p: { name: string }) => p.name === 'Ivory Black')).toBe(false);
   });
 });
 

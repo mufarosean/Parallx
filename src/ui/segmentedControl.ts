@@ -153,11 +153,13 @@ export class SegmentedControl extends Disposable {
   }
 
   private _updateActiveClass(): void {
+    // With no choice made, the first segment keeps the group's Tab stop.
+    const none = !this._segments.some(s => s.value === this._selectedValue);
     this._segmentEls.forEach((btn, idx) => {
       const isActive = this._segments[idx].value === this._selectedValue;
       btn.classList.toggle('ui-segmented-control__segment--active', isActive);
       btn.setAttribute('aria-checked', String(isActive));
-      btn.setAttribute('tabindex', isActive ? '0' : '-1');
+      btn.setAttribute('tabindex', isActive || (none && idx === 0) ? '0' : '-1');
     });
   }
 

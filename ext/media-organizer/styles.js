@@ -256,6 +256,55 @@ export const MO_CSS_MORE = `
 .mo-plan-variant-actions { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
 .mo-plan-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
 .mo-plan-swatch { width: 28px; height: 28px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid rgba(0, 0, 0, 0.35); cursor: pointer; }
+/* Painting Plans: stages, the colour picker, saved colours and paint mixes (plan-colours.js) */
+.mo-pc-stagebar { display: flex; justify-content: center; align-self: center; max-width: 100%; margin: var(--px-space-2) var(--px-space-3) 0; overflow-x: auto; }
+.mo-pc-stages { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.mo-pc-stages .mo-pc-stage { width: 100%; height: auto; justify-content: flex-start; display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: transparent; color: var(--px-text); font: inherit; text-align: left; cursor: pointer; }
+.mo-pc-stages .mo-pc-stage:hover { background: var(--px-surface-hover); }
+.mo-pc-stages .mo-pc-stage.is-on { border-color: var(--px-accent); background: var(--px-accent-soft); }
+.mo-pc-stage-num { flex: none; width: 20px; height: 20px; border-radius: var(--px-radius-full); display: inline-flex; align-items: center; justify-content: center; background: var(--px-surface-active); font-size: var(--px-text-xs); font-weight: 700; }
+.mo-pc-stage.is-on .mo-pc-stage-num { background: var(--px-accent); color: var(--px-text-on-accent); }
+.mo-pc-stage-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mo-pc-stage-name { font-size: var(--px-text-sm); font-weight: 600; }
+.mo-pc-stage-sum { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.mo-pc-split { padding-top: var(--px-space-3); margin-top: var(--px-space-2); border-top: 1px solid var(--px-border); }
+.mo-pc-field { display: flex; flex-direction: column; gap: var(--px-space-1); font-size: var(--px-text-sm); }
+.mo-pc-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--px-space-2); }
+.mo-pc-head .mo-practice-section-title { margin-bottom: 0; }
+.mo-pc-colour { display: flex; align-items: center; gap: var(--px-space-3); }
+.mo-pc-chip-lg { flex: none; width: 52px; height: 52px; border-radius: var(--px-radius-md); background: var(--px-bg-inset); box-shadow: var(--px-ring); }
+.mo-pc-chip-xl { width: 64px; height: 64px; }
+.mo-pc-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mo-pc-name { font-size: var(--px-text-md); font-weight: 600; }
+.mo-pc-sub, .mo-pc-hex { font-size: var(--px-text-xs); }
+.mo-pc-hex { font-family: var(--px-font-mono); }
+.mo-pc-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: var(--px-space-1); }
+.mo-pc-chips .mo-pc-chip { aspect-ratio: 1; height: auto; min-width: 0; min-height: 32px; padding: 0; border: 0; border-radius: var(--px-radius-sm); box-shadow: var(--px-ring); cursor: pointer; }
+.mo-plan-panel .mo-pc-back { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--px-space-1); margin-bottom: var(--px-space-2); }
+.mo-pc-card { padding: var(--px-space-3); margin: var(--px-space-3) 0; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.mo-pc-close { display: inline-flex; align-items: center; gap: 5px; font-size: var(--px-text-xs); white-space: nowrap; }
+.mo-pc-close::before { content: ''; width: 7px; height: 7px; border-radius: var(--px-radius-full); background: var(--px-text-muted); }
+.mo-pc-close--very-close::before, .mo-pc-close--close::before { background: var(--px-success); }
+.mo-pc-close--near::before { background: var(--px-warning); }
+.mo-pc-close--far::before { background: var(--px-danger); }
+.mo-pc-bar { display: flex; height: 12px; border-radius: var(--px-radius-full); overflow: hidden; box-shadow: var(--px-ring); }
+.mo-pc-bar--sm { flex: none; width: 48px; height: 8px; }
+.mo-pc-paints { display: flex; flex-direction: column; }
+.mo-pc-paint { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); min-height: 28px; font-size: var(--px-text-sm); }
+.mo-pc-dot { width: 14px; height: 14px; border-radius: var(--px-radius-full); box-shadow: var(--px-ring); }
+.mo-pc-compare { display: flex; gap: var(--px-space-2); }
+.mo-pc-compare-col { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.mo-pc-compare-sw { height: 36px; border-radius: var(--px-radius-sm); box-shadow: var(--px-ring); }
+.mo-pc-simpler { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); }
+.mo-pc-simpler > span:nth-child(2) { flex: 1; min-width: 0; }
+.mo-pc-layer { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
+.mo-pc-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
+.mo-pc-pins { position: absolute; inset: 0; pointer-events: none; }
+.mo-pc-pin { position: absolute; width: 10px; height: 10px; margin: -7px 0 0 -7px; border: 2px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); }
+.mo-pc-loupe { position: absolute; width: 84px; height: 84px; margin: -45px 0 0 -45px; border: 3px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar), var(--px-shadow-md); display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.mo-pc-loupe-box { border: 1.5px solid var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-bar); }
+.mo-pc-loupe-tag { position: absolute; padding: 3px 8px; border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-xs); white-space: nowrap; pointer-events: none; }
+.mo-pc-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .mo-plan-shelf { display: flex; flex-direction: column; gap: 8px; }
 .mo-plan-shelf-item { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .mo-plan-shelf-item img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; }
