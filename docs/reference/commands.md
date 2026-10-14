@@ -227,6 +227,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `media-organizer.cacheStats` | Show Thumbnail Cache Stats | media-organizer | Atelier |  |  |
 | `media-organizer.cancelScan` | Cancel Scan | media-organizer | Atelier |  |  |
 | `media-organizer.cleanThumbnails` | Clean Orphan Thumbnails | media-organizer | Atelier |  |  |
+| `media-organizer.copyTags` | Copy Tags | media-organizer | Atelier |  |  |
 | `media-organizer.createAlbum` | Create Album | media-organizer | Atelier |  |  |
 | `media-organizer.dailyStudy` | Daily Study | media-organizer | Atelier |  |  |
 | `media-organizer.editImage` | Edit Image | media-organizer | Atelier |  |  |
@@ -243,6 +244,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `media-organizer.openTagReview` | Open Tag Review | media-organizer | Atelier |  |  |
 | `media-organizer.paintingPlans` | Painting Plans | media-organizer | Atelier |  |  |
 | `media-organizer.pasteEdit` | Paste Edit Onto Selected Photos | media-organizer | Atelier |  |  |
+| `media-organizer.pasteTags` | Paste Tags | media-organizer | Atelier |  |  |
 | `media-organizer.planPainting` | Plan Painting | media-organizer | Atelier |  |  |
 | `media-organizer.practiceSession` | Practice Session | media-organizer | Atelier |  |  |
 | `media-organizer.rebuildSearchIndex` | Rebuild Search Index | media-organizer | Atelier |  |  |

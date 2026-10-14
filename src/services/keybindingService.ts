@@ -60,7 +60,7 @@ const CHORD_TIMEOUT_MS = 1500;
  * no-op. Letting the event reach the input is the only thing that works.
  */
 const NATIVE_EDIT_KEYS: ReadonlySet<string> = new Set([
-  'ctrl+x', 'ctrl+c', 'ctrl+v',
+  'ctrl+x', 'ctrl+c', 'ctrl+v', 'ctrl+shift+v', // paste as plain text
   'ctrl+a',
   'ctrl+z', 'ctrl+y', 'ctrl+shift+z',
   'meta+x', 'meta+c', 'meta+v',

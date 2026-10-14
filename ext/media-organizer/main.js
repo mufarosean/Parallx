@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -13272,7 +13272,7 @@ function renderGridBrowser(container, api, input) {
   // respond to selection requests + grid refresh broadcasts
   const _selectionReplyHandler = () => {
     document.dispatchEvent(new CustomEvent('mo:reply-selection', {
-      detail: { selectedIds: new Set(state.selectedIds), shown: root.isConnected && root.getClientRects().length > 0 },
+      detail: { selectedIds: new Set(state.selectedIds), shown: root.isConnected && root.getClientRects().length > 0, focused: state.focusedIndex != null && state.items[state.focusedIndex] ? `${state.items[state.focusedIndex].type}:${state.items[state.focusedIndex].id}` : null },
     }));
   };
   document.addEventListener('mo:request-selection', _selectionReplyHandler);
@@ -13981,6 +13981,8 @@ function renderGridBrowser(container, api, input) {
         actions.push({ label: 'Select Similar Photos', handler: () => selectSimilarPhotos(item) });
       }
       actions.push({ separator: true });
+      actions.push({ label: 'Copy Tags', icon: 'copy', key: 'Ctrl+Shift+C', handler: () => void moTagsCommand(api, 'copy', [`${item.type}:${item.id}`]) });
+      if (moTagClip()) actions.push({ label: 'Paste Tags', icon: 'clipboard-paste', key: 'Ctrl+Shift+V', handler: () => void moTagsCommand(api, 'paste', [`${item.type}:${item.id}`]) });
       actions.push({ label: 'Tag\u2026', handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showBulkTagDialog(tmpState, api, () => {
@@ -14047,6 +14049,7 @@ function renderGridBrowser(container, api, input) {
       // Multi-selection actions
       actions.push({ label: `${state.selectedIds.size} selected`, handler: () => {} });
       actions.push({ separator: true });
+      if (moTagClip()) actions.push({ label: `Paste Tags On ${state.selectedIds.size} Items`, icon: 'clipboard-paste', key: 'Ctrl+Shift+V', handler: () => void moTagsCommand(api, 'paste', [...state.selectedIds]) });
       actions.push({ label: 'Tag\u2026', handler: () => {
         showBulkTagDialog(state, api, () => {
           if (selectionBar) selectionBar.update();
@@ -32017,6 +32020,29 @@ function moOpenPlansList(api) {
 function moOpenPlan(api, planId) {
   (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Plan', icon: 'palette', instanceId: `plans:edit:${planId}` });
 }
+// Copy Tags from one item, Paste Tags onto one or many (tag-clipboard.js). keys: "photo:12"…; without them, the
+// library's focused item (copy) or its selection, else the focused item (paste).
+async function moTagsCommand(api, which, keys) {
+  let lib = null;
+  const h = (e) => { if (e.detail && e.detail.shown && !lib) lib = e.detail; };
+  document.addEventListener('mo:reply-selection', h);
+  try { document.dispatchEvent(new CustomEvent('mo:request-selection')); } finally { document.removeEventListener('mo:reply-selection', h); }
+  const sel = lib ? [...lib.selectedIds] : [];
+  const targets = Array.isArray(keys) && keys.length ? keys : which === 'copy' ? (lib && lib.focused ? [lib.focused] : sel.length === 1 ? sel : []) : (sel.length ? sel : lib && lib.focused ? [lib.focused] : []);
+  if (which === 'copy') {
+    if (targets.length !== 1) { api.window.showInformationMessage('Choose one photo or video to copy its tags from.'); return; }
+    const n = await moCopyTags(db, targets[0]);
+    const c = moTagClip();
+    api.window.showInformationMessage(n ? `Copied ${n} tag${n === 1 ? '' : 's'}: ${c.names.slice(0, 6).join(', ')}${n > 6 ? '…' : ''}` : 'That item has no tags to copy.');
+    return;
+  }
+  if (!moTagClip()) { api.window.showInformationMessage('Copy Tags from a photo or video first.'); return; }
+  if (!targets.length) { api.window.showInformationMessage('Select the photos or videos to paste the tags onto.'); return; }
+  const done = await moPasteTags(db, targets);
+  _notifySidebarRefresh();
+  document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', { detail: { op: 'ADD', tagIds: done.tagIds, keys: targets } }));
+  api.window.showInformationMessage(`Pasted ${moTagClip().names.length} tag${moTagClip().names.length === 1 ? '' : 's'} onto ${done.items} item${done.items === 1 ? '' : 's'}.`);
+}
 function moOpenBoard(api, planId) { (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Board', icon: 'layout-dashboard', instanceId: `plans:board:${planId}` }); }
 const moBoardDeps = (api) => ({ api, db, getSetting: moGetSetting, setSetting: moSetSetting, planLoad: moPlanLoad, planRenderer: moPlanRenderer, rotatedSize: moPlanRotatedSize, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, thumb: (img, id) => void moPracticeThumb(img, id, api), openPlan: (id) => moOpenPlan(api, id), openBoard: (id) => moOpenBoard(api, id), ingest: (p) => moIngestNewImage(p), searchPhotos: (t) => db.all(`SELECT p.id, COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.deleted_at IS NULL AND (? = '' OR p.title LIKE ? OR f.basename LIKE ?) ORDER BY p.id DESC LIMIT 24`, [t, `%${t}%`, `%${t}%`]) });
 
@@ -38158,7 +38184,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moBoardActivate(api), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);
@@ -38352,8 +38378,9 @@ export async function activate(api, context) {
       else api.window.showInformationMessage('Open a photo in the editor and remove a mark from it first.');
     }),
   );
-  // Shortcuts go through the one dispatcher, scoped to the image editor's tab.
+  // Shortcuts go through the one dispatcher, scoped to the image editor's tab (Copy Tags and Paste Tags: the library's).
   if (api.keybindings && typeof api.keybindings.register === 'function') {
+    try { _commandDisposables.push(api.keybindings.register('Ctrl+Shift+C', 'media-organizer.copyTags', "activeEditor == 'media-organizer-grid'"), api.keybindings.register('Ctrl+Shift+V', 'media-organizer.pasteTags', "activeEditor == 'media-organizer-grid'")); } catch { /* no shortcut */ }
     const when = `activeEditor == '${MO_EDIT_TYPE}'`;
     for (const [key, command] of [
       ['Ctrl+Z', 'media-organizer.editor.undo'], ['Ctrl+Y', 'media-organizer.editor.redo'], ['Ctrl+Shift+Z', 'media-organizer.editor.redo'],
