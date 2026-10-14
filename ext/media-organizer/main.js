@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -31948,40 +31948,6 @@ function moPlanGridLines(canvasW, canvasH, inches) {
 }
 
 // k-means over [r,g,b] samples (0..255). Deterministic for a given rng.
-function moPlanKMeans(samples, k, iterations, rng) {
-  const rand = typeof rng === 'function' ? rng : Math.random;
-  const n = samples.length;
-  const kk = Math.max(1, Math.min(16, Math.floor(Number(k) || 1)));
-  if (!n) return [];
-  const centres = [];
-  const used = new Set();
-  while (centres.length < Math.min(kk, n)) {
-    const i = Math.floor(rand() * n);
-    if (used.has(i)) continue;
-    used.add(i);
-    centres.push(samples[i].slice(0, 3));
-  }
-  const assign = new Int32Array(n);
-  for (let it = 0; it < Math.max(1, iterations || 8); it++) {
-    for (let i = 0; i < n; i++) {
-      const s = samples[i];
-      let best = 0; let bd = Infinity;
-      for (let c = 0; c < centres.length; c++) {
-        const d = (s[0] - centres[c][0]) ** 2 + (s[1] - centres[c][1]) ** 2 + (s[2] - centres[c][2]) ** 2;
-        if (d < bd) { bd = d; best = c; }
-      }
-      assign[i] = best;
-    }
-    const sums = centres.map(() => [0, 0, 0, 0]);
-    for (let i = 0; i < n; i++) { const a = sums[assign[i]]; const s = samples[i]; a[0] += s[0]; a[1] += s[1]; a[2] += s[2]; a[3]++; }
-    for (let c = 0; c < centres.length; c++) if (sums[c][3]) centres[c] = [sums[c][0] / sums[c][3], sums[c][1] / sums[c][3], sums[c][2] / sums[c][3]];
-  }
-  const counts = centres.map(() => 0);
-  for (let i = 0; i < n; i++) counts[assign[i]]++;
-  return centres.map((c, i) => ({ rgb: c.map((v) => Math.round(v)), share: counts[i] / n }))
-    .sort((a, b) => b.share - a.share);
-}
-
 function moPlanHex(rgb) {
   return '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 }
@@ -32146,8 +32112,7 @@ uniform float u_texture, u_clarity, u_dehaze;
 uniform float u_vignette, u_vigMid, u_vigFeather, u_grain, u_grainSize;
 uniform float u_sharpen, u_sharpRadius, u_noise, u_noiseColour;
 uniform vec3 u_palette[16];
-const vec3 LUMA = vec3(0.299, 0.587, 0.114);
-vec3 rgb2hsv(vec3 c) {
+const vec3 LUMA = vec3(0.299, 0.587, 0.114);${MO_OKLAB_GLSL}vec3 rgb2hsv(vec3 c) {
   vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
   vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
   vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
@@ -32276,12 +32241,12 @@ void main() {
   float lum = dot(c, LUMA);
   if (u_grey > 0.5) c = vec3(lum);
   if (u_notan > 0.0) c = vec3(step(u_notan, lum));
-  else if (u_levels >= 2.0) c = clamp(floor(c * u_levels) / (u_levels - 1.0), 0.0, 1.0);
+  else if (u_levels >= 2.0) { float bi = min(floor(lum * u_levels), u_levels - 1.0); c = u_grey > 0.5 ? vec3(bi / (u_levels - 1.0)) : valueBand(c, (bi + 0.5) / u_levels); } // colour keeps its hue at its band's middle value
   if (u_paletteN > 0.5) {
-    vec3 best = u_palette[0]; float bd = 1.0e9;
+    vec3 best = u_palette[0]; float bd = 1.0e9; vec3 cl = toOklab(c); // nearest as the eye judges it
     for (int i = 0; i < 16; i++) {
       if (float(i) >= u_paletteN) break;
-      vec3 d = c - u_palette[i]; float dd = dot(d, d);
+      vec3 d = cl - toOklab(u_palette[i]); float dd = dot(d, d);
       if (dd < bd) { bd = dd; best = u_palette[i]; }
     }
     c = best;
@@ -32539,14 +32504,14 @@ function moPlanRenderer(canvas) {
     maxTexture: engine.maxTexture,
     setSource(source, blurPx) { engine.setSource(source, { blurPx }); },
     get size() { return engine.size; },
-    // opts: { width, height, full (ignore the crop), split (-1 or 0..1) }
+    // opts: { width, height, full (ignore the crop), split (-1 or 0..1), read }
     render(recipe, opts) {
       const r = recipe;
       const size = engine.size;
       const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
       const look = {};
       for (const k of MO_ENGINE_LOOK_KEYS) look[k] = r[k];
-      engine.draw({
+      return engine[opts.read ? 'sample' : 'draw']({ // read: the pixels back as RGBA bytes
         m: geo.m, look, opaque: true,
         grey: r.grey, levels: r.levels, notan: r.notan,
         palette: r.palette && r.palette.apply ? r.palette.swatches : [],
@@ -32738,8 +32703,8 @@ function renderPlanEditor(container, api, planId) {
     if (!drag.corner) next = { x: c.x + dx, y: c.y + dy, w: c.w, h: c.h };
     else {
       const signX = drag.corner.includes('e') ? 1 : -1;
-      const grow = signX * dx;
-      const w = Math.max(0.02, c.w + grow);
+      const growX = signX * dx, growY = (drag.corner.includes('s') ? 1 : -1) * dy * (aspect() * rs.h) / rs.w; // a corner follows whichever way the pointer went further
+      const w = Math.max(0.02, c.w + (Math.abs(growY) > Math.abs(growX) ? growY : growX));
       const h = (w * rs.w) / (aspect() * rs.h);
       next = { w, h, x: drag.corner.includes('w') ? c.x + (c.w - w) : c.x, y: drag.corner.includes('n') ? c.y + (c.h - h) : c.y };
     }
@@ -32937,20 +32902,12 @@ function renderPlanEditor(container, api, planId) {
   let thumbRenderer = null; let thumbCanvas = null;
   function extractPalette() {
     if (!renderer) return;
-    const small = document.createElement('canvas');
-    small.width = 64; small.height = 64;
-    const sctx = small.getContext('2d');
-    // Off screen, through the variation-thumbnail renderer, so the stage never flashes.
+    // Off screen, through the variation-thumbnail renderer, so the stage never flashes. The colours of
+    // the edited picture inside the crop, before any study aid (grey, values, notan, palette) is applied.
     if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return; thumbRenderer.setSource(state.image, 0); }
-    const keepApply = state.recipe.palette.apply;
-    state.recipe.palette.apply = false;
-    thumbRenderer.render(state.recipe, { width: 128, height: 128, full: false, split: -1 });
-    sctx.drawImage(thumbCanvas, 0, 0, 64, 64);
-    state.recipe.palette.apply = keepApply;
-    const data = sctx.getImageData(0, 0, 64, 64).data;
-    const samples = [];
-    for (let i = 0; i < data.length; i += 4) samples.push([data[i], data[i + 1], data[i + 2]]);
-    const sw = moPlanKMeans(samples, state.recipe.palette.count || 8, 10, moPracticeRng(7));
+    const r = state.recipe, rs = rotated(), k = Math.min(1, 192 / Math.max(rs.w * r.crop.w, rs.h * r.crop.h));
+    let px; try { px = thumbRenderer.render(Object.assign({}, r, { grey: false, levels: 0, notan: 0, palette: Object.assign({}, r.palette, { apply: false }) }), { width: Math.max(8, rs.w * r.crop.w * k), height: Math.max(8, rs.h * r.crop.h * k), full: false, split: -1, read: true }); } catch { return; }
+    const sw = moPalette(px, r.palette.count || 8);
     state.recipe.palette.swatches = sw.map((s) => s.rgb);
     afterRecipeChange(true);
   }
@@ -38222,7 +38179,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);

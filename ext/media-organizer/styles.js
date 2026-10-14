@@ -3,6 +3,7 @@
 // them onto MO_CSS. Same text, same order.
 
 export const MO_CSS_MORE = `
+.mo-hidden { display: none !important; }
 /* Duplicate finder */
 .mo-dup-dialog { width: 800px; max-width: 96vw; }
 .mo-dup-body { padding: 12px 16px; max-height: 70vh; overflow-y: auto; }

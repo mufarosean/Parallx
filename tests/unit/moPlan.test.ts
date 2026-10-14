@@ -1,13 +1,16 @@
 /**
  * Painting-plan math (M104 Part B), extracted verbatim from Media Organizer's
  * @mo-plan-pure region: the recipe defaults, rotation, the canvas-locked
- * crop and its clamp, the transfer grid, k-means swatches and output names.
+ * crop and its clamp, the transfer grid and output names; palette and colour
+ * science from colour.js.
  */
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// @ts-expect-error plain ES module without types
+import { moPalette, moOklab, moFromOklab } from '../../ext/media-organizer/colour.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,12 +21,12 @@ function loadPure(): Record<string, any> {
   expect(a).toBeGreaterThan(0);
   expect(b).toBeGreaterThan(a);
   const names = ['MO_PLAN_CANVAS_PRESETS', 'moPlanDefaultRecipe', 'moPlanNormalizeRecipe', 'moPlanRotatedSize', 'moPlanFitCrop', 'moPlanClampCrop',
-    'moPlanGridLines', 'moPlanKMeans', 'moPlanHex', 'moPlanOutputName'];
+    'moPlanGridLines', 'moPlanHex', 'moPlanOutputName'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
 const P = loadPure();
-const rng = (seed: number) => { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+const pixels = (...runs: [number, number[]][]) => { const out: number[] = []; for (const [n, c] of runs) for (let i = 0; i < n; i++) out.push(c[0], c[1], c[2], 255); return new Uint8Array(out); };
 
 describe('recipe', () => {
   it('normalizes a partial stored recipe and wraps rotation', () => {
@@ -89,20 +92,31 @@ describe('transfer grid', () => {
 });
 
 describe('palette', () => {
-  it('finds the dominant colours of a two-tone sample, largest share first', () => {
-    const samples: number[][] = [];
-    for (let i = 0; i < 300; i++) samples.push([250, 10, 10]);
-    for (let i = 0; i < 100; i++) samples.push([10, 10, 250]);
-    const sw = P.moPlanKMeans(samples, 2, 8, rng(3));
+  it('finds the dominant colours of a two-tone picture, largest share first', () => {
+    const sw = moPalette(pixels([300, [250, 10, 10]], [100, [10, 10, 250]]), 2);
     expect(sw.length).toBe(2);
     expect(sw[0].rgb).toEqual([250, 10, 10]);
     expect(sw[0].share).toBeCloseTo(0.75, 6);
     expect(sw[1].rgb).toEqual([10, 10, 250]);
   });
-  it('never returns more swatches than samples, and formats hex', () => {
-    expect(P.moPlanKMeans([[1, 2, 3]], 8, 4, rng(1)).length).toBe(1);
-    expect(P.moPlanKMeans([], 8, 4, rng(1))).toEqual([]);
+  it('keeps a small accent colour apart from a large field of near shades', () => {
+    const sw = moPalette(pixels([2000, [40, 90, 40]], [2000, [46, 98, 44]], [2000, [52, 104, 50]], [60, [230, 200, 20]]), 3);
+    expect(sw.some((s: { rgb: number[] }) => s.rgb[0] > 200 && s.rgb[2] < 60)).toBe(true);
+  });
+  it('merges swatches the eye would call the same, and is the same every time', () => {
+    const px = pixels([500, [120, 60, 30]], [500, [121, 60, 31]]);
+    expect(moPalette(px, 8).length).toBe(1);
+    expect(moPalette(px, 8)).toEqual(moPalette(px, 8));
+  });
+  it('never returns more swatches than colours, skips transparent pixels, and formats hex', () => {
+    expect(moPalette(pixels([1, [1, 2, 3]]), 8).length).toBe(1);
+    expect(moPalette(new Uint8Array([9, 9, 9, 0]), 8)).toEqual([]);
+    expect(moPalette(new Uint8Array(0), 8)).toEqual([]);
     expect(P.moPlanHex([255, 0, 128])).toBe('#ff0080');
+  });
+  it('round-trips sRGB through OKLab', () => {
+    for (const c of [[0, 0, 0], [255, 255, 255], [200, 40, 90], [12, 140, 220]]) expect(moFromOklab(...(moOklab(c[0], c[1], c[2]) as [number, number, number]))).toEqual(c);
+    expect(moOklab(255, 255, 255)[0]).toBeCloseTo(1, 4);
   });
 });
 

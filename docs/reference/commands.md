@@ -243,6 +243,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `media-organizer.openTagReview` | Open Tag Review | media-organizer | Atelier |  |  |
 | `media-organizer.paintingPlans` | Painting Plans | media-organizer | Atelier |  |  |
 | `media-organizer.pasteEdit` | Paste Edit Onto Selected Photos | media-organizer | Atelier |  |  |
+| `media-organizer.planPainting` | Plan Painting | media-organizer | Atelier |  |  |
 | `media-organizer.practiceSession` | Practice Session | media-organizer | Atelier |  |  |
 | `media-organizer.rebuildSearchIndex` | Rebuild Search Index | media-organizer | Atelier |  |  |
 | `media-organizer.recordGif` | Record Screen… | media-organizer | Atelier |  |  |

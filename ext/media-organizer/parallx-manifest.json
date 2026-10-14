@@ -26,6 +26,7 @@
       { "id": "media-organizer.practiceSession", "title": "Practice Session", "category": "Atelier" },
       { "id": "media-organizer.dailyStudy", "title": "Daily Study", "category": "Atelier" },
       { "id": "media-organizer.paintingPlans", "title": "Painting Plans", "category": "Atelier" },
+      { "id": "media-organizer.planPainting", "title": "Plan Painting", "category": "Atelier" },
       { "id": "media-organizer.upscaleSetup", "title": "Set Up The Upscaler", "category": "Atelier" },
       { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Atelier" },
       { "id": "media-organizer.rebuildSearchIndex", "title": "Rebuild Search Index", "category": "Atelier" },
