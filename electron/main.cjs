@@ -1404,6 +1404,8 @@ function normalizeError(err, filePath) {
  */
 const BINARY_EXTENSIONS = new Set([
   '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg',
+  '.tif', '.tiff', '.heic', '.heif', '.avif', '.ppm',
+  '.raw', '.cr2', '.cr3', '.crw', '.nef', '.nrw', '.arw', '.dng', '.orf', '.rw2', '.raf', '.pef', '.srw', '.3fr', '.erf', '.kdc', '.mrw', '.x3f',
   '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz',
   '.exe', '.dll', '.so', '.dylib', '.bin',
   '.mp3', '.mp4', '.wav', '.ogg', '.flac', '.avi', '.mkv', '.mov', '.webm',

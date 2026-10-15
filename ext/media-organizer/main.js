@@ -2187,7 +2187,7 @@ const VideoFileQueries = {
 const IMAGE_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
   '.heic', '.heif', '.avif', '.svg', '.ico', '.raw', '.cr2', '.nef',
-  '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw',
+  '.arw', '.dng', '.orf', '.rw2', '.pef', '.srw', '.cr3', '.crw', '.nrw', '.raf', '.3fr', '.erf', '.kdc', '.mrw', '.x3f',
 ]);
 
 const VIDEO_EXTENSIONS = new Set([
@@ -2511,6 +2511,8 @@ function parseFrameRate(rateStr) {
 
 async function extractImageDimensions(filePath) {
   if (!_toolPaths.ffprobe) return null;
+  // A camera raw's own streams are its sensor data or a small preview: its size is its display copy's.
+  if (MO_RAW_RE.test(filePath)) { const copy = await moHeicDisplayCopy(filePath); if (!copy) return null; const d = await extractImageDimensions(copy); return d ? Object.assign(d, { format: filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase() }) : null; }
   try {
     const cmd = `${shellInvoke(_toolPaths.ffprobe)} -v quiet -print_format json -show_streams ${shellQuote(filePath)}`;
     const result = await window.parallxElectron.terminal.exec(cmd, { timeout: SCAN_DEFAULTS.ffprobeTimeout });
@@ -4351,7 +4353,7 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
 
   // HEIC (phone photos): no decoder in Chromium, so the thumbnail and every
   // display come from a JPEG copy made once by the bundled magick.
-  const heicCopy = MO_HEIC_RE.test(filePath) ? await moHeicDisplayCopy(filePath, api) : null;
+  const heicCopy = MO_COPY_RE.test(filePath) ? await moHeicDisplayCopy(filePath, api) : null;
   const input = heicCopy || filePath;
 
   // Animated images go straight to canvas (renders first frame only)
@@ -8802,7 +8804,7 @@ function moMediaStreamUrl(filePath) {
 async function localFileToUrl(filePath) {
   if (!filePath) return null;
   if (MO_STREAM_EXT_RE.test(filePath)) return moMediaStreamUrl(filePath);
-  if (MO_HEIC_RE.test(filePath)) { const copy = await moHeicDisplayCopy(filePath, _api); if (copy) filePath = copy; }
+  if (MO_COPY_RE.test(filePath)) { const copy = await moHeicDisplayCopy(filePath, _api); if (copy) filePath = copy; }
   const cached = _blobUrlCache.get(filePath);
   if (cached) return cached;
   try {
@@ -14510,8 +14512,8 @@ async function moAttachItemsToChat(items) {
 // library's import folder and scans it, so a screenshot or a download is in
 // the library in one gesture. The import folder is "Imports" under the first
 // scan root; with no scan root yet, the user picks a folder once.
-const MO_IMPORT_EXTS = /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|avif|mp4|mov|mkv|webm|avi|m4v|mpe?g)$/i;
-const MO_IMPORT_EXT_LIST = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'heic', 'avif', 'mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'mpg', 'mpeg'];
+const MO_IMPORT_EXTS = /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|avif|cr2|cr3|nef|arw|dng|orf|rw2|raf|pef|srw|mp4|mov|mkv|webm|avi|m4v|mpe?g)$/i;
+const MO_IMPORT_EXT_LIST = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'heic', 'avif', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'orf', 'rw2', 'raf', 'pef', 'srw', 'mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'mpg', 'mpeg'];
 
 async function moPickImportFolder() {
   const roots = await getScanRoots();
@@ -27909,6 +27911,7 @@ function moHammingDistance(aBig, bBig) {
 // 9×8, gray, raw pixels via -f rawvideo. Returns 64-bit BigInt or null.
 async function moComputePHash(filePath) {
   if (!_toolPaths.ffmpeg) return null;
+  if (MO_COPY_RE.test(filePath)) { const copy = await moHeicDisplayCopy(filePath); if (!copy) return null; filePath = copy; }
   const tmpDir = await getThumbDir();
   if (!tmpDir) return null;
   const sep = _isWindows ? '\\' : '/';
@@ -30534,6 +30537,10 @@ const _sidebarRefreshCallbacks = [];
 // Phone footage and photos the renderer cannot decode play from copies made
 // once into the thumbnail cache. Originals are never touched.
 const MO_HEIC_RE = /\.(heic|heif)$/i;
+// Camera raw: Chromium cannot draw it either. Its display copy is the raw developed by the bundled magick's
+// LibRaw (camera white balance, upright); the Image Editor reads the raw itself at 16 bits (moEditDecodeDeep).
+const MO_RAW_RE = /\.(raw|cr2|cr3|crw|nef|nrw|arw|dng|orf|rw2|raf|pef|srw|3fr|erf|kdc|mrw|x3f)$/i;
+const MO_COPY_RE = /\.(heic|heif|raw|cr2|cr3|crw|nef|nrw|arw|dng|orf|rw2|raf|pef|srw|3fr|erf|kdc|mrw|x3f)$/i;
 const MO_PREVIEW_CODECS = new Set(['hevc', 'h265', 'vp8', 'mpeg4', 'mpeg2video', 'wmv3', 'vc1', 'prores']);
 const _moCopyInflight = new Map();
 function moPathKey(filePath, st) {
@@ -30567,9 +30574,9 @@ async function moCopyOnce(srcPath, subdir, ext, make, api) {
   _moCopyInflight.set(outPath, p);
   return p;
 }
-// JPEG copy of a HEIC photo, through the bundled magick.
+// JPEG copy of a HEIC or camera raw photo, through the bundled magick.
 async function moHeicDisplayCopy(filePath, api) {
-  if (!MO_HEIC_RE.test(filePath) || !_toolPaths.magick) return null;
+  if (!MO_COPY_RE.test(filePath) || !_toolPaths.magick) return null;
   return moCopyOnce(filePath, 'converted', '.jpg', async (outPath) => {
     const m = shellInvoke(_toolPaths.magick);
     const r = await window.parallxElectron.terminal.exec(`${m} ${shellQuote(filePath)} -auto-orient -quality 92 ${shellQuote(outPath)}`, { timeout: 600000 });
@@ -34188,7 +34195,7 @@ async function moEditWriteBytes(filePath, bytes) {
  */
 async function moEditDecode(filePath) {
   let p = filePath;
-  if (MO_HEIC_RE.test(p)) { const copy = await moHeicDisplayCopy(p, _api); if (copy) p = copy; }
+  if (MO_COPY_RE.test(p)) { const copy = await moHeicDisplayCopy(p, _api); if (copy) p = copy; }
   const bytes = await moEditReadBytes(p);
   const ext = p.slice(p.lastIndexOf('.')).toLowerCase();
   const blob = new Blob([bytes], { type: _MIME_FROM_EXT[ext] || 'application/octet-stream' });
@@ -34384,11 +34391,13 @@ async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBy
       drawn = edits + sep + `enhance-${stamp}.png`;
       await moEditWriteBytes(drawn, new Uint8Array(await blob.arrayBuffer()));
     }
+    const input = drawn || (MO_ENHANCE_READS.test(srcPath) ? srcPath : await moHeicDisplayCopy(srcPath)); // a raw or HEIC goes as its display copy
+    if (!input) throw new Error('This photo could not be read for Enhance.');
     if (ext === 'png') {
-      await moEditUpscaleFile(drawn || srcPath, outPath, scale, recipe.enhance.model, tell);
+      await moEditUpscaleFile(input, outPath, scale, recipe.enhance.model, tell);
     } else {
       large = edits + sep + `enlarged-${stamp}.png`;
-      await moEditUpscaleFile(drawn || srcPath, large, scale, recipe.enhance.model, tell);
+      await moEditUpscaleFile(input, large, scale, recipe.enhance.model, tell);
       await moEditPngToJpeg(large, outPath, camera);
     }
   } finally { await gone(drawn); await gone(large); }
