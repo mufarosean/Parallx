@@ -54,7 +54,7 @@ export function moPlanPhoto(ctx) {
   const valid = () => { const e = state.recipe && state.recipe.enhanced; return !!e && e.key === moPlanEnhanceKey(state.recipe); };
   /** The picture a step draws from, and the recipe to draw it with. */
   function source(step) {
-    const base = work || state.image;
+    const base = work || state.deep || state.image; // the photo at full depth when the editor read it (a raw)
     if (step !== 'compose' && valid() && enh && enh.file === state.recipe.enhanced.file) return { img: enh.img, eff: (r) => Object.assign({}, r, IDENT), enhanced: true };
     return { img: base, eff: (r) => r, enhanced: false };
   }

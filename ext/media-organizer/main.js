@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_COMMON_PAINTS, MO_OKLAB_GLSL, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_COMMON_PAINTS, MO_OKLAB_GLSL, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -30540,7 +30540,7 @@ const MO_HEIC_RE = /\.(heic|heif)$/i;
 // Camera raw: Chromium cannot draw it either. Its display copy is the raw developed by the bundled magick's
 // LibRaw (camera white balance, upright); the Image Editor reads the raw itself at 16 bits (moEditDecodeDeep).
 const MO_RAW_RE = /\.(raw|cr2|cr3|crw|nef|nrw|arw|dng|orf|rw2|raf|pef|srw|3fr|erf|kdc|mrw|x3f)$/i;
-const MO_COPY_RE = /\.(heic|heif|raw|cr2|cr3|crw|nef|nrw|arw|dng|orf|rw2|raf|pef|srw|3fr|erf|kdc|mrw|x3f)$/i;
+const MO_COPY_RE = /\.(heic|heif|tiff?|raw|cr2|cr3|crw|nef|nrw|arw|dng|orf|rw2|raf|pef|srw|3fr|erf|kdc|mrw|x3f)$/i;
 const MO_PREVIEW_CODECS = new Set(['hevc', 'h265', 'vp8', 'mpeg4', 'mpeg2video', 'wmv3', 'vc1', 'prores']);
 const _moCopyInflight = new Map();
 function moPathKey(filePath, st) {
@@ -32363,9 +32363,25 @@ function moImageEngine(canvas) {
     maxTexture: maxTex,
     // source: an Image, ImageBitmap or canvas. opts.blurPx bakes a squint blur
     // into the texture; opts.smooth keeps a shrunken view clean (WebGL2 only).
+    // A deep picture (raw-deep.js: half floats, RGBA) goes up as RGBA16F on WebGL2; false when it cannot (no
+    // WebGL2, too large, or a blur asked for), and the caller draws from its 8-bit copy.
     setSource(source, opts) {
       const o = opts || {};
       const blurPx = Number(o.blurPx) || 0;
+      if (source && source.deep) {
+        if (!gl2 || blurPx > 0 || Math.max(source.width, source.height) > maxTex) return false;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, source.width, source.height, 0, gl.RGBA, gl.HALF_FLOAT, source.half);
+        const smooth = o.smooth === true && !!gl.getExtension('EXT_color_buffer_float'); // mipmaps of a float texture need it
+        if (smooth) gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, smooth ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+        srcW = source.width; srcH = source.height;
+        dropBlur();
+        return true;
+      }
       let w = source.naturalWidth || source.width; let h = source.naturalHeight || source.height;
       const scale = Math.min(1, maxTex / Math.max(w, h));
       let up = source;
@@ -32387,8 +32403,11 @@ function moImageEngine(canvas) {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, smooth ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
       srcW = w; srcH = h;
       dropBlur();
+      return true;
     },
     get size() { return { w: srcW, h: srcH }; },
+    /** Whether a deep picture can go up (WebGL2). */
+    get deep() { return !!gl2; },
     // p: { view, m, outSize, look, curve, mix, grade, grey, levels, notan, palette, split, opaque, outside }
     draw(p, width, height) {
       const W = Math.max(1, Math.round(width)); const H = Math.max(1, Math.round(height));
@@ -32413,6 +32432,34 @@ function moImageEngine(canvas) {
       for (let y = 0; y < H; y++) out.set(raw.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
       return out;
     },
+    // The same drawing as floats, RGBA 0..1, rows top to bottom: for a 16-bit save. Null without float targets.
+    sampleFloat(p, width, height) {
+      if (!gl2 || !gl.getExtension('EXT_color_buffer_float')) return null;
+      const W = Math.max(1, Math.round(width)); const H = Math.max(1, Math.round(height));
+      prepare(p);
+      gl.activeTexture(gl.TEXTURE7);
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, W, H, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      let out = null;
+      try {
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return null;
+        apply(p, W, H);
+        const raw = new Float32Array(W * H * 4);
+        gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, raw);
+        out = new Float32Array(raw.length);
+        for (let y = 0; y < H; y++) out.set(raw.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+      } finally {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(fb); gl.deleteTexture(t);
+        gl.activeTexture(gl.TEXTURE0);
+      }
+      return out;
+    },
     dispose() {
       try {
         for (const t of targets.slice()) release(t);
@@ -32430,8 +32477,9 @@ function moPlanRenderer(canvas) {
   if (!engine) return null;
   return {
     maxTexture: engine.maxTexture,
-    setSource(source, blurPx) { engine.setSource(source, { blurPx }); },
+    setSource(source, blurPx) { return engine.setSource(source, { blurPx }); },
     get size() { return engine.size; },
+    get deep() { return engine.deep; },
     // opts: { width, height, full (ignore the crop), split (-1 or 0..1), read, aids (squint's values, grey, notan,
     // the limited palette: drawn unless false), rest (the look at rest) }
     render(recipe, opts) {
@@ -32574,7 +32622,8 @@ function renderPlanEditor(container, api, planId) {
     if (!renderer || !state.image) return;
     const src = photo.source(state.tool), blur = wantBlur(), rs = rotated();
     const long = src.enhanced ? Math.max(src.img.width, src.img.height) : Math.max(rs.w * state.recipe.crop.w, rs.h * state.recipe.crop.h);
-    renderer.setSource(src.img, blur > 0 ? (blur * long) / 100 : 0);
+    // A blur (Values' squint) is made on the 8-bit picture; the deep one goes up as it is.
+    if (renderer.setSource(src.img, blur > 0 ? (blur * long) / 100 : 0) === false) renderer.setSource(state.image, blur > 0 ? (blur * long) / 100 : 0);
     state.blurBaked = blur; state.srcBaked = src.img;
   }
   function requestRender() { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
@@ -32870,6 +32919,8 @@ function renderPlanEditor(container, api, planId) {
       state.image = image; state.imgW = image.naturalWidth; state.imgH = image.naturalHeight;
       renderer = moPlanRenderer(glCanvas);
       if (!renderer) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'WebGL is not available, so the plan cannot be shown.' })); return; }
+      // A raw (or a TIFF) is planned from at full depth once it is read (plan-photo.js draws from it).
+      if (renderer.deep && MO_DEEP_RE.test(state.srcPath)) void moEditDecodeDeep(state.srcPath).then((d) => { if (disposed || !d) return; state.deep = d; if (needsBake()) bakeSource(); requestRender(); });
       for (const x of state.variants) { if (!x.recipe.canvas) x.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; moPlanWithLook(x.recipe); }
       let draft = null; try { draft = state.plan.draft_json ? moPlanRecipe(JSON.parse(state.plan.draft_json)) : null; } catch { draft = null; }
       const kept = state.variants.find((x) => x.id === state.plan.variant_id) || state.variants[0] || null;
@@ -34193,6 +34244,21 @@ async function moEditWriteBytes(filePath, bytes) {
  * window cannot decode (HEIC) is read from its display copy. Also returns the
  * file's bytes, which Save As Copy needs for the camera data.
  */
+// The photo at full depth (raw-deep.js), for the editor and plans: a camera raw developed at 16 bits by the
+// bundled magick's LibRaw, or a TIFF read at its own depth. The 16-bit picture passes through a work folder
+// in the workspace, erased the user's delete way (moEnhanceTemp). Null for other kinds, or when it fails.
+const MO_DEEP_RE = /\.(tiff?|raw|cr2|cr3|crw|nef|nrw|arw|dng|orf|rw2|raf|pef|srw|3fr|erf|kdc|mrw|x3f)$/i;
+async function moEditDecodeDeep(filePath) {
+  if (!MO_DEEP_RE.test(filePath) || !_toolPaths.magick) return null;
+  try {
+    return await moEnhanceTemp(_api, async (dir) => {
+      const out = dir + (_isWindows ? '\\' : '/') + 'deep.ppm';
+      const r = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(filePath + '[0]')} -auto-orient -depth 16 ${shellQuote('ppm:' + out)}`, { timeout: 600000 });
+      if (r.exitCode !== 0) { console.warn('[MediaOrganizer] the full-depth read failed:', r.stderr || r.stdout || ''); return null; }
+      return moDeepFromPpm(await moEditReadBytes(out));
+    });
+  } catch (err) { console.warn('[MediaOrganizer] the full-depth read failed:', err && err.message); return null; }
+}
 async function moEditDecode(filePath) {
   let p = filePath;
   if (MO_COPY_RE.test(p)) { const copy = await moHeicDisplayCopy(p, _api); if (copy) p = copy; }
@@ -34281,9 +34347,9 @@ async function moEditRenderFull(source, recipe, flatten, onTile) {
     for (const tile of tiles) {
       const part = moEditTileSource(geo.m, tile, geo.outW, geo.outH, imgW, imgH, margin);
       const whole = part.sx === 0 && part.sy === 0 && part.sw === imgW && part.sh === imgH;
-      const piece = whole ? source : await createImageBitmap(source, part.sx, part.sy, part.sw, part.sh, { premultiplyAlpha: 'none' });
+      const piece = whole ? source : source.deep ? moDeepCrop(source, part.sx, part.sy, part.sw, part.sh) : await createImageBitmap(source, part.sx, part.sy, part.sw, part.sh, { premultiplyAlpha: 'none' });
       try {
-        engine.setSource(piece, {});
+        if (engine.setSource(piece, {}) === false) throw new Error('Saving a photo at full depth needs WebGL 2, which this computer does not offer here.');
         engine.draw(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: false }), tile.w, tile.h);
         ctx.drawImage(glCanvas, tile.x, tile.y);
       } finally { if (!whole && piece.close) piece.close(); }
@@ -34293,6 +34359,64 @@ async function moEditRenderFull(source, recipe, flatten, onTile) {
     }
   } finally { engine.dispose(); }
   return out;
+}
+
+// The edited picture as a 16-bit PPM (raw-deep.js), drawn in float tiles: what Save As 16-Bit TIFF writes.
+async function moEditRenderDeep(source, recipe, onTile) {
+  const geo = moEditAffine(recipe, source.width, source.height);
+  if (geo.outW > MO_EDIT_MAX_SIDE || geo.outH > MO_EDIT_MAX_SIDE || geo.outW * geo.outH > MO_EDIT_MAX_PIXELS) throw new Error(`The picture is too large to save from here (${geo.outW} × ${geo.outH} pixels).`);
+  const engine = moImageEngine(document.createElement('canvas'));
+  if (!engine) throw new Error('WebGL is not available, so the picture cannot be rendered.');
+  try {
+    const ppm = moPpm16Begin(geo.outW, geo.outH);
+    const params = moEditEngineLook(recipe, false), margin = moEditMargin(recipe);
+    const tiles = moEditTiles(geo.outW, geo.outH, Math.min(2048, Math.floor(engine.maxTexture / 2)));
+    let drawn = 0;
+    for (const tile of tiles) {
+      const part = moEditTileSource(geo.m, tile, geo.outW, geo.outH, source.width, source.height, margin);
+      const whole = part.sx === 0 && part.sy === 0 && part.sw === source.width && part.sh === source.height;
+      const piece = whole ? source : source.deep ? moDeepCrop(source, part.sx, part.sy, part.sw, part.sh) : await createImageBitmap(source, part.sx, part.sy, part.sw, part.sh, { premultiplyAlpha: 'none' });
+      try {
+        if (engine.setSource(piece, {}) === false) throw new Error('Saving at 16 bits needs WebGL 2, which this computer does not offer here.');
+        const px = engine.sampleFloat(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: true }), tile.w, tile.h);
+        if (!px) throw new Error('Saving at 16 bits needs float drawing, which this computer does not offer here.');
+        moPpm16Put(ppm, px, tile.x, tile.y, tile.w, tile.h);
+      } finally { if (!whole && piece.close) piece.close(); }
+      drawn++;
+      if (onTile) onTile(drawn / tiles.length);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    return { bytes: ppm.bytes, width: geo.outW, height: geo.outH };
+  } finally { engine.dispose(); }
+}
+// Save As 16-Bit TIFF: the edit at full depth beside the original, its camera data copied when exiftool is
+// there, taken into the library like a saved copy. Enhance's enlarging is not part of it.
+async function moEditSaveTiff(photoId, srcPath, source, recipe, onProgress) {
+  const sep = srcPath.includes('\\') ? '\\' : '/';
+  const dir = srcPath.slice(0, srcPath.lastIndexOf(sep)), base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
+  let outPath = null;
+  for (let n = 1; n < 100; n++) {
+    const candidate = dir + sep + moEditOutputName(base, n, 0, true).replace(/\.[a-z]+$/i, '.tif');
+    if (!(await window.parallxElectron.fs.exists(candidate))) { outPath = candidate; break; }
+  }
+  if (!outPath) throw new Error('No free file name beside the original.');
+  const say = (label, fraction) => { if (onProgress) try { onProgress({ label, fraction }); } catch { /* the editor closed */ } };
+  const pic = await moEditRenderDeep(source, recipe, (k) => say('Drawing at 16 bits', k * 0.7));
+  say('Writing the TIFF', 0.75);
+  await moEnhanceTemp(_api, async (work) => {
+    const ppm = work + sep + 'edit.ppm';
+    await moEditWriteBytes(ppm, pic.bytes);
+    const r = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(ppm)} -compress zip ${shellQuote(outPath)}`, { timeout: 600000 });
+    if (r.exitCode !== 0) throw new Error(r.stderr || r.stdout || 'magick could not write the TIFF.');
+  });
+  if (_toolPaths.exiftool) await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.exiftool)} -overwrite_original -q -TagsFromFile ${shellQuote(srcPath)} -all:all -Orientation#=1 ${shellQuote(outPath)}`, { timeout: 60000 }).catch(() => null);
+  say('Adding it to the library', 0.9);
+  let photo = null;
+  try { photo = await moIngestNewImage(outPath); } catch (err) { console.warn('[MediaOrganizer] the TIFF could not be taken into the library:', err?.message || err); }
+  if (photo) await moTransferPhotoMetadata(photoId, photo.id, base);
+  _notifySidebarRefresh();
+  try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no grid open */ }
+  return { name: outPath.slice(outPath.lastIndexOf(sep) + 1), path: outPath, photoId: photo ? Number(photo.id) : null, width: pic.width, height: pic.height };
 }
 
 // Enlarge a written picture with the Enhance engine (enhance-engine.js), straight to `output` (a PNG).
@@ -36226,6 +36350,7 @@ function renderImageEditor(container, api) {
     const writable = !!moEditSaveOverExt(state.name);
     showContextMenu(r.right - 260, r.bottom + 2, [
       { label: 'Save As Copy', icon: 'copy', key: 'Ctrl+S', disabled: saveBtn.disabled, handler: () => void saveCopy() },
+      ...(state.deep ? [{ label: 'Save As 16-Bit TIFF', icon: 'file-image', disabled: saveBtn.disabled, title: 'The edit at full depth, for more work elsewhere (no enlarging)', handler: () => void saveTiff() }] : []),
       { label: 'Save Over Original…', icon: 'save', danger: true, disabled: saveBtn.disabled || !writable, title: writable ? 'Replace the original file with the edited picture' : 'This kind of file can only be saved as a copy', handler: () => void saveOver() },
       { separator: true },
       { label: 'Your edits are kept with the photo either way; nothing is lost if you close the tab.', disabled: true },
@@ -36404,10 +36529,29 @@ function renderImageEditor(container, api) {
     return moEditViewMap(geo.outW, geo.outH, cs.w, cs.h, v.zoom, v.cx, v.cy);
   }
   function requestRender() { if (raf || disposed) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+  // What the engine draws from: the photo at full depth when there is one (with the removals laid over it),
+  // else its 8-bit picture. The 8-bit picture stays for what draws on a 2D canvas (white balance, Remove).
+  function engineSource() {
+    if (state.deep && !state.deepFailed) {
+      if (state.original || !state.work || state.work === state.bitmap) return state.deep;
+      if (state.workDeepKey !== state.workKey) {
+        const g = state.work.getContext('2d', { willReadFrequently: true });
+        state.workDeep = moDeepWithBoxes(state.deep, moEditShownRemovals(state.recipe).map((m) => { const x = Math.max(0, m.x), y = Math.max(0, m.y), w = Math.min(state.bitmap.width - x, m.w), h = Math.min(state.bitmap.height - y, m.h); return { x, y, w, h, data: g.getImageData(x, y, w, h).data }; }));
+        state.workDeepKey = state.workKey;
+      }
+      return state.workDeep;
+    }
+    return state.original ? state.bitmap : (state.work || state.bitmap);
+  }
+  function useSource() {
+    let src = engineSource();
+    if (state.sourceObj === src) return;
+    if (engine.setSource(src, { smooth: true }) === false) { state.deepFailed = true; src = engineSource(); engine.setSource(src, { smooth: true }); }
+    state.sourceObj = src;
+  }
   function draw() {
     if (disposed || !engine || !state.recipe || !state.bitmap || !stage.clientWidth) return;
-    const src = state.original ? state.bitmap : (state.work || state.bitmap);
-    if (state.sourceObj !== src) { engine.setSource(src, { smooth: true }); state.sourceObj = src; }
+    useSource();
     const cs = canvasSize();
     const geo = geometry();
     canvas.style.width = stage.clientWidth + 'px'; canvas.style.height = stage.clientHeight + 'px';
@@ -36439,7 +36583,8 @@ function renderImageEditor(container, api) {
     dial.classList.toggle('mo-hidden', !crop);
     engine.draw(p, cs.w, cs.h);
     const mb = state.bytes ? state.bytes.byteLength / 1048576 : 0;
-    sizeEl.textContent = `${geo.outW} \u00d7 ${geo.outH}` + (mb ? ` \u00b7 ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB` : '');
+    sizeEl.textContent = `${geo.outW} \u00d7 ${geo.outH}` + (mb ? ` \u00b7 ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB` : '') + (state.sourceObj && state.sourceObj.deep ? ' \u00b7 16-bit' : '');
+    sizeEl.title = state.sourceObj && state.sourceObj.deep ? 'Editing at full depth: every control works on the photo\u2019s own levels' : '';
     placeMarkBox(cs, geo);
     if (state.showClip && !crop) scheduleClipLayer(); else clipLayer.classList.add('mo-hidden');
     if (paint.width !== cs.w || paint.height !== cs.h) { paint.width = cs.w; paint.height = cs.h; paint.style.width = canvas.style.width; paint.style.height = canvas.style.height; }
@@ -37267,8 +37412,7 @@ function renderImageEditor(container, api) {
           try {
             const rr = moEditApplyLook(state.recipe, job.look);
             const strip = moEditCurveIsRest(rr.curve) ? null : moEditCurveStrip(rr.curve);
-            const src = state.work || state.bitmap;
-            if (state.sourceObj !== src) { engine.setSource(src, { smooth: true }); state.sourceObj = src; }
+            useSource();
             const px = engine.sample(Object.assign(moEditEngineLook(rr, false, strip), { m: geo.m, outSize: [geo.outW, geo.outH], opaque: true }), tw, th);
             const c = document.createElement('canvas'); c.width = tw; c.height = th;
             c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer), tw, th), 0, 0);
@@ -37391,7 +37535,7 @@ function renderImageEditor(container, api) {
     try {
       await flushSave();
       await syncWork();
-      const saved = await moEditSaveCopy(state.photoId, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); }, { enlarged: keptForSave() });
+      const saved = await moEditSaveCopy(state.photoId, state.srcPath, engineSource(), state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); }, { enlarged: keptForSave() });
       await discardKept();   // used (a PNG copy took its place) or turned into a JPEG: what is left is erased
       // Said on the stage, with Show in Folder and Open; no dialog to dismiss.
       if (!disposed) {
@@ -37400,6 +37544,22 @@ function renderImageEditor(container, api) {
       }
     } catch (err) {
       api.window.showErrorMessage('The copy could not be saved: ' + ((err && err.message) || err));
+    } finally {
+      state.saving = false;
+      if (!disposed) { setSaveLabel('Save As Copy'); busy(''); syncButtons(); }
+    }
+  }
+
+  // ── Save: at full depth ──
+  async function saveTiff() {
+    if (state.saving || !state.deep || !state.recipe) return;
+    state.saving = true; setSaveLabel('Saving'); syncButtons(); busy('Drawing at 16 bits', 0);
+    try {
+      await flushSave(); await syncWork();
+      const saved = await moEditSaveTiff(state.photoId, state.srcPath, engineSource(), state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
+      if (!disposed) showToast(`Saved ${saved.name} \u00b7 ${saved.width} \u00d7 ${saved.height} \u00b7 16-bit`, saved.path, saved.photoId);
+    } catch (err) {
+      api.window.showErrorMessage('The TIFF could not be saved: ' + ((err && err.message) || err));
     } finally {
       state.saving = false;
       if (!disposed) { setSaveLabel('Save As Copy'); busy(''); syncButtons(); }
@@ -37459,6 +37619,7 @@ function renderImageEditor(container, api) {
     histExif.textContent = ''; histClip.textContent = '';
     if (state.bitmap) { try { state.bitmap.close(); } catch { /* gone */ } }
     state.bitmap = null; state.bytes = null; state.work = null; state.workKey = '[]'; state.sourceObj = null; state.hist = null;
+    state.deep = null; state.workDeep = null; state.workDeepKey = ''; state.deepFailed = false;
     state.photoId = id;
     sizeEl.textContent = ''; zoomEl.textContent = '';
     syncButtons(); syncCompare(); renderPanel(); renderPresets();
@@ -37478,6 +37639,8 @@ function renderImageEditor(container, api) {
       if (disposed || seq !== loadSeq) { decoded.bitmap.close(); return; }
       state.bitmap = decoded.bitmap; state.bytes = decoded.bytes;
       if (!engine) engine = moImageEngine(canvas);
+      // A raw (or a TIFF) is edited at full depth once it is read: the 8-bit picture shows until then.
+      if (engine && engine.deep && MO_DEEP_RE.test(state.srcPath)) void moEditDecodeDeep(state.srcPath).then((d) => { if (disposed || seq !== loadSeq || !d) return; state.deep = d; state.sourceObj = null; requestRender(); });
       if (!engine) { say('WebGL is not available, so the photo cannot be edited here.'); return; }
       // a crop that no longer lies on the photo (the file was replaced by another size) is brought back onto it
       const v = moEditViewSize(state.bitmap.width, state.bitmap.height, recipe.rotate);
