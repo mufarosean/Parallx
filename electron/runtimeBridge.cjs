@@ -413,6 +413,8 @@ function setupRuntimeBridge(ipcMain, opts) {
       PYTHONPYCACHEPREFIX: path.join(d.root, 'pycache'), TEMP: d.tmp, TMP: d.tmp, TMPDIR: d.tmp,
       HF_HOME: path.join(d.home, 'hf'), HF_HUB_OFFLINE: '1', TORCH_HOME: path.join(d.home, 'torch'), XDG_CACHE_HOME: path.join(d.home, 'cache'),
       MPLCONFIGDIR: path.join(d.home, 'mpl'), PARALLX_RUNTIME_FILES: d.files,
+      // Number the cards as nvidia-smi does, so the card a tool checks is the card that runs.
+      CUDA_DEVICE_ORDER: 'PCI_BUS_ID',
     });
     fs.mkdirSync(d.tmp, { recursive: true });
     let stall = null;

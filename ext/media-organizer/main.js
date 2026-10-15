@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { MO_ENHANCE_MIN_FREE_MIB, moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -2210,7 +2210,7 @@ const SCAN_DEFAULTS = {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: pkg/manager/manager.go — external binary detection
 
-let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null, realesrgan: null };
+let _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null };
 let _toolsDetected = false;
 
 const _isWindows = window.parallxElectron.platform === 'win32';
@@ -2339,19 +2339,7 @@ async function moDetectAllToolsNow() {
     if (s && !s.error && s.size > 0) magick = candidate;
   }
 
-  // Bundled Real-ESRGAN (ncnn-vulkan), the upscaler (Section 38B). Same rule
-  // as magick: <toolPath>/bin/realesrgan-ncnn-vulkan.exe with a models folder
-  // beside it, fetched once by bin/get-realesrgan.ps1. Never a PATH lookup.
-  let realesrgan = null;
-  if (_toolPath) {
-    const sep = _isWindows ? '\\' : '/';
-    const exe = _isWindows ? '.exe' : '';
-    const candidate = _toolPath + sep + 'bin' + sep + 'realesrgan-ncnn-vulkan' + exe;
-    const s = await window.parallxElectron.fs.stat(candidate);
-    const m = await window.parallxElectron.fs.stat(_toolPath + sep + 'bin' + sep + 'models');
-    if (s && !s.error && s.size > 0 && m && !m.error) realesrgan = candidate;
-  }
-  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick: magick || prev.magick || null, realesrgan: realesrgan || prev.realesrgan || null };
+  _toolPaths = { ffprobe, exiftool, node, ffmpeg, vips, magick: magick || prev.magick || null };
   if (ffmpeg && ffprobe) _toolsDetected = true;
   else _toolsRetryAfter = Date.now() + 30_000;
   if (!ffprobe) console.warn('[MediaOrganizer] ffprobe not found — video metadata will be unavailable');
@@ -27182,43 +27170,19 @@ async function moSetSetting(key, value) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 38B: UPSCALE (Real-ESRGAN ncnn-vulkan)
-// ═══════════════════════════════════════════════════════════════════════════════
-// One action, Upscale, on still photos. The bundled realesrgan-ncnn-vulkan
-// binary (bin/realesrgan-ncnn-vulkan.exe with its models folder, fetched
-// once by bin/get-realesrgan.ps1 because the app never downloads programs
-// itself) writes a 2x or 4x PNG beside the original. The new file is
-// ingested through the same processFile path a scan uses and is a photo of
-// its own in the library, beside the original, with the original's tags,
-// albums, rating and details. GIFs and videos are never upscaled. Originals
-// are never touched.
+// SECTION 38B: UPSCALE (the Enhance engine, enhance-engine.js)
+// ═════════════════════════════════════════════════════════════════════════════
+// One action, Upscale, on still photos: the engine the editor's Enhance uses
+// (SeedVR2, docs/ENHANCE.md) writes a 2x or 4x PNG beside the original. The
+// new file is ingested through the same processFile path a scan uses and is a
+// photo of its own in the library, beside the original, with the original's
+// tags, albums, rating and details. GIFs and videos are never upscaled.
+// Originals are never touched.
 
-const MO_UPSCALE_EXE = 'realesrgan-ncnn-vulkan';
-const MO_UPSCALE_MODELS = {
-  photo: { name: 'realesrgan-x4plus', label: 'Photo' },
-  art: { name: 'realesrgan-x4plus-anime', label: 'Art And Anime' },
-};
 /** Output pixels above this are refused: a 4x of a 25 MP photo is 400 MP. */
 const MO_UPSCALE_MAX_OUTPUT_PIXELS = 120e6;
-/** Per file. A 5090 needs seconds; a laptop GPU can need minutes. */
-const MO_UPSCALE_TIMEOUT_MS = 10 * 60 * 1000;
-
-function moUpscaleToolPaths() {
-  const sep = _isWindows ? '\\' : '/';
-  const bin = (_toolPath || '') + sep + 'bin';
-  return {
-    bin,
-    exe: bin + sep + MO_UPSCALE_EXE + (_isWindows ? '.exe' : ''),
-    modelsDir: bin + sep + 'models',
-    script: bin + sep + 'get-realesrgan.ps1',
-  };
-}
-
-/** Is the upscaler installed? Detected with the other tools (detectAllTools). */
-async function moUpscaleReady() {
-  await detectAllTools();
-  return !!_toolPaths.realesrgan;
-}
+/** What the engine reads directly; anything else is turned into a PNG first. */
+const MO_ENHANCE_READS = /\.(jpe?g|png|webp|tiff?|bmp)$/i;
 
 /** "photo.jpg" -> "photo-2x.png"; n > 1 adds " (n)" before the extension. */
 function moUpscaleOutputName(basename, scale, n = 1) {
@@ -27234,87 +27198,6 @@ function moUpscaleGuard(width, height, scale) {
   if (!(w > 0 && h > 0)) return { ok: true, outputPixels: null };
   const outputPixels = w * scale * h * scale;
   return { ok: outputPixels <= MO_UPSCALE_MAX_OUTPUT_PIXELS, outputPixels };
-}
-
-/** The Photo and Art models exist only as 4x weights. The ncnn tool sizes its
- *  output canvas from -s and composes tiles into it, so "-s 2" with a 4x model
- *  writes 4x tiles into a 2x canvas: a scrambled puzzle on any image big
- *  enough to tile (Real-ESRGAN issue 355). The model therefore ALWAYS runs at
- *  4x; a 2x request downsizes that result by half afterwards. */
-const MO_UPSCALE_MODEL_SCALE = 4;
-
-/**
- * Tile size is the speed lever. The tool's own automatic choice never
- * exceeds 200 px whatever the card (its heap thresholds stop at 1.9 GB),
- * so a 24 MP photo becomes hundreds of padded tiles and the GPU idles
- * between them. Bigger tiles mean fewer tiles, less padding overhead and
- * fewer seams, with identical pixels. The size comes from the setting, or
- * from the card's memory; if a size fails (usually memory) the next
- * smaller one is tried, ending with the tool's own choice.
- */
-const MO_UPSCALE_TILE_LADDER = [1024, 768, 512, 400, 256, 0];
-function moUpscaleAutoTile(vramMiB) {
-  const v = Number(vramMiB);
-  if (!(v > 0)) return 400;
-  if (v >= 20000) return 1024;
-  if (v >= 10000) return 768;
-  if (v >= 6000) return 512;
-  if (v >= 3000) return 256;
-  return 0;
-}
-/** The sizes to try, largest first: the chosen one, then the ladder below it, then the tool's own. */
-function moUpscaleTilePlan(setting, vramMiB) {
-  const s = Number(setting);
-  const first = s > 0 ? Math.max(32, Math.round(s)) : moUpscaleAutoTile(vramMiB);
-  const plan = [first];
-  for (const t of MO_UPSCALE_TILE_LADDER) if (t < first && !plan.includes(t)) plan.push(t);
-  if (!plan.includes(0)) plan.push(0);
-  return plan;
-}
-
-let _upscaleVramMiB;
-/** Total memory of the first NVIDIA GPU in MiB, or null. Probed once per session. */
-async function moUpscaleVramMiB() {
-  if (_upscaleVramMiB !== undefined) return _upscaleVramMiB;
-  _upscaleVramMiB = null;
-  try {
-    const r = await window.parallxElectron.terminal.exec('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits', { timeout: 8000 });
-    const first = (r && r.exitCode === 0 && r.stdout ? r.stdout : '').trim().split(/\r?\n/)[0];
-    const n = parseInt(first, 10);
-    if (Number.isFinite(n) && n > 0) _upscaleVramMiB = n;
-  } catch { /* no nvidia-smi: stay null */ }
-  return _upscaleVramMiB;
-}
-
-/** The upscaler's shell line. Paths go through the same quoting as every other tool here. */
-function moBuildUpscaleCommand(exe, modelsDir, input, output, modelName, format, tile) {
-  const known = Object.values(MO_UPSCALE_MODELS).some((m) => m.name === modelName);
-  const model = known ? modelName : MO_UPSCALE_MODELS.photo.name;
-  const f = format === 'jpg' ? 'jpg' : 'png';
-  const t = Number(tile) > 0 ? ` -t ${Math.round(Number(tile))}` : '';
-  return `${shellInvoke(exe)} -i ${shellQuote(input)} -o ${shellQuote(output)} -n ${model} -s ${MO_UPSCALE_MODEL_SCALE}${t} -m ${shellQuote(modelsDir)} -f ${f}`;
-}
-
-/** Halve an image with Lanczos: the bundled magick first, ffmpeg as the fallback. */
-function moBuildDownscaleCommand(kind, tool, input, output) {
-  if (kind === 'ffmpeg') {
-    return `${shellInvoke(tool)} -hide_banner -loglevel error -y -i ${shellQuote(input)} -vf ${shellQuote('scale=trunc(iw/2):trunc(ih/2):flags=lanczos')} ${shellQuote(output)}`;
-  }
-  return `${shellInvoke(tool)} ${shellQuote(input)} -filter Lanczos -resize 50% ${shellQuote(output)}`;
-}
-
-/** Which downsizer is available, if any. */
-function moDownscaleTool() {
-  if (_toolPaths.magick) return { kind: 'magick', path: _toolPaths.magick };
-  if (_toolPaths.ffmpeg) return { kind: 'ffmpeg', path: _toolPaths.ffmpeg };
-  return null;
-}
-
-/** "photo.jpg" -> "photo.upscale-k3x9.png": the 4x intermediate of a 2x request, deleted afterwards. */
-function moUpscaleTempName(basename, format) {
-  const dot = basename.lastIndexOf('.');
-  const stem = dot > 0 ? basename.slice(0, dot) : basename;
-  return `${stem}.upscale-${Math.random().toString(36).slice(2, 8)}.${format === 'jpg' ? 'jpg' : 'png'}`;
 }
 
 async function moUpscaleUniqueOutputPath(srcPath, scale) {
@@ -27401,7 +27284,7 @@ async function moUpscaleTargets(items) {
 
 /** The entry point every surface calls. */
 async function moUpscaleItems(items, api, onComplete) {
-  if (!(await moUpscaleReady())) { showUpscaleSetupDialog(api); return; }
+  if (!(await moEnhanceReady())) { showUpscaleSetupDialog(api); return; }
   const { targets, skipped } = await moUpscaleTargets(items);
   if (targets.length === 0) {
     const why = skipped.gif ? 'GIFs are not upscaled.' : (skipped.notPhoto ? 'Only photos can be upscaled.' : 'No file on disk for that selection.');
@@ -27436,17 +27319,6 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
   }
   scaleSection.appendChild(scaleRow);
   dialog.appendChild(scaleSection);
-
-  // Model
-  const modelSection = moEl('div', 'mo-bulk-dialog-section');
-  modelSection.appendChild(moEl('label', null, { textContent: 'Model' }));
-  const modelDropdown = moDropdown({
-    items: Object.entries(MO_UPSCALE_MODELS).map(([value, m]) => ({ value, label: m.label })),
-    selected: 'photo',
-    ariaLabel: 'Model',
-  });
-  modelSection.appendChild(modelDropdown.el);
-  dialog.appendChild(modelSection);
 
   // Delete the original. Delete in this app means Trash (recoverable until
   // Empty Trash), and it happens only after the copy is safely in the
@@ -27488,15 +27360,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
 
   let running = false;
   let cancelled = false;
-  let tilePlan = null;
-  let vramMiB = null;
-  let tileSetting = 0;
-  try { tileSetting = Number(api.workspace.getConfiguration('mediaOrganizer').get('upscaleTileSize', 0)) || 0; } catch { tileSetting = 0; }
-  moUpscaleVramMiB().then((v) => {
-    vramMiB = v;
-    tilePlan = moUpscaleTilePlan(tileSetting, v);
-    if (!running && overlay.isConnected) refreshChoice();
-  });
+  let currentRun = null;   // the engine run in progress, for Stop
 
   function refreshChoice() {
     for (const [s, b] of scaleBtns) {
@@ -27518,7 +27382,6 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     } else {
       parts.push(`${ok} photo${ok === 1 ? '' : 's'} will be upscaled.`);
     }
-    if (scale !== MO_UPSCALE_MODEL_SCALE) parts.push('2x is computed at 4x and halved, so it takes as long as 4x.');
     if (tooBig) parts.push(`${tooBig} skipped: the result would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels.`);
     if (unknown) parts.push(`${unknown} without known dimensions.`);
     if (skipped.gif) parts.push(`${skipped.gif} GIF${skipped.gif === 1 ? '' : 's'} left out.`);
@@ -27526,12 +27389,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     parts.push(deleteCheckbox.checked
       ? 'Each result is a new PNG beside its original; the original then moves to Trash, recoverable until you empty it.'
       : 'Originals are never changed. Each result is a new PNG beside its original.');
-    if (tilePlan) {
-      const tile = tilePlan[0];
-      parts.push(tile > 0
-        ? `Tiles of ${tile} px${vramMiB ? ` for a ${Math.round(vramMiB / 1024)} GB GPU` : ''}.`
-        : 'The upscaler picks its own tile size.');
-    }
+    parts.push('Each photo takes about a minute on a fast graphics card, longer for large photos and 4x.');
     estimateEl.textContent = parts.join(' ');
     runBtn.disabled = ok === 0;
   }
@@ -27540,7 +27398,8 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     if (running) {
       cancelled = true;
       cancelBtn.disabled = true;
-      progressLabel.textContent = 'Stopping after this photo…';
+      progressLabel.textContent = 'Stopping…';
+      void moEnhanceStop(currentRun);
       return;
     }
     overlay.remove();
@@ -27550,13 +27409,8 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     if (running) return;
     running = true;
     runBtn.disabled = true;
-    modelDropdown.el.style.pointerEvents = 'none';
     deleteCheckbox.disabled = true;
     progressWrap.style.display = '';
-    const modelKey = modelDropdown.getValue() === 'art' ? 'art' : 'photo';
-    const paths = moUpscaleToolPaths();
-    const exe = _toolPaths.realesrgan || paths.exe;
-    if (!tilePlan) tilePlan = moUpscaleTilePlan(tileSetting, await moUpscaleVramMiB());
     const startedAt = Date.now();
     let done = 0;
     let failed = 0;
@@ -27572,53 +27426,31 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
       if (_statusBarItem) { _statusBarItem.text = `$(sync~spin) Upscale ${i + 1} / ${count}`; _statusBarItem.show(); }
       const out = await moUpscaleUniqueOutputPath(t.path, scale);
       if (!out) { failed++; failures.push(`${t.basename}: no free output name`); continue; }
-      // Always 4x from the model (see MO_UPSCALE_MODEL_SCALE). A 2x request
-      // goes to a temporary 4x file first, then is halved into `out`. The
-      // intermediate is PNG unless it would be enormous, then JPEG at the
-      // tool's fixed quality of 100, which the halving averages out.
-      const wantsDownsize = scale !== MO_UPSCALE_MODEL_SCALE;
-      const interPixels = (t.width > 0 && t.height > 0) ? t.width * t.height * MO_UPSCALE_MODEL_SCALE * MO_UPSCALE_MODEL_SCALE : 0;
-      const interFormat = wantsDownsize && interPixels > MO_UPSCALE_MAX_OUTPUT_PIXELS ? 'jpg' : 'png';
-      const sep = t.path.includes('\\') ? '\\' : '/';
-      const modelOut = wantsDownsize ? t.path.slice(0, t.path.lastIndexOf(sep) + 1) + moUpscaleTempName(t.basename, interFormat) : out;
-      // Largest tile first; a failure (usually memory) drops to the next size.
-      let r = null;
-      let usedTile = null;
-      for (const tile of tilePlan) {
-        if (cancelled) break;
-        progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}${tile > 0 ? ` (tiles of ${tile} px)` : ''}`;
-        const cmd = moBuildUpscaleCommand(exe, paths.modelsDir, t.path, modelOut, MO_UPSCALE_MODELS[modelKey].name, wantsDownsize ? interFormat : 'png', tile);
-        try {
-          r = await window.parallxElectron.terminal.exec(cmd, { timeout: MO_UPSCALE_TIMEOUT_MS });
-        } catch (err) {
-          r = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
+      // The engine reads JPEG, PNG, WebP, TIFF and BMP; anything else (HEIC, RAW previews) becomes a PNG first.
+      let r = null; let written = false; let input = t.path; let converted = null;
+      try {
+        if (!MO_ENHANCE_READS.test(t.path)) {
+          if (!_toolPaths.magick) throw new Error('This kind of file needs ImageMagick, which was not found.');
+          converted = out + '.source.png';
+          const c = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(t.path)} ${shellQuote(converted)}`, { timeout: 120_000 });
+          if (!c || c.exitCode !== 0) throw new Error('The photo could not be read.');
+          input = converted;
         }
-        if (r && r.exitCode === 0 && await window.parallxElectron.fs.exists(modelOut)) { usedTile = tile; break; }
-        try { await window.parallxElectron.fs.delete(modelOut); } catch { /* nothing written */ }
-        console.warn(`[MediaOrganizer] upscale at tile ${tile} failed for ${t.basename}; trying smaller`, r && (r.stderr || r.stdout));
-      }
-      let written = usedTile !== null;
-      if (written && wantsDownsize) {
-        const down = moDownscaleTool();
-        if (!down) {
-          written = false;
-          r = { stderr: '2x needs the bundled magick or ffmpeg to halve the 4x result; 4x works without either' };
-        } else {
-          progressLabel.textContent = `Downsizing ${i + 1} of ${count}: ${t.basename}`;
-          let d;
-          try {
-            d = await window.parallxElectron.terminal.exec(moBuildDownscaleCommand(down.kind, down.path, modelOut, out), { timeout: MO_UPSCALE_TIMEOUT_MS });
-          } catch (err) {
-            d = { exitCode: -1, stderr: err && err.message ? err.message : String(err) };
-          }
-          written = d && d.exitCode === 0 && await window.parallxElectron.fs.exists(out);
-          if (!written) r = d;
-        }
-        try { await window.parallxElectron.fs.delete(modelOut); } catch { /* temp file; best effort */ }
+        await moEnhanceRun(input, out, scale, (p) => {
+          progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}. ${p.label}`;
+          progressFill.style.width = `${Math.round(((i + p.fraction) / count) * 100)}%`;
+        }, { onRunId: (id) => { currentRun = id; } });
+        written = await window.parallxElectron.fs.exists(out);
+      } catch (err) {
+        if (err && err.stopped) { cancelled = true; break; }
+        r = { stderr: (err && err.message) || String(err) };
+      } finally {
+        currentRun = null;
+        if (converted) { try { await window.parallxElectron.fs.delete(converted, { useTrash: false }); } catch { /* temp */ } }
       }
       if (!written) {
         failed++;
-        failures.push(`${t.basename}: ${(r && (r.stderr || r.stdout) || 'the upscaler did not write a file').toString().trim().split(/\r?\n/).pop()}`);
+        failures.push(`${t.basename}: ${(r && r.stderr) || 'no picture was written'}`);
         console.warn('[MediaOrganizer] upscale failed:', t.path, r);
         continue;
       }
@@ -27670,52 +27502,27 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
   runBtn.focus();
 }
 
-/** Shown when the binary is missing: the one-time fetch, with the command ready to copy. */
+/** Shown when the Enhance engine is not set up: its card (enhance-engine.js) in a dialog. */
 function showUpscaleSetupDialog(api) {
-  const p = moUpscaleToolPaths();
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
   const dialog = moEl('div', 'mo-bulk-dialog');
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'Set Up The Upscaler');
+  dialog.setAttribute('aria-label', 'Set Up Enhance');
   overlay.appendChild(dialog);
-  dialog.appendChild(moEl('h3', null, { textContent: 'Set Up The Upscaler' }));
-  const intro = moEl('div', 'mo-bulk-dialog-section', {
-    textContent: 'Upscaling uses Real-ESRGAN (ncnn-vulkan), a small MIT-licensed program that runs on your GPU. Parallx never downloads programs itself, so a one-time script fetches it into the extension\'s bin folder. Run this in PowerShell:',
-  });
-  intro.style.cssText = 'font-size:12px;line-height:1.5;';
-  dialog.appendChild(intro);
-  const command = `powershell -ExecutionPolicy Bypass -File "${p.script}"`;
-  const code = moEl('pre', 'mo-bulk-dialog-section', { textContent: command });
-  code.style.cssText = 'font-size:11px;white-space:pre-wrap;word-break:break-all;padding:8px;border-radius:4px;background:var(--vscode-input-background,#222);user-select:text;';
-  dialog.appendChild(code);
-  const status = moEl('div', 'mo-bulk-dialog-section', { textContent: `Looks for ${p.exe} and a models folder beside it.` });
-  status.style.cssText = 'font-size:12px;opacity:0.8;';
-  dialog.appendChild(status);
+  dialog.appendChild(moEl('h3', null, { textContent: 'Upscale Needs Enhance' }));
+  const close = () => { card.dispose(); overlay.remove(); };
+  const card = moEnhanceCard(api, () => { close(); api.window.showInformationMessage('Enhance is ready. Choose Upscale again.'); });
+  dialog.appendChild(card.el);
   const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const copyBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.copyCommand', textContent: 'Copy Command' });
-  copyBtn.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(command); status.textContent = 'Command copied. Run it, then press Check Again.'; } catch { status.textContent = 'Could not copy. Select the command above and copy it.'; }
-  });
-  const openBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.openBinFolder', textContent: 'Open Bin Folder' });
-  openBtn.addEventListener('click', () => {
-    if (window.parallxElectron?.shell?.showItemInFolder) window.parallxElectron.shell.showItemInFolder(p.script);
-  });
-  const checkBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.checkAgain', textContent: 'Check Again' });
-  checkBtn.addEventListener('click', async () => {
-    _toolsDetected = false;
-    _toolsRetryAfter = 0;
-    const ready = await moUpscaleReady();
-    if (ready) { overlay.remove(); api.window.showInformationMessage('The upscaler is ready. Choose Upscale on a photo.'); }
-    else status.textContent = `Not found yet at ${p.exe}.`;
-  });
-  const closeBtn = moEl('button', 'primary', { sceneId: 'media-organizer.upscaleSetup.close', textContent: 'Close' });
-  closeBtn.addEventListener('click', () => overlay.remove());
-  footer.append(copyBtn, openBtn, checkBtn, closeBtn);
+  const closeBtn = moEl('button', null, { sceneId: 'media-organizer.upscaleSetup.close', textContent: 'Close' });
+  closeBtn.addEventListener('click', close);
+  footer.append(closeBtn);
   dialog.appendChild(footer);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   document.body.appendChild(overlay);
+  closeBtn.focus();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -33766,23 +33573,16 @@ function moEditWhiteBalance(r, g, b) {
 }
 
 // ── How far along a save is ──
-// The upscaler writes "12.50%" as it goes; the last one in a chunk of its output, as 0..1 (null when there is none).
-function moEditUpscalePercent(chunk) {
-  const all = String(chunk || '').match(/(\d+(?:\.\d+)?)%/g);
-  if (!all) return null;
-  const v = parseFloat(all[all.length - 1]);
-  return Number.isFinite(v) ? moEditClamp(v / 100, 0, 1) : null;
-}
 /**
  * Where a stage of a save starts and ends on the bar, 0..1. Enlarging is by
  * far the longest stage when there is one; drawing the edit is when there is not.
- * stage: 'draw', 'write', 'enlarge', 'halve' or 'library'.
+ * stage: 'draw', 'write', 'enlarge' or 'library'.
  */
 function moEditStageSpan(stage, enlarging, edited) {
   const spans = enlarging
-    ? (edited ? { draw: [0, 0.1], write: [0.1, 0.14], enlarge: [0.14, 0.86], halve: [0.86, 0.94], library: [0.94, 1] }
-      : { draw: [0, 0], write: [0, 0], enlarge: [0, 0.86], halve: [0.86, 0.94], library: [0.94, 1] })
-    : { draw: [0, 0.7], write: [0.7, 0.88], enlarge: [0.88, 0.88], halve: [0.88, 0.88], library: [0.88, 1] };
+    ? (edited ? { draw: [0, 0.1], write: [0.1, 0.14], enlarge: [0.14, 0.94], library: [0.94, 1] }
+      : { draw: [0, 0], write: [0, 0], enlarge: [0, 0.94], library: [0.94, 1] })
+    : { draw: [0, 0.7], write: [0.7, 0.88], enlarge: [0.88, 0.88], library: [0.88, 1] };
   return spans[stage] || [0, 1];
 }
 // A stage's own progress (0..1) as a place on the whole bar.
@@ -34454,49 +34254,12 @@ async function moEditRenderFull(source, recipe, flatten, onTile) {
   return out;
 }
 
-// Enlarge a written picture with the upscaler (Enhance). The model always runs at 4x; 2x is that, halved.
-// onStage(stage, within): 'enlarge' with how far the upscaler says it is, then 'halve'.
-async function moEditUpscaleFile(input, output, scale, modelKey, onStage) {
-  const paths = moUpscaleToolPaths();
-  const exe = _toolPaths.realesrgan || paths.exe;
-  const model = (MO_UPSCALE_MODELS[modelKey] || MO_UPSCALE_MODELS.photo).name;
-  let setting = 0;
-  try { setting = Number(_api.workspace.getConfiguration('mediaOrganizer').get('upscaleTileSize', 0)) || 0; } catch { setting = 0; }
-  const plan = moUpscaleTilePlan(setting, await moUpscaleVramMiB());
-  const sep = output.includes('\\') ? '\\' : '/';
-  const target = scale === MO_UPSCALE_MODEL_SCALE ? output : output.slice(0, output.lastIndexOf(sep) + 1) + moUpscaleTempName(output.slice(output.lastIndexOf(sep) + 1), 'png');
+// Enlarge a written picture with the Enhance engine (enhance-engine.js), straight to `output` (a PNG).
+// onStage('enlarge', within, label): how far the engine is, and what it is doing.
+async function moEditUpscaleFile(input, output, scale, _model, onStage) {
   const started = Date.now();
-  let last = null; let written = false;
-  for (const tile of plan) {
-    const args = ['-i', input, '-o', target, '-n', model, '-s', String(MO_UPSCALE_MODEL_SCALE), ...(Number(tile) > 0 ? ['-t', String(Math.round(Number(tile)))] : []), '-m', paths.modelsDir, '-f', 'png'];
-    let said = '';
-    if (onStage) onStage('enlarge', 0);
-    try {
-      const r = await window.parallxElectron.terminal.execStream({ command: exe, args, timeout: MO_UPSCALE_TIMEOUT_MS }, {
-        onStdout: () => {},
-        onStderr: (chunk) => {
-          said = (said + chunk).slice(-4000);
-          const p = moEditUpscalePercent(chunk);
-          if (p !== null && onStage) onStage('enlarge', p);
-        },
-      });
-      last = { exitCode: r.exitCode, stderr: said + (r.error && r.error.message ? '\n' + r.error.message : '') };
-    } catch (err) { last = { exitCode: -1, stderr: (err && err.message) || String(err) }; }
-    written = !!last && last.exitCode === 0 && await window.parallxElectron.fs.exists(target);
-    if (written) break;
-  }
-  if (!written) throw new Error(((last && (last.stderr || last.stdout)) || 'the upscaler did not write a file').toString().trim().split(/\r?\n/).pop());
-  console.log(`[MediaOrganizer] enhance: upscaled in ${Math.round((Date.now() - started) / 100) / 10} s`);
-  if (target === output) return;
-  if (onStage) onStage('halve', 0);
-  const halving = Date.now();
-  try {
-    const down = moDownscaleTool();
-    if (!down) throw new Error('2x needs ImageMagick or ffmpeg to halve the 4x picture.');
-    const d = await window.parallxElectron.terminal.exec(moBuildDownscaleCommand(down.kind, down.path, target, output), { timeout: MO_UPSCALE_TIMEOUT_MS });
-    if (!d || d.exitCode !== 0 || !(await window.parallxElectron.fs.exists(output))) throw new Error(((d && (d.stderr || d.stdout)) || 'the picture could not be halved').toString().trim().split(/\r?\n/).pop());
-    console.log(`[MediaOrganizer] enhance: halved in ${Math.round((Date.now() - halving) / 100) / 10} s`);
-  } finally { try { await window.parallxElectron.fs.delete(target, { useTrash: false }); } catch { /* temp file */ } }
+  await moEnhanceRun(input, output, scale, (p) => { if (onStage) onStage('enlarge', p.fraction, p.label); });
+  console.log(`[MediaOrganizer] enhance: ${scale}x in ${Math.round((Date.now() - started) / 100) / 10} s`);
 }
 
 // Enhance needs the upscaler, and a result it can hold. Throws with the reason when a save cannot enlarge.
@@ -34504,14 +34267,14 @@ async function moEditCanEnlarge(recipe, source) {
   const scale = recipe.enhance && recipe.enhance.scale > 0 ? recipe.enhance.scale : 0;
   if (!scale) return;
   const geo = moEditAffine(recipe, source.width, source.height);
-  if (!(await moUpscaleReady())) throw new Error('Enhance needs the upscaler. Choose Set Up The Upscaler in the Enhance tool.');
+  if (!(await moEnhanceReady())) throw new Error('Enhance is not set up yet. Choose Set Up Enhance in the Enhance tool.');
   if (!moUpscaleGuard(geo.outW, geo.outH, scale).ok) throw new Error(`Enlarged ${scale}x the picture would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels.`);
 }
 
 // tell(stage, within): how far along a save is, for whoever asked. `library` is what the last stage is called.
 function moEditTeller(onProgress, library, enlarging, edited) {
-  const labels = { draw: 'Drawing the edit', write: 'Writing the file', enlarge: 'Enlarging', halve: 'Bringing it to size', library };
-  return (stage, within) => { if (!onProgress) return; try { onProgress({ label: labels[stage], fraction: moEditStageFraction(stage, within, enlarging, edited) }); } catch { /* the editor closed */ } };
+  const labels = { draw: 'Drawing the edit', write: 'Writing the file', enlarge: 'Enlarging', library };
+  return (stage, within, label) => { if (!onProgress) return; try { onProgress({ label: label || labels[stage], fraction: moEditStageFraction(stage, within, enlarging, edited) }); } catch { /* the editor closed */ } };
 }
 
 function moEditJpegQuality() {
@@ -37200,14 +36963,12 @@ function renderImageEditor(container, api) {
   void moGetSetting('edit_upscale_rate', '').then((v) => { const n = Number(v); if (n > 0) upscaleRate = n; }).catch(() => {});
   function panelEnhance() {
     const r = state.recipe;
-    if (state.upscaler === null) { panelBody.appendChild(hint('Checking')); void moUpscaleReady().then((ok) => { if (disposed) return; state.upscaler = !!ok; if (state.tool === 'enhance') renderPanel(); }); return; }
+    if (state.upscaler === null) { panelBody.appendChild(hint('Checking')); void moEnhanceReady().then((ok) => { if (disposed) return; state.upscaler = !!ok; if (state.tool === 'enhance') renderPanel(); }); return; }
     if (!state.upscaler) {
-      const card = moEl('div', 'mo-edit-setup');
-      card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Enhance needs the upscaler' }),
-        moEl('p', null, { textContent: 'Enhance makes a larger, sharper copy of the photo. It runs on this computer once the upscaler is set up.' }));
-      card.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.imageEditor.setUpUpscaler', label: 'Set Up the Upscaler…', kind: 'primary', size: 'sm', onClick: () => showUpscaleSetupDialog(api) }),
-        textBtn('Check Again', () => { _toolsDetected = false; _toolsRetryAfter = 0; state.upscaler = null; renderPanel(); }, 'ghost')));
-      panelBody.appendChild(card);
+      // The engine's setup card; once it is ready the panel shows the controls.
+      const card = moEnhanceCard(api, () => { if (disposed) return; state.upscaler = true; if (state.tool === 'enhance') renderPanel(); });
+      panelBody.appendChild(card.el);
+      panelDisposers.push(() => card.dispose());
       return;
     }
     const geo = geometry();
@@ -37215,8 +36976,6 @@ function renderImageEditor(container, api) {
     const s = openSection(panelBody, 'enhance', 'Enlarge', { dot: sc > 0,
       reset: { disabled: !sc, title: 'Do Not Enlarge', run: () => { r.enhance.scale = 0; closePreview(); afterChange(true); } } });
     s.appendChild(chips([{ value: 0, label: 'Off' }, { value: 2, label: '2×' }, { value: 4, label: '4×' }], sc, (v) => { r.enhance.scale = Number(v) || 0; closePreview(); afterChange(true); }));
-    s.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Kind of picture' }));
-    s.appendChild(chips([{ value: 'photo', label: 'Photo' }, { value: 'art', label: 'Art and illustration' }], r.enhance.model, (v) => { r.enhance.model = v === 'art' ? 'art' : 'photo'; closePreview(); afterChange(true); }));
     const fact = (k, v, strong) => { const f = moEl('div', 'mo-edit-fact'); f.append(moEl('span', null, { textContent: k }), moEl(strong ? 'b' : 'span', null, { textContent: v })); return f; };
     if (sc > 0) {
       const ok = moUpscaleGuard(geo.outW, geo.outH, sc).ok;
@@ -37231,6 +36990,8 @@ function renderImageEditor(container, api) {
         s.appendChild(hint('The enlarged picture is previewed here first; nothing is written until you save. Saved copies are PNG.'));
       }
     } else s.appendChild(hint('Choose 2× or 4× to make the saved copy larger and sharper.'));
+    s.appendChild(hint(`Enhance runs SeedVR2 on this computer's graphics card. It needs about ${Math.round(MO_ENHANCE_MIN_FREE_MIB / 1024)} GB of its memory free.`));
+    s.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.enhance.removeEngine', label: 'Remove the Enhance Engine…', kind: 'ghost', size: 'sm', command: 'media-organizer.enhance.removeEngine' })));
   }
   // The enlarged picture, on the stage at 100%: drag (scroll) to look around.
   const previewEl = moEl('div', 'mo-edit-preview mo-hidden');
@@ -38140,7 +37901,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);
@@ -38684,7 +38445,7 @@ export function deactivate() {
   _toolsDetected = false;
   _toolsRetryAfter = 0;
   _toolsInflight = null;
-  _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null, realesrgan: null };
+  _toolPaths = { ffprobe: null, exiftool: null, node: null, ffmpeg: null, vips: null, magick: null };
   _thumbDir = null;
   _thumbInflight.clear();
   _folderAlbumCache.clear();

@@ -29,7 +29,7 @@ function loadPure(): Record<string, any> {
     'moEditAspectRatio', 'moEditCropDrag', 'moEditTurn', 'moEditFlip', 'moEditCropView',
     'moEditTiles', 'moEditTileSource', 'moEditOutputExt', 'moEditOutputName', 'moEditSaveOverExt', 'moEditSavingName', 'moEditCarryExif',
     'moEditHistogram', 'moEditPercentile', 'moEditAutoTone', 'moEditWhiteBalance', 'moEditRemovalWindow', 'moEditStrokeBox',
-    'moEditUpscalePercent', 'moEditStageSpan', 'moEditStageFraction',
+    'moEditStageSpan', 'moEditStageFraction',
     'MO_FIND_POINTS', 'MO_FIND_CHECK', 'MO_FIND_FEW', 'MO_FIND_LEAST', 'MO_FIND_PEAKS', 'MO_FIND_FOUND', 'MO_FIND_UNSURE', 'MO_FIND_FOUND_ALONE', 'MO_FIND_UNSURE_ALONE', 'MO_FIND_AGAIN',
     'moFindGray', 'moFindField', 'moFindTemplate', 'moFindScoreAt', 'moFindDense', 'moFindPeaks', 'moFindPlan', 'moFindShape', 'moFindCheck', 'moFindConsensus', 'moFindMatte', 'moFindShapeBox', 'moFindShapeRemoval', 'MO_FIND_FINE_NEAR', 'MO_FIND_FINE_REACH', 'moFindOnLevel', 'moFindMargin', 'moFindMerge', 'moFindRange', 'MO_FIND_MOST', 'MO_FIND_SIZE', 'moFindVerdict', 'moFindRemoval', 'moFindResize'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
@@ -609,19 +609,10 @@ describe('reading the picture', () => {
 });
 
 describe('how far along a save is', () => {
-  it('hears the last percentage in what the upscaler says', () => {
-    expect(E.moEditUpscalePercent('12.50%\n')).toBeCloseTo(0.125, 9);
-    expect(E.moEditUpscalePercent('0.00%\n25.00%\n50.00%\n')).toBeCloseTo(0.5, 9);
-    expect(E.moEditUpscalePercent('100.00%')).toBe(1);
-    expect(E.moEditUpscalePercent('[0 NVIDIA GeForce RTX 5090]  queueC=2[8]  queueG=0[16]')).toBeNull();
-    expect(E.moEditUpscalePercent('')).toBeNull();
-    expect(E.moEditUpscalePercent(null)).toBeNull();
-    expect(E.moEditUpscalePercent('250%')).toBe(1);
-  });
   it('the stages of a save follow each other along the bar and end at the end', () => {
     for (const [enlarging, edited] of [[false, true], [true, true], [true, false]]) {
       let at = 0;
-      for (const stage of ['draw', 'write', 'enlarge', 'halve', 'library']) {
+      for (const stage of ['draw', 'write', 'enlarge', 'library']) {
         const [a, b] = E.moEditStageSpan(stage, enlarging, edited);
         expect(a).toBeCloseTo(at, 9);
         expect(b).toBeGreaterThanOrEqual(a);
@@ -639,9 +630,9 @@ describe('how far along a save is', () => {
     expect(wide('draw', false, true)).toBeGreaterThan(0.6);
   });
   it('a stage half done is half way along its own part', () => {
-    expect(E.moEditStageFraction('enlarge', 0.5, true, false)).toBeCloseTo(0.43, 9);
+    expect(E.moEditStageFraction('enlarge', 0.5, true, false)).toBeCloseTo(0.47, 9);
     expect(E.moEditStageFraction('enlarge', 0, true, true)).toBeCloseTo(0.14, 9);
-    expect(E.moEditStageFraction('enlarge', 7, true, true)).toBeCloseTo(0.86, 9);
+    expect(E.moEditStageFraction('enlarge', 7, true, true)).toBeCloseTo(0.94, 9);
     expect(E.moEditStageFraction('library', 1, false, true)).toBe(1);
     expect(E.moEditStageFraction('draw', 0.5, false, true)).toBeCloseTo(0.35, 9);
   });

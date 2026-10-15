@@ -628,6 +628,8 @@ export const MO_CSS_MORE = `
 .mo-edit-setup p { margin: 0 0 var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 .mo-edit-facts { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 6px; margin-bottom: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .mo-edit-setup .mo-edit-progress { margin: var(--px-space-2) 0 var(--px-space-1); }
+.mo-enhance-row { display: flex; gap: var(--px-space-2); flex-wrap: wrap; margin-top: var(--px-space-2); }
+.mo-enhance-setup .mo-enhance-error { color: var(--px-danger); }
 /* Enhance */
 .mo-edit-fact { display: flex; justify-content: space-between; align-items: center; min-height: 26px; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 .mo-edit-fact b { color: var(--px-text); font-weight: 600; font-variant-numeric: tabular-nums; }

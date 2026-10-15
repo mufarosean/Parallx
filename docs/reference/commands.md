@@ -256,7 +256,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `media-organizer.saveSmartAlbum` | Save Current Search as Smart Album | media-organizer | Atelier |  |  |
 | `media-organizer.scan` | Scan Directory | media-organizer | Atelier |  |  |
 | `media-organizer.showShortcuts` | Keyboard Shortcuts | media-organizer | Atelier |  |  |
-| `media-organizer.upscaleSetup` | Set Up The Upscaler | media-organizer | Atelier |  |  |
+| `media-organizer.upscaleSetup` | Set Up Enhance | media-organizer | Atelier |  |  |
 | `output.clear` | Output: Clear Log | output |  |  |  |
 | `output.toggleTimestamps` | Output: Toggle Timestamps | output |  |  |  |
 | `planner.newEvent` | Planner: New Event… | planner |  |  |  |

@@ -1,0 +1,21 @@
+SeedVR2 for Parallx's Enhance
+
+Source: https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler
+Commit: 4490bd1f482e026674543386bb2a4d176da245b9 (2025-12-24), version 2.5.24
+Licence: Apache License 2.0 (LICENSE, beside this file)
+Model: SeedVR2 by ByteDance Seed, Apache License 2.0
+       https://github.com/ByteDance-Seed/SeedVR
+
+Kept: src/, configs_3b/, configs_7b/, inference_cli.py, pos_emb.pt,
+neg_emb.pt, LICENSE. Left out: the ComfyUI node registration (__init__.py),
+docs/, example_workflows/.
+
+Changed by Parallx, in inference_cli.py, each marked with "Parallx:":
+- reading an image: cv2.imdecode(np.fromfile(...)) instead of cv2.imread
+- writing an image: cv2.imencode(...).tofile(...) instead of cv2.imwrite
+Both because OpenCV's imread and imwrite fail on Windows when the path has a
+character outside ASCII (a user folder named "José", for instance).
+
+Parallx runs it through ../enhance.py, in a runtime the app installs
+(docs/ENHANCE.md). Its own model download is never reached: the runtime
+fetches and checks the model files first.

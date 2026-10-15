@@ -87,11 +87,23 @@ PyTorch index, Hugging Face), only during setup.
 - The Enhance panel: a setup card when the engine is not installed (what it
   needs, the download size, Set Up Enhance), progress through setup, then
   2x and 4x as now, with the estimate measured on this machine.
-- Before each run: the free graphics memory is read. Other programs share
-  the card (Ollama). If there is not enough, Enhance says so; it never stops
-  another program.
-- The library's Upscale uses the same engine and keeps the model loaded
-  across the photos.
+- Before each run: the free graphics memory is read, and it sets the size
+  of the pieces. Measured on the RTX 5090 with the model loaded: a 4096 px
+  enlarged piece peaks at 19.4 GB, a 2048 px piece at 11.5 GB. So 21 GB
+  free means large pieces, 13 GB free small ones (slower), and with less
+  Enhance says what it needs; it never stops another program (an Ollama
+  model shares the card). The smallest card it sets up on: 16 GB.
+- Where two pieces overlap, each pixel takes its detail from one piece, with
+  a narrow feathered hand-over (192 px on a 2048 px piece) in the middle of
+  the overlap. Feathering across the whole overlap averaged two pieces'
+  detail and visibly softened skin; the narrow hand-over kept it, and no
+  join showed at 100% (a portrait; a 24 MP photo with a smooth dark ground).
+- SeedVR2's image reading and writing are changed to work on paths with any
+  characters (OpenCV's imread and imwrite fail on Windows outside ASCII);
+  engine/seedvr2/NOTICE lists the changes.
+- The library's Upscale uses the same engine, one photo at a time (the
+  model loads for each, about 10 s). Files the engine cannot read (HEIC)
+  become a PNG first, through the bundled ImageMagick.
 - Removed: Real-ESRGAN, its setup dialog and script, the tile-size setting,
   the Photo / Art model choice.
 

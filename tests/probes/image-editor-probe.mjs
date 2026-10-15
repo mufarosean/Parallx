@@ -16,7 +16,7 @@
 //   copy      Copy Edit, then Paste Edit on another photo from the filmstrip
 //   save      Save As Copy at full size; the saved file against what was shown
 //   remove    a mark brushed over is gone, and the copy shows the photo behind it
-//   enhance   a copy twice the size (when the upscaler is installed)
+//   enhance   a copy twice the size (when an Enhance engine is set up: PARALLX_RUNTIMES_DIR names its folder)
 //   reopen    the edit comes back
 //   entry     Edit Image in the library's menu and on a photo's tab
 // After the app closes it reads the editor's tables back.
@@ -42,7 +42,8 @@ const VERIFY = path.join(__dirname, 'image-editor-verify.cjs');
 const BOXING = path.join(PROJECT_ROOT, 'data', 'dashboard-assets', 'aa21bc3e-d260-41ac-8bcf-ab5efe10d0cb.jpg');
 const MODELS = process.env.PARALLX_MODELS_DIR || path.join(PROJECT_ROOT, 'data', 'models');
 const MODEL = '1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6.onnx';
-const UPSCALER = path.join(PROJECT_ROOT, 'ext', 'media-organizer', 'bin', process.platform === 'win32' ? 'realesrgan-ncnn-vulkan.exe' : 'realesrgan-ncnn-vulkan');
+// The Enhance engine (docs/ENHANCE.md) is set up once per machine; a probe uses one set up beforehand.
+const ENGINE_STATE = process.env.PARALLX_RUNTIMES_DIR ? path.join(process.env.PARALLX_RUNTIMES_DIR, 'seedvr2-enhance', 'state.json') : '';
 const PHOTO = { boxing: 1, card: 2, fractal: 3, bars: 4, marked: 5 };   // ids in seed order
 const MARK = { x: 380, y: 60, w: 150, h: 46 };                           // the mark drawn on marked.jpg (564 x 846), over the background
 const GRID = 48;
@@ -325,7 +326,7 @@ async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace, photos } = await makeRoots();
   const hasModel = existsSync(path.join(MODELS, MODEL));
-  const hasUpscaler = existsSync(UPSCALER);
+  const hasUpscaler = !!ENGINE_STATE && existsSync(ENGINE_STATE);
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}\n[probe] remove model ${hasModel ? 'on disk' : 'NOT on disk: Remove is not checked'}; upscaler ${hasUpscaler ? 'installed' : 'NOT installed: Enhance is not checked'}`);
   const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   APP = app;
