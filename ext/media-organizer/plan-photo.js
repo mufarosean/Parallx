@@ -12,9 +12,11 @@
 // from is the photo with them laid over it, or the enhanced copy.
 
 import { moEl } from './dom.js';
-import { moPlanHint, moPlanSection, moPlanSlider } from './plan-kit.js';
+import { moPlanChoice, moPlanHint, moPlanSection, moPlanSlider } from './plan-kit.js';
 
-const ACTIONS = ['photoEnhance', 'photoStopEnhance', 'photoUseOriginal', 'photoRemoveMode', 'photoClearRemovals', 'photoOpenEditor', 'photoSetUpEnhance'];
+const ACTIONS = ['photoEnhance', 'photoStopEnhance', 'photoUseOriginal', 'photoRemoveMode', 'photoClearRemovals', 'photoOpenEditor', 'photoSetUpEnhance', 'photoPresets'];
+// The Photo step's tools, named as the Image Editor's tabs.
+const TABS = [['edit', 'Edit'], ['masks', 'Masks'], ['remove', 'Remove'], ['enhance', 'Enhance']];
 const IDENT = { crop: { x: 0, y: 0, w: 1, h: 1 }, angle: 0, rotate: 0, flipH: false, flipV: false };
 
 const open = new Set();
@@ -227,16 +229,23 @@ export function moPlanPhoto(ctx) {
   const app = (m, x, y) => [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]];
   const masksTool = ctx.masks({ api, root: ctx.root, kit, host: ctx.frame, recipe: () => state.recipe, requestRender: () => ctx.requestRender(),
     afterChange: (rec) => { if (rec) ctx.afterRecipeChange(true); else { ctx.renderPanel(); ctx.requestRender(); } },
-    on: () => state.tool === 'photo' && !state.notes && !removing && !kitState.pickWb, photoSize: () => ({ w: state.imgW, h: state.imgH }),
+    on: () => state.tool === 'photo' && sub === 'masks' && !state.notes && !removing && !kitState.pickWb, photoSize: () => ({ w: state.imgW, h: state.imgH }),
     toScreen: (u, v) => { const o = app(inv(ctx.geometry().m), u, v); return { x: o[0] * ctx.frame.clientWidth, y: o[1] * ctx.frame.clientHeight }; },
     fromScreen: (x, y) => { const rc = ctx.frame.getBoundingClientRect(); let ou = (x - rc.left) / Math.max(1, rc.width); if (state.mirror) ou = 1 - ou; const q = app(ctx.geometry().m, ou, (y - rc.top) / Math.max(1, rc.height)); return { u: q[0], v: q[1] }; },
     // the frame is scaled by the view's zoom and may be mirrored: the brush works in what the screen shows
     hostPoint: (x, y) => { const rc = ctx.frame.getBoundingClientRect(); let ou = (x - rc.left) / Math.max(1, rc.width); if (state.mirror) ou = 1 - ou; return { x: ou * ctx.frame.clientWidth, y: ((y - rc.top) / Math.max(1, rc.height)) * ctx.frame.clientHeight }; },
     hostScale: () => ctx.frame.getBoundingClientRect().width / Math.max(1, ctx.frame.clientWidth),
     screenPerPhoto: () => ctx.frame.getBoundingClientRect().width / Math.max(1, ctx.geometry().outW) });
+  let sub = 'edit'; // the Photo step's tab
   function panel(container, panelDisposers) {
     const r = state.recipe;
     if (engine === null) void deps.enhance.ready().then((ok) => { engine = !!ok; if (state.tool === 'photo') ctx.renderPanel(); });
+    const tabs = moEl('div', 'mo-pp-tabs');
+    container.appendChild(tabs);
+    moPlanChoice(ui, tabs, { id: 'media-organizer.plan.photoTab', ariaLabel: 'Photo tools', items: TABS, value: sub, onChange: (v) => { sub = v; if (v !== 'remove') removing = false; if (v !== 'edit') kitState.pickWb = false; ctx.renderPanel(); ctx.requestRender(); } }, panelDisposers);
+    if (sub === 'edit') return editTab(container);
+    if (sub === 'masks') return masksTool.panel(container, panelDisposers);
+    if (sub === 'remove') return removeTab(container);
     const s = moPlanSection(container, 'Enhance');
     if (job) {
       jobEl = moEl('div', 'mo-pp-job', { role: 'status' });
@@ -262,7 +271,12 @@ export function moPlanPhoto(ctx) {
       s.appendChild(row);
       if (r.enhanced) ui.createButton(s, { id: 'media-organizer.plan.photoUseOriginal', label: 'Use The Original Photo', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.photoUseOriginal' });
     }
-    // The editor's sections, on the plan's recipe.
+  }
+  // Edit: the Image Editor's sections on the plan's recipe, and the presets the workspace keeps.
+  function editTab(container) {
+    const row = moEl('div', 'mo-pp-presets');
+    ui.createButton(row, { id: 'media-organizer.plan.photoPresets', label: 'Presets', icon: 'sparkles', size: 'sm', command: 'media-organizer.plan.photoPresets', title: 'Apply a look or one of your presets' }).setAttribute('aria-haspopup', 'menu');
+    container.appendChild(row);
     const sections = moEl('div', 'mo-pp-sections');
     container.appendChild(sections);
     kitState.hist = null;
@@ -270,8 +284,9 @@ export function moPlanPhoto(ctx) {
     if (got) kitState.hist = deps.histogram(got.px);
     kit.forgetCurve();
     kit.panelEdit(sections);
-    masksTool.panel(sections, panelDisposers);
-    // Remove
+  }
+  function removeTab(container) {
+    const r = state.recipe;
     const s2 = moPlanSection(container, 'Remove', true);
     if (remover === 'unknown') { void deps.removal.state().then((st) => { remover = st; if (state.tool === 'photo') ctx.renderPanel(); }); moPlanHint(s2, 'Checking'); return; }
     if (remover !== 'ready') {
@@ -305,6 +320,19 @@ export function moPlanPhoto(ctx) {
     photoRemoveMode: () => { removing = !removing; if (removing) kitState.pickWb = false; sync(); ctx.renderPanel(); },
     photoClearRemovals: () => { state.recipe.removals = []; ctx.afterRecipeChange(true); refresh(); },
     photoSetUpEnhance: () => { enhanceCard = true; ctx.renderPanel(); },
+    // The presets menu: your presets (kept in this workspace, shared with the Image Editor), the looks, and Save.
+    async photoPresets() {
+      const at = ctx.root.querySelector('[data-px-id="media-organizer.plan.photoPresets"]');
+      if (!at || !deps.presets) return;
+      const all = await deps.presets.list(), mine = all.filter((p) => !p.builtIn), looks = all.filter((p) => p.builtIn);
+      const use = (p) => ({ label: p.name, onSelect: () => { deps.presets.apply(state.recipe, p.look); ctx.afterRecipeChange(true); } });
+      ui.createMenu(at, { id: 'media-organizer.plan.photoPresetMenu', label: 'Presets', items: [
+        ...(mine.length ? mine.map(use) : [{ label: 'No presets saved yet', disabled: true }]),
+        { label: 'Looks', icon: 'sparkles', submenu: looks.map(use) },
+        { separator: true },
+        { label: 'Save Edit As Preset…', icon: 'plus', disabled: deps.presets.isRest(state.recipe), onSelect: async () => { const name = await api.window.showInputBox({ prompt: 'Name this preset', placeholder: 'Preset name' }); if (name && String(name).trim()) await deps.presets.save(String(name).trim(), state.recipe); } },
+      ] });
+    },
     photoOpenEditor: () => { if (state.plan) void api.commands.executeCommand('media-organizer.editImage', state.plan.photo_id); },
   };
   const handle = { root: ctx.root, act: (name, ...args) => (acts[name] && state.recipe ? acts[name](...args) : undefined) };

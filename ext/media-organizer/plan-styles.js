@@ -113,6 +113,9 @@ export const MO_PLAN_CSS = `
 .mo-mk-layer.is-pick { pointer-events: auto; cursor: crosshair; touch-action: none; }
 .mo-mk-status { margin: var(--px-space-1) 0; font-size: var(--px-text-xs); color: var(--px-text-secondary); }
 .mo-mk-status:empty { display: none; }
+.mo-pp-tabs { padding: var(--px-space-2) var(--px-space-3) 0; }
+.mo-pp-tabs .mo-pc-field { margin: 0; }
+.mo-pp-presets { display: flex; justify-content: flex-end; padding: var(--px-space-2) var(--px-space-3) 0; }
 .mo-mk-words { display: flex; align-items: center; gap: var(--px-space-1); margin: var(--px-space-1) 0; }
 .mo-mk-words > :first-child { flex: 1; min-width: 0; }
 .mo-mk-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }

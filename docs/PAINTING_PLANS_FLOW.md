@@ -107,6 +107,13 @@ Saved plans keep working: old recipes map onto the new steps, and nothing a user
 - Each module owns its step: `plan-shell.js` (rail, top bar, view), `plan-compose.js` (Compose and
   Transfer), `plan-photo.js` (Photo), `plan-colours.js` (Values, the eyedropper, My Paints),
   `plan-study.js` (Colour), with `plan-kit.js` for the panels' sliders, choices and switches.
+- **Photo** has the Image Editor's tabs: Edit (with Presets: this workspace's presets, shared with the Image
+  Editor, the Looks, and Save Edit As Preset…), Masks, Remove and Enhance. A preset changes only the look.
+- **Saving.** A plan saves itself: its picture 0.4 s after a change and at once when it closes, a variation
+  0.6 s after a change, notes as they are typed, the board as it changes. Export is for pictures:
+  Save To Library (a JPEG beside the original photo, in the library and on the plan's shelf, with or without
+  the grid), Export As File… (anywhere, JPEG or PNG; the library is left alone) and Print With Grid…. The
+  board has the same Save To Library and Export As File….
 - **Ignore the background** (Values and Colour, one setting): the subject only. The background is grey on
   screen and left out of the masses, the palette and light and shadow (`plan-isolate.js`, from Select
   Subject; docs/IMAGE_EDITOR_MASKS.md).

@@ -270,8 +270,9 @@ export function moPlanCompose(ctx) {
     moPlanChoice(ui, s2, { id: 'media-organizer.plan.transferShows', ariaLabel: 'Under the grid', items: [['photo', 'Photo'], ['values', 'Values'], ['colour', 'Colour']], value: state.view || 'photo', onChange: (v) => ctx.setView(v) }, panelDisposers);
     moPlanHint(s2, 'What Export and Print show.');
     const row = moEl('div', 'mo-plan-row');
-    ui.createButton(row, { id: 'media-organizer.plan.exportWithGrid', label: 'Export With Grid', kind: 'primary', size: 'sm', command: 'media-organizer.plan.exportWithGrid' });
-    ui.createButton(row, { id: 'media-organizer.plan.printWithGrid', label: 'Print With Grid…', size: 'sm', command: 'media-organizer.plan.printWithGrid' });
+    ui.createButton(row, { id: 'media-organizer.plan.exportWithGrid', label: 'Save To Library', kind: 'primary', size: 'sm', title: 'With the grid, beside the original photo', command: 'media-organizer.plan.exportWithGrid' });
+    ui.createButton(row, { id: 'media-organizer.plan.exportWithGridFile', label: 'Export…', size: 'sm', title: 'With the grid, as a file anywhere', command: 'media-organizer.plan.exportWithGrid', args: [true] });
+    ui.createButton(row, { id: 'media-organizer.plan.printWithGrid', label: 'Print…', size: 'sm', title: 'With the grid', command: 'media-organizer.plan.printWithGrid' });
     s2.appendChild(row);
   }
   function straighten(v, record, keep) {

@@ -32437,7 +32437,7 @@ function renderPlanEditor(container, api, planId) {
   const shell = moPlanShell({ api, root, state, rail: tools, topbar, titleEl, sizeEl, stage, frame,
     act: { setStep: (id) => setTool(id), undo: () => undo(), redo: () => redo(), toggleSplit: () => { if (state.tool !== 'compose') setSplit(state.split >= 0 ? -1 : 0.5); },
       toggleMirror: () => { state.mirror = !state.mirror; syncShell(); requestRender(); }, toggleNotes: () => { state.notes = !state.notes; syncShell(); renderPanel(); },
-      openBoard: () => moOpenBoard(api, planId), exportPlan: (grid) => void exportPlan(grid), printPlan: () => void printPlan() },
+      openBoard: () => moOpenBoard(api, planId), exportPlan: (grid, toFile) => void exportPlan(grid, toFile), printPlan: () => void printPlan() },
     // The crop frame, the picker and the colour layers take a press on the picture; elsewhere a drag moves it.
     pressUsed: (e) => !!e.target.closest('.mo-plan-cropbox, .mo-pc-ba-line, .mo-pc-layer:not(.mo-hidden), .mo-mk-layer.is-brush, .mo-mk-layer.is-pick, .mo-mk-h'),
     onZoom: () => requestRender() });
@@ -32468,15 +32468,23 @@ function renderPlanEditor(container, api, planId) {
   function redo() { if (histIdx < history.length - 1) restore(histIdx + 1); }
   // The plan's canvas follows the picture in the controls.
   function canvasFromRecipe() { const c = state.recipe.canvas; if (c) { state.plan.canvas_w = c.w; state.plan.canvas_h = c.h; } else state.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; }
+  let saveDue = false;
   function scheduleSave() {
+    saveDue = true;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      if (disposed || !state.recipe) return;
+    saveTimer = setTimeout(() => void writePlan(), 400);
+  }
+  // Written 400 ms after the last change, and at once when the plan closes with a change not yet written.
+  async function writePlan() {
+    clearTimeout(saveTimer);
+    if (!saveDue || !state.recipe || !state.plan) return;
+    saveDue = false;
+    {
       try {
         await db.run('UPDATE mo_plans SET title = ?, notes = ?, canvas_w = ?, canvas_h = ?, draft_json = ?, draft_from = ?, updated_at = ? WHERE id = ?', [state.plan.title, state.plan.notes || '', state.plan.canvas_w, state.plan.canvas_h, JSON.stringify(state.recipe), state.variant ? state.variant.id : null, new Date().toISOString(), planId]);
         document.dispatchEvent(new CustomEvent('mo:plans-changed'));
       } catch (err) { console.warn('[media-organizer] plan save failed:', err && err.message); }
-    }, 400);
+    }
   }
   // record: true when the change is a user edit worth an undo step
   function afterRecipeChange(record, keepPanel) {
@@ -32569,6 +32577,13 @@ function renderPlanEditor(container, api, planId) {
     masks: (mctx) => moEditMasks(Object.assign(mctx, { idStem: 'media-organizer.plan.masks', select: moMaskSelect(() => state.image) })),
     geometry: () => moEditAffine(state.recipe, state.imgW, state.imgH),
     deps: { panelKit: moEditPanelKit, histogram: moEditHistogram, autoTone: moEditAutoTone, whiteBalance: moEditWhiteBalance,
+      // the Image Editor's presets (this workspace's mo_edit_presets) and looks; applying one changes only the look
+      presets: {
+        list: async () => [...MO_EDIT_PRESETS.map(([, name, look]) => ({ name, look, builtIn: true })), ...(await moEditPresetsLoad())],
+        apply: (r, look) => { const a = moEditApplyLook(r, look); for (const [k] of MO_EDIT_SLIDERS) r[k] = a[k]; Object.assign(r, { bw: a.bw, curve: a.curve, mixer: a.mixer, grading: a.grading, off: a.off }); },
+        save: async (name, r) => { const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM mo_edit_presets'); await db.run('INSERT INTO mo_edit_presets (name, look_json, position) VALUES (?, ?, ?)', [name.slice(0, 60), JSON.stringify(moEditPickLook(r)), pos ? pos.p : 0]); document.dispatchEvent(new CustomEvent('mo:edit-presets-changed')); },
+        isRest: (r) => moEditLookIsRest(r),
+      },
       enhance: { ready: moEnhanceReady, card: moEnhanceCard, run: moEnhanceRun, stop: moEnhanceStop, temp: (work) => moEnhanceTemp(api, work) },
       removal: { state: moEditRemoveState, fill: moEditFill },
       files: { dir: () => moPlanDir(planId), read: moEditReadBytes, write: async (p, bytes) => { await window.parallxElectron.fs.mkdir(p.slice(0, Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')))); await moEditWriteBytes(p, bytes); }, dispose: (paths) => moDisposeTemp(api, paths) } } });
@@ -32610,12 +32625,12 @@ function renderPlanEditor(container, api, planId) {
       const s = section('Notes'); s.appendChild(moEl('label', 'mo-plan-field-label', { textContent: 'Title', for: 'mo-plan-title-in' }));
       const tIn = moEl('input', 'mo-clip-input mo-clip-input--grow', { sceneId: 'media-organizer.plan.title', id: 'mo-plan-title-in', type: 'text', placeholder: 'Title' });
       tIn.value = state.plan.title || '';
-      tIn.addEventListener('change', () => { state.plan.title = tIn.value.trim() || 'Painting'; titleEl.textContent = state.plan.title; scheduleSave(); });
+      tIn.addEventListener('input', () => { state.plan.title = tIn.value.trim() || 'Painting'; titleEl.textContent = state.plan.title; scheduleSave(); });
       s.appendChild(tIn);
       s.appendChild(moEl('label', 'mo-plan-field-label', { textContent: 'Notes', for: 'mo-plan-notes-in' }));
       const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { sceneId: 'media-organizer.plan.notes', id: 'mo-plan-notes-in', placeholder: 'What the painting is about: the light, the mood, what to leave out' });
       notes.value = state.plan.notes || '';
-      notes.addEventListener('change', () => { state.plan.notes = notes.value; scheduleSave(); });
+      notes.addEventListener('input', () => { state.plan.notes = notes.value; scheduleSave(); });
       s.appendChild(notes);
       s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id)));
       // Deleting a plan is done where plans are kept (the Painting Plans list), not from inside one.
@@ -32698,7 +32713,7 @@ function renderPlanEditor(container, api, planId) {
   // ── export ──
   // Renders the recipe at full resolution into a JPEG beside the original and
   // ingests it like a scan: a photo of its own in the library.
-  async function renderFull(withGrid) {
+  async function renderFull(withGrid, png) {
     const src = photo.source('transfer'), r = src.eff(state.recipe), g0 = moEditAffine(r, src.img.width, src.img.height);
     let W = g0.outW; let H = g0.outH;
     const cap = Math.min(8192, renderer.maxTexture);
@@ -32717,11 +32732,14 @@ function renderPlanEditor(container, api, planId) {
       const masses = state.view === 'colour' ? study.massesCanvas() : null;
       if (masses) { ctx.imageSmoothingQuality = 'high'; ctx.drawImage(masses, 0, 0, W, H); }
       if (withGrid) moPlanDrawOverlays(ctx, W, H, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: true }) }), state.plan.canvas_w, state.plan.canvas_h, Math.max(1, W / 900), r.overlays.gridLabels !== false);
-      return out.toDataURL('image/jpeg', 0.92);
+      return png ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', 0.92);
     } finally { rr.dispose(); }
   }
-  async function exportPlan(withGrid) {
+  // toFile: Export As File… (a place and a format the painter chooses; nothing is added to the library).
+  // Otherwise Save To Library: a JPEG beside the original, in the library and on the plan's process shelf.
+  async function exportPlan(withGrid, toFile) {
     if (!renderer || !state.image || !state.srcPath) return;
+    if (toFile) return exportPlanFile(withGrid);
     shell.setExporting(true);
     try {
       const dataUrl = await renderFull(withGrid);
@@ -32743,7 +32761,24 @@ function renderPlanEditor(container, api, planId) {
         state.media = (await moPlanLoad(planId)).media;
         _notifySidebarRefresh();
       }
-      api.window.showInformationMessage(`Plan written beside the original: ${outPath.slice(outPath.lastIndexOf(sep) + 1)}`);
+      api.window.showInformationMessage(`Saved to the library: ${outPath.slice(outPath.lastIndexOf(sep) + 1)}`);
+    } catch (err) {
+      api.window.showErrorMessage('The plan could not be saved: ' + (err && err.message));
+    } finally { shell.setExporting(false); }
+  }
+  async function exportPlanFile(withGrid) {
+    const sep = state.srcPath.includes('\\') ? '\\' : '/';
+    const stem = String(state.plan.title || 'plan').trim().replace(/[\\/:*?"<>|]+/g, '_').slice(0, 64) || 'plan';
+    const chosen = await window.parallxElectron.dialog.saveFile({ title: withGrid ? 'Export With Grid' : 'Export Plan', defaultPath: `${state.srcPath.slice(0, state.srcPath.lastIndexOf(sep))}${sep}${stem}${withGrid ? '_grid' : ''}.jpg`,
+      filters: [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }, { name: 'PNG', extensions: ['png'] }] });
+    const path = typeof chosen === 'string' ? chosen : chosen && (chosen.filePath || chosen.path);
+    if (!path) return;
+    shell.setExporting(true);
+    try {
+      const dataUrl = await renderFull(withGrid, /\.png$/i.test(path));
+      const res = await window.parallxElectron.fs.writeFile(path, dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+      if (res && res.error) throw new Error(res.error.message || String(res.error));
+      api.window.showInformationMessage(`Exported ${path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)}`);
     } catch (err) {
       api.window.showErrorMessage('The plan could not be exported: ' + (err && err.message));
     } finally { shell.setExporting(false); }
@@ -32819,7 +32854,7 @@ function renderPlanEditor(container, api, planId) {
   return {
     dispose() {
       disposed = true;
-      clearTimeout(saveTimer);
+      void writePlan(); // a change made just before closing is kept
       if (raf) cancelAnimationFrame(raf);
       if (resizeObs) resizeObs.disconnect();
       for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
@@ -37359,7 +37394,12 @@ function renderImageEditor(container, api) {
     const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM mo_edit_presets');
     await db.run('INSERT INTO mo_edit_presets (name, look_json, position) VALUES (?, ?, ?)', [name.trim().slice(0, 60), JSON.stringify(moEditPickLook(state.recipe)), pos ? pos.p : 0]);
     await loadPresets();
+    document.dispatchEvent(new CustomEvent('mo:edit-presets-changed'));
   }
+  // a preset saved elsewhere (a plan, another editor) shows here at once
+  const onPresets = () => { if (!disposed) void loadPresets(); };
+  document.addEventListener('mo:edit-presets-changed', onPresets);
+  disposers.push(() => document.removeEventListener('mo:edit-presets-changed', onPresets));
 
   // ── notes on the stage ──
   function syncStageChip() {

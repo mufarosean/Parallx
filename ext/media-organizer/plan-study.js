@@ -230,9 +230,8 @@ export function moPlanStudy(ctx) {
       if (c.temp && m.temp) num.appendChild(moEl('span', `mo-ps-tw is-${c.temp}`, { textContent: c.temp })); // only when warm and cool are shown
       num.appendChild(document.createTextNode(c.picked ? 'picked' : pct(c.share)));
       b.appendChild(num);
-      const mx = mixOf(c.rgb);
-      if (mx && mx.best && !isOpen) b.appendChild(mixBar(mx.best, 'mo-ps-mixbar'));
-      if (isOpen) list.appendChild(recipeBlock(c, mx));
+      // the mix shows on the colour opened; a list of bars under every row is more than the eye wants
+      if (isOpen) list.appendChild(recipeBlock(c, mixOf(c.rgb)));
     }
     s2.appendChild(list);
     const cmp = moEl('div', 'mo-ps-cmp');

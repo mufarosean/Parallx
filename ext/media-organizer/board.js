@@ -19,7 +19,7 @@ import { KIND_NAME, moBoardLoad, moBoardSave, normalize } from './board-data.js'
 
 const ACTIONS = ['select', 'pan', 'arrowTool', 'addPhoto', 'pickPhoto', 'addVariation', 'addPalette', 'addNote', 'addFrame',
   'zoomIn', 'zoomOut', 'fit', 'openPlan', 'paletteFromThis', 'bringToFront', 'lock', 'removeSelected', 'openSwatch', 'pinMix',
-  'copyRecipe', 'exportImage', 'closePopover'];
+  'copyRecipe', 'exportImage', 'exportMenu', 'closePopover'];
 const open = new Set();
 let lastUsed = null;
 const boardInUse = () => [...open].find((b) => b.root.contains(document.activeElement)) || (lastUsed && lastUsed.root.isConnected ? lastUsed : null);
@@ -69,7 +69,8 @@ export function moRenderBoard(container, ctx) {
   const headRight = moEl('div', 'mo-bd-head-right');
   header.append(title, count, headRight);
   ui.createButton(headRight, { id: 'media-organizer.board.openPlan', label: 'Open Plan', size: 'sm', command: 'media-organizer.board.openPlan' });
-  ui.createButton(headRight, { id: 'media-organizer.board.exportImage', label: 'Export As Image…', size: 'sm', command: 'media-organizer.board.exportImage' });
+  const exportBtn = ui.createButton(headRight, { id: 'media-organizer.board.exportMenu', label: 'Export', icon: 'image-up', size: 'sm', title: 'Save the board to the library, or export it as a file', command: 'media-organizer.board.exportMenu' });
+  exportBtn.setAttribute('aria-haspopup', 'menu');
   const view = moEl('div', 'mo-bd-view', { role: 'region', 'aria-label': 'Board. Tab moves between cards; arrow keys move a card, Alt and arrows resize it, Delete removes it.' });
   const world = moEl('div', 'mo-bd-world');
   const links = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -663,16 +664,22 @@ export function moRenderBoard(container, ctx) {
       try { await navigator.clipboard.writeText(`${moColourName(rgb).name} (${hexOf(rgb)}): ${m.best ? recipeText(m.best) : 'no mix'}`); live.textContent = 'Recipe copied'; } catch { /* no clipboard */ }
     },
     closePopover() { closePop(); },
-    async exportImage() {
+    exportMenu() {
+      ui.createMenu(exportBtn, { id: 'media-organizer.board.exportChoices', label: 'Export', items: [
+        { label: 'Save To Library', icon: 'library', tooltip: 'Beside the original photo, in the library', onSelect: () => void acts.exportImage(false) },
+        { label: 'Export As File…', icon: 'image-up', tooltip: 'Anywhere, as PNG', onSelect: () => void acts.exportImage(true) },
+      ] });
+    },
+    async exportImage(toFile) {
       try {
-        const path = await exportBoard();
-        if (path) api.window.showInformationMessage(`Board written beside the original: ${path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)}`);
+        const path = await exportBoard(!!toFile);
+        if (path) api.window.showInformationMessage(`${toFile ? 'Exported' : 'Saved to the library:'} ${path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)}`);
       } catch (err) { api.window.showErrorMessage('The board could not be exported: ' + (err && err.message)); }
     },
   };
 
   // ── export: the board as one picture beside the original photo ──
-  async function exportBoard() {
+  async function exportBoard(toFile) {
     const items = board.items.filter((i) => i.kind !== 'arrow');
     const b = bounds(items); if (!b) return null;
     const pad = 40, k = Math.min(2, 8000 / Math.max(b.w + pad * 2, b.h + pad * 2));
@@ -699,6 +706,14 @@ export function moRenderBoard(container, ctx) {
     const src = await ctx.sourcePath();
     if (!src) throw new Error('The plan’s photo is not on disk right now.');
     const sep = src.includes('\\') ? '\\' : '/', dir = src.slice(0, src.lastIndexOf(sep)), base = src.slice(src.lastIndexOf(sep) + 1).replace(/\.[^.]+$/, '');
+    if (toFile) {
+      const chosen = await window.parallxElectron.dialog.saveFile({ title: 'Export Board', defaultPath: `${dir}${sep}${base}_board.png`, filters: [{ name: 'PNG', extensions: ['png'] }] });
+      const path = typeof chosen === 'string' ? chosen : chosen && (chosen.filePath || chosen.path);
+      if (!path) return null;
+      const data = cv.toDataURL('image/png'), res = await window.parallxElectron.fs.writeFile(path, data.slice(data.indexOf(',') + 1), 'base64');
+      if (res && res.error) throw new Error(res.error.message || String(res.error));
+      return path;
+    }
     let out = null;
     for (let n = 1; n < 100 && !out; n++) { const c = `${dir}${sep}${base}_board_${n}.png`; if (!(await window.parallxElectron.fs.exists(c))) out = c; }
     if (!out) throw new Error('No free file name beside the original.');

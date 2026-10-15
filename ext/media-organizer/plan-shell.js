@@ -67,8 +67,10 @@ export function moPlanShell(ctx) {
   icon('openPlanBoard', 'layout-dashboard', 'Open Board');
   sep();
   const exportGroup = moEl('div', 'mo-plan-export');
-  const exportBtn = ui.createButton(exportGroup, { id: 'media-organizer.plan.exportPlan', label: 'Export', kind: 'primary', size: 'sm', title: 'Write the plan beside the original photo', command: 'media-organizer.plan.exportPlan' });
-  const moreBtn = ui.createIconButton(exportGroup, { id: 'media-organizer.plan.exportMenu', icon: 'chevron-down', title: 'More Ways To Export', size: 'sm', command: 'media-organizer.plan.exportMenu' });
+  // One button, one menu: into the library, or out as a file, with or without the grid.
+  const exportBtn = ui.createButton(exportGroup, { id: 'media-organizer.plan.exportMenu', label: 'Export', icon: 'image-up', kind: 'primary', size: 'sm', title: 'Save to the library, export as a file, or print', command: 'media-organizer.plan.exportMenu' });
+  exportBtn.setAttribute('aria-haspopup', 'menu');
+  const moreBtn = exportBtn;
   moreBtn.classList.add('mo-plan-export-more');
   moreBtn.setAttribute('aria-haspopup', 'menu');
   right.appendChild(exportGroup);
@@ -181,10 +183,14 @@ export function moPlanShell(ctx) {
     undo: () => a.undo(), redo: () => a.redo(),
     toggleBeforeAfter: () => a.toggleSplit(), toggleMirror: () => a.toggleMirror(), toggleNotes: () => a.toggleNotes(),
     openPlanBoard: () => a.openBoard(),
-    exportPlan: () => a.exportPlan(false), exportWithGrid: () => a.exportPlan(true), printWithGrid: () => a.printPlan(),
-    exportMenu: () => ui.createMenu(moreBtn, { id: 'media-organizer.plan.exportChoices', label: 'More Ways To Export', items: [
-      { label: 'Export Plan', icon: 'image-up', onSelect: () => a.exportPlan(false) },
-      { label: 'Export With Grid', icon: 'grid-3x3', onSelect: () => a.exportPlan(true) },
+    exportPlan: () => a.exportPlan(false), exportWithGrid: (toFile) => a.exportPlan(true, !!toFile), printWithGrid: () => a.printPlan(),
+    exportMenu: () => ui.createMenu(moreBtn, { id: 'media-organizer.plan.exportChoices', label: 'Export', items: [
+      { label: 'Save To Library', icon: 'library', tooltip: 'Beside the original photo, in the library and on this plan’s shelf', onSelect: () => a.exportPlan(false) },
+      { label: 'Save To Library With Grid', icon: 'grid-3x3', onSelect: () => a.exportPlan(true) },
+      { separator: true },
+      { label: 'Export As File…', icon: 'image-up', tooltip: 'Anywhere, as JPEG or PNG; the library is left as it is', onSelect: () => a.exportPlan(false, true) },
+      { label: 'Export With Grid As File…', icon: 'image-up', onSelect: () => a.exportPlan(true, true) },
+      { separator: true },
       { label: 'Print With Grid…', icon: 'printer', onSelect: () => a.printPlan() },
     ] }),
     fitView: () => fit(), zoomIn: () => zoomBy(1.25), zoomOut: () => zoomBy(0.8),
