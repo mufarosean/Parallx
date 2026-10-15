@@ -5,7 +5,7 @@
 // The recipe keeps `isolate: { on, file }`, file being the subject's mask image.
 
 import { moPlanHint, moPlanSwitch } from './plan-kit.js';
-import { moFieldPng, moSelectBytes, moSelectCancel, moSelectSetUp, moSelectState, moSelector } from './edit-select.js';
+import { moFieldName, moFieldPng, moSelectBytes, moSelectCancel, moSelectSetUp, moSelectState, moSelector } from './edit-select.js';
 import { moMaskImagePut } from './edit-masks.js';
 
 const open = new Set();
@@ -22,7 +22,7 @@ export const moPlanIsolateNormalize = (o) => ({ on: !!(o && o.on), file: o && /^
 export function moPlanIsolate(ctx) {
   const { api, state } = ctx;
   const ui = api.ui;
-  const S = { st: null, download: null, error: '', busy: false, note: '' };
+  const S = { st: null, download: null, error: '', busy: false, note: '', dlText: null };
   const iso = () => (state.recipe.isolate = moPlanIsolateNormalize(state.recipe.isolate));
   const fromMasks = () => (state.recipe.masks || []).flatMap((m) => (m && m.parts) || []).find((p) => p && p.kind === 'subject' && !p.invert && p.file);
   async function find() {
@@ -33,11 +33,11 @@ export function moPlanIsolate(ctx) {
     if (!img) return;
     S.busy = true; S.note = ''; ctx.afterRecipeChange(false);
     try {
-      const field = await moSelector(ctx.select.bridge, img).subject(), png = await moFieldPng(field);
-      await ctx.select.store(png.name, png.bytes);
-      moMaskImagePut(png.name, field);
+      const field = await moSelector(ctx.select.bridge, img).subject(), name = await moFieldName(field);
+      moMaskImagePut(name, field);
+      void moFieldPng(field).then((bytes) => ctx.select.store(name, bytes)).catch(() => {});
       S.busy = false;
-      const x = iso(); x.file = png.name;
+      const x = iso(); x.file = name;
       ctx.afterRecipeChange(true);
     } catch (err) { S.busy = false; S.note = `It did not work: ${(err && err.message) || err}`; ctx.afterRecipeChange(false); }
   }
@@ -52,10 +52,14 @@ export function moPlanIsolate(ctx) {
     S.download = { received: 0, total: moSelectBytes('subject') }; S.error = '';
     ctx.afterRecipeChange(false);
     let last = 0;
-    const r = await moSelectSetUp(ctx.select.bridge, 'subject', (got, total) => { S.download = { received: got, total }; if (Date.now() - last > 500) { last = Date.now(); ctx.afterRecipeChange(false); } });
+    const r = await moSelectSetUp(ctx.select.bridge, 'subject', (got, total) => {
+      S.download = { received: got, total };
+      if (S.dlText && S.dlText.isConnected) S.dlText.textContent = `Downloading · ${Math.round(got / 1048576)} of ${Math.round(total / 1048576)} MB`;
+      else if (Date.now() - last > 500) { last = Date.now(); ctx.afterRecipeChange(false); }
+    });
     S.download = null;
     if (r && r.ok) { S.st = { state: 'ready' }; void find(); return; }
-    S.error = r && r.stopped ? 'Cancelled. Nothing was kept.' : `The download did not finish: ${(r && r.error) || 'no answer'}`;
+    S.error = r && r.stopped ? 'Download stopped.' : `Download failed: ${(r && r.error) || 'no answer'}`;
     ctx.afterRecipeChange(false);
   }
 
@@ -63,18 +67,18 @@ export function moPlanIsolate(ctx) {
   function control(container, panelDisposers) {
     if (!ctx.select) return;
     const x = iso();
-    moPlanSwitch(ui, container, { id: 'media-organizer.plan.isolate', label: 'Ignore the background', checked: x.on, onChange: (on) => { if (on) turnOn(); else { iso().on = false; ctx.afterRecipeChange(true); } } }, panelDisposers);
+    moPlanSwitch(ui, container, { id: 'media-organizer.plan.isolate', label: 'Ignore background', checked: x.on, onChange: (on) => { if (on) turnOn(); else { iso().on = false; ctx.afterRecipeChange(true); } } }, panelDisposers);
     const mb = (b) => Math.round(b / 1048576);
     if (!x.on) return;
-    if (x.file) moPlanHint(container, 'Values and colours come from the subject only; the background is grey and left out.');
-    else if (S.busy) moPlanHint(container, 'Finding the subject. The first time takes about ten seconds.');
+    if (x.file) return; // the grey background says it
+    if (S.busy) moPlanHint(container, 'Finding the subject…');
     else if (S.download) {
-      moPlanHint(container, `Downloading Select Subject · ${mb(S.download.received)} of ${mb(S.download.total)} MB`);
+      S.dlText = moPlanHint(container, `Downloading · ${mb(S.download.received)} of ${mb(S.download.total)} MB`);
       ui.createButton(container, { id: 'media-organizer.plan.isolateCancelSetUp', label: 'Cancel Download', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.isolateCancelSetUp' });
     } else if (S.st && S.st.state === 'model') {
-      moPlanHint(container, `Finding the subject needs a one-time download (${mb(S.st.missing || moSelectBytes('subject'))} MB). It runs on this computer; photos are never sent anywhere.${S.error ? ` ${S.error}` : ''}`);
+      moPlanHint(container, `${mb(S.st.missing || moSelectBytes('subject'))} MB download · runs on this computer${S.error ? `. ${S.error}` : ''}`);
       ui.createButton(container, { id: 'media-organizer.plan.isolateSetUp', label: 'Download', kind: 'primary', size: 'sm', command: 'media-organizer.plan.isolateSetUp' });
-    } else if (S.st && S.st.state !== 'ready') moPlanHint(container, 'Finding the subject cannot run in this build of Parallx.');
+    } else if (S.st && S.st.state !== 'ready') moPlanHint(container, 'Not available in this build.');
     else if (S.note) moPlanHint(container, S.note);
   }
 

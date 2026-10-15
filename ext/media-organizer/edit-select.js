@@ -207,16 +207,22 @@ export function moSelector(bridge, img) {
   };
 }
 
-/** A field as a grey PNG named by its content (the first 24 hex digits of its SHA-256): { name, bytes }. */
+/** A field's name, from its content: the first 24 hex digits of the SHA-256 of its size and 8-bit values. Quick, so a result can show before its PNG is written. */
+export async function moFieldName(field) {
+  const q = new Uint8Array(field.w * field.h + 8), dv = new DataView(q.buffer);
+  dv.setUint32(0, field.w); dv.setUint32(4, field.h);
+  for (let i = 0; i < field.w * field.h; i++) q[8 + i] = Math.round(field.a[i] * 255);
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', q));
+  return `${Array.from(hash.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('')}.png`;
+}
+/** A field as a grey PNG's bytes. */
 export async function moFieldPng(field) {
   const cv = moEl('canvas'); cv.width = field.w; cv.height = field.h;
   const d = new Uint8ClampedArray(field.w * field.h * 4);
   for (let i = 0; i < field.w * field.h; i++) { const v = Math.round(field.a[i] * 255); d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
   cv.getContext('2d').putImageData(new ImageData(d, field.w, field.h), 0, 0);
   const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return { name: `${Array.from(hash.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('')}.png`, bytes };
+  return new Uint8Array(await blob.arrayBuffer());
 }
 /** A mask image's bytes back to a field (its red channel). */
 export async function moPngField(bytes) {

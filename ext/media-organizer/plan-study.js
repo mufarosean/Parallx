@@ -209,13 +209,13 @@ export function moPlanStudy(ctx) {
     s2.appendChild(head);
     if (ctx.picker.on()) {
       moPlanSlider(s2, { id: 'media-organizer.plan.pickSize', label: 'Picker size', min: 1, max: 45, step: 2, value: ctx.picker.size(), text: (v) => `${v} px`, onInput: (v) => ctx.picker.setSize(v), onChange: (v) => ctx.picker.setSize(v) });
-      moPlanHint(s2, 'Click the picture to add the colour under the picker. A bigger picker averages more, the way the eye reads a patch.');
+      moPlanHint(s2, 'Click the picture to add a colour.');
     }
     list = moEl('div', 'mo-ps-pal', { role: 'group', 'aria-label': 'Palette: open a colour for its mix, Shift and open a second to compare' });
     const onMods = (e) => { mod = !!(e.shiftKey || e.ctrlKey || e.metaKey); };
     list.addEventListener('pointerdown', onMods, true); list.addEventListener('keydown', onMods, true);
     panelDisposers.push(() => { list = null; });
-    if (!needNow()) { later(true); moPlanHint(list, 'Working out the masses…'); }
+    if (!needNow()) { later(true); moPlanHint(list, 'Finding masses…'); }
     const all = colours(), counts = new Map();
     for (const c of all) counts.set(c.name, (counts.get(c.name) || 0) + 1);
     for (const c of all) {
@@ -237,7 +237,7 @@ export function moPlanStudy(ctx) {
     s2.appendChild(list);
     const cmp = moEl('div', 'mo-ps-cmp');
     if (marked.length === 2) compareBlock(cmp, all.find((c) => c.key === marked[0]), all.find((c) => c.key === marked[1]));
-    else moPlanHint(cmp, 'Click a shape on the picture to find its colour here. Shift and click two colours to compare them.');
+    else moPlanHint(cmp, 'Click a shape to find its colour. Shift-click two to compare.');
     s2.appendChild(cmp);
     const row = moEl('div', 'mo-plan-row');
     ui.createButton(row, { id: 'media-organizer.plan.studyPaints', label: 'My Paints…', size: 'sm', command: 'media-organizer.plan.studyPaints' });
@@ -247,7 +247,7 @@ export function moPlanStudy(ctx) {
   function recipeBlock(c, mx) {
     const box = moEl('div', 'mo-ps-recipe');
     const best = mx && mx.best;
-    if (!best) { moPlanHint(box, paints ? 'Your paints cannot mix this. Add a paint near it in My Paints.' : 'Reading your paints'); return box; }
+    if (!best) { moPlanHint(box, paints ? 'Your paints cannot mix this one.' : 'Reading your paints'); return box; }
     box.appendChild(mixBar(best, 'mo-ps-mixbar mo-ps-mixbar--lg'));
     const ul = moEl('ul', 'mo-ps-parts');
     for (const p of best.paints) {

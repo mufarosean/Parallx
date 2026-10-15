@@ -142,7 +142,7 @@ export function moPlanCompose(ctx) {
     live.wIn.value = String(state.plan.canvas_w); live.hIn.value = String(state.plan.canvas_h);
     live.hint.textContent = hintText();
   }
-  const hintText = () => (state.recipe.freeCrop ? 'Free: drag a corner or an edge any way you like and the canvas takes the crop’s shape.' : 'The crop keeps the canvas proportions. Drag the frame to move it, a corner to size it.');
+  const hintText = () => (state.recipe.freeCrop ? 'Drag a corner or an edge. The canvas takes the crop’s shape.' : 'Drag the frame to move it, a corner to resize.');
   function setCrop(b, record, keep) { state.recipe.crop = toCrop(b); canvasFollows(b); syncLive(); if (record) ctx.afterRecipeChange(true, keep); else ctx.requestRender(); }
   // A new canvas shape: the largest crop of it about where the crop was.
   function refit(keep) { const b = toPx(state.recipe.crop); setCrop(largest(ratio(), b), true, keep); }
@@ -257,7 +257,7 @@ export function moPlanCompose(ctx) {
     }
     s3.appendChild(grid);
     if (r.overlays.guide === 'spiral' || r.overlays.guide === 'triangles') ui.createButton(s3, { id: 'media-organizer.plan.composeTurnGuide', label: 'Turn The Guide', icon: 'refresh-cw', size: 'sm', command: 'media-organizer.plan.composeTurnGuide', title: 'Move the guide’s eye to the next corner' });
-    moPlanHint(s3, 'Move the frame until the strong shapes sit on the guide. The guide shows only here, while you crop.');
+    moPlanHint(s3, 'Line up the strong shapes with the guide.');
   }
   // ── Transfer: the grid in inches, over the view the painter studied last ──
   function transferPanel(container, panelDisposers) {
@@ -265,10 +265,10 @@ export function moPlanCompose(ctx) {
     const s = moPlanSection(container, 'Grid');
     moPlanChoice(ui, s, { id: 'media-organizer.plan.gridInches', label: 'Squares', items: [['0.5', '½ in'], ['1', '1 in'], ['2', '2 in'], ['3', '3 in']], value: String(o.gridInches || 1), onChange: (v) => { o.gridInches = Number(v) || 1; ctx.afterRecipeChange(true, true); } }, panelDisposers);
     moPlanSwitch(ui, s, { id: 'media-organizer.plan.gridLabels', label: 'Number the squares', checked: o.gridLabels !== false, onChange: (on) => { o.gridLabels = on; ctx.afterRecipeChange(true, true); } }, panelDisposers);
-    moPlanHint(s, `Columns numbered, rows lettered, for a ${state.plan.canvas_w} × ${state.plan.canvas_h} in canvas. Rule the same grid on the canvas and copy it square by square.`);
+    moPlanHint(s, `For a ${state.plan.canvas_w} × ${state.plan.canvas_h} in canvas: rule the same grid and copy square by square.`);
     const s2 = moPlanSection(container, 'Under the grid', true);
     moPlanChoice(ui, s2, { id: 'media-organizer.plan.transferShows', ariaLabel: 'Under the grid', items: [['photo', 'Photo'], ['values', 'Values'], ['colour', 'Colour']], value: state.view || 'photo', onChange: (v) => ctx.setView(v) }, panelDisposers);
-    moPlanHint(s2, 'What Export and Print show: the photo, its values in the underpainting colour, or its colour masses.');
+    moPlanHint(s2, 'What Export and Print show.');
     const row = moEl('div', 'mo-plan-row');
     ui.createButton(row, { id: 'media-organizer.plan.exportWithGrid', label: 'Export With Grid', kind: 'primary', size: 'sm', command: 'media-organizer.plan.exportWithGrid' });
     ui.createButton(row, { id: 'media-organizer.plan.printWithGrid', label: 'Print With Grid…', size: 'sm', command: 'media-organizer.plan.printWithGrid' });

@@ -167,13 +167,13 @@ export function moPlanColours(ctx) {
     const r = state.recipe;
     const n = currentStage();
     const s1 = moPlanSection(panel, '');
+    if (ctx.isolate) ctx.isolate.control(s1, panelDisposers); // first here as in Colour: the same setting
     moPlanSlider(s1, { id: 'media-organizer.plan.squint', label: 'Squint', min: 0, max: 100, step: 1, value: moSquintPos((r.blur || 0) * 100), text: (v) => moSquintText(moSquintAt(v)),
       onInput: (v) => setAid({ blur: moSquintAt(v) / 100 }, false), onChange: (v) => setAid({ blur: moSquintAt(v) / 100 }, true, true) });
     const light = r.notan > 0;
     if (!light) moPlanSlider(s1, { id: 'media-organizer.plan.values', label: 'Values', min: 2, max: 11, step: 1, value: r.levels >= 2 ? r.levels : 11, text: (v) => (v >= 11 ? 'all' : String(v)),
       onInput: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, false), onChange: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, true, true) });
     const split = light ? fromNotan(r.notan) : (ctx.lightSplit() ?? 5);
-    if (ctx.isolate) ctx.isolate.control(s1, panelDisposers);
     moPlanSwitch(ui, s1, { id: 'media-organizer.plan.lightShadow', label: 'Light and shadow only', checked: light, onChange: (on) => setAid(on ? { notan: toNotan(split), levels: 0 } : { notan: 0 }, true) }, panelDisposers);
     if (light) moPlanSlider(s1, { id: 'media-organizer.plan.lightEnds', label: 'Where light ends', min: 1, max: 9, step: 0.5, value: split, text: (v) => `value ${v}`,
       onInput: (v) => setAid({ notan: toNotan(v) }, false), onChange: (v) => setAid({ notan: toNotan(v) }, true, true) });
@@ -189,7 +189,7 @@ export function moPlanColours(ctx) {
       b.prepend(dot);
     }
     s2.appendChild(chips);
-    moPlanHint(s2, 'The values in one paint, from its darks to its tints, the way a monochrome underpainting is laid in. Colour amount in the Colour step fades to it too.');
+    moPlanHint(s2, 'The values in one paint, darks to tints.');
 
     const fam = ctx.lightFamilies(light ? split : null);
     if (fam) {
@@ -200,7 +200,7 @@ export function moPlanColours(ctx) {
         row.append(sw, moEl('span', 'mo-ps-row-text', { textContent: `${word} · ${moColourName(fam.families[i].rgb).name}` }), moEl('span', 'mo-ps-num', { textContent: `${Math.round(fam.families[i].share * 100)}%` }));
         s3.appendChild(row);
       }
-      moPlanHint(s3, fam.warmer === 'neither' ? 'Both families are about the same temperature.' : `The ${fam.warmer} family is warmer. A shadow is rarely the light colour made darker.`);
+      moPlanHint(s3, fam.warmer === 'neither' ? 'Both families are about the same temperature.' : `The ${fam.warmer} family is warmer.`);
     }
 
     const s4 = moPlanSection(panel, 'Stages', true);
@@ -212,7 +212,7 @@ export function moPlanColours(ctx) {
     const more = ui.createIconButton(list, { id: 'media-organizer.plan.stageMenu', icon: 'ellipsis', title: 'Stage Actions', size: 'sm', command: 'media-organizer.plan.stageMenu' });
     more.setAttribute('aria-haspopup', 'menu');
     s4.appendChild(list);
-    moPlanHint(s4, n ? `Changes are saved to ${shared.stages[n - 1].name} for every plan. Keys 1 to ${shared.stages.length} switch stages.` : `A stage keeps a squint and values to come back to. Keys 1 to ${shared.stages.length} switch stages.`);
+    moPlanHint(s4, n ? `Changes save to ${shared.stages[n - 1].name} in every plan.` : `Keys 1 to ${shared.stages.length} switch stages.`);
   }
 
   // ── the picker ──

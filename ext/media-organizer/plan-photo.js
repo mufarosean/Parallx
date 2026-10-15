@@ -14,7 +14,7 @@
 import { moEl } from './dom.js';
 import { moPlanHint, moPlanSection, moPlanSlider } from './plan-kit.js';
 
-const ACTIONS = ['photoEnhance', 'photoStopEnhance', 'photoUseOriginal', 'photoRemoveMode', 'photoClearRemovals', 'photoOpenEditor'];
+const ACTIONS = ['photoEnhance', 'photoStopEnhance', 'photoUseOriginal', 'photoRemoveMode', 'photoClearRemovals', 'photoOpenEditor', 'photoSetUpEnhance'];
 const IDENT = { crop: { x: 0, y: 0, w: 1, h: 1 }, angle: 0, rotate: 0, flipH: false, flipV: false };
 
 const open = new Set();
@@ -45,6 +45,7 @@ export function moPlanPhoto(ctx) {
   let enh = null;                    // { file, img }: the enhanced copy, decoded
   let job = null;                    // a running Enhance: { runId, label, fraction }
   let engine = null;                 // Enhance set up: null (not asked), true, false
+  let enhanceCard = false; // Enhance's setup card, shown once asked for
   let remover = 'unknown';           // the Remove model: 'unknown' | 'ready' | other
   let removing = false;              // the picture takes brush strokes
   let brush = 40;
@@ -244,6 +245,9 @@ export function moPlanPhoto(ctx) {
       jobEl.append(moEl('span', 'mo-pp-job-label', { textContent: job.label }), bar);
       s.appendChild(jobEl); syncJob();
       if (job.label !== 'Removing') ui.createButton(s, { id: 'media-organizer.plan.photoStopEnhance', label: 'Stop', size: 'sm', command: 'media-organizer.plan.photoStopEnhance' });
+    } else if (engine === false && !enhanceCard) {
+      moPlanHint(s, 'Enlarge the crop for finer detail. Needs a one-time setup.');
+      ui.createButton(s, { id: 'media-organizer.plan.photoSetUpEnhance', label: 'Set Up Enhance…', kind: 'secondary', size: 'sm', command: 'media-organizer.plan.photoSetUpEnhance' });
     } else if (engine === false) {
       const card = deps.enhance.card(api, () => { engine = true; if (state.tool === 'photo') ctx.renderPanel(); });
       s.appendChild(card.el); panelDisposers.push(() => card.dispose());
@@ -252,7 +256,7 @@ export function moPlanPhoto(ctx) {
       ui.createButton(s, { id: 'media-organizer.plan.photoUseOriginal', label: 'Use The Original Photo', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.photoUseOriginal' });
     } else {
       if (r.enhanced) s.appendChild(moEl('div', 'mo-pp-status is-stale', { textContent: 'The crop or the removals changed since it was enhanced.' }));
-      else moPlanHint(s, 'Enlarge the cropped picture before you study it: finer detail to read values and colour from. Every step after this works from the enhanced copy.');
+      else moPlanHint(s, 'Enlarge the crop for finer detail to study.');
       const row = moEl('div', 'mo-plan-row');
       for (const k of [2, 4]) ui.createButton(row, { id: `media-organizer.plan.photoEnhance.${k}`, label: r.enhanced ? `Enhance Again ${k}×` : `Enhance ${k}×`, kind: k === 2 ? 'primary' : 'secondary', size: 'sm', command: 'media-organizer.plan.photoEnhance', args: [k], disabled: engine !== true });
       s.appendChild(row);
@@ -271,7 +275,7 @@ export function moPlanPhoto(ctx) {
     const s2 = moPlanSection(container, 'Remove', true);
     if (remover === 'unknown') { void deps.removal.state().then((st) => { remover = st; if (state.tool === 'photo') ctx.renderPanel(); }); moPlanHint(s2, 'Checking'); return; }
     if (remover !== 'ready') {
-      moPlanHint(s2, 'Remove needs its model. Set it up in the Image Editor’s Remove tool, then come back.');
+      moPlanHint(s2, 'Set up Remove in the Image Editor first.');
       ui.createButton(s2, { id: 'media-organizer.plan.photoOpenEditor', label: 'Open In Image Editor', size: 'sm', command: 'media-organizer.plan.photoOpenEditor' });
       return;
     }
@@ -279,7 +283,7 @@ export function moPlanPhoto(ctx) {
     tgl.setAttribute('aria-pressed', String(removing));
     if (removing) moPlanSlider(s2, { id: 'media-organizer.plan.photoBrush', label: 'Brush size', min: 6, max: 240, step: 1, value: brush, text: (v) => `${v} px`, onInput: (v) => { brush = v; }, onChange: (v) => { brush = v; } });
     const n = (r.removals || []).length;
-    moPlanHint(s2, removing ? 'Brush over a mark on the picture. Hold Alt and brush to bring a removal back.' : n ? `${n} mark${n === 1 ? '' : 's'} removed.` : 'Brush out a wire, a sign, a passer-by: anything you will not paint.');
+    moPlanHint(s2, removing ? 'Brush over a mark. Alt-brush brings one back.' : n ? `${n} mark${n === 1 ? '' : 's'} removed.` : 'Brush out anything you will not paint.');
     if (n) ui.createButton(s2, { id: 'media-organizer.plan.photoClearRemovals', label: 'Bring Them All Back', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.photoClearRemovals' });
   }
 
@@ -300,6 +304,7 @@ export function moPlanPhoto(ctx) {
     photoUseOriginal: () => { state.recipe.enhanced = null; ctx.afterRecipeChange(true); },
     photoRemoveMode: () => { removing = !removing; if (removing) kitState.pickWb = false; sync(); ctx.renderPanel(); },
     photoClearRemovals: () => { state.recipe.removals = []; ctx.afterRecipeChange(true); refresh(); },
+    photoSetUpEnhance: () => { enhanceCard = true; ctx.renderPanel(); },
     photoOpenEditor: () => { if (state.plan) void api.commands.executeCommand('media-organizer.editImage', state.plan.photo_id); },
   };
   const handle = { root: ctx.root, act: (name, ...args) => (acts[name] && state.recipe ? acts[name](...args) : undefined) };

@@ -58,9 +58,9 @@ export function moPlanVariations(ctx) {
     return url;
   }
   function statusText() {
-    if (state.variant && state.variant.id === savedId) return `${state.variant.name} saved. Changes go on into it as you work.`;
-    if (state.variant) return `Working on ${state.variant.name}. Changes are kept in it as you work.`;
-    return state.variants.length ? 'A new picture, not saved as a variation yet.' : 'The + keeps the picture as it is now, from any step.';
+    if (state.variant && state.variant.id === savedId) return `${state.variant.name} saved`;
+    if (state.variant) return `Editing ${state.variant.name} · saves as you go`;
+    return state.variants.length ? 'Not saved as a variation' : '+ saves this picture as a variation';
   }
 
   function render() {

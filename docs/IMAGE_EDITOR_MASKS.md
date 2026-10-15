@@ -97,10 +97,10 @@ painting plan's Photo step, because both draw their panels from `moEditPanelKit`
   - **Object**: SAM 2.1 small, Apache 2.0, 183 MB. A click selects what is under it, Shift-click takes
     away, a drag draws a box. The photo is read once (0.3 s), then each click is 0.05 s. The keyboard way:
     the arrows move a point, Enter selects, Shift+Enter takes away.
-  - **Words and Sky**: CLIPSeg (Apache 2.0, 545 MB) says roughly where the words are; SAM draws the
+  - **Sky and Describe** (type what to select): CLIPSeg (Apache 2.0, 545 MB) says roughly where the words are; SAM draws the
     edge from points at its strongest places; too weak a match says nothing was found. The words it
     knows are in `clip-words.js` (whole words from its vocabulary).
-  - **Distance**: Depth Anything V2 small, Apache 2.0, 99 MB. "Farther than" and "Softness" make the
+  - **Distance**: Depth Anything V2 small, Apache 2.0, 99 MB. "Farther than" and "Feather" make the
     part from the depth; Invert this part takes what is nearer.
   - SAM's answer is 256 pixels across; a guided filter snaps it to the photo's own edges.
 - Every file is pinned to the commit tested and kept only if its SHA-256 matches. SAM and CLIPSeg's

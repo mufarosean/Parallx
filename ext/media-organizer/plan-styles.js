@@ -111,8 +111,9 @@ export const MO_PLAN_CSS = `
 .mo-mk-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .mo-mk-layer.is-brush { pointer-events: auto; cursor: none; touch-action: none; }
 .mo-mk-layer.is-pick { pointer-events: auto; cursor: crosshair; touch-action: none; }
-.mo-mk-status { margin: var(--px-space-1) var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-secondary); }
-.mo-mk-words { display: flex; align-items: flex-end; gap: var(--px-space-2); margin: 0 var(--px-space-3) var(--px-space-2); }
+.mo-mk-status { margin: var(--px-space-1) 0; font-size: var(--px-text-xs); color: var(--px-text-secondary); }
+.mo-mk-status:empty { display: none; }
+.mo-mk-words { display: flex; align-items: center; gap: var(--px-space-1); margin: var(--px-space-1) 0; }
 .mo-mk-words > :first-child { flex: 1; min-width: 0; }
 .mo-mk-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
 .mo-mk-lines, .mo-mk-handles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -128,6 +129,10 @@ export const MO_PLAN_CSS = `
 .px-btn.mo-mk-mask { flex: 1; min-width: 0; height: auto; display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-areas: "th name" "th sub"; column-gap: var(--px-space-2); row-gap: 0; padding: 4px; text-align: left; justify-content: stretch; }
 .mo-mk-thumb { grid-area: th; width: 40px; height: 28px; border-radius: var(--px-radius-sm); }
 .px-btn.mo-mk-mask .px-btn__label { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.px-btn.mo-mk-mask.is-single { grid-template-areas: "th name"; align-items: center; }
+.mo-mk-actions { display: flex; margin: var(--px-space-1) 0; }
+.mo-edit-setup.mo-mk-setup { margin: var(--px-space-2) 0; }
+.mo-edit-setup.mo-mk-setup .px-btn { margin-top: var(--px-space-1); }
 .mo-mk-sub { grid-area: sub; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--px-text-2xs); color: var(--px-text-muted); font-weight: normal; }
 .px-btn.mo-mk-mask[aria-pressed="true"], .px-btn.mo-mk-part[aria-pressed="true"] { background: var(--px-accent-soft); }
 .px-btn.mo-mk-part { flex: 1; justify-content: flex-start; gap: var(--px-space-2); }

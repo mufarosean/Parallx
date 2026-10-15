@@ -13,7 +13,7 @@
 
 import { moEl } from './dom.js';
 import { moPointKeys } from './keys.js';
-import { MO_SELECT_MODELS, moClipVocab, moFieldPng, moFieldResize, moSelectBytes, moSelectCancel, moSelectSetUp, moSelectState, moSelector } from './edit-select.js';
+import { MO_SELECT_MODELS, moClipVocab, moFieldName, moFieldPng, moFieldResize, moSelectBytes, moSelectCancel, moSelectSetUp, moSelectState, moSelector } from './edit-select.js';
 
 export const MO_MASK_PARTS = { subject: ['Subject', 'user-round'], object: ['Object', 'mouse-pointer-click'], words: ['Words', 'text-cursor-input'], distance: ['Distance', 'mountain-snow'],
   brush: ['Brush', 'paintbrush'], linear: ['Linear Gradient', 'rows-3'], radial: ['Radial Gradient', 'circle-dot'] };
@@ -21,7 +21,7 @@ export const MO_MASK_PARTS = { subject: ['Subject', 'user-round'], object: ['Obj
 const MODEL_KINDS = new Set(['subject', 'object', 'words', 'distance']);
 const FILE_RE = /^[0-9a-f]{24}\.png$/;
 /** What a part is called: Background is the subject the other way round, Sky the word sky. */
-export const moPartLabel = (p) => (p.kind === 'subject' && p.invert ? 'Background' : p.kind === 'words' ? (p.text === 'sky' ? 'Sky' : p.text ? `“${p.text}”` : 'Words') : MO_MASK_PARTS[p.kind][0]);
+export const moPartLabel = (p) => (p.kind === 'subject' && p.invert ? 'Background' : p.kind === 'words' ? (p.text ? String(p.text).replace(/\b\w/g, (c) => c.toUpperCase()) : 'Describe') : MO_MASK_PARTS[p.kind][0]);
 // [key, label, min, max]: the Edit tab's controls in its own units (rest 0), and Blur.
 export const MO_MASK_ADJUST = [['exposure', 'Exposure', -2, 2], ['contrast', 'Contrast', -1, 1], ['highlights', 'Highlights', -1, 1], ['shadows', 'Shadows', -1, 1],
   ['whites', 'Whites', -1, 1], ['blacks', 'Blacks', -1, 1], ['warmth', 'Temperature', -1, 1], ['tint', 'Tint', -1, 1], ['vibrance', 'Vibrance', -1, 1],
@@ -68,10 +68,10 @@ export function moMasksNormalize(list) {
 // Loaded on first need through the host's loader (moMaskImageLoader); every load wakes whoever drew without it.
 const images = new Map(); // file -> { w, h, a } | 'loading' | 'missing'
 const imageListeners = new Set();
-let imageLoader = null, imagesVersion = 0;
+let imageLoader = null;
 /** loader(file) -> Promise<{ w, h, a }>: read a mask image from where the host keeps them. */
 export function moMaskImageLoader(loader) { imageLoader = loader; }
-export function moMaskImagePut(file, field) { images.set(file, field); imagesVersion++; for (const f of imageListeners) { try { f(); } catch { /* gone */ } } }
+export function moMaskImagePut(file, field) { images.set(file, field); for (const f of imageListeners) { try { f(); } catch { /* gone */ } } }
 /** Called after an image arrives, so a picture drawn without it is drawn again. */
 export function moMaskOnImages(fn) { imageListeners.add(fn); return () => imageListeners.delete(fn); }
 function imageOf(file) {
@@ -83,6 +83,8 @@ function imageOf(file) {
 /** The image files a recipe's masks name (for keeping them when old files are swept). */
 export function moMaskFiles(masks) { return (Array.isArray(masks) ? masks : []).flatMap((m) => (m && Array.isArray(m.parts) ? m.parts : []).map((p) => p && p.file).filter((f) => FILE_RE.test(String(f)))); }
 /** Every image the masks need, loaded (before a save draws them). */
+// Which of a mask's images are in: part of the key the engine holds a mask by, so one arriving re-sends only its masks.
+const loadedSig = (m) => m.parts.map((p) => (p.file && images.get(p.file) && images.get(p.file).a ? 1 : 0)).join('');
 export async function moMaskImagesReady(masks) {
   await Promise.all(moMaskFiles(masks).map(async (f) => { if (imageOf(f) || !imageLoader) return; try { moMaskImagePut(f, await imageLoader(f)); } catch { images.set(f, 'missing'); } }));
 }
@@ -187,7 +189,7 @@ export function moMaskPasses(engine, masks, base, srcW, srcH, alsoKeep) {
   for (const m of list) {
     if (!m.show || !MO_MASK_ADJUST.some(([k]) => Math.abs(m.adjust[k]) > 1e-6)) continue;
     keep.add(m.id);
-    const key = `${w}x${h}|${imagesVersion}|${JSON.stringify(m.parts)}|${m.invert}`;
+    const key = `${w}x${h}|${loadedSig(m)}|${JSON.stringify(m.parts)}|${m.invert}`;
     if (held.get(m.id) !== key) {
       const f = moMaskField(m, w, h), bytes = new Uint8Array(w * h);
       for (let i = 0; i < bytes.length; i++) bytes[i] = Math.round(f[i] * 255);
@@ -208,7 +210,7 @@ export function moMaskEnsure(engine, mask, srcW, srcH) {
   const held = engineKeys.get(engine) || new Map();
   engineKeys.set(engine, held);
   const { w, h } = moMaskSize(srcW, srcH);
-  const key = `${w}x${h}|${imagesVersion}|${JSON.stringify(mask.parts)}|${mask.invert}`;
+  const key = `${w}x${h}|${loadedSig(mask)}|${JSON.stringify(mask.parts)}|${mask.invert}`;
   if (held.get(mask.id) !== key) {
     const f = moMaskField(mask, w, h), bytes = new Uint8Array(w * h);
     for (let i = 0; i < bytes.length; i++) bytes[i] = Math.round(f[i] * 255);
@@ -224,9 +226,10 @@ function moMasksNormalizeCached(masks) { return Array.isArray(masks) ? masks : [
 const ACTIONS = ['masksNew', 'masksSelect', 'masksShow', 'masksMore', 'masksPart', 'masksAddPart', 'masksRemovePart', 'masksLook', 'masksReset', 'masksOverlay',
   'masksSetUp', 'masksCancelSetUp', 'masksClearClicks', 'masksFindWords'];
 // The menus' ways to start a part: [kind, label, what the part starts with]; null is a line between.
-const MENU = [['subject', 'Subject', {}], ['subject', 'Background', { invert: true }], ['words', 'Sky', { text: 'sky' }], ['object', 'Object', {}], ['words', 'Words…', {}], ['distance', 'Distance', {}], null,
+const MENU = [['subject', 'Subject', {}], ['subject', 'Background', { invert: true }], ['words', 'Sky', { text: 'sky' }], ['object', 'Object', {}], ['words', 'Describe', {}], ['distance', 'Distance', {}], null,
   ['brush', 'Brush', {}], ['linear', 'Linear Gradient', {}], ['radial', 'Radial Gradient', {}]];
-const BUSY = { subject: 'Finding the subject. The first time takes about ten seconds.', object: 'Selecting', words: 'Looking for it', distance: 'Measuring how far things are' };
+const BUSY = { subject: 'Finding the subject…', object: 'Selecting…', words: 'Searching…', distance: 'Measuring depth…' };
+const titleCase = (t) => String(t).replace(/\b\w/g, (c) => c.toUpperCase());
 const way = (p) => (p && MODEL_KINDS.has(p.kind) ? p.kind : null);
 // Each Masks tool (the editor's, a plan's) is named in its buttons' commands, so the one clicked answers.
 const open = new Map();
@@ -257,7 +260,8 @@ export function moEditMasks(ctx) {
   const part = () => { const m = cur(); return m ? m.parts[Math.min(S.part, m.parts.length - 1)] || null : null; };
   const id = (s) => `${ctx.idStem}.${s}`;
   // What the models need and are doing: each way's state, a download, the part being found, a note on the last try.
-  const SEL = { ways: {}, download: null, downloadError: '', busy: null, note: '', selector: null, img: null, seq: 0, words: null, drag: null };
+  const SEL = { ways: {}, download: null, downloadError: '', busy: null, note: '', selector: null, img: null, seq: 0, words: null, drag: null, statusEl: null, dlEls: null };
+  const say = (text) => { if (SEL.statusEl && SEL.statusEl.isConnected) SEL.statusEl.textContent = text; else ctx.afterChange(false); };
   const tried = new WeakSet();
   const selector = () => { const img = ctx.select && ctx.select.image(); if (!img) return null; if (SEL.img !== img) { SEL.img = img; SEL.selector = moSelector(ctx.select.bridge, img); } return SEL.selector; };
   const checkWay = async (w) => { SEL.ways[w] = await moSelectState(ctx.select && ctx.select.bridge, w); return SEL.ways[w]; };
@@ -272,7 +276,7 @@ export function moEditMasks(ctx) {
     if (!sel || (p.kind === 'words' && !p.text)) return;
     if (p.kind === 'object' && !p.clicks.length && !p.box) { p.file = ''; ctx.afterChange(true); return; }
     const n = ++SEL.seq;
-    SEL.busy = { part: p }; SEL.note = ''; ctx.afterChange(false);
+    SEL.busy = { part: p }; SEL.note = ''; say(BUSY[p.kind]);
     try {
       let field = null;
       if (p.kind === 'subject') field = await sel.subject();
@@ -280,27 +284,40 @@ export function moEditMasks(ctx) {
       else if (p.kind === 'distance') field = await sel.distance();
       else {
         field = await sel.words(p.text, await moClipVocab());
-        if (field && field.unknown) { SEL.note = `“${p.text}” is not a word the model knows. Try a plainer one.`; field = null; }
-        else if (!field) SEL.note = `Nothing like “${p.text}” was found in this photo.`;
+        if (field && field.unknown) { SEL.note = `Try a simpler word than “${p.text}”.`; field = null; }
+        else if (!field) SEL.note = `No “${p.text}” in this photo.`;
       }
       if (n !== SEL.seq) return;
-      if (field) { const png = await moFieldPng(field); await ctx.select.store(png.name, png.bytes); moMaskImagePut(png.name, field); p.file = png.name; } else p.file = '';
       SEL.busy = null;
+      if (!field && !p.file) { say(SEL.note); return; } // nothing to keep: only the line changes
+      if (field) {
+        // shown at once; its PNG is written after (encoding takes longer than finding it on screen)
+        const name = await moFieldName(field); moMaskImagePut(name, field); p.file = name;
+        void moFieldPng(field).then((bytes) => ctx.select.store(name, bytes)).catch((err) => console.warn('[MediaOrganizer] a mask image was not kept:', err && err.message));
+        const m = masks().find((x) => x.parts.includes(p));
+        if (m && p.kind === 'words' && /^Mask \d+$/.test(m.name)) m.name = titleCase(p.text).slice(0, 40); // named after what was found
+      } else p.file = '';
       ctx.afterChange(true);
     } catch (err) {
       if (n !== SEL.seq) return;
-      SEL.busy = null; SEL.note = `It did not work: ${(err && err.message) || err}`;
-      ctx.afterChange(false);
+      SEL.busy = null; SEL.note = `Couldn’t select: ${(err && err.message) || err}`;
+      say(SEL.note);
     }
   }
   async function setUp(w) {
     SEL.download = { way: w, received: 0, total: moSelectBytes(w) }; SEL.downloadError = '';
     ctx.afterChange(false);
     let last = 0;
-    const r = await moSelectSetUp(ctx.select.bridge, w, (got, total) => { SEL.download = { way: w, received: got, total }; if (Date.now() - last > 500) { last = Date.now(); ctx.afterChange(false); } });
+    // progress moves the bar in place; the panel is rebuilt only if it was rebuilt meanwhile
+    const r = await moSelectSetUp(ctx.select.bridge, w, (got, total) => {
+      SEL.download = { way: w, received: got, total };
+      const e = SEL.dlEls;
+      if (e && e.fill.isConnected) { e.fill.style.width = `${Math.round((got / Math.max(1, total)) * 100)}%`; e.text.textContent = `${Math.round(got / 1048576)} of ${Math.round(total / 1048576)} MB`; }
+      else if (Date.now() - last > 500) { last = Date.now(); ctx.afterChange(false); }
+    });
     SEL.download = null;
-    if (r && r.ok) { SEL.ways[w] = { state: 'ready' }; const p = part(); if (p && way(p) === w) { void find(p); return; } }
-    else SEL.downloadError = r && r.stopped ? 'Cancelled. Nothing was kept.' : `The download did not finish: ${(r && r.error) || 'no answer'}`;
+    if (r && r.ok) { SEL.ways[w] = { state: 'ready' }; const p = part(); if (p && way(p) === w) { ctx.afterChange(false); void find(p); return; } }
+    else SEL.downloadError = r && r.stopped ? 'Download stopped. Nothing was kept.' : `Download failed: ${(r && r.error) || 'no answer'}`;
     ctx.afterChange(false);
   }
 
@@ -463,45 +480,46 @@ export function moEditMasks(ctx) {
   function modelPanel(cover, p, panelDisposers) {
     const w = way(p), info = MO_SELECT_MODELS[w], st = SEL.ways[w];
     const status = (text) => cover.appendChild(moEl('div', 'mo-mk-status', { role: 'status', textContent: text }));
-    if (!ctx.select) { status(`${info.title} cannot run here.`); return; }
-    if (!st) { status('Checking'); void checkWay(w).then(() => ctx.afterChange(false)); return; }
+    if (!ctx.select) { status('Not available in this build.'); return; }
+    if (!st) { status('Checking…'); void checkWay(w).then(() => ctx.afterChange(false)); return; }
     if (st.state !== 'ready') {
-      const card = moEl('div', 'mo-edit-setup'), dl = SEL.download && SEL.download.way === w ? SEL.download : null, mb = (b) => Math.round(b / 1048576);
+      const card = moEl('div', 'mo-edit-setup mo-mk-setup'), dl = SEL.download && SEL.download.way === w ? SEL.download : null, mb = (b) => Math.round(b / 1048576);
       if (st.state === 'model') {
-        card.append(moEl('div', 'mo-edit-setup-title', { textContent: `${info.title} needs a one-time download` }), moEl('p', null, { textContent: info.does }),
-          moEl('p', null, { textContent: `${info.model} runs on this computer; photos are never sent anywhere. ${mb(st.missing || moSelectBytes(w))} MB, once.` }));
+        card.title = `${info.does} ${info.model}, kept only if it is exactly the file tested. Photos are never sent anywhere.`;
+        card.append(moEl('div', 'mo-edit-setup-title', { textContent: info.title }), moEl('p', null, { textContent: `${mb(st.missing || moSelectBytes(w))} MB download · runs on this computer` }));
         if (dl) {
-          const bar = moEl('div', 'mo-edit-progress'), fill = moEl('div', 'mo-edit-progress-fill');
+          const bar = moEl('div', 'mo-edit-progress'), fill = moEl('div', 'mo-edit-progress-fill'), text = moEl('p', null, { textContent: `${mb(dl.received)} of ${mb(dl.total)} MB` });
           fill.style.width = `${Math.round((dl.received / Math.max(1, dl.total)) * 100)}%`; bar.appendChild(fill);
-          card.append(bar, moEl('p', null, { textContent: `Downloading · ${mb(dl.received)} of ${mb(dl.total)} MB` }));
+          card.append(bar, text);
+          SEL.dlEls = { fill, text };
           ui.createButton(card, { id: id('cancelSetUp'), label: 'Cancel Download', kind: 'ghost', size: 'sm', command: 'media-organizer.masksCancelSetUp', args: [me, w] });
         } else {
           ui.createButton(card, { id: id('setUp'), label: 'Download', kind: 'primary', size: 'sm', command: 'media-organizer.masksSetUp', args: [me, w] });
           if (SEL.downloadError) card.appendChild(moEl('p', null, { textContent: SEL.downloadError }));
         }
-      } else card.append(moEl('div', 'mo-edit-setup-title', { textContent: `${info.title} cannot run here` }), moEl('p', null, { textContent: st.state === 'runtime' ? 'The part of Parallx that runs models is missing from this install.' : 'Models cannot run in this build of Parallx.' }));
+      } else card.append(moEl('div', 'mo-edit-setup-title', { textContent: info.title }), moEl('p', null, { textContent: st.state === 'runtime' ? 'The model runner is missing from this install.' : 'Not available in this build.' }));
       cover.appendChild(card);
       return;
     }
-    if (p.kind === 'words') {
-      const input = ui.createInput(null, { id: id('words'), label: 'What to select', placeholder: 'sky, water, trees, hair', value: p.text });
+    if (p.kind === 'words' && p.text !== 'sky') {
+      const input = ui.createInput(null, { id: id('words'), label: 'What to select', placeholder: 'water, trees, hair…', value: p.text });
       SEL.words = input; panelDisposers.push(() => { input.dispose(); if (SEL.words === input) SEL.words = null; });
       const row = moEl('div', 'mo-mk-words'); row.appendChild(input.element);
       ui.createButton(row, { id: id('findWords'), label: 'Select', size: 'sm', command: 'media-organizer.masksFindWords', args: [me] });
       cover.appendChild(row);
     }
     if (p.kind === 'object') {
-      cover.appendChild(ctx.kit.hint('Click a thing on the photo to select it. Click again to add, Shift-click to take away, or drag a box round it. From the keyboard: Tab to the photo, the arrows move the point, Enter selects, Shift+Enter takes away.'));
-      if (p.clicks.length || p.box) ui.createButton(cover, { id: id('clearClicks'), label: 'Clear Clicks', icon: 'eraser', kind: 'ghost', size: 'sm', command: 'media-organizer.masksClearClicks', args: [me] });
+      cover.appendChild(ctx.kit.hint('Click to add · Shift-click to remove · Drag a box'));
+      if (p.clicks.length || p.box) ui.createButton(cover.appendChild(moEl('div', 'mo-mk-actions')), { id: id('clearClicks'), label: 'Clear Clicks', icon: 'eraser', kind: 'ghost', size: 'sm', command: 'media-organizer.masksClearClicks', args: [me] });
     }
     if (p.kind === 'distance') {
       cover.appendChild(ctx.kit.sliderRow({ id: 'mask-distance-from', label: 'Farther than', min: 0, max: 1, rest: 0.5, step: 0.01, value: p.from, show: (v) => `${Math.round(v * 100)}%`, parse: (t) => { const n = Number(String(t).replace(/[^\d.]/g, '')); return Number.isFinite(n) ? clamp(n / 100, 0, 1) : null; }, onInput: (v) => { p.from = v; ctx.requestRender(); }, onChange: (v) => { p.from = v; ctx.afterChange(true); } }).row);
-      cover.appendChild(ctx.kit.sliderRow({ id: 'mask-distance-soft', label: 'Softness', min: 0.02, max: 1, rest: 0.3, step: 0.01, value: p.soft, show: (v) => `${Math.round(v * 100)}%`, parse: (t) => { const n = Number(String(t).replace(/[^\d.]/g, '')); return Number.isFinite(n) ? clamp(n / 100, 0.02, 1) : null; }, onInput: (v) => { p.soft = v; ctx.requestRender(); }, onChange: (v) => { p.soft = v; ctx.afterChange(true); } }).row);
-      cover.appendChild(ctx.kit.hint('0% is the nearest thing in the photo, 100% the farthest. Invert this part for what is nearer.'));
+      cover.appendChild(ctx.kit.sliderRow({ id: 'mask-distance-soft', label: 'Feather', min: 0.02, max: 1, rest: 0.3, step: 0.01, value: p.soft, show: (v) => `${Math.round(v * 100)}%`, parse: (t) => { const n = Number(String(t).replace(/[^\d.]/g, '')); return Number.isFinite(n) ? clamp(n / 100, 0.02, 1) : null; }, onInput: (v) => { p.soft = v; ctx.requestRender(); }, onChange: (v) => { p.soft = v; ctx.afterChange(true); } }).row);
     }
-    if (SEL.busy && SEL.busy.part === p) status(BUSY[p.kind]);
-    else if (SEL.note) status(SEL.note);
-    else if (!p.file && !tried.has(p) && (p.kind === 'subject' || p.kind === 'distance' || (p.kind === 'words' && p.text))) void find(p);
+    // one line, always there, so what a model is doing shows without rebuilding the panel
+    SEL.statusEl = moEl('div', 'mo-mk-status', { role: 'status', textContent: SEL.busy && SEL.busy.part === p ? BUSY[p.kind] : SEL.note });
+    cover.appendChild(SEL.statusEl);
+    if (!p.file && !tried.has(p) && !SEL.busy && (p.kind === 'subject' || p.kind === 'distance' || (p.kind === 'words' && p.text))) queueMicrotask(() => void find(p));
   }
   function panel(container, panelDisposers) {
     const list = masks();
@@ -513,14 +531,15 @@ export function moEditMasks(ctx) {
     const nb = ui.createButton(top, { id: id('new'), label: 'New Mask', icon: 'plus', kind: 'primary', size: 'sm', command: 'media-organizer.masksNew', args: [me] });
     nb.setAttribute('aria-haspopup', 'menu');
     body.appendChild(top);
-    if (!list.length) body.appendChild(ctx.kit.hint(ctx.select ? 'A mask is the part of the photo its own sliders change: the subject, the sky, an object you click, or one you paint or fade in.' : 'A mask is the part of the photo its own sliders change: paint it with a brush, or fade it in with a gradient.'));
+    if (!list.length) body.appendChild(ctx.kit.hint('Select part of the photo to edit it on its own.'));
     const rows = moEl('div', 'mo-mk-list', { role: 'group', 'aria-label': 'Masks' });
     list.forEach((m, k) => {
       const row = moEl('div', 'mo-mk-row');
       const b = ui.createButton(row, { id: id(`mask.${k}`), label: m.name, kind: 'ghost', size: 'sm', command: 'media-organizer.masksSelect', args: [me, k], title: `${m.name}: ${partsText(m)}` });
       b.classList.add('mo-mk-mask'); b.setAttribute('aria-pressed', String(k === S.sel));
       const cv = moEl('canvas', 'mo-mk-thumb', { 'aria-hidden': 'true' }); thumb(cv, m); b.prepend(cv);
-      b.appendChild(moEl('span', 'mo-mk-sub', { textContent: partsText(m) }));
+      if (partsText(m) !== m.name) b.appendChild(moEl('span', 'mo-mk-sub', { textContent: partsText(m) })); // "Subject" under "Subject" says nothing
+      else b.classList.add('is-single');
       const eye = ui.createIconButton(row, { id: id(`show.${k}`), icon: m.show ? 'eye' : 'eye-off', title: m.show ? `Hide ${m.name}'s Edit` : `Show ${m.name}'s Edit`, size: 'sm', command: 'media-organizer.masksShow', args: [me, k] });
       eye.setAttribute('aria-pressed', String(!m.show));
       ui.createIconButton(row, { id: id(`more.${k}`), icon: 'ellipsis', title: `More For ${m.name}`, size: 'sm', command: 'media-organizer.masksMore', args: [me, k] }).setAttribute('aria-haspopup', 'menu');
@@ -543,7 +562,7 @@ export function moEditMasks(ctx) {
     });
     cover.appendChild(parts);
     const ops = moEl('div', 'mo-mk-ops');
-    for (const [op, label] of [['add', 'Add'], ['sub', 'Subtract'], ['and', 'Intersect']]) ui.createButton(ops, { id: id(`addPart.${op}`), label: `${label}…`, size: 'sm', command: 'media-organizer.masksAddPart', args: [me, op] }).setAttribute('aria-haspopup', 'menu');
+    for (const [op, label] of [['add', 'Add'], ['sub', 'Subtract'], ['and', 'Intersect']]) ui.createButton(ops, { id: id(`addPart.${op}`), label, size: 'sm', command: 'media-organizer.masksAddPart', args: [me, op] }).setAttribute('aria-haspopup', 'menu');
     cover.appendChild(ops);
     const p = part();
     const slider = (key, label, min, max, rest, value, show, set, step) => cover.appendChild(ctx.kit.sliderRow({ id: `mask-${key}`, label, min, max, rest, step, value, show, parse: (t) => { const n = Number(String(t).replace(/[^\d.+-]/g, '')); return Number.isFinite(n) ? clamp(n, min, max) : null; }, onInput: set, onChange: (v) => { set(v); ctx.afterChange(false); } }).row);
@@ -597,7 +616,7 @@ export function moEditMasks(ctx) {
     const list = masks(), m = cur();
     if (name === 'masksNew') return ui.createMenu(anchor(id('new')) || ctx.root, { id: id('newMenu'), label: 'New Mask', items: kindItems((kind, extra, label) => {
       const q = Object.assign(newPart(kind, 'add'), extra);
-      list.push({ id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name: way(q) && !label.endsWith('…') ? label : `Mask ${list.length + 1}`, show: true, invert: false, parts: [q], adjust: Object.fromEntries(MO_MASK_ADJUST.map(([k]) => [k, 0])) });
+      list.push({ id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name: way(q) && !(q.kind === 'words' && !q.text) ? label : `Mask ${list.length + 1}`, show: true, invert: false, parts: [q], adjust: Object.fromEntries(MO_MASK_ADJUST.map(([k]) => [k, 0])) });
       S.sel = list.length - 1; S.part = 0; S.overlay = true; SEL.note = ''; ctx.afterChange(true); startPart(q);
     }) });
     if (name === 'masksSelect') { S.sel = Number(args[0]) || 0; S.part = (cur() ? cur().parts.length : 1) - 1; return ctx.afterChange(false); }
