@@ -20,7 +20,7 @@ describe('settings', () => {
   it('fills in and clamps a stored study', () => {
     const s = S.moStudyNormalize({ lens: 'masses', masses: { n: 40, method: 'nope' }, keep: -3 });
     expect(s.lens).toBe('masses');
-    expect(s.masses.n).toBe(16);
+    expect(s.masses.n).toBe(40);
     expect(s.masses.method).toBe('shapes');
     expect(s.keep).toBe(0);
     expect(S.moStudyNormalize(null).lens).toBe('light');
@@ -57,7 +57,7 @@ describe('colour masses', () => {
   it('raising the count only splits masses: every finer mass lies inside one coarser mass', () => {
     const P = S.moStudyAnalyse(px, 60, 30);
     S.moStudyMasses(P, { n: 4, method: 'colour', colour: 'dominant', amount: 100 });
-    const tree = P.cache['m-colour'];
+    const tree = P.cache['m-s0'];
     const two = S.moStudyAtLevel(tree, 2), three = S.moStudyAtLevel(tree, 3);
     const parentOf = new Map<number, number>();
     for (let i = 0; i < two.length; i++) {
@@ -69,6 +69,22 @@ describe('colour masses', () => {
     const P = S.moStudyAnalyse(px, 60, 30);
     const r = S.moStudyMasses(P, { n: 4, method: 'colour', colour: 'average', amount: 0 });
     for (const m of r.masses) expect(m.intensity).toBeLessThan(0.5);
+  });
+  it('fades toward the underpainting paint, not grey, when one is chosen', () => {
+    const P = S.moStudyAnalyse(px, 60, 30);
+    const sienna = [0.47, 0.08, 0.07]; // a burnt sienna in OKLab
+    const r = S.moStudyMasses(P, { n: 4, squint: 0, colour: 'average', amount: 0, under: sienna });
+    for (const m of r.masses) { expect(m.rgb[0]).toBeGreaterThan(m.rgb[2]); expect(m.intensity).toBeGreaterThan(0.5); }
+  });
+  it('finds up to 48 masses, and tells warm from cool against the whole picture', () => {
+    const many = picture(64, 48, (x, y) => [(x * 4) % 256, (y * 5) % 256, ((x + y) * 3) % 256]);
+    const P = S.moStudyAnalyse(many, 64, 48);
+    const r = S.moStudyMasses(P, { n: 48, squint: 0, colour: 'average', amount: 100 });
+    expect(r.masses.length).toBeGreaterThan(16);
+    expect(r.masses.length).toBeLessThanOrEqual(48);
+    const two = S.moStudyMasses(S.moStudyAnalyse(px, 60, 30), { n: 4, squint: 0, colour: 'average', amount: 100 });
+    const red = two.masses.find((m: { rgb: number[] }) => m.rgb[0] > 150 && m.rgb[2] < 80), blue = two.masses.find((m: { rgb: number[] }) => m.rgb[2] > 150 && m.rgb[0] < 80);
+    expect(red.temp).toBe('warm'); expect(blue.temp).toBe('cool');
   });
   it('is the same every time for the same picture', () => {
     const a = S.moStudyMasses(S.moStudyAnalyse(px, 60, 30), { n: 3, method: 'shapes', colour: 'dominant', amount: 100 });

@@ -78,6 +78,28 @@ export const MO_PLAN_CSS = `
 .px-btn.mo-pv-stage { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--px-text-secondary); }
 .px-btn.mo-pv-stage[aria-pressed="true"] { background: var(--px-bg); color: var(--px-text); box-shadow: var(--px-ring); }
 
+/* Colour: the masses are the palette */
+.mo-ps-pal { display: flex; flex-direction: column; gap: 1px; margin: 0 calc(-1 * var(--px-space-2)); }
+.px-btn.mo-ps-prow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: "sw name num" "sw mix mix"; align-items: center; column-gap: var(--px-space-2); row-gap: 4px; width: 100%; height: auto; padding: 6px var(--px-space-2); text-align: left; font-weight: normal; }
+.px-btn.mo-ps-prow .mo-ps-sw { grid-area: sw; width: 22px; height: 22px; border-radius: var(--px-radius-sm); align-self: start; }
+.px-btn.mo-ps-prow .px-btn__label { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--px-text); }
+.px-btn.mo-ps-prow .mo-ps-num { grid-area: num; display: inline-flex; align-items: center; gap: var(--px-space-1); }
+.px-btn.mo-ps-prow[aria-pressed="true"] { background: var(--px-accent-soft); }
+.mo-ps-mixbar { grid-area: mix; display: flex; height: 6px; border-radius: var(--px-radius-full); overflow: hidden; }
+.mo-ps-mixbar--lg { height: 10px; }
+.mo-ps-tw { padding: 0 5px; border-radius: var(--px-radius-full); font-size: var(--px-text-2xs); line-height: 16px; }
+.mo-ps-tw.is-warm { color: var(--px-warning); box-shadow: inset 0 0 0 1px var(--px-warning); }
+.mo-ps-tw.is-cool { color: var(--px-info); box-shadow: inset 0 0 0 1px var(--px-info); }
+.mo-ps-recipe { display: flex; flex-direction: column; gap: var(--px-space-2); margin: 0 var(--px-space-2) var(--px-space-2) calc(22px + var(--px-space-4)); }
+.mo-ps-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: var(--px-text-sm); }
+.mo-ps-parts li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: var(--px-space-2); align-items: center; }
+.mo-ps-parts b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mo-ps-match { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); }
+.mo-ps-match .mo-ps-sw { width: 16px; height: 16px; }
+.mo-ps-cmp { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.mo-ps-ab { display: flex; gap: var(--px-space-2); }
+.mo-ps-ab span { flex: 1; height: 26px; border-radius: var(--px-radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--px-viewer-ink); text-shadow: 0 0 2px var(--px-viewer-bar); box-shadow: var(--px-ring); }
+
 /* A choice of a few fills its row */
 .mo-plan-panel .ui-segmented-control { display: flex; width: 100%; }
 .mo-plan-panel .ui-segmented-control__segment { flex: 1 1 0; min-width: 0; padding: 2px; overflow: hidden; text-overflow: ellipsis; }

@@ -34,10 +34,13 @@ export function moStudyNormalize(o) {
     light: s.light === 'bw' ? 'bw' : 'colours',
     temp: { against: t.against === 'all' ? 'all' : 'near', min: num(t.min, 0, 100, 25) },
     masses: {
-      n: Math.round(num(m.n, 2, 16, 5)),
+      n: Math.round(num(m.n, 2, 48, 10)),
       method: ['colour', 'place', 'shapes'].includes(m.method) ? m.method : 'shapes',
+      squint: num(m.squint, 0, 100, m.method === 'colour' || m.method === 'place' ? 0 : 40),
       colour: m.colour === 'average' ? 'average' : 'dominant',
       amount: num(m.amount, 0, 100, 100),
+      temp: m.temp === true,
+      strong: m.strong === true,
     },
     keep: num(s.keep, 0, 14, 6),
   };
@@ -193,28 +196,26 @@ export function moStudyTemperature(P, against, min) {
 }
 
 /**
- * Colour masses: `n` big shapes of one colour each, found by colour alone,
- * by colour and place, or after squinting. A mass's colour is its local
- * colour (the most common one in it) or its average; `amount` (0 to 100)
- * turns the colour down toward grey at the same value. `sel` dims all but
- * one mass. Returns the pixels and the masses, largest first:
- * { j, rgb, value, intensity, share }.
+ * Colour masses: `n` (2 to 48) big shapes of one colour each, found by colour
+ * after squinting by `squint` (0 sharp, 100 a hard squint). A mass's colour is
+ * its local colour (the most common one in it) or its average; `amount` (0 to
+ * 100) turns the colour down toward `under` at the same value: an
+ * underpainting paint (OKLab) or, without one, grey. `temp` shows each mass
+ * warmer or cooler than the picture as a whole; `strong` keeps colour only in
+ * masses more intense than `keep`, the rest at their value. `sel` dims all but
+ * one mass. Returns the pixels, the label of every pixel, and the masses,
+ * largest first: { j, rgb, lab, value, intensity, share, temp: 'warm' | 'cool' | '' }.
  */
 export function moStudyMasses(P, opts, sel = -1) {
-  const key = `m-${opts.method}`;
+  const sq = Number.isFinite(Number(opts.squint)) ? Number(opts.squint) : opts.method === 'shapes' ? 45 : 0;
+  const key = `m-s${sq}`;
   if (!P.cache[key]) {
-    const src = opts.method === 'shapes' ? squinted(P, 45) : P;
-    const feats = [Float32Array.from(src.L), src.A.map((v) => v * 2.6), src.B.map((v) => v * 2.6)];
-    if (opts.method === 'place') {
-      const sx = new Float32Array(P.n), sy = new Float32Array(P.n), sc = 0.14 / Math.max(P.w, P.h);
-      for (let i = 0; i < P.n; i++) { sx[i] = (i % P.w) * sc; sy[i] = Math.floor(i / P.w) * sc; }
-      feats.push(sx, sy);
-    }
-    P.cache[key] = moStudyBisect(feats, P.n, 16, 4000);
+    const src = sq > 0 ? squinted(P, sq) : P;
+    P.cache[key] = moStudyBisect([Float32Array.from(src.L), src.A.map((v) => v * 2.6), src.B.map((v) => v * 2.6)], P.n, 48, 4000);
   }
   // The shapes at this count are kept: colour and amount change only the colours.
-  const lk = `l-${opts.method}-${opts.n}`;
-  if (!P.cache[lk]) { const raw = moStudyAtLevel(P.cache[key], opts.n); P.cache[lk] = opts.method === 'colour' ? raw : moStudyMajority(raw, P.w, P.h, opts.method === 'shapes' ? 3 : 2); }
+  const lk = `l-s${sq}-${opts.n}`;
+  if (!P.cache[lk]) { const raw = moStudyAtLevel(P.cache[key], opts.n); P.cache[lk] = sq > 0 ? moStudyMajority(raw, P.w, P.h, sq >= 40 ? 3 : 2) : raw; }
   const lbl = P.cache[lk];
   let k = 0; for (let i = 0; i < lbl.length; i++) if (lbl[i] >= k) k = lbl[i] + 1;
   const groups = Array.from({ length: k }, () => []);
@@ -230,12 +231,24 @@ export function moStudyMasses(P, opts, sel = -1) {
     for (const i of idx) if (Math.hypot(P.L[i] - c[0], 2 * (P.A[i] - c[1]), 2 * (P.B[i] - c[2])) < 0.06) { s0[0] += P.L[i]; s0[1] += P.A[i]; s0[2] += P.B[i]; s0[3]++; }
     return s0[3] ? [s0[0] / s0[3], s0[1] / s0[3], s0[2] / s0[3]] : c;
   });
-  const amt = opts.amount / 100;
-  const rgb = lab.map((c) => moFromOklab(c[0], c[1] * amt, c[2] * amt));
-  const pixels = paint(P, (i) => { const l = lbl[i]; const c = rgb[l]; return sel >= 0 && l !== sel ? [c[0] * 0.25 + 30, c[1] * 0.25 + 30, c[2] * 0.25 + 30] : c; });
-  const masses = lab.map((c, j) => ({ j, rgb: rgb[j], value: moStudyValue(...rgb[j]), intensity: moStudyIntensity(c[1] * amt, c[2] * amt), share: groups[j].length / P.n }))
+  // Toward the underpainting: the paint's hue at the mass's own lightness, strongest near the paint's own value.
+  const u = opts.under || null;
+  const mono = (L) => { if (!u) return [L, 0, 0]; const t = Math.max(0, 1 - Math.abs(L - u[0]) / Math.max(u[0], 1 - u[0])); return [L, u[1] * (0.35 + 0.65 * t), u[2] * (0.35 + 0.65 * t)]; };
+  const amt = Math.max(0, Math.min(100, Number(opts.amount ?? 100))) / 100;
+  const shown = lab.map((c) => { const m = mono(c[0]); return [c[0], m[1] + (c[1] - m[1]) * amt, m[2] + (c[2] - m[2]) * amt]; });
+  let wSum = 0; for (let i = 0; i < P.n; i++) wSum += moStudyWarmth(P.A[i], P.B[i]);
+  const meanWarm = wSum / Math.max(1, P.n);
+  const tempOf = (c) => { const d = moStudyWarmth(c[1], c[2]) - meanWarm; return d > 0.012 ? 'warm' : d < -0.012 ? 'cool' : ''; };
+  const rgb = shown.map((c) => moFromOklab(c[0], c[1], c[2]));
+  const drawn = lab.map((c, j) => {
+    if (opts.temp) { const t = tempOf(c); return t ? moFromOklab(c[0], (t === 'warm' ? 1 : -1) * 0.09 * WARM[0], (t === 'warm' ? 1 : -1) * 0.09 * WARM[1]) : greyOf(c[0]); }
+    if (opts.strong && moStudyIntensity(c[1], c[2]) < (Number(opts.keep) || 0)) { const m = mono(c[0]); return moFromOklab(m[0], m[1], m[2]); }
+    return rgb[j];
+  });
+  const pixels = paint(P, (i) => { const l = lbl[i]; const c = drawn[l]; return sel >= 0 && l !== sel ? [c[0] * 0.25 + 30, c[1] * 0.25 + 30, c[2] * 0.25 + 30] : c; });
+  const masses = lab.map((c, j) => ({ j, rgb: rgb[j], lab: c, value: moStudyValue(...rgb[j]), intensity: moStudyIntensity(shown[j][1], shown[j][2]), share: groups[j].length / P.n, temp: tempOf(c) }))
     .filter((m) => m.share > 0).sort((a, b) => b.share - a.share);
-  return { pixels, masses };
+  return { pixels, labels: lbl, masses };
 }
 
 /** Intensity: colour only where it is stronger than `keep`; the rest grey at the same value. */

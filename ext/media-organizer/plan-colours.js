@@ -11,7 +11,7 @@
 import { moEl, moSlug } from './dom.js';
 import { moPointKeys, moSliderKeys } from './keys.js';
 import { moPlanHint, moPlanSection, moPlanSlider, moPlanSwitch } from './plan-kit.js';
-import { MO_COMMON_PAINTS, MO_MIX_RULES, MO_STARTER_PAINTS, moColourName, moHexRgb, moMixRecipes } from './colour.js';
+import { MO_COMMON_PAINTS, MO_MIX_RULES, MO_STARTER_PAINTS, moColourName, moHexRgb } from './colour.js';
 
 const STAGES_KEY = 'plan_stages_v1';
 const PAINTS_KEY = 'plan_paints_v1';
@@ -21,7 +21,6 @@ export const MO_PLAN_STAGES = [
   { name: 'Big Shapes', blur: 0.3, levels: 5, grey: false, notan: 0 },
   { name: 'Detail', blur: 0, levels: 0, grey: false, notan: 0 },
 ];
-const PICK_SIZES = [1, 3, 9, 21, 45];
 const MAX_STAGES = 9;
 const hexOf = (rgb) => '\u0023' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
 const aidsOff = (r) => !(r.blur > 0) && !(r.levels >= 2) && !r.grey && !(r.notan > 0);
@@ -41,7 +40,7 @@ function loadShared(io) {
       if (pt && Array.isArray(pt.paints)) { shared.paints = pt.paints.filter((p) => p && p.name && moHexRgb(p.hex)).map((p) => ({ name: String(p.name), hex: String(p.hex) })); shared.paintsSet = true; }
       if (pt && pt.rules) shared.rules = Object.assign({}, MO_MIX_RULES, pt.rules);
       const pk = parse(await io.getSetting(PICK_KEY, ''), null);
-      if (pk && PICK_SIZES.includes(pk.size)) shared.pickSize = pk.size;
+      if (pk && Number.isFinite(Number(pk.size))) shared.pickSize = Math.max(1, Math.min(45, Math.round(Number(pk.size))));
       if (pk && typeof pk.pins === 'boolean') shared.pins = pk.pins;
     })().catch(() => {});
   }
@@ -59,8 +58,7 @@ const savePick = (io) => io.setSetting(PICK_KEY, JSON.stringify({ size: shared.p
 // focus) and every action of the panels, run on the plan in use ──
 const open = new Set();
 let lastUsed = null;
-const PLAN_ACTIONS = ['underPaint', 'stageMenu', 'renameStage', 'addStage', 'removeStage', 'showSavedColour', 'showSavedColours', 'pullPalette', 'pinColours', 'myPaints', 'backFromPaints',
-  'copyRecipe', 'removeSavedColour', 'customPaint', 'starterPaints', 'removePaint'];
+const PLAN_ACTIONS = ['underPaint', 'stageMenu', 'renameStage', 'addStage', 'removeStage', 'myPaints', 'backFromPaints', 'customPaint', 'starterPaints', 'removePaint'];
 const planInUse = () => [...open].find((x) => x.root.contains(document.activeElement)) || (lastUsed && lastUsed.root.isConnected ? lastUsed : null);
 export function moPlanColoursActivate(api) {
   const subs = [];
@@ -85,8 +83,6 @@ export function moPlanColours(ctx) {
   const { state, api } = ctx;
   const io = { getSetting: ctx.getSetting, setSetting: ctx.setSetting };
   let view = 'list';       // the Pick Colours panel: 'list' | 'detail' | 'paints'
-  let detail = -1;         // the saved colour shown in 'detail'
-  let paintsBack = 'list'; // where Back from My Paints goes
   let point = null;        // { u, v } on the crop, while picking
   let pressing = false;
   let cache = null;        // the edited picture's pixels, for sampling
@@ -266,8 +262,10 @@ export function moPlanColours(ctx) {
     if (state.mirror) u = 1 - u;
     return { u: Math.max(0, Math.min(1, u)), v: Math.max(0, Math.min(1, v)) };
   }
-  const onMove = (e) => { if (state.tool !== 'pick') return; if (e.pointerType === 'mouse' || pressing) { const p = frameUV(e); setPoint(p.u, p.v, e.pointerType !== 'mouse'); } };
-  const onDown = (e) => { if (state.tool !== 'pick' || (e.pointerType === 'mouse' && e.button !== 0)) return; e.preventDefault(); pressing = true; try { layer.setPointerCapture(e.pointerId); } catch { /* gone */ } layer.focus({ preventScroll: true }); const p = frameUV(e); setPoint(p.u, p.v, e.pointerType !== 'mouse'); };
+  let picking = false;          // Colour's eyedropper is on
+  const pickOn = () => picking && state.tool === 'colour' && !!state.recipe;
+  const onMove = (e) => { if (!pickOn()) return; if (e.pointerType === 'mouse' || pressing) { const p = frameUV(e); setPoint(p.u, p.v, e.pointerType !== 'mouse'); } };
+  const onDown = (e) => { if (!pickOn() || (e.pointerType === 'mouse' && e.button !== 0)) return; e.preventDefault(); pressing = true; try { layer.setPointerCapture(e.pointerId); } catch { /* gone */ } layer.focus({ preventScroll: true }); const p = frameUV(e); setPoint(p.u, p.v, e.pointerType !== 'mouse'); };
   const onUp = (e) => { if (!pressing) return; pressing = false; const p = frameUV(e); setPoint(p.u, p.v, e.pointerType !== 'mouse'); save(); if (e.pointerType !== 'mouse') hideLoupe(); };
   const onCancel = () => { pressing = false; hideLoupe(); };
   const onLeave = (e) => { if (!pressing && e.pointerType === 'mouse' && document.activeElement !== layer) hideLoupe(); };
@@ -290,121 +288,11 @@ export function moPlanColours(ctx) {
     readout.querySelector('.mo-pc-hex').textContent = hexOf(rgb);
   }
 
-  // ── the panel ──
-  const colours = () => [...(state.recipe.palette.swatches || []).map((rgb, i) => ({ rgb, pulled: true, at: i })), ...(state.recipe.saved || []).map((c, i) => Object.assign({}, c, { pulled: false, at: i }))];
-  function pickPanel(panel, panelDisposers) {
-    if (view === 'detail' && colours()[detail]) return detailPanel(panel);
-    if (view === 'paints') return paintsPanel(panel, panelDisposers);
-    view = 'list';
-    const s1 = moEl('div', 'mo-plan-section');
-    s1.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Under the picker' }));
-    readout = moEl('div', 'mo-pc-colour');
-    readout.append(moEl('div', 'mo-pc-chip-lg'), textBlock('Point at the picture', '', ''));
-    s1.appendChild(readout);
-    s1.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Click the picture to save a colour. From the keyboard: Tab to the picture, arrow keys move the picker, Enter saves.' }));
-    panel.appendChild(s1);
-    if (point && point.rgb) showReadout(point.rgb);
-
-    const s2 = moEl('div', 'mo-plan-section');
-    s2.appendChild(moEl('span', null, { textContent: 'Picker size (px)' }));
-    const sg = ui.createSegmented(s2, { id: 'media-organizer.plan.pickSize', ariaLabel: 'Picker size in pixels', value: String(shared.pickSize), items: PICK_SIZES.map((v) => ({ value: String(v), label: String(v) })),
-      onChange: (v) => { shared.pickSize = Number(v); void savePick(io); if (point) setPoint(point.u, point.v, false); } });
-    panelDisposers.push(() => sg.dispose());
-    s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'A bigger picker averages more of the picture, the way the eye reads a patch of colour.' }));
-    panel.appendChild(s2);
-
-    const s3 = moEl('div', 'mo-plan-section mo-pc-split');
-    const list = colours();
-    const head = moEl('div', 'mo-pc-head');
-    head.append(moEl('div', 'mo-practice-section-title', { textContent: 'Colours of this variation' }), moEl('span', 'mo-practice-dim', { textContent: String(list.length) }));
-    s3.appendChild(head);
-    if (list.length) {
-      const grid = moEl('div', 'mo-pc-chips');
-      list.forEach((c, i) => {
-        const name = moColourName(c.rgb).name, how = c.pulled ? 'pulled from the picture' : 'picked by hand';
-        const b = ui.createButton(grid, { id: `media-organizer.plan.colour.${i}`, label: `${name}, ${hexOf(c.rgb)}, ${how}`, kind: 'ghost', title: `${name} · ${hexOf(c.rgb)} · ${how}`, command: 'media-organizer.plan.showSavedColour', args: [i] });
-        b.classList.add('mo-pc-chip');
-        if (!c.pulled) b.classList.add('is-picked');
-        b.setAttribute('aria-label', `${name}, ${hexOf(c.rgb)}, ${how}`);
-        b.replaceChildren();
-        b.style.background = hexOf(c.rgb);
-        if (i === Math.min(Math.max(detail, 0), list.length - 1)) focusIfPending('chip', b);
-      });
-      s3.appendChild(grid);
-    } else s3.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'No colours yet: pull them from the picture, or click the picture to pick one.' }));
-    const pull = moEl('div', 'mo-plan-row');
-    pull.appendChild(button('Pull From Picture', 'pullPalette'));
-    const cnt = ui.createSegmented(pull, { id: 'media-organizer.plan.colourCount', ariaLabel: 'Colours to pull', value: String(state.recipe.palette.count || 8), items: [4, 6, 8, 12, 16].map((n) => ({ value: String(n), label: String(n) })), onChange: (v) => { state.recipe.palette.count = Number(v) || 8; ctx.afterRecipeChange(false, true); } });
-    panelDisposers.push(() => cnt.dispose());
-    s3.appendChild(pull);
-    s3.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Pulled and picked colours live together; a blue mark means picked by hand. Every swatch opens its mix.' }));
-    s3.appendChild(check('Limited Palette Preview', 'media-organizer.plan.limitedPreview', state.recipe.palette.apply, (v) => { state.recipe.palette.apply = v; ctx.afterRecipeChange(true, true); }));
-    s3.appendChild(check('Show Where Colours Came From', 'media-organizer.plan.showPins', shared.pins, (v) => { shared.pins = v; void savePick(io); sync(); }));
-    const row = moEl('div', 'mo-plan-row');
-    row.append(focusIfPending('chip', button('My Paints…', 'myPaints')), button('Pin Colours To Board', 'pinColours'));
-    s3.appendChild(row);
-    panel.appendChild(s3);
-  }
-
-  function detailPanel(panel) {
-    readout = null;
-    const c = colours()[detail];
-    focusIfPending('back', ui.createButton(panel, { id: 'media-organizer.plan.showSavedColours', label: 'Saved Colours', icon: 'chevron-left', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.showSavedColours' }));
-    const n = moColourName(c.rgb);
-    const top = moEl('div', 'mo-pc-colour');
-    const chip = moEl('div', 'mo-pc-chip-lg mo-pc-chip-xl');
-    chip.style.background = hexOf(c.rgb);
-    top.append(chip, textBlock(n.name, `${cap(n.valueWord)} · value ${n.value} of 10`, hexOf(c.rgb)));
-    panel.appendChild(top);
-
-    const key = JSON.stringify([c.rgb, shared.paints, shared.rules]);
-    if (!lastMix || lastMix.key !== key) lastMix = { key, mix: moMixRecipes(c.rgb, shared.paints, shared.rules) };
-    const { best, simpler } = lastMix.mix;
-    const card = moEl('div', 'mo-plan-section mo-pc-card');
-    const ch = moEl('div', 'mo-pc-head');
-    ch.append(moEl('div', 'mo-practice-section-title', { textContent: 'Best mix with your paints' }));
-    if (best) ch.append(moEl('span', `mo-pc-close mo-pc-close--${best.closeness.toLowerCase().replace(/\s+/g, '-')}`, { textContent: best.closeness }));
-    card.appendChild(ch);
-    if (!best) card.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Add the paints you have in My Paints to see how to mix this colour.' }));
-    else {
-      card.appendChild(mixBar(best, 'mo-pc-bar'));
-      for (const p of best.paints) {
-        const r = moEl('div', 'mo-pc-paint');
-        const dot = moEl('span', 'mo-pc-dot', { 'aria-hidden': 'true' }); dot.style.background = p.hex;
-        r.append(dot, moEl('span', null, { textContent: p.name }), moEl('span', 'mo-practice-dim', { textContent: best.paints.length === 1 ? 'on its own' : p.touch ? 'a touch' : `${p.parts} part${p.parts === 1 ? '' : 's'}` }));
-        card.appendChild(r);
-      }
-      const cmp = moEl('div', 'mo-pc-compare');
-      for (const [hex, label] of [[hexOf(c.rgb), 'Picked'], [best.hex, 'This mix']]) {
-        const col = moEl('div', 'mo-pc-compare-col');
-        const sw = moEl('div', 'mo-pc-compare-sw', { 'aria-hidden': 'true' }); sw.style.background = hex;
-        col.append(sw, moEl('span', 'mo-practice-dim mo-plan-hint', { textContent: label }));
-        cmp.appendChild(col);
-      }
-      card.appendChild(cmp);
-      if (best.closeness === 'Far') card.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Your paints cannot quite reach this colour. A paint nearer to it would help.' }));
-    }
-    panel.appendChild(card);
-    if (simpler) {
-      const s = moEl('div', 'mo-plan-section');
-      s.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Fewer paints' }));
-      const r = moEl('div', 'mo-pc-simpler');
-      r.append(mixBar(simpler, 'mo-pc-bar mo-pc-bar--sm'), moEl('span', null, { textContent: recipeText(simpler) }), moEl('span', `mo-pc-close mo-pc-close--${simpler.closeness.toLowerCase().replace(/\s+/g, '-')}`, { textContent: simpler.closeness }));
-      s.appendChild(r);
-      panel.appendChild(s);
-    }
-    panel.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'An estimate from how pigments mix. Tubes vary by brand: mix a little first and adjust.' }));
-    const row = moEl('div', 'mo-plan-row');
-    const copy = button('Copy Recipe', 'copyRecipe');
-    copy.disabled = !best;
-    row.append(copy, button('My Paints…', 'myPaints'), button('Remove', 'removeSavedColour'));
-    panel.appendChild(row);
-    panel.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: rulesText() + (shared.paintsSet ? '' : ' These are starter paints: set the ones you have in My Paints.') }));
-  }
-
+  // ── My Paints, opened from the Colour step ──
+  function pickPanel(panel, panelDisposers) { if (view === 'paints') paintsPanel(panel, panelDisposers); }
   function paintsPanel(panel, panelDisposers) {
     readout = null;
-    focusIfPending('back', ui.createButton(panel, { id: 'media-organizer.plan.backFromPaints', label: paintsBack === 'detail' ? 'Back To Colour' : 'Saved Colours', icon: 'chevron-left', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.backFromPaints' }));
+    focusIfPending('back', ui.createButton(panel, { id: 'media-organizer.plan.backFromPaints', label: 'Back To Colours', icon: 'chevron-left', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.backFromPaints' }));
     const s1 = moEl('div', 'mo-plan-section');
     const head = moEl('div', 'mo-pc-head');
     head.append(moEl('div', 'mo-practice-section-title', { textContent: 'Paints you have' }), moEl('span', 'mo-practice-dim', { textContent: String(shared.paints.length) }));
@@ -456,7 +344,7 @@ export function moPlanColours(ctx) {
   function button(label, action) { return ui.createButton(null, { id: `media-organizer.plan.${action}`, label, kind: 'secondary', size: 'sm', command: `media-organizer.plan.${action}` }); }
   const changed = (keep) => { lastMix = null; void savePaints(io); ctx.afterRecipeChange(false, keep === true); };
   // What each command does on this plan (PLAN_ACTIONS). Panels follow the state.
-  const show = (v) => { view = v; pendingFocus = v === 'list' ? 'chip' : 'back'; if (state.tool !== 'pick') ctx.setTool('pick'); else ctx.afterRecipeChange(false); };
+  const show = (v) => { view = v; pendingFocus = v === 'paints' ? 'back' : null; if (state.tool !== 'colour') ctx.setTool('colour'); else ctx.afterRecipeChange(false); };
   const acts = {
     async renameStage() {
       const n = currentStage(); if (!n) return;
@@ -489,24 +377,8 @@ export function moPlanColours(ctx) {
         { label: 'Remove Stage', disabled: !n || shared.stages.length < 2, onSelect: () => acts.removeStage() },
       ] });
     },
-    showSavedColour(i) { if (!state.recipe || !colours()[i]) return; detail = i; show('detail'); },
-    showSavedColours() { show('list'); },
-    pullPalette() { if (state.recipe) ctx.pullPalette(); },
-    pinColours() { ctx.addToBoard('This Palette'); },
-    myPaints() { paintsBack = view === 'detail' ? 'detail' : 'list'; show('paints'); },
-    backFromPaints() { show(paintsBack === 'detail' && colours()[detail] ? 'detail' : 'list'); },
-    async copyRecipe() {
-      const c = view === 'detail' && colours()[detail]; if (!c) return;
-      const best = moMixRecipes(c.rgb, shared.paints, shared.rules).best; if (!best) return;
-      try { await navigator.clipboard.writeText(`${moColourName(c.rgb).name} (${hexOf(c.rgb)}): ${recipeText(best)}`); live.textContent = 'Recipe copied'; } catch { /* no clipboard */ }
-    },
-    removeSavedColour(i) {
-      const c = state.recipe && colours()[Number.isInteger(i) ? i : detail];
-      if (!c) return;
-      if (c.pulled) state.recipe.palette.swatches = state.recipe.palette.swatches.filter((_, k) => k !== c.at);
-      else state.recipe.saved = state.recipe.saved.filter((_, k) => k !== c.at);
-      view = 'list'; pendingFocus = 'chip'; ctx.afterRecipeChange(true);
-    },
+    myPaints() { show('paints'); },
+    backFromPaints() { show('list'); },
     async customPaint() {
       const name = await api.window.showInputBox({ prompt: 'Name the paint', placeHolder: 'Paint name' });
       if (!name || !String(name).trim()) return;
@@ -534,23 +406,8 @@ export function moPlanColours(ctx) {
     panelDisposers.push(() => g.dispose());
     return f;
   }
-  function textBlock(name, sub, hex) {
-    const t = moEl('div', 'mo-pc-text');
-    t.append(moEl('span', 'mo-pc-name', { textContent: name }), moEl('span', 'mo-practice-dim mo-pc-sub', { textContent: sub }), moEl('span', 'mo-practice-dim mo-pc-hex', { textContent: hex }));
-    return t;
-  }
-  function mixBar(rec, cls) {
-    const bar = moEl('div', cls, { role: 'img', 'aria-label': recipeText(rec) });
-    const top = Math.max(...rec.paints.map((p) => p.parts));
-    for (const p of rec.paints) { const s = moEl('span'); s.style.background = p.hex; s.style.flex = String(p.touch ? top * 0.06 : p.parts); bar.appendChild(s); }
-    return bar;
-  }
-  const recipeText = (rec) => (rec.paints.length === 1 ? `${rec.paints[0].name} on its own` : rec.paints.map((p) => (p.touch ? `a touch of ${p.name}` : `${p.parts} part${p.parts === 1 ? '' : 's'} ${p.name}`)).join(', '));
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-  const rulesText = () => {
-    const R = shared.rules;
-    return `Rules: up to ${R.max} paints${R.lighten === 'water' ? ', lightened with water' : R.whiteFree ? ', white allowed' : ''}${R.noBlack ? ', no black' : ''}.`;
-  };
+
 
   // After each draw: the stage bar, the picker's layer and the pins.
   function drawMarks() {
@@ -574,9 +431,9 @@ export function moPlanColours(ctx) {
   }
   function sync() {
     drawMarks();
-    const picking = state.tool === 'pick' && !!state.recipe;
-    layer.classList.toggle('mo-hidden', !picking);
-    if (!picking) { hideLoupe(); pins.replaceChildren(); return; }
+    const on = pickOn();
+    layer.classList.toggle('mo-hidden', !on);
+    if (!on) { hideLoupe(); pins.replaceChildren(); return; }
     if (layer.tabIndex !== 0) layer.tabIndex = 0;
     pins.replaceChildren();
     if (shared.pins) {
@@ -604,9 +461,11 @@ export function moPlanColours(ctx) {
   return {
     valuesPanel,
     pickPanel,
+    inPaints: () => view === 'paints',
+    picker: { on: () => picking, set: (v) => { picking = !!v; if (!picking) hideLoupe(); }, size: () => shared.pickSize, setSize: (v) => { shared.pickSize = Math.max(1, Math.min(45, Math.round(v))); void savePick(io); if (point) setPoint(point.u, point.v, false); } },
     sync,
     // A new variation or an undo: the colour shown may be gone.
-    reset() { if (view === 'detail' && !colours()[detail]) view = 'list'; cache = null; },
+    reset() { cache = null; },
     dispose() {
       open.delete(handle);
       if (lastUsed === handle) lastUsed = null;

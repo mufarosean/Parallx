@@ -75,7 +75,13 @@ export function moBoardContext(d, planId) {
         const rs = d.rotatedSize(im.naturalWidth, im.naturalHeight, recipe.rotate);
         const W = rs.w * recipe.crop.w, H = rs.h * recipe.crop.h, k = Math.min(1, max / Math.max(W, H));
         rr.setSource(im, recipe.blur > 0 ? (recipe.blur * Math.max(im.naturalWidth, im.naturalHeight)) / 100 : 0);
-        rr.render(recipe, { width: Math.max(8, Math.round(W * k)), height: Math.max(8, Math.round(H * k)), full: false, split: -1 });
+        const w = Math.max(8, Math.round(W * k)), h = Math.max(8, Math.round(H * k));
+        if (recipe.show === 'colour' && d.massesOf) {
+          const out = moEl('canvas'); out.width = w; out.height = h;
+          out.getContext('2d').putImageData(new ImageData(d.massesOf(rr.render(recipe, { width: w, height: h, full: false, split: -1, read: true, aids: false }), w, h, recipe), w, h), 0, 0);
+          return out.toDataURL('image/jpeg', 0.86);
+        }
+        rr.render(recipe, { width: w, height: h, full: false, split: -1 });
         return cv.toDataURL('image/jpeg', 0.86);
       } finally { rr.dispose(); }
     },

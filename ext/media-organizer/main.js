@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_COMMON_PAINTS, MO_OKLAB_GLSL, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_COMMON_PAINTS, MO_OKLAB_GLSL, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -31952,7 +31952,7 @@ async function moPlanSweepFiles(api, planId, keep) {
   } catch (err) { console.warn('[media-organizer] could not sweep a plan\'s files:', err && err.message); }
 }
 function moOpenBoard(api, planId) { (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Board', icon: 'layout-dashboard', instanceId: `plans:board:${planId}` }); }
-const moBoardDeps = (api) => ({ api, db, getSetting: moGetSetting, setSetting: moSetSetting, planLoad: moPlanLoad, planRenderer: moPlanRenderer, rotatedSize: moPlanRotatedSize, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, thumb: (img, id) => void moPracticeThumb(img, id, api), openPlan: (id) => moOpenPlan(api, id), openBoard: (id) => moOpenBoard(api, id), ingest: (p) => moIngestNewImage(p), searchPhotos: (t) => db.all(`SELECT p.id, COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.deleted_at IS NULL AND (? = '' OR p.title LIKE ? OR f.basename LIKE ?) ORDER BY p.id DESC LIMIT 24`, [t, `%${t}%`, `%${t}%`]) });
+const moBoardDeps = (api) => ({ api, db, massesOf: (px, w, h, r) => moPlanMassesPixels(px, w, h, r, moPlanUnderLab(r.under)), getSetting: moGetSetting, setSetting: moSetSetting, planLoad: moPlanLoad, planRenderer: moPlanRenderer, rotatedSize: moPlanRotatedSize, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, thumb: (img, id) => void moPracticeThumb(img, id, api), openPlan: (id) => moOpenPlan(api, id), openBoard: (id) => moOpenBoard(api, id), ingest: (p) => moIngestNewImage(p), searchPhotos: (t) => db.all(`SELECT p.id, COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.deleted_at IS NULL AND (? = '' OR p.title LIKE ? OR f.basename LIKE ?) ORDER BY p.id DESC LIMIT 24`, [t, `%${t}%`, `%${t}%`]) });
 
 function renderPlansTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
@@ -32516,9 +32516,11 @@ function renderPlanEditor(container, api, planId) {
     onZoom: () => requestRender() });
   const syncShell = () => shell.sync(histIdx > 0, histIdx < history.length - 1);
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe, d = moPlanDefaultRecipe(); return MO_ENGINE_LOOK_KEYS.every((k) => JSON.stringify(r[k]) === JSON.stringify(d[k])) && !r.grey && !(r.levels >= 2) && !(r.notan > 0) && !r.palette.apply; }, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
-  // The Colour Study's lenses over the edited picture (plan-study.js).
-  const study = moPlanStudy({ api, state, root, frame, editedPixels: (max) => editedPixels(max), afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe; return state.tool === 'photo' && moEditLookIsRest(r) && !(Number(r.hue)) && !(r.removals || []).length && !r.enhanced; }, addToBoard: (label) => addToBoard(label), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
+  // The Colour step: the masses are the palette (plan-study.js); the eyedropper is plan-colours.js's.
+  function addToBoard(label) { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }
+  const study = moPlanStudy({ api, state, root, frame, editedPixels: (max) => editedPixels(max), afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting,
+    under: () => moPlanUnderLab(state.recipe.under), underName: () => state.recipe.under, picker: colours.picker, panBy: (dx, dy) => shell.panBy(dx, dy), addToBoard, myPaints: () => void api.commands.executeCommand('media-organizer.plan.myPaints') });
 
   // ── helpers ──
   const aspect = () => (state.plan.canvas_w > 0 && state.plan.canvas_h > 0) ? state.plan.canvas_w / state.plan.canvas_h : 0.8;
@@ -32690,7 +32692,7 @@ function renderPlanEditor(container, api, planId) {
     else if (t === 'compose') compose.panel(panel, panelDisposers);
     else if (t === 'photo') photo.panel(panel, panelDisposers);
     else if (t === 'values') colours.valuesPanel(panel, panelDisposers);
-    else if (t === 'colour') { study.panel(panel, panelDisposers); colours.pickPanel(panel, panelDisposers); }
+    else if (t === 'colour') { if (colours.inPaints()) colours.pickPanel(panel, panelDisposers); else study.panel(panel, panelDisposers); }
     else if (t === 'transfer') {
       const s2 = section('Transfer Grid');
       const gd = moDropdown({ items: [{ value: '0.5', label: 'Every ½ in' }, { value: '1', label: 'Every 1 in' }, { value: '2', label: 'Every 2 in' }], selected: String(r.overlays.gridInches || 1), ariaLabel: 'Grid Spacing' });
@@ -32779,7 +32781,14 @@ function renderPlanEditor(container, api, planId) {
       if (!thumbOn(state.image)) return '';
       const rs = moPlanRotatedSize(state.imgW, state.imgH, recipe.rotate);
       const a = (rs.w * recipe.crop.w) / (rs.h * recipe.crop.h);
-      thumbRenderer.render(recipe, { width: Math.round(56 * Math.max(a, 0.3)), height: 56, full: false, split: -1 });
+      const tw = Math.round(56 * Math.max(a, 0.3));
+      if (recipe.show === 'colour') {
+        const px = thumbRenderer.render(recipe, { width: tw * 3, height: 168, full: false, split: -1, read: true, aids: false });
+        const cv = document.createElement('canvas'); cv.width = tw * 3; cv.height = 168;
+        cv.getContext('2d').putImageData(new ImageData(moPlanMassesPixels(px, tw * 3, 168, recipe, moPlanUnderLab(recipe.under)), tw * 3, 168), 0, 0);
+        return cv.toDataURL('image/jpeg', 0.7);
+      }
+      thumbRenderer.render(recipe, { width: tw, height: 56, full: false, split: -1 });
       return thumbCanvas.toDataURL('image/jpeg', 0.7);
     } catch { return ''; }
   }
@@ -32816,6 +32825,8 @@ function renderPlanEditor(container, api, planId) {
       out.width = W; out.height = H;
       const ctx = out.getContext('2d');
       ctx.drawImage(cv, 0, 0);
+      const masses = state.view === 'colour' ? study.massesCanvas() : null;
+      if (masses) { ctx.imageSmoothingQuality = 'high'; ctx.drawImage(masses, 0, 0, W, H); }
       if (withGrid) moPlanDrawOverlays(ctx, W, H, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: true }) }), state.plan.canvas_w, state.plan.canvas_h, Math.max(1, W / 900));
       return out.toDataURL('image/jpeg', 0.92);
     } finally { rr.dispose(); }

@@ -200,6 +200,7 @@ export function moPlanShell(ctx) {
     sync,
     applyView,
     fit,
+    panBy(dx, dy) { view.x += dx; view.y += dy; applyView(); },
     setExporting(on) { exportBtn.disabled = on; moreBtn.disabled = on; },
     dispose() {
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
