@@ -70,6 +70,8 @@ const OPTIONAL_BRIDGE_CHANNELS = Object.freeze({
   images: ['image:rasterizeMetafile', 'image:renderEquations'],
   // Atelier (ext/media-organizer): electron/modelBridge.cjs (onnxruntime in its worker)
   models: ['models:status', 'models:download', 'models:cancelDownload', 'models:run'],
+  // Any tool that declares a runtime (Atelier's Enhance first): electron/runtimeBridge.cjs
+  runtimes: ['runtimes:check', 'runtimes:status', 'runtimes:install', 'runtimes:cancel', 'runtimes:remove', 'runtimes:run'],
   // Flashcards (ext/flashcards): electron/ankiBridge.cjs
   anki: ['anki:read'],
   // Atelier: electron/screenRecorderBridge.cjs
@@ -82,6 +84,7 @@ const OPTIONAL_BRIDGE_CHANNELS = Object.freeze({
 /** Events those bridges send to the main window; a tool listens through optionalBridges.on. */
 const OPTIONAL_BRIDGE_EVENTS = Object.freeze([
   'models:progress', // Atelier: model download progress (modelBridge.cjs)
+  'runtimes:progress', // a tool runtime's setup and runs (runtimeBridge.cjs)
   'recorder:complete', // Atelier: a recording finished or was cancelled (screenRecorderBridge.cjs)
 ]);
 
@@ -122,6 +125,11 @@ function setupOptionalBridges(ipcMain, deps) {
       name: 'models',
       channels: C.models,
       setup: (ipc) => require('./modelBridge.cjs').setupModelBridge(ipc, { appRoot: deps.appRoot, getMainWindow: deps.getMainWindow, isSealed: deps.isSealed }),
+    }),
+    runtimes: registerLazyBridge(ipcMain, {
+      name: 'runtimes',
+      channels: C.runtimes,
+      setup: (ipc) => require('./runtimeBridge.cjs').setupRuntimeBridge(ipc, { appRoot: deps.appRoot, getMainWindow: deps.getMainWindow, isSealed: deps.isSealed }),
     }),
     anki: registerLazyBridge(ipcMain, {
       name: 'anki',

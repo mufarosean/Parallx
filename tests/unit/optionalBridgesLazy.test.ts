@@ -16,7 +16,7 @@ const E = (name: string) => require.resolve(`../../electron/${name}`);
 
 const BRIDGE_MODULES = [
   'webFetchBridge.cjs', 'googleSyncBridge.cjs', 'imageBridge.cjs', 'modelBridge.cjs',
-  'ankiBridge.cjs', 'screenRecorderBridge.cjs',
+  'ankiBridge.cjs', 'screenRecorderBridge.cjs', 'runtimeBridge.cjs',
 ];
 
 function loadedModules(): string[] {
@@ -163,6 +163,9 @@ describe('the channel lists match what each bridge registers', () => {
   });
   it('models', () => {
     expect(channelsOf((ipc) => require('../../electron/modelBridge.cjs').setupModelBridge(ipc, d))).toEqual(sorted(C.models));
+  });
+  it('runtimes', () => {
+    expect(channelsOf((ipc) => require('../../electron/runtimeBridge.cjs').setupRuntimeBridge(ipc, d))).toEqual(sorted(C.runtimes));
   });
   it('recorder', () => {
     expect(channelsOf((ipc) => require('../../electron/screenRecorderBridge.cjs').setupScreenRecorderBridge(ipc, d))).toEqual(sorted(C.recorder));
