@@ -229,7 +229,10 @@ export function moPlanPhoto(ctx) {
     on: () => state.tool === 'photo' && !state.notes && !removing && !kitState.pickWb, photoSize: () => ({ w: state.imgW, h: state.imgH }),
     toScreen: (u, v) => { const o = app(inv(ctx.geometry().m), u, v); return { x: o[0] * ctx.frame.clientWidth, y: o[1] * ctx.frame.clientHeight }; },
     fromScreen: (x, y) => { const rc = ctx.frame.getBoundingClientRect(); let ou = (x - rc.left) / Math.max(1, rc.width); if (state.mirror) ou = 1 - ou; const q = app(ctx.geometry().m, ou, (y - rc.top) / Math.max(1, rc.height)); return { u: q[0], v: q[1] }; },
-    screenPerPhoto: () => ctx.frame.clientWidth / Math.max(1, ctx.geometry().outW) });
+    // the frame is scaled by the view's zoom and may be mirrored: the brush works in what the screen shows
+    hostPoint: (x, y) => { const rc = ctx.frame.getBoundingClientRect(); let ou = (x - rc.left) / Math.max(1, rc.width); if (state.mirror) ou = 1 - ou; return { x: ou * ctx.frame.clientWidth, y: ((y - rc.top) / Math.max(1, rc.height)) * ctx.frame.clientHeight }; },
+    hostScale: () => ctx.frame.getBoundingClientRect().width / Math.max(1, ctx.frame.clientWidth),
+    screenPerPhoto: () => ctx.frame.getBoundingClientRect().width / Math.max(1, ctx.geometry().outW) });
   function panel(container, panelDisposers) {
     const r = state.recipe;
     if (engine === null) void deps.enhance.ready().then((ok) => { engine = !!ok; if (state.tool === 'photo') ctx.renderPanel(); });

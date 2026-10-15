@@ -57,7 +57,7 @@ function partField(p, w, h) {
   const key = `${w}x${h}|${geo}|${p.invert}`;
   let c = partCache.get(p);
   if (c && c.key === key) return c.a;
-  const a = c && c.a && c.a.length === w * h ? c.a : new Float32Array(w * h);
+  let a = c && c.a && c.a.length === w * h ? c.a : new Float32Array(w * h);
   if (p.kind === 'linear') {
     const x0 = p.x0 * w, y0 = p.y0 * h, dx = (p.x1 - p.x0) * w, dy = (p.y1 - p.y0) * h, L2 = dx * dx + dy * dy || 1;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = 1 - smooth(0, 1, ((x + 0.5 - x0) * dx + (y + 0.5 - y0) * dy) / L2);
@@ -71,20 +71,36 @@ function partField(p, w, h) {
     const g = cv.getContext('2d', { willReadFrequently: true });
     const long = Math.max(w, h);
     const from = fresh ? 0 : Math.max(0, c.strokes - 1);
+    let x0 = w, y0 = h, x1 = 0, y1 = 0; // the area painted now
+    const dab = (s, r, x, y) => {
+      const R = Math.max(r, 0.5), gr = g.createRadialGradient(x, y, r * (1 - s.feather), x, y, R);
+      gr.addColorStop(0, white(s.flow)); gr.addColorStop(1, white(0));
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2); g.fill();
+      x0 = Math.min(x0, x - R - 1); y0 = Math.min(y0, y - R - 1); x1 = Math.max(x1, x + R + 1); y1 = Math.max(y1, y + R + 1);
+    };
     for (let k = from; k < p.strokes.length; k++) {
-      const s = p.strokes[k], r = s.r * long, start = !fresh && k === c.strokes - 1 ? c.drawn : 0;
+      const s = p.strokes[k], r = s.r * long, start = !fresh && k === c.strokes - 1 ? c.drawn : 0, gap = Math.max(0.5, r * 0.25);
       g.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
       for (let i = start; i < s.pts.length; i++) {
         const x = s.pts[i][0] * w, y = s.pts[i][1] * h;
-        const gr = g.createRadialGradient(x, y, r * (1 - s.feather), x, y, Math.max(r, 0.5));
-        gr.addColorStop(0, white(s.flow)); gr.addColorStop(1, white(0));
-        g.fillStyle = gr; g.beginPath(); g.arc(x, y, Math.max(r, 0.5), 0, Math.PI * 2); g.fill();
+        if (i > 0) { // a fast stroke's points are far apart: dabs a quarter of the brush apart fill the line between them
+          const px = s.pts[i - 1][0] * w, py = s.pts[i - 1][1] * h, n = Math.floor(Math.hypot(x - px, y - py) / gap);
+          for (let j = 1; j < n; j++) dab(s, r, px + ((x - px) * j) / n, py + ((y - py) * j) / n);
+        }
+        dab(s, r, x, y);
       }
     }
     g.globalCompositeOperation = 'source-over';
-    const d = g.getImageData(0, 0, w, h).data;
-    for (let i = 0; i < w * h; i++) a[i] = d[i * 4 + 3] / 255;
-    c = { canvas: cv, strokes: p.strokes.length, drawn: p.strokes.length ? p.strokes[p.strokes.length - 1].pts.length : 0 };
+    const raw = !fresh && c.raw && c.raw.length === w * h ? c.raw : new Float32Array(w * h);
+    const rx0 = fresh ? 0 : Math.max(0, Math.floor(x0)), ry0 = fresh ? 0 : Math.max(0, Math.floor(y0));
+    const rw = fresh ? w : Math.min(w, Math.ceil(x1)) - rx0, rh = fresh ? h : Math.min(h, Math.ceil(y1)) - ry0;
+    if (rw > 0 && rh > 0) {
+      const d = g.getImageData(rx0, ry0, rw, rh).data;
+      for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) raw[(ry0 + y) * w + rx0 + x] = d[(y * rw + x) * 4 + 3] / 255;
+    }
+    a = p.invert ? raw.map((v) => 1 - v) : raw;
+    partCache.set(p, { canvas: cv, raw, strokes: p.strokes.length, drawn: p.strokes.length ? p.strokes[p.strokes.length - 1].pts.length : 0, key, a });
+    return a;
   }
   if (p.invert) for (let i = 0; i < a.length; i++) a[i] = 1 - a[i];
   partCache.set(p, Object.assign(c || {}, { key, a }));
@@ -171,7 +187,10 @@ export function moEditMasksActivate(api) {
  * ctx: { api, root, kit (moEditPanelKit), host (the element over the picture),
  *   recipe(), afterChange(record), requestRender(), on() -> the tool is showing,
  *   toScreen(u, v) -> { x, y } in host pixels, fromScreen(clientX, clientY) -> { u, v } on the photo,
- *   screenPerPhoto() -> host pixels per photo pixel, photoSize() -> { w, h }, idStem }.
+ *   screenPerPhoto() -> screen pixels per photo pixel, photoSize() -> { w, h }, idStem,
+ *   hostPoint(clientX, clientY) -> { x, y } in host pixels and hostScale() -> screen pixels per host pixel,
+ *   for a host that is scaled or mirrored (a plan's zoomed view); without them the host is as it shows }.
+ * The brush's size is on the screen: zoomed in, it paints finer.
  */
 export function moEditMasks(ctx) {
   const { api } = ctx;
@@ -192,6 +211,15 @@ export function moEditMasks(ctx) {
   layer.append(lines, handles, cursor);
   ctx.host.appendChild(layer);
   let stroke = null, keyPoint = null;
+  const hostScale = () => (ctx.hostScale ? ctx.hostScale() : 1) || 1;
+  const hostPoint = (x, y) => { if (ctx.hostPoint) return ctx.hostPoint(x, y); const r = ctx.host.getBoundingClientRect(); return { x: x - r.left, y: y - r.top }; };
+  const placeCursor = (x, y) => {
+    const k = hostScale(), d = S.brush.size / k;
+    Object.assign(cursor.style, { left: `${x}px`, top: `${y}px`, width: `${d}px`, height: `${d}px`, borderWidth: `${1.5 / k}px` });
+    cursor.style.setProperty('--mo-mk-inner', `${(d / 2) * (1 - S.brush.feather)}px`);
+    cursor.style.setProperty('--mo-mk-line', `${1 / k}px`);
+    cursor.classList.remove('mo-hidden');
+  };
   const brushR = () => { const ps = ctx.photoSize(); return (S.brush.size / 2) / Math.max(1e-6, ctx.screenPerPhoto()) / Math.max(ps.w, ps.h); };
   const press = ui.onDragPress(layer, (e) => {
     const p = part();
@@ -207,10 +235,8 @@ export function moEditMasks(ctx) {
   const onMove = (e) => {
     const p = part();
     if (p && p.kind === 'brush') {
-      const r = ctx.host.getBoundingClientRect();
-      Object.assign(cursor.style, { left: `${e.clientX - r.left}px`, top: `${e.clientY - r.top}px`, width: `${S.brush.size}px`, height: `${S.brush.size}px` });
-      cursor.style.setProperty('--mo-mk-inner', `${(S.brush.size / 2) * (1 - S.brush.feather)}px`);
-      cursor.classList.remove('mo-hidden');
+      const q = hostPoint(e.clientX, e.clientY);
+      placeCursor(q.x, q.y);
     }
     if (!stroke) return;
     const at = ctx.fromScreen(e.clientX, e.clientY), last = stroke.pts[stroke.pts.length - 1];
@@ -281,8 +307,7 @@ export function moEditMasks(ctx) {
       handleDisposers.push(handle(p.cx, p.cy - p.ry, '', 'Oval height', (u, v) => { p.ry = Math.max(0.005, Math.abs(p.cy - v)); }));
     } else if (keyPoint && document.activeElement === layer) {
       const q = ctx.toScreen(keyPoint.u, keyPoint.v);
-      Object.assign(cursor.style, { left: `${q.x}px`, top: `${q.y}px`, width: `${S.brush.size}px`, height: `${S.brush.size}px` });
-      cursor.classList.remove('mo-hidden');
+      placeCursor(q.x, q.y);
     }
     g.restore();
     if (held) { const again = [...handles.children].find((x) => x.getAttribute('aria-label') === held); if (again) again.focus({ preventScroll: true }); }

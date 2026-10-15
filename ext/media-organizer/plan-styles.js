@@ -116,7 +116,7 @@ export const MO_PLAN_CSS = `
 .mo-mk-h.is-pin { width: 18px; height: 18px; margin: -9px 0 0 -9px; background: var(--px-accent); border-color: var(--px-viewer-ink); }
 .mo-mk-h:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
 .mo-mk-cursor { position: absolute; transform: translate(-50%, -50%); border: 1.5px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); pointer-events: none; }
-.mo-mk-cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: calc(var(--mo-mk-inner, 0px) * 2); height: calc(var(--mo-mk-inner, 0px) * 2); transform: translate(-50%, -50%); border: 1px dashed var(--px-viewer-ink); border-radius: var(--px-radius-full); }
+.mo-mk-cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: calc(var(--mo-mk-inner, 0px) * 2); height: calc(var(--mo-mk-inner, 0px) * 2); transform: translate(-50%, -50%); border: var(--mo-mk-line, 1px) dashed var(--px-viewer-ink); border-radius: var(--px-radius-full); }
 .mo-mk-top { display: flex; align-items: center; gap: var(--px-space-1); margin-bottom: var(--px-space-1); }
 .mo-mk-top .px-btn--primary { flex: 1; justify-content: center; }
 .mo-mk-list, .mo-mk-parts { display: flex; flex-direction: column; gap: 2px; }
