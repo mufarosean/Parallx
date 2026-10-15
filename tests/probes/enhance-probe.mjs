@@ -77,6 +77,11 @@ const before = outside();
 log(`engine folder ${ENGINE} (${fresh ? 'empty: the whole setup runs' : 'already set up'})`);
 const { app, page, errors } = await launchApp(appRoot);
 const card = () => page.evaluate(() => { const c = document.querySelector('.mo-enhance-setup'); return c && c.offsetParent !== null ? c.textContent.replace(/\s+/g, ' ').trim() : null; });
+// Engine processes running now (the runtime's Python).
+const engineProcs = () => {
+  if (process.platform !== 'win32') return 0;
+  try { return Number(execFileSync('powershell', ['-NoProfile', '-Command', `@(Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.ExecutablePath -like '${ENGINE.replace(/'/g, "''")}*' }).Count`], { encoding: 'utf8', windowsHide: true }).trim()) || 0; } catch { return 0; }
+};
 // Enhance's work folders: .enhance-* beside the workspace's other Media Organizer folders.
 const workFolders = () => { const out = []; const walk = (d, depth) => { let es = []; try { es = readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) if (e.isDirectory()) { const p = path.join(d, e.name); if (/^.enhance-/.test(e.name)) out.push(p); else if (depth < 6) walk(p, depth + 1); } }; walk(path.join(ws, '.parallx'), 0); return out; };
 const countFiles = (d) => { let n = 0; let es = []; try { es = readdirSync(d, { withFileTypes: true }); } catch { return 0; } for (const e of es) n += e.isDirectory() ? countFiles(path.join(d, e.name)) : 1; return n; };
@@ -150,13 +155,46 @@ try {
   await page.screenshot({ path: path.join(outDir, 'enhance-preview.png') });
   await page.keyboard.press('Escape');
   await page.waitForTimeout(800);
+  if (process.env.ENHANCE_ONLY === 'saveover') {
+    // Preview, then straight to Save Over Original: it must use the preview.
+    const before = statSync(path.join(photos, 'fractal.jpg')).mtimeMs;
+    await clickId('media-organizer.imageEditor.saveOptions');
+    await page.getByText('Save Over Original…', { exact: true }).first().click({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Save Over Original', exact: true }).last().click({ timeout: 10_000 });
+    const t5 = Date.now();
+    let seen = 0; let done = false;
+    while (Date.now() - t5 < 10 * 60_000 && !done) { seen = Math.max(seen, engineProcs()); done = statSync(path.join(photos, 'fractal.jpg')).mtimeMs !== before; await page.waitForTimeout(300); }
+    await page.waitForTimeout(2000);
+    check('Preview then Save Over Original writes the enlarged picture over the original', done && sizeOf(path.join(photos, 'fractal.jpg')) === '2400,1800', `${sizeOf(path.join(photos, 'fractal.jpg'))}; ${Math.round((Date.now() - t5) / 1000)} s`);
+    check('and uses the preview: the engine does not run again', seen === 0, `${seen} engine process(es) seen`);
+    throw Object.assign(new Error('saveover done'), { done: true });
+  }
   const t2 = Date.now();
   await clickId('media-organizer.imageEditor.saveCopy');
   const want = path.join(photos, 'fractal-2x.png');
   let copy = '';
-  while (Date.now() - t2 < 10 * 60_000 && !copy) { copy = readdirSync(photos).find((n) => /^fractal.*\.png$/i.test(n)) || ''; await page.waitForTimeout(1000); }
+  let engineDuringCopy = 0;
+  while (Date.now() - t2 < 10 * 60_000 && !copy) { engineDuringCopy = Math.max(engineDuringCopy, engineProcs()); copy = readdirSync(photos).find((n) => /^fractal.*\.png$/i.test(n)) || ''; await page.waitForTimeout(300); }
+  const copySecs = Math.round((Date.now() - t2) / 1000);
   await page.waitForTimeout(3000);
-  check('Save As Copy writes the enlarged copy, twice the size', !!copy && sizeOf(path.join(photos, copy)) === '2400,1800', `${copy || 'none'} ${copy ? sizeOf(path.join(photos, copy)) : ''}; ${Math.round((Date.now() - t2) / 1000)} s; expected like ${path.basename(want)}`);
+  check('Save As Copy writes the enlarged copy, twice the size', !!copy && sizeOf(path.join(photos, copy)) === '2400,1800', `${copy || 'none'} ${copy ? sizeOf(path.join(photos, copy)) : ''}; ${copySecs} s; expected like ${path.basename(want)}`);
+  check('after Preview, Save As Copy uses the preview: the engine does not run again', engineDuringCopy === 0, `${engineDuringCopy} engine process(es) seen; ${copySecs} s`);
+
+  // Save Over Original after a preview: the same.
+  await clickId('media-organizer.imageEditor.previewEnlarged');
+  await page.waitForFunction(() => { const p = document.querySelector('.mo-edit-preview'); return !!p && !p.classList.contains('mo-hidden'); }, null, { timeout: 10 * 60_000 }).catch(() => {});
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(800);
+  const before = statSync(path.join(photos, 'fractal.jpg')).mtimeMs;
+  await clickId('media-organizer.imageEditor.saveOptions');
+  await page.getByText('Save Over Original…', { exact: true }).first().click({ timeout: 10_000 });
+  await page.getByRole('button', { name: 'Save Over Original', exact: true }).last().click({ timeout: 10_000 });
+  const t5 = Date.now();
+  let engineDuringOver = 0; let overDone = false;
+  while (Date.now() - t5 < 10 * 60_000 && !overDone) { engineDuringOver = Math.max(engineDuringOver, engineProcs()); overDone = statSync(path.join(photos, 'fractal.jpg')).mtimeMs !== before; await page.waitForTimeout(300); }
+  const overSecs = Math.round((Date.now() - t5) / 1000);
+  check('Save Over Original writes the enlarged picture over the original', overDone && sizeOf(path.join(photos, 'fractal.jpg')) === '2400,1800', `${sizeOf(path.join(photos, 'fractal.jpg'))}; ${overSecs} s`);
+  check('after Preview, Save Over Original uses the preview: the engine does not run again', engineDuringOver === 0, `${engineDuringOver} engine process(es) seen; ${overSecs} s`);
   // Afterwards: the work folders' files are gone (Eraser overwrites them within moments) and nothing is in the engine's folder.
   await page.waitForTimeout(20_000);
   const leftFiles = workFolders().reduce((n, d) => n + countFiles(d), 0);
@@ -214,7 +252,7 @@ try {
     : '0';
   check('and no engine process is left running', procs === '0', `${procs} running`);
   console.log('[probe] errors:', errors.filter((e) => !/Ollama|11434|EmbeddingService|IndexingPipeline/.test(e)).slice(0, 5).join(' || ') || 'none');
-} finally {
+} catch (err) { if (!err || !err.done) throw err; } finally {
   await app.close();
 }
 const ok = results.every(Boolean);

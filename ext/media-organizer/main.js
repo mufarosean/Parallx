@@ -34384,7 +34384,7 @@ async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBy
   }
 
   if (enlarged && await window.parallxElectron.fs.exists(enlarged)) {
-    tell('enlarge', 1);
+    tell('enlarge', 1, 'Using the enlarged preview');
     if (ext === 'png') {
       const moved = await window.parallxElectron.fs.rename(enlarged, outPath);
       if (moved && moved.error) throw new Error('The enlarged picture could not be put in place.');
@@ -37382,7 +37382,7 @@ function renderImageEditor(container, api) {
     setSaveLabel('Saving');
     syncButtons();
     const enlarging = state.recipe.enhance.scale > 0;
-    busy(enlarging ? 'Saving and enlarging' : 'Saving', 0);
+    busy(enlarging && !(kept && kept.key === keptKey()) ? 'Saving and enlarging' : 'Saving', 0);
     try {
       await flushSave();
       await syncWork();
@@ -37414,7 +37414,7 @@ function renderImageEditor(container, api) {
     state.saving = true;
     setSaveLabel('Saving');
     syncButtons();
-    busy(state.recipe.enhance.scale > 0 ? 'Saving and enlarging' : 'Saving', 0);
+    busy(state.recipe.enhance.scale > 0 && !(kept && kept.key === keptKey()) ? 'Saving and enlarging' : 'Saving', 0);
     let saved = null;
     try {
       await flushSave();
