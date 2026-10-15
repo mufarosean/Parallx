@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_COMMON_PAINTS, MO_OKLAB_GLSL, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -31762,6 +31762,8 @@ function moPlanNormalizeRecipe(r) {
   if (!['none', 'thirds', 'golden', 'spiral', 'diagonals', 'triangles'].includes(out.overlays.guide) || !(o.overlays && o.overlays.guide)) out.overlays.guide = out.overlays.thirds ? 'thirds' : out.overlays.golden ? 'golden' : out.overlays.diagonals ? 'diagonals' : 'none'; // older plans had three switches
   out.overlays.spiral = ((Math.round(Number(out.overlays.spiral) || 0) % 4) + 4) % 4;
   out.angle = Math.max(-45, Math.min(45, Number(out.angle) || 0)); out.freeCrop = !!out.freeCrop;
+  out.show = ['photo', 'values', 'colour'].includes(o.show) ? o.show : out.levels >= 2 || out.grey || out.notan > 0 ? 'values' : 'photo'; // the view a variation was saved from
+  out.under = typeof o.under === 'string' ? o.under : ''; // the underpainting paint, or grey
   out.palette = Object.assign({}, d.palette, o.palette || {});
   out.palette.swatches = Array.isArray(out.palette.swatches) ? out.palette.swatches.slice(0, 16) : []; out.saved = Array.isArray(out.saved) ? out.saved.filter((c) => c && Array.isArray(c.rgb)).slice(-64) : [];
   out.rotate = ((Math.round(Number(out.rotate) || 0) % 4) + 4) % 4;
@@ -31835,6 +31837,22 @@ function moPlanOutputName(basename, n) {
   return `${stem}_plan_${n}.jpg`;
 }
 // @mo-plan-pure-end
+
+// A plan's look is the Image Editor's (its sliders, tone curve, mixer, grading, Black And White): what a
+// stored plan lacks is at rest. Older plans' hue stays as it was.
+function moPlanWithLook(r) {
+  const d = moEditDefaultRecipe(), n = moEditNormalizeRecipe(Object.assign({}, d, moEditPickLook(Object.assign({}, d, r)), { off: r.off }));
+  for (const [key] of MO_EDIT_SLIDERS) r[key] = n[key];
+  r.bw = n.bw; r.curve = n.curve; r.mixer = n.mixer; r.grading = n.grading; r.off = n.off;
+  return r;
+}
+const moPlanRecipe = (r) => moPlanWithLook(moPlanNormalizeRecipe(r));
+// The underpainting paint's colour as OKLab, or null for grey.
+function moPlanUnderLab(name) {
+  const p = name ? MO_COMMON_PAINTS.find((x) => x.name === name) : null;
+  const rgb = p ? moHexRgb(p.hex) : null;
+  return rgb ? moOklab(rgb[0], rgb[1], rgb[2]) : null;
+}
 
 // ── Data ───────────────────────────────────────────────────────────────────
 
@@ -31914,6 +31932,25 @@ async function moTagsCommand(api, which, keys) {
   document.dispatchEvent(new CustomEvent('mo:tags-bulk-changed', { detail: { op: 'ADD', tagIds: done.tagIds, keys: targets } }));
   api.window.showInformationMessage(`Pasted ${moTagClip().names.length} tag${moTagClip().names.length === 1 ? '' : 's'} onto ${done.items} item${done.items === 1 ? '' : 's'}.`);
 }
+// Where a plan keeps its removal patches and enhanced copies: beside the Image Editor's edits, in plans/<id>.
+function moPlanDir(planId) {
+  const ed = moEditDir('x');
+  if (!ed || !(planId > 0)) return null;
+  const sep = ed.includes('\\') ? '\\' : '/';
+  return ed.slice(0, ed.lastIndexOf(sep, ed.lastIndexOf(sep) - 1)) + sep + 'plans' + sep + String(planId);
+}
+/** Files in a plan's folder that no recipe names any more go the user's delete way (Eraser when set). */
+async function moPlanSweepFiles(api, planId, keep) {
+  const dir = moPlanDir(planId);
+  try {
+    if (!dir || !(await window.parallxElectron.fs.exists(dir))) return;
+    const res = await window.parallxElectron.fs.readdir(dir);
+    if (!res || res.error || !Array.isArray(res.entries)) return;
+    const names = new Set(keep), sep = dir.includes('\\') ? '\\' : '/';
+    const gone = res.entries.filter((e) => e && e.type !== 'directory' && !names.has(e.name)).map((e) => dir + sep + e.name);
+    if (gone.length) await moDisposeTemp(api, gone);
+  } catch (err) { console.warn('[media-organizer] could not sweep a plan\'s files:', err && err.message); }
+}
 function moOpenBoard(api, planId) { (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Board', icon: 'layout-dashboard', instanceId: `plans:board:${planId}` }); }
 const moBoardDeps = (api) => ({ api, db, getSetting: moGetSetting, setSetting: moSetSetting, planLoad: moPlanLoad, planRenderer: moPlanRenderer, rotatedSize: moPlanRotatedSize, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, thumb: (img, id) => void moPracticeThumb(img, id, api), openPlan: (id) => moOpenPlan(api, id), openBoard: (id) => moOpenBoard(api, id), ingest: (p) => moIngestNewImage(p), searchPhotos: (t) => db.all(`SELECT p.id, COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.deleted_at IS NULL AND (? = '' OR p.title LIKE ? OR f.basename LIKE ?) ORDER BY p.id DESC LIMIT 24`, [t, `%${t}%`, `%${t}%`]) });
 
@@ -31972,7 +32009,8 @@ uniform vec2 u_texel, u_outSize;
 uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
 uniform float u_warmth, u_tint, u_hue, u_sat, u_vibrance;
 uniform float u_grey, u_levels, u_notan, u_split, u_paletteN, u_opaque, u_outside;
-uniform float u_curveOn, u_mixOn, u_gradeOn, u_clipSrc;
+uniform float u_curveOn, u_mixOn, u_gradeOn, u_clipSrc, u_valueMode, u_underOn;
+uniform vec3 u_under;
 uniform vec3 u_mix[8];
 uniform vec3 u_gShadow, u_gMid, u_gHigh, u_gLum;
 uniform float u_gBlend, u_gBalance;
@@ -32107,9 +32145,22 @@ void main() {
   if (u_mixOn > 0.5) c = mixer(c);
   if (u_gradeOn > 0.5) c = grade(c);
   float lum = dot(c, LUMA);
+  if (u_valueMode > 0.5) {
+    // A painting plan's values: lightness as the eye sees it, banded, or light and shadow only, laid in
+    // one paint (u_under, OKLab) from its darks to its tints, or in grey.
+    float L = toOklab(c).x;
+    if (u_notan > 0.0) L = L >= u_notan ? 0.86 : 0.24;
+    else if (u_levels >= 2.0) L = (min(floor(L * u_levels), u_levels - 1.0) + 0.5) / u_levels;
+    vec2 ab = vec2(0.0);
+    if (u_underOn > 0.5) { float k = clamp(1.0 - abs(L - u_under.x) / max(u_under.x, 1.0 - u_under.x), 0.0, 1.0); ab = u_under.yz * (0.35 + 0.65 * k); }
+    vec3 lin = oklabToLinear(vec3(L, ab));
+    for (int i = 0; i < 8; i++) { if (min(lin.r, min(lin.g, lin.b)) >= -0.001 && max(lin.r, max(lin.g, lin.b)) <= 1.001) break; ab *= 0.8; lin = oklabToLinear(vec3(L, ab)); }
+    c = linearToSrgb(clamp(lin, 0.0, 1.0));
+  } else {
   if (u_grey > 0.5) c = vec3(lum);
   if (u_notan > 0.0) c = vec3(step(u_notan, lum));
   else if (u_levels >= 2.0) { float bi = min(floor(lum * u_levels), u_levels - 1.0); c = u_grey > 0.5 ? vec3(bi / (u_levels - 1.0)) : valueBand(c, (bi + 0.5) / u_levels); } // colour keeps its hue at its band's middle value
+  }
   if (u_paletteN > 0.5) {
     vec3 best = u_palette[0]; float bd = 1.0e9; vec3 cl = toOklab(c); // nearest as the eye judges it
     for (int i = 0; i < 16; i++) {
@@ -32170,7 +32221,7 @@ function moImageEngine(canvas) {
   const U = {};
   for (const n of ['u_img', 'u_blurS', 'u_blurL', 'u_curve', 'u_v0', 'u_v1', 'u_m0', 'u_m1', 'u_texel', 'u_outSize',
     'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette', 'u_opaque', 'u_outside',
-    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_clipSrc', 'u_mix', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
+    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_clipSrc', 'u_valueMode', 'u_underOn', 'u_under', 'u_mix', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
     ...MO_ENGINE_FLOATS.map((f) => f[0])]) U[n] = gl.getUniformLocation(prog, n);
   const BU = { img: gl.getUniformLocation(blurProg, 'u_img'), step: gl.getUniformLocation(blurProg, 'u_step') };
   const plainTexture = (filter) => {
@@ -32268,6 +32319,8 @@ function moImageEngine(canvas) {
     gl.uniform1f(U.u_split, typeof p.split === 'number' ? p.split : -1);
     gl.uniform1f(U.u_opaque, p.opaque ? 1 : 0);
     gl.uniform1f(U.u_outside, p.outside ? 1 : 0); gl.uniform1f(U.u_clipSrc, p.clipSource ? 1 : 0);
+    gl.uniform1f(U.u_valueMode, p.valueMode ? 1 : 0); gl.uniform1f(U.u_underOn, p.under ? 1 : 0);
+    const ul = p.under || [0, 0, 0]; gl.uniform3f(U.u_under, ul[0], ul[1], ul[2]);
     const sw = Array.isArray(p.palette) ? p.palette : [];
     const arr = new Float32Array(48);
     sw.slice(0, 16).forEach((s, i) => { arr[i * 3] = s[0] / 255; arr[i * 3 + 1] = s[1] / 255; arr[i * 3 + 2] = s[2] / 255; });
@@ -32372,17 +32425,19 @@ function moPlanRenderer(canvas) {
     maxTexture: engine.maxTexture,
     setSource(source, blurPx) { engine.setSource(source, { blurPx }); },
     get size() { return engine.size; },
-    // opts: { width, height, full (ignore the crop), split (-1 or 0..1), read }
+    // opts: { width, height, full (ignore the crop), split (-1 or 0..1), read, aids (squint's values, grey, notan,
+    // the limited palette: drawn unless false), rest (the look at rest) }
     render(recipe, opts) {
       const r = recipe;
       const size = engine.size;
+      const p0 = moEditEngineLook(opts.rest ? moEditDefaultRecipe() : r, false);
+      p0.look.hue = opts.rest ? 0 : Number(r.hue) || 0;
+      const aids = opts.aids !== undefined ? !!opts.aids : r.show === 'values'; // a variation saved from Values shows its values
       const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: Number(r.angle) || 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
-      const look = {};
-      for (const k of MO_ENGINE_LOOK_KEYS) look[k] = r[k];
       return engine[opts.read ? 'sample' : 'draw']({ // read: the pixels back as RGBA bytes
-        m: geo.m, look, opaque: !opts.full, clipSource: !!opts.full,
-        grey: r.grey, levels: r.levels, notan: r.notan,
-        palette: r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
+        m: geo.m, look: p0.look, curve: p0.curve, mix: p0.mix, grade: p0.grade, opaque: !opts.full, clipSource: !!opts.full,
+        grey: p0.grey, levels: aids ? r.levels : 0, notan: aids ? r.notan : 0, valueMode: aids, under: aids ? moPlanUnderLab(r.under) : null,
+        palette: aids && r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
         split: typeof opts.split === 'number' ? opts.split : -1,
       }, opts.width, opts.height);
     },
@@ -32461,7 +32516,7 @@ function renderPlanEditor(container, api, planId) {
     onZoom: () => requestRender() });
   const syncShell = () => shell.sync(histIdx > 0, histIdx < history.length - 1);
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe, d = moPlanDefaultRecipe(); return MO_ENGINE_LOOK_KEYS.every((k) => JSON.stringify(r[k]) === JSON.stringify(d[k])) && !r.grey && !(r.levels >= 2) && !(r.notan > 0) && !r.palette.apply; }, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe, d = moPlanDefaultRecipe(); return MO_ENGINE_LOOK_KEYS.every((k) => JSON.stringify(r[k]) === JSON.stringify(d[k])) && !r.grey && !(r.levels >= 2) && !(r.notan > 0) && !r.palette.apply; }, addToBoard: (label) => { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }, getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
   // The Colour Study's lenses over the edited picture (plan-study.js).
   const study = moPlanStudy({ api, state, root, frame, editedPixels: (max) => editedPixels(max), afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting });
 
@@ -32478,7 +32533,7 @@ function renderPlanEditor(container, api, planId) {
     syncUndo();
   }
   function syncUndo() { syncShell(); }
-  function restore(i) { histIdx = i; const h = JSON.parse(history[i]); state.recipe = moPlanNormalizeRecipe(h.r); state.variant = state.variants.find((v) => v.id === h.f) || null; canvasFromRecipe(); afterRecipeChange(false); variations.render(); }
+  function restore(i) { histIdx = i; const h = JSON.parse(history[i]); state.recipe = moPlanRecipe(h.r); state.variant = state.variants.find((v) => v.id === h.f) || null; canvasFromRecipe(); afterRecipeChange(false); variations.render(); }
   function undo() { if (histIdx > 0) restore(histIdx - 1); }
   function redo() { if (histIdx < history.length - 1) restore(histIdx + 1); }
   // The plan's canvas follows the picture in the controls.
@@ -32496,17 +32551,23 @@ function renderPlanEditor(container, api, planId) {
   // record: true when the change is a user edit worth an undo step
   function afterRecipeChange(record, keepPanel) {
     if (record !== false) pushHistory();
-    if (state.recipe.blur !== state.blurBaked) bakeSource();
+    photo.refresh();
+    if (needsBake()) bakeSource();
     requestRender();
     scheduleSave();
     if (!keepPanel) renderPanel();
     variations.sync();
   }
+  // The picture a step draws from (the photo with its removals, or the enhanced copy; plan-photo.js), with
+  // Values' squint blurred into it: a share of the crop's long side.
+  const wantBlur = () => (state.tool === 'values' && state.recipe.blur > 0 ? state.recipe.blur : 0);
+  const needsBake = () => !!renderer && !!state.image && (state.blurBaked !== wantBlur() || state.srcBaked !== photo.source(state.tool).img);
   function bakeSource() {
     if (!renderer || !state.image) return;
-    const px = state.recipe.blur > 0 ? (state.recipe.blur * Math.max(state.imgW, state.imgH)) / 100 : 0;
-    renderer.setSource(state.image, px);
-    state.blurBaked = state.recipe.blur;
+    const src = photo.source(state.tool), blur = wantBlur(), rs = rotated();
+    const long = src.enhanced ? Math.max(src.img.width, src.img.height) : Math.max(rs.w * state.recipe.crop.w, rs.h * state.recipe.crop.h);
+    renderer.setSource(src.img, blur > 0 ? (blur * long) / 100 : 0);
+    state.blurBaked = blur; state.srcBaked = src.img;
   }
   function requestRender() { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
 
@@ -32530,7 +32591,8 @@ function renderPlanEditor(container, api, planId) {
     const dpr = px / Math.max(1, zoom);
     frame.style.width = cssW + 'px'; frame.style.height = cssH + 'px';
     glCanvas.style.width = cssW + 'px'; glCanvas.style.height = cssH + 'px';
-    renderer.render(r, { width: Math.round(cssW * px), height: Math.round(cssH * px), full, split: full ? -1 : state.split });
+    if (needsBake()) bakeSource();
+    renderer.render(photo.source(state.tool).eff(r), { width: Math.round(cssW * px), height: Math.round(cssH * px), full, split: full ? -1 : state.split, aids: state.tool === 'values' || (state.tool === 'transfer' && state.view === 'values') });
     ovCanvas.width = Math.round(cssW * px); ovCanvas.height = Math.round(cssH * px);
     ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
     const octx = ovCanvas.getContext('2d');
@@ -32545,6 +32607,7 @@ function renderPlanEditor(container, api, planId) {
     }
     colours.sync();
     study.sync();
+    photo.sync();
     shell.applyView();
   }
   const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => requestRender()) : null;
@@ -32552,6 +32615,28 @@ function renderPlanEditor(container, api, planId) {
 
   // ── Compose: the canvas, the crop and the composition guides (plan-compose.js) ──
   function setCanvas(w, h) { state.plan.canvas_w = w; state.plan.canvas_h = h; state.recipe.canvas = { w, h }; sizeEl.textContent = `${w} × ${h} in`; }
+  // ── Photo: Enhance, the Image Editor's sections and Remove (plan-photo.js) ──
+  const photo = moPlanPhoto({ api, state, root, frame, planId, afterRecipeChange: (rec, keep) => afterRecipeChange(rec, keep), requestRender: () => requestRender(), renderPanel: () => renderPanel(),
+    sourceChanged: () => { if (needsBake()) bakeSource(); requestRender(); }, editedPixels: (max, rest) => editedPixels(max, rest),
+    toSource: (u, v) => { const g = moEditAffine(state.recipe, state.imgW, state.imgH), p = moAffineApply(g.m, u, v); return [p[0] * state.imgW, p[1] * state.imgH]; },
+    sourceScale: () => { const rs = rotated(); return (rs.w * state.recipe.crop.w) / Math.max(1, frame.getBoundingClientRect().width); },
+    renderCrop: async () => {
+      const g = moEditAffine(state.recipe, state.imgW, state.imgH), k = Math.min(1, Math.min(8192, renderer.maxTexture) / Math.max(g.outW, g.outH));
+      const cv = document.createElement('canvas'), rr = moPlanRenderer(cv);
+      if (!rr) throw new Error('No WebGL to draw the crop.');
+      try {
+        rr.setSource(photo.source('compose').img, 0);
+        rr.render(state.recipe, { width: Math.round(g.outW * k), height: Math.round(g.outH * k), full: false, split: -1, aids: false, rest: true });
+        const out = document.createElement('canvas'); out.width = cv.width; out.height = cv.height; out.getContext('2d').drawImage(cv, 0, 0);
+        const blob = await new Promise((res) => out.toBlob(res, 'image/png'));
+        return new Uint8Array(await blob.arrayBuffer());
+      } finally { rr.dispose(); }
+    },
+    deps: { panelKit: moEditPanelKit, histogram: moEditHistogram, autoTone: moEditAutoTone, whiteBalance: moEditWhiteBalance,
+      enhance: { ready: moEnhanceReady, card: moEnhanceCard, run: moEnhanceRun, stop: moEnhanceStop, temp: (work) => moEnhanceTemp(api, work) },
+      removal: { state: moEditRemoveState, fill: moEditFill },
+      files: { dir: () => moPlanDir(planId), read: moEditReadBytes, write: async (p, bytes) => { await window.parallxElectron.fs.mkdir(p.slice(0, Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')))); await moEditWriteBytes(p, bytes); }, dispose: (paths) => moDisposeTemp(api, paths) } } });
+
   const compose = moPlanCompose({ api, state, root, frame, cropBox, rotated, setCanvas, afterRecipeChange: (rec, keep) => afterRecipeChange(rec, keep), requestRender: () => requestRender(), moDropdown, presets: MO_PLAN_CANVAS_PRESETS });
 
   // ── panel ──
@@ -32559,6 +32644,8 @@ function renderPlanEditor(container, api, planId) {
   const STEP_OF = { crop: 'compose', light: 'photo', pick: 'colour', study: 'colour', grids: 'transfer', info: 'compose', process: 'compose' };
   function setTool(id) {
     state.tool = STEP_OF[id] || id; state.notes = false;
+    if (['photo', 'values', 'colour'].includes(state.tool)) state.view = state.tool; // what Transfer and Export show
+    if (state.tool !== 'photo') photo.stopRemoving();
     syncShell();
     renderPanel();
     requestRender();
@@ -32601,20 +32688,8 @@ function renderPlanEditor(container, api, planId) {
     const t = state.tool;
     if (state.notes) notesPanel();
     else if (t === 'compose') compose.panel(panel, panelDisposers);
-    else if (t === 'photo') {
-      const s = section('Light');
-      s.appendChild(slider('Exposure', 'exposure', -2, 2, 0.01, (v) => (v > 0 ? '+' : '') + v.toFixed(2)));
-      s.appendChild(slider('Contrast', 'contrast', -1, 1, 0.01));
-      s.appendChild(slider('Highlights', 'highlights', -1, 1, 0.01));
-      s.appendChild(slider('Shadows', 'shadows', -1, 1, 0.01));
-      s.appendChild(slider('Warmth', 'warmth', -1, 1, 0.01));
-      s.appendChild(slider('Tint', 'tint', -1, 1, 0.01));
-      s.appendChild(button('Reset Light', () => { Object.assign(r, { exposure: 0, contrast: 0, highlights: 0, shadows: 0, warmth: 0, tint: 0 }); afterRecipeChange(true); }));
-      const c = section('Colour');
-      c.appendChild(slider('Hue', 'hue', -0.5, 0.5, 0.005, (v) => Math.round(v * 360) + '°'));
-      c.appendChild(slider('Saturation', 'saturation', -1, 1, 0.01));
-      c.appendChild(button('Reset Colour', () => { r.hue = 0; r.saturation = 0; afterRecipeChange(true); }));
-    } else if (t === 'values') colours.valuesPanel(panel, panelDisposers);
+    else if (t === 'photo') photo.panel(panel, panelDisposers);
+    else if (t === 'values') colours.valuesPanel(panel, panelDisposers);
     else if (t === 'colour') { study.panel(panel, panelDisposers); colours.pickPanel(panel, panelDisposers); }
     else if (t === 'transfer') {
       const s2 = section('Transfer Grid');
@@ -32641,6 +32716,7 @@ function renderPlanEditor(container, api, planId) {
       s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id)));
       s.appendChild(button('Delete Plan…', async () => { if ((await api.window.showWarningMessage(`Delete the plan "${state.plan.title}"? Its variations, notes and saved colours go with it. The photo stays.`, { title: 'Delete' }, { title: 'Cancel' }))?.title !== 'Delete') return;
         await db.run('DELETE FROM mo_plans WHERE id = ?', [planId]);
+        const dir = moPlanDir(planId); if (dir) void moDisposeTemp(api, [dir]); // its patches and enhanced copies
         document.dispatchEvent(new CustomEvent('mo:plans-changed'));
         root.innerHTML = '';
         root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan was deleted. The photo is untouched.' }));
@@ -32673,12 +32749,20 @@ function renderPlanEditor(container, api, planId) {
   let thumbRenderer = null; let thumbCanvas = null;
   // The edited picture inside the crop as RGBA bytes, before any study aid (grey, values, notan,
   // palette): off screen, through the variation-thumbnail renderer, so the stage never flashes.
-  function editedPixels(max) {
-    if (!renderer) return null;
-    if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return null; thumbRenderer.setSource(state.image, 0); }
-    const r = state.recipe, rs = rotated(), k = Math.min(1, max / Math.max(rs.w * r.crop.w, rs.h * r.crop.h));
-    const w = Math.max(8, Math.round(rs.w * r.crop.w * k)), h = Math.max(8, Math.round(rs.h * r.crop.h * k));
-    try { return { px: thumbRenderer.render(Object.assign({}, r, { grey: false, levels: 0, notan: 0, palette: Object.assign({}, r.palette, { apply: false }) }), { width: w, height: h, full: false, split: -1, read: true }), w, h }; } catch { return null; }
+  let thumbSrc = null;
+  function thumbOn(img) {
+    if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return false; }
+    if (thumbSrc !== img) { thumbRenderer.setSource(img, 0); thumbSrc = img; }
+    return true;
+  }
+  // rest: the look at rest too (Auto and the white balance read the picture before the look).
+  function editedPixels(max, rest) {
+    if (!renderer || !state.image) return null;
+    const src = photo.source('photo');
+    if (!thumbOn(src.img)) return null;
+    const r = src.eff(state.recipe), geo = moEditAffine(r, src.img.width, src.img.height), k = Math.min(1, max / Math.max(geo.outW, geo.outH));
+    const w = Math.max(8, Math.round(geo.outW * k)), h = Math.max(8, Math.round(geo.outH * k));
+    try { return { px: thumbRenderer.render(r, { width: w, height: h, full: false, split: -1, read: true, aids: false, rest: !!rest }), w, h }; } catch { return null; }
   }
   function extractPalette() {
     const got = editedPixels(192);
@@ -32692,7 +32776,7 @@ function renderPlanEditor(container, api, planId) {
   function recipeThumb(recipe) {
     if (!state.image) return '';
     try {
-      if (!thumbRenderer) { thumbCanvas = document.createElement('canvas'); thumbRenderer = moPlanRenderer(thumbCanvas); if (!thumbRenderer) return ''; thumbRenderer.setSource(state.image, 0); }
+      if (!thumbOn(state.image)) return '';
       const rs = moPlanRotatedSize(state.imgW, state.imgH, recipe.rotate);
       const a = (rs.w * recipe.crop.w) / (rs.h * recipe.crop.h);
       thumbRenderer.render(recipe, { width: Math.round(56 * Math.max(a, 0.3)), height: 56, full: false, split: -1 });
@@ -32706,20 +32790,19 @@ function renderPlanEditor(container, api, planId) {
     return r;
   }
   function applyRecipe(recipe, from) {
-    state.recipe = moPlanNormalizeRecipe(recipe); state.variant = from || null;
+    state.recipe = moPlanRecipe(recipe); state.variant = from || null;
     canvasFromRecipe();
-    if (state.recipe.blur !== state.blurBaked) bakeSource();
     afterRecipeChange(true);
   }
-  const variations = moPlanVariations({ api, db, planId, root, bar: variantsBar, state, io: { getSetting: moGetSetting, setSetting: moSetSetting }, normalize: moPlanNormalizeRecipe, startRecipe, apply: applyRecipe, record: () => pushHistory(), saveDraft: () => scheduleSave(), thumb: recipeThumb, boardItems: () => moBoardMenuItems(moBoardDeps(api), planId, state) });
+  const variations = moPlanVariations({ api, db, planId, root, bar: variantsBar, state, io: { getSetting: moGetSetting, setSetting: moSetSetting }, normalize: moPlanRecipe, startRecipe, apply: applyRecipe, record: () => pushHistory(), saveDraft: () => scheduleSave(), thumb: recipeThumb, boardItems: () => moBoardMenuItems(moBoardDeps(api), planId, state),
+    view: () => state.view || 'photo', showStep: (v) => { if (v === 'values' || v === 'colour') setTool(v); else state.view = 'photo'; } });
 
   // ── export ──
   // Renders the recipe at full resolution into a JPEG beside the original and
   // ingests it like a scan: a photo of its own in the library.
   async function renderFull(withGrid) {
-    const rs = rotated();
-    const r = state.recipe;
-    let W = Math.round(rs.w * r.crop.w); let H = Math.round(rs.h * r.crop.h);
+    const src = photo.source('transfer'), r = src.eff(state.recipe), g0 = moEditAffine(r, src.img.width, src.img.height);
+    let W = g0.outW; let H = g0.outH;
     const cap = Math.min(8192, renderer.maxTexture);
     const k = Math.min(1, cap / Math.max(W, H));
     W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
@@ -32727,8 +32810,8 @@ function renderPlanEditor(container, api, planId) {
     const rr = moPlanRenderer(cv);
     if (!rr) throw new Error('No WebGL for the export.');
     try {
-      rr.setSource(state.image, r.blur > 0 ? (r.blur * Math.max(state.imgW, state.imgH)) / 100 : 0);
-      rr.render(r, { width: W, height: H, full: false, split: -1 });
+      rr.setSource(src.img, 0);
+      rr.render(r, { width: W, height: H, full: false, split: -1, aids: state.view === 'values' });
       const out = document.createElement('canvas');
       out.width = W; out.height = H;
       const ctx = out.getContext('2d');
@@ -32809,16 +32892,18 @@ function renderPlanEditor(container, api, planId) {
       state.image = image; state.imgW = image.naturalWidth; state.imgH = image.naturalHeight;
       renderer = moPlanRenderer(glCanvas);
       if (!renderer) { stage.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'WebGL is not available, so the plan cannot be shown.' })); return; }
-      for (const x of state.variants) if (!x.recipe.canvas) x.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h };
-      let draft = null; try { draft = state.plan.draft_json ? moPlanNormalizeRecipe(JSON.parse(state.plan.draft_json)) : null; } catch { draft = null; }
+      for (const x of state.variants) { if (!x.recipe.canvas) x.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; moPlanWithLook(x.recipe); }
+      let draft = null; try { draft = state.plan.draft_json ? moPlanRecipe(JSON.parse(state.plan.draft_json)) : null; } catch { draft = null; }
       const kept = state.variants.find((x) => x.id === state.plan.variant_id) || state.variants[0] || null;
       const from = draft ? state.variants.find((x) => x.id === state.plan.draft_from) || null : kept;
-      const v = { recipe: draft || (kept ? JSON.parse(JSON.stringify(kept.recipe)) : moPlanDefaultRecipe()) };
+      const v = { recipe: draft || (kept ? JSON.parse(JSON.stringify(kept.recipe)) : moPlanRecipe(null)) };
       // A plan starts with the whole picture: an uncropped one (or one still at the old automatic 16 × 20 cut) gets a canvas in the picture's proportions.
       const rs0 = moPlanRotatedSize(state.imgW, state.imgH, v.recipe.rotate), c0 = v.recipe.crop, auto = moPlanFitCrop(rs0.w, rs0.h, 0.8);
       if ((c0.w === 1 && c0.h === 1) || (state.plan.canvas_w === 16 && state.plan.canvas_h === 20 && ['x', 'y', 'w', 'h'].every((k) => Math.abs(c0[k] - auto[k]) < 1e-4))) { Object.assign(state.plan, moPlanCanvasFor(rs0.w, rs0.h)); sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; v.recipe.crop = { x: 0, y: 0, w: 1, h: 1 }; v.recipe.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; for (const x of state.variants) if (x.recipe.rotate === v.recipe.rotate && ['x', 'y', 'w', 'h'].every((k) => Math.abs(x.recipe.crop[k] - c0[k]) < 1e-4)) { x.recipe.crop = { x: 0, y: 0, w: 1, h: 1 }; x.recipe.canvas = { ...v.recipe.canvas }; void db.run('UPDATE mo_plan_variants SET recipe_json = ? WHERE id = ?', [JSON.stringify(x.recipe), x.id]); } scheduleSave(); }
-      state.variant = from; state.recipe = v.recipe;
+      state.variant = from; state.recipe = v.recipe; state.view = v.recipe.show;
       canvasFromRecipe();
+      photo.refresh();
+      void moPlanSweepFiles(api, planId, [v.recipe, ...state.variants.map((x) => x.recipe)].flatMap((x) => photo.filesOf(x)));
       bakeSource();
       pushHistory();
       variations.render();
@@ -32838,7 +32923,7 @@ function renderPlanEditor(container, api, planId) {
       for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
       if (renderer) renderer.dispose();
       if (thumbRenderer) thumbRenderer.dispose();
-      colours.dispose(); variations.dispose(); study.dispose(); shell.dispose(); compose.dispose();
+      colours.dispose(); variations.dispose(); study.dispose(); shell.dispose(); compose.dispose(); photo.dispose();
       container.innerHTML = '';
     },
   };
@@ -35626,6 +35711,353 @@ const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['crop', 'crop', 
 const MO_EDIT_TAB_LABEL = { edit: 'Edit', crop: 'Crop', remove: 'Remove', enhance: 'Enhance' };
 const MO_EDIT_FILM_SPAN = 30;   // photos shown either side of the open one
 
+// The Image Editor's panel parts, for the editor and for a painting plan's Photo step (plan-photo.js):
+// sections that fold, sliders with typed values, the Light, Tone Curve, Colour, Colour Mixer, Colour
+// Grading, Effects and Detail sections, all on k.state.recipe. k: { api, root, state, afterChange(record),
+// requestRender(), renderPanel(), autoTone(), togglePickWb(), id: the scene ids' stem }.
+function moEditPanelKit(k) {
+  const { api, root, state } = k;
+  const afterChange = (record) => k.afterChange(record);
+  const requestRender = () => k.requestRender();
+  const renderPanel = () => k.renderPanel();
+  const autoTone = () => k.autoTone();
+  const togglePickWb = () => k.togglePickWb();
+  const openSection = (parent, id, title, o = {}) => {
+    const section = moEl('div', 'mo-edit-section');
+    const head = moEl('div', 'mo-edit-section-head');
+    const fold = moEl('button', 'mo-edit-section-fold', { sceneId: `media-organizer.imageEditor.section.${moSlug(id)}`, sceneLabel: `${title}`, type: 'button' });
+    fold.appendChild(moEl('span', 'mo-edit-chevron', { innerHTML: moIcon('chevron-down', 12) }));
+    fold.appendChild(moEl('span', 'mo-edit-section-title', { textContent: title }));
+    if (o.dot) fold.appendChild(moEl('span', 'mo-edit-section-dot', { title: 'Changed' }));
+    head.appendChild(fold);
+    const acts = moEl('div', 'mo-edit-section-acts');
+    for (const e of o.acts || []) acts.appendChild(e);
+    if (o.eye) {
+      const eye = miniBtn(o.eye.off ? 'eye-off' : 'eye', o.eye.title || (o.eye.off ? `Show ${title}` : `See Without ${title}`), o.eye.toggle, o.eye.off);
+      eye.disabled = !!o.eye.disabled;
+      acts.appendChild(eye);
+    }
+    if (o.reset) {
+      const reset = miniBtn('rotate-ccw', o.reset.title || `Reset ${title}`, o.reset.run);
+      reset.disabled = !!o.reset.disabled;
+      acts.appendChild(reset);
+    }
+    head.appendChild(acts);
+    const bodyEl = moEl('div', 'mo-edit-section-body');
+    const set = (shut) => { section.classList.toggle('is-shut', shut); fold.setAttribute('aria-expanded', shut ? 'false' : 'true'); };
+    set(_moEditCollapsed.has(id));
+    fold.addEventListener('click', () => { const shut = !_moEditCollapsed.has(id); if (shut) _moEditCollapsed.add(id); else _moEditCollapsed.delete(id); set(shut); if (!shut && id === 'curve') drawCurve(); });
+    section.appendChild(head); section.appendChild(bodyEl);
+    parent.appendChild(section);
+    return bodyEl;
+  };
+  /**
+   * One slider on one row: name, track, value. o: { id, label, aria, min, max,
+   * step, value, rest, show(v), parse(text), tint, dim, onInput(v), onChange(v) }.
+   * Off rest, the name brightens, the value turns accent and a fill runs from
+   * rest to the knob. Double-click the name or the track for rest; click the
+   * value to type one. The id finds the slider again after the panel is rebuilt.
+   */
+  const sliderRow = (o) => {
+    const row = moEl('div', 'mo-edit-slider' + (o.dim ? ' is-dim' : ''));
+    const name = moEl('span', 'mo-edit-slider-name', { textContent: o.label, title: `${o.label}: double-click to reset` });
+    const val = moEl('button', 'mo-edit-value', { type: 'button', title: 'Click to type a value' });
+    const input = moEl('input', 'mo-edit-range' + (o.tint ? ` mo-edit-range--${o.tint}` : ''), { sceneId: `media-organizer.imageEditor.slider.${moSlug(o.id)}`, sceneLabel: `${o.label}`, type: 'range', min: String(o.min), max: String(o.max), step: String(o.step || 0.01), 'aria-label': o.aria || o.label, 'data-slider': o.id || o.label });
+    input.value = String(o.value);
+    const span = Math.max(1e-9, o.max - o.min);
+    const show = () => {
+      const v = Number(input.value);
+      val.textContent = o.show(v);
+      const changed = Math.abs(v - o.rest) > 1e-6;
+      row.classList.toggle('is-changed', changed);
+      const a = ((Math.min(v, o.rest) - o.min) / span) * 100; const b = ((Math.max(v, o.rest) - o.min) / span) * 100;
+      input.style.setProperty('--lo', a.toFixed(2) + '%');
+      input.style.setProperty('--hi', (changed ? b : a).toFixed(2) + '%');
+    };
+    show();
+    input.addEventListener('input', () => { show(); o.onInput(Number(input.value)); });
+    input.addEventListener('change', () => { show(); o.onChange(Number(input.value)); });
+    const toRest = () => { if (Number(input.value) === o.rest) return; input.value = String(o.rest); show(); o.onChange(o.rest); };
+    input.addEventListener('dblclick', toRest);
+    name.addEventListener('dblclick', toRest);
+    val.addEventListener('click', () => {
+      const box = moEl('input', 'mo-edit-value-input', { type: 'text', 'aria-label': o.label });
+      box.value = val.textContent;
+      row.replaceChild(box, val);
+      box.focus(); box.select();
+      let done = false;
+      const finish = (keep) => {
+        if (done) return; done = true;
+        const v = keep ? o.parse(box.value) : null;
+        if (box.parentNode === row) row.replaceChild(val, box);
+        if (v !== null && v !== Number(input.value)) { input.value = String(v); show(); o.onChange(Number(input.value)); }
+      };
+      box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } e.stopPropagation(); });
+      box.addEventListener('blur', () => finish(true));
+    });
+    row.append(name, input, val);
+    return { row, input, show };
+  };
+  const pct = (v) => { const p = Math.round(v * 100); return (p > 0 ? '+' : '') + p; };
+  const parsePct = (min, max) => (text) => { const n = Number(String(text).replace(',', '.').replace('+', '').trim()); return Number.isFinite(n) && String(text).trim() !== '' ? moEditClamp(n / 100, min, max) : null; };
+  const recipeSlider = ([key, label, min, max, rest, , parent]) => sliderRow({
+    id: key, label, min, max, rest, value: state.recipe[key],
+    tint: ['warmth', 'tint', 'vibrance', 'saturation'].includes(key) ? key : null,
+    dim: !!parent && Math.abs(state.recipe[parent]) < 1e-6,
+    show: (v) => moEditFormatValue(key, v), parse: (t) => moEditParseValue(key, t),
+    onInput: (v) => { state.recipe[key] = v; requestRender(); },
+    onChange: (v) => { state.recipe[key] = v; afterChange(true); },
+  }).row;
+  function miniBtn(icon, label, fn, on) {
+    const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { sceneId: `media-organizer.imageEditor.mini.${moSlug(label)}`, type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) });
+    if (on !== undefined) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    return b;
+  }
+  const hint = (text) => moEl('div', 'mo-edit-hint', { textContent: text });
+  const row = (...els) => { const r = moEl('div', 'mo-edit-row'); for (const e of els) r.appendChild(e); return r; };
+  // A row of choices drawn as chips. items: [{ value, label, icon?, shape?: [w, h], title? }].
+  const chips = (items, selected, onPick, sceneId) => {
+    const box = moEl('div', 'mo-edit-chips', { role: 'radiogroup' });
+    for (const it of items) {
+      const c = moEl('button', 'mo-edit-chipbtn' + (String(it.value) === String(selected) ? ' is-on' : ''), { ...(sceneId ? { sceneId: `${sceneId}.${moSlug(it.value)}`, sceneLabel: it.label || it.title || String(it.value) } : {}), type: 'button', role: 'radio', 'aria-checked': String(it.value) === String(selected) ? 'true' : 'false', title: it.title || it.label });
+      if (it.shape) {
+        const sh = moEl('i', 'mo-edit-shape' + (it.shape[0] === 0 ? ' mo-edit-shape--free' : ''));
+        const k = 13 / Math.max(it.shape[0] || 1, it.shape[1] || 1);
+        sh.style.width = Math.max(5, Math.round((it.shape[0] || 1) * k)) + 'px';
+        sh.style.height = Math.max(5, Math.round((it.shape[1] || 1) * k)) + 'px';
+        c.appendChild(sh);
+      }
+      if (it.icon) c.appendChild(moEl('span', 'mo-edit-ico', { innerHTML: moIcon(it.icon, 14) }));
+      if (it.label) c.appendChild(moEl('span', null, { textContent: it.label }));
+      c.addEventListener('click', () => onPick(it.value));
+      box.appendChild(c);
+    }
+    return box;
+  };
+  const slidersRest = (list) => list.every(([key, , , , rest, , parent]) => parent || Math.abs((Number(state.recipe[key]) || 0) - rest) <= 1e-6);
+
+  function panelEdit(panelBody) {
+    const r = state.recipe;
+    const isOff = (id) => r.off.includes(id);
+    const eye = (id, title, rest) => ({ off: isOff(id), disabled: rest && !isOff(id), title, toggle: () => { r.off = isOff(id) ? r.off.filter((x) => x !== id) : r.off.concat(id); afterChange(true); } });
+    // Light: Auto sits in its header.
+    const autoBtn = api.ui.createButton(null, { id: 'media-organizer.imageEditor.auto', label: 'Auto', icon: 'sparkles', kind: 'ghost', size: 'sm', title: 'Auto: set the light from the picture (Ctrl+U)', onClick: () => autoTone() });
+    autoBtn.classList.add('mo-edit-headbtn');
+    const lightRest = slidersRest(MO_EDIT_LIGHT);
+    const light = openSection(panelBody, 'light', 'Light', { dot: !lightRest, acts: [autoBtn],
+      eye: eye('light', isOff('light') ? 'Show Light' : 'See Without Light (and its tone curve)', lightRest && moEditCurveIsRest(r.curve)),
+      reset: { disabled: lightRest, run: () => resetSection('light') } });
+    for (const s of MO_EDIT_LIGHT) light.appendChild(recipeSlider(s));
+    // Tone Curve
+    const curveRest = moEditCurveIsRest(r.curve);
+    curveBlock(openSection(panelBody, 'curve', 'Tone Curve', { dot: !curveRest, eye: eye('curve', isOff('curve') ? 'Show Tone Curve' : 'See Without Tone Curve', curveRest),
+      reset: { disabled: curveRest, run: () => { r.curve = moEditDefaultCurve(); r.off = r.off.filter((x) => x !== 'curve'); afterChange(true); } } }));
+    // Colour: the white balance picker and Black And White sit in its header.
+    const pick = miniBtn('pipette', state.pickWb ? 'Stop Picking White Balance (Esc)' : 'Pick White Balance (W)', () => togglePickWb(), state.pickWb);
+    const bw = miniBtn('contrast', r.bw ? 'Back to Colour (V)' : 'Black And White (V)', () => { r.bw = !r.bw; afterChange(true); }, r.bw);
+    const colourRest = slidersRest(MO_EDIT_COLOUR) && !r.bw;
+    const colour = openSection(panelBody, 'colour', 'Colour', { dot: !colourRest, acts: [pick, bw],
+      eye: eye('colour', isOff('colour') ? 'Show Colour' : 'See Without Colour (and its mixer and grading)', colourRest && moEditMixerIsRest(r.mixer) && moEditGradingIsRest(r.grading)),
+      reset: { disabled: colourRest, run: () => resetSection('colour') } });
+    if (state.pickWb) colour.appendChild(hint('Click something in the photo that should be a neutral grey or white.'));
+    if (r.bw) colour.appendChild(hint('Black and white: the colour sliders shape the grey tones.'));
+    for (const s of MO_EDIT_COLOUR) colour.appendChild(recipeSlider(s));
+    const mixRest = moEditMixerIsRest(r.mixer);
+    mixerBlock(openSection(panelBody, 'mixer', 'Colour Mixer', { dot: !mixRest, eye: eye('mixer', isOff('mixer') ? 'Show Colour Mixer' : 'See Without Colour Mixer', mixRest),
+      reset: { disabled: mixRest, run: () => { r.mixer = moEditDefaultMixer(); r.off = r.off.filter((x) => x !== 'mixer'); afterChange(true); } } }));
+    const gradeRest = moEditGradingIsRest(r.grading);
+    gradingBlock(openSection(panelBody, 'grading', 'Colour Grading', { dot: !gradeRest, eye: eye('grading', isOff('grading') ? 'Show Colour Grading' : 'See Without Colour Grading', gradeRest),
+      reset: { disabled: gradeRest, run: () => { r.grading = moEditDefaultGrading(); r.off = r.off.filter((x) => x !== 'grading'); afterChange(true); } } }));
+    for (const [id, title, sliders] of MO_EDIT_SECTIONS.filter((s) => s[0] === 'effects' || s[0] === 'detail')) {
+      const rest = moEditSectionIsRest(r, id);
+      const bodyEl = openSection(panelBody, id, title, { dot: !rest, eye: eye(id, isOff(id) ? `Show ${title}` : `See Without ${title}`, rest), reset: { disabled: rest, run: () => resetSection(id) } });
+      for (const s of sliders) bodyEl.appendChild(recipeSlider(s));
+    }
+  }
+  // Light and Colour reset their own sliders (and Black And White); the curve, mixer and grading have resets of their own.
+  function resetSection(id) {
+    const base = moEditDefaultRecipe(); const r = state.recipe;
+    const sec = MO_EDIT_SECTIONS.find((s) => s[0] === id);
+    for (const [key] of sec[2]) r[key] = base[key];
+    if (id === 'colour') r.bw = false;
+    r.off = r.off.filter((x) => x !== id);
+    afterChange(true);
+  }
+  // The tone curve: a square to drag points on, over the picture's brightness counts.
+  let curveCanvas = null;
+  function curveBlock(parent) {
+    const r = state.recipe;
+    parent.appendChild(chips(MO_EDIT_CURVES.map(([value, label]) => ({ value, label })), state.curveChannel, (v) => { state.curveChannel = v; renderPanel(); }));
+    const cv = moEl('canvas', 'mo-edit-curve', { 'aria-label': 'Tone Curve' });
+    parent.appendChild(cv);
+    curveCanvas = cv;
+    const pts = () => r.curve[state.curveChannel];
+    const at = (e) => { const b = cv.getBoundingClientRect(); return [moEditClamp((e.clientX - b.left) / b.width, 0, 1), moEditClamp(1 - (e.clientY - b.top) / b.height, 0, 1)]; };
+    const near = (x, y) => { const b = cv.getBoundingClientRect(); let best = -1; let bd = 14; pts().forEach((p, i) => { const d = Math.hypot((p[0] - x) * b.width, (p[1] - y) * b.height); if (d < bd) { bd = d; best = i; } }); return best; };
+    let held = -1;
+    cv.style.touchAction = 'none'; cv.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const [x, y] = at(e);
+      held = near(x, y);
+      if (held < 0 && pts().length < MO_EDIT_CURVE_MAX_POINTS) {
+        const list = pts().concat([[x, y]]).sort((a, b) => a[0] - b[0]);
+        r.curve[state.curveChannel] = list;
+        held = list.findIndex((p) => p[0] === x && p[1] === y);
+      }
+      if (held >= 0) { cv.setPointerCapture(e.pointerId); e.preventDefault(); move(e); }
+    });
+    const move = (e) => {
+      if (held < 0) return;
+      const list = pts(); const [x, y] = at(e);
+      const last = list.length - 1;
+      const px = held === 0 ? 0 : held === last ? 1 : moEditClamp(x, list[held - 1][0] + 0.01, list[held + 1][0] - 0.01);
+      list[held] = [px, y];
+      drawCurve(); requestRender();
+    };
+    cv.addEventListener('pointermove', move);
+    const drop = () => { if (held < 0) return; held = -1; r.curve[state.curveChannel] = moEditNormalizeCurvePoints(pts()); afterChange(true); drawCurve(); };
+    cv.addEventListener('pointerup', drop);
+    cv.addEventListener('pointercancel', drop);
+    cv.addEventListener('dblclick', (e) => {
+      const [x, y] = at(e); const i = near(x, y); const list = pts();
+      if (i <= 0 || i >= list.length - 1) return;
+      list.splice(i, 1);
+      afterChange(true); drawCurve();
+    });
+    cv.tabIndex = 0;
+    cv.setAttribute('aria-keyshortcuts', 'PageUp PageDown ArrowLeft ArrowRight ArrowUp ArrowDown + Delete');
+    cv.addEventListener('keydown', (e) => {
+      const list = pts(), last = list.length - 1, st = e.shiftKey ? 0.05 : 0.01;
+      let i = Math.min(Math.max(0, state.curveSel || 0), last);
+      const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
+      if (e.key === 'PageDown' || e.key === 'PageUp') i = Math.max(0, Math.min(last, i + (e.key === 'PageDown' ? 1 : -1)));
+      else if (d) { list[i] = [i === 0 ? 0 : i === last ? 1 : moEditClamp(list[i][0] + d[0], list[i - 1][0] + 0.01, list[i + 1][0] - 0.01), moEditClamp(list[i][1] + d[1], 0, 1)]; state.curveDirty = true; }
+      else if ((e.key === '+' || e.key === '=') && i < last && list.length < MO_EDIT_CURVE_MAX_POINTS) { list.splice(i + 1, 0, [(list[i][0] + list[i + 1][0]) / 2, (list[i][1] + list[i + 1][1]) / 2]); i++; state.curveDirty = true; }
+      else if (e.key === 'Delete' && i > 0 && i < last) { list.splice(i, 1); i--; state.curveDirty = true; }
+      else return;
+      e.preventDefault(); state.curveSel = i; drawCurve(); requestRender();
+    });
+    cv.addEventListener('keyup', () => { if (!state.curveDirty) return; state.curveDirty = false; r.curve[state.curveChannel] = moEditNormalizeCurvePoints(pts()); afterChange(true); setTimeout(() => root.querySelector('.mo-edit-curve')?.focus()); });
+    cv.addEventListener('focus', drawCurve); cv.addEventListener('blur', drawCurve);
+    parent.appendChild(hint('Click to add a point, drag to bend the line, double-click a point to remove it. From the keyboard: Page Up and Page Down pick a point, the arrows move it, + adds one, Delete removes it.'));
+    requestAnimationFrame(drawCurve);
+  }
+
+  function drawCurve() {
+    const cv = curveCanvas;
+    if (!cv || !cv.isConnected || !cv.clientWidth || !state.recipe) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.round(cv.clientWidth * dpr); const H = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== W) cv.width = W;
+    if (cv.height !== H) cv.height = H;
+    const ctx = cv.getContext('2d');
+    const css = getComputedStyle(cv);
+    const line = css.getPropertyValue('--mo-edit-line').trim() || css.color;
+    const faint = css.getPropertyValue('--mo-edit-faint').trim() || css.color;
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = faint; ctx.lineWidth = dpr;
+    for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo((W * i) / 4, 0); ctx.lineTo((W * i) / 4, H); ctx.moveTo(0, (H * i) / 4); ctx.lineTo(W, (H * i) / 4); ctx.stroke(); }
+    if (state.hist && state.hist.n) {
+      const counts = state.curveChannel === 'rgb' ? state.hist.l : state.hist[state.curveChannel];
+      let top = 1; for (let i = 2; i < 254; i++) top = Math.max(top, counts[i]);
+      ctx.fillStyle = faint;
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let i = 0; i < 256; i++) ctx.lineTo((i / 255) * W, H - Math.min(1, counts[i] / top) * H * 0.9);
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    }
+    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke();
+    const tints = { rgb: line, r: 'rgb(230, 70, 70)', g: 'rgb(70, 190, 90)', b: 'rgb(80, 120, 240)' };
+    const pts = state.recipe.curve[state.curveChannel];
+    const lut = moEditCurveLut(pts, 128);
+    ctx.strokeStyle = tints[state.curveChannel]; ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < lut.length; i++) { const x = (i / (lut.length - 1)) * W; const y = H - lut[i] * H; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+    ctx.stroke();
+    ctx.fillStyle = tints[state.curveChannel];
+    for (const p of pts) { ctx.beginPath(); ctx.arc(p[0] * W, H - p[1] * H, 4 * dpr, 0, Math.PI * 2); ctx.fill(); }
+    const sel = document.activeElement === cv && pts[Math.min(state.curveSel || 0, pts.length - 1)]; // the keyboard's point, ringed
+    if (sel) { ctx.strokeStyle = tints[state.curveChannel]; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(sel[0] * W, H - sel[1] * H, 8 * dpr, 0, Math.PI * 2); ctx.stroke(); }
+  }
+
+  // The colour mixer: pick one of eight colours, then shift its hue, saturation and luminance.
+  function mixerBlock(parent) {
+    const r = state.recipe;
+    const dots = moEl('div', 'mo-edit-dots');
+    for (const [key, label, hue] of MO_EDIT_MIX) {
+      const d = moEl('button', 'mo-edit-dot', { sceneId: `media-organizer.imageEditor.mix.${moSlug(key)}`, type: 'button', title: label, 'aria-label': label });
+      d.style.background = `hsl(${hue}, 80%, 55%)`;
+      d.classList.toggle('is-on', state.mixColour === key);
+      d.classList.toggle('is-set', r.mixer[key].some((v) => Math.abs(v) > 1e-6));
+      d.addEventListener('click', () => { state.mixColour = key; renderPanel(); });
+      dots.appendChild(d);
+    }
+    parent.appendChild(dots);
+    ['Hue', 'Saturation', 'Luminance'].forEach((label, i) => {
+      parent.appendChild(sliderRow({
+        id: 'mix-' + i, aria: `${label} Of ${(MO_EDIT_MIX.find((m) => m[0] === state.mixColour) || [])[1]}`,
+        label, min: -1, max: 1, rest: 0, value: r.mixer[state.mixColour][i], show: pct, parse: parsePct(-1, 1),
+        onInput: (v) => { r.mixer[state.mixColour][i] = v; requestRender(); },
+        onChange: (v) => { r.mixer[state.mixColour][i] = v; afterChange(true); },
+      }).row);
+    });
+  }
+
+  // Colour grading: a wheel each for shadows, midtones and highlights. The knob's angle is the hue, its distance the strength.
+  function gradingBlock(parent) {
+    const r = state.recipe;
+    const wheels = moEl('div', 'mo-edit-wheels');
+    for (const [key, label] of MO_EDIT_GRADE) {
+      const cell = moEl('div', 'mo-edit-wheel-cell');
+      const wheel = moEl('div', 'mo-edit-wheel', { role: 'slider', 'aria-label': `${label} Colour`, title: 'Drag to colour; double-click to reset' });
+      const knob = moEl('div', 'mo-edit-wheel-knob');
+      wheel.appendChild(knob);
+      const place = () => { const v = r.grading[key]; const a = v.h * Math.PI * 2; knob.style.left = (50 + Math.cos(a) * v.s * 50) + '%'; knob.style.top = (50 - Math.sin(a) * v.s * 50) + '%'; };
+      place();
+      let on = false;
+      const set = (e) => {
+        const b = wheel.getBoundingClientRect();
+        const x = (e.clientX - b.left) / b.width * 2 - 1; const y = 1 - (e.clientY - b.top) / b.height * 2;
+        r.grading[key].s = Math.min(1, Math.hypot(x, y));
+        r.grading[key].h = ((Math.atan2(y, x) / (Math.PI * 2)) + 1) % 1;
+        place(); requestRender();
+      };
+      wheel.style.touchAction = 'none'; wheel.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; on = true; wheel.setPointerCapture(e.pointerId); e.preventDefault(); set(e); });
+      wheel.addEventListener('pointermove', (e) => { if (on) set(e); });
+      const drop = () => { if (!on) return; on = false; afterChange(true); };
+      wheel.addEventListener('pointerup', drop);
+      wheel.addEventListener('pointercancel', drop);
+      wheel.addEventListener('dblclick', () => { r.grading[key] = { h: 0, s: 0, l: 0 }; afterChange(true); });
+      wheel.tabIndex = 0; wheel.dataset.grade = key;
+      const say = () => wheel.setAttribute('aria-valuetext', `hue ${Math.round(r.grading[key].h * 360)} degrees, strength ${Math.round(r.grading[key].s * 100)}%`);
+      say();
+      wheel.addEventListener('keydown', (e) => {
+        const v = r.grading[key], n = e.shiftKey ? 5 : 1, d = { ArrowLeft: [-0.01, 0], ArrowRight: [0.01, 0], ArrowUp: [0, 0.02], ArrowDown: [0, -0.02] }[e.key];
+        if (d) { v.h = (v.h + d[0] * n + 1) % 1; v.s = Math.max(0, Math.min(1, v.s + d[1] * n)); } else if (e.key === 'Home') r.grading[key] = { h: 0, s: 0, l: 0 }; else return;
+        e.preventDefault(); place(); say(); requestRender();
+      });
+      wheel.addEventListener('keyup', (e) => { if (/^(Arrow|Home)/.test(e.key)) { afterChange(true); setTimeout(() => root.querySelector(`.mo-edit-wheel[data-grade="${key}"]`)?.focus()); } });
+      cell.appendChild(wheel);
+      cell.appendChild(moEl('div', 'mo-edit-wheel-name', { textContent: label }));
+      wheels.appendChild(cell);
+    }
+    parent.appendChild(wheels);
+    parent.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Luminance' }));
+    for (const [key, label] of MO_EDIT_GRADE) {
+      parent.appendChild(sliderRow({
+        id: 'grade-' + key, label, min: -1, max: 1, rest: 0, value: r.grading[key].l, show: pct, parse: parsePct(-1, 1),
+        onInput: (v) => { r.grading[key].l = v; requestRender(); }, onChange: (v) => { r.grading[key].l = v; afterChange(true); },
+      }).row);
+    }
+    parent.appendChild(sliderRow({ id: 'grade-blending', label: 'Blending', min: 0, max: 1, rest: 0.5, value: r.grading.blending, show: (v) => String(Math.round(v * 100)), parse: parsePct(0, 1),
+      onInput: (v) => { r.grading.blending = v; requestRender(); }, onChange: (v) => { r.grading.blending = v; afterChange(true); } }).row);
+    parent.appendChild(sliderRow({ id: 'grade-balance', label: 'Balance', min: -1, max: 1, rest: 0, value: r.grading.balance, show: pct, parse: parsePct(-1, 1),
+      onInput: (v) => { r.grading.balance = v; requestRender(); }, onChange: (v) => { r.grading.balance = v; afterChange(true); } }).row);
+  }
+
+  return { openSection, sliderRow, pct, parsePct, recipeSlider, miniBtn, hint, row, chips, slidersRest, panelEdit, resetSection, curveBlock, drawCurve, mixerBlock, gradingBlock, forgetCurve: () => { curveCanvas = null; } };
+}
+
 function renderImageEditor(container, api) {
   moInjectStyles();
   const root = moEl('div', 'mo-edit');
@@ -36289,127 +36721,15 @@ function renderImageEditor(container, api) {
    * its own actions, an eye (see without it) and a reset; then its body.
    * o: { dot, acts: [elements], eye: { off, disabled, title, toggle }, reset: { disabled, title, run } }
    */
-  const openSection = (parent, id, title, o = {}) => {
-    const section = moEl('div', 'mo-edit-section');
-    const head = moEl('div', 'mo-edit-section-head');
-    const fold = moEl('button', 'mo-edit-section-fold', { sceneId: `media-organizer.imageEditor.section.${moSlug(id)}`, sceneLabel: `${title}`, type: 'button' });
-    fold.appendChild(moEl('span', 'mo-edit-chevron', { innerHTML: moIcon('chevron-down', 12) }));
-    fold.appendChild(moEl('span', 'mo-edit-section-title', { textContent: title }));
-    if (o.dot) fold.appendChild(moEl('span', 'mo-edit-section-dot', { title: 'Changed' }));
-    head.appendChild(fold);
-    const acts = moEl('div', 'mo-edit-section-acts');
-    for (const e of o.acts || []) acts.appendChild(e);
-    if (o.eye) {
-      const eye = miniBtn(o.eye.off ? 'eye-off' : 'eye', o.eye.title || (o.eye.off ? `Show ${title}` : `See Without ${title}`), o.eye.toggle, o.eye.off);
-      eye.disabled = !!o.eye.disabled;
-      acts.appendChild(eye);
-    }
-    if (o.reset) {
-      const reset = miniBtn('rotate-ccw', o.reset.title || `Reset ${title}`, o.reset.run);
-      reset.disabled = !!o.reset.disabled;
-      acts.appendChild(reset);
-    }
-    head.appendChild(acts);
-    const bodyEl = moEl('div', 'mo-edit-section-body');
-    const set = (shut) => { section.classList.toggle('is-shut', shut); fold.setAttribute('aria-expanded', shut ? 'false' : 'true'); };
-    set(_moEditCollapsed.has(id));
-    fold.addEventListener('click', () => { const shut = !_moEditCollapsed.has(id); if (shut) _moEditCollapsed.add(id); else _moEditCollapsed.delete(id); set(shut); if (!shut && id === 'curve') drawCurve(); });
-    section.appendChild(head); section.appendChild(bodyEl);
-    parent.appendChild(section);
-    return bodyEl;
-  };
-  /**
-   * One slider on one row: name, track, value. o: { id, label, aria, min, max,
-   * step, value, rest, show(v), parse(text), tint, dim, onInput(v), onChange(v) }.
-   * Off rest, the name brightens, the value turns accent and a fill runs from
-   * rest to the knob. Double-click the name or the track for rest; click the
-   * value to type one. The id finds the slider again after the panel is rebuilt.
-   */
-  const sliderRow = (o) => {
-    const row = moEl('div', 'mo-edit-slider' + (o.dim ? ' is-dim' : ''));
-    const name = moEl('span', 'mo-edit-slider-name', { textContent: o.label, title: `${o.label}: double-click to reset` });
-    const val = moEl('button', 'mo-edit-value', { type: 'button', title: 'Click to type a value' });
-    const input = moEl('input', 'mo-edit-range' + (o.tint ? ` mo-edit-range--${o.tint}` : ''), { sceneId: `media-organizer.imageEditor.slider.${moSlug(o.id)}`, sceneLabel: `${o.label}`, type: 'range', min: String(o.min), max: String(o.max), step: String(o.step || 0.01), 'aria-label': o.aria || o.label, 'data-slider': o.id || o.label });
-    input.value = String(o.value);
-    const span = Math.max(1e-9, o.max - o.min);
-    const show = () => {
-      const v = Number(input.value);
-      val.textContent = o.show(v);
-      const changed = Math.abs(v - o.rest) > 1e-6;
-      row.classList.toggle('is-changed', changed);
-      const a = ((Math.min(v, o.rest) - o.min) / span) * 100; const b = ((Math.max(v, o.rest) - o.min) / span) * 100;
-      input.style.setProperty('--lo', a.toFixed(2) + '%');
-      input.style.setProperty('--hi', (changed ? b : a).toFixed(2) + '%');
-    };
-    show();
-    input.addEventListener('input', () => { show(); o.onInput(Number(input.value)); });
-    input.addEventListener('change', () => { show(); o.onChange(Number(input.value)); });
-    const toRest = () => { if (Number(input.value) === o.rest) return; input.value = String(o.rest); show(); o.onChange(o.rest); };
-    input.addEventListener('dblclick', toRest);
-    name.addEventListener('dblclick', toRest);
-    val.addEventListener('click', () => {
-      const box = moEl('input', 'mo-edit-value-input', { type: 'text', 'aria-label': o.label });
-      box.value = val.textContent;
-      row.replaceChild(box, val);
-      box.focus(); box.select();
-      let done = false;
-      const finish = (keep) => {
-        if (done) return; done = true;
-        const v = keep ? o.parse(box.value) : null;
-        if (box.parentNode === row) row.replaceChild(val, box);
-        if (v !== null && v !== Number(input.value)) { input.value = String(v); show(); o.onChange(Number(input.value)); }
-      };
-      box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } e.stopPropagation(); });
-      box.addEventListener('blur', () => finish(true));
-    });
-    row.append(name, input, val);
-    return { row, input, show };
-  };
-  const pct = (v) => { const p = Math.round(v * 100); return (p > 0 ? '+' : '') + p; };
-  const parsePct = (min, max) => (text) => { const n = Number(String(text).replace(',', '.').replace('+', '').trim()); return Number.isFinite(n) && String(text).trim() !== '' ? moEditClamp(n / 100, min, max) : null; };
-  const recipeSlider = ([key, label, min, max, rest, , parent]) => sliderRow({
-    id: key, label, min, max, rest, value: state.recipe[key],
-    tint: ['warmth', 'tint', 'vibrance', 'saturation'].includes(key) ? key : null,
-    dim: !!parent && Math.abs(state.recipe[parent]) < 1e-6,
-    show: (v) => moEditFormatValue(key, v), parse: (t) => moEditParseValue(key, t),
-    onInput: (v) => { state.recipe[key] = v; requestRender(); },
-    onChange: (v) => { state.recipe[key] = v; afterChange(true); },
-  }).row;
-  function miniBtn(icon, label, fn, on) {
-    const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { sceneId: `media-organizer.imageEditor.mini.${moSlug(label)}`, type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) });
-    if (on !== undefined) b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
-    return b;
-  }
-  const hint = (text) => moEl('div', 'mo-edit-hint', { textContent: text });
-  const row = (...els) => { const r = moEl('div', 'mo-edit-row'); for (const e of els) r.appendChild(e); return r; };
-  // A row of choices drawn as chips. items: [{ value, label, icon?, shape?: [w, h], title? }].
-  const chips = (items, selected, onPick, sceneId) => {
-    const box = moEl('div', 'mo-edit-chips', { role: 'radiogroup' });
-    for (const it of items) {
-      const c = moEl('button', 'mo-edit-chipbtn' + (String(it.value) === String(selected) ? ' is-on' : ''), { ...(sceneId ? { sceneId: `${sceneId}.${moSlug(it.value)}`, sceneLabel: it.label || it.title || String(it.value) } : {}), type: 'button', role: 'radio', 'aria-checked': String(it.value) === String(selected) ? 'true' : 'false', title: it.title || it.label });
-      if (it.shape) {
-        const sh = moEl('i', 'mo-edit-shape' + (it.shape[0] === 0 ? ' mo-edit-shape--free' : ''));
-        const k = 13 / Math.max(it.shape[0] || 1, it.shape[1] || 1);
-        sh.style.width = Math.max(5, Math.round((it.shape[0] || 1) * k)) + 'px';
-        sh.style.height = Math.max(5, Math.round((it.shape[1] || 1) * k)) + 'px';
-        c.appendChild(sh);
-      }
-      if (it.icon) c.appendChild(moEl('span', 'mo-edit-ico', { innerHTML: moIcon(it.icon, 14) }));
-      if (it.label) c.appendChild(moEl('span', null, { textContent: it.label }));
-      c.addEventListener('click', () => onPick(it.value));
-      box.appendChild(c);
-    }
-    return box;
-  };
-  const slidersRest = (list) => list.every(([key, , , , rest, , parent]) => parent || Math.abs((Number(state.recipe[key]) || 0) - rest) <= 1e-6);
-
+  const kit = moEditPanelKit({ api, root, state, afterChange: (rec) => afterChange(rec), requestRender: () => requestRender(), renderPanel: () => renderPanel(), autoTone: () => autoTone(), togglePickWb: () => togglePickWb() });
+  const { openSection, sliderRow, pct, parsePct, miniBtn, hint, row, chips, drawCurve } = kit;
+  const panelEdit = () => kit.panelEdit(panelBody);
   // The panel is rebuilt from the recipe; where it was scrolled to and the slider that had the focus are kept.
   function renderPanel() {
     const top = panelBody.scrollTop;
     const held = panelBody.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.slider : null;
     for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
-    curveCanvas = null;
+    kit.forgetCurve();
     panelBody.innerHTML = '';
     // The histogram belongs to the look: shown with Edit, Crop and Enhance.
     if (!state.recipe) return;
@@ -36422,59 +36742,12 @@ function renderImageEditor(container, api) {
   }
 
   // ── Edit ──
-  function panelEdit() {
-    const r = state.recipe;
-    const isOff = (id) => r.off.includes(id);
-    const eye = (id, title, rest) => ({ off: isOff(id), disabled: rest && !isOff(id), title, toggle: () => { r.off = isOff(id) ? r.off.filter((x) => x !== id) : r.off.concat(id); afterChange(true); } });
-    // Light: Auto sits in its header.
-    const autoBtn = api.ui.createButton(null, { id: 'media-organizer.imageEditor.auto', label: 'Auto', icon: 'sparkles', kind: 'ghost', size: 'sm', title: 'Auto: set the light from the picture (Ctrl+U)', onClick: () => autoTone() });
-    autoBtn.classList.add('mo-edit-headbtn');
-    const lightRest = slidersRest(MO_EDIT_LIGHT);
-    const light = openSection(panelBody, 'light', 'Light', { dot: !lightRest, acts: [autoBtn],
-      eye: eye('light', isOff('light') ? 'Show Light' : 'See Without Light (and its tone curve)', lightRest && moEditCurveIsRest(r.curve)),
-      reset: { disabled: lightRest, run: () => resetSection('light') } });
-    for (const s of MO_EDIT_LIGHT) light.appendChild(recipeSlider(s));
-    // Tone Curve
-    const curveRest = moEditCurveIsRest(r.curve);
-    curveBlock(openSection(panelBody, 'curve', 'Tone Curve', { dot: !curveRest, eye: eye('curve', isOff('curve') ? 'Show Tone Curve' : 'See Without Tone Curve', curveRest),
-      reset: { disabled: curveRest, run: () => { r.curve = moEditDefaultCurve(); r.off = r.off.filter((x) => x !== 'curve'); afterChange(true); } } }));
-    // Colour: the white balance picker and Black And White sit in its header.
-    const pick = miniBtn('pipette', state.pickWb ? 'Stop Picking White Balance (Esc)' : 'Pick White Balance (W)', () => togglePickWb(), state.pickWb);
-    const bw = miniBtn('contrast', r.bw ? 'Back to Colour (V)' : 'Black And White (V)', () => { r.bw = !r.bw; afterChange(true); }, r.bw);
-    const colourRest = slidersRest(MO_EDIT_COLOUR) && !r.bw;
-    const colour = openSection(panelBody, 'colour', 'Colour', { dot: !colourRest, acts: [pick, bw],
-      eye: eye('colour', isOff('colour') ? 'Show Colour' : 'See Without Colour (and its mixer and grading)', colourRest && moEditMixerIsRest(r.mixer) && moEditGradingIsRest(r.grading)),
-      reset: { disabled: colourRest, run: () => resetSection('colour') } });
-    if (state.pickWb) colour.appendChild(hint('Click something in the photo that should be a neutral grey or white.'));
-    if (r.bw) colour.appendChild(hint('Black and white: the colour sliders shape the grey tones.'));
-    for (const s of MO_EDIT_COLOUR) colour.appendChild(recipeSlider(s));
-    const mixRest = moEditMixerIsRest(r.mixer);
-    mixerBlock(openSection(panelBody, 'mixer', 'Colour Mixer', { dot: !mixRest, eye: eye('mixer', isOff('mixer') ? 'Show Colour Mixer' : 'See Without Colour Mixer', mixRest),
-      reset: { disabled: mixRest, run: () => { r.mixer = moEditDefaultMixer(); r.off = r.off.filter((x) => x !== 'mixer'); afterChange(true); } } }));
-    const gradeRest = moEditGradingIsRest(r.grading);
-    gradingBlock(openSection(panelBody, 'grading', 'Colour Grading', { dot: !gradeRest, eye: eye('grading', isOff('grading') ? 'Show Colour Grading' : 'See Without Colour Grading', gradeRest),
-      reset: { disabled: gradeRest, run: () => { r.grading = moEditDefaultGrading(); r.off = r.off.filter((x) => x !== 'grading'); afterChange(true); } } }));
-    for (const [id, title, sliders] of MO_EDIT_SECTIONS.filter((s) => s[0] === 'effects' || s[0] === 'detail')) {
-      const rest = moEditSectionIsRest(r, id);
-      const bodyEl = openSection(panelBody, id, title, { dot: !rest, eye: eye(id, isOff(id) ? `Show ${title}` : `See Without ${title}`, rest), reset: { disabled: rest, run: () => resetSection(id) } });
-      for (const s of sliders) bodyEl.appendChild(recipeSlider(s));
-    }
-  }
   function togglePickWb() {
     if (!state.recipe || state.tool !== 'edit') return;
     state.pickWb = !state.pickWb;
     stage.classList.toggle('is-picking', state.pickWb);
     syncStageChip();
     renderPanel();
-  }
-  // Light and Colour reset their own sliders (and Black And White); the curve, mixer and grading have resets of their own.
-  function resetSection(id) {
-    const base = moEditDefaultRecipe(); const r = state.recipe;
-    const sec = MO_EDIT_SECTIONS.find((s) => s[0] === id);
-    for (const [key] of sec[2]) r[key] = base[key];
-    if (id === 'colour') r.bw = false;
-    r.off = r.off.filter((x) => x !== id);
-    afterChange(true);
   }
   function autoTone() {
     if (!engine || !state.bitmap || !state.recipe) return;
@@ -36502,177 +36775,6 @@ function renderImageEditor(container, api) {
     state.pickWb = false; stage.classList.remove('is-picking');
     syncStageChip();
     afterChange(true);
-  }
-
-  // The tone curve: a square to drag points on, over the picture's brightness counts.
-  let curveCanvas = null;
-  function curveBlock(parent) {
-    const r = state.recipe;
-    parent.appendChild(chips(MO_EDIT_CURVES.map(([value, label]) => ({ value, label })), state.curveChannel, (v) => { state.curveChannel = v; renderPanel(); }));
-    const cv = moEl('canvas', 'mo-edit-curve', { 'aria-label': 'Tone Curve' });
-    parent.appendChild(cv);
-    curveCanvas = cv;
-    const pts = () => r.curve[state.curveChannel];
-    const at = (e) => { const b = cv.getBoundingClientRect(); return [moEditClamp((e.clientX - b.left) / b.width, 0, 1), moEditClamp(1 - (e.clientY - b.top) / b.height, 0, 1)]; };
-    const near = (x, y) => { const b = cv.getBoundingClientRect(); let best = -1; let bd = 14; pts().forEach((p, i) => { const d = Math.hypot((p[0] - x) * b.width, (p[1] - y) * b.height); if (d < bd) { bd = d; best = i; } }); return best; };
-    let held = -1;
-    cv.style.touchAction = 'none'; cv.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      const [x, y] = at(e);
-      held = near(x, y);
-      if (held < 0 && pts().length < MO_EDIT_CURVE_MAX_POINTS) {
-        const list = pts().concat([[x, y]]).sort((a, b) => a[0] - b[0]);
-        r.curve[state.curveChannel] = list;
-        held = list.findIndex((p) => p[0] === x && p[1] === y);
-      }
-      if (held >= 0) { cv.setPointerCapture(e.pointerId); e.preventDefault(); move(e); }
-    });
-    const move = (e) => {
-      if (held < 0) return;
-      const list = pts(); const [x, y] = at(e);
-      const last = list.length - 1;
-      const px = held === 0 ? 0 : held === last ? 1 : moEditClamp(x, list[held - 1][0] + 0.01, list[held + 1][0] - 0.01);
-      list[held] = [px, y];
-      drawCurve(); requestRender();
-    };
-    cv.addEventListener('pointermove', move);
-    const drop = () => { if (held < 0) return; held = -1; r.curve[state.curveChannel] = moEditNormalizeCurvePoints(pts()); afterChange(true); drawCurve(); };
-    cv.addEventListener('pointerup', drop);
-    cv.addEventListener('pointercancel', drop);
-    cv.addEventListener('dblclick', (e) => {
-      const [x, y] = at(e); const i = near(x, y); const list = pts();
-      if (i <= 0 || i >= list.length - 1) return;
-      list.splice(i, 1);
-      afterChange(true); drawCurve();
-    });
-    cv.tabIndex = 0;
-    cv.setAttribute('aria-keyshortcuts', 'PageUp PageDown ArrowLeft ArrowRight ArrowUp ArrowDown + Delete');
-    cv.addEventListener('keydown', (e) => {
-      const list = pts(), last = list.length - 1, st = e.shiftKey ? 0.05 : 0.01;
-      let i = Math.min(Math.max(0, state.curveSel || 0), last);
-      const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
-      if (e.key === 'PageDown' || e.key === 'PageUp') i = Math.max(0, Math.min(last, i + (e.key === 'PageDown' ? 1 : -1)));
-      else if (d) { list[i] = [i === 0 ? 0 : i === last ? 1 : moEditClamp(list[i][0] + d[0], list[i - 1][0] + 0.01, list[i + 1][0] - 0.01), moEditClamp(list[i][1] + d[1], 0, 1)]; state.curveDirty = true; }
-      else if ((e.key === '+' || e.key === '=') && i < last && list.length < MO_EDIT_CURVE_MAX_POINTS) { list.splice(i + 1, 0, [(list[i][0] + list[i + 1][0]) / 2, (list[i][1] + list[i + 1][1]) / 2]); i++; state.curveDirty = true; }
-      else if (e.key === 'Delete' && i > 0 && i < last) { list.splice(i, 1); i--; state.curveDirty = true; }
-      else return;
-      e.preventDefault(); state.curveSel = i; drawCurve(); requestRender();
-    });
-    cv.addEventListener('keyup', () => { if (!state.curveDirty) return; state.curveDirty = false; r.curve[state.curveChannel] = moEditNormalizeCurvePoints(pts()); afterChange(true); setTimeout(() => root.querySelector('.mo-edit-curve')?.focus()); });
-    cv.addEventListener('focus', drawCurve); cv.addEventListener('blur', drawCurve);
-    parent.appendChild(hint('Click to add a point, drag to bend the line, double-click a point to remove it. From the keyboard: Page Up and Page Down pick a point, the arrows move it, + adds one, Delete removes it.'));
-    requestAnimationFrame(drawCurve);
-  }
-
-  function drawCurve() {
-    const cv = curveCanvas;
-    if (!cv || !cv.isConnected || !cv.clientWidth || !state.recipe) return;
-    const dpr = window.devicePixelRatio || 1;
-    const W = Math.round(cv.clientWidth * dpr); const H = Math.round(cv.clientHeight * dpr);
-    if (cv.width !== W) cv.width = W;
-    if (cv.height !== H) cv.height = H;
-    const ctx = cv.getContext('2d');
-    const css = getComputedStyle(cv);
-    const line = css.getPropertyValue('--mo-edit-line').trim() || css.color;
-    const faint = css.getPropertyValue('--mo-edit-faint').trim() || css.color;
-    ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = faint; ctx.lineWidth = dpr;
-    for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo((W * i) / 4, 0); ctx.lineTo((W * i) / 4, H); ctx.moveTo(0, (H * i) / 4); ctx.lineTo(W, (H * i) / 4); ctx.stroke(); }
-    if (state.hist && state.hist.n) {
-      const counts = state.curveChannel === 'rgb' ? state.hist.l : state.hist[state.curveChannel];
-      let top = 1; for (let i = 2; i < 254; i++) top = Math.max(top, counts[i]);
-      ctx.fillStyle = faint;
-      ctx.beginPath(); ctx.moveTo(0, H);
-      for (let i = 0; i < 256; i++) ctx.lineTo((i / 255) * W, H - Math.min(1, counts[i] / top) * H * 0.9);
-      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-    }
-    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke();
-    const tints = { rgb: line, r: 'rgb(230, 70, 70)', g: 'rgb(70, 190, 90)', b: 'rgb(80, 120, 240)' };
-    const pts = state.recipe.curve[state.curveChannel];
-    const lut = moEditCurveLut(pts, 128);
-    ctx.strokeStyle = tints[state.curveChannel]; ctx.lineWidth = 1.5 * dpr;
-    ctx.beginPath();
-    for (let i = 0; i < lut.length; i++) { const x = (i / (lut.length - 1)) * W; const y = H - lut[i] * H; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
-    ctx.stroke();
-    ctx.fillStyle = tints[state.curveChannel];
-    for (const p of pts) { ctx.beginPath(); ctx.arc(p[0] * W, H - p[1] * H, 4 * dpr, 0, Math.PI * 2); ctx.fill(); }
-    const sel = document.activeElement === cv && pts[Math.min(state.curveSel || 0, pts.length - 1)]; // the keyboard's point, ringed
-    if (sel) { ctx.strokeStyle = tints[state.curveChannel]; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(sel[0] * W, H - sel[1] * H, 8 * dpr, 0, Math.PI * 2); ctx.stroke(); }
-  }
-
-  // The colour mixer: pick one of eight colours, then shift its hue, saturation and luminance.
-  function mixerBlock(parent) {
-    const r = state.recipe;
-    const dots = moEl('div', 'mo-edit-dots');
-    for (const [key, label, hue] of MO_EDIT_MIX) {
-      const d = moEl('button', 'mo-edit-dot', { sceneId: `media-organizer.imageEditor.mix.${moSlug(key)}`, type: 'button', title: label, 'aria-label': label });
-      d.style.background = `hsl(${hue}, 80%, 55%)`;
-      d.classList.toggle('is-on', state.mixColour === key);
-      d.classList.toggle('is-set', r.mixer[key].some((v) => Math.abs(v) > 1e-6));
-      d.addEventListener('click', () => { state.mixColour = key; renderPanel(); });
-      dots.appendChild(d);
-    }
-    parent.appendChild(dots);
-    ['Hue', 'Saturation', 'Luminance'].forEach((label, i) => {
-      parent.appendChild(sliderRow({
-        id: 'mix-' + i, aria: `${label} Of ${(MO_EDIT_MIX.find((m) => m[0] === state.mixColour) || [])[1]}`,
-        label, min: -1, max: 1, rest: 0, value: r.mixer[state.mixColour][i], show: pct, parse: parsePct(-1, 1),
-        onInput: (v) => { r.mixer[state.mixColour][i] = v; requestRender(); },
-        onChange: (v) => { r.mixer[state.mixColour][i] = v; afterChange(true); },
-      }).row);
-    });
-  }
-
-  // Colour grading: a wheel each for shadows, midtones and highlights. The knob's angle is the hue, its distance the strength.
-  function gradingBlock(parent) {
-    const r = state.recipe;
-    const wheels = moEl('div', 'mo-edit-wheels');
-    for (const [key, label] of MO_EDIT_GRADE) {
-      const cell = moEl('div', 'mo-edit-wheel-cell');
-      const wheel = moEl('div', 'mo-edit-wheel', { role: 'slider', 'aria-label': `${label} Colour`, title: 'Drag to colour; double-click to reset' });
-      const knob = moEl('div', 'mo-edit-wheel-knob');
-      wheel.appendChild(knob);
-      const place = () => { const v = r.grading[key]; const a = v.h * Math.PI * 2; knob.style.left = (50 + Math.cos(a) * v.s * 50) + '%'; knob.style.top = (50 - Math.sin(a) * v.s * 50) + '%'; };
-      place();
-      let on = false;
-      const set = (e) => {
-        const b = wheel.getBoundingClientRect();
-        const x = (e.clientX - b.left) / b.width * 2 - 1; const y = 1 - (e.clientY - b.top) / b.height * 2;
-        r.grading[key].s = Math.min(1, Math.hypot(x, y));
-        r.grading[key].h = ((Math.atan2(y, x) / (Math.PI * 2)) + 1) % 1;
-        place(); requestRender();
-      };
-      wheel.style.touchAction = 'none'; wheel.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; on = true; wheel.setPointerCapture(e.pointerId); e.preventDefault(); set(e); });
-      wheel.addEventListener('pointermove', (e) => { if (on) set(e); });
-      const drop = () => { if (!on) return; on = false; afterChange(true); };
-      wheel.addEventListener('pointerup', drop);
-      wheel.addEventListener('pointercancel', drop);
-      wheel.addEventListener('dblclick', () => { r.grading[key] = { h: 0, s: 0, l: 0 }; afterChange(true); });
-      wheel.tabIndex = 0; wheel.dataset.grade = key;
-      const say = () => wheel.setAttribute('aria-valuetext', `hue ${Math.round(r.grading[key].h * 360)} degrees, strength ${Math.round(r.grading[key].s * 100)}%`);
-      say();
-      wheel.addEventListener('keydown', (e) => {
-        const v = r.grading[key], n = e.shiftKey ? 5 : 1, d = { ArrowLeft: [-0.01, 0], ArrowRight: [0.01, 0], ArrowUp: [0, 0.02], ArrowDown: [0, -0.02] }[e.key];
-        if (d) { v.h = (v.h + d[0] * n + 1) % 1; v.s = Math.max(0, Math.min(1, v.s + d[1] * n)); } else if (e.key === 'Home') r.grading[key] = { h: 0, s: 0, l: 0 }; else return;
-        e.preventDefault(); place(); say(); requestRender();
-      });
-      wheel.addEventListener('keyup', (e) => { if (/^(Arrow|Home)/.test(e.key)) { afterChange(true); setTimeout(() => root.querySelector(`.mo-edit-wheel[data-grade="${key}"]`)?.focus()); } });
-      cell.appendChild(wheel);
-      cell.appendChild(moEl('div', 'mo-edit-wheel-name', { textContent: label }));
-      wheels.appendChild(cell);
-    }
-    parent.appendChild(wheels);
-    parent.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Luminance' }));
-    for (const [key, label] of MO_EDIT_GRADE) {
-      parent.appendChild(sliderRow({
-        id: 'grade-' + key, label, min: -1, max: 1, rest: 0, value: r.grading[key].l, show: pct, parse: parsePct(-1, 1),
-        onInput: (v) => { r.grading[key].l = v; requestRender(); }, onChange: (v) => { r.grading[key].l = v; afterChange(true); },
-      }).row);
-    }
-    parent.appendChild(sliderRow({ id: 'grade-blending', label: 'Blending', min: 0, max: 1, rest: 0.5, value: r.grading.blending, show: (v) => String(Math.round(v * 100)), parse: parsePct(0, 1),
-      onInput: (v) => { r.grading.blending = v; requestRender(); }, onChange: (v) => { r.grading.blending = v; afterChange(true); } }).row);
-    parent.appendChild(sliderRow({ id: 'grade-balance', label: 'Balance', min: -1, max: 1, rest: 0, value: r.grading.balance, show: pct, parse: parsePct(-1, 1),
-      onInput: (v) => { r.grading.balance = v; requestRender(); }, onChange: (v) => { r.grading.balance = v; afterChange(true); } }).row);
   }
 
   // ── Crop And Rotate ──
@@ -37906,7 +38008,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);

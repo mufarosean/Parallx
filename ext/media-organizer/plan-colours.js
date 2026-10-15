@@ -10,6 +10,7 @@
 
 import { moEl, moSlug } from './dom.js';
 import { moPointKeys, moSliderKeys } from './keys.js';
+import { moPlanHint, moPlanSection, moPlanSlider, moPlanSwitch } from './plan-kit.js';
 import { MO_COMMON_PAINTS, MO_MIX_RULES, MO_STARTER_PAINTS, moColourName, moHexRgb, moMixRecipes } from './colour.js';
 
 const STAGES_KEY = 'plan_stages_v1';
@@ -24,7 +25,9 @@ const PICK_SIZES = [1, 3, 9, 21, 45];
 const MAX_STAGES = 9;
 const hexOf = (rgb) => '\u0023' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
 const aidsOff = (r) => !(r.blur > 0) && !(r.levels >= 2) && !r.grey && !(r.notan > 0);
-const stageSummary = (s) => [s.blur > 0 ? `Squint ${Math.round(s.blur * 100)}%` : 'No squint', s.notan > 0 ? 'notan' : s.levels >= 2 ? `${s.levels} values` : 'all values', s.grey ? 'grey' : ''].filter(Boolean).join(' · ');
+const stageSummary = (s) => [s.blur > 0 ? `squint ${Math.round(s.blur * 100)}%` : 'no squint', s.notan > 0 ? 'light and shadow' : s.levels >= 2 ? `${s.levels} values` : 'all values'].join(', ');
+// The underpainting paints offered in Values ('' is grey).
+const MO_PLAN_UNDERS = ['', 'Burnt Sienna', 'Raw Umber', 'Burnt Umber', 'Yellow Ochre', 'Ultramarine Blue', 'Payne’s Grey', 'Sap Green'];
 const parse = (text, fallback) => { try { const v = JSON.parse(text); return v == null ? fallback : v; } catch { return fallback; } };
 
 // The painter's settings, shared by every open plan.
@@ -56,7 +59,7 @@ const savePick = (io) => io.setSetting(PICK_KEY, JSON.stringify({ size: shared.p
 // focus) and every action of the panels, run on the plan in use ──
 const open = new Set();
 let lastUsed = null;
-const PLAN_ACTIONS = ['renameStage', 'addStage', 'removeStage', 'showSavedColour', 'showSavedColours', 'pullPalette', 'pinColours', 'myPaints', 'backFromPaints',
+const PLAN_ACTIONS = ['underPaint', 'stageMenu', 'renameStage', 'addStage', 'removeStage', 'showSavedColour', 'showSavedColours', 'pullPalette', 'pinColours', 'myPaints', 'backFromPaints',
   'copyRecipe', 'removeSavedColour', 'customPaint', 'starterPaints', 'removePaint'];
 const planInUse = () => [...open].find((x) => x.root.contains(document.activeElement)) || (lastUsed && lastUsed.root.isConnected ? lastUsed : null);
 export function moPlanColoursActivate(api) {
@@ -131,8 +134,6 @@ export function moPlanColours(ctx) {
   const onBlur = () => { if (!pressing) hideLoupe(); };
   layer.addEventListener('focus', onFocus); layer.addEventListener('blur', onBlur);
 
-  // The stage buttons above the picture.
-  const bar = moEl('div', 'mo-pc-stagebar');
   const ui = api.ui;
 
   // ── stages ──
@@ -160,83 +161,61 @@ export function moPlanColours(ctx) {
       if (b) { b.querySelector('.mo-pc-stage-sum').textContent = stageSummary(shared.stages[n - 1]); b.setAttribute('aria-label', `${shared.stages[n - 1].name}, ${stageSummary(shared.stages[n - 1])}`); }
     }
   }
-  // Rebuilt only when the stages change, so a focused choice keeps the focus. No choice is
-  // shown while the picture has squint or values of its own.
-  let barKey = ''; let barSeg = null; let syncing = false;
-  function renderBar() {
-    if (!state.recipe) return;
-    const n = currentStage();
-    const value = n ? String(n) : aidsOff(state.recipe) ? '0' : '';
-    const key = JSON.stringify(shared.stages.map((st) => st.name));
-    if (key !== barKey || !barSeg) {
-      barKey = key;
-      if (barSeg) barSeg.dispose();
-      barSeg = ui.createSegmented(bar, { id: 'media-organizer.plan.stageBar', ariaLabel: 'Stage', value,
-        items: [...shared.stages.map((st, i) => ({ value: String(i + 1), label: `${i + 1} ${st.name}` })), { value: '0', label: 'Picture' }],
-        onChange: (v) => { if (!syncing) applyStage(Number(v)); } });
-    } else if (barSeg.value !== value) { syncing = true; barSeg.value = value; syncing = false; }
-  }
-
+  // ── the Values step ──
+  // Squint and the number of values are sliders; light and shadow is two values only, split where light
+  // ends. The values are laid in one paint (the underpainting colour) or in grey. Stages keep a squint and
+  // values to come back to, for every plan (keys 1 to 9).
+  const toNotan = (v) => (10 * v + 16) / 116;            // a value (0 to 10) as the engine's lightness
+  const fromNotan = (n) => Math.round(((116 * n - 16) / 10) * 2) / 2;
   function valuesPanel(panel, panelDisposers) {
     const r = state.recipe;
     const n = currentStage();
-    const s1 = moEl('div', 'mo-plan-section');
-    s1.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Stages' }));
-    const list = moEl('div', 'mo-pc-stages', { role: 'group', 'aria-label': 'Stages' });
-    shared.stages.forEach((s, i) => {
-      const b = ui.createButton(list, { id: `media-organizer.plan.stage.${i + 1}`, label: s.name, kind: 'ghost', command: `media-organizer.plan.stage${i + 1}` });
-      b.classList.add('mo-pc-stage');
-      b.classList.toggle('is-on', n === i + 1);
-      for (const [k, v] of [['aria-pressed', String(n === i + 1)], ['aria-keyshortcuts', String(i + 1)], ['aria-label', `${s.name}, ${stageSummary(s)}`]]) b.setAttribute(k, v);
-      const t = moEl('span', 'mo-pc-stage-text');
-      t.append(moEl('span', 'mo-pc-stage-name', { textContent: s.name }), moEl('span', 'mo-pc-stage-sum', { textContent: stageSummary(s) }));
-      b.replaceChildren(moEl('span', 'mo-pc-stage-num', { textContent: String(i + 1), 'aria-hidden': 'true' }), t);
-    });
-    s1.appendChild(list);
-    s1.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: `Keys 1 to ${shared.stages.length} switch stages. 0 shows the picture as it is.` }));
-    panel.appendChild(s1);
+    const s1 = moPlanSection(panel, '');
+    moPlanSlider(s1, { id: 'media-organizer.plan.squint', label: 'Squint', min: 0, max: 100, step: 1, value: Math.round((r.blur || 0) * 100), text: (v) => (v ? `${v}%` : 'sharp'),
+      onInput: (v) => setAid({ blur: v / 100 }, false), onChange: (v) => setAid({ blur: v / 100 }, true, true) });
+    const light = r.notan > 0;
+    if (!light) moPlanSlider(s1, { id: 'media-organizer.plan.values', label: 'Values', min: 2, max: 11, step: 1, value: r.levels >= 2 ? r.levels : 11, text: (v) => (v >= 11 ? 'all' : String(v)),
+      onInput: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, false), onChange: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, true, true) });
+    const split = light ? fromNotan(r.notan) : (ctx.lightSplit() ?? 5);
+    moPlanSwitch(ui, s1, { id: 'media-organizer.plan.lightShadow', label: 'Light and shadow only', checked: light, onChange: (on) => setAid(on ? { notan: toNotan(split), levels: 0 } : { notan: 0 }, true) }, panelDisposers);
+    if (light) moPlanSlider(s1, { id: 'media-organizer.plan.lightEnds', label: 'Where light ends', min: 1, max: 9, step: 0.5, value: split, text: (v) => `value ${v}`,
+      onInput: (v) => setAid({ notan: toNotan(v) }, false), onChange: (v) => setAid({ notan: toNotan(v) }, true, true) });
 
-    const s2 = moEl('div', 'mo-plan-section mo-pc-split');
-    s2.appendChild(moEl('div', 'mo-practice-section-title', { textContent: n ? `${shared.stages[n - 1].name} settings` : 'This picture' }));
-    // Squint: drags preview, the release saves.
-    const sq = moEl('div', 'mo-plan-slider');
-    const head = moEl('div', 'mo-plan-slider-head');
-    const sqVal = moEl('span', 'mo-practice-dim', { textContent: `${Math.round((r.blur || 0) * 100)}%` });
-    head.append(moEl('span', null, { textContent: 'Squint' }), sqVal);
-    const sqIn = moEl('input', null, { sceneId: 'media-organizer.plan.squint', type: 'range', min: '0', max: '100', step: '1', 'aria-label': 'Squint' });
-    sqIn.value = String(Math.round((r.blur || 0) * 100));
-    sqIn.addEventListener('input', () => { sqVal.textContent = `${sqIn.value}%`; setAid({ blur: Number(sqIn.value) / 100 }, false); });
-    sqIn.addEventListener('change', () => setAid({ blur: Number(sqIn.value) / 100 }, true));
-    sq.append(head, sqIn);
-    s2.appendChild(sq);
-    const vl = moEl('div', 'mo-pc-field');
-    vl.appendChild(moEl('span', null, { textContent: 'Values' }));
-    const vg = ui.createSegmented(vl, { id: 'media-organizer.plan.values', ariaLabel: 'Values', value: r.notan > 0 ? '' : r.levels >= 2 ? String(r.levels) : '0',
-      items: [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['0', 'All']].map(([value, label]) => ({ value, label })), onChange: (v) => setAid({ levels: Number(v), notan: 0 }, true, !(r.notan > 0)) });
-    panelDisposers.push(() => vg.dispose());
-    s2.appendChild(vl);
-    s2.appendChild(check('Greyscale', 'media-organizer.plan.greyscale', r.grey, (v) => setAid({ grey: v }, true)));
-    s2.appendChild(check('Notan (light and dark only)', 'media-organizer.plan.notan', r.notan > 0, (v) => setAid(v ? { notan: 0.5, levels: 0 } : { notan: 0 }, true)));
-    if (r.notan > 0) {
-      const th = moEl('div', 'mo-plan-slider');
-      const thHead = moEl('div', 'mo-plan-slider-head');
-      const thVal = moEl('span', 'mo-practice-dim', { textContent: String(Math.round(r.notan * 100)) });
-      thHead.append(moEl('span', null, { textContent: 'Threshold' }), thVal);
-      const thIn = moEl('input', null, { sceneId: 'media-organizer.plan.notanThreshold', type: 'range', min: '5', max: '95', step: '1', 'aria-label': 'Threshold' });
-      thIn.value = String(Math.round(r.notan * 100));
-      thIn.addEventListener('input', () => { thVal.textContent = thIn.value; setAid({ notan: Number(thIn.value) / 100 }, false); });
-      thIn.addEventListener('change', () => setAid({ notan: Number(thIn.value) / 100 }, true));
-      th.append(thHead, thIn);
-      s2.appendChild(th);
+    const s2 = moPlanSection(panel, 'Underpainting colour', true);
+    const chips = moEl('div', 'mo-pv-unders', { role: 'group', 'aria-label': 'Underpainting colour' });
+    for (const name of MO_PLAN_UNDERS) {
+      const p = MO_COMMON_PAINTS.find((x) => x.name === name);
+      const b = ui.createButton(chips, { id: `media-organizer.plan.under.${moSlug(name || 'grey')}`, label: name || 'Grey', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.underPaint', args: [name] });
+      b.classList.add('mo-pv-under'); b.setAttribute('aria-pressed', String((r.under || '') === name));
+      const dot = moEl('span', 'mo-pv-under-dot', { 'aria-hidden': 'true' });
+      if (p) dot.style.background = p.hex;
+      b.prepend(dot);
     }
-    s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: n ? `Changes here are saved to ${shared.stages[n - 1].name} for every plan.` : 'Set squint and values just for this picture, or choose a stage.' }));
-    panel.appendChild(s2);
+    s2.appendChild(chips);
+    moPlanHint(s2, 'The values in one paint, from its darks to its tints, the way a monochrome underpainting is laid in. Colour amount in the Colour step fades to it too.');
 
-    const s3 = moEl('div', 'mo-plan-row mo-pc-split');
-    if (n) s3.appendChild(button('Rename Stage…', 'renameStage'));
-    if (shared.stages.length < MAX_STAGES) s3.appendChild(button(n ? 'Add Stage' : 'Save As Stage', 'addStage'));
-    if (n && shared.stages.length > 1) s3.appendChild(button('Remove Stage', 'removeStage'));
-    panel.appendChild(s3);
+    const fam = ctx.lightFamilies(light ? split : null);
+    if (fam) {
+      const s3 = moPlanSection(panel, 'Light and shadow', true);
+      for (const [i, word] of [[0, 'Light'], [1, 'Shadow']]) {
+        const row = moEl('div', 'mo-ps-row');
+        const sw = moEl('span', 'mo-ps-sw', { 'aria-hidden': 'true' }); sw.style.background = hexOf(fam.families[i].rgb);
+        row.append(sw, moEl('span', 'mo-ps-row-text', { textContent: `${word} · ${moColourName(fam.families[i].rgb).name}` }), moEl('span', 'mo-ps-num', { textContent: `${Math.round(fam.families[i].share * 100)}%` }));
+        s3.appendChild(row);
+      }
+      moPlanHint(s3, fam.warmer === 'neither' ? 'Both families are about the same temperature.' : `The ${fam.warmer} family is warmer. A shadow is rarely the light colour made darker.`);
+    }
+
+    const s4 = moPlanSection(panel, 'Stages', true);
+    const list = moEl('div', 'mo-pv-stages', { role: 'group', 'aria-label': 'Stages' });
+    shared.stages.forEach((st, i) => {
+      const b = ui.createButton(list, { id: `media-organizer.plan.stage.${i + 1}`, label: st.name, kind: 'ghost', size: 'sm', title: `${st.name}: ${stageSummary(st)} (key ${i + 1})`, command: `media-organizer.plan.stage${i + 1}` });
+      b.classList.add('mo-pv-stage'); b.setAttribute('aria-pressed', String(n === i + 1)); b.setAttribute('aria-keyshortcuts', String(i + 1));
+    });
+    const more = ui.createIconButton(list, { id: 'media-organizer.plan.stageMenu', icon: 'ellipsis', title: 'Stage Actions', size: 'sm', command: 'media-organizer.plan.stageMenu' });
+    more.setAttribute('aria-haspopup', 'menu');
+    s4.appendChild(list);
+    moPlanHint(s4, n ? `Changes are saved to ${shared.stages[n - 1].name} for every plan. Keys 1 to ${shared.stages.length} switch stages.` : `A stage keeps a squint and values to come back to. Keys 1 to ${shared.stages.length} switch stages.`);
   }
 
   // ── the picker ──
@@ -500,6 +479,16 @@ export function moPlanColours(ctx) {
       state.recipe.stage = 0; // the picture keeps the look it has
       ctx.afterRecipeChange(true);
     },
+    underPaint(name) { if (!state.recipe || !MO_PLAN_UNDERS.includes(name)) return; state.recipe.under = name; ctx.afterRecipeChange(true); },
+    stageMenu() {
+      const n = currentStage(), at = ctx.root.querySelector('[data-px-id="media-organizer.plan.stageMenu"]');
+      if (!at) return;
+      ui.createMenu(at, { id: 'media-organizer.plan.stageActions', label: 'Stage Actions', items: [
+        { label: n ? 'Add Stage' : 'Save As Stage', disabled: shared.stages.length >= MAX_STAGES, onSelect: () => acts.addStage() },
+        { label: 'Rename Stage…', disabled: !n, onSelect: () => void acts.renameStage() },
+        { label: 'Remove Stage', disabled: !n || shared.stages.length < 2, onSelect: () => acts.removeStage() },
+      ] });
+    },
     showSavedColour(i) { if (!state.recipe || !colours()[i]) return; detail = i; show('detail'); },
     showSavedColours() { show('list'); },
     pullPalette() { if (state.recipe) ctx.pullPalette(); },
@@ -584,7 +573,6 @@ export function moPlanColours(ctx) {
     }
   }
   function sync() {
-    if (bar.isConnected) renderBar();
     drawMarks();
     const picking = state.tool === 'pick' && !!state.recipe;
     layer.classList.toggle('mo-hidden', !picking);
@@ -614,7 +602,6 @@ export function moPlanColours(ctx) {
   void loadShared(io).then(() => { if (state.recipe) ctx.afterRecipeChange(false); });
 
   return {
-    bar,
     valuesPanel,
     pickPanel,
     sync,
@@ -623,7 +610,6 @@ export function moPlanColours(ctx) {
     dispose() {
       open.delete(handle);
       if (lastUsed === handle) lastUsed = null;
-      if (barSeg) barSeg.dispose();
       if (shared.focusKey && ctx.root.contains(document.activeElement)) shared.focusKey.set(false);
       ctx.root.removeEventListener('focusin', onFocusIn); ctx.root.removeEventListener('focusout', onFocusOut);
       for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } }

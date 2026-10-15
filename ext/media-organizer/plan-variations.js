@@ -19,7 +19,8 @@ export function moPlanVariationsActivate(api) {
 }
 
 const clone = (r) => JSON.parse(JSON.stringify(r));
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Which view a picture is on (photo, values, colour) is not a change to it.
+const same = (a, b) => JSON.stringify({ ...a, show: 0 }) === JSON.stringify({ ...b, show: 0 });
 function nextName(variants) {
   const names = new Set(variants.map((v) => v.name));
   let n = variants.length + 1;
@@ -32,7 +33,7 @@ function nextName(variants) {
  *   normalize(recipe), startRecipe() -> the untouched photo's recipe,
  *   apply(recipe, from) puts a recipe in the controls as an undo step,
  *   record() adds an undo step for the source, saveDraft(), thumb(recipe) -> data URL or '',
- *   boardItems() -> the Add To Board menu }.
+ *   boardItems() -> the Add To Board menu, view() -> the view on screen, showStep(view) opens a variation's view }.
  * The editor calls sync() after every change and render() when the source changes.
  */
 export function moPlanVariations(ctx) {
@@ -99,6 +100,7 @@ export function moPlanVariations(ctx) {
   const acts = {
     async saveVariation() {
       if (!state.recipe) return;
+      state.recipe.show = ctx.view(); // a variation saved from Values is its values, from Colour its masses
       const name = nextName(state.variants), recipe = clone(state.recipe), position = state.variants.length;
       const res = await db.run('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, ?)', [planId, name, JSON.stringify(recipe), position]);
       const v = { id: res.lastInsertRowid, plan_id: planId, name, position, recipe };
@@ -109,6 +111,7 @@ export function moPlanVariations(ctx) {
     async saveVariationChanges() {
       const v = state.variant;
       if (!v || !dirty()) return;
+      state.recipe.show = ctx.view();
       v.recipe = clone(state.recipe);
       await db.run('UPDATE mo_plan_variants SET recipe_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(v.recipe), new Date().toISOString(), v.id]);
       savedId = v.id; render(); touch();
@@ -116,7 +119,7 @@ export function moPlanVariations(ctx) {
     startOver() { if (state.recipe) { ctx.apply(ctx.startRecipe(), null); render(); } },
     openVariation(id) {
       const v = state.variants.find((x) => x.id === id);
-      if (v) { ctx.apply(clone(v.recipe), v); render(); }
+      if (v) { ctx.apply(clone(v.recipe), v); ctx.showStep(v.recipe.show); render(); }
     },
     addToBoardMenu() { const at = boardBtn || moreBtn; if (at) ui.createMenu(at, { id: 'media-organizer.plan.addToBoard', label: 'Add To Board', items: ctx.boardItems() }); },
     variationMenu() {

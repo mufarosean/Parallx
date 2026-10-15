@@ -276,6 +276,9 @@ export function moPlanStudy(ctx) {
   return {
     panel,
     sync,
+    /** Values: where light ends by the picture's own split (a value, 0 to 10), and the two families' colours. */
+    lightSplit: () => { const A = analysed(); return A ? Math.round(A.split * 2) / 2 : null; },
+    lightFamilies: (split) => { const A = analysed(); if (!A) return null; const L = moStudyLight(A, split == null ? A.split : split, 'colours'); return { families: L.families, warmer: L.warmer }; },
     dispose() {
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
       ctx.root.removeEventListener('focusin', used);

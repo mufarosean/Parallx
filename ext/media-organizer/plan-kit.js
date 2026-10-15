@@ -51,8 +51,10 @@ export function moPlanChoice(ui, parent, o, disposers) {
 
 /** An on/off switch with its words. */
 export function moPlanSwitch(ui, parent, o, disposers) {
-  const t = ui.createToggle(parent, { id: o.id, label: o.label, checked: !!o.checked, onChange: o.onChange, ...(o.hint ? { hint: o.hint } : {}) });
-  t.element.classList.add('mo-plan-switch');
+  const row = moEl('div', 'mo-plan-switch');
+  row.appendChild(moEl('span', null, { textContent: o.label, 'aria-hidden': 'true' })); // the switch names itself to a screen reader
+  parent.appendChild(row);
+  const t = ui.createToggle(row, { id: o.id, label: o.label, checked: !!o.checked, onChange: o.onChange, ...(o.hint ? { hint: o.hint } : {}) });
   disposers.push(() => t.dispose());
   return t;
 }

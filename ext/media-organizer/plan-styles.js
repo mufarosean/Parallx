@@ -54,7 +54,29 @@ export const MO_PLAN_CSS = `
 .px-btn.mo-pk-guide { height: auto; flex-direction: column; gap: 4px; padding: var(--px-space-2) 2px; border: 1px solid transparent; font-size: var(--px-text-xs); color: var(--px-text-secondary); }
 .px-btn.mo-pk-guide[aria-pressed="true"] { border-color: var(--px-accent); color: var(--px-text); background: var(--px-accent-soft); }
 .mo-pk-guide-art svg { display: block; width: 34px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.2; }
-.mo-plan-switch { width: 100%; }
+.mo-plan-switch { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); font-size: var(--px-text-sm); }
+
+/* Photo: Enhance, the Image Editor's sections, Remove */
+.mo-plan { --mo-edit-line: var(--px-text); --mo-edit-faint: var(--px-border); }
+.mo-pp-sections { margin: 0 calc(-1 * var(--px-space-3)); }
+.mo-pp-sections .mo-edit-section:first-child { border-top: 0; }
+.mo-pp-status { padding: var(--px-space-2); border-radius: var(--px-radius-md); background: var(--px-accent-soft); color: var(--px-text); font-size: var(--px-text-sm); }
+.mo-pp-status.is-stale { background: color-mix(in srgb, var(--px-warning) 16%, transparent); }
+.mo-pp-job { display: flex; flex-direction: column; gap: var(--px-space-1); font-size: var(--px-text-sm); }
+.mo-pp-job-bar { height: 6px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); overflow: hidden; }
+.mo-pp-job-fill { height: 100%; width: 0; background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease); }
+.mo-pp-paint { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mo-pp-layer.is-picking { cursor: copy; }
+
+/* Values: the underpainting paints and the stages */
+.mo-pv-unders { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--px-space-1); }
+.px-btn.mo-pv-under { height: auto; flex-direction: column; gap: 4px; padding: var(--px-space-2) 2px; border: 1px solid transparent; font-size: var(--px-text-2xs); line-height: 1.2; color: var(--px-text-secondary); white-space: normal; text-align: center; }
+.px-btn.mo-pv-under .px-btn__label { white-space: normal; }
+.px-btn.mo-pv-under[aria-pressed="true"] { border-color: var(--px-accent); color: var(--px-text); background: var(--px-accent-soft); }
+.mo-pv-under-dot { width: 24px; height: 24px; border-radius: var(--px-radius-full); background: var(--px-text-muted); box-shadow: var(--px-ring); }
+.mo-pv-stages { display: flex; gap: 2px; padding: 2px; border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.px-btn.mo-pv-stage { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--px-text-secondary); }
+.px-btn.mo-pv-stage[aria-pressed="true"] { background: var(--px-bg); color: var(--px-text); box-shadow: var(--px-ring); }
 
 /* A choice of a few fills its row */
 .mo-plan-panel .ui-segmented-control { display: flex; width: 100%; }
