@@ -34361,7 +34361,8 @@ async function moEditPngToJpeg(pngPath, outPath, origBytes) {
  * Enhance is on. What Save As Copy and Save both write; where it goes and
  * what the library is told is theirs.
  */
-async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBytes, recipe, tell) {
+// enlarged: the preview's enlarged PNG of this same edit, when there is one: used instead of enlarging again.
+async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBytes, recipe, tell, enlarged) {
   const sep = srcPath.includes('\\') ? '\\' : '/';
   const base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
   const scale = recipe.enhance && recipe.enhance.scale > 0 ? recipe.enhance.scale : 0;
@@ -34382,6 +34383,14 @@ async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBy
     return;
   }
 
+  if (enlarged && await window.parallxElectron.fs.exists(enlarged)) {
+    tell('enlarge', 1);
+    if (ext === 'png') {
+      const moved = await window.parallxElectron.fs.rename(enlarged, outPath);
+      if (moved && moved.error) throw new Error('The enlarged picture could not be put in place.');
+    } else await moEditPngToJpeg(enlarged, outPath, camera);
+    return;
+  }
   const edits = edited || ext !== 'png' ? moEditDir(photoId) : null;
   if ((edited || ext !== 'png') && !edits) throw new Error('Enhance needs an open workspace.');
   let drawn = null;   // the edit as a lossless picture in the workspace, enlarged from there, then removed
@@ -34431,7 +34440,7 @@ async function moEditSaveCopy(photoId, srcPath, source, origBytes, recipe, onPro
   if (!outPath) throw new Error('No free file name beside the original.');
 
   const tell = moEditTeller(onProgress, 'Adding it to the library', scale > 0, edited);
-  await moEditWritePicture(photoId, srcPath, outPath, ext, source, origBytes, recipe, tell);
+  await moEditWritePicture(photoId, srcPath, outPath, ext, source, origBytes, recipe, tell, opts && opts.enlarged);
   tell('library', 0);
   let photo = null;
   try { photo = await moIngestNewImage(outPath); } catch (err) { console.warn('[MediaOrganizer] the saved copy could not be taken into the library:', err?.message || err); }
@@ -34519,7 +34528,7 @@ async function moEditSaveOver(photoId, srcPath, source, origBytes, recipe, onPro
   const oldMd5 = await moEditHeldChecksum(photoId);
   const saving = dir + sep + moEditSavingName(base, Math.random().toString(36).slice(2, 8));
   try {
-    await moEditWritePicture(photoId, srcPath, saving, ext, source, origBytes, recipe, tell);
+    await moEditWritePicture(photoId, srcPath, saving, ext, source, origBytes, recipe, tell, opts && opts.enlarged);
     const moved = await window.parallxElectron.fs.rename(saving, srcPath);
     if (moved && moved.error) throw new Error(`The original could not be replaced (${moved.error.message || moved.error.code || 'it may be open in another program'}).`);
   } catch (err) {
@@ -35987,6 +35996,7 @@ function renderImageEditor(container, api) {
   }
   // record: true when the change is a step worth an undo
   function afterChange(record) {
+    if (kept && kept.key !== keptKey()) void discardKept();   // the edit moved on: its enlarged preview no longer matches
     if (record) pushHistory();
     if ((state.original || state.split >= 0) && moEditIsNeutral(state.recipe)) { state.original = false; state.split = -1; }
     scheduleSave();
@@ -37054,6 +37064,15 @@ function renderImageEditor(container, api) {
   previewEl.appendChild(previewImg);
   stage.appendChild(previewEl);
   let previewUrl = null;
+  // The preview's enlarged picture, kept for a save of the same edit. A copy of the photo in the
+  // workspace: erased (moDisposeTemp) once the edit changes, another preview is made, the editor moves
+  // to another photo or closes, or a save has used it.
+  let kept = null;   // { path, key }
+  const keptKey = () => JSON.stringify({ id: state.photoId, recipe: state.recipe });
+  async function discardKept() { const k = kept; kept = null; if (k) await moDisposeTemp(api, [k.path]); }
+  /** The kept enlargement, if it is of the edit as it stands now; otherwise it goes. */
+  function keptForSave() { if (kept && kept.key === keptKey()) return kept.path; void discardKept(); return null; }
+  disposers.push(() => { void discardKept(); });
   function closePreview() {
     if (previewUrl) { try { URL.revokeObjectURL(previewUrl); } catch { /* gone */ } previewUrl = null; }
     previewImg.removeAttribute('src');
@@ -37070,6 +37089,9 @@ function renderImageEditor(container, api) {
     const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const drawn = dir + sep + `preview-src-${stamp}.png`;
     const out = dir + sep + `preview-${stamp}.png`;
+    await discardKept();
+    const key = keptKey();
+    let keep = false;
     const seq = loadSeq;
     const started = Date.now();
     busy('Drawing the edit', 0);
@@ -37091,11 +37113,12 @@ function renderImageEditor(container, api) {
       previewImg.src = previewUrl;
       previewEl.classList.remove('mo-hidden');
       state.preview = true;
+      kept = { path: out, key }; keep = true;
       flash(`Enlarged preview ready in ${moEditDuration((Date.now() - started) / 1000)}.`);
     } catch (err) {
       api.window.showErrorMessage('The preview could not be made: ' + ((err && err.message) || err));
     } finally {
-      await moDisposeTemp(api, [drawn, out]);
+      await moDisposeTemp(api, keep ? [drawn] : [drawn, out]);
       if (!disposed) { busy(''); syncStageChip(); if (state.tool === 'enhance') renderPanel(); }
     }
   }
@@ -37363,7 +37386,8 @@ function renderImageEditor(container, api) {
     try {
       await flushSave();
       await syncWork();
-      const saved = await moEditSaveCopy(state.photoId, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
+      const saved = await moEditSaveCopy(state.photoId, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); }, { enlarged: keptForSave() });
+      await discardKept();   // used (a PNG copy took its place) or turned into a JPEG: what is left is erased
       // Said on the stage, with Show in Folder and Open; no dialog to dismiss.
       if (!disposed) {
         const geo = geometry(); const k = enlarging ? state.recipe.enhance.scale : 1;
@@ -37395,7 +37419,8 @@ function renderImageEditor(container, api) {
     try {
       await flushSave();
       await syncWork();
-      saved = await moEditSaveOver(id, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
+      saved = await moEditSaveOver(id, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); }, { enlarged: keptForSave() });
+      await discardKept();
       if (!disposed) showToast(`Saved over the original: ${saved.name}`, saved.path, null);
     } catch (err) {
       api.window.showErrorMessage('The photo could not be saved: ' + ((err && err.message) || err));
@@ -37420,6 +37445,7 @@ function renderImageEditor(container, api) {
   // ── opening a photo ──
   async function loadPhoto(photoId) {
     const seq = ++loadSeq;
+    await discardKept();   // another photo: the last one's enlarged preview goes
     await flushSave();
     const id = Number(photoId);
     state.recipe = null; state.hover = null; state.hoverName = ''; state.original = false; state.split = -1; state.pickWb = false; state.straightenBase = null;
