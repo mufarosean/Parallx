@@ -186,7 +186,9 @@ function install() {
         if (look(p) === fl && around(p) === pl) this.noRing.push(describe(p));
       }
       document.getElementById('__kb_start')?.remove();
-      const all = this.atTabEnd ?? this.interactive();
+      // What the run ended among, still on the page: a view that redrew meanwhile (the Explorer refreshing as files
+      // change under .parallx) has replaced some of them, and an element gone is no longer one a key must reach.
+      const all = this.atTabEnd ? this.atTabEnd.filter((e) => e.isConnected) : this.interactive();
       const reached = (e) => this.seen.has(e) || (e.id && this.seenIds.has(e.id)) || Array.from(this.seen).some((s) => s.contains(e) || e.contains(s));
       const notFocusable = [], tabHole = [], thirdParty = [];
       for (const e of all) {
@@ -410,6 +412,8 @@ async function auditScreen(label) {
     if (r === 'cycled' || (r === 'seen' && wrapped) || repeats >= 40) break;
   }
   await page.evaluate(() => window.__kb.tabEnd());
+  // KB_DEBUG=1: elements the Tab run met that are gone from the page by its end (a view built again meanwhile).
+  if (process.env.KB_DEBUG) console.log('[debug] detached since met:', await page.evaluate(() => Array.from(window.__kb.seen).filter((e) => !e.isConnected).map((e) => e.getAttribute('data-px-id') || e.className).join(' | ') || 'none'));
   // KB_DEBUG=1: the Tab path as the run met it, and the composites the arrows will walk.
   if (process.env.KB_DEBUG) console.log('[debug] tab path:', await page.evaluate(() => Array.from(window.__kb.seen).map((e) => `${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : '.' + String(e.className).split(' ')[0]} "${(e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 24)}"`).join(' | ')));
   // 2. F6: which visible areas it reaches (not inside a dialog).
