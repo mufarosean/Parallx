@@ -304,6 +304,22 @@ export const MO_CSS_MORE = `
 .mo-pc-simpler { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); }
 .mo-pc-simpler > span:nth-child(2) { flex: 1; min-width: 0; }
 .mo-pc-layer { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
+.mo-ps-lens { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mo-ps-marks { position: absolute; inset: 0; pointer-events: none; }
+.mo-ps-spot { position: absolute; width: 18px; height: 18px; margin: -10px 0 0 -10px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-2xs); font-weight: 700; }
+.mo-ps-spot--cursor { border-style: dashed; }
+.mo-ps-lenses, .mo-ps-masses { display: flex; flex-direction: column; gap: 2px; }
+.px-btn.mo-ps-lens-btn { height: auto; width: 100%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0; padding: var(--px-space-1) var(--px-space-2); text-align: left; white-space: normal; }
+.mo-ps-lens-note { font-size: var(--px-text-xs); font-weight: normal; color: var(--px-text-secondary); }
+.px-btn.mo-ps-lens-btn[aria-pressed="true"], .px-btn.mo-ps-mass[aria-pressed="true"] { background: var(--px-accent-soft); color: var(--px-accent-text); }
+.px-btn.mo-ps-lens-btn[aria-pressed="true"] .mo-ps-lens-note { color: inherit; }
+.px-btn.mo-ps-mass { height: auto; justify-content: flex-start; gap: var(--px-space-2); padding: var(--px-space-1) var(--px-space-2); text-align: left; white-space: normal; }
+.mo-ps-line { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); }
+.mo-ps-sw { flex: none; width: 18px; height: 18px; border-radius: var(--px-radius-sm); box-shadow: var(--px-ring); }
+.mo-ps-compare { margin: 0; font-size: var(--px-text-sm); }
+.mo-ps-hist { display: flex; align-items: flex-end; gap: 2px; height: 48px; }
+.mo-ps-bar { flex: 1; min-height: 1px; background: var(--px-border); }
+.mo-ps-bar.is-kept { background: var(--px-accent); }
 .mo-pc-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
 .mo-pc-pins { position: absolute; inset: 0; pointer-events: none; }
 .mo-pc-pin { position: absolute; width: 10px; height: 10px; margin: -7px 0 0 -7px; border: 2px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); }

@@ -8,7 +8,7 @@
 // colours). Colour masses are nested: raising their number only splits a
 // mass, so the masses built so far stay where they were.
 
-import { moFromOklab, moOklab } from './colour.js';
+import { moColourName, moFromOklab, moOklab } from './colour.js';
 
 const LIN = new Float32Array(256);
 for (let i = 0; i < 256; i++) { const v = i / 255; LIN[i] = v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }
@@ -29,7 +29,7 @@ export function moStudyNormalize(o) {
   const m = s.masses && typeof s.masses === 'object' ? s.masses : {};
   const t = s.temp && typeof s.temp === 'object' ? s.temp : {};
   return {
-    lens: ['picture', 'light', 'temp', 'masses', 'intensity'].includes(s.lens) ? s.lens : 'picture',
+    lens: ['picture', 'light', 'temp', 'masses', 'intensity'].includes(s.lens) ? s.lens : 'light',
     split: s.split === null || s.split === undefined ? null : num(s.split, 1, 9, 5),
     light: s.light === 'bw' ? 'bw' : 'colours',
     temp: { against: t.against === 'all' ? 'all' : 'near', min: num(t.min, 0, 100, 25) },
@@ -212,8 +212,10 @@ export function moStudyMasses(P, opts, sel = -1) {
     }
     P.cache[key] = moStudyBisect(feats, P.n, 16, 4000);
   }
-  let lbl = moStudyAtLevel(P.cache[key], opts.n);
-  if (opts.method !== 'colour') lbl = moStudyMajority(lbl, P.w, P.h, opts.method === 'shapes' ? 3 : 2);
+  // The shapes at this count are kept: colour and amount change only the colours.
+  const lk = `l-${opts.method}-${opts.n}`;
+  if (!P.cache[lk]) { const raw = moStudyAtLevel(P.cache[key], opts.n); P.cache[lk] = opts.method === 'colour' ? raw : moStudyMajority(raw, P.w, P.h, opts.method === 'shapes' ? 3 : 2); }
+  const lbl = P.cache[lk];
   let k = 0; for (let i = 0; i < lbl.length; i++) if (lbl[i] >= k) k = lbl[i] + 1;
   const groups = Array.from({ length: k }, () => []);
   for (let i = 0; i < P.n; i++) groups[lbl[i]].push(i);
@@ -266,4 +268,18 @@ export function moStudyCompare(A, B) {
   lines.push(Math.abs(dc) < 0.8 ? 'About the same intensity.' : `B is ${dc < 0 ? 'greyer' : 'more intense'} (${A.intensity.toFixed(1)} to ${B.intensity.toFixed(1)}).`);
   if (dv < -1 && dc < -0.8) lines.push('Darker and greyer at once: typical of a shadow side. Mixing only a darker version of A would look flat.');
   return lines;
+}
+
+/** One name per mass ("Muted olive green"); masses that share a name are told apart by value: lighter, mid, darker. */
+export function moStudyMassNames(masses) {
+  const base = masses.map((m) => moColourName(m.rgb).name);
+  const out = base.slice();
+  for (const n of new Set(base)) {
+    const idx = base.map((b, j) => (b === n ? j : -1)).filter((j) => j >= 0);
+    if (idx.length < 2) continue;
+    idx.sort((x, y) => masses[y].value - masses[x].value);
+    const words = idx.length === 2 ? ['lighter', 'darker'] : ['lighter', ...idx.slice(2).map(() => 'mid'), 'darker'];
+    idx.forEach((j, k) => { out[j] = `${n} (${words[k]})`; });
+  }
+  return out;
 }

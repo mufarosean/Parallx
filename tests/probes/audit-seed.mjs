@@ -147,7 +147,7 @@ export async function seedAfterLaunch(page, pre) {
     await page.waitForTimeout(800);
     if (then) await then();
   };
-  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Layout', 'Colours', 'Process', 'Notes'];
+  const PLAN_TOOLS = ['Crop', 'Light', 'Colour', 'Values', 'Study', 'Layout', 'Colours', 'Process', 'Notes'];
 
   return {
     'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
