@@ -192,6 +192,7 @@ export function moPlanStudy(ctx) {
   function panel(container, panelDisposers) {
     const s = study(), m = s.masses;
     const s1 = moPlanSection(container, 'Masses');
+    if (ctx.isolate) ctx.isolate.control(s1, panelDisposers);
     moPlanSlider(s1, { id: 'media-organizer.plan.study.massCount', label: 'Masses', min: 2, max: 48, step: 1, value: m.n, onInput: (v) => { openKey = null; marked = []; setStudy({ masses: { n: v } }, false, true); }, onChange: (v) => setStudy({ masses: { n: v } }, true, false) });
     moPlanSlider(s1, { id: 'media-organizer.plan.study.massSquint', label: 'Squint', min: 0, max: 100, step: 1, value: moSquintPos(m.squint), text: (v) => moSquintText(moSquintAt(v)), onInput: (v) => { openKey = null; marked = []; setStudy({ masses: { squint: moSquintAt(v) } }, false, true); }, onChange: (v) => setStudy({ masses: { squint: moSquintAt(v) } }, true, false) });
     moPlanSlider(s1, { id: 'media-organizer.plan.study.massAmount', label: 'Colour amount', min: 0, max: 100, step: 5, value: m.amount, text: (v) => (v ? `${v}%` : ctx.underName() || 'grey'), onInput: (v) => setStudy({ masses: { amount: v } }, false, true), onChange: (v) => setStudy({ masses: { amount: v } }, true, false) });

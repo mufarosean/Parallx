@@ -8,6 +8,8 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error a plain JS module of the extension
 import { moSquintAt, moSquintPos } from '../../ext/media-organizer/plan-kit.js';
+// @ts-expect-error a plain JS module of the extension
+import { moPlanIsolateNormalize } from '../../ext/media-organizer/plan-isolate.js';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +27,8 @@ function loadPure(): Record<string, any> {
   const names = ['MO_PLAN_CANVAS_PRESETS', 'moPlanDefaultRecipe', 'moPlanNormalizeRecipe', 'moPlanRotatedSize', 'moPlanFitCrop', 'moPlanCanvasFor', 'moPlanClampCrop',
     'moPlanGridLines', 'moPlanHex', 'moPlanOutputName'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
+  // the block's one import comes in as a parameter
+  return new Function('moPlanIsolateNormalize', src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)(moPlanIsolateNormalize);
 }
 const P = loadPure();
 const pixels = (...runs: [number, number[]][]) => { const out: number[] = []; for (const [n, c] of runs) for (let i = 0; i < n; i++) out.push(c[0], c[1], c[2], 255); return new Uint8Array(out); };

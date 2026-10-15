@@ -51,23 +51,27 @@ export function moStudyAnalyse(px, w, h) {
   const n = w * h;
   const L = new Float32Array(n), A = new Float32Array(n), B = new Float32Array(n), V = new Float32Array(n);
   const hist = new Array(101).fill(0);
+  // A pixel the picture leaves clear (a plan's ignored background) is not studied: `keep` says which are.
+  let keep = null, kept = n;
+  for (let i = 0; i < n; i++) if (px[i * 4 + 3] < 128) { keep = keep || new Uint8Array(n).fill(1); keep[i] = 0; kept--; }
+  if (keep && kept < 16) { keep = null; kept = n; } // nearly nothing left: study the whole picture
   for (let i = 0; i < n; i++) {
     const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2];
     const o = moOklab(r, g, b);
     L[i] = o[0]; A[i] = o[1]; B[i] = o[2]; V[i] = moStudyValue(r, g, b);
-    hist[Math.max(0, Math.min(100, Math.round(V[i] * 10)))]++;
+    if (!keep || keep[i]) hist[Math.max(0, Math.min(100, Math.round(V[i] * 10)))]++;
   }
   // Otsu: the value cut that best separates two families.
   let sum = 0; for (let t = 0; t <= 100; t++) sum += t * hist[t];
   let sB = 0, wB = 0, best = 0, cut = 50;
   for (let t = 0; t <= 100; t++) {
     wB += hist[t]; if (!wB) continue;
-    const wF = n - wB; if (!wF) break;
+    const wF = kept - wB; if (!wF) break;
     sB += t * hist[t];
     const between = wB * wF * (sB / wB - (sum - sB) / wF) ** 2;
     if (between > best) { best = between; cut = t; }
   }
-  return { w, h, n, px, L, A, B, V, split: Math.round(cut / 5) / 2 + 0.5, cache: {} };
+  return { w, h, n, px, L, A, B, V, keep, kept, split: Math.round(cut / 5) / 2 + 0.5, cache: {} };
 }
 
 /** A box blur of one channel (squinting), radius in pixels. */
@@ -104,11 +108,12 @@ function squinted(P, amount) {
  * features: one Float32Array per dimension. Returns { label, parent } at
  * maxK groups; moStudyAtLevel reads any smaller number from it.
  */
-export function moStudyBisect(features, n, maxK, sample) {
+export function moStudyBisect(features, n, maxK, sample, keep) {
   const dims = features.length;
   const label = new Int32Array(n);
   const parent = [-1];
-  const members = [Array.from({ length: n }, (_, i) => i)];
+  const members = [keep ? Array.from({ length: n }, (_, i) => i).filter((i) => keep[i]) : Array.from({ length: n }, (_, i) => i)];
+  if (keep) for (let i = 0; i < n; i++) if (!keep[i]) label[i] = -1; // left out: in no group
   const meanOf = (idx) => { const m = new Float64Array(dims); for (const i of idx) for (let d = 0; d < dims; d++) m[d] += features[d][i]; for (let d = 0; d < dims; d++) m[d] /= idx.length || 1; return m; };
   const dist = (i, q) => { let s = 0; for (let d = 0; d < dims; d++) { const e = features[d][i] - q[d]; s += e * e; } return s; };
   const sse = (idx) => { const m = meanOf(idx); let s = 0; for (const i of idx) s += dist(i, m); return s; };
@@ -167,19 +172,21 @@ export function moStudyMajority(lbl, w, h, passes) {
   return cur;
 }
 
-const paint = (P, fn) => { const out = new Uint8ClampedArray(P.n * 4); for (let i = 0; i < P.n; i++) { const c = fn(i); out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2]; out[i * 4 + 3] = 255; } return out; };
+// A study's picture; what was left out is the flat grey the plan shows its ignored background in.
+const paint = (P, fn) => { const out = new Uint8ClampedArray(P.n * 4); for (let i = 0; i < P.n; i++) { const c = P.keep && !P.keep[i] ? [128, 128, 128] : fn(i); out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2]; out[i * 4 + 3] = 255; } return out; };
+const kept = (P, i) => !P.keep || P.keep[i];
 
 /** Light and shadow: two families split at value `split`, each in its own average colour. */
 export function moStudyLight(P, split, show) {
   const sum = [[0, 0, 0, 0], [0, 0, 0, 0]];
-  for (let i = 0; i < P.n; i++) { const f = P.V[i] >= split ? 0 : 1; sum[f][0] += P.L[i]; sum[f][1] += P.A[i]; sum[f][2] += P.B[i]; sum[f][3]++; }
+  for (let i = 0; i < P.n; i++) { if (!kept(P, i)) continue; const f = P.V[i] >= split ? 0 : 1; sum[f][0] += P.L[i]; sum[f][1] += P.A[i]; sum[f][2] += P.B[i]; sum[f][3]++; }
   const fam = sum.map((x) => (x[3] ? [x[0] / x[3], x[1] / x[3], x[2] / x[3]] : [0.5, 0, 0]));
   const rgb = fam.map((f) => moFromOklab(f[0], f[1], f[2]));
   const pixels = paint(P, (i) => { const f = P.V[i] >= split ? 0 : 1; return show === 'bw' ? (f ? [20, 20, 20] : [235, 235, 235]) : rgb[f]; });
   const wl = moStudyWarmth(fam[0][1], fam[0][2]), ws = moStudyWarmth(fam[1][1], fam[1][2]);
   return {
     pixels,
-    families: [{ rgb: rgb[0], share: sum[0][3] / P.n }, { rgb: rgb[1], share: sum[1][3] / P.n }],
+    families: [{ rgb: rgb[0], share: sum[0][3] / (P.kept || P.n) }, { rgb: rgb[1], share: sum[1][3] / (P.kept || P.n) }],
     warmer: wl > ws + 0.004 ? 'light' : ws > wl + 0.004 ? 'shadow' : 'neither',
   };
 }
@@ -218,15 +225,19 @@ export function moStudyMasses(P, opts, sel = -1) {
   const key = `m-s${sq}`;
   if (!P.cache[key]) {
     const src = sq > 0 ? squinted(P, sq) : P;
-    P.cache[key] = moStudyBisect([Float32Array.from(src.L), src.A.map((v) => v * 2.6), src.B.map((v) => v * 2.6)], P.n, 48, 4000);
+    P.cache[key] = moStudyBisect([Float32Array.from(src.L), src.A.map((v) => v * 2.6), src.B.map((v) => v * 2.6)], P.n, 48, 4000, P.keep);
   }
   // The shapes at this count are kept: colour and amount change only the colours.
   const lk = `l-s${sq}-${opts.n}`;
-  if (!P.cache[lk]) { const raw = moStudyAtLevel(P.cache[key], opts.n); P.cache[lk] = sq > 0 ? moStudyMajority(raw, P.w, P.h, sq >= 40 ? 3 : 2) : raw; }
+  if (!P.cache[lk]) {
+    const raw = moStudyAtLevel(P.cache[key], opts.n), lb = sq > 0 ? moStudyMajority(raw, P.w, P.h, sq >= 40 ? 3 : 2) : raw;
+    if (P.keep) for (let i = 0; i < P.n; i++) lb[i] = P.keep[i] ? (lb[i] >= 0 ? lb[i] : raw[i]) : -1; // smoothing does not cross into what was left out
+    P.cache[lk] = lb;
+  }
   const lbl = P.cache[lk];
   let k = 0; for (let i = 0; i < lbl.length; i++) if (lbl[i] >= k) k = lbl[i] + 1;
   const groups = Array.from({ length: k }, () => []);
-  for (let i = 0; i < P.n; i++) groups[lbl[i]].push(i);
+  for (let i = 0; i < P.n; i++) if (lbl[i] >= 0) groups[lbl[i]].push(i);
   const lab = groups.map((idx) => {
     if (!idx.length) return [0.5, 0, 0];
     if (opts.colour === 'average') { let L = 0, a = 0, b = 0; for (const i of idx) { L += P.L[i]; a += P.A[i]; b += P.B[i]; } return [L / idx.length, a / idx.length, b / idx.length]; }
@@ -243,8 +254,8 @@ export function moStudyMasses(P, opts, sel = -1) {
   const mono = (L) => { if (!u) return [L, 0, 0]; const t = Math.max(0, 1 - Math.abs(L - u[0]) / Math.max(u[0], 1 - u[0])); return [L, u[1] * (0.35 + 0.65 * t), u[2] * (0.35 + 0.65 * t)]; };
   const amt = Math.max(0, Math.min(100, Number(opts.amount ?? 100))) / 100;
   const shown = lab.map((c) => { const m = mono(c[0]); return [c[0], m[1] + (c[1] - m[1]) * amt, m[2] + (c[2] - m[2]) * amt]; });
-  let wSum = 0; for (let i = 0; i < P.n; i++) wSum += moStudyWarmth(P.A[i], P.B[i]);
-  const meanWarm = wSum / Math.max(1, P.n);
+  let wSum = 0; for (let i = 0; i < P.n; i++) if (kept(P, i)) wSum += moStudyWarmth(P.A[i], P.B[i]);
+  const meanWarm = wSum / Math.max(1, P.kept || P.n);
   const tempOf = (c) => { const d = moStudyWarmth(c[1], c[2]) - meanWarm; return d > 0.012 ? 'warm' : d < -0.012 ? 'cool' : ''; };
   const rgb = shown.map((c) => moFromOklab(c[0], c[1], c[2]));
   const drawn = lab.map((c, j) => {
@@ -253,7 +264,7 @@ export function moStudyMasses(P, opts, sel = -1) {
     return rgb[j];
   });
   const pixels = paint(P, (i) => { const l = lbl[i]; const c = drawn[l]; return sel >= 0 && l !== sel ? [c[0] * 0.25 + 30, c[1] * 0.25 + 30, c[2] * 0.25 + 30] : c; });
-  const masses = lab.map((c, j) => ({ j, rgb: rgb[j], lab: c, value: moStudyValue(...rgb[j]), intensity: moStudyIntensity(shown[j][1], shown[j][2]), share: groups[j].length / P.n, temp: tempOf(c) }))
+  const masses = lab.map((c, j) => ({ j, rgb: rgb[j], lab: c, value: moStudyValue(...rgb[j]), intensity: moStudyIntensity(shown[j][1], shown[j][2]), share: groups[j].length / (P.kept || P.n), temp: tempOf(c) }))
     .filter((m) => m.share > 0).sort((a, b) => b.share - a.share);
   return { pixels, labels: lbl, masses };
 }

@@ -110,6 +110,10 @@ export const MO_PLAN_CSS = `
 /* Masks (edit-masks.js): the layer over the picture, and the Masks panel */
 .mo-mk-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .mo-mk-layer.is-brush { pointer-events: auto; cursor: none; touch-action: none; }
+.mo-mk-layer.is-pick { pointer-events: auto; cursor: crosshair; touch-action: none; }
+.mo-mk-status { margin: var(--px-space-1) var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-secondary); }
+.mo-mk-words { display: flex; align-items: flex-end; gap: var(--px-space-2); margin: 0 var(--px-space-3) var(--px-space-2); }
+.mo-mk-words > :first-child { flex: 1; min-width: 0; }
 .mo-mk-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
 .mo-mk-lines, .mo-mk-handles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .mo-mk-h { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: var(--px-radius-full); background: var(--px-viewer-ink); border: 2px solid var(--px-accent); box-shadow: 0 0 0 1px var(--px-viewer-bar); pointer-events: auto; cursor: grab; touch-action: none; scale: calc(1 / var(--mo-plan-zoom, 1)); }

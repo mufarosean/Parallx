@@ -33,6 +33,8 @@ uniform sampler2D u_blurS;
 uniform sampler2D u_blurL;
 uniform sampler2D u_curve;
 uniform sampler2D u_squint;    // a painting plan's squint: the source blurred as asked (squintCopy)
+uniform sampler2D u_matte;     // a plan's Ignore Background: its subject, over the source like a mask
+uniform float u_matteOn;       // 0 off, 1 the background flat grey, 2 the background clear (for reading)
 uniform float u_squintOn;
 uniform vec3 u_v0, u_v1, u_m0, u_m1;
 uniform vec2 u_texel, u_outSize;
@@ -118,6 +120,7 @@ vec3 grade(vec3 c) {
 }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 float maskAt(vec2 s) { vec3 q = vec3(s, 1.0); return texture2D(u_mask, vec2(dot(u_mk0, q), dot(u_mk1, q))).r; }
+float matteAt(vec2 s) { vec3 q = vec3(s, 1.0); return texture2D(u_matte, vec2(dot(u_mk0, q), dot(u_mk1, q))).r; }
 void main() {
   vec3 q = vec3(v_uv, 1.0);
   vec2 o = vec2(dot(u_v0, q), dot(u_v1, q));
@@ -230,5 +233,7 @@ void main() {
   if (outside) c *= 0.3;
   if (u_maskOn > 0.5) c = mix(texture2D(u_prev, gl_FragCoord.xy / u_passSize).rgb, c, outside ? 0.0 : maskAt(s));
   if (u_split >= 0.0 && v_uv.x < u_split) c = orig * (outside ? 0.3 : 1.0);
-  gl_FragColor = vec4(c, (u_opaque > 0.5 || outside) ? 1.0 : t.a);
+  float alpha = (u_opaque > 0.5 || outside) ? 1.0 : t.a;
+  if (u_matteOn > 0.5 && !outside) { float mt = matteAt(s); if (u_matteOn < 1.5) c = mix(vec3(0.5), c, mt); else alpha *= step(0.5, mt); }
+  gl_FragColor = vec4(c, alpha);
 }`;

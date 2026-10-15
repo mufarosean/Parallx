@@ -1,7 +1,9 @@
 // edit-masks.js — masks: one part of a photo edited on its own (docs/IMAGE_EDITOR_MASKS.md).
-// A mask is made of parts, a brush, a linear gradient or a radial gradient, each
-// added, taken away or intersected, and has its own settings: the Edit tab's
-// controls plus Blur. The Image Editor shows it as its Masks tab, a painting plan
+// A mask is made of parts, each added, taken away or intersected: a brush, a
+// linear or radial gradient, or one a model finds (edit-select.js): the subject or
+// its background, an object clicked, what words name (the sky), or what is
+// farther than a distance. A mask has its own settings: the Edit tab's controls
+// plus Blur. The Image Editor shows it as its Masks tab, a painting plan
 // in its Photo step; both hand in how the picture sits on screen.
 //
 // Masks live in the recipe (`masks`), in the photo's own pixel space (0..1 across
@@ -11,8 +13,15 @@
 
 import { moEl } from './dom.js';
 import { moPointKeys } from './keys.js';
+import { MO_SELECT_MODELS, moClipVocab, moFieldPng, moFieldResize, moSelectBytes, moSelectCancel, moSelectSetUp, moSelectState, moSelector } from './edit-select.js';
 
-export const MO_MASK_PARTS = { brush: ['Brush', 'paintbrush'], linear: ['Linear Gradient', 'rows-3'], radial: ['Radial Gradient', 'circle-dot'] };
+export const MO_MASK_PARTS = { subject: ['Subject', 'user-round'], object: ['Object', 'mouse-pointer-click'], words: ['Words', 'text-cursor-input'], distance: ['Distance', 'mountain-snow'],
+  brush: ['Brush', 'paintbrush'], linear: ['Linear Gradient', 'rows-3'], radial: ['Radial Gradient', 'circle-dot'] };
+// The parts a model finds keep their result as an image (a field) named by its content: <hash>.png.
+const MODEL_KINDS = new Set(['subject', 'object', 'words', 'distance']);
+const FILE_RE = /^[0-9a-f]{24}\.png$/;
+/** What a part is called: Background is the subject the other way round, Sky the word sky. */
+export const moPartLabel = (p) => (p.kind === 'subject' && p.invert ? 'Background' : p.kind === 'words' ? (p.text === 'sky' ? 'Sky' : p.text ? `“${p.text}”` : 'Words') : MO_MASK_PARTS[p.kind][0]);
 // [key, label, min, max]: the Edit tab's controls in its own units (rest 0), and Blur.
 export const MO_MASK_ADJUST = [['exposure', 'Exposure', -2, 2], ['contrast', 'Contrast', -1, 1], ['highlights', 'Highlights', -1, 1], ['shadows', 'Shadows', -1, 1],
   ['whites', 'Whites', -1, 1], ['blacks', 'Blacks', -1, 1], ['warmth', 'Temperature', -1, 1], ['tint', 'Tint', -1, 1], ['vibrance', 'Vibrance', -1, 1],
@@ -25,7 +34,8 @@ export const MO_MASK_LOOKS = [
 ];
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
-const white = (alpha) => `rgba(${[255, 255, 255, alpha].join(', ')})`; // only the alpha counts: a mask is how much
+const colour = (r, g, b, a) => `rgba(${[r, g, b, a].join(", ")})`; // colours drawn over a photo are data, built from numbers
+const white = (alpha) => colour(255, 255, 255, alpha); // only the alpha counts: a mask is how much
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a || 1e-9), 0, 1); return t * t * (3 - 2 * t); };
 
 /** A recipe's masks with everything they need, from whatever was stored. */
@@ -39,6 +49,10 @@ export function moMasksNormalize(list) {
       const q = { kind: p.kind, op: ['add', 'sub', 'and'].includes(p.op) ? p.op : 'add', invert: p.invert === true };
       if (p.kind === 'linear') Object.assign(q, { x0: num(p.x0, 0.5), y0: num(p.y0, 0.2), x1: num(p.x1, 0.5), y1: num(p.y1, 0.6) });
       if (p.kind === 'radial') Object.assign(q, { cx: num(p.cx, 0.5), cy: num(p.cy, 0.5), rx: Math.max(0.005, num(p.rx, 0.25)), ry: Math.max(0.005, num(p.ry, 0.25)), feather: clamp(num(p.feather, 0.5), 0, 1) });
+      if (MODEL_KINDS.has(p.kind)) q.file = FILE_RE.test(String(p.file)) ? String(p.file) : '';
+      if (p.kind === 'object') Object.assign(q, { clicks: (Array.isArray(p.clicks) ? p.clicks : []).filter((c) => Array.isArray(c) && c.length === 3).slice(0, 24).map(([u, v, add]) => [clamp(num(u, 0), 0, 1), clamp(num(v, 0), 0, 1), add ? 1 : 0]), box: Array.isArray(p.box) && p.box.length === 4 ? p.box.map((v) => clamp(num(v, 0), 0, 1)) : null });
+      if (p.kind === 'words') q.text = String(p.text || '').slice(0, 40);
+      if (p.kind === 'distance') Object.assign(q, { from: clamp(num(p.from, 0.5), 0, 1), soft: clamp(num(p.soft, 0.3), 0.02, 1) });
       if (p.kind === 'brush') q.strokes = (Array.isArray(p.strokes) ? p.strokes : []).filter((s) => s && Array.isArray(s.pts)).map((s) => ({ pts: s.pts.filter((x) => Array.isArray(x) && x.length === 2).map(([u, v]) => [num(u, 0), num(v, 0)]), r: Math.max(0.0005, num(s.r, 0.02)), feather: clamp(num(s.feather, 0.6), 0, 1), flow: clamp(num(s.flow, 0.8), 0.02, 1), erase: s.erase === true }));
       parts.push(q);
     }
@@ -50,15 +64,47 @@ export function moMasksNormalize(list) {
   return out;
 }
 
+// ── the images a model's parts keep ──
+// Loaded on first need through the host's loader (moMaskImageLoader); every load wakes whoever drew without it.
+const images = new Map(); // file -> { w, h, a } | 'loading' | 'missing'
+const imageListeners = new Set();
+let imageLoader = null, imagesVersion = 0;
+/** loader(file) -> Promise<{ w, h, a }>: read a mask image from where the host keeps them. */
+export function moMaskImageLoader(loader) { imageLoader = loader; }
+export function moMaskImagePut(file, field) { images.set(file, field); imagesVersion++; for (const f of imageListeners) { try { f(); } catch { /* gone */ } } }
+/** Called after an image arrives, so a picture drawn without it is drawn again. */
+export function moMaskOnImages(fn) { imageListeners.add(fn); return () => imageListeners.delete(fn); }
+function imageOf(file) {
+  const x = images.get(file);
+  if (x && x.a) return x;
+  if (!x && file && imageLoader) { images.set(file, 'loading'); imageLoader(file).then((f) => moMaskImagePut(file, f), () => images.set(file, 'missing')); }
+  return null;
+}
+/** The image files a recipe's masks name (for keeping them when old files are swept). */
+export function moMaskFiles(masks) { return (Array.isArray(masks) ? masks : []).flatMap((m) => (m && Array.isArray(m.parts) ? m.parts : []).map((p) => p && p.file).filter((f) => FILE_RE.test(String(f)))); }
+/** Every image the masks need, loaded (before a save draws them). */
+export async function moMaskImagesReady(masks) {
+  await Promise.all(moMaskFiles(masks).map(async (f) => { if (imageOf(f) || !imageLoader) return; try { moMaskImagePut(f, await imageLoader(f)); } catch { images.set(f, 'missing'); } }));
+}
+
 // ── the mask as numbers ──
 const partCache = new WeakMap(); // a part -> { key, a, canvas, drawn }
 function partField(p, w, h) {
-  const geo = p.kind === 'brush' ? `${p.strokes.length}:${p.strokes.length ? p.strokes[p.strokes.length - 1].pts.length : 0}` : JSON.stringify(p);
+  const img = MODEL_KINDS.has(p.kind) ? imageOf(p.file) : null;
+  const geo = p.kind === 'brush' ? `${p.strokes.length}:${p.strokes.length ? p.strokes[p.strokes.length - 1].pts.length : 0}` : JSON.stringify(p) + (img ? '+' : '');
   const key = `${w}x${h}|${geo}|${p.invert}`;
   let c = partCache.get(p);
   if (c && c.key === key) return c.a;
   let a = c && c.a && c.a.length === w * h ? c.a : new Float32Array(w * h);
-  if (p.kind === 'linear') {
+  if (MODEL_KINDS.has(p.kind)) {
+    // a model's part: its image over the photo; Distance takes what is farther than `from`, softly
+    if (!img) a.fill(0);
+    else {
+      const r = moFieldResize(img.a, img.w, img.h, w, h);
+      if (p.kind === 'distance') for (let i = 0; i < a.length; i++) a[i] = smooth(p.from - p.soft / 2, p.from + p.soft / 2, 1 - r[i]);
+      else a.set(r);
+    }
+  } else if (p.kind === 'linear') {
     const x0 = p.x0 * w, y0 = p.y0 * h, dx = (p.x1 - p.x0) * w, dy = (p.y1 - p.y0) * h, L2 = dx * dx + dy * dy || 1;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) a[y * w + x] = 1 - smooth(0, 1, ((x + 0.5 - x0) * dx + (y + 0.5 - y0) * dy) / L2);
   } else if (p.kind === 'radial') {
@@ -129,7 +175,7 @@ const engineKeys = new WeakMap(); // an engine -> Map(mask id -> the key it hold
 /**
  * The engine's mask passes for a recipe's masks: each visible mask with settings,
  * its look being `base` with the mask's settings added. Masks the engine does not
- * hold yet (or holds changed) are sent to it first; `alsoKeep` (Show Mask's mask) stays held.
+ * hold yet (or holds changed) are sent to it first; `alsoKeep` (Show Mask's mask, a plan's subject; one id or a list) stays held.
  */
 export function moMaskPasses(engine, masks, base, srcW, srcH, alsoKeep) {
   const list = moMasksNormalizeCached(masks);
@@ -137,11 +183,11 @@ export function moMaskPasses(engine, masks, base, srcW, srcH, alsoKeep) {
   const held = engineKeys.get(engine) || new Map();
   engineKeys.set(engine, held);
   const { w, h } = moMaskSize(srcW, srcH);
-  const out = [], keep = new Set(alsoKeep ? [alsoKeep] : []);
+  const out = [], keep = new Set([].concat(alsoKeep || []).filter(Boolean));
   for (const m of list) {
     if (!m.show || !MO_MASK_ADJUST.some(([k]) => Math.abs(m.adjust[k]) > 1e-6)) continue;
     keep.add(m.id);
-    const key = `${w}x${h}|${JSON.stringify(m.parts)}|${m.invert}`;
+    const key = `${w}x${h}|${imagesVersion}|${JSON.stringify(m.parts)}|${m.invert}`;
     if (held.get(m.id) !== key) {
       const f = moMaskField(m, w, h), bytes = new Uint8Array(w * h);
       for (let i = 0; i < bytes.length; i++) bytes[i] = Math.round(f[i] * 255);
@@ -162,7 +208,7 @@ export function moMaskEnsure(engine, mask, srcW, srcH) {
   const held = engineKeys.get(engine) || new Map();
   engineKeys.set(engine, held);
   const { w, h } = moMaskSize(srcW, srcH);
-  const key = `${w}x${h}|${JSON.stringify(mask.parts)}|${mask.invert}`;
+  const key = `${w}x${h}|${imagesVersion}|${JSON.stringify(mask.parts)}|${mask.invert}`;
   if (held.get(mask.id) !== key) {
     const f = moMaskField(mask, w, h), bytes = new Uint8Array(w * h);
     for (let i = 0; i < bytes.length; i++) bytes[i] = Math.round(f[i] * 255);
@@ -175,7 +221,13 @@ export function moMaskEnsure(engine, mask, srcW, srcH) {
 function moMasksNormalizeCached(masks) { return Array.isArray(masks) ? masks : []; }
 
 // ── the Masks tool ──
-const ACTIONS = ['masksNew', 'masksSelect', 'masksShow', 'masksMore', 'masksPart', 'masksAddPart', 'masksRemovePart', 'masksLook', 'masksReset', 'masksOverlay'];
+const ACTIONS = ['masksNew', 'masksSelect', 'masksShow', 'masksMore', 'masksPart', 'masksAddPart', 'masksRemovePart', 'masksLook', 'masksReset', 'masksOverlay',
+  'masksSetUp', 'masksCancelSetUp', 'masksClearClicks', 'masksFindWords'];
+// The menus' ways to start a part: [kind, label, what the part starts with]; null is a line between.
+const MENU = [['subject', 'Subject', {}], ['subject', 'Background', { invert: true }], ['words', 'Sky', { text: 'sky' }], ['object', 'Object', {}], ['words', 'Words…', {}], ['distance', 'Distance', {}], null,
+  ['brush', 'Brush', {}], ['linear', 'Linear Gradient', {}], ['radial', 'Radial Gradient', {}]];
+const BUSY = { subject: 'Finding the subject. The first time takes about ten seconds.', object: 'Selecting', words: 'Looking for it', distance: 'Measuring how far things are' };
+const way = (p) => (p && MODEL_KINDS.has(p.kind) ? p.kind : null);
 // Each Masks tool (the editor's, a plan's) is named in its buttons' commands, so the one clicked answers.
 const open = new Map();
 let seq = 0;
@@ -191,6 +243,8 @@ export function moEditMasksActivate(api) {
  *   hostPoint(clientX, clientY) -> { x, y } in host pixels and hostScale() -> screen pixels per host pixel,
  *   for a host that is scaled or mirrored (a plan's zoomed view); without them the host is as it shows }.
  * The brush's size is on the screen: zoomed in, it paints finer.
+ * select (when models can run): { bridge (the model runner), image() -> the photo in its own pixels,
+ *   store(name, bytes) -> keeps a mask image where the loader (moMaskImageLoader) finds it }.
  */
 export function moEditMasks(ctx) {
   const { api } = ctx;
@@ -202,6 +256,53 @@ export function moEditMasks(ctx) {
   const cur = () => masks()[S.sel] || null;
   const part = () => { const m = cur(); return m ? m.parts[Math.min(S.part, m.parts.length - 1)] || null : null; };
   const id = (s) => `${ctx.idStem}.${s}`;
+  // What the models need and are doing: each way's state, a download, the part being found, a note on the last try.
+  const SEL = { ways: {}, download: null, downloadError: '', busy: null, note: '', selector: null, img: null, seq: 0, words: null, drag: null };
+  const tried = new WeakSet();
+  const selector = () => { const img = ctx.select && ctx.select.image(); if (!img) return null; if (SEL.img !== img) { SEL.img = img; SEL.selector = moSelector(ctx.select.bridge, img); } return SEL.selector; };
+  const checkWay = async (w) => { SEL.ways[w] = await moSelectState(ctx.select && ctx.select.bridge, w); return SEL.ways[w]; };
+  /** Run a model's part and keep what it found. */
+  async function find(p) {
+    const w = way(p);
+    if (!w || !ctx.select) return;
+    tried.add(p);
+    const st = SEL.ways[w] && SEL.ways[w].state === 'ready' ? SEL.ways[w] : await checkWay(w);
+    if (st.state !== 'ready') { ctx.afterChange(false); return; } // the panel shows how to set it up
+    const sel = selector();
+    if (!sel || (p.kind === 'words' && !p.text)) return;
+    if (p.kind === 'object' && !p.clicks.length && !p.box) { p.file = ''; ctx.afterChange(true); return; }
+    const n = ++SEL.seq;
+    SEL.busy = { part: p }; SEL.note = ''; ctx.afterChange(false);
+    try {
+      let field = null;
+      if (p.kind === 'subject') field = await sel.subject();
+      else if (p.kind === 'object') field = await sel.object(p.clicks, p.box);
+      else if (p.kind === 'distance') field = await sel.distance();
+      else {
+        field = await sel.words(p.text, await moClipVocab());
+        if (field && field.unknown) { SEL.note = `“${p.text}” is not a word the model knows. Try a plainer one.`; field = null; }
+        else if (!field) SEL.note = `Nothing like “${p.text}” was found in this photo.`;
+      }
+      if (n !== SEL.seq) return;
+      if (field) { const png = await moFieldPng(field); await ctx.select.store(png.name, png.bytes); moMaskImagePut(png.name, field); p.file = png.name; } else p.file = '';
+      SEL.busy = null;
+      ctx.afterChange(true);
+    } catch (err) {
+      if (n !== SEL.seq) return;
+      SEL.busy = null; SEL.note = `It did not work: ${(err && err.message) || err}`;
+      ctx.afterChange(false);
+    }
+  }
+  async function setUp(w) {
+    SEL.download = { way: w, received: 0, total: moSelectBytes(w) }; SEL.downloadError = '';
+    ctx.afterChange(false);
+    let last = 0;
+    const r = await moSelectSetUp(ctx.select.bridge, w, (got, total) => { SEL.download = { way: w, received: got, total }; if (Date.now() - last > 500) { last = Date.now(); ctx.afterChange(false); } });
+    SEL.download = null;
+    if (r && r.ok) { SEL.ways[w] = { state: 'ready' }; const p = part(); if (p && way(p) === w) { void find(p); return; } }
+    else SEL.downloadError = r && r.stopped ? 'Cancelled. Nothing was kept.' : `The download did not finish: ${(r && r.error) || 'no answer'}`;
+    ctx.afterChange(false);
+  }
 
   // ── on the picture ──
   const layer = moEl('div', 'mo-mk-layer mo-hidden');
@@ -223,6 +324,14 @@ export function moEditMasks(ctx) {
   const brushR = () => { const ps = ctx.photoSize(); return (S.brush.size / 2) / Math.max(1e-6, ctx.screenPerPhoto()) / Math.max(ps.w, ps.h); };
   const press = ui.onDragPress(layer, (e) => {
     const p = part();
+    if (p && p.kind === 'object' && (e.button === undefined || e.button === 0)) {
+      // a click selects what is under it (Shift: takes it away); a drag draws a box round a thing
+      e.preventDefault();
+      const at = ctx.fromScreen(e.clientX, e.clientY);
+      SEL.drag = { x: e.clientX, y: e.clientY, u: at.u, v: at.v, u1: at.u, v1: at.v, shift: !!e.shiftKey, moved: false };
+      try { layer.setPointerCapture(e.pointerId); } catch { /* the press is gone */ }
+      return;
+    }
     if (!p || p.kind !== 'brush' || (e.button !== undefined && e.button !== 0)) return;
     e.preventDefault();
     const at = ctx.fromScreen(e.clientX, e.clientY);
@@ -233,6 +342,13 @@ export function moEditMasks(ctx) {
   }, { pointerEvents: true });
   disposers.push(() => press.dispose());
   const onMove = (e) => {
+    if (SEL.drag) {
+      const q = ctx.fromScreen(e.clientX, e.clientY);
+      SEL.drag.u1 = q.u; SEL.drag.v1 = q.v;
+      if (Math.hypot(e.clientX - SEL.drag.x, e.clientY - SEL.drag.y) > 6) SEL.drag.moved = true;
+      if (SEL.drag.moved) sync();
+      return;
+    }
     const p = part();
     if (p && p.kind === 'brush') {
       const q = hostPoint(e.clientX, e.clientY);
@@ -244,13 +360,26 @@ export function moEditMasks(ctx) {
     stroke.pts.push([at.u, at.v]);
     ctx.requestRender();
   };
-  const onUp = () => { if (stroke) { stroke = null; ctx.afterChange(true); } };
+  const onUp = () => {
+    const d = SEL.drag, p = part();
+    SEL.drag = null;
+    if (d && p && p.kind === 'object') {
+      if (d.moved) p.box = [Math.min(d.u, d.u1), Math.min(d.v, d.v1), Math.max(d.u, d.u1), Math.max(d.v, d.v1)].map((x) => clamp(x, 0, 1));
+      else p.clicks.push([clamp(d.u, 0, 1), clamp(d.v, 0, 1), d.shift ? 0 : 1]);
+      void find(p);
+      return;
+    }
+    if (stroke) { stroke = null; ctx.afterChange(true); }
+  };
   layer.addEventListener('pointermove', onMove); layer.addEventListener('pointerup', onUp); layer.addEventListener('pointercancel', onUp);
   layer.addEventListener('pointerleave', () => cursor.classList.add('mo-hidden'));
   // The keyboard's brush: the arrows move a point, Enter paints a dab there.
-  disposers.push(moPointKeys(layer, 'Photo. Arrow keys move the brush, Enter paints.', {
+  disposers.push(moPointKeys(layer, 'Photo. Arrow keys move the point, Enter paints or selects, Shift+Enter takes away.', {
     move: (dx, dy) => { keyPoint = keyPoint || { u: 0.5, v: 0.5 }; keyPoint = { u: clamp(keyPoint.u + dx * 0.01, 0, 1), v: clamp(keyPoint.v + dy * 0.01, 0, 1) }; sync(); },
-    take: () => { const p = part(); if (!p || p.kind !== 'brush') return; keyPoint = keyPoint || { u: 0.5, v: 0.5 }; p.strokes.push({ pts: [[keyPoint.u, keyPoint.v]], r: brushR(), feather: S.brush.feather, flow: S.brush.flow, erase: S.brush.erase }); ctx.afterChange(true); },
+    take: (e) => {
+      const p = part();
+      if (p && p.kind === 'object') { keyPoint = keyPoint || { u: 0.5, v: 0.5 }; p.clicks.push([keyPoint.u, keyPoint.v, e && e.shiftKey ? 0 : 1]); void find(p); return; }
+      if (!p || p.kind !== 'brush') return; keyPoint = keyPoint || { u: 0.5, v: 0.5 }; p.strokes.push({ pts: [[keyPoint.u, keyPoint.v]], r: brushR(), feather: S.brush.feather, flow: S.brush.flow, erase: S.brush.erase }); ctx.afterChange(true); },
   }));
   function handle(u, v, cls, label, move) {
     const at = ctx.toScreen(u, v);
@@ -288,8 +417,9 @@ export function moEditMasks(ctx) {
     if (!on) return;
     const p = part();
     layer.classList.toggle('is-brush', !!p && p.kind === 'brush');
+    layer.classList.toggle('is-pick', !!p && p.kind === 'object');
     if (!p || p.kind !== 'brush') cursor.classList.add('mo-hidden');
-    if (layer.tabIndex !== 0 && p && p.kind === 'brush') layer.tabIndex = 0;
+    if (layer.tabIndex !== 0 && p && (p.kind === 'brush' || p.kind === 'object')) layer.tabIndex = 0;
     if (!p) return;
     g.save(); g.scale(dpr, dpr); g.strokeStyle = 'white'; g.lineWidth = 1.5; g.shadowColor = 'black'; g.shadowBlur = 2;
     const line = (a, b, dash) => { g.setLineDash(dash ? [6, 5] : []); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); };
@@ -305,6 +435,15 @@ export function moEditMasks(ctx) {
       handleDisposers.push(handle(p.cx, p.cy, 'is-pin', 'Move the oval', (u, v) => { p.cx = u; p.cy = v; }));
       handleDisposers.push(handle(p.cx + p.rx, p.cy, '', 'Oval width', (u) => { p.rx = Math.max(0.005, Math.abs(u - p.cx)); }));
       handleDisposers.push(handle(p.cx, p.cy - p.ry, '', 'Oval height', (u, v) => { p.ry = Math.max(0.005, Math.abs(p.cy - v)); }));
+    } else if (p.kind === 'object') {
+      const box = SEL.drag && SEL.drag.moved ? [SEL.drag.u, SEL.drag.v, SEL.drag.u1, SEL.drag.v1] : p.box;
+      if (box) { const a = ctx.toScreen(box[0], box[1]), b = ctx.toScreen(box[2], box[3]); g.setLineDash([6, 5]); g.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); g.setLineDash([]); }
+      for (const [u, v, add] of p.clicks) {
+        const q = ctx.toScreen(u, v);
+        g.beginPath(); g.arc(q.x, q.y, 6, 0, Math.PI * 2); g.fillStyle = add ? colour(46, 204, 113, 0.95) : colour(231, 76, 60, 0.95); g.fill(); g.stroke();
+        g.beginPath(); g.moveTo(q.x - 3, q.y); g.lineTo(q.x + 3, q.y); if (add) { g.moveTo(q.x, q.y - 3); g.lineTo(q.x, q.y + 3); } g.stroke();
+      }
+      if (keyPoint && document.activeElement === layer) { const q = ctx.toScreen(keyPoint.u, keyPoint.v); g.beginPath(); g.arc(q.x, q.y, 9, 0, Math.PI * 2); g.stroke(); }
     } else if (keyPoint && document.activeElement === layer) {
       const q = ctx.toScreen(keyPoint.u, keyPoint.v);
       placeCursor(q.x, q.y);
@@ -319,7 +458,51 @@ export function moEditMasks(ctx) {
     for (let i = 0; i < w * h; i++) { const v = f[i] * 255; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
     canvas.width = w; canvas.height = h; canvas.getContext('2d').putImageData(new ImageData(d, w, h), 0, 0);
   }
-  const partsText = (m) => m.parts.map((p, j) => (j ? (p.op === 'sub' ? '− ' : p.op === 'and' ? '∩ ' : '+ ') : '') + MO_MASK_PARTS[p.kind][0]).join(' ') + (m.invert ? ', inverted' : '');
+  const partsText = (m) => m.parts.map((p, j) => (j ? (p.op === 'sub' ? '− ' : p.op === 'and' ? '∩ ' : '+ ') : '') + moPartLabel(p)).join(' ') + (m.invert ? ', inverted' : '');
+  /** A model's part in the panel: how to set it up, or its own controls and what it is doing. */
+  function modelPanel(cover, p, panelDisposers) {
+    const w = way(p), info = MO_SELECT_MODELS[w], st = SEL.ways[w];
+    const status = (text) => cover.appendChild(moEl('div', 'mo-mk-status', { role: 'status', textContent: text }));
+    if (!ctx.select) { status(`${info.title} cannot run here.`); return; }
+    if (!st) { status('Checking'); void checkWay(w).then(() => ctx.afterChange(false)); return; }
+    if (st.state !== 'ready') {
+      const card = moEl('div', 'mo-edit-setup'), dl = SEL.download && SEL.download.way === w ? SEL.download : null, mb = (b) => Math.round(b / 1048576);
+      if (st.state === 'model') {
+        card.append(moEl('div', 'mo-edit-setup-title', { textContent: `${info.title} needs a one-time download` }), moEl('p', null, { textContent: info.does }),
+          moEl('p', null, { textContent: `${info.model} runs on this computer; photos are never sent anywhere. ${mb(st.missing || moSelectBytes(w))} MB, once.` }));
+        if (dl) {
+          const bar = moEl('div', 'mo-edit-progress'), fill = moEl('div', 'mo-edit-progress-fill');
+          fill.style.width = `${Math.round((dl.received / Math.max(1, dl.total)) * 100)}%`; bar.appendChild(fill);
+          card.append(bar, moEl('p', null, { textContent: `Downloading · ${mb(dl.received)} of ${mb(dl.total)} MB` }));
+          ui.createButton(card, { id: id('cancelSetUp'), label: 'Cancel Download', kind: 'ghost', size: 'sm', command: 'media-organizer.masksCancelSetUp', args: [me, w] });
+        } else {
+          ui.createButton(card, { id: id('setUp'), label: 'Download', kind: 'primary', size: 'sm', command: 'media-organizer.masksSetUp', args: [me, w] });
+          if (SEL.downloadError) card.appendChild(moEl('p', null, { textContent: SEL.downloadError }));
+        }
+      } else card.append(moEl('div', 'mo-edit-setup-title', { textContent: `${info.title} cannot run here` }), moEl('p', null, { textContent: st.state === 'runtime' ? 'The part of Parallx that runs models is missing from this install.' : 'Models cannot run in this build of Parallx.' }));
+      cover.appendChild(card);
+      return;
+    }
+    if (p.kind === 'words') {
+      const input = ui.createInput(null, { id: id('words'), label: 'What to select', placeholder: 'sky, water, trees, hair', value: p.text });
+      SEL.words = input; panelDisposers.push(() => { input.dispose(); if (SEL.words === input) SEL.words = null; });
+      const row = moEl('div', 'mo-mk-words'); row.appendChild(input.element);
+      ui.createButton(row, { id: id('findWords'), label: 'Select', size: 'sm', command: 'media-organizer.masksFindWords', args: [me] });
+      cover.appendChild(row);
+    }
+    if (p.kind === 'object') {
+      cover.appendChild(ctx.kit.hint('Click a thing on the photo to select it. Click again to add, Shift-click to take away, or drag a box round it. From the keyboard: Tab to the photo, the arrows move the point, Enter selects, Shift+Enter takes away.'));
+      if (p.clicks.length || p.box) ui.createButton(cover, { id: id('clearClicks'), label: 'Clear Clicks', icon: 'eraser', kind: 'ghost', size: 'sm', command: 'media-organizer.masksClearClicks', args: [me] });
+    }
+    if (p.kind === 'distance') {
+      cover.appendChild(ctx.kit.sliderRow({ id: 'mask-distance-from', label: 'Farther than', min: 0, max: 1, rest: 0.5, step: 0.01, value: p.from, show: (v) => `${Math.round(v * 100)}%`, parse: (t) => { const n = Number(String(t).replace(/[^\d.]/g, '')); return Number.isFinite(n) ? clamp(n / 100, 0, 1) : null; }, onInput: (v) => { p.from = v; ctx.requestRender(); }, onChange: (v) => { p.from = v; ctx.afterChange(true); } }).row);
+      cover.appendChild(ctx.kit.sliderRow({ id: 'mask-distance-soft', label: 'Softness', min: 0.02, max: 1, rest: 0.3, step: 0.01, value: p.soft, show: (v) => `${Math.round(v * 100)}%`, parse: (t) => { const n = Number(String(t).replace(/[^\d.]/g, '')); return Number.isFinite(n) ? clamp(n / 100, 0.02, 1) : null; }, onInput: (v) => { p.soft = v; ctx.requestRender(); }, onChange: (v) => { p.soft = v; ctx.afterChange(true); } }).row);
+      cover.appendChild(ctx.kit.hint('0% is the nearest thing in the photo, 100% the farthest. Invert this part for what is nearer.'));
+    }
+    if (SEL.busy && SEL.busy.part === p) status(BUSY[p.kind]);
+    else if (SEL.note) status(SEL.note);
+    else if (!p.file && !tried.has(p) && (p.kind === 'subject' || p.kind === 'distance' || (p.kind === 'words' && p.text))) void find(p);
+  }
   function panel(container, panelDisposers) {
     const list = masks();
     if (S.sel >= list.length) S.sel = list.length - 1;
@@ -330,7 +513,7 @@ export function moEditMasks(ctx) {
     const nb = ui.createButton(top, { id: id('new'), label: 'New Mask', icon: 'plus', kind: 'primary', size: 'sm', command: 'media-organizer.masksNew', args: [me] });
     nb.setAttribute('aria-haspopup', 'menu');
     body.appendChild(top);
-    if (!list.length) body.appendChild(ctx.kit.hint('A mask is the part of the photo its own sliders change: paint it with a brush, or fade it in with a gradient.'));
+    if (!list.length) body.appendChild(ctx.kit.hint(ctx.select ? 'A mask is the part of the photo its own sliders change: the subject, the sky, an object you click, or one you paint or fade in.' : 'A mask is the part of the photo its own sliders change: paint it with a brush, or fade it in with a gradient.'));
     const rows = moEl('div', 'mo-mk-list', { role: 'group', 'aria-label': 'Masks' });
     list.forEach((m, k) => {
       const row = moEl('div', 'mo-mk-row');
@@ -352,10 +535,10 @@ export function moEditMasks(ctx) {
     m.parts.forEach((p, j) => {
       const row = moEl('div', 'mo-mk-row');
       const op = j === 0 || p.op === 'add' ? 'Added' : p.op === 'sub' ? 'Taken away' : 'Intersected';
-      const b = ui.createButton(row, { id: id(`part.${j}`), label: MO_MASK_PARTS[p.kind][0], icon: MO_MASK_PARTS[p.kind][1], kind: 'ghost', size: 'sm', command: 'media-organizer.masksPart', args: [me, j], title: op });
+      const b = ui.createButton(row, { id: id(`part.${j}`), label: moPartLabel(p), icon: MO_MASK_PARTS[p.kind][1], kind: 'ghost', size: 'sm', command: 'media-organizer.masksPart', args: [me, j], title: op });
       b.classList.add('mo-mk-part'); b.setAttribute('aria-pressed', String(j === S.part));
       b.prepend(moEl('span', `mo-mk-op${p.op === 'sub' && j ? ' is-sub' : ''}`, { textContent: j === 0 || p.op === 'add' ? '+' : p.op === 'sub' ? '−' : '∩', 'aria-hidden': 'true' }));
-      if (m.parts.length > 1) ui.createIconButton(row, { id: id(`removePart.${j}`), icon: 'x', title: `Remove ${MO_MASK_PARTS[p.kind][0]} From The Mask`, size: 'sm', command: 'media-organizer.masksRemovePart', args: [me, j] });
+      if (m.parts.length > 1) ui.createIconButton(row, { id: id(`removePart.${j}`), icon: 'x', title: `Remove ${moPartLabel(p)} From The Mask`, size: 'sm', command: 'media-organizer.masksRemovePart', args: [me, j] });
       parts.appendChild(row);
     });
     cover.appendChild(parts);
@@ -375,6 +558,7 @@ export function moEditMasks(ctx) {
     }
     if (p && p.kind === 'radial') slider('ovalFeather', 'Feather', 0, 1, 0.5, p.feather, (v) => `${Math.round(v * 100)}%`, (v) => { p.feather = v; ctx.requestRender(); });
     if (p && p.kind === 'linear') cover.appendChild(ctx.kit.hint('Drag the lines on the photo: the edit is full at the first and gone past the last.'));
+    if (p && way(p)) modelPanel(cover, p, panelDisposers);
     if (p) {
       const t = ui.createToggle(null, { id: id('invertPart'), label: 'Invert this part', checked: p.invert, onChange: (on) => { p.invert = on; ctx.afterChange(true); } });
       panelDisposers.push(() => t.dispose());
@@ -395,18 +579,27 @@ export function moEditMasks(ctx) {
   }
 
   // ── what each command does ──
-  const kindItems = (run) => Object.entries(MO_MASK_PARTS).map(([kind, [label, icon]]) => ({ label, icon, onSelect: () => run(kind) }));
+  const kindItems = (run) => MENU.filter((x) => !x || !MODEL_KINDS.has(x[0]) || ctx.select).map((x) => (x ? { label: x[1], icon: MO_MASK_PARTS[x[0]][1], onSelect: () => run(x[0], x[2], x[1]) } : { separator: true }));
+  const startPart = (q) => { if (way(q) && (q.kind !== 'words' || q.text) && q.kind !== 'object') void find(q); };
   const anchor = (sel) => ctx.root.querySelector(`[data-px-id="${sel}"]`);
   const newPart = (kind, op) => {
     const q = { kind, op, invert: false };
     if (kind === 'linear') Object.assign(q, { x0: 0.5, y0: 0.15, x1: 0.5, y1: 0.55 });
     if (kind === 'radial') Object.assign(q, { cx: 0.5, cy: 0.5, rx: 0.25, ry: 0.3, feather: 0.5 });
     if (kind === 'brush') q.strokes = [];
+    if (MODEL_KINDS.has(kind)) q.file = '';
+    if (kind === 'object') Object.assign(q, { clicks: [], box: null });
+    if (kind === 'words') q.text = '';
+    if (kind === 'distance') Object.assign(q, { from: 0.5, soft: 0.3 });
     return q;
   };
   function act(name, ...args) {
     const list = masks(), m = cur();
-    if (name === 'masksNew') return ui.createMenu(anchor(id('new')) || ctx.root, { id: id('newMenu'), label: 'New Mask', items: kindItems((kind) => { list.push({ id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name: `Mask ${list.length + 1}`, show: true, invert: false, parts: [newPart(kind, 'add')], adjust: Object.fromEntries(MO_MASK_ADJUST.map(([k]) => [k, 0])) }); S.sel = list.length - 1; S.part = 0; S.overlay = true; ctx.afterChange(true); }) });
+    if (name === 'masksNew') return ui.createMenu(anchor(id('new')) || ctx.root, { id: id('newMenu'), label: 'New Mask', items: kindItems((kind, extra, label) => {
+      const q = Object.assign(newPart(kind, 'add'), extra);
+      list.push({ id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name: way(q) && !label.endsWith('…') ? label : `Mask ${list.length + 1}`, show: true, invert: false, parts: [q], adjust: Object.fromEntries(MO_MASK_ADJUST.map(([k]) => [k, 0])) });
+      S.sel = list.length - 1; S.part = 0; S.overlay = true; SEL.note = ''; ctx.afterChange(true); startPart(q);
+    }) });
     if (name === 'masksSelect') { S.sel = Number(args[0]) || 0; S.part = (cur() ? cur().parts.length : 1) - 1; return ctx.afterChange(false); }
     if (name === 'masksShow') { const x = list[Number(args[0])]; if (x) { x.show = !x.show; ctx.afterChange(true); } return undefined; }
     if (name === 'masksOverlay') { S.overlay = !S.overlay; return ctx.afterChange(false); }
@@ -423,7 +616,11 @@ export function moEditMasks(ctx) {
     }
     if (!m) return undefined;
     if (name === 'masksPart') { S.part = Number(args[0]) || 0; return ctx.afterChange(false); }
-    if (name === 'masksAddPart') { const op = args[0]; return ui.createMenu(anchor(id(`addPart.${op}`)) || ctx.root, { id: id('partMenu'), label: 'Add To The Mask', items: kindItems((kind) => { m.parts.push(newPart(kind, op)); S.part = m.parts.length - 1; ctx.afterChange(true); }) }); }
+    if (name === 'masksAddPart') { const op = args[0]; return ui.createMenu(anchor(id(`addPart.${op}`)) || ctx.root, { id: id('partMenu'), label: 'Add To The Mask', items: kindItems((kind, extra) => { const q = Object.assign(newPart(kind, op), extra); m.parts.push(q); S.part = m.parts.length - 1; SEL.note = ''; ctx.afterChange(true); startPart(q); }) }); }
+    if (name === 'masksSetUp') return void setUp(args[0]);
+    if (name === 'masksCancelSetUp') { if (ctx.select) moSelectCancel(ctx.select.bridge, args[0]); return undefined; }
+    if (name === 'masksClearClicks') { const p = part(); if (p && p.kind === 'object') { p.clicks = []; p.box = null; p.file = ''; SEL.note = ''; ctx.afterChange(true); } return undefined; }
+    if (name === 'masksFindWords') { const p = part(); if (p && p.kind === 'words' && SEL.words) { p.text = String(SEL.words.value || '').trim().slice(0, 40); SEL.note = ''; void find(p); } return undefined; }
     if (name === 'masksRemovePart') { const j = Number(args[0]); if (m.parts.length > 1 && m.parts[j]) { m.parts.splice(j, 1); S.part = Math.min(S.part, m.parts.length - 1); ctx.afterChange(true); } return undefined; }
     if (name === 'masksLook') { const l = MO_MASK_LOOKS.find((x) => x[0] === args[0]); if (l) { for (const [k] of MO_MASK_ADJUST) m.adjust[k] = 0; Object.assign(m.adjust, l[2]); ctx.afterChange(true); } return undefined; }
     if (name === 'masksReset') { for (const [k] of MO_MASK_ADJUST) m.adjust[k] = 0; return ctx.afterChange(true); }

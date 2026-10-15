@@ -1,8 +1,10 @@
 # Image Editor: masks (local adjustments)
 
-Status: **step 1 built** (2026-10-15, after the owner said yes): brush, linear and radial gradients, Add,
-Subtract, Intersect and Invert, every local control and Blur, in the Image Editor's Masks tab and a
-plan's Photo step, through saves and the 16-bit TIFF. Step 2 (Subject, Sky, Background) is next.
+Status: **steps 1 and 2 built** (2026-10-15, each after the owner said yes). Step 1: brush, linear and
+radial gradients, Add, Subtract, Intersect and Invert, every local control and Blur, in the Image Editor's
+Masks tab and a plan's Photo step, through saves and the 16-bit TIFF. Step 2: Subject, Background, Sky,
+Object, Words and Distance, found by models on this computer, and a plan's Ignore Background.
+Candidates as tested: https://claude.ai/artifact/BJ6hqVnUkjDtSDDEehWyNr
 Mock (works on real photos): https://claude.ai/artifact/9eUmgf1E1f57nfmg5JRbUg
 
 ## Why
@@ -84,6 +86,33 @@ painting plan's Photo step, because both draw their panels from `moEditPanelKit`
 - Each Masks tool (the editor's, a plan's) names itself in its buttons' commands, so the one clicked
   answers.
 - In a mask, settings add to the global look; overlapping masks lay over each other in order.
+
+## As built (step 2)
+
+- `edit-select.js` holds the models and what is done around them. Each was chosen by running
+  candidates on the same photos (the page above):
+  - **Subject** (Background is the same part inverted): BiRefNet, half precision, MIT, 490 MB. It runs
+    on the processor (about 7.5 s on the owner's PC, more the first time while it loads): this runtime's
+    WebGPU refuses one of its layers (17 buffers, 16 allowed).
+  - **Object**: SAM 2.1 small, Apache 2.0, 183 MB. A click selects what is under it, Shift-click takes
+    away, a drag draws a box. The photo is read once (0.3 s), then each click is 0.05 s. The keyboard way:
+    the arrows move a point, Enter selects, Shift+Enter takes away.
+  - **Words and Sky**: CLIPSeg (Apache 2.0, 545 MB) says roughly where the words are; SAM draws the
+    edge from points at its strongest places; too weak a match says nothing was found. The words it
+    knows are in `clip-words.js` (whole words from its vocabulary).
+  - **Distance**: Depth Anything V2 small, Apache 2.0, 99 MB. "Farther than" and "Softness" make the
+    part from the depth; Invert this part takes what is nearer.
+  - SAM's answer is 256 pixels across; a guided filter snaps it to the photo's own edges.
+- Every file is pinned to the commit tested and kept only if its SHA-256 matches. SAM and CLIPSeg's
+  exports keep weights in a file of their own: the model runner fetches and hands those over too.
+- A model's part keeps its result as a grey PNG named by its content, in
+  `.parallx/extensions/media-organizer/masks/`, shared by the editor, plans, the board and saves.
+  Images no stored edit, plan or variation names are deleted when the extension starts.
+- **Ignore Background** (`plan-isolate.js`): one switch, in Values and in Colour. Values and Colour show
+  the background flat grey (the renderer's matte); the masses, palette and light and shadow leave it out
+  (the picture is read with the background clear, and study-math skips clear pixels). It reuses a Subject
+  mask from the Photo step when there is one.
+- DirectML is never used: tried on BiRefNet, it reset the graphics driver.
 
 ## Build stages
 

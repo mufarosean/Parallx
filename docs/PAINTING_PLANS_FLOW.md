@@ -107,6 +107,9 @@ Saved plans keep working: old recipes map onto the new steps, and nothing a user
 - Each module owns its step: `plan-shell.js` (rail, top bar, view), `plan-compose.js` (Compose and
   Transfer), `plan-photo.js` (Photo), `plan-colours.js` (Values, the eyedropper, My Paints),
   `plan-study.js` (Colour), with `plan-kit.js` for the panels' sliders, choices and switches.
+- **Ignore the background** (Values and Colour, one setting): the subject only. The background is grey on
+  screen and left out of the masses, the palette and light and shadow (`plan-isolate.js`, from Select
+  Subject; docs/IMAGE_EDITOR_MASKS.md).
 - A variation remembers the view it was saved from (`show`: photo, values or colour). Its
   thumbnail, the board and the export show that view, and opening it goes to that step. A
   variation saved on Values has its values as its palette on the board (`moValueSwatches`).

@@ -69,7 +69,7 @@ export function moBoxKeys(el, label, box) {
 /**
  * A point on a picture (a colour picker): the arrows move it, Shift for five
  * steps, Enter or Space takes what is under it. `point.move(dx, dy)` in
- * steps; `point.take()`.
+ * steps; `point.take(event)` (Shift+Enter is still a take: the event says so).
  */
 export function moPointKeys(el, label, point) {
   reachable(el, label, 'group', 'ArrowLeft ArrowRight ArrowUp ArrowDown Enter Space');
@@ -77,7 +77,7 @@ export function moPointKeys(el, label, point) {
     if (!own(el, e) || e.ctrlKey || e.metaKey || e.altKey) return;
     const a = ARROW[e.key];
     if (a) point.move(a[0] * (e.shiftKey ? 5 : 1), a[1] * (e.shiftKey ? 5 : 1));
-    else if (e.key === 'Enter' || e.key === ' ') point.take();
+    else if (e.key === 'Enter' || e.key === ' ') point.take(e);
     else return;
     e.preventDefault();
     e.stopPropagation();

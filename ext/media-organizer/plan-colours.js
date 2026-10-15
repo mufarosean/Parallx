@@ -173,6 +173,7 @@ export function moPlanColours(ctx) {
     if (!light) moPlanSlider(s1, { id: 'media-organizer.plan.values', label: 'Values', min: 2, max: 11, step: 1, value: r.levels >= 2 ? r.levels : 11, text: (v) => (v >= 11 ? 'all' : String(v)),
       onInput: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, false), onChange: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, true, true) });
     const split = light ? fromNotan(r.notan) : (ctx.lightSplit() ?? 5);
+    if (ctx.isolate) ctx.isolate.control(s1, panelDisposers);
     moPlanSwitch(ui, s1, { id: 'media-organizer.plan.lightShadow', label: 'Light and shadow only', checked: light, onChange: (on) => setAid(on ? { notan: toNotan(split), levels: 0 } : { notan: 0 }, true) }, panelDisposers);
     if (light) moPlanSlider(s1, { id: 'media-organizer.plan.lightEnds', label: 'Where light ends', min: 1, max: 9, step: 0.5, value: split, text: (v) => `value ${v}`,
       onInput: (v) => setAid({ notan: toNotan(v) }, false), onChange: (v) => setAid({ notan: toNotan(v) }, true, true) });
