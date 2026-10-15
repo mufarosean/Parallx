@@ -23,7 +23,7 @@ describe('settings', () => {
     expect(s.masses.n).toBe(16);
     expect(s.masses.method).toBe('shapes');
     expect(s.keep).toBe(0);
-    expect(S.moStudyNormalize(null).lens).toBe('picture');
+    expect(S.moStudyNormalize(null).lens).toBe('light');
     expect(S.moStudyNormalize(undefined).split).toBeNull();
   });
 });
