@@ -415,7 +415,7 @@ export function moPlanColours(ctx) {
     const r = state.recipe;
     if (!r || !state.plan) return;
     const add = (cls, text, css) => { const m = moEl('span', cls, { textContent: text }); Object.assign(m.style, css); marks.appendChild(m); };
-    if (state.tool === 'transfer') {
+    if (state.tool === 'transfer' && r.overlays.gridLabels !== false) {
       const step = r.overlays.gridInches > 0 ? r.overlays.gridInches : 1, g = ctx.gridLines(state.plan.canvas_w, state.plan.canvas_h, step);
       for (let i = 0; i < g.cols; i++) add('mo-pc-gl mo-pc-gl--col', String(i + 1), { left: `${Math.min(100, ((i + 0.5) * step * 100) / state.plan.canvas_w)}%` });
       for (let j = 0; j < g.rows; j++) add('mo-pc-gl mo-pc-gl--row', String.fromCharCode(65 + (j % 26)), { top: `${Math.min(100, ((j + 0.5) * step * 100) / state.plan.canvas_h)}%` });

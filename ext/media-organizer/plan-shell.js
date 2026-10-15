@@ -19,7 +19,7 @@ export const MO_PLAN_STEPS = [
   ['transfer', 'Transfer', 'grid-3x3', 'The grid for drawing it up on the canvas'],
 ];
 const MIN_ZOOM = 0.25, MAX_ZOOM = 16;
-const ACTIONS = ['goStep', 'undo', 'redo', 'toggleBeforeAfter', 'toggleMirror', 'toggleNotes', 'openPlanBoard', 'exportPlan', 'exportMenu', 'fitView', 'zoomIn', 'zoomOut'];
+const ACTIONS = ['goStep', 'undo', 'redo', 'toggleBeforeAfter', 'toggleMirror', 'toggleNotes', 'openPlanBoard', 'exportPlan', 'exportWithGrid', 'printWithGrid', 'exportMenu', 'fitView', 'zoomIn', 'zoomOut'];
 
 const open = new Set();
 let lastUsed = null;
@@ -181,7 +181,7 @@ export function moPlanShell(ctx) {
     undo: () => a.undo(), redo: () => a.redo(),
     toggleBeforeAfter: () => a.toggleSplit(), toggleMirror: () => a.toggleMirror(), toggleNotes: () => a.toggleNotes(),
     openPlanBoard: () => a.openBoard(),
-    exportPlan: () => a.exportPlan(false),
+    exportPlan: () => a.exportPlan(false), exportWithGrid: () => a.exportPlan(true), printWithGrid: () => a.printPlan(),
     exportMenu: () => ui.createMenu(moreBtn, { id: 'media-organizer.plan.exportChoices', label: 'More Ways To Export', items: [
       { label: 'Export Plan', icon: 'image-up', onSelect: () => a.exportPlan(false) },
       { label: 'Export With Grid', icon: 'grid-3x3', onSelect: () => a.exportPlan(true) },

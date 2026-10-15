@@ -1,6 +1,7 @@
 # Painting Plans: the artist's flow
 
-Status: **proposal, waiting for the owner's yes.** Nothing here is built until he agrees.
+Status: **built** (2026-10-15, after the owner said go). Commits 5389c6fc (stage 1), ae6af958 (2),
+9156ed39 (3 and 4), 04927b4f (5), and the Transfer and clean-up commit (6). His verdict in the app is owed.
 Mock (works on real pictures): https://claude.ai/artifact/QojZqtTazqmoGTLaEfxami
 
 ## Why
@@ -98,6 +99,21 @@ Study and Colours become one place. The masses *are* the palette.
 | Notes | the Notes icon in the top bar |
 
 Saved plans keep working: old recipes map onto the new steps, and nothing a user saved is dropped.
+
+## As built
+
+- Each module owns its step: `plan-shell.js` (rail, top bar, view), `plan-compose.js` (Compose and
+  Transfer), `plan-photo.js` (Photo), `plan-colours.js` (Values, the eyedropper, My Paints),
+  `plan-study.js` (Colour), with `plan-kit.js` for the panels' sliders, choices and switches.
+- A variation remembers the view it was saved from (`show`: photo, values or colour). Its
+  thumbnail, the board and the export show that view, and opening it goes to that step.
+  Transfer's "Under the grid" chooses the view for the working picture.
+- Values are drawn in perceptual lightness (OKLab), in the underpainting paint or grey; the
+  Image Editor's Black And White is untouched.
+- Remove needs its model; when it is missing the panel sends the painter to the Image
+  Editor's Remove tool to set it up.
+- Older plans open as they were: their crop, their three guide switches (now one guide),
+  their light and colour (now the editor's look) and their values.
 
 ## Build stages
 

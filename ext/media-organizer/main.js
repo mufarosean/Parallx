@@ -32445,10 +32445,10 @@ function moPlanRenderer(canvas) {
   };
 }
 
-// Draw the composition overlays onto a 2D context the size of the crop.
+// Draw the composition overlays onto a 2D context the size of the crop, over what it holds: the stage's
+// overlay canvas (cleared by the caller) or, for Export With Grid, the picture itself.
 function moPlanDrawOverlays(ctx, W, H, recipe, canvasW, canvasH, scale, labelsInside = true) {
   const o = recipe.overlays;
-  ctx.clearRect(0, 0, W, H);
   const line = (x1, y1, x2, y2, color, width) => { ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
   const k = scale || 1;
   const white = 'rgba(255,255,255,0.85)'; const dark = 'rgba(0,0,0,0.45)';
@@ -32516,14 +32516,13 @@ function renderPlanEditor(container, api, planId) {
     onZoom: () => requestRender() });
   const syncShell = () => shell.sync(histIdx > 0, histIdx < history.length - 1);
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), pullPalette: () => extractPalette(), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe; return state.tool === 'photo' && moEditLookIsRest(r) && !(Number(r.hue)) && !(r.removals || []).length && !r.enhanced; }, addToBoard: (label) => addToBoard(label), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe; return state.tool === 'photo' && moEditLookIsRest(r) && !(Number(r.hue)) && !(r.removals || []).length && !r.enhanced; }, addToBoard: (label) => addToBoard(label), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
   // The Colour step: the masses are the palette (plan-study.js); the eyedropper is plan-colours.js's.
   function addToBoard(label) { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }
   const study = moPlanStudy({ api, state, root, frame, editedPixels: (max) => editedPixels(max), afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting,
     under: () => moPlanUnderLab(state.recipe.under), underName: () => state.recipe.under, picker: colours.picker, panBy: (dx, dy) => shell.panBy(dx, dy), addToBoard, myPaints: () => void api.commands.executeCommand('media-organizer.plan.myPaints') });
 
   // ── helpers ──
-  const aspect = () => (state.plan.canvas_w > 0 && state.plan.canvas_h > 0) ? state.plan.canvas_w / state.plan.canvas_h : 0.8;
   const rotated = () => moPlanRotatedSize(state.imgW, state.imgH, state.recipe.rotate);
   function pushHistory() {
     const snap = JSON.stringify({ r: state.recipe, f: state.variant ? state.variant.id : null });
@@ -32639,7 +32638,7 @@ function renderPlanEditor(container, api, planId) {
       removal: { state: moEditRemoveState, fill: moEditFill },
       files: { dir: () => moPlanDir(planId), read: moEditReadBytes, write: async (p, bytes) => { await window.parallxElectron.fs.mkdir(p.slice(0, Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')))); await moEditWriteBytes(p, bytes); }, dispose: (paths) => moDisposeTemp(api, paths) } } });
 
-  const compose = moPlanCompose({ api, state, root, frame, cropBox, rotated, setCanvas, afterRecipeChange: (rec, keep) => afterRecipeChange(rec, keep), requestRender: () => requestRender(), moDropdown, presets: MO_PLAN_CANVAS_PRESETS });
+  const compose = moPlanCompose({ api, state, root, frame, cropBox, rotated, setCanvas, setView: (v) => { state.view = v; requestRender(); }, afterRecipeChange: (rec, keep) => afterRecipeChange(rec, keep), requestRender: () => requestRender(), moDropdown, presets: MO_PLAN_CANVAS_PRESETS });
 
   // ── panel ──
   // The tool modules still name their old tools; each lives in a step now.
@@ -32652,31 +32651,6 @@ function renderPlanEditor(container, api, planId) {
     renderPanel();
     requestRender();
   }
-  const slider = (label, key, min, max, step, fmt) => {
-    const row = moEl('div', 'mo-plan-slider');
-    const head = moEl('div', 'mo-plan-slider-head');
-    head.appendChild(moEl('span', null, { textContent: label }));
-    const val = moEl('span', 'mo-practice-dim');
-    head.appendChild(val);
-    row.appendChild(head);
-    const input = moEl('input', null, { type: 'range', min: String(min), max: String(max), step: String(step), 'aria-label': label });
-    input.value = String(state.recipe[key]);
-    const show = () => { val.textContent = fmt ? fmt(Number(input.value)) : Number(input.value).toFixed(2); };
-    show();
-    input.addEventListener('input', () => { state.recipe[key] = Number(input.value); show(); if (key !== 'blur') requestRender(); else afterRecipeChange(false); });
-    input.addEventListener('change', () => { state.recipe[key] = Number(input.value); afterRecipeChange(true); });
-    input.addEventListener('dblclick', () => { input.value = '0'; state.recipe[key] = 0; show(); afterRecipeChange(true); });
-    row.appendChild(input);
-    return row;
-  };
-  const toggle = (label, get, set) => {
-    const wrap = moEl('label', 'mo-practice-check');
-    const input = moEl('input', 'mo-clip-check', { type: 'checkbox' });
-    input.checked = !!get();
-    input.addEventListener('change', () => set(input.checked));
-    wrap.appendChild(input); wrap.appendChild(moEl('span', null, { textContent: label }));
-    return wrap;
-  };
   const button = (label, fn, primary) => { const b = moEl('button', primary ? 'mo-practice-start' : 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', fn); return b; };
   const section = (title) => { const s = moEl('div', 'mo-plan-section'); if (title) s.appendChild(moEl('div', 'mo-practice-section-title', { textContent: title })); panel.appendChild(s); return s; };
   const panelDisposers = [];
@@ -32693,14 +32667,7 @@ function renderPlanEditor(container, api, planId) {
     else if (t === 'photo') photo.panel(panel, panelDisposers);
     else if (t === 'values') colours.valuesPanel(panel, panelDisposers);
     else if (t === 'colour') { if (colours.inPaints()) colours.pickPanel(panel, panelDisposers); else study.panel(panel, panelDisposers); }
-    else if (t === 'transfer') {
-      const s2 = section('Transfer Grid');
-      const gd = moDropdown({ items: [{ value: '0.5', label: 'Every ½ in' }, { value: '1', label: 'Every 1 in' }, { value: '2', label: 'Every 2 in' }], selected: String(r.overlays.gridInches || 1), ariaLabel: 'Grid Spacing' });
-      gd.onChange = (v) => { r.overlays.gridInches = Number(v) || 1; afterRecipeChange(true); };
-      panelDisposers.push(() => gd.dispose());
-      s2.appendChild(gd.el);
-      s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: `Rows are lettered, columns numbered, for a ${state.plan.canvas_w} × ${state.plan.canvas_h} in canvas.` }));
-    }
+    else if (t === 'transfer') compose.transferPanel(panel, panelDisposers);
   }
   // The plan's notes, its process photos and the plan itself, behind the Notes button.
   function notesPanel() {
@@ -32766,13 +32733,6 @@ function renderPlanEditor(container, api, planId) {
     const w = Math.max(8, Math.round(geo.outW * k)), h = Math.max(8, Math.round(geo.outH * k));
     try { return { px: thumbRenderer.render(r, { width: w, height: h, full: false, split: -1, read: true, aids: false, rest: !!rest }), w, h }; } catch { return null; }
   }
-  function extractPalette() {
-    const got = editedPixels(192);
-    if (!got) return;
-    const r = state.recipe, sw = moPalette(got.px, r.palette.count || 8);
-    state.recipe.palette.swatches = sw.map((s) => s.rgb);
-    afterRecipeChange(true);
-  }
 
   // ── variations (plan-variations.js) ──
   function recipeThumb(recipe) {
@@ -32827,7 +32787,7 @@ function renderPlanEditor(container, api, planId) {
       ctx.drawImage(cv, 0, 0);
       const masses = state.view === 'colour' ? study.massesCanvas() : null;
       if (masses) { ctx.imageSmoothingQuality = 'high'; ctx.drawImage(masses, 0, 0, W, H); }
-      if (withGrid) moPlanDrawOverlays(ctx, W, H, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: true }) }), state.plan.canvas_w, state.plan.canvas_h, Math.max(1, W / 900));
+      if (withGrid) moPlanDrawOverlays(ctx, W, H, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: true }) }), state.plan.canvas_w, state.plan.canvas_h, Math.max(1, W / 900), r.overlays.gridLabels !== false);
       return out.toDataURL('image/jpeg', 0.92);
     } finally { rr.dispose(); }
   }

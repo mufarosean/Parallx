@@ -294,6 +294,14 @@ one WebGL program driven by a recipe. Painting Plans draws with it through
 draws exactly what it drew before the editor existed; that was checked pixel by
 pixel (see Verification).
 
+**One set of panels, two places.** The Light, Tone Curve, Colour, Colour Mixer,
+Colour Grading, Effects and Detail sections are built by `moEditPanelKit`, which
+the editor and a painting plan's Photo step (`plan-photo.js`) both use, on
+their own recipes. A plan's look keeps the editor's fields and meanings, and
+`moPlanRenderer` hands it to the engine through `moEditEngineLook`, as the
+editor does. Remove in a plan uses the editor's fill; its patches live in the
+plan's own folder, so neither clean-up touches the other's files.
+
 **Geometry is two maps.** Canvas to output (zoom and pan, the crop tool's
 window, or one tile of a save) and output to source (crop, straighten, quarter
 turns, flips). Both are small matrices built by pure functions.
