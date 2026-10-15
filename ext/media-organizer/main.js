@@ -32020,7 +32020,7 @@ function moImageEngine(canvas) {
   for (const n of ['u_img', 'u_blurS', 'u_blurL', 'u_curve', 'u_v0', 'u_v1', 'u_m0', 'u_m1', 'u_texel', 'u_outSize',
     'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette', 'u_opaque', 'u_outside',
     'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_clipSrc', 'u_valueMode', 'u_underOn', 'u_under', 'u_mix',
-    'u_mask', 'u_prev', 'u_maskOn', 'u_tintOnly', 'u_blurAmt', 'u_mk0', 'u_mk1', 'u_passSize', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
+    'u_mask', 'u_prev', 'u_squint', 'u_squintOn', 'u_maskOn', 'u_tintOnly', 'u_blurAmt', 'u_mk0', 'u_mk1', 'u_passSize', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
     ...MO_ENGINE_FLOATS.map((f) => f[0])]) U[n] = gl.getUniformLocation(prog, n);
   const BU = { img: gl.getUniformLocation(blurProg, 'u_img'), step: gl.getUniformLocation(blurProg, 'u_step') };
   const plainTexture = (filter) => {
@@ -32067,7 +32067,29 @@ function moImageEngine(canvas) {
   // The two blurred copies: the source halved to a quarter (fine detail) and
   // to a sixteenth (broad shapes), each then blurred. Made when first needed.
   let blurS = null, blurL = null;
-  const dropBlur = () => { release(blurS); release(blurL); blurS = null; blurL = null; };
+  const dropBlur = () => { release(blurS); release(blurL); blurS = null; blurL = null; dropSquint(); };
+  // A painting plan's squint: the source blurred by a Gaussian of `sigma` source pixels. The source is halved
+  // until the blur is a couple of pixels there, then blurred once; kept until the squint or the source changes.
+  let squint = null, squintSigma = 0;
+  function dropSquint() { release(squint); squint = null; squintSigma = 0; }
+  const squintCopy = (sigma) => {
+    if (!srcW || !(sigma > 0.05)) return null;
+    if (squint && Math.abs(squintSigma - sigma) < 0.01) return squint;
+    dropSquint();
+    const steps = [];
+    let from = tex, w = srcW, h = srcH, k = 1;
+    while (sigma / k > 2 && Math.min(w, h) > 8) {
+      w = Math.max(1, Math.round(w / 2)); h = Math.max(1, Math.round(h / 2)); k *= 2;
+      const t = target(w, h, 'half'); pass(from, t, 0, 0); steps.push(t); from = t.tex;
+    }
+    const st = sigma / k / 1.64; // the blur pass's nine taps make a Gaussian of about 1.64 pixels
+    const a = target(w, h, 'half'), b = target(w, h, 'half');
+    pass(from, a, st / w, 0); pass(a.tex, b, 0, st / h);
+    release(a); for (const t of steps) release(t);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    squint = b; squintSigma = sigma;
+    return squint;
+  };
   const ensureBlur = () => {
     if (blurS || !srcW) return;
     const levels = [];
@@ -32145,6 +32167,8 @@ function moImageEngine(canvas) {
     gl.uniform2f(U.u_passSize, W, H); gl.uniform1i(U.u_mask, 4); gl.uniform1i(U.u_prev, 5);
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, p.maskTex || curveTex);
     gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, p.prevTex || curveTex);
+    gl.uniform1i(U.u_squint, 6); gl.uniform1f(U.u_squintOn, squint && p.squint > 0 ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, squint && p.squint > 0 ? squint.tex : curveTex);
     gl.uniform1i(U.u_img, 0); gl.uniform1i(U.u_blurS, 1); gl.uniform1i(U.u_blurL, 2); gl.uniform1i(U.u_curve, 3);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, blurS ? blurS.tex : tex);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, blurL ? blurL.tex : tex);
@@ -32155,6 +32179,7 @@ function moImageEngine(canvas) {
   const prepare = (p) => {
     const needs = (look) => !!look && !!(Number(look.texture) || Number(look.clarity) || Number(look.dehaze) || Number(look.blurAmount));
     if (needs(p.look) || (p.masks || []).some((m) => needs(m.look))) ensureBlur();
+    if (p.squint > 0) squintCopy(p.squint * Math.max(srcW, srcH)); // p.squint: the blur's size as a share of the photo's long side
     if (p.curve) setCurve(p.curve);
   };
   // Masks: each a single-channel texture over the source picture (setMask). p.masks: [{ id, look }], drawn in
@@ -32320,13 +32345,14 @@ function moPlanRenderer(canvas) {
       const r = recipe;
       const size = engine.size;
       const p0 = moEditEngineLook(opts.rest ? moEditDefaultRecipe() : r, false);
+      const squintOf = opts.squint > 0 ? opts.squint / 100 : 0; // Values' squint: a blur made on the GPU from the photo already there
       const ph = opts.photo || size, tintId = opts.tintMask ? moMaskEnsure(engine, opts.tintMask, ph.w, ph.h) : null;
       const passes = opts.rest ? [] : moMaskPasses(engine, r.masks, p0.look, ph.w, ph.h, tintId);
       p0.look.hue = opts.rest ? 0 : Number(r.hue) || 0;
       const aids = opts.aids !== undefined ? !!opts.aids : r.show === 'values'; // a variation saved from Values shows its values
       const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: Number(r.angle) || 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
       return engine[opts.read ? 'sample' : 'draw']({ // read: the pixels back as RGBA bytes
-        m: geo.m, look: p0.look, curve: p0.curve, mix: p0.mix, grade: p0.grade, opaque: !opts.full, clipSource: !!opts.full, masks: passes, tint: tintId, maskM: opts.maskM || null,
+        m: geo.m, look: p0.look, curve: p0.curve, mix: p0.mix, grade: p0.grade, opaque: !opts.full, clipSource: !!opts.full, masks: passes, tint: tintId, squint: squintOf, maskM: opts.maskM || null,
         grey: p0.grey, levels: aids ? r.levels : 0, notan: aids ? r.notan : 0, valueMode: aids, under: aids ? moPlanUnderLab(r.under) : null,
         palette: aids && r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
         split: typeof opts.split === 'number' ? opts.split : -1,
@@ -32384,7 +32410,7 @@ function renderPlanEditor(container, api, planId) {
   const glCanvas = moEl('canvas', 'mo-plan-canvas');
   const ovCanvas = moEl('canvas', 'mo-plan-overlay');
   const cropBox = moEl('div', 'mo-plan-cropbox mo-hidden');
-  for (const c of ['nw', 'ne', 'sw', 'se']) cropBox.appendChild(moEl('div', `mo-plan-crophandle mo-plan-crophandle--${c}`, { 'data-corner': c }));
+  for (const c of ['nw', 'ne', 'sw', 'se', 'n', 'e', 's', 'w']) cropBox.appendChild(moEl('div', `mo-plan-crophandle mo-plan-crophandle--${c}`, { 'data-corner': c }));
   const frame = moEl('div', 'mo-plan-frame');
   frame.appendChild(glCanvas); frame.appendChild(ovCanvas); frame.appendChild(cropBox);
   stage.appendChild(frame);
@@ -32407,10 +32433,10 @@ function renderPlanEditor(container, api, planId) {
     onZoom: () => requestRender() });
   const syncShell = () => shell.sync(histIdx > 0, histIdx < history.length - 1);
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
-  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => { if (state.recipe.blur !== state.blurBaked) bakeSource(); requestRender(); }, editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe; return state.tool === 'photo' && moEditLookIsRest(r) && !(Number(r.hue)) && !(r.removals || []).length && !r.enhanced; }, addToBoard: (label) => addToBoard(label), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
+  const colours = moPlanColours({ api, state, root, frame, afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), preview: () => requestRender(), editedPixels: (max) => editedPixels(max), setTool: (id) => setTool(id), gridLines: moPlanGridLines, setSplit: (v) => setSplit(v), sameBothSides: () => { const r = state.recipe; return state.tool === 'photo' && moEditLookIsRest(r) && !(Number(r.hue)) && !(r.removals || []).length && !r.enhanced; }, addToBoard: (label) => addToBoard(label), getSetting: moGetSetting, setSetting: moSetSetting, moDropdown, lightSplit: () => study.lightSplit(), lightFamilies: (v) => study.lightFamilies(v) });
   // The Colour step: the masses are the palette (plan-study.js); the eyedropper is plan-colours.js's.
   function addToBoard(label) { const it = moBoardMenuItems(moBoardDeps(api), planId, state).find((x) => x.label === label); if (it && !it.disabled) it.onSelect(); else if (it) void api.window.showInformationMessage('The board holds saved variations. Save As Variation first, then add it.'); }
-  const study = moPlanStudy({ api, state, root, frame, editedPixels: (max) => editedPixels(max), afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting,
+  const study = moPlanStudy({ api, state, root, frame, editedPixels: (max) => editedPixels(max), afterRecipeChange: (rec, keepPanel) => afterRecipeChange(rec, keepPanel), requestRender: () => requestRender(), setTool: (id) => setTool(id), getSetting: moGetSetting, setSetting: moSetSetting,
     under: () => moPlanUnderLab(state.recipe.under), underName: () => state.recipe.under, picker: colours.picker, panBy: (dx, dy) => shell.panBy(dx, dy), addToBoard, myPaints: () => void api.commands.executeCommand('media-organizer.plan.myPaints') });
 
   // ── helpers ──
@@ -32452,7 +32478,7 @@ function renderPlanEditor(container, api, planId) {
   }
   // The picture a step draws from (the photo with its removals, or the enhanced copy; plan-photo.js), with
   // Values' squint blurred into it: a share of the crop's long side.
-  const wantBlur = () => (state.tool === 'values' && state.recipe.blur > 0 ? state.recipe.blur : 0);
+  const wantBlur = () => 0; // squint is drawn by the shader now (opts.squint), not baked into the texture
   const needsBake = () => !!renderer && !!state.image && (state.blurBaked !== wantBlur() || state.srcBaked !== photo.source(state.tool).img);
   function bakeSource() {
     if (!renderer || !state.image) return;
@@ -32487,7 +32513,7 @@ function renderPlanEditor(container, api, planId) {
     if (needsBake()) bakeSource();
     const srcNow = photo.source(state.tool);
     renderer.render(srcNow.eff(r), { width: Math.round(cssW * px), height: Math.round(cssH * px), full, split: full ? -1 : state.split, aids: state.tool === 'values' || (state.tool === 'transfer' && state.view === 'values'),
-      photo: { w: state.imgW, h: state.imgH }, maskM: srcNow.enhanced ? moEditAffine(r, state.imgW, state.imgH).m : null, tintMask: state.tool === 'photo' && !state.notes ? photo.tintMask() : null });
+      squint: state.tool === 'values' ? Number(r.blur) || 0 : 0, photo: { w: state.imgW, h: state.imgH }, maskM: srcNow.enhanced ? moEditAffine(r, state.imgW, state.imgH).m : null, tintMask: state.tool === 'photo' && !state.notes ? photo.tintMask() : null });
     ovCanvas.width = Math.round(cssW * px); ovCanvas.height = Math.round(cssH * px);
     ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
     const octx = ovCanvas.getContext('2d');
@@ -32659,7 +32685,7 @@ function renderPlanEditor(container, api, planId) {
     canvasFromRecipe();
     afterRecipeChange(true);
   }
-  const variations = moPlanVariations({ api, db, planId, root, bar: variantsBar, state, io: { getSetting: moGetSetting, setSetting: moSetSetting }, normalize: moPlanRecipe, startRecipe, apply: applyRecipe, record: () => pushHistory(), saveDraft: () => scheduleSave(), thumb: recipeThumb, boardItems: () => moBoardMenuItems(moBoardDeps(api), planId, state),
+  const variations = moPlanVariations({ api, db, planId, root, bar: variantsBar, state, io: { getSetting: moGetSetting, setSetting: moSetSetting }, normalize: moPlanRecipe, startRecipe, apply: applyRecipe, record: () => pushHistory(), saveDraft: () => scheduleSave(), thumb: recipeThumb, boardItems: (v) => moBoardMenuItems(moBoardDeps(api), planId, v ? Object.assign({}, state, { variant: v }) : state),
     view: () => state.view || 'photo', showStep: (v) => { if (v === 'values' || v === 'colour') setTool(v); else state.view = 'photo'; } });
 
   // ── export ──
@@ -35666,6 +35692,7 @@ const MO_EDIT_FILM_SPAN = 30;   // photos shown either side of the open one
 function moEditPanelKit(k) {
   const { api, root, state } = k;
   const afterChange = (record) => k.afterChange(record);
+  const afterSlide = (record) => (k.afterSlide ? k.afterSlide(record) : k.afterChange(record)); // a slider let go: a host may redraw its panel later
   const requestRender = () => k.requestRender();
   const renderPanel = () => k.renderPanel();
   const autoTone = () => k.autoTone();
@@ -35754,7 +35781,7 @@ function moEditPanelKit(k) {
     dim: !!parent && Math.abs(state.recipe[parent]) < 1e-6,
     show: (v) => moEditFormatValue(key, v), parse: (t) => moEditParseValue(key, t),
     onInput: (v) => { state.recipe[key] = v; requestRender(); },
-    onChange: (v) => { state.recipe[key] = v; afterChange(true); },
+    onChange: (v) => { state.recipe[key] = v; afterSlide(true); },
   }).row;
   function miniBtn(icon, label, fn, on) {
     const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { sceneId: `media-organizer.imageEditor.mini.${moSlug(label)}`, type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) });
@@ -35946,7 +35973,7 @@ function moEditPanelKit(k) {
         id: 'mix-' + i, aria: `${label} Of ${(MO_EDIT_MIX.find((m) => m[0] === state.mixColour) || [])[1]}`,
         label, min: -1, max: 1, rest: 0, value: r.mixer[state.mixColour][i], show: pct, parse: parsePct(-1, 1),
         onInput: (v) => { r.mixer[state.mixColour][i] = v; requestRender(); },
-        onChange: (v) => { r.mixer[state.mixColour][i] = v; afterChange(true); },
+        onChange: (v) => { r.mixer[state.mixColour][i] = v; afterSlide(true); },
       }).row);
     });
   }
@@ -35994,7 +36021,7 @@ function moEditPanelKit(k) {
     for (const [key, label] of MO_EDIT_GRADE) {
       parent.appendChild(sliderRow({
         id: 'grade-' + key, label, min: -1, max: 1, rest: 0, value: r.grading[key].l, show: pct, parse: parsePct(-1, 1),
-        onInput: (v) => { r.grading[key].l = v; requestRender(); }, onChange: (v) => { r.grading[key].l = v; afterChange(true); },
+        onInput: (v) => { r.grading[key].l = v; requestRender(); }, onChange: (v) => { r.grading[key].l = v; afterSlide(true); },
       }).row);
     }
     parent.appendChild(sliderRow({ id: 'grade-blending', label: 'Blending', min: 0, max: 1, rest: 0.5, value: r.grading.blending, show: (v) => String(Math.round(v * 100)), parse: parsePct(0, 1),

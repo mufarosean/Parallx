@@ -15,7 +15,7 @@ import { moEl } from './dom.js';
 import { moPointKeys } from './keys.js';
 import { moColourName, moMixRecipes, moOklab } from './colour.js';
 import { moPlanPaintSet } from './plan-colours.js';
-import { moPlanChoice, moPlanHint, moPlanSection, moPlanSlider, moPlanSwitch } from './plan-kit.js';
+import { moPlanChoice, moPlanHint, moPlanSection, moPlanSlider, moPlanSwitch, moSquintAt, moSquintPos, moSquintText } from './plan-kit.js';
 import { moStudyAnalyse, moStudyCompare, moStudyHue, moStudyIntensity, moStudyLight, moStudyMassNames, moStudyMasses, moStudyNormalize, moStudyValue, moStudyWarmth } from './study-math.js';
 
 const WORK = 560;   // the long side the picture is analysed at
@@ -100,8 +100,7 @@ export function moPlanStudy(ctx) {
 
   // ── the analysis and the masses ──
   function analysed() {
-    const r = state.recipe;
-    const key = JSON.stringify(Object.assign({}, r, { study: null, saved: null, palette: null, overlays: null, stage: null, show: null, blur: null, levels: null, notan: null, grey: null }));
+    const key = editKey();
     if (P && key === pKey) return P;
     const got = ctx.editedPixels(WORK);
     if (!got) return null;
@@ -109,6 +108,28 @@ export function moPlanStudy(ctx) {
     return P;
   }
   const selJ = () => (openKey && openKey[0] === 'm' ? Number(openKey.slice(1)) : -1);
+  const editKey = () => JSON.stringify(Object.assign({}, state.recipe, { study: null, saved: null, palette: null, overlays: null, stage: null, show: null, blur: null, levels: null, notan: null, grey: null }));
+  // Whether the masses for the settings now are already worked out.
+  const ready = () => !!P && !!shown && pKey === editKey() && shownKey === `${pKey}|${JSON.stringify(opts())}|${selJ()}`;
+  // The masses take a moment on a new picture or new settings: the photo is drawn first and they follow
+  // in the next frame, the masses before them staying on screen meanwhile.
+  let laterTimer = 0, panelWaiting = false, seenTool = null;
+  // True when the masses are ready, worked out now if this step has shown them before; false on coming in.
+  function needNow() {
+    if (ready()) { seenTool = state.tool; return true; }
+    if (seenTool === state.tool) { lens(); return true; }
+    return false;
+  }
+  function later(forPanel) {
+    if (forPanel) panelWaiting = true;
+    if (laterTimer) return;
+    laterTimer = setTimeout(() => {
+      laterTimer = 0;
+      if (!state.recipe) return;
+      lens(); seenTool = state.tool;
+      if (panelWaiting) { panelWaiting = false; ctx.afterRecipeChange(false, false); } else ctx.requestRender();
+    }, 16);
+  }
   function lens() {
     const A = analysed();
     if (!A) return null;
@@ -138,15 +159,14 @@ export function moPlanStudy(ctx) {
     marks.classList.toggle('mo-hidden', !clicks);
     if (!on) { canvas.classList.add('mo-hidden'); return; }
     if (clicks && layer.tabIndex !== 0) layer.tabIndex = 0;
-    const L = lens();
-    canvas.classList.toggle('mo-hidden', !L);
+    if (needNow()) canvas.classList.remove('mo-hidden'); else { later(false); canvas.classList.toggle('mo-hidden', !(shown && pKey === editKey())); }
     canvas.style.clipPath = state.split >= 0 ? `inset(0 0 0 ${pct(state.split)})` : '';
     drawMarks();
   }
 
   // ── the panel ──
   function colours() {
-    const L = lens();
+    const L = ready() ? shown : null;
     const out = [];
     if (L) L.masses.forEach((m, k) => { if (m.share >= 0.003) out.push({ key: `m${m.j}`, name: L.names[k], rgb: m.rgb, lab: m.lab, share: m.share, temp: m.temp, value: m.value, intensity: m.intensity }); });
     (state.recipe.saved || []).forEach((c, i) => {
@@ -155,7 +175,14 @@ export function moPlanStudy(ctx) {
     });
     return out;
   }
-  const mixOf = (rgb) => (paints ? moMixRecipes(rgb, paints.paints, paints.rules) : null);
+  let mixes = { of: null, map: new Map() }; // the mixes found, for the paints they were found with
+  const mixOf = (rgb) => {
+    if (!paints) return null;
+    if (mixes.of !== paints) mixes = { of: paints, map: new Map() };
+    const k = rgb.map(Math.round).join(',');
+    if (!mixes.map.has(k)) mixes.map.set(k, moMixRecipes(rgb, paints.paints, paints.rules));
+    return mixes.map.get(k);
+  };
   function mixBar(rec, cls) {
     const bar = moEl('span', cls, { 'aria-hidden': 'true' });
     const top = Math.max(...rec.paints.map((p) => p.parts));
@@ -166,7 +193,7 @@ export function moPlanStudy(ctx) {
     const s = study(), m = s.masses;
     const s1 = moPlanSection(container, 'Masses');
     moPlanSlider(s1, { id: 'media-organizer.plan.study.massCount', label: 'Masses', min: 2, max: 48, step: 1, value: m.n, onInput: (v) => { openKey = null; marked = []; setStudy({ masses: { n: v } }, false, true); }, onChange: (v) => setStudy({ masses: { n: v } }, true, false) });
-    moPlanSlider(s1, { id: 'media-organizer.plan.study.massSquint', label: 'Squint', min: 0, max: 100, step: 5, value: m.squint, text: (v) => (v ? `${v}%` : 'sharp'), onInput: (v) => { openKey = null; marked = []; setStudy({ masses: { squint: v } }, false, true); }, onChange: (v) => setStudy({ masses: { squint: v } }, true, false) });
+    moPlanSlider(s1, { id: 'media-organizer.plan.study.massSquint', label: 'Squint', min: 0, max: 100, step: 1, value: moSquintPos(m.squint), text: (v) => moSquintText(moSquintAt(v)), onInput: (v) => { openKey = null; marked = []; setStudy({ masses: { squint: moSquintAt(v) } }, false, true); }, onChange: (v) => setStudy({ masses: { squint: moSquintAt(v) } }, true, false) });
     moPlanSlider(s1, { id: 'media-organizer.plan.study.massAmount', label: 'Colour amount', min: 0, max: 100, step: 5, value: m.amount, text: (v) => (v ? `${v}%` : ctx.underName() || 'grey'), onInput: (v) => setStudy({ masses: { amount: v } }, false, true), onChange: (v) => setStudy({ masses: { amount: v } }, true, false) });
     moPlanChoice(ui, s1, { id: 'media-organizer.plan.study.massColour', ariaLabel: 'A mass’s colour', items: [['dominant', 'Local Colour'], ['average', 'Average']], value: m.colour, onChange: (v) => setStudy({ masses: { colour: v } }, true, true) }, panelDisposers);
     moPlanSwitch(ui, s1, { id: 'media-organizer.plan.study.temp', label: 'Show warm and cool', checked: m.temp, onChange: (on) => setStudy({ masses: { temp: on, strong: on ? false : m.strong } }, true) }, panelDisposers);
@@ -187,6 +214,7 @@ export function moPlanStudy(ctx) {
     const onMods = (e) => { mod = !!(e.shiftKey || e.ctrlKey || e.metaKey); };
     list.addEventListener('pointerdown', onMods, true); list.addEventListener('keydown', onMods, true);
     panelDisposers.push(() => { list = null; });
+    if (!needNow()) { later(true); moPlanHint(list, 'Working out the masses…'); }
     const all = colours(), counts = new Map();
     for (const c of all) counts.set(c.name, (counts.get(c.name) || 0) + 1);
     for (const c of all) {
@@ -289,6 +317,7 @@ export function moPlanStudy(ctx) {
     lightSplit: () => { const A = analysed(); return A ? Math.round(A.split * 2) / 2 : null; },
     lightFamilies: (split) => { const A = analysed(); if (!A) return null; const L = moStudyLight(A, split == null ? A.split : split, 'colours'); return { families: L.families, warmer: L.warmer }; },
     dispose() {
+      clearTimeout(laterTimer);
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
       ctx.root.removeEventListener('focusin', used);
       for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } }

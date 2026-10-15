@@ -22,6 +22,12 @@ export function moPlanHint(parent, text) {
  * moves, `onChange` once it is let go (or a key steps it); a double-click puts
  * it back at `rest` when one is given.
  */
+// Squint's slider: a painter squints a little most of the time, so the first half of its travel is 0 to 10%
+// and the second half reaches a hard squint (100%). Position 0..100 to a squint in percent, and back.
+export const moSquintAt = (pos) => { const v = (100 * (9 ** (Math.max(0, Math.min(100, pos)) / 50) - 1)) / 80; return v < 10 ? Math.round(v * 10) / 10 : Math.round(v); };
+export const moSquintPos = (pct) => (pct > 0 ? Math.round((50 * Math.log(1 + (Math.min(100, pct) * 80) / 100)) / Math.log(9)) : 0);
+export const moSquintText = (pct) => (pct > 0 ? `${pct}%` : 'sharp');
+
 export function moPlanSlider(parent, o) {
   const row = moEl('div', 'mo-plan-slider');
   const head = moEl('div', 'mo-plan-slider-head');

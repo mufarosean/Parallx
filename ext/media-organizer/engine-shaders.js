@@ -32,6 +32,8 @@ uniform sampler2D u_img;
 uniform sampler2D u_blurS;
 uniform sampler2D u_blurL;
 uniform sampler2D u_curve;
+uniform sampler2D u_squint;    // a painting plan's squint: the source blurred as asked (squintCopy)
+uniform float u_squintOn;
 uniform vec3 u_v0, u_v1, u_m0, u_m1;
 uniform vec2 u_texel, u_outSize;
 uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
@@ -130,7 +132,7 @@ void main() {
     return;
   }
   vec4 t = texture2D(u_img, s);
-  vec3 c = t.rgb;
+  vec3 c = u_squintOn > 0.5 ? texture2D(u_squint, s).rgb : t.rgb;
   vec3 orig = c;
   if (u_blurAmt > 0.0005) { // a mask's Blur: toward the fine blurred copy, then the broad one
     vec3 b1 = texture2D(u_blurS, s).rgb, b2 = texture2D(u_blurL, s).rgb;

@@ -86,9 +86,16 @@ export function moStudyBlur(src, w, h, r) {
   }
   return out;
 }
+// The picture squinted by `amount` (0 to 100): a blur up to 2.5% of the long side. A radius between two whole
+// pixels is the blend of the two, so a small squint softens a little instead of doing nothing.
 function squinted(P, amount) {
-  const r = Math.round((amount / 100) * Math.max(P.w, P.h) * 0.025), key = `sq${r}`;
-  if (!P.cache[key]) P.cache[key] = { L: moStudyBlur(P.L, P.w, P.h, r), A: moStudyBlur(P.A, P.w, P.h, r), B: moStudyBlur(P.B, P.w, P.h, r) };
+  const rf = Math.round((amount / 100) * Math.max(P.w, P.h) * 0.025 * 100) / 100, key = `sq${rf}`;
+  if (P.cache[key]) return P.cache[key];
+  const at = (r) => { const k = `sq${r}`; if (!P.cache[k]) P.cache[k] = { L: moStudyBlur(P.L, P.w, P.h, r), A: moStudyBlur(P.A, P.w, P.h, r), B: moStudyBlur(P.B, P.w, P.h, r) }; return P.cache[k]; };
+  const r0 = Math.floor(rf), t = rf - r0;
+  if (t < 0.01) return at(r0);
+  const a = at(r0), b = at(r0 + 1), mix = (x, y) => { const o = new Float32Array(x.length); for (let i = 0; i < o.length; i++) o[i] = x[i] + (y[i] - x[i]) * t; return o; };
+  P.cache[key] = { L: mix(a.L, b.L), A: mix(a.A, b.A), B: mix(a.B, b.B) };
   return P.cache[key];
 }
 

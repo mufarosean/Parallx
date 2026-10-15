@@ -142,7 +142,7 @@ export function moPlanCompose(ctx) {
     live.wIn.value = String(state.plan.canvas_w); live.hIn.value = String(state.plan.canvas_h);
     live.hint.textContent = hintText();
   }
-  const hintText = () => (state.recipe.freeCrop ? 'Free: drag a corner any way you like and the canvas takes the crop’s shape.' : 'The crop keeps the canvas proportions. Drag the frame to move it, a corner to size it.');
+  const hintText = () => (state.recipe.freeCrop ? 'Free: drag a corner or an edge any way you like and the canvas takes the crop’s shape.' : 'The crop keeps the canvas proportions. Drag the frame to move it, a corner to size it.');
   function setCrop(b, record, keep) { state.recipe.crop = toCrop(b); canvasFollows(b); syncLive(); if (record) ctx.afterRecipeChange(true, keep); else ctx.requestRender(); }
   // A new canvas shape: the largest crop of it about where the crop was.
   function refit(keep) { const b = toPx(state.recipe.crop); setCrop(largest(ratio(), b), true, keep); }
@@ -163,11 +163,12 @@ export function moPlanCompose(ctx) {
     let next;
     if (!d.corner) next = { cx: b.cx + dx, cy: b.cy + dy, w: b.w, h: b.h };
     else {
-      const sx = d.corner.includes('e') ? 1 : -1, sy = d.corner.includes('s') ? 1 : -1;
+      // A corner moves two sides, an edge (Free only) one; the sides opposite stay where they are.
+      const sx = d.corner.includes('e') ? 1 : d.corner.includes('w') ? -1 : 0, sy = d.corner.includes('s') ? 1 : d.corner.includes('n') ? -1 : 0;
       const ax = b.cx - (sx * b.w) / 2, ay = b.cy - (sy * b.h) / 2;
-      let w = Math.max(min, sx * (b.cx + (sx * b.w) / 2 + dx - ax)), h = Math.max(min, sy * (b.cy + (sy * b.h) / 2 + dy - ay));
-      if (!state.recipe.freeCrop) { const q = ratio(); if (w / q > h) h = w / q; else w = h * q; }
-      next = { cx: ax + (sx * w) / 2, cy: ay + (sy * h) / 2, w, h };
+      let w = sx ? Math.max(min, sx * (b.cx + (sx * b.w) / 2 + dx - ax)) : b.w, h = sy ? Math.max(min, sy * (b.cy + (sy * b.h) / 2 + dy - ay)) : b.h;
+      if (!state.recipe.freeCrop) { const q = ratio(); if (!sy || (sx && w / q > h)) h = w / q; else w = h * q; }
+      next = { cx: sx ? ax + (sx * w) / 2 : b.cx, cy: sy ? ay + (sy * h) / 2 : b.cy, w, h };
     }
     return toward(fromScreen(b), fromScreen(next));
   }
@@ -192,13 +193,16 @@ export function moPlanCompose(ctx) {
     g.clearRect(0, 0, W, H);
     const css = getComputedStyle(document.body), tok = (n, f) => css.getPropertyValue(n).trim() || f;
     g.fillStyle = tok('--px-viewer-scrim', 'black');
+    g.globalAlpha = 0.75; // the scrim at about 70%: what the crop leaves out stays readable
     g.fillRect(0, 0, W, y); g.fillRect(0, y + h, W, H - y - h); g.fillRect(0, y, x, h); g.fillRect(x + w, y, W - x - w, h);
+    g.globalAlpha = 1;
     moPlanDrawGuide(g, x, y, w, h, state.recipe.overlays.guide, state.recipe.overlays.spiral, k, { line: tok('--px-accent', 'dodgerblue'), edge: tok('--px-viewer-bar', 'black') });
   }
   function placeBox(cssW, cssH) {
     const v = view(), b = onScreen(toPx(state.recipe.crop)), s = ctx.cropBox.style;
     s.left = `${((b.cx - b.w / 2) / v.w) * cssW}px`; s.top = `${((b.cy - b.h / 2) / v.h) * cssH}px`;
     s.width = `${(b.w / v.w) * cssW}px`; s.height = `${(b.h / v.h) * cssH}px`;
+    ctx.cropBox.classList.toggle('is-free', !!state.recipe.freeCrop); // edges size a free crop
   }
 
   // ── the panel ──

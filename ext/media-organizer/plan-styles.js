@@ -47,6 +47,13 @@ export const MO_PLAN_CSS = `
 .px-btn.mo-pv-add:hover { color: var(--px-text); border-color: var(--px-text-muted); }
 .mo-plan-variant-actions { align-items: center; gap: 2px; }
 
+/* Compose: a free crop sizes from its edges too; the grid lies over the colour masses */
+.mo-plan-crophandle--n, .mo-plan-crophandle--e, .mo-plan-crophandle--s, .mo-plan-crophandle--w { display: none; }
+.mo-plan-cropbox.is-free .mo-plan-crophandle--n, .mo-plan-cropbox.is-free .mo-plan-crophandle--s { display: block; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.mo-plan-cropbox.is-free .mo-plan-crophandle--e, .mo-plan-cropbox.is-free .mo-plan-crophandle--w { display: block; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.mo-plan-crophandle--n { top: -6px; } .mo-plan-crophandle--s { bottom: -6px; } .mo-plan-crophandle--e { right: -6px; } .mo-plan-crophandle--w { left: -6px; }
+.mo-plan-frame .mo-plan-overlay { z-index: 2; }
+
 /* Compose */
 .mo-pk-size .mo-clip-input--xs { flex: 1 1 0; min-width: 0; }
 .mo-pk-icons { gap: 2px; }

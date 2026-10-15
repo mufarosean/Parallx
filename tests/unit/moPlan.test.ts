@@ -6,11 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
+// @ts-expect-error a plain JS module of the extension
+import { moSquintAt, moSquintPos } from '../../ext/media-organizer/plan-kit.js';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // @ts-expect-error plain ES module without types
-import { moPalette, moOklab, moFromOklab, moColourName, moMixRecipes, moMixLinear, moPaintPrep, MO_COMMON_PAINTS, MO_STARTER_PAINTS } from '../../ext/media-organizer/colour.js';
+import { moValueSwatches, moPalette, moOklab, moFromOklab, moColourName, moMixRecipes, moMixLinear, moPaintPrep, MO_COMMON_PAINTS, MO_STARTER_PAINTS } from '../../ext/media-organizer/colour.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -163,5 +165,30 @@ describe('output name', () => {
     expect(P.moPlanOutputName('boxing.jpg', 1)).toBe('boxing_plan_1.jpg');
     expect(P.moPlanOutputName('IMG_0001.HEIC', 3)).toBe('IMG_0001_plan_3.jpg');
     expect(P.moPlanOutputName('noext', 2)).toBe('noext_plan_2.jpg');
+  });
+});
+
+describe('a values palette', () => {
+  it('is the values the picture is laid in, darkest first: its bands, or light and shadow', () => {
+    const five = moValueSwatches(5, 0, '');
+    expect(five).toHaveLength(5);
+    expect(five.every((c: number[]) => c[0] === c[1] && c[1] === c[2])).toBe(true);
+    expect(five.map((c: number[]) => c[0])).toEqual([...five.map((c: number[]) => c[0])].sort((a, b) => a - b));
+    expect(moValueSwatches(0, 0.6, '')).toHaveLength(2);
+    expect(moValueSwatches(0, 0, '')).toHaveLength(9);
+  });
+  it('in an underpainting paint, keeps the paint’s hue', () => {
+    const [, mid] = moValueSwatches(3, 0, 'Burnt Sienna');
+    expect(mid[0]).toBeGreaterThan(mid[2]);
+  });
+});
+
+describe('the squint slider', () => {
+  it('gives the first half of its travel to 0 to 10%, and reaches 100% at the end', () => {
+    expect(moSquintAt(0)).toBe(0);
+    expect(moSquintAt(50)).toBe(10);
+    expect(moSquintAt(100)).toBe(100);
+    expect(moSquintAt(25)).toBeLessThan(3);
+    for (const pct of [0, 1, 2.5, 5, 10, 30, 100]) expect(Math.abs(moSquintAt(moSquintPos(pct)) - pct)).toBeLessThanOrEqual(Math.max(0.2, pct * 0.05));
   });
 });

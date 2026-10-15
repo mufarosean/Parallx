@@ -13,7 +13,7 @@
 
 import { moEl } from './dom.js';
 import { moBoxKeys } from './keys.js';
-import { moColourName, moMixRecipes } from './colour.js';
+import { moColourName, moMixRecipes, moValueSwatches } from './colour.js';
 import { moPlanPaintSet } from './plan-colours.js';
 import { KIND_NAME, moBoardLoad, moBoardSave, normalize } from './board-data.js';
 
@@ -26,7 +26,8 @@ const boardInUse = () => [...open].find((b) => b.root.contains(document.activeEl
 const hexOf = (rgb) => '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-const colourList = (recipe) => [...((recipe && recipe.palette && recipe.palette.swatches) || []), ...((recipe && recipe.saved) || []).map((c) => c.rgb)].filter((c) => Array.isArray(c));
+// A variation saved on Values is its values; one saved on Colour or Photo is its colours and the mixes picked from it.
+const colourList = (recipe) => recipe && recipe.show === 'values' ? moValueSwatches(recipe.levels, recipe.notan, recipe.under) : [...((recipe && recipe.palette && recipe.palette.swatches) || []), ...((recipe && recipe.saved) || []).map((c) => c.rgb)].filter((c) => Array.isArray(c));
 const stageText = (r) => [r.blur > 0 ? `Squint ${Math.round(r.blur * 100)}%` : '', r.notan > 0 ? 'Notan' : r.levels >= 2 ? `${r.levels} values` : 'All values', r.grey ? 'grey' : ''].filter(Boolean).join(' · ');
 
 export function moBoardActivate(api) {

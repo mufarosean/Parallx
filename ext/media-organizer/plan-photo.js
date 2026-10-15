@@ -215,7 +215,10 @@ export function moPlanPhoto(ctx) {
 
   // ── the panel ──
   const kitState = { get recipe() { return state.recipe; }, curveChannel: 'rgb', mixColour: 'red', hist: null, pickWb: false, curveSel: 0, curveDirty: false };
-  const kit = deps.panelKit({ api, root: ctx.root, state: kitState, afterChange: (rec) => ctx.afterRecipeChange(rec), requestRender: () => ctx.requestRender(), renderPanel: () => ctx.renderPanel(),
+  // A slider let go keeps the panel as it is; its section dots and histogram catch up once the hand rests.
+  let slideTimer = 0;
+  const afterSlide = (rec) => { ctx.afterRecipeChange(rec, true); clearTimeout(slideTimer); slideTimer = setTimeout(() => { if (state.tool === 'photo' && !ctx.root.querySelector('input[type=range]:active')) ctx.renderPanel(); }, 400); };
+  const kit = deps.panelKit({ api, root: ctx.root, state: kitState, afterChange: (rec) => ctx.afterRecipeChange(rec), afterSlide, requestRender: () => ctx.requestRender(), renderPanel: () => ctx.renderPanel(),
     autoTone: () => { const got = ctx.editedPixels(256, true); if (!got) return; Object.assign(state.recipe, deps.autoTone(deps.histogram(got.px))); state.recipe.off = (state.recipe.off || []).filter((x) => x !== 'light'); ctx.afterRecipeChange(true); },
     togglePickWb: () => { kitState.pickWb = !kitState.pickWb; if (kitState.pickWb) removing = false; sync(); ctx.renderPanel(); } });
   // Masks (edit-masks.js) on the plan's recipe, their handles and brush in the frame over the crop.
@@ -311,6 +314,7 @@ export function moPlanPhoto(ctx) {
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
       ctx.root.removeEventListener('focusin', used);
       for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } }
+      clearTimeout(slideTimer);
       masksTool.dispose();
       if (enh && enh.img && enh.img.close) enh.img.close();
       paint.remove(); layer.remove();

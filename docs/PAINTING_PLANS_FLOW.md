@@ -78,7 +78,9 @@ Study and Colours become one place. The masses *are* the palette.
 - **Before and after** is a toggle in the top bar. Its line is dragged on the picture itself, works the same at every step after Compose, and moves with the arrow keys.
 - **Top bar:** undo, redo, Before and After, Mirror, Notes, Board, and an Export split button (Export Plan, Export With Grid, Print With Grid…).
   These are icons with names and tooltips, not word buttons.
-- **Variations strip** along the bottom: the saved variations, + to save a new one, save changes to the current one, and a menu with Start Over, Add To Board, Rename and Remove.
+- **Variations strip** along the bottom: the saved variations, + to save a new one, and a menu with Start Over, Add To Board, Rename and Remove.
+  - The open variation keeps every change as it is made (2026-10-15); clicking it again leaves it as it is.
+  - Right-click a variation (or Shift+F10) for Open, Rename…, Duplicate, Use For Export, Add To Board and Remove….
   This keeps the variations system as built in 8629dba4.
 - **Segmented controls** fill their row: every option takes an equal share, so there is no gap at the end.
 - **Accessibility:**
@@ -106,7 +108,8 @@ Saved plans keep working: old recipes map onto the new steps, and nothing a user
   Transfer), `plan-photo.js` (Photo), `plan-colours.js` (Values, the eyedropper, My Paints),
   `plan-study.js` (Colour), with `plan-kit.js` for the panels' sliders, choices and switches.
 - A variation remembers the view it was saved from (`show`: photo, values or colour). Its
-  thumbnail, the board and the export show that view, and opening it goes to that step.
+  thumbnail, the board and the export show that view, and opening it goes to that step. A
+  variation saved on Values has its values as its palette on the board (`moValueSwatches`).
   Transfer's "Under the grid" chooses the view for the working picture.
 - Values are drawn in perceptual lightness (OKLab), in the underpainting paint or grey; the
   Image Editor's Black And White is untouched.

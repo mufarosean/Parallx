@@ -10,7 +10,7 @@
 
 import { moEl, moSlug } from './dom.js';
 import { moPointKeys, moSliderKeys } from './keys.js';
-import { moPlanHint, moPlanSection, moPlanSlider, moPlanSwitch } from './plan-kit.js';
+import { moPlanHint, moPlanSection, moPlanSlider, moPlanSwitch, moSquintAt, moSquintPos, moSquintText } from './plan-kit.js';
 import { MO_COMMON_PAINTS, MO_MIX_RULES, MO_STARTER_PAINTS, moColourName, moHexRgb } from './colour.js';
 
 const STAGES_KEY = 'plan_stages_v1';
@@ -24,7 +24,7 @@ export const MO_PLAN_STAGES = [
 const MAX_STAGES = 9;
 const hexOf = (rgb) => '\u0023' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
 const aidsOff = (r) => !(r.blur > 0) && !(r.levels >= 2) && !r.grey && !(r.notan > 0);
-const stageSummary = (s) => [s.blur > 0 ? `squint ${Math.round(s.blur * 100)}%` : 'no squint', s.notan > 0 ? 'light and shadow' : s.levels >= 2 ? `${s.levels} values` : 'all values'].join(', ');
+const stageSummary = (s) => [s.blur > 0 ? `squint ${Math.round(s.blur * 1000) / 10}%` : 'no squint', s.notan > 0 ? 'light and shadow' : s.levels >= 2 ? `${s.levels} values` : 'all values'].join(', ');
 // The underpainting paints offered in Values ('' is grey).
 const MO_PLAN_UNDERS = ['', 'Burnt Sienna', 'Raw Umber', 'Burnt Umber', 'Yellow Ochre', 'Ultramarine Blue', 'Payne’s Grey', 'Sap Green'];
 const parse = (text, fallback) => { try { const v = JSON.parse(text); return v == null ? fallback : v; } catch { return fallback; } };
@@ -167,8 +167,8 @@ export function moPlanColours(ctx) {
     const r = state.recipe;
     const n = currentStage();
     const s1 = moPlanSection(panel, '');
-    moPlanSlider(s1, { id: 'media-organizer.plan.squint', label: 'Squint', min: 0, max: 100, step: 1, value: Math.round((r.blur || 0) * 100), text: (v) => (v ? `${v}%` : 'sharp'),
-      onInput: (v) => setAid({ blur: v / 100 }, false), onChange: (v) => setAid({ blur: v / 100 }, true, true) });
+    moPlanSlider(s1, { id: 'media-organizer.plan.squint', label: 'Squint', min: 0, max: 100, step: 1, value: moSquintPos((r.blur || 0) * 100), text: (v) => moSquintText(moSquintAt(v)),
+      onInput: (v) => setAid({ blur: moSquintAt(v) / 100 }, false), onChange: (v) => setAid({ blur: moSquintAt(v) / 100 }, true, true) });
     const light = r.notan > 0;
     if (!light) moPlanSlider(s1, { id: 'media-organizer.plan.values', label: 'Values', min: 2, max: 11, step: 1, value: r.levels >= 2 ? r.levels : 11, text: (v) => (v >= 11 ? 'all' : String(v)),
       onInput: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, false), onChange: (v) => setAid({ levels: v >= 11 ? 0 : v, notan: 0 }, true, true) });

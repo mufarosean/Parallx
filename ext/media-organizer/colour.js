@@ -190,6 +190,21 @@ export const MO_STARTER_PAINTS = ['Titanium White', 'Cadmium Yellow Light', 'Yel
   .map((n) => MO_COMMON_PAINTS.find((p) => p.name === n));
 export const MO_MIX_RULES = { max: 3, lighten: 'white', whiteFree: true, noBlack: true, preferFewer: true };
 
+// A painting plan's values as swatches, darkest first: the tones its Values view lays the picture in.
+// `levels` bands (none: nine steps), or light and shadow when `notan` is set, in grey or in one paint
+// (`under`, a paint's name) from its darks to its tints, worked as the plan's shader works them.
+export function moValueSwatches(levels, notan, under) {
+  const p = under ? MO_COMMON_PAINTS.find((x) => x.name === under) : null;
+  const u = p ? moOklab(...moHexRgb(p.hex)) : null;
+  const n = Number(levels) >= 2 ? Math.round(Number(levels)) : 9;
+  const Ls = Number(notan) > 0 ? [0.24, 0.86] : Array.from({ length: n }, (_, i) => (i + 0.5) / n);
+  return Ls.map((L) => {
+    if (!u) return moFromOklab(L, 0, 0);
+    const k = Math.max(0, Math.min(1, 1 - Math.abs(L - u[0]) / Math.max(u[0], 1 - u[0]))), f = 0.35 + 0.65 * k;
+    return moFromOklab(L, u[1] * f, u[2] * f);
+  });
+}
+
 export function moHexRgb(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
   if (!m) return null;
