@@ -160,6 +160,9 @@ export async function seedAfterLaunch(page, pre) {
     'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },
     'seed:conceptMap': async () => { if (typeof mapId === 'string' && !mapId.startsWith('failed')) await run(page, 'canvas.openPage', mapId); },
     'seed:imageEditor': async () => { await run(page, 'media-organizer.editImage', pre.photoId); },
+    // A mask made from the keyboard (its menu: Brush, Linear Gradient, Radial Gradient).
+    'seed:imageEditor.masks': async () => { await run(page, 'media-organizer.editImage', pre.photoId); await page.waitForTimeout(2_500); await page.locator('[data-px-id="media-organizer.imageEditor.tool.masks"]:visible').first().click().catch(() => {}); await page.waitForTimeout(600); await page.locator('[data-px-id="media-organizer.imageEditor.masks.new"]:visible').first().click().catch(() => {}); for (const k of ['ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(k); await page.waitForTimeout(1_200); },
+    'seed:plan.masks': planTool('Photo', async () => { await page.locator('[data-px-id="media-organizer.plan.masks.new"]:visible').first().click().catch(() => {}); for (const k of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(k); await page.waitForTimeout(1_500); }),
     'seed:clipEditor': async () => { await run(page, 'media-organizer.openClipEditor', pre.video); },
   };
 }

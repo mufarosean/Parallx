@@ -1,6 +1,8 @@
 # Image Editor: masks (local adjustments)
 
-Status: **proposal, waiting for the owner's yes.** Nothing here is built until he agrees.
+Status: **step 1 built** (2026-10-15, after the owner said yes): brush, linear and radial gradients, Add,
+Subtract, Intersect and Invert, every local control and Blur, in the Image Editor's Masks tab and a
+plan's Photo step, through saves and the 16-bit TIFF. Step 2 (Subject, Sky, Background) is next.
 Mock (works on real photos): https://claude.ai/artifact/9eUmgf1E1f57nfmg5JRbUg
 
 ## Why
@@ -66,6 +68,22 @@ painting plan's Photo step, because both draw their panels from `moEditPanelKit`
   - Saves and the 16-bit TIFF go through the same tiles, with each tile cut from each mask.
 - **Neighbourhood controls** (clarity, texture, dehaze, blur) already read blurred copies of the
   source. A mask's pass reads the same copies.
+
+## As built (step 1)
+
+- `edit-masks.js` holds the masks: the recipe's shape (`moMasksNormalize`), how much of each pixel a
+  mask covers (`moMaskField`, worked at 2048 pixels on the long side), the engine's passes
+  (`moMaskPasses`), and the Masks tool: its panel, built from the editor's own sections and sliders, and
+  its layer over the picture (handles, the brush and its cursor).
+- The engine's GLSL moved to `engine-shaders.js`. A mask is a single-channel texture over the source
+  picture. Each pass draws the recipe with the mask's settings and lays it over the picture so far through
+  the mask. Passes ping-pong between half-float targets on screen and float targets for a 16-bit save.
+  Show Mask is a pass of its own.
+- A save's tiles each map their part of the mask (`maskM`). A plan drawn from its enhanced copy maps the
+  copy's uv back to the photo's the same way.
+- Each Masks tool (the editor's, a plan's) names itself in its buttons' commands, so the one clicked
+  answers.
+- In a mask, settings add to the global look; overlapping masks lay over each other in order.
 
 ## Build stages
 

@@ -218,6 +218,15 @@ export function moPlanPhoto(ctx) {
   const kit = deps.panelKit({ api, root: ctx.root, state: kitState, afterChange: (rec) => ctx.afterRecipeChange(rec), requestRender: () => ctx.requestRender(), renderPanel: () => ctx.renderPanel(),
     autoTone: () => { const got = ctx.editedPixels(256, true); if (!got) return; Object.assign(state.recipe, deps.autoTone(deps.histogram(got.px))); state.recipe.off = (state.recipe.off || []).filter((x) => x !== 'light'); ctx.afterRecipeChange(true); },
     togglePickWb: () => { kitState.pickWb = !kitState.pickWb; if (kitState.pickWb) removing = false; sync(); ctx.renderPanel(); } });
+  // Masks (edit-masks.js) on the plan's recipe, their handles and brush in the frame over the crop.
+  const inv = (m) => { const d = m[0] * m[4] - m[1] * m[3] || 1e-12; return [m[4] / d, -m[1] / d, (m[1] * m[5] - m[2] * m[4]) / d, -m[3] / d, m[0] / d, (m[2] * m[3] - m[0] * m[5]) / d]; };
+  const app = (m, x, y) => [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]];
+  const masksTool = ctx.masks({ api, root: ctx.root, kit, host: ctx.frame, recipe: () => state.recipe, requestRender: () => ctx.requestRender(),
+    afterChange: (rec) => { if (rec) ctx.afterRecipeChange(true); else { ctx.renderPanel(); ctx.requestRender(); } },
+    on: () => state.tool === 'photo' && !state.notes && !removing && !kitState.pickWb, photoSize: () => ({ w: state.imgW, h: state.imgH }),
+    toScreen: (u, v) => { const o = app(inv(ctx.geometry().m), u, v); return { x: o[0] * ctx.frame.clientWidth, y: o[1] * ctx.frame.clientHeight }; },
+    fromScreen: (x, y) => { const rc = ctx.frame.getBoundingClientRect(); let ou = (x - rc.left) / Math.max(1, rc.width); if (state.mirror) ou = 1 - ou; const q = app(ctx.geometry().m, ou, (y - rc.top) / Math.max(1, rc.height)); return { u: q[0], v: q[1] }; },
+    screenPerPhoto: () => ctx.frame.clientWidth / Math.max(1, ctx.geometry().outW) });
   function panel(container, panelDisposers) {
     const r = state.recipe;
     if (engine === null) void deps.enhance.ready().then((ok) => { engine = !!ok; if (state.tool === 'photo') ctx.renderPanel(); });
@@ -251,6 +260,7 @@ export function moPlanPhoto(ctx) {
     if (got) kitState.hist = deps.histogram(got.px);
     kit.forgetCurve();
     kit.panelEdit(sections);
+    masksTool.panel(sections, panelDisposers);
     // Remove
     const s2 = moPlanSection(container, 'Remove', true);
     if (remover === 'unknown') { void deps.removal.state().then((st) => { remover = st; if (state.tool === 'photo') ctx.renderPanel(); }); moPlanHint(s2, 'Checking'); return; }
@@ -275,6 +285,7 @@ export function moPlanPhoto(ctx) {
     layer.classList.toggle('is-picking', !!kitState.pickWb);
     layer.style.cursor = on ? 'crosshair' : '';
     if (on && layer.tabIndex !== 0) layer.tabIndex = 0;
+    masksTool.sync();
   }
 
   const acts = {
@@ -292,6 +303,7 @@ export function moPlanPhoto(ctx) {
 
   return {
     panel, sync, source, refresh,
+    tintMask: () => masksTool.tintMask(),
     /** Every file the plan names, for the sweep of its folder. */
     filesOf: (r) => [...((r && r.removals) || []).map((m) => m.file), ...(r && r.enhanced && r.enhanced.file ? [r.enhanced.file] : [])],
     stopRemoving() { removing = false; kitState.pickWb = false; },
@@ -299,6 +311,7 @@ export function moPlanPhoto(ctx) {
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
       ctx.root.removeEventListener('focusin', used);
       for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } }
+      masksTool.dispose();
       if (enh && enh.img && enh.img.close) enh.img.close();
       paint.remove(); layer.remove();
     },

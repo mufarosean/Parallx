@@ -100,6 +100,32 @@ export const MO_PLAN_CSS = `
 .mo-ps-ab { display: flex; gap: var(--px-space-2); }
 .mo-ps-ab span { flex: 1; height: 26px; border-radius: var(--px-radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--px-viewer-ink); text-shadow: 0 0 2px var(--px-viewer-bar); box-shadow: var(--px-ring); }
 
+/* Masks (edit-masks.js): the layer over the picture, and the Masks panel */
+.mo-mk-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.mo-mk-layer.is-brush { pointer-events: auto; cursor: none; touch-action: none; }
+.mo-mk-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
+.mo-mk-lines, .mo-mk-handles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mo-mk-h { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: var(--px-radius-full); background: var(--px-viewer-ink); border: 2px solid var(--px-accent); box-shadow: 0 0 0 1px var(--px-viewer-bar); pointer-events: auto; cursor: grab; touch-action: none; scale: calc(1 / var(--mo-plan-zoom, 1)); }
+.mo-mk-h.is-pin { width: 18px; height: 18px; margin: -9px 0 0 -9px; background: var(--px-accent); border-color: var(--px-viewer-ink); }
+.mo-mk-h:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
+.mo-mk-cursor { position: absolute; transform: translate(-50%, -50%); border: 1.5px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); pointer-events: none; }
+.mo-mk-cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: calc(var(--mo-mk-inner, 0px) * 2); height: calc(var(--mo-mk-inner, 0px) * 2); transform: translate(-50%, -50%); border: 1px dashed var(--px-viewer-ink); border-radius: var(--px-radius-full); }
+.mo-mk-top { display: flex; align-items: center; gap: var(--px-space-1); margin-bottom: var(--px-space-1); }
+.mo-mk-top .px-btn--primary { flex: 1; justify-content: center; }
+.mo-mk-list, .mo-mk-parts { display: flex; flex-direction: column; gap: 2px; }
+.mo-mk-row { display: flex; align-items: center; gap: 2px; }
+.px-btn.mo-mk-mask { flex: 1; min-width: 0; height: auto; display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-areas: "th name" "th sub"; column-gap: var(--px-space-2); row-gap: 0; padding: 4px; text-align: left; justify-content: stretch; }
+.mo-mk-thumb { grid-area: th; width: 40px; height: 28px; border-radius: var(--px-radius-sm); }
+.px-btn.mo-mk-mask .px-btn__label { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mo-mk-sub { grid-area: sub; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--px-text-2xs); color: var(--px-text-muted); font-weight: normal; }
+.px-btn.mo-mk-mask[aria-pressed="true"], .px-btn.mo-mk-part[aria-pressed="true"] { background: var(--px-accent-soft); }
+.px-btn.mo-mk-part { flex: 1; justify-content: flex-start; gap: var(--px-space-2); }
+.mo-mk-op { flex: none; width: 18px; height: 18px; border-radius: var(--px-radius-full); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: var(--px-accent-soft); color: var(--px-accent-text); }
+.mo-mk-op.is-sub { background: color-mix(in srgb, var(--px-danger) 18%, transparent); color: var(--px-danger); }
+.mo-mk-ops, .mo-mk-looks { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin: var(--px-space-1) 0; }
+.mo-mk-ops .px-btn { flex: 1; }
+.mo-mk-switch { display: flex; justify-content: space-between; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); margin: var(--px-space-1) 0; }
+
 /* A choice of a few fills its row */
 .mo-plan-panel .ui-segmented-control { display: flex; width: 100%; }
 .mo-plan-panel .ui-segmented-control__segment { flex: 1 1 0; min-width: 0; padding: 2px; overflow: hidden; text-overflow: ellipsis; }

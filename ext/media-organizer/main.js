@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_COMMON_PAINTS, MO_OKLAB_GLSL, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskPasses, moMasksNormalize } from './edit-masks.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -31853,7 +31853,7 @@ function moPlanWithLook(r) {
   r.bw = n.bw; r.curve = n.curve; r.mixer = n.mixer; r.grading = n.grading; r.off = n.off;
   return r;
 }
-const moPlanRecipe = (r) => moPlanWithLook(moPlanNormalizeRecipe(r));
+const moPlanRecipe = (r) => { const x = moPlanWithLook(moPlanNormalizeRecipe(r)); x.masks = moMasksNormalize(r && r.masks); return x; };
 // The underpainting paint's colour as OKLab, or null for grey.
 function moPlanUnderLab(name) {
   const p = name ? MO_COMMON_PAINTS.find((x) => x.name === name) : null;
@@ -31985,215 +31985,6 @@ function renderPlansTab(container, api, input) {
 // Every control is skipped when it is at rest, so a recipe that leaves it
 // alone draws exactly what it drew before the control existed.
 
-const MO_PLAN_VS = `
-attribute vec2 a_pos; varying vec2 v_uv;
-void main() { v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }`;
-// Texture space in, texture space out: for passes that write a texture.
-const MO_ENGINE_COPY_VS = `
-attribute vec2 a_pos; varying vec2 v_uv;
-void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }`;
-// Nine taps of a gaussian along u_step; u_step of zero is a plain copy.
-const MO_ENGINE_BLUR_FS = `
-precision highp float;
-varying vec2 v_uv;
-uniform sampler2D u_img;
-uniform vec2 u_step;
-void main() {
-  vec4 c = texture2D(u_img, v_uv) * 0.227027;
-  c += (texture2D(u_img, v_uv + u_step * 1.384615) + texture2D(u_img, v_uv - u_step * 1.384615)) * 0.316216;
-  c += (texture2D(u_img, v_uv + u_step * 3.230769) + texture2D(u_img, v_uv - u_step * 3.230769)) * 0.070270;
-  gl_FragColor = c;
-}`;
-const MO_ENGINE_FS = `
-precision highp float;
-varying vec2 v_uv;
-uniform sampler2D u_img;
-uniform sampler2D u_blurS;
-uniform sampler2D u_blurL;
-uniform sampler2D u_curve;
-uniform vec3 u_v0, u_v1, u_m0, u_m1;
-uniform vec2 u_texel, u_outSize;
-uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
-uniform float u_warmth, u_tint, u_hue, u_sat, u_vibrance;
-uniform float u_grey, u_levels, u_notan, u_split, u_paletteN, u_opaque, u_outside;
-uniform float u_curveOn, u_mixOn, u_gradeOn, u_clipSrc, u_valueMode, u_underOn;
-uniform vec3 u_under;
-uniform vec3 u_mix[8];
-uniform vec3 u_gShadow, u_gMid, u_gHigh, u_gLum;
-uniform float u_gBlend, u_gBalance;
-uniform float u_texture, u_clarity, u_dehaze;
-uniform float u_vignette, u_vigMid, u_vigFeather, u_grain, u_grainSize;
-uniform float u_sharpen, u_sharpRadius, u_noise, u_noiseColour;
-uniform vec3 u_palette[16];
-const vec3 LUMA = vec3(0.299, 0.587, 0.114);${MO_OKLAB_GLSL}vec3 rgb2hsv(vec3 c) {
-  vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-  float d = q.x - min(q.w, q.y); float e = 1.0e-10;
-  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-}
-vec3 hsv2rgb(vec3 c) {
-  vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-// Noise reduction: neighbours that look like this pixel are averaged in.
-vec3 denoise(vec2 s, vec3 c0) {
-  vec3 sum = vec3(0.0); float wsum = 0.0;
-  for (int j = -2; j <= 2; j++) {
-    for (int i = -2; i <= 2; i++) {
-      vec2 d = vec2(float(i), float(j));
-      vec3 c = texture2D(u_img, s + d * u_texel * 1.5).rgb;
-      vec3 df = c - c0;
-      float w = exp(-dot(d, d) * 0.18 - dot(df, df) * 60.0);
-      sum += c * w; wsum += w;
-    }
-  }
-  vec3 avg = sum / wsum;
-  float l0 = dot(c0, LUMA); float la = dot(avg, LUMA);
-  float l = mix(l0, la, u_noise);
-  vec3 ch = mix(c0 - l0, avg - la, u_noiseColour);
-  return clamp(vec3(l) + ch, 0.0, 1.0);
-}
-// A colour's share of one band of the mixer: 1 at the band's hue, 0 at its neighbours'. Hues in turns.
-float band(float h, float c, float lo, float hi) {
-  float d = h - c; d -= floor(d + 0.5);
-  float wl = c - lo; wl -= floor(wl);
-  float wr = hi - c; wr -= floor(wr);
-  return d < 0.0 ? max(0.0, 1.0 + d / wl) : max(0.0, 1.0 - d / wr);
-}
-vec3 mixer(vec3 c) {
-  vec3 h = rgb2hsv(c);
-  vec3 m = band(h.x, 0.0, 300.0 / 360.0, 30.0 / 360.0) * u_mix[0]
-    + band(h.x, 30.0 / 360.0, 0.0, 60.0 / 360.0) * u_mix[1]
-    + band(h.x, 60.0 / 360.0, 30.0 / 360.0, 120.0 / 360.0) * u_mix[2]
-    + band(h.x, 120.0 / 360.0, 60.0 / 360.0, 180.0 / 360.0) * u_mix[3]
-    + band(h.x, 180.0 / 360.0, 120.0 / 360.0, 240.0 / 360.0) * u_mix[4]
-    + band(h.x, 240.0 / 360.0, 180.0 / 360.0, 270.0 / 360.0) * u_mix[5]
-    + band(h.x, 270.0 / 360.0, 240.0 / 360.0, 300.0 / 360.0) * u_mix[6]
-    + band(h.x, 300.0 / 360.0, 270.0 / 360.0, 0.0) * u_mix[7];
-  float k = smoothstep(0.02, 0.2, h.y);                       // greys are left alone
-  h.x = fract(h.x + m.x * (30.0 / 360.0) * k + 1.0);
-  h.y = clamp(h.y * (1.0 + m.y * k), 0.0, 1.0);
-  h.z = clamp(h.z * (1.0 + m.z * 0.5 * k), 0.0, 1.0);
-  return hsv2rgb(h);
-}
-vec3 grade(vec3 c) {
-  float l = dot(c, LUMA);
-  float b = u_gBalance * 0.25;
-  float ws = 1.0 - smoothstep(0.0, mix(0.35, 0.75, u_gBlend) + b, l);
-  float wh = smoothstep(mix(0.65, 0.25, u_gBlend) + b, 1.0, l);
-  float wm = clamp(1.0 - ws - wh, 0.0, 1.0);
-  c += ws * u_gShadow + wm * u_gMid + wh * u_gHigh;
-  c += (ws * u_gLum.x + wm * u_gLum.y + wh * u_gLum.z) * 0.25;
-  return clamp(c, 0.0, 1.0);
-}
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
-void main() {
-  vec3 q = vec3(v_uv, 1.0);
-  vec2 o = vec2(dot(u_v0, q), dot(u_v1, q));
-  bool outside = o.x < 0.0 || o.x > 1.0 || o.y < 0.0 || o.y > 1.0;
-  if (outside && u_outside < 0.5) { gl_FragColor = vec4(0.0); return; }
-  vec3 oq = vec3(o, 1.0);
-  vec2 s = vec2(dot(u_m0, oq), dot(u_m1, oq));
-  if ((outside || u_clipSrc > 0.5) && (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0)) { gl_FragColor = vec4(0.0); return; }
-  vec4 t = texture2D(u_img, s);
-  vec3 c = t.rgb;
-  vec3 orig = c;
-  if (u_noise > 0.0005 || u_noiseColour > 0.0005) c = denoise(s, c);
-  vec3 src = c;
-  c *= pow(2.0, u_exposure);
-  float l = dot(c, LUMA);
-  float sw = 1.0 - smoothstep(0.0, 0.6, l);
-  float hw = smoothstep(0.4, 1.0, l);
-  c += u_shadows * sw * 0.5 * (1.0 - c);
-  c += u_highlights * hw * 0.5 * c;
-  if (abs(u_whites) > 0.0005) c += u_whites * 0.25 * smoothstep(0.55, 1.0, l);
-  if (abs(u_blacks) > 0.0005) c += u_blacks * 0.25 * (1.0 - smoothstep(0.0, 0.45, l));
-  c = (c - 0.5) * (1.0 + u_contrast) + 0.5;
-  c.r += u_warmth * 0.12; c.b -= u_warmth * 0.12; c.g -= u_tint * 0.1;
-  c = clamp(c, 0.0, 1.0);
-  if (u_curveOn > 0.5) {
-    c = vec3(texture2D(u_curve, vec2((c.r * 1023.0 + 0.5) / 1024.0, 0.5)).r,
-      texture2D(u_curve, vec2((c.g * 1023.0 + 0.5) / 1024.0, 0.5)).g,
-      texture2D(u_curve, vec2((c.b * 1023.0 + 0.5) / 1024.0, 0.5)).b);
-  }
-  if (abs(u_texture) > 0.0005 || abs(u_clarity) > 0.0005 || abs(u_dehaze) > 0.0005) {
-    vec3 bs = texture2D(u_blurS, s).rgb;
-    vec3 bl = texture2D(u_blurL, s).rgb;
-    if (u_dehaze > 0.0005) {
-      float dark = min(bl.r, min(bl.g, bl.b));
-      float tr = max(0.15, 1.0 - u_dehaze * 0.85 * dark);
-      c = (c - 1.0) / tr + 1.0;
-      c = mix(vec3(dot(c, LUMA)), c, 1.0 + u_dehaze * 0.25);
-    } else if (u_dehaze < -0.0005) {
-      float dark = min(bl.r, min(bl.g, bl.b));
-      c = mix(c, vec3(1.0), -u_dehaze * 0.5 * (0.35 + 0.65 * dark));
-    }
-    float lm = clamp(dot(c, LUMA), 0.0, 1.0);
-    c += u_texture * 1.2 * (src - bs);
-    c += u_clarity * 0.9 * (src - bl) * (1.0 - pow(abs(2.0 * lm - 1.0), 2.0));
-    c = clamp(c, 0.0, 1.0);
-  }
-  if (u_sharpen > 0.0005) {
-    vec2 d = u_texel * u_sharpRadius;
-    vec3 n = (texture2D(u_img, s + vec2(d.x, 0.0)).rgb + texture2D(u_img, s - vec2(d.x, 0.0)).rgb
-      + texture2D(u_img, s + vec2(0.0, d.y)).rgb + texture2D(u_img, s - vec2(0.0, d.y)).rgb) * 0.25;
-    c = clamp(c + u_sharpen * 1.5 * (src - n), 0.0, 1.0);
-  }
-  if (abs(u_hue) > 0.0005 || abs(u_sat) > 0.0005) {
-    vec3 h = rgb2hsv(c); h.x = fract(h.x + u_hue); h.y = clamp(h.y * (1.0 + u_sat), 0.0, 1.0); c = hsv2rgb(h);
-  }
-  if (abs(u_vibrance) > 0.0005) {
-    float mx = max(c.r, max(c.g, c.b)); float mn = min(c.r, min(c.g, c.b));
-    float g = dot(c, LUMA);
-    c = clamp(mix(vec3(g), c, 1.0 + u_vibrance * (1.0 - (mx - mn))), 0.0, 1.0);
-  }
-  if (u_mixOn > 0.5) c = mixer(c);
-  if (u_gradeOn > 0.5) c = grade(c);
-  float lum = dot(c, LUMA);
-  if (u_valueMode > 0.5) {
-    // A painting plan's values: lightness as the eye sees it, banded, or light and shadow only, laid in
-    // one paint (u_under, OKLab) from its darks to its tints, or in grey.
-    float L = toOklab(c).x;
-    if (u_notan > 0.0) L = L >= u_notan ? 0.86 : 0.24;
-    else if (u_levels >= 2.0) L = (min(floor(L * u_levels), u_levels - 1.0) + 0.5) / u_levels;
-    vec2 ab = vec2(0.0);
-    if (u_underOn > 0.5) { float k = clamp(1.0 - abs(L - u_under.x) / max(u_under.x, 1.0 - u_under.x), 0.0, 1.0); ab = u_under.yz * (0.35 + 0.65 * k); }
-    vec3 lin = oklabToLinear(vec3(L, ab));
-    for (int i = 0; i < 8; i++) { if (min(lin.r, min(lin.g, lin.b)) >= -0.001 && max(lin.r, max(lin.g, lin.b)) <= 1.001) break; ab *= 0.8; lin = oklabToLinear(vec3(L, ab)); }
-    c = linearToSrgb(clamp(lin, 0.0, 1.0));
-  } else {
-  if (u_grey > 0.5) c = vec3(lum);
-  if (u_notan > 0.0) c = vec3(step(u_notan, lum));
-  else if (u_levels >= 2.0) { float bi = min(floor(lum * u_levels), u_levels - 1.0); c = u_grey > 0.5 ? vec3(bi / (u_levels - 1.0)) : valueBand(c, (bi + 0.5) / u_levels); } // colour keeps its hue at its band's middle value
-  }
-  if (u_paletteN > 0.5) {
-    vec3 best = u_palette[0]; float bd = 1.0e9; vec3 cl = toOklab(c); // nearest as the eye judges it
-    for (int i = 0; i < 16; i++) {
-      if (float(i) >= u_paletteN) break;
-      vec3 d = cl - toOklab(u_palette[i]); float dd = dot(d, d);
-      if (dd < bd) { bd = dd; best = u_palette[i]; }
-    }
-    c = best;
-  }
-  if (!outside && abs(u_vignette) > 0.0005) {
-    float d = length((o - 0.5) * 2.0) / 1.41421356;            // 0 at the centre, 1 in a corner
-    float inner = 0.9 * u_vigMid;
-    float v = smoothstep(inner, inner + mix(0.1, 1.0, u_vigFeather), d);
-    c = u_vignette < 0.0 ? c * (1.0 + u_vignette * v) : c + u_vignette * v * (1.0 - c);
-  }
-  if (!outside && u_grain > 0.0005) {
-    vec2 g = floor(o * u_outSize / mix(1.0, 4.0, u_grainSize));
-    float n = hash(g) + hash(g + 17.0) - 1.0;
-    float gm = dot(c, LUMA);
-    c = clamp(c + u_grain * 0.18 * n * (1.0 - 0.6 * abs(2.0 * gm - 1.0)), 0.0, 1.0);
-  }
-  if (u_split >= 0.0 && v_uv.x < u_split) c = orig;
-  if (outside) c *= 0.3;
-  gl_FragColor = vec4(c, (u_opaque > 0.5 || outside) ? 1.0 : t.a);
-}`;
-
 const MO_ENGINE_LOOK_KEYS = ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'warmth', 'tint', 'hue', 'saturation', 'vibrance'];
 const MO_ENGINE_FLOATS = [['u_exposure', 'exposure'], ['u_contrast', 'contrast'], ['u_highlights', 'highlights'], ['u_shadows', 'shadows'], ['u_whites', 'whites'], ['u_blacks', 'blacks'],
   ['u_warmth', 'warmth'], ['u_tint', 'tint'], ['u_hue', 'hue'], ['u_sat', 'saturation'], ['u_vibrance', 'vibrance'],
@@ -32228,7 +32019,8 @@ function moImageEngine(canvas) {
   const U = {};
   for (const n of ['u_img', 'u_blurS', 'u_blurL', 'u_curve', 'u_v0', 'u_v1', 'u_m0', 'u_m1', 'u_texel', 'u_outSize',
     'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette', 'u_opaque', 'u_outside',
-    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_clipSrc', 'u_valueMode', 'u_underOn', 'u_under', 'u_mix', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
+    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_clipSrc', 'u_valueMode', 'u_underOn', 'u_under', 'u_mix',
+    'u_mask', 'u_prev', 'u_maskOn', 'u_tintOnly', 'u_blurAmt', 'u_mk0', 'u_mk1', 'u_passSize', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
     ...MO_ENGINE_FLOATS.map((f) => f[0])]) U[n] = gl.getUniformLocation(prog, n);
   const BU = { img: gl.getUniformLocation(blurProg, 'u_img'), step: gl.getUniformLocation(blurProg, 'u_step') };
   const plainTexture = (filter) => {
@@ -32244,11 +32036,14 @@ function moImageEngine(canvas) {
   const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
   let srcW = 0, srcH = 0;
 
-  // A texture that can be drawn into.
+  // A texture that can be drawn into: 8-bit, or (WebGL2 with float targets) 'half' or 'float'.
   const targets = [];
-  const target = (w, h) => {
-    const t = plainTexture();
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  const floatTargets = gl2 && !!gl.getExtension('EXT_color_buffer_float');
+  const target = (w, h, kind) => {
+    const t = plainTexture(kind === 'float' ? gl.NEAREST : null);
+    if (kind === 'float' && floatTargets) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+    else if (kind === 'half' && floatTargets) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     const fb = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
@@ -32345,6 +32140,11 @@ function moImageEngine(canvas) {
       gl.uniform3f(U.u_gLum, g.lum[0], g.lum[1], g.lum[2]);
       gl.uniform1f(U.u_gBlend, g.blend); gl.uniform1f(U.u_gBalance, g.balance);
     }
+    gl.uniform1f(U.u_maskOn, p.maskTex ? 1 : 0); gl.uniform1f(U.u_tintOnly, p.tintOnly ? 1 : 0); gl.uniform1f(U.u_blurAmt, Number(look.blurAmount) || 0);
+    const mk = p.maskM || MO_ENGINE_IDENTITY; gl.uniform3f(U.u_mk0, mk[0], mk[1], mk[2]); gl.uniform3f(U.u_mk1, mk[3], mk[4], mk[5]);
+    gl.uniform2f(U.u_passSize, W, H); gl.uniform1i(U.u_mask, 4); gl.uniform1i(U.u_prev, 5);
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, p.maskTex || curveTex);
+    gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, p.prevTex || curveTex);
     gl.uniform1i(U.u_img, 0); gl.uniform1i(U.u_blurS, 1); gl.uniform1i(U.u_blurL, 2); gl.uniform1i(U.u_curve, 3);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, blurS ? blurS.tex : tex);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, blurL ? blurL.tex : tex);
@@ -32353,9 +32153,31 @@ function moImageEngine(canvas) {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   };
   const prepare = (p) => {
-    const look = p.look || {};
-    if (Number(look.texture) || Number(look.clarity) || Number(look.dehaze)) ensureBlur();
+    const needs = (look) => !!look && !!(Number(look.texture) || Number(look.clarity) || Number(look.dehaze) || Number(look.blurAmount));
+    if (needs(p.look) || (p.masks || []).some((m) => needs(m.look))) ensureBlur();
     if (p.curve) setCurve(p.curve);
+  };
+  // Masks: each a single-channel texture over the source picture (setMask). p.masks: [{ id, look }], drawn in
+  // order over the base, each through its mask; p.tint: a mask's id to show in red over the result. Passes
+  // ping-pong between two targets kept while the size holds.
+  const maskTexs = new Map();
+  let ping = null;
+  const pingPong = (W, H, kind) => {
+    if (ping && ping.w === W && ping.h === H && ping.kind === kind) return ping;
+    if (ping) { release(ping.a); release(ping.b); }
+    ping = { w: W, h: H, kind, a: target(W, H, kind), b: target(W, H, kind) };
+    return ping;
+  };
+  const run = (p, W, H, fbFinal, kind) => {
+    const masks = (p.masks || []).filter((m) => maskTexs.has(m.id));
+    const tint = p.tint != null && maskTexs.has(p.tint) ? maskTexs.get(p.tint) : null;
+    if (!masks.length && !tint) { gl.bindFramebuffer(gl.FRAMEBUFFER, fbFinal); apply(p, W, H); return; }
+    const pp = pingPong(W, H, kind);
+    let prev = null;
+    const go = (q, last) => { const dst = last ? null : (prev === pp.a ? pp.b : pp.a); gl.bindFramebuffer(gl.FRAMEBUFFER, last ? fbFinal : dst.fb); apply(q, W, H); prev = dst; };
+    go(p, false);
+    masks.forEach((m, i) => go(Object.assign({}, p, { look: m.look, maskTex: maskTexs.get(m.id), prevTex: prev.tex }), !tint && i === masks.length - 1));
+    if (tint) go(Object.assign({}, p, { tintOnly: true, maskTex: tint, prevTex: prev.tex }), true);
   };
   setCurve(new Uint8Array(MO_ENGINE_CURVE_N * 4));
 
@@ -32414,16 +32236,26 @@ function moImageEngine(canvas) {
       if (canvas.width !== W) canvas.width = W;
       if (canvas.height !== H) canvas.height = H;
       prepare(p);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      apply(p, W, H);
+      run(p, W, H, null, 'half');
     },
+    /** A mask as bytes (w x h, one per pixel, rows top to bottom), over the whole source picture. */
+    setMask(id, data, w, h) {
+      gl.activeTexture(gl.TEXTURE4);
+      let t = maskTexs.get(id);
+      if (!t) { t = plainTexture(); maskTexs.set(id, t); } else gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, data);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.activeTexture(gl.TEXTURE0);
+    },
+    /** Masks no longer named go. */
+    dropMasks(keep) { for (const [id, t] of maskTexs) if (!keep.has(id)) { gl.deleteTexture(t); maskTexs.delete(id); } },
     // The same drawing at a small size, handed back as RGBA bytes (rows top to bottom).
     sample(p, width, height) {
       const W = Math.max(1, Math.round(width)); const H = Math.max(1, Math.round(height));
       prepare(p);
       const t = target(W, H);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
-      apply(p, W, H);
+      run(p, W, H, t.fb, 'half');
       const raw = new Uint8Array(W * H * 4);
       gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, raw);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -32448,7 +32280,8 @@ function moImageEngine(canvas) {
       let out = null;
       try {
         if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return null;
-        apply(p, W, H);
+        run(p, W, H, fb, 'float');
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
         const raw = new Float32Array(W * H * 4);
         gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, raw);
         out = new Float32Array(raw.length);
@@ -32463,6 +32296,7 @@ function moImageEngine(canvas) {
     dispose() {
       try {
         for (const t of targets.slice()) release(t);
+        for (const t of maskTexs.values()) gl.deleteTexture(t);
         gl.deleteTexture(tex); gl.deleteTexture(curveTex); gl.deleteBuffer(buf); gl.deleteProgram(prog); gl.deleteProgram(blurProg);
         const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
       } catch { /* gone */ }
@@ -32486,11 +32320,13 @@ function moPlanRenderer(canvas) {
       const r = recipe;
       const size = engine.size;
       const p0 = moEditEngineLook(opts.rest ? moEditDefaultRecipe() : r, false);
+      const ph = opts.photo || size, tintId = opts.tintMask ? moMaskEnsure(engine, opts.tintMask, ph.w, ph.h) : null;
+      const passes = opts.rest ? [] : moMaskPasses(engine, r.masks, p0.look, ph.w, ph.h, tintId);
       p0.look.hue = opts.rest ? 0 : Number(r.hue) || 0;
       const aids = opts.aids !== undefined ? !!opts.aids : r.show === 'values'; // a variation saved from Values shows its values
       const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: Number(r.angle) || 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
       return engine[opts.read ? 'sample' : 'draw']({ // read: the pixels back as RGBA bytes
-        m: geo.m, look: p0.look, curve: p0.curve, mix: p0.mix, grade: p0.grade, opaque: !opts.full, clipSource: !!opts.full,
+        m: geo.m, look: p0.look, curve: p0.curve, mix: p0.mix, grade: p0.grade, opaque: !opts.full, clipSource: !!opts.full, masks: passes, tint: tintId, maskM: opts.maskM || null,
         grey: p0.grey, levels: aids ? r.levels : 0, notan: aids ? r.notan : 0, valueMode: aids, under: aids ? moPlanUnderLab(r.under) : null,
         palette: aids && r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
         split: typeof opts.split === 'number' ? opts.split : -1,
@@ -32567,7 +32403,7 @@ function renderPlanEditor(container, api, planId) {
       toggleMirror: () => { state.mirror = !state.mirror; syncShell(); requestRender(); }, toggleNotes: () => { state.notes = !state.notes; syncShell(); renderPanel(); },
       openBoard: () => moOpenBoard(api, planId), exportPlan: (grid) => void exportPlan(grid), printPlan: () => void printPlan() },
     // The crop frame, the picker and the colour layers take a press on the picture; elsewhere a drag moves it.
-    pressUsed: (e) => !!e.target.closest('.mo-plan-cropbox, .mo-pc-ba-line, .mo-pc-layer:not(.mo-hidden)'),
+    pressUsed: (e) => !!e.target.closest('.mo-plan-cropbox, .mo-pc-ba-line, .mo-pc-layer:not(.mo-hidden), .mo-mk-layer.is-brush, .mo-mk-h'),
     onZoom: () => requestRender() });
   const syncShell = () => shell.sync(histIdx > 0, histIdx < history.length - 1);
   // Stages, the colour picker, saved colours and paint mixes (plan-colours.js).
@@ -32649,7 +32485,9 @@ function renderPlanEditor(container, api, planId) {
     frame.style.width = cssW + 'px'; frame.style.height = cssH + 'px';
     glCanvas.style.width = cssW + 'px'; glCanvas.style.height = cssH + 'px';
     if (needsBake()) bakeSource();
-    renderer.render(photo.source(state.tool).eff(r), { width: Math.round(cssW * px), height: Math.round(cssH * px), full, split: full ? -1 : state.split, aids: state.tool === 'values' || (state.tool === 'transfer' && state.view === 'values') });
+    const srcNow = photo.source(state.tool);
+    renderer.render(srcNow.eff(r), { width: Math.round(cssW * px), height: Math.round(cssH * px), full, split: full ? -1 : state.split, aids: state.tool === 'values' || (state.tool === 'transfer' && state.view === 'values'),
+      photo: { w: state.imgW, h: state.imgH }, maskM: srcNow.enhanced ? moEditAffine(r, state.imgW, state.imgH).m : null, tintMask: state.tool === 'photo' && !state.notes ? photo.tintMask() : null });
     ovCanvas.width = Math.round(cssW * px); ovCanvas.height = Math.round(cssH * px);
     ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
     const octx = ovCanvas.getContext('2d');
@@ -32689,6 +32527,8 @@ function renderPlanEditor(container, api, planId) {
         return new Uint8Array(await blob.arrayBuffer());
       } finally { rr.dispose(); }
     },
+    masks: (mctx) => moEditMasks(Object.assign(mctx, { idStem: 'media-organizer.plan.masks' })),
+    geometry: () => moEditAffine(state.recipe, state.imgW, state.imgH),
     deps: { panelKit: moEditPanelKit, histogram: moEditHistogram, autoTone: moEditAutoTone, whiteBalance: moEditWhiteBalance,
       enhance: { ready: moEnhanceReady, card: moEnhanceCard, run: moEnhanceRun, stop: moEnhanceStop, temp: (work) => moEnhanceTemp(api, work) },
       removal: { state: moEditRemoveState, fill: moEditFill },
@@ -32787,7 +32627,7 @@ function renderPlanEditor(container, api, planId) {
     if (!thumbOn(src.img)) return null;
     const r = src.eff(state.recipe), geo = moEditAffine(r, src.img.width, src.img.height), k = Math.min(1, max / Math.max(geo.outW, geo.outH));
     const w = Math.max(8, Math.round(geo.outW * k)), h = Math.max(8, Math.round(geo.outH * k));
-    try { return { px: thumbRenderer.render(r, { width: w, height: h, full: false, split: -1, read: true, aids: false, rest: !!rest }), w, h }; } catch { return null; }
+    try { return { px: thumbRenderer.render(r, { width: w, height: h, full: false, split: -1, read: true, aids: false, rest: !!rest, photo: { w: state.imgW, h: state.imgH }, maskM: src.enhanced ? moEditAffine(state.recipe, state.imgW, state.imgH).m : null }), w, h }; } catch { return null; }
   }
 
   // ── variations (plan-variations.js) ──
@@ -32836,7 +32676,7 @@ function renderPlanEditor(container, api, planId) {
     if (!rr) throw new Error('No WebGL for the export.');
     try {
       rr.setSource(src.img, 0);
-      rr.render(r, { width: W, height: H, full: false, split: -1, aids: state.view === 'values' });
+      rr.render(r, { width: W, height: H, full: false, split: -1, aids: state.view === 'values', photo: { w: state.imgW, h: state.imgH }, maskM: src.enhanced ? moEditAffine(state.recipe, state.imgW, state.imgH).m : null });
       const out = document.createElement('canvas');
       out.width = W; out.height = H;
       const ctx = out.getContext('2d');
@@ -33028,6 +32868,7 @@ function moEditDefaultRecipe() {
   r.removals = [];
   r.enhance = { scale: 0, model: 'photo' };
   r.off = [];
+  r.masks = []; // local edits (edit-masks.js), in the photo's own pixel space
   return r;
 }
 
@@ -33090,6 +32931,7 @@ function moEditNormalizeRecipe(r) {
   const en = o.enhance && typeof o.enhance === 'object' ? o.enhance : {};
   out.enhance = { scale: [2, 4].includes(Number(en.scale)) ? Number(en.scale) : 0, model: en.model === 'art' ? 'art' : 'photo' };
   out.off = (Array.isArray(o.off) ? o.off : []).filter((s) => MO_EDIT_SECTIONS.some((x) => x[0] === s) || MO_EDIT_PARTS.includes(s));
+  out.masks = Array.isArray(o.masks) ? o.masks : []; // checked in full by edit-masks.js (moMasksNormalize)
   return out;
 }
 
@@ -33130,7 +32972,7 @@ function moEditGeometryIsRest(r) {
 // True when the recipe changes no pixel: a copy would equal the original. Enhance is not counted here.
 function moEditIsNeutral(r) {
   if (!r) return true;
-  return moEditLookIsRest(r) && moEditGeometryIsRest(r) && !moEditShownRemovals(r).length;
+  return moEditLookIsRest(r) && moEditGeometryIsRest(r) && !moEditShownRemovals(r).length && !(r.masks || []).some((m) => m && m.show !== false && Object.values(m.adjust || {}).some((v) => Math.abs(Number(v) || 0) > 1e-6));
 }
 // The removals that are applied (one can be hidden: kept, but not applied).
 function moEditShownRemovals(r) { return (r && Array.isArray(r.removals) ? r.removals : []).filter((m) => m && !m.hidden); }
@@ -34341,6 +34183,7 @@ async function moEditRenderFull(source, recipe, flatten, onTile) {
   if (!engine) throw new Error('WebGL is not available, so the picture cannot be rendered.');
   try {
     const params = moEditEngineLook(recipe, false);
+    params.masks = moMaskPasses(engine, recipe.masks, params.look, imgW, imgH);
     const margin = moEditMargin(recipe);
     const tiles = moEditTiles(geo.outW, geo.outH, Math.min(MO_EDIT_TILE, Math.floor(engine.maxTexture / 2)));
     let drawn = 0;
@@ -34350,7 +34193,7 @@ async function moEditRenderFull(source, recipe, flatten, onTile) {
       const piece = whole ? source : source.deep ? moDeepCrop(source, part.sx, part.sy, part.sw, part.sh) : await createImageBitmap(source, part.sx, part.sy, part.sw, part.sh, { premultiplyAlpha: 'none' });
       try {
         if (engine.setSource(piece, {}) === false) throw new Error('Saving a photo at full depth needs WebGL 2, which this computer does not offer here.');
-        engine.draw(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: false }), tile.w, tile.h);
+        engine.draw(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: false, maskM: [part.sw / imgW, 0, part.sx / imgW, 0, part.sh / imgH, part.sy / imgH] }), tile.w, tile.h);
         ctx.drawImage(glCanvas, tile.x, tile.y);
       } finally { if (!whole && piece.close) piece.close(); }
       drawn++;
@@ -34370,6 +34213,7 @@ async function moEditRenderDeep(source, recipe, onTile) {
   try {
     const ppm = moPpm16Begin(geo.outW, geo.outH);
     const params = moEditEngineLook(recipe, false), margin = moEditMargin(recipe);
+    params.masks = moMaskPasses(engine, recipe.masks, params.look, source.width, source.height);
     const tiles = moEditTiles(geo.outW, geo.outH, Math.min(2048, Math.floor(engine.maxTexture / 2)));
     let drawn = 0;
     for (const tile of tiles) {
@@ -34378,7 +34222,7 @@ async function moEditRenderDeep(source, recipe, onTile) {
       const piece = whole ? source : source.deep ? moDeepCrop(source, part.sx, part.sy, part.sw, part.sh) : await createImageBitmap(source, part.sx, part.sy, part.sw, part.sh, { premultiplyAlpha: 'none' });
       try {
         if (engine.setSource(piece, {}) === false) throw new Error('Saving at 16 bits needs WebGL 2, which this computer does not offer here.');
-        const px = engine.sampleFloat(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: true }), tile.w, tile.h);
+        const px = engine.sampleFloat(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: true, maskM: [part.sw / source.width, 0, part.sx / source.width, 0, part.sh / source.height, part.sy / source.height] }), tile.w, tile.h);
         if (!px) throw new Error('Saving at 16 bits needs float drawing, which this computer does not offer here.');
         moPpm16Put(ppm, px, tile.x, tile.y, tile.w, tile.h);
       } finally { if (!whole && piece.close) piece.close(); }
@@ -35811,8 +35655,8 @@ function moEditActive() {
 
 // ── The editor ─────────────────────────────────────────────────────────────
 
-const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['crop', 'crop', 'Crop And Rotate'], ['remove', 'eraser', 'Remove'], ['enhance', 'wand-sparkles', 'Enhance']];
-const MO_EDIT_TAB_LABEL = { edit: 'Edit', crop: 'Crop', remove: 'Remove', enhance: 'Enhance' };
+const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['masks', 'blend', 'Masks'], ['crop', 'crop', 'Crop And Rotate'], ['remove', 'eraser', 'Remove'], ['enhance', 'wand-sparkles', 'Enhance']];
+const MO_EDIT_TAB_LABEL = { edit: 'Edit', masks: 'Masks', crop: 'Crop', remove: 'Remove', enhance: 'Enhance' };
 const MO_EDIT_FILM_SPAN = 30;   // photos shown either side of the open one
 
 // The Image Editor's panel parts, for the editor and for a painting plan's Photo step (plan-photo.js):
@@ -36581,7 +36425,9 @@ function renderImageEditor(container, api) {
     zoomChip.textContent = zoomEl.textContent;
     cropFrame.classList.toggle('mo-hidden', !crop);
     dial.classList.toggle('mo-hidden', !crop);
+    if (!state.original && !crop) { const tint = masks.tint(engine); p.masks = moMaskPasses(engine, state.recipe.masks, p.look, state.bitmap.width, state.bitmap.height, tint); if (tint) p.tint = tint; }
     engine.draw(p, cs.w, cs.h);
+    masks.sync();
     const mb = state.bytes ? state.bytes.byteLength / 1048576 : 0;
     sizeEl.textContent = `${geo.outW} \u00d7 ${geo.outH}` + (mb ? ` \u00b7 ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB` : '') + (state.sourceObj && state.sourceObj.deep ? ' \u00b7 16-bit' : '');
     sizeEl.title = state.sourceObj && state.sourceObj.deep ? 'Editing at full depth: every control works on the photo\u2019s own levels' : '';
@@ -36849,6 +36695,12 @@ function renderImageEditor(container, api) {
   const kit = moEditPanelKit({ api, root, state, afterChange: (rec) => afterChange(rec), requestRender: () => requestRender(), renderPanel: () => renderPanel(), autoTone: () => autoTone(), togglePickWb: () => togglePickWb() });
   const { openSection, sliderRow, pct, parsePct, miniBtn, hint, row, chips, drawCurve } = kit;
   const panelEdit = () => kit.panelEdit(panelBody);
+  // Masks (edit-masks.js): their handles and brush sit over the stage; a mask is in the source picture's uv.
+  const masks = moEditMasks({ api, root, kit, host: stage, recipe: () => state.recipe, requestRender: () => requestRender(), on: () => state.tool === 'masks' && !!state.bitmap,
+    afterChange: (rec) => { if (rec) afterChange(true); else { renderPanel(); requestRender(); } }, photoSize: () => ({ w: state.bitmap.width, h: state.bitmap.height }), idStem: 'media-organizer.imageEditor.masks',
+    toScreen: (u, v) => { const cs = canvasSize(), geo = geometry(), vw = state.session.view, o = moAffineApply(moAffineInvert(geo.m), u, v), c = moAffineApply(moAffineInvert(moEditViewMap(geo.outW, geo.outH, cs.w, cs.h, vw.zoom, vw.cx, vw.cy)), o[0], o[1]); return { x: (c[0] * cs.w) / cs.dpr, y: (c[1] * cs.h) / cs.dpr }; },
+    fromScreen: (x, y) => { const r = stage.getBoundingClientRect(), q = sourceAt(x - r.left, y - r.top); return { u: q[0] / state.bitmap.width, v: q[1] / state.bitmap.height }; },
+    screenPerPhoto: () => state.session.view.zoom / canvasSize().dpr });
   // The panel is rebuilt from the recipe; where it was scrolled to and the slider that had the focus are kept.
   function renderPanel() {
     const top = panelBody.scrollTop;
@@ -36859,6 +36711,7 @@ function renderImageEditor(container, api) {
     // The histogram belongs to the look: shown with Edit, Crop and Enhance.
     if (!state.recipe) return;
     if (state.tool === 'crop') panelCrop();
+    else if (state.tool === 'masks') masks.panel(panelBody, panelDisposers);
     else if (state.tool === 'remove') panelRemove();
     else if (state.tool === 'enhance') panelEnhance();
     else panelEdit();
@@ -37636,6 +37489,7 @@ function renderImageEditor(container, api) {
       titleEl.textContent = state.name;
       say('Loading');
       const [decoded, recipe] = await Promise.all([moEditDecode(state.srcPath), moEditLoadRecipe(id)]);
+      recipe.masks = moMasksNormalize(recipe.masks);
       if (disposed || seq !== loadSeq) { decoded.bitmap.close(); return; }
       state.bitmap = decoded.bitmap; state.bytes = decoded.bytes;
       if (!engine) engine = moImageEngine(canvas);
@@ -37723,6 +37577,7 @@ function renderImageEditor(container, api) {
       if (raf) cancelAnimationFrame(raf);
       if (resizeObs) resizeObs.disconnect();
       for (const d of panelDisposers.splice(0).concat(disposers.splice(0))) { try { d(); } catch { /* gone */ } }
+      masks.dispose();
       if (engine) engine.dispose();
       if (state.bitmap) { try { state.bitmap.close(); } catch { /* gone */ } }
       container.innerHTML = '';
@@ -38151,7 +38006,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moEditMasksActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);
