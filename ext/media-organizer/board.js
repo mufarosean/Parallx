@@ -150,11 +150,21 @@ export function moRenderBoard(container, ctx) {
   const toWorld = (cx, cy) => { const r = view.getBoundingClientRect(), v = board.view; return { x: (cx - r.left - v.x) / v.z, y: (cy - r.top - v.y) / v.z }; };
   const toScreen = (x, y) => ({ x: x * board.view.z + board.view.x, y: y * board.view.z + board.view.y });
   function centreSpot(w, h) {
-    const c = toWorld(view.getBoundingClientRect().left + view.clientWidth / 2, view.getBoundingClientRect().top + view.clientHeight / 2);
-    const spot = { x: Math.round(c.x - w / 2), y: Math.round(c.y - h / 2) };
-    const hits = (p) => board.items.some((i) => i.kind !== 'arrow' && i.kind !== 'frame' && p.x < i.x + i.w + 16 && p.x + w + 16 > i.x && p.y < i.y + i.h + 16 && p.y + h + 16 > i.y);
-    for (let step = 0; step < 40 && hits(spot); step++) spot.x += Math.round(w / 2 + 16);
-    return spot;
+    const r = view.getBoundingClientRect(), c = toWorld(r.left + view.clientWidth / 2, r.top + view.clientHeight / 2);
+    const a = toWorld(r.left + 16, r.top + 56), b = toWorld(r.right - 16, r.bottom - 16); // clear of the toolbar
+    const hits = (p) => board.items.some((i) => i.kind !== 'arrow' && i.kind !== 'frame' && p.x < i.x + i.w + 24 && p.x + w + 24 > i.x && p.y < i.y + i.h + 24 && p.y + h + 24 > i.y);
+    const seen = (p) => p.x >= a.x && p.y >= a.y && p.x + w <= b.x && p.y + h <= b.y;
+    const spots = [];
+    for (let i = -10; i <= 10; i++) for (let j = -10; j <= 10; j++) spots.push({ x: Math.round(c.x - w / 2 + i * (w / 2 + 12)), y: Math.round(c.y - h / 2 + j * (h / 2 + 12)), d: i * i * (w * w) + j * j * (h * h) });
+    spots.sort((p, q) => p.d - q.d);
+    return spots.find((p) => !hits(p) && seen(p)) || spots.find((p) => !hits(p)) || spots[0];
+  }
+  // A card off screen is brought into view (a new one where there was no room on screen).
+  function reveal(it) {
+    const s = toScreen(it.x, it.y), W = view.clientWidth, H = view.clientHeight, w = it.w * board.view.z, h = it.h * board.view.z;
+    if (s.x >= 0 && s.y >= 48 && s.x + w <= W && s.y + h <= H) return;
+    board.view.x = W / 2 - (it.x + it.w / 2) * board.view.z; board.view.y = H / 2 - (it.y + it.h / 2) * board.view.z; board.view.set = true;
+    applyView(); scheduleSave();
   }
 
   // ── cards ──
@@ -220,7 +230,8 @@ export function moRenderBoard(container, ctx) {
         b.style.background = hexOf(rgb);
       });
       if (!list.length) row.appendChild(moEl('div', 'mo-practice-dim mo-bd-pad', { textContent: 'No colours yet: pull them from the picture in the plan.' }));
-      el.append(row, caption(`Palette · ${v ? v.name : 'a removed variation'}`, `${list.length} colour${list.length === 1 ? '' : 's'}${paints ? (far ? ` · ${far} far from your paints` : ' · all mix from your paints') : ''}`));
+      const values = !!(v && v.recipe && v.recipe.show === 'values'); // a values palette is greys or one paint: no mixing to report
+      el.append(row, caption(`Palette · ${v ? v.name : 'a removed variation'}`, values ? `${list.length} values` : `${list.length} colour${list.length === 1 ? '' : 's'}${paints ? (far ? ` · ${far} far from your paints` : ' · all from your paints') : ''}`));
     } else if (it.kind === 'mix') {
       const n = moColourName(it.rgb), m = paints ? mixOf(it.rgb) : null;
       const head = moEl('div', 'mo-bd-mixhead');
@@ -334,7 +345,9 @@ export function moRenderBoard(container, ctx) {
       b('lock', one.locked ? 'Unlock' : 'Lock', 'lock');
       b('removeSelected', 'Remove From Board', 'trash-2');
     }
-    ctxBar.style.left = `${Math.max(8, p.x)}px`; ctxBar.style.top = `${Math.max(8, p.y - 46)}px`;
+    const bw = ctxBar.offsetWidth || 0, bh = ctxBar.offsetHeight || 36;
+    ctxBar.style.left = `${Math.max(8, Math.min(p.x, view.clientWidth - bw - 8))}px`;
+    ctxBar.style.top = `${p.y - bh - 10 >= 52 ? p.y - bh - 10 : Math.min(p.y + h + 10, view.clientHeight - bh - 8)}px`;
   }
   function showGuides(lines) {
     guides.replaceChildren();
@@ -397,6 +410,8 @@ export function moRenderBoard(container, ctx) {
       // A frame carries the cards inside it.
       for (const f of moving.filter((i) => i.kind === 'frame')) for (const i of board.items) if (!sel.has(i.id) && !i.locked && i.kind !== 'frame' && i.x >= f.x && i.y >= f.y && i.x + i.w <= f.x + f.w && i.y + i.h <= f.y + f.h) moving.push(i);
       gesture = { kind: 'move', items: moving.map((i) => ({ it: i, x: i.x, y: i.y })), x: e.clientX, y: e.clientY, moved: false };
+      const top = Math.max(0, ...board.items.map((i) => i.z || 0));
+      for (const g of gesture.items) if (g.it.kind !== 'frame' && (g.it.z || 0) < top) { g.it.z = top + 1; place(g.it); }
       return;
     }
     if (!e.shiftKey && !card) { sel.clear(); drawOverlay(); closePop(); }
@@ -526,7 +541,7 @@ export function moRenderBoard(container, ctx) {
     const n = Object.assign({ id: board.next++ }, it, { x: spot.x, y: spot.y });
     board.items.push(n);
     sel.clear(); sel.add(n.id);
-    renderAll(); commit();
+    renderAll(); commit(); reveal(n);
     const el = els.get(n.id); if (el) el.focus({ preventScroll: true });
     return n;
   }

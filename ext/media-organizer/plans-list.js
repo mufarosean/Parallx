@@ -10,7 +10,7 @@ let deps = null;
 const pages = new Set();
 const hexOf = (rgb) => '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 
-/** d: { api, db, thumb(img, photoId), openPlan(id), openBoard(id), createPlan(photoId), searchPhotos(text), date(iso) } */
+/** d: { api, db, thumb(img, photoId), planPicture(planId) -> data URL, openPlan(id), openBoard(id), createPlan(photoId), searchPhotos(text), date(iso), disposeFiles(planId) } */
 export function moPlansListActivate(api, d) {
   deps = d;
   const changed = () => document.dispatchEvent(new CustomEvent('mo:plans-changed'));
@@ -29,6 +29,7 @@ export function moPlansListActivate(api, d) {
       if (!p || (await api.window.showWarningMessage(`Delete the plan "${p.title}"? Its variations, notes, saved colours and board go with it. The photo stays.`, { title: 'Delete' }, { title: 'Cancel' }))?.title !== 'Delete') return;
       await d.db.run('DELETE FROM mo_plan_boards WHERE plan_id = ?', [id]).catch(() => {});
       await d.db.run('DELETE FROM mo_plans WHERE id = ?', [id]);
+      if (d.disposeFiles) d.disposeFiles(id); // its removals and enhanced copies
       changed();
     },
     newPlan() { for (const pg of pages) pg.togglePicker(true); },
@@ -105,13 +106,16 @@ export function moRenderPlansList(container, api) {
         const openBtn = ui.createButton(card, { id: `media-organizer.plans.open.${p.id}`, label: `Open ${p.title}`, kind: 'ghost', command: 'media-organizer.plans.open', args: [p.id] });
         openBtn.classList.add('mo-plans-open');
         const img = moEl('img', null, { alt: '' });
-        deps.thumb(img, p.photo_id);
+        // the plan's own picture; the photo when it cannot be drawn
+        const photoThumb = () => deps.thumb(img, p.photo_id);
+        if (deps.planPicture) void deps.planPicture(p.id).then((url) => { if (url) img.src = url; else photoThumb(); }).catch((err) => { console.warn('[MediaOrganizer] a plan picture failed:', err && err.message); photoThumb(); });
+        else photoThumb();
         let colours = [];
         try { const r = JSON.parse(p.kept || '{}'); colours = [...((r.palette && r.palette.swatches) || []), ...(r.saved || []).map((c) => c.rgb)].filter(Array.isArray).slice(0, 8); } catch { colours = []; }
         const dots = moEl('div', 'mo-plans-dots', { 'aria-hidden': 'true' });
         for (const c of colours) { const s = moEl('span'); s.style.background = hexOf(c); s.title = moColourName(c).name; dots.appendChild(s); }
         openBtn.replaceChildren(img, moEl('span', 'mo-plans-card-title', { textContent: p.title }),
-          moEl('span', 'mo-practice-dim', { textContent: `${p.canvas_w} × ${p.canvas_h} in · ${p.variations} variation${p.variations === 1 ? '' : 's'} · ${deps.date(p.updated_at)}` }), dots);
+          moEl('span', 'mo-practice-dim', { textContent: `${p.canvas_w} × ${p.canvas_h} in · ${p.variations} variation${p.variations === 1 ? '' : 's'}` }), moEl('span', 'mo-practice-dim', { textContent: deps.date(p.updated_at) }), dots);
         const actions = moEl('div', 'mo-plans-actions');
         ui.createButton(actions, { id: `media-organizer.plans.board.${p.id}`, label: 'Open Board', size: 'sm', command: 'media-organizer.plans.board', args: [p.id] });
         ui.createIconButton(actions, { id: `media-organizer.plans.rename.${p.id}`, icon: 'pencil', title: `Rename ${p.title}…`, size: 'sm', command: 'media-organizer.plans.rename', args: [p.id] });

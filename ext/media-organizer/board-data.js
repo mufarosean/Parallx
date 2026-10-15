@@ -81,7 +81,7 @@ export function moBoardContext(d, planId) {
           out.getContext('2d').putImageData(new ImageData(d.massesOf(rr.render(recipe, { width: w, height: h, full: false, split: -1, read: true, aids: false }), w, h, recipe), w, h), 0, 0);
           return out.toDataURL('image/jpeg', 0.86);
         }
-        rr.render(recipe, { width: w, height: h, full: false, split: -1 });
+        rr.render(recipe, { width: w, height: h, full: false, split: -1, matte: recipe.show && recipe.show !== 'photo' ? 'grey' : null }); // Ignore background, as the plan shows it
         return cv.toDataURL('image/jpeg', 0.86);
       } finally { rr.dispose(); }
     },

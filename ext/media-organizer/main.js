@@ -31915,8 +31915,10 @@ async function moPlanPickAndAdd(api, kind, itemId) {
 function moOpenPlansList(api) {
   (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Painting Plans', icon: 'palette', instanceId: 'plans:list' });
 }
+// A plan's tabs carry its title, so two plans open side by side are told apart.
+async function moPlanTitle(planId) { try { const r = await db.get('SELECT title FROM mo_plans WHERE id = ?', [planId]); return (r && r.title) || 'Plan'; } catch { return 'Plan'; } }
 function moOpenPlan(api, planId) {
-  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Plan', icon: 'palette', instanceId: `plans:edit:${planId}` });
+  void moPlanTitle(planId).then((t) => (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: t, icon: 'palette', instanceId: `plans:edit:${planId}` }));
 }
 // Copy Tags from one item, Paste Tags onto one or many (tag-clipboard.js). keys: "photo:12"…; without them, the
 // library's focused item (copy) or its selection, else the focused item (paste).
@@ -31960,7 +31962,7 @@ async function moPlanSweepFiles(api, planId, keep) {
     if (gone.length) await moDisposeTemp(api, gone);
   } catch (err) { console.warn('[media-organizer] could not sweep a plan\'s files:', err && err.message); }
 }
-function moOpenBoard(api, planId) { (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Board', icon: 'layout-dashboard', instanceId: `plans:board:${planId}` }); }
+function moOpenBoard(api, planId) { void moPlanTitle(planId).then((t) => (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: `${t} Board`, icon: 'layout-dashboard', instanceId: `plans:board:${planId}` })); }
 const moBoardDeps = (api) => ({ api, db, massesOf: (px, w, h, r) => moPlanMassesPixels(px, w, h, r, moPlanUnderLab(r.under)), getSetting: moGetSetting, setSetting: moSetSetting, planLoad: moPlanLoad, planRenderer: moPlanRenderer, rotatedSize: moPlanRotatedSize, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, thumb: (img, id) => void moPracticeThumb(img, id, api), openPlan: (id) => moOpenPlan(api, id), openBoard: (id) => moOpenBoard(api, id), ingest: (p) => moIngestNewImage(p), searchPhotos: (t) => db.all(`SELECT p.id, COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.deleted_at IS NULL AND (? = '' OR p.title LIKE ? OR f.basename LIKE ?) ORDER BY p.id DESC LIMIT 24`, [t, `%${t}%`, `%${t}%`]) });
 
 function renderPlansTab(container, api, input) {
@@ -32611,23 +32613,16 @@ function renderPlanEditor(container, api, planId) {
       tIn.addEventListener('change', () => { state.plan.title = tIn.value.trim() || 'Painting'; titleEl.textContent = state.plan.title; scheduleSave(); });
       s.appendChild(tIn);
       s.appendChild(moEl('label', 'mo-plan-field-label', { textContent: 'Notes', for: 'mo-plan-notes-in' }));
-      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { sceneId: 'media-organizer.plan.notes', id: 'mo-plan-notes-in', placeholder: 'Notes: what the painting is about, the light, the mood, what to keep and what to leave out.' });
+      const notes = moEl('textarea', 'mo-clip-input mo-plan-notes', { sceneId: 'media-organizer.plan.notes', id: 'mo-plan-notes-in', placeholder: 'What the painting is about: the light, the mood, what to leave out' });
       notes.value = state.plan.notes || '';
       notes.addEventListener('change', () => { state.plan.notes = notes.value; scheduleSave(); });
       s.appendChild(notes);
       s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id)));
-      s.appendChild(button('Delete Plan…', async () => { if ((await api.window.showWarningMessage(`Delete the plan "${state.plan.title}"? Its variations, notes and saved colours go with it. The photo stays.`, { title: 'Delete' }, { title: 'Cancel' }))?.title !== 'Delete') return;
-        await db.run('DELETE FROM mo_plans WHERE id = ?', [planId]);
-        const dir = moPlanDir(planId); if (dir) void moDisposeTemp(api, [dir]); // its patches and enhanced copies
-        document.dispatchEvent(new CustomEvent('mo:plans-changed'));
-        root.innerHTML = '';
-        root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'This plan was deleted. The photo is untouched.' }));
-        disposed = true;
-      })).classList.add('mo-plan-danger');
+      // Deleting a plan is done where plans are kept (the Painting Plans list), not from inside one.
     }
     {
       const s = section('Process Shelf');
-      if (!state.media.length) s.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Progress photos and clips of this painting. Open one in the library and choose Add To Plan.' }));
+      if (!state.media.length) s.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Progress photos from the library: choose Add To Plan on one.' }));
       const list = moEl('div', 'mo-plan-shelf');
       for (const m of state.media) {
         const it = moEl('div', 'mo-plan-shelf-item');
@@ -38081,7 +38076,10 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moPlanIsolateActivate(api), ...moEditMasksActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moPlanIsolateActivate(api), ...moEditMasksActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate,
+      // the plan as it stands: its export variation, or its working picture
+      planPicture: async (planId) => { const data = await moPlanLoad(planId); if (!data) return null; const v = data.variants.find((x) => x.id === data.plan.variant_id); let r = v && v.recipe; if (!r) { try { r = moPlanRecipe(JSON.parse(data.plan.draft_json || '{}')); } catch { return null; } } return moBoardContext(moBoardDeps(api), planId).renderVariant(r, 420); },
+      disposeFiles: (planId) => { const dir = moPlanDir(planId); if (dir) void moDisposeTemp(api, [dir]); } })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);

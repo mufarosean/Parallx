@@ -227,7 +227,7 @@ export function moPlanStudy(ctx) {
       const sw = moEl('span', 'mo-ps-sw', { 'aria-hidden': 'true' }); sw.style.background = hexOf(c.rgb);
       b.prepend(sw);
       const num = moEl('span', 'mo-ps-num');
-      if (c.temp) num.appendChild(moEl('span', `mo-ps-tw is-${c.temp}`, { textContent: c.temp }));
+      if (c.temp && m.temp) num.appendChild(moEl('span', `mo-ps-tw is-${c.temp}`, { textContent: c.temp })); // only when warm and cool are shown
       num.appendChild(document.createTextNode(c.picked ? 'picked' : pct(c.share)));
       b.appendChild(num);
       const mx = mixOf(c.rgb);

@@ -69,7 +69,7 @@ export function moPlanVariations(ctx) {
     list.replaceChildren(); actions.replaceChildren();
     for (const v of state.variants) {
       const on = !!state.variant && state.variant.id === v.id;
-      const b = ui.createButton(list, { id: `media-organizer.plan.variation.${v.id}`, label: v.name, kind: 'ghost', size: 'sm', command: 'media-organizer.plan.openVariation', args: [v.id], title: `Open ${v.name}` });
+      const b = ui.createButton(list, { id: `media-organizer.plan.variation.${v.id}`, label: v.name, kind: 'ghost', size: 'sm', command: 'media-organizer.plan.openVariation', args: [v.id], title: `Open ${v.name} · right-click for more` });
       b.classList.add('mo-plan-variant'); b.classList.toggle('is-current', on); b.setAttribute('aria-pressed', String(on));
       b.prepend(moEl('img', null, { alt: '', src: thumbOf(v) }));
       if (state.plan.variant_id === v.id) b.appendChild(moEl('span', 'mo-plan-variant-tag', { textContent: 'For export' }));
@@ -78,7 +78,7 @@ export function moPlanVariations(ctx) {
     }
     ui.createIconButton(list, { id: 'media-organizer.plan.saveVariation', icon: 'plus', title: 'Save As Variation: keep the picture as it is now and go on from it', command: 'media-organizer.plan.saveVariation' }).classList.add('mo-pv-add');
     boardBtn = null;
-    moreBtn = ui.createIconButton(actions, { id: 'media-organizer.plan.variationMenu', icon: 'ellipsis', title: 'More: Start Over, Add To Board, Rename, Remove', size: 'sm', command: 'media-organizer.plan.variationMenu' });
+    moreBtn = ui.createIconButton(actions, { id: 'media-organizer.plan.variationMenu', icon: 'ellipsis', title: 'Start Over, Stage Variations, Add To Board', size: 'sm', command: 'media-organizer.plan.variationMenu' });
     moreBtn.setAttribute('aria-haspopup', 'menu');
     sync();
     if (had) {
@@ -132,16 +132,13 @@ export function moPlanVariations(ctx) {
     },
     addToBoardMenu() { const at = boardBtn || moreBtn; if (at) ui.createMenu(at, { id: 'media-organizer.plan.addToBoard', label: 'Add To Board', items: ctx.boardItems() }); },
     variationMenu() {
-      const v = state.variant;
       if (!moreBtn) return;
-      ui.createMenu(moreBtn, { id: 'media-organizer.plan.variationActions', label: 'More Variation Actions', items: [
-        { label: 'Start Over', icon: 'rotate-ccw', tooltip: 'Every control back to the untouched photo, crop included. Undo brings the picture back.', onSelect: () => acts.startOver() },
-        { label: 'Add To Board', icon: 'layout-dashboard', submenu: ctx.boardItems() },
+      // the plan's own actions; a variation's are on it (right-click, or Shift+F10)
+      ui.createMenu(moreBtn, { id: 'media-organizer.plan.variationActions', label: 'Variation Actions', items: [
+        { label: 'Start Over', icon: 'rotate-ccw', tooltip: 'Every control back to the untouched photo. Undo brings it back.', onSelect: () => acts.startOver() },
+        { label: 'Make Stage Variations', icon: 'layers', onSelect: () => void stageVariations() },
         { separator: true },
-        { label: v ? `Rename ${v.name}…` : 'Rename…', disabled: !v, onSelect: () => void rename(v) },
-        { label: 'Use For Export', disabled: !v || state.plan.variant_id === v.id, onSelect: () => void keep(v).then(() => { render(); touch(); }) },
-        { label: 'Make Stage Variations', onSelect: () => void stageVariations() },
-        { label: v ? `Remove ${v.name}…` : 'Remove Variation…', disabled: !v, onSelect: () => void remove(v) },
+        { label: 'Add To Board', icon: 'layout-dashboard', submenu: ctx.boardItems() },
       ] });
     },
   };
