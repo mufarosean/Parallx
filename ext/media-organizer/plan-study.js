@@ -17,18 +17,18 @@ import { moStudyAnalyse, moStudyCompare, moStudyIntensityLens, moStudyLight, moS
 
 const WORK = 560;   // the long side the picture is analysed at
 const LENSES = [
-  ['picture', 'Picture', 'The picture as it is'],
-  ['light', 'Light And Shadow', 'Two families, and the colour of each'],
-  ['temp', 'Temperature', 'Warmer and cooler than what is around'],
-  ['masses', 'Colour Masses', 'Big shapes of local colour'],
-  ['intensity', 'Intensity', 'Where the strong colour is'],
+  ['picture', 'Picture', 'image', 'The picture as it is'],
+  ['light', 'Light And Shadow', 'sun-moon', 'Two families, and the colour of each'],
+  ['temp', 'Temperature', 'thermometer', 'Warmer and cooler than what is around'],
+  ['masses', 'Colour Masses', 'shapes', 'Big shapes of one colour each'],
+  ['intensity', 'Intensity', 'droplet', 'Where the strong colour is'],
 ];
 const LOOK = {
-  picture: 'Click two spots on the picture to compare them: value, temperature, hue and intensity, in painter’s terms.',
-  light: 'Every shape is in light or in shadow. Look at the two family colours: do the lights lean warm and the shadows cool, or the other way round? A shadow is rarely the same colour made darker.',
-  temp: 'Warm and cool are relative: orange marks what is warmer than what sits around it, blue what is cooler. Light and shadow usually differ in temperature as well as value.',
-  masses: 'Each mass is one colour you could mix and lay in with a big brush. Start with three or four; raising the count only splits a mass. When they look like the painting you want, make them your palette.',
-  intensity: 'Strong colour is spent, not spread. Colour stays only where it is stronger than the level you set; the rest turns grey at the same value.',
+  picture: 'Click two spots on the picture to compare them.',
+  light: 'Do the lights lean warm and the shadows cool? A shadow is rarely the light colour made darker.',
+  temp: 'Orange is warmer than what surrounds it, blue is cooler. Light and shadow often differ in temperature too.',
+  masses: 'Each mass is one colour to mix and lay in with a big brush. Start with three or four.',
+  intensity: 'Strong colour is spent, not spread: keep it where it matters.',
 };
 const ACTIONS = ['studyLens', 'studyMass', 'studyPalette', 'studyClearSpots'];
 const hexOf = (rgb) => '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
@@ -159,20 +159,18 @@ export function moPlanStudy(ctx) {
     disposersOut.push(() => seg.dispose());
     parent.appendChild(f);
   }
+  const section = (parent, title, split) => { const el = moEl('div', `mo-plan-section${split ? ' mo-pc-split' : ''}`); if (title) el.appendChild(moEl('div', 'mo-practice-section-title', { textContent: title })); parent.appendChild(el); return el; };
   function panel(container, panelDisposers) {
     const s = study();
-    const s1 = moEl('div', 'mo-plan-section');
-    s1.appendChild(moEl('div', 'mo-practice-section-title', { textContent: 'Lens' }));
+    const s1 = section(container, 'Lens');
     const list = moEl('div', 'mo-ps-lenses', { role: 'group', 'aria-label': 'Lens' });
-    for (const [id, label, note] of LENSES) {
-      const b = ui.createButton(list, { id: `media-organizer.plan.study.lens.${id}`, label, kind: 'ghost', size: 'sm', command: 'media-organizer.plan.studyLens', args: [id] });
+    for (const [id, label, icon, note] of LENSES) {
+      const b = ui.createButton(list, { id: `media-organizer.plan.study.lens.${id}`, label, icon, kind: 'ghost', size: 'sm', command: 'media-organizer.plan.studyLens', args: [id], title: note });
       b.classList.add('mo-ps-lens-btn'); b.setAttribute('aria-pressed', String(s.lens === id));
-      b.appendChild(moEl('span', 'mo-ps-lens-note', { textContent: note }));
     }
     s1.appendChild(list);
-    container.appendChild(s1);
 
-    const s2 = moEl('div', 'mo-plan-section mo-pc-split');
+    const s2 = section(container, '', true);
     if (s.lens === 'light') {
       const A = analysed();
       const split = s.split === null ? (A ? A.split : 5) : s.split;
@@ -184,15 +182,14 @@ export function moPlanStudy(ctx) {
     } else if (s.lens === 'masses') {
       s2.appendChild(slider('Masses', 'massCount', 2, 16, 1, s.masses.n, (v) => String(v), (v, rec) => { sel = -1; setStudy({ masses: { n: v } }, rec, true); }));
       segmented(s2, 'Find masses by', 'massMethod', [['colour', 'Colour'], ['place', 'Place'], ['shapes', 'Squint']], s.masses.method, (v) => { sel = -1; setStudy({ masses: { method: v } }, true, true); }, panelDisposers);
-      segmented(s2, 'A mass’s colour', 'massColour', [['dominant', 'Local Colour'], ['average', 'Average']], s.masses.colour, (v) => setStudy({ masses: { colour: v } }, true, true), panelDisposers);
+      segmented(s2, 'A mass\u2019s colour', 'massColour', [['dominant', 'Local Colour'], ['average', 'Average']], s.masses.colour, (v) => setStudy({ masses: { colour: v } }, true, true), panelDisposers);
       s2.appendChild(slider('Colour amount', 'massAmount', 0, 100, 5, s.masses.amount, (v) => (v === 0 ? 'grey, value only' : `${v}%`), (v, rec) => setStudy({ masses: { amount: v } }, rec, true)));
     } else if (s.lens === 'intensity') {
       s2.appendChild(slider('Keep colour stronger than', 'keep', 0, 14, 0.5, s.keep, (v) => String(v), (v, rec) => setStudy({ keep: v }, rec, true)));
     }
-    s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: LOOK[s.lens] }));
-    container.appendChild(s2);
+    s2.appendChild(moEl('div', 'mo-ps-tip', { textContent: LOOK[s.lens] }));
 
-    readout = moEl('div', 'mo-plan-section mo-pc-split mo-ps-readout', { 'aria-live': 'polite' });
+    readout = moEl('div', 'mo-ps-readout', { 'aria-live': 'polite' });
     container.appendChild(readout);
     panelDisposers.push(() => { readout = null; });
     refreshReadout();
@@ -201,60 +198,63 @@ export function moPlanStudy(ctx) {
   function mixLine(rgb) {
     if (!paints) return '';
     const best = moMixRecipes(rgb, paints.paints, paints.rules).best;
-    if (!best) return 'No mix from your paints comes close.';
+    if (!best) return 'no close mix from your paints';
     const what = best.paints.length === 1 ? `${best.paints[0].name} on its own` : best.paints.map((p) => (p.touch ? `a touch of ${p.name}` : `${p.parts} ${p.name}`)).join(', ');
     return `${what} (${best.closeness.toLowerCase()})`;
+  }
+  /** A row: swatch, words, and a number at the right. */
+  function row(parent, rgb, text, num) {
+    const r = moEl('div', 'mo-ps-row');
+    const sw = moEl('span', 'mo-ps-sw', { 'aria-hidden': 'true' }); sw.style.background = hexOf(rgb);
+    r.append(sw, moEl('span', 'mo-ps-row-text', { textContent: text }), moEl('span', 'mo-ps-num', { textContent: num || '' }));
+    parent.appendChild(r);
+    return r;
   }
   function refreshReadout() {
     if (!readout || state.tool !== 'study' || !state.recipe) return;
     readout.replaceChildren();
-    const title = (t) => readout.appendChild(moEl('div', 'mo-practice-section-title', { textContent: t }));
-    const line = (rgb, text) => { const r = moEl('div', 'mo-ps-line'); const sw = moEl('span', 'mo-ps-sw'); sw.style.background = hexOf(rgb); r.append(sw, moEl('span', null, { textContent: text })); readout.appendChild(r); return r; };
-    const note = (t) => readout.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: t }));
+    const note = (parent, t) => parent.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: t }));
     const L = shown;
     if (L && L.kind === 'light') {
-      title('The two families');
-      line(L.families[0].rgb, `Light family, ${pct(L.families[0].share)} of the picture`);
-      line(L.families[1].rgb, `Shadow family, ${pct(L.families[1].share)}`);
-      note(L.warmer === 'neither' ? 'The two families are about the same temperature: the light separates them by value alone.' : `The ${L.warmer} family is the warmer of the two.`);
+      const sec = section(readout, 'Families', true);
+      row(sec, L.families[0].rgb, 'Light', pct(L.families[0].share));
+      row(sec, L.families[1].rgb, 'Shadow', pct(L.families[1].share));
+      note(sec, L.warmer === 'neither' ? 'Both are about the same temperature.' : `The ${L.warmer} family is warmer.`);
     } else if (L && L.kind === 'masses') {
-      title('The masses');
+      const sec = section(readout, 'Masses', true);
       const list = moEl('div', 'mo-ps-masses', { role: 'group', 'aria-label': 'Masses: choose one to see it alone' });
       L.masses.forEach((m, k) => {
-        const b = ui.createButton(list, { id: `media-organizer.plan.study.mass.${k}`, label: `${L.names[k]}, value ${m.value.toFixed(1)}, intensity ${m.intensity.toFixed(1)}, ${pct(m.share)}`, kind: 'ghost', size: 'sm', command: 'media-organizer.plan.studyMass', args: [m.j] });
+        const b = ui.createButton(list, { id: `media-organizer.plan.study.mass.${k}`, label: L.names[k], kind: 'ghost', size: 'sm', command: 'media-organizer.plan.studyMass', args: [m.j] });
         b.classList.add('mo-ps-mass'); b.setAttribute('aria-pressed', String(sel === m.j));
         const sw = moEl('span', 'mo-ps-sw', { 'aria-hidden': 'true' }); sw.style.background = hexOf(m.rgb);
         b.prepend(sw);
+        b.append(moEl('span', 'mo-ps-mass-detail', { textContent: `Value ${m.value.toFixed(1)} · intensity ${m.intensity.toFixed(1)}` }), moEl('span', 'mo-ps-num', { textContent: pct(m.share) }));
       });
-      readout.appendChild(list);
-      const row = moEl('div', 'mo-plan-row');
-      ui.createButton(row, { id: 'media-organizer.plan.studyPalette', label: 'Make Palette From These Masses', size: 'sm', command: 'media-organizer.plan.studyPalette' });
-      readout.appendChild(row);
-      note('The palette opens in Colours, where every colour shows how to mix it from your paints.');
+      sec.appendChild(list);
+      ui.createButton(sec, { id: 'media-organizer.plan.studyPalette', label: 'Make Palette From Masses', icon: 'palette', size: 'sm', command: 'media-organizer.plan.studyPalette', title: 'The masses become the plan\u2019s colours, each with how to mix it from your paints' });
     } else if (L && L.kind === 'intensity') {
-      title('How intense the picture is');
-      note(`${pct(L.keptShare)} of the picture is stronger than ${L.keep}. 0 is grey; strong tube colours reach 10 to 16.`);
+      const sec = section(readout, 'Intensity', true);
       const bars = moEl('div', 'mo-ps-hist', { 'aria-hidden': 'true' });
       const max = Math.max(1, ...L.hist);
       L.hist.forEach((v, j) => { const bar = moEl('span', j >= L.keep ? 'mo-ps-bar is-kept' : 'mo-ps-bar'); bar.style.height = pct(v / max); bars.appendChild(bar); });
-      readout.appendChild(bars);
+      sec.appendChild(bars);
+      note(sec, `${pct(L.keptShare)} of the picture is stronger than ${L.keep}.`);
     }
     // Two spots, in any lens.
-    title('Compare two spots');
+    const sec = section(readout, 'Compare two spots', true);
     const A = P;
-    if (!spots.length || !A) { note('Click a spot on the picture for A, then another for B. With the keyboard: Tab to the picture, arrow keys move, Enter sets a spot.'); return; }
+    if (!spots.length || !A) { note(sec, 'Click two spots on the picture.'); return; }
     const at = (p) => moStudySpot(A, p.u * (A.w - 1), p.v * (A.h - 1));
     const a = at(spots[0]);
-    line(a.rgb, `A: ${moColourName(a.rgb).name}, value ${a.value.toFixed(1)}`);
-    if (paints) note(`A mixes as ${mixLine(a.rgb)}.`);
-    if (spots.length === 1) { note('Now click B.'); return; }
+    row(sec, a.rgb, `A · ${moColourName(a.rgb).name}`, `value ${a.value.toFixed(1)}`);
+    if (spots.length === 1) { note(sec, 'Now click B.'); return; }
     const b = at(spots[1]);
-    line(b.rgb, `B: ${moColourName(b.rgb).name}, value ${b.value.toFixed(1)}`);
-    if (paints) note(`B mixes as ${mixLine(b.rgb)}.`);
-    for (const t of moStudyCompare(a, b)) readout.appendChild(moEl('p', 'mo-ps-compare', { textContent: t }));
-    const row = moEl('div', 'mo-plan-row');
-    ui.createButton(row, { id: 'media-organizer.plan.studyClearSpots', label: 'Clear Spots', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.studyClearSpots' });
-    readout.appendChild(row);
+    row(sec, b.rgb, `B · ${moColourName(b.rgb).name}`, `value ${b.value.toFixed(1)}`);
+    const diff = moEl('ul', 'mo-ps-compare');
+    for (const t of moStudyCompare(a, b)) diff.appendChild(moEl('li', null, { textContent: t }));
+    sec.appendChild(diff);
+    if (paints) { note(sec, `Mix A: ${mixLine(a.rgb)}.`); note(sec, `Mix B: ${mixLine(b.rgb)}.`); }
+    ui.createButton(sec, { id: 'media-organizer.plan.studyClearSpots', label: 'Clear Spots', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.studyClearSpots' });
   }
 
   const acts = {

@@ -308,16 +308,23 @@ export const MO_CSS_MORE = `
 .mo-ps-marks { position: absolute; inset: 0; pointer-events: none; }
 .mo-ps-spot { position: absolute; width: 18px; height: 18px; margin: -10px 0 0 -10px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-2xs); font-weight: 700; }
 .mo-ps-spot--cursor { border-style: dashed; }
-.mo-ps-lenses, .mo-ps-masses { display: flex; flex-direction: column; gap: 2px; }
-.px-btn.mo-ps-lens-btn { height: auto; width: 100%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0; padding: var(--px-space-1) var(--px-space-2); text-align: left; white-space: normal; }
-.mo-ps-lens-note { font-size: var(--px-text-xs); font-weight: normal; color: var(--px-text-secondary); }
+.mo-ps-lenses, .mo-ps-masses { display: flex; flex-direction: column; gap: 1px; }
+.px-btn.mo-ps-lens-btn { width: 100%; justify-content: flex-start; gap: var(--px-space-2); padding: 0 var(--px-space-2); }
 .px-btn.mo-ps-lens-btn[aria-pressed="true"], .px-btn.mo-ps-mass[aria-pressed="true"] { background: var(--px-accent-soft); color: var(--px-accent-text); }
-.px-btn.mo-ps-lens-btn[aria-pressed="true"] .mo-ps-lens-note { color: inherit; }
-.px-btn.mo-ps-mass { height: auto; justify-content: flex-start; gap: var(--px-space-2); padding: var(--px-space-1) var(--px-space-2); text-align: left; white-space: normal; }
-.mo-ps-line { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); }
-.mo-ps-sw { flex: none; width: 18px; height: 18px; border-radius: var(--px-radius-sm); box-shadow: var(--px-ring); }
-.mo-ps-compare { margin: 0; font-size: var(--px-text-sm); }
-.mo-ps-hist { display: flex; align-items: flex-end; gap: 2px; height: 48px; }
+.mo-ps-tip { padding: var(--px-space-2); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); font-size: var(--px-text-xs); line-height: 1.45; }
+.mo-ps-readout { display: flex; flex-direction: column; }
+.mo-ps-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); min-height: 22px; font-size: var(--px-text-sm); }
+.mo-ps-row-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-ps-num { color: var(--px-text-secondary); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mo-ps-sw { width: 14px; height: 14px; border-radius: var(--px-radius-sm); box-shadow: var(--px-ring); }
+.px-btn.mo-ps-mass { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "sw name num" "sw detail num"; align-items: center; column-gap: var(--px-space-2); row-gap: 0; width: 100%; height: auto; padding: var(--px-space-1) var(--px-space-2); text-align: left; }
+.px-btn.mo-ps-mass .mo-ps-sw { grid-area: sw; }
+.px-btn.mo-ps-mass .px-btn__label { grid-area: name; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-btn.mo-ps-mass .mo-ps-mass-detail { grid-area: detail; color: var(--px-text-secondary); font-size: var(--px-text-2xs); font-weight: normal; }
+.px-btn.mo-ps-mass .mo-ps-num { grid-area: num; }
+.mo-ps-compare { margin: 0; padding-left: var(--px-space-4); font-size: var(--px-text-sm); line-height: 1.45; }
+.px-btn.mo-ps-wide { width: 100%; }
+.mo-ps-hist { display: flex; align-items: flex-end; gap: 2px; height: 40px; }
 .mo-ps-bar { flex: 1; min-height: 1px; background: var(--px-border); }
 .mo-ps-bar.is-kept { background: var(--px-accent); }
 .mo-pc-layer:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
