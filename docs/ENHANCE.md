@@ -22,8 +22,8 @@ This charter is the plan. Each decision below says who made it.
   joins) it took 4 min 22 s plus 10 s to join, with no visible joins at
   100%.
 - On a soft input the model invents texture (a lioness's nose grew fur).
-  The standard 7B is a little calmer than "sharp" (fewer halos, softer
-  skin); both invent texture on a soft input.
+  The model that ships is 7B sharp (fp8, 8.5 GB): the one he looked at
+  and was fine with.
 
 ## The parts
 
@@ -124,4 +124,4 @@ until there is a way that is good enough on them.
 | uv with pinned hashes and system certificates | Claude |
 | Big photos in overlapping pieces | Claude, from the out-of-memory test |
 | SeedVR2's code ships in the extension | Claude |
-| One model ships: 7B standard (calmer, fewer halos) over 7B sharp; 3B rejected (smears) | Claude, from side-by-side tests; Mufaro to confirm |
+| The model: SeedVR2 7B sharp, fp8 (8.5 GB), the one he looked at and was fine with; 3B rejected (smears) | Mufaro, 2026-10-14 |
