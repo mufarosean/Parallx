@@ -231,7 +231,7 @@ export function moPlanStudy(ctx) {
         b.append(moEl('span', 'mo-ps-mass-detail', { textContent: `Value ${m.value.toFixed(1)} · intensity ${m.intensity.toFixed(1)}` }), moEl('span', 'mo-ps-num', { textContent: pct(m.share) }));
       });
       sec.appendChild(list);
-      ui.createButton(sec, { id: 'media-organizer.plan.studyPalette', label: 'Make Palette From Masses', icon: 'palette', size: 'sm', command: 'media-organizer.plan.studyPalette', title: 'The masses become the plan\u2019s colours, each with how to mix it from your paints' });
+      ui.createButton(sec, { id: 'media-organizer.plan.studyPalette', label: 'Make Palette From Masses', icon: 'palette', size: 'sm', command: 'media-organizer.plan.studyPalette', title: 'The masses become the plan\u2019s colours, each with how to mix it from your paints' }).classList.add('mo-ps-wide');
     } else if (L && L.kind === 'intensity') {
       const sec = section(readout, 'Intensity', true);
       const bars = moEl('div', 'mo-ps-hist', { 'aria-hidden': 'true' });
