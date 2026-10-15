@@ -77,6 +77,9 @@ const before = outside();
 log(`engine folder ${ENGINE} (${fresh ? 'empty: the whole setup runs' : 'already set up'})`);
 const { app, page, errors } = await launchApp(appRoot);
 const card = () => page.evaluate(() => { const c = document.querySelector('.mo-enhance-setup'); return c && c.offsetParent !== null ? c.textContent.replace(/\s+/g, ' ').trim() : null; });
+// Enhance's work folders: .enhance-* beside the workspace's other Media Organizer folders.
+const workFolders = () => { const out = []; const walk = (d, depth) => { let es = []; try { es = readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) if (e.isDirectory()) { const p = path.join(d, e.name); if (/^.enhance-/.test(e.name)) out.push(p); else if (depth < 6) walk(p, depth + 1); } }; walk(path.join(ws, '.parallx'), 0); return out; };
+const countFiles = (d) => { let n = 0; let es = []; try { es = readdirSync(d, { withFileTypes: true }); } catch { return 0; } for (const e of es) n += e.isDirectory() ? countFiles(path.join(d, e.name)) : 1; return n; };
 const clickId = (id) => page.locator(`[data-px-id="${id}"]`).first().click({ timeout: 10_000 });
 try {
   await setToolEnabled(page, 'parallx-community.media-organizer', true);
@@ -138,6 +141,10 @@ try {
   await page.waitForTimeout(800);
   const t1 = Date.now();
   await clickId('media-organizer.imageEditor.previewEnlarged');
+  // While it runs, the pieces of the photo are in the workspace, not in the engine's shared folder.
+  let piecesInWorkspace = false;
+  for (let k = 0; k < 120 && !piecesInWorkspace; k++) { piecesInWorkspace = workFolders().some((d) => countFiles(d) > 0); if (!piecesInWorkspace) await page.waitForTimeout(500); }
+  check('while it runs, the pieces are in a work folder in the workspace', piecesInWorkspace, workFolders().join(', ') || 'none seen');
   const previewed = await page.waitForFunction(() => { const p = document.querySelector('.mo-edit-preview'); return !!p && !p.classList.contains('mo-hidden'); }, null, { timeout: 10 * 60_000 }).then(() => true).catch(() => false);
   check('Preview Enlarged shows the enlarged picture', previewed, `${Math.round((Date.now() - t1) / 1000)} s`);
   await page.screenshot({ path: path.join(outDir, 'enhance-preview.png') });
@@ -150,6 +157,12 @@ try {
   while (Date.now() - t2 < 10 * 60_000 && !copy) { copy = readdirSync(photos).find((n) => /^fractal.*\.png$/i.test(n)) || ''; await page.waitForTimeout(1000); }
   await page.waitForTimeout(3000);
   check('Save As Copy writes the enlarged copy, twice the size', !!copy && sizeOf(path.join(photos, copy)) === '2400,1800', `${copy || 'none'} ${copy ? sizeOf(path.join(photos, copy)) : ''}; ${Math.round((Date.now() - t2) / 1000)} s; expected like ${path.basename(want)}`);
+  // Afterwards: the work folders' files are gone (Eraser overwrites them within moments) and nothing is in the engine's folder.
+  await page.waitForTimeout(20_000);
+  const leftFiles = workFolders().reduce((n, d) => n + countFiles(d), 0);
+  check('afterwards no piece of the photo is left in the workspace', leftFiles === 0, `${leftFiles} file(s) in ${workFolders().join(', ') || 'no work folder'}`);
+  const shared = existsSync(path.join(ENGINE, 'tmp')) ? readdirSync(path.join(ENGINE, 'tmp')).filter((n) => /^enhance-/.test(n)) : [];
+  check('and none is in the engine\'s shared folder', shared.length === 0, shared.join(', ') || 'none');
 
   }
 
@@ -158,7 +171,7 @@ try {
   await page.waitForTimeout(3000);
   await page.screenshot({ path: path.join(outDir, 'enhance-library.png') });
   // The feed shows no titles: find the 24 MP photo's card by its name, title or picture.
-  const bigIndex = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-card, .mo-feed-card')).findIndex((c) => /big/.test([c.getAttribute('aria-label'), c.getAttribute('title'), c.textContent, ...Array.from(c.querySelectorAll('img')).map((i) => `${i.alt} ${i.title}`)].join(' '))));
+  const bigIndex = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-card, .mo-feed-card')).findIndex((c) => /\bbig\b/.test([c.getAttribute('aria-label'), c.getAttribute('title'), c.textContent, ...Array.from(c.querySelectorAll('img')).map((i) => `${i.alt} ${i.title}`)].join(' '))));
   console.log('[probe] cards:', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-card, .mo-feed-card')).map((c) => c.getAttribute('aria-label') || (c.querySelector('img') || {}).alt || c.textContent.trim().slice(0, 20)).join(' | ')));
   if (bigIndex < 0) throw new Error('The 24 MP photo is not in the library view; nothing else is upscaled in its place.');
   const bigCard = page.locator('.mo-card, .mo-feed-card').nth(bigIndex);

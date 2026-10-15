@@ -142,6 +142,10 @@ def main():
     ap.add_argument('--output', required=True)
     ap.add_argument('--scale', type=int, choices=(2, 4), default=2)
     ap.add_argument('--piece-out', type=int, choices=(2048, 4096), default=4096)
+    # The pieces are copies of the user's picture: Parallx gives a folder in the workspace and
+    # removes it afterwards through the user's own delete setting (Trash, Eraser or delete), even
+    # when this process is stopped. Without one (the self-test's made-up picture) a temp folder is used.
+    ap.add_argument('--work-dir')
     a = ap.parse_args()
 
     files = os.environ.get('PARALLX_RUNTIME_FILES', '')
@@ -156,7 +160,8 @@ def main():
     pieces = plan(width, height, piece)
     say(stage='plan', pieces=len(pieces), width=width * a.scale, height=height * a.scale)
 
-    work = tempfile.mkdtemp(prefix='enhance-')
+    own = not a.work_dir
+    work = tempfile.mkdtemp(prefix='enhance-') if own else a.work_dir
     try:
         indir, outdir = os.path.join(work, 'in'), os.path.join(work, 'out')
         os.makedirs(indir)
@@ -195,7 +200,8 @@ def main():
         write(a.output, out)
         say(stage='done', width=int(out.shape[1]), height=int(out.shape[0]))
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if own:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 if __name__ == '__main__':

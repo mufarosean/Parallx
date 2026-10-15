@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { MO_ENHANCE_MIN_FREE_MIB, moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -19082,7 +19082,7 @@ async function moExportSequence(api, { items, format, size, fps, crf, dither, lo
     });
     return (res && res.outPath) || outPath;
   } finally {
-    await window.parallxElectron.fs.delete(workDir, { useTrash: false }).catch(() => {});
+    await moDisposeTemp(api, [workDir]);   // a temporary copy: erased, as Enhance's are
   }
 }
 
@@ -21154,7 +21154,7 @@ async function moExportClipPipeline(api, opts) {
     });
     return result;
   } finally {
-    await window.parallxElectron.fs.delete(workDir, { useTrash: false }).catch(() => {});
+    await moDisposeTemp(api, [workDir]);   // a temporary copy: erased, as Enhance's are
   }
 }
 
@@ -26582,7 +26582,7 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
     return { outPath };
   } finally {
     // Cleanup temp work dir
-    await window.parallxElectron.fs.delete(workDir).catch(() => {});
+    await moDisposeTemp(api, [workDir]);   // a temporary copy: erased, as Enhance's are
   }
 }
 
@@ -27184,6 +27184,60 @@ const MO_UPSCALE_MAX_OUTPUT_PIXELS = 120e6;
 /** What the engine reads directly; anything else is turned into a PNG first. */
 const MO_ENHANCE_READS = /\.(jpe?g|png|webp|tiff?|bmp)$/i;
 
+// ── Enhance's temporary files ──
+// The pieces the engine works on, the edited picture drawn out for it, a
+// converted HEIC: all are copies of the user's photo. They live in the
+// workspace (beside Clips' work folders), never in the engine's shared
+// folder. Temporary copies are erased, as recordings and Clips' work files
+// are: Eraser's overwrite when it is installed, otherwise a plain delete;
+// never the Trash. A stopped or crashed run leaves its folder behind; the
+// next start sweeps it the same way.
+async function moTempFiles(paths) {
+  const files = []; const dirs = [];
+  const sep = _isWindows ? '\\' : '/';
+  const walk = async (p) => {
+    const res = await window.parallxElectron.fs.readdir(p).catch(() => null);
+    if (res && !res.error && Array.isArray(res.entries)) {
+      dirs.push(p);
+      for (const e of res.entries) if (e && e.name) { const child = p + sep + e.name; if (e.type === 'directory') await walk(child); else files.push(child); }
+    } else if (await window.parallxElectron.fs.exists(p).catch(() => false)) files.push(p);
+  };
+  for (const p of paths) if (p) await walk(p);
+  return { files, dirs };
+}
+async function moDisposeTemp(api, paths) {
+  const { files, dirs } = await moTempFiles(paths);
+  let queued = false;
+  if (files.length) {
+    try { queued = await _tryEraseWithEraser(api, files); } catch { queued = false; }
+    // Eraser overwrites and then removes them itself: deleting them here would win that race.
+    if (!queued) for (const p of files) await window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {});
+  }
+  // The folders go once empty; while Eraser still works on the files, the next sweep takes them.
+  if (!queued) for (const d of dirs.reverse()) await window.parallxElectron.fs.delete(d, { useTrash: false }).catch(() => {});
+}
+/** Run `work(dir)` with a fresh work folder in the workspace, removed afterwards however it ends. */
+async function moEnhanceTemp(api, work) {
+  const base = getThumbDir(api);
+  if (!base) throw new Error('Enhance needs an open workspace.');
+  const sep = _isWindows ? '\\' : '/';
+  const dir = base + sep + '.enhance-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  await window.parallxElectron.fs.mkdir(dir);
+  try { return await work(dir); } finally { await moDisposeTemp(api, [dir]); }
+}
+/** At start: work folders a stopped or crashed run left behind. */
+async function moPurgeOrphanEnhance(api) {
+  try {
+    const base = getThumbDir(api);
+    if (!base) return;
+    const res = await window.parallxElectron.fs.readdir(base);
+    if (!res || res.error || !Array.isArray(res.entries)) return;
+    const sep = _isWindows ? '\\' : '/';
+    const left = res.entries.filter((e) => e && e.type === 'directory' && /^\.enhance-[a-z0-9]+$/.test(e.name)).map((e) => base + sep + e.name);
+    if (left.length) await moDisposeTemp(api, left);
+  } catch (err) { console.warn('[media-organizer] could not sweep Enhance work folders:', err && err.message); }
+}
+
 /** "photo.jpg" -> "photo-2x.png"; n > 1 adds " (n)" before the extension. */
 function moUpscaleOutputName(basename, scale, n = 1) {
   const dot = basename.lastIndexOf('.');
@@ -27427,26 +27481,27 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
       const out = await moUpscaleUniqueOutputPath(t.path, scale);
       if (!out) { failed++; failures.push(`${t.basename}: no free output name`); continue; }
       // The engine reads JPEG, PNG, WebP, TIFF and BMP; anything else (HEIC, RAW previews) becomes a PNG first.
-      let r = null; let written = false; let input = t.path; let converted = null;
+      let r = null; let written = false;
       try {
-        if (!MO_ENHANCE_READS.test(t.path)) {
-          if (!_toolPaths.magick) throw new Error('This kind of file needs ImageMagick, which was not found.');
-          converted = out + '.source.png';
-          const c = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(t.path)} ${shellQuote(converted)}`, { timeout: 120_000 });
-          if (!c || c.exitCode !== 0) throw new Error('The photo could not be read.');
-          input = converted;
-        }
-        await moEnhanceRun(input, out, scale, (p) => {
-          progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}. ${p.label}`;
-          progressFill.style.width = `${Math.round(((i + p.fraction) / count) * 100)}%`;
-        }, { onRunId: (id) => { currentRun = id; } });
+        await moEnhanceTemp(api, async (dir) => {
+          let input = t.path;
+          if (!MO_ENHANCE_READS.test(t.path)) {
+            if (!_toolPaths.magick) throw new Error('This kind of file needs ImageMagick, which was not found.');
+            input = dir + (_isWindows ? '\\' : '/') + 'source.png';
+            const c = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(t.path)} ${shellQuote(input)}`, { timeout: 120_000 });
+            if (!c || c.exitCode !== 0) throw new Error('The photo could not be read.');
+          }
+          await moEnhanceRun(input, out, scale, (p) => {
+            progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}. ${p.label}`;
+            progressFill.style.width = `${Math.round(((i + p.fraction) / count) * 100)}%`;
+          }, { workDir: dir, onRunId: (id) => { currentRun = id; } });
+        });
         written = await window.parallxElectron.fs.exists(out);
       } catch (err) {
         if (err && err.stopped) { cancelled = true; break; }
         r = { stderr: (err && err.message) || String(err) };
       } finally {
         currentRun = null;
-        if (converted) { try { await window.parallxElectron.fs.delete(converted, { useTrash: false }); } catch { /* temp */ } }
       }
       if (!written) {
         failed++;
@@ -34258,7 +34313,7 @@ async function moEditRenderFull(source, recipe, flatten, onTile) {
 // onStage('enlarge', within, label): how far the engine is, and what it is doing.
 async function moEditUpscaleFile(input, output, scale, _model, onStage) {
   const started = Date.now();
-  await moEnhanceRun(input, output, scale, (p) => { if (onStage) onStage('enlarge', p.fraction, p.label); });
+  await moEnhanceTemp(_api, (dir) => moEnhanceRun(input, output, scale, (p) => { if (onStage) onStage('enlarge', p.fraction, p.label); }, { workDir: dir }));
   console.log(`[MediaOrganizer] enhance: ${scale}x in ${Math.round((Date.now() - started) / 100) / 10} s`);
 }
 
@@ -34313,7 +34368,7 @@ async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBy
   const edited = !moEditIsNeutral(recipe);
   const camera = origBytes && /\.jpe?g$/i.test(base) ? origBytes : null;
   const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const gone = async (p) => { if (p) { try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* temp file */ } } };
+  const gone = async (p) => { if (p) await moDisposeTemp(_api, [p]); };
 
   if (!scale) {
     tell('draw', 0);
@@ -34468,7 +34523,7 @@ async function moEditSaveOver(photoId, srcPath, source, origBytes, recipe, onPro
     const moved = await window.parallxElectron.fs.rename(saving, srcPath);
     if (moved && moved.error) throw new Error(`The original could not be replaced (${moved.error.message || moved.error.code || 'it may be open in another program'}).`);
   } catch (err) {
-    try { await window.parallxElectron.fs.delete(saving, { useTrash: false }); } catch { /* never written */ }
+    await moDisposeTemp(_api, [saving]);   // a half-written copy of the picture: out the way Delete goes
     throw err;
   }
   tell('library', 0);
@@ -36990,7 +37045,7 @@ function renderImageEditor(container, api) {
         s.appendChild(hint('The enlarged picture is previewed here first; nothing is written until you save. Saved copies are PNG.'));
       }
     } else s.appendChild(hint('Choose 2× or 4× to make the saved copy larger and sharper.'));
-    s.appendChild(hint(`Enhance runs SeedVR2 on this computer's graphics card. It needs about ${Math.round(MO_ENHANCE_MIN_FREE_MIB / 1024)} GB of its memory free.`));
+    s.appendChild(hint(`Enhance runs SeedVR2 on this computer's graphics card. It is fastest with about 21 GB of its memory free; with less (a loaded Ollama model, say) it still runs, more slowly.`));
     s.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.enhance.removeEngine', label: 'Remove the Enhance Engine…', kind: 'ghost', size: 'sm', command: 'media-organizer.enhance.removeEngine' })));
   }
   // The enlarged picture, on the stage at 100%: drag (scroll) to look around.
@@ -37040,7 +37095,7 @@ function renderImageEditor(container, api) {
     } catch (err) {
       api.window.showErrorMessage('The preview could not be made: ' + ((err && err.message) || err));
     } finally {
-      for (const p of [drawn, out]) { try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* temp */ } }
+      await moDisposeTemp(api, [drawn, out]);
       if (!disposed) { busy(''); syncStageChip(); if (state.tool === 'enhance') renderPanel(); }
     }
   }
@@ -37826,6 +37881,7 @@ export async function activate(api, context) {
     if (typeof unsub === 'function') _commandDisposables.push({ dispose: unsub });
   }
   moPurgeOrphanRecordings(api).catch(() => {});
+  moPurgeOrphanEnhance(api).catch(() => {});
 
   // Status bar item for scan progress
   _statusBarItem = api.window.createStatusBarItem(1, 100);

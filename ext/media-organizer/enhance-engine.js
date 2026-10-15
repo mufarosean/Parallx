@@ -197,7 +197,8 @@ export function moEnhanceCard(api, whenReady) {
 
 /**
  * Enlarge `input` into `output` (a PNG) `scale` times. onProgress({ label,
- * fraction }). Throws an Error whose message is for the user.
+ * fraction }). opts.workDir: where the pieces go (in the workspace; the caller
+ * removes it). Throws an Error whose message is for the user.
  */
 export async function moEnhanceRun(input, output, scale, onProgress, opts = {}) {
   const b = bridge();
@@ -205,11 +206,9 @@ export async function moEnhanceRun(input, output, scale, onProgress, opts = {}) 
   if (!(await moEnhanceReady())) throw new Error('Enhance is not set up yet. Choose Set Up Enhance in the Enhance tool.');
   const machine = await b.invoke('runtimes:check', moEnhanceSpec());
   const card = machine && machine.cards && machine.cards[0];
-  const piece = card && PIECES.find((p) => card.freeMiB >= p.freeMiB);
-  if (!piece) {
-    const free = card ? `${(card.freeMiB / 1024).toFixed(1)} GB` : 'too little';
-    throw new Error(`Enhance needs about ${Math.round(MO_ENHANCE_MIN_FREE_MIB / 1024)} GB of free graphics memory, and ${card ? card.name : 'the graphics card'} has ${free} free right now. Something else is using it, such as a loaded Ollama model or a game. Free some and try again.`);
-  }
+  // Large pieces when there is room; otherwise small ones. The engine moves what does not fit to
+  // system memory, so it still runs (slower) when another program, such as an Ollama model, holds the card.
+  const piece = (card && PIECES.find((p) => card.freeMiB >= p.freeMiB)) || PIECES[PIECES.length - 1];
   const runId = `enhance-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   if (opts.onRunId) opts.onRunId(runId);
   runListeners.set(runId, (d) => {
@@ -226,7 +225,7 @@ export async function moEnhanceRun(input, output, scale, onProgress, opts = {}) 
     try { onProgress({ label, fraction }); } catch { /* the caller closed */ }
   });
   try {
-    const r = await b.invoke('runtimes:run', moEnhanceSpec(), enginePath('enhance.py'), ['--input', input, '--output', output, '--scale', String(scale), '--piece-out', String(piece.out)], runId);
+    const r = await b.invoke('runtimes:run', moEnhanceSpec(), enginePath('enhance.py'), ['--input', input, '--output', output, '--scale', String(scale), '--piece-out', String(piece.out), ...(opts.workDir ? ['--work-dir', opts.workDir] : [])], runId);
     if (r && r.ok) return;
     if (r && r.stopped) throw Object.assign(new Error('Stopped.'), { stopped: true });
     const said = /ENHANCE-ERROR: (.*)/.exec(String((r && r.stderr) || ''));
