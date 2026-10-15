@@ -141,6 +141,27 @@ describe('fetching a model', () => {
   });
 });
 
+describe('a model’s weights file', () => {
+  it('is fetched like a model and kept under its own hash as weights', async () => {
+    const h = harness();
+    expect(await h.call('models:download', { url: URL_OK, sha256: SHA, bytes: BYTES.length, kind: 'data' })).toEqual({ ok: true });
+    expect(readdirSync(h.models)).toEqual([`${SHA}.onnx_data`]);
+    expect((await h.call('models:status', { sha256: SHA, bytes: BYTES.length, kind: 'data' })).present).toBe(true);
+    expect((await h.call('models:status', { sha256: SHA, bytes: BYTES.length })).present).toBe(false);
+  });
+  it('is handed to a run only by its hash and a plain name', async () => {
+    const h = harness();
+    mkdirSync(h.models, { recursive: true });
+    writeFileSync(join(h.models, `${SHA}.onnx`), BYTES);
+    const st = await h.call('models:status', { sha256: SHA, bytes: BYTES.length });
+    if (!st.runtime) return;
+    const input = { image: { data: new Float32Array(12), dims: [1, 3, 2, 2] } };
+    expect((await h.call('models:run', SHA, input, { data: [{ sha256: SHA, name: '../evil.onnx_data' }] })).ok).toBe(false);
+    expect((await h.call('models:run', SHA, input, { data: [{ sha256: 'C:/x', name: 'w.onnx_data' }] })).code).toBeUndefined();
+    expect((await h.call('models:run', SHA, input, { data: [{ sha256: SHA, name: 'w.onnx_data' }] })).code).toBe('NO_MODEL');
+  });
+});
+
 describe('running a model', () => {
   it('runs only a model that is on disk under its own hash', async () => {
     const h = harness();
@@ -161,5 +182,6 @@ describe('running a model', () => {
     expect((await h.call('models:run', SHA, { image: { data: [1, 2, 3], dims: [3] } })).ok).toBe(false);
     expect((await h.call('models:run', SHA, { image: { data: new Float32Array(12), dims: [1, 3, 4, 4] } })).ok).toBe(false);
     expect((await h.call('models:run', SHA, { image: { data: new Float32Array(12), dims: [1, 3, 2, -2] } })).ok).toBe(false);
+    expect((await h.call('models:run', SHA, { ids: { data: new Float64Array(3), dims: [1, 3] } })).ok).toBe(false); // whole numbers come as BigInt64Array or Int32Array
   });
 });

@@ -13,6 +13,10 @@
 //   - A model is named by the SHA-256 of its file. The file on disk is
 //     <models>/<sha256>.onnx, so a caller cannot point the runner at any
 //     other path, and cannot replace one model with another.
+//   - A model whose weights sit in a file of their own (external data, as
+//     large exports ship) names that file the same way: it is fetched with
+//     kind 'data', kept as <models>/<sha256>.onnx_data, and handed to a run
+//     with the name the model refers to it by.
 //   - Downloads are https, from ALLOWED_HOSTS only, refused while the
 //     workspace is sealed, written to a .part file and renamed only after the
 //     size and the hash both match.
@@ -33,6 +37,9 @@ const MAX_MODEL_BYTES = 4 * 1024 * 1024 * 1024;
 const MAX_INPUT_BYTES = 256 * 1024 * 1024;
 const IDLE_MS = 120_000;
 const SHA_RE = /^[0-9a-f]{64}$/;
+const DATA_NAME_RE = /^[A-Za-z0-9._-]{1,128}$/;
+// What a run's inputs may be: the typed array each tensor type arrives as.
+const INPUT_TYPES = [[Float32Array, 'float32'], [BigInt64Array, 'int64'], [Int32Array, 'int32']];
 
 function runtimePresent() {
   try { require.resolve('onnxruntime-node'); return true; } catch { return false; }
@@ -44,7 +51,7 @@ function runtimePresent() {
  */
 function setupModelBridge(ipcMain, opts) {
   const modelsDir = process.env.PARALLX_MODELS_DIR || path.join(opts.appRoot, 'data', 'models');
-  const fileFor = (sha) => path.join(modelsDir, `${sha}.onnx`);
+  const fileFor = (sha, kind) => path.join(modelsDir, `${sha}.${kind === 'data' ? 'onnx_data' : 'onnx'}`);
   const send = (payload) => { try { const w = opts.getMainWindow(); if (w && !w.isDestroyed()) w.webContents.send('models:progress', payload); } catch { /* window gone */ } };
   const checkDesc = (desc) => {
     const d = desc && typeof desc === 'object' ? desc : {};
@@ -52,16 +59,16 @@ function setupModelBridge(ipcMain, opts) {
     if (!SHA_RE.test(sha)) return { error: 'A model is named by the SHA-256 of its file.' };
     const bytes = Number(d.bytes);
     if (!(bytes > 0 && bytes <= MAX_MODEL_BYTES)) return { error: 'The model needs a size in bytes.' };
-    return { sha, bytes, url: typeof d.url === 'string' ? d.url : '' };
+    return { sha, bytes, url: typeof d.url === 'string' ? d.url : '', kind: d.kind === 'data' ? 'data' : 'model' };
   };
-  const present = async (sha, bytes) => {
-    try { const st = await fsp.stat(fileFor(sha)); return st.isFile() && st.size === bytes; } catch { return false; }
+  const present = async (sha, bytes, kind) => {
+    try { const st = await fsp.stat(fileFor(sha, kind)); return st.isFile() && st.size === bytes; } catch { return false; }
   };
 
   ipcMain.handle('models:status', async (_event, desc) => {
     const d = checkDesc(desc);
     if (d.error) return { ok: false, error: d.error };
-    return { ok: true, runtime: runtimePresent(), present: await present(d.sha, d.bytes), downloading: downloads.has(d.sha) };
+    return { ok: true, runtime: runtimePresent(), present: await present(d.sha, d.bytes, d.kind), downloading: downloads.has(d.sha) };
   });
 
   // ── download ──
@@ -69,7 +76,7 @@ function setupModelBridge(ipcMain, opts) {
   ipcMain.handle('models:download', async (_event, desc) => {
     const d = checkDesc(desc);
     if (d.error) return { ok: false, error: d.error };
-    if (await present(d.sha, d.bytes)) return { ok: true, already: true };
+    if (await present(d.sha, d.bytes, d.kind)) return { ok: true, already: true };
     if (downloads.has(d.sha)) return { ok: false, error: 'This model is already being fetched.' };
     if (opts.isSealed && opts.isSealed()) return { ok: false, code: 'SEALED', error: 'This workspace is sealed: nothing is fetched.' };
     let url;
@@ -78,7 +85,7 @@ function setupModelBridge(ipcMain, opts) {
 
     const controller = new AbortController();
     downloads.set(d.sha, controller);
-    const part = `${fileFor(d.sha)}.part`;
+    const part = `${fileFor(d.sha, d.kind)}.part`;
     let handle = null;
     try {
       await fsp.mkdir(modelsDir, { recursive: true });
@@ -102,7 +109,7 @@ function setupModelBridge(ipcMain, opts) {
       await handle.close(); handle = null;
       if (received !== d.bytes) throw new Error(`The file is ${received} bytes; the model is ${d.bytes}.`);
       if (hash.digest('hex') !== d.sha) throw new Error('The file is not the model that was asked for (its SHA-256 differs). It was not kept.');
-      await fsp.rename(part, fileFor(d.sha));
+      await fsp.rename(part, fileFor(d.sha, d.kind));
       send({ sha256: d.sha, received, total: d.bytes, done: true });
       return { ok: true };
     } catch (err) {
@@ -145,22 +152,31 @@ function setupModelBridge(ipcMain, opts) {
     if (typeof idle.unref === 'function') idle.unref();
   };
 
-  ipcMain.handle('models:run', async (_event, sha256, inputs) => {
+  // opts.data: the model's weights files, [{ sha256, name }], name being what the model calls the file.
+  ipcMain.handle('models:run', async (_event, sha256, inputs, opts) => {
     const sha = String(sha256 || '').toLowerCase();
     if (!SHA_RE.test(sha)) return { ok: false, error: 'A model is named by the SHA-256 of its file.' };
     if (!runtimePresent()) return { ok: false, code: 'NO_RUNTIME', error: 'The model runtime is not installed.' };
     if (!fs.existsSync(fileFor(sha))) return { ok: false, code: 'NO_MODEL', error: 'The model has not been fetched yet.' };
+    const data = [];
+    for (const x of (opts && Array.isArray(opts.data) ? opts.data : []).slice(0, 4)) {
+      const ds = String((x && x.sha256) || '').toLowerCase(), name = String((x && x.name) || '');
+      if (!SHA_RE.test(ds) || !DATA_NAME_RE.test(name)) return { ok: false, error: 'A weights file is named by its SHA-256 and the name the model gives it.' };
+      if (!fs.existsSync(fileFor(ds, 'data'))) return { ok: false, code: 'NO_MODEL', error: 'The model\'s weights have not been fetched yet.' };
+      data.push({ path: fileFor(ds, 'data'), name });
+    }
     const clean = {}; let total = 0;
     for (const [name, v] of Object.entries(inputs && typeof inputs === 'object' ? inputs : {})) {
-      if (!v || !(v.data instanceof Float32Array) || !Array.isArray(v.dims)) return { ok: false, error: `Input "${name}" needs Float32Array data and dims.` };
+      const type = v && Array.isArray(v.dims) && (INPUT_TYPES.find(([T]) => v.data instanceof T) || [])[1];
+      if (!type) return { ok: false, error: `Input "${name}" needs Float32Array, BigInt64Array or Int32Array data and dims.` };
       const dims = v.dims.map((n) => Math.round(Number(n)));
-      if (dims.some((n) => !(n > 0)) || dims.reduce((a, b) => a * b, 1) !== v.data.length) return { ok: false, error: `Input "${name}" does not have the size its dims say.` };
+      if (dims.some((n) => !(n >= 0)) || dims.reduce((a, b) => a * b, 1) !== v.data.length) return { ok: false, error: `Input "${name}" does not have the size its dims say.` };
       total += v.data.byteLength;
-      clean[name] = { data: v.data, dims };
+      clean[name] = { data: v.data, dims, type };
     }
     if (!Object.keys(clean).length) return { ok: false, error: 'There is nothing to run the model on.' };
     if (total > MAX_INPUT_BYTES) return { ok: false, error: 'The input is too large.' };
-    const r = await call({ op: 'run', model: fileFor(sha), inputs: clean });
+    const r = await call({ op: 'run', model: fileFor(sha), data, inputs: clean });
     rest();
     return r;
   });
@@ -172,4 +188,4 @@ function setupModelBridge(ipcMain, opts) {
   };
 }
 
-module.exports = { setupModelBridge, _internals: { ALLOWED_HOSTS, SHA_RE, runtimePresent } };
+module.exports = { setupModelBridge, _internals: { ALLOWED_HOSTS, SHA_RE, DATA_NAME_RE, runtimePresent } };

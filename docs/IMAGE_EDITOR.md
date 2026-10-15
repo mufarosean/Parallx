@@ -336,6 +336,11 @@ model through it.
 - A model is named by the SHA-256 of its file. The file on disk is
   `<models>/<sha256>.onnx`, so a caller cannot point the runner at another path.
 - Models live in `data/models` under the app's folder.
+- A model whose weights ship in a file of their own (external data) names that file the
+  same way: fetched with kind `data`, kept as `<sha256>.onnx_data`, and handed to a run
+  with the name the model refers to it by. The runtime gets the bytes, never a path.
+- Inputs are 32-bit floats, 64-bit or 32-bit whole numbers, and may be empty (a
+  dimension of 0), as a click with no box is.
 - Downloads are https, from huggingface.co only, refused while the workspace is
   sealed, and kept only if the size and the hash both match.
 - It runs in a worker thread and lets go of the model after two minutes without
