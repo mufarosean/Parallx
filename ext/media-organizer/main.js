@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_OKLAB_GLSL, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -31744,10 +31744,10 @@ const MO_PLAN_CANVAS_PRESETS = [[8, 10], [9, 12], [11, 14], [12, 16], [16, 20], 
 
 function moPlanDefaultRecipe() {
   return {
-    crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0, flipH: false, flipV: false,
+    crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0, flipH: false, flipV: false, angle: 0, freeCrop: false,
     exposure: 0, contrast: 0, highlights: 0, shadows: 0, warmth: 0, tint: 0, hue: 0, saturation: 0,
     grey: false, levels: 0, notan: 0, blur: 0, stage: 0, saved: [],
-    overlays: { thirds: false, golden: false, diagonals: false, grid: false, gridInches: 1 },
+    overlays: { thirds: false, golden: false, diagonals: false, grid: false, gridInches: 1, guide: 'none', spiral: 0 },
     palette: { count: 8, swatches: [], apply: false }, canvas: null,
   };
 }
@@ -31759,6 +31759,9 @@ function moPlanNormalizeRecipe(r) {
   const out = Object.assign({}, d, o);
   out.crop = Object.assign({}, d.crop, o.crop || {});
   out.overlays = Object.assign({}, d.overlays, o.overlays || {});
+  if (!['none', 'thirds', 'golden', 'spiral', 'diagonals', 'triangles'].includes(out.overlays.guide) || !(o.overlays && o.overlays.guide)) out.overlays.guide = out.overlays.thirds ? 'thirds' : out.overlays.golden ? 'golden' : out.overlays.diagonals ? 'diagonals' : 'none'; // older plans had three switches
+  out.overlays.spiral = ((Math.round(Number(out.overlays.spiral) || 0) % 4) + 4) % 4;
+  out.angle = Math.max(-45, Math.min(45, Number(out.angle) || 0)); out.freeCrop = !!out.freeCrop;
   out.palette = Object.assign({}, d.palette, o.palette || {});
   out.palette.swatches = Array.isArray(out.palette.swatches) ? out.palette.swatches.slice(0, 16) : []; out.saved = Array.isArray(out.saved) ? out.saved.filter((c) => c && Array.isArray(c.rgb)).slice(-64) : [];
   out.rotate = ((Math.round(Number(out.rotate) || 0) % 4) + 4) % 4;
@@ -31969,7 +31972,7 @@ uniform vec2 u_texel, u_outSize;
 uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
 uniform float u_warmth, u_tint, u_hue, u_sat, u_vibrance;
 uniform float u_grey, u_levels, u_notan, u_split, u_paletteN, u_opaque, u_outside;
-uniform float u_curveOn, u_mixOn, u_gradeOn;
+uniform float u_curveOn, u_mixOn, u_gradeOn, u_clipSrc;
 uniform vec3 u_mix[8];
 uniform vec3 u_gShadow, u_gMid, u_gHigh, u_gLum;
 uniform float u_gBlend, u_gBalance;
@@ -32048,7 +32051,7 @@ void main() {
   if (outside && u_outside < 0.5) { gl_FragColor = vec4(0.0); return; }
   vec3 oq = vec3(o, 1.0);
   vec2 s = vec2(dot(u_m0, oq), dot(u_m1, oq));
-  if (outside && (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0)) { gl_FragColor = vec4(0.0); return; }
+  if ((outside || u_clipSrc > 0.5) && (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0)) { gl_FragColor = vec4(0.0); return; }
   vec4 t = texture2D(u_img, s);
   vec3 c = t.rgb;
   vec3 orig = c;
@@ -32167,7 +32170,7 @@ function moImageEngine(canvas) {
   const U = {};
   for (const n of ['u_img', 'u_blurS', 'u_blurL', 'u_curve', 'u_v0', 'u_v1', 'u_m0', 'u_m1', 'u_texel', 'u_outSize',
     'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette', 'u_opaque', 'u_outside',
-    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_mix', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
+    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_clipSrc', 'u_mix', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
     ...MO_ENGINE_FLOATS.map((f) => f[0])]) U[n] = gl.getUniformLocation(prog, n);
   const BU = { img: gl.getUniformLocation(blurProg, 'u_img'), step: gl.getUniformLocation(blurProg, 'u_step') };
   const plainTexture = (filter) => {
@@ -32264,7 +32267,7 @@ function moImageEngine(canvas) {
     gl.uniform1f(U.u_grey, p.grey ? 1 : 0); gl.uniform1f(U.u_levels, Number(p.levels) || 0); gl.uniform1f(U.u_notan, Number(p.notan) || 0);
     gl.uniform1f(U.u_split, typeof p.split === 'number' ? p.split : -1);
     gl.uniform1f(U.u_opaque, p.opaque ? 1 : 0);
-    gl.uniform1f(U.u_outside, p.outside ? 1 : 0);
+    gl.uniform1f(U.u_outside, p.outside ? 1 : 0); gl.uniform1f(U.u_clipSrc, p.clipSource ? 1 : 0);
     const sw = Array.isArray(p.palette) ? p.palette : [];
     const arr = new Float32Array(48);
     sw.slice(0, 16).forEach((s, i) => { arr[i * 3] = s[0] / 255; arr[i * 3 + 1] = s[1] / 255; arr[i * 3 + 2] = s[2] / 255; });
@@ -32373,11 +32376,11 @@ function moPlanRenderer(canvas) {
     render(recipe, opts) {
       const r = recipe;
       const size = engine.size;
-      const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
+      const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: Number(r.angle) || 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
       const look = {};
       for (const k of MO_ENGINE_LOOK_KEYS) look[k] = r[k];
       return engine[opts.read ? 'sample' : 'draw']({ // read: the pixels back as RGBA bytes
-        m: geo.m, look, opaque: true,
+        m: geo.m, look, opaque: !opts.full, clipSource: !!opts.full,
         grey: r.grey, levels: r.levels, notan: r.notan,
         palette: r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
         split: typeof opts.split === 'number' ? opts.split : -1,
@@ -32532,15 +32535,9 @@ function renderPlanEditor(container, api, planId) {
     ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
     const octx = ovCanvas.getContext('2d');
     if (full) {
-      octx.clearRect(0, 0, ovCanvas.width, ovCanvas.height);
-      octx.fillStyle = 'rgba(0,0,0,0.55)';
-      const cx = r.crop.x * ovCanvas.width, cy = r.crop.y * ovCanvas.height, cw = r.crop.w * ovCanvas.width, ch = r.crop.h * ovCanvas.height;
-      octx.fillRect(0, 0, ovCanvas.width, cy); octx.fillRect(0, cy + ch, ovCanvas.width, ovCanvas.height - cy - ch);
-      octx.fillRect(0, cy, cx, ch); octx.fillRect(cx + cw, cy, ovCanvas.width - cx - cw, ch);
-      octx.save(); octx.translate(cx, cy); moPlanDrawOverlays(octx, cw, ch, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: false }) }), state.plan.canvas_w, state.plan.canvas_h, dpr); octx.restore();
+      compose.drawOverlay(octx, ovCanvas.width, ovCanvas.height, dpr);
       cropBox.classList.remove('mo-hidden');
-      cropBox.style.left = (r.crop.x * cssW) + 'px'; cropBox.style.top = (r.crop.y * cssH) + 'px';
-      cropBox.style.width = (r.crop.w * cssW) + 'px'; cropBox.style.height = (r.crop.h * cssH) + 'px';
+      compose.placeBox(cssW, cssH);
     } else {
       cropBox.classList.add('mo-hidden');
       octx.clearRect(0, 0, ovCanvas.width, ovCanvas.height);
@@ -32553,39 +32550,9 @@ function renderPlanEditor(container, api, planId) {
   const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => requestRender()) : null;
   if (resizeObs) resizeObs.observe(stage);
 
-  // ── crop dragging ──
-  let drag = null;
-  const cropPress = api.ui.onDragPress(cropBox, (e) => {
-    if (state.tool !== 'compose') return;
-    e.preventDefault();
-    const corner = e.target && e.target.dataset ? e.target.dataset.corner : null;
-    const fr = frame.getBoundingClientRect(); // on screen: zoomed, maybe mirrored
-    drag = { corner: corner || null, x0: e.clientX, y0: e.clientY, crop: Object.assign({}, state.recipe.crop), fw: fr.width * (state.mirror ? -1 : 1), fh: fr.height };
-    try { cropBox.setPointerCapture(e.pointerId); } catch { /* the press is gone */ }
-  }, { pointerEvents: true });
-  cropBox.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const rs = rotated();
-    const dx = (e.clientX - drag.x0) / drag.fw; const dy = (e.clientY - drag.y0) / drag.fh;
-    const c = drag.crop;
-    let next;
-    if (!drag.corner) next = { x: c.x + dx, y: c.y + dy, w: c.w, h: c.h };
-    else {
-      const signX = drag.corner.includes('e') ? 1 : -1;
-      const growX = signX * dx, growY = (drag.corner.includes('s') ? 1 : -1) * dy * (aspect() * rs.h) / rs.w; // a corner follows whichever way the pointer went further
-      const w = Math.max(0.02, c.w + (Math.abs(growY) > Math.abs(growX) ? growY : growX));
-      const h = (w * rs.w) / (aspect() * rs.h);
-      next = { w, h, x: drag.corner.includes('w') ? c.x + (c.w - w) : c.x, y: drag.corner.includes('n') ? c.y + (c.h - h) : c.y };
-    }
-    state.recipe.crop = moPlanClampCrop(next, rs.w, rs.h, aspect());
-    requestRender();
-  });
-  const endDrag = () => { if (drag) { drag = null; afterRecipeChange(true); } };
-  cropBox.addEventListener('pointerup', endDrag);
-  cropBox.addEventListener('pointercancel', endDrag);
-  // The keyboard's drag (keys.js): arrows move the crop, Alt+arrows size it at the plan's aspect, in 1% steps.
-  moBoxKeys(cropBox, 'Crop', { nudge: (dx, dy, size) => { const rs = rotated(), c = state.recipe.crop, w = Math.max(0.02, c.w + (dx || dy) / 100);
-    state.recipe.crop = moPlanClampCrop(size ? { x: c.x, y: c.y, w, h: (w * rs.w) / (aspect() * rs.h) } : { x: c.x + dx / 100, y: c.y + dy / 100, w: c.w, h: c.h }, rs.w, rs.h, aspect()); requestRender(); }, commit: () => afterRecipeChange(true) });
+  // ── Compose: the canvas, the crop and the composition guides (plan-compose.js) ──
+  function setCanvas(w, h) { state.plan.canvas_w = w; state.plan.canvas_h = h; state.recipe.canvas = { w, h }; sizeEl.textContent = `${w} × ${h} in`; }
+  const compose = moPlanCompose({ api, state, root, frame, cropBox, rotated, setCanvas, afterRecipeChange: (rec, keep) => afterRecipeChange(rec, keep), requestRender: () => requestRender(), moDropdown, presets: MO_PLAN_CANVAS_PRESETS });
 
   // ── panel ──
   // The tool modules still name their old tools; each lives in a step now.
@@ -32633,47 +32600,8 @@ function renderPlanEditor(container, api, planId) {
     const r = state.recipe;
     const t = state.tool;
     if (state.notes) notesPanel();
-    else if (t === 'compose') {
-      const s = section('Canvas');
-      const row = moEl('div', 'mo-plan-row');
-      const wIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { sceneId: 'media-organizer.plan.canvasWidth', type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Width' });
-      const hIn = moEl('input', 'mo-clip-input mo-clip-input--xs', { sceneId: 'media-organizer.plan.canvasHeight', type: 'number', min: '1', max: '120', step: '0.5', 'aria-label': 'Canvas Height' });
-      wIn.value = String(state.plan.canvas_w); hIn.value = String(state.plan.canvas_h);
-      const applySize = () => {
-        const w = Math.max(1, Number(wIn.value) || 1); const h = Math.max(1, Number(hIn.value) || 1);
-        state.plan.canvas_w = w; state.plan.canvas_h = h; r.canvas = { w, h };
-        const rs = rotated();
-        r.crop = moPlanClampCrop(r.crop, rs.w, rs.h, aspect());
-        sizeEl.textContent = `${w} × ${h} in`;
-        afterRecipeChange(true);
-      };
-      wIn.addEventListener('change', applySize); hIn.addEventListener('change', applySize);
-      row.appendChild(wIn); row.appendChild(moEl('span', 'mo-practice-dim', { textContent: '×' })); row.appendChild(hIn); row.appendChild(moEl('span', 'mo-practice-dim', { textContent: 'in' }));
-      s.appendChild(row);
-      const presets = moDropdown({ items: [{ value: '', label: 'Common Sizes' }, ...MO_PLAN_CANVAS_PRESETS.map(([w, h]) => ({ value: `${w}x${h}`, label: `${w} × ${h}` }))], selected: '', ariaLabel: 'Common Sizes' });
-      presets.onChange = (v) => { if (!v) return; const [w, h] = v.split('x').map(Number); wIn.value = String(w); hIn.value = String(h); applySize(); presets.setValue(''); };
-      panelDisposers.push(() => presets.dispose());
-      s.appendChild(presets.el);
-      const swap = button('Swap Orientation', () => { const w = state.plan.canvas_w; wIn.value = String(state.plan.canvas_h); hIn.value = String(w); applySize(); });
-      s.appendChild(swap);
-      const s2 = section('Picture');
-      const rowR = moEl('div', 'mo-plan-row');
-      // An uncropped picture turns with its canvas; a cropped one keeps the canvas and refits.
-      const turn = (q) => { const whole = r.crop.w > 0.999 && r.crop.h > 0.999; r.rotate = (r.rotate + q) % 4; if (whole) { const w = state.plan.canvas_w; state.plan.canvas_w = state.plan.canvas_h; state.plan.canvas_h = w; r.canvas = { w: state.plan.canvas_w, h: state.plan.canvas_h }; sizeEl.textContent = `${state.plan.canvas_w} × ${state.plan.canvas_h} in`; } const rs = rotated(); r.crop = whole ? { x: 0, y: 0, w: 1, h: 1 } : moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); };
-      rowR.appendChild(button('Rotate Left', () => turn(3)));
-      rowR.appendChild(button('Rotate Right', () => turn(1)));
-      s2.appendChild(rowR);
-      const rowF = moEl('div', 'mo-plan-row');
-      rowF.appendChild(button('Flip Horizontal', () => { r.flipH = !r.flipH; afterRecipeChange(true); }));
-      rowF.appendChild(button('Flip Vertical', () => { r.flipV = !r.flipV; afterRecipeChange(true); }));
-      s2.appendChild(rowF);
-      s2.appendChild(button('Reset Crop', () => { const rs = rotated(); r.crop = moPlanFitCrop(rs.w, rs.h, aspect()); afterRecipeChange(true); }));
-      s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'Drag the box to move it, a corner to resize. The crop keeps the canvas proportions.' }));
-      const s3 = section('Composition');
-      s3.appendChild(toggle('Thirds', () => r.overlays.thirds, (v) => { r.overlays.thirds = v; afterRecipeChange(true); }));
-      s3.appendChild(toggle('Golden Section', () => r.overlays.golden, (v) => { r.overlays.golden = v; afterRecipeChange(true); }));
-      s3.appendChild(toggle('Diagonals', () => r.overlays.diagonals, (v) => { r.overlays.diagonals = v; afterRecipeChange(true); }));
-    } else if (t === 'photo') {
+    else if (t === 'compose') compose.panel(panel, panelDisposers);
+    else if (t === 'photo') {
       const s = section('Light');
       s.appendChild(slider('Exposure', 'exposure', -2, 2, 0.01, (v) => (v > 0 ? '+' : '') + v.toFixed(2)));
       s.appendChild(slider('Contrast', 'contrast', -1, 1, 0.01));
@@ -32910,7 +32838,7 @@ function renderPlanEditor(container, api, planId) {
       for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
       if (renderer) renderer.dispose();
       if (thumbRenderer) thumbRenderer.dispose();
-      colours.dispose(); variations.dispose(); study.dispose(); shell.dispose(); cropPress.dispose();
+      colours.dispose(); variations.dispose(); study.dispose(); shell.dispose(); compose.dispose();
       container.innerHTML = '';
     },
   };
@@ -37978,7 +37906,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({ title: 'Select folder to scan' });
       if (result && result.length) await runScan(result[0], api);

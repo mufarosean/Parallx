@@ -47,7 +47,16 @@ export const MO_PLAN_CSS = `
 .px-btn.mo-pv-add:hover { color: var(--px-text); border-color: var(--px-text-muted); }
 .mo-plan-variant-actions { align-items: center; gap: 2px; }
 
+/* Compose */
+.mo-pk-size .mo-clip-input--xs { flex: 1 1 0; min-width: 0; }
+.mo-pk-icons { gap: 2px; }
+.mo-pk-guides { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--px-space-1); }
+.px-btn.mo-pk-guide { height: auto; flex-direction: column; gap: 4px; padding: var(--px-space-2) 2px; border: 1px solid transparent; font-size: var(--px-text-xs); color: var(--px-text-secondary); }
+.px-btn.mo-pk-guide[aria-pressed="true"] { border-color: var(--px-accent); color: var(--px-text); background: var(--px-accent-soft); }
+.mo-pk-guide-art svg { display: block; width: 34px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.mo-plan-switch { width: 100%; }
+
 /* A choice of a few fills its row */
 .mo-plan-panel .ui-segmented-control { display: flex; width: 100%; }
-.mo-plan-panel .ui-segmented-control__segment { flex: 1 1 0; min-width: 0; padding: 2px var(--px-space-1); overflow: hidden; text-overflow: ellipsis; }
+.mo-plan-panel .ui-segmented-control__segment { flex: 1 1 0; min-width: 0; padding: 2px; overflow: hidden; text-overflow: ellipsis; }
 `;
