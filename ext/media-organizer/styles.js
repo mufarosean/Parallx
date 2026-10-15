@@ -2,6 +2,8 @@
 // finder through the Media Gallery block), split out of main.js, which joins
 // them onto MO_CSS. Same text, same order.
 
+import { MO_PLAN_CSS } from './plan-styles.js';
+
 export const MO_CSS_MORE = `
 .mo-hidden { display: none !important; }
 /* Duplicate finder */
@@ -703,4 +705,4 @@ export const MO_CSS_MORE = `
 .mo-page-gallery__img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .mo-page-gallery__placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 6px; color: var(--px-text-muted); font-size: var(--px-text-xs); overflow-wrap: anywhere; }
 .mo-page-gallery__badge { position: absolute; right: 4px; bottom: 4px; padding: 1px 6px; background: color-mix(in srgb, var(--px-bg) 80%, transparent); border-radius: var(--px-radius-sm); color: var(--px-text); font-size: var(--px-text-xs); }
-`;
+` + MO_PLAN_CSS;

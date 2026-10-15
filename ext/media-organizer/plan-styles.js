@@ -1,0 +1,53 @@
+// plan-styles.js — the painting plan editor's styles for its frame (plan-shell.js)
+// and its five steps. Loaded after styles.js, so these rules win over the older
+// plan rules there.
+
+export const MO_PLAN_CSS = `
+/* The steps down the rail */
+.mo-plan-tools { flex: 0 0 72px; gap: var(--px-space-1); padding: var(--px-space-2) 0; }
+.px-btn.mo-plan-step { position: relative; width: 60px; height: auto; flex-direction: column; gap: 3px; padding: 8px 0 6px; font-size: var(--px-text-2xs); color: var(--px-text-secondary); }
+.px-btn.mo-plan-step .px-btn__label { white-space: nowrap; }
+.px-btn.mo-plan-step:hover { color: var(--px-text); }
+.px-btn.mo-plan-step.is-on { background: var(--px-accent-soft); color: var(--px-accent-text); }
+.mo-plan-step-n { position: absolute; top: 3px; left: 6px; font-size: var(--px-text-2xs); line-height: 1; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.px-btn.mo-plan-step + .px-btn.mo-plan-step::before { content: ''; position: absolute; top: -4px; left: 50%; width: 1px; height: 4px; background: var(--px-border); }
+
+.mo-plan-panel { flex-basis: 280px; }
+
+/* The top bar: icons, then Export with its menu */
+.mo-plan-topbar { padding: var(--px-space-1) var(--px-space-3); min-height: 40px; }
+.mo-plan-topbar-right { gap: 2px; }
+.mo-plan-topbar .px-btn--icon[aria-pressed="true"] { background: var(--px-accent-soft); color: var(--px-accent-text); }
+.mo-plan-sep { width: 1px; height: 18px; margin: 0 var(--px-space-2); background: var(--px-border); flex: none; }
+.mo-plan-export { display: inline-flex; }
+.mo-plan-export .px-btn--primary { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.mo-plan-export .mo-plan-export-more { border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--px-accent); color: var(--px-text-on-accent); box-shadow: inset 1px 0 0 color-mix(in srgb, var(--px-text-on-accent) 30%, transparent); }
+.mo-plan-export .mo-plan-export-more:hover { background: var(--px-accent-hover, var(--px-accent)); }
+
+/* The view: zoom and move */
+.mo-plan-stage { overflow: hidden; touch-action: none; }
+.mo-plan-stage:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: calc(-1 * var(--px-focus-width)); }
+.mo-plan-stage.is-zoomed, .mo-plan-stage.is-panning .mo-plan-frame { cursor: grab; }
+.mo-plan-stage.is-panning, .mo-plan-stage.is-panning * { cursor: grabbing !important; }
+.mo-plan-frame { flex: none; transform-origin: 50% 50%; }
+.mo-plan-hud { position: absolute; right: var(--px-space-3); bottom: var(--px-space-3); z-index: 6; display: flex; align-items: center; gap: var(--px-space-1); padding: 2px 2px 2px var(--px-space-3); border-radius: var(--px-radius-full); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.mo-plan-hud .px-btn { color: var(--px-viewer-ink); border-radius: var(--px-radius-full); }
+/* Marks on the picture keep their size on screen at any zoom */
+.mo-plan-crophandle, .mo-pc-ba-knob, .mo-pc-pin, .mo-pc-loupe, .mo-pc-loupe-tag, .mo-ps-spot, .mo-pc-ba-tag { scale: calc(1 / var(--mo-plan-zoom, 1)); }
+.mo-plan-cropbox { border-width: calc(1px / var(--mo-plan-zoom, 1)); }
+.mo-pc-ba-line { width: calc(24px / var(--mo-plan-zoom, 1)); margin-left: calc(-12px / var(--mo-plan-zoom, 1)); }
+.mo-pc-ba-line::before { left: 50%; width: calc(2px / var(--mo-plan-zoom, 1)); transform: translateX(-50%); }
+.mo-pc-ba-tag { transform-origin: top center; }
+/* Before And After sits over every layer, so its line can always be dragged */
+.mo-plan-frame .mo-pc-ba { z-index: 4; }
+
+/* The variations strip: + saves a new one */
+.mo-pv-list { align-items: flex-start; }
+.px-btn.mo-pv-add { flex: none; width: 56px; height: 56px; margin-top: 4px; border: 1px dashed var(--px-border); border-radius: var(--px-radius-md); color: var(--px-text-secondary); }
+.px-btn.mo-pv-add:hover { color: var(--px-text); border-color: var(--px-text-muted); }
+.mo-plan-variant-actions { align-items: center; gap: 2px; }
+
+/* A choice of a few fills its row */
+.mo-plan-panel .ui-segmented-control { display: flex; width: 100%; }
+.mo-plan-panel .ui-segmented-control__segment { flex: 1 1 0; min-width: 0; padding: 2px var(--px-space-1); overflow: hidden; text-overflow: ellipsis; }
+`;

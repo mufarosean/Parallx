@@ -569,12 +569,12 @@ export function moPlanColours(ctx) {
     const r = state.recipe;
     if (!r || !state.plan) return;
     const add = (cls, text, css) => { const m = moEl('span', cls, { textContent: text }); Object.assign(m.style, css); marks.appendChild(m); };
-    if (r.overlays.grid && state.tool !== 'crop') {
+    if (state.tool === 'transfer') {
       const step = r.overlays.gridInches > 0 ? r.overlays.gridInches : 1, g = ctx.gridLines(state.plan.canvas_w, state.plan.canvas_h, step);
       for (let i = 0; i < g.cols; i++) add('mo-pc-gl mo-pc-gl--col', String(i + 1), { left: `${Math.min(100, ((i + 0.5) * step * 100) / state.plan.canvas_w)}%` });
       for (let j = 0; j < g.rows; j++) add('mo-pc-gl mo-pc-gl--row', String.fromCharCode(65 + (j % 26)), { top: `${Math.min(100, ((j + 0.5) * step * 100) / state.plan.canvas_h)}%` });
     }
-    const splitOn = state.split >= 0 && state.tool !== 'crop';
+    const splitOn = state.split >= 0 && state.tool !== 'compose';
     split.classList.toggle('mo-hidden', !splitOn);
     if (splitOn) {
       splitLine.style.left = tagAfter.style.left = `${state.split * 100}%`;
@@ -584,7 +584,7 @@ export function moPlanColours(ctx) {
     }
   }
   function sync() {
-    renderBar();
+    if (bar.isConnected) renderBar();
     drawMarks();
     const picking = state.tool === 'pick' && !!state.recipe;
     layer.classList.toggle('mo-hidden', !picking);

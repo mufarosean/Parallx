@@ -126,7 +126,7 @@ export function moPlanStudy(ctx) {
 
   /** After every draw: the lens over the picture while the Study tool is open. */
   function sync() {
-    const on = state.tool === 'study' && !!state.recipe;
+    const on = state.tool === 'colour' && !!state.recipe;
     layer.classList.toggle('mo-hidden', !on);
     marks.classList.toggle('mo-hidden', !on);
     if (!on) { canvas.classList.add('mo-hidden'); return; }
@@ -211,7 +211,7 @@ export function moPlanStudy(ctx) {
     return r;
   }
   function refreshReadout() {
-    if (!readout || state.tool !== 'study' || !state.recipe) return;
+    if (!readout || state.tool !== 'colour' || !state.recipe) return;
     readout.replaceChildren();
     const note = (parent, t) => parent.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: t }));
     const L = shown;
