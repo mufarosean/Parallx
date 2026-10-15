@@ -381,7 +381,7 @@ function setupRuntimeBridge(ipcMain, opts) {
       // 5. The self-test: the tool's own check that it runs on this card.
       if (!st.selftest) {
         stopIfCancelled();
-        step('selftest', 'Checking it runs', 0.97);
+        step('selftest', 'Checking it runs. The first run reads the model from disk, which can take a few minutes.', 0.97);
         if (spec.selftest) {
           const r = await runScript(spec, spec.selftest.script, spec.selftest.args, null, job);
           stopIfCancelled();

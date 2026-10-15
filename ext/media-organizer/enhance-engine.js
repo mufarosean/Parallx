@@ -137,7 +137,18 @@ export function moEnhanceCard(api, whenReady) {
   const ui = api.ui;
   const el = moEl('div', 'mo-edit-setup mo-enhance-setup');
   let wasReady = engine.status === 'ready';
+  let live = null;   // while setting up: the parts progress changes, so Stop stays the same button
   function render() {
+    if (engine.installing && live) {
+      const s = engine.step || {};
+      const pct = Math.round((s.fraction || 0) * 100);
+      live.label.textContent = s.label || 'Working';
+      live.fill.style.width = `${pct}%`;
+      live.bar.setAttribute('aria-valuenow', String(pct));
+      live.bytes.textContent = s.total ? `${gb(s.received || 0)} of ${gb(s.total)}` : '';
+      return;
+    }
+    live = null;
     el.replaceChildren();
     const title = (t) => el.appendChild(moEl('div', 'mo-edit-setup-title', { textContent: t }));
     const para = (t) => el.appendChild(moEl('p', null, { textContent: t }));
@@ -150,15 +161,17 @@ export function moEnhanceCard(api, whenReady) {
     if (engine.installing) {
       const s = engine.step || {};
       title('Setting up Enhance');
-      para(s.label || 'Working');
+      const label = para(s.label || 'Working');
+      label.setAttribute('aria-live', 'polite');
       const bar = moEl('div', 'mo-edit-progress', { role: 'progressbar', 'aria-label': 'Setting up Enhance', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round((s.fraction || 0) * 100)) });
       const fill = moEl('div', 'mo-edit-progress-fill');
       fill.style.width = `${Math.round((s.fraction || 0) * 100)}%`;
       bar.appendChild(fill);
       el.appendChild(bar);
-      if (s.total) el.appendChild(moEl('div', 'mo-practice-dim', { textContent: `${gb(s.received || 0)} of ${gb(s.total)}` }));
+      const bytes = el.appendChild(moEl('div', 'mo-practice-dim', { textContent: s.total ? `${gb(s.received || 0)} of ${gb(s.total)}` : '' }));
       para('You can keep working. Stopping keeps what is done; setting up again carries on from there.');
       ui.createButton(row(), { id: 'media-organizer.enhance.stopSetUp', label: 'Stop', size: 'sm', command: 'media-organizer.enhance.stopSetUp' });
+      live = { label, bar, fill, bytes };
       return;
     }
     const m = engine.machine || { ok: false, problems: [] };
