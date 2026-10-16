@@ -28,7 +28,15 @@ export interface IUnifiedChatConfig {
    * stamp in it, and never in UTC.
    */
   readonly timeZone: string;
+  /**
+   * How a reply's Thinking section shows: 'auto' open while the model thinks,
+   * closed once the reply moves on; 'open' always open; 'closed' always closed
+   * until clicked. Missing: 'auto'.
+   */
+  readonly thinkingView?: ChatThinkingView;
 }
+
+export type ChatThinkingView = 'auto' | 'open' | 'closed';
 
 // ─── Model (merged from M15 + config.json) ──────────────────────────────────
 
@@ -343,6 +351,7 @@ export interface IUnifiedAIConfigService extends IDisposable {
 export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   chat: {
     timeZone: '',                // this computer's zone
+    thinkingView: 'auto',        // open while thinking, closed once the reply moves on
   },
   model: {
     chatModel: '',               // auto-select

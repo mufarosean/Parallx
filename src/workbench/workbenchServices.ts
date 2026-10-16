@@ -2,6 +2,7 @@
 
 import { installKitCommands } from '../ui/kit.js';
 import { setAssistantTimeZone } from '../services/localTime.js';
+import { setChatThinkingView } from '../services/chatThinkingView.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager, ISettingsRegistryService } from '../services/serviceTypes.js';
 import { isWorkspaceSealed } from '../services/sealedWorkspace.js';
@@ -485,6 +486,9 @@ export async function registerUnifiedAIConfigService(
   // The app's one time zone (api.env.timeZone) holds from boot, before any tool starts.
   setAssistantTimeZone(unifiedConfigService.getEffectiveConfig().chat?.timeZone ?? '');
   unifiedConfigService.onDidChangeConfig((c) => setAssistantTimeZone(c.chat?.timeZone ?? ''));
+  // How a reply's Thinking section shows (chat.thinkingView), kept current the same way.
+  setChatThinkingView(unifiedConfigService.getEffectiveConfig().chat?.thinkingView);
+  unifiedConfigService.onDidChangeConfig((c) => setChatThinkingView(c.chat?.thinkingView));
 
   // Also register as IAISettingsService for backward compatibility.
   // Consumers that resolve IAISettingsService get the unified service,

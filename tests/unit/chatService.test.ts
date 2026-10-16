@@ -2,6 +2,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChatService } from '../../src/services/chatService';
+import { setChatThinkingView } from '../../src/services/chatThinkingView';
 import { ChatAgentService } from '../../src/services/chatAgentService';
 import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
@@ -1040,6 +1041,39 @@ describe('ChatService', () => {
       // The first burst was sealed WHEN the tool began — not at turn end —
       // so per-burst "Thought for Xs" reflects that burst alone.
       expect(t0.endTime).toBeLessThanOrEqual(t2.startTime);
+    });
+
+    it('the Thinking setting: always open stays open, always closed starts closed, the default closes when done', async () => {
+      const seen: boolean[] = [];
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.thinking('reasoning');
+          seen.push((session.messages[session.messages.length - 1].response.parts[0] as any).isCollapsed);
+          response.markdown('Answer');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      const settled = async (view: string) => {
+        setChatThinkingView(view);
+        await cs.sendRequest(session.id, view);
+        return (session.messages[session.messages.length - 1].response.parts[0] as any).isCollapsed;
+      };
+      try {
+        expect(await settled('open')).toBe(false);
+        expect(await settled('closed')).toBe(true);
+        expect(await settled('auto')).toBe(true);
+        expect(seen).toEqual([false, true, false]); // while thinking: open, closed, open
+      } finally {
+        setChatThinkingView('auto');
+      }
     });
   });});
 

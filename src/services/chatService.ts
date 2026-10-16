@@ -77,6 +77,7 @@ import type {
   IChatParticipantMention,
 } from './chatTypes.js';
 import { ChatRequestQueueKind } from './chatTypes.js';
+import { thinkingSettled, thinkingStartsCollapsed } from './chatThinkingView.js';
 
 // ── Session URI scheme ──
 
@@ -374,7 +375,7 @@ class ChatResponseStream implements IChatResponseStream {
       if (part.kind !== ChatContentPartKind.Thinking) continue;
       const t = part as IChatThinkingContent;
       t.progressMessage = undefined;
-      t.isCollapsed = true;
+      t.isCollapsed = thinkingSettled(t.isCollapsed);
       if (t.startTime != null && t.endTime == null) {
         t.endTime = Date.now();
       }
@@ -483,7 +484,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: false,
+        isCollapsed: thinkingStartsCollapsed(),
         progressMessage: message,
         startTime: Date.now(),
       });
@@ -512,7 +513,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: false,
+        isCollapsed: thinkingStartsCollapsed(),
         provenance: [entry],
         startTime: Date.now(),
       });
@@ -551,10 +552,9 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content,
-        // Streaming bursts start EXPANDED — Claude-style: the live thoughts
-        // are visible while they happen; _sealTrailingThinking()/finalize
-        // collapse the burst once the turn moves on.
-        isCollapsed: false,
+        // Streaming bursts start expanded unless chat.thinkingView says closed;
+        // settling collapses them only in the default view (chatThinkingView.ts).
+        isCollapsed: thinkingStartsCollapsed(),
         startTime: Date.now(),
       });
     }
@@ -573,7 +573,7 @@ class ChatResponseStream implements IChatResponseStream {
     if (last && last.kind === ChatContentPartKind.Thinking) {
       const t = last as IChatThinkingContent;
       if (t.endTime == null && t.startTime != null) t.endTime = Date.now();
-      t.isCollapsed = true;
+      t.isCollapsed = thinkingSettled(t.isCollapsed);
       t.progressMessage = undefined;
     }
   }

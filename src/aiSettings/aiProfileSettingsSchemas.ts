@@ -17,7 +17,7 @@ import type {
   ISettingBinding,
 } from '../services/settingsRegistryService.js';
 import type { IUnifiedAIConfigService } from './unifiedConfigTypes.js';
-import type { IUnifiedAIConfig } from './unifiedConfigTypes.js';
+import type { ChatThinkingView, IUnifiedAIConfig } from './unifiedConfigTypes.js';
 import type { DeepPartial } from './aiSettingsTypes.js';
 
 // ─── Schema declarations ───────────────────────────────────────────────────
@@ -53,6 +53,23 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     },
     read: (c) => c.chat.timeZone ?? '',
     write: (v) => ({ chat: { timeZone: String(v ?? '').trim() } }),
+  } as IBoundSchema<string>,
+
+  // ── Chat ──
+  {
+    schema: {
+      key: 'chat.thinkingView',
+      type: 'enum',
+      default: 'auto',
+      enumValues: ['auto', 'open', 'closed'],
+      enumLabels: { auto: 'Open While Thinking', open: 'Always Open', closed: 'Always Closed' },
+      scope: 'workspace',
+      label: 'Thinking',
+      description: 'How the Thinking section above a reply shows. Open While Thinking closes it once the reply moves on; you can always open or close it with a click.',
+      category: 'Chat',
+    },
+    read: (c) => c.chat.thinkingView ?? 'auto',
+    write: (v) => ({ chat: { thinkingView: (['auto', 'open', 'closed'].includes(String(v)) ? v : 'auto') as ChatThinkingView } }),
   } as IBoundSchema<string>,
 
   // ── Model ──
