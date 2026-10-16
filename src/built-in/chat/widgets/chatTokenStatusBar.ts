@@ -250,7 +250,8 @@ export class ChatTokenStatusBar extends Disposable {
       const history = messagesEst + toolResultsEst;
       const sent = contextLength > 0 ? Math.min(history, Math.floor(contextLength * HISTORY_LANE_SHARE)) : history;
       if (history > 0) historyScale = sent / history;
-      total = systemInstructionsEst + toolDefinitionsEst + filesEst + sent;
+      // A chat with no messages has used nothing yet: its instructions are sent with the first one.
+      total = session && session.messages.length > 0 ? systemInstructionsEst + toolDefinitionsEst + filesEst + sent : 0;
       isReal = false;
     }
 

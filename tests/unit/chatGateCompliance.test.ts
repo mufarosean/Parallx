@@ -123,6 +123,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
   'utilities/chatMentionResolver.ts': [],
+  'utilities/chatContextDefault.ts': [],
   'utilities/chatParticipantInterpretation.ts': ['utilities/'],
   'utilities/chatParticipantRuntimeTrace.ts': [],
   'utilities/chatRuntimePromptMessages.ts': [],

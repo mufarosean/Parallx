@@ -70,7 +70,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private _session: IChatSession | undefined;
 
   /** Per-session context window picker (sibling of model picker). */
-  private _contextPicker: ChatContextWindowPicker | undefined;
+  private _contextPicker: ChatContextWindowPicker | undefined; private _refreshEngine: (() => void) | undefined;
 
   get sessionId(): string {
     return this._session?.id ?? '';
@@ -401,6 +401,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         }));
         this._register(tokenBar.onDidUpdate(() => chip.refresh()));
         this._register(services.onDidChangeSession(() => chip.refresh()));
+        this._refreshEngine = () => { chip.refresh(); tokenBar.update().catch(() => {}); }; // a chat bound: its own size and usage at once
         pickerSlot.classList.add('parallx-chat-engine-on');
       }
       this._inputPart.mountTokenMeter(tokenBar.element);
@@ -510,11 +511,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }
     }
 
-    // Push the session's context window override into the provider so the
-    // token bar, OpenClaw budget, and outgoing num_ctx all see this value.
-    // 0 = clear override (use model's reported context length).
+    // The session's size to the provider (0: the workspace default, else the model's), then the pill re-reads.
     this._services.setContextLengthOverride?.(session.contextWindowOverride ?? 0);
     this._contextPicker?.setActiveContextWindow(session.contextWindowOverride);
+    this._refreshEngine?.();
 
     this._renderMessages();
     this._updateVisibility();

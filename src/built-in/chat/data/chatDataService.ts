@@ -43,6 +43,7 @@ import { Emitter, type Event } from '../../../platform/events.js';
 
 import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
+import { chatContextSize } from '../utilities/chatContextDefault.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { ISummarizationRequestOptions } from '../chatTypes.js';
 import type { IChatImageAttachment } from '../../../services/chatTypes.js';
@@ -2262,9 +2263,8 @@ export class ChatDataService {
       ...sessionServices,
       ...agentTaskServices,
       openAiSettings: this._d.openAiSettings,
-      setContextLengthOverride: (contextWindow: number) => {
-        const provider = this._d.ollamaProvider as { setContextLengthOverride?: (n: number) => void };
-        provider.setContextLengthOverride?.(Math.max(0, Math.floor(contextWindow)));
+      setContextLengthOverride: (contextWindow: number) => { // chatContextDefault.ts: the chat's own size, else the workspace default, else the model's
+        (this._d.ollamaProvider as { setContextLengthOverride?: (n: number) => void }).setContextLengthOverride?.(chatContextSize(contextWindow, this._d.unifiedConfigService?.getEffectiveConfig().model.contextWindow));
       },
     };
   }

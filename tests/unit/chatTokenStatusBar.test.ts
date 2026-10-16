@@ -72,4 +72,16 @@ describe('the context meter', () => {
     const messages = Array.from({ length: 40 }, (_, i) => pair(`question ${i}`, 'x'.repeat(20_000)));
     expect(await meter(messages).pct()).toBe('30%');
   });
+
+  it('a new chat with no messages has used nothing, even after an earlier chat sent its instructions', async () => {
+    const bar = new ChatTokenStatusBar({
+      getActiveSession: () => ({ messages: [] }),
+      getContextLength: async () => CONTEXT,
+      // The last turn's prompt report (another chat's): about 6K of instructions and tools.
+      getLastSystemPromptReport: () => ({ systemPrompt: { nonProjectContextChars: 16_000, projectContextChars: 4_000 }, tools: { schemaChars: 4_000, listChars: 1_000, availableCount: 5, entries: [] }, skills: { promptChars: 1_000, visibleCount: 2 } }),
+    } as never);
+    await bar.update();
+    expect(bar.lastBreakdown?.total).toBe(0);
+    expect(bar.lastBreakdown?.contextLength).toBe(CONTEXT);
+  });
 });
