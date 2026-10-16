@@ -86,6 +86,33 @@ describe('colour masses', () => {
     const red = two.masses.find((m: { rgb: number[] }) => m.rgb[0] > 150 && m.rgb[2] < 80), blue = two.masses.find((m: { rgb: number[] }) => m.rgb[2] > 150 && m.rgb[0] < 80);
     expect(red.temp).toBe('warm'); expect(blue.temp).toBe('cool');
   });
+  it('gives the sharp drawing each mass\'s colour as shown and its average colour, by label', () => {
+    const P = S.moStudyAnalyse(px, 60, 30);
+    const r = S.moStudyMasses(P, { n: 4, squint: 0, colour: 'average', amount: 100 });
+    for (let i = 0; i < P.n; i += 7) expect([...r.pixels.slice(i * 4, i * 4 + 3)]).toEqual(r.colours[r.labels[i]].map((v: number) => Math.round(Math.max(0, Math.min(255, v)))));
+    const j = r.labels[0]; // a red pixel
+    expect(r.means[j][1]).toBeGreaterThan(0.1); // red leans toward +a in OKLab
+    const sel = S.moStudyMasses(P, { n: 4, squint: 0, colour: 'average', amount: 100 }, j);
+    expect(sel.colours[j]).toEqual(r.colours[j]);
+    for (let k = 0; k < sel.colours.length; k++) if (k !== j) expect(sel.colours[k]).toEqual(r.colours[k].map((v: number) => v * 0.25 + 30)); // the others dimmed
+  });
+  it('its splits put every pixel in the mass the analysis found, as the sharp drawing replays them', () => {
+    const many = picture(64, 48, (x, y) => [(x * 4) % 256, (y * 5) % 256, ((x + y) * 3) % 256]);
+    const P = S.moStudyAnalyse(many, 64, 48);
+    for (const n of [2, 7, 20, 48]) {
+      const r = S.moStudyMasses(P, { n, squint: 0, colour: 'average', amount: 100 });
+      expect(r.splits.length).toBeLessThanOrEqual(n - 1);
+      for (let i = 0; i < P.n; i++) {
+        const f = [P.L[i], P.A[i] * 2.6, P.B[i] * 2.6];
+        let g = 0;
+        r.splits.forEach((s: { parent: number; c1: number[]; c2: number[] }, k: number) => {
+          const d = (c: number[]) => (f[0] - c[0]) ** 2 + (f[1] - c[1]) ** 2 + (f[2] - c[2]) ** 2;
+          if (g === s.parent && d(s.c2) < d(s.c1)) g = k + 1;
+        });
+        expect(g).toBe(r.labels[i]);
+      }
+    }
+  });
   it('is the same every time for the same picture', () => {
     const a = S.moStudyMasses(S.moStudyAnalyse(px, 60, 30), { n: 3, method: 'shapes', colour: 'dominant', amount: 100 });
     const b = S.moStudyMasses(S.moStudyAnalyse(px, 60, 30), { n: 3, method: 'shapes', colour: 'dominant', amount: 100 });

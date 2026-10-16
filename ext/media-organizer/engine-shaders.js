@@ -25,6 +25,54 @@ void main() {
   c += (texture2D(u_img, v_uv + u_step * 3.230769) + texture2D(u_img, v_uv - u_step * 3.230769)) * 0.070270;
   gl_FragColor = c;
 }`;
+// A painting plan's colour masses drawn sharp. The masses are found on a working copy (study-math.js) by
+// splitting colours in two, again and again; here each pixel of the edited picture, at the size drawn, goes
+// through the same splits (u_s1: the first centre and the group split, u_s2: the second centre), so a mass's
+// edge is where the analysis puts it, at the full size instead of the working copy's pixels. The mass must be
+// one found within three working pixels (the working copy's smoothing moves an edge up to three);
+// otherwise the one of those whose average colour is closest. u_look is the picture squinted as the masses
+// were found (u_pic itself without a squint); u_pic gives the before side and the ignored background.
+// Labels: 255 is left out. u_lut row 0: each mass's colour as shown; row 1: its average colour, OKLab in bytes.
+export const MO_ENGINE_MASSES_FS = `
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_pic;
+uniform sampler2D u_look;
+uniform sampler2D u_labels;
+uniform sampler2D u_lut;
+uniform vec2 u_lsize, u_passSize;
+uniform float u_split, u_nsplit;
+uniform vec4 u_s1[47];
+uniform vec3 u_s2[47];${MO_OKLAB_GLSL}
+vec3 meanOf(float j) { vec3 e = texture2D(u_lut, vec2((j + 0.5) / 64.0, 0.75)).rgb; return vec3(e.x, (e.y - 0.5) / 1.5, (e.z - 0.5) / 1.5); }
+void main() {
+  vec4 pic = texture2D(u_pic, gl_FragCoord.xy / u_passSize);
+  if (u_split >= 0.0 && v_uv.x < u_split) { gl_FragColor = pic; return; }
+  if (pic.a < 0.5) { gl_FragColor = vec4(0.5, 0.5, 0.5, 1.0); return; } // the ignored background, flat grey
+  vec3 lab = toOklab(texture2D(u_look, gl_FragCoord.xy / u_passSize).rgb);
+  vec3 f = lab * vec3(1.0, 2.6, 2.6); // weighted as the masses were found
+  float g = 0.0;
+  for (int k = 0; k < 47; k++) {
+    if (float(k) >= u_nsplit) break;
+    if (abs(g - u_s1[k].w) < 0.5) { vec3 d1 = f - u_s1[k].xyz, d2 = f - u_s2[k]; if (dot(d2, d2) < dot(d1, d1)) g = float(k + 1); }
+  }
+  vec2 cell = floor(clamp(v_uv, 0.0, 0.9999) * u_lsize);
+  float best = 255.0; float bd = 1.0e9; bool near = false;
+  for (int dy = -3; dy <= 3; dy++) {
+    for (int dx = -3; dx <= 3; dx++) {
+      vec2 c = clamp(cell + vec2(float(dx), float(dy)), vec2(0.0), u_lsize - 1.0);
+      float j = floor(texture2D(u_labels, (c + 0.5) / u_lsize).r * 255.0 + 0.5);
+      if (j > 254.5) continue;
+      if (abs(j - g) < 0.5) near = true;
+      vec3 d = f - meanOf(j) * vec3(1.0, 2.6, 2.6);
+      float dd = dot(d, d);
+      if (dd < bd) { bd = dd; best = j; }
+    }
+  }
+  if (near) best = g;
+  if (best > 254.5) { gl_FragColor = vec4(0.5, 0.5, 0.5, 1.0); return; }
+  gl_FragColor = vec4(texture2D(u_lut, vec2((best + 0.5) / 64.0, 0.25)).rgb, 1.0);
+}`;
 export const MO_ENGINE_FS = `
 precision highp float;
 varying vec2 v_uv;

@@ -123,6 +123,14 @@ Saved plans keep working: old recipes map onto the new steps, and nothing a user
   Transfer's "Under the grid" chooses the view for the working picture.
 - Values are drawn in perceptual lightness (OKLab), in the underpainting paint or grey; the
   Image Editor's Black And White is untouched.
+- **Colour's resolution (2026-10-16).** The masses are found on a working copy 560 pixels on its long
+  side (`plan-study.js`, `WORK`): finding them is JavaScript work that reruns on every Masses or Squint
+  change, and it grows with the pixels (measured: 0.26 s at 560, 1.0 s at 1200, 2.6 s at 1800, 4.9 s
+  at 2400 for a Squint change). They used to be shown as that 560-pixel picture stretched to the
+  view, and stretched again for an export. Now the GPU draws them at the size shown (and at full size
+  for an export), like Values: each pixel goes through the same colour splits that found the masses
+  (`moStudyBisect`'s `splits`, `MO_ENGINE_MASSES_FS`), squinted as they were, so the shapes, the
+  palette and the shares are the analysis's own and only the edges are sharper.
 - Remove needs its model; when it is missing the panel sends the painter to the Image
   Editor's Remove tool to set it up.
 - Older plans open as they were: their crop, their three guide switches (now one guide),

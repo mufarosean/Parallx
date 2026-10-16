@@ -306,7 +306,6 @@ export const MO_CSS_MORE = `
 .mo-pc-simpler { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); }
 .mo-pc-simpler > span:nth-child(2) { flex: 1; min-width: 0; }
 .mo-pc-layer { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
-.mo-ps-lens { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .mo-ps-marks { position: absolute; inset: 0; pointer-events: none; }
 .mo-ps-spot { position: absolute; width: 18px; height: 18px; margin: -10px 0 0 -10px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--px-viewer-ink); border-radius: var(--px-radius-full); box-shadow: 0 0 0 1px var(--px-viewer-bar); background: var(--px-viewer-scrim); color: var(--px-viewer-ink); font-size: var(--px-text-2xs); font-weight: 700; }
 .mo-ps-spot--cursor { border-style: dashed; }

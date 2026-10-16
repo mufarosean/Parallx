@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -32200,7 +32200,46 @@ function moImageEngine(canvas) {
     ping = { w: W, h: H, kind, a: target(W, H, kind), b: target(W, H, kind) };
     return ping;
   };
+  // A plan's colour masses (p.planMasses: { labels: bytes w x h, 255 left out; w, h; lut: 64 x 2 RGBA, see
+  // MO_ENGINE_MASSES_FS }): the edit is drawn into a kept target, then the masses over it at the full size.
+  const massProg = link(MO_PLAN_VS, MO_ENGINE_MASSES_FS);
+  const MU = {}; for (const n of ['u_pic', 'u_look', 'u_labels', 'u_lut', 'u_lsize', 'u_passSize', 'u_split', 'u_nsplit', 'u_s1', 'u_s2']) MU[n] = gl.getUniformLocation(massProg, n);
+  const labelTex = plainTexture(gl.NEAREST), lutTex = plainTexture(gl.NEAREST);
+  let labelsUp = null, lutUp = null, massMid = null, massSq = null;
+  const kept = (o, W, H, kind) => { if (o && o.w === W && o.h === H && o.kind === kind) return o; if (o) release(o.t); return { w: W, h: H, kind, t: target(W, H, kind) }; };
+  const massesPass = (p, W, H, from, look, fbFinal) => {
+    const m = p.planMasses;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbFinal);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(massProg);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, labelTex);
+    if (labelsUp !== m.labels) { gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, m.w, m.h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, m.labels); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4); labelsUp = m.labels; }
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, lutTex);
+    if (lutUp !== m.lut) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, m.lut); lutUp = m.lut; }
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, look);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, from);
+    gl.uniform1i(MU.u_pic, 0); gl.uniform1i(MU.u_labels, 1); gl.uniform1i(MU.u_lut, 2); gl.uniform1i(MU.u_look, 3);
+    gl.uniform2f(MU.u_lsize, m.w, m.h); gl.uniform2f(MU.u_passSize, W, H);
+    gl.uniform1f(MU.u_split, typeof p.split === 'number' ? p.split : -1);
+    gl.uniform1f(MU.u_nsplit, m.nsplit); gl.uniform4fv(MU.u_s1, m.s1); gl.uniform3fv(MU.u_s2, m.s2);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
   const run = (p, W, H, fbFinal, kind) => {
+    const pm = p.planMasses;
+    if (!pm) { runEdit(p, W, H, fbFinal, kind); return; }
+    massMid = kept(massMid, W, H, kind);
+    runEdit(p, W, H, massMid.t.fb, kind);
+    let look = massMid.t.tex;
+    if (pm.squint > 0) { // the same edit squinted as the masses were found (pm.squint: a share of the source's long side)
+      squintCopy(pm.squint * Math.max(srcW, srcH));
+      massSq = kept(massSq, W, H, kind);
+      runEdit(Object.assign({}, p, { squint: pm.squint }), W, H, massSq.t.fb, kind);
+      look = massSq.t.tex;
+    }
+    massesPass(p, W, H, massMid.t.tex, look, fbFinal);
+  };
+  const runEdit = (p, W, H, fbFinal, kind) => {
     const masks = (p.masks || []).filter((m) => maskTexs.has(m.id));
     const tint = p.tint != null && maskTexs.has(p.tint) ? maskTexs.get(p.tint) : null;
     if (!masks.length && !tint) { gl.bindFramebuffer(gl.FRAMEBUFFER, fbFinal); apply(p, W, H); return; }
@@ -32329,7 +32368,7 @@ function moImageEngine(canvas) {
       try {
         for (const t of targets.slice()) release(t);
         for (const t of maskTexs.values()) gl.deleteTexture(t);
-        gl.deleteTexture(tex); gl.deleteTexture(curveTex); gl.deleteBuffer(buf); gl.deleteProgram(prog); gl.deleteProgram(blurProg);
+        gl.deleteTexture(tex); gl.deleteTexture(curveTex); gl.deleteTexture(labelTex); gl.deleteTexture(lutTex); gl.deleteBuffer(buf); gl.deleteProgram(prog); gl.deleteProgram(blurProg); gl.deleteProgram(massProg);
         const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
       } catch { /* gone */ }
     },
@@ -32355,7 +32394,8 @@ function moPlanRenderer(canvas) {
       const squintOf = opts.squint > 0 ? opts.squint / 100 : 0; // Values' squint: a blur made on the GPU from the photo already there
       const ph = opts.photo || size, tintId = opts.tintMask ? moMaskEnsure(engine, opts.tintMask, ph.w, ph.h) : null;
       // Ignore Background: the subject held as a mask; the background grey on screen, clear when the picture is read (analysis)
-      const iso = !opts.rest && r.isolate && r.isolate.on && r.isolate.file ? r.isolate.file : '', matteMode = iso ? opts.matte || (opts.read ? 'clear' : null) : null;
+      // With the colour masses (opts.masses, plan-study.js) the background is left clear and the masses' pass greys it, exactly to the matte.
+      const iso = !opts.rest && r.isolate && r.isolate.on && r.isolate.file ? r.isolate.file : '', matteMode = iso ? (opts.masses && opts.matte ? 'clear' : opts.matte || (opts.read ? 'clear' : null)) : null;
       const matteId = matteMode ? moMaskEnsure(engine, { id: '__isolate', parts: [{ kind: 'subject', op: 'add', invert: false, file: iso }], invert: false }, ph.w, ph.h) : null;
       const passes = opts.rest ? [] : moMaskPasses(engine, r.masks, p0.look, ph.w, ph.h, [tintId, matteId]);
       p0.look.hue = opts.rest ? 0 : Number(r.hue) || 0;
@@ -32365,7 +32405,8 @@ function moPlanRenderer(canvas) {
         m: geo.m, look: p0.look, curve: p0.curve, mix: p0.mix, grade: p0.grade, opaque: !opts.full, clipSource: !!opts.full, masks: passes, tint: tintId, squint: squintOf, matte: matteId ? { id: matteId, mode: matteMode } : null, maskM: opts.maskM || null,
         grey: p0.grey, levels: aids ? r.levels : 0, notan: aids ? r.notan : 0, valueMode: aids, under: aids ? moPlanUnderLab(r.under) : null,
         palette: aids && r.palette && r.palette.apply ? [...r.palette.swatches, ...(r.saved || []).map((c) => c.rgb)].slice(0, 16) : [],
-        split: typeof opts.split === 'number' ? opts.split : -1,
+        split: typeof opts.split === 'number' ? opts.split : -1, // the masses' squint is a share of the crop's long side; the engine's, of the source's
+        planMasses: opts.masses ? Object.assign({}, opts.masses, { squint: opts.masses.squint * Math.max(geo.outW, geo.outH) / Math.max(1, size.w, size.h) }) : null,
       }, opts.width, opts.height);
     },
     dispose() { engine.dispose(); },
@@ -32534,7 +32575,7 @@ function renderPlanEditor(container, api, planId) {
     const srcNow = photo.source(state.tool);
     const studied = state.tool === 'values' || state.tool === 'colour' || (state.tool === 'transfer' && state.view !== 'photo');
     renderer.render(srcNow.eff(r), { width: Math.round(cssW * px), height: Math.round(cssH * px), full, split: full ? -1 : state.split, aids: state.tool === 'values' || (state.tool === 'transfer' && state.view === 'values'), matte: studied && !state.notes ? 'grey' : null,
-      squint: state.tool === 'values' ? Number(r.blur) || 0 : 0, photo: { w: state.imgW, h: state.imgH }, maskM: srcNow.enhanced ? moEditAffine(r, state.imgW, state.imgH).m : null, tintMask: state.tool === 'photo' && !state.notes ? photo.tintMask() : null });
+      squint: state.tool === 'values' ? Number(r.blur) || 0 : 0, masses: full ? null : study.gpu(), photo: { w: state.imgW, h: state.imgH }, maskM: srcNow.enhanced ? moEditAffine(r, state.imgW, state.imgH).m : null, tintMask: state.tool === 'photo' && !state.notes ? photo.tintMask() : null });
     ovCanvas.width = Math.round(cssW * px); ovCanvas.height = Math.round(cssH * px);
     ovCanvas.style.width = cssW + 'px'; ovCanvas.style.height = cssH + 'px';
     const octx = ovCanvas.getContext('2d');
@@ -32724,13 +32765,11 @@ function renderPlanEditor(container, api, planId) {
     if (!rr) throw new Error('No WebGL for the export.');
     try {
       rr.setSource(src.img, 0);
-      rr.render(r, { width: W, height: H, full: false, split: -1, aids: state.view === 'values', matte: state.view !== 'photo' ? 'grey' : null, photo: { w: state.imgW, h: state.imgH }, maskM: src.enhanced ? moEditAffine(state.recipe, state.imgW, state.imgH).m : null });
+      rr.render(r, { width: W, height: H, full: false, split: -1, aids: state.view === 'values', matte: state.view !== 'photo' ? 'grey' : null, masses: state.view === 'colour' ? study.massesData() : null, photo: { w: state.imgW, h: state.imgH }, maskM: src.enhanced ? moEditAffine(state.recipe, state.imgW, state.imgH).m : null });
       const out = document.createElement('canvas');
       out.width = W; out.height = H;
       const ctx = out.getContext('2d');
       ctx.drawImage(cv, 0, 0);
-      const masses = state.view === 'colour' ? study.massesCanvas() : null;
-      if (masses) { ctx.imageSmoothingQuality = 'high'; ctx.drawImage(masses, 0, 0, W, H); }
       if (withGrid) moPlanDrawOverlays(ctx, W, H, Object.assign({}, r, { overlays: Object.assign({}, r.overlays, { grid: true }) }), state.plan.canvas_w, state.plan.canvas_h, Math.max(1, W / 900), r.overlays.gridLabels !== false);
       return png ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', 0.92);
     } finally { rr.dispose(); }

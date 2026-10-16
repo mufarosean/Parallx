@@ -57,11 +57,10 @@ export function moPlanStudy(ctx) {
   let list = null;                     // the panel's colour list, while shown
   void moPlanPaintSet(io).then((p) => { paints = p; if (state.tool === 'colour') ctx.afterRecipeChange(false, false); }).catch(() => {});
 
-  // ── on the picture: the masses, and the layer that takes clicks and keys ──
-  const canvas = moEl('canvas', 'mo-ps-lens mo-hidden', { 'aria-hidden': 'true' });
+  // ── on the picture: the layer that takes clicks and keys (the masses are drawn by the editor, gpu()) ──
   const marks = moEl('div', 'mo-ps-marks', { 'aria-hidden': 'true' });
   const layer = moEl('div', 'mo-pc-layer mo-ps-layer mo-hidden');
-  ctx.frame.append(canvas, marks, layer);
+  ctx.frame.append(marks, layer);
   const disposers = [];
   disposers.push(moPointKeys(layer, 'Picture. Arrow keys move a point, Enter finds the colour under it in the palette.', {
     move: (dx, dy) => { cursor = cursor || { u: 0.5, v: 0.5 }; cursor = { u: Math.max(0, Math.min(1, cursor.u + dx * 0.01)), v: Math.max(0, Math.min(1, cursor.v + dy * 0.01)) }; drawMarks(); },
@@ -136,10 +135,36 @@ export function moPlanStudy(ctx) {
     const o = opts(), key = `${pKey}|${JSON.stringify(o)}|${selJ()}`;
     if (shown && key === shownKey) return shown;
     const m = moStudyMasses(A, o, selJ());
-    shown = Object.assign({ names: moStudyMassNames(m.masses) }, m); shownKey = key;
-    canvas.width = A.w; canvas.height = A.h;
-    canvas.getContext('2d').putImageData(new ImageData(m.pixels, A.w, A.h), 0, 0);
+    shown = Object.assign({ names: moStudyMassNames(m.masses), gpu: gpuOf(A, m) }, m); shownKey = key;
     return shown;
+  }
+  // The masses as the engine draws them sharp (MO_ENGINE_MASSES_FS): each working pixel's mass as a byte
+  // (255 left out), a table of each mass's colour as shown and its average colour, the splits and the squint.
+  const labelBytes = new WeakMap();
+  function gpuOf(A, m) {
+    let labels = labelBytes.get(m.labels);
+    if (!labels) { labels = new Uint8Array(m.labels.length); for (let i = 0; i < labels.length; i++) labels[i] = m.labels[i] < 0 ? 255 : m.labels[i]; labelBytes.set(m.labels, labels); }
+    const lut = new Uint8ClampedArray(64 * 2 * 4);
+    m.colours.forEach((c, j) => {
+      const e = m.means[j];
+      lut.set([c[0], c[1], c[2], 255], j * 4);
+      lut.set([e[0] * 255, (e[1] * 1.5 + 0.5) * 255, (e[2] * 1.5 + 0.5) * 255, 255], (64 + j) * 4);
+    });
+    // The splits that made the masses: the first centre and the group split, then the second centre.
+    const s1 = new Float32Array(47 * 4), s2 = new Float32Array(47 * 3);
+    m.splits.forEach((s, k) => { s1.set([s.c1[0], s.c1[1], s.c1[2], s.parent], k * 4); s2.set([s.c2[0], s.c2[1], s.c2[2]], k * 3); });
+    // The squint as a share of the picture's long side: the analysis's box blur (radius 2.5% at 100) as the
+    // Gaussian the engine makes, sigma = radius / sqrt(3).
+    return { labels, w: A.w, h: A.h, lut, s1, s2, nsplit: m.splits.length, squint: m.squint > 0 ? (m.squint / 100) * 0.025 / Math.sqrt(3) : 0 };
+  }
+  // For the editor's draw, before it draws: the masses for the settings now when ready, else the last ones for
+  // this edit while the new ones are worked out (none on coming in: the photo is drawn first).
+  function gpu() {
+    const on = !!state.recipe && (state.tool === 'colour' || (state.tool === 'transfer' && state.view === 'colour'));
+    if (!on) return null;
+    if (needNow() && ready()) return shown.gpu;
+    later(false);
+    return shown && pKey === editKey() ? shown.gpu : null;
   }
   function findAt(p) {
     const L = lens();
@@ -151,16 +176,13 @@ export function moPlanStudy(ctx) {
     if (openKey) queueMicrotask(() => queueMicrotask(() => { const row = list && list.querySelector(`[data-key="${key}"]`); if (row) row.scrollIntoView({ block: 'nearest' }); }));
   }
 
-  /** After every draw: the masses over the picture on Colour, and on Transfer when Colour is the view. */
+  /** After every draw: on Colour, the layer that finds a shape's colour. */
   function sync() {
-    const on = !!state.recipe && (state.tool === 'colour' || (state.tool === 'transfer' && state.view === 'colour'));
-    const clicks = on && state.tool === 'colour' && !ctx.picker.on();
+    const clicks = !!state.recipe && state.tool === 'colour' && !ctx.picker.on();
     layer.classList.toggle('mo-hidden', !clicks);
     marks.classList.toggle('mo-hidden', !clicks);
-    if (!on) { canvas.classList.add('mo-hidden'); return; }
-    if (clicks && layer.tabIndex !== 0) layer.tabIndex = 0;
-    if (needNow()) canvas.classList.remove('mo-hidden'); else { later(false); canvas.classList.toggle('mo-hidden', !(shown && pKey === editKey())); }
-    canvas.style.clipPath = state.split >= 0 ? `inset(0 0 0 ${pct(state.split)})` : '';
+    if (!clicks) return;
+    if (layer.tabIndex !== 0) layer.tabIndex = 0;
     drawMarks();
   }
 
@@ -312,7 +334,9 @@ export function moPlanStudy(ctx) {
     panel,
     sync,
     /** The masses as drawn now, for Transfer's export: a canvas the size of the analysis. */
-    massesCanvas: () => (lens() ? canvas : null),
+    gpu,
+    /** The masses for an export, worked out now if they are not yet. */
+    massesData: () => (lens() ? shown.gpu : null),
     /** Values: where light ends by the picture's own split (a value, 0 to 10), and the two families' colours. */
     lightSplit: () => { const A = analysed(); return A ? Math.round(A.split * 2) / 2 : null; },
     lightFamilies: (split) => { const A = analysed(); if (!A) return null; const L = moStudyLight(A, split == null ? A.split : split, 'colours'); return { families: L.families, warmer: L.warmer }; },
@@ -321,7 +345,7 @@ export function moPlanStudy(ctx) {
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
       ctx.root.removeEventListener('focusin', used);
       for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } }
-      canvas.remove(); marks.remove(); layer.remove();
+      marks.remove(); layer.remove();
     },
   };
 }

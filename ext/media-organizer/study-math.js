@@ -105,13 +105,17 @@ function squinted(P, amount) {
 
 /**
  * Nested two-way splits: each step splits the group with the most spread.
- * features: one Float32Array per dimension. Returns { label, parent } at
- * maxK groups; moStudyAtLevel reads any smaller number from it.
+ * features: one Float32Array per dimension. Returns { label, parent, splits } at
+ * maxK groups; moStudyAtLevel reads any smaller number from it. splits[k - 1]
+ * made group k: { parent, c1, c2 }, a member of the parent nearer c2 than c1
+ * went to k, so any colour can be put in its group the same way (the sharp
+ * drawing, MO_ENGINE_MASSES_FS).
  */
 export function moStudyBisect(features, n, maxK, sample, keep) {
   const dims = features.length;
   const label = new Int32Array(n);
   const parent = [-1];
+  const splits = [];
   const members = [keep ? Array.from({ length: n }, (_, i) => i).filter((i) => keep[i]) : Array.from({ length: n }, (_, i) => i)];
   if (keep) for (let i = 0; i < n; i++) if (!keep[i]) label[i] = -1; // left out: in no group
   const meanOf = (idx) => { const m = new Float64Array(dims); for (const i of idx) for (let d = 0; d < dims; d++) m[d] += features[d][i]; for (let d = 0; d < dims; d++) m[d] /= idx.length || 1; return m; };
@@ -129,8 +133,10 @@ export function moStudyBisect(features, n, maxK, sample, keep) {
     for (let t = 0; t < idx.length; t += step) { const dd = dist(idx[t], c1); if (dd > best) { best = dd; p2 = idx[t]; } }
     let c2 = Array.from({ length: dims }, (_, d) => features[d][p2]);
     const side = new Uint8Array(idx.length);
+    let u1 = c1, u2 = c2; // the centres the last pass split by
     for (let it = 0; it < 8; it++) {
       const s1 = new Float64Array(dims), s2 = new Float64Array(dims); let n1 = 0, n2 = 0;
+      u1 = c1; u2 = c2;
       for (let t = 0; t < idx.length; t++) {
         const i = idx[t], right = dist(i, c2) < dist(i, c1); side[t] = right ? 1 : 0;
         if (right) { n2++; for (let d = 0; d < dims; d++) s2[d] += features[d][i]; } else { n1++; for (let d = 0; d < dims; d++) s1[d] += features[d][i]; }
@@ -141,11 +147,11 @@ export function moStudyBisect(features, n, maxK, sample, keep) {
     const a = [], b = [];
     for (let t = 0; t < idx.length; t++) (side[t] ? b : a).push(idx[t]);
     if (!a.length || !b.length) { err[c] = 0; k--; continue; }
-    members[c] = a; members.push(b); parent.push(c);
+    members[c] = a; members.push(b); parent.push(c); splits.push({ parent: c, c1: u1, c2: u2 });
     for (const i of b) label[i] = k;
     err[c] = sse(a); err.push(sse(b));
   }
-  return { label, parent };
+  return { label, parent, splits };
 }
 /** The groups as they were when there were `k`. */
 export function moStudyAtLevel(tree, k) {
@@ -217,8 +223,11 @@ export function moStudyTemperature(P, against, min) {
  * underpainting paint (OKLab) or, without one, grey. `temp` shows each mass
  * warmer or cooler than the picture as a whole; `strong` keeps colour only in
  * masses more intense than `keep`, the rest at their value. `sel` dims all but
- * one mass. Returns the pixels, the label of every pixel, and the masses,
- * largest first: { j, rgb, lab, value, intensity, share, temp: 'warm' | 'cool' | '' }.
+ * one mass. Returns the pixels, the label of every pixel, the masses,
+ * largest first: { j, rgb, lab, value, intensity, share, temp: 'warm' | 'cool' | '' },
+ * by label each mass's colour as drawn (`colours`) and average colour (`means`, OKLab, squinted as the
+ * masses were found), the squint used (`squint`) and the splits that made the masses (`splits`, see
+ * moStudyBisect).
  */
 export function moStudyMasses(P, opts, sel = -1) {
   const sq = Number.isFinite(Number(opts.squint)) ? Number(opts.squint) : opts.method === 'shapes' ? 45 : 0;
@@ -263,10 +272,15 @@ export function moStudyMasses(P, opts, sel = -1) {
     if (opts.strong && moStudyIntensity(c[1], c[2]) < (Number(opts.keep) || 0)) { const m = mono(c[0]); return moFromOklab(m[0], m[1], m[2]); }
     return rgb[j];
   });
-  const pixels = paint(P, (i) => { const l = lbl[i]; const c = drawn[l]; return sel >= 0 && l !== sel ? [c[0] * 0.25 + 30, c[1] * 0.25 + 30, c[2] * 0.25 + 30] : c; });
+  const colours = drawn.map((c, j) => (sel >= 0 && j !== sel ? [c[0] * 0.25 + 30, c[1] * 0.25 + 30, c[2] * 0.25 + 30] : c));
+  const pixels = paint(P, (i) => colours[lbl[i]]);
+  // Each mass's average colour in the picture the masses were found in (squinted by `sq`), which the sharp
+  // drawing (MO_ENGINE_MASSES_FS) matches the full-size picture, squinted the same, against.
+  const src = sq > 0 ? squinted(P, sq) : P;
+  const means = groups.map((idx) => { let L = 0, a = 0, b = 0; for (const i of idx) { L += src.L[i]; a += src.A[i]; b += src.B[i]; } const n = idx.length || 1; return [L / n, a / n, b / n]; });
   const masses = lab.map((c, j) => ({ j, rgb: rgb[j], lab: c, value: moStudyValue(...rgb[j]), intensity: moStudyIntensity(shown[j][1], shown[j][2]), share: groups[j].length / (P.kept || P.n), temp: tempOf(c) }))
     .filter((m) => m.share > 0).sort((a, b) => b.share - a.share);
-  return { pixels, labels: lbl, masses };
+  return { pixels, labels: lbl, masses, colours, means, squint: sq, splits: P.cache[key].splits.slice(0, Math.max(0, opts.n - 1)) };
 }
 
 /** Intensity: colour only where it is stronger than `keep`; the rest grey at the same value. */
