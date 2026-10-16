@@ -155,7 +155,12 @@ item, a menu item, or a field), through the same save the drag uses.
   page, a calendar, a board, a photo grid) a finger holds first and a
   swipe still scrolls; a tap is still a tap. Handles and canvases claim
   the finger.
-- [x] Dividers take a 24px hit area on a touchscreen.
+- [x] Dividers take a finger (touch-action), on their own hit area. A 24px
+  hit area on a touchscreen was tried and taken out (2026-10-16): the media
+  query `any-pointer: coarse` is true on any computer with a touchscreen or
+  pen, so with a mouse too, and the wider area lay over the editor's
+  scrollbar beside the chat divider and took its drags
+  (`sashHitArea.test.ts`).
 - [x] Whatever a hover reveals (widget handles, row actions, block grips)
   a finger and the keyboard reveal too (`data-input-modality`,
   src/ui/inputModality.ts; 79 rules fixed).
