@@ -99,20 +99,20 @@
 
 .ui-slider__stops {
   position: relative;
-  display: flex;
-  justify-content: space-between;
   height: 18px;
   font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #717171);
   user-select: none;
 }
 
+/* Centred on the point the thumb's centre reaches (slider.ts sets `left`). */
 .ui-slider__stop {
+  position: absolute;
+  top: 0;
   white-space: nowrap;
   line-height: 18px;
+  transform: translateX(-50%);
   transition: color var(--px-dur-fast) var(--px-ease);
-  text-align: center;
-  flex: 0 0 auto;
 }
 
 /* ── Disabled ── */

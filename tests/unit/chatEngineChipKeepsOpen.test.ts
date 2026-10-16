@@ -37,7 +37,7 @@ function mount(override?: number) {
 }
 
 const pop = () => document.querySelector('.parallx-chat-engine-pop') as HTMLElement | null;
-const ticks = () => Array.from(pop()!.querySelectorAll('.parallx-chat-engine-ticks span')).map((e) => e.textContent);
+const ticks = () => Array.from(pop()!.querySelectorAll('.parallx-chat-engine-slider .ui-slider__stop')).map((e) => e.textContent);
 const modelRow = (name: string) => Array.from(pop()!.querySelectorAll('button.parallx-chat-engine-model')).find((b) => b.textContent!.includes(name)) as HTMLButtonElement;
 const opened = async () => { for (let i = 0; i < 20 && !pop(); i++) await Promise.resolve(); return pop(); };
 
@@ -64,7 +64,7 @@ describe('engine chip popover', () => {
     await opened();
     modelRow('Llama 3 8B').click();
     expect(m.picks).toEqual([8_192]);
-    expect((pop()!.querySelector('.parallx-chat-engine-slider') as HTMLInputElement).value).toBe('2');
+    expect((pop()!.querySelector('.parallx-chat-engine-slider input') as HTMLInputElement).value).toBe('2');
     m.chip.dispose();
   });
 });

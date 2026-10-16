@@ -15,6 +15,7 @@
 import { createSurface, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { Slider } from '../../../ui/slider.js';
 import type { IEngineStatus, IEngineStatusServices, IModelPickerServices } from '../chatTypes.js';
 import type { ITokenBreakdown } from './chatTokenStatusBar.js';
 
@@ -97,6 +98,7 @@ export class ChatEngineChip extends Disposable {
   private _pop: HTMLElement | undefined;
   private _detach: (() => void) | undefined;
   private _models: readonly ModelRow[] = [];
+  private _ctxSlider: Slider | undefined;
 
   constructor(container: HTMLElement, private readonly _o: IEngineChipOptions) {
     super();
@@ -186,6 +188,8 @@ export class ChatEngineChip extends Disposable {
     const hadFocus = !!this._pop?.contains(document.activeElement);
     this._detach?.();
     this._detach = undefined;
+    this._ctxSlider?.dispose();
+    this._ctxSlider = undefined;
     this._pop?.remove();
     this._pop = undefined;
     this._chip.setAttribute('aria-expanded', 'false');
@@ -242,20 +246,14 @@ export class ChatEngineChip extends Disposable {
     const value = $('span.parallx-chat-engine-value', current ? formatTokens(current) : 'Model default');
     head.appendChild(value);
     host.appendChild(head);
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = String(sizes.length); // 0 = model default
-    slider.step = '1';
-    slider.className = 'parallx-chat-engine-slider';
-    slider.setAttribute('aria-label', 'Context size');
     const idx = current ? Math.max(1, sizes.findIndex((s) => s >= current) + 1) : 0;
-    slider.value = String(idx);
-    host.appendChild(slider);
-    const ticks = $('div.parallx-chat-engine-ticks');
-    ticks.appendChild($('span', 'Default'));
-    for (const s of sizes) ticks.appendChild($('span', formatTokens(s)));
-    host.appendChild(ticks);
+    // The kit slider: each size's label sits under the point the handle stops at.
+    this._ctxSlider?.dispose();
+    const slider = this._ctxSlider = new Slider(host, {
+      min: 0, max: sizes.length, step: 1, value: idx, ariaLabel: 'Context size', // 0 = model default
+      labeledStops: [{ value: 0, label: 'Default' }, ...sizes.map((s, i) => ({ value: i + 1, label: formatTokens(s) }))],
+    });
+    slider.element.classList.add('parallx-chat-engine-slider');
     const hint = $('div.parallx-chat-engine-hint');
     host.appendChild(hint);
     const show = (i: number): void => {
@@ -265,9 +263,8 @@ export class ChatEngineChip extends Disposable {
       hint.textContent = size ? contextHint(size, used) : '';
     };
     show(idx);
-    slider.addEventListener('input', () => show(Number(slider.value)));
-    slider.addEventListener('change', () => {
-      const i = Number(slider.value);
+    slider.onDidChange((i) => show(i));
+    slider.onDidCommit((i) => {
       this._o.onPickContext(i === 0 ? 0 : sizes[i - 1]);
       this.refresh();
     });

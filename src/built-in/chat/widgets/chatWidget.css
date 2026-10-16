@@ -3103,8 +3103,8 @@
 .parallx-chat-engine-model-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parallx-chat-engine-model-meta { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, #9ea3ad); }
 .parallx-chat-engine-empty { color: var(--px-text-muted, #9ea3ad); padding: 4px 0; }
-.parallx-chat-engine-slider { width: 100%; accent-color: var(--px-accent, #569cd6); margin: 4px 0 0; }
-.parallx-chat-engine-ticks { display: flex; justify-content: space-between; font-size: 10px; color: var(--px-text-faint, #838893); }
+.parallx-chat-engine-slider { --slider-fill-bg: var(--px-accent, #569cd6); width: auto; min-width: 0; margin: 0 14px; } /* the kit slider (ui/slider.ts), inset so the end labels, centred on their stops, stay inside the popover */
+.parallx-chat-engine-slider .ui-slider__input { margin: 6px 0 2px; } .parallx-chat-engine-slider .ui-slider__stops { font-size: 10px; color: var(--px-text-faint, #838893); }
 .parallx-chat-engine-hint { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, #9ea3ad); min-height: 1.4em; }
 .parallx-chat-engine-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--px-surface-hover, #2b2e34); margin-top: 2px; }
 .parallx-chat-engine-seg { display: block; height: 100%; transition: width var(--px-dur-slow) var(--px-ease); }

@@ -48,6 +48,7 @@ export interface ISliderOptions {
  *
  * Events:
  * - `onDidChange` — fired on every `input` event with current numeric value
+ * - `onDidCommit` — fired on `change`, once the value is settled
  */
 export class Slider extends Disposable {
 
@@ -57,6 +58,10 @@ export class Slider extends Disposable {
 
   private readonly _onDidChange = this._register(new Emitter<number>());
   readonly onDidChange: Event<number> = this._onDidChange.event;
+
+  /** Fired once the value is settled: the drag released, or a key pressed. */
+  private readonly _onDidCommit = this._register(new Emitter<number>());
+  readonly onDidCommit: Event<number> = this._onDidCommit.event;
 
   constructor(container: HTMLElement, options?: ISliderOptions) {
     super();
@@ -89,13 +94,17 @@ export class Slider extends Disposable {
     }
     this.element.appendChild(this._input);
 
-    // Labeled stops — positioned via flexbox space-between
+    // Labeled stops — each centred under the point the thumb's centre reaches
+    // at its value: the centre travels from half a thumb in from the left to
+    // half a thumb in from the right. An end label may reach past the track by
+    // half its width less half a thumb; the slider's container leaves room.
     if (options?.labeledStops && options.labeledStops.length > 0) {
       this._stopsEl = $('div.ui-slider__stops');
-      // Sort stops by value so order matches visual position
-      const sorted = [...options.labeledStops].sort((a, b) => a.value - b.value);
-      for (const stop of sorted) {
+      const span = max - min || 1;
+      for (const stop of options.labeledStops) {
+        const f = Math.max(0, Math.min(1, (stop.value - min) / span));
         const stopEl = $('span.ui-slider__stop', stop.label);
+        stopEl.style.left =`calc(var(--slider-thumb-size) / 2 + (100% - var(--slider-thumb-size)) * ${f})`;
         this._stopsEl.appendChild(stopEl);
       }
       this.element.appendChild(this._stopsEl);
@@ -109,6 +118,7 @@ export class Slider extends Disposable {
       this._syncFill();
       this._onDidChange.fire(this.value);
     }));
+    this._register(addDisposableListener(this._input, 'change', () => this._onDidCommit.fire(this.value)));
 
     container.appendChild(this.element);
   }
