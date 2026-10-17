@@ -10,6 +10,7 @@ import type {
   IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
+import { sourceLabelLine } from '../../../services/sourceHandles.js';
 import { formatStoredTimeForModel } from '../../../platform/storedTime.js';
 import type {
   IBuiltInToolDatabase,
@@ -307,9 +308,7 @@ export function createReadPageTool(
 
       // M85 Slice C — a successful read marks the RESOLVED page as seen for
       // this session, unlocking the canvas mutation tools on it.
-      if (invocation?.sessionId) {
-        markResourceSeen(invocation.sessionId, pageResourceKey(page.id));
-      }
+      if (invocation?.sessionId) markResourceSeen(invocation.sessionId, pageResourceKey(page.id));
 
       // Folded from the former canvas_get_page tool: include block count + properties.
       // Counted from the page itself (the canvas_blocks table is never written).
@@ -336,6 +335,7 @@ export function createReadPageTool(
       const text = extractBlocksWithIds(page.content);
       const lines: (string | null)[] = [
         `**${page.title}** (id: ${page.id})${isCurrent ? ' — currently open' : ''}`,
+        sourceLabelLine(invocation?.sessionId, { key: `parallx://canvas/page/${page.id}`, location: `canvas page "${page.title}"`, title: page.title || 'Untitled', uri: `parallx://canvas/page/${page.id}`, text: text || '', document: true }),
         page.icon ? `**Icon:** ${page.icon}` : null,
         `**Created:** ${formatStoredTimeForModel(page.created_at)}`,
         `**Updated:** ${formatStoredTimeForModel(page.updated_at)}`,

@@ -23,7 +23,9 @@ import type {
   IChatTool,
   ICancellationToken,
   IToolResult,
+  IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
+import { recordMintedLink } from '../../../services/sourceHandles.js';
 import { parseParallxUri } from '../../../links/parallxUri.js';
 
 /**
@@ -114,7 +116,7 @@ export function createParallxLinkTool(getContracts: LinkContractSnapshot, verify
     permissionLevel: 'always-allowed',
     category: 'linking',
     source: 'built-in',
-    handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
+    handler: async (args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> => {
       const target = readString(args.target);
       if (!target) return failure('Missing required argument: target');
       const anchor = readString(args.anchor);
@@ -166,6 +168,8 @@ export function createParallxLinkTool(getContracts: LinkContractSnapshot, verify
 
       const check = await verify(uri);
       if (!check.ok) return failure(check.error);
+      // A checked link: the answer check lets it through as one.
+      if (invocation?.sessionId) recordMintedLink(invocation.sessionId, check.uri);
       return {
         content: JSON.stringify({
           ok: true,

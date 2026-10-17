@@ -14,7 +14,11 @@ import type {
 import { markResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
 import { formatBytes } from '../../../ui/format.js';
 import { contributedSkillFile } from '../../../services/chatContributions.js';
-import { formatPagesForReading, pageLabelForPassage } from '../../../services/quoteLocator.js';
+import {
+  blocksOf, blocksSize, blocksWithin, fileLinkUri, findPassages, isDocumentPath, loadLiveDoc, outlineOf, renderBlocks,
+  relatedPassages, SOURCE_LABEL_GUIDE, START_OF_LARGE_FILE_CHARS, type LiveBlock, type LiveDoc,
+} from './sourceReading.js';
+import { citeSource } from '../../../services/sourceHandles.js';
 
 // ── Constants ──
 
@@ -28,38 +32,6 @@ const MAX_GREP_FILE_SIZE = 512_000; // 512 KB
 const MAX_DOC_TEXT_CHARS = 50_000;
 
 const SPREADSHEET_EXTS = new Set(['.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers']);
-
-/**
- * A PDF for the AI: the pages asked for (all by default), each starting with
- * its "===== Page N of M =====" line, cut at a page boundary once the text
- * passes MAX_DOC_TEXT_CHARS. Says how to read on.
- */
-export function formatPdfForReading(relPath: string, pages: readonly string[], startPage?: number, endPage?: number): string {
-  const total = pages.length;
-  if (total === 0 || pages.every((p) => !p.trim())) {
-    return `**${relPath}** (.pdf file, ${total} page${total === 1 ? '' : 's'})\n\n[Document is empty or could not extract text — it may be a scan without a text layer]`;
-  }
-  const from = Math.min(Math.max(1, startPage ?? 1), total);
-  const wantedTo = Math.min(Math.max(from, endPage ?? total), total);
-  let to = from;
-  let size = 0;
-  for (let p = from; p <= wantedTo; p++) {
-    size += (pages[p - 1] ?? '').length + 32;
-    if (p > from && size > MAX_DOC_TEXT_CHARS) break;
-    to = p;
-  }
-  const range = from === 1 && to === total
-    ? (total === 1 ? '1 page' : `all ${total} pages`)
-    : `pages ${from} to ${to} of ${total}`;
-  const guide =
-    '*Each page starts with its "===== Page N of M =====" line, and the text under it is that page\'s text. ' +
-    'N is the PDF\'s own page number (1 = first page of the file): the number the PDF viewer shows and a link\'s page takes. ' +
-    'It is not the page number printed on the page. To link a passage, give link_create the quoted words; it confirms the page.*';
-  const more = to < wantedTo
-    ? `\n\n*Stopped at page ${to} (length limit). Read on with start_page=${to + 1}.*`
-    : '';
-  return `**${relPath}** (.pdf file, ${range})\n\n${guide}\n\n\`\`\`\n${formatPagesForReading(pages, from, to)}\n\`\`\`${more}`;
-}
 
 // ── Tool helpers ──
 
@@ -131,7 +103,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
       'Lists files and directories on disk at a workspace path. ' +
       'Use when exploring filesystem structure or confirming a file exists before reading it. ' +
       'For canvas pages (the page DB) use `canvas_find_pages`. ' +
-      'For finding files by name pattern use `fs_search_files`; for content search use `fs_grep_search` or `fs_search_knowledge`.',
+      'For finding files by name pattern use `fs_search_files`; for content search use `fs_grep_search`.',
     parameters: {
       type: 'object',
       properties: {
@@ -166,22 +138,24 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
   };
 }
 
-export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
+export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined, retrieval?: IBuiltInToolRetrieval): IChatTool {
   return {
     name: 'fs_read_file',
     displaySummary: 'Read a workspace file on disk.',
     description:
-      'Reads a workspace file on disk — text (.md, .txt, source code) or rich documents (PDF, DOCX, EPUB, XLSX, extracted to text). ' +
-      'Use `start_line`/`end_line` to read a range of a large text file, `start_page`/`end_page` for a PDF. ' +
-      'A PDF comes back page by page, each page starting with a "===== Page N of M =====" line: N is the page number to cite and link. ' +
-      'Use when the user references a file by path, or when you need exact source for citation/quotation. ' +
-      'For canvas pages (page DB) use `canvas_read_page`. ' +
-      'For conceptual search across many files use `fs_search_knowledge`.',
+      'Reads a workspace file on disk — text (.md, .txt, source code) or documents (PDF, DOCX, EPUB, XLSX), of any size. ' +
+      'A file that fits comes back whole. A large one (a book, a long report) comes back as its start; to find something in it, ' +
+      'pass `query` with what you are looking for and you get the passages that answer it, wherever they are in the file. ' +
+      'Every block of text starts with a source label like [S3]: cite what a block says by writing its label after the sentence. ' +
+      'Use `start_page`/`end_page` (PDF) or `start_line`/`end_line` (text) to read a known range. ' +
+      'Never write a script to read a document: this tool reads every page. ' +
+      'For canvas pages (page DB) use `canvas_read_page`.',
     parameters: {
       type: 'object',
       required: ['path'],
       properties: {
         path: { type: 'string', description: 'Relative file path from workspace root.' },
+        query: { type: 'string', description: 'What you are looking for in the file, in plain words. For a large file, returns the passages that answer it.' },
         start_line: { type: 'number', description: 'Start line (1-indexed, inclusive).' },
         end_line: { type: 'number', description: 'End line (1-indexed, inclusive).' },
         start_page: { type: 'number', description: 'PDF only: first page to read (1 = first page of the file).' },
@@ -194,10 +168,18 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
     async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '').replace(/\\/g, '/');
-      const startLine = typeof args['start_line'] === 'number' ? Math.max(1, Math.floor(args['start_line'])) : undefined;
-      const endLine = typeof args['end_line'] === 'number' ? Math.max(1, Math.floor(args['end_line'])) : undefined;
-      const startPage = typeof args['start_page'] === 'number' ? Math.max(1, Math.floor(args['start_page'])) : undefined;
-      const endPage = typeof args['end_page'] === 'number' ? Math.max(1, Math.floor(args['end_page'])) : undefined;
+      const query = typeof args['query'] === 'string' ? args['query'].trim() : '';
+      const num = (k: string) => typeof args[k] === 'number' ? Math.max(1, Math.floor(args[k] as number)) : undefined;
+      const startLine = num('start_line');
+      const endLine = num('end_line');
+      const startPage = num('start_page');
+      const endPage = num('end_page');
+      const sessionId = invocation?.sessionId;
+      // What this result may use of the model's window, less room for the
+      // header and notes; never more than a document read ever returned.
+      const budget = invocation?.resultCharBudget
+        ? Math.max(4_000, Math.min(MAX_DOC_TEXT_CHARS, invocation.resultCharBudget - 3_000))
+        : MAX_DOC_TEXT_CHARS;
 
       if (!relPath) {
         return { content: 'path is required', isError: true };
@@ -213,73 +195,112 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
           // Tree is best-effort — don't fail file read if tree fails
         }
 
-        // PDFs read page by page, so every passage sits under its page number.
-        if (/\.pdf$/i.test(relPath) && fs!.readPdfPages) {
-          const pages = await fs!.readPdfPages(relPath);
-          if (pages) {
-            if (invocation?.sessionId) markResourceSeen(invocation.sessionId, fileResourceKey(relPath));
-            return { content: treePrefix + formatPdfForReading(relPath, pages, startPage, endPage) };
-          }
-        }
-
-        let result: Awaited<ReturnType<NonNullable<typeof fs>['readFileContent']>>;
+        let doc: LiveDoc | undefined;
         try {
-          result = await fs!.readFileContent(relPath);
+          doc = await loadLiveDoc(fs!, relPath);
         } catch (err) {
           // A skill a running tool brought has no file: read it from the tool.
           const fromTool = contributedSkillFile(relPath);
           if (fromTool === undefined) throw err;
           return { content: treePrefix + `**${relPath}**\n\n${fromTool}` };
         }
+        if (!doc) return { content: `Failed to read "${relPath}"`, isError: true };
 
         // M85 Slice C — a successful read (even a range) marks the file as
         // seen for this session, unlocking fs_edit_file on it.
-        if (invocation?.sessionId) {
-          markResourceSeen(invocation.sessionId, fileResourceKey(relPath));
+        if (sessionId) markResourceSeen(sessionId, fileResourceKey(relPath));
+
+        const dotIdx = relPath.lastIndexOf('.');
+        const ext = dotIdx >= 0 ? relPath.slice(dotIdx).toLowerCase() : '';
+        if (doc.kind === 'page' && doc.pages.every((p) => !p.trim())) {
+          return { content: treePrefix + `**${relPath}** (.pdf file, ${doc.pages.length} page${doc.pages.length === 1 ? '' : 's'})\n\n[Document is empty or could not extract text — it may be a scan without a text layer]` };
+        }
+        if (doc.kind === 'text' && !doc.text.trim()) {
+          return { content: treePrefix + `**${relPath}** (${ext} file)\n\n[Document is empty or could not extract text]` };
         }
 
-        if (result.type === 'rich-document') {
-          const dotIdx = relPath.lastIndexOf('.');
-          const ext = dotIdx >= 0 ? relPath.slice(dotIdx).toLowerCase() : '';
-          if (!result.content || result.content.trim().length === 0) {
-            return { content: treePrefix + `**${relPath}** (${ext} file)\n\n[Document is empty or could not extract text]` };
+        // Source code and data are read to be worked on: one block, as the
+        // file has it, so an edit never straddles a block header.
+        const blocks = doc.kind === 'line' && !isDocumentPath(relPath) ? wholeFileBlock(doc) : blocksOf(doc);
+        const kindLabel = doc.kind === 'page' ? `.pdf file, ${doc.pages.length} pages`
+          : doc.kind === 'line' ? `${doc.lines.length} lines`
+          : `${ext} file`;
+        // Spreadsheet text is CSV with blank rows left out: its lines are
+        // not the workbook's rows, so a row number read off it is wrong.
+        const sheetNote = SPREADSHEET_EXTS.has(ext)
+          ? '*Rows below are not numbered as in the workbook (blank rows are left out). To cite a cell, give link_create the quoted words: it returns the sheet and cell.*\n\n'
+          : '';
+        const guide = isDocumentPath(relPath) ? `${SOURCE_LABEL_GUIDE}\n\n${sheetNote}` : sheetNote;
+        const out = (what: string, shown: readonly LiveBlock[], note = '') =>
+          ({ content: `${treePrefix}**${relPath}** (${what})\n\n${guide}\`\`\`\n${renderBlocks(sessionId, relPath, shown)}\n\`\`\`${note ? `\n\n${note}` : ''}` });
+
+        // A range asked for by page.
+        if (doc.kind === 'page' && (startPage !== undefined || endPage !== undefined)) {
+          const total = doc.pages.length;
+          const from = Math.min(startPage ?? 1, total);
+          const to = Math.min(Math.max(from, endPage ?? total), total);
+          const shown = blocksWithin(blocks.filter((b) => b.page! >= from && b.page! <= to), budget);
+          const last = shown[shown.length - 1].page!;
+          return out(`pages ${from} to ${last} of ${total}`, shown, last < to
+            ? `*Stopped at page ${last} (length limit). To find something specific, pass \`query\`; to read on, start_page=${last + 1}.*`
+            : '');
+        }
+        // A range asked for by line: exactly those lines, one block.
+        if (doc.kind === 'line' && (startLine !== undefined || endLine !== undefined)) {
+          const total = doc.lines.length;
+          const s = Math.min(startLine ?? 1, total);
+          const e = Math.min(Math.max(s, endLine ?? total), total);
+          return out(`lines ${s}-${e} of ${total}`, [lineRangeBlock(doc, s, e)]);
+        }
+
+        // It fits: the whole file.
+        if (blocksSize(blocks) <= budget) return out(kindLabel, blocks);
+
+        // Too large to show whole. With a question: the passages that answer it.
+        if (query) {
+          const found = await findPassages(retrieval, relPath, blocks, query, budget);
+          if (found.picked.length === 0) {
+            return { content: `${treePrefix}**${relPath}** (${kindLabel})\n\nNo passage in this file matches "${query}". Try other words for it, or read a range with ${doc.kind === 'page' ? 'start_page/end_page' : 'start_line/end_line'}.` };
           }
-          // Spreadsheet text is CSV with blank rows left out: its lines are
-          // not the workbook's rows, so a row number read off it is wrong.
-          const sheetNote = SPREADSHEET_EXTS.has(ext)
-            ? '*Rows below are not numbered as in the workbook (blank rows are left out). To cite a cell, give link_create the quoted words: it returns the sheet and cell.*\n\n'
-            : '';
-          if (result.totalChars > MAX_DOC_TEXT_CHARS) {
-            const truncated = result.content.slice(0, MAX_DOC_TEXT_CHARS);
-            return {
-              content: treePrefix +
-                `**${relPath}** (${ext} file — showing first ${MAX_DOC_TEXT_CHARS} characters, full document is indexed)\n\n` + sheetNote +
-                `\`\`\`\n${truncated}\n\`\`\`\n\n` +
-                `*Content truncated. Use fs_search_knowledge to search across the full document.*`,
-            };
-          }
-          return { content: treePrefix + `**${relPath}** (${ext} file)\n\n` + sheetNote + `\`\`\`\n${result.content}\n\`\`\`` };
+          const shown = found.picked.map((i) => blocks[i]);
+          return out(`${kindLabel}; ${shown.length} passage${shown.length === 1 ? '' : 's'} for "${query}"`, shown,
+            `*These are the parts of the file that answer "${query}", in file order. For something else, call again with another \`query\`.*`);
         }
 
-        // Regular text file
-        const allLines = result.content.split('\n');
-        const totalLines = allLines.length;
-
-        // Apply line-range slicing if requested
-        if (startLine !== undefined || endLine !== undefined) {
-          const s = (startLine ?? 1) - 1; // convert to 0-indexed
-          const e = endLine ?? totalLines;
-          const sliced = allLines.slice(Math.max(0, s), Math.min(totalLines, e));
-          const rangeLabel = `lines ${s + 1}-${Math.min(totalLines, e)} of ${totalLines}`;
-          return { content: treePrefix + `**${relPath}** (${rangeLabel})\n\n\`\`\`\n${sliced.join('\n')}\n\`\`\`` };
-        }
-
-        return { content: treePrefix + `**${relPath}** (${totalLines} lines)\n\n\`\`\`\n${result.content}\n\`\`\`` };
+        // No question: its start, and how to find the rest.
+        const shown = blocksWithin(blocks, START_OF_LARGE_FILE_CHARS);
+        const outline = outlineOf(doc);
+        const outlineNote = outline.length > 0 ? `\n\nHeadings in this file:\n${outline.map((h) => `- ${h}`).join('\n')}` : '';
+        return out(`${kindLabel}; the start of a large file`, shown,
+          `*This is only the start: the file is too large to show whole. To find something in it, call fs_read_file again with \`query\` set to what you are looking for; you get the passages that answer it, wherever they are.*${outlineNote}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { content: `Failed to read "${relPath}": ${msg}`, isError: true };
       }
     },
+  };
+}
+
+/** A code or data file as one block. */
+function wholeFileBlock(doc: Extract<LiveDoc, { kind: 'line' }>): LiveBlock[] {
+  if (doc.lines.length === 0) return [];
+  const blocks = blocksOf(doc);
+  // A file over the budget is read in its windows; one that fits is one block.
+  if (blocksSize(blocks) > MAX_DOC_TEXT_CHARS) return blocks;
+  return [lineRangeBlock(doc, 1, doc.lines.length)];
+}
+
+/** Lines s..e (1-based, inclusive) of a text file as one block. */
+function lineRangeBlock(doc: Extract<LiveDoc, { kind: 'line' }>, s: number, e: number): LiveBlock {
+  const name = doc.path.split('/').pop() || doc.path;
+  const total = doc.lines.length;
+  return {
+    text: doc.lines.slice(s - 1, e).join('\n'),
+    location: `${doc.path} · lines ${s} to ${e} of ${total}`,
+    title: s === 1 && e === total ? name : `${name}, line ${s}`,
+    uri: fileLinkUri(doc.path, { line: s }),
+    firstLine: s,
+    lastLine: e,
   };
 }
 
@@ -290,7 +311,7 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
     description:
       'Finds files on disk by NAME pattern (case-insensitive substring of the filename). ' +
       'Use when locating a file by its name — e.g. "find the README", "any .csv files". ' +
-      'For file CONTENT search use `fs_grep_search` (exact text/regex) or `fs_search_knowledge` (semantic). ' +
+      'For file CONTENT search use `fs_grep_search`. ' +
       'For canvas pages use `canvas_find_pages`.',
     parameters: {
       type: 'object',
@@ -333,21 +354,22 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
 
 // ── fs_grep_search tool ──
 
-export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
+export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined, retrieval?: IBuiltInToolRetrieval): IChatTool {
   return {
     name: 'fs_grep_search',
     displaySummary: 'Search file contents on disk by pattern.',
     description:
-      'Searches file CONTENTS on disk for an EXACT text or regex pattern. ' +
-      'Use when the user wants literal matches — symbol names, exact phrases, code patterns. ' +
-      'Folder searches skip PDFs and other rich documents; to search inside a PDF, pass the PDF itself as path: matches then report the PDF page (the number to cite and link), not a line. ' +
-      'For conceptual/semantic search ("anything about X") use `fs_search_knowledge`. ' +
+      'Searches the workspace for a text or regex pattern: exact matches in files, then, for plain text, ' +
+      'passages related to it by meaning from documents (PDF, Word, EPUB, notes) and canvas pages, from the knowledge index. ' +
+      'Use it to find where something is said or defined, or what the documents say about a topic. ' +
+      'Passages and PDF matches carry a source label like [S3]: cite what they say by writing the label after the sentence. ' +
+      'To read more of a document a result came from, use `fs_read_file` with `query`. ' +
       'For filename matching use `fs_search_files`. For canvas page contents use `canvas_find_pages`.',
     parameters: {
       type: 'object',
       required: ['pattern'],
       properties: {
-        pattern: { type: 'string', description: 'Search pattern (plain text or regex).' },
+        pattern: { type: 'string', description: 'Search pattern: plain words or a phrase (also finds related passages), or a regex with is_regex.' },
         path: { type: 'string', description: 'Directory or file to search (default: workspace root).' },
         is_regex: { type: 'boolean', description: 'Treat pattern as regex.' },
         case_sensitive: { type: 'boolean', description: 'Case-sensitive match.' },
@@ -356,8 +378,9 @@ export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IC
     requiresConfirmation: false,
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'file-system',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       requireFs(fs);
+      const sessionId = invocation?.sessionId;
       const patternStr = String(args['pattern'] || '');
       const rootPath = String(args['path'] || '.').replace(/\\/g, '/');
       const isRegex = args['is_regex'] === true;
@@ -381,16 +404,28 @@ export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IC
       try {
         const matches: GrepMatch[] = [];
         await grepRecursive(fs!, rootPath, regex, matches, 0);
+        // Folder searches skip documents (too slow to extract line by line);
+        // the index brings in what they say, placed on their live text.
+        const related = isRegex ? '' : await relatedPassages(fs!, retrieval, patternStr, rootPath, sessionId);
+        const relatedPart = related
+          ? `Related passages (by meaning, from the knowledge index):\n\n${related}`
+          : '';
 
         if (matches.length === 0) {
-          return { content: `No matches found for "${patternStr}" in "${rootPath}".` };
+          return { content: relatedPart
+            ? `No exact matches for "${patternStr}" in "${rootPath}".\n\n${relatedPart}`
+            : `No matches found for "${patternStr}" in "${rootPath}".` };
         }
 
         const formatted = matches.map(m => {
           if (m.page !== undefined) {
             // A PDF match: the page is the address; lines inside a page are
-            // an artefact of text extraction, so they are not numbered.
-            const header = `${m.file} (page ${m.page} of ${m.pageCount})`;
+            // an artefact of text extraction, so they are not numbered. The
+            // page is labelled as a read labels it, so both cite alike.
+            const label = sessionId && m.pageText !== undefined
+              ? `[${labelPdfPage(sessionId, m.file, m.page, m.pageCount!, m.pageText)}] `
+              : '';
+            const header = `${label}${m.file} (page ${m.page} of ${m.pageCount})`;
             const contextLines = m.context.map(c => `${c.lineNum === m.line ? '>' : ' '} ${c.text}`).join('\n');
             return `${header}\n${contextLines}`;
           }
@@ -406,13 +441,21 @@ export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IC
           : '';
 
         return {
-          content: `Found ${matches.length} match(es) for "${patternStr}":\n\n${formatted}${truncNote}`,
+          content: `Found ${matches.length} match(es) for "${patternStr}":\n\n${formatted}${truncNote}${relatedPart ? `\n\n${relatedPart}` : ''}`,
         };
       } catch (err) {
         return { content: `Grep search failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
       }
     },
   };
+}
+
+/** Label a PDF page exactly as fs_read_file labels it, so both give it one handle. */
+function labelPdfPage(sessionId: string, path: string, page: number, pageCount: number, text: string): string {
+  const name = path.split('/').pop() || path;
+  const uri = fileLinkUri(path, { page });
+  const location = `${path} · page ${page} of ${pageCount}`;
+  return citeSource(sessionId, { key: `${uri}#${location}`, location, title: `${name}, page ${page}`, uri, text: text.trim(), document: true });
 }
 
 interface GrepMatch {
@@ -422,6 +465,8 @@ interface GrepMatch {
   /** PDF matches: the page (1 = first page of the file) and the page count. */
   page?: number;
   pageCount?: number;
+  /** PDF matches: the page's text, for its source label. */
+  pageText?: string;
 }
 
 /** Escape special regex characters in a literal string. */
@@ -502,6 +547,7 @@ async function grepFile(
         for (let i = before; i < results.length; i++) {
           results[i].page = p + 1;
           results[i].pageCount = pages.length;
+          results[i].pageText = pages[p];
         }
       }
       return;
@@ -574,103 +620,4 @@ async function searchRecursive(
 function isIgnoredDir(name: string): boolean {
   const ignored = ['node_modules', '.git', 'dist', 'out', '.next', '__pycache__', '.cache', 'coverage'];
   return ignored.includes(name);
-}
-
-// ── RAG tools (M10 Phase 3 — Task 3.3) ──
-
-/**
- * For each search result from a PDF, the page(s) its text is on, e.g.
- * "page 13 of 30" or "pages 13 to 14 of 30"; '' when it is not a PDF or the
- * page cannot be told (the chunk's text did not match the page text).
- */
-async function pdfPagesForResults(
-  fs: IBuiltInToolFileSystem | undefined,
-  results: readonly { sourceType: string; sourceId: string; text: string }[],
-): Promise<string[]> {
-  const labels = results.map(() => '');
-  if (!fs?.readPdfPages) return labels;
-  const files = [...new Set(results.filter((r) => r.sourceType === 'file_chunk' && /\.pdf$/i.test(r.sourceId)).map((r) => r.sourceId))];
-  const pagesByFile = new Map<string, readonly string[]>();
-  await Promise.all(files.map(async (file) => {
-    try {
-      const pages = await fs.readPdfPages!(file);
-      if (pages) pagesByFile.set(file, pages);
-    } catch { /* no page for this file */ }
-  }));
-  results.forEach((r, i) => {
-    const pages = r.sourceType === 'file_chunk' ? pagesByFile.get(r.sourceId) : undefined;
-    if (pages) labels[i] = pageLabelForPassage(pages, r.text);
-  });
-  return labels;
-}
-
-export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined, fs?: IBuiltInToolFileSystem): IChatTool {
-  return {
-    name: 'fs_search_knowledge',
-    displaySummary: 'Semantic search across pages AND files.',
-    description:
-      'Semantic (embedding) search across BOTH canvas pages and workspace files, including rich documents (PDF, DOCX, EPUB, XLSX). ' +
-      'Use when the query is conceptual or open-ended — "what does X mean", "find anything about Y", "documents related to Z". ' +
-      'For exact literal matches use `fs_grep_search`; for filename matches use `fs_search_files`; ' +
-      'for canvas-only discovery use `canvas_find_pages`. ' +
-      'Set `source_filter=page_block` for canvas-only, `file_chunk` for filesystem-only. ' +
-      'A result from a PDF says which page it is on when that can be told (the number to cite and link).',
-    parameters: {
-      type: 'object',
-      required: ['query'],
-      properties: {
-        query: { type: 'string', description: 'Natural language search query.' },
-        source_filter: {
-          type: 'string',
-          description: 'page_block (canvas only) or file_chunk (files only).',
-          enum: ['page_block', 'file_chunk'],
-        },
-        folder_path: {
-          type: 'string',
-          description: 'Folder path to restrict scope (e.g. "RF Guides/").',
-        },
-      },
-    },
-    requiresConfirmation: false,
-    permissionLevel: 'always-allowed' as ToolPermissionLevel,
-    category: 'file-system',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      if (!retrieval) {
-        return { content: 'Knowledge search is not available — the retrieval service has not been initialized.', isError: true };
-      }
-      if (!retrieval.isReady()) {
-        return { content: 'Knowledge search is not available yet — initial indexing is still in progress. Please try again shortly.' };
-      }
-
-      const query = String(args['query'] || '');
-      if (!query.trim()) {
-        return { content: 'Search query is empty.', isError: true };
-      }
-
-      const sourceFilter = typeof args['source_filter'] === 'string' ? args['source_filter'] : undefined;
-      const folderPath = typeof args['folder_path'] === 'string' && args['folder_path'].trim() ? args['folder_path'].trim() : undefined;
-      const pathPrefixes = folderPath ? [folderPath.endsWith('/') ? folderPath : folderPath + '/'] : undefined;
-
-      try {
-        const results = await retrieval.retrieve(query, sourceFilter, pathPrefixes);
-
-        if (results.length === 0) {
-          return { content: `No relevant results found for "${query}".` };
-        }
-
-        const pagesOf = await pdfPagesForResults(fs, results);
-        const formatted = results.map((r, i) => {
-          const sourceLabel = r.contextPrefix || r.sourceId;
-          const typeLabel = r.sourceType === 'page_block' ? 'Page' : 'File';
-          const pageLabel = pagesOf[i] ? ` (${pagesOf[i]})` : '';
-          return `[${i + 1}] (${typeLabel}) ${sourceLabel}${pageLabel} [score: ${r.score.toFixed(3)}]\n${r.text}`;
-        }).join('\n\n---\n\n');
-
-        return { content: `Found ${results.length} relevant results:\n\n${formatted}` };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { content: `Knowledge search failed: ${msg}`, isError: true };
-      }
-    },
-  };
 }

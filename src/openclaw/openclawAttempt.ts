@@ -20,7 +20,6 @@ import type {
   IChatResponseChunk,
   IChatResponseStream,
   ICancellationToken,
-  IToolCall,
   IToolResult,
 } from '../services/chatTypes.js';
 import type { IOpenclawAssembleResult, IOpenclawContextEngine } from './openclawContextEngine.js';
@@ -42,6 +41,9 @@ import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
 import type { IResolvedAgentConfig } from './agents/openclawAgentConfig.js';
 import { resolveModelTier } from './openclawModelTier.js';
 import { validateCitations } from './openclawResponseValidation.js';
+import { executeModelStream } from './openclawModelStream.js';
+import { buildCitationCorrection, checkCitations, renderCitedAnswer, type ICitationContext } from './openclawCitationCheck.js';
+import { getSourceHandle, sessionSourceHandles, sourceHandleMark, sourceHandlesSince, wasLinkMinted } from '../services/sourceHandles.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -229,6 +231,9 @@ const EMPTY_RESPONSE_NUDGE =
   + 'Based on that reasoning, write your final answer now. State the answer directly; '
   + 'do not repeat the reasoning and do not call tools.';
 
+/** Times an answer goes back to the model to fix its citations before it is final. */
+const MAX_CITATION_CORRECTIONS = 1;
+
 export interface IOpenclawAttemptResult {
   readonly markdown: string;
   readonly thinking: string;
@@ -392,6 +397,17 @@ export async function executeOpenclawAttempt(
   let loopBlocked = false;
   let emptyResponseContinuations = 0;
   let salvagedThinking = '';
+  // Citations are checked before the answer is final (openclawCitationCheck):
+  // the turn's own source labels are those issued after this mark.
+  const citationSession = context.sessionId;
+  const sourceMark = citationSession ? sourceHandleMark(citationSession) : 0;
+  const citationContext = (): ICitationContext | undefined => citationSession ? {
+    lookup: (id) => getSourceHandle(citationSession, id),
+    sessionHandles: sessionSourceHandles(citationSession),
+    turnHandles: sourceHandlesSince(citationSession, sourceMark),
+    isLinkMinted: (uri) => wasLinkMinted(citationSession, uri),
+  } : undefined;
+  let citationCorrections = 0;
 
   // Budget-aware per-tool-result cap. A single tool result must never be
   // allowed to exceed a fraction of the model's context window. The mid-loop
@@ -503,6 +519,35 @@ export async function executeOpenclawAttempt(
           `[openclawAttempt] Hallucinated tool call detected: model claimed to call "${hallucinatedToolName}" with zero tool_calls emitted. `
           + `Model: ${context.runtimeInfo.model}.`,
         );
+      }
+
+      // ── Citation check, before the answer is final ──
+      //
+      // A citation that names the wrong source, or a fact taken from a
+      // document with no citation at all, goes back to the model once as a
+      // note; its rewrite replaces the draft. Only when the draft can be
+      // taken back off the screen (replaceMarkdownTail), so the user never
+      // sees both. What still fails afterwards is marked Unverified below.
+      const citeCtx = citationContext();
+      if (
+        citeCtx && markdown.trim().length > 0 && response.replaceMarkdownTail
+        && citationCorrections < MAX_CITATION_CORRECTIONS && !token.isCancellationRequested
+      ) {
+        const report = checkCitations(markdown, citeCtx);
+        if (report.problems.length > 0) {
+          citationCorrections++;
+          try {
+            response.progress(`Checking sources: fixing ${report.problems.length} citation${report.problems.length === 1 ? '' : 's'}...`);
+          } catch { /* progress emission shouldn't break the loop */ }
+          response.replaceMarkdownTail(markdown, '');
+          currentMessages = [
+            ...currentMessages,
+            { role: 'assistant', content: markdown },
+            { role: 'user', content: buildCitationCorrection(report.problems) },
+          ];
+          markdown = '';
+          continue;
+        }
       }
 
       lastHadToolCalls = false;
@@ -771,7 +816,20 @@ export async function executeOpenclawAttempt(
 
   // 6. Validate citations — remap mismatched indices so the displayed
   //    markdown matches the citation metadata.
-  const validated = validateCitations(markdown, [...assembled.ragSources]);
+  //    Source labels become their links; a citation that failed the check
+  //    (after the model's one chance to fix it) is shown as Unverified.
+  let citedMarkdown = markdown;
+  const finalCiteCtx = citationContext();
+  if (finalCiteCtx && markdown.trim().length > 0) {
+    const report = checkCitations(markdown, finalCiteCtx);
+    citedMarkdown = renderCitedAnswer(markdown, report, finalCiteCtx);
+    if (report.problems.some((p) => p.kind === 'uncited') && !token.isCancellationRequested) {
+      try {
+        response.warning('This answer uses documents it read but cites none of them, so its claims are not linked to their sources.');
+      } catch { /* diagnostics must not break the return path */ }
+    }
+  }
+  const validated = validateCitations(citedMarkdown, [...assembled.ragSources]);
   const displayMarkdown = validated.markdown;
 
   // 7. The answer already streamed as it was written; when the citation
@@ -818,82 +876,4 @@ export async function executeOpenclawAttempt(
       console.error('[OpenClaw] afterTurn failed:', afterTurnErr);
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// Model execution helper
-// ---------------------------------------------------------------------------
-
-/**
- * Execute a single model call and stream the response.
- *
- * Adapted from the first model-turn runner in openclawParticipantRuntime.ts,
- * but simplified: handles streaming, collects markdown/thinking/toolCalls/tokens.
- *
- * The answer streams to the response as it is written, like the reasoning:
- * a round followed by tool calls shows its text before its tool cards. When
- * the call fails partway, the text it streamed is taken back so a retry does
- * not show it twice. Stop keeps what was written.
- */
-async function executeModelStream(
-  sendChatRequest: (
-    messages: readonly IChatMessage[],
-    options?: IChatRequestOptions,
-    signal?: AbortSignal,
-  ) => AsyncIterable<IChatResponseChunk>,
-  messages: readonly IChatMessage[],
-  options: IChatRequestOptions,
-  response: IChatResponseStream,
-  token: ICancellationToken,
-): Promise<{
-  markdown: string;
-  thinking: string;
-  toolCalls: IToolCall[];
-  promptTokens?: number;
-  completionTokens?: number;
-}> {
-  let markdown = '';
-  let thinking = '';
-  let promptTokens: number | undefined;
-  let completionTokens: number | undefined;
-  const toolCalls: IToolCall[] = [];
-
-  // The turn's cancel reaches the model call: Stop or a timeout closes the
-  // HTTP request, so the engine is free at once instead of generating on
-  // unseen until the step would have finished.
-  const abort = new AbortController();
-  if (token.isCancellationRequested) abort.abort();
-  const cancelSub = token.onCancellationRequested?.(() => abort.abort());
-  try {
-    for await (const chunk of sendChatRequest(messages, options, abort.signal)) {
-      if (token.isCancellationRequested) break;
-
-      if (chunk.content) {
-        markdown += chunk.content;
-        response.markdown(chunk.content);
-      }
-      if (chunk.thinking) {
-        thinking += chunk.thinking;
-        response.thinking(chunk.thinking);
-      }
-      if (chunk.toolCalls) {
-        toolCalls.push(...chunk.toolCalls);
-      }
-      if (typeof chunk.promptEvalCount === 'number') {
-        promptTokens = chunk.promptEvalCount;
-      }
-      if (typeof chunk.evalCount === 'number') {
-        completionTokens = chunk.evalCount;
-      }
-    }
-  } catch (error) {
-    if (markdown) {
-      try { response.replaceMarkdownTail?.(markdown, ''); } catch { /* a closed stream keeps its text */ }
-    }
-    throw error;
-  } finally {
-    cancelSub?.dispose();
-  }
-
-  return { markdown, thinking, toolCalls, promptTokens, completionTokens };
 }

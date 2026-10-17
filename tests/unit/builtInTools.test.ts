@@ -145,8 +145,8 @@ describe('registerBuiltInTools', () => {
     // M81 Phase 9: canvas_get_page folded into canvas_read_page; canvas_compose_page renamed to canvas_edit_page. Net -1 = 37.
     // M83: canvas_list_templates (Save-as-template surface) brings the total to 38.
     // Activity journal: the read-only activity_log tool brings the total to 39.
-    expect(toolsService.registeredTools).toHaveLength(39);
-    expect(disposables).toHaveLength(39);
+    expect(toolsService.registeredTools).toHaveLength(38);
+    expect(disposables).toHaveLength(38);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -182,7 +182,6 @@ describe('registerBuiltInTools', () => {
       'fs_read_file',
       'terminal_run_command',
       'fs_search_files',
-      'fs_search_knowledge',
       'sessions_spawn',
       'surface_list',
       'surface_send',
@@ -218,7 +217,7 @@ describe('registerBuiltInTools', () => {
 
     registerToolsForTest(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search', 'fs_search_knowledge', 'memory_read', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
+    const readOnly = ['canvas_find_pages', 'canvas_read_page', 'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search', 'memory_read', 'memory_search', 'transcript_get', 'transcript_search', 'canvas_list_property_definitions', 'canvas_read_block'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -826,36 +825,31 @@ describe('memory_search tool', () => {
   });
 });
 
-describe('fs_search_knowledge tool', () => {
-  it('passes folder_path as pathPrefixes to the retrieval function', async () => {
-    const retrieval = createMockRetrieval({
-      retrieve: vi.fn(async () => [
-        { sourceType: 'file_chunk', sourceId: 'RF Guides/doc1.md', contextPrefix: 'RF Guides', text: 'scoped result', score: 0.8 },
-      ]),
-    });
+describe('fs_grep_search related passages', () => {
+  // Knowledge search folded into grep: plain-text searches also ask the index,
+  // scoped to the folder searched.
+  it('scopes the knowledge search to the folder searched', async () => {
+    const retrieval = createMockRetrieval({ retrieve: vi.fn(async () => []) });
     const toolsService = createMockToolsService();
     registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'fs_search_knowledge')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'fs_grep_search')!;
 
-    const result = await tool.handler({ query: 'test query', folder_path: 'RF Guides' }, createToken());
+    await tool.handler({ pattern: 'test query', path: 'RF Guides' }, createToken());
 
     expect(retrieval.retrieve).toHaveBeenCalledWith('test query', undefined, ['RF Guides/']);
-    expect(result.content).toContain('scoped result');
   });
 
-  it('omits pathPrefixes when folder_path is not provided', async () => {
-    const retrieval = createMockRetrieval({
-      retrieve: vi.fn(async () => [
-        { sourceType: 'page_block', sourceId: 'p1', contextPrefix: 'Overview', text: 'global result', score: 0.7 },
-      ]),
-    });
+  it('searches the whole workspace when no folder is given, and not for a regex', async () => {
+    const retrieval = createMockRetrieval({ retrieve: vi.fn(async () => []) });
     const toolsService = createMockToolsService();
     registerToolsForTest(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
-    const tool = toolsService.registeredTools.find(t => t.name === 'fs_search_knowledge')!;
+    const tool = toolsService.registeredTools.find(t => t.name === 'fs_grep_search')!;
 
-    await tool.handler({ query: 'test query' }, createToken());
-
+    await tool.handler({ pattern: 'test query' }, createToken());
     expect(retrieval.retrieve).toHaveBeenCalledWith('test query', undefined, undefined);
+
+    await tool.handler({ pattern: 'test.*query', is_regex: true }, createToken());
+    expect(retrieval.retrieve).toHaveBeenCalledTimes(1);
   });
 });
 

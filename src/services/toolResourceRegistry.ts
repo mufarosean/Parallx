@@ -15,6 +15,8 @@
 // legacy invoke paths, tests) are not gated — the registry hardens the agent
 // loop without breaking other surfaces.
 
+import { clearSourceHandles } from './sourceHandles.js';
+
 const MAX_SESSIONS = 64;
 const MAX_KEYS_PER_SESSION = 512;
 
@@ -55,9 +57,10 @@ export function wasResourceSeen(sessionId: string, resourceKey: string): boolean
   return _seenBySession.get(sessionId)?.has(resourceKey) ?? false;
 }
 
-/** Drop a session's registry (call on session delete). */
+/** Drop a session's registry (call on session delete), with the source labels its reads handed out. */
 export function clearResourceRegistry(sessionId: string): void {
   _seenBySession.delete(sessionId);
+  clearSourceHandles(sessionId);
 }
 
 /** Test-only: reset all registry state. */

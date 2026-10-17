@@ -1,0 +1,21 @@
+/* chatCitationMarks.css — citations in a rendered reply (chatCitationMarks.ts). */
+
+/* A citation that failed the source check (its text says Unverified, its title says why). */
+.parallx-chat-markdown a.parallx-chat-link--unverified {
+  color: var(--px-warning);
+  text-decoration: underline dashed;
+  text-decoration-color: var(--px-warning);
+  cursor: help;
+}
+
+/* A source label still being checked; the check turns it into its link. */
+.parallx-chat-markdown .parallx-cite-pending {
+  display: inline-block;
+  padding: 0 var(--px-space-1);
+  border-radius: var(--px-radius-sm);
+  background: var(--px-bg-inset);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
+  line-height: 1.5;
+  vertical-align: baseline;
+}

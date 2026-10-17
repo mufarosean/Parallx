@@ -86,7 +86,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'canvas_find_pages', 'canvas_read_page',
       'canvas_list_property_definitions', 'canvas_read_block',
       // Knowledge & memory & transcripts (read-only)
-      'fs_search_knowledge', 'memory_read', 'memory_search',
+      'memory_read', 'memory_search',
       'transcript_get', 'transcript_search',
       // Cron & surface (read-only introspection)
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
@@ -108,7 +108,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'fs_list_files', 'fs_read_file', 'fs_search_files', 'fs_grep_search',
       'canvas_find_pages', 'canvas_read_page',
       'canvas_list_property_definitions', 'canvas_read_block',
-      'fs_search_knowledge', 'memory_read', 'memory_search',
+      'memory_read', 'memory_search',
       'transcript_get', 'transcript_search',
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       'autonomy_log',

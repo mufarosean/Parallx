@@ -30,6 +30,7 @@ const EXEMPT_FILES = new Set([
   'widgets/chatWidget.css',         // Stylesheet
   'widgets/chatView.css',           // Stylesheet
   'widgets/chatTokenStatusBar.css', // Stylesheet
+  'rendering/chatCitationMarks.css', // Stylesheet
   'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
   'skills/defaultSkillContents.ts',       // Default skill file contents for /init (M45)
   'chatProgrammaticAccess.ts',            // M48 selection→AI bridge (thin ChatWidget wrapper)
@@ -72,6 +73,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'rendering/chatApproval.ts':      [],  // the one approval node (live prompt + transcript)
   'rendering/chatCodeActions.ts':   [],
   'rendering/chatContentParts.ts':  ['chatIcons', 'rendering/'],
+  'rendering/chatCitationMarks.ts': [],  // citation looks + parallx:// link checks
   'archivedRunViewer.ts':           ['rendering/'],  // M91 — read-only archived-run transcript viewer
   'rendering/chatDiffViewer.ts':    [],
   'rendering/chatListRenderer.ts':  ['chatIcons', 'rendering/'],
@@ -80,7 +82,8 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── tools/ — built-in tool implementations ──────────────────────────────
   'tools/builtInTools.ts':  ['tools/'],
-  'tools/fileTools.ts':     [],
+  'tools/fileTools.ts':     ['tools/'],         // sourceReading: live text as labelled blocks
+  'tools/sourceReading.ts': [],
   'tools/memoryTools.ts':   [],
   'tools/mindTools.ts':     [],                // living-system — mind_remember (the agent curates its own MIND)
   'tools/pageTools.ts':     ['tools/'],

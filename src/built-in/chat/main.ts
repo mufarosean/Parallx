@@ -1481,7 +1481,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // LanguageModelToolsService now (one decision owner, no unwired state);
     // setPermissionService above already forwarded the dependency.
 
-    // Build retrieval accessor for the fs_search_knowledge tool
+    // Build retrieval accessor for fs_read_file (passages of a large file) and fs_grep_search (related passages)
     const retrievalAccessor = retrievalService && indexingPipelineService
       ? {
         isReady: () => indexingPipelineService!.isInitialIndexComplete,

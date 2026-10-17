@@ -202,7 +202,7 @@ Follow these steps precisely. Read every target document in full.
 ## Step 1: Identify target documents
 
 Parse $ARGUMENTS to determine which documents to compare.
-Use \`fs_list_files\` and \`fs_search_knowledge\` to locate them.
+Use \`fs_list_files\` and \`fs_grep_search\` to locate them.
 If the same filename exists in multiple folders, identify ALL instances.
 
 ## Step 2: Read each document

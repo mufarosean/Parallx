@@ -21,6 +21,8 @@ import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
 import { parseMindMapInfo, renderMindMapSvg, coerceMindMapDirection } from './chatMindMap.js';
+import { citationMarks, markParallxLinks } from './chatCitationMarks.js';
+export { markParallxLinks, setChatLinkChecker, type ChatLinkCheck } from './chatCitationMarks.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { getFileTypeIcon, getPageIcon } from '../../../ui/iconRegistry.js';
 import type {
@@ -38,60 +40,6 @@ import type {
 } from '../../../services/chatTypes.js';
 
 const CHAT_MARKDOWN = _createChatMarkdownRenderer();
-
-// ── parallx:// link checks ─────────────────────────────────────────────
-//
-// A citation link that points nowhere must not look like one that works.
-// Chat installs a checker (the link's own kind decides whether its target
-// exists); every rendered parallx:// link is checked and a dead one is marked
-// and titled with the reason. Results are cached briefly, since a streaming
-// reply re-renders the same links many times.
-
-export type ChatLinkCheck = { readonly ok: true } | { readonly ok: false; readonly error: string };
-type ChatLinkChecker = (uri: string) => Promise<ChatLinkCheck>;
-
-let _linkChecker: ChatLinkChecker | undefined;
-const _linkCheckCache = new Map<string, { readonly at: number; readonly result: Promise<ChatLinkCheck> }>();
-const LINK_CHECK_TTL_MS = 15_000;
-const LINK_CHECK_CACHE_MAX = 200;
-
-/** Install (or clear) the checker that marks parallx:// links whose target is gone. */
-export function setChatLinkChecker(checker: ChatLinkChecker | undefined): void {
-  _linkChecker = checker;
-  _linkCheckCache.clear();
-}
-
-function _checkLink(href: string, checker: ChatLinkChecker): Promise<ChatLinkCheck> {
-  const now = Date.now();
-  const cached = _linkCheckCache.get(href);
-  if (cached && now - cached.at <= LINK_CHECK_TTL_MS) return cached.result;
-  // A checker that fails says nothing about the link: leave it unmarked.
-  const result = checker(href).catch((): ChatLinkCheck => ({ ok: true }));
-  _linkCheckCache.delete(href);
-  _linkCheckCache.set(href, { at: now, result });
-  while (_linkCheckCache.size > LINK_CHECK_CACHE_MAX) {
-    const oldest = _linkCheckCache.keys().next().value;
-    if (oldest === undefined) break;
-    _linkCheckCache.delete(oldest);
-  }
-  return result;
-}
-
-/** Check every parallx:// link in a rendered reply; mark the dead ones. */
-export function markParallxLinks(root: HTMLElement): Promise<void> {
-  const checker = _linkChecker;
-  if (!checker) return Promise.resolve();
-  const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href^="parallx://"]'));
-  return Promise.all(anchors.map(async (a) => {
-    const href = a.getAttribute('href');
-    if (!href) return;
-    const check = await _checkLink(href, checker);
-    if (check.ok) return;
-    a.classList.add('parallx-chat-link--broken');
-    a.setAttribute('aria-invalid', 'true');
-    a.title = `This link does not work: ${check.error}`;
-  })).then(() => undefined);
-}
 
 /**
  * A rendered part element that can bring itself up to date IN PLACE when its
@@ -875,6 +823,7 @@ function _createChatMarkdownRenderer(): MarkdownIt {
     token.attrSet('rel', 'noopener');
     return defaultLinkOpen(tokens, idx, options, env, self);
   };
+  markdown.use(citationMarks);
 
   return markdown;
 }

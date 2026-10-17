@@ -448,7 +448,7 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
   if (families.length > 0 || web.length > 0) { legend.push(`- extension families — ${[...families, ...web].join(', ')}. Read each description.`); }
 
   const routing: string[] = [];
-  if (fs) { routing.push('- A filesystem path (`src/foo.ts`, `docs/README.md`) → `fs_*` tools.'); }
+  if (fs) { routing.push('- A filesystem path (`src/foo.ts`, `docs/README.md`) → `fs_*` tools.'); } if (names.has('fs_read_file')) { routing.push('- What a document says (a PDF, a book, notes) → `fs_read_file`; for a large one pass `query` with what you are looking for. Never write a script to read a document.'); }
   if (canvas) {
     const never = present('fs_read_file', 'fs_write_file');
     routing.push(`- "page", "this page", a page title, or a UUID → \`canvas_*\` tools.${never.length > 0 ? ` Never call ${never.join(' / ')} on a canvas page UUID — UUIDs are not file paths.` : ''}`);
@@ -474,7 +474,6 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
 
   const specific: string[] = [];
   if (all('canvas_read_page', 'canvas_find_pages')) { specific.push('`canvas_read_page` over `canvas_find_pages` when you know the title'); }
-  if (all('fs_grep_search', 'fs_search_knowledge')) { specific.push('`fs_grep_search` over `fs_search_knowledge` for exact-text matches'); }
   const prefer = `When two tools could apply, prefer the more specific one${specific.length > 0 ? ` (${specific.join('; ')})` : ''}.`;
 
   const readBefore: string[] = [];
@@ -491,6 +490,7 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
   if (routing.length > 0) { lines.push('', 'Routing rules:', ...routing, prefer); }
   else { lines.push('', prefer); }
   if (readBefore.length > 0) { lines.push(`- **Read before you edit** — enforced by the tools: ${readBefore.join('; ')}. Edit against the CURRENT content you just read, never from memory of an earlier state.`); }
+  const labelling = present('fs_read_file', 'fs_grep_search', 'canvas_read_page'); if (labelling.length > 0) { lines.push(`- **Cite with source labels** — ${labelling.join(' / ')} return text in blocks labelled [S1], [S2]…. Put the label of the block a fact came from right after the sentence: "The tail factor is 1.05 [S3]." Every fact you take from a labelled block gets its label. Before your answer is shown, each label is checked against its block and becomes a link to that spot; never write a page, line or link for a labelled block yourself.`); }
   lines.push('', 'TOOLS.md (in the workspace, when present) carries workspace-specific usage guidance, not tool availability.');
   return lines.join('\n');
 }
@@ -524,8 +524,8 @@ export function buildLinkingSection(
     '`parallx://` URI so the user can click through.',
     ...(hasLinkCreate
       ? [
-        'Make every citation link with the `link_create` tool. It checks that the',
-        'target exists and returns the link to use:',
+        'Text a tool labelled [S1], [S2]… is cited by its label. Make every other citation',
+        'link with the `link_create` tool. It checks the target and returns the link to use:',
         '- Give the target and its parameters. To cite a passage, include the quoted',
         '  words: the tool finds where they are and returns `location` (for example',
         '  "page 13 of 30").',

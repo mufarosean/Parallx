@@ -12,13 +12,13 @@ accordingly so they never collide in the model's attention:
 Use the prefix to pick the right family before reading any description.
 
 ## Filesystem Skills
-- **fs_grep_search** — Exact-string / regex search across workspace files
+- **fs_grep_search** — Search the workspace: exact matches in files, plus
+  passages related by meaning from documents (PDF, DOCX, EPUB, notes) and
+  canvas pages.
 - **fs_search_files** — Find files by name pattern
-- **fs_search_knowledge** — Semantic (RAG) search using embeddings. Covers
-  all indexed content including PDFs, DOCX, EPUB, XLSX, and other rich
-  documents. Best tool for searching large documents.
-- **fs_read_file** — Read a workspace file on disk (text + PDF/DOCX/EPUB/XLSX).
-  For canvas pages, use `canvas_read_page` instead.
+- **fs_read_file** — Read a workspace file on disk (text + PDF/DOCX/EPUB/XLSX),
+  any size. A large file comes back as its start; pass `query` to get the
+  passages that answer it. For canvas pages, use `canvas_read_page` instead.
 - **fs_list_files** — List directory contents on disk
 - **fs_write_file** — Create or overwrite a workspace file. For canvas pages,
   use `canvas_create_page` or `canvas_edit_page` instead.
@@ -90,11 +90,11 @@ Use the prefix to pick the right family before reading any description.
 ### Filesystem
 - When context from files is already in the message (via automatic
   retrieval), use it directly — do not re-read the file.
-- Use `fs_search_knowledge` for conceptual questions ("how does auth
-  work?") and for large documents (books, reports).
-- Use `fs_grep_search` for exact string matches across workspace files
-  ("where is handleLogin defined?").
-- Use `fs_read_file` for small files or when you need the full content of
+- Use `fs_grep_search` to find where something is said or what the
+  documents say about a topic ("where is handleLogin defined?", "how does
+  Clark treat the tail?").
+- Use `fs_read_file` with `query` to find something inside a large
+  document (a book, a report), and without it for small files or the full content of
   a specific file.
 - File paths are always relative to the workspace root. Use forward
   slashes. No `./`, no `..`.

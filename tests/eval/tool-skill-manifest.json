@@ -123,15 +123,8 @@
     },
     {
       "id": "fs_grep_search",
-      "description": "Search file contents on disk by text or regex. For canvas page contents use canvas_find_pages.",
+      "description": "Search the workspace: exact text or regex matches in files, plus related passages by meaning from documents and canvas pages.",
       "paramsSchema": { "type": "object", "required": ["pattern"], "properties": { "pattern": { "type": "string" }, "path": { "type": "string" }, "is_regex": { "type": "boolean" }, "case_sensitive": { "type": "boolean" } } },
-      "source": "src/built-in/chat/tools/fileTools.ts",
-      "category": "search"
-    },
-    {
-      "id": "fs_search_knowledge",
-      "description": "Semantic (vector) search across BOTH canvas pages and workspace files (PDF/DOCX/EPUB/XLSX). Use source_filter for one surface.",
-      "paramsSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" }, "source_filter": { "type": "string", "enum": ["page_block", "file_chunk"] }, "scope": { "type": "string" } } },
       "source": "src/built-in/chat/tools/fileTools.ts",
       "category": "search"
     },
@@ -504,7 +497,7 @@
     {
       "id": "document-comparison",
       "description": "Compare two or more documents in detail across structure, content, claims, and data; produce a structured similarities/differences/contradictions output.",
-      "expectedToolChain": ["fs_search_knowledge", "fs_list_files", "fs_read_file"],
+      "expectedToolChain": ["fs_grep_search", "fs_list_files", "fs_read_file"],
       "source": "src/built-in/chat/skills/document-comparison/SKILL.md"
     },
     {

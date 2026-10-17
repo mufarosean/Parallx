@@ -4,7 +4,7 @@
 //   pageTools.ts — search_workspace, read_page, read_page_by_title, read_current_page,
 //                  list_pages, get_page_properties, create_page,
 //                  list_property_definitions, set_page_property, find_pages_by_property
-//   fileTools.ts — fs_list_files, fs_read_file, fs_search_files, fs_grep_search, fs_search_knowledge
+//   fileTools.ts — fs_list_files, fs_read_file, fs_search_files, fs_grep_search
 //   memoryTools.ts — memory_read, memory_search
 //   transcriptTools.ts — transcript_get, transcript_search
 //   writeTools.ts — fs_write_file, fs_edit_file, fs_delete_file
@@ -50,7 +50,6 @@ import {
   createReadFileTool,
   createSearchFilesTool,
   createGrepSearchTool,
-  createSearchKnowledgeTool,
 } from './fileTools.js';
 import {
   createMemoryGetTool,
@@ -116,9 +115,9 @@ export function registerBuiltInTools(
   const tools: IChatTool[] = [
     // ── File system tools ──
     createListFilesTool(fs),
-    createReadFileTool(fs),
+    createReadFileTool(fs, retrieval),
     createSearchFilesTool(fs),
-    createGrepSearchTool(fs),
+    createGrepSearchTool(fs, retrieval),
     createMemoryGetTool(fs, workspaceMemory),
     createMemorySearchTool(canonicalMemorySearch),
     createMemoryEditTool(workspaceMemory),
@@ -131,8 +130,6 @@ export function registerBuiltInTools(
     createDeleteFileTool(fs, writer, workspaceRoot),
     // ── Terminal tool ──
     createRunCommandTool(terminal, workspaceRoot),
-    // ── RAG tools ──
-    createSearchKnowledgeTool(retrieval, fs),
     // ── Surface routing tools ──
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),
