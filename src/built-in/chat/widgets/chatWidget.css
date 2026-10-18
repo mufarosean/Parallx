@@ -900,6 +900,12 @@
   list-style-type: decimal;
 }
 
+/* Numbers hang quietly in the gutter; a step's bold lead-in carries it. */
+.parallx-chat-markdown ol > li::marker {
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .parallx-chat-markdown li {
   margin-bottom: 3px;
   padding-left: 2px;
@@ -943,44 +949,16 @@
   border-radius: 2px;
 }
 
-/* ── Callouts / Alerts ([!NOTE], [!IMPORTANT], etc.) ── */
+/* ── Callouts ([!NOTE], [!WARNING], ...): a coloured lead-in word that
+   opens the paragraph ("Watch out."), never a box or an icon header ── */
 
-.parallx-chat-markdown .markdown-alert {
-  padding: 6px 12px;
-  margin: 8px 0;
-  border-left: 4px solid;
-  border-radius: var(--px-radius-sm);
-  background: color-mix(in srgb, var(--px-text) 3%, transparent);
-}
-
-.parallx-chat-markdown .markdown-alert-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  margin-bottom: 2px;
-}
-
-.parallx-chat-markdown .markdown-alert-title svg {
-  width: 14px;
-  height: 14px;
-  fill: currentColor;
-}
-
-.parallx-chat-markdown .markdown-alert-note { border-left-color: var(--px-info); }
-.parallx-chat-markdown .markdown-alert-note .markdown-alert-title { color: var(--px-info); }
-
-.parallx-chat-markdown .markdown-alert-tip { border-left-color: var(--px-success); }
-.parallx-chat-markdown .markdown-alert-tip .markdown-alert-title { color: var(--px-success); }
-
-.parallx-chat-markdown .markdown-alert-important { border-left-color: var(--px-accent); }
-.parallx-chat-markdown .markdown-alert-important .markdown-alert-title { color: var(--px-accent-text); }
-
-.parallx-chat-markdown .markdown-alert-warning { border-left-color: var(--px-warning); }
-.parallx-chat-markdown .markdown-alert-warning .markdown-alert-title { color: var(--px-warning); }
-
-.parallx-chat-markdown .markdown-alert-caution { border-left-color: var(--px-danger); }
-.parallx-chat-markdown .markdown-alert-caution .markdown-alert-title { color: var(--px-danger); }
+.parallx-chat-markdown .markdown-alert { margin: 10px 0; }
+.parallx-chat-markdown .markdown-alert-lead { font-weight: 600; }
+.parallx-chat-markdown .markdown-alert-note .markdown-alert-lead { color: var(--px-info); }
+.parallx-chat-markdown .markdown-alert-tip .markdown-alert-lead { color: var(--px-success); }
+.parallx-chat-markdown .markdown-alert-important .markdown-alert-lead { color: var(--px-accent-text); }
+.parallx-chat-markdown .markdown-alert-warning .markdown-alert-lead { color: var(--px-warning); }
+.parallx-chat-markdown .markdown-alert-caution .markdown-alert-lead { color: var(--px-danger); }
 
 .parallx-chat-markdown a {
   color: var(--vscode-textLink-foreground, #3794ff);
@@ -1065,20 +1043,20 @@
   font-variant-numeric: tabular-nums;
 }
 
-.parallx-chat-markdown thead {
-  background: var(--vscode-editor-inactiveSelectionBackground, rgba(127, 127, 127, 0.12));
-}
-
+/* Hairline tables: a rule under the header, a divider between rows, no
+   grid and no header fill. */
 .parallx-chat-markdown th,
 .parallx-chat-markdown td {
   min-width: 6ch;
-  padding: 6px 10px;
-  border: 1px solid var(--vscode-widget-border, #454545);
+  padding: 7px 14px 7px 0;
+  border-bottom: 1px solid var(--px-divider);
   text-align: left;
   vertical-align: top;
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+.parallx-chat-markdown th { font-weight: 600; border-bottom-color: var(--px-border-strong); }
 
 /* ── Input Area Wrapper ── */
 

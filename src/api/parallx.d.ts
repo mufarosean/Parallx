@@ -1945,6 +1945,41 @@ export namespace chat {
    * input no longer accepts the type.
    */
   export function registerDropHandler(handler: ChatDropHandler): IDisposable;
+
+  /**
+   * A form an AI answer can take while the tool runs. A fence the model
+   * writes in this form's name (```name) draws through `render` instead of
+   * as code, and the model is taught it through `hint`. Disposed (or the
+   * tool turned off), the model is no longer told about it and its fences
+   * show as code again.
+   */
+  export function registerAnswerForm(form: ChatAnswerForm): IDisposable;
+}
+
+/** What an answer form gets to draw with. */
+export interface ChatAnswerFormContext {
+  /** Inline markdown (bold, italic, code, math, links) as safe HTML. */
+  renderInline(md: string): string;
+  /** TeX as HTML, where the host has it. */
+  renderMath?(tex: string): string;
+}
+
+/** A form an AI answer can take (`parallx.chat.registerAnswerForm`). */
+export interface ChatAnswerForm {
+  /** The fence language: lowercase letters, digits and dashes. */
+  readonly name: string;
+  readonly aliases?: readonly string[];
+  /** What the model is told: when to use it and its syntax, with an example (markdown). */
+  readonly hint: string;
+  /**
+   * Source text in, HTML out; null when the source is not one (the fence then
+   * shows as code). Escape the model's text or pass it through `renderInline`.
+   * Controls are wired in `hydrate`, made with `parallx.ui`.
+   */
+  render(src: string, options: string, ctx: ChatAnswerFormContext): string | null;
+  hydrate?(root: HTMLElement, hydration: { readonly src: string; readonly info: string; readonly onSourceChange?: (src: string) => void }): void;
+  /** The page block (this tool's `parallx.canvas.registerBlock`) Save To Page makes, its config `{ src, info }`. */
+  readonly saveAs?: { readonly blockType: string; title?(src: string): string };
 }
 
 /** A handler for a tool's own drag type dropped on the chat input. */

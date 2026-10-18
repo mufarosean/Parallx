@@ -1,0 +1,301 @@
+/* answerForms.css — the answer forms (ui/answerForms.ts, answerFormsCore.ts).
+   Typographic, inside the prose: no tinted boxes, no icon headers. Colour
+   comes from the --px tokens only, so every form follows the theme. */
+
+.px-af-host {
+  margin: 14px 0;
+}
+
+.px-af-host:first-child { margin-top: 0; }
+.px-af-host:last-child { margin-bottom: 0; }
+
+.px-af-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.px-af-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.px-af-save .px-button,
+.px-af-worked__nav .px-button {
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
+}
+
+.px-af-worked__nav .px-af-worked__next { color: var(--px-accent-text); }
+
+/* ── chart ── */
+
+.px-af-chart { margin: 0; }
+
+.px-af-chart__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.px-af-chart__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.px-af-chart__title { font-weight: 600; color: var(--px-text); }
+.px-af-chart__caption { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+
+.px-af-chart__bars {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 8px;
+}
+
+.px-af-chart__label {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.px-af-chart__cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.px-af-chart__bar {
+  flex: 0 0 auto;
+  height: 8px;
+  width: calc(var(--px-af-w, 100%) * 0.8);
+  max-width: 360px;
+  border-radius: 1px;
+  background: var(--px-text-faint);
+}
+
+.px-af-chart__bar.is-strong { background: var(--px-accent); }
+
+.px-af-chart__value {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.px-af-chart__value.is-strong { color: var(--px-text); font-weight: 600; }
+
+.px-af-chart__note {
+  margin: 10px 0 0;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+}
+
+/* ── timeline: a date gutter, a rail with dots, what happens ── */
+
+/* Prefixed with the host: chat's own list rules (indent, item margins) must not reach the form. */
+.px-af-host .px-af-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: max-content 14px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.px-af-host .px-af-timeline__item {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: stretch;
+}
+
+.px-af-timeline__date {
+  padding: 6px 0;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.px-af-timeline__rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.px-af-timeline__rail::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--px-border-strong);
+}
+
+.px-af-timeline__item:first-child .px-af-timeline__rail::before { top: 50%; }
+.px-af-timeline__item:last-child .px-af-timeline__rail::before { bottom: 50%; }
+
+.px-af-timeline__dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid var(--px-text);
+  background: var(--px-bg);
+}
+
+.px-af-timeline__what { padding: 6px 0 6px 2px; color: var(--px-text); }
+
+.px-af-timeline__item.is-done .px-af-timeline__dot { border-color: var(--px-text-muted); }
+.px-af-timeline__item.is-done .px-af-timeline__what { color: var(--px-text-muted); }
+.px-af-timeline__item.is-key .px-af-timeline__dot { background: var(--px-text); }
+.px-af-timeline__item.is-key .px-af-timeline__what { font-weight: 600; }
+.px-af-timeline__item.is-today .px-af-timeline__dot { width: 9px; height: 9px; border: 0; background: var(--px-accent); }
+.px-af-timeline__item.is-today .px-af-timeline__date,
+.px-af-timeline__item.is-today .px-af-timeline__what { color: var(--px-accent-text); font-weight: 600; }
+
+/* ── takeaway: one sentence, larger, under a short accent rule ── */
+
+.px-af-takeaway {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.px-af-takeaway::before {
+  content: '';
+  width: 24px;
+  height: 2px;
+  background: var(--px-accent);
+}
+
+.px-af-takeaway p {
+  margin: 0;
+  font-size: var(--px-text-md);
+  line-height: 1.45;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--px-text);
+}
+
+/* ── live: editable numbers in the sentence, a worked sum under it ── */
+
+.px-af-live { display: flex; flex-direction: column; gap: 12px; }
+.px-af-live__sentence { margin: 0; line-height: 1.7; }
+
+.px-af-live__in {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--px-accent-text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed var(--px-accent);
+  border-radius: 0;
+  padding: 0 1px;
+  margin: 0 1px;
+  text-align: center;
+}
+
+.px-af-live__in:hover { background: var(--px-accent-soft); }
+
+.px-af-live__in:focus-visible {
+  outline: var(--px-focus-width) solid var(--px-accent);
+  outline-offset: 2px;
+  background: var(--px-accent-soft);
+  border-bottom-style: solid;
+}
+
+.px-af-live__out { font-variant-numeric: tabular-nums; }
+.px-af-live__out.is-result { font-weight: 600; }
+
+.px-af-live__sum {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  row-gap: 6px;
+  max-width: 360px;
+}
+
+.px-af-live__op { color: var(--px-text-muted); }
+.px-af-live__label { color: var(--px-text-secondary); }
+.px-af-live__value { text-align: right; font-variant-numeric: tabular-nums; }
+.px-af-live__label.is-formula { color: var(--px-text-muted); font-size: var(--px-text-sm); }
+
+.px-af-live__op.is-result,
+.px-af-live__label.is-result,
+.px-af-live__value.is-result {
+  border-top: 1px solid var(--px-border-strong);
+  padding-top: 6px;
+}
+
+.px-af-live__label.is-result { color: var(--px-text); }
+.px-af-live__label.is-final,
+.px-af-live__value.is-final { font-weight: 600; }
+.px-af-live__gap { grid-column: 1 / -1; height: 4px; }
+
+.px-af-live__hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+
+/* ── worked: numbered steps, shown one at a time ── */
+
+.px-af-host .px-af-worked__steps {
+  margin: 0;
+  padding-left: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.px-af-host .px-af-worked__step { margin: 0; color: var(--px-text-secondary); padding-left: 2px; }
+.px-af-worked__step::marker { color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.px-af-worked__step.is-current { color: var(--px-text); }
+.px-af-worked__step.is-current::marker { color: var(--px-accent-text); }
+.px-af-worked__title { font-weight: 600; color: var(--px-text); }
+
+.px-af-worked__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0 22px;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.px-af-worked__nav [hidden] { display: none; }
+
+/* ── a form kept on a page (chat's page blocks): its source, when edited ── */
+
+.px-af-block__source {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 140px;
+  padding: 8px 10px;
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-sm);
+  line-height: 1.5;
+  color: var(--px-text);
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  resize: vertical;
+}
+
+.px-af-block__source:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
+.px-af-block__hint { margin: 6px 0 0; font-size: var(--px-text-xs); color: var(--px-text-muted); }

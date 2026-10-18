@@ -18,6 +18,7 @@ import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
 import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 import type { ToolCategory } from '../services/chatTypes.js';
 import { assistantTimeZone, formatLocalDate, formatLocalDateTime, isValidTimeZone } from '../services/localTime.js';
+import { getAnswerForms } from '../ui/answerForms.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -142,6 +143,8 @@ export interface IOpenclawSystemPromptParams {
    * a new extension contract makes the AI aware of it with zero core changes.
    */
   readonly linkContracts?: readonly IOpenclawLinkContractDescriptor[];
+  /** The answer forms to teach; default: every form registered now. */
+  readonly answerForms?: readonly { readonly name: string; readonly hint: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -248,9 +251,11 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
     sections.push(buildLinkingSection(params.linkContracts, params.tools.some((t) => t.name === 'link_create')));
   }
 
-  // 3c. M102 — Concept maps. Unconditional: this is a rendering capability of
-  //     the reply itself, not a tool, so there is nothing to gate on.
-  sections.push(buildConceptMapSection());
+  // 3c. Answer forms (ui/answerForms): what a reply can draw besides
+  //     markdown. Only the forms registered now, so a tool that is off is
+  //     never mentioned; the concept map is one of the core forms.
+  const forms = params.answerForms ?? getAnswerForms();
+  if (forms.length > 0) sections.push(buildAnswerFormsSection(forms));
 
   // 5. Context engine addition (upstream: systemPromptAddition from AssembleResult).
   //    Holds retrieved/assembled context for the turn. Placed after the
@@ -550,6 +555,24 @@ export function buildLinkingSection(
 }
 
 /**
+ * Answer forms: what a reply can draw besides markdown (ui/answerForms).
+ * Each form brings its own teaching; this adds the frame, which says that
+ * plain markdown already has a considered look and that most answers need
+ * no form at all (left to itself a model decorates every answer).
+ */
+export function buildAnswerFormsSection(forms: readonly { readonly name: string; readonly hint: string }[]): string {
+  return [
+    '## Answer forms',
+    'Your reply is markdown and reads best as prose. Plain markdown already has a considered look: write steps as a',
+    'numbered list with a bold lead-in (`1. **Set the budget.** Then...`), warnings and asides as `> [!WARNING]`',
+    'or `> [!NOTE]` (also TIP, IMPORTANT, CAUTION), a comparison as a table.',
+    'A fenced block in one of the forms below draws as that form, inside the prose. Use one only where it shows',
+    'something prose cannot; most answers need none, and one reply rarely needs more than two. Introduce each in a sentence.',
+    ...forms.flatMap((f) => ['', f.hint.trim()]),
+  ].join('\n');
+}
+
+/**
  * Workspace context section.
  *
  * Combines:
@@ -558,84 +581,6 @@ export function buildLinkingSection(
  *
  * Upstream: resolveBootstrapContextForRun from bootstrap-files.ts:47-118
  */
-/**
- * Concept maps.
- *
- * A rendering capability of the reply, not a tool — a ```mindmap fence in the
- * answer draws as a small diagram. The section exists because the model will
- * never reach for a syntax nothing told it about; the same reasoning as the
- * Memory and Delegation sections, which went unused until something taught
- * WHEN to use them.
- *
- * Two halves carry the weight. The "when NOT to" half: left to itself a
- * model will decorate every answer with a diagram, and a map of things that
- * were already a list is noise that costs the reader more than it gives.
- * The "one question per level" half: left to itself a model ASSOCIATES (an
- * assumption, an example and a related method all under one node), which
- * draws a web, not a hierarchy. Making it name the question each sibling
- * set answers is what turns association into decomposition; unverified on
- * the local models as of 2026-09-14, so judge it on real maps.
- */
-export function buildConceptMapSection(): string {
-  return [
-    '## Concept maps',
-    'A fenced ```mindmap block in your reply renders as a small diagram.',
-    'Its syntax is an indented list — indentation is the only thing that',
-    'matters, and a child is any line indented further than the line above:',
-    '',
-    '```mindmap',
-    'Reserve risk',
-    '  Parameter risk',
-    '    every year shares the same estimated factors',
-    '    does not diversify across years',
-    '  Process risk',
-    '    randomness left in future development',
-    '    averages out across years',
-    '```',
-    '',
-    'A bare ```mindmap draws radially: the first line is the centre card',
-    'and its branches grow out on both sides, so give a map ONE root with',
-    'three to seven branches and the details under those. Write',
-    '```mindmap tree for a left-to-right tree (several roots, or a chain)',
-    'and ```mindmap vertical for a top-down tree (wide, shallow maps).',
-    'A box is markdown: full sentences, **bold**, *italic*, `code`, ~~strike~~,',
-    'inline $LaTeX$ (renders as real math). Long text wraps and is never cut.',
-    'For several lines in ONE box write \\n inside its line: bullets',
-    '(`**Checks**\\n- means add\\n- SE between floor and sum`), numbered',
-    'items, # headings, > quotes and $$display math$$ all render. Keep each',
-    'box to one idea; the hierarchy still comes from the indentation.',
-    '',
-    'Use one when the answer is about how several ideas RELATE — what depends',
-    'on what, what splits into what, how two things differ and where they',
-    'meet. Draw the map first, then explain it in prose; the map is the',
-    'skeleton of the explanation, never a replacement for one.',
-    '',
-    'Do NOT use one for a sequence of steps, a plain list, a comparison of',
-    'two things, or anything with fewer than four nodes. Prose is better for',
-    'all of those, and a diagram of something that was already a list makes',
-    'the reply longer without making it clearer. Most answers need no map.',
-    '',
-    'Build it top-down, ONE QUESTION PER LEVEL. The first line is the topic.',
-    'Decide what single question its branches answer (what are its parts,',
-    'its kinds, its steps, its assumptions, its consequences) and every',
-    'branch answers that question and nothing else. Under each branch,',
-    'again one question. Siblings are parallel: the same kind of thing, the',
-    'same grammar, no overlap, and together they cover the parent. A child',
-    'sits under its parent because the parent CONTAINS it, never because it',
-    'reminds you of it; a node that would fit under another parent is in the',
-    'wrong place. Order siblings by the logic (sequence, importance, the',
-    'source\'s order), never by the order they occurred to you. A branch with',
-    'one child is not a branch: merge it up. Before writing the nodes, name',
-    'the question for each level to yourself; if you cannot name it, what',
-    'you have is a list of associations, and prose will serve better.',
-    '',
-    'Shape: three to seven branches, two to five leaves under each, three',
-    'levels at most, under about 20 nodes. Branches are named dimensions;',
-    'leaves are short claims, not sentences. The reader can click any node',
-    'to ask a follow-up about it.',
-  ].join('\n');
-}
-
 export function buildWorkspaceSection(
   bootstrapFiles: readonly IBootstrapFile[],
   workspaceDigest: string,

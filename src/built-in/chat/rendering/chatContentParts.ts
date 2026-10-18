@@ -20,7 +20,9 @@ import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
-import { parseMindMapInfo, renderMindMapSvg, coerceMindMapDirection } from './chatMindMap.js';
+import { coerceMindMapDirection } from './chatMindMap.js';
+import { hydrateAnswerForms, renderAnswerForm, type AnswerFormContext } from '../../../ui/answerForms.js';
+import { registerCoreAnswerForms } from '../../../ui/answerFormsCore.js';
 import { citationMarks, markParallxLinks } from './chatCitationMarks.js';
 export { markParallxLinks, setChatLinkChecker, type ChatLinkCheck } from './chatCitationMarks.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
@@ -39,7 +41,19 @@ import type {
   IChatReferenceContent,
 } from '../../../services/chatTypes.js';
 
+registerCoreAnswerForms();
 const CHAT_MARKDOWN = _createChatMarkdownRenderer();
+
+const ALERT_LEADS: Readonly<Record<string, string>> = {
+  note: 'Note.', tip: 'Tip.', important: 'Important.', warning: 'Watch out.', caution: 'Careful.',
+};
+
+/** A callout's lead-in: its own title when the model wrote one, else the type's word. */
+function _alertLead(type: string, title: string, renderInline: (md: string) => string): string {
+  const t = title.trim();
+  if (!t || t.toLowerCase() === type.toLowerCase()) return ALERT_LEADS[type.toLowerCase()] ?? `${type}.`;
+  return renderInline(/[.!?:]$/.test(t) ? t : `${t}.`);
+}
 
 /**
  * A rendered part element that can bring itself up to date IN PLACE when its
@@ -128,7 +142,9 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
     _autoLinkSourceMentions(el, part.citations);
   }
 
-  // make concept-map nodes ask their own follow-up question.
+  // answer forms get their controls (live numbers, steps, Save To Page);
+  // concept-map nodes ask their own follow-up question.
+  hydrateAnswerForms(el, { save: true });
   _wireMindMapNodes(el);
 
   // a citation link whose target is gone is marked, not left looking live.
@@ -775,45 +791,39 @@ function _createChatMarkdownRenderer(): MarkdownIt {
   markdown.use(markdownItMark);
   markdown.use(MarkdownItGitHubAlerts, { markers: '*' });
 
-  // Run inline rules on callout titles (plugin inserts raw text)
-  markdown.renderer.rules.alert_open = (tokens, idx) => {
-    const { title, type, icon } = tokens[idx].meta;
-    const renderedTitle = markdown.renderInline(title);
-    return `<div class="markdown-alert markdown-alert-${type}"><p class="markdown-alert-title">${icon}${renderedTitle}</p>`;
+  // A callout is a coloured lead-in word that opens its first paragraph
+  // ("Watch out." for a warning), not a box with an icon header.
+  type AlertEnv = { alertLead?: string };
+  markdown.renderer.rules.alert_open = (tokens, idx, _options, env: AlertEnv) => {
+    const { title, type } = tokens[idx].meta;
+    const lead = `<span class="markdown-alert-lead">${_alertLead(String(type), String(title ?? ''), (t) => markdown.renderInline(t))}</span> `;
+    const opensParagraph = tokens[idx + 1]?.type === 'paragraph_open';
+    if (opensParagraph) env.alertLead = lead;
+    return `<div class="markdown-alert markdown-alert-${type}">${opensParagraph ? '' : `<p>${lead}</p>`}`;
+  };
+  const defaultParagraphOpen = markdown.renderer.rules.paragraph_open
+    ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  markdown.renderer.rules.paragraph_open = (tokens, idx, options, env: AlertEnv, self) => {
+    const lead = env.alertLead;
+    env.alertLead = undefined;
+    return defaultParagraphOpen(tokens, idx, options, env, self) + (lead ?? '');
   };
 
   _installKatexRules(markdown);
 
-  // a ```mindmap fence renders as a concept map instead of code. Model
-  // prose reaches markdown-it as one blob (codeBlock() parts are an explicit
-  // participant API, not a split of the text), so overriding `fence` is
-  // enough — no custom block rule needed. Every other language falls through
-  // to the default renderer untouched.
+  // A fence whose language names an answer form (```chart, ```live,
+  // ```mindmap...; ui/answerForms) draws as that form instead of code.
+  // Model prose reaches markdown-it as one blob, so overriding `fence` is
+  // enough. Any other language, or a form whose source is not one, falls
+  // through to the default renderer untouched.
+  const formContext: AnswerFormContext = {
+    renderInline: (md) => markdown.renderInline(md),
+    renderMath: (tex) => katex.renderToString(tex, { throwOnError: false }),
+  };
   const defaultFence = markdown.renderer.rules.fence
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
-  markdown.renderer.rules.fence = (tokens, idx, options, env, self) => {
-    const info = tokens[idx].info.trim().toLowerCase();
-    if (info === 'mindmap' || info === 'concept-map' || info.startsWith('mindmap ') || info.startsWith('concept-map ')) {
-      const src = tokens[idx].content;
-      const { dir } = parseMindMapInfo(info);
-      const html = renderMindMapSvg(src, {
-        dir,
-        renderMath: (tex) => katex.renderToString(tex, { throwOnError: false }),
-      });
-      // A rendered map (not the fallback) grows the save affordance: the
-      // outline is the payload, so the button carries it verbatim.
-      if (html.startsWith('<div class="parallx-mindmap"')) {
-        return html.replace(
-          /<\/div>$/,
-          `<button type="button" class="parallx-mindmap__save" `
-          + `data-mindmap-src="${encodeURIComponent(src)}" data-mindmap-dir="${dir}">`
-          + `Save To Canvas</button></div>`,
-        );
-      }
-      return html;
-    }
-    return defaultFence(tokens, idx, options, env, self);
-  };
+  markdown.renderer.rules.fence = (tokens, idx, options, env, self) =>
+    renderAnswerForm(tokens[idx].info, tokens[idx].content, formContext) ?? defaultFence(tokens, idx, options, env, self);
 
   const defaultLinkOpen = markdown.renderer.rules.link_open
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));

@@ -79,6 +79,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'rendering/chatListRenderer.ts':  ['chatIcons', 'rendering/'],
   'rendering/chatMindMap.ts':       [],  // M102 — pure parse/layout/render, imports nothing
   'rendering/chatTaskCards.ts':     [],
+  'rendering/answerFormBlocks.ts':  [],  // chat's page blocks + step command for ui/answerForms
 
   // ── tools/ — built-in tool implementations ──────────────────────────────
   'tools/builtInTools.ts':  ['tools/'],

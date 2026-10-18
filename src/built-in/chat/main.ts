@@ -13,7 +13,7 @@ import { readToolIntent } from '../../services/toolIntent.js';
 import { buildApprovalNode } from './rendering/chatApproval.js';
 import { setChatLinkChecker } from './rendering/chatContentParts.js';
 import { appDateString, appDateTimeString } from '../../services/localTime.js';
-import type { EditApplyEventDetail } from './chatTypes.js';
+import type { EditApplyEventDetail, IBuiltInToolFileWriter, IBuiltInToolFileSystem } from './chatTypes.js';
 import { commandPrefix } from '../../services/commandRules.js';
 import { ALWAYS_REQUIRE_CONFIRMATION } from '../../services/permissionService.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
@@ -38,7 +38,7 @@ import { createOpenclawCommandRegistry } from '../../openclaw/openclawDefaultRun
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import { createPlanUpdateTool, formatSessionPlan } from './tools/planTools.js';
 import { clearResourceRegistry } from '../../services/toolResourceRegistry.js';
-import type { IBuiltInToolFileWriter } from './chatTypes.js';
+import { registerAnswerFormContributions, type AnswerFormApi } from './rendering/answerFormBlocks.js';
 import {
   ILanguageModelsService,
   IChatService,
@@ -117,7 +117,6 @@ import {
 } from '../../openclaw/openclawSubagentExecutor.js';
 import { IEditorService, ICommandService } from '../../services/serviceTypes.js';
 import { IIntrospectionService } from '../../services/introspectionService.js';
-import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';
@@ -329,6 +328,7 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
+  context.subscriptions.push(...registerAnswerFormContributions(api as unknown as AnswerFormApi)); // ui/answerForms
 
   // Edit mode's Accept: the proposal card dispatches parallx-edit-apply; a
   // page-level proposal is applied through canvas.applyEditProposal (which

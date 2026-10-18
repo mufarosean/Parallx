@@ -58,7 +58,7 @@ import {
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
-import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js';
+import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkCheck, type LinkCheckOptions, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
@@ -324,6 +324,8 @@ export interface ParallxApiObject {
      * attach, `resolve` says what to attach (`paths`) or what to tell the user.
      */
     registerDropHandler(handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }): IDisposable;
+    /** A form an answer can take (a fence the model writes, drawn instead of code); ui/answerForms.ts. */
+    registerAnswerForm(form: Omit<AnswerForm, 'ownerToolId'>): IDisposable;
   } | undefined;
   /** Per-extension isolated database (external extensions only). */
   readonly database: {
@@ -408,6 +410,7 @@ export function createToolApi(
 ): { api: ParallxApiObject; dispose: () => void } {
   const toolId = toolDescription.manifest.id;
   const subscriptions: IDisposable[] = [];
+  const keep = (d: IDisposable): IDisposable => { subscriptions.push(d); return d; };
 
   // Per-tool subscriptions to global emitters are tracked for cleanup.
   // The emitters themselves are module-level singletons (see above).
@@ -1003,17 +1006,9 @@ export function createToolApi(
           registerTool: (name: string, tool: any) => chatBridge.registerTool(name, tool),
           // A slash command or a skill this tool brings to the chat while it
           // runs; deactivation removes them (subscriptions).
-          registerSlashCommand: (cmd: { name: string; description: string; promptTemplate: string }) => {
-            const d = registerContributedSlashCommand({ ...cmd, ownerToolId: toolId });
-            subscriptions.push(d);
-            return d;
-          },
-          registerSkill: (content: string) => {
-            const name = String(parseSkillFrontmatter(String(content ?? ''))?.frontmatter?.name ?? '');
-            const d = registerContributedSkill(name, { content: String(content), ownerToolId: toolId });
-            subscriptions.push(d);
-            return d;
-          },
+          registerSlashCommand: (cmd: { name: string; description: string; promptTemplate: string }) => keep(registerContributedSlashCommand({ ...cmd, ownerToolId: toolId })),
+          registerSkill: (content: string) => keep(registerContributedSkill(String(parseSkillFrontmatter(String(content ?? ''))?.frontmatter?.name ?? ''), { content: String(content), ownerToolId: toolId })),
+          registerAnswerForm: (form: Omit<AnswerForm, 'ownerToolId'>) => keep(registerAnswerForm({ ...form, ownerToolId: toolId })),
           registerDropHandler: (handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }) => {
             const d = registerChatDropHandler({
               mimeType: handler?.mimeType,

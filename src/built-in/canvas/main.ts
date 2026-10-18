@@ -29,8 +29,9 @@ import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { buildPageEmbedWidget } from './dashboardWidgets.js';
 import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema.js';
 import { CanvasDataService } from './canvasDataService.js';
-import { ICanvasDataService } from './canvasTypes.js';
-import { PageChangeKind } from './canvasTypes.js';
+import { ICanvasDataService, PageChangeKind } from './canvasTypes.js';
+import { getContributedBlock } from '../../api/bridges/canvasBlocksBridge.js';
+import { toolBlockContent } from './extensions/toolBlockNode.js';
 import type { IPageSummary, IPageSummaryTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
@@ -663,31 +664,30 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       captureNoteToCanvas(api, (args[0] ?? {}) as CaptureDetail),
     ),
   );
-  // canvas.saveConceptMap — chat's concept map becomes a living block on
-  // a fresh page: outline in, editable diagram out (ui/conceptMap).
-  context.subscriptions.push(
-    api.commands.registerCommand('canvas.saveConceptMap', async (...args: unknown[]) => {
-      const src = typeof args[0] === 'string' ? args[0].trim() : '';
-      if (!src || !_dataService) return null;
-      try {
-        const { parseMindMap, coerceMindMapDirection } = await import('../../ui/conceptMap.js');
-        const dir = coerceMindMapDirection(args[1]);
-        const roots = parseMindMap(src);
-        const title = roots[0]?.label || 'Concept Map';
-        const page = await _dataService.createPage(null, title);
-        await _dataService.flushContentSave(page.id, {
-          type: 'doc',
-          content: [{ type: 'conceptMap', attrs: { src, dir } }],
-        });
-        await openPageInEditor(page.id);
-        return page.id;
-      } catch (err) {
-        console.error('[Canvas] saveConceptMap failed:', err);
-        return null;
-      }
-    }),
-  );
-
+  // A fresh page holding one block, opened: a concept map from its outline, or (newPageWithBlock:
+  // typeId, config, title?) a block a running tool contributed through api.canvas.registerBlock.
+  const newPageWith = async (title: string, node: { type: string; attrs: Record<string, unknown> }): Promise<string | null> => {
+    if (!_dataService) return null;
+    try {
+      const page = await _dataService.createPage(null, title);
+      await _dataService.flushContentSave(page.id, { type: 'doc', content: [node] });
+      await openPageInEditor(page.id);
+      return page.id;
+    } catch (err) { console.error('[Canvas] Saving to a new page failed:', err); return null; }
+  };
+  context.subscriptions.push(api.commands.registerCommand('canvas.saveConceptMap', async (...args: unknown[]) => {
+    const src = typeof args[0] === 'string' ? args[0].trim() : '';
+    if (!src) return null;
+    const { parseMindMap, coerceMindMapDirection } = await import('../../ui/conceptMap.js');
+    return newPageWith(parseMindMap(src)[0]?.label || 'Concept Map', { type: 'conceptMap', attrs: { src, dir: coerceMindMapDirection(args[1]) } });
+  }));
+  context.subscriptions.push(api.commands.registerCommand('canvas.newPageWithBlock', async (...args: unknown[]) => {
+    const c = getContributedBlock(String(args[0] ?? ''));
+    if (!c) return null;
+    const node = toolBlockContent(c);
+    const config = args[1] && typeof args[1] === 'object' ? args[1] as Record<string, unknown> : {};
+    return newPageWith(String(args[2] ?? '') || c.registration.label, { ...node, attrs: { ...node.attrs, config: { ...(node.attrs.config as object), ...config } } });
+  }));
   context.subscriptions.push(
     api.commands.registerCommand('canvas.openPage', async (...args: unknown[]) => {
       const pageId = typeof args[0] === 'string' ? args[0] : '';
