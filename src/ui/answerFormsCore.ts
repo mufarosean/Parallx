@@ -21,6 +21,7 @@ import {
 } from './answerFormMath.js';
 import { registerAnswerForm, type AnswerForm, type AnswerFormContext, type AnswerFormHydration } from './answerForms.js';
 import type { IDisposable } from '../platform/lifecycle.js';
+import { MINI_APP_BLOCK, MINI_APP_FORM } from './answerFormApp.js';
 
 /** The page block each savable core form becomes (chat registers them). */
 export const CORE_FORM_BLOCKS = {
@@ -28,6 +29,7 @@ export const CORE_FORM_BLOCKS = {
   timeline: 'parallx.chat.timeline',
   live: 'parallx.chat.live',
   worked: 'parallx.chat.worked',
+  app: MINI_APP_BLOCK,
 } as const;
 
 /** The command a worked solution's Next Step and Start Over run (chat registers it). */
@@ -498,6 +500,7 @@ export const CORE_ANSWER_FORMS: readonly Omit<AnswerForm, 'ownerToolId'>[] = [
     hydrate: hydrateWorked,
     saveAs: { blockType: CORE_FORM_BLOCKS.worked, title: (src) => firstWords(parseWorked(src)?.[0]?.title || 'Worked Solution') },
   },
+  MINI_APP_FORM,
   {
     name: 'mindmap',
     aliases: ['concept-map'],

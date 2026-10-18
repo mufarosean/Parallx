@@ -1,5 +1,6 @@
 // sandboxedHtml.ts — renders AI-authored HTML/CSS/JS inside a doubly-jailed
-// iframe, for the "Live" dashboard widget.
+// iframe: the dashboard's Live widget, and chat's mini-apps (an app answer
+// form, its page block, tab and dashboard widget).
 //
 // Why this exists: every other widget paints into the main renderer DOM, which
 // shares a window with `window.parallxElectron` (filesystem, tool install, …).
@@ -17,12 +18,13 @@
 //      entirely (no `connect-src`, images only `data:`/`blob:`), so jailed code
 //      still can't phone home or exfiltrate via a beacon image.
 //
-// The frame is fed through a `blob:` URL rather than `srcdoc` on purpose: a
-// srcdoc document inherits the host page's CSP (which has no `'unsafe-inline'`
-// in script-src), so the model's inline <script> would silently never run. A
-// blob: document carries only the CSP we inject, so inline scripts execute
-// under exactly the policy above — and `blob:` is already allowed by the host's
-// `frame-src` (see electron/index.html).
+// The frame's document is served from parallx-frame:// (electron/
+// sandboxFrameBridge.cjs), never srcdoc, blob: or data:: Chromium gives those
+// the policy of the page that made them, and the window's policy has no
+// `'unsafe-inline'` in script-src, so the model's inline <script> would
+// silently never run. A parallx-frame:// document carries only the policy
+// above, inline scripts included (the window's `frame-src` allows the scheme;
+// electron/index.html).
 
 /**
  * The `--px-*` design tokens we forward into the frame so model-authored
@@ -81,15 +83,16 @@ export const SANDBOX_CSP = [
  * applies theme tokens + sane defaults. The model's content is dropped into
  * <body> verbatim — it may include its own <style> and <script>.
  */
-export function buildSandboxDocument(bodyHtml: string, themeVars: string): string {
+export function buildSandboxDocument(bodyHtml: string, themeVars: string, opts: SandboxOptions = {}): string {
+  const scheme = opts.scheme === 'light' ? 'light' : 'dark';
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="${scheme}">
 <meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}">
 <style>
-  :root { color-scheme: dark; ${themeVars} }
+  :root { color-scheme: ${scheme}; ${themeVars} }
   html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
   /* Guarantee a dark base no matter what the model does — never the UA's
      default white canvas. The model paints on top of this. */
@@ -112,8 +115,64 @@ export function buildSandboxDocument(bodyHtml: string, themeVars: string): strin
 </head>
 <body>
 ${bodyHtml}
+${opts.reportHeight ? HEIGHT_REPORTER : ''}${opts.followTheme ? THEME_RECEIVER : ''}
 </body>
 </html>`;
+}
+
+export interface SandboxOptions {
+  /** The frame's colour scheme; default dark (the Live widget's base). */
+  readonly scheme?: 'dark' | 'light';
+  /** The frame posts its content height to the host (watchFrameHeight). */
+  readonly reportHeight?: boolean;
+  /** The frame takes new theme colours from the host (followHostTheme). */
+  readonly followTheme?: boolean;
+}
+
+/** Applies theme colours the host sends: the variables and the colour scheme, nothing else. */
+const THEME_RECEIVER = `<script>addEventListener('message',function(e){var d=e.data&&e.data.parallxTheme;if(!d||e.source!==parent)return;`
+  + `document.documentElement.style.cssText=String(d.vars)+';color-scheme:'+(d.scheme==='light'?'light':'dark');})</script>`;
+
+/**
+ * Send the host's theme into `frame` whenever the window's mode, contrast or
+ * colours change, so an app keeps its state through a theme switch.
+ */
+export function followHostTheme(frame: HTMLIFrameElement): void {
+  const doc = frame.ownerDocument;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const observer = new MutationObserver(() => {
+    if (!frame.isConnected) { observer.disconnect(); return; }
+    clearTimeout(timer);
+    timer = setTimeout(() => frame.contentWindow?.postMessage({ parallxTheme: { vars: collectThemeVars(doc), scheme: hostColorScheme(doc) } }, '*'), 60);
+  });
+  observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-px-mode', 'data-px-contrast', 'style', 'class'] });
+}
+
+/** Posts the document's height to the host whenever it changes: a number, nothing else. */
+const HEIGHT_REPORTER = `<style>html, body { height: auto; }</style><script>(function(){var last=0;function send(){var b=document.body;var h=Math.ceil(Math.max(b.scrollHeight, b.getBoundingClientRect().height));`
+  + `if(h!==last){last=h;parent.postMessage({parallxFrameHeight:h},'*');}}`
+  + `if(window.ResizeObserver)new ResizeObserver(send).observe(document.body);addEventListener('load',send);send();})();</script>`;
+
+/** The host window's colour scheme, for a frame that should follow it. */
+export function hostColorScheme(doc: Document = document): 'dark' | 'light' {
+  return doc.documentElement.getAttribute('data-px-mode') === 'light' ? 'light' : 'dark';
+}
+
+/**
+ * Size `frame` to the height its document reports (reportHeight), within
+ * [min, max]. Only a number from that frame's own window is read; the
+ * listener goes when the frame leaves the page.
+ */
+export function watchFrameHeight(frame: HTMLIFrameElement, min = 120, max = 900): void {
+  const win = frame.ownerDocument.defaultView;
+  if (!win) return;
+  const onMessage = (e: MessageEvent): void => {
+    if (!frame.isConnected) { win.removeEventListener('message', onMessage); return; }
+    if (e.source !== frame.contentWindow) return;
+    const h = Number((e.data as { parallxFrameHeight?: unknown } | null)?.parallxFrameHeight);
+    if (Number.isFinite(h)) frame.style.height = `${Math.min(max, Math.max(min, Math.round(h)))}px`;
+  };
+  win.addEventListener('message', onMessage);
 }
 
 export interface SandboxFrame {
@@ -128,18 +187,28 @@ export interface SandboxFrame {
  * `revoke()` and must call it when the frame is replaced or the widget is
  * disposed, to avoid leaking object URLs.
  */
-export function createSandboxFrame(bodyHtml: string, doc: Document = document): SandboxFrame {
-  const html = buildSandboxDocument(bodyHtml, collectThemeVars(doc));
-  const frame = doc.createElement('iframe');
-  frame.className = 'dashboard-live__frame';
+export function createSandboxFrame(bodyHtml: string, doc: Document = document, opts: SandboxOptions & { className?: string; title?: string } = {}): SandboxFrame {
+  const html = buildSandboxDocument(bodyHtml, collectThemeVars(doc), opts);
   // Jail #1: opaque-origin sandbox. allow-scripts WITHOUT allow-same-origin —
   // the two together would let the frame remove its own sandbox, so we never
-  // pair them.
-  frame.setAttribute('sandbox', 'allow-scripts');
-  frame.setAttribute('referrerpolicy', 'no-referrer');
-  frame.setAttribute('loading', 'lazy');
+  // pair them. (Written as markup so the attributes are there from the start.)
+  const frame = doc.createRange().createContextualFragment(
+    '<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy"></iframe>',
+  ).firstElementChild as HTMLIFrameElement;
+  frame.className = opts.className ?? 'dashboard-live__frame';
+  if (opts.title) frame.title = opts.title;
 
-  // blob: so the frame carries only our injected CSP (see file header).
+  // In the app the document is served from parallx-frame:// (electron/
+  // sandboxFrameBridge.cjs): a blob:, srcdoc or data: document takes the
+  // window's policy, which allows no inline script, so the app's own script
+  // would never run. The URL arrives a moment later; nothing to release.
+  const bridge = (doc.defaultView as unknown as { parallxElectron?: { sandboxFrame?: { register(html: string): Promise<{ url?: string; error?: string }> } } } | null)
+    ?.parallxElectron?.sandboxFrame;
+  if (bridge) {
+    void bridge.register(html).then((r) => { if (r?.url) frame.src = r.url; }).catch((err) => console.warn('[sandboxedHtml] frame not served:', err));
+    return { frame, revoke: () => { /* the main process keeps the newest documents */ } };
+  }
+  // Outside the app (tests): a blob: URL.
   const canBlob = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
   if (canBlob) {
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));

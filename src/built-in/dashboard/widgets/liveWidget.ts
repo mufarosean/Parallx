@@ -13,7 +13,7 @@
 // The crucial difference is the render path. Model-authored HTML never touches
 // the app's DOM — it runs in a doubly-jailed iframe (opaque-origin sandbox +
 // strict injected CSP) so it can be creative without being dangerous. See
-// sandboxedHtml.ts for the security model.
+// ui/sandboxedHtml.ts for the security model.
 
 import type {
   WidgetContext,
@@ -21,7 +21,7 @@ import type {
   WidgetRefreshContext,
   WidgetTypeRegistration,
 } from '../dashboardTypes.js';
-import { collectThemeVars, createSandboxFrame, buildSandboxDocument } from './sandboxedHtml.js';
+import { collectThemeVars, createSandboxFrame, buildSandboxDocument } from '../../../ui/sandboxedHtml.js';
 import { escapeHtml } from '../../../ui/format.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
 

@@ -30,7 +30,9 @@ import { DashboardEditorProvider } from './dashboardEditorProvider.js';
 import { activeDashboardEditorId } from './dashboardCommandTarget.js';
 import { DashboardSidebar } from './dashboardSidebar.js';
 import type { DashboardRegistry, WidgetTypeRegistration, WorkbenchWidgetHost } from './dashboardTypes.js';
-import { WORKBENCH_PAGE_ID } from './dashboardTypes.js';
+import { WORKBENCH_PAGE_ID, DEFAULT_WIDGET_APPEARANCE } from './dashboardTypes.js';
+import { firstFitPlacement } from './dashboardEditorProvider.js';
+import { DASHBOARD_GRID_COLS } from '../../api/bridges/dashboardBridge.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
 import { openAppearanceDrawer } from './appearanceDrawer.js';
@@ -629,6 +631,36 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       } catch (err) {
         console.error('[Dashboard] newPage failed:', err);
         await api.window.showErrorMessage('Could not create dashboard.');
+      }
+    }),
+  );
+
+  // dashboard.addWidgetWith(typeId, config, title?) — another surface places a
+  // widget it made (chat's Pin To Dashboard): a widget of a registered type with
+  // these settings, in the first free spot of the default dashboard, opened.
+  context.subscriptions.push(
+    api.commands.registerCommand('dashboard.addWidgetWith', async (...args: unknown[]) => {
+      const reg = _registry?.getWidgetType(String(args[0] ?? ''));
+      if (!_dataService || !_registry || !reg) return null;
+      try {
+        const page = await _dataService.ensureDefaultPage();
+        const taken = (await _dataService.listWidgets(page.id)).map((w) => w.placement);
+        const config = args[1] && typeof args[1] === 'object' ? args[1] as Record<string, unknown> : {};
+        const widget = await _dataService.createWidget({
+          pageId: page.id,
+          widgetTypeId: reg.typeId,
+          placement: firstFitPlacement(taken, reg.defaultSize, DASHBOARD_GRID_COLS),
+          config: { ...(reg.defaultConfig as Record<string, unknown>), ...config },
+          refreshPolicy: reg.defaultRefreshPolicy ?? { kind: 'manual' },
+          providerToolId: _registry.getWidgetTypeOwner(reg.typeId),
+          appearance: { ...DEFAULT_WIDGET_APPEARANCE, title: typeof args[2] === 'string' && args[2].trim() ? args[2].trim() : null },
+        });
+        await api.commands.executeCommand('dashboard.open');
+        return widget.id;
+      } catch (err) {
+        console.error('[Dashboard] addWidgetWith failed:', err);
+        await api.window.showErrorMessage('Could not add the widget to the dashboard.');
+        return null;
       }
     }),
   );

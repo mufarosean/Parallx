@@ -181,3 +181,37 @@ describe('a tool adds forms while it runs', () => {
     expect(el.querySelectorAll('.px-af-worked__next')).toHaveLength(1);
   });
 });
+
+describe('mini-apps', () => {
+  it('reads an optional title and height, then HTML; text alone is not an app', async () => {
+    const { parseMiniApp } = await import('../../src/ui/answerFormApp');
+    expect(parseMiniApp('title: Sim\nheight: 2000\n<div>x</div>')).toEqual({ title: 'Sim', height: 900, html: '<div>x</div>' });
+    expect(parseMiniApp('<p>hi</p>')?.title).toBe('Mini-App');
+    expect(parseMiniApp('just words')).toBeNull();
+  });
+
+  it('runs in the jail, says so, and offers Open In Tab, Save To Page, Pin To Dashboard', () => {
+    const el = draw(fence('app', 'title: Sim\n<input type="range"><script>1</script>'));
+    const frame = el.querySelector('iframe')!;
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(frame.title).toBe('Sim');
+    expect(el.querySelector('.px-af-app__lock')?.textContent).toContain('Locked down: no files, no internet');
+    const labels = Array.from(el.querySelectorAll('.px-af-app__actions button')).map((b) => b.textContent?.trim());
+    expect(labels).toEqual(['Open In Tab', 'Save To Page', 'Pin To Dashboard']);
+    expect(el.innerHTML).not.toContain('<script>1</script>');
+  });
+
+  it('the frame follows the theme and reports only its height', async () => {
+    const { buildSandboxDocument, watchFrameHeight } = await import('../../src/ui/sandboxedHtml');
+    const doc = buildSandboxDocument('<p>x</p>', '', { scheme: 'light', reportHeight: true });
+    expect(doc).toContain('color-scheme: light');
+    expect(doc).toContain('parallxFrameHeight');
+    const frame = document.body.appendChild(document.createRange().createContextualFragment('<iframe></iframe>').firstElementChild as HTMLIFrameElement);
+    watchFrameHeight(frame, 120, 900);
+    window.dispatchEvent(new MessageEvent('message', { data: { parallxFrameHeight: 5000 }, source: window }));
+    expect(frame.style.height).toBe('');
+    window.dispatchEvent(new MessageEvent('message', { data: { parallxFrameHeight: 5000 }, source: frame.contentWindow }));
+    expect(frame.style.height).toBe('900px');
+    frame.remove();
+  });
+});

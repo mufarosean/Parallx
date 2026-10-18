@@ -488,12 +488,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
 
 
+  sandboxFrame: { register: (html) => ipcRenderer.invoke('sandboxFrame:register', html) }, // parallx-frame:// documents (ui/sandboxedHtml.ts)
   // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──
   dashboardAssets: {
     /** Persist uploaded image bytes to disk. Returns { id } or { error }. */
     save: (bytes, mime) => ipcRenderer.invoke('dashboardAsset:save', bytes, mime),
-    /** Delete a stored asset by id (best-effort). */
-    delete: (id) => ipcRenderer.invoke('dashboardAsset:delete', id),
+    delete: (id) => ipcRenderer.invoke('dashboardAsset:delete', id), // by id, best-effort
     /**
      * read a .csv/.tsv/.xlsx/.xls as structured rows for the
      * Table/Chart widget. Returns { header, rows, sheetNames, totalRows }

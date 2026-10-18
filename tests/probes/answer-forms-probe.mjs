@@ -55,6 +55,13 @@ const ANSWER = [
   '',
   `${F}worked`, 'Find the age: The 2022 year is 36 months old at the valuation date.', 'Read the growth curve: At 36 months G = 0.80, so 80% of ultimate has emerged.',
   'Invert it: 1 ÷ 0.80 = 1.25, the factor to ultimate.', 'Apply it: 4,200 × 1.25 = 5,250 ultimate; less 4,200 paid leaves a reserve of 1,050.', F,
+  '',
+  'Move the tail factor and watch the reserve follow:',
+  '',
+  `${F}app`, 'title: Tail Factor Simulator',
+  '<label>Tail factor <input id="t" type="range" min="100" max="120" value="105"></label> Reserve <b id="o"></b>',
+  '<div style="height: 260px; background: var(--px-bg-elevated)"></div>',
+  '<script>const t = document.getElementById("t"), o = document.getElementById("o"); const s = () => { o.textContent = Math.round(4200 * 1.25 * t.value / 100 - 4200); }; t.oninput = s; s();</script>', F,
 ].join('\n');
 
 function launchEnv(appRoot) {
@@ -146,7 +153,7 @@ async function main() {
     });
     await page.waitForTimeout(1_500);
     const forms = await page.evaluate(() => Array.from(document.querySelectorAll('.px-af-host')).map((h) => h.getAttribute('data-af-form')));
-    check(opened && forms.join(',') === 'takeaway,chart,timeline,live,worked', `the answer draws its forms (${forms.join(',')})`);
+    check(opened && forms.join(',') === 'takeaway,chart,timeline,live,worked,app', `the answer draws its forms (${forms.join(',')})`);
     check(await page.evaluate(() => document.querySelectorAll('.markdown-alert-lead').length === 2), 'callouts open with a lead-in word');
 
     // Widen the chat so the answer reads at its usual width.
@@ -207,6 +214,30 @@ async function main() {
     });
     check(!!block && block.bars === 5 && block.save === 0, `Save To Page opens a page with a working Chart block (${JSON.stringify(block)})`);
     await shot(app, page, 'light-5-chart-on-page.png', '.canvas-toolblock');
+
+    // The mini-app: its script runs in the jail, the frame takes the height it reports.
+    await page.locator('.px-af-host[data-af-form="app"]').first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1_500);
+    const appFrame = page.frames().find((f) => f.url().startsWith('parallx-frame:') && f.parentFrame() === page.mainFrame());
+    const reserveText = appFrame ? await appFrame.evaluate(() => document.getElementById('o')?.textContent).catch((e) => String(e)) : null;
+    const frameH = await page.evaluate(() => document.querySelector('.px-af-app__frame')?.getBoundingClientRect().height ?? 0);
+    check(reserveText === '1313', `the app's script runs in its frame (reserve ${reserveText})`);
+    check(frameH >= 270 && frameH < 315, `the frame sizes to its content (${Math.round(frameH)}px)`);
+    check(await page.evaluate(() => { const f = document.querySelector('.px-af-app__frame'); return f?.getAttribute('sandbox') === 'allow-scripts'; }), 'the frame is sandboxed without same-origin');
+    const scheme = appFrame ? await appFrame.evaluate(() => getComputedStyle(document.documentElement).colorScheme).catch(() => '') : '';
+    check(scheme === 'light', `a frame drawn in the dark theme follows the switch to light (${scheme})`);
+    await shot(app, page, 'light-6-mini-app.png', '.px-af-host[data-af-form="app"]');
+
+    await page.locator('.px-af-app__actions button', { hasText: 'Open In Tab' }).first().click();
+    await page.waitForTimeout(1_500);
+    check(await page.evaluate(() => !!document.querySelector('.px-af-app-fill .px-af-app__frame')), 'Open In Tab shows the app in a tab of its own');
+    await shot(app, page, 'light-7-mini-app-tab.png');
+
+    await page.locator('.px-af-app__actions button', { hasText: 'Pin To Dashboard' }).first().click();
+    await page.waitForTimeout(2_500);
+    const pinned = await page.evaluate(() => ({ frames: document.querySelectorAll('.px-af-app-fill .px-af-app__frame').length, title: Array.from(document.querySelectorAll('.dashboard-widget__title, [class*="dashboard-widget"] [class*="title"]')).some((e) => e.textContent?.includes('Tail Factor Simulator')) }));
+    check(pinned.frames >= 1 && pinned.title, `Pin To Dashboard places a Mini-App widget (${JSON.stringify(pinned)})`);
+    await shot(app, page, 'light-8-mini-app-dashboard.png');
     await app.close();
   } finally {
     const real = errors.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama|11434/.test(e));

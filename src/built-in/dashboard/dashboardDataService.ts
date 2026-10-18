@@ -349,6 +349,8 @@ export class DashboardDataService extends Disposable {
     refreshPolicy: WidgetRefreshPolicy;
     /** Tool providing the widget type — recorded so the unavailable-placeholder can name it. */
     providerToolId?: string;
+    /** Its look from the start (a title another surface gave it). */
+    appearance?: WidgetAppearance;
   }): Promise<DashboardWidgetRow> {
     const id = generateId('widget');
     const now = Date.now();
@@ -363,14 +365,15 @@ export class DashboardDataService extends Disposable {
     const res = await this._db.run(
       `INSERT INTO dashboard_widgets
          (id, page_id, widget_type_id, row, col, row_span, col_span, position,
-          config_json, refresh_policy_json, status, provider_tool_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?)`,
+          config_json, refresh_policy_json, appearance_json, status, provider_tool_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?)`,
       [
         id, input.pageId, input.widgetTypeId,
         input.placement.row, input.placement.col,
         input.placement.rowSpan, input.placement.colSpan, nextPos,
         JSON.stringify(input.config),
         JSON.stringify(input.refreshPolicy),
+        JSON.stringify(input.appearance ?? DEFAULT_WIDGET_APPEARANCE),
         input.providerToolId ?? null,
         now, now,
       ],
@@ -385,7 +388,7 @@ export class DashboardDataService extends Disposable {
       position: nextPos,
       config: input.config,
       refreshPolicy: input.refreshPolicy,
-      appearance: DEFAULT_WIDGET_APPEARANCE,
+      appearance: input.appearance ?? DEFAULT_WIDGET_APPEARANCE,
       cachedOutput: null,
       cachedAt: null,
       status: 'ok',

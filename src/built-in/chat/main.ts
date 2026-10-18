@@ -328,7 +328,7 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
-  context.subscriptions.push(...registerAnswerFormContributions(api as unknown as AnswerFormApi)); // ui/answerForms
+  context.subscriptions.push(...registerAnswerFormContributions(api as unknown as AnswerFormApi, context.workspaceState)); // ui/answerForms
 
   // Edit mode's Accept: the proposal card dispatches parallx-edit-apply; a
   // page-level proposal is applied through canvas.applyEditProposal (which

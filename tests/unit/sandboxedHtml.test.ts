@@ -6,7 +6,7 @@ import {
   createSandboxFrame,
   collectThemeVars,
   SANDBOX_CSP,
-} from '../../src/built-in/dashboard/widgets/sandboxedHtml';
+} from '../../src/ui/sandboxedHtml';
 
 describe('buildSandboxDocument — CSP & shell', () => {
   it('embeds the strict CSP meta', () => {
@@ -96,5 +96,27 @@ describe('collectThemeVars', () => {
     const vars = collectThemeVars(document);
     expect(vars).toContain('--px-accent: #abcdef;');
     document.documentElement.style.removeProperty('--px-accent');
+  });
+});
+
+describe('parallx-frame:// serves the same policy', () => {
+  it('the main-process copy of the frame policy matches', async () => {
+    const { createRequire } = await import('node:module');
+    const bridge = createRequire(import.meta.url)('../../electron/sandboxFrameBridge.cjs') as { SANDBOX_CSP: string };
+    expect(bridge.SANDBOX_CSP).toBe(SANDBOX_CSP);
+  });
+
+  it('in the app the frame loads from the scheme, not a blob', async () => {
+    const register = vi.fn().mockResolvedValue({ url: 'parallx-frame://frame/abc' });
+    (window as unknown as { parallxElectron?: unknown }).parallxElectron = { sandboxFrame: { register } };
+    try {
+      const { frame } = createSandboxFrame('<p>hi</p>');
+      await Promise.resolve(); await Promise.resolve();
+      expect(register).toHaveBeenCalledOnce();
+      expect(String(register.mock.calls[0][0])).toContain(SANDBOX_CSP);
+      expect(frame.getAttribute('src')).toBe('parallx-frame://frame/abc');
+    } finally {
+      delete (window as unknown as { parallxElectron?: unknown }).parallxElectron;
+    }
   });
 });

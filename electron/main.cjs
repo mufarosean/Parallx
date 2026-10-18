@@ -48,11 +48,12 @@ const { setupNotebookKernelBridge } = notebookKernelBridge;
 const { registerDashboardAssetScheme, setupDashboardAssetBridge } = require('./dashboardAssetBridge.cjs');
 
 const { MEDIA_SCHEME_SPEC, setupMediaStreamBridge } = require('./mediaStreamBridge.cjs');
+const { SANDBOX_FRAME_SCHEME_SPEC, setupSandboxFrameBridge } = require('./sandboxFrameBridge.cjs');
 
 // The parallx-asset:// scheme (dashboard image/GIF assets) and parallx-media://
-// (streamed local video and audio) must be registered as privileged BEFORE app
+// (streamed local video and audio) and parallx-frame:// (AI-written HTML) must be registered as privileged BEFORE app
 // 'ready', in one call; the handlers are wired in whenReady.
-registerDashboardAssetScheme(protocol, [MEDIA_SCHEME_SPEC]);
+registerDashboardAssetScheme(protocol, [MEDIA_SCHEME_SPEC, SANDBOX_FRAME_SCHEME_SPEC]);
 const { setupAnthropicBridge } = require('./anthropicBridge.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -884,6 +885,7 @@ app.whenReady().then(async () => {
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
   // Local video and audio, streamed with range requests (parallx-media://).
   setupMediaStreamBridge(protocol, (absPath) => _isAllowedMediaReadPath(absPath));
+  setupSandboxFrameBridge(ipcMain, protocol); // parallx-frame:// for sandboxed AI HTML
 
   await createWindow();
 });

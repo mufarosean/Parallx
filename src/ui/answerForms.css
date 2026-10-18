@@ -299,3 +299,60 @@
 
 .px-af-block__source:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .px-af-block__hint { margin: 6px 0 0; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+
+/* ── app: a mini-app, locked down, with where it can go ── */
+
+.px-af-app {
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+  overflow: hidden;
+}
+
+.px-af-app__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.px-af-app__icon,
+.px-af-app__lock > span { display: inline-flex; }
+.px-af-app__icon svg { width: 14px; height: 14px; color: var(--px-accent); }
+.px-af-app__title { font-weight: 600; color: var(--px-text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.px-af-app__lock {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+}
+
+.px-af-app__lock svg { width: 12px; height: 12px; }
+.px-af-app__stage { display: block; }
+
+.px-af-app__frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: var(--px-bg);
+}
+
+.px-af-app__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--px-divider);
+}
+
+.px-af-app__actions:not(:has(button)) { display: none; }
+
+/* An app filling a tab or a dashboard widget. */
+.px-af-app-fill { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.px-af-app-fill__stage { flex: 1; min-height: 0; }
+.px-af-app-fill__note { margin: 16px; font-size: var(--px-text-sm); color: var(--px-text-muted); }

@@ -3,7 +3,8 @@
 // The forms themselves are ui/answerForms(Core).ts. Chat registers the
 // core ones, the command a worked solution's Next Step and Start Over
 // run, and a page block for each form Save To Page can keep (Chart,
-// Timeline, Live Numbers, Worked Solution). The blocks go through the
+// Timeline, Live Numbers, Worked Solution, Mini-App), and where a mini-app
+// can go besides (miniApps.ts). The blocks go through the
 // same contribution point any tool's blocks do (api.canvas.registerBlock):
 // the canvas knows nothing about chat. In a page the form keeps working
 // (type a number, step through), and Edit Source opens its text.
@@ -15,8 +16,9 @@ import { escapeHtml } from '../../../ui/format.js';
 import { htmlFragment, hydrateAnswerForms, renderAnswerForm, renderInlineBasic, type AnswerFormContext } from '../../../ui/answerForms.js';
 import { CORE_FORM_BLOCKS, WORKED_STEP_COMMAND, registerCoreAnswerForms, stepWorkedForm } from '../../../ui/answerFormsCore.js';
 
-export interface AnswerFormApi {
-  readonly commands: { registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable };
+import { registerMiniApps, type MiniAppApi } from './miniApps.js';
+
+export interface AnswerFormApi extends MiniAppApi {
   readonly canvas?: { registerBlock(registration: CanvasBlockRegistration): IDisposable };
 }
 
@@ -49,6 +51,12 @@ const BLOCKS: Readonly<Record<CoreBlock, { label: string; description: string; i
     description: 'A solution shown one step at a time',
     icon: 'list-ordered',
     sample: 'Find the change: 72 − 60 = 12.\nDivide by where it started: 12 ÷ 60 = 0.2.\nWrite it as a percent: a 20% increase.',
+  },
+  app: {
+    label: 'Mini-App',
+    description: 'A small app that runs locked down: no files, no internet',
+    icon: 'app-window',
+    sample: 'title: Counter\n<button id="b" type="button">Add One</button> <output id="o">0</output>\n<script>let n = 0; b.onclick = () => { o.textContent = ++n; };</script>',
   },
 };
 
@@ -106,10 +114,11 @@ function formBlock(name: CoreBlock): CanvasBlockRegistration {
   };
 }
 
-/** Register the core forms, the worked-solution command and the page blocks. */
-export function registerAnswerFormContributions(api: AnswerFormApi): IDisposable[] {
+/** Register the core forms, the worked-solution command, the page blocks and the mini-app's tab and widget. */
+export function registerAnswerFormContributions(api: AnswerFormApi, state: Parameters<typeof registerMiniApps>[1]): IDisposable[] {
   registerCoreAnswerForms();
   const out: IDisposable[] = [
+    ...registerMiniApps(api, state),
     api.commands.registerCommand(WORKED_STEP_COMMAND, (key: unknown, action: unknown) =>
       stepWorkedForm(String(key ?? ''), action === 'reset' ? 'reset' : 'next')),
   ];
