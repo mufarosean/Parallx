@@ -215,3 +215,16 @@ describe('mini-apps', () => {
     frame.remove();
   });
 });
+
+describe('offering a tool for a repeated task', () => {
+  it('says what it noticed and stages a request; it never sends or builds', () => {
+    const el = draw(fence('suggest', 'You have asked me to convert a recipe four times. Want a tool for it?\ntask: convert a recipe to metric'));
+    document.body.appendChild(el);
+    expect(el.querySelector('.px-af-suggest__text')?.textContent).toContain('four times');
+    expect(Array.from(el.querySelectorAll('.px-af-suggest__actions button')).map((b) => b.textContent?.trim())).toEqual(['Make A Mini-App', 'Build An Extension…', 'Not Now']);
+    const key = el.querySelector('.px-af-suggest')!.getAttribute('data-af-key')!;
+    stepWorkedForm(key, 'dismiss');
+    expect(el.querySelector<HTMLElement>('.px-af-host')!.hidden).toBe(true);
+    el.remove();
+  });
+});

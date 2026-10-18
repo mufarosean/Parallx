@@ -1,0 +1,119 @@
+/* extensionReview.css — the review of an assistant-written extension
+   (extensionReview.ts): what it adds, what it can reach, the checks, the
+   person's decision. One card, hairline rows, --px tokens only. */
+
+.px-xr {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+  padding: var(--px-space-6) var(--px-space-4);
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
+}
+
+.px-xr__card {
+  max-width: 560px;
+  margin: 0 auto;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+  overflow: hidden;
+}
+
+.px-xr__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.px-xr__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--px-radius-md);
+  background: var(--px-accent-soft);
+  color: var(--px-accent-text);
+}
+
+.px-xr__badge svg { width: 18px; height: 18px; }
+.px-xr__name { margin: 0; font-size: var(--px-text-md); font-weight: 600; }
+.px-xr__sub { margin: 2px 0 0; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+
+.px-xr__label {
+  margin: 0;
+  padding: 10px 12px 4px;
+  font-size: var(--px-text-xs);
+  font-weight: 400;
+  color: var(--px-text-muted);
+}
+
+.px-xr__list { list-style: none; margin: 0; padding: 0; }
+
+.px-xr__row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 12px;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.px-xr__kind { width: 120px; flex-shrink: 0; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.px-xr__mark { display: inline-flex; flex-shrink: 0; margin-top: 2px; }
+.px-xr__mark svg { width: 14px; height: 14px; }
+.px-xr__mark.is-yes { color: var(--px-success); }
+.px-xr__mark.is-no { color: var(--px-danger); }
+
+.px-xr__note { margin: 0; padding: 8px 12px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+
+.px-xr__checks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--px-divider);
+  background: var(--px-bg-inset);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+}
+
+.px-xr__checks svg { width: 14px; height: 14px; color: var(--px-success); }
+
+.px-xr__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--px-divider);
+}
+
+.px-xr__outcome { margin: 0 auto 0 0; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.px-xr__outcome.is-installed { color: var(--px-text); }
+.px-xr__outcome.is-error { color: var(--px-danger); }
+
+.px-xr__code { max-width: 560px; margin: var(--px-space-4) auto 0; }
+.px-xr__file { margin: 12px 0 4px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+
+.px-xr__code pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  background: var(--px-bg-inset);
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-sm);
+}
+
+.px-xr__code pre:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
+.px-xr__gone { margin: var(--px-space-6); color: var(--px-text-muted); }

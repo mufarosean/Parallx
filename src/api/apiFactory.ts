@@ -262,6 +262,8 @@ export interface ParallxApiObject {
     onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => IDisposable;
     /** Install a tool from a .plx package file. Opens a native file dialog. */
     installFromFile(): Promise<{ toolId: string } | { error: string } | { canceled: true }>;
+    /** Install an extension from its manifest and files (an assistant-written draft the person reviewed). */
+    installFromDraft(draft: { manifest: Record<string, unknown>; files: Record<string, string> }): Promise<{ toolId: string } | { error: string }>;
     /** Uninstall an external tool by ID. */
     uninstall(toolId: string): Promise<void>;
     /** Fires when a tool is installed. */
@@ -411,6 +413,18 @@ export function createToolApi(
   const toolId = toolDescription.manifest.id;
   const subscriptions: IDisposable[] = [];
   const keep = (d: IDisposable): IDisposable => { subscriptions.push(d); return d; };
+  // An extension the main process unpacked (a .plx or a reviewed draft): the workbench registers it.
+  const registerInstalled = async (result: { error?: string | null; toolId?: string; toolPath?: string; manifest?: unknown }): Promise<{ toolId: string } | { error: string }> => {
+    if (result?.error || !result?.toolId) return { error: result?.error || 'The extension could not be installed.' };
+    if (!deps.onToolInstalled) return { error: 'Tool install handler not wired' };
+    try {
+      await deps.onToolInstalled(result.toolPath as string, result.manifest as never);
+      _globalToolInstallEmitter.fire({ toolId: result.toolId });
+      return { toolId: result.toolId };
+    } catch (err: unknown) {
+      return { error: `Registration failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  };
 
   // Per-tool subscriptions to global emitters are tracked for cleanup.
   // The emitters themselves are module-level singletons (see above).
@@ -870,21 +884,12 @@ export function createToolApi(
 
         const result = await bridge.installToolFromFile();
         if (result.canceled) return { canceled: true as const };
-        if (result.error) return { error: result.error };
-
-        // Delegate registration + activation to the workbench callback
-        const handler = deps.onToolInstalled;
-        if (!handler) {
-          return { error: 'Tool install handler not wired' };
-        }
-
-        try {
-          await handler(result.toolPath, result.manifest);
-          _globalToolInstallEmitter.fire({ toolId: result.toolId });
-          return { toolId: result.toolId };
-        } catch (err: unknown) {
-          return { error: `Registration failed: ${err instanceof Error ? err.message : String(err)}` };
-        }
+        return registerInstalled(result);
+      },
+      installFromDraft: async (draft: { manifest: Record<string, unknown>; files: Record<string, string> }) => {
+        const bridge = (globalThis as any).parallxElectron;
+        if (!bridge?.installToolFromDraft) return { error: 'Tool installation not available (no Electron bridge)' };
+        return registerInstalled(await bridge.installToolFromDraft(draft));
       },
       uninstall: async (id: string): Promise<void> => {
         const entry = deps.toolRegistry.getById(id);

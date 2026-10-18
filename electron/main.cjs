@@ -886,6 +886,7 @@ app.whenReady().then(async () => {
   // Local video and audio, streamed with range requests (parallx-media://).
   setupMediaStreamBridge(protocol, (absPath) => _isAllowedMediaReadPath(absPath));
   setupSandboxFrameBridge(ipcMain, protocol); // parallx-frame:// for sandboxed AI HTML
+  require('./extensionDraftBridge.cjs').setupExtensionDraftBridge(ipcMain, USER_EXTENSIONS_DIR); // assistant-written extensions, after review
 
   await createWindow();
 });

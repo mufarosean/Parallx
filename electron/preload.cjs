@@ -70,8 +70,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   getToolDirectories: () => ipcRenderer.invoke('tools:get-directories'),
 
   // ── Tool install/uninstall API ──
-  /** Open native file dialog for .plx files, extract and install. Returns install result. */
-  installToolFromFile: () => ipcRenderer.invoke('tools:install-from-file'),
+  installToolFromFile: () => ipcRenderer.invoke('tools:install-from-file'), // a .plx picked in a file dialog
+  installToolFromDraft: (draft) => ipcRenderer.invoke('tools:install-from-draft', draft), // an assistant-written extension, after review
   /** Remove an external tool's directory. Returns { error: null } on success. */
   uninstallTool: (toolId) => ipcRenderer.invoke('tools:uninstall', toolId),
   /** Read a tool module's source code for blob URL loading (external tools only). Returns { source } or { error }. */

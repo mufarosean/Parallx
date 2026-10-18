@@ -22,6 +22,7 @@ import {
 import { registerAnswerForm, type AnswerForm, type AnswerFormContext, type AnswerFormHydration } from './answerForms.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import { MINI_APP_BLOCK, MINI_APP_FORM } from './answerFormApp.js';
+import { SUGGEST_FORM } from './answerFormSuggest.js';
 
 /** The page block each savable core form becomes (chat registers them). */
 export const CORE_FORM_BLOCKS = {
@@ -401,9 +402,11 @@ function hydrateWorked(root: HTMLElement): void {
   again.hidden = true;
 }
 
-/** Next Step and Start Over on the worked solution `key` (the command's body). */
-export function stepWorkedForm(key: string, action: 'next' | 'reset'): void {
-  const box = document.querySelector<HTMLElement>(`.px-af-worked[data-af-key="${String(key).replace(/[^a-z0-9]/gi, '')}"]`);
+/** Next Step and Start Over on the worked solution `key`; Dismiss puts any keyed form away (the command's body). */
+export function stepWorkedForm(key: string, action: 'next' | 'reset' | 'dismiss'): void {
+  const found = document.querySelector<HTMLElement>(`[data-af-key="${String(key).replace(/[^a-z0-9]/gi, '')}"]`);
+  if (found && action === 'dismiss') { (found.closest<HTMLElement>('.px-af-host') ?? found).hidden = true; return; }
+  const box = found?.classList.contains('px-af-worked') ? found : null;
   if (!box) return;
   const steps = Array.from(box.querySelectorAll<HTMLElement>('.px-af-worked__step'));
   const shown = steps.filter((s) => !s.hidden).length;
@@ -501,6 +504,7 @@ export const CORE_ANSWER_FORMS: readonly Omit<AnswerForm, 'ownerToolId'>[] = [
     saveAs: { blockType: CORE_FORM_BLOCKS.worked, title: (src) => firstWords(parseWorked(src)?.[0]?.title || 'Worked Solution') },
   },
   MINI_APP_FORM,
+  SUGGEST_FORM,
   {
     name: 'mindmap',
     aliases: ['concept-map'],

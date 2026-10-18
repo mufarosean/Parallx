@@ -17,8 +17,11 @@ import { htmlFragment, hydrateAnswerForms, renderAnswerForm, renderInlineBasic, 
 import { CORE_FORM_BLOCKS, WORKED_STEP_COMMAND, registerCoreAnswerForms, stepWorkedForm } from '../../../ui/answerFormsCore.js';
 
 import { registerMiniApps, type MiniAppApi } from './miniApps.js';
+import { registerExtensionReview, type ExtensionReviewApi } from './extensionReview.js';
 
 export interface AnswerFormApi extends MiniAppApi {
+  readonly tools?: ExtensionReviewApi['tools'];
+  readonly services: ExtensionReviewApi['services'];
   readonly canvas?: { registerBlock(registration: CanvasBlockRegistration): IDisposable };
 }
 
@@ -119,8 +122,9 @@ export function registerAnswerFormContributions(api: AnswerFormApi, state: Param
   registerCoreAnswerForms();
   const out: IDisposable[] = [
     ...registerMiniApps(api, state),
+    ...registerExtensionReview(api),
     api.commands.registerCommand(WORKED_STEP_COMMAND, (key: unknown, action: unknown) =>
-      stepWorkedForm(String(key ?? ''), action === 'reset' ? 'reset' : 'next')),
+      stepWorkedForm(String(key ?? ''), action === 'reset' || action === 'dismiss' ? action : 'next')),
   ];
   if (api.canvas) for (const name of Object.keys(BLOCKS) as CoreBlock[]) out.push(api.canvas.registerBlock(formBlock(name)));
   return out;

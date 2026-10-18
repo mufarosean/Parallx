@@ -356,3 +356,19 @@
 .px-af-app-fill { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .px-af-app-fill__stage { flex: 1; min-height: 0; }
 .px-af-app-fill__note { margin: 16px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+
+/* The suggestion card in an answer (ui/answerFormSuggest.ts). */
+.px-af-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--px-accent) 35%, transparent);
+  border-radius: var(--px-radius-md);
+  background: var(--px-accent-soft);
+}
+
+.px-af-suggest__text { display: flex; gap: 8px; align-items: flex-start; margin: 0; line-height: 1.5; }
+.px-af-suggest__icon { display: inline-flex; flex-shrink: 0; margin-top: 2px; color: var(--px-accent-text); }
+.px-af-suggest__icon svg { width: 16px; height: 16px; }
+.px-af-suggest__actions { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 24px; }
