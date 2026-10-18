@@ -372,3 +372,4 @@
 .px-af-suggest__icon { display: inline-flex; flex-shrink: 0; margin-top: 2px; color: var(--px-accent-text); }
 .px-af-suggest__icon svg { width: 16px; height: 16px; }
 .px-af-suggest__actions { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 24px; }
+.px-af-app__pending { margin: 0; padding: 24px 12px; font-size: var(--px-text-sm); color: var(--px-text-muted); }

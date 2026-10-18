@@ -28,6 +28,8 @@ export interface AnswerFormContext {
   renderInline(md: string): string;
   /** TeX as HTML (KaTeX), where the host has it. */
   renderMath?(tex: string): string;
+  /** False while the answer is still being written and this block is not closed yet. */
+  readonly complete?: boolean;
 }
 
 /** What a form's wiring gets once its HTML is in the page. */
@@ -112,7 +114,7 @@ export function renderAnswerForm(info: string, src: string, ctx: AnswerFormConte
   let body: string | null = null;
   try { body = form.render(src, options, ctx); } catch (err) { console.warn(`[answerForms] "${form.name}" could not draw:`, err); }
   if (body === null) return null;
-  const save = form.saveAs && !body.includes('class="px-af-save"') ? '<div class="px-af-foot"><span class="px-af-save"></span></div>' : '';
+  const save = form.saveAs && ctx.complete !== false && !body.includes('class="px-af-save"') ?'<div class="px-af-foot"><span class="px-af-save"></span></div>' : '';
   return `<div class="px-af-host" data-af-form="${escapeHtml(form.name)}" data-af-info="${escapeHtml(options)}" `
     + `data-af-src="${escapeHtml(encodeURIComponent(src))}">${body}${save}</div>`;
 }

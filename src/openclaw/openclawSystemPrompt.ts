@@ -568,6 +568,7 @@ export function buildAnswerFormsSection(forms: readonly { readonly name: string;
     'or `> [!NOTE]` (also TIP, IMPORTANT, CAUTION), a comparison as a table.',
     'A fenced block in one of the forms below draws as that form, inside the prose. Use one only where it shows',
     'something prose cannot; most answers need none, and one reply rarely needs more than two. Introduce each in a sentence.',
+    'The form names are for you: never show them to the person (offer "want to try your own numbers?", not "a live calc").',
     ...forms.flatMap((f) => ['', f.hint.trim()]),
   ].join('\n');
 }

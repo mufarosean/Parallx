@@ -11,7 +11,7 @@
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { ILanguageModelToolsService, type IChatTool, type IToolResult, type ILanguageModelToolsService as ToolsService } from '../../../services/chatTypes.js';
-import { draftFailures, readExtensionDraft, type DraftReading, type ExtensionDraft } from '../../../tools/extensionDraft.js';
+import { apiSurfaceOf, draftFailures, EXTENSION_ONLY_API, readExtensionDraft, type DraftReading, type ExtensionDraft } from '../../../tools/extensionDraft.js';
 import { htmlFragment } from '../../../ui/answerForms.js';
 import { escapeHtml } from '../../../ui/format.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
@@ -88,15 +88,25 @@ const TOOL_DESCRIPTION = [
   'Manifest: {"manifestVersion": 1, "id": "assistant.recipe-converter" (lowercase, one dot), "name": "Recipe Converter", "version": "0.1.0",',
   '"publisher": "assistant", "description": "...", "main": "main.js", "activationEvents": ["onStartupFinished"], "engines": {"parallx": ">=0.1.0"},',
   '"contributes": {"commands": [{"id": "assistant.recipe-converter.open", "title": "Convert A Recipe…"}]}}.',
-  'main.js is an ES module: export function activate(api, context) and export function deactivate(). Register everything through api',
-  '(api.commands.registerCommand, api.editors.registerEditorProvider, api.chat.registerTool, api.canvas.registerBlock, api.dashboard.registerWidgetType)',
-  'and push every disposable into context.subscriptions. Build controls with api.ui (createButton, createInput, createDropdown...) and give each an id;',
-  'colour and size text with the --px tokens (var(--px-text), var(--px-accent), var(--px-text-sm)); keep data in api.database.',
+  'main.js is an ES module: export function activate(api, context) and export function deactivate(). Push every disposable into context.subscriptions.',
+  'The API, in exactly these shapes (anything else is refused):',
+  'api.commands.registerCommand(\'<id>\', (...args) => result);',
+  'api.editors.registerEditorProvider(\'<typeId>\', { createEditorPane(container, input) { build into container; return { dispose() {} }; } }) with',
+  '"contributes": {"editors": [{"typeId": "<typeId>", "displayName": "..."}]}, opened by api.editors.openEditor({ typeId: \'<typeId>\', title: \'...\', instanceId: \'main\' });',
+  'api.chat.registerTool(\'<name>\', { description: \'...\', parameters: { type: \'object\', properties: {...}, required: [...] }, requiresConfirmation: false,',
+  'handler: async (args) => ({ content: \'text result\' }) });',
+  'api.canvas.registerBlock({ typeId: \'<id>.<name>\', label, description, icon: \'calendar\', defaultConfig: {...}, settings: { title, fields: { key: { type: \'string\', label } } },',
+  'render(body, ctx) { draw from ctx.config into body; return { update(config) {}, dispose() {} }; } });',
+  'api.ui.createButton(container, { id: \'<id>.add\', label: \'Add Item\', command: \'<id>.add\' }) runs a command you registered; api.ui.createInput(container, { id, label, placeholder }) returns { element, value };',
+  'api.database: await api.database.open(); then run(sql, params), get(sql, params) -> { row }, all(sql, params) -> { rows }.',
+  'Colour and size text with the --px tokens (var(--px-text), var(--px-accent), var(--px-text-sm)).',
   'Refused: fetch or any network, require or import, eval, timers, window.parallxElectron, other tools\' commands, raw colours, px font sizes,',
   'uppercase labels, emoji, alert/confirm/prompt, <select>, position fixed, viewport units, z-index.',
 ].join(' ');
 
 export function registerExtensionReview(api: ExtensionReviewApi): IDisposable[] {
+  // The API an extension gets: this one's namespaces and functions, plus what only extensions get.
+  const surface = { ...apiSurfaceOf(api), ...EXTENSION_ONLY_API };
   const out: IDisposable[] = [];
   const repaint = (id: string): void => _panes.get(id)?.();
 
@@ -129,7 +139,15 @@ export function registerExtensionReview(api: ExtensionReviewApi): IDisposable[] 
     if ('error' in result) d.outcome = { kind: 'error', text: `Not installed: ${result.error}` };
     else {
       await api.tools.setEnabled(result.toolId, true).catch(() => { /* installed; it can be turned on in Tools */ });
-      d.outcome = { kind: 'installed', text: 'Installed and turned on, no restart needed. Turn it off or remove it in Tools, like any extension; its saved data is kept for when it is turned on again.' };
+      // Started is not the same as installed: one whose activate() throws never gets there.
+      let started = false;
+      for (let i = 0; i < 20 && !started; i++) {
+        started = (api.tools.getById(result.toolId) as { state?: string } | undefined)?.state === 'activated';
+        if (!started) await new Promise((r) => setTimeout(r, 150));
+      }
+      d.outcome = started
+        ? { kind: 'installed', text: 'Installed and turned on, no restart needed. Turn it off or remove it in Tools, like any extension; its saved data is kept for when it is turned on again.' }
+        : { kind: 'error', text: 'Installed, but it did not start (its code failed when it was turned on). Ask the assistant to fix it, or remove it in Tools.' };
     }
     d.busy = false;
     repaint(id);
@@ -153,8 +171,13 @@ export function registerExtensionReview(api: ExtensionReviewApi): IDisposable[] 
     category: 'app-control',
     source: 'built-in',
     handler: async (args: Record<string, unknown>): Promise<IToolResult> => {
-      const draft: ExtensionDraft = { manifest: (args.manifest ?? {}) as Record<string, unknown>, files: (args.files ?? {}) as Record<string, string> };
-      const reading = readExtensionDraft(draft);
+      // Models often send an object as JSON text; take it either way.
+      const asObject = (v: unknown): Record<string, unknown> => {
+        if (typeof v === 'string') { try { const o = JSON.parse(v); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
+        return v && typeof v === 'object' ? v as Record<string, unknown> : {};
+      };
+      const draft: ExtensionDraft = { manifest: asObject(args.manifest), files: asObject(args.files) as Record<string, string> };
+      const reading = readExtensionDraft(draft, surface);
       if (reading.passed < reading.checks.length) {
         return { content: `The draft did not pass these checks; fix them and call extension_propose again:\n${draftFailures(reading)}` };
       }

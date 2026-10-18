@@ -778,7 +778,8 @@ function _autoLinkSourceMentions(
  * Exported for testing.
  */
 export function _markdownToHtml(md: string): string {
-  return CHAT_MARKDOWN.render(_normalizeChatMarkdown(md));
+  const src = _normalizeChatMarkdown(md);
+  return CHAT_MARKDOWN.render(src, { src });
 }
 
 function _createChatMarkdownRenderer(): MarkdownIt {
@@ -822,8 +823,15 @@ function _createChatMarkdownRenderer(): MarkdownIt {
   };
   const defaultFence = markdown.renderer.rules.fence
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
-  markdown.renderer.rules.fence = (tokens, idx, options, env, self) =>
-    renderAnswerForm(tokens[idx].info, tokens[idx].content, formContext) ?? defaultFence(tokens, idx, options, env, self);
+  // A fence still being streamed has no closing line yet: a form may draw
+  // what it has, but nothing that runs code (a mini-app) starts on half of it.
+  markdown.renderer.rules.fence = (tokens, idx, options, env: { src?: string }, self) => {
+    const map = tokens[idx].map;
+    const closing = map && env?.src !== undefined ? env.src.split('\n')[map[1] - 1] ?? '' : '```';
+    const complete = !!map && map[1] - 1 > map[0] && /^\s*(`{3,}|~{3,})\s*$/.test(closing);
+    return renderAnswerForm(tokens[idx].info, tokens[idx].content, { ...formContext, complete })
+      ?? defaultFence(tokens, idx, options, env, self);
+  };
 
   const defaultLinkOpen = markdown.renderer.rules.link_open
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
@@ -894,20 +902,24 @@ function _installKatexRules(markdown: MarkdownIt): void {
     if (src.startsWith('\\(', start)) {
       open = '\\(';
       close = '\\)';
-    } else if (src.charAt(start) === '$' && src.charAt(start + 1) !== '$') {
+    } else if (src.charAt(start) === '$' && src.charAt(start + 1) !== '$' && !/\s/.test(src.charAt(start + 1))) {
       open = '$';
       close = '$';
     } else {
       return false;
     }
 
+    // Prices are not math: a closing $ touches no space before it and no
+    // digit after it ("saves $62 a month ... saves $145" stays text).
     let matchPos = start + open.length;
     while (matchPos < src.length) {
       matchPos = src.indexOf(close, matchPos);
       if (matchPos < 0) {
         return false;
       }
-      if (src.charAt(matchPos - 1) !== '\\') {
+      const escaped = src.charAt(matchPos - 1) === '\\';
+      const priceLike = open === '$' && (/\s/.test(src.charAt(matchPos - 1)) || /\d/.test(src.charAt(matchPos + 1)));
+      if (!escaped && !priceLike) {
         break;
       }
       matchPos += close.length;

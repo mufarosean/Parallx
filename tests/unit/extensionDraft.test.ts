@@ -90,13 +90,14 @@ describe('the review: nothing is installed until the person presses Install', ()
     const opened: { instanceId?: string; title: string }[] = [];
     const installed = new Set<string>();
     const api = {
-      commands: { registerCommand: (id: string, h: (...a: unknown[]) => unknown) => { commands.set(id, h); return { dispose() {} }; } },
+      commands: { registerCommand: (id: string, h: (...a: unknown[]) => unknown) => { commands.set(id, h); return { dispose() {} }; }, executeCommand: async () => undefined },
+      chat: { registerTool: () => ({ dispose() {} }) },
       editors: {
         registerEditorProvider: (_t: string, p: typeof provider) => { provider = p; return { dispose() {} }; },
         openEditor: async (o: { instanceId?: string; title: string }) => { opened.push(o); },
       },
       tools: {
-        getById: (id: string) => (installed.has(id) ? {} : undefined),
+        getById: (id: string) => (installed.has(id) ? { state: 'activated' } : undefined),
         installFromDraft: vi.fn(async (d: ExtensionDraft) => { installed.add(String(d.manifest.id)); return { toolId: String(d.manifest.id) }; }),
         setEnabled: vi.fn(async () => {}),
       },
@@ -172,5 +173,27 @@ describe('the main process writes a reviewed draft, and only its own', () => {
     expect(String((await install(good())).error)).toMatch(/already installed/);
     expect(String((await install({ ...good(), files: { 'main.js': 'x', '../x.js': 'y' } })).error)).toMatch(/may not have/);
     expect(String((await install({ ...good(), manifest: { id: '../../evil' } })).error)).toMatch(/no valid id/);
+  });
+});
+
+describe('the API check: what a real model (qwen3.8) got wrong', () => {
+  const surface = { chat: ['registerTool'], commands: ['registerCommand', 'executeCommand'], editors: ['registerEditorProvider', 'openEditor'], canvas: ['registerBlock'], ui: ['createButton', 'createInput'] };
+  const withMain = (main: string): ExtensionDraft => ({ manifest: good().manifest, files: { 'main.js': main } });
+  const misuse = (main: string) => readExtensionDraft(withMain(main), surface).checks.find((c) => c.rule.startsWith('Calls only the app API'));
+
+  it('registerTool({ name, inputSchema, invoke }) is refused, with the shape it takes', () => {
+    const c = misuse("export function activate(api, context) { api.chat.registerTool({ name: 'convertTemperature', invoke() {} }); }");
+    expect(c?.ok).toBe(false);
+    expect(c?.detail).toContain("api.chat.registerTool takes (name, { description, parameters, handler, requiresConfirmation })");
+  });
+
+  it('a function that does not exist (api.editors.open) is refused, naming what does', () => {
+    const c = misuse("export function activate(api, context) { api.commands.registerCommand('assistant.recipes.open', () => api.editors.open('x')); }");
+    expect(c?.detail).toBe('api.editors.open does not exist (it has registerEditorProvider, openEditor)');
+  });
+
+  it('the right shapes pass, whatever activate() calls the API', () => {
+    const c = misuse("export function activate(px, context) { px.chat.registerTool('t', { description: 'd', parameters: {}, requiresConfirmation: false, handler: async () => ({ content: '' }) }); px.editors.openEditor({ typeId: 'a', title: 'b' }); }");
+    expect(c?.ok).toBe(true);
   });
 });

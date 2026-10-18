@@ -497,6 +497,7 @@ export const CORE_ANSWER_FORMS: readonly Omit<AnswerForm, 'ownerToolId'>[] = [
     hint: [
       `### ${FENCE}worked: a solution shown one step at a time`,
       'For a problem the reader should follow step by step. One step per line, `Title: what happens, with the numbers`; the reader reveals them one at a time.',
+      'It replaces writing the steps out: never give the same steps in prose as well.',
       `${FENCE}worked`, 'Find the change: 72 − 60 = 12.', 'Divide by where it started: 12 ÷ 60 = 0.2.', 'Write it as a percent: 0.2 is a 20% increase.', FENCE,
     ].join('\n'),
     render: renderWorked,

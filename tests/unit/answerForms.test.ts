@@ -228,3 +228,21 @@ describe('offering a tool for a repeated task', () => {
     el.remove();
   });
 });
+
+describe('found by running a real model', () => {
+  it('prices are not math: "$62 ... $145" stays text, $x^2$ is still math', () => {
+    const html = _markdownToHtml('Cutting 10% off food saves $62/month; cutting rent saves $145/month.');
+    expect(html).not.toContain('katex');
+    expect(html).toContain('$62/month');
+    expect(_markdownToHtml('The area is $x^2$ here.')).toContain('katex');
+  });
+
+  it('a mini-app still being written starts nothing until its block is closed', () => {
+    const partial = draw('Here:\n\n```app\ntitle: Loan\n<input id="p" type="range"><script>const p = document.getEl');
+    expect(partial.querySelector('iframe')).toBeNull();
+    expect(partial.querySelector('.px-af-app__pending')?.textContent).toBe('Writing the app…');
+    expect(partial.querySelector('.px-af-save')).toBeNull();
+    const done = draw('Here:\n\n```app\ntitle: Loan\n<input id="p" type="range">\n```');
+    expect(done.querySelector('iframe')).not.toBeNull();
+  });
+});

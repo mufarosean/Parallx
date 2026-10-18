@@ -12,7 +12,7 @@ import { escapeHtml } from './format.js';
 import { createButton } from './kit.js';
 import { getIcon } from './iconRegistry.js';
 import { createSandboxFrame, followHostTheme, hostColorScheme, watchFrameHeight } from './sandboxedHtml.js';
-import type { AnswerForm, AnswerFormHydration } from './answerForms.js';
+import type { AnswerForm, AnswerFormContext, AnswerFormHydration } from './answerForms.js';
 
 export const MINI_APP_BLOCK = 'parallx.chat.app';
 export const OPEN_MINI_APP_COMMAND = 'chat.openMiniApp';
@@ -53,7 +53,14 @@ export function mountMiniApp(stage: HTMLElement, app: MiniApp, opts: { fill?: bo
   followHostTheme(frame);
 }
 
-function renderApp(src: string): string | null {
+function renderApp(src: string, _info: string, ctx: AnswerFormContext): string | null {
+  // While the answer is still being written the app's code is half there:
+  // show where it will be, and start nothing until the block is closed.
+  if (ctx.complete === false) {
+    const title = /^\s*title\s*:\s*(.+)$/im.exec(src)?.[1]?.trim() || 'Mini-App';
+    return `<div class="px-af-app"><div class="px-af-app__bar"><span class="px-af-app__icon" aria-hidden="true">${getIcon('app-window')}</span>`
+      + `<span class="px-af-app__title">${escapeHtml(title)}</span></div><p class="px-af-app__pending">Writing the app…</p></div>`;
+  }
   const app = parseMiniApp(src);
   if (!app) return null;
   return '<div class="px-af-app">'

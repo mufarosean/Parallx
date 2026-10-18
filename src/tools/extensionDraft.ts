@@ -74,7 +74,55 @@ const literalsOf = (code: string, call: RegExp): string[] => {
   return out;
 };
 
-export function readExtensionDraft(draft: ExtensionDraft): DraftReading {
+/** The app's API as an extension gets it: namespace to its function names. */
+export type ApiSurface = Readonly<Record<string, readonly string[]>>;
+
+/**
+ * What an installed extension gets that a built-in tool does not (apiFactory:
+ * `database` is per extension, undefined for built-ins), so a built-in's own
+ * API object plus these is the surface an extension sees.
+ */
+export const EXTENSION_ONLY_API: ApiSurface = {
+  database: ['open', 'close', 'migrate', 'run', 'get', 'all', 'isOpen', 'runTransaction'],
+};
+
+/** The API a live object offers (each namespace's functions), for the API check. */
+export function apiSurfaceOf(api: unknown): ApiSurface {
+  const out: Record<string, string[]> = {};
+  for (const [ns, value] of Object.entries((api ?? {}) as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    out[ns] = Object.keys(value).filter((k) => typeof (value as Record<string, unknown>)[k] === 'function');
+  }
+  return out;
+}
+
+/**
+ * Calls on the API that do not exist, or that are made in a shape the app
+ * does not take (a model writing against an API it is guessing at). Read
+ * through the name activate() gives the API, as `api.ns.fn(`.
+ */
+function apiMisuse(code: string, surface: ApiSurface): string[] {
+  const param = /export\s+(?:async\s+)?function\s+activate\s*\(\s*([A-Za-z_$][\w$]*)/.exec(code)?.[1] ?? 'api';
+  const p = param.replace(/\$/g, '\\$');
+  const out = new Set<string>();
+  for (const m of code.matchAll(new RegExp(`\\b${p}\\.(\\w+)\\.(\\w+)\\s*\\(`, 'g'))) {
+    if (!surface[m[1]]) out.add(`${param}.${m[1]} does not exist`);
+    else if (!surface[m[1]].includes(m[2])) out.add(`${param}.${m[1]}.${m[2]} does not exist (it has ${surface[m[1]].join(', ')})`);
+  }
+  const firstArg = (fn: string, want: RegExp, shape: string): void => {
+    for (const m of code.matchAll(new RegExp(`\\b${p}\\.${fn.replace('.', '\\.')}\\s*\\(\\s*(.)`, 'g'))) {
+      if (!want.test(m[1])) out.add(`${param}.${fn} takes ${shape}`);
+    }
+  };
+  firstArg('chat.registerTool', /['"`]/, "(name, { description, parameters, handler, requiresConfirmation })");
+  firstArg('commands.registerCommand', /['"`]/, "('id', handler)");
+  firstArg('editors.registerEditorProvider', /['"`]/, "('typeId', { createEditorPane(container, input) })");
+  firstArg('editors.openEditor', /\{/, '({ typeId, title, instanceId })');
+  firstArg('canvas.registerBlock', /\{/, '({ typeId, label, description, icon, defaultConfig, render })');
+  return [...out];
+}
+
+export function readExtensionDraft(draft: ExtensionDraft, surface?: ApiSurface): DraftReading {
   const manifest = (draft?.manifest && typeof draft.manifest === 'object' ? draft.manifest : {}) as Record<string, unknown>;
   const files = (draft?.files && typeof draft.files === 'object' ? draft.files : {}) as Record<string, string>;
   const id = String(manifest.id ?? '');
@@ -94,6 +142,10 @@ export function readExtensionDraft(draft: ExtensionDraft): DraftReading {
   for (const r of CODE_RULES) {
     const hit = r.re.exec(code);
     check(r.rule, !hit, hit ? `found "${hit[0].trim().slice(0, 40)}"` : undefined);
+  }
+  if (surface) {
+    const misuse = apiMisuse(files['main.js'] ?? '', surface);
+    check('Calls only the app API that exists, in the shapes it takes', misuse.length === 0, misuse.slice(0, 4).join('; '));
   }
   const foreign = foreignCommands(code, id);
   check('Runs only its own commands (no other tool\'s)', foreign.length === 0, foreign.length ? `runs ${foreign.slice(0, 3).join(', ')}` : undefined);
