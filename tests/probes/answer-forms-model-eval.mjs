@@ -22,6 +22,56 @@ const MODEL = process.argv[3] ?? 'qwen3.8:latest';
 const CONTEXT = Number(process.argv[4] ?? 163840);
 const ONLY = (process.argv[5] ?? '').replace(/^only=/, '').split(',').filter(Boolean).map(Number);
 const PER_PROMPT_MS = 8 * 60_000;
+// The same style checks the app runs (Node strips the types).
+const { lintMiniApp, lintStyleSource, lintActionLabels, actionLabelsInCode } = await import('../../src/ui/styleLint.ts');
+
+/**
+ * A live style audit of what is on screen inside `rootSelector` (run in a
+ * frame or the page): controls without a name, text below 4.5:1 contrast
+ * (3:1 when large), type sizes off the scale, uppercase text, button words.
+ */
+function liveAudit(rootSelector) {
+  const root = [...document.querySelectorAll(rootSelector)].reverse().find((e) => e.getClientRects().length && e.textContent.trim()) ?? document.body;
+  const SCALE = new Set([10, 11, 12, 13, 15, 18, 22]);
+  const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null; const [r, g, b, a = 1] = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); return { r, g, b, a }; };
+  const lum = ({ r, g, b }) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c && c.a > 0.5) return c; } return parse(getComputedStyle(document.documentElement).backgroundColor) ?? { r: 22, g: 23, b: 26, a: 1 }; };
+  const controls = [...root.querySelectorAll('input, select, textarea, button')].filter((e) => e.getClientRects().length && e.type !== 'hidden');
+  const unnamed = controls.filter((e) => !(e.getAttribute('aria-label') || e.labels?.length || e.getAttribute('aria-labelledby') || e.title || (e.tagName === 'BUTTON' && e.textContent.trim())));
+  let lowContrast = 0; const offScale = new Set(); let upper = 0;
+  for (const el of root.querySelectorAll('*')) {
+    if (!el.getClientRects().length) continue;
+    const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (!own) continue;
+    const cs = getComputedStyle(el);
+    const size = parseFloat(cs.fontSize);
+    if (!SCALE.has(Math.round(size))) offScale.add(Math.round(size));
+    if (cs.textTransform === 'uppercase') upper++;
+    const fg = parse(cs.color); const bg = bgOf(el);
+    if (fg && bg) { const [L1, L2] = [lum(fg), lum(bg)].sort((a, b) => b - a); const ratio = (L1 + 0.05) / (L2 + 0.05); const large = size >= 18 || (size >= 14 && Number(cs.fontWeight) >= 600); if (ratio < (large ? 3 : 4.5)) lowContrast++; }
+  }
+  return {
+    controls: controls.length,
+    unnamed: unnamed.length,
+    lowContrast,
+    offScaleSizes: [...offScale],
+    uppercase: upper,
+    buttonLabels: controls.filter((e) => e.tagName === 'BUTTON').map((b) => b.textContent.trim()).filter(Boolean),
+  };
+}
+
+/** One list of style findings from the source check and the live audit. */
+function styleFindings(sourceIssues, live) {
+  const out = sourceIssues.map((i) => `${i.rule} (${i.detail})`);
+  if (live) {
+    if (live.unnamed) out.push(`${live.unnamed} of ${live.controls} controls have no name`);
+    if (live.lowContrast) out.push(`${live.lowContrast} text elements below contrast`);
+    if (live.offScaleSizes.length) out.push(`type sizes off the scale: ${live.offScaleSizes.join(', ')}px`);
+    if (live.uppercase) out.push(`${live.uppercase} uppercase text elements`);
+    for (const i of lintActionLabels(live.buttonLabels)) out.push(`${i.rule} (${i.detail})`);
+  }
+  return [...new Set(out)];
+}
 
 const PROMPTS = [
   { kind: 'form', expect: 'any', text: 'Compare how the chain ladder and Bornhuetter-Ferguson methods treat immature accident years.' },
@@ -165,6 +215,13 @@ async function main() {
             return document.body.innerText !== before;
           }).catch(() => null);
         }
+        // Style: the source against the house rules, and what the running app shows.
+        const src = await page.evaluate(() => {
+          const h = [...document.querySelectorAll('.px-af-host[data-af-form="app"]')].pop();
+          try { return decodeURIComponent(h?.getAttribute('data-af-src') ?? ''); } catch { return ''; }
+        });
+        const live = f ? await f.evaluate(liveAudit, 'body').catch(() => null) : null;
+        r.style = styleFindings(lintMiniApp(src), live);
       }
 
       // Extensions: install from the review and check it runs.
@@ -204,13 +261,17 @@ async function main() {
           const tools = svc.get({ id: 'ILanguageModelToolsService' });
           return { ran, newTabs: document.querySelectorAll('[role="tab"]').length - before, toolsRegistered: toolNames.map((t) => `${t}: ${tools.getTool(t) ? 'yes' : 'NO'}`) };
         }, { commands, toolNames });
+        // Style: the code against the house rules, and the tab it opened, if any.
+        const live = r.works.newTabs > 0 ? await page.evaluate(liveAudit, '.editor-pane').catch(() => null) : null;
+        const code = String(files['main.js'] ?? '');
+        r.style = styleFindings([...lintStyleSource(code), ...lintActionLabels(actionLabelsInCode(code))], live);
         await shot(page, path.join(outDir, `${String(n + 1).padStart(2, '0')}-after-install.png`));
         delete r.draft;
       }
       await shot(page, path.join(outDir, `${String(n + 1).padStart(2, '0')}-${p.kind}.png`), dom.appFrames ? '.px-af-app' : '.parallx-chat-markdown');
       await fs.writeFile(path.join(outDir, `${String(n + 1).padStart(2, '0')}-reply.md`), `# ${p.text}\n\n${markdown}\n\nTool calls: ${toolCalls.join(', ') || 'none'}\n`);
       results.push(r);
-      console.log(`[eval] ${r.n} ${p.kind} ${seconds}s finished=${r.finished} forms=${dom.forms.join('|') || '-'} code=${dom.codeFences.join('|') || '-'} tools=${toolCalls.join('|') || '-'}${r.app ? ` app=${JSON.stringify(r.app).slice(0, 160)}` : ''}${r.install ? ` install=${String(r.install.outcome).slice(0, 25)} activation=${JSON.stringify(r.activation)} works=${JSON.stringify(r.works)}` : ''} errors=${r.errors.length}`);
+      console.log(`[eval] ${r.n} ${p.kind} ${seconds}s finished=${r.finished} forms=${dom.forms.join('|') || '-'} code=${dom.codeFences.join('|') || '-'} tools=${toolCalls.join('|') || '-'}${r.app ? ` app=${JSON.stringify(r.app).slice(0, 160)}` : ''}${r.install ? ` install=${String(r.install.outcome).slice(0, 25)} activation=${JSON.stringify(r.activation)} works=${JSON.stringify(r.works)}` : ''} errors=${r.errors.length}${r.style ? ` style=${r.style.length}${r.style.map((s) => `\n    - ${s}`).join('')}` : ''}`);
       await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ model: MODEL, context: CONTEXT, results }, null, 2));
     }
   } finally {

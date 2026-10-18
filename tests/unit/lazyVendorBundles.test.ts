@@ -47,7 +47,7 @@ describe('the lazy vendor bundles', () => {
 
   it('build.mjs builds every vendor bundle and gives the main bundle the plugin', () => {
     const src = readFileSync(path.join(ROOT, 'scripts/build.mjs'), 'utf8');
-    expect(src).toContain('plugins: [lazyVendorPlugin()]');
+    expect(src).toMatch(/plugins: \[lazyVendorPlugin\(\)[,\]]/);
     expect(src).toContain('for (const { name, entry } of VENDOR_BUNDLES)');
     expect(src).toContain('outfile: `dist/renderer/vendor-${name}.js`');
   });

@@ -85,6 +85,7 @@ const TOOL_DESCRIPTION = [
   'Build an extension: a tool the person can turn on and off, for a task they asked you to make a tool of. Pass its manifest and files.',
   'The app checks the draft against the extension rules; failed checks come back to you to fix (call again). A draft that passes opens a review',
   'where the person sees what it adds and what it can reach and decides whether to install it. You never install anything yourself.',
+  'Read the build-extension skill first: it has the look and copy rules and a complete working example to build from.',
   'Manifest: {"manifestVersion": 1, "id": "assistant.recipe-converter" (lowercase, one dot), "name": "Recipe Converter", "version": "0.1.0",',
   '"publisher": "assistant", "description": "...", "main": "main.js", "activationEvents": ["onStartupFinished"], "engines": {"parallx": ">=0.1.0"},',
   '"contributes": {"commands": [{"id": "assistant.recipe-converter.open", "title": "Convert A Recipe…"}]}}.',

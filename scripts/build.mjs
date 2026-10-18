@@ -15,6 +15,18 @@ import { copyFile, cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { VENDOR_BUNDLES, lazyVendorPlugin } from './vendorBundles.mjs';
+import { readFile } from 'node:fs/promises';
+import nodePath from 'node:path';
+
+// `import text from './guide.md?raw'`: a file's text as a string (vitest reads
+// ?raw the same way). The assistant's built-in skills are written as .md files.
+const rawTextPlugin = {
+  name: 'raw-text',
+  setup(b) {
+    b.onResolve({ filter: /\?raw$/ }, (a) => ({ path: nodePath.resolve(a.resolveDir, a.path.replace(/\?raw$/, '')), namespace: 'raw-text' }));
+    b.onLoad({ filter: /.*/, namespace: 'raw-text' }, async (a) => ({ contents: await readFile(a.path, 'utf8'), loader: 'text', watchFiles: [a.path] }));
+  },
+};
 
 const isProduction = process.argv.includes('--production');
 
@@ -40,7 +52,7 @@ await build({
   logLevel: 'info',
   loader: assetLoaders,
   assetNames: 'fonts/[name]',
-  plugins: [lazyVendorPlugin()],
+  plugins: [lazyVendorPlugin(), rawTextPlugin],
 });
 
 // ── Vendor bundles ─────────────────────────────────────────────────────────

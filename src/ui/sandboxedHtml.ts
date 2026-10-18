@@ -32,15 +32,44 @@
  * host document at paint time and re-declared on the frame's :root.
  */
 export const FORWARDED_THEME_TOKENS: readonly string[] = [
-  '--px-bg', '--px-bg-elevated', '--px-bg-inset', '--px-surface-hover',
+  '--px-bg', '--px-bg-elevated', '--px-bg-inset', '--px-surface-hover', '--px-surface-active', '--px-surface-selected',
   '--px-text', '--px-text-secondary', '--px-text-muted', '--px-text-faint',
-  '--px-accent', '--px-accent-hover', '--px-accent-soft', '--px-accent-strong',
+  '--px-accent', '--px-accent-hover', '--px-accent-soft', '--px-accent-strong', '--px-accent-faint',
+  '--px-accent-text', '--px-text-on-accent',
   '--px-border', '--px-border-strong', '--px-divider',
   '--px-danger', '--px-success', '--px-warning', '--px-info',
   '--px-radius-sm', '--px-radius-md', '--px-radius-lg', '--px-radius-xl',
-  '--px-space-1', '--px-space-2', '--px-space-3', '--px-space-4', '--px-space-5', '--px-space-6',
+  '--px-space-1', '--px-space-2', '--px-space-3', '--px-space-4', '--px-space-5', '--px-space-6', '--px-space-8',
   '--px-text-xs', '--px-text-sm', '--px-text-base', '--px-text-md', '--px-text-lg', '--px-text-xl',
+  '--px-control-h', '--px-control-h-sm', '--px-focus-width',
 ];
+
+/**
+ * A mini-app's base look (appStyle): plain controls, tables and headings drawn
+ * as the app draws them, so an app the model writes only has to lay them out.
+ * The build-mini-app skill tells the model to rely on it.
+ */
+const APP_BASE_STYLE = `<style>
+  body { padding: var(--px-space-3); }
+  h1, h2, h3 { margin: 0 0 var(--px-space-2); font-weight: 600; color: var(--px-text); }
+  h1 { font-size: var(--px-text-lg); } h2 { font-size: var(--px-text-md); } h3 { font-size: var(--px-text-base); }
+  label { color: var(--px-text-secondary); font-size: var(--px-text-sm); }
+  button { font: inherit; font-size: var(--px-text-sm); min-height: var(--px-control-h); padding: 0 var(--px-space-3);
+    border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); color: var(--px-text); cursor: pointer; }
+  button:hover { background: var(--px-surface-hover); }
+  button.primary { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-text-on-accent); }
+  button.primary:hover { background: var(--px-accent-hover); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  input:not([type=range]):not([type=checkbox]):not([type=radio]), textarea, select { font: inherit; font-size: var(--px-text-base);
+    min-height: var(--px-control-h); padding: 0 var(--px-space-2); box-sizing: border-box;
+    color: var(--px-text); background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); }
+  textarea { padding: var(--px-space-2); }
+  input[type=range], input[type=checkbox], input[type=radio] { accent-color: var(--px-accent); }
+  :focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: var(--px-space-1) var(--px-space-3) var(--px-space-1) 0; text-align: left; border-bottom: 1px solid var(--px-divider); }
+  th { font-weight: 600; border-bottom-color: var(--px-border-strong); }
+</style>`;
 
 /**
  * Read the forwarded tokens off the host document's :root and return them as a
@@ -114,6 +143,7 @@ export function buildSandboxDocument(bodyHtml: string, themeVars: string, opts: 
 </style>
 </head>
 <body>
+${opts.appStyle ? APP_BASE_STYLE : ''}
 ${bodyHtml}
 ${opts.reportHeight ? HEIGHT_REPORTER : ''}${opts.followTheme ? THEME_RECEIVER : ''}
 </body>
@@ -125,6 +155,8 @@ export interface SandboxOptions {
   readonly scheme?: 'dark' | 'light';
   /** The frame posts its content height to the host (watchFrameHeight). */
   readonly reportHeight?: boolean;
+  /** Plain controls, tables and headings get the app's look (mini-apps). */
+  readonly appStyle?: boolean;
   /** The frame takes new theme colours from the host (followHostTheme). */
   readonly followTheme?: boolean;
 }

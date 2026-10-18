@@ -18,6 +18,9 @@ import { CORE_FORM_BLOCKS, WORKED_STEP_COMMAND, registerCoreAnswerForms, stepWor
 
 import { registerMiniApps, type MiniAppApi } from './miniApps.js';
 import { registerExtensionReview, type ExtensionReviewApi } from './extensionReview.js';
+import { registerContributedSkill } from '../../../services/chatContributions.js';
+import BUILD_MINI_APP_SKILL from '../skills/build-mini-app.md?raw';
+import BUILD_EXTENSION_SKILL from '../skills/build-extension.md?raw';
 
 export interface AnswerFormApi extends MiniAppApi {
   readonly tools?: ExtensionReviewApi['tools'];
@@ -123,6 +126,9 @@ export function registerAnswerFormContributions(api: AnswerFormApi, state: Param
   const out: IDisposable[] = [
     ...registerMiniApps(api, state),
     ...registerExtensionReview(api),
+    // How to build them so they look and read like Parallx: read on demand, never in every prompt.
+    registerContributedSkill('build-mini-app', { content: BUILD_MINI_APP_SKILL, ownerToolId: 'parallx.chat' }),
+    registerContributedSkill('build-extension', { content: BUILD_EXTENSION_SKILL, ownerToolId: 'parallx.chat' }),
     api.commands.registerCommand(WORKED_STEP_COMMAND, (key: unknown, action: unknown) =>
       stepWorkedForm(String(key ?? ''), action === 'reset' || action === 'dismiss' ? action : 'next')),
   ];

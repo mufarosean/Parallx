@@ -43,7 +43,7 @@ export function parseMiniApp(src: string): MiniApp | null {
 /** The jailed frame for an app, seated in `stage`: sized by what it reports, or filling it (a tab, a widget). */
 export function mountMiniApp(stage: HTMLElement, app: MiniApp, opts: { fill?: boolean } = {}): void {
   const { frame, revoke } = createSandboxFrame(app.html, stage.ownerDocument, {
-    scheme: hostColorScheme(stage.ownerDocument), reportHeight: !opts.fill, followTheme: true, className: 'px-af-app__frame', title: app.title,
+    scheme: hostColorScheme(stage.ownerDocument), reportHeight: !opts.fill, followTheme: true, appStyle: true, className: 'px-af-app__frame', title: app.title,
   });
   frame.style.height = opts.fill ? '100%' : `${app.height}px`;
   // The document is parsed once loaded; the URL is no longer needed.
@@ -91,6 +91,7 @@ export const MINI_APP_FORM: Omit<AnswerForm, 'ownerToolId'> = {
   aliases: ['mini-app', 'html-app'],
   hint: [
     `### ${FENCE}app: a small interactive tool`,
+    'Read the build-mini-app skill before writing one: it has the look, the words and a starter to build from.',
     'Only when the reader would understand something best by playing with it: a simulator with sliders, an',
     'interactive diagram, a tool with several steps. Prefer ```live for a plain calculation. Write one self-contained',
     'HTML app: markup, a <style> and a <script>, nothing loaded from outside. It runs locked down (no internet, no files,',

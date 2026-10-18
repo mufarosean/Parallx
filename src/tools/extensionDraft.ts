@@ -14,6 +14,7 @@
 // claim, and it says so.
 
 import { validateManifest } from './toolValidator.js';
+import { actionLabelsInCode, lintActionLabels } from '../ui/styleLint.js';
 
 /** The files a draft may hold, and their total size. */
 const FILE_NAME = /^[a-z0-9][a-z0-9-]*\.(js|css|json|md)$/;
@@ -147,6 +148,8 @@ export function readExtensionDraft(draft: ExtensionDraft, surface?: ApiSurface):
     const misuse = apiMisuse(files['main.js'] ?? '', surface);
     check('Calls only the app API that exists, in the shapes it takes', misuse.length === 0, misuse.slice(0, 4).join('; '));
   }
+  const labelIssues = lintActionLabels(actionLabelsInCode(code));
+  check('Writes actions in Title Case, with no em dashes or three dots', labelIssues.length === 0, labelIssues.map((i) => `${i.rule}: ${i.detail}`).join('; '));
   const foreign = foreignCommands(code, id);
   check('Runs only its own commands (no other tool\'s)', foreign.length === 0, foreign.length ? `runs ${foreign.slice(0, 3).join(', ')}` : undefined);
 
