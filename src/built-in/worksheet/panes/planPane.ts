@@ -22,6 +22,7 @@ import { LEVEL_TITLES } from '../campaign.js';
 import { el, tile, card, makeTooltip, fmtStudyTime } from './dashboardPane.js';
 import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../../ui/kit.js';
 import { appTimeString } from '../../../services/localTime.js';
+import { renderRoster } from './rosterPane.js';
 
 export interface PlanActions {
   openItem(id: number, title: string): void;
@@ -232,6 +233,8 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
   const render = async () => {
     if (disposed) return;
     const seq = ++renderSeq;
+    // A roster, when one is set, is what the Campaign tab tracks.
+    if (await renderRoster(content, () => !disposed && seq === renderSeq)) { tip.hide(); return; }
     const now = Date.now();
     const L = await load(now);
     if (disposed || seq !== renderSeq) return;
@@ -244,7 +247,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
       createEmptyState(root, {
         icon: 'calendar-check',
         headline: 'No plan yet.',
-        hint: 'Import a plan file: days of blocks, each a quiz, an exam, its grading or a session. The dashboard fills in from it.',
+        hint: 'Import a plan file: days of blocks, each a quiz, an exam, its grading or a session. Or set a roster in Worksheets Settings: a tag worked down day by day.',
         action: { label: 'Import Plan…', onClick: () => actions.importPlan() },
       });
       return;

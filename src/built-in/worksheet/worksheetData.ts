@@ -28,19 +28,19 @@ function db(): DatabaseBridge {
   return electron.database;
 }
 
-async function run(sql: string, params: unknown[] = []): Promise<{ lastInsertRowid?: number | bigint }> {
+export async function run(sql: string, params: unknown[] = []): Promise<{ lastInsertRowid?: number | bigint }> {
   const res = await db().run(sql, params);
   if (res.error) throw new Error(`[WorksheetData] ${res.error.message}`);
   return res;
 }
 
-async function getRow(sql: string, params: unknown[] = []): Promise<Record<string, unknown> | null> {
+export async function getRow(sql: string, params: unknown[] = []): Promise<Record<string, unknown> | null> {
   const res = await db().get(sql, params);
   if (res.error) throw new Error(`[WorksheetData] ${res.error.message}`);
   return res.row ?? null;
 }
 
-async function allRows(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
+export async function allRows(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
   const res = await db().all(sql, params);
   if (res.error) throw new Error(`[WorksheetData] ${res.error.message}`);
   return res.rows ?? [];
@@ -736,10 +736,10 @@ export async function setProblemNote(itemId: number, note: string): Promise<void
   else await run('INSERT INTO ws_problem_note (item_id, note, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at', [itemId, note, Date.now()]);
 }
 
-/** Stars: the student's bookmark on a problem, set from its sheet, the quiz
- *  overview or the bank, and kept across quizzes. Every pane listens, so a
- *  star set on the sheet shows in the bank and on the Dashboard at once. */
+/** Stars: the student's bookmark on a problem, kept across quizzes; every pane listens. A real change
+ *  is logged first (worksheet_018), so a roster can tell what was starred on which day. */
 export async function setItemStarred(itemId: number, starred: boolean): Promise<void> {
+  await run('INSERT INTO ws_star_log (item_id, starred, at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM ws_star WHERE item_id = ?) <> ?', [itemId, starred ? 1 : 0, Date.now(), itemId, starred ? 1 : 0]);
   if (starred) await run('INSERT OR IGNORE INTO ws_star (item_id, starred_at) VALUES (?, ?)', [itemId, Date.now()]);
   else await run('DELETE FROM ws_star WHERE item_id = ?', [itemId]);
   emitChange();

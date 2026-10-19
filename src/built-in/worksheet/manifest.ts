@@ -39,8 +39,12 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
       { id: 'worksheet.quizzes', title: 'Worksheets: Open Quizzes',
         aiInvocable: true, aiDescription: 'Open the Quizzes tab: every quiz, open and completed, to resume, rename, copy, reopen or delete.' },
       { id: 'worksheet.plan', title: 'Worksheets: Open Campaign',
-        aiInvocable: true, aiDescription: 'Open the Campaign tab: the study plan day by day, with each block, the exams and the rewards.' },
+        aiInvocable: true, aiDescription: 'Open the Campaign tab: the roster when one is set (a tag worked down day by day), else the study plan day by day, with each block, the exams and the rewards.' },
       { id: 'worksheet.importPlan', title: 'Worksheets: Import Plan…' },
+      { id: 'worksheet.startRoster', title: "Worksheets: Start Today's Roster",
+        aiInvocable: true, aiDescription: "Start or resume today's roster quiz: every problem with the roster's tag that is still starred, in a new order each day." },
+      { id: 'worksheet.openQuiz', title: 'Worksheets: Open Quiz',
+        aiInvocable: false, aiDescription: 'Open a quiz by its id: an open one resumes, a finished one reviews.' },
     ],
     viewContainers: [
       { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },

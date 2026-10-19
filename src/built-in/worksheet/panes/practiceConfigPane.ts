@@ -9,6 +9,9 @@ import { BACK_TO_HOME, openWorksheet, startQuizWith } from '../actions.js';
 import { state } from '../state.js';
 import { STAR_HINT, el } from '../widgets.js';
 
+/** The longest quiz the builder makes: a whole roster fits in one. */
+const MAX_QUIZ = 500;
+
 export function createPracticeConfigPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-create ws-builder');
   container.appendChild(root);
@@ -65,7 +68,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
   lenLabel.appendChild(el('span', 'ws-builder__fieldlabel', 'Length'));
   const stepper = el('div', 'ws-stepper');
   const countIn = el('input', 'ws-stepper__value') as HTMLInputElement;
-  countIn.type = 'number'; countIn.min = '1'; countIn.max = '100'; countIn.value = '10';
+  countIn.type = 'number'; countIn.min = '1'; countIn.max = String(MAX_QUIZ); countIn.value = '10';
   countIn.setAttribute('aria-label', 'Number of problems');
   declareControl(countIn, { id: 'worksheet.builder.length', label: 'Number of problems', kind: 'input', state: () => ({ kind: 'value', value: countIn.value }) });
   const ofLine = el('span', 'ws-hint');
@@ -182,7 +185,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
       onChange: (v) => {
         filters.starred = v as 'any' | 'starred' | 'unstarred';
         // Starred means all of them unless the length is lowered by hand.
-        if (v === 'starred' && nStarred > 0) countIn.value = String(Math.min(100, nStarred));
+        if (v === 'starred' && nStarred > 0) countIn.value = String(Math.min(MAX_QUIZ, nStarred));
         syncSide();
       },
     });
@@ -222,7 +225,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
       if (state.quizPreset.ids && state.quizPreset.ids.length) {
         presetIds = new Set(state.quizPreset.ids);
         presetName = state.quizPreset.name || 'Problem Bank selection';
-        countIn.value = String(Math.min(100, state.quizPreset.ids.length));
+        countIn.value = String(Math.min(MAX_QUIZ, state.quizPreset.ids.length));
       }
       state.quizPreset = null;
     }

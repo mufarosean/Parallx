@@ -699,6 +699,17 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-plan__day--today .ws-plan__daystate { color: var(--px-accent-text); }
 .ws-plan__day--missed .ws-plan__daystate { color: var(--px-danger); }
 .ws-plan__daylabel { font-size: var(--px-text-xs); line-height: 1.3; }
+/* The roster (rosterPane.ts): the plan's day cells, read-only, and its quizzes. */
+.ws-roster__day { cursor: default; }
+.ws-roster__day:hover { background: var(--px-bg-inset); }
+.ws-roster__day.ws-plan__day--today:hover { background: var(--px-accent-faint); }
+.ws-roster__dayline { font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.ws-roster__papername { flex: 0 0 150px; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-roster__bar > span { cursor: default; }
+.ws-roster__bar > span:hover { filter: none; }
+.ws-roster__start:empty { display: none; }
+.ws-roster__quizzes { display: flex; flex-direction: column; }
+.ws-roster__quiz { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-1) 0; border-bottom: 1px solid var(--px-divider); }
 .ws-plan__dots { margin-top: auto; display: flex; gap: 3px; flex-wrap: wrap; }
 .ws-plan__dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); background: var(--px-border-strong); }
 .ws-plan__dot--done { background: var(--px-success); }

@@ -1,7 +1,7 @@
 // Worksheets: the settings pane.
 
 import { declareControl } from '../../../ui/kit.js';
-import { createButton, createFilterChip, createPageHeader, createSectionLabel, createSegmented } from '../../../ui/kit.js';
+import { createButton, createFilterChip, createInput, createPageHeader, createSectionLabel, createSegmented } from '../../../ui/kit.js';
 import { listItems, onWorksheetDataChanged, getCampaign, startCampaign, endCampaign, listAttemptHistory } from '../worksheetData.js';
 import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from '../campaign.js';
 import { DISPLAY_DECIMALS_CHOICES } from '../displayNumbers.js';
@@ -10,6 +10,7 @@ import { fmtShortDay } from '../labels.js';
 import { BACK_TO_HOME } from '../actions.js';
 import { IDLE_MINUTES_CHOICES, getDisplayDecimalsSetting, getExamDate, getIdleMinutes, getSheetAppearance, getXpCashRate, setDisplayDecimalsSetting, setExamDate, setIdleMinutes, setSheetAppearance, setXpCashRate, state, type SheetAppearance } from '../state.js';
 import { el } from '../widgets.js';
+import { getRoster, saveRoster, clearRoster } from '../rosterData.js';
 
 // ── Settings (instanceId 'settings') ────────────────────────────────────────
 
@@ -160,6 +161,26 @@ export function createSettingsPane(container: HTMLElement) {
     cashIn.addEventListener('change', () => { const v = Math.max(0, Number(cashIn.value) || 0); void setXpCashRate(v).then(() => render()); });
     cashWrap.appendChild(cashIn);
     row(camp, 'XP to cash', 'Dollars per 100 XP. The Dashboard then shows what your XP and each reward are worth, and Cash Out records what you paid yourself. 0 turns it off.', cashWrap, cashIn.id);
+
+    // The roster: a tag worked down day by day; the Campaign tab tracks it.
+    const roster = await getRoster().catch(() => null);
+    if (disposed) return;
+    const rost = card('Roster');
+    const isDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v.trim());
+    const dayCheck = (v: string) => (isDay(v) ? null : 'A day as YYYY-MM-DD.');
+    const rosterToday = dayKey(Date.now());
+    const tagIn = createInput(null, { id: 'worksheet.settings.rosterTag', label: 'Roster tag', value: roster?.tag ?? '', placeholder: 'A tag' });
+    const fromIn = createInput(null, { id: 'worksheet.settings.rosterStart', label: 'Roster first day', value: roster?.startDay ?? rosterToday, placeholder: 'YYYY-MM-DD', validationFn: dayCheck });
+    const toIn = createInput(null, { id: 'worksheet.settings.rosterEnd', label: 'Roster last day', value: roster?.endDay ?? addDays(rosterToday, 6), placeholder: 'YYYY-MM-DD', validationFn: dayCheck });
+    const saveRosterIn = () => {
+      const tag = tagIn.value.trim(), from = fromIn.value.trim(), to = toIn.value.trim();
+      if (!tag) { if (roster) void clearRoster(); return; }
+      if (isDay(from) && isDay(to) && from <= to) void saveRoster({ tag, startDay: from, endDay: to });
+    };
+    for (const input of [tagIn, fromIn, toIn]) { disposables.push(input); input.element.addEventListener('change', saveRosterIn); }
+    row(rost, 'Tag', "Every problem with this tag. The Campaign tab then counts what you do each day, what you unstar and what is left, and starts the day's quiz over what is still starred. Empty ends it; its quizzes stay.", tagIn.element);
+    row(rost, 'First day', '', fromIn.element);
+    row(rost, 'Last day', '', toIn.element);
 
     // The sheet's look, independent of the app theme.
     const sheet = card('Practice sheet');

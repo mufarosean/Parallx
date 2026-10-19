@@ -25,6 +25,7 @@
 import { listItems, getItem, onWorksheetDataChanged, attachWorksheetDatabase, recordXpCashout, listQuestionRows } from './worksheetData.js';
 import { createDashboardPane } from './panes/dashboardPane.js';
 import { createPlanPane } from './panes/planPane.js';
+import { OPEN_QUIZ_COMMAND, START_ROSTER_COMMAND, startTodaysRoster } from './panes/rosterPane.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
 import { practiceBlock } from './worksheetPracticeBlock.js';
@@ -188,6 +189,12 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
       await pickAndImportPlan();
       return true;
     }),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand(START_ROSTER_COMMAND, () => startTodaysRoster()),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand(OPEN_QUIZ_COMMAND, (id?: unknown) => (typeof id === 'string' && id ? openPastQuiz(id) : undefined)),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.bank', () => openWorksheet('bank', 'Problem Bank')),
