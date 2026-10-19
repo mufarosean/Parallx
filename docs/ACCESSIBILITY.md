@@ -14,7 +14,7 @@ finger or a pen. Each must be able to do everything.
 - `tests/probes/keyboard-audit-probe.mjs` runs the app hidden and muted,
   in a seeded workspace (`audit-seed.mjs`: a page with every common block
   and a cover, a concept map, a database, planner events, dashboard
-  widgets, a photo library and a clip), so the controls an empty
+  widgets, a mini-app's answered permissions, a photo library and a clip), so the controls an empty
   workspace never shows are on screen too. On every screen (each built-in,
   each extension, each seeded place, and the sub-screens their navigation
   opens) it does one unbroken Tab run, F6 through the window's areas, Alt
@@ -64,6 +64,7 @@ and 19 with only part of one.
 - [x] Quick pick: a modal dialog; the field names the highlighted row; Tab stays on the field; focus returns.
 - Found on the way: Enter on the activity bar's gear clicked the last view icon instead (the bar activated its tracked icon, not the focused button). Fixed.
 - The confirm modal, input box and quick pick focus at once instead of on the next frame, so focus is never left on the opener.
+- [x] App permission (2026-10-19): a mini-app's `parallx.call` asks in a modal alert dialog that takes focus (Don't Allow first), keeps Tab on its buttons, and Escape means no. Focus went back to the app's frame but sat on the frame's body; the frame's connector now puts it back on the control that made the call. The dialog pass opens it from a mini-app's own button, and checks focus inside the frame.
 
 ### 2. Keyboard reach (done 2026-10-13)
 - [x] Editor tabs (none focusable): the active tab in the Tab order, arrows move, Enter opens.

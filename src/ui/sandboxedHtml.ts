@@ -202,10 +202,15 @@ export function hostColorScheme(doc: Document = document): 'dark' | 'light' {
  * person's tools and resolves with `{ content, data }` (data: the content
  * parsed as JSON, when it is JSON). The frame itself still reaches nothing:
  * the host decides, and asks the person (appConnections).
+ * The host's permission dialog takes focus and gives it back to the frame,
+ * which then sits on its body: when the answer comes and the frame still has
+ * focus, it goes back to the control that made the call.
  */
 const CONNECTOR = `<script>(function(){var n=0,w={};addEventListener('message',function(e){var r=e.data&&e.data.parallxReply;`
-  + `if(!r||e.source!==parent||!w[r.id])return;var p=w[r.id];delete w[r.id];if(r.ok)p.resolve(r.result);else p.reject(new Error(String(r.error)));});`
-  + `window.parallx=Object.freeze({call:function(tool,args){return new Promise(function(resolve,reject){var id=++n;w[id]={resolve:resolve,reject:reject};`
+  + `if(!r||e.source!==parent||!w[r.id])return;var p=w[r.id];delete w[r.id];var a=document.activeElement;`
+  + `if(p.back&&p.back.isConnected&&document.hasFocus()&&(!a||a===document.body))p.back.focus();`
+  + `if(r.ok)p.resolve(r.result);else p.reject(new Error(String(r.error)));});`
+  + `window.parallx=Object.freeze({call:function(tool,args){return new Promise(function(resolve,reject){var id=++n;w[id]={resolve:resolve,reject:reject,back:document.activeElement!==document.body?document.activeElement:null};`
   + `parent.postMessage({parallxCall:{id:id,tool:String(tool),args:(args&&typeof args==='object')?JSON.parse(JSON.stringify(args)):{}}},'*');});}});})();</script>`;
 
 /**

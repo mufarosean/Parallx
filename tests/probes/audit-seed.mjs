@@ -7,8 +7,9 @@
 // made with ffmpeg, in the database the app itself would build).
 // After launch: a canvas page with every common block (a table, columns, a
 // callout, lists, a math block) and a cover; a concept map; a database;
-// planner events (timed and all-day, today); dashboard widgets. Each seeded
-// place becomes an audit screen (`seed:<name>`).
+// planner events (timed and all-day, today); dashboard widgets; a mini-app's
+// answered permissions (Settings › App Permissions). Each seeded place
+// becomes an audit screen (`seed:<name>`).
 //
 // Nothing here calls a model, and the audit's launch refuses the chat
 // model's port.
@@ -70,6 +71,31 @@ const text = (t) => ({ type: 'text', text: t });
 const para = (t) => ({ type: 'paragraph', content: [text(t)] });
 const row = (cells, cell = 'tableCell') => ({ type: 'tableRow', content: cells.map((c) => ({ type: cell, content: [para(c)] })) });
 
+/** A mini-app (```app) that uses the person's tools: `tools` on load, or `onPress` when its button is pressed. */
+export function miniAppSource(title, { tools = [], onPress } = {}) {
+  const calls = (list) => `for (const t of ${JSON.stringify(list)}) { try { await parallx.call(t, { path: '.' }); } catch {} }`;
+  return [`title: ${title}`,
+    onPress ? `<button id="go">Load Files</button><script>const go = document.getElementById('go'); go.focus(); go.onclick = async () => { ${calls(onPress)} };</script>` : '<p>Seeded app.</p>',
+    tools.length ? `<script>(async () => { ${calls(tools)} })();</script>` : ''].join('\n');
+}
+
+/** Answer the permission dialog on screen with `label`; false when none came. */
+export async function answerAppPermission(page, label) {
+  const button = page.locator('.px-app-permission button', { hasText: label }).first();
+  try { await button.waitFor({ state: 'visible', timeout: 10_000 }); } catch { return false; }
+  await button.click();
+  await page.waitForTimeout(400);
+  return true;
+}
+
+async function seedAppPermissions(page) {
+  await run(page, 'chat.openMiniApp', 'Seeded App', miniAppSource('Seeded App', { tools: ['fs_list_files', 'fs_search_files'] }));
+  const allowed = await answerAppPermission(page, 'Always Allow');
+  const refused = await answerAppPermission(page, 'Don\'t Allow');
+  await run(page, 'workbench.action.closeActiveEditor');
+  return allowed && refused ? 'ok' : `allowed=${allowed} refused=${refused}`;
+}
+
 /** The seeded places, made in the running app. Returns the audit screens that open them. */
 export async function seedAfterLaunch(page, pre) {
   const log = (what, r) => console.log(`[seed] ${what}: ${typeof r === 'string' ? r : JSON.stringify(r)}`);
@@ -126,6 +152,11 @@ export async function seedAfterLaunch(page, pre) {
   log('dashboard widgets', await page.evaluate(() => { const t = Array.from(document.querySelectorAll('.dashboard-picker__template')).find((x) => x.getClientRects().length); if (!t) return 'no template'; t.click(); return 'ok'; }));
   await page.waitForTimeout(1_500);
   await page.keyboard.press('Escape');
+
+  // App permissions: a mini-app asks for two of the person's tools; one is
+  // allowed for good and one refused, so Settings › App Permissions has rows
+  // to revoke.
+  log('app permissions', await seedAppPermissions(page));
 
   // Painting Plans: the art tools on and one plan on the seeded photo.
   await page.evaluate(async () => { await window.__parallx_workbench__._services.get({ id: 'IConfigurationService' }).getConfiguration('mediaOrganizer').update('enableArtTools', true); });

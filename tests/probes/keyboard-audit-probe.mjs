@@ -33,7 +33,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import { PROJECT_ROOT, launchApp, cmd, cmdNoWait, setToolEnabled, openFile, tinyPdf, sceneOf, flatten } from './scene.mjs';
-import { seedBeforeLaunch, seedAfterLaunch } from './audit-seed.mjs';
+import { seedBeforeLaunch, seedAfterLaunch, miniAppSource } from './audit-seed.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-keyboard-audit'));
 const only = process.argv.slice(3);
@@ -664,12 +664,18 @@ const canvasPageId = () => page.evaluate(() => {
   const s = Array.from(document.querySelectorAll('[data-px-surface="canvas"]')).find((e) => e.getClientRects().length);
   return s ? (s.getAttribute('data-px-instance') || '').split(':').pop() : null;
 });
+// An opener is a declared control's id, or `css:<selector>` (a mini-app's frame).
 const focusId = (id, inner) => page.evaluate(({ id, inner }) => {
-  const e = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(id)}"]`)).find((x) => x.getClientRects().length);
+  const e = Array.from(document.querySelectorAll(id.startsWith('css:') ? id.slice(4) : `[data-px-id="${CSS.escape(id)}"]`)).find((x) => x.getClientRects().length);
   const t = inner ? e?.querySelector(inner) : e;
   t?.focus();
   return !!t && document.activeElement === t;
 }, { id, inner });
+// A control inside a frame: focused from within it (focusing the frame itself puts its focus on its body).
+const focusInFrame = async (frame, inner) => {
+  try { await page.frameLocator(`${frame}:visible`).first().locator(inner).focus({ timeout: 5_000 }); } catch { return false; }
+  return page.evaluate((frame) => { const a = document.activeElement; return !!a && a.matches(frame) && !!a.getClientRects().length; }, frame);
+};
 const DIALOGS = [
   { name: 'command palette', opener: ['activitybar.explorer-container'], open: { key: 'Control+Shift+P' }, root: '[data-px-surface="quickAccess"]', modal: true },
   { name: 'quick open', opener: ['activitybar.explorer-container'], open: { key: 'Control+P' }, root: '[data-px-surface="quickAccess"]', modal: true },
@@ -679,13 +685,16 @@ const DIALOGS = [
   { name: 'confirm', opener: ['activitybar.explorer-container'], open: { cmd: ['workspace.resetConfig'] }, root: '[data-px-surface="confirm"]', modal: true },
   { name: 'input box', setup: ['canvas.newPage'], opener: ['canvas.page.menu'], open: { cmd: ['canvas.renamePage', '$page'] }, root: '[data-px-surface="inputBox"]', modal: true },
   { name: 'prompt toast', setup: ['canvas.newPage'], opener: ['canvas.page.menu'], open: { cmd: ['canvas.deletePage', '$page'] }, root: '[data-px-surface="notification"]', modal: false },
+  // A mini-app asks to use one of the person's tools when its button is pressed.
+  // Its opener is the frame (focus returns to it); inside, the app's button, where Tab from the window lands.
+  { name: 'app permission', setup: [['chat.openMiniApp', 'Permission Check', miniAppSource('Permission Check', { onPress: ['fs_list_files'] })]], opener: ['css:.px-af-app__frame'], inFrame: '#go', open: { key: 'Enter' }, root: '.px-app-permission', modal: true },
 ];
 async function auditDialogs() {
   const out = [];
   for (const d of DIALOGS) {
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
-    for (const c of d.setup ?? []) { await cmd(page, c); await page.waitForTimeout(1_200); }
-    const focused = await focusId(...d.opener);
+    for (const c of d.setup ?? []) { await cmd(page, ...[c].flat()); await page.waitForTimeout(1_200); }
+    const focused = d.inFrame ? await focusInFrame(d.opener[0].slice(4), d.inFrame) : await focusId(...d.opener);
     if (!focused) { out.push({ name: d.name, problem: `could not focus the opener ${d.opener.join(' ')}` }); continue; }
     const modesBefore = await page.evaluate(() => document.documentElement.dataset.pxModes || '');
     // Where the opening key goes: who receives it, and whether anything cancels it on the way.
@@ -696,7 +705,7 @@ async function auditDialogs() {
     const state = () => page.evaluate(({ root, opener }) => {
       const r = Array.from(document.querySelectorAll(root)).filter((e) => e.getClientRects().length).pop();
       const a = document.activeElement;
-      const op = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`)).find((x) => x.getClientRects().length);
+      const op = Array.from(document.querySelectorAll(opener[0].startsWith('css:') ? opener[0].slice(4) : `[data-px-id="${CSS.escape(opener[0])}"]`)).find((x) => x.getClientRects().length);
       const opEl = opener[1] ? op?.querySelector(opener[1]) : op;
       // What a screen reader is told about the dialog: its role, whether it
       // is modal, and for a message whether it is announced (a live region).
@@ -713,7 +722,7 @@ async function auditDialogs() {
     if (!s1.open) { row.modesBefore = modesBefore; row.keyTrail = await page.evaluate(() => (window.__keyTrail || []).join(' | ')); }
     if (!s1.open) row.seen = await page.evaluate(({ root, opener }) => {
       const a = document.activeElement;
-      const openers = Array.from(document.querySelectorAll(`[data-px-id="${CSS.escape(opener[0])}"]`));
+      const openers = Array.from(document.querySelectorAll(opener[0].startsWith('css:') ? opener[0].slice(4) : `[data-px-id="${CSS.escape(opener[0])}"]`));
       return { roots: Array.from(document.querySelectorAll(root)).map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), openers: openers.map((e) => (e.getClientRects().length ? 'shown' : 'hidden')), activeShown: !!a?.getClientRects().length, expanded: a?.getAttribute('aria-expanded'), modes: document.documentElement.dataset.pxModes || '', lastExit: document.documentElement.dataset.pxLastExit || '', disabled: !!a?.disabled };
     }, { root: d.root, opener: d.opener });
     if (s1.open && d.modal) {
@@ -732,6 +741,11 @@ async function auditDialogs() {
     const s2 = await state();
     row.escapeCloses = !s2.open;
     row.focusReturned = s2.atOpener;
+    // Back in a frame, focus is on the control that opened the dialog, not the frame's body.
+    if (d.inFrame && s2.atOpener) {
+      await page.waitForTimeout(300);
+      row.focusReturned = await page.frameLocator(`${d.opener[0].slice(4)}:visible`).first().locator(d.inFrame).evaluate((e) => e.ownerDocument.activeElement === e).catch(() => false);
+    }
     row.focusAfterClose = s2.active;
     out.push(row);
     console.log(`[dialog] ${JSON.stringify(row)}`);
