@@ -15,6 +15,25 @@ import { BACK_TO_HOME, beginReview, openBuilder, openWorksheet, showMenu, startQ
 import { discussNotesInChat } from '../chatReview.js';
 import { state } from '../state.js';
 import { el, starBtn } from '../widgets.js';
+import { htmlFragment } from '../../../ui/answerForms.js';
+
+export const REVIEW_PAPER_COMMAND = 'worksheet.reviewPaper';
+export const QUIZ_PAPER_COMMAND = 'worksheet.quizPaper';
+/** One paper's problems the bank shows now: that paper only, under its filters and search. */
+async function paperProblems(paper: string): Promise<number[]> {
+  const all = await listItems().catch(() => [] as WorksheetItemSummary[]);
+  return all.filter((it) => it.paper === paper && bankMatches(it, _bankFilters, _bankQuery, _bankRecipes)).map((it) => it.id);
+}
+export async function reviewPaper(paper: string): Promise<void> {
+  const ids = await paperProblems(paper);
+  if (ids.length) await beginReview(ids);
+}
+export async function quizPaper(paper: string): Promise<void> {
+  const ids = await paperProblems(paper);
+  if (!ids.length) return;
+  state.quizPreset = { ids, name: paperLabel(paper) };
+  openBuilder();
+}
 
 // ── Item browser (instanceId 'home') ────────────────────────────────────────
 
@@ -160,7 +179,16 @@ export function createBankPane(container: HTMLElement) {
       head.appendChild(end);
       head.addEventListener('click', () => { if (_homeOpen.has(key)) _homeOpen.delete(key); else _homeOpen.add(key); paintList(); });
       list.appendChild(head);
-      if (open) for (const it of (filtering ? shown : group)) list.appendChild(itemRow(it, false));
+      if (open) {
+        // This paper's own problems only, under the filters: a search that also
+        // matches another paper (a practice exam's title) never pulls it in.
+        list.appendChild(htmlFragment('<div class="ws-bank__paperacts"></div>'));
+        const acts = list.lastElementChild as HTMLElement;
+        const n = (filtering ? shown : group).length;
+        createButton(acts, { id: null, label: 'Review', icon: 'eye', kind: 'ghost', size: 'sm', command: REVIEW_PAPER_COMMAND, args: [key], title: `Walks through the ${n} ${paperLabel(key)} problems shown here with your work and the solution. Nothing is scored.` });
+        createButton(acts, { id: null, label: 'Quiz…', icon: 'play', kind: 'ghost', size: 'sm', command: QUIZ_PAPER_COMMAND, args: [key], title: `Opens the quiz builder with the ${n} ${paperLabel(key)} problems shown here.` });
+        for (const it of (filtering ? shown : group)) list.appendChild(itemRow(it, false));
+      }
     }
     if (generated.length > 0) {
       const open = _homeOpen.has('__generated');

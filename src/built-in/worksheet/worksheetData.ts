@@ -386,7 +386,7 @@ function rowToAttempt(row: Record<string, unknown>): WorksheetAttempt {
 /** The single in-progress attempt for an item, when one exists. */
 export async function getOpenAttempt(itemId: number): Promise<WorksheetAttempt | null> {
   const row = await getRow(
-    'SELECT * FROM ws_attempts WHERE item_id = ? AND completed = 0 ORDER BY started_at DESC LIMIT 1',
+    'SELECT * FROM ws_attempts WHERE item_id = ? AND completed = 0 AND set_aside_at = 0 ORDER BY started_at DESC LIMIT 1',
     [itemId],
   );
   return row ? rowToAttempt(row) : null;
@@ -456,7 +456,7 @@ export async function markAttemptWorked(itemId: number, seconds?: number): Promi
 
 /** Reset Sheet: discard the open attempt's work entirely. */
 export async function discardOpenAttempt(itemId: number): Promise<void> {
-  await run('DELETE FROM ws_attempts WHERE item_id = ? AND completed = 0', [itemId]);
+  await run('DELETE FROM ws_attempts WHERE item_id = ? AND completed = 0 AND set_aside_at = 0', [itemId]);
   emitChange();
 }
 

@@ -13,6 +13,7 @@ import { workbookHasOnSheetQuestion } from '../itemFormat.js';
 import { reviewAttempt } from '../worksheetAi.js';
 import { createStudyTicker } from '../studyClock.js';
 import { mountTagEditor } from './tagEditor.js';
+import { setAttemptAside, workForQuiz } from '../quizSheet.js';
 import { fmtSeconds } from '../labels.js';
 import { openWorksheet, showMenu } from '../actions.js';
 import { reviewInChat } from '../chatReview.js';
@@ -302,6 +303,17 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     mode = 'solution';
     renderItemHeader();
     await mountSheet(parseWorkbook(item.solutionJson));
+  };
+
+  /** What the problem opens on: its latest work, or in a running quiz only the quiz's own (quizSheet.ts). */
+  const workToOpen = async (id: number) => {
+    const open = await getOpenAttempt(id);
+    const latest = await getLatestWork(id);
+    const quiz = state.practice && state.practice.finishedAt == null && state.practice.ids.includes(id) ? state.practice : null;
+    if (!quiz) return { open, prior: open ? null : latest };
+    const work = workForQuiz(open, latest, quiz.startedAt);
+    if (work.setAside) await setAttemptAside(work.setAside.id).catch(() => {});
+    return work;
   };
 
   const showWorking = async (): Promise<void> => {
@@ -663,8 +675,8 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
           return;
         }
         if (item.sheetJson) {
-          const open = await getOpenAttempt(itemId);
-          await initProblem(item, open, open ? null : await getLatestWork(itemId));
+          const work = await workToOpen(itemId);
+          await initProblem(item, work.open, work.open ? null : work.prior);
           return;
         }
         itemStarred = (await getStarred([itemId]).catch(() => new Set<number>())).has(itemId);

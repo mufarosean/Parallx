@@ -457,6 +457,8 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-quiz__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .ws-quiz__time { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
 .ws-quiz__note { grid-column: 1 / -1; }
+/* A paper's own Review and Quiz, under its row in the bank. */
+.ws-bank__paperacts { display: flex; gap: var(--px-space-1); padding: 2px var(--px-space-2) 2px 30px; }
 /* The tags line under a note (tagEditor.ts). */
 .ws-tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-1) var(--px-space-2); margin-top: var(--px-space-2); }
 .ws-tags__label { font-size: var(--px-text-xs); color: var(--px-text-muted); }

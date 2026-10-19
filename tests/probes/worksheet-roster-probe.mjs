@@ -114,6 +114,13 @@ async function main() {
     console.log('[probe] quiz tab:', quiz);
     check(/^Roster Test · .*1 of 9/.test(quiz), 'quiz named for the roster day, nine problems');
     await shot(page, '02-quiz.png');
+    // A clean sheet: the problem on screen had work from yesterday; it is set aside, not shown, not lost.
+    const db = (sql) => page.evaluate(async (q) => (await window.parallxElectron.database.all(q)).rows, sql);
+    const aside = await db('SELECT COUNT(*) AS n FROM ws_attempts WHERE set_aside_at > 0');
+    const drafts = await db("SELECT COUNT(*) AS n FROM ws_attempts WHERE completed = 0 AND cells_json != ''");
+    console.log('[probe] set aside:', JSON.stringify(aside), 'drafts kept:', JSON.stringify(drafts));
+    check(aside?.[0]?.n === 1, 'the quiz problem opened clean: its earlier work set aside');
+    check((drafts?.[0]?.n ?? 0) >= 9, 'every earlier draft kept');
 
     await runCommand(page, 'worksheet.plan');
     await page.waitForTimeout(1_500);
@@ -148,6 +155,18 @@ async function main() {
     const rows = await page.locator('.ws-bankrow:visible').count();
     check(rows === 1, `bank search finds the tagged problem (${rows})`);
     await shot(page, '06-bank-tag-search.png');
+    // A paper's own Review: a search that also matches a practice exam's title never pulls it in.
+    await page.locator('input[placeholder="Search problems"]').first().fill('Clark');
+    await page.waitForTimeout(1_000);
+    const groups = await page.locator('.ws-list__group:visible').allInnerTexts();
+    console.log('[probe] groups for Clark:', JSON.stringify(groups.map((g) => g.split(String.fromCharCode(10))[0])));
+    const clarkCount = (await db("SELECT COUNT(*) AS n FROM ws_items WHERE paper = 'clark'"))?.[0]?.n;
+    await page.locator('.ws-bank__paperacts').first().locator('button', { hasText: 'Review' }).click();
+    await page.waitForTimeout(1_500);
+    const reviewBar = await page.locator('.ws-sessionbar__count:visible').first().innerText().catch(() => '');
+    console.log('[probe] review bar:', reviewBar, 'clark problems:', clarkCount);
+    check(new RegExp(`of ${clarkCount} `).test(reviewBar) && !/PE 3/.test(reviewBar), 'Clark review holds Clark only, no practice exam');
+    await shot(page, '07-paper-review.png');
   } finally {
     const own = errors.filter((e) => /roster|worksheet/i.test(e));
     console.log(`[probe] page errors: ${errors.length} (${own.length} worksheet)`);

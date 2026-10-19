@@ -29,6 +29,12 @@ db.transaction(() => {
   for (const id of ids.slice(1, 4)) {
     db.prepare("INSERT INTO ws_attempts (item_id, started_at, updated_at, cells_json, self_grade, completed) VALUES (?, ?, ?, '', 'easy', 1)").run(id, startOfToday + 30000, startOfToday + 90000);
   }
+  // Unfinished work from before any quiz on the problems still starred: a quiz must open them clean.
+  for (const id of ids.slice(3)) {
+    db.prepare('INSERT INTO ws_attempts (item_id, started_at, updated_at, cells_json, completed) SELECT id, ?, ?, sheet_json, 0 FROM ws_items WHERE id = ?').run(startOfToday - 86400000, startOfToday - 86400000, id);
+  }
+  // A practice exam question that names a paper in its title, not to be sat yet.
+  db.prepare("INSERT INTO ws_items (title, question_md, created_at, sheet_json, paper, source, kind, quadrant, sheet_name, source_label) SELECT 'PE 3 · Q #4 · Clark', '', ?, sheet_json, 'pe3', 'exam', 'quant', 0, 'Q #4', '' FROM ws_items WHERE id = ?").run(NOW, ids[0]);
   db.prepare('INSERT INTO ws_roster (id, tag, start_day, end_day, created_at) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET tag = excluded.tag, start_day = excluded.start_day, end_day = excluded.end_day')
     .run('roster-test', dayKey(startOfToday - 86400000), dayKey(startOfToday + 4 * 86400000), NOW);
 })();

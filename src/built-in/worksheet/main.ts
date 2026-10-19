@@ -27,6 +27,7 @@ import { createDashboardPane } from './panes/dashboardPane.js';
 import { createPlanPane } from './panes/planPane.js';
 import { OPEN_QUIZ_COMMAND, START_ROSTER_COMMAND, startTodaysRoster } from './panes/rosterPane.js';
 import { ADD_TAG_COMMAND, REMOVE_TAG_COMMAND } from './panes/tagEditor.js';
+import { QUIZ_PAPER_COMMAND, REVIEW_PAPER_COMMAND, quizPaper, reviewPaper } from './panes/bankPane.js';
 import { addItemTag, removeItemTag } from './tagData.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
@@ -203,6 +204,12 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand(REMOVE_TAG_COMMAND, (id?: unknown, tag?: unknown) => (typeof id === 'number' && typeof tag === 'string' ? removeItemTag(id, tag) : undefined)),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand(REVIEW_PAPER_COMMAND, (paper?: unknown) => (typeof paper === 'string' && paper ? reviewPaper(paper) : undefined)),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand(QUIZ_PAPER_COMMAND, (paper?: unknown) => (typeof paper === 'string' && paper ? quizPaper(paper) : undefined)),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.bank', () => openWorksheet('bank', 'Problem Bank')),

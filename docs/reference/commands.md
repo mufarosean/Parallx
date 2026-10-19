@@ -295,8 +295,10 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `worksheet.openScratch` | Worksheets: Open Scratch Sheet | worksheet |  |  |  |
 | `worksheet.plan` | Worksheets: Open Campaign | worksheet |  |  |  |
 | `worksheet.practice` | Worksheets: Start Practice Session | worksheet |  |  |  |
+| `worksheet.quizPaper` | Worksheets: Quiz a Paper… | worksheet |  |  |  |
 | `worksheet.quizzes` | Worksheets: Open Quizzes | worksheet |  |  |  |
 | `worksheet.removeTag` | Worksheets: Remove Tag From Problem | worksheet |  |  |  |
+| `worksheet.reviewPaper` | Worksheets: Review a Paper | worksheet |  |  |  |
 | `worksheet.settings` | Worksheets: Settings | worksheet |  |  |  |
 | `worksheet.startRoster` | Worksheets: Start Today's Roster | worksheet |  |  |  |
 | `workspaceGraph.open` | Open Full Graph | workspace-graph | Workspace Graph |  |  |
