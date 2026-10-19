@@ -27,11 +27,13 @@ const _pending = new Map(); // id → { resolve, reject }
 
 function ensureWorker() {
   if (_worker) return _worker;
-  _worker = new Worker(path.join(__dirname, 'databaseWorker.cjs'));
-  _worker.on('message', (msg) => {
+  const worker = new Worker(path.join(__dirname, 'databaseWorker.cjs'));
+  _worker = worker;
+  worker.on('message', (msg) => {
     const entry = _pending.get(msg.id);
     if (!entry) return;
     _pending.delete(msg.id);
+    if (_pending.size === 0) worker.unref();
     if (msg.ok) entry.resolve(msg.result);
     else entry.reject(new Error(msg.error));
   });
@@ -40,25 +42,29 @@ function ensureWorker() {
       reject(new Error(`[databaseClient] worker unavailable: ${reason}`));
     }
     _pending.clear();
-    _worker = null; // next call respawns
+    if (_worker === worker) _worker = null; // next call respawns
   };
-  _worker.on('error', (err) => {
+  worker.on('error', (err) => {
     console.error('[databaseClient] DB worker error:', err);
     failAll(err?.message ?? 'worker error');
   });
-  _worker.on('exit', (code) => {
-    if (code !== 0) console.error(`[databaseClient] DB worker exited with code ${code}`);
+  worker.on('exit', (code) => {
+    // A disposed worker (terminated on purpose) is no longer _worker.
+    if (code !== 0 && _worker === worker) console.error(`[databaseClient] DB worker exited with code ${code}`);
     failAll(`exit ${code}`);
   });
-  // The worker must not keep the process alive on quit.
-  _worker.unref();
-  return _worker;
+  // The worker must not keep the process alive on quit: it is held only while
+  // a call is pending (otherwise a script awaiting a call would see the loop
+  // drain and exit 0 before the answer arrives).
+  worker.unref();
+  return worker;
 }
 
 function call(target, method, args) {
   const worker = ensureWorker();
   return new Promise((resolve, reject) => {
     const id = _nextId++;
+    if (_pending.size === 0) worker.ref();
     _pending.set(id, { resolve, reject });
     worker.postMessage({ id, target, method, args });
   });
