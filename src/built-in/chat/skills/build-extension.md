@@ -57,6 +57,7 @@ starts with it. Send `manifest` and `files` as objects.
 - `api.chat.registerTool('<name>', { description, parameters: { type: 'object', properties, required }, requiresConfirmation: false, handler: async (args) => ({ content: 'text' }) })`
 - `api.canvas.registerBlock({ typeId: '<id>.<name>', label, description, icon, defaultConfig, settings: { title, fields: { key: { type: 'string' | 'number' | 'enum', label, options? } } }, render(body, ctx) { draw from ctx.config; return { update(config) {}, dispose() {} }; } })`.
   Settings fields are only `string`, `number` or `enum`; a date is a `string` like `2026-10-27`.
+- `api.dashboard.registerWidgetType({ typeId: '<id>.<name>', displayName, description, icon, category: 'static', defaultSize: { colSpan: 4, rowSpan: 3 }, defaultConfig: {}, createWidget(container, ctx) { draw into container; return { dispose() {} }; } })`
 - `api.database`: `await api.database.open()`, then `run(sql, params)`,
   `get(sql, params)` gives `{ row }`, `all(sql, params)` gives `{ rows }`. Every
   result can be `{ error }`: check it.
@@ -72,7 +73,27 @@ starts with it. Send `manifest` and `files` as objects.
 - Control ids read `<extension id>.<name>`. A control repeated in every row
   takes `id: null`.
 
+A chat tool's name is snake_case (letters, digits, underscores), like `log_study_session`: no dots.
+
 Anything not in this list does not exist. Do not guess a function.
+
+## One extension, several parts, one set of data
+
+An extension that adds a tab, a page block, a dashboard widget and a chat
+tool keeps ONE store (its database) and lets every part read it. When any part
+changes the data (the chat tool logs something, the tab adds a row), every
+part that is open redraws:
+
+```javascript
+const views = new Set();                       // redraw functions of open parts
+const changed = () => { for (const redraw of views) redraw(); };
+// in each part: views.add(draw); ...; on dispose: views.delete(draw);
+// after every write: changed();
+```
+
+Open the database once in `activate` (one `ready` promise every part awaits).
+A chat tool returns what it did in one sentence (`{ content: 'Logged 30 minutes of statistics.' }`)
+and the numbers the person asked for.
 
 ## The look
 

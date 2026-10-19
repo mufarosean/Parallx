@@ -91,7 +91,30 @@ const PROMPTS = [
   { kind: 'ext', text: 'Build an extension that gives the chat a tool to convert temperatures between Celsius and Fahrenheit.' },
   { kind: 'ext', text: 'Build an extension with a command that opens a tab where I can keep a short list of exam dates.' },
   { kind: 'ext', text: 'Build an extension that adds a page block showing how many days are left until a date I set in its settings.' },
+  { kind: 'app', text: 'Make a mini-app that simulates a chain-ladder reserve: an editable 4 by 4 cumulative triangle, a choice of simple or volume-weighted average factors, a tail factor slider, and a bar chart of ultimate losses by accident year with the total reserve.' },
+  { kind: 'app', text: 'Build a mini-app budget planner: monthly income, spending categories with editable amounts, a bar chart of spending by category, and a what-if slider that cuts the discretionary categories by a percentage and shows how much I would save in a year.' },
+  { kind: 'ext', text: 'Build an extension for tracking study sessions: a tab where I log a session (topic and minutes) and see them listed, a chat tool so you can log a session for me and tell me my totals, a page block that shows this week\'s minutes by topic, and a dashboard widget with today\'s total.' },
+  { kind: 'ext', text: 'Build an extension for a reading list: a command and a tab to add items and tick them off, a chat tool so you can add items from chat, and a dashboard widget showing the next three unread items.' },
 ];
+
+/** Literal ids a draft's code registers for `call` (`typeId: '...'` or a template on a `const X = '...'`). */
+function idsRegistered(code, call) {
+  const consts = Object.fromEntries([...code.matchAll(/const\s+(\w+)\s*=\s*['"`]([^'"`$]+)['"`]/g)].map((m) => [m[1], m[2]]));
+  const out = [];
+  for (const m of code.matchAll(new RegExp(`${call}\\(\\s*\\{[\\s\\S]{0,200}?typeId\\s*:\\s*(['"\`])([^'"\`]+)\\1`, 'g'))) {
+    out.push(m[2].replace(/\$\{(\w+)\}/g, (_x, k) => consts[k] ?? ''));
+  }
+  return out;
+}
+
+/** Sample arguments for a tool from its parameter schema. */
+function sampleArgs(schema) {
+  const out = {};
+  for (const [k, p] of Object.entries(schema?.properties ?? {})) {
+    out[k] = p.enum ? p.enum[0] : p.type === 'number' || p.type === 'integer' ? 30 : p.type === 'boolean' ? true : /topic|title|name|subject/i.test(k) ? 'Statistics' : /date|day/i.test(k) ? new Date().toISOString().slice(0, 10) : 'Statistics';
+  }
+  return out;
+}
 
 function launchEnv(appRoot) {
   const env = {};
@@ -100,11 +123,16 @@ function launchEnv(appRoot) {
   return env;
 }
 
+let APP = null;
 async function shot(page, file, selector) {
   try {
     if (selector) await page.locator(selector).last().scrollIntoViewIfNeeded({ timeout: 3_000 });
     await page.screenshot({ path: file, timeout: 10_000 });
-  } catch (e) { console.log(`[eval] screenshot failed ${path.basename(file)}: ${String(e).slice(0, 80)}`); }
+  } catch {
+    // A hidden window can time out on page.screenshot; the window's own capture works.
+    const png = await APP?.evaluate(async ({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed()); return w ? (await w.webContents.capturePage()).toPNG().toString('base64') : null; }).catch(() => null);
+    if (png) await fs.writeFile(file, Buffer.from(png, 'base64')); else console.log(`[eval] screenshot failed ${path.basename(file)}`);
+  }
 }
 
 async function main() {
@@ -121,6 +149,7 @@ async function main() {
   await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction');
 
   const app = await electron.launch({ args: ['.', '--mute-audio'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  APP = app;
   const page = await app.firstWindow();
   let log = [];
   page.on('console', (m) => { if (m.type() === 'error') log.push(m.text().slice(0, 300)); });
@@ -247,7 +276,10 @@ async function main() {
         const manifest = asObj(r.draft?.manifest);
         const files = asObj(r.draft?.files);
         const commands = (manifest?.contributes?.commands ?? []).map((c) => c.id);
-        const toolNames = [...String(files['main.js'] ?? '').matchAll(/registerTool\(\s*['"`]([^'"`]+)/g)].map((m) => m[1]);
+        const consts = Object.fromEntries([...String(files['main.js'] ?? '').matchAll(/const\s+(\w+)\s*=\s*['"`]([^'"`$]+)['"`]/g)].map((m) => [m[1], m[2]]));
+        const toolNames = [...String(files['main.js'] ?? '').matchAll(/registerTool\(\s*['"`]([^'"`]+)/g)].map((m) => m[1].replace(/\$\{(\w+)\}/g, (_x, k) => consts[k] ?? ''))
+          // The app registers a tool under its function-safe name (languageModelToolsService.normalizeToolName).
+          .map((name) => name.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, ''));
         r.activation = manifest?.activationEvents ?? null;
         r.works = await page.evaluate(async ({ commands, toolNames }) => {
           const svc = window.__parallx_workbench__._services;
@@ -261,6 +293,33 @@ async function main() {
           const tools = svc.get({ id: 'ILanguageModelToolsService' });
           return { ran, newTabs: document.querySelectorAll('[role="tab"]').length - before, toolsRegistered: toolNames.map((t) => `${t}: ${tools.getTool(t) ? 'yes' : 'NO'}`) };
         }, { commands, toolNames });
+        // Its parts, connected: the chat tool writes, then the tab, block and widget should show it.
+        const blockTypes = idsRegistered(String(files['main.js'] ?? ''), 'registerBlock');
+        const widgetTypes = idsRegistered(String(files['main.js'] ?? ''), 'registerWidgetType');
+        const tag = String(n + 1).padStart(2, '0');
+        r.connect = { toolCalls: [], blocks: blockTypes, widgets: widgetTypes };
+        for (const t of toolNames) {
+          const schema = await page.evaluate((t) => window.__parallx_workbench__._services.get({ id: 'ILanguageModelToolsService' }).getTool(t)?.parameters ?? null, t);
+          const args = sampleArgs(schema);
+          r.connect.toolCalls.push(await page.evaluate(async ({ t, args }) => {
+            const tool = window.__parallx_workbench__._services.get({ id: 'ILanguageModelToolsService' }).getTool(t);
+            if (!tool) return `${t}: missing`;
+            try { const res = await tool.handler(args, { isCancellationRequested: false }); return `${t}(${JSON.stringify(args)}) -> ${String(res?.content ?? JSON.stringify(res)).slice(0, 200)}`; } catch (e) { return `${t}: ERR ${String(e?.message ?? e).slice(0, 120)}`; }
+          }, { t, args }).catch((e) => `${t}: ${String(e).slice(0, 80)}`));
+        }
+        for (const c of commands) { await cmd(c).catch(() => {}); }
+        await page.waitForTimeout(1_500);
+        await shot(page, path.join(outDir, `${tag}-tab.png`));
+        for (const b of blockTypes) {
+          r.connect[`block ${b}`] = await cmd('canvas.newPageWithBlock', b, {}).then((id) => (id ? 'page made' : 'not made')).catch((e) => `ERR ${String(e).slice(0, 80)}`);
+          await page.waitForTimeout(2_500);
+          await shot(page, path.join(outDir, `${tag}-block.png`));
+        }
+        for (const w of widgetTypes) {
+          r.connect[`widget ${w}`] = await cmd('dashboard.addWidgetWith', w, {}).then((id) => (id ? 'widget placed' : 'not placed')).catch((e) => `ERR ${String(e).slice(0, 80)}`);
+          await page.waitForTimeout(3_000);
+          await shot(page, path.join(outDir, `${tag}-widget.png`));
+        }
         // Style: the code against the house rules, and the tab it opened, if any.
         const live = r.works.newTabs > 0 ? await page.evaluate(liveAudit, '.editor-pane').catch(() => null) : null;
         const code = String(files['main.js'] ?? '');
@@ -271,7 +330,7 @@ async function main() {
       await shot(page, path.join(outDir, `${String(n + 1).padStart(2, '0')}-${p.kind}.png`), dom.appFrames ? '.px-af-app' : '.parallx-chat-markdown');
       await fs.writeFile(path.join(outDir, `${String(n + 1).padStart(2, '0')}-reply.md`), `# ${p.text}\n\n${markdown}\n\nTool calls: ${toolCalls.join(', ') || 'none'}\n`);
       results.push(r);
-      console.log(`[eval] ${r.n} ${p.kind} ${seconds}s finished=${r.finished} forms=${dom.forms.join('|') || '-'} code=${dom.codeFences.join('|') || '-'} tools=${toolCalls.join('|') || '-'}${r.app ? ` app=${JSON.stringify(r.app).slice(0, 160)}` : ''}${r.install ? ` install=${String(r.install.outcome).slice(0, 25)} activation=${JSON.stringify(r.activation)} works=${JSON.stringify(r.works)}` : ''} errors=${r.errors.length}${r.style ? ` style=${r.style.length}${r.style.map((s) => `\n    - ${s}`).join('')}` : ''}`);
+      console.log(`[eval] ${r.n} ${p.kind} ${seconds}s finished=${r.finished} forms=${dom.forms.join('|') || '-'} code=${dom.codeFences.join('|') || '-'} tools=${toolCalls.join('|') || '-'}${r.app ? ` app=${JSON.stringify(r.app).slice(0, 160)}` : ''}${r.install ? ` install=${String(r.install.outcome).slice(0, 25)} activation=${JSON.stringify(r.activation)} works=${JSON.stringify(r.works)} connect=${JSON.stringify(r.connect)}` : ''} errors=${r.errors.length}${r.style ? ` style=${r.style.length}${r.style.map((s) => `\n    - ${s}`).join('')}` : ''}`);
       await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ model: MODEL, context: CONTEXT, results }, null, 2));
     }
   } finally {

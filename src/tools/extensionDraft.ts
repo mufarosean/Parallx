@@ -120,6 +120,7 @@ function apiMisuse(code: string, surface: ApiSurface): string[] {
   firstArg('editors.registerEditorProvider', /['"`]/, "('typeId', { createEditorPane(container, input) })");
   firstArg('editors.openEditor', /\{/, '({ typeId, title, instanceId })');
   firstArg('canvas.registerBlock', /\{/, '({ typeId, label, description, icon, defaultConfig, render })');
+  firstArg('dashboard.registerWidgetType', /\{/, '({ typeId, displayName, category, defaultSize, defaultConfig, createWidget })');
   return [...out];
 }
 
