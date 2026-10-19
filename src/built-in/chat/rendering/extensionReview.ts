@@ -50,8 +50,9 @@ function reviewHtml(d: Draft): string {
   const adds = r.adds.length
     ? rows(r.adds.map((a) => `<li class="px-xr__row"><span class="px-xr__kind">${escapeHtml(a.kind)}</span><span>${escapeHtml(a.what)}</span></li>`))
     : '<li class="px-xr__row"><span class="px-xr__kind">Nothing yet</span><span>It registers nothing the app can show</span></li>';
-  const reach = rows(r.reach.map((x) => `<li class="px-xr__row"><span class="px-xr__mark ${x.allowed ? 'is-yes' : 'is-no'}" aria-hidden="true">${getIcon(x.allowed ? 'check' : 'x')}</span>`
-    + `<span>${escapeHtml(x.what)}<span class="px-af-sr">${x.allowed ? ': yes' : ': no'}</span></span></li>`));
+  const mark = (a: boolean | 'ask'): string => (a === 'ask' ? 'is-ask' : a ? 'is-yes' : 'is-no');
+  const reach = rows(r.reach.map((x) => `<li class="px-xr__row"><span class="px-xr__mark ${mark(x.allowed)}" aria-hidden="true">${getIcon(x.allowed === 'ask' ? 'shield-check' : x.allowed ? 'check' : 'x')}</span>`
+    + `<span>${escapeHtml(x.what)}<span class="px-af-sr">${x.allowed === 'ask' ? ': only with your permission' : x.allowed ? ': yes' : ': no'}</span></span></li>`));
   const code = d.showCode
     ? `<div class="px-xr__code">${Object.entries({ 'parallx-manifest.json': JSON.stringify(d.draft.manifest, null, 2), ...d.draft.files })
       .map(([name, text]) => `<p class="px-xr__file">${escapeHtml(name)}</p><pre tabindex="0" aria-label="${escapeHtml(name)}"><code>${escapeHtml(text)}</code></pre>`).join('')}</div>`
@@ -62,7 +63,7 @@ function reviewHtml(d: Draft): string {
     + `<h1 class="px-xr__name">${escapeHtml(r.name)}</h1><p class="px-xr__sub">A new extension, written for you by the AI${r.description ? `. ${escapeHtml(r.description)}` : ''}</p></div></div>`
     + `<h2 class="px-xr__label">What it adds</h2><ul class="px-xr__list">${adds}</ul>`
     + `<h2 class="px-xr__label">What it can reach</h2><ul class="px-xr__list">${reach}</ul>`
-    + '<p class="px-xr__note">Read from its code: the checks refuse network calls, the app\'s own bridge and other tools\' commands. Like every extension, it runs inside the app.</p>'
+    + '<p class="px-xr__note">Read from its code: the checks refuse network calls, the app\'s own bridge and other tools\' commands. Other tools are reached only through your permission. Like every extension, it runs inside the app.</p>'
     + `<p class="px-xr__checks"><span aria-hidden="true">${getIcon('check')}</span>Checked against the extension rules: ${r.passed} of ${r.checks.length} passed</p>`
     + `<div class="px-xr__actions" aria-live="polite">${outcome}</div>`
     + `</div>${code}</div>`;

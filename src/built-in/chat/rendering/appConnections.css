@@ -1,0 +1,29 @@
+/* appConnections.css — Settings › App Permissions (appConnections.ts).
+   One section per app, hairline rows, --px tokens only. */
+
+.px-app-perm { display: flex; flex-direction: column; gap: var(--px-space-5); max-width: 640px; }
+.px-app-perm__empty { margin: 0; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+
+.px-app-perm__head {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding-bottom: var(--px-space-2);
+  border-bottom: 1px solid var(--px-border-strong);
+}
+
+.px-app-perm__name { font-weight: 600; color: var(--px-text); }
+.px-app-perm__kind { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.px-app-perm__all { margin-left: auto; }
+.px-app-perm__tools { list-style: none; margin: 0; padding: 0; }
+
+.px-app-perm__tools li {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-3);
+  padding: var(--px-space-1) 0;
+  border-bottom: 1px solid var(--px-divider);
+}
+
+.px-app-perm__tool { flex: 1; font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text); }
+.px-app-perm__grant { font-size: var(--px-text-sm); color: var(--px-text-secondary); }

@@ -57,6 +57,7 @@ starts with it. Send `manifest` and `files` as objects.
 - `api.chat.registerTool('<name>', { description, parameters: { type: 'object', properties, required }, requiresConfirmation: false, handler: async (args) => ({ content: 'text' }) })`
 - `api.canvas.registerBlock({ typeId: '<id>.<name>', label, description, icon, defaultConfig, settings: { title, fields: { key: { type: 'string' | 'number' | 'enum', label, options? } } }, render(body, ctx) { draw from ctx.config; return { update(config) {}, dispose() {} }; } })`.
   Settings fields are only `string`, `number` or `enum`; a date is a `string` like `2026-10-27`.
+  A block sits in a page, whose text is larger: give your block's root `font-size: var(--px-text-base)`.
 - `api.dashboard.registerWidgetType({ typeId: '<id>.<name>', displayName, description, icon, category: 'static', defaultSize: { colSpan: 4, rowSpan: 3 }, defaultConfig: {}, createWidget(container, ctx) { draw into container; return { dispose() {} }; } })`
 - `api.database`: `await api.database.open()`, then `run(sql, params)`,
   `get(sql, params)` gives `{ row }`, `all(sql, params)` gives `{ rows }`. Every
@@ -72,6 +73,11 @@ starts with it. Send `manifest` and `files` as objects.
   Confirmations: `api.window.showConfirmModal({ message, confirmLabel, danger })`.
 - Control ids read `<extension id>.<name>`. A control repeated in every row
   takes `id: null`.
+
+- Another of the person's tools: `const { content, data } = await api.chat.invokeTool('a_tool_from_your_list', args)`.
+  Use your own tool names and their parameters. The person is asked the first
+  time and may say no (it rejects with the reason): catch it and say so in the
+  view. Never `api.commands.executeCommand` another tool's command.
 
 A chat tool's name is snake_case (letters, digits, underscores), like `log_study_session`: no dots.
 

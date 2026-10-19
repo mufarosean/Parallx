@@ -1546,13 +1546,11 @@ export interface ILanguageModelToolsService extends IDisposable {
   /** Get read-only tool definitions (no requiresConfirmation tools). For Ask mode. */
   getReadOnlyToolDefinitions(): readonly IToolDefinition[];
   /** Invoke a tool with confirmation gate. */
-  invokeTool(
-    name: string,
-    args: Record<string, unknown>,
-    token: ICancellationToken,
-  ): Promise<IToolResult>;
+  invokeTool(name: string, args: Record<string, unknown>, token: ICancellationToken): Promise<IToolResult>;
   /** Check if a tool is enabled. All tools are enabled by default. */
   isToolEnabled(name: string): boolean;
+  /** The policy decision for a tool used by a mini-app or an extension (appConnections); undefined when not registered or off. */
+  decideFor?(name: string, args: Record<string, unknown>, caller: { readonly kind: 'app'; readonly id: string }): { tool: IChatTool; decision: import('./policyDecisionPoint.js').PolicyDecision } | undefined;
   /** Enable or disable a tool by name. */
   setToolEnabled(name: string, enabled: boolean): void;
   /** Get the count of enabled tools. */

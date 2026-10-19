@@ -197,3 +197,11 @@ describe('the API check: what a real model (qwen3.8) got wrong', () => {
     expect(c?.ok).toBe(true);
   });
 });
+
+describe('what it adds, with ids built from a constant', () => {
+  it('a block and a widget registered with ${ID} ids are listed by their labels', () => {
+    const main = "const ID = 'assistant.weekly-tasks';\nexport function activate(api, context) {\n  context.subscriptions.push(api.canvas.registerBlock({ typeId: `${ID}.page`, label: 'Tasks Due This Week', description: 'd', icon: 'calendar', defaultConfig: {}, render() {} }));\n  context.subscriptions.push(api.dashboard.registerWidgetType({ typeId: `${ID}.count`, displayName: 'Tasks Due', category: 'static', defaultSize: { colSpan: 4, rowSpan: 3 }, defaultConfig: {}, createWidget() { return { dispose() {} }; } }));\n}";
+    const r = readExtensionDraft({ manifest: good().manifest, files: { 'main.js': main } });
+    expect(r.adds).toEqual([{ kind: 'Command', what: 'Convert A Recipe…' }, { kind: 'Page block', what: 'Tasks Due This Week' }, { kind: 'Dashboard widget', what: 'Tasks Due' }]);
+  });
+});

@@ -143,7 +143,7 @@ export function buildSandboxDocument(bodyHtml: string, themeVars: string, opts: 
 </style>
 </head>
 <body>
-${opts.appStyle ? APP_BASE_STYLE : ''}
+${opts.appStyle ? APP_BASE_STYLE : ''}${opts.connect ? CONNECTOR : ''}
 ${bodyHtml}
 ${opts.reportHeight ? HEIGHT_REPORTER : ''}${opts.followTheme ? THEME_RECEIVER : ''}
 </body>
@@ -159,6 +159,8 @@ export interface SandboxOptions {
   readonly appStyle?: boolean;
   /** The frame takes new theme colours from the host (followHostTheme). */
   readonly followTheme?: boolean;
+  /** The app may ask the host to use the person's tools: `parallx.call(tool, args)` (connectFrame). */
+  readonly connect?: boolean;
 }
 
 /** Applies theme colours the host sends: the variables and the colour scheme, nothing else. */
@@ -195,6 +197,37 @@ export function hostColorScheme(doc: Document = document): 'dark' | 'light' {
  * [min, max]. Only a number from that frame's own window is read; the
  * listener goes when the frame leaves the page.
  */
+/**
+ * Inside the frame: `parallx.call(tool, args)` asks the host to use one of the
+ * person's tools and resolves with `{ content, data }` (data: the content
+ * parsed as JSON, when it is JSON). The frame itself still reaches nothing:
+ * the host decides, and asks the person (appConnections).
+ */
+const CONNECTOR = `<script>(function(){var n=0,w={};addEventListener('message',function(e){var r=e.data&&e.data.parallxReply;`
+  + `if(!r||e.source!==parent||!w[r.id])return;var p=w[r.id];delete w[r.id];if(r.ok)p.resolve(r.result);else p.reject(new Error(String(r.error)));});`
+  + `window.parallx=Object.freeze({call:function(tool,args){return new Promise(function(resolve,reject){var id=++n;w[id]={resolve:resolve,reject:reject};`
+  + `parent.postMessage({parallxCall:{id:id,tool:String(tool),args:(args&&typeof args==='object')?JSON.parse(JSON.stringify(args)):{}}},'*');});}});})();</script>`;
+
+/**
+ * Answer `parallx.call` from `frame` with `handler` (the host's permission
+ * gate). Only messages from that frame's own window are read; arguments are
+ * plain data; a rejection reaches the app as an Error with the reason.
+ */
+export function connectFrame(frame: HTMLIFrameElement, handler: (tool: string, args: Record<string, unknown>) => Promise<unknown>): void {
+  const win = frame.ownerDocument.defaultView;
+  if (!win) return;
+  const onMessage = (e: MessageEvent): void => {
+    if (!frame.isConnected) { win.removeEventListener('message', onMessage); return; }
+    if (e.source !== frame.contentWindow) return;
+    const call = (e.data as { parallxCall?: { id?: unknown; tool?: unknown; args?: unknown } } | null)?.parallxCall;
+    if (!call || typeof call.id !== 'number' || typeof call.tool !== 'string') return;
+    const args = call.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args as Record<string, unknown> : {};
+    const reply = (msg: Record<string, unknown>): void => { frame.contentWindow?.postMessage({ parallxReply: { id: call.id, ...msg } }, '*'); };
+    handler(call.tool, args).then((result) => reply({ ok: true, result }), (err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+  };
+  win.addEventListener('message', onMessage);
+}
+
 export function watchFrameHeight(frame: HTMLIFrameElement, min = 120, max = 900): void {
   const win = frame.ownerDocument.defaultView;
   if (!win) return;

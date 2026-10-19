@@ -58,7 +58,7 @@ import {
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
-import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js';
+import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js'; import { callToolAsApp } from '../services/appConnections.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkCheck, type LinkCheckOptions, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
@@ -328,6 +328,8 @@ export interface ParallxApiObject {
     registerDropHandler(handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }): IDisposable;
     /** A form an answer can take (a fence the model writes, drawn instead of code); ui/answerForms.ts. */
     registerAnswerForm(form: Omit<AnswerForm, 'ownerToolId'>): IDisposable;
+    /** Use another tool (its chat tool name), with the person's permission: resolves { content, data } or rejects with why not. */
+    invokeTool(name: string, args?: Record<string, unknown>): Promise<{ content: string; data?: unknown }>;
   } | undefined;
   /** Per-extension isolated database (external extensions only). */
   readonly database: {
@@ -1014,15 +1016,10 @@ export function createToolApi(
           registerSlashCommand: (cmd: { name: string; description: string; promptTemplate: string }) => keep(registerContributedSlashCommand({ ...cmd, ownerToolId: toolId })),
           registerSkill: (content: string) => keep(registerContributedSkill(String(parseSkillFrontmatter(String(content ?? ''))?.frontmatter?.name ?? ''), { content: String(content), ownerToolId: toolId })),
           registerAnswerForm: (form: Omit<AnswerForm, 'ownerToolId'>) => keep(registerAnswerForm({ ...form, ownerToolId: toolId })),
-          registerDropHandler: (handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }) => {
-            const d = registerChatDropHandler({
-              mimeType: handler?.mimeType,
-              resolve: (data: string) => handler.resolve(data),
-              ownerToolId: toolId,
-            });
-            subscriptions.push(d);
-            return d;
-          },
+          registerDropHandler: (handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }) =>
+            keep(registerChatDropHandler({ mimeType: handler?.mimeType, resolve: (data: string) => handler.resolve(data), ownerToolId: toolId })),
+          // Another tool, used with the person's permission (services/appConnections; chat asks them).
+          invokeTool: (name: string, args?: Record<string, unknown>) => callToolAsApp({ id: toolId, title: toolDescription.manifest.name, kind: 'extension' }, String(name), args ?? {}),
         })
       : undefined,
 

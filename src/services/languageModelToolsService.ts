@@ -26,7 +26,7 @@ import type {
   ToolPermissionLevel,
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
-import { PolicyDecisionPoint } from './policyDecisionPoint.js';
+import { PolicyDecisionPoint, type PolicyDecision } from './policyDecisionPoint.js';
 import { markToolUntrusted } from '../openclaw/openclawToolPolicy.js';
 import {
   markTurnTainted,
@@ -181,6 +181,19 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   /** The Policy Decision Point — for audit-log introspection surfaces. */
   get policyDecisionPoint(): PolicyDecisionPoint {
     return this._pdp;
+  }
+
+  /**
+   * The policy decision for a tool used by someone other than the chat (a
+   * mini-app or an extension, through appConnections): the same Policy
+   * Decision Point, with that caller in its audit. Undefined when no such
+   * tool is registered and enabled (an unknown and a turned-off tool look
+   * the same).
+   */
+  decideFor(name: string, args: Record<string, unknown>, caller: { readonly kind: 'app'; readonly id: string }): { tool: IChatTool; decision: PolicyDecision } | undefined {
+    const tool = this._tools.get(normalizeToolName(name));
+    if (!tool || !this.isToolEnabled(tool.name)) return undefined;
+    return { tool, decision: this._pdp.decide({ caller, tool: { name: tool.name, defaultLevel: getEffectivePermission(tool) }, args }) };
   }
 
   // ── Tool-enablement binding ──

@@ -3,7 +3,8 @@
 // When a reader would understand something best by playing with it, the
 // model writes a small self-contained HTML app. It runs in the same jail
 // as the dashboard's Live widget (ui/sandboxedHtml.ts): no files, no
-// internet, no reach into the app, which the bar says in words. Under it:
+// internet. It may use the person's tools through parallx.call, only with
+// their permission (chat's appConnections); the bar says so. Under it:
 // Open In Tab, Save To Page, Pin To Dashboard. The commands those run
 // and the block, tab and widget they make are chat's
 // (built-in/chat/rendering/miniApps.ts).
@@ -11,13 +12,13 @@
 import { escapeHtml } from './format.js';
 import { createButton } from './kit.js';
 import { getIcon } from './iconRegistry.js';
-import { createSandboxFrame, followHostTheme, hostColorScheme, watchFrameHeight } from './sandboxedHtml.js';
+import { connectFrame, createSandboxFrame, followHostTheme, hostColorScheme, watchFrameHeight } from './sandboxedHtml.js';
 import type { AnswerForm, AnswerFormContext, AnswerFormHydration } from './answerForms.js';
 
 export const MINI_APP_BLOCK = 'parallx.chat.app';
 export const OPEN_MINI_APP_COMMAND = 'chat.openMiniApp';
 export const PIN_MINI_APP_COMMAND = 'chat.pinMiniApp';
-export const LOCKED_NOTE = 'This app cannot reach your files, the rest of the app, or the internet';
+export const LOCKED_NOTE = 'This app cannot reach your files or the internet. It asks you before it uses any of your tools, and you can take that back in Settings › App Permissions.';
 
 export interface MiniApp { readonly title: string; readonly height: number; readonly html: string }
 
@@ -40,10 +41,27 @@ export function parseMiniApp(src: string): MiniApp | null {
   return { title: title || 'Mini-App', height: Math.min(900, Math.max(120, height || 320)), html };
 }
 
+/**
+ * An app's identity: a fingerprint of its code (FNV-1a). The same app in a
+ * chat, a tab, a page and a widget is one app; changed code is a new app, so
+ * the person is asked again before it uses any of their tools.
+ */
+export function miniAppId(html: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < html.length; i++) { h ^= html.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return `app-${(h >>> 0).toString(36)}`;
+}
+
+/** Uses one of the person's tools for an app, after their permission (chat sets it: appConnections). */
+export type MiniAppConnector = (app: { readonly id: string; readonly title: string }, tool: string, args: Record<string, unknown>) => Promise<unknown>;
+let _connector: MiniAppConnector | null = null;
+export function setMiniAppConnector(connector: MiniAppConnector | null): void { _connector = connector; }
+
 /** The jailed frame for an app, seated in `stage`: sized by what it reports, or filling it (a tab, a widget). */
 export function mountMiniApp(stage: HTMLElement, app: MiniApp, opts: { fill?: boolean } = {}): void {
   const { frame, revoke } = createSandboxFrame(app.html, stage.ownerDocument, {
-    scheme: hostColorScheme(stage.ownerDocument), reportHeight: !opts.fill, followTheme: true, appStyle: true, className: 'px-af-app__frame', title: app.title,
+    scheme: hostColorScheme(stage.ownerDocument), reportHeight: !opts.fill, followTheme: true, appStyle: true, connect: true,
+    className: 'px-af-app__frame', title: app.title,
   });
   frame.style.height = opts.fill ? '100%' : `${app.height}px`;
   // The document is parsed once loaded; the URL is no longer needed.
@@ -51,6 +69,10 @@ export function mountMiniApp(stage: HTMLElement, app: MiniApp, opts: { fill?: bo
   stage.replaceChildren(frame);
   if (!opts.fill) watchFrameHeight(frame);
   followHostTheme(frame);
+  const id = miniAppId(app.html);
+  connectFrame(frame, (tool, args) => (_connector
+    ? _connector({ id, title: app.title }, tool, args)
+    : Promise.reject(new Error('This app cannot use other tools here.'))));
 }
 
 function renderApp(src: string, _info: string, ctx: AnswerFormContext): string | null {
@@ -66,7 +88,7 @@ function renderApp(src: string, _info: string, ctx: AnswerFormContext): string |
   return '<div class="px-af-app">'
     + `<div class="px-af-app__bar"><span class="px-af-app__icon" aria-hidden="true">${getIcon('app-window')}</span>`
     + `<span class="px-af-app__title">${escapeHtml(app.title)}</span>`
-    + `<span class="px-af-app__lock" title="${LOCKED_NOTE}"><span aria-hidden="true">${getIcon('lock')}</span>Locked down: no files, no internet</span></div>`
+    + `<span class="px-af-app__lock" title="${LOCKED_NOTE}"><span aria-hidden="true">${getIcon('lock')}</span>Locked down: asks before using your tools</span></div>`
     + `<div class="px-af-app__stage" style="min-height: ${app.height}px"></div>`
     + '<div class="px-af-app__actions"><span class="px-af-app__open"></span><span class="px-af-save"></span><span class="px-af-app__pin"></span></div>'
     + '</div>';
@@ -94,8 +116,10 @@ export const MINI_APP_FORM: Omit<AnswerForm, 'ownerToolId'> = {
     'Read the build-mini-app skill before writing one: it has the look, the words and a starter to build from.',
     'Only when the reader would understand something best by playing with it: a simulator with sliders, an',
     'interactive diagram, a tool with several steps. Prefer ```live for a plain calculation. Write one self-contained',
-    'HTML app: markup, a <style> and a <script>, nothing loaded from outside. It runs locked down (no internet, no files,',
-    'no reach into the app). First `title: Name` and, if it needs more than 320 pixels, `height: 480`; then the HTML.',
+    'HTML app: markup, a <style> and a <script>, nothing loaded from outside. It runs locked down (no internet, no files),',
+    'but it can use the person\'s tools: `await parallx.call(\'tool_name\', args)` with any of your own tool names and parameters',
+    '(whatever tools they have on), which resolves with { content, data }; the person is asked first and may say no, so catch it.',
+    'First `title: Name` and, if it needs more than 320 pixels, `height: 480`; then the HTML.',
     'Colour it with the theme\'s CSS variables so it matches: var(--px-text), var(--px-text-muted), var(--px-accent),',
     'var(--px-bg-elevated), var(--px-border). Label every control.',
     `${FENCE}app`, 'title: Compound Growth', '<label>Rate <input id="r" type="range" min="0" max="12" value="5"></label> <output id="o"></output>',

@@ -28,7 +28,8 @@ export interface ExtensionDraft {
 
 export interface DraftCheck { readonly rule: string; readonly ok: boolean; readonly detail?: string }
 export interface DraftAddition { readonly kind: string; readonly what: string }
-export interface DraftReach { readonly what: string; readonly allowed: boolean }
+/** allowed 'ask': only what the person allows, asked before first use (appConnections). */
+export interface DraftReach { readonly what: string; readonly allowed: boolean | 'ask' }
 
 export interface DraftReading {
   readonly id: string;
@@ -124,6 +125,12 @@ function apiMisuse(code: string, surface: ApiSurface): string[] {
   return [...out];
 }
 
+/** One entry per `call` in the code: the literal `key` (label) given in it, or null. */
+function registrations(code: string, call: string, key: string): (string | null)[] {
+  const at = [...code.matchAll(new RegExp(`\\b${call.replace('.', '\\.')}\\s*\\(`, 'g'))].map((m) => m.index ?? 0);
+  return at.map((i) => new RegExp(`\\b${key}\\s*:\\s*(['"\`])([^'"\`$]+)\\1`).exec(code.slice(i, i + 600))?.[2] ?? null);
+}
+
 export function readExtensionDraft(draft: ExtensionDraft, surface?: ApiSurface): DraftReading {
   const manifest = (draft?.manifest && typeof draft.manifest === 'object' ? draft.manifest : {}) as Record<string, unknown>;
   const files = (draft?.files && typeof draft.files === 'object' ? draft.files : {}) as Record<string, string>;
@@ -162,14 +169,17 @@ export function readExtensionDraft(draft: ExtensionDraft, surface?: ApiSurface):
     ...list('views').map((e) => ({ kind: 'Panel', what: String(e.name ?? e.id ?? 'A panel') })),
     ...list('commands').map((e) => ({ kind: 'Command', what: String(e.title ?? e.id ?? 'A command') })),
     ...literalsOf(code, /chat\.registerTool\(\s*['"`]([^'"`]+)['"`]/).map((n) => ({ kind: 'AI tool', what: `${n}, so chat can use it` })),
-    ...literalsOf(code, /canvas\.registerBlock\(\s*\{[^}]*?label\s*:\s*['"`]([^'"`]+)['"`]/).map((n) => ({ kind: 'Page block', what: n })),
-    ...literalsOf(code, /dashboard\.registerWidgetType\(\s*\{[^}]*?displayName\s*:\s*['"`]([^'"`]+)['"`]/).map((n) => ({ kind: 'Dashboard widget', what: n })),
+    // Each block and widget it registers, by its label when the code names it (ids may be templates).
+    ...registrations(code, 'canvas.registerBlock', 'label').map((n) => ({ kind: 'Page block', what: n ?? 'A page block' })),
+    ...registrations(code, 'dashboard.registerWidgetType', 'displayName').map((n) => ({ kind: 'Dashboard widget', what: n ?? 'A dashboard widget' })),
     ...(/\bapi\.database\b/.test(code) ? [{ kind: 'Saved data', what: 'Its own table, kept when it is turned off' }] : []),
   ];
 
   // What it can reach, as its manifest and its code say.
   const fs = (manifest.capabilities as { fs?: { scope?: string; modes?: string[] } } | undefined)?.fs;
   const passes = (rule: string): boolean => checks.find((c) => c.rule === rule)?.ok ?? false;
+  // Tools it asks to use through api.chat.invokeTool (literal names; a computed name shows as such).
+  const asked = [...new Set([...code.matchAll(/chat\.invokeTool\(\s*(?:(['"`])([^'"`$]+)\1|([^,)]+))/g)].map((m) => m[2] ?? 'a tool it names at run time'))];
   const reach: DraftReach[] = [
     fs && fs.scope !== 'extension-data'
       ? { what: `Workspace files (${(fs.modes ?? ['read']).includes('write') ? 'read and write' : 'read'})`, allowed: true }
@@ -177,6 +187,7 @@ export function readExtensionDraft(draft: ExtensionDraft, surface?: ApiSurface):
     ...(/\bapi\.lm\b/.test(code) ? [{ what: 'Your AI model', allowed: true }] : []),
     { what: 'The internet', allowed: !passes(CODE_RULES[0].rule) },
     { what: 'Other tools and their data', allowed: !passes('Runs only its own commands (no other tool\'s)') },
+    ...(asked.length ? [{ what: `Your other tools, only what you allow when it asks: ${asked.join(', ')}`, allowed: 'ask' as const }] : []),
   ];
 
   return {

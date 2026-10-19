@@ -1954,6 +1954,15 @@ export namespace chat {
    * show as code again.
    */
   export function registerAnswerForm(form: ChatAnswerForm): IDisposable;
+
+  /**
+   * Use another tool by its chat tool name (`planner_read`, ...), with the
+   * person's permission: the first time, they are asked (Allow Once, Always
+   * Allow, Don't Allow), and they can revoke it in Settings › App
+   * Permissions. Resolves with the tool's text and, when that text is JSON,
+   * `data`; rejects with the reason when the tool is off or not allowed.
+   */
+  export function invokeTool(name: string, args?: Record<string, unknown>): Promise<{ content: string; data?: unknown }>;
 }
 
 /** What an answer form gets to draw with. */

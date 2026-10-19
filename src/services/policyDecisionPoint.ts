@@ -59,7 +59,8 @@ function _isCommandBlocked(command: string): boolean {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CallerKind = 'built-in' | 'extension' | 'mcp' | 'ipc';
+/** 'app': a mini-app or an installed extension using another tool, with the person's permission (appConnections). */
+export type CallerKind = 'built-in' | 'extension' | 'mcp' | 'ipc' | 'app';
 
 export interface PolicyRequest {
   readonly caller: { readonly kind: CallerKind; readonly id: string };

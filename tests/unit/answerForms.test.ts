@@ -195,7 +195,7 @@ describe('mini-apps', () => {
     const frame = el.querySelector('iframe')!;
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
     expect(frame.title).toBe('Sim');
-    expect(el.querySelector('.px-af-app__lock')?.textContent).toContain('Locked down: no files, no internet');
+    expect(el.querySelector('.px-af-app__lock')?.textContent).toContain('Locked down: asks before using your tools');
     const labels = Array.from(el.querySelectorAll('.px-af-app__actions button')).map((b) => b.textContent?.trim());
     expect(labels).toEqual(['Open In Tab', 'Save To Page', 'Pin To Dashboard']);
     expect(el.innerHTML).not.toContain('<script>1</script>');

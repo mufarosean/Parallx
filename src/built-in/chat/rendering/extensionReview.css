@@ -117,3 +117,4 @@
 
 .px-xr__code pre:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .px-xr__gone { margin: var(--px-space-6); color: var(--px-text-muted); }
+.px-xr__mark.is-ask { color: var(--px-accent-text); }

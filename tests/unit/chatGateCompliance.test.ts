@@ -32,6 +32,7 @@ const EXEMPT_FILES = new Set([
   'widgets/chatTokenStatusBar.css', // Stylesheet
   'rendering/chatCitationMarks.css', // Stylesheet
   'rendering/extensionReview.css',   // Stylesheet
+  'rendering/appConnections.css',    // Stylesheet
   'skills/build-mini-app.md',        // Skill text, imported ?raw
   'skills/build-extension.md',       // Skill text, imported ?raw
   'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
@@ -84,7 +85,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   'rendering/chatTaskCards.ts':     [],
   'rendering/answerFormBlocks.ts':  ['rendering/', 'skills/'],  // chat's page blocks + step command for ui/answerForms
   'rendering/miniApps.ts':          [],  // a mini-app's tab, dashboard widget, Open In Tab / Pin To Dashboard
-  'rendering/extensionReview.ts':   [],  // extension_propose + the review tab: Install only on the person's press
+  'rendering/extensionReview.ts':   [],
+  'rendering/appConnections.ts':    [],  // the person's permission for apps using their tools  // extension_propose + the review tab: Install only on the person's press
 
   // ── tools/ — built-in tool implementations ──────────────────────────────
   'tools/builtInTools.ts':  ['tools/'],

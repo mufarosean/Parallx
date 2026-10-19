@@ -95,7 +95,30 @@ const PROMPTS = [
   { kind: 'app', text: 'Build a mini-app budget planner: monthly income, spending categories with editable amounts, a bar chart of spending by category, and a what-if slider that cuts the discretionary categories by a percentage and shows how much I would save in a year.' },
   { kind: 'ext', text: 'Build an extension for tracking study sessions: a tab where I log a session (topic and minutes) and see them listed, a chat tool so you can log a session for me and tell me my totals, a page block that shows this week\'s minutes by topic, and a dashboard widget with today\'s total.' },
   { kind: 'ext', text: 'Build an extension for a reading list: a command and a tab to add items and tick them off, a chat tool so you can add items from chat, and a dashboard widget showing the next three unread items.' },
+  { kind: 'app', seed: 'planner', text: 'Make a mini-app that shows my Planner tasks due in the next week as a checklist grouped by day, with a box to add a new task to my Planner.' },
+  { kind: 'ext', seed: 'planner', text: 'Build an extension with a page block that lists my Planner tasks due this week, and a dashboard widget that counts them.' },
 ];
+
+const SEED_TASKS = [['Read Mack (1994)', '+1d'], ['Practice exam 3', '+2d'], ['Review Clark LDF', '+4d'], ['Flashcards: Brosius', '+6d']];
+
+/** Answer any open permission dialog the way the person would (Always Allow), recording what it asked. */
+async function approvePermissions(page, r, tag) {
+  const asked = await page.evaluate(() => {
+    const d = document.querySelector('.px-app-permission');
+    if (!d) return null;
+    const text = d.querySelector('.parallx-modal-label')?.textContent + ' | ' + d.querySelector('.parallx-modal-detail')?.textContent;
+    return text;
+  }).catch(() => null);
+  if (!asked) return false;
+  r.permissions = [...(r.permissions ?? []), asked];
+  if (r.permissions.length === 1) await shot(page, path.join(outDir, `${tag}-permission.png`));
+  await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll('.px-app-permission button')];
+    (buttons.find((b) => b.textContent.trim() === 'Always Allow') ?? buttons.find((b) => b.textContent.trim() === 'Allow Once'))?.click();
+  });
+  await page.waitForTimeout(800);
+  return true;
+}
 
 /** Literal ids a draft's code registers for `call` (`typeId: '...'` or a template on a `const X = '...'`). */
 function idsRegistered(code, call) {
@@ -177,6 +200,18 @@ async function main() {
       if (ONLY.length && !ONLY.includes(n + 1)) continue;
       const p = PROMPTS[n];
       log = [];
+      const tag = String(n + 1).padStart(2, '0');
+      const perm = {};
+      // Data in another tool for the connected prompts to find (once per run).
+      if (p.seed === 'planner' && !globalThis.__seeded) {
+        globalThis.__seeded = true;
+        for (const [title, dueAt] of SEED_TASKS) {
+          await page.evaluate(async ({ title, dueAt }) => {
+            const t = window.__parallx_workbench__._services.get({ id: 'ILanguageModelToolsService' }).getTool('planner_captureTask');
+            return t ? (await t.handler({ title, dueAt, status: 'todo' }, { isCancellationRequested: false })).content : 'no planner';
+          }, { title, dueAt }).then((c) => console.log(`[eval] seeded: ${String(c).slice(0, 80)}`));
+        }
+      }
       await cmd('chat.newSession');
       await page.waitForTimeout(500);
       const started = Date.now();
@@ -197,6 +232,7 @@ async function main() {
           const approval = !!document.querySelector('.parallx-chat-approval, [class*="confirmation"] button');
           return { done: !!last?.response?.isComplete, approval, parts: (last?.response?.parts ?? []).map((x) => ({ kind: x.kind, tool: x.toolName ?? x.name ?? x.toolId ?? undefined, error: x.isError || undefined, content: typeof x.content === 'string' ? x.content : undefined, args: (x.toolName ?? x.name) === 'extension_propose' ? (x.args ?? x.parameters ?? x.input) : undefined })) };
         }, sessionId);
+        await approvePermissions(page, perm, tag);
         if (state.done) break;
       }
       await page.waitForTimeout(1_500);
@@ -223,6 +259,9 @@ async function main() {
       // Mini-apps: did the script run, and what is in the app?
       if (p.kind === 'app' && dom.appFrames > 0) {
         await page.locator('.px-af-app__frame').last().scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(1_500);
+        // A connected app asks when it opens: answer, then give it a moment to show what it got.
+        for (let i = 0; i < 6; i++) { if (!(await approvePermissions(page, perm, tag))) await page.waitForTimeout(700); }
         await page.waitForTimeout(1_500);
         const frames = page.frames().filter((f) => f.url().startsWith('parallx-frame:'));
         const f = frames[frames.length - 1];
@@ -296,7 +335,6 @@ async function main() {
         // Its parts, connected: the chat tool writes, then the tab, block and widget should show it.
         const blockTypes = idsRegistered(String(files['main.js'] ?? ''), 'registerBlock');
         const widgetTypes = idsRegistered(String(files['main.js'] ?? ''), 'registerWidgetType');
-        const tag = String(n + 1).padStart(2, '0');
         r.connect = { toolCalls: [], blocks: blockTypes, widgets: widgetTypes };
         for (const t of toolNames) {
           const schema = await page.evaluate((t) => window.__parallx_workbench__._services.get({ id: 'ILanguageModelToolsService' }).getTool(t)?.parameters ?? null, t);
@@ -313,11 +351,13 @@ async function main() {
         for (const b of blockTypes) {
           r.connect[`block ${b}`] = await cmd('canvas.newPageWithBlock', b, {}).then((id) => (id ? 'page made' : 'not made')).catch((e) => `ERR ${String(e).slice(0, 80)}`);
           await page.waitForTimeout(2_500);
+          for (let i = 0; i < 4; i++) { if (!(await approvePermissions(page, perm, tag))) await page.waitForTimeout(500); }
           await shot(page, path.join(outDir, `${tag}-block.png`));
         }
         for (const w of widgetTypes) {
           r.connect[`widget ${w}`] = await cmd('dashboard.addWidgetWith', w, {}).then((id) => (id ? 'widget placed' : 'not placed')).catch((e) => `ERR ${String(e).slice(0, 80)}`);
           await page.waitForTimeout(3_000);
+          for (let i = 0; i < 4; i++) { if (!(await approvePermissions(page, perm, tag))) await page.waitForTimeout(500); }
           await shot(page, path.join(outDir, `${tag}-widget.png`));
         }
         // Style: the code against the house rules, and the tab it opened, if any.
@@ -330,8 +370,14 @@ async function main() {
       await shot(page, path.join(outDir, `${String(n + 1).padStart(2, '0')}-${p.kind}.png`), dom.appFrames ? '.px-af-app' : '.parallx-chat-markdown');
       await fs.writeFile(path.join(outDir, `${String(n + 1).padStart(2, '0')}-reply.md`), `# ${p.text}\n\n${markdown}\n\nTool calls: ${toolCalls.join(', ') || 'none'}\n`);
       results.push(r);
-      console.log(`[eval] ${r.n} ${p.kind} ${seconds}s finished=${r.finished} forms=${dom.forms.join('|') || '-'} code=${dom.codeFences.join('|') || '-'} tools=${toolCalls.join('|') || '-'}${r.app ? ` app=${JSON.stringify(r.app).slice(0, 160)}` : ''}${r.install ? ` install=${String(r.install.outcome).slice(0, 25)} activation=${JSON.stringify(r.activation)} works=${JSON.stringify(r.works)} connect=${JSON.stringify(r.connect)}` : ''} errors=${r.errors.length}${r.style ? ` style=${r.style.length}${r.style.map((s) => `\n    - ${s}`).join('')}` : ''}`);
+      console.log(`[eval] ${r.n} ${p.kind} ${seconds}s finished=${r.finished} forms=${dom.forms.join('|') || '-'} code=${dom.codeFences.join('|') || '-'} tools=${toolCalls.join('|') || '-'}${r.app ? ` app=${JSON.stringify(r.app).slice(0, 160)}` : ''}${r.install ? ` install=${String(r.install.outcome).slice(0, 25)} activation=${JSON.stringify(r.activation)} works=${JSON.stringify(r.works)} connect=${JSON.stringify(r.connect)}` : ''} errors=${r.errors.length}${perm.permissions ? ` asked=${JSON.stringify(perm.permissions)}` : ''}${r.style ? ` style=${r.style.length}${r.style.map((s) => `\n    - ${s}`).join('')}` : ''}`);
       await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ model: MODEL, context: CONTEXT, results }, null, 2));
+    }
+    // What the apps were allowed, where the person controls it.
+    if (globalThis.__seeded) {
+      await cmd('settings.open', 'app-permissions').catch(() => {});
+      await page.waitForTimeout(1_500);
+      await shot(page, path.join(outDir, 'zz-app-permissions.png'));
     }
   } finally {
     await app.close();

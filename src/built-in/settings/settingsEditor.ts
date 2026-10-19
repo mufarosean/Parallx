@@ -74,7 +74,7 @@ interface INavGroup {
 // case here to show up somewhere sensible.
 
 const NAV_GROUP_DEFS: readonly { id: string; label: string; members: readonly string[] }[] = [
-  { id: 'general',    label: 'General',            members: ['schema:General', 'schema:Workspace', 'schema:Security'] },
+  { id: 'general',    label: 'General',            members: ['schema:General', 'schema:Workspace', 'schema:Security', 'panel:app-permissions'] },
   { id: 'appearance', label: 'Appearance',         members: ['panel:appearance'] },
   { id: 'canvas',     label: 'Canvas',             members: ['schema:Canvas'] },
   {

@@ -49,6 +49,34 @@ are and only lay them out. Do not restyle a button, an input or a table.
 - Space: `--px-space-1` 4px, `-2` 8, `-3` 12, `-4` 16, `-6` 24.
 - Radius: `--px-radius-sm` for controls, `--px-radius-md` for a card.
 
+## Using the person's tools
+
+An app can use the same tools you have (whatever tools the person has turned
+on), by your tool names and with the same parameters:
+
+```javascript
+async function load() {
+  status.textContent = 'Loading…';
+  try {
+    const { content, data } = await parallx.call('a_tool_from_your_list', {});
+    // data is the result parsed as JSON when it is JSON; otherwise use content
+    render(data ?? content);
+    status.textContent = '';
+  } catch (err) {
+    status.textContent = err.message; // they said no, or the tool is off
+  }
+}
+```
+
+- The person is asked the first time the app uses a tool, and decides. Ask
+  only when the app needs it (when it opens, or when they press a button),
+  never in a loop or on every keystroke.
+- Use only tools from your own tool list, with exactly their parameters. A
+  tool that changes something (adds a task, writes a page) asks every time
+  unless they allowed it for good: say what will happen before they press.
+- Show a quiet loading line while waiting, and the reason in the app when it
+  is refused.
+
 ## The look
 
 - Never a colour literal: no `#hex`, no `rgb(` with numbers. Data colours on a
