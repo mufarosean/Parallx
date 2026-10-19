@@ -156,7 +156,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
     SELECT i.id, i.title, i.question_md, i.solution_notes_md, i.source_uri,
            i.source_label, i.source_page, i.tags, i.created_at,
            i.solution_col, i.work_row, i.solution_row, i.paper, i.source, i.kind, i.quadrant, i.sheet_name, i.points,
-           i.recipe, i.recipe_paper,
+           i.recipe, i.recipe_paper, (SELECT group_concat(g.tag) FROM ws_item_tag g WHERE g.item_id = i.id) AS user_tags,
            (i.sheet_json != '') AS has_sheet,
            (SELECT COUNT(*) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS done_count,
            (SELECT a.self_grade FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1
@@ -183,7 +183,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       id: base.id, title: base.title, questionMd: base.questionMd,
       solutionNotesMd: base.solutionNotesMd, sourceUri: base.sourceUri,
       sourceLabel: base.sourceLabel, sourcePage: base.sourcePage,
-      tags: base.tags, createdAt: base.createdAt,
+      tags: [base.tags, String(row.user_tags ?? '')].filter(Boolean).join(','), createdAt: base.createdAt,
       solutionCol: base.solutionCol, workRow: base.workRow, solutionRow: base.solutionRow, paper: base.paper, source: base.source,
       kind: base.kind, quadrant: base.quadrant, sheetName: base.sheetName, points: base.points,
       recipe: base.recipe, recipePaper: base.recipePaper,

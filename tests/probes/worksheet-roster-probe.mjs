@@ -128,6 +128,26 @@ async function main() {
     const settings = await page.evaluate(() => [...document.querySelectorAll('.ws-setrow__title')].map((t) => t.textContent.trim()));
     check(settings.includes('Tag') && settings.includes('First day') && settings.includes('Last day'), 'roster settings rows');
     await shot(page, '04-settings.png');
+
+    // Tags from the note box: on the quiz's problem, then found in the bank.
+    await runCommand(page, 'worksheet.startRoster');
+    await page.waitForTimeout(2_000);
+    await page.locator('[data-px-id="worksheet.sheet.noteToggle"]').first().click();
+    await page.waitForSelector('.ws-tags input', { timeout: 10_000 });
+    const field = page.locator('.ws-tags input').first();
+    await field.fill('Weak Spots');
+    await field.press('Enter');
+    await page.waitForTimeout(1_200);
+    const own = await page.locator('.ws-tags__own').first().innerText().catch(() => '');
+    check(/weak-spots/.test(own), 'tag added from the note box, written weak-spots');
+    await shot(page, '05-note-tags.png');
+    await runCommand(page, 'worksheet.bank');
+    await page.waitForTimeout(1_200);
+    await page.locator('input[placeholder="Search problems"]').first().fill('weak-spots');
+    await page.waitForTimeout(1_000);
+    const rows = await page.locator('.ws-bankrow:visible').count();
+    check(rows === 1, `bank search finds the tagged problem (${rows})`);
+    await shot(page, '06-bank-tag-search.png');
   } finally {
     const own = errors.filter((e) => /roster|worksheet/i.test(e));
     console.log(`[probe] page errors: ${errors.length} (${own.length} worksheet)`);

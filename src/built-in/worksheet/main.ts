@@ -26,6 +26,8 @@ import { listItems, getItem, onWorksheetDataChanged, attachWorksheetDatabase, re
 import { createDashboardPane } from './panes/dashboardPane.js';
 import { createPlanPane } from './panes/planPane.js';
 import { OPEN_QUIZ_COMMAND, START_ROSTER_COMMAND, startTodaysRoster } from './panes/rosterPane.js';
+import { ADD_TAG_COMMAND, REMOVE_TAG_COMMAND } from './panes/tagEditor.js';
+import { addItemTag, removeItemTag } from './tagData.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { registerWorksheetChatTools } from './worksheetChat.js';
 import { practiceBlock } from './worksheetPracticeBlock.js';
@@ -195,6 +197,12 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand(OPEN_QUIZ_COMMAND, (id?: unknown) => (typeof id === 'string' && id ? openPastQuiz(id) : undefined)),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand(ADD_TAG_COMMAND, (id?: unknown, tag?: unknown) => (typeof id === 'number' && typeof tag === 'string' ? addItemTag(id, tag) : undefined)),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand(REMOVE_TAG_COMMAND, (id?: unknown, tag?: unknown) => (typeof id === 'number' && typeof tag === 'string' ? removeItemTag(id, tag) : undefined)),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.bank', () => openWorksheet('bank', 'Problem Bank')),

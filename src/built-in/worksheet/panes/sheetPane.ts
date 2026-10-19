@@ -12,6 +12,7 @@ import { dayKey } from '../progressInsights.js';
 import { workbookHasOnSheetQuestion } from '../itemFormat.js';
 import { reviewAttempt } from '../worksheetAi.js';
 import { createStudyTicker } from '../studyClock.js';
+import { mountTagEditor } from './tagEditor.js';
 import { fmtSeconds } from '../labels.js';
 import { openWorksheet, showMenu } from '../actions.js';
 import { reviewInChat } from '../chatReview.js';
@@ -419,6 +420,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       paintHeader();
     });
     noteHost.appendChild(noteArea);
+    mountTagEditor(noteHost, problem.id);
     const header = el('div', 'ws-item__header');
     const titleRow = el('div', 'ws-item__titlerow');
     const paintHeader = () => {
@@ -485,7 +487,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       if (state.practice && state.practice.ids.includes(problem.id)) titleRow.appendChild(markBtn(state.practice, problem.id, undefined, { id: 'worksheet.sheet.mark' }));
       const noteBtn = iconBtn('notebook-pen', problemNote ? 'Edit Note' : 'Add Note', {
         id: 'worksheet.sheet.noteToggle',
-        hint: problemNote || 'A note on this problem, kept with it across quizzes and shown in the bank.',
+        hint: problemNote || 'A note and tags on this problem, kept with it across quizzes and shown in the bank.',
         onClick: () => { const open = noteHost.style.display === 'none'; noteHost.style.display = open ? '' : 'none'; if (open) noteArea.focus(); },
       });
       noteBtn.classList.toggle('ws-note--on', !!problemNote);

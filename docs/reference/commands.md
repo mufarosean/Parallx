@@ -283,6 +283,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `theme-editor.open` | Parallx: Appearance | theme-editor |  |  |  |
 | `tools.showInstalled` | Tools: Show Installed Tools | tool-gallery |  |  |  |
 | `welcome.openWelcome` | Welcome: Show Welcome Page | welcome |  |  |  |
+| `worksheet.addTag` | Worksheets: Add Tag to Problem | worksheet |  |  |  |
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |
 | `worksheet.dashboard` | Worksheets: Open Dashboard | worksheet |  |  |  |
 | `worksheet.generate` | Worksheets: Generate Items | worksheet |  |  |  |
@@ -295,6 +296,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `worksheet.plan` | Worksheets: Open Campaign | worksheet |  |  |  |
 | `worksheet.practice` | Worksheets: Start Practice Session | worksheet |  |  |  |
 | `worksheet.quizzes` | Worksheets: Open Quizzes | worksheet |  |  |  |
+| `worksheet.removeTag` | Worksheets: Remove Tag From Problem | worksheet |  |  |  |
 | `worksheet.settings` | Worksheets: Settings | worksheet |  |  |  |
 | `worksheet.startRoster` | Worksheets: Start Today's Roster | worksheet |  |  |  |
 | `workspaceGraph.open` | Open Full Graph | workspace-graph | Workspace Graph |  |  |

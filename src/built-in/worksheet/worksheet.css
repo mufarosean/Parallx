@@ -457,6 +457,11 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-quiz__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .ws-quiz__time { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
 .ws-quiz__note { grid-column: 1 / -1; }
+/* The tags line under a note (tagEditor.ts). */
+.ws-tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-1) var(--px-space-2); margin-top: var(--px-space-2); }
+.ws-tags__label { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.ws-tags__own, .ws-tags__more { display: contents; }
+.ws-tags__field { width: 160px; }
 .ws-quiz__notetext { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: var(--px-bg-inset); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); padding: 6px 9px; }
 .ws-quiz__notepreview { font-size: var(--px-text-xs); color: var(--px-text-secondary); white-space: pre-wrap; margin-top: 2px; }
 

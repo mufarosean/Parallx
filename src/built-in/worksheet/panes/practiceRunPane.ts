@@ -8,6 +8,7 @@ import { normalizeRating, paperLabel } from '../problemImport.js';
 import { examClockFor } from './planPane.js';
 import { dayKey } from '../progressInsights.js';
 import { itemTags, nextMarkedIndex } from '../practiceSession.js';
+import { mountTagEditor } from './tagEditor.js';
 import { createStudyTicker } from '../studyClock.js';
 import { appDateTimeString } from '../../../services/localTime.js';
 import { fmtStudy, gradeLabel, when } from '../labels.js';
@@ -365,7 +366,7 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
         const chipCls = sessionGrade ? `ws-chip--${stateClass(gradeText)}` : st?.worked ? 'ws-chip--open' : earlierGrade ? `ws-chip--${stateClass(gradeText)}` : 'ws-chip--muted';
         row.appendChild(el('span', `ws-chip ${chipCls}`, status));
         row.appendChild(el('span', 'ws-quiz__time', st?.seconds ? fmtStudy(st.seconds) : ''));
-        const noteBtn = iconBtn('notebook-pen', note ? 'Edit Note' : 'Add Note', { hint: 'A note on this problem, kept with it across quizzes.' });
+        const noteBtn = iconBtn('notebook-pen', note ? 'Edit Note' : 'Add Note', { hint: 'A note and tags on this problem, kept with it across quizzes.' });
         row.appendChild(noteBtn);
         const editor = el('div', 'ws-quiz__note');
         editor.style.display = 'none';
@@ -382,6 +383,7 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
           paintIconBtn(noteBtn, 'notebook-pen', v ? 'Edit Note' : 'Add Note', 'A note on this problem, kept with it across quizzes.');
         });
         editor.appendChild(ta);
+        mountTagEditor(editor, id);
         noteBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           const open = editor.style.display === 'none';
@@ -391,7 +393,7 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
         row.appendChild(markBtn(session, id, (on) => { counts.marked += on ? 1 : -1; paintCountsHook(); }));
         row.appendChild(starBtn(id, item?.starred ?? false));
         row.appendChild(editor);
-        row.addEventListener('click', () => goTo(i));
+        row.addEventListener('click', (e) => { if (!(e.target as HTMLElement).closest('.ws-quiz__note')) goTo(i); });
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) goTo(i); });
         rows.push(row);
       });
