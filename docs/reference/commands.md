@@ -290,11 +290,13 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `worksheet.importExcel` | Worksheets: Import from Excel | worksheet |  |  |  |
 | `worksheet.importPlan` | Worksheets: Import Plan… | worksheet |  |  |  |
 | `worksheet.open` | Worksheets: Open Practice Items | worksheet |  |  |  |
+| `worksheet.openQuiz` | Worksheets: Open Quiz | worksheet |  |  |  |
 | `worksheet.openScratch` | Worksheets: Open Scratch Sheet | worksheet |  |  |  |
 | `worksheet.plan` | Worksheets: Open Campaign | worksheet |  |  |  |
 | `worksheet.practice` | Worksheets: Start Practice Session | worksheet |  |  |  |
 | `worksheet.quizzes` | Worksheets: Open Quizzes | worksheet |  |  |  |
 | `worksheet.settings` | Worksheets: Settings | worksheet |  |  |  |
+| `worksheet.startRoster` | Worksheets: Start Today's Roster | worksheet |  |  |  |
 | `workspaceGraph.open` | Open Full Graph | workspace-graph | Workspace Graph |  |  |
 | `workspaceGraph.rebuildConceptualLinks` | Rebuild Conceptual Links | workspace-graph | Workspace Graph |  |  |
 | `workspaceGraph.refresh` | Refresh | workspace-graph | Workspace Graph |  |  |
