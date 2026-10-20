@@ -78,12 +78,36 @@ export function getAnthropicBridge(): IAnthropicBridge | undefined {
 
 interface IAnthropicModelMeta extends ILanguageModelInfo {
   readonly supportsThinking: boolean;
+  /**
+   * The model thinks on every turn, asked or not (thinking cannot be turned
+   * off). Its signed thinking blocks then come back on tool turns whatever
+   * the caller asked, and must be replayed like any others.
+   */
+  readonly thinkingAlwaysOn?: boolean;
 }
 
 /** Default output token cap when the caller doesn't set one (Anthropic requires max_tokens). */
 export const ANTHROPIC_DEFAULT_MAX_TOKENS = 16384;
 
 export const ANTHROPIC_MODELS: readonly IAnthropicModelMeta[] = [
+  {
+    id: 'claude-opus-5-5', displayName: 'Claude Opus 5.5', family: 'claude',
+    parameterSize: '', quantization: '', contextLength: 1_000_000,
+    capabilities: ['completion', 'tools', 'vision', 'thinking'] as ModelCapability[],
+    supportsThinking: true, thinkingAlwaysOn: true,
+  },
+  {
+    id: 'claude-sonnet-5-5', displayName: 'Claude Sonnet 5.5', family: 'claude',
+    parameterSize: '', quantization: '', contextLength: 1_000_000,
+    capabilities: ['completion', 'tools', 'vision', 'thinking'] as ModelCapability[],
+    supportsThinking: true, thinkingAlwaysOn: true,
+  },
+  {
+    id: 'claude-haiku-5-5', displayName: 'Claude Haiku 5.5', family: 'claude',
+    parameterSize: '', quantization: '', contextLength: 1_000_000,
+    capabilities: ['completion', 'tools', 'vision', 'thinking'] as ModelCapability[],
+    supportsThinking: true, thinkingAlwaysOn: true,
+  },
   {
     id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', family: 'claude',
     parameterSize: '', quantization: '', contextLength: 1_000_000,
@@ -451,14 +475,15 @@ export class AnthropicProvider extends Disposable implements ILanguageModelProvi
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
-    const supportsThinking = ANTHROPIC_MODELS.find((m) => m.id === modelId)?.supportsThinking ?? false;
-    const enableThinking = !!options?.think && supportsThinking;
+    const meta = ANTHROPIC_MODELS.find((m) => m.id === modelId);
+    const enableThinking = !!options?.think && (meta?.supportsThinking ?? false);
+    const replayThinking = enableThinking || !!meta?.thinkingAlwaysOn;
 
     const { body, messages: anthMessages } = buildAnthropicRequestBody(modelId, messages, options, {
       defaultMaxTokens: ANTHROPIC_DEFAULT_MAX_TOKENS,
       enableThinking,
     });
-    if (enableThinking) injectThinkingBlocks(anthMessages, this._thinkingCache);
+    if (replayThinking) injectThinkingBlocks(anthMessages, this._thinkingCache);
 
     // First attempt (with thinking, if enabled). Anthropic validates the thinking
     // signature BEFORE streaming, so a signature error fails with zero chunks
@@ -468,7 +493,7 @@ export class AnthropicProvider extends Disposable implements ILanguageModelProvi
       for await (const chunk of this._run(body, signal)) { yielded++; yield chunk; }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (enableThinking && yielded === 0 && /thinking/i.test(msg)) {
+      if (replayThinking && yielded === 0 && /thinking/i.test(msg)) {
         delete (body as Record<string, unknown>).thinking;
         stripThinkingBlocks(anthMessages);
         for await (const chunk of this._run(body, signal)) yield chunk;

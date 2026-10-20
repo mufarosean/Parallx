@@ -14,7 +14,10 @@ import {
   fingerprintAssistantTurn,
   injectThinkingBlocks,
   ANTHROPIC_DEFAULT_MAX_TOKENS,
+  AnthropicProvider,
   type AnthropicThinkingBlock,
+  type IAnthropicBridge,
+  type IAnthropicStreamEvent,
 } from '../../src/built-in/chat/providers/anthropicProvider';
 import type { IChatMessage } from '../../src/services/chatTypes';
 
@@ -184,6 +187,64 @@ describe('extended thinking replay (signed blocks survive tool turns)', () => {
     injectThinkingBlocks(messages, new Map());
     const assistant = messages.find((m) => m.role === 'assistant')!;
     expect(assistant.content.some((b) => (b as { type: string }).type === 'thinking')).toBe(false);
+  });
+});
+
+describe('models that always think', () => {
+  // A turn that thinks (signed) and then calls a tool, as the API streams it.
+  const TOOL_TURN = [
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"SIG55"}}',
+    'data: {"type":"content_block_stop","index":0}',
+    'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{}}}',
+    'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Paris\\"}"}}',
+    'data: {"type":"content_block_stop","index":1}',
+  ].join('\n\n') + '\n\n';
+
+  function fakeBridge() {
+    const bodies: Record<string, unknown>[] = [];
+    let listener: (e: IAnthropicStreamEvent) => void = () => {};
+    const bridge: IAnthropicBridge = {
+      hasKey: async () => true, setKey: async () => ({ ok: true }), clearKey: async () => undefined,
+      abortStream: async () => undefined,
+      onStreamEvent: (cb) => { listener = cb; return () => {}; },
+      startStream: async (requestId, body) => {
+        bodies.push(body as Record<string, unknown>);
+        setTimeout(() => {
+          listener({ requestId, type: 'data', data: bodies.length === 1 ? TOOL_TURN : '' });
+          listener({ requestId, type: 'end' });
+        }, 0);
+        return { ok: true };
+      },
+    };
+    return { bridge, bodies };
+  }
+
+  async function twoTurns(model: string) {
+    const { bridge, bodies } = fakeBridge();
+    const provider = new AnthropicProvider(bridge);
+    const ask = msgs([{ role: 'user', content: 'weather?' }]);
+    for await (const _ of provider.sendChatRequest(model, ask)) { /* drain */ }
+    const followUp = msgs([
+      { role: 'user', content: 'weather?' },
+      { role: 'assistant', content: '', toolCalls: [{ function: { name: 'get_weather', arguments: { city: 'Paris' } } }] },
+      { role: 'tool', toolName: 'get_weather', content: '72F' },
+    ]);
+    for await (const _ of provider.sendChatRequest(model, followUp)) { /* drain */ }
+    const assistant = (bodies[1].messages as { role: string; content: { type: string }[] }[]).find((m) => m.role === 'assistant')!;
+    return { first: bodies[0], assistant };
+  }
+
+  it('replays the signed thinking on the tool turn even when thinking was not asked for', async () => {
+    const { first, assistant } = await twoTurns('claude-opus-5-5');
+    expect(first).not.toHaveProperty('thinking');
+    expect(assistant.content[0]).toEqual({ type: 'thinking', thinking: '', signature: 'SIG55' });
+  });
+
+  it('an older model that was not asked to think replays nothing', async () => {
+    const { assistant } = await twoTurns('claude-opus-4-8');
+    expect(assistant.content.some((b) => b.type === 'thinking')).toBe(false);
   });
 });
 
