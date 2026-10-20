@@ -2125,7 +2125,7 @@ export class ChatDataService {
     });
     const pickerServices = buildChatWidgetPickerServices({
       getModels: () => this._d.languageModelsService.getModels(),
-      getModelInfo: (modelId: string) => this._d.ollamaProvider.getModelInfo(modelId),
+      getModelInfo: (modelId: string) => this._d.languageModelsService.getModelInfo(modelId),
       getActiveModel: () => this._d.languageModelsService.getActiveModel(),
       setActiveModel: (modelId: string) => this._d.languageModelsService.setActiveModel(modelId),
       onDidChangeModels: this._d.languageModelsService.onDidChangeModels,

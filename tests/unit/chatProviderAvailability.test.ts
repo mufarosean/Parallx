@@ -53,4 +53,17 @@ describe('chat provider availability', () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(providers[0].checkAvailability.mock.calls.length).toBe(calls);
   });
+
+  it('the chat box asks the model\'s own provider what it can do, so a Claude model takes images', async () => {
+    const claude = { id: 'claude-opus-4-8', capabilities: ['completion', 'tools', 'vision'] };
+    // Every dependency this test does not name is an inert stub.
+    const inert = (): any => new Proxy(function () {}, { get: (_t, k) => (k === 'then' ? undefined : inert()), apply: () => inert() });
+    const named: Record<string, unknown> = {
+      languageModelsService: { getProviders: () => [], onDidChangeProviders: new Emitter<void>().event, getModelInfo: vi.fn(async () => claude) },
+      ollamaProvider: { getModelInfo: vi.fn(async () => { throw new Error('not an Ollama model'); }) },
+    };
+    const service = new ChatDataService(new Proxy(named, { get: (t, k: string) => (k in t ? t[k] : inert()) }) as any) as any;
+    const info = await service.buildWidgetServices().modelPicker.getModelInfo('claude-opus-4-8');
+    expect(info.capabilities).toContain('vision');
+  });
 });
