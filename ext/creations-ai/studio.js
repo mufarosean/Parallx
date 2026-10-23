@@ -24,6 +24,7 @@ import {
 import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 import { latitudeItems, coerceLatitude } from './latitude.js';
+import { mountTestDrive } from './test-drive.js';
 
 const STYLE_ID = 'creations-studio-styles';
 const AUTOSAVE_MS = 800;
@@ -370,8 +371,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const dials = section('Dials', 'Personality, body, face and hair, clothing, story seeds. Only used once you touch them.', true);
   dials.root.classList.add('cs-dials-section');
   make.body.appendChild(dials.root);
-  const dialsHost = el('div', 'cs-dials');
-  dials.body.appendChild(dialsHost);
+  const dialsHost = el('div', 'cs-dials'); dials.body.appendChild(dialsHost);
   const forgeControls = renderDials(dialsHost);
 
   const engine = el('div', 'cs-engine');
@@ -424,8 +424,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   // ── Sheet ──────────────────────────────────────────────────────────────
   const sheetSec = section('Sheet', 'Edit in place. Lock a row and nothing regenerates it.');
   mainCol.appendChild(sheetSec.root);
-  const rowsHost = el('div', 'cs-rows');
-  sheetSec.body.appendChild(rowsHost);
+  const rowsHost = el('div', 'cs-rows'); sheetSec.body.appendChild(rowsHost);
   for (const f of STUDIO_FIELDS) {
     if (f.key === 'name') continue; // the name is the title
     rowsHost.appendChild(sheetRow(f));
@@ -444,14 +443,16 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const tryBtn = button('Send', 'send', () => void tryLine(), false, 'textGenerator.studio.tryLine.send');
   tryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void tryLine(); } });
   tryRow.append(tryInput, tryBtn);
-  const tryReply = el('div', 'cs-try-reply');
-  const tryYou = el('div', 'cs-try-you');
-  const trySaid = el('div', 'cs-try-said');
+  const tryReply = el('div', 'cs-try-reply'); const tryYou = el('div', 'cs-try-you'); const trySaid = el('div', 'cs-try-said');
   const tryPortrait = createPortrait('', { size: 28 });
   trySaid.append(tryPortrait, tryReply);
-  const tryThread = el('div', 'cs-try-thread');
-  tryThread.append(tryYou, trySaid);
+  const tryThread = el('div', 'cs-try-thread'); tryThread.append(tryYou, trySaid);
   trySec.body.append(tryThread, tryRow);
+
+  // ── Test Drive: three scenes from the sheet, read together (test-drive.js) ──
+  const driveSec = section('Test Drive', 'Three scenes from their sheet. What repeats, what is announced, what slips out.');
+  sideCol.appendChild(driveSec.root);
+  if (parallx.ui?.createButton && parallx.ui?.renderMarkdown) mountTestDrive(driveSec.body, { ui: parallx.ui, lm: parallx.lm, sheet: () => state.sheet, resolveModel, setMeta: (t) => driveSec.setMeta(t), isBusy: () => state.busy, setBusy: (b) => { state.busy = b; refreshStatus(); } });
 
   // ── Helpers: DOM ───────────────────────────────────────────────────────
   function button(label, iconName, onClick, primary = false, id) {
@@ -608,8 +609,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     // A field written in sections (Settings, Sheet structure): Rewrite can
     // change one section and leave the others word for word. Filled when the
     // box opens, from the structure as it stands.
-    const steerSections = el('div', 'cs-steer-sections');
-    steerSections.style.display = 'none';
+    const steerSections = el('div', 'cs-steer-sections'); steerSections.style.display = 'none';
     steerInput.addEventListener('input', () => {
       // A direction that names one section picks it, until a section is picked by hand.
       const entry = structureFor(f.key);

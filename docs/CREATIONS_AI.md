@@ -909,6 +909,15 @@ them. The lever is how tightly the chat holds the card. Built:
   framing goes under each card in the roleplay prompt; at Open the late
   anchor carries the permission too. Files: `latitude.js`; tests:
   `creationsLatitude`.
+- **Test Drive.** Try A Line answers one line; a card's faults show across
+  several. The Studio's Test Drive section writes three opening lines from
+  the character's own sheet (the work, pressure on what they fear or hide,
+  idle talk), hears the reply to each through Try A Line's call, and reads
+  the three together: a phrase said again, the same opening twice, a value
+  named as a subject, the secret said out loud, a reply ending on a slogan,
+  dashes. Mechanical checks from the quality harness, no judge model; a
+  finding is something to look at. Four model calls. Files:
+  `test-drive.js`; tests: `creationsTestDrive`.
 
 ## Quality testing
 
