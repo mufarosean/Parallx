@@ -1,4 +1,4 @@
-// test-drive.js — Creations AI: hear a new character in three scenes before
+// drive.js — Creations AI: hear a new character in three scenes before
 // accepting them.
 //
 // Try A Line answers one line. A card's faults show across several: the
@@ -193,7 +193,7 @@ export function mountTestDrive(host, deps) {
   let results = null;
   const paint = () => {
     host.replaceChildren();
-    deps.ui.createButton(host, { id: 'textGenerator.studio.testDrive.run', label: results ? 'Drive Again' : 'Drive', icon: 'play', size: 'sm', title: 'Three scenes from their sheet: the work, pressure on what they hide, idle talk', onClick: () => void run() });
+    deps.ui.createButton(host, { id: 'textGenerator.studio.testDrive.run', command: TEST_DRIVE_COMMAND, label: results ? 'Drive Again' : 'Drive', icon: 'play', size: 'sm', title: 'Three scenes from their sheet: the work, pressure on what they hide, idle talk' });
     if (results) host.appendChild(deps.ui.renderMarkdown(results));
   };
   async function run() {
@@ -221,8 +221,15 @@ export function mountTestDrive(host, deps) {
     }
   }
   paint();
-  return { run };
+  live = { run };
+  return live;
 }
+
+/** The command the Drive button runs; the chat registers it to `runLiveTestDrive`. */
+export const TEST_DRIVE_COMMAND = 'textGenerator.studio.testDrive';
+let live = null;
+/** Runs the drive of the Studio last opened (one Studio is open at a time). */
+export function runLiveTestDrive() { return live ? live.run() : undefined; }
 
 async function collect(stream) {
   let text = '';

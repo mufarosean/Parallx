@@ -24,7 +24,7 @@ import {
 import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 import { latitudeItems, coerceLatitude } from './latitude.js';
-import { mountTestDrive } from './test-drive.js';
+import { mountTestDrive } from './drive.js';
 
 const STYLE_ID = 'creations-studio-styles';
 const AUTOSAVE_MS = 800;

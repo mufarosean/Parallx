@@ -12,7 +12,7 @@ import {
 // @ts-expect-error — JS module with no types
 } from '../../ext/creations-ai/acts.js';
 // @ts-expect-error — JS module with no types
-import { createActRunner } from '../../ext/creations-ai/acts-panel.js';
+import { createActRunner, actCommand } from '../../ext/creations-ai/acts-panel.js';
 
 const names = ['Ada Lovelace', 'Tom Price'];
 const player = { name: 'Alex', plays: '' };
@@ -130,12 +130,12 @@ describe('the runner', () => {
     async function* chunks(parts: string[]) { for (const p of parts) yield { content: p }; }
     const deps = {
       ui: {
-        createButton: (c: HTMLElement, o: any) => { const b = document.createElement('button'); b.textContent = o.label; b.disabled = !!o.disabled; b.onclick = o.onClick; c.appendChild(b); return b; },
+        createButton: (c: HTMLElement, o: any) => { const b = document.createElement('button'); b.textContent = o.label; b.disabled = !!o.disabled; b.dataset.command = o.command; b.dataset.args = JSON.stringify(o.args || []); c.appendChild(b); return b; },
         renderMarkdown: (md: string) => { const d = document.createElement('div'); d.className = 'px-markdown'; d.textContent = md; return d; },
       },
       lm: { sendChatRequest: (_m: string, messages: any[]) => chunks([messages[0].content.startsWith('You plan one act') ? planReply : '{"brief": "The summer she leaves."}']) },
       fs: { readFile: async (uri: string) => { if (!files.has(uri)) throw new Error('no file'); return { content: files.get(uri) }; }, writeFile: async (uri: string, content: string) => { files.set(uri, content); } },
-      gen, fileUri: (name: string) => `t1/${name}`, thread: () => thread, narratorSpeaker: '__narrator__',
+      threadId: 't1', gen, fileUri: (name: string) => `t1/${name}`, thread: () => thread, narratorSpeaker: '__narrator__',
       saveMeta: (updates: any) => { Object.assign(thread, updates); },
       cast: () => [{ file: 'ada.json', name: 'Ada Lovelace', tagline: 'Counts', drives: 'Wants order.' }, { file: 'tom.json', name: 'Tom Price' }],
       userName: () => 'Alex', userPlays: () => '', resolveFile: (n: string) => (n.startsWith('Ada') ? 'ada.json' : 'tom.json'),
@@ -211,12 +211,17 @@ describe('the runner', () => {
     expect(w.composer).toBe('/act The summer she leaves.');
   });
 
-  it('draws the panel with the kit: the state line, Run, Open act.md, Propose, the sheet with run beats struck through', async () => {
+  it('draws the panel with the kit: the state line, Run, Open act.md, Propose, each a command naming the thread; the sheet with run beats struck through', async () => {
     const w = world('1. Narrator: Dawn\n2. Ada: Counts');
     const host = document.createElement('div');
     await w.runner.render(host);
     expect(host.textContent).toContain('No act yet');
     expect([...host.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Run', 'Propose Next Act']);
+    expect([...host.querySelectorAll('button')].map((b) => `${b.dataset.command} ${b.dataset.args}`)).toEqual(['textGenerator.chat.act.run ["t1"]', 'textGenerator.chat.act.propose ["t1"]']);
+    // The commands reach the runner by thread.
+    expect(await actCommand('propose', 't1')).toBeUndefined();
+    expect(w.composer).toBe('/act The summer she leaves.');
+    expect(actCommand('run', 'nowhere')).toBeUndefined();
     await w.runner.plan('A morning');
     await w.runner.render(host);
     expect(host.textContent).toContain('Planned: 2 beats');

@@ -23,7 +23,10 @@ import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
-import { createActRunner } from './acts-panel.js';
+import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
+import { TEST_DRIVE_COMMAND, runLiveTestDrive } from './drive.js';
+import { openingNote, pickDirection } from './initiative.js';
+import { sceneMovedOn, whoLivedThrough, buildSinceThenMessages, parseSinceThen, sinceThenLine, mountSinceThen, sinceThenCommand, SINCE_THEN_COMMANDS } from './since-then.js';
 
 // The workspace data folder keeps its original name: every character, thread,
 // lorebook and setting a user has is in there, and a rename would be a move.
@@ -3060,18 +3063,11 @@ function chatLorebooks(characters, allLorebooks, chatFiles = []) {
 // SECTION 4C: SUPPORTING CAST
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// People who are in the world of a chat but never take a turn of their own:
-// the bartender, a sister, the landlord. Before this, a person was either a
-// full character (a third seat at the table, with turns to manage) or did not
-// exist, and the Turn Contract forbade the model from writing anyone else's
-// words at all, so the leads could not so much as order a drink. A supporting
-// cast member is one line in the prompt; whoever is speaking may voice them
-// briefly inside their own turn. They are never given a turn, never a stop
-// token, never a chip.
-//
-// Stored on the thread as `supportingCast`: `{ id, file }` for a character
-// from the roster (its card is read fresh each prompt) or `{ id, name, note }`
-// for a person typed in the chat.
+// People in the world of a chat who never take a turn of their own (the
+// bartender, a sister): one line in the prompt, voiced briefly by whoever is
+// speaking, never a turn, a stop token or a chip. Stored on the thread as
+// `supportingCast`: `{ id, file }` for a roster character (its card read
+// fresh each prompt) or `{ id, name, note }` for a person typed in the chat.
 
 const SUPPORTING_NOTE_MAX = 320;
 
@@ -3387,13 +3383,8 @@ function buildSystemPrompt(params = {}) {
     ].join('\n'));
   }
 
-  // 7. Response length instruction. Phrasing strengthened — "Keep your
-  // response to X" was being treated as a soft suggestion by small
-  // models. The directive language below is mandatory ("Reply with
-  // exactly", "Stop after"). Length is also restated in the
-  // consolidated late-stage system message + user-role stage
-  // direction (see assembleContext) so it lands close to generation,
-  // not just at the top of a long system prompt.
+  // 7. Response length, as an order (a soft wording was ignored); restated
+  // again near generation in assembleContext.
   if (responseLength === 'short') {
     parts.push('## Response Length\nReply with EXACTLY ONE paragraph. Do not write a second paragraph. Stop after the first paragraph break.');
   } else if (responseLength === 'medium') {
@@ -3502,18 +3493,10 @@ function assembleContext(params) {
   const budget = computeTokenBudget(contextWindow, settings);
   const extendedMemoryEnabled = primaryChar?.frontmatter?.extendedMemory === true;
 
-  // Resolve the ACTIVE speaker character. Every speaker-specific
-  // setting (writing preset, POV, length, fit method, voice anchor)
-  // is sourced from this character — NOT from `primaryChar`. The
-  // previous code used primaryChar for everything, which meant if a
-  // thread had [Ada, Ben] and Ada was at index 0, asking Ben to
-  // speak still used Ada's settings. Whatever the user explicitly
-  // selected to speak is the source of truth.
-  //
-  // Returns null for SELF_SPEAKER (no persona configured), the
-  // NARRATOR sentinel, or any speaker that doesn't match a known
-  // character. Callers fall back to thread/global defaults in that
-  // case — matching the legacy behaviour for those sentinels.
+  // The active speaker's character: every speaker-specific setting (preset,
+  // POV, length, fit method, voice anchor) comes from it, never from the
+  // first character. Null for the user, the Narrator or an unknown speaker;
+  // callers then fall back to the thread and global defaults.
   let speakerChar = null;
   if (respondAs && respondAs !== SELF_SPEAKER && respondAs !== NARRATOR_SPEAKER) {
     speakerChar = chars.find((c) =>
@@ -3641,15 +3624,8 @@ function assembleContext(params) {
 
   const messages = [{ role: 'system', content: systemPrompt }];
 
-  // History — filter out hiddenFrom:"ai" messages, map author→role.
-  //
-  // Speaker encoding: small local models often miss the `Name: text`
-  // convention (they treat the colon as decorative punctuation), which
-  // is the root cause of "the AI writes for the wrong character" bugs.
-  // We use `<<Name>>\ntext` instead — a delimiter the model can't
-  // confuse with content. Strip-on-generation handles both the new
-  // chevron form and the legacy colon form so existing chats keep
-  // working without migration.
+  // History: messages hidden from the AI left out, author mapped to role,
+  // each speaker marked as `<<Name>>\ntext` (small models miss a colon).
   const filteredHistory = history.filter(m => m.hiddenFrom !== 'ai');
   const mappedHistory = filteredHistory.map(m => {
     const role = mapAuthorToRole(m.author || m.role, m);
@@ -3727,31 +3703,13 @@ function assembleContext(params) {
     }
   }
 
-  // ── Single consolidated late-stage system message ──
-  // Stacking 4–5 separate system messages right before the user turn caused
-  // the model to treat them as boilerplate and ignore them. We now build
-  // exactly ONE focused system message, in priority order:
-  //   1) Active turn (who is speaking, what NOT to do)
-  //   2) Persona re-anchor (you are X, voice constraint, persona recap)
-  //   3) Reminders (character + user reminders)
-  //   4) Vary-your-prose guard (with concrete recent openings)
-  //   5) Ephemeral directive (slash-command instruction for THIS turn)
-  // Empty sections are omitted. The result is one tight block that lands
-  // right before generation — single high-attention spot, no competing noise.
+  // One late system message before the user turn (several were read as
+  // boilerplate): active turn, persona anchor, reminders, the vary-your-prose
+  // guard, then the turn's directive; empty sections are left out.
 
-  // 1) Active turn — selected character is the source of truth. Do NOT
-  // try to derive the next speaker from history; trust the explicit
-  // selection. The instruction is phrased to be unmistakable and
-  // references the `<<Name>>` history delimiter the model has been
-  // seeing on every prior turn.
-  //
-  // Speaker-unification (user-is-just-another-character): the human
-  // typing is OUTSIDE the fiction. Every active turn — Anon, Ada,
-  // Narrator — is "write a turn as <Name>", same shape every time.
-  // No special "user-authored message" wording: the user persona
-  // gets the same emphatic instruction as any character. The model
-  // never needs to know whether the speaker is "the user" or "a
-  // character"; both are just names.
+  // 1) Active turn: the selected speaker, never derived from history. Every
+  // speaker (the user's persona included) gets the same "write a turn as
+  // <Name>" instruction, naming the <<Name>> delimiter the history uses.
   let activeTurnLine = null;
   let bannerName = null;
   if (respondAs === SELF_SPEAKER) {
@@ -3799,30 +3757,15 @@ function assembleContext(params) {
     varyBlock = speakerAvoidRepeat.replace(/^\[/, '').replace(/\]$/, '');
   }
 
-  // 4b) Standing director's note — a persistent per-thread instruction
-  // that rides in the late-stage block on EVERY turn (unlike the
-  // ephemeral directive, which is one-shot). This is the user's
-  // always-on steering channel: "keep the pacing slow", "never speak
-  // for my character", "write Ada's thoughts in italics", etc. It is
-  // placed after the style reminder, so where the two disagree the note
-  // is the later word and wins; the prompt's own rules say the note may
-  // turn on what they leave off (a character's thoughts).
+  // 4b) The standing director's note rides every turn, after the style
+  // reminder so it wins where they disagree.
   let standingBlock = null;
   if (standingNote && standingNote.trim()) {
     standingBlock = 'Standing director\'s note (applies to every turn, and overrides the style above where they differ): ' + standingNote.trim();
   }
 
-  // 5) Style & length reminder — compact restatement of the writing
-  // preset summary + response-length directive, placed near the
-  // generation point so small models don't lose track of the format
-  // by the time they reply. The FULL preset still lives at the top
-  // of the system prompt for orientation; this is the late-recency
-  // anchor that actually shapes the next token.
-  // Style hint must follow the same resolution as the full preset at the
-  // top of the system prompt — it previously used the raw `writingPreset`
-  // param, so a speaker character's own preset (or a thread override)
-  // shaped the top of the prompt but NOT the late-recency anchor that
-  // actually steers the next token.
+  // 5) Style and length, restated near generation (the full preset is at
+  // the top of the system prompt), resolved exactly as the full preset is.
   const styleHint = getStyleHint(effectiveWritingPreset);
   const lengthHint = getLengthHint(effectiveResponseLength);
   let styleLengthBlock = null;
@@ -3890,18 +3833,9 @@ function assembleContext(params) {
     }
     messages.push({ role: 'user', content });
   } else {
-    // userMessage is empty — happens for `/ai <instruction>` typed as
-    // the whole message, shortcut buttons, regenerate, and any other
-    // path where the active turn is requested without new user text.
-    //
-    // The prior gate (`!messages.some(m => m.role === 'user')`) only
-    // fired when history was devoid of user-role messages, which was
-    // wrong: as soon as ANY past user message existed, the directive
-    // never reached the user-role position, and got buried in the
-    // system block where small models drop it. Fire unconditionally
-    // now — the model needs a fresh user-role payload carrying the
-    // active-turn signal + any director's note before every
-    // generation, no matter what history looks like.
+    // No user text (a bare /ai, a shortcut, regenerate): the model still
+    // needs a user-role payload carrying the active turn and any note, so
+    // one is sent whatever the history holds.
     let directive = '[Stage direction — not part of the story.';
     if (bannerName) {
       directive += ` Now write the next reply as ${bannerName}, and only ${bannerName}. Stay strictly in ${bannerName}'s voice. Do not write, narrate, or quote any other character. Do not begin with a \`<<${bannerName}>>\` tag or any speaker prefix.`;
@@ -4104,6 +4038,7 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.smartTurnOrder === undefined) thread.smartTurnOrder = false;
   if (!Array.isArray(thread.supportingCast)) thread.supportingCast = [];
   if (thread.act === undefined) thread.act = null;
+  if (thread.autoDirect === undefined) thread.autoDirect = false;
 
   return thread;
 }
@@ -4140,15 +4075,9 @@ async function appendMessage(fs, workspaceUri, threadId, message) {
 
 async function rewriteMessages(fs, workspaceUri, threadId, messages) {
   const file = resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/messages.jsonl`);
-  // Persist EVERY field on the message rather than hand-picking a
-  // subset. The prior hand-picked serialiser silently dropped any
-  // newer field (notably `kind: 'ooc'` from M79 Phase 4a) every time
-  // a single message was deleted or regenerated — silently
-  // un-marking every OOC entry in the thread.
-  //
-  // We still normalise the bare-minimum compatibility fields so legacy
-  // and post-migration loads converge on the same shape, but
-  // everything else passes through verbatim.
+  // Every field on a message is kept (a hand-picked set once dropped
+  // `kind: 'ooc'` on every rewrite); only the compatibility fields are
+  // normalised.
   const serialized = messages
     .map((message) => {
       const normalised = {
@@ -4234,23 +4163,10 @@ async function readMemories(fs, workspaceUri, threadId) {
 // SECTION 7A: SCENE STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// The scene state is a small structured channel stored on the thread:
-//
-//   thread.sceneState = {
-//     location: string,  // e.g. "cafe", "park bench", "moon base"
-//     time: string,      // e.g. "morning", "late evening", "winter night"
-//     mood: string,      // e.g. "tense", "playful", "melancholy"
-//     present: string[], // character names currently in-scene
-//     updatedAt: number,
-//   }
-//
-// The model auto-derives state by emitting a single tag at the end of
-// its response:
-//
-//   <scene-update location="cafe" time="evening" mood="tense" present="Ada"/>
-//
-// The tag is parsed permissively, stripped from the message, and merged into
-// the prior state (a partial update changes only the named fields).
+// thread.sceneState = { location, time, mood, present: [names], updatedAt }.
+// The model sets it with one tag at the end of a reply,
+// <scene-update location=".." time=".." mood=".." present="Ada"/>, parsed
+// permissively, stripped from the message, merged into the prior state.
 
 const SCENE_TAG_REGEX = /<scene-update\b([^>]*?)\/?>/i;
 
@@ -4703,16 +4619,9 @@ async function autoExtractMemoryBackground({
     }
     const { facts, beats } = parsed;
 
-    // M79 memory provenance — every emitted fact/beat records the
-    // message IDs of the slice it was extracted from. The autoextractor
-    // is a black box (we can't tell which fact came from which exact
-    // message), so we conservatively attribute every emitted entry to
-    // the FULL source slice. On delete, pruning a fact whose sources
-    // include the deleted message is the user-correct behaviour:
-    // "delete means the AI forgets, even if it forgets things derived
-    // from neighbouring messages too." Occasional false-positive
-    // pruning is acceptable; the next auto-extract re-emits surviving
-    // facts from the surviving messages.
+    // Every fact and beat records the ids of the whole slice it came from,
+    // so deleting a message prunes what may have come from it; the next
+    // extract re-emits what the surviving messages still support.
     const sliceSourceIds = recentMessages
       .map((m) => m?.id)
       .filter((id) => typeof id === 'string' && id.length > 0);
@@ -4791,15 +4700,13 @@ async function deleteThread(fs, workspaceUri, threadId) {
 // SECTION 7D: ACTIVE GENERATION REGISTRY
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Editor panes are DISPOSED on every tab switch (editorGroupView tears the
-// active pane down and rebuilds it on return). Generations must survive
-// that: the stream itself keeps running inside the starting pane's
-// closure, so the SHARED state (in-flight flag, stop signal, transient
-// text) lives here, keyed by thread id. A remounted pane re-attaches by
-// registering a listener — the stream resumes on screen mid-sentence,
-// Stop works from any pane, and duplicate sends stay blocked.
+// Editor panes are disposed on every tab switch, and a generation must
+// survive that: its shared state (in flight, stop, transient text) lives
+// here by thread id, and a remounted pane re-attaches with a listener.
 
 const _activeGenerations = new Map();
+/** The mounted chat panes by thread, for the commands their kit buttons run. */
+const _livePanes = new Map();
 
 function getGenState(threadId) {
   let g = _activeGenerations.get(threadId);
@@ -5178,7 +5085,7 @@ function renderChatEditor(container, parallx, input) {
   memoryPanel.appendChild(memList);
   const memHint = el('div', 'cr-memory-hint', { html: `${icon('pin', 13)}<span>Pin a message to remember it</span>` }); memoryPanel.appendChild(memHint);
   // Acts (acts-panel.js) share the side panel: the same aside, in act mode.
-  const actBtn = parallx.ui?.createIconButton ? parallx.ui.createIconButton(null, { id: 'textGenerator.chat.acts', icon: 'film', title: 'Acts: a plot brief the AI runs as turns', onClick: () => setSideMode(sideMode === 'act' && memoryOpen ? null : 'act') }) : null;
+  const actBtn = parallx.ui?.createIconButton ? parallx.ui.createIconButton(null, { id: 'textGenerator.chat.acts', command: 'textGenerator.chat.acts', args: [threadId], icon: 'film', title: 'Acts: a plot brief the AI runs as turns' }) : null;
   actBtn?.classList.add('tg-chat-toolbar-btn');
   let sideMode = 'memory';
   function setSideMode(mode) {
@@ -5200,6 +5107,9 @@ function renderChatEditor(container, parallx, input) {
       : memTab === 'timeline' ? parts.beats.map((b) => b.text)
         : String(parts.notes || '').split(/\n+/).map((l) => l.trim()).filter(Boolean);
     memList.replaceChildren();
+    if (memTab === 'timeline' && sinceThenLines && parallx.ui?.createToggle) mountSinceThen(memList, { threadId, lines: sinceThenLines, ui: parallx.ui,
+      onApply: async (kept) => { sinceThenLines = null; try { await mergeThreadMemory(fs, workspaceUri, threadId, { beats: kept.map((l) => ({ text: sinceThenLine(l.name, l.text) })) }); } catch (err) { showToast(`Could not write the Timeline: ${err?.message || err}`); } void renderMemoryPanel(); },
+      onDismiss: () => { sinceThenLines = null; void renderMemoryPanel(); } });
     if (!items.length) {
       memList.appendChild(el('div', 'cr-memory-empty', { text: memTab === 'facts' ? 'No facts yet. They gather as the chat goes on.' : memTab === 'timeline' ? 'No beats yet.' : 'No notes. Open memories.md to write some.' }));
       return;
@@ -5463,7 +5373,7 @@ function renderChatEditor(container, parallx, input) {
   // stream keeps running, and the next pane re-attaches through `gen`.
   const gen = getGenState(threadId);
   const actRunner = createActRunner({
-    ui: parallx.ui, lm: parallx.lm, fs, gen, fileUri: (name) => _memoryFileUri(workspaceUri, threadId, name), thread: () => thread, narratorSpeaker: NARRATOR_SPEAKER,
+    threadId, ui: parallx.ui, lm: parallx.lm, fs, gen, fileUri: (name) => _memoryFileUri(workspaceUri, threadId, name), thread: () => thread, narratorSpeaker: NARRATOR_SPEAKER,
     saveMeta: (updates, label) => surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, updates), parallx, label),
     cast: () => characters.map((c) => { const s = sheetFromCharacter(c.rawData || {}); return { file: c.fileName, name: getCharacterName(c), tagline: s.tagline, drives: s.drives, secrets: s.secrets }; }),
     userName: () => getUserName(), userPlays: () => (thread?.userPlaysAs ? getCharacterName(thread.userPlaysAs) : ''), resolveFile: (name) => resolveCharacterReference(name), generateTurn: (o) => generateTurn(o),
@@ -5504,6 +5414,27 @@ function renderChatEditor(container, parallx, input) {
    * episodic JSONL files. Re-entrancy guarded so a slow extraction
    * can't pile up.
    */
+  // Off-screen life (since-then.js): the lines proposed after the Narrator
+  // moved the story on, shown in the Timeline until kept or dropped.
+  let sinceThenLines = null;
+  async function proposeSinceThen(before, after, narratorTurn) {
+    const cast = whoLivedThrough(characters.map((c) => { const s = sheetFromCharacter(c.rawData || {}); return { name: getCharacterName(c), drives: s.drives, relationships: s.relationships }; }), after, thread?.userPlaysAs ? getCharacterName(thread.userPlaysAs) : '');
+    const rawId = selectedModelId || thread?.modelId || null;
+    const modelId = (rawId && models.some((m) => m.id === rawId)) ? rawId : models[0]?.id;
+    if (!cast.length || !modelId || !parallx.lm?.sendChatRequest) return;
+    try {
+      const memory = await loadThreadMemory(fs, workspaceUri, threadId).catch(() => ({ facts: [], beats: [], notes: '' }));
+      const messages = buildSinceThenMessages({ cast, others: [...supportingCards, ...connectedCards], before, after, memory, lastTurn: narratorTurn });
+      let raw = '';
+      for await (const chunk of parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, think: false, format: 'json', maxTokens: 600, numCtx: await chatContextWindow(modelId) })) if (chunk?.content) raw += chunk.content;
+      const lines = parseSinceThen(raw, cast.map((c) => c.name));
+      if (!lines.length) return;
+      sinceThenLines = lines;
+      memTab = 'timeline'; if (memSeg) memSeg.value = 'timeline';
+      setSideMode('memory');
+      showToast(`Since then: ${lines.length} ${lines.length === 1 ? 'line' : 'lines'} proposed. Keep or drop them in the Timeline.`);
+    } catch (err) { console.warn('[TextGenerator] Since then: nothing proposed:', err); }
+  }
   function _maybeAutoExtractMemory({ force = false } = {}) {
     if (_extractInFlight) return Promise.resolve(null);
     // The count of story replies the memory covers lives on the thread, so
@@ -5981,6 +5912,39 @@ function renderChatEditor(container, parallx, input) {
     directionsBtn.classList.add('tg-input-ooc-btn--active');
   }
 
+  /** The director's messages for `chosen` ([{ name, char }]): Suggest Directions and auto-direct both ask this way. */
+  async function directorMessages(chosen, { characterKinds, narratorKinds }) {
+    const story = messageHistory.filter((m) => m && m.content && m.hiddenFrom !== 'ai' && m.kind !== 'ooc');
+    let memory = { facts: [], beats: [], notes: '' };
+    try { memory = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* the prompt goes without it */ }
+    const cast = chosen.map(({ name, char }) => { const sheet = sheetFromCharacter(char.rawData || {}); return { name, tagline: sheet.tagline, drives: sheet.drives, secrets: sheet.secrets, relationships: sheet.relationships }; });
+    return buildDirectorPrompt({
+      cast, others: [...supportingCards, ...connectedCards], scene: thread.sceneState || null, memory,
+      transcript: story.slice(-14).map((m) => ({ name: getVisibleName(m), content: m.content })),
+      recentNotes: messageHistory.slice(-12).map((m) => m && m.instruction).filter(Boolean),
+      rules: currentSettings?.dialogueRules || '', characterKinds, narratorKinds, narrator: narratorKinds.length > 0,
+    });
+  }
+  /** Auto-direct: the director's options for the next speaker, one picked by latitude; null when it cannot. */
+  async function autoDirectNote(speaker) {
+    const rawId = selectedModelId || thread?.modelId || null;
+    const modelId = (rawId && models.some((m) => m.id === rawId)) ? rawId : models[0]?.id;
+    const char = speaker === NARRATOR_SPEAKER ? null : characters.find((c) => c.fileName === speaker);
+    if (!modelId || !parallx.lm?.sendChatRequest || (!char && speaker !== NARRATOR_SPEAKER)) return null;
+    const s = currentSettings || {};
+    const characterKinds = char ? parseDirectionKinds(typeof s.directionsCharacter === 'string' ? s.directionsCharacter : DEFAULT_CHARACTER_DIRECTIONS) : [];
+    const narratorKinds = char ? [] : parseDirectionKinds(typeof s.directionsNarrator === 'string' ? s.directionsNarrator : DEFAULT_NARRATOR_DIRECTIONS);
+    if (!characterKinds.length && !narratorKinds.length) return null;
+    const name = char ? getCharacterName(char) : NARRATOR;
+    try {
+      const messages = await directorMessages(char ? [{ name, char }] : [], { characterKinds, narratorKinds });
+      let raw = '';
+      for await (const chunk of parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(characterKinds.length + narratorKinds.length), think: false, numCtx: await chatContextWindow(modelId) })) if (chunk?.content) raw += chunk.content;
+      const pick = pickDirection(parseDirections(raw, [name], { characterKinds, narratorKinds }), name, { latitude: resolveLatitude(char, currentSettings) });
+      return pick ? pick.text : null;
+    } catch (err) { console.warn('[TextGenerator] Auto-direct asked nothing this turn:', err); return null; }
+  }
+
   async function suggestDirections() {
     if (!thread || characters.length === 0) return;
     if (gen.isGenerating) {
@@ -6018,25 +5982,8 @@ function renderChatEditor(container, parallx, input) {
     ];
     renderDirections({ status: `Reading the scene for ${names.map((n) => (n === NARRATOR ? 'the Narrator' : n)).join(', ')}…`, busy: true });
 
-    let memory = { facts: [], beats: [], notes: '' };
-    try { memory = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* the prompt goes without it */ }
+    const messages = await directorMessages(chosen, { characterKinds, narratorKinds });
     if (run !== _directionsRun) return;
-    const cast = chosen.map(({ name, char }) => {
-      const sheet = sheetFromCharacter(char.rawData || {});
-      return { name, tagline: sheet.tagline, drives: sheet.drives, secrets: sheet.secrets, relationships: sheet.relationships };
-    });
-    const messages = buildDirectorPrompt({
-      cast,
-      others: [...supportingCards, ...connectedCards],
-      scene: thread.sceneState || null,
-      memory,
-      transcript: story.slice(-14).map((m) => ({ name: getVisibleName(m), content: m.content })),
-      recentNotes: messageHistory.slice(-12).map((m) => m && m.instruction).filter(Boolean),
-      rules: currentSettings?.dialogueRules || '',
-      characterKinds,
-      narratorKinds,
-      narrator: narratorKinds.length > 0,
-    });
 
     let raw = '';
     try {
@@ -7083,8 +7030,10 @@ function renderChatEditor(container, parallx, input) {
       welcome.appendChild(el('div', 'tg-welcome-hint', {
         text: orphan
           ? 'A turn was set up but never completed. Send a message to continue, or use the shortcut bar to retry.'
-          : 'Start the scene below.',
+          : 'Start the scene below, or let someone open it.',
       }));
+      // Or a character opens (initiative.js): a first turn from their own day.
+      if (!orphan && parallx.ui?.createButton) for (const c of characters) parallx.ui.createButton(welcome, { id: `textGenerator.chat.open.${tgSlug(getCharacterName(c))}`, command: 'textGenerator.chat.open', args: [threadId, c.fileName], label: `Let ${getCharacterName(c)} Start`, icon: 'play', size: 'sm', title: 'Their first turn, from the middle of their own day, as if you had just arrived' });
       messagesEl.appendChild(welcome);
     }
     if (nearBottom) {
@@ -7120,12 +7069,6 @@ function renderChatEditor(container, parallx, input) {
       sceneState: thread?.sceneState || null,
       presentCharNames,
     }) : [];
-    // combine legacy memories.md with auto-extracted
-    // semantic facts (always-on, grouped by category) and episodic
-    // beats (recency × importance, trimmed to lane budget). The
-    // existing memories.md file is preserved verbatim and surfaces
-    // ahead of structured memory so users who edited it directly
-    // still see their notes used.
     // The memory file: Facts and Notes go into every prompt. The Timeline
     // travels with the earlier-in-the-story block below, only once turns
     // have dropped out of the live window.
@@ -7533,13 +7476,8 @@ function renderChatEditor(container, parallx, input) {
           content: `[Draft the next user-authored message as ${getComposeSelectionLabel(effectiveSpeaker)}. Return only the message content.]`,
         });
       }
-      // Compute the wrong-speaker name list ONCE per generation. Used
-      // by stripSpeakerLabel to truncate the response at any line
-      // that starts speaking as someone other than the active turn.
-      // We include all OTHER characters in the thread + the user's
-      // current display name + the Narrator special speaker — these
-      // are every label the model could legitimately emit but isn't
-      // allowed to write a turn for right now.
+      // Every other speaker's label (the other characters, the user, the
+      // Narrator): a reply is cut where it starts writing as one of them.
       const activeName = (gen.transient?.name || '').toLowerCase();
       const _knownOtherNames = characters
         .map((c) => c.frontmatter?.name || c.fileName.replace(/\.(md|json)$/, ''))
@@ -7598,9 +7536,11 @@ function renderChatEditor(container, parallx, input) {
         const sceneParse = extractSceneUpdate(cleaned);
         cleaned = sceneParse.cleaned;
         if (sceneParse.update) {
-          thread.sceneState = mergeSceneState(thread?.sceneState || {}, sceneParse.update);
+          const before = thread?.sceneState || {};
+          thread.sceneState = mergeSceneState(before, sceneParse.update);
           void updateThreadMeta(fs, workspaceUri, threadId, { sceneState: thread.sceneState })
             .catch((err) => console.warn('[TextGenerator] Failed to save scene state:', err));
+          if (effectiveSpeaker === NARRATOR_SPEAKER && sceneMovedOn(before, thread.sceneState)) void proposeSinceThen(before, thread.sceneState, cleaned);
         }
 
         const finalMessage = buildGeneratedTurnMessage(cleaned, effectiveSpeaker, instruction, asUser);
@@ -7893,7 +7833,10 @@ function renderChatEditor(container, parallx, input) {
     if (!wasOocMessage && thread?.autoReply !== false) {
       const lastMsg = messageHistory[messageHistory.length - 1];
       if (lastMsg?.expectsReply !== false) {
-        await generateTurn({ speaker: inlineSpeaker || await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null, userText: messageText });
+        const speaker = inlineSpeaker || await resolveReplySpeaker(selectedReplySpeaker);
+        // Auto-direct (initiative.js): no note typed anywhere, the director picks one.
+        const picked = !inlineInstruction && thread.autoDirect && !directorInput.value.trim() ? await autoDirectNote(speaker) : null;
+        await generateTurn({ speaker, instruction: inlineInstruction || picked || null, userText: messageText });
       }
     }
   }
@@ -8338,6 +8281,8 @@ function renderChatEditor(container, parallx, input) {
     bodyEl.appendChild(toggleRow('Smart turn order', thread.smartTurnOrder === true, (v) => {
       saveMeta({ smartTurnOrder: v }, 'turn order setting');
     }, 'In chats with 3+ characters, ask the model who should speak next instead of rotating.'));
+    bodyEl.appendChild(toggleRow('Auto-direct', thread.autoDirect === true, (v) => { saveMeta({ autoDirect: v }, 'auto-direct setting'); },
+      'When you send a message with no director\'s note, the director picks one for the reply (its options for that speaker, one chosen by their latitude). The note shows on the turn, as a typed one does.'));
 
     root.appendChild(drawer);
   }
@@ -8437,6 +8382,12 @@ function renderChatEditor(container, parallx, input) {
     }
   };
   gen.listeners.add(onGenEvent);
+  // The pane's commands (the toolbar's Acts button, Let X Start), by thread.
+  const livePane = {
+    toggleActs: () => setSideMode(sideMode === 'act' && memoryOpen ? null : 'act'),
+    openWith: (file) => generateTurn({ speaker: file, instruction: openingNote(getCharacterName(file), getUserName()) }),
+  };
+  _livePanes.set(threadId, livePane);
 
   (async () => {
     try {
@@ -8454,6 +8405,8 @@ function renderChatEditor(container, parallx, input) {
       container.removeEventListener('focusin', focusHandler);
       fileWatcher?.dispose?.();
       gen.listeners.delete(onGenEvent);
+      actRunner.release();
+      if (_livePanes.get(threadId) === livePane) _livePanes.delete(threadId);
       // Keep the registry entry while a generation is running (another
       // pane may re-attach); drop it once idle and unobserved.
       if (!gen.isGenerating && gen.listeners.size === 0) {
@@ -9118,12 +9071,8 @@ function renderCharactersPage(container, parallx, input) {
 // SECTION 10C2: CHARACTER FORGE
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Game-style character creation: personality dials + archetype/genre/flaw
-// pickers + dice with per-control locks. The model turns the settings into
-// a VOICE-FIRST card — example dialogue and voice anchor are the primary
-// outputs, because voice samples steer roleplay models far harder than
-// trait prose. Every generated field is editable and individually
-// regenerable before saving into the normal roster.
+// Character creation from dials (personality, body, face, hair, clothing)
+// with per-control locks and dice; the Studio reads the spec they make.
 
 const FORGE_AXES = [
   { key: 'warmth', label: 'Warmth', low: 'cold, distant', high: 'warm, affectionate' },
@@ -9203,14 +9152,10 @@ function buildForgeSpec(state) {
 // SECTION 10B9: CHARACTERS FROM THE CHAT
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Four chat tools, registered while Creations runs, and the link kind they
-// return. The model writes the sheets in the conversation, where it already
-// sees the concept, the pages, the links and the photos; the brief says what
-// a sheet must be right now (the user's Sheet structure, the roster) and the
-// save checks each sheet, files the good ones and says exactly what to
-// change in the rest. Find reads the roster; edit changes one card, only
-// where asked, and keeps what it replaced for Undo (character-tool-core.js,
-// tested on its own).
+// Four chat tools, registered while Creations runs: the brief says what a
+// sheet must be, the save checks each sheet and files the good ones, find
+// reads the roster, edit changes one card and keeps what it replaced for
+// Undo (character-tool-core.js, tested on its own).
 
 /** Saves run one at a time, so two calls in one turn never take the same name or file. */
 let _characterSaveChain = Promise.resolve();
@@ -11090,6 +11035,14 @@ export function activate(parallx, context) {
   openEditorCmd('textGenerator.newStory', 'text-generator-story', 'Stories', 'book-open', 'new');
   openEditorCmd('textGenerator.openTables', 'text-generator-tables', 'Tables', 'dices', 'tables');
   openEditorCmd('textGenerator.newTable', 'text-generator-tables', 'Tables', 'dices', 'new');
+
+  // The kit buttons in a chat pane and the Studio run commands, each naming its thread.
+  const paneCmd = (id, fn) => context.subscriptions.push(parallx.commands.registerCommand(id, (threadId, ...rest) => fn(threadId, ...rest)));
+  paneCmd('textGenerator.chat.acts', (t) => _livePanes.get(t)?.toggleActs());
+  paneCmd('textGenerator.chat.open', (t, file) => _livePanes.get(t)?.openWith(file));
+  for (const [action, id] of Object.entries(ACT_COMMANDS)) paneCmd(id, (t) => actCommand(action, t));
+  for (const [action, id] of Object.entries(SINCE_THEN_COMMANDS)) paneCmd(id, (t) => sinceThenCommand(action, t));
+  context.subscriptions.push(parallx.commands.registerCommand(TEST_DRIVE_COMMAND, () => runLiveTestDrive()));
 
   const openSettingsCmd = parallx.commands.registerCommand('textGenerator.openSettings', () => {
     parallx.editors.openEditor({

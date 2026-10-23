@@ -917,7 +917,7 @@ them. The lever is how tightly the chat holds the card. Built:
   named as a subject, the secret said out loud, a reply ending on a slogan,
   dashes. Mechanical checks from the quality harness, no judge model; a
   finding is something to look at. Four model calls. Files:
-  `test-drive.js`; tests: `creationsTestDrive`.
+  `drive.js`; tests: `creationsTestDrive`.
 - **Acts.** The director steers one turn; an act is a brief for a stretch
   of the story that the AI runs as turns. Type `/act` and the brief in the
   message box ("her childhood in a small town, ages 13 to 18, the moments
@@ -937,6 +937,23 @@ them. The lever is how tightly the chat holds the card. Built:
   and send. The panel shares the chat's side panel with Memory (the film
   button). Files: `acts.js` (pure), `acts-panel.js` (the runner and the
   panel, kit only); tests: `creationsActs`.
+- **Initiative.** An empty chat offers "Let Ada Start" for each character:
+  a first turn from the middle of their own day, toward the player who
+  has just arrived, so a chat need not open with the player's line. And
+  Auto-direct (a toggle in the chat's options): when the player sends a
+  message with no director's note, the director picks one for the reply,
+  from the options it would have offered that speaker, by their latitude
+  (Tight takes the first kind, Push; Loose and Open take any). The note
+  shows on the turn as a typed one does. Files: `initiative.js`; tests:
+  `creationsInitiative`.
+- **Off-screen life.** When a Narrator turn moves the story to a new place
+  or a later time (the scene tag's location or time changes from a known
+  scene), one line per character present is proposed: what happened to
+  them in the gap, from their wants and the people in their lives, past
+  tense, concrete. The lines appear in the Memory panel's Timeline with a
+  toggle each; Apply writes the kept ones as "Since then, Ada: ..." lines,
+  Dismiss writes nothing. Story time only, never the clock. Files:
+  `since-then.js`; tests: `creationsInitiative`.
 
 ## Quality testing
 

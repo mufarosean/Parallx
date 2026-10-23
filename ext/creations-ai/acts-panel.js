@@ -9,7 +9,7 @@
 // line to the memory Timeline and reading the act into memory. The panel
 // shares the chat's side panel with Memory and is drawn with the kit alone.
 //
-// `deps` is what the chat lends it: { ui, lm, fs, fileUri(name), thread(),
+// `deps` is what the chat lends it: { threadId, ui, lm, fs, fileUri(name), thread(),
 // saveMeta(updates, label), cast() → [{ file, name, char }], userName(),
 // userPlays() → the cast name the player plays or '', narratorSpeaker,
 // resolveFile(name) → a character file, generateTurn(opts), gen, model()
@@ -25,6 +25,17 @@ async function collect(stream, onChunk) {
   let text = '';
   for await (const chunk of stream) { if (chunk && chunk.content) { text += chunk.content; if (onChunk) onChunk(text); } }
   return text;
+}
+
+/** The runners by thread, for the panel's commands (a button names its thread). */
+const runners = new Map();
+export const ACT_COMMANDS = { run: 'textGenerator.chat.act.run', stop: 'textGenerator.chat.act.stop', open: 'textGenerator.chat.act.open', propose: 'textGenerator.chat.act.propose' };
+/** A panel command for a thread: 'run' | 'stop' | 'open' | 'propose'. */
+export function actCommand(action, threadId) {
+  const r = runners.get(threadId);
+  if (!r) return undefined;
+  if (action === 'open') return r.openSheet();
+  return typeof r[action] === 'function' ? r[action]() : undefined;
 }
 
 export function createActRunner(deps) {
@@ -145,11 +156,12 @@ export function createActRunner(deps) {
     const running = !!cur && cur.status === 'running';
     const canRun = !!cur && cur.beats && cur.beats.length > 0 && !running && cur.status !== 'planning' && !busy;
     const runLabel = !cur ? 'Run' : cur.status === 'stopped' ? 'Continue' : cur.status === 'done' ? 'Run Again' : 'Run';
+    const args = [deps.threadId];
     host.appendChild(deps.ui.renderMarkdown(actStatusLine(cur)));
-    if (running || waiting()) deps.ui.createButton(host, { id: 'textGenerator.chat.act.stop', label: 'Stop', icon: 'square', size: 'sm', title: 'Stop the act after the turn being written', onClick: () => stop() });
-    else deps.ui.createButton(host, { id: 'textGenerator.chat.act.run', label: runLabel, icon: 'play', size: 'sm', kind: 'primary', disabled: !canRun, title: 'Take the beats in act.md as turns, one by one', onClick: () => void run() });
-    if (cur && cur.brief) deps.ui.createButton(host, { id: 'textGenerator.chat.act.open', label: 'Open act.md', icon: 'file-text', size: 'sm', title: 'Edit the beat sheet; the run reads it fresh', onClick: () => void deps.openFile(deps.fileUri(ACT_FILE)) });
-    deps.ui.createButton(host, { id: 'textGenerator.chat.act.propose', label: 'Propose Next Act', icon: 'sparkles', size: 'sm', disabled: busy || running, title: 'A brief for the next act, from where the story stands, put in the message box to edit and send', onClick: () => void proposeNext() });
+    if (running || waiting()) deps.ui.createButton(host, { id: 'textGenerator.chat.act.stop', command: ACT_COMMANDS.stop, args, label: 'Stop', icon: 'square', size: 'sm', title: 'Stop the act after the turn being written' });
+    else deps.ui.createButton(host, { id: 'textGenerator.chat.act.run', command: ACT_COMMANDS.run, args, label: runLabel, icon: 'play', size: 'sm', kind: 'primary', disabled: !canRun, title: 'Take the beats in act.md as turns, one by one' });
+    if (cur && cur.brief) deps.ui.createButton(host, { id: 'textGenerator.chat.act.open', command: ACT_COMMANDS.open, args, label: 'Open act.md', icon: 'file-text', size: 'sm', title: 'Edit the beat sheet; the run reads it fresh' });
+    deps.ui.createButton(host, { id: 'textGenerator.chat.act.propose', command: ACT_COMMANDS.propose, args, label: 'Propose Next Act', icon: 'sparkles', size: 'sm', disabled: busy || running, title: 'A brief for the next act, from where the story stands, put in the message box to edit and send' });
     if (cur && cur.status === 'failed' && cur.error) host.appendChild(deps.ui.renderMarkdown(`Planning failed: ${cur.error}.`));
     const sheet = cur && cur.brief ? await readSheet() : null;
     const beats = sheet && sheet.beats.length ? sheet.beats : (cur && cur.beats) || [];
@@ -160,5 +172,7 @@ export function createActRunner(deps) {
     }
   }
 
-  return { plan, run, stop, continueAfterPlayer, proposeNext, waiting, render, isBusy: () => busy };
+  const runner = { plan, run, stop, continueAfterPlayer, propose: proposeNext, proposeNext, waiting, render, isBusy: () => busy, openSheet: () => deps.openFile(deps.fileUri(ACT_FILE)), release: () => { if (runners.get(deps.threadId) === runner) runners.delete(deps.threadId); } };
+  runners.set(deps.threadId, runner);
+  return runner;
 }

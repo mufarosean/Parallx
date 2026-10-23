@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Creations AI: Test Drive (ext/creations-ai/test-drive.js). Three scenes
+// Creations AI: Test Drive (ext/creations-ai/drive.js). Three scenes
 // written from the sheet, the reply to each heard through Try A Line's own
 // call, and the three replies read together: what repeats, what is
 // announced, what slips out, what ends on a slogan. Mechanical, no judge.
@@ -7,9 +7,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   SITUATION_KINDS, buildSituationsMessages, parseSituations, buildDriveMessages,
-  readTestDrive, summarizeFindings, renderTestDriveMarkdown, mountTestDrive, abstractSubjects,
+  readTestDrive, summarizeFindings, renderTestDriveMarkdown, mountTestDrive, abstractSubjects, runLiveTestDrive,
 // @ts-expect-error — JS module with no types
-} from '../../ext/creations-ai/test-drive.js';
+} from '../../ext/creations-ai/drive.js';
 
 const SHEET = {
   name: 'Ada Lovelace', description: 'Ada counts everything.', personality: 'Dry and exact.', voice: 'Short lines.',
@@ -101,7 +101,7 @@ describe('the Studio section', () => {
     const metas: string[] = [];
     let busy = false;
     const ui = {
-      createButton: (c: HTMLElement, o: any) => { const b = document.createElement('button'); b.textContent = o.label; b.onclick = o.onClick; c.appendChild(b); return b; },
+      createButton: (c: HTMLElement, o: any) => { const b = document.createElement('button'); b.textContent = o.label; b.dataset.command = o.command; c.appendChild(b); return b; },
       renderMarkdown: (md: string) => { const d = document.createElement('div'); d.className = 'px-markdown'; d.textContent = md; return d; },
     };
     async function* chunks(parts: string[]) { for (const p of parts) yield { content: p }; }
@@ -114,7 +114,9 @@ describe('the Studio section', () => {
     };
     const drive = mountTestDrive(host, { ui, lm, sheet: () => SHEET, resolveModel: async () => ({ modelId: 'm1', numCtx: 0 }), setMeta: (t: string) => metas.push(t), isBusy: () => busy, setBusy: (b: boolean) => { busy = b; } });
     expect(host.querySelector('button')!.textContent).toBe('Drive');
-    await drive.run();
+    expect(host.querySelector('button')!.dataset.command).toBe('textGenerator.studio.testDrive');
+    await runLiveTestDrive();
+    void drive;
     expect(calls).toHaveLength(4);
     expect(host.querySelector('button')!.textContent).toBe('Drive Again');
     const md = host.querySelector('.px-markdown')!.textContent!;
