@@ -897,6 +897,18 @@ them. The lever is how tightly the chat holds the card. Built:
   validator and the Chat Behaviour page say the same. Older cards keep
   their lines; the Turn Contract still reads a quoted phrase as register,
   not a line.
+- **Latitude.** How tightly a chat holds a card, on the ambiguous sections
+  only (Personality, Voice, Drives, Secrets; appearance and facts are
+  always as written). Tight: the card is a script. Loose (the default): a
+  tendency; most lines are plain speech, the habits show now and then,
+  never named. Open: where they started, not their limits; they are not
+  the same with everyone, and given a reason in the moment they may say or
+  do what the card would not predict, as a choice shown and never
+  explained. The default is in Creations Settings; the Studio's Latitude
+  section sets a character's own (saved as `latitude` on the card). The
+  framing goes under each card in the roleplay prompt; at Open the late
+  anchor carries the permission too. Files: `latitude.js`; tests:
+  `creationsLatitude`.
 
 ## Quality testing
 

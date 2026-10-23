@@ -155,7 +155,7 @@ describe('the Studio screen', () => {
     expect((root.querySelector('.cs-title') as HTMLInputElement).placeholder).toBe('Name');
     expect(root.querySelector('.cs-chip')?.textContent).toBe('Draft');
     for (const label of ['Open Chat', 'Export As Markdown', 'Chat Behaviour', 'Generate', 'Pitch Ideas', 'Roll The Dice', 'Add Link', 'Add Canvas Page', 'Add File', 'Add Text', 'Send']) expect(buttonNamed(root, label), label).toBeTruthy();
-    expect([...root.querySelectorAll('.cs-section-title')].map((e) => e.textContent)).toEqual(['Make', 'Dials', 'Pitches', 'Canon', 'Sheet', 'Try A Line']);
+    expect([...root.querySelectorAll('.cs-section-title')].map((e) => e.textContent)).toEqual(['Make', 'Dials', 'Pitches', 'Canon', 'Sheet', 'Latitude', 'Try A Line']);
     expect(root.querySelectorAll('.cs-row')).toHaveLength(11);
     for (const l of root.querySelectorAll('.cs-row-label > span:first-child')) expect(l.textContent).toMatch(/^[A-Z][a-z]+( [A-Z][a-z]+)*$/);
     expect(rowOf(root, 'personality').querySelectorAll('.cs-icon-btn')).toHaveLength(3);

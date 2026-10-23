@@ -22,6 +22,7 @@ import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
+import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
 
 // The workspace data folder keeps its original name: every character, thread,
 // lorebook and setting a user has is in there, and a rename would be a move.
@@ -2838,9 +2839,6 @@ function normalizeCharacterForRuntime(data, fileName) {
     sections: {
       roleInstruction: data.roleInstruction || '',
       reminder: data.reminder || '',
-      // M79 Phase 3b's late-stage voice anchor was read at generation
-      // time but never mapped from the JSON model — dead wiring for
-      // every .json character until now.
       voiceAnchor: data.voiceAnchor || '',
       exampleDialogue: data.exampleDialogue || '',
       initialMessages: data.initialMessages || '',
@@ -3185,6 +3183,8 @@ function buildSystemPrompt(params = {}) {
     supportingCast = [],
     // People from the cast's lives who are not in the scene: [{ name, note }].
     connectedPeople = [],
+    // How tightly the cast's cards are held (latitude.js); a card may set its own.
+    defaultLatitude = DEFAULT_LATITUDE,
   } = params;
 
   const parts = [];
@@ -3293,6 +3293,7 @@ function buildSystemPrompt(params = {}) {
 
     if (roleInstruction) {
       charParts.push(substituteVars(roleInstruction, name, userName));
+      charParts.push(latitudeFraming(resolveLatitude(char, { defaultLatitude }), name));
     }
     // Only include example dialogue for the character who is about to speak,
     // or always if there's only one character (no need to scope).
@@ -3605,6 +3606,7 @@ function assembleContext(params) {
     dialogueRules: settings?.dialogueRules || '',
     supportingCast,
     connectedPeople,
+    defaultLatitude: settings?.defaultLatitude,
   });
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
@@ -3691,12 +3693,7 @@ function assembleContext(params) {
     );
     if (respondChar) {
       const rName = respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '');
-      // authored voice anchor wins over the legacy
-      // 220-char description slice. If the character defines a
-      // `voiceAnchor` (3–5 lines covering voice / signature phrases /
-      // no-go phrases), use it directly. Otherwise fall back to up to
-      // three description lines so we still ship a real anchor even
-      // for legacy characters without the field.
+      // An authored voice anchor wins; without one, up to three description lines stand in.
       const authoredAnchor = (respondChar.frontmatter?.voiceAnchor || respondChar.sections?.voiceAnchor || '').trim();
       let anchorBody = '';
       if (authoredAnchor) {
@@ -3712,7 +3709,7 @@ function assembleContext(params) {
       // a rule ("Stay strictly in X's voice"), and the model put every habit
       // in every line; given as a tendency, most of what they say is plain
       // (dialogue bench, 2026-10-08).
-      const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';
+      const personaLine = (anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '') + latitudeAnchor(resolveLatitude(respondChar, settings), rName);
       speakerLateAnchor = `[You are ${rName}. Sound like ${rName}. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
       // variation avoidance v2. Pull the last 5 outputs
@@ -4276,11 +4273,8 @@ async function readMemories(fs, workspaceUri, threadId) {
 //
 //   <scene-update location="cafe" time="evening" mood="tense" present="Ada"/>
 //
-// `extractAndApplySceneUpdate` parses this tag (permissive — any attr
-// order, single/double quotes, optional self-closer), strips it from
-// the displayed message, and merges the parsed attrs into the prior
-// state (so a partial update only changes named fields). If the AI
-// forgets to emit the tag, state carries over unchanged.
+// The tag is parsed permissively, stripped from the message, and merged into
+// the prior state (a partial update changes only the named fields).
 
 const SCENE_TAG_REGEX = /<scene-update\b([^>]*?)\/?>/i;
 
@@ -9747,6 +9741,9 @@ const DEFAULT_SETTINGS = {
   // character's, and the Narrator's. The user's text; empty means none.
   directionsCharacter: DEFAULT_CHARACTER_DIRECTIONS,
   directionsNarrator: DEFAULT_NARRATOR_DIRECTIONS,
+  // How tightly a chat holds each card's Personality, Voice, Drives and
+  // Secrets (latitude.js); a character may set its own.
+  defaultLatitude: DEFAULT_LATITUDE,
 };
 
 /** Motion off: `.cr-still` on the body stops every Creations animation. */
@@ -9971,6 +9968,7 @@ function renderSettingsPage(container, parallx) {
     DEFAULT_NARRATOR_DIRECTIONS,
     'Put the shipped Narrator directions back',
   );
+  const latitudeSelect = formGroup('Default latitude', 'How tightly a chat holds a card\'s Personality, Voice, Drives and Secrets. Tight: a script. Loose: a tendency, most lines plain. Open: where they started; given a reason they may act against it. Appearance and facts are always as written. A character can set its own in the Studio.', 'select', 'defaultLatitude', { options: latitudeItems() });
   const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
     options: [
       { value: '', label: 'No Limit (Default)' },
@@ -10023,6 +10021,7 @@ function renderSettingsPage(container, parallx) {
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
     customStyleInput.value = s.customWritingStyle || '';
     rulesInput.value = typeof s.dialogueRules === 'string' ? s.dialogueRules : DEFAULT_DIALOGUE_RULES;
+    latitudeSelect.value = resolveLatitude(null, s);
     structureInput.value = typeof s.sheetStructure === 'string' ? s.sheetStructure : DEFAULT_SHEET_STRUCTURE;
     directionsCharInput.value = typeof s.directionsCharacter === 'string' ? s.directionsCharacter : DEFAULT_CHARACTER_DIRECTIONS;
     directionsNarInput.value = typeof s.directionsNarrator === 'string' ? s.directionsNarrator : DEFAULT_NARRATOR_DIRECTIONS;
@@ -10075,6 +10074,7 @@ function renderSettingsPage(container, parallx) {
       sheetStructure: structureInput.value,
       directionsCharacter: directionsCharInput.value,
       directionsNarrator: directionsNarInput.value,
+      defaultLatitude: latitudeSelect.value || DEFAULT_LATITUDE,
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');

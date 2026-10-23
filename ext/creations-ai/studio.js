@@ -23,6 +23,7 @@ import {
 } from './studio-core.js';
 import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
+import { latitudeItems, coerceLatitude } from './latitude.js';
 
 const STYLE_ID = 'creations-studio-styles';
 const AUTOSAVE_MS = 800;
@@ -247,16 +248,15 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     savedOnce: !!ctx.fileName,
     engine: { modelId: '', numCtx: 0 },
     hue: null,
+    // How tightly a chat holds this card (latitude.js): '' follows Settings.
+    latitude: '',
   };
   const rows = {};
 
   // ── Bar ────────────────────────────────────────────────────────────────
   const bar = el('div', 'cs-bar');
-  const title = el('input', 'cs-title');
-  title.type = 'text';
-  title.placeholder = 'Name';
+  const title = el('input', 'cs-title', { type: 'text', placeholder: 'Name', 'aria-label': 'Name' });
   title.title = 'A name you give is kept when you Generate. Clear it to let the model choose one.';
-  title.setAttribute('aria-label', 'Name');
   title.addEventListener('input', () => { setField('name', title.value, { fromTitle: true }); });
   const status = el('span', 'cs-chip', { text: 'Draft' });
   const actions = el('div', 'cs-actions');
@@ -431,14 +431,16 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     rowsHost.appendChild(sheetRow(f));
   }
 
+  // ── Latitude: how tightly a chat holds this card ───────────────────────
+  const latSec = section('Latitude', 'How tightly a chat holds the card. Default follows Creations Settings.');
+  sideCol.appendChild(latSec.root);
+  const latSeg = parallx.ui?.createSegmented ? parallx.ui.createSegmented(latSec.body, { id: 'textGenerator.studio.latitude', ariaLabel: 'Latitude', items: latitudeItems(true), value: '', onChange: (v) => { state.latitude = v; markDirty(); } }) : null;
+
   // ── Try A Line ─────────────────────────────────────────────────────────
   const trySec = section('Try A Line', 'Say something to them and hear the voice before you commit to it.');
   sideCol.appendChild(trySec.root);
   const tryRow = el('div', 'cs-inline');
-  const tryInput = el('input', 'cs-input'); tgDeclare(tryInput, 'textGenerator.studio.tryLine', { label: 'Try a line' });
-  tryInput.type = 'text';
-  tryInput.placeholder = 'Say something to them';
-  tryInput.setAttribute('aria-label', 'A line to the character');
+  const tryInput = el('input', 'cs-input', { type: 'text', placeholder: 'Say something to them', 'aria-label': 'A line to the character' }); tgDeclare(tryInput, 'textGenerator.studio.tryLine', { label: 'Try a line' });
   const tryBtn = button('Send', 'send', () => void tryLine(), false, 'textGenerator.studio.tryLine.send');
   tryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void tryLine(); } });
   tryRow.append(tryInput, tryBtn);
@@ -566,8 +568,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     const label = el('div', 'cs-row-label');
     label.appendChild(el('span', null, { text: f.label }));
     const lockMark = el('span', 'cs-row-lock', { html: `${icon('lock', 10)}<span>Kept</span>` });
-    lockMark.title = 'Locked: Generate and Reroll leave it alone';
-    lockMark.style.display = 'none';
+    lockMark.title = 'Locked: Generate and Reroll leave it alone'; lockMark.style.display = 'none';
     label.appendChild(lockMark);
     const rowState = el('span', 'cs-row-state');
     label.appendChild(rowState);
@@ -578,8 +579,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     area.setAttribute('aria-label', f.label);
     area.addEventListener('input', () => { state.sheet[f.key] = area.value; autogrow(area); hideUndo(f.key); if (f.key === 'tagline') taglineLine.textContent = area.value.trim(); markDirty(); });
     const acts = el('div', 'cs-row-actions');
-    const undoBtn = iconButton('undo-2', `Undo the last reroll of ${f.label.toLowerCase()}`, () => undoReroll(f.key));
-    undoBtn.style.display = 'none';
+    const undoBtn = iconButton('undo-2', `Undo the last reroll of ${f.label.toLowerCase()}`, () => undoReroll(f.key)); undoBtn.style.display = 'none';
     const lockBtn = iconButton('lock', `Lock ${f.label.toLowerCase()} so Generate and Reroll leave it alone`, () => toggleLock(f.key));
     lockBtn.setAttribute('aria-pressed', 'false');
     const rerollBtn = iconButton('refresh-cw', `Rewrite ${f.label.toLowerCase()}, with a direction if you like`, () => toggleSteer(f.key));
@@ -621,12 +621,10 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     const steerFoot = el('div', 'cs-row-steer-foot');
     steerFoot.append(el('span', 'cs-row-steer-hint', { text: 'Optional. Leave it empty for a fresh take.' }), steerCancel, steerGo);
     steer.append(steerInput, steerSections, steerFoot);
-    const err = el('div', 'cs-row-error');
-    err.style.display = 'none';
+    const err = el('div', 'cs-row-error'); err.style.display = 'none';
     const skel = el('div', 'cs-row-skel');
     skel.append(el('span', 'cr-skel'), el('span', 'cr-skel'));
-    skel.children[0].style.width = '92%';
-    skel.children[1].style.width = '64%';
+    skel.children[0].style.width = '92%'; skel.children[1].style.width = '64%';
     row.append(label, area, acts, steer, err, skel);
     rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, steer, steerInput, steerGo, steerSections, section: '', sectionPicked: false, label: f.label, state: rowState };
     return row;
@@ -1547,6 +1545,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (!state.fileName) state.fileName = `character-${deps.generateId().slice(0, 8)}.json`;
       const data = characterFromSheet(state.sheet, state.base, studioBlock());
       if (state.hue != null) data.hue = state.hue; else delete data.hue;
+      if (state.latitude) data.latitude = state.latitude; else delete data.latitude;
       await deps.ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
       await deps.saveCharacter(fs, workspaceUri, state.fileName, data);
       state.base = data;
@@ -1657,6 +1656,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       }
       const st = state.base.studio || {};
       state.hue = Number.isFinite(Number(state.base.hue)) && state.base.hue !== null && state.base.hue !== '' ? Number(state.base.hue) : null;
+      state.latitude = coerceLatitude(state.base.latitude, ''); if (latSeg) latSeg.value = state.latitude;
       state.sheet = sheetFromCharacter(state.base);
       state.mode = st.mode === 'sources' ? 'sources' : 'concept';
       state.concept = st.concept || '';
