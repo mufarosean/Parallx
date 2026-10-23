@@ -18,11 +18,13 @@ import {
   buildPdfRenderOptions,
   buildPrintHtml,
   mmToInches,
+  printPageBox,
   resolveMarginsMm,
   sanitizeContentHtml,
   sanitizeFilename,
   type PdfExportSettings,
 } from '../../src/built-in/canvas/export/printHtml.js';
+import { setBlockPrintRenderer } from '../../src/ui/blockPrint.js';
 
 // ─── mmToInches ──────────────────────────────────────────────────────────────
 
@@ -193,6 +195,81 @@ describe('sanitizeContentHtml', () => {
     const root = makeRoot('<p class="ProseMirror-selectednode">sel</p>');
     const out = sanitizeContentHtml(root);
     expect(out).not.toContain('ProseMirror-selectednode');
+  });
+});
+
+// ─── The printable page box ──────────────────────────────────────────────────
+
+describe('printPageBox', () => {
+  it('A4 portrait at normal margins gives 680 × 1009 CSS px', () => {
+    expect(printPageBox(DEFAULT_PDF_SETTINGS)).toEqual({ width: 680, height: 1009 });
+  });
+  it('landscape swaps the sides', () => {
+    expect(printPageBox({ ...DEFAULT_PDF_SETTINGS, landscape: true })).toEqual({ width: 1009, height: 680 });
+  });
+  it('a smaller print scale gives content more CSS pixels', () => {
+    const half = printPageBox({ ...DEFAULT_PDF_SETTINGS, scalePercent: 50 });
+    expect(half.width).toBe(1360);
+  });
+  it('the page-number band comes off the height', () => {
+    const none = { ...DEFAULT_PDF_SETTINGS, marginPreset: 'none' as const };
+    expect(printPageBox({ ...none, pageNumbers: false }).height - printPageBox(none).height).toBe(34);
+  });
+});
+
+// ─── Blocks that print themselves ────────────────────────────────────────────
+
+describe('block print renderers', () => {
+  const printable = (root: HTMLElement, label: string, css = '.x{}') => {
+    const block = document.createElement('div');
+    block.className = 'live-board';
+    block.innerHTML = '<button>Tool</button><span>board</span>';
+    root.appendChild(block);
+    const pages: unknown[] = [];
+    setBlockPrintRenderer(block, (page) => {
+      pages.push(page);
+      return { html: `<div class="printed" tabindex="0">${label}</div>`, css };
+    });
+    return { block, pages };
+  };
+
+  it('replaces the block clone with its print rendering, sized to the page', () => {
+    const root = makeRoot('<p>Before</p>');
+    const { block, pages } = printable(root, 'Map A');
+    const out = sanitizeContentHtml(root, { width: 500, height: 700 });
+    expect(out).toContain('<div class="printed">Map A</div>');
+    expect(out).not.toContain('live-board');
+    expect(out).not.toContain('<button>');
+    expect(pages).toEqual([{ width: 500, height: 700 }]);
+    // The live DOM is untouched.
+    expect(block.querySelector('button')).not.toBeNull();
+  });
+
+  it('includes each block CSS once, ahead of the content', () => {
+    const root = makeRoot('');
+    printable(root, 'Map A');
+    printable(root, 'Map B');
+    const out = sanitizeContentHtml(root);
+    expect(out.startsWith('<style>.x{}</style>')).toBe(true);
+    expect(out.match(/<style>/g)).toHaveLength(1);
+    expect(out).toContain('Map A');
+    expect(out).toContain('Map B');
+  });
+
+  it('without a page box, renders for A4 portrait', () => {
+    const root = makeRoot('');
+    const { pages } = printable(root, 'Map');
+    sanitizeContentHtml(root);
+    expect(pages).toEqual([printPageBox(DEFAULT_PDF_SETTINGS)]);
+  });
+
+  it('a renderer that throws leaves the ordinary clone', () => {
+    const root = makeRoot('');
+    const block = document.createElement('div');
+    block.textContent = 'still here';
+    root.appendChild(block);
+    setBlockPrintRenderer(block, () => { throw new Error('no'); });
+    expect(sanitizeContentHtml(root)).toContain('still here');
   });
 });
 

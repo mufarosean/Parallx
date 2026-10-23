@@ -19,6 +19,7 @@ import {
   PAGE_SIZE_ITEMS,
   buildPdfRenderOptions,
   buildPrintHtml,
+  printPageBox,
   sanitizeContentHtml,
   sanitizeFilename,
   type PdfExportSettings,
@@ -292,7 +293,7 @@ export function openPdfExportDialog(source: PdfExportSource): void {
     return buildPrintHtml({
       title: source.title,
       iconHtml: source.iconHtml,
-      contentHtml: sanitizeContentHtml(root),
+      contentHtml: sanitizeContentHtml(root, printPageBox(settings)),
       fontFamily: source.fontFamily,
       fontStack: resolveFontStack(source.fontFamily),
       fontFaceCss: getFontFaceCss(source.fontFamily),

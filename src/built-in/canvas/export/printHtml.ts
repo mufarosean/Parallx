@@ -12,6 +12,7 @@
 // dialog (pdfExportDialog.ts) owns all interaction.
 
 import { escapeHtml } from '../../../ui/format.js';
+import { blockPrintRenderer, PRINT_RENDER_ATTR, type BlockPrint, type PrintBox } from '../../../ui/blockPrint.js';
 
 // ─── Settings model ──────────────────────────────────────────────────────────
 
@@ -119,6 +120,37 @@ export function buildPdfRenderOptions(settings: PdfExportSettings): {
   };
 }
 
+// ─── The printable page box ──────────────────────────────────────────────────
+
+/** Paper sizes in millimetres, portrait. */
+const PAGE_SIZES_MM: Record<PdfExportSettings['pageSize'], { width: number; height: number }> = {
+  A4: { width: 210, height: 297 },
+  Letter: { width: 215.9, height: 279.4 },
+  Legal: { width: 215.9, height: 355.6 },
+  A3: { width: 297, height: 420 },
+  A5: { width: 148, height: 210 },
+  Tabloid: { width: 279.4, height: 431.8 },
+};
+
+/**
+ * The content box of one printed page, in the print document's CSS pixels:
+ * the paper less its margins (and the page-number band), divided by the
+ * print scale. A block no larger than this prints whole on one page.
+ */
+export function printPageBox(settings: PdfExportSettings): PrintBox {
+  const paper = PAGE_SIZES_MM[settings.pageSize] ?? PAGE_SIZES_MM.A4;
+  const { margins, scale } = buildPdfRenderOptions(settings);
+  const wideIn = (settings.landscape ? paper.height : paper.width) / MM_PER_INCH;
+  const tallIn = (settings.landscape ? paper.width : paper.height) / MM_PER_INCH;
+  return {
+    width: Math.floor(((wideIn - margins.left - margins.right) * 96) / scale),
+    height: Math.floor(((tallIn - margins.top - margins.bottom) * 96) / scale),
+  };
+}
+
+/** A4 portrait at the default margins and scale. */
+const DEFAULT_PRINT_BOX: PrintBox = printPageBox(DEFAULT_PDF_SETTINGS);
+
 // ─── Filename ────────────────────────────────────────────────────────────────
 
 export function sanitizeFilename(title: string): string {
@@ -157,8 +189,22 @@ const STRIP_CLASSES = [
   'canvas-math-block--editing',
 ];
 
-export function sanitizeContentHtml(sourceRoot: HTMLElement): string {
+export function sanitizeContentHtml(sourceRoot: HTMLElement, page: PrintBox = DEFAULT_PRINT_BOX): string {
   const clone = sourceRoot.cloneNode(true) as HTMLElement;
+
+  // 0. Blocks that print themselves replace their clone, matched by index
+  //    against the source (the renderer is a property, which cloning
+  //    drops). See ui/blockPrint.
+  const printCss: string[] = [];
+  const srcPrintable = sourceRoot.querySelectorAll(`[${PRINT_RENDER_ATTR}]`);
+  clone.querySelectorAll(`[${PRINT_RENDER_ATTR}]`).forEach((node, i) => {
+    const render = blockPrintRenderer(srcPrintable[i]);
+    if (!render) return;
+    let out: BlockPrint;
+    try { out = render(page); } catch { return; }
+    node.outerHTML = out.html;
+    if (out.css && !printCss.includes(out.css)) printCss.push(out.css);
+  });
 
   // 1. Freeze live form state into attributes BEFORE any removal, matching
   //    clones by index against the source (cloneNode drops property state).
@@ -202,7 +248,8 @@ export function sanitizeContentHtml(sourceRoot: HTMLElement): string {
     if (el.getAttribute('class') === '') el.removeAttribute('class');
   });
 
-  return clone.innerHTML;
+  const styles = printCss.map((css) => `<style>${css}</style>`).join('');
+  return styles + clone.innerHTML;
 }
 
 // ─── Print CSS ───────────────────────────────────────────────────────────────

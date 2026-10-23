@@ -22,7 +22,6 @@
 // read and saved as 2 at its next change.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import katex from 'katex';
 import {
   appendChildAtLine,
   caretSourceOffset,
@@ -62,8 +61,7 @@ import {
 } from '../../../ui/conceptMap.js';
 import { beginPointerDrag, onDragPress } from '../../../ui/interactionMode.js';
 import { resizedOverrides, snapBoxWidth, stepSelection } from '../../../ui/conceptMapKeys.js';
-
-const renderMath = (tex: string): string => katex.renderToString(tex, { throwOnError: false });
+import { printAsMindMap, renderMapMath as renderMath } from '../../../ui/conceptMapPrint.js';
 
 export const DEFAULT_CONCEPT_MAP_SRC = 'Central idea\n  First branch\n    A detail\n  Second branch';
 
@@ -121,6 +119,7 @@ export const ConceptMap = Node.create({
       };
       let attrs = readAttrs(node.attrs);
       let editing = false;
+      printAsMindMap(dom, () => attrs); // On paper: the diagram alone, fitted to the page.
       // The in-place box editor: teardown removes overlay + listeners
       // WITHOUT committing; finish commits (or cancels) then re-renders.
       let boxEditTeardown: (() => void) | null = null;

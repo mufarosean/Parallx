@@ -7,6 +7,9 @@ export default defineConfig({
     globals: true,
     pool: 'forks',
     setupFiles: ['tests/unit/setup/domGeometry.ts', 'tests/unit/setup/settleDomTimers.ts'],
+    // `import css from './x.css?raw'` gives the stylesheet's text, as the
+    // build's raw-text plugin does; every other .css stays stubbed.
+    css: { include: [/\.css\?raw$/] },
   },
   resolve: {
     alias: {
