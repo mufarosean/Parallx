@@ -2134,12 +2134,12 @@ export class ChatDataService {
       setMode: (mode) => this._d.modeService.setMode(mode),
       getAvailableModes: () => this._d.modeService.getAvailableModes(),
       onDidChangeMode: this._d.modeService.onDidChangeMode,
-      // HARNESS.md §2.3 — the Careful toggle's real wiring.
-      getCarefulMode: this._d.permissionService
-        ? () => this._d.permissionService!.isCarefulMode()
+      // The permission mode's real wiring: picker to permission service.
+      getPermissionMode: this._d.permissionService
+        ? () => this._d.permissionService!.getPermissionMode()
         : undefined,
-      setCarefulMode: this._d.permissionService
-        ? (on) => this._d.permissionService!.setCarefulMode(on)
+      setPermissionMode: this._d.permissionService
+        ? (mode) => this._d.permissionService!.setPermissionMode(mode)
         : undefined,
     });
     const attachmentServices = buildChatWidgetAttachmentServices({

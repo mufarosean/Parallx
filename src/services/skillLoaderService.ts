@@ -284,6 +284,9 @@ function _validPermission(raw: string): ToolPermissionLevel {
   if (raw === 'always-allowed' || raw === 'requires-approval' || raw === 'never-allowed') {
     return raw;
   }
+  // The shipped skills are written with these; an unknown word asks.
+  if (raw === 'auto-allow' || raw === 'allow' || raw === 'auto') return 'always-allowed';
+  if (raw === 'never' || raw === 'deny') return 'never-allowed';
   return 'requires-approval';
 }
 

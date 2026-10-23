@@ -137,6 +137,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatContextDefault.ts': [],
   'utilities/chatParticipantInterpretation.ts': ['utilities/'],
   'utilities/chatParticipantRuntimeTrace.ts': [],
+  'utilities/chatPermissionMode.ts':         [],  // the permission mode: the skills' gate and the per-workspace preference
   'utilities/chatRuntimePromptMessages.ts': [],
   'utilities/chatScopeResolver.ts':          [],
   'utilities/chatTokenBarAdapter.ts':        ['widgets/'],

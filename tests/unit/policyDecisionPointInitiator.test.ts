@@ -129,3 +129,49 @@ describe('Careful Mode (HARNESS.md 2.3)', () => {
     expect(d.outcome).toBe('require-approval');
   });
 });
+
+describe('Auto mode, the way Claude Code has one', () => {
+  it('auto on: an interactive turn runs the belt tools and the ordinary ones, no prompt', () => {
+    const { pdp, perms } = setup();
+    perms.setPermissionMode('auto');
+    for (const name of ['canvas_edit_page', 'terminal_run_command', 'fs_delete_file']) {
+      const d = pdp.decide(req(name, 'chat-1'));
+      expect(d.outcome, name).toBe('allow');
+      expect(d.reasons).toContain('auto');
+      expect(d.forceApproval).toBeUndefined();
+    }
+  });
+
+  it('auto on: a user-task turn runs them too', () => {
+    const { pdp, perms } = setup({ id: 'u1', kind: 'user' });
+    perms.setPermissionMode('auto');
+    expect(pdp.decide(req('terminal_run_command', 'u1')).outcome).toBe('allow');
+  });
+
+  it('auto on: an autonomous turn is unchanged, it still defers', () => {
+    const { pdp, perms } = setup({ id: 'h1', kind: 'autonomous' });
+    perms.setPermissionMode('auto');
+    expect(pdp.decide(req('canvas_edit_page', 'h1')).outcome).toBe('require-approval');
+    expect(pdp.decide(req('terminal_run_command', 'h1')).outcome).toBe('require-approval');
+  });
+
+  it('auto on: a never-allowed ban and the hard blocklist still hold', () => {
+    const { pdp, perms } = setup();
+    perms.setPermissionMode('auto');
+    perms.setPersistentOverride('canvas_edit_page', 'never-allowed');
+    expect(pdp.decide(req('canvas_edit_page', 'chat-1')).outcome).toBe('deny');
+    const blocked = pdp.decide({ ...req('terminal_run_command', 'chat-1'), args: { command: 'rm -rf /' } });
+    expect(blocked.outcome).toBe('deny');
+  });
+
+  it('the mode is one switch: auto to careful asks again, careful to ask restores consent', () => {
+    const { pdp, perms } = setup();
+    perms.setPermissionMode('auto');
+    expect(pdp.decide(req('terminal_run_command', 'chat-1')).outcome).toBe('allow');
+    perms.setPermissionMode('careful');
+    expect(pdp.decide(req('canvas_edit_page', 'chat-1')).outcome).toBe('require-approval');
+    perms.setPermissionMode('ask');
+    expect(pdp.decide(req('canvas_edit_page', 'chat-1')).reasons).toContain('user-consent');
+    expect(pdp.decide(req('terminal_run_command', 'chat-1')).outcome).toBe('require-approval');
+  });
+});

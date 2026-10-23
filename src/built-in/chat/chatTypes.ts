@@ -29,6 +29,7 @@ import type {
   AgentTaskRecord,
 } from '../../agent/agentTypes.js';
 import { ChatRequestQueueKind } from '../../services/chatTypes.js';
+import type { PermissionMode } from '../../services/permissionService.js';
 export { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export type { IChatPendingRequest } from '../../services/chatTypes.js';
 import type { IDiffResult } from '../../services/diffService.js';
@@ -388,13 +389,12 @@ export interface IModePickerServices {
   getAvailableModes(): readonly ChatMode[];
   readonly onDidChangeMode: Event<ChatMode>;
   /**
-   * HARNESS.md §2.3 — Careful Mode: window-scoped switch that suspends the
-   * M90 user-consent relaxation (every consequential action prompts again).
-   * Optional so headless/test constructions need not wire it; the picker
-   * hides the toggle when absent.
+   * The permission mode (Ask, Auto, Careful): one switch, wired to the
+   * permission service. Optional so headless and test constructions need
+   * not wire it; the picker hides the control when absent.
    */
-  getCarefulMode?(): boolean;
-  setCarefulMode?(on: boolean): void;
+  getPermissionMode?(): PermissionMode;
+  setPermissionMode?(mode: PermissionMode): void;
 }
 
 /** Services needed by the session history sidebar. */

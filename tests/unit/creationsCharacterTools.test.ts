@@ -667,11 +667,12 @@ describe('the edit tool, through the chat', () => {
   it('the writes ask first in a scheduled or background turn and in Careful Mode, and run at once in a turn the user started', () => {
     const pdp = w.tools.policyDecisionPoint;
     let initiator = 'interactive';
-    let careful = false;
+    let mode = 'ask';
     pdp.setPermissionService({
       isManagedSessionBlocked: () => false,
       checkPermission: (_n: string, level: string) => ({ level, autoApproved: level === 'always-allowed', source: 'default' }),
-      isCarefulMode: () => careful,
+      isCarefulMode: () => mode === 'careful',
+      isAutoFor: () => mode === 'auto' && initiator !== 'autonomous',
       getSessionInitiator: () => initiator,
       isCommandAllowed: () => false,
     } as any);
@@ -680,7 +681,11 @@ describe('the edit tool, through the chat', () => {
     initiator = 'autonomous';
     for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('require-approval');
     for (const n of ['creations_character_brief', 'creations_find_characters']) expect(decide(n)).toBe('allow');
-    initiator = 'interactive'; careful = true;
+    initiator = 'interactive'; mode = 'careful';
+    for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('require-approval');
+    mode = 'auto';
+    for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('allow');
+    initiator = 'autonomous';
     for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('require-approval');
   });
 

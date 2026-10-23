@@ -13,6 +13,7 @@
 //   Rule 1 — terminal_run_command with a hard-blocked pattern → deny
 //   Rule 2 — managed session (heartbeat/subagent) with autonomy=manual → deny
 //   Rule 3 — permission service says never-allowed → deny
+//   Rule 3b — Auto mode on a turn the user started → allow (everything)
 //   Rule 4 — ALWAYS_REQUIRE_CONFIRMATION safety belt → require-approval
 //             (fires when checkPermission returned autoApproved=true via YOLO/
 //             streamlined, ensuring force-confirmation tools are never silently
@@ -165,6 +166,20 @@ export class PolicyDecisionPoint {
 
     const willTaint = getToolColor(name) === 'red';
     const forceConfirm = ALWAYS_REQUIRE_CONFIRMATION.has(name);
+
+    // Rule 3b — Auto, the way Claude Code's auto mode works: on a turn the
+    // user is present for, every tool runs with no prompt. Only the hard
+    // blocklist (Rule 1) and a never-allowed ban (Rule 3) hold above it; the
+    // belt, Careful and the command rules do not apply. A delete still goes
+    // to the trash and a write is still checkpointed, so /rewind holds.
+    // Autonomous turns never qualify (isAutoFor checks the initiator).
+    if (this._permissionService?.isAutoFor(sessionId)) {
+      reasons.push('auto');
+      return this._emit(caller, name, {
+        outcome: 'allow', reasons, autoApproved: true,
+        permSource: 'auto', willTaintOnSuccess: willTaint,
+      });
+    }
 
     // Rule 4 — safety belt: force-confirmation tools must never be silently bypassed.
     // checkPermission already prevents autoApproved for these tools, but this is

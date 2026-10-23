@@ -44,7 +44,7 @@
   "src/built-in/chat/data/chatDataService.ts": 2290,
   "src/built-in/chat/input/chatInput.css": 1427,
   "src/built-in/chat/input/chatInputPart.ts": 893,
-  "src/built-in/chat/main.ts": 3678,
+  "src/built-in/chat/main.ts": 3666,
   "src/built-in/chat/providers/ollamaProvider.ts": 1055,
   "src/built-in/chat/rendering/chatContentParts.ts": 1801,
   "src/built-in/chat/rendering/chatListRenderer.ts": 870,

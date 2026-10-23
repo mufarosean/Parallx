@@ -120,7 +120,7 @@ import { IIntrospectionService } from '../../services/introspectionService.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';
-import type { IPermissionCheckResult } from '../../services/permissionService.js';
+import { keepPermissionMode, resolveSkillPermission } from './utilities/chatPermissionMode.js';
 import type { ToolGrantDecision } from '../../services/chatTypes.js';
 import { ChatDataService, buildFileSystemAccessor } from './data/chatDataService.js';
 import { URI } from '../../platform/uri.js';
@@ -227,20 +227,6 @@ function dedupeToolDefinitionsByName(
     unique.push(tool);
   }
   return unique;
-}
-
-function resolveRuntimeSkillPermission(
-  toolName: string,
-  defaultLevel: import('../../services/chatTypes.js').ToolPermissionLevel,
-): IPermissionCheckResult {
-  if (_permissionService) {
-    return _permissionService.checkPermission(toolName, defaultLevel);
-  }
-  return {
-    level: defaultLevel,
-    autoApproved: defaultLevel === 'always-allowed',
-    source: 'default',
-  };
 }
 
 type TestAgentPlanStepSeed = Omit<AgentPlanStepInput, 'taskId' | 'proposedAction'> & {
@@ -1053,7 +1039,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       return dataService.invokeToolWithRuntimeControl(name, args, token, observer, sessionId, callOptions);
     }
 
-    const permission = resolveRuntimeSkillPermission(name, skill.permissionLevel);
+    const permission = resolveSkillPermission(_permissionService, name, skill.permissionLevel, sessionId);
     const metadata = {
       name,
       description: skill.description,
@@ -2863,6 +2849,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   if (wsStorage) {
     (widgetServices as unknown as Record<string, unknown>).workspaceStorage = wsStorage;
   }
+  // The permission mode (Ask, Auto, Careful) holds per workspace.
+  if (wsStorage && _permissionService) context.subscriptions.push(keepPermissionMode(_permissionService, wsStorage));
 
   // ── 5. Register the chat view in the Auxiliary Bar ──
 

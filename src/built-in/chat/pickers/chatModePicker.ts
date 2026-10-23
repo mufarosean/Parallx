@@ -8,7 +8,7 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (mode picker portion integrated into input toolbar)
 
-import { declareControl } from '../../../ui/kit.js';
+import { createSegmented, declareControl } from '../../../ui/kit.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -16,16 +16,31 @@ import { $, addDisposableListener } from '../../../ui/dom.js';
 import { ChatMode } from '../../../services/chatTypes.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IModePickerServices } from '../chatTypes.js';
+import { PERMISSION_MODES, type PermissionMode } from '../../../services/permissionService.js';
 
 // IModePickerServices — now defined in chatTypes.ts
 export type { IModePickerServices } from '../chatTypes.js';
 
-// HARNESS.md §2.3 — the old "Agent autonomy" dial (Manual / Allow Reads /
-// Allow Safe / Custom) is DELETED: it was connected to nothing (zero
-// subscribers, values that didn't match the real autonomy vocabulary), while
-// M90 had already made interactive turns run on user consent. What replaced
-// it tells the truth: one status line describing the actual policy, and one
-// Careful toggle that genuinely suspends the consent relaxation.
+// Below the modes, in Agent mode, sits the permission mode: Ask, Auto or
+// Careful, one switch the way Claude Code has one, wired through
+// IModePickerServices to the permission service, with a line that says
+// what the chosen mode really does.
+
+/** The permission modes as the picker names them, and what each one really does. */
+export const PERMISSION_MODE_META: Record<PermissionMode, { label: string; truth: string }> = {
+  ask: {
+    label: 'Ask',
+    truth: 'Ask: file writes run and are checkpointed; /rewind restores them. Shell commands ask until you allow a command family; deletes always ask.',
+  },
+  auto: {
+    label: 'Auto',
+    truth: 'Auto: everything runs without asking, the shell and deletes included. Only the hard blocklist and a never-allowed ban hold. Writes are checkpointed; /rewind restores them.',
+  },
+  careful: {
+    label: 'Careful',
+    truth: 'Careful: every consequential action asks first, always-allow grants included.',
+  },
+};
 
 /**
  * Mode display metadata. EXPORTED so other surfaces (the chat empty state)
@@ -166,41 +181,27 @@ export class ChatModePicker extends Disposable {
       dropdown.appendChild(item);
     }
 
-    // ── Gating truth + Careful toggle (HARNESS.md §2.3) ──
-    // Replaces the never-wired autonomy dial. The status line states the
-    // actual policy; the Careful row is the ONE real switch, wired through
-    // IModePickerServices to the permission service.
-    if (currentMode === ChatMode.Agent && this._services.setCarefulMode && this._services.getCarefulMode) {
-      const separator = $('div.parallx-chat-picker-separator');
-      dropdown.appendChild(separator);
-
-      // The line is DERIVED from the switch (a static sentence went false
-      // the moment Careful was on) and scoped to what /rewind really covers:
-      // file writes. Canvas pages have their own revisions.
-      const carefulOn = this._services.getCarefulMode();
-      const truth = $('div.parallx-chat-picker-gating-truth', carefulOn
-        ? 'Careful is on: every consequential action asks first, always-allow grants included.'
-        : 'File writes run automatically and are checkpointed; /rewind restores them. Shell commands ask until you allow a command family; read-only commands never ask. Deletes always ask.');
-      dropdown.appendChild(truth);
+    // ── The permission mode: Ask / Auto / Careful ──
+    // One switch, wired through IModePickerServices to the permission
+    // service. The line under it is derived from the chosen mode, so it is
+    // never a sentence that went false when the mode changed.
+    const { getPermissionMode, setPermissionMode } = this._services;
+    if (currentMode === ChatMode.Agent && getPermissionMode && setPermissionMode) {
+      dropdown.appendChild($('div.parallx-chat-picker-separator'));
       const row = $('div.parallx-chat-picker-autonomy-row');
-      if (carefulOn) {
-        row.classList.add('parallx-chat-picker-autonomy-row--active');
-      }
-
-      const textCol = $('div.parallx-chat-picker-item-text');
-      const name = $('span.parallx-chat-picker-item-name', carefulOn ? 'Careful · On' : 'Careful');
-      textCol.appendChild(name);
-      const desc = $('span.parallx-chat-picker-item-description',
-        'Every consequential action asks first');
-      textCol.appendChild(desc);
-      row.appendChild(textCol);
-
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._services.setCarefulMode!(!carefulOn);
-        this._closeDropdown();
+      const truth = $('div.parallx-chat-picker-gating-truth', PERMISSION_MODE_META[getPermissionMode()].truth);
+      createSegmented(row, {
+        id: 'chat.permissionMode',
+        ariaLabel: 'Permissions',
+        items: PERMISSION_MODES.map((value) => ({ value, label: PERMISSION_MODE_META[value].label })),
+        value: getPermissionMode(),
+        onChange: (value) => {
+          setPermissionMode(value as PermissionMode);
+          truth.textContent = PERMISSION_MODE_META[value as PermissionMode].truth;
+        },
       });
       dropdown.appendChild(row);
+      dropdown.appendChild(truth);
     }
 
     // Position below button (opening upward from the input bar)

@@ -1,6 +1,7 @@
 import type { IChatWidgetServices } from '../chatTypes.js';
 import type { Event } from '../../../platform/events.js';
 import type { ChatMode, ILanguageModelInfo } from '../../../services/chatTypes.js';
+import type { PermissionMode } from '../../../services/permissionService.js';
 
 export interface IChatWidgetPickerAdapterDeps {
   readonly getModels: () => Promise<readonly ILanguageModelInfo[]>;
@@ -13,9 +14,9 @@ export interface IChatWidgetPickerAdapterDeps {
   readonly setMode: (mode: ChatMode) => void;
   readonly getAvailableModes: () => readonly ChatMode[];
   readonly onDidChangeMode: Event<ChatMode>;
-  /** HARNESS.md §2.3 — Careful Mode passthrough (optional). */
-  readonly getCarefulMode?: () => boolean;
-  readonly setCarefulMode?: (on: boolean) => void;
+  /** The permission mode passthrough (optional). */
+  readonly getPermissionMode?: () => PermissionMode;
+  readonly setPermissionMode?: (mode: PermissionMode) => void;
 }
 
 export function buildChatWidgetPickerServices(
@@ -35,8 +36,8 @@ export function buildChatWidgetPickerServices(
       setMode: deps.setMode,
       getAvailableModes: deps.getAvailableModes,
       onDidChangeMode: deps.onDidChangeMode,
-      getCarefulMode: deps.getCarefulMode,
-      setCarefulMode: deps.setCarefulMode,
+      getPermissionMode: deps.getPermissionMode,
+      setPermissionMode: deps.setPermissionMode,
     },
   };
 }

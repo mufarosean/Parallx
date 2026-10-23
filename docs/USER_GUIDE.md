@@ -64,6 +64,27 @@ buttons:
 
 ---
 
+## 1.4 Permissions in the chat: Ask, Auto, Careful
+
+In Agent mode the mode picker (the icon left of the message box) has one
+permission switch, the way Claude Code has one:
+
+- **Ask** (the default): file writes run and are checkpointed, so `/rewind`
+  restores them. Shell commands ask until you allow a command family;
+  deletes always ask.
+- **Auto**: everything runs without asking, the shell, deletes and skills
+  included. Only the hard blocklist (commands that could wipe a disk or a
+  repository) and a tool you marked never-allowed still hold. Writes are
+  still checkpointed and deletes still go to the trash.
+- **Careful**: every consequential action asks first, even the ones you
+  granted always-allow.
+
+The switch is kept per workspace. Scheduled and background turns
+(heartbeat, cron) are the same in every mode: they never get Auto, and
+their decisions go to the autonomy log.
+
+---
+
 ## 2. Enabling autonomy (heartbeat, cron, follow-up)
 
 Autonomy is **off by default**. Three things have to be true for the

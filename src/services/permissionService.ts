@@ -55,8 +55,15 @@ export interface IPermissionCheckResult {
   readonly level: ToolPermissionLevel;
   /** Whether the tool can proceed without asking the user. */
   readonly autoApproved: boolean;
-  /** Source of the decision: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness'. */
-  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'user-consent' | 'command-rule';
+  /** Source of the decision: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'auto' (the Auto mode). */
+  readonly source: 'default' | 'session' | 'persistent' | 'autonomy-allow-policy' | 'strictness' | 'user-consent' | 'command-rule' | 'auto';
+}
+
+/** Ask: writes run, the shell and deletes ask. Auto: everything runs. Careful: everything asks. */
+export type PermissionMode = 'ask' | 'auto' | 'careful';
+export const PERMISSION_MODES: readonly PermissionMode[] = ['ask', 'auto', 'careful'];
+export function coercePermissionMode(value: unknown): PermissionMode {
+  return value === 'auto' || value === 'careful' ? value : 'ask';
 }
 
 /** A single entry in the approval audit log. */
@@ -187,20 +194,38 @@ export class PermissionService extends Disposable {
     this._userTaskSessions.delete(sessionId);
   }
 
-  // ── Careful Mode (HARNESS.md §2.3) ────────────────────────────────────────
-  // One window-scoped switch, off by default. When on, the M90 user-consent
-  // relaxation is suspended: interactive turns prompt for every
-  // requires-approval tool again, exactly as the old UI *claimed* the
-  // (never-wired) "Manual" dial did. In-memory — deliberate work sessions
-  // turn it on, and it resets with the window.
-  private _carefulMode = false;
+  // ── The permission mode: Ask, Auto or Careful ─────────────────────────────
+  // One switch, the way Claude Code has one. Ask (the default): a turn the
+  // user is present for runs ordinary writes, and the shell, deletes and
+  // unknown command families ask. Auto: that turn runs every tool with no
+  // prompt; only the hard blocklist and a never-allowed ban hold. Careful:
+  // every consequential action asks, standing grants included. Autonomous
+  // turns (heartbeat, routines) are the same in every mode: they defer to
+  // the log. The chat persists the choice per workspace.
+  private _permissionMode: PermissionMode = 'ask';
 
+  setPermissionMode(mode: PermissionMode): void {
+    if (mode === this._permissionMode) return;
+    this._permissionMode = mode;
+    this._onDidChange.fire();
+  }
+
+  getPermissionMode(): PermissionMode {
+    return this._permissionMode;
+  }
+
+  /** Careful as a switch, for the callers that still speak that way. */
   setCarefulMode(on: boolean): void {
-    this._carefulMode = on;
+    this.setPermissionMode(on ? 'careful' : 'ask');
   }
 
   isCarefulMode(): boolean {
-    return this._carefulMode;
+    return this._permissionMode === 'careful';
+  }
+
+  /** True when Auto covers this session's turn: Auto is on and the user started the turn. */
+  isAutoFor(sessionId: string | undefined): boolean {
+    return this._permissionMode === 'auto' && this.getSessionInitiator(sessionId) !== 'autonomous';
   }
 
   /**

@@ -102,6 +102,16 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
       never-wired autonomy dial is replaced by a truthful status line +
       ONE real switch: Careful (suspends the M90 user-consent relaxation;
       tighten-only), wired picker → adapter → permission service → PDP.
+      2026-10-23: the switch became the permission mode, Ask / Auto /
+      Careful, the way Claude Code has one. Auto (PDP Rule 3b) runs every
+      tool on a turn the user started with no prompt, the shell belt, the
+      command rules, deletes and skills included; only the hard blocklist
+      and a never-allowed ban hold above it. Autonomous turns are unchanged
+      in every mode. The mode is kept per workspace
+      (`chat.permissionMode`); the picker's line under the control says what
+      the chosen mode really does. Skills go through the same mode
+      (utilities/chatPermissionMode.ts), and the loader now reads
+      `auto-allow` as always-allowed instead of coercing it to ask.
 
 ### Wave 3 — disclosure (flagged, behavior-affecting)
 - [~] 3.1 First cut SHIPPED 2026-08-30: memory_write deduped against the
@@ -142,6 +152,7 @@ delegation is free. *(Evidence: Claude Code's Agent tool.)*
 | 2026-08-30 | 2.2 checkpoints + /rewind | 362b1487 | services/fileCheckpointService; reverts revertible |
 | 2026-08-30 | 2.2b gate compliance | (this) | checkpoints moved to services layer per the import gates |
 | 2026-08-30 | 2.3 gating truth | 01964c40 | one PDP owner; color gate finished; Careful switch |
+| 2026-10-23 | 2.3 permission mode | (this) | Ask / Auto / Careful; Auto allows everything on user turns; per workspace |
 | 2026-08-30 | Wave 4 delegation | daeb5949 | M59 allowlist enforced; reader/worker profiles |
 | 2026-08-30 | 3.1+3.2 first cut | (next) | memory_write deduped; relevance scores + citation rule |
 | 2026-08-30 | 3.4 context late + setting | (see log) | cache prefix stable; standingContextLate revert switch |

@@ -179,6 +179,15 @@ describe('validateSkillManifest', () => {
     expect(manifest!.kind).toBe('tool');
   });
 
+  it('reads the permission words the shipped skills use; an unknown word asks', () => {
+    const level = (permission: string) => validateSkillManifest({ frontmatter: { name: 'x', description: 'y', permission }, body: '' }, 'test')!.permission;
+    expect(level('auto-allow')).toBe('always-allowed');
+    expect(level('always-allowed')).toBe('always-allowed');
+    expect(level('never')).toBe('never-allowed');
+    expect(level('requires-approval')).toBe('requires-approval');
+    expect(level('whatever')).toBe('requires-approval');
+  });
+
   it('defaults disableModelInvocation to false', () => {
     const parsed = { frontmatter: { name: 'x', description: 'y' }, body: '' };
     const manifest = validateSkillManifest(parsed, 'test');

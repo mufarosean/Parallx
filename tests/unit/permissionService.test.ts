@@ -1,7 +1,7 @@
 // permissionService.test.ts — approval-gate behavior pins.
 
 import { describe, expect, it } from 'vitest';
-import { PermissionService } from '../../src/services/permissionService';
+import { PERMISSION_MODES, PermissionService, coercePermissionMode } from '../../src/services/permissionService';
 
 
 // ─── Forced-approval reason (2026-07-20 always-allow legibility fix) ─────────
@@ -86,5 +86,52 @@ describe('M90 user-task consent', () => {
     svc.markUserTaskSession('u1');
     const ok = await svc.confirmToolInvocation('fs_write_file', 'Write', {}, 'requires-approval', 'u1');
     expect(ok).toBe(false);
+  });
+});
+
+describe('the permission mode: Ask, Auto, Careful', () => {
+  it('starts on Ask, changes once per switch, and fires onDidChange only on a real change', () => {
+    const svc = new PermissionService();
+    let fired = 0;
+    svc.onDidChange(() => { fired++; });
+    expect(svc.getPermissionMode()).toBe('ask');
+    svc.setPermissionMode('auto');
+    svc.setPermissionMode('auto');
+    expect(svc.getPermissionMode()).toBe('auto');
+    expect(fired).toBe(1);
+    svc.setPermissionMode('careful');
+    expect(svc.isCarefulMode()).toBe(true);
+    expect(fired).toBe(2);
+  });
+
+  it('the Careful switch still speaks: on is careful, off is ask', () => {
+    const svc = new PermissionService();
+    svc.setCarefulMode(true);
+    expect(svc.getPermissionMode()).toBe('careful');
+    svc.setCarefulMode(false);
+    expect(svc.getPermissionMode()).toBe('ask');
+    expect(svc.isCarefulMode()).toBe(false);
+  });
+
+  it('Auto covers the turns the user started, never an autonomous one or its subagent', () => {
+    const svc = new PermissionService();
+    svc.markUserTaskSession('u1');
+    svc.markHeartbeatSession('h1');
+    svc.markSubagentSession('sub-h', undefined, 'h1');
+    expect(svc.isAutoFor('chat-1')).toBe(false);
+    svc.setPermissionMode('auto');
+    expect(svc.isAutoFor('chat-1')).toBe(true);
+    expect(svc.isAutoFor(undefined)).toBe(true);
+    expect(svc.isAutoFor('u1')).toBe(true);
+    expect(svc.isAutoFor('h1')).toBe(false);
+    expect(svc.isAutoFor('sub-h')).toBe(false);
+  });
+
+  it('a stored value reads back as a mode; anything else is Ask', () => {
+    expect(PERMISSION_MODES).toEqual(['ask', 'auto', 'careful']);
+    expect(coercePermissionMode('auto')).toBe('auto');
+    expect(coercePermissionMode('careful')).toBe('careful');
+    expect(coercePermissionMode('yolo')).toBe('ask');
+    expect(coercePermissionMode(undefined)).toBe('ask');
   });
 });
