@@ -261,12 +261,13 @@ describe('making one of their people', () => {
 });
 
 describe('the voice requirement', () => {
-  it('asks for one example of the register, never a catchphrase, and Try A Line says the same', () => {
+  it('asks for the voice in general, with no quoted phrases, and Try A Line still reads old cards right', () => {
     const [, user] = buildSheetMessages({ concept: 'A ferry captain' });
     const line = user.content.split('\n').find((l: string) => l.startsWith('- "voice"'))!;
-    expect(line).toContain('"Might say:');
-    expect(line).toContain('never a catchphrase they would repeat');
-    expect(line).not.toContain('two signature phrases');
+    expect(line).toContain('the register');
+    expect(line).toContain('no quoted phrases, no phrases they use or never use');
+    expect(line).not.toContain('Might say');
+    expect(line).not.toContain('uneasy');
     const [system] = buildTryLineMessages({ name: 'Ada', voice: "Says: 'noted'." }, 'hello');
     expect(system.content).toContain('examples of the register, not lines to say');
   });

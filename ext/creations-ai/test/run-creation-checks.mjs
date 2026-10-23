@@ -269,9 +269,11 @@ for (const c of CASES) {
       }
     }
 
-    // Voice: one "Might say", and Try A Line does not parrot it.
+    // Voice: general, with no quoted phrases; an old card's "Might say" is
+    // still not parroted by Try A Line.
     const phrase = mightSay(sheet.voice);
-    report.check(`${key}.voice.1`, 'Voice has one "Might say" example', !!phrase && (String(sheet.voice).match(/might say/gi) || []).length === 1, phrase || '(none)');
+    const quoted = (String(sheet.voice).match(/["']([^"']{3,})["']/g) || []).length;
+    report.check(`${key}.voice.1`, 'Voice has no quoted phrases and no "Might say" or "Never says" line', quoted === 0 && !/might say|never says/i.test(sheet.voice), quoted ? `${quoted} quoted` : '(none)');
     await guarded(`${key}.voice.2`, async () => {
       const lines = [];
       for (let i = 0; i < TRY_LINES.length; i++) lines.push(await gw.call(`${key} tryline ${i + 1}`, buildTryLineMessages(sheet, TRY_LINES[i]), { temperature: 0.8 }));

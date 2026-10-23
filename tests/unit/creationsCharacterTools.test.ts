@@ -137,7 +137,7 @@ describe('the checks', () => {
     expect(all).toMatch(/secrets \(Secrets\) is missing\. Required: "secrets": one or two sentences/);
     expect(all).toMatch(/appearance is missing the sections Height and build, Clothes, Physicality: write all 5 sections, each its own paragraph starting with its label and a colon, in this order: Overview, Height and build, Face, Clothes, Physicality\. Keep the sections already written\./);
     expect(all).toMatch(/exampleDialogue has 1 exchange: it needs three/);
-    expect(all).toMatch(/voice is 1 line: write 3 to 5/);
+    expect(all).toMatch(/voice is 1 line: write three short/);
     expect(all).toMatch(/drives is missing the lines "Fears: \.\.\.", "In the way: \.\.\."/);
     expect(all).toMatch(/relationships names 0 people/);
     // Without a structure, a one-paragraph appearance is fine.

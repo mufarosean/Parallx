@@ -883,6 +883,21 @@ Not built, on purpose, and talked through first:
   beats that wait for a condition rather than a turn count, so the
   characters never steer toward a plot they should not know.
 
+## Room to be a person (built 2026-10-23)
+
+The owner's manual edits to every generated card had one direction: less
+prescription. A "Might say" phrase in Voice got said scene after scene;
+"Never says" and "what they talk about when uneasy" tied the voice to one
+mood; Drives and Secrets were cleared when they made every turn about
+them. The lever is how tightly the chat holds the card. Built:
+
+- **Voice is general.** The Studio and the chat's character tool ask for
+  three lines: tone, rhythm, register. No sample lines, no quoted phrases,
+  no phrases used or never used, nothing tied to one situation. The
+  validator and the Chat Behaviour page say the same. Older cards keep
+  their lines; the Turn Contract still reads a quoted phrase as register,
+  not a line.
+
 ## Quality testing
 
 How to measure character creation, roleplay and Directions with a real

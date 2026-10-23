@@ -162,9 +162,11 @@ from Roll The Dice.
   of a sentence in their lines. The list goes in the harness, editable.
 
 **Voice**
-- Voice has one "Might say" example.
-- In five Try A Line samples, that exact phrase appears at most once and
-  never opens a line.
+- Voice is general: tone, rhythm, register, with no quoted phrases and no
+  "Might say" or "Never says" line (a quoted phrase in the voice gets said,
+  scene after scene).
+- On an older card that still has a "Might say" phrase, in five Try A Line
+  samples it appears at most once and never opens a line.
 
 **Does the sheet survive into chat?** Borrowed from InCharacter. Open a
 chat with each new character and ask ten interview questions ("What do

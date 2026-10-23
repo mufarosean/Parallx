@@ -265,7 +265,7 @@ export function checkSheet(sheet, { structure = null } = {}) {
   }
   if (sheet.voice) {
     const lines = sheet.voice.split('\n').filter((l) => l.trim()).length;
-    if (lines < 3) problems.push(`voice is ${lines} line${lines === 1 ? '' : 's'}: write 3 to 5 short third-person lines, one per line (tone; rhythm; what they talk about when uneasy; "Might say: '...'"; "Never says: '...'").`);
+    if (lines < 3) problems.push(`voice is ${lines} line${lines === 1 ? '' : 's'}: write three short third-person lines, one per line (tone; rhythm; register), general, with no quoted phrases.`);
   }
   if (sheet.drives) {
     const need = [['Wants', /^\s*wants?\s*:/im], ['Fears', /^\s*fears?\s*:/im], ['In the way', /^\s*in the way\s*:/im]];

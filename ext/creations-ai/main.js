@@ -10167,10 +10167,10 @@ function renderCharacterEditor(container, parallx, input) {
   ));
 
   const voiceAnchorInput = el('textarea', 'tg-ce-textarea tg-ce-textarea--short');
-  voiceAnchorInput.placeholder = '(optional) 3-5 lines: tone, signature phrases, phrases to never use.';
+  voiceAnchorInput.placeholder = '(optional) Three lines: tone, rhythm, register. No quoted phrases.';
   root.appendChild(field(
     `${icon('mic', 14)} Voice anchor`,
-    'Injected immediately before generation on every turn, the strongest position in the prompt. Describe the VOICE itself: tone, signature phrases, no-go phrases. If empty, the first lines of the description are used instead.',
+    'Injected immediately before generation on every turn, the strongest position in the prompt. Describe the voice in general: tone, rhythm, register. A quoted phrase here gets repeated. If empty, the first lines of the description are used instead.',
     voiceAnchorInput,
   ));
 
