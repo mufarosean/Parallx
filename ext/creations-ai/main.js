@@ -23,6 +23,7 @@ import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
+import { createActRunner } from './acts-panel.js';
 
 // The workspace data folder keeps its original name: every character, thread,
 // lorebook and setting a user has is in there, and a rename would be a move.
@@ -3191,19 +3192,10 @@ function buildSystemPrompt(params = {}) {
   const castEntries = [];
   const characterReminders = [];
 
-  // 0. Selected-speaker banner — the explicit user selection is the
-  // source of truth for whose turn this is, and it gets stated at the
-  // TOP of the prompt and reinforced near the BOTTOM (Active Turn
-  // section). Redundant by design: small models drop signals when
-  // they're stated only once. Trust the click; never derive turn
-  // order from history.
-  //
-  // Speaker-unification (user-is-just-another-character): the
-  // human orchestrating the chat sits OUTSIDE the fiction. Every
-  // speaker in the message log — Anon, Ada, Narrator, anything —
-  // is a character to the model. The banner therefore uses the
-  // user's display name ("Anon") not the abstract role "the user",
-  // and the same emphatic phrasing as every other speaker.
+  // 0. The speaker banner: whose turn it is, stated at the top and again
+  // near the bottom (Active Turn), since small models drop a signal stated
+  // once. Every speaker in the log, the user included, is a character to
+  // the model, so the banner uses the user's display name.
   let bannerName = null;
   if (respondAs === SELF_SPEAKER) {
     bannerName = userName || 'Anon';
@@ -3703,20 +3695,14 @@ function assembleContext(params) {
           .split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3);
         anchorBody = descLines.join(' ');
       }
-      // The anchor sits right before generation on every turn, so a quoted
-      // phrase in it ("Says: 'noted'") was read as a line to say, and said,
-      // scene after scene. Say what the quotes are. It also gave the voice as
-      // a rule ("Stay strictly in X's voice"), and the model put every habit
-      // in every line; given as a tendency, most of what they say is plain
-      // (dialogue bench, 2026-10-08).
+      // The anchor sits right before generation: a quoted phrase in it gets
+      // said scene after scene, and a voice given as a rule goes into every
+      // line. So the quotes are named as examples and the voice as a tendency.
       const personaLine = (anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '') + latitudeAnchor(resolveLatitude(respondChar, settings), rName);
       speakerLateAnchor = `[You are ${rName}. Sound like ${rName}. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
-      // variation avoidance v2. Pull the last 5 outputs
-      // by this speaker (was: 2), extract 3–5 word phrases, find the
-      // ones that repeat across messages, and ask the model to avoid
-      // them. Also keeps the prior opening-line guard since the
-      // model's first sentence is the most-likely repetition target.
+      // Variation: the phrases that repeat across this speaker's last five
+      // replies, and their openings, are named for the model to avoid.
       const recentSelfOutputs = filteredHistory
         .filter(m => m.author === 'ai' && m.characterFile === respondChar.fileName)
         .slice(-5)
@@ -3874,14 +3860,8 @@ function assembleContext(params) {
   // we put the active-turn intent directly on the user turn where it lands
   // hardest.
   if (userMessage) {
-    // M79 instruction-following fix — the prior pipeline buried the
-    // ephemeral directive in a system message BEFORE the user message,
-    // and the user message tokens drowned it out. Append the directive
-    // as an in-line stage direction at the END of the user turn so it
-    // is the literal last text the model reads before generating. This
-    // turned out to be the single biggest determinant of whether the
-    // model follows /ai-style guidance.
-    //
+    // The directive rides at the end of the user turn, the last text the
+    // model reads: a system message before the user turn was drowned out.
     // The same fix now applies to the active-turn signal — when the
     // user picks a character with no instructions, the active-turn
     // line is what we want the model to land on. Putting it inside
@@ -4117,15 +4097,13 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.maxTokensOverride === undefined) thread.maxTokensOverride = null;
   if (thread.contextWindowOverride === undefined) thread.contextWindowOverride = null;
   if (thread.autoReply === undefined) thread.autoReply = true;
-  // Overhaul — explicit per-chat overrides + standing note. Distinct
-  // from the legacy seeded `writingPreset`/`responseLength` fields (which
-  // were snapshots taken at creation and are deliberately NOT honored):
-  // null/'' here means "inherit from character/global".
+  // Per-chat overrides and the standing note: '' means inherit.
   if (thread.writingPresetOverride === undefined) thread.writingPresetOverride = '';
   if (thread.responseLengthOverride === undefined) thread.responseLengthOverride = '';
   if (thread.standingNote === undefined) thread.standingNote = '';
   if (thread.smartTurnOrder === undefined) thread.smartTurnOrder = false;
   if (!Array.isArray(thread.supportingCast)) thread.supportingCast = [];
+  if (thread.act === undefined) thread.act = null;
 
   return thread;
 }
@@ -4149,10 +4127,8 @@ async function listThreads(fs, workspaceUri) {
 
 async function appendMessage(fs, workspaceUri, threadId, message) {
   const file = resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/messages.jsonl`);
-  // M79 message-IDs — every message gets a stable `id` on append so
-  // memory provenance can later reference it. Mutates the caller's
-  // object so the in-memory array used by the chat editor carries
-  // the same id the file does.
+  // Every message gets a stable id on append, for memory provenance; the
+  // caller's object gets it too.
   if (!message.id) message.id = generateId();
   const line = JSON.stringify(message);
   let existing = '';
@@ -4359,10 +4335,8 @@ function mergeSceneState(prior, update) {
 //     { id, summary, importance, messageRange, createdAt }
 //     importance: 0..1 (drives recency-weighted retrieval)
 //
-// Auto-extract runs in the background after every N user-to-AI exchanges
-// (see _maybeAutoExtractMemory in generateTurn's post-flow). The call is
-// fire-and-forget and never blocks the user. Existing `memories.md` files
-// are preserved verbatim and treated as additional semantic content.
+// Auto-extract runs in the background after every N exchanges and never
+// blocks the user.
 
 const MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES = 6;
 /** How many Timeline lines ride in every prompt. */
@@ -4782,10 +4756,8 @@ async function autoExtractMemoryBackground({
     if (beatRecords.length > 0) {
       await appendEpisodicMemory(fs, workspaceUri, threadId, beatRecords);
     }
-    // M79 race-guard — an in-flight extract may have written facts
-    // with sources pointing at a message the user deleted while we
-    // were busy. Self-heal by pruning any entry whose entire source
-    // set is now orphaned. Cheap; runs once per extract completion.
+    // An extract in flight may cite a message deleted meanwhile: prune
+    // entries whose every source is gone.
     await pruneOrphanMemory(fs, workspaceUri, threadId);
     return { ok: true, facts: factRecords.length, beats: beatRecords.length };
   } catch (err) {
@@ -5170,7 +5142,7 @@ function renderChatEditor(container, parallx, input) {
   const memoryPanel = el('aside', 'cr-memory');
   memoryPanel.setAttribute('aria-label', 'Memory');
   const memHead = el('div', 'cr-memory-head');
-  memHead.appendChild(el('span', 'cr-memory-title', { html: `${icon('brain', 15)}<span>Memory</span>` }));
+  const memTitle = el('span', 'cr-memory-title', { html: `${icon('brain', 15)}<span>Memory</span>` }); memHead.appendChild(memTitle);
   const memOpen = el('button', 'cr-memory-open', { sceneId: 'textGenerator.chat.memory.open', text: 'Open memories.md' });
   memOpen.type = 'button';
   memOpen.addEventListener('click', () => void openMemoryFile());
@@ -5204,11 +5176,24 @@ function renderChatEditor(container, parallx, input) {
   memSeg?.element.classList.add('cr-memory-seg');
   const memList = el('div', 'cr-memory-list');
   memoryPanel.appendChild(memList);
-  memoryPanel.appendChild(el('div', 'cr-memory-hint', { html: `${icon('pin', 13)}<span>Pin a message to remember it</span>` }));
+  const memHint = el('div', 'cr-memory-hint', { html: `${icon('pin', 13)}<span>Pin a message to remember it</span>` }); memoryPanel.appendChild(memHint);
+  // Acts (acts-panel.js) share the side panel: the same aside, in act mode.
+  const actBtn = parallx.ui?.createIconButton ? parallx.ui.createIconButton(null, { id: 'textGenerator.chat.acts', icon: 'film', title: 'Acts: a plot brief the AI runs as turns', onClick: () => setSideMode(sideMode === 'act' && memoryOpen ? null : 'act') }) : null;
+  actBtn?.classList.add('tg-chat-toolbar-btn');
+  let sideMode = 'memory';
+  function setSideMode(mode) {
+    if (!mode) { setMemoryOpen(false); return; }
+    sideMode = mode;
+    const act = mode === 'act';
+    memTitle.lastElementChild.textContent = act ? 'Act' : 'Memory';
+    for (const node of [memSeg?.element, memActions, memHint]) if (node) node.style.display = act ? 'none' : '';
+    setMemoryOpen(true);
+  }
   let memoryOpen = false;
   try { memoryOpen = localStorage.getItem('creations.memoryPanel') === '1'; } catch { memoryOpen = false; }
   async function renderMemoryPanel() {
     if (!memoryOpen) return;
+    if (sideMode === 'act') { await actRunner.render(memList); return; }
     let parts = { facts: [], beats: [], notes: '' };
     try { parts = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* empty */ }
     const items = memTab === 'facts' ? parts.facts.map((f) => f.text)
@@ -5226,12 +5211,13 @@ function renderChatEditor(container, parallx, input) {
   function setMemoryOpen(open) {
     memoryOpen = open;
     memoryPanel.style.display = open ? '' : 'none';
-    memoryBtn.classList.toggle('tg-chat-toolbar-btn--active', open);
-    memoryBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    memoryBtn.classList.toggle('tg-chat-toolbar-btn--active', open && sideMode === 'memory');
+    memoryBtn.setAttribute('aria-pressed', open && sideMode === 'memory' ? 'true' : 'false');
+    actBtn?.classList.toggle('tg-chat-toolbar-btn--active', open && sideMode === 'act');
     try { localStorage.setItem('creations.memoryPanel', open ? '1' : '0'); } catch { /* per-viewer nicety */ }
     if (open) void renderMemoryPanel();
   }
-  memoryBtn.addEventListener('click', () => setMemoryOpen(!memoryOpen));
+  memoryBtn.addEventListener('click', () => setSideMode(sideMode === 'memory' && memoryOpen ? null : 'memory'));
   // Who you are talking to: their portraits and names, the chat's title under them.
   const chatHead = el('div', 'cr-chat-head');
   const chatHeadFaces = el('div', 'cr-chat-faces');
@@ -5239,7 +5225,7 @@ function renderChatEditor(container, parallx, input) {
   const chatHeadName = el('div', 'cr-chat-head-name');
   chatHeadText.append(chatHeadName, summaryEl);
   chatHead.append(chatHeadFaces, chatHeadText);
-  toolbar.append(chatHead, spacer, modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, tokenCountEl, memoryBtn, sceneBtn, viewPromptBtn);
+  toolbar.append(chatHead, spacer, modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, tokenCountEl, memoryBtn, ...(actBtn ? [actBtn] : []), sceneBtn, viewPromptBtn);
   root.appendChild(toolbar);
   // Now: where and when the scene stands, one line; click to edit it.
   const nowStrip = el('button', 'cr-now');
@@ -5338,7 +5324,7 @@ function renderChatEditor(container, parallx, input) {
   const inputWrap = el('div', 'tg-input-wrap');
   const inputCard = el('div', 'tg-input-card');
   const textarea = el('textarea', 'tg-input-textarea');
-  textarea.placeholder = 'Type your message… (use /ai, /nar, /sys for commands)'; tgDeclare(textarea, 'textGenerator.chat.input', { label: 'Message' });
+  textarea.placeholder = 'Type your message… (use /ai, /nar, /sys, /act for commands)'; tgDeclare(textarea, 'textGenerator.chat.input', { label: 'Message' });
   textarea.rows = 1;
   textarea.addEventListener('input', () => {
     textarea.style.height = 'auto';
@@ -5362,7 +5348,7 @@ function renderChatEditor(container, parallx, input) {
     inputCard.classList.toggle('tg-input-card--ooc', oocMode);
     textarea.placeholder = oocMode
       ? 'Backstage note, the AI will not see this…'
-      : 'Type your message… (use /ai, /nar, /sys for commands)';
+      : 'Type your message… (use /ai, /nar, /sys, /act for commands)';
   }
   oocBtn.addEventListener('click', () => setOocMode(!oocMode));
 
@@ -5476,6 +5462,18 @@ function renderChatEditor(container, parallx, input) {
   // active-generation registry): a tab switch disposes this pane but the
   // stream keeps running, and the next pane re-attaches through `gen`.
   const gen = getGenState(threadId);
+  const actRunner = createActRunner({
+    ui: parallx.ui, lm: parallx.lm, fs, gen, fileUri: (name) => _memoryFileUri(workspaceUri, threadId, name), thread: () => thread, narratorSpeaker: NARRATOR_SPEAKER,
+    saveMeta: (updates, label) => surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, updates), parallx, label),
+    cast: () => characters.map((c) => { const s = sheetFromCharacter(c.rawData || {}); return { file: c.fileName, name: getCharacterName(c), tagline: s.tagline, drives: s.drives, secrets: s.secrets }; }),
+    userName: () => getUserName(), userPlays: () => (thread?.userPlaysAs ? getCharacterName(thread.userPlaysAs) : ''), resolveFile: (name) => resolveCharacterReference(name), generateTurn: (o) => generateTurn(o),
+    model: async () => { const rawId = selectedModelId || thread?.modelId || null; const modelId = (rawId && models.some((m) => m.id === rawId)) ? rawId : models[0]?.id; if (!modelId) throw new Error('No model is available. Pick one in Chat Settings.'); return { modelId, numCtx: await chatContextWindow(modelId) }; },
+    memory: () => loadThreadMemory(fs, workspaceUri, threadId).catch(() => ({ facts: [], beats: [], notes: '' })), rememberBeat: (text) => mergeThreadMemory(fs, workspaceUri, threadId, { beats: [{ text }] }), extractMemory: () => _maybeAutoExtractMemory({ force: true }),
+    others: () => [...supportingCards, ...connectedCards], scene: () => thread?.sceneState || null, rules: () => currentSettings?.dialogueRules || '',
+    transcript: () => messageHistory.filter((m) => m && m.content && m.hiddenFrom !== 'ai' && m.kind !== 'ooc').slice(-8).map((m) => ({ name: getVisibleName(m), content: m.content })),
+    composer: { set: (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); } }, openFile: (uri) => parallx.editors.openFileEditor(uri), showToast: (t) => showToast(t),
+    repaint: () => { if (memoryOpen && sideMode === 'act') void renderMemoryPanel(); },
+  });
   let selectedComposeSpeaker = SELF_SPEAKER;
   let selectedReplySpeaker = null;
   let renderQueued = false;
@@ -6440,7 +6438,7 @@ function renderChatEditor(container, parallx, input) {
     const primaryChar = characters[0] || null;
     // Placeholder
     const customPlaceholder = primaryChar?.frontmatter?.messageInputPlaceholder || '';
-    textarea.placeholder = customPlaceholder || 'Type your message… (use /ai, /nar, /sys for commands)';
+    textarea.placeholder = customPlaceholder || 'Type your message… (use /ai, /nar, /sys, /act for commands)';
     // Message wrapper style — apply as inline style on messages container
     // Sanitize: strip url(), expression(), behavior, and @import to prevent CSS injection
     const wrapperStyle = (primaryChar?.frontmatter?.messageWrapperStyle || '')
@@ -7666,6 +7664,7 @@ function renderChatEditor(container, parallx, input) {
 
   async function handleSlashCommand(cmd) {
     switch (cmd.command) {
+      case 'act': { setSideMode('act'); if (cmd.args && cmd.args.trim()) await actRunner.plan(cmd.args); break; }
       case 'ai': {
         const requestedSpeaker = cmd.targetCharacter ? resolveCharacterReference(cmd.targetCharacter) : selectedReplySpeaker;
         const nextSpeaker = requestedSpeaker || await resolveReplySpeaker();
@@ -7890,6 +7889,7 @@ function renderChatEditor(container, parallx, input) {
     // Honor autoReply toggle and expectsReply on the last message.
     // OOC messages never trigger generation — the whole point is that
     // the AI doesn't see them.
+    if (!wasOocMessage && actRunner.waiting()) { await actRunner.continueAfterPlayer(); return; }
     if (!wasOocMessage && thread?.autoReply !== false) {
       const lastMsg = messageHistory[messageHistory.length - 1];
       if (lastMsg?.expectsReply !== false) {

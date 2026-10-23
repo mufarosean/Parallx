@@ -918,6 +918,25 @@ them. The lever is how tightly the chat holds the card. Built:
   dashes. Mechanical checks from the quality harness, no judge model; a
   finding is something to look at. Four model calls. Files:
   `test-drive.js`; tests: `creationsTestDrive`.
+- **Acts.** The director steers one turn; an act is a brief for a stretch
+  of the story that the AI runs as turns. Type `/act` and the brief in the
+  message box ("her childhood in a small town, ages 13 to 18, the moments
+  that shaped her, 8 turns"). The model writes a beat sheet, one line per
+  turn with its speaker chosen per beat: the Narrator for a new scene, a
+  time skip, an arrival or an event; a character for a move; "You:" when
+  the brief wants the player to act. The sheet is `act.md` beside the
+  thread, opened from the panel and edited like `memories.md`; Run reads
+  it fresh. Each beat is the chat's own turn, through the same pipeline as
+  a typed "/ai @Name note" (memory, scene state, latitude, the dialogue
+  rules all hold), with the beat set in its act so the model keeps the
+  arc. A beat for the player pauses the run until they send; the run also
+  stops on Stop (after the turn being written) or a failed turn, and
+  Continue goes on from that beat. At the end one line goes to the memory
+  Timeline and the act is read into memory. Propose Next Act writes the
+  next brief from where the story stands into the message box, to edit
+  and send. The panel shares the chat's side panel with Memory (the film
+  button). Files: `acts.js` (pure), `acts-panel.js` (the runner and the
+  panel, kit only); tests: `creationsActs`.
 
 ## Quality testing
 
