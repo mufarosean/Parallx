@@ -9512,7 +9512,8 @@ const CHARACTER_EDIT_TOOL = {
   description:
     'Creations AI: change an existing character as the user asks, or undo the chat\'s last change to one (undo: true). ' +
     'Read it first (creations_find_characters, names). In changes, send only the fields that change, by field name; for Drives or a field in sections ' +
-    '(e.g. Appearance), only the labelled lines or sections that change (when the user names one, only that one); the rest stays word for word. Nothing is saved if a check fails. Give the user the link it returns.',
+    '(e.g. Appearance), only the labelled lines or sections that change (when the user names one, only that one); the rest stays word for word. ' +
+    'Send a field as "" to erase it, when the user asks; one already blank stays blank unless they ask. Nothing is saved if a check fails. Give the user the link it returns.',
   parameters: {
     type: 'object',
     properties: {

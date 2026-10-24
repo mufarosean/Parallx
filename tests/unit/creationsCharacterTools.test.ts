@@ -655,6 +655,33 @@ describe('editing a character', () => {
     expect(p.notes.join('\n')).toMatch(/the card already had gaps this edit does not touch \(offer to fix them if it fits\): secrets \(Secrets\) is missing; exampleDialogue has 1 exchange/);
   });
 
+  it('erases a field sent empty, keeps one already blank without complaint, and Undo brings the erased text back (2026-10-24)', () => {
+    const m = marit();
+    const roster = [m, tom()];
+    const before = sheetFromCharacter(m.rawData);
+    const p = planEdit(m, roster, { changes: { backstory: '', reminder: null, tagline: 'Keeps the light, and the peace' }, structure: ROSTER_STRUCTURE });
+    expect(p.problems).toEqual([]);
+    expect(p.changed).toEqual([{ key: 'backstory', how: 'erased' }, { key: 'reminder', how: 'erased' }, { key: 'tagline', how: 'rewritten' }]);
+    expect(p.sheet.backstory).toBe('');
+    expect(p.sheet.reminder).toBe('');
+    expect(editResultText({ name: 'Marit Holm', link: 'x', plan: p })).toMatch(/- backstory: erased\n- reminder: erased\n- tagline: rewritten/);
+    // Locked: not erased either. The name: never.
+    expect(planEdit(m, roster, { changes: { secrets: '' }, structure: ROSTER_STRUCTURE }).problems.join('\n')).toMatch(/secrets \(Secrets\) is locked in the Studio, so nothing erases it/);
+    expect(planEdit(m, roster, { changes: { name: '' }, structure: ROSTER_STRUCTURE }).changed).toEqual([]);
+    // A field blank before the edit stays blank, and only a note says so.
+    const gappy = card('character-gappy.json', goodSheet('Gappy', { backstory: '' }));
+    const q = planEdit(gappy, [gappy], { changes: { backstory: '', tagline: 'Keeps the light' }, structure: ROSTER_STRUCTURE });
+    expect(q.problems).toEqual([]);
+    expect(q.changed).toEqual([{ key: 'tagline', how: 'rewritten' }]);
+    expect(q.notes.join('\n')).toMatch(/already had gaps this edit does not touch.*backstory \(Backstory\) is missing/);
+    // Undo puts the erased text back.
+    const data = applyEdit(m.rawData, p, { request: 'drop the backstory', at: 1 });
+    expect(sheetFromCharacter(data).backstory).toBe('');
+    const undone = undoLastChatEdit(data);
+    expect(undone.restored).toEqual(['backstory', 'reminder', 'tagline']);
+    expect(sheetFromCharacter(undone.data).backstory).toBe(before.backstory);
+  });
+
   it('remembers what it replaced; Undo puts back what still says what the chat wrote, and keeps what was changed since', () => {
     const m = marit();
     const roster = [m, tom()];

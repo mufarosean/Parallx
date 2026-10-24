@@ -134,7 +134,7 @@ export function fieldText(key, value) {
  */
 export function readIncomingCharacter(raw) {
   const sheet = emptySheet();
-  const out = { sheet, connections: [], concept: '', allowSameName: false, unknownKeys: [] };
+  const out = { sheet, connections: [], concept: '', allowSameName: false, unknownKeys: [], cleared: [] };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   const src = raw.sheet && typeof raw.sheet === 'object' && !Array.isArray(raw.sheet) ? { ...raw.sheet, ...raw } : raw;
   for (const [k, v] of Object.entries(src)) {
@@ -160,7 +160,10 @@ export function readIncomingCharacter(raw) {
     if (!field) { out.unknownKeys.push(k); continue; }
     const text = fieldText(field, v);
     if (text && !sheet[field]) sheet[field] = text;
+    // A field sent empty ("" or null) is a field to erase, in an edit.
+    else if (!text.trim() && field !== 'name' && !out.cleared.includes(field)) out.cleared.push(field);
   }
+  out.cleared = out.cleared.filter((k) => !sheet[k]);
   sheet.name = cleanFieldValue('name', sheet.name).replace(/\s+/g, ' ').trim();
   for (const k of STUDIO_KEYS) if (k !== 'name') sheet[k] = cleanFieldValue(k, sheet[k], sheet.name);
   out.concept = stripDashes(out.concept);
@@ -243,7 +246,7 @@ export function dialogueExchanges(text) {
  * and the notes that do not stop a save. `structure` is the parsed Sheet
  * structure; `requirementOf(key)` its requirement line for a field.
  */
-export function checkSheet(sheet, { structure = null } = {}) {
+export function checkSheet(sheet, { structure = null, allowEmpty = [] } = {}) {
   const problems = [];
   const notes = [];
   const reqs = fieldRequirements(structure).split('\n');
@@ -254,7 +257,7 @@ export function checkSheet(sheet, { structure = null } = {}) {
   for (const key of STUDIO_KEYS) {
     if (key === 'name') continue;
     const v = sheet[key] || '';
-    if (!v.trim()) { problems.push(`${key} (${label(key)}) is missing. Required: ${requirementOf(key)}`); continue; }
+    if (!v.trim()) { if (!allowEmpty.includes(key)) problems.push(`${key} (${label(key)}) is missing. Required: ${requirementOf(key)}`); continue; }
     if (v.length > MAX_FIELD_CHARS) problems.push(`${key} is ${v.length} characters, more than ${MAX_FIELD_CHARS}: shorten it to what the requirement asks.`);
   }
   // A structured field (Settings, Sheet structure): every section, by its label.
@@ -567,8 +570,9 @@ export function findResultText(hits, { query = '', names = [], full = false, cha
 // fields sent, and in a field written in sections (Settings, Sheet
 // structure) or in Drives, only the sections or lines sent, by their labels.
 // The edited card must pass the checks a new one does, but a gap the card
-// already had in a field the edit leaves alone does not stop it. Fields the
-// user locked in the Studio are never changed. What each field said before
+// already had in a field the edit leaves alone does not stop it, and a field
+// the user wants empty is erased by sending it empty (""): only a new card
+// has to be complete. Fields the user locked in the Studio are never changed. What each field said before
 // is kept on the card (`studio.chatEdits`, the last ten), so the Studio's
 // Undo, or the chat's, puts it back.
 
@@ -630,8 +634,8 @@ const connectionsOf = (data) => (Array.isArray(data?.studio?.connections) ? data
  * One edit, checked: `{ problems, notes, sheet, before, changed: [{ key, how }],
  * connections, connectionsChanged, backLinks: [{ fileName, name, how }], renamedFrom }`.
  * `changes` holds only the fields that change (any of the names a save
- * takes); `connect` `[{ name, how, addToTheirCard }]` and `disconnect`
- * `[name]` change who the card stands beside.
+ * takes; a field sent as "" is erased); `connect` `[{ name, how, addToTheirCard }]`
+ * and `disconnect` `[name]` change who the card stands beside.
  */
 export function planEdit(entry, roster = [], { changes = {}, connect = [], disconnect = [], allowSameName = false, structure = null } = {}) {
   const data = entry.rawData || {};
@@ -646,6 +650,15 @@ export function planEdit(entry, roster = [], { changes = {}, connect = [], disco
   const locks = new Set(Array.isArray(data.studio?.locks) ? data.studio.locks : []);
   const sheet = { ...before };
   const changed = [];
+  // A field sent empty is erased: the user asked for it to be blank.
+  const erased = [];
+  for (const key of read.cleared) {
+    if (!String(before[key] || '').trim()) continue;
+    if (locks.has(key)) { problems.push(`${key} (${label(key)}) is locked in the Studio, so nothing erases it: leave it out, or ask the user to unlock it there (the lock on its row).`); continue; }
+    sheet[key] = '';
+    erased.push(key);
+    changed.push({ key, how: 'erased' });
+  }
   for (const key of STUDIO_KEYS) {
     const sent = read.sheet[key];
     if (!sent) continue;
@@ -719,7 +732,7 @@ export function planEdit(entry, roster = [], { changes = {}, connect = [], disco
   // The checks a new card passes, on what this edit touched; a gap the card already had elsewhere is only noted.
   const touched = changed.map((c) => c.key);
   const was0 = checkSheet(before, { structure }).problems;
-  const now = checkSheet(sheet, { structure });
+  const now = checkSheet(sheet, { structure, allowEmpty: erased });
   const own = (p) => touched.some((k) => p.startsWith(`${k} `)) || !was0.includes(p);
   problems.push(...now.problems.filter(own));
   const old = now.problems.filter((p) => !own(p));
