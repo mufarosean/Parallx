@@ -13,7 +13,7 @@ const {
   composeRoleInstruction, splitRoleInstruction, sheetFromCharacter, characterFromSheet, lineageOf,
   parseSheetStructure, fieldRequirements, structureRequirement, DEFAULT_SHEET_STRUCTURE,
   connectionDigest, connectionsBlock, backLinkLine, withRelationshipLine,
-  sectionsPresent, completionDirection, structureSystemLine,
+  sectionsPresent, completionDirection, structureSystemLine, mergeSections,
 } = core;
 
 describe('the sheet', () => {
@@ -404,6 +404,14 @@ describe('a structured field, checked (2026-10-06)', () => {
     expect(sectionsPresent('A tall man in tweed who stoops.', entry).present).toEqual([]);
     const plain = { labels: false, sections: [{ name: 'A', hint: '' }, { name: 'B', hint: '' }, { name: 'C', hint: '' }] };
     expect(sectionsPresent('one.\n\ntwo.', plain)).toEqual({ present: ['A', 'B'], missing: ['C'] });
+  });
+  it('takes a label of any length, so a question can be a section (2026-10-24)', () => {
+    const q = 'If there is one thing to know about the character, what would it be?';
+    const long = parseSheetStructure(`Tagline\n- ${q}: one line`).tagline;
+    expect(long.sections.map((x: { name: string }) => x.name)).toEqual([q]);
+    expect(sectionsPresent(`${q}: He never repeats himself.`, long)).toEqual({ present: [q], missing: [] });
+    expect(sectionsPresent('He never repeats himself.', long).missing).toEqual([q]);
+    expect(mergeSections(`${q}: Old.`, `${q}: New.`, long)).toBeNull();
   });
   it('asks for exactly what is missing, with its hints, and nothing else changed', () => {
     const d = completionDirection(entry, ['Height and build', 'Physicality']);

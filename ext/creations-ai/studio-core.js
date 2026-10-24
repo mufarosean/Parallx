@@ -312,8 +312,8 @@ export function structureSystemLine(structure) {
 
 const normLabel = (t) => String(t || '').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
-/** A section's label at the start of a line: "Face:", "**Face:**", "## Face -". */
-const SECTION_HEAD = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]{1,60}?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/;
+/** A section's label at the start of a line, any length: "Face:", "**Face:**", "## Face -", a whole question. */
+const SECTION_HEAD = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]+?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/;
 
 /** The structure section a paragraph starts with, by its label; '' when it names none of `entry`'s. */
 export function sectionOfParagraph(paragraph, entry) {
