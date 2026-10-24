@@ -614,9 +614,12 @@ code. Four chat tools, registered while Creations runs, and a link kind:
   their secrets. Read fresh at every call, so a Settings edit lands at once.
 - **`creations_save_characters`** takes up to eight characters per call. Each
   is read however the model shaped it (other key names, arrays, objects, a
-  JSON string, line breaks escaped twice), then checked: every field filled;
-  every structured section there; three dialogue exchanges; three to five
-  voice lines; the three drives lines; two or more "Name: ..." relationships;
+  JSON string, line breaks escaped twice; list markers or bold before a
+  drives or relationships label; dialogue tagged `{{user}}`, `{{char}}`,
+  `User` or the character's name; a voice's Tone, Rhythm and Register run
+  onto one line; "&" for "and" in a section label), then checked: every
+  field filled; every structured section there; three dialogue exchanges;
+  three voice lines; the three drives lines; two or more "Name: ..." relationships;
   no name already in the roster or twice in the call unless `allowSameName`.
   Connections resolve by name to the roster or to another character in the
   same call, so a household is one call; Relationships must name each
@@ -629,6 +632,11 @@ code. Four chat tools, registered while Creations runs, and a link kind:
   no draft. Nothing is ever overwritten. `addToTheirCard` on a connection to
   an existing character adds one line about the new one to that card's
   Relationships, only when the user wants it. Saves run one at a time.
+  A character refused three saves in a row comes back with "do not send it
+  again in this turn: tell the user", since the chat stops only a call
+  repeated word for word; its draft is kept and the count starts again
+  (2026-10-23, after saves that kept failing all turn on forms the reader
+  did not take).
 - **`creations_find_characters`** (added the same day, on the owner's ask)
   looks the roster up, read-only. `query`: words that must all appear
   somewhere in a character (name, tagline, any sheet field, the concept),

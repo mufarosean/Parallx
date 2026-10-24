@@ -16,7 +16,7 @@ import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDIO_KEYS, keepSheetInStep } from './studio-core.js';
-import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, fitBrief, fitFindResult, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
+import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, SAVE_TRIES_BEFORE_STOP, searchCharacters, fitBrief, fitFindResult, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
@@ -9169,19 +9169,20 @@ let _characterToolHost = null;
 const _characterDrafts = new Map();
 const CHARACTER_DRAFT_TTL_MS = 60 * 60 * 1000;
 const CHARACTER_DRAFT_MAX = 24;
+/** `{ raw, tries }`: the draft and the saves in a row it has failed; null when there is none. */
 function takeCharacterDraft(workspaceUri, name) {
   const k = `${workspaceUri}|${draftKey(name)}`;
   const d = _characterDrafts.get(k);
   if (!d) return null;
   if (Date.now() - d.at > CHARACTER_DRAFT_TTL_MS) { _characterDrafts.delete(k); return null; }
-  return d.raw;
+  return d;
 }
-function keepCharacterDraft(workspaceUri, raw) {
+function keepCharacterDraft(workspaceUri, raw, tries = 0) {
   const name = raw && raw.name;
   if (!name) return;
   const k = `${workspaceUri}|${draftKey(name)}`;
   _characterDrafts.delete(k);
-  _characterDrafts.set(k, { raw, at: Date.now() });
+  _characterDrafts.set(k, { raw, tries, at: Date.now() });
   while (_characterDrafts.size > CHARACTER_DRAFT_MAX) _characterDrafts.delete(_characterDrafts.keys().next().value);
 }
 function dropCharacterDraft(workspaceUri, name) { _characterDrafts.delete(`${workspaceUri}|${draftKey(name)}`); }
@@ -9264,13 +9265,21 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra, token = null) {
   ]);
   // A resend of a character refused earlier carries only what changes.
   const fromDraft = [];
+  const tries = [];
   const merged = list.map((raw, i) => {
     const name = raw && (raw.name || raw.Name || (raw.sheet && raw.sheet.name));
     const draft = name ? takeCharacterDraft(workspaceUri, name) : null;
-    const m = mergeDraft(draft, raw);
+    const m = mergeDraft(draft ? draft.raw : null, raw);
     fromDraft[i] = m.fromDraft;
+    tries[i] = draft ? draft.tries || 0 : 0;
     return m.raw;
   });
+  // One more failed save in a row; at the limit the model is told to stop, and the count starts again for the user's next try.
+  const failOnce = (p, problems) => {
+    const n = tries[p.index] + 1;
+    failed.push({ index: p.index, name: p.sheet.name, problems, tries: n });
+    keepCharacterDraft(workspaceUri, asDraft(merged[p.index]), n >= SAVE_TRIES_BEFORE_STOP ? 0 : n);
+  };
   const plans = planBatch(merged, roster, { structure });
   for (const p of plans) if (fromDraft[p.index] && fromDraft[p.index].length) p.notes.unshift(`kept from the earlier call: ${fromDraft[p.index].join(', ')}.`);
   const taken = new Set(roster.map((r) => r.fileName));
@@ -9287,21 +9296,16 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra, token = null) {
     return { content: `Could not make the characters folder: ${err?.message || String(err)}`, isError: true };
   }
   for (const p of plans) {
-    if (p.problems.length) {
-      failed.push({ index: p.index, name: p.sheet.name, problems: p.problems });
-      keepCharacterDraft(workspaceUri, asDraft(merged[p.index]));
-      continue;
-    }
+    if (p.problems.length) { failOnce(p, p.problems); continue; }
     // Stop pressed: what is saved stays saved; nothing more is written.
-    if (stoppedNow()) { stopped.push(p.sheet.name); keepCharacterDraft(workspaceUri, asDraft(merged[p.index])); continue; }
+    if (stoppedNow()) { stopped.push(p.sheet.name); keepCharacterDraft(workspaceUri, asDraft(merged[p.index]), tries[p.index]); continue; }
     try {
       const data = characterFileFor(p.sheet, { base: createCharacterJson({ initialMessages: '' }), concept: p.concept, connections: p.connections });
       await saveCharacter(fs, workspaceUri, p.fileName, data);
       dropCharacterDraft(workspaceUri, p.sheet.name);
       saved.push({ plan: p, name: data.name, fileName: p.fileName, link: characterLink(p.fileName), connectedTo: p.connections.map((c) => c.name), backLinked: [], notes: [...p.notes] });
     } catch (err) {
-      failed.push({ index: p.index, name: p.sheet.name, problems: [`it could not be written: ${err?.message || String(err)}. Send its name again.`] });
-      keepCharacterDraft(workspaceUri, asDraft(merged[p.index]));
+      failOnce(p, [`it could not be written: ${err?.message || String(err)}. Send its name again.`]);
     }
   }
   // A line about the new character on an existing card, only where asked.

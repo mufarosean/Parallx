@@ -34,6 +34,12 @@ export { mergeSections };
 export const MAX_CHARACTERS_PER_CALL = 8;
 /** Longest a field may be, in characters: anything longer is not a sheet. */
 export const MAX_FIELD_CHARS = 12000;
+/**
+ * Saves in a row one character may fail before the model is told to stop
+ * and ask the user: the chat stops only a call repeated word for word, so a
+ * check the model cannot meet would otherwise go on all turn.
+ */
+export const SAVE_TRIES_BEFORE_STOP = 3;
 /** Roster entries the brief lists by name; the rest are counted. */
 export const BRIEF_ROSTER_MAX = 60;
 
@@ -155,8 +161,8 @@ export function readIncomingCharacter(raw) {
     const text = fieldText(field, v);
     if (text && !sheet[field]) sheet[field] = text;
   }
-  for (const k of STUDIO_KEYS) sheet[k] = cleanFieldValue(k, sheet[k]);
-  sheet.name = sheet.name.replace(/\s+/g, ' ').trim();
+  sheet.name = cleanFieldValue('name', sheet.name).replace(/\s+/g, ' ').trim();
+  for (const k of STUDIO_KEYS) if (k !== 'name') sheet[k] = cleanFieldValue(k, sheet[k], sheet.name);
   out.concept = stripDashes(out.concept);
   for (const c of out.connections) { c.name = stripDashes(c.name).trim(); c.how = stripDashes(c.how).trim(); }
   return out;
@@ -853,9 +859,18 @@ export function fitFindResult(hits, opts, budget) {
 /**
  * The text the model gets back from a save. `saved`: `[{ name, fileName, link,
  * connectedTo: [names], backLinked: [names], notes }]`; `failed`: `[{ index,
- * name, problems }]`; `extra`: how many characters were over the per-call limit.
+ * name, problems, tries }]` (`tries`: saves in a row it has failed); `extra`:
+ * how many characters were over the per-call limit.
  */
 export function saveResultText({ saved = [], failed = [], extra = 0, total = 0, stopped = [] } = {}) {
+  const stuck = failed.filter((f) => f.tries >= SAVE_TRIES_BEFORE_STOP);
+  const retry = failed.filter((f) => !stuck.includes(f));
+  const listFailed = (list) => {
+    for (const f of list) {
+      lines.push(`- ${f.name || `Character ${f.index + 1} (no name)`}:`);
+      for (const p of f.problems) lines.push(`  - ${p}`);
+    }
+  };
   const lines = [];
   lines.push(`Saved ${saved.length} of ${total} character${total === 1 ? '' : 's'}.`);
   for (const s of saved) {
@@ -865,12 +880,13 @@ export function saveResultText({ saved = [], failed = [], extra = 0, total = 0, 
     lines.push(`- ${s.name}: ${s.link}${bits.length ? ` (${bits.join('; ')})` : ''}`);
     for (const n of s.notes || []) lines.push(`  note: ${n}`);
   }
-  if (failed.length) {
+  if (retry.length) {
     lines.push('', 'Not saved. Fix these and call creations_save_characters again with only them (the ones above are saved; do not send them again). For each, send its name and only the fields that change; the rest of what was sent is kept. To rename one, send the whole character under the new name:');
-    for (const f of failed) {
-      lines.push(`- ${f.name || `Character ${f.index + 1} (no name)`}:`);
-      for (const p of f.problems) lines.push(`  - ${p}`);
-    }
+    listFailed(retry);
+  }
+  if (stuck.length) {
+    lines.push('', `Not saved, ${SAVE_TRIES_BEFORE_STOP} times in a row. Do not send ${stuck.length === 1 ? 'it' : 'them'} again in this turn: tell the user which ${stuck.length === 1 ? 'character' : 'characters'} could not be saved and what is still wrong, and ask how to go on. What was sent is kept, so a later try needs only the fields that change:`);
+    listFailed(stuck);
   }
   if (stopped.length) lines.push('', `Stopped by the user before ${stopped.join(', ')} ${stopped.length === 1 ? 'was' : 'were'} saved. Do not save ${stopped.length === 1 ? 'it' : 'them'} again unless the user asks.`);
   if (extra > 0) lines.push('', `${extra} more character${extra === 1 ? ' was' : 's were'} sent than one call takes (${MAX_CHARACTERS_PER_CALL}); send ${extra === 1 ? 'it' : 'them'} in another call.`);

@@ -298,6 +298,31 @@ describe('finding characters', () => {
   });
 });
 
+describe('the forms a model writes in are read, not refused', () => {
+  it('takes list markers, bold, {{user}} and the character\'s name, one-line voices and "&" in a section label', () => {
+    const roster = [{ fileName: 'character-dana.json', rawData: { name: 'Dana Holm' } }];
+    const sheet = goodSheet('Mara Quill', {
+      drives: '- **Wants:** someone to stay.\n2. Fears: the dark.\n* In the way: her mouth.',
+      relationships: '**Dana Holm**: her daughter.\n- Old Tom: the boatman.',
+      exampleDialogue: '{{user}}: Late?\n**Mara:** Sit.\nUser: Letters?\n{{char}}: Tea?\n- [USER]: Weather.\n- [AI]: Wait.',
+      voice: 'Tone: warm and nosy. Rhythm: long run-on sentences. Register: plain island talk.',
+      appearance: goodSheet('x').appearance.replace('Height and build:', 'Height & build:'),
+      connections: [{ name: 'Dana Holm', how: 'her mother' }],
+    });
+    const [p] = planBatch([sheet], roster, { structure: STRUCTURE });
+    expect(p.problems).toEqual([]);
+    expect(p.sheet.drives).toBe('Wants: someone to stay.\nFears: the dark.\nIn the way: her mouth.');
+    expect(p.sheet.relationships).toBe('Dana Holm: her daughter.\nOld Tom: the boatman.');
+    expect(p.sheet.exampleDialogue).toBe('[USER]: Late?\n[AI]: Sit.\n[USER]: Letters?\n[AI]: Tea?\n[USER]: Weather.\n[AI]: Wait.');
+    expect(p.sheet.voice.split('\n')).toEqual(['Tone: warm and nosy.', 'Rhythm: long run-on sentences.', 'Register: plain island talk.']);
+  });
+  it('leaves lines that are not speakers or labels alone', () => {
+    const r = readIncomingCharacter(goodSheet('Mara Quill', { exampleDialogue: '[USER]: Hi.\nNote: she smiles.\n[AI]: Hello.', drives: '- Something: else.' }));
+    expect(r.sheet.exampleDialogue).toBe('[USER]: Hi.\nNote: she smiles.\n[AI]: Hello.');
+    expect(r.sheet.drives).toBe('- Something: else.');
+  });
+});
+
 describe('the result', () => {
   it('lists links for what was saved and the fixes for the rest', () => {
     const t = saveResultText({
@@ -467,6 +492,25 @@ describe('the tools, through the chat', () => {
     expect(third.isError).toBe(true);
     expect(third.content).toMatch(/name "Tom Hale" is already a character in the roster/);
     expect(w.fs.saved().size).toBe(2);
+  });
+
+  it('a character that fails three saves in a row tells the model to stop and ask the user, then starts counting again', async () => {
+    const bad = (n: number) => ({ name: 'Nell Hale', ...(n === 0 ? goodSheet('Nell Hale') : {}), exampleDialogue: `[USER]: Try ${n}.` });
+    for (let i = 0; i < 2; i++) {
+      const r = await w.call('creations_save_characters', { characters: [bad(i)] });
+      expect(r.content).toMatch(/Not saved\. Fix these and call creations_save_characters again/);
+      expect(r.content).not.toMatch(/times in a row/);
+    }
+    const third = await w.call('creations_save_characters', { characters: [bad(2)] });
+    expect(third.isError).toBe(true);
+    expect(third.content).toMatch(/Not saved, 3 times in a row\. Do not send it again in this turn: tell the user/);
+    expect(third.content).toMatch(/- Nell Hale:\n  - exampleDialogue has 0 exchanges/);
+    expect(third.content).not.toMatch(/Fix these and call/);
+    // The draft is kept; the user's next try starts a new count and needs only the fix.
+    const fourth = await w.call('creations_save_characters', { characters: [bad(3)] });
+    expect(fourth.content).toMatch(/Fix these and call/);
+    const fixed = await w.call('creations_save_characters', { characters: [{ name: 'Nell Hale', exampleDialogue: goodSheet('Nell Hale').exampleDialogue }] });
+    expect(fixed.content).toMatch(/^Saved 1 of 1 character\./);
   });
 
   it('a character connected to one that was refused is held too, and both go through once the fix arrives with just their names', async () => {

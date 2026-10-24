@@ -55,22 +55,60 @@ export function stripDashes(text) {
     .replace(/\s*[—–]+\s*/g, ', ');
 }
 
+/** A speaker tag starting a line, bracketed or not, bold or after a list marker: "[Ada]:", "**User:**", "- {{char}}:". */
+const SPEAKER_LINE = /^[ \t]*(?:(?:[-*•]|\d+[.)])[ \t]+)?(?:\*\*|__)?[ \t]*(\[[^\]\n]+\]|\{\{[^}\n]+\}\}|[^\s:*_[\]{}][^:\n*_[\]{}]{0,40}?)[ \t]*(?:\*\*|__)?[ \t]*:(?:[ \t]*(?:\*\*|__)(?=\s|$))?[ \t]*/;
+
+/** The tag a line's speaker gets, or '' when the words before the colon are no speaker. */
+function speakerTag(raw, name) {
+  const bracketed = /^[[{]/.test(raw);
+  const t = raw.replace(/^[[{]+|[\]}]+$/g, '').trim().toLowerCase();
+  if (/^(user|you|player)$/.test(t)) return '[USER]:';
+  if (bracketed || /^(char|ai|character|assistant)$/.test(t)) return '[AI]:';
+  const n = String(name || '').trim().toLowerCase();
+  return n && (t === n || t === n.split(/\s+/)[0]) ? '[AI]:' : '';
+}
+
 /**
- * Models tag dialogue with the character's own name; the chat wants [USER]:
- * and [AI]:. A model that ran the exchanges together on one line gets its
- * line breaks back: a speaker tag always starts a line.
+ * Models tag dialogue with the character's own name, {{user}} and {{char}},
+ * in bold or as a list; the chat wants [USER]: and [AI]:. A model that ran
+ * the exchanges together on one line gets its line breaks back: a speaker
+ * tag always starts a line. `name` is the character's, when known.
  */
-export function normalizeDialogue(text) {
+export function normalizeDialogue(text, name = '') {
   if (!text) return text;
   return String(text)
+    .split('\n')
+    .map((line) => {
+      const m = SPEAKER_LINE.exec(line);
+      const tag = m ? speakerTag(m[1], name) : '';
+      if (!tag) return line;
+      const rest = line.slice(m[0].length);
+      return rest ? `${tag} ${rest}` : tag;
+    })
+    .join('\n')
     .replace(/(\S)[ \t]+(?=\[[^\]\n]+\]\s*:)/g, '$1\n')
     .replace(/^\s*\[([^\]\n]+)\]\s*:/gm, (m, tag) =>
       tag.trim().toUpperCase() === 'USER' ? '[USER]:' : '[AI]:');
 }
 
-/** The labelled lines the sheet asks for, put back on their own lines when the model ran them together. */
+/** A list marker or bold around a line's label, gone: "- **Wants:** rest" → "Wants: rest". `keep(label)` says which labels. */
+function unmarkLabels(v, keep) {
+  return v.split('\n').map((line) => {
+    if (!/^[ \t]*(?:(?:[-*•]|\d+[.)])[ \t]|\*\*|__)/.test(line)) return line;
+    const m = /^[ \t]*(?:(?:[-*•]|\d+[.)])[ \t]+)?(?:\*\*|__)?([^:*_\n]{1,60}?)(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*(.*)$/.exec(line);
+    return m && keep(m[1].trim()) ? `${m[1].trim()}: ${m[2]}` : line;
+  }).join('\n');
+}
+
+/** The labelled lines the sheet asks for, put back on their own lines when the model ran them together or marked them as a list. */
 function restoreLines(key, v) {
+  if (key === 'drives') v = unmarkLabels(v, (l) => /^(wants?|fears?|in the way)$/i.test(l));
+  if (key === 'relationships') v = unmarkLabels(v, () => true);
   const lines = v.split('\n').filter((l) => l.trim()).length;
+  if (key === 'voice' && lines < 3) {
+    // "Tone: low. Rhythm: short. Register: plain." on one line.
+    return v.replace(/([.;!?])[ \t]+(?=(?:Tone|Rhythm|Register)\s*:)/g, '$1\n');
+  }
   if (key === 'drives' && lines < 3) {
     return v.replace(/(\S)[ \t]+(?=(?:Wants|Fears|In the way)\s*:)/gi, '$1\n');
   }
@@ -82,18 +120,20 @@ function restoreLines(key, v) {
   return v;
 }
 
-export function cleanFieldValue(key, value) {
+/** One field's text, cleaned. `name` is the character's, so dialogue tagged with it reads as theirs. */
+export function cleanFieldValue(key, value, name = '') {
   let v = typeof value === 'string' ? value : (value == null ? '' : JSON.stringify(value));
   v = stripDashes(v).trim();
-  if (key === 'exampleDialogue') v = normalizeDialogue(v);
-  if (key === 'drives' || key === 'relationships') v = restoreLines(key, v);
+  if (key === 'exampleDialogue') v = normalizeDialogue(v, name);
+  if (key === 'drives' || key === 'relationships' || key === 'voice') v = restoreLines(key, v);
   return v;
 }
 
 export function cleanSheet(parsed) {
   const out = emptySheet();
   if (!parsed || typeof parsed !== 'object') return out;
-  for (const k of STUDIO_KEYS) if (parsed[k] != null) out[k] = cleanFieldValue(k, parsed[k]);
+  const name = typeof parsed.name === 'string' ? parsed.name : '';
+  for (const k of STUDIO_KEYS) if (parsed[k] != null) out[k] = cleanFieldValue(k, parsed[k], name);
   return out;
 }
 
@@ -270,7 +310,7 @@ export function structureSystemLine(structure) {
   return `Some fields have a required structure, given under Field requirements: ${parts.join('; ')}. Write EVERY section named, each as its own paragraph, in order. A field with fewer paragraphs than its sections is incomplete and wrong; never merge two sections into one paragraph.`;
 }
 
-const normLabel = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const normLabel = (t) => String(t || '').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 /** A section's label at the start of a line: "Face:", "**Face:**", "## Face -". */
 const SECTION_HEAD = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]{1,60}?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/;
