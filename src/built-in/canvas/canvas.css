@@ -4822,87 +4822,58 @@
 /* ───────────────────────────────────────────────────────────────────
    Version history panel
    ─────────────────────────────────────────────────────────────────── */
-.canvas-vh-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--px-canvas-z-dialog);
-  animation: canvas-template-fade-in 0.12s ease;
-}
 .canvas-vh-modal {
-  width: min(820px, 94vw);
-  height: min(620px, 86vh);
-  background: var(--vscode-editor-background, #1e1e1e);
-  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
-  border-radius: var(--parallx-radius-lg, 8px);
-  box-shadow: var(--px-shadow-lg);
+  width: min(1100px, 94vw);
+  height: min(780px, 88vh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  font-family: var(--parallx-fontFamily-ui);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  color: var(--px-text);
 }
-.canvas-vh-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
-}
-.canvas-vh-title { font-size: var(--px-text-md); font-weight: 600; color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent)); }
-.canvas-vh-close {
-  background: none; border: none; color: var(--px-text-muted);
-  font-size: var(--px-text-xl); line-height: 1; cursor: pointer; padding: 2px 8px;
-  border-radius: var(--parallx-radius-sm);
-}
-.canvas-vh-close:hover { background: color-mix(in srgb, var(--px-text) 8%, transparent); color: var(--vscode-foreground, #fff); }
+.canvas-vh-header { display: flex; align-items: center; justify-content: space-between; padding: var(--px-space-3) var(--px-space-3) var(--px-space-3) var(--px-space-5); border-bottom: 1px solid var(--px-divider); }
+.canvas-vh-title { font-size: var(--px-text-md); font-weight: 600; }
+.canvas-vh-close { font-size: 18px; line-height: 1; }
 .canvas-vh-body { display: flex; flex: 1; min-height: 0; }
-.canvas-vh-list {
-  width: 260px; flex-shrink: 0; overflow-y: auto;
-  border-right: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent); padding: 8px;
-  display: flex; flex-direction: column; gap: 2px;
-}
-.canvas-vh-empty { padding: 16px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.canvas-vh-list { width: 240px; flex-shrink: 0; overflow-y: auto; padding: 0 var(--px-space-2) var(--px-space-3); border-right: 1px solid var(--px-divider); }
+.canvas-vh-day { padding: var(--px-space-3) var(--px-space-2) var(--px-space-1); }
+.canvas-vh-empty { padding: var(--px-space-4); font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .canvas-vh-item {
-  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
-  width: 100%; text-align: left; padding: 8px 10px; border: none;
-  background: none; cursor: pointer; border-radius: 6px;
-  color: var(--vscode-foreground, #ddd); font: inherit;
+  display: flex; flex-direction: column; gap: 2px; width: 100%; padding: var(--px-space-2); border: none; border-radius: var(--px-radius-md);
+  background: transparent; color: var(--px-text); text-align: left; font: inherit; cursor: pointer;
 }
-.canvas-vh-item:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
-.canvas-vh-item--active { background: color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 18%, transparent); }
-.canvas-vh-item-when { display: flex; align-items: center; gap: 8px; font-size: var(--px-text-base); }
+.canvas-vh-item:hover { background: var(--px-surface-hover); }
+.canvas-vh-item:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.canvas-vh-item--active, .canvas-vh-item--active:hover { background: color-mix(in srgb, var(--px-accent) 16%, transparent); }
+.canvas-vh-item-when { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-base); font-variant-numeric: tabular-nums; }
 .canvas-vh-item-sub { font-size: var(--px-text-xs); color: var(--px-text-muted); }
-.canvas-vh-badge {
-  font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  color: var(--vscode-foreground, #ddd);
-}
-.canvas-vh-badge[data-source="ai"] { background: transparent; color: var(--px-accent-text);
-  border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
-}
-.canvas-vh-badge[data-source="restore"] { background: color-mix(in srgb, var(--px-warning, #e3b341) 35%, transparent); color: var(--px-text); }
-.canvas-vh-preview { flex: 1; min-width: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-.canvas-vh-preview-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
-.canvas-vh-preview-meta { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
-.canvas-vh-preview-text {
-  flex: 1; white-space: pre-wrap; word-break: break-word; font-size: var(--px-text-base); line-height: 1.55;
-  color: var(--vscode-foreground, #ddd);
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent);
-  border-radius: 6px; padding: 12px 14px;
-}
-.canvas-vh-preview-actions { display: flex; align-items: center; gap: 12px; }
-.canvas-vh-restore {
-  padding: 6px 14px; font: inherit; font-size: var(--px-text-base); cursor: pointer;
-  color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
-  border: none; border-radius: 5px;
-}
-.canvas-vh-restore:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
-.canvas-vh-restore:disabled { opacity: 0.55; cursor: default; }
-.canvas-vh-status { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
-.canvas-vh-status.is-error { color: var(--px-danger, #f85149); }
+.canvas-vh-badge { padding: 0 6px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); color: var(--px-text-secondary); font-size: var(--px-text-2xs); line-height: 16px; }
+.canvas-vh-badge[data-source="ai"] { background: color-mix(in srgb, var(--px-accent) 18%, transparent); color: var(--px-accent-text); }
+.canvas-vh-badge[data-source="restore"] { background: color-mix(in srgb, var(--px-warning) 22%, transparent); color: var(--px-text); }
+.canvas-vh-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.canvas-vh-meta { display: flex; align-items: center; gap: var(--px-space-4); padding: var(--px-space-3) var(--px-space-5); border-bottom: 1px solid var(--px-divider); }
+.canvas-vh-meta[hidden], .canvas-vh-footer[hidden] { display: none; }
+.canvas-vh-meta-text { flex: 1; min-width: 0; }
+.canvas-vh-when { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.canvas-vh-summary { margin-top: 2px; font-size: var(--px-text-base); }
+.canvas-vh-toggle { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); white-space: nowrap; }
+/* The page as it was, in the page's own type, full width of the pane. */
+.canvas-vh-page { flex: 1; min-height: 0; overflow-y: auto; background: var(--vscode-editor-background); }
+.canvas-vh-page .canvas-vh-doc { padding: var(--px-space-6) var(--px-space-8) var(--px-space-8); max-width: 760px; }
+.canvas-vh-doc [data-vh-change] { position: relative; border-radius: var(--px-radius-sm); }
+.canvas-vh-doc [data-vh-change]::before { content: ''; position: absolute; left: -14px; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; }
+.canvas-vh-doc [data-vh-change="added"] { background: color-mix(in srgb, var(--px-success) 10%, transparent); }
+.canvas-vh-doc [data-vh-change="added"]::before { background: var(--px-success); }
+.canvas-vh-doc [data-vh-change="changed"] { background: color-mix(in srgb, var(--px-warning) 10%, transparent); }
+.canvas-vh-doc [data-vh-change="changed"]::before { background: var(--px-warning); }
+.canvas-vh-doc [data-vh-change="removed"] { opacity: 0.6; text-decoration: line-through; background: color-mix(in srgb, var(--px-danger) 8%, transparent); }
+.canvas-vh-doc [data-vh-change="removed"]::before { background: var(--px-danger); }
+.canvas-vh-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-5); border-top: 1px solid var(--px-divider); }
+.canvas-vh-status { flex: 1; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.canvas-vh-status.is-error { color: var(--px-danger); }
 
 /* ── AI-handoff shimmer (M89 S3 — presence) ────────────────────────────────
    Marks blocks the assistant just wrote into. One soft accent sweep, then

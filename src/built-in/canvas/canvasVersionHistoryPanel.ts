@@ -1,17 +1,28 @@
-// canvasVersionHistoryPanel.ts — page version-history browser (list + preview +
-// restore). Opened from the page ⋯ menu. Standalone modal (like
-// canvasShortcutsOverlay): backdrop + modal, Esc / click-outside to dismiss.
+// canvasVersionHistoryPanel.ts — a page's saved versions: when each was
+// saved and by whom, what it changed, and the page as it was, drawn by the
+// page's own renderer with the changes marked. Restore puts it back.
 //
 // Checkpoints are captured automatically by CanvasDataService on an interval;
 // this panel reads them (listPageRevisions / getPageRevision) and restores them
 // (restorePageRevision — non-destructive: it snapshots the current state first).
+// Each version is compared with the one saved before it (canvasVersionDiff).
 
-import { createSurface, declareControl } from '../../ui/kit.js';
+import { Editor } from '@tiptap/core';
+import { common, createLowlight } from 'lowlight';
+import { createSectionLabel, createToggle, declareControl } from '../../ui/kit.js';
 import { $ } from '../../ui/dom.js';
-import { formatLocalDateTime } from '../../services/localTime.js';
+import { Overlay } from '../../ui/overlay.js';
+import { appDateString, appTimeString, addAppDays, startOfAppDay } from '../../platform/localTime.js';
+import { parseStoredTime } from '../../platform/storedTime.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { decodeCanvasContent } from './contentSchema.js';
+import { createEditorExtensions } from './config/tiptapExtensions.js';
+import { resolveFontStack } from './config/fontRegistry.js';
+import { wrapUnknownContent } from './unknownContent.js';
+import { diffBlocks, summarize, summaryChip, summarySentence, type DocNode } from './canvasVersionDiff.js';
 import type { ICanvasDataService, IPageRevision, RevisionSource } from './canvasTypes.js';
+
+const lowlight = createLowlight(common);
 
 interface VersionHistoryDeps {
   readonly dataService: ICanvasDataService;
@@ -24,165 +35,208 @@ const SOURCE_LABEL: Record<RevisionSource, string> = {
   restore: 'Restore',
 };
 
-/** Open the version-history modal for a page. Resolves when dismissed. */
+/** The heading a version files under: Today, Yesterday, or its date. */
+function dayHeading(ms: number, now = Date.now()): string {
+  const today = startOfAppDay(now);
+  if (ms >= today) return 'Today';
+  if (ms >= addAppDays(today, -1)) return 'Yesterday';
+  return appDateString(ms, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+/** Open the version-history dialog for a page. Resolves when it closes. */
 export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void> {
   const { dataService, pageId } = deps;
   return new Promise<void>((resolve) => {
-    let resolved = false;
+    const overlay = new Overlay(document.body, { contentClass: 'canvas-vh-modal', label: 'Version History', centered: true });
+    const modal = overlay.contentElement;
 
-    const backdrop = $('div.canvas-vh-backdrop');
-    const modal = $('div.canvas-vh-modal');
-    createSurface(modal, { id: 'canvas.versionHistory', owner: 'canvas', label: 'Version history' });
-    backdrop.appendChild(modal);
-
-    // Header
     const header = $('div.canvas-vh-header');
     const title = $('div.canvas-vh-title');
-    title.textContent = 'Version history';
-    header.appendChild(title);
-    const closeBtn = $('button.canvas-vh-close') as HTMLButtonElement;
+    title.textContent = 'Version History';
+    const closeBtn = $('button.px-btn.px-btn--ghost.px-btn--icon.canvas-vh-close') as HTMLButtonElement;
     closeBtn.type = 'button';
+    closeBtn.title = 'Close';
     closeBtn.setAttribute('aria-label', 'Close');
-    declareControl(closeBtn, { id: 'canvas.versionHistory.close', label: 'Close', kind: 'iconButton' });
     closeBtn.textContent = '×';
-    closeBtn.addEventListener('click', () => finish());
-    header.appendChild(closeBtn);
-    modal.appendChild(header);
+    declareControl(closeBtn, { id: 'canvas.versionHistory.close', label: 'Close', kind: 'iconButton' });
+    closeBtn.addEventListener('click', () => overlay.hide());
+    header.append(title, closeBtn);
 
-    // Body: list (left) + preview (right)
-    const body = $('div.canvas-vh-body');
     const listEl = $('div.canvas-vh-list');
-    const previewWrap = $('div.canvas-vh-preview');
-    const previewHint = $('div.canvas-vh-preview-hint');
-    previewHint.textContent = 'Select a version to preview it.';
-    previewWrap.appendChild(previewHint);
-    body.appendChild(listEl);
-    body.appendChild(previewWrap);
-    modal.appendChild(body);
+    listEl.setAttribute('role', 'listbox');
+    listEl.setAttribute('aria-label', 'Saved versions');
+    const preview = $('div.canvas-vh-preview');
+    const body = $('div.canvas-vh-body');
+    body.append(listEl, preview);
+    modal.append(header, body);
 
-    let selectedId: string | null = null;
+    // The preview's fixed parts: what is shown, what it changed, the page, Restore.
+    const meta = $('div.canvas-vh-meta');
+    const when = $('div.canvas-vh-when');
+    const sentence = $('div.canvas-vh-summary');
+    const showChanges = createToggle(null, {
+      id: 'canvas.versionHistory.showChanges', label: 'Show Changes', checked: true,
+      onChange: () => { if (selected) void render(selected); },
+    });
+    const toggleRow = $('label.canvas-vh-toggle');
+    toggleRow.append(showChanges.element, document.createTextNode('Show changes'));
+    const metaText = $('div.canvas-vh-meta-text');
+    metaText.append(when, sentence);
+    meta.append(metaText, toggleRow);
+    const pageHost = $('div.canvas-vh-page');
+    const footer = $('div.canvas-vh-footer');
+    const status = $('span.canvas-vh-status');
+    const restoreBtn = $('button.px-btn.px-btn--primary.canvas-vh-restore') as HTMLButtonElement;
+    restoreBtn.type = 'button';
+    restoreBtn.textContent = 'Restore This Version';
+    declareControl(restoreBtn, { id: 'canvas.versionHistory.restore', label: 'Restore This Version', hint: 'The page as it is now is saved as a version first.' });
+    footer.append(status, restoreBtn);
+    preview.append(meta, pageHost, footer);
 
-    const renderPreview = async (rev: IPageRevision): Promise<void> => {
-      selectedId = rev.id;
-      for (const row of listEl.querySelectorAll('.canvas-vh-item')) {
-        row.classList.toggle('canvas-vh-item--active', (row as HTMLElement).dataset.id === rev.id);
+    // Read-only page renderer: the same blocks the page uses, nothing saved.
+    const editor = new Editor({
+      element: pageHost,
+      extensions: createEditorExtensions(lowlight, { dataService, pageId }),
+      content: '',
+      editable: false,
+      editorProps: { attributes: { class: 'canvas-tiptap-editor canvas-vh-doc' } },
+    });
+    void dataService.getPage(pageId).then((p) => {
+      if (p?.fontFamily) pageHost.style.setProperty('--canvas-page-font', resolveFontStack(p.fontFamily));
+    }).catch(() => undefined);
+
+    let revisions: IPageRevision[] = [];
+    let selected: IPageRevision | null = null;
+    const docs = new Map<string, DocNode | null>();
+    const rowFor = new Map<string, HTMLElement>();
+
+    const docOf = async (rev: IPageRevision | undefined): Promise<DocNode | undefined> => {
+      if (!rev) return undefined;
+      if (!docs.has(rev.id)) {
+        const full = await dataService.getPageRevision(rev.id);
+        docs.set(rev.id, full ? (decodeCanvasContent(full.content).doc as DocNode) : null);
       }
-      previewWrap.innerHTML = '';
-      const loading = $('div.canvas-vh-preview-hint');
-      loading.textContent = 'Loading…';
-      previewWrap.appendChild(loading);
+      return docs.get(rev.id) ?? undefined;
+    };
+    /** The version saved just before this one (the list is newest first). */
+    const previousOf = (rev: IPageRevision): IPageRevision | undefined => revisions[revisions.indexOf(rev) + 1];
 
-      const full = await dataService.getPageRevision(rev.id);
-      if (selectedId !== rev.id) return; // a newer selection won
-      previewWrap.innerHTML = '';
-
-      const meta = $('div.canvas-vh-preview-meta');
-      meta.textContent = `${SOURCE_LABEL[rev.source] ?? rev.source} · ${formatTimestamp(rev.createdAt)}`;
-      previewWrap.appendChild(meta);
-
-      const text = $('div.canvas-vh-preview-text');
-      text.textContent = full ? (extractPlainText(full.content) || '(empty page)') : '(could not load this version)';
-      previewWrap.appendChild(text);
-
-      const actions = $('div.canvas-vh-preview-actions');
-      const restoreBtn = $('button.canvas-vh-restore') as HTMLButtonElement;
-      restoreBtn.type = 'button';
-      restoreBtn.textContent = 'Restore This Version';
-      declareControl(restoreBtn, { id: 'canvas.versionHistory.restore', label: 'Restore This Version' });
-      const status = $('span.canvas-vh-status');
-      restoreBtn.addEventListener('click', async () => {
+    const render = async (rev: IPageRevision): Promise<void> => {
+      selected = rev;
+      for (const [id, row] of rowFor) {
+        const on = id === rev.id;
+        row.classList.toggle('canvas-vh-item--active', on);
+        row.setAttribute('aria-selected', String(on));
+        row.tabIndex = on ? 0 : -1;
+      }
+      const [after, before] = await Promise.all([docOf(rev), docOf(previousOf(rev))]);
+      if (selected !== rev) return; // a newer selection won
+      const at = parseStoredTime(rev.createdAt);
+      when.textContent = `${appDateString(at, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}, ${appTimeString(at, { hour: 'numeric', minute: '2-digit' })} · ${SOURCE_LABEL[rev.source] ?? rev.source}`;
+      if (!after) {
+        sentence.textContent = 'This version could not be read.';
+        editor.commands.setContent('');
         restoreBtn.disabled = true;
-        status.textContent = 'Restoring…';
-        try {
-          await dataService.restorePageRevision(pageId, rev.id);
-          status.textContent = 'Restored.';
-          setTimeout(() => finish(), 600);
-        } catch (err) {
-          restoreBtn.disabled = false;
-          status.classList.add('is-error');
-          status.textContent = `Restore failed: ${err instanceof Error ? err.message : String(err)}`;
-        }
+        return;
+      }
+      restoreBtn.disabled = false;
+      status.textContent = '';
+      const first = !previousOf(rev);
+      sentence.textContent = first ? 'The oldest version kept for this page.' : summarySentence(summarize(before, after));
+      // With changes shown, blocks this version removed are drawn where they stood.
+      const rows = showChanges.checked && !first ? diffBlocks(before, after) : (after.content ?? []).map((node) => ({ node, change: 'same' as const }));
+      editor.commands.setContent(wrapUnknownContent({ type: 'doc', content: rows.map((r) => r.node) }, editor.schema));
+      editor.state.doc.forEach((_node, offset, index) => {
+        const dom = editor.view.nodeDOM(offset);
+        if (dom instanceof HTMLElement && rows[index] && rows[index].change !== 'same') dom.dataset.vhChange = rows[index].change;
       });
-      actions.appendChild(restoreBtn);
-      actions.appendChild(status);
-      previewWrap.appendChild(actions);
+      pageHost.scrollTop = 0;
+      pageHost.querySelector('[data-vh-change]')?.scrollIntoView({ block: 'center' });
+    };
+
+    restoreBtn.addEventListener('click', async () => {
+      if (!selected) return;
+      restoreBtn.disabled = true;
+      status.classList.remove('is-error');
+      status.textContent = 'Restoring…';
+      try {
+        await dataService.restorePageRevision(pageId, selected.id);
+        status.textContent = 'Restored. The page as it was is saved as a version too.';
+        setTimeout(() => overlay.hide(), 900);
+      } catch (err) {
+        restoreBtn.disabled = false;
+        status.classList.add('is-error');
+        status.textContent = `Restore failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+
+    // Up and Down move through the versions, as in any list.
+    listEl.addEventListener('keydown', (e) => {
+      if (!selected || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+      e.preventDefault();
+      const next = revisions[revisions.indexOf(selected) + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) { void render(next); rowFor.get(next.id)?.focus(); }
+    });
+
+    const fillChips = async (): Promise<void> => {
+      for (const rev of revisions) {
+        const chip = rowFor.get(rev.id)?.querySelector('.canvas-vh-item-sub');
+        if (!chip) continue;
+        const prev = previousOf(rev);
+        const [after, before] = await Promise.all([docOf(rev), docOf(prev)]);
+        chip.textContent = !prev ? 'Oldest kept' : after ? summaryChip(summarize(before, after)) : 'Could not be read';
+        if (!overlay.visible) return;
+      }
     };
 
     const renderList = async (): Promise<void> => {
-      const revisions = await dataService.listPageRevisions(pageId);
-      listEl.innerHTML = '';
+      revisions = await dataService.listPageRevisions(pageId);
+      listEl.replaceChildren();
       if (revisions.length === 0) {
         const empty = $('div.canvas-vh-empty');
-        empty.textContent = 'No versions yet. Checkpoints are saved automatically as you edit.';
+        empty.textContent = 'No versions yet. A version is saved every few minutes while you edit.';
         listEl.appendChild(empty);
+        meta.hidden = true;
+        footer.hidden = true;
         return;
       }
+      let day = '';
       for (const rev of revisions) {
+        const at = parseStoredTime(rev.createdAt);
+        const heading = dayHeading(at);
+        if (heading !== day) {
+          day = heading;
+          createSectionLabel(listEl, heading).classList.add('canvas-vh-day');
+        }
         const item = $('button.canvas-vh-item') as HTMLButtonElement;
         item.type = 'button';
-        item.dataset.id = rev.id;
-        const when = $('div.canvas-vh-item-when');
-        when.textContent = formatRelativeTime(rev.createdAt, 'long');
+        item.setAttribute('role', 'option');
+        item.title = formatRelativeTime(rev.createdAt, 'long');
+        const top = $('div.canvas-vh-item-when');
+        top.textContent = appTimeString(at, { hour: 'numeric', minute: '2-digit' });
         const badge = $('span.canvas-vh-badge');
         badge.dataset.source = rev.source;
         badge.textContent = SOURCE_LABEL[rev.source] ?? rev.source;
-        when.appendChild(badge);
+        top.appendChild(badge);
         const sub = $('div.canvas-vh-item-sub');
-        sub.textContent = formatTimestamp(rev.createdAt);
-        item.appendChild(when);
-        item.appendChild(sub);
-        item.addEventListener('click', () => void renderPreview(rev));
+        sub.textContent = '…';
+        item.append(top, sub);
+        item.addEventListener('click', () => void render(rev));
+        rowFor.set(rev.id, item);
         listEl.appendChild(item);
       }
-      // Auto-select the most recent for an immediate preview.
-      void renderPreview(revisions[0]);
+      await render(revisions[0]);
+      rowFor.get(revisions[0].id)?.focus();
+      void fillChips();
     };
 
-    const finish = (): void => {
-      if (resolved) return;
-      resolved = true;
-      backdrop.remove();
-      document.removeEventListener('keydown', onKey, true);
+    overlay.onDidClose(() => {
+      editor.destroy();
+      showChanges.dispose();
+      overlay.dispose();
       resolve();
-    };
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) finish(); });
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(); }
-    };
-    document.addEventListener('keydown', onKey, true);
-
-    document.body.appendChild(backdrop);
-    closeBtn.focus();
+    });
+    overlay.show();
     void renderList();
   });
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-/** Plain-text preview: one line per top-level block. */
-function extractPlainText(rawContent: string): string {
-  try {
-    const decoded = decodeCanvasContent(rawContent);
-    const blocks = Array.isArray(decoded.doc?.content) ? (decoded.doc.content as unknown[]) : [];
-    const lineOf = (n: unknown): string => {
-      if (!n || typeof n !== 'object') return '';
-      const node = n as { type?: string; text?: string; content?: unknown[] };
-      if (node.type === 'text' && typeof node.text === 'string') return node.text;
-      if (Array.isArray(node.content)) return node.content.map(lineOf).join('');
-      return '';
-    };
-    return blocks.map(lineOf).filter((l) => l.trim().length > 0).join('\n').trim();
-  } catch {
-    return '';
-  }
-}
-
-/** Coarse "x ago". */
-/** Absolute local timestamp ('YYYY-MM-DD HH:mm' from the SQLite UTC string). */
-function formatTimestamp(iso: string): string {
-  // SQLite datetime('now') yields 'YYYY-MM-DD HH:MM:SS' in UTC — normalise to a
-  // parseable ISO before formatting locally.
-  const ms = Date.parse(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
-  if (!Number.isFinite(ms)) return iso;
-  return formatLocalDateTime(ms, { bare: true });
 }

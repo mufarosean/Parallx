@@ -47,7 +47,7 @@
   "src/built-in/canvas/canvasSidebarToast.ts": 6,
   "src/built-in/canvas/canvasTemplatePicker.ts": 22,
   "src/built-in/canvas/canvasTrashPanel.ts": 13,
-  "src/built-in/canvas/canvasVersionHistoryPanel.ts": 27,
+  "src/built-in/canvas/canvasVersionHistoryPanel.ts": 23,
   "src/built-in/canvas/config/fontRegistry.ts": 1,
   "src/built-in/canvas/database/databaseEditorPane.ts": 109,
   "src/built-in/canvas/database/rowPropertiesSection.ts": 22,

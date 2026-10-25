@@ -127,6 +127,7 @@ const GATE_RULES: Record<string, string[]> = {
   // silently exports title-only markdown — the M93 flashcards bug).
   'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks', 'canvasSidebarToast', 'canvasSidebarKeyboardMove', 'canvasTrashPanel'],
   'canvasTrashPanel.ts':                   ['config/blockRegistry', 'contentSchema', 'canvasTypes'],  // the sidebar's Trash, split out of canvasSidebar
+  'canvasVersionDiff.ts':                  [],  // what a saved version changed: pure, no canvas imports
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
