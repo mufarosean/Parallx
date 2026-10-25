@@ -20,6 +20,7 @@
   "src/built-in/chat/widgets/chatEmptyStateKeys.ts": 1,
   "src/built-in/dashboard/widgets/timerWidget.ts": 1,
   "src/built-in/diagnostics/main.ts": 1,
+  "src/built-in/explorer/fileProperties.ts": 2,
   "src/built-in/indexing-log/main.ts": 2,
   "src/built-in/output/main.ts": 2,
   "src/built-in/planner/plannerSidebar.ts": 5,

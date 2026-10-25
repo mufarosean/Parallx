@@ -17,6 +17,7 @@ import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDIO_KEYS, keepSheetInStep } from './studio-core.js';
 import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, SAVE_TRIES_BEFORE_STOP, searchCharacters, fitBrief, fitFindResult, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
+import { takeCharacterDraft, keepCharacterDraft, dropCharacterDraft, clearCharacterDrafts } from './character-drafts.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
@@ -9161,31 +9162,6 @@ function buildForgeSpec(state) {
 let _characterSaveChain = Promise.resolve();
 /** The host the tools were registered with (activate's), read at each call so a workspace switch is followed. */
 let _characterToolHost = null;
-/**
- * Characters a save could not take, by name, so the fix is the name and the
- * fields that change (the chat replays a long tool argument cut short).
- * Per workspace, at most 24, gone after an hour or once saved.
- */
-const _characterDrafts = new Map();
-const CHARACTER_DRAFT_TTL_MS = 60 * 60 * 1000;
-const CHARACTER_DRAFT_MAX = 24;
-/** `{ raw, tries }`: the draft and the saves in a row it has failed; null when there is none. */
-function takeCharacterDraft(workspaceUri, name) {
-  const k = `${workspaceUri}|${draftKey(name)}`;
-  const d = _characterDrafts.get(k);
-  if (!d) return null;
-  if (Date.now() - d.at > CHARACTER_DRAFT_TTL_MS) { _characterDrafts.delete(k); return null; }
-  return d;
-}
-function keepCharacterDraft(workspaceUri, raw, tries = 0) {
-  const name = raw && raw.name;
-  if (!name) return;
-  const k = `${workspaceUri}|${draftKey(name)}`;
-  _characterDrafts.delete(k);
-  _characterDrafts.set(k, { raw, tries, at: Date.now() });
-  while (_characterDrafts.size > CHARACTER_DRAFT_MAX) _characterDrafts.delete(_characterDrafts.keys().next().value);
-}
-function dropCharacterDraft(workspaceUri, name) { _characterDrafts.delete(`${workspaceUri}|${draftKey(name)}`); }
 
 function characterToolWorkspace() {
   const host = _characterToolHost || _parallx;
@@ -9580,7 +9556,7 @@ function characterLinkContract(parallx) {
 function registerChatCharacterTools(parallx, context) {
   _characterToolHost = parallx;
   // Turned off: what the tools held goes with them.
-  context.subscriptions.push({ dispose() { _characterDrafts.clear(); if (_characterToolHost === parallx) _characterToolHost = null; } });
+  context.subscriptions.push({ dispose() { clearCharacterDrafts(); if (_characterToolHost === parallx) _characterToolHost = null; } });
   if (parallx.chat && typeof parallx.chat.registerTool === 'function') {
     try { context.subscriptions.push(parallx.chat.registerTool('creations_character_brief', CHARACTER_BRIEF_TOOL)); } catch (err) { console.warn('[TextGenerator] character brief tool not registered:', err); }
     try { context.subscriptions.push(parallx.chat.registerTool('creations_save_characters', CHARACTER_SAVE_TOOL)); } catch (err) { console.warn('[TextGenerator] character save tool not registered:', err); }
@@ -11172,7 +11148,7 @@ export const __testables = {
   LOREBOOK_TEMPLATE,
   regenDirectionFor,
   registerChatCharacterTools,
-  clearCharacterDrafts: () => _characterDrafts.clear(),
+  clearCharacterDrafts,
   CHARACTER_BRIEF_TOOL,
   CHARACTER_SAVE_TOOL,
   CHARACTER_FIND_TOOL,
