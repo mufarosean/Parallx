@@ -751,6 +751,8 @@
  * Font stack: Inter ➜ system sans-serif (matches BlockNote/Notion)
  * ───────────────────────────────────────────────────────────────────────────── */
 
+.canvas-editor-wrapper, .canvas-top-ribbon { --canvas-ribbon-hairline: color-mix(in srgb, var(--px-text) 6%, transparent); }
+
 .canvas-editor-wrapper {
   position: relative; /* containing block for .block-marquee overlay */
   --canvas-content-max-width: 760px;
@@ -766,6 +768,13 @@
   display: flex;
   flex-direction: column;
   background: var(--vscode-editor-background);
+}
+
+/* The ribbon sits in this scroller, so its line stopped where the scrollbar's
+   kept room begins. The scroller draws it across the gutter too (its own
+   background does not scroll). 25px: the 26px ribbon less its 1px line. */
+.canvas-editor-wrapper:has(> .canvas-top-ribbon) {
+  background: linear-gradient(var(--canvas-ribbon-hairline), var(--canvas-ribbon-hairline)) 0 25px / 100% 1px no-repeat border-box, var(--vscode-editor-background);
 }
 
 .canvas-tiptap-editor {
@@ -2709,7 +2718,7 @@
      and the snap direction flips when the window moves to a monitor with a
      different devicePixelRatio — the "breadcrumbs not centered on my other
      screen" bug. Even box + integer offsets = DPI-stable centering. */
-  box-shadow: inset 0 -1px 0 0 color-mix(in srgb, var(--px-text) 6%, transparent);
+  box-shadow: inset 0 -1px 0 0 var(--canvas-ribbon-hairline);
   /* One uniform line box for ALL ribbon text (labels, › separators, the
      "Edited … ago" stamp): 12px type in a 16px box centers at exactly 8px
      and never depends on line-height:normal, whose ascent/descent rounding
@@ -4313,20 +4322,6 @@
 .canvas-trash-panel-empty-btn:hover { background: color-mix(in srgb, var(--px-danger) 12%, transparent); }
 .canvas-trash-panel-list::-webkit-scrollbar { width: 5px; }
 .canvas-trash-panel-list::-webkit-scrollbar-track { background: transparent; }
-
-/* ── Context menu with icon + label pattern ── */
-
-.canvas-context-menu {
-  position: fixed;
-  z-index: calc(var(--px-canvas-z-menu) + 10);
-  min-width: 200px;
-  background: var(--vscode-menu-background);
-  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
-  border-radius: var(--parallx-radius-lg);
-  box-shadow: var(--px-shadow-lg);
-  padding: 4px;
-  animation: slashMenuFadeIn 0.1s ease-out;
-}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    Math / KaTeX — Inline & Block Equations
