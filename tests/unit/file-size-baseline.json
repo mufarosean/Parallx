@@ -51,7 +51,7 @@
   "src/built-in/chat/widgets/chatWidget.ts": 1556,
   "src/built-in/dashboard/dashboard.css": 2462,
   "src/built-in/dashboard/dashboardEditorProvider.ts": 1416,
-  "src/built-in/explorer/main.ts": 1884,
+  "src/built-in/explorer/main.ts": 1813,
   "src/built-in/planner/planner.css": 2057,
   "src/built-in/planner/plannerDataService.ts": 1401,
   "src/built-in/tool-gallery/main.ts": 985,

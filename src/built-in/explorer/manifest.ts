@@ -43,10 +43,16 @@ export const EXPLORER_MANIFEST: IToolManifest = {
       { id: 'explorer.copyPath', title: 'Explorer: Copy Path' },
       { id: 'explorer.copyRelativePath', title: 'Explorer: Copy Relative Path' },
       { id: 'explorer.revealInFileExplorer', title: 'Explorer: Reveal in File Explorer' },
+      { id: 'explorer.properties', title: 'Explorer: Properties…' },
     ],
     keybindings: [
       { command: 'explorer.rename', key: 'F2', when: "focusedView == 'view.explorer'" },
       { command: 'explorer.delete', key: 'Delete', when: "focusedView == 'view.explorer'" },
+      // The app's Copy, Cut and Paste hold these keys everywhere; in the file
+      // tree they mean the files (the tree's own handler never saw them).
+      { command: 'explorer.copy', key: 'Ctrl+C', when: "focusedView == 'view.explorer'" },
+      { command: 'explorer.cut', key: 'Ctrl+X', when: "focusedView == 'view.explorer'" },
+      { command: 'explorer.paste', key: 'Ctrl+V', when: "focusedView == 'view.explorer'" },
     ],
     viewContainers: [
       { id: 'explorer-container', title: 'Explorer', icon: 'folder', location: 'sidebar' as const },

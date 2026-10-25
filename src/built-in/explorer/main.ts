@@ -17,7 +17,10 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
 import type { WidgetTypeRegistration } from '../../api/bridges/dashboardBridge.js';
-import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
+import { ContextMenu } from '../../ui/contextMenu.js';
+import { ExplorerSelection } from './explorerSelection.js';
+import { explorerMenuItems } from './explorerContextMenu.js';
+import { showFileProperties } from './fileProperties.js';
 import { $ } from '../../ui/dom.js';
 import { glideHighlight } from '../../ui/glide.js';
 import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
@@ -125,6 +128,8 @@ const REVEAL_LABEL = (() => {
 let _context: ToolContext;
 let _showHidden = true;
 let _selectedNode: TreeNode | null = null;
+/** Every selected row (Ctrl, Shift, Ctrl+A); _selectedNode is the one with focus. */
+const _sel = new ExplorerSelection<TreeNode>();
 let _rowSeq = 0; // row ids, for the tree's aria-activedescendant (focus stays on the tree)
 let _roots: TreeNode[] = [];
 let _treeContainer: HTMLElement | null = null;
@@ -135,9 +140,7 @@ let _inlineEditActive = false;
 // ─── Clipboard State (Copy / Cut / Paste) ────────────────────────────────────
 
 interface ClipboardEntry {
-  uri: string;
-  name: string;
-  type: number;
+  items: { uri: string; name: string; type: number }[];
   mode: 'copy' | 'cut';
 }
 
@@ -324,12 +327,12 @@ function _updateSectionTitle(): void {
 
 function createExplorerView(container: HTMLElement): IDisposable {
   container.classList.add('explorer-tree');
-  container.setAttribute('role', 'tree');
+  container.setAttribute('role', 'tree'); container.setAttribute('aria-multiselectable', 'true');
   container.tabIndex = 0;
 
   _treeContainer = container;
   // The tree as one scene entry: its selection is the selected node's uri.
-  const treeEntry = createTree(container, { id: 'explorer.tree', label: 'Files', rows: () => Array.from(container.querySelectorAll<HTMLElement>('.tree-node')), selected: () => (_selectedNode ? [_selectedNode.uri] : []) });
+  const treeEntry = createTree(container, { id: 'explorer.tree', label: 'Files', rows: () => Array.from(container.querySelectorAll<HTMLElement>('.tree-node')), selected: () => selection().map((n) => n.uri) });
 
   // Keyboard navigation
   container.addEventListener('keydown', handleTreeKeydown);
@@ -507,6 +510,8 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   const el = $('div');
   el.className = 'tree-node';
   if (_selectedNode === node) el.classList.add('tree-node--selected');
+  if (_sel.has(node) && _sel.size > 1) el.classList.add('tree-node--in-selection');
+  el.setAttribute('aria-selected', String(_sel.has(node)));
   el.setAttribute('role', 'treeitem'); el.id = `explorer-row-${++_rowSeq}`;
   el.setAttribute('data-uri', node.uri);
   // Computed layout dimension — allowed inline per project rules
@@ -546,6 +551,8 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   // Click handlers
   el.addEventListener('click', (e) => {
     e.stopPropagation();
+    // Ctrl (Cmd) adds or takes away a row, Shift selects a run; neither opens anything.
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { selectNode(node, e.shiftKey ? 'range' : 'toggle'); return; }
     selectNode(node);
     if (node.type === FILE_TYPE_DIRECTORY) {
       toggleExpand(node);
@@ -566,7 +573,7 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   setupDragAndDrop(el, node);
 
   // Visual indicator for cut items
-  if (_clipboard?.mode === 'cut' && _clipboard.uri === node.uri) {
+  if (_clipboard?.mode === 'cut' && _clipboard.items.some((i) => i.uri === node.uri)) {
     el.classList.add('tree-node--cut');
   }
 
@@ -636,10 +643,24 @@ function createErrorElement(node: TreeNode, depth: number): HTMLElement {
 
 // ─── Tree Operations ─────────────────────────────────────────────────────────
 
-function selectNode(node: TreeNode): void {
+/** The selected rows in the order shown (the focused one alone when nothing else is). */
+function selection(): TreeNode[] {
+  const items = _sel.items(getAllVisibleNodes());
+  return items.length ? items : (_selectedNode ? [_selectedNode] : []);
+}
+
+function selectNode(node: TreeNode, how: 'single' | 'toggle' | 'range' | 'all' = 'single'): void {
   const prevEl = _selectedNode?.element ?? null;
   if (_selectedNode?.element) {
     _selectedNode.element.classList.remove('tree-node--selected');
+  }
+  if (how === 'single') _sel.single(node);
+  else if (how === 'toggle') _sel.toggle(node);
+  else if (how === 'range') _sel.range(node, getAllVisibleNodes());
+  else _sel.all(getAllVisibleNodes());
+  for (const n of getAllVisibleNodes()) {
+    n.element?.classList.toggle('tree-node--in-selection', _sel.has(n) && _sel.size > 1);
+    n.element?.setAttribute('aria-selected', String(_sel.has(n)));
   }
   _selectedNode = node;
   if (node.element) {
@@ -888,11 +909,11 @@ function handleTreeKeydown(e: KeyboardEvent): void {
   switch (e.key) {
     case 'ArrowDown':
       e.preventDefault();
-      if (idx < allNodes.length - 1) selectNode(allNodes[idx + 1]);
+      if (idx < allNodes.length - 1) selectNode(allNodes[idx + 1], e.shiftKey ? 'range' : 'single');
       break;
     case 'ArrowUp':
       e.preventDefault();
-      if (idx > 0) selectNode(allNodes[idx - 1]);
+      if (idx > 0) selectNode(allNodes[idx - 1], e.shiftKey ? 'range' : 'single');
       break;
     case 'ArrowRight':
       e.preventDefault();
@@ -910,6 +931,7 @@ function handleTreeKeydown(e: KeyboardEvent): void {
       break;
     case 'Enter':
       e.preventDefault();
+      if (e.altKey) { void _api.commands.executeCommand('explorer.properties'); break; }
       if (_selectedNode) {
         if (_selectedNode.type === FILE_TYPE_DIRECTORY) {
           toggleExpand(_selectedNode);
@@ -926,26 +948,16 @@ function handleTreeKeydown(e: KeyboardEvent): void {
       break;
     case 'Delete':
       e.preventDefault();
-      if (_selectedNode && !isRootNode(_selectedNode)) {
-        confirmDelete(_selectedNode);
-      }
+      void confirmDelete(selection().filter((n) => !isRootNode(n)));
       break;
   }
 
-  // Ctrl/Cmd shortcuts (copy, cut, paste)
+  // Ctrl/Cmd+A selects every row (Copy, Cut and Paste are the manifest's keybindings)
   if (e.ctrlKey || e.metaKey) {
     switch (e.key.toLowerCase()) {
-      case 'c':
+      case 'a':
         e.preventDefault();
-        if (_selectedNode) setCopyClipboard(_selectedNode, 'copy');
-        break;
-      case 'x':
-        e.preventDefault();
-        if (_selectedNode && !isRootNode(_selectedNode)) setCopyClipboard(_selectedNode, 'cut');
-        break;
-      case 'v':
-        e.preventDefault();
-        if (_selectedNode) pasteFromClipboard(getTargetFolderForPaste(_selectedNode));
+        if (_selectedNode ?? allNodes[0]) selectNode(_selectedNode ?? allNodes[0], 'all');
         break;
     }
   }
@@ -972,26 +984,12 @@ function isRootNode(node: TreeNode): boolean {
   return _roots.some(r => r.uri === node.uri);
 }
 
-function setCopyClipboard(node: TreeNode, mode: 'copy' | 'cut'): void {
-  // Clear previous cut indicator
-  if (_clipboard?.mode === 'cut') {
-    const prevNode = findNodeByUri(_clipboard.uri);
-    if (prevNode?.element) {
-      prevNode.element.classList.remove('tree-node--cut');
-    }
-  }
-
-  _clipboard = {
-    uri: node.uri,
-    name: node.name,
-    type: node.type,
-    mode,
-  };
-
-  // Visual: dim cut items
-  if (mode === 'cut' && node.element) {
-    node.element.classList.add('tree-node--cut');
-  }
+function setCopyClipboard(nodes: TreeNode[], mode: 'copy' | 'cut'): void {
+  if (nodes.length === 0) return;
+  // Clear the previous cut's dimming, then dim this cut's rows.
+  for (const i of _clipboard?.mode === 'cut' ? _clipboard.items : []) findNodeByUri(i.uri)?.element?.classList.remove('tree-node--cut');
+  _clipboard = { items: nodes.map((n) => ({ uri: n.uri, name: n.name, type: n.type })), mode };
+  if (mode === 'cut') for (const n of nodes) n.element?.classList.add('tree-node--cut');
 }
 
 /**
@@ -1008,60 +1006,41 @@ async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> 
 
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-
-  const sourcePath = uriToFsPath(_clipboard.uri);
-  let destName = _clipboard.name;
+  const { items, mode } = _clipboard;
   const destFolder = uriToFsPath(targetFolder.uri);
 
-  // Prevent pasting into self (for directories)
-  if (_clipboard.type === FILE_TYPE_DIRECTORY) {
-    const targetPath = uriToFsPath(targetFolder.uri);
-    const sourcePrefixed = sourcePath.replace(/\\/g, '/');
-    const targetPrefixed = targetPath.replace(/\\/g, '/');
-    if (targetPrefixed === sourcePrefixed || targetPrefixed.startsWith(sourcePrefixed + '/')) {
-      _api.window.showErrorMessage('Cannot paste a folder into itself.');
-      return;
+  for (const item of items) {
+    const sourcePath = uriToFsPath(item.uri);
+    // Prevent pasting a folder into itself
+    if (item.type === FILE_TYPE_DIRECTORY) {
+      const source = sourcePath.replace(/\\/g, '/');
+      const target = destFolder.replace(/\\/g, '/');
+      if (target === source || target.startsWith(source + '/')) {
+        _api.window.showErrorMessage(`Cannot paste "${item.name}" into itself.`);
+        continue;
+      }
+    }
+    // A copy takes a free name (" - Copy", "(2)"…); a cut keeps its own.
+    const destName = mode === 'copy' ? await getUniqueDestName(destFolder, item.name, electronFs) : item.name;
+    const destPath = destFolder + '/' + destName;
+    try {
+      const result = mode === 'cut' ? await electronFs.rename(sourcePath, destPath) : await electronFs.copy(sourcePath, destPath);
+      if (result?.error) throw new Error(result.error.message || (mode === 'cut' ? 'Move failed' : 'Copy failed'));
+    } catch (err) {
+      _api.window.showErrorMessage(`Failed to paste "${item.name}": ${err}`);
     }
   }
+  if (mode === 'cut') _clipboard = null; // a cut pastes once
 
-  // Handle name collisions: append " - Copy" or "(2)", "(3)" etc.
-  if (_clipboard.mode === 'copy') {
-    destName = await getUniqueDestName(destFolder, destName, electronFs);
+  // Show what arrived; the file watcher refreshes where cut items came from.
+  targetFolder.loaded = false;
+  targetFolder.children = [];
+  if (!targetFolder.expanded) {
+    targetFolder.expanded = true;
+    saveExpandState();
   }
-
-  const destPath = destFolder + '/' + destName;
-
-  try {
-    if (_clipboard.mode === 'cut') {
-      // Move = rename
-      const result = await electronFs.rename(sourcePath, destPath);
-      if (result?.error) throw new Error(result.error.message || 'Move failed');
-      _clipboard = null; // Clear clipboard after cut-paste
-    } else {
-      // Copy
-      const result = await electronFs.copy(sourcePath, destPath);
-      if (result?.error) throw new Error(result.error.message || 'Copy failed');
-    }
-
-    // Reload the target folder to show the new file
-    targetFolder.loaded = false;
-    targetFolder.children = [];
-    if (!targetFolder.expanded) {
-      targetFolder.expanded = true;
-      saveExpandState();
-    }
-    await loadChildren(targetFolder);
-
-    // If cut, also reload the source's parent
-    if (_clipboard === null) { // was cut
-      // A cut-paste clears clipboard. The source parent may need refresh
-      // which the file watcher will handle.
-    }
-
-    scheduleRender();
-  } catch (err) {
-    _api.window.showErrorMessage(`Failed to paste: ${err}`);
-  }
+  await loadChildren(targetFolder);
+  scheduleRender();
 }
 
 // ─── Drag & Drop ─────────────────────────────────────────────────────────────
@@ -1207,7 +1186,7 @@ function handleContextMenu(e: MouseEvent): void {
   if (target) {
     const uri = target.getAttribute('data-uri');
     node = uri ? findNodeByUri(uri) : null;
-    if (node) selectNode(node);
+    if (node && !_sel.has(node)) selectNode(node);
   }
 
   showContextMenu(e.clientX, e.clientY, node);
@@ -1230,59 +1209,14 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   _activeContextMenu?.dismiss();
   _activeContextMenu = null;
 
-  // Item ids ARE the explorer's registered command ids (Phase B menu
-  // contract) — the menu used to be a parallel door that reran the same
-  // logic inline against a DIFFERENT target (its cursor node vs the
-  // commands' selected node). Now there is one door: every choice executes
-  // the command with the cursor node as its explicit target.
-  const items: IContextMenuItem[] = [];
-
-  if (node) {
-    if (node.type === FILE_TYPE_FILE) {
-      items.push({ id: 'explorer.open', label: 'Open', group: '1_open' });
-      items.push({ id: 'explorer.openToSide', label: 'Open to the Side', group: '1_open' });
-      items.push({ id: 'explorer.addToChat', label: 'Add to Chat', group: '1_open' });
-      items.push({ id: 'explorer.newFile', label: 'New File…', group: '2_create' });
-      items.push({ id: 'explorer.newFolder', label: 'New Folder…', group: '2_create' });
-      items.push({ id: 'explorer.cut', label: 'Cut', keybinding: 'Ctrl+X', group: '3_clipboard' });
-      items.push({ id: 'explorer.copy', label: 'Copy', keybinding: 'Ctrl+C', group: '3_clipboard' });
-      if (_clipboard) {
-        items.push({ id: 'explorer.paste', label: 'Paste', keybinding: 'Ctrl+V', group: '3_clipboard' });
-      }
-      items.push({ id: 'explorer.rename', label: 'Rename', keybinding: 'F2', group: '4_edit' });
-      items.push({ id: 'explorer.delete', label: 'Delete', keybinding: 'Delete', group: '4_edit' });
-      items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '5_copy' });
-      items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '5_copy' });
-      items.push({ id: 'explorer.revealInFileExplorer', label: REVEAL_LABEL, group: '6_reveal' });
-    } else {
-      // Folder context — hide rename/delete for workspace root folders
-      const isRootFolder = _roots.some(r => r.uri === node.uri);
-      items.push({ id: 'explorer.newFile', label: 'New File…', group: '1_create' });
-      items.push({ id: 'explorer.newFolder', label: 'New Folder…', group: '1_create' });
-      items.push({ id: 'explorer.addToChat', label: 'Add to Chat', group: '1_create' });
-      if (!isRootFolder) {
-        items.push({ id: 'explorer.cut', label: 'Cut', keybinding: 'Ctrl+X', group: '2_clipboard' });
-      }
-      items.push({ id: 'explorer.copy', label: 'Copy', keybinding: 'Ctrl+C', group: '2_clipboard' });
-      if (_clipboard) {
-        items.push({ id: 'explorer.paste', label: 'Paste', keybinding: 'Ctrl+V', group: '2_clipboard' });
-      }
-      if (!isRootFolder) {
-        items.push({ id: 'explorer.rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
-        items.push({ id: 'explorer.delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
-      }
-      items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '4_copy' });
-      items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
-      items.push({ id: 'explorer.revealInFileExplorer', label: REVEAL_LABEL, group: '5_reveal' });
-      if (node.expanded) {
-        items.push({ id: 'explorer.collapse', label: 'Collapse All', group: '6_collapse' });
-      }
-    }
-  } else {
-    items.push({ id: 'explorer.newFile', label: 'New File…', group: '1_create' });
-    items.push({ id: 'explorer.newFolder', label: 'New Folder…', group: '1_create' });
-    items.push({ id: 'explorer.refresh', label: 'Refresh', group: '2_refresh' });
-  }
+  // Item ids ARE the explorer's registered command ids: the menu runs the
+  // command with its row as the explicit target, and a command aimed at a
+  // row of a selection acts on the whole selection (commandTargets).
+  const count = node && _sel.has(node) ? selection().length : 1;
+  const items = explorerMenuItems({
+    kind: node ? (node.type === FILE_TYPE_FILE ? 'file' : 'folder') : null,
+    count, isRoot: !!node && isRootNode(node), expanded: !!node?.expanded, canPaste: !!_clipboard, revealLabel: REVEAL_LABEL,
+  });
 
   const menu = ContextMenu.show({
     items,
@@ -1646,38 +1580,27 @@ function isValidFilename(name: string): boolean {
   return true;
 }
 
-async function confirmDelete(node: TreeNode): Promise<void> {
-  const result = await _api.window.showWarningMessage(
-    `Are you sure you want to delete "${node.name}"?`,
-    { title: 'Move to Trash' },
-    { title: 'Cancel' },
-  );
-  if (result?.title === 'Move to Trash') {
+async function confirmDelete(nodes: TreeNode[]): Promise<void> {
+  if (nodes.length === 0) return;
+  const what = nodes.length === 1 ? `"${nodes[0].name}"` : `these ${nodes.length} items`;
+  const result = await _api.window.showWarningMessage(`Are you sure you want to delete ${what}?`, { title: 'Move to Trash' }, { title: 'Cancel' });
+  if (result?.title !== 'Move to Trash') return;
+  for (const node of nodes) {
     try {
       await fsDelete(node.uri);
-
       // Close any open editors for the deleted file (or files under a deleted folder)
-      const deletedPath = uriToFsPath(node.uri);
-      const normalised = deletedPath.replace(/\\/g, '/').toLowerCase();
+      const normalised = uriToFsPath(node.uri).replace(/\\/g, '/').toLowerCase();
       for (const editor of _api.editors.openEditors) {
         const editorPath = editor.description.replace(/\\/g, '/').toLowerCase();
-        const isMatch = node.type === FILE_TYPE_DIRECTORY
-          ? editorPath === normalised || editorPath.startsWith(normalised + '/')
-          : editorPath === normalised;
-        if (isMatch) {
-          _api.editors.closeEditor(editor.id).catch(() => {});
-        }
+        const isMatch = editorPath === normalised || (node.type === FILE_TYPE_DIRECTORY && editorPath.startsWith(normalised + '/'));
+        if (isMatch) _api.editors.closeEditor(editor.id).catch(() => {});
       }
-
-      // Remove from parent
-      if (node.parent) {
-        node.parent.children = node.parent.children.filter(c => c !== node);
-      }
-      renderTree();
+      if (node.parent) node.parent.children = node.parent.children.filter(c => c !== node);
     } catch (err) {
       _api.window.showErrorMessage(`Failed to delete "${node.name}": ${err}`);
     }
   }
+  renderTree();
 }
 
 // ─── Commands Registration ───────────────────────────────────────────────────
@@ -1697,6 +1620,13 @@ function commandTarget(arg: unknown): TreeNode | null {
     return arg as TreeNode;
   }
   return _selectedNode;
+}
+
+/** A command's rows: the whole selection when its target is part of one, else the target alone. */
+function commandTargets(arg: unknown): TreeNode[] {
+  const node = commandTarget(arg);
+  if (!node) return [];
+  return _sel.has(node) && _sel.size > 1 ? selection() : [node];
 }
 
 function registerCommands(api: ParallxApi, context: ToolContext): void {
@@ -1727,8 +1657,7 @@ function registerCommands(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('explorer.delete', (...args: unknown[]) => {
-      const node = commandTarget(args[0]);
-      if (node && !isRootNode(node)) confirmDelete(node);
+      void confirmDelete(commandTargets(args[0]).filter((n) => !isRootNode(n)));
     }),
   );
 
@@ -1765,22 +1694,19 @@ function registerCommands(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('explorer.addToChat', (...args: unknown[]) => {
-      const node = commandTarget(args[0]);
-      if (node) addToChat(node);
+      for (const node of commandTargets(args[0])) addToChat(node);
     }),
   );
 
   context.subscriptions.push(
     api.commands.registerCommand('explorer.cut', (...args: unknown[]) => {
-      const node = commandTarget(args[0]);
-      if (node && !isRootNode(node)) setCopyClipboard(node, 'cut');
+      setCopyClipboard(commandTargets(args[0]).filter((n) => !isRootNode(n)), 'cut');
     }),
   );
 
   context.subscriptions.push(
     api.commands.registerCommand('explorer.copy', (...args: unknown[]) => {
-      const node = commandTarget(args[0]);
-      if (node) setCopyClipboard(node, 'copy');
+      setCopyClipboard(commandTargets(args[0]), 'copy');
     }),
   );
 
@@ -1793,19 +1719,22 @@ function registerCommands(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('explorer.copyPath', (...args: unknown[]) => {
-      const node = commandTarget(args[0]);
-      if (node) copyToClipboard(uriToPath(node.uri));
+      const nodes = commandTargets(args[0]);
+      if (nodes.length) copyToClipboard(nodes.map((n) => uriToPath(n.uri)).join('\n'));
     }),
   );
 
   context.subscriptions.push(
     api.commands.registerCommand('explorer.copyRelativePath', (...args: unknown[]) => {
-      const node = commandTarget(args[0]);
-      if (node) copyToClipboard(getRelativePath(node));
+      const nodes = commandTargets(args[0]);
+      if (nodes.length) copyToClipboard(nodes.map(getRelativePath).join('\n'));
     }),
   );
 
   context.subscriptions.push(
+    api.commands.registerCommand('explorer.properties', (...args: unknown[]) => {
+      showFileProperties(commandTargets(args[0]).map((n) => ({ name: n.name, path: uriToPath(n.uri), isFolder: n.type === FILE_TYPE_DIRECTORY })), copyToClipboard);
+    }),
     api.commands.registerCommand('explorer.revealInFileExplorer', (...args: unknown[]) => {
       const node = commandTarget(args[0]);
       if (node) revealInOsExplorer(node);

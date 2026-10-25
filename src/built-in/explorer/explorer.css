@@ -113,6 +113,16 @@
 .tree-node--selected:hover {
   background-color: var(--px-surface-selected);
 }
+/* The other rows of a selection of several (Ctrl, Shift, Ctrl+A). */
+.tree-node--in-selection, .tree-node--in-selection:hover { background-color: var(--px-surface-selected); color: var(--px-text); }
+
+/* Properties… */
+.explorer-properties { width: min(440px, 92vw); padding: var(--px-space-5); background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); box-shadow: var(--px-shadow-lg), var(--px-edge-light); color: var(--px-text); }
+.explorer-properties-title { font-size: var(--px-text-md); font-weight: 600; margin-bottom: var(--px-space-4); overflow-wrap: anywhere; }
+.explorer-properties-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--px-space-2) var(--px-space-4); margin: 0; font-size: var(--px-text-sm); }
+.explorer-properties-grid dt { color: var(--px-text-muted); }
+.explorer-properties-grid dd { margin: 0; overflow-wrap: anywhere; }
+.explorer-properties-footer { display: flex; justify-content: flex-end; gap: var(--px-space-2); margin-top: var(--px-space-5); }
 
 /* Flash highlight — temporary cue when revealing via breadcrumbs / Reveal in Explorer */
 @keyframes tree-node-flash {

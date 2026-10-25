@@ -209,6 +209,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `explorer.open` | Explorer: Open | explorer |  |  |  |
 | `explorer.openToSide` | Explorer: Open to the Side | explorer |  |  |  |
 | `explorer.paste` | Explorer: Paste | explorer |  |  |  |
+| `explorer.properties` | Explorer: Properties… | explorer |  |  |  |
 | `explorer.refresh` | Explorer: Refresh | explorer |  |  |  |
 | `explorer.rename` | Explorer: Rename… | explorer |  |  |  |
 | `explorer.revealInExplorer` | Explorer: Reveal in Explorer | explorer |  |  |  |
