@@ -1541,6 +1541,21 @@ export namespace canvas {
     readable?(config: Readonly<Record<string, unknown>>): string;
   }
   export function registerBlock(registration: BlockRegistration): Disposable;
+  interface CoverItem { readonly id: string; readonly title: string }
+  /** A tab in the page cover picker, there while the extension runs. */
+  interface CoverSource {
+    /** `"<extensionId>.<name>"`. */
+    readonly id: string;
+    /** The tab's name. */
+    readonly label: string;
+    /** Pictures matching the words typed ('' for all), best first; the picker shows the first 48. */
+    search(query: string): Promise<readonly CoverItem[]>;
+    /** A small image URL for the picker's tile. */
+    thumbnail?(itemId: string): Promise<string | undefined>;
+    /** The URL the page keeps as its cover: a `parallx-media://file/<encoded path>` link to a local file, an https URL, or a data URL. */
+    coverUrl(itemId: string): Promise<string | undefined>;
+  }
+  export function registerCoverSource(source: CoverSource): Disposable;
 }
 
 export namespace tools {

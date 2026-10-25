@@ -1,5 +1,5 @@
 /**
- * parallx-media:// — local video and audio streamed with range requests
+ * parallx-media:// — local video, audio and images streamed with range requests
  * (electron/mediaStreamBridge.cjs). The handler is driven here with real
  * Request objects against a temp file, through a stand-in for Electron's
  * protocol module.
@@ -59,6 +59,8 @@ describe('handler', () => {
     file = join(dir, 'session.mp4');
     writeFileSync(file, bytes);
     writeFileSync(join(dir, 'notes.txt'), 'secret');
+    writeFileSync(join(dir, 'cover.JPG'), bytes);
+    writeFileSync(join(dir, 'drawing.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
     const protocol = { handle: (_scheme: string, fn: (req: Request) => Promise<Response>) => { handler = fn; } };
     M.setupMediaStreamBridge(protocol, (p: string) => p.startsWith(dir));
   });
@@ -87,7 +89,13 @@ describe('handler', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-length')).toBe('4096');
   });
+  it('serves a photo, so a page cover can link it where it lives', async () => {
+    const res = await get(M.mediaUrlFor(join(dir, 'cover.JPG')));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+  });
   it('refuses what it must not serve', async () => {
+    expect((await get(M.mediaUrlFor(join(dir, 'drawing.svg')))).status).toBe(400);
     expect((await get(M.mediaUrlFor(file), { Range: 'bytes=5000-' })).status).toBe(416);
     expect((await get(M.mediaUrlFor(join(dir, 'notes.txt')))).status).toBe(400);
     expect((await get(M.mediaUrlFor(join(tmpdir(), 'elsewhere.mp4')))).status).toBe(403);

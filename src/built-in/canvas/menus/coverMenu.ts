@@ -9,6 +9,9 @@
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { $, layoutPopup } from '../../../ui/dom.js';
+import { InputBox } from '../../../ui/inputBox.js';
+import { createEmptyState, createSegmented } from '../../../ui/kit.js';
+import { getCoverSources, type CanvasCoverSource } from '../../../api/bridges/canvasBlocksBridge.js';
 import { COVER_GALLERY } from './canvasMenuRegistry.js';
 import type { ICanvasMenu, CanvasMenuRegistry } from './canvasMenuRegistry.js';
 
@@ -87,7 +90,8 @@ export class CoverMenuController implements ICanvasMenu {
   // ── Public API ──────────────────────────────────────────────────────────
 
   /**
-   * Show the cover picker popup (Gallery / Upload / Link tabs).
+   * Show the cover picker popup (Gallery / Upload / Link, then a tab for
+   * each running tool that offers covers).
    *
    * Hides any previously-open picker and notifies the registry
    * so all other menus are dismissed.
@@ -99,19 +103,6 @@ export class CoverMenuController implements ICanvasMenu {
     const dismiss = () => this.hide();
 
     const picker = $('div.canvas-cover-picker');
-
-    // ── Tab bar ──
-    const tabs = $('div.canvas-cover-picker-tabs');
-    const tabGallery = $('button.canvas-cover-picker-tab.canvas-cover-picker-tab--active');
-    tabGallery.textContent = 'Gallery';
-    const tabUpload = $('button.canvas-cover-picker-tab');
-    tabUpload.textContent = 'Upload';
-    const tabLink = $('button.canvas-cover-picker-tab');
-    tabLink.textContent = 'Link';
-    tabs.appendChild(tabGallery);
-    tabs.appendChild(tabUpload);
-    tabs.appendChild(tabLink);
-    picker.appendChild(tabs);
 
     // ── Content area ──
     const content = $('div.canvas-cover-picker-content');
@@ -210,18 +201,67 @@ export class CoverMenuController implements ICanvasMenu {
       content.appendChild(row);
     };
 
-    renderGallery();
+    // ── A tool's pictures (api.canvas.registerCoverSource) ──
+    const renderSource = (source: CanvasCoverSource) => {
+      content.innerHTML = '';
+      const search = new InputBox(content, { placeholder: `Search ${source.label}…`, ariaLabel: `Search ${source.label}` });
+      search.inputElement.classList.add('canvas-cover-source-search');
+      const grid = $('div.canvas-cover-source-grid');
+      grid.setAttribute('role', 'group');
+      grid.setAttribute('aria-label', `${source.label} pictures`);
+      content.appendChild(grid);
+      let seq = 0;
+      const run = async (query: string) => {
+        const mine = ++seq;
+        const items = await source.search(query).catch(() => []);
+        if (mine !== seq || !this._visible) return;
+        grid.replaceChildren();
+        if (items.length === 0) {
+          createEmptyState(grid, { headline: query ? 'Nothing matches' : `${source.label} has no pictures yet` });
+          return;
+        }
+        for (const item of items.slice(0, 48)) {
+          const tile = $('button.canvas-cover-source-tile') as HTMLButtonElement;
+          tile.type = 'button';
+          tile.title = item.title;
+          tile.setAttribute('aria-label', item.title);
+          const img = $('img') as HTMLImageElement;
+          img.alt = '';
+          img.loading = 'lazy';
+          tile.appendChild(img);
+          void source.thumbnail?.(item.id).then((url) => { if (url) img.src = url; }).catch(() => undefined);
+          tile.addEventListener('click', async () => {
+            const url = await source.coverUrl(item.id).catch(() => undefined);
+            if (!url) return;
+            options.onSelectCover(url);
+            dismiss();
+          });
+          grid.appendChild(tile);
+        }
+      };
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      search.onDidChange((v) => { clearTimeout(timer); timer = setTimeout(() => void run(v.trim()), 220); });
+      void run('');
+      setTimeout(() => search.focus(), 0);
+    };
 
-    // ── Tab switching ──
-    const allTabs = [tabGallery, tabUpload, tabLink];
-    const renderers = [renderGallery, renderUpload, renderLink];
-    allTabs.forEach((tab, i) => {
-      tab.addEventListener('click', () => {
-        allTabs.forEach(t => t.classList.remove('canvas-cover-picker-tab--active'));
-        tab.classList.add('canvas-cover-picker-tab--active');
-        renderers[i]();
-      });
+    // ── Tabs: the canvas's own three, then one per tool that offers covers ──
+    const sources = getCoverSources().map((c) => c.source);
+    const renderers: Record<string, () => void> = { gallery: renderGallery, upload: renderUpload, link: renderLink };
+    for (const src of sources) renderers[`source:${src.id}`] = () => renderSource(src);
+    const tabs = createSegmented(null, {
+      id: 'canvas.cover.tabs',
+      ariaLabel: 'Cover from',
+      items: [
+        { value: 'gallery', label: 'Gallery' }, { value: 'upload', label: 'Upload' }, { value: 'link', label: 'Link' },
+        ...sources.map((src) => ({ value: `source:${src.id}`, label: src.label })),
+      ],
+      value: 'gallery',
+      onChange: (v) => renderers[v]?.(),
     });
+    tabs.element.classList.add('canvas-cover-picker-tabs');
+    picker.insertBefore(tabs.element, content);
+    renderGallery();
 
     // ── Mount & position ──
     // Mount at document.body to avoid `contain: layout` on ancestor

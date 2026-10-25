@@ -1,4 +1,4 @@
-// mediaStreamBridge.cjs — parallx-media:// streams local video and audio.
+// mediaStreamBridge.cjs — parallx-media:// streams local video, audio and images.
 //
 // Why this exists: the renderer reads files through fs:readFile, which sends
 // the whole file over IPC as base64 and refuses anything over 512 MB. A
@@ -25,6 +25,10 @@ const MEDIA_MIME = {
   '.ogv': 'video/ogg', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg', '.ts': 'video/mp2t', '.3gp': 'video/3gpp',
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav',
   '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.opus': 'audio/ogg', '.flac': 'audio/flac',
+  // Still images too, so a page cover can link a photo where it lives
+  // instead of copying it into the page. No SVG: it can carry script.
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+  '.gif': 'image/gif', '.avif': 'image/avif', '.bmp': 'image/bmp',
 };
 
 /** The URL for an absolute file path. */

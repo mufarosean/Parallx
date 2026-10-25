@@ -57,7 +57,7 @@ import {
   type GraphProvider,
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
-import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
+import { CanvasBlocksBridge, createCanvasApi, type CanvasApi } from './bridges/canvasBlocksBridge.js';
 import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js'; import { callToolAsApp } from '../services/appConnections.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkCheck, type LinkCheckOptions, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
@@ -244,14 +244,7 @@ export interface ParallxApiObject {
     /** Metadata snapshot of every contributed widget type, across all tools. */
     listWidgetTypes(): readonly import('./bridges/dashboardBridge.js').WidgetTypeDescriptor[];
   };
-  readonly canvas: {
-    /**
-     * Contribute a page block (the / menu and pages). typeIds are namespaced
-     * under the contributing tool's id (`<toolId>.<name>`). The block exists
-     * only while the tool runs: turned off, pages keep it and show a note.
-     */
-    registerBlock(registration: CanvasBlockRegistration): IDisposable;
-  };
+  readonly canvas: CanvasApi;
   readonly tools: {
     /** Fires when a tool starts or stops (turned on or off). */
     onDidChange(listener: () => void): IDisposable;
@@ -843,9 +836,7 @@ export function createToolApi(
       listWidgetTypes: () => dashboardBridge.listWidgetTypes(),
     }),
 
-    canvas: Object.freeze({
-      registerBlock: (registration: CanvasBlockRegistration) => canvasBlocksBridge.registerBlock(registration),
-    }),
+    canvas: createCanvasApi(canvasBlocksBridge),
 
     tools: Object.freeze({
       onDidChange: (listener: () => void) => deps.toolRegistry.onDidChangeToolState(() => listener()),

@@ -1,5 +1,5 @@
-// canvasBlocksBridge.ts — bridges `parallx.canvas.registerBlock` to a shared
-// in-process hub of page block contributions.
+// canvasBlocksBridge.ts — bridges `parallx.canvas.registerBlock` (and
+// `registerCoverSource`) to shared in-process hubs of page contributions.
 //
 // A block that shows one tool's data (the planner's agenda, an Atelier
 // album, Worksheets problems) belongs to that tool, not to the canvas: the
@@ -75,6 +75,34 @@ export interface CanvasBlockRegistration {
   readable?(config: Readonly<Record<string, unknown>>): string;
 }
 
+/** One picture a cover source offers. */
+export interface CanvasCoverItem {
+  readonly id: string;
+  readonly title: string;
+}
+
+/**
+ * Somewhere a page cover can come from besides the canvas's own gallery,
+ * upload and link: a tab in the cover picker, there while its tool runs.
+ */
+export interface CanvasCoverSource {
+  /** `${toolId}.${name}`: namespaced under the contributing tool. */
+  readonly id: string;
+  /** The tab's name ("Atelier"). */
+  readonly label: string;
+  /** Pictures matching the words typed (all of them for ''), best first; the picker shows the first 48. */
+  search(query: string): Promise<readonly CanvasCoverItem[]>;
+  /** A small image URL for the picker's tile. */
+  thumbnail?(itemId: string): Promise<string | undefined>;
+  /** The image URL the page keeps as its cover (a link, not a copy, where the source can serve one). */
+  coverUrl(itemId: string): Promise<string | undefined>;
+}
+
+export interface ContributedCoverSource {
+  readonly ownerToolId: string;
+  readonly source: CanvasCoverSource;
+}
+
 export interface ContributedCanvasBlock {
   readonly ownerToolId: string;
   /** The tool's name as the user knows it ("Atelier"). */
@@ -106,6 +134,24 @@ export function onDidChangeContributedBlocks(listener: () => void): IDisposable 
   return toDisposable(() => { _listeners.delete(listener); });
 }
 
+const _coverSources = new Map<string, ContributedCoverSource>();
+
+/** Every cover source a running tool contributed, in the order they came. */
+export function getCoverSources(): readonly ContributedCoverSource[] {
+  return [..._coverSources.values()];
+}
+
+function validateCoverSource(toolId: string, src: CanvasCoverSource): void {
+  if (!src || typeof src !== 'object') throw new Error('[api.canvas] registerCoverSource needs a source object.');
+  if (typeof src.id !== 'string' || !src.id.startsWith(`${toolId}.`) || src.id.length <= toolId.length + 1) {
+    throw new Error(`[api.canvas] Cover source id "${String(src.id)}" must start with "${toolId}.".`);
+  }
+  if (typeof src.label !== 'string' || !src.label) throw new Error(`[api.canvas] Cover source "${src.id}" needs a label.`);
+  if (typeof src.search !== 'function' || typeof src.coverUrl !== 'function') {
+    throw new Error(`[api.canvas] Cover source "${src.id}" needs search and coverUrl functions.`);
+  }
+}
+
 function validate(toolId: string, reg: CanvasBlockRegistration): void {
   if (!reg || typeof reg !== 'object') throw new Error('[api.canvas] registerBlock needs a registration object.');
   if (typeof reg.typeId !== 'string' || !reg.typeId.startsWith(`${toolId}.`) || reg.typeId.length <= toolId.length + 1) {
@@ -123,6 +169,7 @@ function validate(toolId: string, reg: CanvasBlockRegistration): void {
 export class CanvasBlocksBridge {
   private _disposed = false;
   private readonly _mine = new Map<string, ContributedCanvasBlock>();
+  private readonly _myCovers = new Set<string>();
 
   constructor(
     private readonly _toolId: string,
@@ -146,6 +193,24 @@ export class CanvasBlocksBridge {
     return d;
   }
 
+  registerCoverSource(source: CanvasCoverSource): IDisposable {
+    if (this._disposed) throw new Error('[api.canvas] Tool was deactivated.');
+    validateCoverSource(this._toolId, source);
+    const existing = _coverSources.get(source.id);
+    if (existing && existing.ownerToolId !== this._toolId) {
+      throw new Error(`[api.canvas] Cover source "${source.id}" is already registered by "${existing.ownerToolId}".`);
+    }
+    const entry: ContributedCoverSource = { ownerToolId: this._toolId, source };
+    _coverSources.set(source.id, entry);
+    this._myCovers.add(source.id);
+    const d = toDisposable(() => {
+      if (_coverSources.get(source.id) === entry) _coverSources.delete(source.id);
+      this._myCovers.delete(source.id);
+    });
+    this._subscriptions.push(d);
+    return d;
+  }
+
   private _remove(typeId: string, entry: ContributedCanvasBlock): void {
     if (_contributions.get(typeId) !== entry) return;
     _contributions.delete(typeId);
@@ -157,5 +222,29 @@ export class CanvasBlocksBridge {
     if (this._disposed) return;
     this._disposed = true;
     for (const [typeId, entry] of [...this._mine]) this._remove(typeId, entry);
+    for (const id of this._myCovers) if (_coverSources.get(id)?.ownerToolId === this._toolId) _coverSources.delete(id);
+    this._myCovers.clear();
   }
+}
+
+/** `api.canvas`: what a tool may add to pages. */
+export interface CanvasApi {
+  /**
+   * Contribute a page block (the / menu and pages). typeIds are namespaced
+   * under the contributing tool's id (`<toolId>.<name>`). The block exists
+   * only while the tool runs: turned off, pages keep it and show a note.
+   */
+  registerBlock(registration: CanvasBlockRegistration): IDisposable;
+  /**
+   * Contribute a tab to the page cover picker: pictures to search and pick
+   * from (`id` is `<toolId>.<name>`). The tab is there only while the tool runs.
+   */
+  registerCoverSource(source: CanvasCoverSource): IDisposable;
+}
+
+export function createCanvasApi(bridge: CanvasBlocksBridge): CanvasApi {
+  return Object.freeze({
+    registerBlock: (registration: CanvasBlockRegistration) => bridge.registerBlock(registration),
+    registerCoverSource: (source: CanvasCoverSource) => bridge.registerCoverSource(source),
+  });
 }
