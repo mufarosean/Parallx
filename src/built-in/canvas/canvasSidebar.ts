@@ -24,7 +24,7 @@ import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_KEY, resolvePageIcon, svgIcon, renderPageIconHtml } from './config/blockRegistry.js';
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
-import { formatRelativeTime } from '../../ui/relativeTime.js';
+import { CanvasTrashPanel, trashEntries } from './canvasTrashPanel.js';
 import { pageLinkHref } from './pageLinks.js';
 import { createButton, createSurface, createTree, declareControl, sceneSlug } from '../../ui/kit.js';
 import { UndoToast } from './canvasSidebarToast.js';
@@ -93,9 +93,7 @@ export class CanvasSidebar {
   private _recentsExpanded = true;
 
   // ── Trash panel ──
-  private _trashPanel: HTMLElement | null = null;
-  private _trashSearchQuery = '';
-  private _detachTrashDismiss: (() => void) | null = null;
+  private _trashPanel: CanvasTrashPanel | null = null;
 
   // ── Context menu ──
   private _contextMenu: ContextMenu | null = null;
@@ -346,6 +344,7 @@ export class CanvasSidebar {
         this._favoritedPages = favorites;
         this._archivedPages = archived;
         this._recentPages = recents;
+        this._trashPanel?.update(archived, tree);
       });
     } catch (err) {
       if (refreshSeq !== this._refreshSeq) return;
@@ -578,9 +577,10 @@ export class CanvasSidebar {
     if (trashBtnEl) {
       const existingBadge = trashBtnEl.querySelector('.canvas-sidebar-trash-badge');
       if (existingBadge) existingBadge.remove();
-      if (this._archivedPages.length > 0) {
+      const inTrash = trashEntries(this._archivedPages, () => null).length;
+      if (inTrash > 0) {
         const badge = $('span.canvas-sidebar-trash-badge');
-        badge.textContent = String(this._archivedPages.length);
+        badge.textContent = String(inTrash);
         trashBtnEl.appendChild(badge);
       }
     }
@@ -672,64 +672,6 @@ export class CanvasSidebar {
     });
 
     return row;
-  }
-
-  // ── Render a trash row ──
-
-  private _renderTrashRow(page: IPageSummary, container: HTMLElement): void {
-    const row = $('div.canvas-node.canvas-trash-panel-node');
-    row.setAttribute('data-page-id', page.id);
-
-    // Icon area (consistent alignment)
-    const iconArea = $('span.canvas-node-icon-area');
-    const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
-    iconEl.classList.add('canvas-node-icon');
-    iconArea.appendChild(iconEl);
-    row.appendChild(iconArea);
-
-    // Title over a caption: when it was deleted, in the app's one clock.
-    const textCol = $('div.canvas-trash-panel-text');
-    const label = $('span.canvas-node-label');
-    label.textContent = page.title || 'Untitled';
-    textCol.appendChild(label);
-    const date = $('span.canvas-trash-panel-date');
-    date.textContent = `Deleted ${formatRelativeTime(page.updatedAt, 'long')}`;
-    textCol.appendChild(date);
-    row.appendChild(textCol);
-
-    // Restore: the row's primary action, a word not a glyph.
-    const restoreBtn = $('button.canvas-trash-restore-btn');
-    restoreBtn.textContent = 'Restore';
-    restoreBtn.title = 'Put this page back where it was.';
-    restoreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._dataService.restorePage(page.id);
-    });
-    row.appendChild(restoreBtn);
-
-    // Permanent delete (icon, danger on hover)
-    const deleteBtn = $('button.canvas-trash-delete-btn');
-    deleteBtn.appendChild(createIconElement('trash', 13));
-    deleteBtn.title = 'Delete permanently.';
-    deleteBtn.setAttribute('aria-label', 'Delete permanently');
-    deleteBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const result = await this._api.window.showWarningMessage(
-        `Permanently delete "${page.title}"? This cannot be undone.`,
-        { title: 'Delete' },
-        { title: 'Cancel' },
-      );
-      if (result?.title === 'Delete') {
-        try {
-          await this._dataService.permanentlyDeletePage(page.id);
-        } catch (err) {
-          void this._api.window.showErrorMessage(`Could not delete "${page.title || 'Untitled'}". ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-    });
-    row.appendChild(deleteBtn);
-
-    container.appendChild(row);
   }
 
   private _renderNode(parent: HTMLElement, node: IPageSummaryTreeNode, depth: number, expandSet?: Set<string>): void {
@@ -1194,133 +1136,20 @@ export class CanvasSidebar {
 
   private _showTrashPanel(): void {
     this._dismissTrashPanel();
-
-    this._trashPanel = $('div.canvas-trash-panel');
-
-    // Header: title, count, close. Destructive action lives in the footer.
-    const header = $('div.canvas-trash-panel-header');
-    const title = $('span.canvas-trash-panel-title');
-    title.textContent = 'Trash';
-    header.appendChild(title);
-    const count = this._archivedPages.length;
-    if (count > 0) {
-      const countChip = $('span.canvas-trash-panel-count');
-      countChip.textContent = String(count);
-      header.appendChild(countChip);
-    }
-    const closeBtn = $('button.canvas-trash-panel-close');
-    closeBtn.title = 'Close';
-    closeBtn.setAttribute('aria-label', 'Close');
-    declareControl(closeBtn, { id: 'canvas.trash.close', label: 'Close', kind: 'iconButton' });
-    closeBtn.appendChild(createIconElement('close', 14));
-    closeBtn.addEventListener('click', () => this._dismissTrashPanel());
-    header.appendChild(closeBtn);
-    this._trashPanel.appendChild(header);
-
-    // Search
-    const searchRow = $('div.canvas-trash-panel-search');
-    const searchIcon = createIconElement('search', 14);
-    searchRow.appendChild(searchIcon);
-    const searchBox = new InputBox(searchRow, {
-      placeholder: 'Search trash…',
-      value: this._trashSearchQuery,
-    });
-    searchBox.inputElement.classList.add('canvas-trash-panel-search-input');
-    this._trashPanel.appendChild(searchRow);
-
-    // List
-    const list = $('div.canvas-trash-panel-list');
-    this._trashPanel.appendChild(list);
-
-    const renderList = (query: string) => {
-      list.innerHTML = '';
-      const q = query.toLowerCase();
-      const filtered = this._archivedPages.filter(p =>
-        !q || p.title.toLowerCase().includes(q),
-      );
-      if (filtered.length === 0) {
-        const empty = $('div.canvas-trash-panel-empty');
-        const headline = $('div.canvas-trash-panel-empty-headline');
-        headline.textContent = q ? 'No matching pages' : 'Trash is empty';
-        empty.appendChild(headline);
-        const hint = $('div.canvas-trash-panel-empty-hint');
-        hint.textContent = q ? 'Try a different word.' : 'Pages you delete wait here until you empty the trash.';
-        empty.appendChild(hint);
-        list.appendChild(empty);
-      } else {
-        for (const page of filtered) {
-          this._renderTrashRow(page, list);
-        }
-      }
-    };
-
-    renderList(this._trashSearchQuery);
-
-    searchBox.onDidChange((value) => {
-      this._trashSearchQuery = value.trim();
-      renderList(this._trashSearchQuery);
-    });
-
-    // Footer: the one destructive action, away from the rows.
-    if (count > 0) {
-      const footer = $('div.canvas-trash-panel-footer');
-      const note = $('span.canvas-trash-panel-footer-note');
-      note.textContent = count === 1 ? '1 page in trash.' : `${count} pages in trash.`;
-      footer.appendChild(note);
-      const emptyBtn = $('button.canvas-trash-panel-empty-btn');
-      emptyBtn.textContent = 'Empty Trash';
-      declareControl(emptyBtn, { id: 'canvas.trash.empty', label: 'Empty Trash' });
-      emptyBtn.addEventListener('click', async () => {
-        const result = await this._api.window.showWarningMessage(
-          count === 1
-            ? 'Permanently delete the page in the trash? This cannot be undone.'
-            : `Permanently delete all ${count} pages in the trash? This cannot be undone.`,
-          { title: 'Delete All' },
-          { title: 'Cancel' },
-        );
-        if (result?.title === 'Delete All') {
-          // The service reads the Trash now; this panel's list may be stale
-          // (a page restored since it was drawn must not be deleted).
-          try {
-            await this._dataService.emptyTrash();
-          } catch (err) {
-            void this._api.window.showErrorMessage(`Could not empty the Trash. ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-      });
-      footer.appendChild(emptyBtn);
-      this._trashPanel.appendChild(footer);
-    }
-
-    // Position above the trash button
-    const trashBtn = this._treeList?.parentElement?.querySelector('.canvas-sidebar-trash-btn');
-    if (trashBtn) {
-      const rect = trashBtn.getBoundingClientRect();
-      const sidebarRect = this._treeList!.parentElement!.getBoundingClientRect();
-      this._trashPanel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
-      this._trashPanel.style.left = `${sidebarRect.left}px`;
-      this._trashPanel.style.width = `${Math.max(sidebarRect.width, 280)}px`;
-    }
-
-    document.body.appendChild(this._trashPanel);
-    setTimeout(() => searchBox.focus(), 50);
-
-    // Dismiss on click outside (panel + trash button both treated as "inside")
-    const trashBtnEl = this._treeList?.parentElement?.querySelector(
-      '.canvas-sidebar-trash-btn',
-    ) as HTMLElement | null;
-    const roots: HTMLElement[] = [this._trashPanel];
-    if (trashBtnEl) roots.push(trashBtnEl);
-    this._detachTrashDismiss = attachPopupDismiss(roots, () => this._dismissTrashPanel());
+    const anchor = this._treeList?.parentElement?.querySelector('.canvas-sidebar-trash-btn') as HTMLElement | null;
+    const sidebar = this._treeList?.parentElement;
+    if (!anchor || !sidebar) return;
+    this._trashPanel = new CanvasTrashPanel({
+      dataService: this._dataService,
+      anchor,
+      sidebar,
+      onClose: () => { this._trashPanel = null; },
+    }, this._archivedPages, this._tree);
   }
 
   private _dismissTrashPanel(): void {
-    if (this._trashPanel) {
-      this._trashPanel.remove();
-      this._trashPanel = null;
-    }
-    this._detachTrashDismiss?.();
-    this._detachTrashDismiss = null;
+    this._trashPanel?.dispose();
+    this._trashPanel = null;
   }
 
   // ══════════════════════════════════════════════════════════════════════════

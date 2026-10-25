@@ -57,11 +57,14 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `budget.reprocessHistory` | Reprocess History… | budget | Budget |  |  |
 | `budget.sync` | Sync Now | budget | Budget |  |  |
 | `canvas.deletePage` | Canvas: Delete Page | canvas |  |  |  |
+| `canvas.deletePageForever` | Canvas: Delete Page Forever… | canvas |  |  |  |
 | `canvas.duplicatePage` | Canvas: Duplicate Page | canvas |  |  |  |
+| `canvas.emptyTrash` | Canvas: Empty Trash… | canvas |  |  |  |
 | `canvas.manageTemplates` | Canvas: Manage Templates | canvas |  |  |  |
 | `canvas.newDatabase` | Canvas: New Database | canvas |  |  |  |
 | `canvas.newPage` | Canvas: New Page | canvas |  |  |  |
 | `canvas.renamePage` | Canvas: Rename Page | canvas |  |  |  |
+| `canvas.restorePage` | Canvas: Restore Page from Trash | canvas |  |  |  |
 | `canvas.saveAsTemplate` | Canvas: Save Page As Template | canvas |  |  |  |
 | `canvas.showKeyboardShortcuts` | Canvas: Show Keyboard Shortcuts | canvas |  |  |  |
 | `canvas.showTemplatePicker` | Canvas: Show Template Picker | canvas |  |  |  |

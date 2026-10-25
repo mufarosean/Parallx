@@ -41,6 +41,7 @@ import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockR
 import { pageMoveTargets } from './pageMoveTargets.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
+import { registerTrashCommands } from './canvasTrashPanel.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -697,12 +698,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // Phase D step 2 (PHASE_D_BRIEF.md): the embedded-note seam. The
-  // dashboard's notes widget used to VALUE-import CanvasEditorView, which
-  // chained dashboard's ability to load to canvas's. Now canvas OFFERS
-  // embedding through this getter command (the getWorkbenchWidgetHost
-  // pattern) and the widget holds only structural types. The editor module
-  // loads lazily, on the first embed, not at activation.
+  // The embedded-note seam (PHASE_D_BRIEF.md): canvas offers embedding
+  // through this getter command (the getWorkbenchWidgetHost pattern), so a
+  // widget that shows a note holds only structural types and never loads
+  // canvas code; the editor module loads lazily, on the first embed.
   context.subscriptions.push(
     api.commands.registerCommand('canvas.getEmbeddedNoteHost', () => {
       const data = _dataService;
@@ -1249,6 +1248,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  context.subscriptions.push(...registerTrashCommands(api, () => _dataService ?? undefined));
   // canvas.deletePage — Delete the selected page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.deletePage', async (...args: unknown[]) => {
@@ -1262,9 +1262,8 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       const page = await _dataService.getPage(pageId);
       if (!page) return;
 
-      // "Delete" means one thing everywhere (sidebar, page menu, this
-      // command): Move to Trash, after the same question.  It used to delete
-      // permanently here.  Deleting for good happens only in the Trash.
+      // "Delete" means Move to Trash everywhere (sidebar, page menu, this
+      // command), after the same question; deleting for good is the Trash's.
       const confirmation = await api.window.showWarningMessage(
         `Move "${page.title || 'Untitled'}" to the Trash?`,
         { title: 'Move to Trash' },
