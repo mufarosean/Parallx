@@ -1652,16 +1652,17 @@ async function main() {
         });
         console.log(`[probe] canvas menu button: ${diag}`);
         await click(page, 'canvas.page.menu', { timeout: 3_000 });
-        await page.waitForSelector(`${ctl('canvas.font.current')} >> visible=true`, { state: 'visible', timeout: 5_000 });
+        await page.waitForSelector(`${ctl('canvas.pageMenu')} >> visible=true`, { state: 'visible', timeout: 5_000 });
         await page.waitForTimeout(500);
         await shot(page, 'canvas-page-menu');
-        const fonts = () => page.evaluate(() => Array.from(document.querySelectorAll('[data-px-id^="canvas.font.pick."]')).filter((x) => x.getClientRects().length).length);
-        console.log(`[probe] font list (collapsed): ${await fonts()} fonts shown`);
-        // The font row opens the font list inside the menu.
-        await click(page, 'canvas.font.current', { timeout: 3_000 });
+        // Font is a submenu of the app's one menu, opened by its row.
+        await page.locator('.context-menu-item--has-submenu', { hasText: 'Font' }).first().hover();
+        await page.waitForSelector('.context-menu--submenu >> visible=true', { state: 'visible', timeout: 3_000 });
         await page.waitForTimeout(400);
-        console.log(`[probe] font list (open): ${await fonts()} fonts shown`);
+        const fonts = await page.evaluate(() => document.querySelectorAll('.context-menu--submenu [role="menuitemcheckbox"]').length);
+        console.log(`[probe] font submenu: ${fonts} checkable rows`);
         await shot(page, 'canvas-page-menu-fonts');
+        await page.keyboard.press('Escape');
         await page.keyboard.press('Escape');
         // The sidebar's trash popup (empty in a fresh workspace, which is
         // still a state worth seeing).

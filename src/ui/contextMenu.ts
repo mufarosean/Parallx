@@ -278,7 +278,27 @@ export class ContextMenu extends Disposable {
         if (enabledIndices.length) this._highlight(enabledIndices[enabledIndices.length - 1]);
         return true;
       }
+      // A row with a submenu opens it (its first row armed, because the
+      // focused row opened it); Left in a submenu closes it, back to its row.
+      case 'ArrowRight': {
+        const armed = this._items[this._highlightIndex];
+        if (!armed?.submenu?.length || armed.disabled) return false;
+        this._cancelSubmenu();
+        this._showSubmenu(armed, this._itemEls[this._highlightIndex]);
+        return true;
+      }
+      case 'ArrowLeft': {
+        if (!this._el.classList.contains('context-menu--submenu')) return false;
+        this.dismiss();
+        return true;
+      }
       case 'Enter': {
+        const armed = this._items[this._highlightIndex];
+        if (armed?.submenu?.length && !armed.disabled) {
+          this._cancelSubmenu();
+          this._showSubmenu(armed, this._itemEls[this._highlightIndex]);
+          return true;
+        }
         if (this._highlightIndex >= 0) {
           const items = this._items.filter(i => !i.disabled);
           const pos = enabledIndices.indexOf(this._highlightIndex);
@@ -376,6 +396,7 @@ export class ContextMenu extends Disposable {
       // Submenu arrow indicator
       if (item.submenu && item.submenu.length > 0) {
         row.classList.add('context-menu-item--has-submenu');
+        row.setAttribute('aria-haspopup', 'menu');
         const arrow = document.createElement('span');
         arrow.classList.add('context-menu-submenu-arrow');
         arrow.textContent = '\u276F'; // ❯

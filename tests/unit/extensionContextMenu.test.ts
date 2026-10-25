@@ -149,4 +149,31 @@ describe('showExtensionContextMenu', () => {
     expect(document.querySelector('.context-menu')).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('opens a submenu from the keyboard: Right or Enter opens it, Left goes back, Enter picks', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    const picked = vi.fn();
+    showExtensionContextMenu(opener, [
+      { label: 'Font', submenu: [{ label: 'Serif', onSelect: picked }, { label: 'Mono' }] },
+      { label: 'Delete' },
+    ]);
+    const press = (key: string) => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    const sub = () => document.querySelector('.context-menu--submenu');
+    expect(rows()[0].getAttribute('aria-haspopup')).toBe('menu');
+    expect(document.activeElement).toBe(rows()[0]);
+    press('ArrowRight');
+    expect(sub()).not.toBeNull();
+    expect(document.activeElement?.textContent).toBe('Serif');
+    press('ArrowLeft');
+    expect(sub()).toBeNull();
+    expect(document.querySelector('.context-menu')).not.toBeNull();
+    expect(document.activeElement).toBe(rows()[0]);
+    press('Enter');
+    expect(sub()).not.toBeNull();
+    press('Enter');
+    expect(picked).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.context-menu')).toBeNull();
+  });
 });

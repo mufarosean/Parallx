@@ -10,14 +10,15 @@ import type { IEditorInput } from '../../../editor/editorInput.js';
 import type { IPage, ICanvasDataService, SaveStateEvent, PageChangeEvent, PageMutationField } from '../canvasTypes.js';
 import { SaveStateKind, PageChangeKind } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
-import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { $ } from '../../../ui/dom.js';
 import { onDragPress } from '../../../ui/touchDrag.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
 import { resolveFontStack } from '../config/fontRegistry.js';
-import { buildFontSection } from './pageFontMenu.js';
-import { createSurface, declareControl, sceneSlug } from '../../../ui/kit.js';
+import { fontMenuItems } from './pageFontMenu.js';
+import type { IExtensionMenuHandle, IExtensionMenuItem } from '../../../ui/contextMenu.js';
+import { createMenu, declareControl } from '../../../ui/kit.js';
 import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
@@ -87,8 +88,9 @@ export class PageChromeController {
   private _hoverAffordances: HTMLElement | null = null;
   private _revealProperties: (() => void) | null = null;
   private _pageMenuBtn: HTMLElement | null = null;
-  private _pageMenuDropdown: HTMLElement | null = null;
-  private _detachPageMenuDismiss: (() => void) | null = null;
+  private _pageMenu: IExtensionMenuHandle | null = null;
+  /** When the ⋯ menu last closed (performance.now()); see _showPageMenu. */
+  private _pageMenuClosedAt = -Infinity;
 
   // ── Page state ──
   private _currentPage: IPage | null = null;
@@ -274,12 +276,9 @@ export class PageChromeController {
   }
 
   dismissPopups(): void {
-    if (this._pageMenuDropdown) {
-      this._pageMenuDropdown.remove();
-      this._pageMenuDropdown = null;
-    }
-    this._detachPageMenuDismiss?.();
-    this._detachPageMenuDismiss = null;
+    const menu = this._pageMenu;
+    this._pageMenu = null;
+    menu?.dispose();
   }
 
   /** Saves a title typed in the last moments (closing the page used to drop it). */
@@ -423,13 +422,7 @@ export class PageChromeController {
     this._ribbonEditedLabel.textContent = this._formatRelativeTime(this._currentPage?.updatedAt);
     this._ribbonEditedLabel.title = 'Version History';
     this._ribbonEditedLabel.setAttribute('role', 'button'); declareControl(this._ribbonEditedLabel, { id: 'canvas.page.versionHistory', label: 'Version History' });
-    this._ribbonEditedLabel.addEventListener('click', () => {
-      this.dismissPopups();
-      void showVersionHistoryPanel({
-        dataService: this._host.dataService,
-        pageId: this._host.pageId,
-      });
-    });
+    this._ribbonEditedLabel.addEventListener('click', () => this._openVersionHistory());
     ribbonRight.appendChild(this._ribbonEditedLabel);
 
     // Favorite star toggle
@@ -1043,90 +1036,68 @@ export class PageChromeController {
     this._showPageMenu();
   }
 
+  /**
+   * The ⋯ menu, on the app's one menu component (the same rows, checks,
+   * submenus and keyboard as every other menu). A second press on ⋯ closes
+   * it: the press outside already closed it, so a click that lands just
+   * after a close does not reopen it.
+   */
   private _showPageMenu(): void {
-    if (this._pageMenuDropdown) { this.dismissPopups(); return; }
+    if (this._pageMenu) { this.dismissPopups(); return; }
+    if (performance.now() - this._pageMenuClosedAt < 300) return;
     this.dismissPopups();
-
-    this._pageMenuDropdown = $('div.canvas-page-menu');
-    createSurface(this._pageMenuDropdown, { id: 'canvas.pageMenu', owner: 'canvas', label: 'Page settings' });
-    const page = this._currentPage;
-
-    if (this._options.menuKind === 'database') {
-      this._buildDatabaseMenu(page);
-    } else {
-      this._buildStandardPageMenu(page);
-    }
-
-    document.body.appendChild(this._pageMenuDropdown);
-
-    // Position below menu button (right-aligned)
-    if (this._pageMenuBtn) {
-      const rect = this._pageMenuBtn.getBoundingClientRect();
-      const menuW = this._pageMenuDropdown.offsetWidth;
-      layoutPopup(this._pageMenuDropdown, { x: rect.right - menuW, y: rect.bottom }, { gap: 4 });
-    }
-
-    setTimeout(() => {
-      const roots: HTMLElement[] = [this._pageMenuDropdown!];
-      if (this._pageMenuBtn) roots.push(this._pageMenuBtn);
-      if (this._iconEl) roots.push(this._iconEl);
-      if (this._hoverAffordances) roots.push(this._hoverAffordances);
-      if (this._coverControls) roots.push(this._coverControls);
-      this._detachPageMenuDismiss = attachPopupDismiss(roots, () => this.dismissPopups());
-    }, 0);
+    const items = this._options.menuKind === 'database'
+      ? this._databaseMenuItems()
+      : this._standardPageMenuItems(this._currentPage);
+    const anchor = this._pageMenuBtn ?? { x: 0, y: 0 };
+    this._pageMenu = createMenu(anchor, {
+      id: 'canvas.pageMenu',
+      label: 'Page settings',
+      items,
+      menu: {
+        onClose: () => {
+          this._pageMenu = null;
+          this._pageMenuClosedAt = performance.now();
+        },
+      },
+    });
   }
 
-  private _buildStandardPageMenu(page: IPage | null): void {
-    if (!this._pageMenuDropdown) return;
+  /** A page setting shown as a checked row; choosing it flips the setting. */
+  private _pageToggle(label: string, key: 'fullWidth' | 'smallText' | 'isLocked'): IExtensionMenuItem {
+    return {
+      label,
+      checked: !!this._currentPage?.[key],
+      onSelect: () => {
+        const current = !!this._currentPage?.[key];
+        void this._host.dataService.updatePage(this._host.pageId, { [key]: !current });
+      },
+    };
+  }
 
-    // ── Font selection ──
-    this._buildFontSection(page);
+  private _openVersionHistory(): void {
+    this.dismissPopups();
+    void showVersionHistoryPanel({ dataService: this._host.dataService, pageId: this._host.pageId });
+  }
 
-    // ── Toggles ──
-    const toggles: { label: string; key: 'fullWidth' | 'smallText' | 'isLocked'; iconId: string }[] = [
-      { label: 'Full Width', key: 'fullWidth', iconId: 'expand-width' },
-      { label: 'Small Text', key: 'smallText', iconId: 'text-size' },
-      { label: 'Lock Page', key: 'isLocked', iconId: 'lock' },
-    ];
-
-    for (const toggle of toggles) {
-      const row = $('div.canvas-page-menu-toggle');
-      const label = $('span.canvas-page-menu-toggle-label');
-      label.appendChild(createIconElement(toggle.iconId as any, 14));
-      const labelText = $('span');
-      labelText.textContent = ` ${toggle.label}`;
-      label.appendChild(labelText);
-      const switchEl = $('div.canvas-page-menu-switch');
-      const isOn = !!(page as any)?.[toggle.key];
-      if (isOn) switchEl.classList.add('canvas-page-menu-switch--on');
-
-      row.appendChild(label);
-      row.appendChild(switchEl);
-      row.addEventListener('click', () => {
-        const current = !!(this._currentPage as any)?.[toggle.key];
-        this._host.dataService.updatePage(this._host.pageId, { [toggle.key]: !current } as any);
-        switchEl.classList.toggle('canvas-page-menu-switch--on');
-      });
-      this._pageMenuDropdown.appendChild(row);
-    }
-
-    // ── Divider ──
-    this._pageMenuDropdown.appendChild($('div.canvas-page-menu-divider'));
-
-    // ── Action buttons ──
-    const actions: { label: string; iconId: string; action: () => void; danger?: boolean }[] = [
+  private _standardPageMenuItems(page: IPage | null): IExtensionMenuItem[] {
+    const fontItems = fontMenuItems({
+      page,
+      applyFont: (id) => this._host.dataService.updatePage(this._host.pageId, { fontFamily: id }),
+    });
+    return [
+      { label: 'Font', submenu: fontItems, disabled: this._locked, tooltip: this._locked ? 'This page is locked.' : undefined },
+      this._pageToggle('Full Width', 'fullWidth'),
+      this._pageToggle('Small Text', 'smallText'),
+      this._pageToggle('Lock Page', 'isLocked'),
+      { separator: true },
       {
-        label: this._currentPage?.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
-        iconId: this._currentPage?.isFavorited ? 'star-filled' : 'star',
-        action: () => {
-          this._host.dataService.toggleFavorite(this._host.pageId);
-          this.dismissPopups();
-        },
+        label: page?.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
+        onSelect: () => this._host.dataService.toggleFavorite(this._host.pageId),
       },
       {
         label: 'Duplicate',
-        iconId: 'duplicate',
-        action: async () => {
+        onSelect: async () => {
           try {
             const newPage = await this._host.dataService.duplicatePage(this._host.pageId);
             await this._host.openEditor?.({
@@ -1139,46 +1110,12 @@ export class PageChromeController {
           } catch (err) {
             console.error('[Canvas] Duplicate failed:', err);
           }
-          this.dismissPopups();
         },
       },
+      { label: 'Move To…', onSelect: () => { void this._host.executeCommand?.('canvas.movePageTo', this._host.pageId); } },
       {
-        label: 'Export as Markdown',
-        iconId: 'export',
-        action: async () => {
-          try {
-            await this.exportMarkdown();
-          } catch (err) {
-            console.error('[Canvas] Export failed:', err);
-          }
-          this.dismissPopups();
-        },
-      },
-      {
-        label: 'Export as PDF',
-        iconId: 'printer',
-        action: async () => {
-          this.dismissPopups();
-          try {
-            await this.exportPdf();
-          } catch (err) {
-            console.error('[Canvas] PDF export failed:', err);
-          }
-        },
-      },
-      {
-        label: 'Move To…',
-        iconId: 'folder-input',
-        action: () => {
-          this.dismissPopups();
-          void this._host.executeCommand?.('canvas.movePageTo', this._host.pageId);
-        },
-      },
-      {
-        label: 'Save as Template',
-        iconId: 'layout-template',
-        action: async () => {
-          this.dismissPopups();
+        label: 'Save as Template…',
+        onSelect: async () => {
           try {
             await this._host.executeCommand?.('canvas.saveAsTemplate', this._host.pageId);
           } catch (err) {
@@ -1186,104 +1123,39 @@ export class PageChromeController {
           }
         },
       },
+      { separator: true },
       {
-        label: 'Delete',
-        iconId: 'trash',
-        action: () => {
-          this.dismissPopups();
-          void this._movePageToTrash();
-        },
-        danger: true,
+        label: 'Export',
+        submenu: [
+          { label: 'Markdown…', onSelect: () => { this.exportMarkdown().catch((err) => console.error('[Canvas] Export failed:', err)); } },
+          { label: 'PDF…', keybinding: 'Ctrl+Alt+P', onSelect: () => { this.exportPdf().catch((err) => console.error('[Canvas] PDF export failed:', err)); } },
+        ],
       },
+      { label: 'Version History…', onSelect: () => this._openVersionHistory() },
+      { separator: true },
+      { label: 'Delete', danger: true, onSelect: () => { void this._movePageToTrash(); } },
     ];
-
-    if (page?.isFavorited) {
-      actions[0].label = 'Remove from Favorites';
-      actions[0].iconId = 'star-filled';
-    }
-
-    for (const act of actions) {
-      const btn = $('button.canvas-page-menu-action');
-      declareControl(btn, { id: `canvas.pageMenu.${sceneSlug(act.label)}`, label: act.label });
-      btn.appendChild(createIconElement(act.iconId as any, 14));
-      const actLabel = $('span');
-      actLabel.textContent = ` ${act.label}`;
-      btn.appendChild(actLabel);
-      if (act.danger) btn.classList.add('canvas-page-menu-action--danger');
-      btn.addEventListener('click', act.action);
-      this._pageMenuDropdown.appendChild(btn);
-    }
-
   }
 
-  /**
-   * Build the open-ended font picker: a scrollable, self-previewing list of
-   * every registered font (built-in + custom), plus per-row "set as default
-   * for new pages" and custom-font delete, and an "Upload font…" action.
-   */
-  private _buildFontSection(page: IPage | null): void {
-    const dd = this._pageMenuDropdown;
-    if (!dd) return;
-    buildFontSection(dd, {
-      page,
-      locked: this._locked,
-      applyFont: (id) => this._host.dataService.updatePage(this._host.pageId, { fontFamily: id }),
-    });
-  }
-
-  private _buildDatabaseMenu(page: IPage | null): void {
-    if (!this._pageMenuDropdown) return;
-
-    const label = $('div.canvas-page-menu-label');
-    label.textContent = 'Database page';
-    this._pageMenuDropdown.appendChild(label);
-
-    const toggles: { label: string; key: 'fullWidth' | 'smallText'; iconId: string }[] = [
-      { label: 'Full Width', key: 'fullWidth', iconId: 'expand-width' },
-      { label: 'Small Text', key: 'smallText', iconId: 'text-size' },
-    ];
-
-    for (const toggle of toggles) {
-      const row = $('div.canvas-page-menu-toggle');
-      const toggleLabel = $('span.canvas-page-menu-toggle-label');
-      toggleLabel.appendChild(createIconElement(toggle.iconId as any, 14));
-      const labelText = $('span');
-      labelText.textContent = ` ${toggle.label}`;
-      toggleLabel.appendChild(labelText);
-      const switchEl = $('div.canvas-page-menu-switch');
-      const isOn = !!(page as any)?.[toggle.key];
-      if (isOn) switchEl.classList.add('canvas-page-menu-switch--on');
-
-      row.appendChild(toggleLabel);
-      row.appendChild(switchEl);
-      row.addEventListener('click', () => {
-        const current = !!(this._currentPage as any)?.[toggle.key];
-        this._host.dataService.updatePage(this._host.pageId, { [toggle.key]: !current } as any);
-        switchEl.classList.toggle('canvas-page-menu-switch--on');
-      });
-      this._pageMenuDropdown!.appendChild(row);
-    }
-
-    this._pageMenuDropdown.appendChild($('div.canvas-page-menu-divider'));
-
-    const actions: { label: string; iconId: string; action: () => void; danger?: boolean }[] = [
+  private _databaseMenuItems(): IExtensionMenuItem[] {
+    return [
+      this._pageToggle('Full Width', 'fullWidth'),
+      this._pageToggle('Small Text', 'smallText'),
+      { separator: true },
       {
         label: 'Open as Page',
-        iconId: 'page',
-        action: () => {
+        onSelect: () => {
           this._host.openEditor?.({
             typeId: 'canvas',
             title: this._currentPage?.title || 'Untitled',
             icon: this._currentPage?.icon ?? undefined,
             instanceId: this._host.pageId,
           });
-          this.dismissPopups();
         },
       },
       {
         label: 'Duplicate',
-        iconId: 'duplicate',
-        action: async () => {
+        onSelect: async () => {
           try {
             if (this._host.executeCommand) {
               await this._host.executeCommand('canvas.duplicatePage', this._host.pageId);
@@ -1293,30 +1165,10 @@ export class PageChromeController {
           } catch (err) {
             console.error('[Canvas] Duplicate database page failed:', err);
           }
-          this.dismissPopups();
         },
       },
-      {
-        label: 'Delete',
-        iconId: 'trash',
-        action: () => {
-          this.dismissPopups();
-          void this._movePageToTrash();
-        },
-        danger: true,
-      },
+      { separator: true },
+      { label: 'Delete', danger: true, onSelect: () => { void this._movePageToTrash(); } },
     ];
-
-    for (const act of actions) {
-      const btn = $('button.canvas-page-menu-action');
-      declareControl(btn, { id: `canvas.pageMenu.${sceneSlug(act.label)}`, label: act.label });
-      btn.appendChild(createIconElement(act.iconId as any, 14));
-      const actLabel = $('span');
-      actLabel.textContent = ` ${act.label}`;
-      btn.appendChild(actLabel);
-      if (act.danger) btn.classList.add('canvas-page-menu-action--danger');
-      btn.addEventListener('click', act.action);
-      this._pageMenuDropdown.appendChild(btn);
-    }
   }
 }

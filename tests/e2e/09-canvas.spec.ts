@@ -125,7 +125,7 @@ test.describe('Canvas Tool', () => {
 
       // Click the menu button
       await window.locator('.canvas-top-ribbon-menu').click();
-      const pageMenu = window.locator('.canvas-page-menu');
+      const pageMenu = window.locator('.context-menu[data-px-id="canvas.pageMenu"]');
       await expect(pageMenu).toBeVisible({ timeout: 3_000 });
     });
 
