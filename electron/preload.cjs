@@ -100,7 +100,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Write content to file. Returns { error: null } on success or { error }. */
     writeFile: (filePath, content, encoding) => ipcRenderer.invoke('fs:writeFile', filePath, content, encoding),
 
-    /** Get file/directory stat. Returns { type, size, mtime, ctime, isReadonly } or { error }. */
+    /** Get file/directory stat. Returns { type, size, mtime, ctime, birthtime, isReadonly } or { error }. */
     stat: (filePath) => ipcRenderer.invoke('fs:stat', filePath),
 
     /** List directory entries. Returns { entries: [{ name, type, size, mtime }] } or { error }. */

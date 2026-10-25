@@ -1713,7 +1713,7 @@ ipcMain.handle('fs:stat', async (_event, filePath) => {
       type,
       size: stat.size,
       mtime: stat.mtimeMs,
-      ctime: stat.ctimeMs,
+      ctime: stat.ctimeMs, birthtime: stat.birthtimeMs, // birthtime: when it was created (added)
       isReadonly,
       error: null,
     };
