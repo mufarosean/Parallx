@@ -704,7 +704,7 @@ export class ActivityBarPart extends Part {
     const buttons = this._getAllButtons();
     this._iconOrder = buttons
       .map(b => b.dataset.iconId!)
-      .filter(id => id && id !== 'manage-gear');
+      .filter(id => id && id !== 'notifications');
     this._onDidChangeIconOrder.fire();
   }
 

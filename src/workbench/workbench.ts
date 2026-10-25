@@ -1090,7 +1090,6 @@ export class Workbench extends Layout {
       statusBar: this._statusBar as unknown as StatusBarPart,
       editorPart: this._editor as EditorPart,
       services: this._services,
-      container: this._container,
       keybindingHint: (cmd) => this._keybindingHint(cmd),
       toggleStatusBar: () => this.toggleStatusBar(),
       getWorkspace: () => this._workspace,
@@ -1240,8 +1239,9 @@ export class Workbench extends Layout {
     // 4. Status bar entries
     this._statusBarController.setupStatusBar();
 
-    // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
-    this._menuBuilder.addManageGearIcon();
+    // 4c. The notifications bell at the foot of the activity bar.
+    const notificationCenter = this._statusBarController.notificationCenter;
+    if (notificationCenter) this._menuBuilder.addNotificationsButton(notificationCenter);
 
     // 4d. The right rail's ribbon: clicks, cross-ribbon icon drops, and
     // visibility following the rail's population.

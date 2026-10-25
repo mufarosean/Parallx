@@ -8,14 +8,13 @@
 
 import { Disposable, type IDisposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ICommandService, IKeybindingService } from '../services/serviceTypes.js';
-import { CommandService } from '../commands/commandRegistry.js';
+import { IKeybindingService } from '../services/serviceTypes.js';
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
-import { ContextMenu } from '../ui/contextMenu.js';
 import { declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';
 import type { ActivityBarPart } from '../parts/activityBarPart.js';
+import type { NotificationCenter } from './notificationCenter.js';
 import type { KeybindingService } from '../services/keybindingService.js';
 import { getIcon } from '../ui/iconRegistry.js';
 
@@ -30,11 +29,6 @@ export interface MenuBuilderDeps {
 // ─── Menu Builder ────────────────────────────────────────────────────────────
 
 export class MenuBuilder extends Disposable {
-  /** Tracks the currently-open manage menu so we can toggle it. */
-  private _manageMenu: ContextMenu | null = null;
-  /** Timestamp of the last manage-menu dismiss (defeats mousedown/click race). */
-  private _manageMenuDismissedAt = 0;
-
   private readonly _titlebar: TitlebarPart;
   private readonly _activityBarPart: ActivityBarPart;
   private readonly _services: ServiceCollection;
@@ -88,7 +82,9 @@ export class MenuBuilder extends Disposable {
     // Register dropdown items for View menu — delegates to structural commands
     this._register(this._titlebar.registerMenuBarDropdownItems('view', [
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
-      { commandId: 'settings.openAppearance', title: 'Appearance…', group: '2_appearance', order: 0 },
+      { commandId: 'settings.open', title: 'Settings', group: '1_settings', order: 1 },
+      { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', group: '1_settings', order: 2 },
+      { commandId: 'settings.openAppearance', title: 'Appearance…', group: '1_settings', order: 3 },
       // Same names as the commands and the title-bar buttons: the toggles act
       // on screen AREAS (parts are movable), see viewCommands.ts.
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Left Area', group: '2_appearance', order: 1 },
@@ -166,113 +162,49 @@ export class MenuBuilder extends Disposable {
   }
   private _toolsMenuItems: IDisposable | undefined;
 
-  // ── Manage gear icon ───────────────────────────────────────────────────
+  // ── Notifications bell ─────────────────────────────────────────────────
 
   /**
-   * Adds a gear icon to the activity bar bottom section that opens a
-   * settings/manage menu — mirrors VS Code's "Manage" gear icon.
+   * The bell at the foot of the activity bar: it opens the notifications
+   * panel beside it, and its badge counts what arrived since it was last
+   * opened. (Settings and Keyboard Shortcuts are in the View menu.)
    */
-  addManageGearIcon(): void {
+  addNotificationsButton(center: NotificationCenter): void {
     const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
     if (!bottomSection) return;
 
-    const gearBtn = $('button');
-    gearBtn.classList.add('activity-bar-item', 'activity-bar-manage-gear');
-    gearBtn.dataset.iconId = 'manage-gear';
-    gearBtn.title = 'Manage';
-
-    // Use registered stroke-based gear icon
+    const bell = $('button');
+    bell.classList.add('activity-bar-item', 'activity-bar-notifications');
+    bell.dataset.iconId = 'notifications';
+    bell.title = 'Notifications';
     const iconLabel = $('span');
     iconLabel.classList.add('activity-bar-icon-label');
-    iconLabel.innerHTML = getIcon('gear');
-    gearBtn.appendChild(iconLabel);
-    declareControl(gearBtn, { id: 'activitybar.manage', label: 'Manage', kind: 'iconButton', hint: 'Opens the manage menu: settings, keyboard shortcuts, tools.' });
+    iconLabel.innerHTML = getIcon('bell');
+    const badge = $('span');
+    badge.className = 'activity-bar-badge activity-bar-badge--count badge-hidden';
+    const badgeContent = $('span');
+    badgeContent.className = 'activity-bar-badge-content';
+    badge.appendChild(badgeContent);
+    bell.append(iconLabel, badge);
+    declareControl(bell, { id: 'activitybar.notifications', label: 'Notifications', kind: 'iconButton', hint: 'Opens what the app and your tools have told you.', command: 'workbench.action.toggleNotificationCenter' });
 
-    // Toggle: click opens menu, click again closes it
-    gearBtn.addEventListener('click', (e) => {
+    const paint = (unread: number): void => {
+      badge.classList.toggle('badge-hidden', unread === 0);
+      badgeContent.textContent = unread > 99 ? '99+' : String(unread);
+      const name = unread ? `Notifications, ${unread} new` : 'Notifications';
+      bell.setAttribute('aria-label', name);
+      bell.title = name;
+    };
+    this._register(center.onDidChangeUnread(paint));
+    paint(center.unread);
+
+    // The bell is part of the open panel for its outside-press check, so a
+    // second press reaches here and closes it.
+    bell.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this._manageMenu) {
-        // Menu is open — dismiss it
-        this._manageMenu.dismiss();
-        return;
-      }
-      // Guard: if the menu was *just* dismissed (by the outside-click mousedown
-      // hitting this same button), skip re-opening. A pointer's click only
-      // (detail > 0): Escape then Enter from the keyboard opens it again.
-      const MENU_DISMISS_GUARD_MS = 300;
-      if (e.detail > 0 && Date.now() - this._manageMenuDismissedAt < MENU_DISMISS_GUARD_MS) {
-        return;
-      }
-      this._showManageMenu(gearBtn);
+      center.toggle(bell);
     });
 
-    bottomSection.appendChild(gearBtn);
-  }
-
-  // ── Manage menu ────────────────────────────────────────────────────────
-
-  /**
-   * Show the Manage menu beside the gear icon, bottoms lined up (opens upward like VS Code).
-   */
-  private _showManageMenu(anchor: HTMLElement): void {
-    const cmdService = this._services.get(ICommandService) as CommandService;
-    const rect = anchor.getBoundingClientRect();
-
-    const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
-      {
-        id: 'workbench.action.showCommands',
-        label: 'Command Palette…',
-        keybinding: this.keybindingHint('workbench.action.showCommands'),
-        group: '1_commands',
-      },
-      {
-        id: 'settings.open',
-        label: 'Settings',
-        keybinding: this.keybindingHint('settings.open'),
-        group: '2_preferences',
-      },
-      {
-        id: 'workbench.action.openKeybindings',
-        label: 'Keyboard Shortcuts',
-        keybinding: this.keybindingHint('workbench.action.openKeybindings'),
-        group: '2_preferences',
-      },
-      {
-        id: 'settings.openAppearance',
-        label: 'Appearance…',
-        group: '3_themes',
-      },
-    ];
-
-    // Beside the gear, its bottom on the gear's bottom, growing upward (VS
-    // Code's Manage menu). `layoutPopup` measures the real menu after render,
-    // so rows, separators and padding never have to be guessed, and it flips
-    // or clamps at the window's edges. It used to open ABOVE the gear and to
-    // its right, which left it floating clear of the icon it came from.
-    const anchorRect = rect;
-
-    const ctxMenu = ContextMenu.show({
-      items,
-      anchor: anchorRect,
-      anchorPosition: 'right-end',
-    });
-
-    // Track the menu for toggle behavior
-    this._manageMenu = ctxMenu;
-    anchor.classList.add('active');
-    ctxMenu.onDidDismiss(() => {
-      this._manageMenuDismissedAt = Date.now();
-      this._manageMenu = null;
-      anchor.classList.remove('active');
-    });
-
-    ctxMenu.onDidSelect(({ item }) => {
-      if (item.disabled) return;
-
-      // Execute via command service for registered commands
-      cmdService.executeCommandFrom('menu', item.id).catch(err => {
-        console.error(`[MenuBuilder] Manage menu action error:`, err);
-      });
-    });
+    bottomSection.appendChild(bell);
   }
 }

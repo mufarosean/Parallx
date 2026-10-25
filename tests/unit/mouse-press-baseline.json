@@ -48,6 +48,5 @@
   "src/ui/dropdown.ts": 2,
   "src/ui/iconPicker.ts": 1,
   "src/ui/overlay.ts": 1,
-  "src/ui/tooltip.ts": 2,
-  "src/workbench/statusBarController.ts": 1
+  "src/ui/tooltip.ts": 2
 }

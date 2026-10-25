@@ -26,8 +26,8 @@ const OPENERS = [
 
 /** Ids the frame declares (design step 3); the probe fails when one is missing. */
 const FRAME_IDS = [
-  'titlebar.menu.file', 'workbench.action.closeWindow', 'activitybar.manage', 'activitybar.explorer-container',
-  'editorGroup.tabs', 'status.workspace', 'status.notifications', 'settings', 'settings.search',
+  'titlebar.menu.file', 'workbench.action.closeWindow', 'activitybar.notifications', 'activitybar.explorer-container',
+  'editorGroup.tabs', 'status.workspace', 'settings', 'settings.search',
 ];
 
 /** Ids a converted built-in declares (design step 5), checked after its surfaces open. */

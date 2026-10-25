@@ -45,5 +45,6 @@
   "src/editor/editorGroupView.ts": 1,
   "src/editor/panes/notebook/notebookEditorPane.ts": 1,
   "src/ui/findReplaceWidget.ts": 2,
-  "src/ui/panelSurface.ts": 1
+  "src/ui/panelSurface.ts": 1,
+  "src/workbench/notificationCenter.ts": 2
 }

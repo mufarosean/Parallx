@@ -2254,18 +2254,11 @@ html, body {
    Notification Center (Cap 9)
    ══════════════════════════════════════════════════════════════════════════════ */
 
-.parallx-notification-center-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 15000;
-}
-
 .parallx-notification-center {
   position: fixed;
-  bottom: 32px;            /* just above status bar */
-  left: 12px;
+  z-index: var(--px-z-popup);
   width: 380px;
-  max-height: 440px;
+  max-height: min(520px, 70vh);
   display: flex;
   flex-direction: column;
   background-color: var(--px-bg-elevated);
@@ -2273,157 +2266,33 @@ html, body {
   border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-lg), var(--px-edge-light);
   overflow: hidden;
+  outline: none;
   animation: px-notif-center-in var(--px-dur-base) var(--px-ease-out);
 }
-
 @keyframes px-notif-center-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .parallx-notification-center { animation: none; }
 }
-
-.parallx-notification-center-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--px-space-3) var(--px-space-3) var(--px-space-3) var(--px-space-4);
-  border-bottom: 1px solid var(--px-divider);
-}
-
-.parallx-notification-center-title {
-  display: flex;
-  align-items: center;
-  gap: var(--px-space-2);
-  font-size: var(--px-text-base);
-  font-weight: 600;
-  color: var(--px-text);
-}
-.parallx-notification-center-title-icon {
-  display: inline-flex;
-  color: var(--px-text-secondary);
-}
-.parallx-notification-center-title-icon svg { width: 15px; height: 15px; }
-
-.parallx-notification-center-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--px-radius-full);
-  background-color: var(--px-accent-soft);
-  color: var(--px-accent-text);
-  font-size: var(--px-text-xs);
-  font-weight: 600;
-}
-
-.parallx-notification-center-clear {
-  background: transparent;
-  border: 1px solid var(--px-border);
-  color: var(--px-text-secondary);
-  font-size: var(--px-text-sm);
-  font-weight: 500;
-  font-family: inherit;
-  padding: 3px 10px;
-  border-radius: var(--px-radius-md);
-  cursor: pointer;
-  transition: background-color var(--px-dur-fast) var(--px-ease),
-              color var(--px-dur-fast) var(--px-ease);
-}
-.parallx-notification-center-clear:hover {
-  background-color: var(--px-surface-hover);
-  color: var(--px-text);
-}
-
-.parallx-notification-center-list {
-  overflow-y: auto;
-  flex: 1;
-  padding: var(--px-space-1);
-}
-
-.parallx-notification-center-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--px-space-1);
-  padding: var(--px-space-6) var(--px-space-4);
-  text-align: center;
-}
-.parallx-notification-center-empty-icon {
-  display: inline-flex;
-  color: var(--px-success);
-  margin-bottom: var(--px-space-1);
-}
-.parallx-notification-center-empty-icon svg { width: 24px; height: 24px; }
-.parallx-notification-center-empty-text {
-  font-size: var(--px-text-base);
-  font-weight: 600;
-  color: var(--px-text);
-}
-.parallx-notification-center-empty-sub {
-  font-size: var(--px-text-sm);
-  color: var(--px-text-muted);
-}
-
-.parallx-notification-center-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--px-space-3);
-  padding: var(--px-space-2) var(--px-space-3);
-  border-radius: var(--px-radius-md);
-  font-size: var(--px-text-base);
-  color: var(--px-text);
-}
-.parallx-notification-center-item:hover {
-  background-color: var(--px-surface-hover);
-}
-
-.parallx-notification-center-icon {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--px-radius-sm);
-}
-.parallx-notification-center-icon svg { width: 15px; height: 15px; }
-.parallx-notification-center-icon-information {
-  color: var(--px-info);
-  background-color: rgba(var(--px-blue-rgb), 0.14);
-}
-.parallx-notification-center-icon-warning {
-  color: var(--px-warning);
-  background-color: var(--px-warning-soft);
-}
-.parallx-notification-center-icon-error {
-  color: var(--px-danger);
-  background-color: var(--px-danger-soft);
-}
-
-.parallx-notification-center-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding-top: 2px;
-}
-.parallx-notification-center-message {
-  line-height: var(--px-leading-base);
-  word-break: break-word;
-}
-.parallx-notification-center-source {
-  align-self: flex-start;
-  color: var(--px-text-muted);
-  font-size: var(--px-text-xs);
-  background-color: var(--px-bg-inset);
-  padding: 1px 7px;
-  border-radius: var(--px-radius-full);
-}
+.parallx-notification-center-header { display: flex; align-items: center; justify-content: space-between; padding: var(--px-space-2) var(--px-space-2) var(--px-space-2) var(--px-space-4); border-bottom: 1px solid var(--px-divider); }
+.parallx-notification-center-title { font-size: var(--px-text-base); font-weight: 600; }
+.parallx-notification-center-list { flex: 1; overflow-y: auto; padding: 0 var(--px-space-2) var(--px-space-2); }
+.parallx-notification-center-group { padding: var(--px-space-3) var(--px-space-2) var(--px-space-1); }
+.parallx-notification-center-item { display: flex; align-items: flex-start; gap: var(--px-space-3); padding: var(--px-space-2); border-radius: var(--px-radius-md); }
+.parallx-notification-center-item:hover, .parallx-notification-center-item:focus-within { background: var(--px-surface-hover); }
+.parallx-notification-center-icon { flex-shrink: 0; margin-top: 2px; color: var(--px-info, var(--px-accent)); }
+.parallx-notification-center-item[data-severity="warning"] .parallx-notification-center-icon { color: var(--px-warning); }
+.parallx-notification-center-item[data-severity="error"] .parallx-notification-center-icon { color: var(--px-danger); }
+.parallx-notification-center-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.parallx-notification-center-message { font-size: var(--px-text-base); line-height: var(--px-leading-base); word-break: break-word; }
+.parallx-notification-center-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.parallx-notification-center-dismiss { flex-shrink: 0; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.parallx-notification-center-item:hover .parallx-notification-center-dismiss,
+.parallx-notification-center-item:focus-within .parallx-notification-center-dismiss,
+[data-input-modality="touch"] .parallx-notification-center-dismiss { opacity: 1; }
+.parallx-notification-center .px-empty { padding: var(--px-space-6) var(--px-space-4); }
 
 /* ── Zen Mode ── */
 /* VS Code parity: entering Zen Mode hides sidebar, panel, status bar, activity bar.

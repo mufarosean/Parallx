@@ -679,7 +679,7 @@ const focusInFrame = async (frame, inner) => {
 const DIALOGS = [
   { name: 'command palette', opener: ['activitybar.explorer-container'], open: { key: 'Control+Shift+P' }, root: '[data-px-surface="quickAccess"]', modal: true },
   { name: 'quick open', opener: ['activitybar.explorer-container'], open: { key: 'Control+P' }, root: '[data-px-surface="quickAccess"]', modal: true },
-  { name: 'context menu (gear)', opener: ['activitybar.manage'], open: { key: 'Enter' }, root: '[data-px-surface="contextMenu"]', modal: false },
+  { name: 'notifications panel (bell)', opener: ['activitybar.notifications'], open: { key: 'Enter' }, root: '[data-px-surface="notificationCenter"]', modal: false },
   { name: 'dropdown', setup: ['workflows.new'], opener: ['workflows.editor.class', 'button'], open: { key: 'Enter' }, root: '.ui-dropdown__list', modal: false },
   { name: 'settings', opener: ['activitybar.explorer-container'], open: { cmd: ['settings.open'] }, root: '[data-px-surface="settings"]', modal: true },
   { name: 'confirm', opener: ['activitybar.explorer-container'], open: { cmd: ['workspace.resetConfig'] }, root: '[data-px-surface="confirm"]', modal: true },

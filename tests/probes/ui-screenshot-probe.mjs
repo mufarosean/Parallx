@@ -1495,23 +1495,23 @@ async function main() {
       await shot(page, 'welcome');
     }
 
-    // The chrome at a glance: the empty editor's hints, the settings (gear)
-    // menu against its icon, the status bar, and a file's breadcrumbs.
+    // The chrome at a glance: the empty editor's hints, the notifications
+    // panel against its bell, the status bar, and a file's breadcrumbs.
     if (scenes.includes('chrome')) {
       await scene('chrome', async () => {
         for (let i = 0; i < 6; i++) await runCommand(page, ['workbench.action.closeActiveEditor']);
         await page.waitForTimeout(600);
         await shot(page, 'chrome-empty');
-        await click(page, 'activitybar.manage').catch(() => {});
+        await click(page, 'activitybar.notifications').catch(() => {});
         await page.waitForTimeout(500);
         const gap = await page.evaluate(() => {
-          const g = __px.ctl('activitybar.manage')?.getBoundingClientRect();
-          const m = Array.from(document.querySelectorAll('[data-px-surface="contextMenu"]')).map((x) => x.getBoundingClientRect()).find((r) => r.width > 0);
-          if (!g || !m) return 'no gear or menu';
-          return `gear=${Math.round(g.left)},${Math.round(g.top)} ${Math.round(g.width)}x${Math.round(g.height)} menu=${Math.round(m.left)},${Math.round(m.top)} ${Math.round(m.width)}x${Math.round(m.height)} menuBottom-gearBottom=${Math.round(m.bottom - g.bottom)} menuLeft-gearRight=${Math.round(m.left - g.right)}`;
+          const g = __px.ctl('activitybar.notifications')?.getBoundingClientRect();
+          const m = Array.from(document.querySelectorAll('[data-px-surface="notificationCenter"]')).map((x) => x.getBoundingClientRect()).find((r) => r.width > 0);
+          if (!g || !m) return 'no bell or panel';
+          return `bell=${Math.round(g.left)},${Math.round(g.top)} ${Math.round(g.width)}x${Math.round(g.height)} panel=${Math.round(m.left)},${Math.round(m.top)} ${Math.round(m.width)}x${Math.round(m.height)} panelBottom-bellBottom=${Math.round(m.bottom - g.bottom)} panelLeft-bellRight=${Math.round(m.left - g.right)}`;
         });
-        console.log(`[probe] gear menu: ${gap}`);
-        await shot(page, 'chrome-gear');
+        console.log(`[probe] notifications panel: ${gap}`);
+        await shot(page, 'chrome-notifications');
         await page.keyboard.press('Escape');
         await page.waitForTimeout(300);
         // The status bar's items are its controls in the scene.

@@ -4,21 +4,20 @@
 // Owns:
 //   - Right-aligned editor language indicator
 //   - Extension → language display name mapping
-//   - Notification center bell badge + overlay
+//   - The notification center (its bell is in the activity bar)
 //   - Window title updates
 
 import { Disposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, INotificationService } from '../services/serviceTypes.js';
+import { IToolRegistryService } from '../services/types/tools.js';
+import { NotificationCenter } from './notificationCenter.js';
 import { IPythonEnvService } from '../services/pythonEnvService.js';
 import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
 import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { ContextMenu } from '../ui/contextMenu.js';
-import { createSurface, declareControl } from '../ui/kit.js';
-import { $ } from '../ui/dom.js';
-import { getIcon } from '../ui/iconRegistry.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import type { Workspace } from '../workspace/workspace.js';
 import type { WorkbenchContextManager } from '../context/workbenchContext.js';
@@ -29,7 +28,6 @@ export interface StatusBarControllerDeps {
   readonly statusBar: StatusBarPart;
   readonly editorPart: EditorPart;
   readonly services: ServiceCollection;
-  readonly container: HTMLElement;
   readonly keybindingHint: (commandId: string) => string | undefined;
   readonly toggleStatusBar: () => void;
   readonly getWorkspace: () => Workspace;
@@ -41,7 +39,6 @@ export interface StatusBarControllerDeps {
 export class StatusBarController extends Disposable {
   private readonly _statusBar: StatusBarPart;
   private readonly _services: ServiceCollection;
-  private readonly _container: HTMLElement;
   private readonly _keybindingHint: (commandId: string) => string | undefined;
   private readonly _toggleStatusBar: () => void;
   private readonly _getWorkspace: () => Workspace;
@@ -52,7 +49,6 @@ export class StatusBarController extends Disposable {
     super();
     this._statusBar = deps.statusBar;
     this._services = deps.services;
-    this._container = deps.container;
     this._keybindingHint = deps.keybindingHint;
     this._toggleStatusBar = deps.toggleStatusBar;
     this._getWorkspace = deps.getWorkspace;
@@ -118,8 +114,8 @@ export class StatusBarController extends Disposable {
       name: 'Workspace',
     });
 
-    // Notification Center Badge
-    this._setupNotificationBadge(sb);
+    // Notifications open from the activity bar's bell (menuBuilder).
+    this._setupNotificationCenter();
 
     // Python environment presence
     this._setupPythonEntry(sb);
@@ -199,179 +195,27 @@ export class StatusBarController extends Disposable {
     void paintSteady();
   }
 
-  // ── Notification badge + center ────────────────────────────────────────
+  // ── Notification center ────────────────────────────────────────────────
 
-  private _setupNotificationBadge(sb: StatusBarPart): void {
+  private _notificationCenter: NotificationCenter | undefined;
+  /** The notifications panel, opened from the activity bar's bell. */
+  get notificationCenter(): NotificationCenter | undefined { return this._notificationCenter; }
+
+  private _setupNotificationCenter(): void {
     const notifService = this._services.has(INotificationService)
       ? this._services.get(INotificationService) as import('../api/notificationService.js').NotificationService
       : undefined;
     if (!notifService) return;
-
-    const bellSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-
-    const bellAccessor = sb.addEntry({
-      id: 'status.notifications',
-      text: '',
-      iconSvg: bellSvg,
-      alignment: StatusBarAlignment.Left,
-      priority: 1000,
-      tooltip: 'No new notifications',
-      command: 'workbench.action.toggleNotificationCenter',
-      name: 'Notifications',
+    const tools = this._services.has(IToolRegistryService) ? this._services.get(IToolRegistryService) : undefined;
+    const center = this._register(new NotificationCenter(notifService, (id) => tools?.getById(id)?.description.manifest.name));
+    this._notificationCenter = center;
+    this._services.get(ICommandService)?.registerCommand?.({
+      id: 'workbench.action.toggleNotificationCenter',
+      title: 'Toggle Notification Center',
+      aiInvocable: true,
+      aiDescription: 'Show or hide the notification center.',
+      handler: () => center.toggle(document.querySelector<HTMLElement>('[data-icon-id="notifications"]')),
     });
-
-    const updateBadge = (count: number) => {
-      bellAccessor.update({
-        text: count > 0 ? `${count}` : '',
-        tooltip: count > 0 ? `${count} notification${count > 1 ? 's' : ''}` : 'No new notifications',
-      });
-    };
-    this._register(notifService.onDidChangeCount(updateBadge));
-
-    // Notification center overlay state
-    let centerOverlay: HTMLElement | null = null;
-    let centerKeyHandler: ((e: KeyboardEvent) => void) | null = null;
-    const hideCenter = () => {
-      if (centerKeyHandler) {
-        document.removeEventListener('keydown', centerKeyHandler);
-        centerKeyHandler = null;
-      }
-      if (centerOverlay) {
-        centerOverlay.remove();
-        centerOverlay = null;
-      }
-    };
-
-    const container = this._container;
-    const showCenter = () => {
-      if (centerOverlay) { hideCenter(); return; }
-
-      const overlay = $('div');
-      overlay.className = 'parallx-notification-center-overlay';
-      overlay.addEventListener('mousedown', (e) => {
-        if (e.target === overlay) hideCenter();
-      });
-
-      const panel = $('div');
-      panel.className = 'parallx-notification-center';
-      createSurface(panel, { id: 'notificationCenter', owner: 'core', label: 'Notifications' });
-
-      const history = notifService.history;
-
-      // Header — bell + title + live count, and a ghost "Clear all".
-      const header = $('div');
-      header.className = 'parallx-notification-center-header';
-
-      const titleWrap = $('div');
-      titleWrap.className = 'parallx-notification-center-title';
-      const titleIcon = $('span');
-      titleIcon.className = 'parallx-notification-center-title-icon';
-      titleIcon.innerHTML = getIcon('bell');
-      titleWrap.appendChild(titleIcon);
-      const title = $('span');
-      title.textContent = 'Notifications';
-      titleWrap.appendChild(title);
-      if (history.length > 0) {
-        const count = $('span');
-        count.className = 'parallx-notification-center-count';
-        count.textContent = String(history.length);
-        titleWrap.appendChild(count);
-      }
-      header.appendChild(titleWrap);
-
-      if (history.length > 0) {
-        const clearBtn = $('button');
-        clearBtn.className = 'parallx-notification-center-clear';
-        clearBtn.textContent = 'Clear All';
-        clearBtn.title = 'Clear all notifications';
-        clearBtn.addEventListener('click', () => {
-          notifService.dismissAll();
-          notifService.clearHistory();
-          hideCenter();
-        });
-        header.appendChild(clearBtn);
-        declareControl(clearBtn, { id: 'notificationCenter.clearAll', label: 'Clear All', hint: 'Clears every notification.' });
-      }
-      panel.appendChild(header);
-
-      // List
-      const list = $('div');
-      list.className = 'parallx-notification-center-list';
-
-      if (history.length === 0) {
-        const empty = $('div');
-        empty.className = 'parallx-notification-center-empty';
-        const emptyIcon = $('span');
-        emptyIcon.className = 'parallx-notification-center-empty-icon';
-        emptyIcon.innerHTML = getIcon('check-circle');
-        empty.appendChild(emptyIcon);
-        const emptyText = $('span');
-        emptyText.className = 'parallx-notification-center-empty-text';
-        emptyText.textContent = "You're all caught up";
-        empty.appendChild(emptyText);
-        const emptySub = $('span');
-        emptySub.className = 'parallx-notification-center-empty-sub';
-        emptySub.textContent = 'No notifications right now.';
-        empty.appendChild(emptySub);
-        list.appendChild(empty);
-      } else {
-        for (const notif of history) {
-          const row = $('div');
-          row.className = `parallx-notification-center-item parallx-notification-center-item-${notif.severity}`;
-
-          const icon = $('span');
-          icon.className = `parallx-notification-center-icon parallx-notification-center-icon-${notif.severity}`;
-          icon.innerHTML = getIcon(
-            notif.severity === 'information' ? 'info'
-              : notif.severity === 'warning' ? 'triangle-alert'
-                : 'octagon-alert',
-          );
-          row.appendChild(icon);
-
-          const body = $('div');
-          body.className = 'parallx-notification-center-body';
-          const msg = $('span');
-          msg.className = 'parallx-notification-center-message';
-          msg.textContent = notif.message;
-          body.appendChild(msg);
-
-          if (notif.source) {
-            const src = $('span');
-            src.className = 'parallx-notification-center-source';
-            src.textContent = notif.source;
-            body.appendChild(src);
-          }
-          row.appendChild(body);
-
-          list.appendChild(row);
-        }
-      }
-      panel.appendChild(list);
-
-      overlay.appendChild(panel);
-      container.appendChild(overlay);
-      centerOverlay = overlay;
-
-      // Close on Escape
-      centerKeyHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          hideCenter();
-        }
-      };
-      document.addEventListener('keydown', centerKeyHandler);
-    };
-
-    // Register the toggle command
-    const commandService = this._services.get(ICommandService);
-    if (commandService?.registerCommand) {
-      commandService.registerCommand({
-        id: 'workbench.action.toggleNotificationCenter',
-        title: 'Toggle Notification Center',
-        aiInvocable: true,
-        aiDescription: 'Show or hide the notification center.',
-        handler: () => showCenter(),
-      });
-    }
   }
 
   // ── Window title ───────────────────────────────────────────────────────

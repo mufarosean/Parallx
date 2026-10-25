@@ -80,7 +80,7 @@
   "src/services/workspaceMemoryService.ts": 818,
   "src/ui/conceptMap.ts": 1764,
   "src/views/viewContainer.ts": 1085,
-  "src/workbench.css": 2610,
+  "src/workbench.css": 2479,
   "src/workbench/layout.ts": 1954,
   "src/workbench/workbench.ts": 4266,
   "src/workbench/workbenchContributionHandler.ts": 923

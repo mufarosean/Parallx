@@ -74,8 +74,8 @@ test.describe('Workspace Management — User Experience', () => {
     await expect(placeholderRows).toHaveCount(0);
 
     // There should be exactly ONE gear icon in the activity bar
-    const gearIcons = window.locator('.activity-bar-manage-gear');
-    await expect(gearIcons).toHaveCount(1);
+    const bellIcons = window.locator('.activity-bar-notifications');
+    await expect(bellIcons).toHaveCount(1);
   });
 
   test('initial launch shows "No folder opened" empty state', async ({ window }) => {
@@ -185,8 +185,8 @@ test.describe('Workspace Management — User Experience', () => {
     await expect(headerLabels).toHaveCount(1);
 
     // Exactly ONE gear icon
-    const gearIcons = window.locator('.activity-bar-manage-gear');
-    await expect(gearIcons).toHaveCount(1);
+    const bellIcons = window.locator('.activity-bar-notifications');
+    await expect(bellIcons).toHaveCount(1);
 
     // NO placeholder fake files
     const placeholderRows = window.locator('.placeholder-tree-row');
@@ -262,8 +262,8 @@ test.describe('Workspace Management — User Experience', () => {
     // UI should be intact — no duplication
     const headerLabels = window.locator('.sidebar-header-label');
     await expect(headerLabels).toHaveCount(1);
-    const gearIcons = window.locator('.activity-bar-manage-gear');
-    await expect(gearIcons).toHaveCount(1);
+    const bellIcons = window.locator('.activity-bar-notifications');
+    await expect(bellIcons).toHaveCount(1);
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -288,13 +288,13 @@ test.describe('Workspace Management — User Experience', () => {
     // ONE header label
     await expect(window.locator('.sidebar-header-label')).toHaveCount(1);
     // ONE gear icon
-    await expect(window.locator('.activity-bar-manage-gear')).toHaveCount(1);
+    await expect(window.locator('.activity-bar-notifications')).toHaveCount(1);
     // NO placeholder files
     await expect(window.locator('.placeholder-tree-row')).toHaveCount(0);
     // ONE Explorer section
     await expect(window.locator('.view-section[data-view-id="view.explorer"]')).toHaveCount(1);
     // Activity bar should have at least Explorer and Search icons
-    const activityIcons = window.locator('.activity-bar-item:not(.activity-bar-manage-gear)');
+    const activityIcons = window.locator('.activity-bar-item:not(.activity-bar-notifications)');
     const iconCount = await activityIcons.count();
     expect(iconCount).toBeGreaterThanOrEqual(2);
   });
@@ -322,7 +322,7 @@ test.describe('Workspace Management — User Experience', () => {
     // Exactly ONE header label
     await expect(window.locator('.sidebar-header-label')).toHaveCount(1);
     // Exactly ONE gear icon
-    await expect(window.locator('.activity-bar-manage-gear')).toHaveCount(1);
+    await expect(window.locator('.activity-bar-notifications')).toHaveCount(1);
     // ZERO placeholder rows
     await expect(window.locator('.placeholder-tree-row')).toHaveCount(0);
     // Exactly ONE Explorer section

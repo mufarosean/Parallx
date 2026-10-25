@@ -244,9 +244,9 @@
   "src/workbench/containerBox.ts": 8,
   "src/workbench/layout.ts": 2,
   "src/workbench/layoutsSettingsPanel.ts": 11,
-  "src/workbench/menuBuilder.ts": 4,
+  "src/workbench/menuBuilder.ts": 6,
+  "src/workbench/notificationCenter.ts": 8,
   "src/workbench/partDrag.ts": 2,
-  "src/workbench/statusBarController.ts": 22,
   "src/workbench/widgetBox.ts": 9,
   "src/workbench/workbench.ts": 16,
   "src/workbench/workbenchWatermark.ts": 1
