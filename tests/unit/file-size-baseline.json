@@ -52,7 +52,7 @@
   "src/built-in/dashboard/dashboard.css": 2462,
   "src/built-in/dashboard/dashboardEditorProvider.ts": 1416,
   "src/built-in/explorer/main.ts": 1813,
-  "src/built-in/planner/planner.css": 2057,
+  "src/built-in/planner/planner.css": 2042,
   "src/built-in/planner/plannerDataService.ts": 1401,
   "src/built-in/tool-gallery/main.ts": 985,
   "src/built-in/worksheet/ooxml.ts": 1034,

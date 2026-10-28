@@ -13,8 +13,15 @@ import { createIconElement } from '../../ui/iconRegistry.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerEvent, PlannerTask } from './plannerTypes.js';
 import { addAppDays, appDateParts, appDateString, appTime, appTimeString, startOfAppDay } from '../../services/localTime.js';
+import { packLanes } from './plannerLayout.js';
 
 const REVIEW_PREVIEW = 3;
+/** Height of one hour on Today's timeline; an event is as tall as it lasts. */
+export const TIMELINE_HOUR_PX = 56;
+/** The shortest block drawn, so a 10-minute event still has room for its title. */
+const MIN_BLOCK_PX = 26;
+/** A timed task is a moment, drawn as a short slot. */
+const TASK_SLOT_HOURS = 0.5;
 
 // ─── Model ───────────────────────────────────────────────────────────────────
 
@@ -75,6 +82,64 @@ export function isLate(task: Pick<PlannerTask, 'status' | 'dueAt'>, now: number)
 /** Flagged all-day, or spanning more than one calendar day (the calendar's own rule). */
 export function isAllDayLike(ev: PlannerEvent): boolean {
   return ev.allDay || startOfLocalDay(ev.startAt) !== startOfLocalDay(ev.endAt - 1);
+}
+
+export interface TimelinePlacement {
+  readonly item: ScheduleItem;
+  /** Pixels from the top of the first hour shown. */
+  readonly top: number;
+  readonly height: number;
+  readonly lane: number;
+  readonly laneCount: number;
+}
+
+export interface TimelineLayout {
+  /** First and last wall-clock hours drawn (end exclusive). */
+  readonly startHour: number;
+  readonly endHour: number;
+  readonly items: readonly TimelinePlacement[];
+  /** Where the current-time line goes; null when now is outside the hours drawn. */
+  readonly nowTop: number | null;
+}
+
+/**
+ * Today's schedule on a time grid: each event placed at its start and as
+ * tall as it lasts, overlapping ones side by side (packLanes, as the
+ * calendar does). The hours drawn cover 8 AM to 6 PM and stretch to fit
+ * anything earlier or later. Hours are wall-clock hours on the app's clock,
+ * so a clock change does not shift the grid.
+ */
+export function layoutTimeline(model: TodayModel, now: number, hourPx = TIMELINE_HOUR_PX): TimelineLayout {
+  const dayEnd = addLocalDays(model.dayStart, 1);
+  const wall = (ms: number): number => {
+    if (ms >= dayEnd) return 24;
+    if (ms <= model.dayStart) return 0;
+    const p = appDateParts(ms);
+    return p.hour + p.minute / 60;
+  };
+  const minHours = MIN_BLOCK_PX / hourPx;
+  const spans = model.schedule.map((item) => {
+    const start = wall(item.at);
+    const end = item.kind === 'event' ? Math.max(wall(item.end), start) : start + TASK_SLOT_HOURS;
+    return { item, start, end, drawnEnd: Math.max(end, start + minHours) };
+  });
+  const nowHour = now >= model.dayStart && now < dayEnd ? wall(now) : null;
+  const startHour = Math.max(0, Math.floor(Math.min(8, ...spans.map((x) => x.start), nowHour ?? 8)));
+  const endHour = Math.min(24, Math.ceil(Math.max(18, ...spans.map((x) => x.drawnEnd), nowHour ?? 18)));
+  // Lanes in minutes; a block's drawn height counts, so short blocks never overlap.
+  const lanes = packLanes(spans.map((x) => ({ ...x, startMs: x.start * 60, endMs: x.drawnEnd * 60 })));
+  return {
+    startHour,
+    endHour,
+    items: lanes.map(({ item: x, lane, laneCount }) => ({
+      item: x.item,
+      top: (x.start - startHour) * hourPx,
+      height: Math.max((x.end - x.start) * hourPx, MIN_BLOCK_PX),
+      lane,
+      laneCount,
+    })),
+    nowTop: nowHour == null ? null : (nowHour - startHour) * hourPx,
+  };
 }
 
 export function buildTodayModel(input: TodayInput): TodayModel {
@@ -267,52 +332,69 @@ export class PlannerTodayView implements IDisposable {
       return section;
     }
 
-    const list = el('div', 'planner-today__timeline');
-    model.schedule.forEach((item, i) => {
-      if (i === model.nowIndex) list.appendChild(this._nowLine(now));
-      list.appendChild(item.kind === 'event' ? this._eventRow(item, colorOf) : this._taskRow(item.task, item.past, true));
-    });
-    if (model.nowIndex === model.schedule.length) list.appendChild(this._nowLine(now));
-    section.appendChild(list);
+    const layout = layoutTimeline(model, now);
+    const grid = el('div', 'planner-today__grid');
+    grid.style.height = `${(layout.endHour - layout.startHour) * TIMELINE_HOUR_PX}px`;
+    const p = appDateParts(model.dayStart);
+    for (let h = layout.startHour; h < layout.endHour; h++) {
+      const line = el('div', 'planner-today__hour');
+      line.style.top = `${(h - layout.startHour) * TIMELINE_HOUR_PX}px`;
+      line.setAttribute('aria-hidden', 'true');
+      line.dataset.label = appTimeString(appTime(p.year, p.month, p.day, h), { hour: 'numeric' });
+      grid.appendChild(line);
+    }
+    const lanes = el('div', 'planner-today__lanes');
+    for (const placed of layout.items) {
+      const slot = el('div', 'planner-today__slot');
+      slot.style.top = `${placed.top}px`;
+      slot.style.height = `${placed.height}px`;
+      slot.style.left = `${(placed.lane / placed.laneCount) * 100}%`;
+      slot.style.width = `${100 / placed.laneCount}%`;
+      if (placed.item.past) slot.classList.add('planner-today__slot--past');
+      slot.appendChild(placed.item.kind === 'event'
+        ? this._eventBlock(placed.item, colorOf, placed.height)
+        : this._taskBox(placed.item.task, timeFmt(placed.item.task.dueAt!)));
+      lanes.appendChild(slot);
+    }
+    grid.appendChild(lanes);
+    if (layout.nowTop != null) {
+      const nowLine = el('div', 'planner-today__now');
+      nowLine.style.top = `${layout.nowTop}px`;
+      nowLine.setAttribute('aria-label', `Now, ${timeFmt(now)}`);
+      nowLine.dataset.label = timeFmt(now);
+      grid.appendChild(nowLine);
+    }
+    section.appendChild(grid);
     return section;
   }
 
-  private _nowLine(now: number): HTMLElement {
-    const row = el('div', 'planner-today__now');
-    row.setAttribute('aria-label', `Now, ${timeFmt(now)}`);
-    row.append(el('span', 'planner-today__time planner-today__now-time', timeFmt(now)), el('span', 'planner-today__now-rule'));
-    return row;
-  }
-
-  private _eventRow(item: Extract<ScheduleItem, { kind: 'event' }>, colorOf: ColorOf): HTMLElement {
+  /** An event on the grid: its title, then its times and place when the block is tall enough to show them. */
+  private _eventBlock(item: Extract<ScheduleItem, { kind: 'event' }>, colorOf: ColorOf, height: number): HTMLElement {
     const ev = item.event;
-    const row = el('div', 'planner-today__row');
-    if (item.past) row.classList.add('planner-today__row--past');
-    row.appendChild(el('span', 'planner-today__time', timeFmt(item.at)));
     const card = el('button', 'planner-today__event');
     card.type = 'button';
     card.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
+    const when = `${timeFmt(ev.startAt)} – ${timeFmt(ev.endAt)}`;
+    card.setAttribute('aria-label', `${ev.title}, ${when}${ev.location ? `, ${ev.location}` : ''}`);
+    card.title = `${ev.title}\n${when}${ev.location ? `\n${ev.location}` : ''}`;
     card.appendChild(el('span', 'planner-today__event-title', ev.title));
-    const meta = el('span', 'planner-today__meta');
-    meta.appendChild(el('span', undefined, `${timeFmt(ev.startAt)} – ${timeFmt(ev.endAt)}`));
-    if (ev.location) {
-      const where = el('span', 'planner-today__where');
-      where.append(createIconElement('map-pin', 12), el('span', undefined, ev.location));
-      meta.appendChild(where);
+    if (height >= 44) {
+      const meta = el('span', 'planner-today__meta');
+      meta.appendChild(el('span', undefined, when));
+      if (ev.location) {
+        const where = el('span', 'planner-today__where');
+        where.append(createIconElement('map-pin', 12), el('span', undefined, ev.location));
+        meta.appendChild(where);
+      }
+      card.appendChild(meta);
     }
-    card.appendChild(meta);
     card.addEventListener('click', () => this._deps.openEvent(ev, card.getBoundingClientRect()));
-    row.appendChild(card);
-    return row;
+    return card;
   }
 
-  /** One task line: check, title (opens the task), and its time or tag. */
-  private _taskRow(task: PlannerTask, past: boolean, timed: boolean): HTMLElement {
+  /** One task: check, title (opens the task), tags, and on the grid its time. */
+  private _taskBox(task: PlannerTask, time?: string): HTMLElement {
     const done = task.status === 'done';
-    const row = el('div', timed ? 'planner-today__row' : 'planner-today__task-line');
-    if (past && timed) row.classList.add('planner-today__row--past');
-    if (timed) row.appendChild(el('span', 'planner-today__time', timeFmt(task.dueAt!)));
-
     const box = el('div', 'planner-today__task');
     if (done) box.classList.add('planner-today__task--done');
     const check = el('button', 'planner-today__check');
@@ -332,15 +414,19 @@ export class PlannerTodayView implements IDisposable {
     title.addEventListener('click', () => this._deps.openTask(task, title.getBoundingClientRect()));
     box.append(check, title);
     if (task.tags.length) box.appendChild(el('span', 'planner-today__tag', task.tags.map((t) => `#${t}`).join(' ')));
-    row.appendChild(box);
-    return row;
+    if (time) box.appendChild(el('span', 'planner-today__meta', time));
+    return box;
   }
 
   private _anytime(tasks: readonly PlannerTask[]): HTMLElement {
     const section = el('section', 'planner-today__section');
     createSectionLabel(section, 'Anytime today');
     const list = el('div', 'planner-today__list');
-    for (const t of tasks) list.appendChild(this._taskRow(t, false, false));
+    for (const t of tasks) {
+      const line = el('div', 'planner-today__task-line');
+      line.appendChild(this._taskBox(t));
+      list.appendChild(line);
+    }
     section.appendChild(list);
     return section;
   }

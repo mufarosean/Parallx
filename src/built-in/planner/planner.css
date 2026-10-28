@@ -320,39 +320,23 @@
 .planner-today__hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .planner-today__empty { margin: 0; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
-/* Timeline: a time column, then the item. */
-.planner-today__timeline { display: flex; flex-direction: column; gap: var(--px-space-2); }
-.planner-today__row,
-.planner-today__now {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  align-items: center;
-  gap: var(--px-space-4);
+/* Timeline: a grid of hours; each item placed at its time, as tall as it lasts. */
+.planner-today__grid { position: relative; --planner-today-gutter: 64px; }
+.planner-today__hour, .planner-today__now { position: absolute; left: 0; right: 0; height: 0; }
+.planner-today__hour { border-top: 1px solid var(--px-divider); }
+/* The hour (and now's time) sit in the gutter, drawn from data-label. */
+.planner-today__hour::before, .planner-today__now::before {
+  content: attr(data-label); position: absolute; top: -0.7em; left: 0; width: calc(var(--planner-today-gutter) - var(--px-space-3)); padding-right: var(--px-space-2);
+  background: var(--px-bg); text-align: right; font-size: var(--px-text-sm); color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.planner-today__row--past { opacity: 0.6; }
-.planner-today__time {
-  font-size: var(--px-text-sm);
-  color: var(--px-text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.planner-today__now-time { color: var(--px-planner-now); font-weight: 600; }
-.planner-today__now-rule {
-  position: relative;
-  height: 2px;
-  border-radius: var(--px-radius-full);
-  background: var(--px-planner-now);
-}
-.planner-today__now-rule::before {
-  content: '';
-  position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--px-radius-full);
-  background: var(--px-planner-now);
-}
+.planner-today__lanes { position: absolute; inset: 0 0 0 var(--planner-today-gutter); }
+.planner-today__slot { position: absolute; box-sizing: border-box; padding: 1px 2px; }
+.planner-today__slot--past { opacity: 0.6; }
+.planner-today__slot > .planner-today__event, .planner-today__slot > .planner-today__task { width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; }
+/* Now: its time in the gutter, a rule across with a dot where it starts. */
+.planner-today__now { z-index: 1; pointer-events: none; border-top: 2px solid var(--px-planner-now); margin-left: var(--planner-today-gutter); }
+.planner-today__now::before { left: calc(-1 * var(--planner-today-gutter)); color: var(--px-planner-now); font-weight: 600; }
+.planner-today__now::after { content: ''; position: absolute; left: -4px; top: -5px; width: 8px; height: 8px; border-radius: var(--px-radius-full); background: var(--px-planner-now); }
 
 /* An event is a block tinted with its calendar's colour; no stripe. */
 .planner-today__event {
@@ -360,9 +344,9 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: var(--px-space-2) var(--px-space-3);
+  padding: var(--px-space-1) var(--px-space-3);
   border: 0;
-  border-radius: var(--px-radius-lg);
+  border-radius: var(--px-radius-md);
   background: color-mix(in srgb, var(--cal-color) var(--px-planner-event-tint), var(--px-bg));
   color: var(--px-text);
   font: inherit;
@@ -371,7 +355,7 @@
   transition: background var(--px-dur-fast) var(--px-ease);
 }
 .planner-today__event:hover { background: color-mix(in srgb, var(--cal-color) calc(var(--px-planner-event-tint) + 8%), var(--px-bg)); }
-.planner-today__event-title { font-size: var(--px-text-md); font-weight: 600; }
+.planner-today__event-title { font-size: var(--px-text-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .planner-today__meta {
   display: flex;
   flex-wrap: wrap;
@@ -409,10 +393,12 @@
   min-width: 0;
   min-height: var(--px-control-h-lg);
 }
-.planner-today__row .planner-today__task {
-  padding: var(--px-space-1) var(--px-space-3);
+.planner-today__slot > .planner-today__task {
+  min-height: 0;
+  padding: 0 var(--px-space-3);
   border: 1px dashed var(--px-border-strong);
-  border-radius: var(--px-radius-lg);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg);
 }
 .planner-today__list { display: flex; flex-direction: column; border-top: 1px solid var(--px-divider); }
 .planner-today__task-line { padding: 0 var(--px-space-1); border-bottom: 1px solid var(--px-divider); }
@@ -542,8 +528,7 @@
 }
 @container planner (max-width: 719px) {
   .planner-today__side { display: flex; align-items: stretch; }
-  .planner-today__row,
-  .planner-today__now { gap: var(--px-space-3); }
+  .planner-today__grid { --planner-today-gutter: 52px; }
 }
 
 /* ── Tasks ────────────────────────────────────────────────────────────── */
