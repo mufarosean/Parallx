@@ -51,7 +51,7 @@ export function heartbeatSeedPrompt(content: string, instruction: string): strin
   return `A background heartbeat check flagged this:\n\n${content.trim()}\n\n${instruction}`;
 }
 
-/** Do It / Tell Me More / Dismiss for a heartbeat finding. */
+/** Handle in Chat / Ask in Chat / Dismiss for a heartbeat finding. */
 export function heartbeatActions(api: ParallxApi, entry: IAutonomyLogEntry, onHandled: () => void): HTMLElement {
   const bar = $('div.agents-hist__actions');
   createSurface(bar, { id: 'agents.finding', owner: 'agents', label: 'Heartbeat finding', instance: entry.id });
@@ -64,9 +64,11 @@ export function heartbeatActions(api: ParallxApi, entry: IAutonomyLogEntry, onHa
     svc.log?.markRead([entry.id]);
     onHandled();
   };
-  createButton(bar, { id: 'agents.finding.doIt', label: 'Do It', kind: 'primary', size: 'sm', title: 'Open Chat and have the agent act on this', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Please go ahead and handle it.')) });
-  createButton(bar, { id: 'agents.finding.tellMeMore', label: 'Tell Me More', kind: 'secondary', size: 'sm', title: 'Open Chat and ask the agent to explain first', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Tell me more about this before I decide what to do.')) });
-  createButton(bar, { id: 'agents.finding.dismiss', label: 'Dismiss', kind: 'ghost', size: 'sm', onClick: () => handle(null) });
+  // Both chat actions open Chat with the finding: one asks the agent to
+  // handle it, the other to explain it first and wait for your answer.
+  createButton(bar, { id: 'agents.finding.doIt', label: 'Handle in Chat', icon: 'send', kind: 'primary', size: 'sm', title: 'Open Chat and have the agent act on this', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Please go ahead and handle it.')) });
+  createButton(bar, { id: 'agents.finding.tellMeMore', label: 'Ask in Chat', icon: 'message-circle-question', kind: 'secondary', size: 'sm', title: 'Open Chat and have the agent explain this before anything is done', onClick: () => handle(heartbeatSeedPrompt(entry.content, 'Explain what you found and why it matters, then wait for me to decide. Do not act yet.')) });
+  createButton(bar, { id: 'agents.finding.dismiss', label: 'Dismiss', icon: 'close', kind: 'ghost', size: 'sm', onClick: () => handle(null) });
   return bar;
 }
 

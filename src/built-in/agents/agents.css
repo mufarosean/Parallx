@@ -10,16 +10,6 @@
   font-size: var(--px-text-sm);
 }
 
-.agents-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--px-space-2);
-  padding: var(--px-space-2) var(--px-space-3);
-  border-bottom: 1px solid var(--px-border);
-}
-
 .agents-body {
   flex: 1;
   min-height: 0;
@@ -276,7 +266,9 @@
   padding: var(--px-space-2) var(--px-space-3);
   border-bottom: 1px solid var(--px-border);
 }
-.agents-tabs > * { width: 100%; }
+.agents-tabs { display: flex; align-items: center; gap: var(--px-space-1); }
+.agents-tabs > :first-child { flex: 1; min-width: 0; }
+.agents-rt__switch { flex: none; display: inline-flex; margin-left: auto; }
 .agents-dot--off { background: var(--px-text-faint); }
 .agents-card__finding {
   color: var(--px-text-secondary);

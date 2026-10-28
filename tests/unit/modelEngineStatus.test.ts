@@ -16,7 +16,7 @@ describe('what the app says about the model engine', () => {
       ],
     });
     expect(s.running.map((r) => [r.name, r.step, r.state, r.action, r.kind])).toEqual([
-      ['Morning Brief', 'Working (paused once for your chat)', 'working', 'stop', 'run'],
+      ['Morning Brief', 'Working (paused once for you)', 'working', 'stop', 'run'],
       ['Heartbeat', 'Waiting for the model, behind your chat', 'waiting', 'stop', 'run'],
       ['Helper', 'Working', 'working', 'stop', 'run'],
     ]);
@@ -24,7 +24,7 @@ describe('what the app says about the model engine', () => {
 
   it('words for a run waiting behind another run', () => {
     expect(liveRunStep({ runId: 'x', startedAt: 0, engine: 'waiting' })).toBe('Waiting for the model');
-    expect(liveRunStep({ runId: 'x', startedAt: 0, engine: 'working', preemptions: 3 })).toBe('Working (paused 3 times for your chat)');
+    expect(liveRunStep({ runId: 'x', startedAt: 0, engine: 'working', preemptions: 3 })).toBe('Working (paused 3 times for you)');
   });
 
   it('the chip says where the model sits and who waits', () => {

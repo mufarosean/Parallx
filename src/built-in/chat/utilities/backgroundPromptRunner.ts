@@ -203,12 +203,14 @@ export function createBackgroundPromptRunner(
       ? req.timeoutMs
       : DEFAULT_TIMEOUT_MS;
 
+    // Its name in the Agents panel (a card's title, a routine's name).
+    const named = typeof req.originLabel === 'string' && req.originLabel.trim() ? { jobName: req.originLabel.trim() } : {};
     const fail = (error: string): IBackgroundPromptResult => {
       deps.autonomyLog?.append({
         origin,
         requestText: label,
-        content: `Background turn FAILED: ${error}`,
-        metadata: { background: true, error: true, sessionId: handle.sessionId, model },
+        content: `Could not finish: ${error}`,
+        metadata: { background: true, error: true, sessionId: handle.sessionId, model, ...named },
       });
       deps.activity?.note({
         actor: 'ai',
@@ -269,7 +271,7 @@ export function createBackgroundPromptRunner(
         origin,
         requestText: label,
         content: resultText || '(no final text, the result was delivered via tools)',
-        metadata: { background: true, sessionId: handle.sessionId, model },
+        metadata: { background: true, sessionId: handle.sessionId, model, ...named },
       });
       return { ok: true, resultText, model };
     } catch (err) {

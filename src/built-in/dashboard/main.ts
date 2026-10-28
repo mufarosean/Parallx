@@ -557,6 +557,7 @@ async function _headlessWidgetRefresh(api: ParallxApi, widgetId: string): Promis
       instanceId: row.id,
       pageId: row.pageId,
       config: row.config,
+      title: row.appearance.title?.trim() || typeReg.displayName,
       api,
       cachedOutput: row.cachedOutput,
       mode: 'background',

@@ -1408,6 +1408,8 @@ export interface WidgetRefreshContext<TConfig = unknown> {
   readonly instanceId: string;
   readonly pageId: string;
   readonly config: TConfig;
+  /** The card's name as the user sees it (its own title, else its type's name): for logs and the Agents panel. */
+  readonly title?: string;
   /** Full Parallx API surface, scoped to the dashboard tool. */
   readonly api: unknown;
   readonly cachedOutput: string | null;

@@ -212,11 +212,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
 
   // ── New Routine. Running in the background is a setting (Settings ›
   // Agents); when it is off, the body says so with a way there. ──
-  const head = $('div.agents-head');
-  createIconButton(head, { id: 'agents.newRoutine', command: 'agents.newRoutine', icon: 'plus', title: 'New Routine', size: 'sm', onClick: () => openRoutine() });
-  createIconButton(head, { id: 'agents.openSettings', command: 'agents.openSettings', icon: 'settings', title: 'Agent Settings', size: 'sm' });
-  root.appendChild(head);
-
+  // One row: the tabs, then New Routine and Agent Settings at its end.
   const tabs = $('div.agents-tabs');
   const tabSwitch = createSegmented(tabs, {
     id: 'agents.tab',
@@ -230,6 +226,8 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     ],
     onChange: (v) => { currentTab = v as AgentsTab; body.scrollTop = 0; repaint(); },
   });
+  createIconButton(tabs, { id: 'agents.newRoutine', command: 'agents.newRoutine', icon: 'plus', title: 'New Routine', size: 'sm', onClick: () => openRoutine() });
+  createIconButton(tabs, { id: 'agents.openSettings', command: 'agents.openSettings', icon: 'settings', title: 'Agent Settings', size: 'sm' });
   root.appendChild(tabs);
 
   const body = $('div.agents-body');

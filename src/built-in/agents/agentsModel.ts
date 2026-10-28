@@ -47,7 +47,7 @@ const ORIGIN_NAMES: Record<string, string> = {
 /** What a live run is doing, in words. Test seam. */
 export function liveRunStep(run: ILiveRun): string {
   if (run.engine === 'waiting') return run.behindChat ? 'Waiting for the model, behind your chat' : 'Waiting for the model';
-  const gaveWay = run.preemptions ? ` (paused ${run.preemptions === 1 ? 'once' : `${run.preemptions} times`} for your chat)` : '';
+  const gaveWay = run.preemptions ? ` (paused ${run.preemptions === 1 ? 'once' : `${run.preemptions} times`} for you)` : '';
   return `Working${gaveWay}`;
 }
 

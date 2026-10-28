@@ -2454,7 +2454,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           log: (finding) => {
             autonomyLog.append({
               origin: 'heartbeat',
-              requestText: `[trigger] ${finding.kind}`,
+              requestText: finding.title,
               content: `${finding.title}: ${finding.detail}`,
               metadata: { findingKey: finding.key, delivery: finding.delivery },
             });

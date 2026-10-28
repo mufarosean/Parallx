@@ -689,7 +689,7 @@ class DashboardEditorPane implements IDisposable {
       const output = await inst.typeReg.refresh({
         instanceId: inst.row.id,
         pageId: inst.row.pageId,
-        config: inst.row.config,
+        config: inst.row.config, title: inst.row.appearance.title?.trim() || inst.typeReg.displayName,
         api: this._api,
         cachedOutput: inst.row.cachedOutput,
         mode: mode ?? 'background',
