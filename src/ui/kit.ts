@@ -26,6 +26,7 @@ import { Toggle } from './toggle.js';
 import { InputBox } from './inputBox.js';
 import { createSelect as createSelectControl, type SelectOption } from './dropdown.js';
 import { Slider } from './slider.js';
+import { DateField, TimeField } from './dateTimeField.js';
 import { TabBar, type ITabBarItem, type ITabBarOptions } from './tabBar.js';
 import { scene, type SceneKind, type SceneState, type ISceneEntry } from './scene.js';
 import type { IDisposable } from '../platform/lifecycle.js';
@@ -570,6 +571,44 @@ export function createInput(container: HTMLElement | null | undefined, options: 
   };
 }
 
+export interface IKitPickerFieldOptions extends IKitControlDeclaration {
+  readonly label: string;
+  /** YYYY-MM-DD for a date, HH:MM for a time. */
+  readonly value: string;
+  readonly onChange?: (value: string) => void;
+}
+
+export interface IKitPickerField {
+  readonly element: HTMLButtonElement;
+  value: string;
+  disabled: boolean;
+  dispose(): void;
+}
+
+function pickerField(field: DateField | TimeField, container: HTMLElement | null | undefined, options: IKitPickerFieldOptions): IKitPickerField {
+  if (options.onChange) field.onDidChange(options.onChange);
+  mount(container, field.element);
+  const reg = declare(field.element, 'input', options, options.label, { state: () => ({ kind: 'value', value: field.value }) });
+  return {
+    element: field.element,
+    get value() { return field.value; },
+    set value(v: string) { field.value = v; },
+    get disabled() { return field.disabled; },
+    set disabled(v: boolean) { field.disabled = v; },
+    dispose() { reg.dispose(); field.dispose(); },
+  };
+}
+
+/** A date: shows it in words, opens the app's month grid (dateTimeField.ts). */
+export function createDateField(container: HTMLElement | null | undefined, options: IKitPickerFieldOptions): IKitPickerField {
+  return pickerField(new DateField(null, { value: options.value, ariaLabel: options.label }), container, options);
+}
+
+/** A time of day: shows it in words, opens a typed field over a 15-minute list. */
+export function createTimeField(container: HTMLElement | null | undefined, options: IKitPickerFieldOptions): IKitPickerField {
+  return pickerField(new TimeField(null, { value: options.value, ariaLabel: options.label }), container, options);
+}
+
 export interface IKitSelectOptions extends IKitControlDeclaration {
   readonly label: string;
   readonly items: readonly SelectOption[];
@@ -580,6 +619,8 @@ export interface IKitSelectOptions extends IKitControlDeclaration {
 export interface IKitSelect {
   readonly element: HTMLElement;
   value: string;
+  /** The choices can change while it is open to view (a label that follows another field). */
+  setItems(items: readonly SelectOption[]): void;
   dispose(): void;
 }
 
@@ -594,6 +635,7 @@ export function createSelect(container: HTMLElement | null | undefined, options:
     element: select.el,
     get value() { return select.getValue(); },
     set value(v: string) { select.setValue(v); },
+    setItems(items) { select.setItems([...items]); },
     dispose() { reg.dispose(); select.dispose(); select.el.remove(); },
   };
 }

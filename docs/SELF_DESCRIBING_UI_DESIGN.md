@@ -416,7 +416,8 @@ Files: `src/**/*.ts` and `ext/**/*.js`, ignoring `**/node_modules/**`,
 `ext/**/readability.js`, `ext/**/test/**`, and the kit and the components
 it wraps: `src/ui/kit.ts`, `src/ui/scene.ts`, `src/ui/toggle.ts`,
 `src/ui/inputBox.ts`, `src/ui/dropdown.ts`, `src/ui/slider.ts`,
-`src/ui/tabBar.ts`, `src/ui/segmentedControl.ts`, `src/ui/contextMenu.ts`.
+`src/ui/tabBar.ts`, `src/ui/segmentedControl.ts`, `src/ui/contextMenu.ts`,
+`src/ui/dateTimeField.ts`.
 
 Count per file, on the text with comments stripped the way
 `historyTagRatchet.test.ts` strips them, the matches of:

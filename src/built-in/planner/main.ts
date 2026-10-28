@@ -19,7 +19,7 @@ import { IDatabaseService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider } from './plannerEditorProvider.js';
-import { setPendingPlannerNewTask, setPendingPlannerTab } from './plannerNavState.js';
+import { setPendingPlannerNewEvent, setPendingPlannerNewTask, setPendingPlannerTab } from './plannerNavState.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
@@ -459,23 +459,21 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('planner.newEvent', async () => {
-      if (!_data || !api.window.showInputBox) return;
-      const title = await api.window.showInputBox({
-        prompt: 'New event',
-        placeholder: 'Title',
-      });
-      if (!title?.trim()) return;
-      const now = new Date();
-      now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
+      // As planner.newTask: the Planner opens, then its pane opens the event
+      // dialog (a pane still building takes the request once drawn).
       try {
-        await _data.createEvent({
-          title: title.trim(),
-          startAt: now.getTime(),
+        setPendingPlannerNewEvent(true);
+        await api.editors.openEditor({
+          typeId: 'planner',
+          title: 'Planner',
+          iconHtml: PLANNER_ICON_HTML,
+          instanceId: 'main',
         });
+        document.dispatchEvent(new CustomEvent('parallx.planner.newEvent'));
       } catch (err) {
-        console.error('[Planner] newEvent failed:', err);
+        setPendingPlannerNewEvent(false);
         const msg = err instanceof Error ? err.message : String(err);
-        await api.window.showErrorMessage(`Could not create event: ${msg}`);
+        await api.window.showErrorMessage(`Could not open the new event form: ${msg}`);
       }
     }),
   );

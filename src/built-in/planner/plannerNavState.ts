@@ -48,3 +48,19 @@ export function takePendingPlannerNewTask(): boolean {
   _pendingNewTask = false;
   return pending;
 }
+
+// planner.newEvent, the same way: the pane that draws takes the request and
+// opens the event dialog.
+let _pendingNewEvent = false;
+
+/** planner.newEvent: record the request before invoking openEditor. */
+export function setPendingPlannerNewEvent(pending: boolean): void {
+  _pendingNewEvent = pending;
+}
+
+/** Pane: consume the request (one-shot). */
+export function takePendingPlannerNewEvent(): boolean {
+  const pending = _pendingNewEvent;
+  _pendingNewEvent = false;
+  return pending;
+}

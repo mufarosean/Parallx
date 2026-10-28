@@ -11,7 +11,7 @@ import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
-import { takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
+import { takePendingPlannerNewEvent, takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { appDateParts } from '../../services/localTime.js';
@@ -178,6 +178,21 @@ export class PlannerEditorPane implements IDisposable {
     document.addEventListener('parallx.planner.newTask', onNewTask);
     if (takePendingPlannerNewTask()) onNewTask();
 
+    // planner.newEvent (the New Event buttons run it too): on the calendar at
+    // 9 on the day in view, elsewhere on Today at the next whole hour.
+    const onNewEvent = () => {
+      if (!this._root?.isConnected) return;
+      takePendingPlannerNewEvent();
+      if (this._activeTab === 'tasks') this._setTab('today');
+      const start = this._activeTab === 'calendar' ? atTime(this._cursorDate, 9) : atTime(Date.now(), appDateParts(Date.now()).hour + 1);
+      const btn = this._root.querySelector<HTMLElement>('[data-px-id="planner.newEvent"]');
+      const r = btn?.getBoundingClientRect();
+      const anchor = r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - 230, 100, 0, 0);
+      this.eventPopover.openEventPopover({ mode: 'create', startAt: start, endAt: start + 60 * 60 * 1000 }, anchor);
+    };
+    document.addEventListener('parallx.planner.newEvent', onNewEvent);
+    if (takePendingPlannerNewEvent()) onNewEvent();
+
     // Keyboard shortcuts — Notion Calendar / Cron parity. Only fire when
     // the pane is connected and the user isn't typing in an input.
     const onKey = (e: KeyboardEvent) => {
@@ -282,6 +297,7 @@ export class PlannerEditorPane implements IDisposable {
       dispose() {
         document.removeEventListener('parallx.planner.focusTab', onFocusTab);
         document.removeEventListener('parallx.planner.newTask', onNewTask);
+        document.removeEventListener('parallx.planner.newEvent', onNewEvent);
         document.removeEventListener('keydown', onKey);
       },
     });
@@ -430,11 +446,6 @@ export class PlannerEditorPane implements IDisposable {
         data: this._data,
         loadCalCtx: () => this.calendar.loadCalCtx(),
         openEvent: (ev, anchor) => this.eventPopover.openEventPopover({ mode: 'edit', event: ev }, anchor),
-        newEvent: (anchor) => {
-          // Next whole hour today, the default event length the popover applies.
-          const start = atTime(Date.now(), appDateParts(Date.now()).hour + 1);
-          this.eventPopover.openEventPopover({ mode: 'create', startAt: start, endAt: start + 60 * 60 * 1000 }, anchor);
-        },
         openTask: (task, anchor) => this.taskPopover.openTaskPopover({ mode: 'edit', task }, anchor),
         openDay: (dayStart) => {
           this._cursorDate = startOfDay(new Date(dayStart));

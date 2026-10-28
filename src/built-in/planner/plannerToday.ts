@@ -229,7 +229,6 @@ export interface PlannerTodayDeps {
   readonly data: PlannerDataService;
   readonly loadCalCtx: () => Promise<{ isVisible: IsVisible; colorOf: ColorOf }>;
   readonly openEvent: (ev: PlannerEvent, anchor: DOMRect) => void;
-  readonly newEvent: (anchor: DOMRect) => void;
   readonly openTask: (task: PlannerTask, anchor: DOMRect) => void;
   readonly openDay: (dayStart: number) => void;
   readonly openReviewQueue: () => void;
@@ -253,8 +252,7 @@ export class PlannerTodayView implements IDisposable {
   constructor(private readonly _deps: PlannerTodayDeps) {}
 
   async render(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    const newBtn = createButton(actions, { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus', kind: 'primary' });
-    newBtn.addEventListener('click', () => this._deps.newEvent(newBtn.getBoundingClientRect()));
+    createButton(actions, { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus', kind: 'primary' });
 
     const now = Date.now();
     const dayStart = startOfLocalDay(now);

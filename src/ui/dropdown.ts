@@ -505,6 +505,7 @@ export interface CustomSelect {
   el: HTMLElement;
   getValue(): string;
   setValue(value: string): void;
+  setItems(options: SelectOption[]): void;
   dispose(): void;
 }
 
@@ -524,6 +525,7 @@ export function createSelect(options: SelectOption[], initial: string, onChange:
     el: wrap,
     getValue: () => dropdown.value ?? '',
     setValue: (v: string) => { dropdown.value = v; },
+    setItems: (items: SelectOption[]) => { dropdown.items = items; },
     dispose: () => dropdown.dispose(),
   };
 }

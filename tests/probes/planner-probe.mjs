@@ -115,7 +115,7 @@ async function main() {
     log('task popover', await page.evaluate(() => {
       const p = document.querySelector('.planner-popover');
       if (!p) return 'none';
-      return `title="${p.querySelector('.planner-popover__title-input')?.value}" status=${Array.from(p.querySelectorAll('.planner-popover__statusbtn--active')).map((b) => b.textContent.trim()).join(',')} links=${p.querySelectorAll('.planner-popover__linkchip').length} rows=${Array.from(p.querySelectorAll('.planner-popover__rowlabel')).map((r) => r.textContent.trim()).join(',')}`;
+      return `title="${p.querySelector('.planner-form__title input')?.value}" status=${Array.from(p.querySelectorAll('.ui-segmented-control__segment[aria-checked="true"]')).map((b) => b.textContent.trim()).join(',')} links=${p.querySelectorAll('.planner-popover__linkchip').length} rows=${Array.from(p.querySelectorAll('.planner-form__label')).map((r) => r.textContent.trim()).join(',')}`;
     }));
     await shot(page, 'task-popover');
     await page.keyboard.press('Escape');
@@ -173,7 +173,7 @@ async function main() {
     log('event popover', await page.evaluate(() => {
       const p = document.querySelector('.planner-popover');
       if (!p) return 'none';
-      return `title="${p.querySelector('.planner-popover__title-input')?.value}" rows=${Array.from(p.querySelectorAll('.planner-popover__rowlabel')).map((r) => r.textContent.trim()).join(',')} buttons=${Array.from(p.querySelectorAll('.planner-popover__btn')).map((b) => b.textContent.trim()).join(',')}`;
+      return `title="${p.querySelector('.planner-form__title input')?.value}" rows=${Array.from(p.querySelectorAll('.planner-form__label')).map((r) => r.textContent.trim()).join(',')} buttons=${Array.from(p.querySelectorAll('.planner-popover__foot .px-btn')).map((b) => b.textContent.trim()).join(',')}`;
     }));
     await shot(page, 'event-popover');
     await page.keyboard.press('Escape');
@@ -196,7 +196,7 @@ async function main() {
     // Drag-create on an empty cell: the new-event popover opens.
     log('drag-create send', await pointer({ sel: '.planner-day__cell:nth-child(20)' }, [12, 30]));
     await page.waitForTimeout(800);
-    log('drag-create', await page.evaluate(() => { const p = document.querySelector('.planner-popover'); return p ? `popover title="${p.querySelector('.planner-popover__title-input')?.value}" heading="${p.querySelector('.planner-popover__title')?.textContent?.trim()}"` : 'no popover'; }));
+    log('drag-create', await page.evaluate(() => { const p = document.querySelector('.planner-popover'); return p ? `popover title="${p.querySelector('.planner-form__title input')?.value}" heading="${p.querySelector('.planner-popover__title')?.textContent?.trim()}"` : 'no popover'; }));
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
     await page.evaluate(() => document.querySelector('.planner-popover-overlay')?.remove());

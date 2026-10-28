@@ -6,7 +6,7 @@ import { characterLink, rosterName, norm, clip } from './character-tool-core.js'
 import { sheetFromCharacter, STUDIO_KEYS, STUDIO_FIELDS } from './studio-core.js';
 
 // ── Finding characters ─────────────────────────────────────────────────────
-// The roster, searchable by the chat (2026-10-09): "who do I have that lives
+// The roster, searchable by the chat: "who do I have that lives
 // in the valley", "what is Tom's secret", "which of my characters have I
 // played most". Read-only. Words match in any order across the name, the
 // tagline, every sheet field and the concept; a quoted phrase matches whole.

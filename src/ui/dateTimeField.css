@@ -1,0 +1,84 @@
+/* ── Date and time fields (dateTimeField.ts) ── */
+
+.px-pickfield {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--px-space-2);
+  min-width: 0;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-2) 0 var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-base);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--px-dur-fast) var(--px-ease);
+}
+.px-pickfield:hover { border-color: var(--px-border-strong); }
+.px-pickfield:focus-visible, .px-pickfield[aria-expanded="true"] { outline: none; border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
+.px-pickfield:disabled { opacity: 0.45; cursor: default; }
+.px-pickfield__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-pickfield .svg-icon { flex-shrink: 0; color: var(--px-text-muted); }
+
+.px-picker {
+  position: fixed;
+  z-index: var(--px-z-popup);
+  padding: var(--px-space-2);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  color: var(--px-text);
+}
+
+.px-datepicker { width: 260px; }
+.px-datepicker__head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 var(--px-space-2); }
+.px-datepicker__title { font-size: var(--px-text-base); font-weight: 600; }
+.px-datepicker__row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.px-datepicker__dow { padding: var(--px-space-1) 0; text-align: center; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.px-datepicker__day {
+  height: 30px;
+  border: 0;
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.px-datepicker__day:hover { background: var(--px-surface-hover); }
+.px-datepicker__day:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.px-datepicker__day--out { color: var(--px-text-muted); }
+.px-datepicker__day--today { color: var(--px-accent-text); font-weight: 600; }
+.px-datepicker__day[aria-selected="true"] { background: var(--px-accent); color: var(--px-text-on-accent); font-weight: 600; }
+.px-datepicker__foot { display: flex; justify-content: flex-end; padding-top: var(--px-space-2); margin-top: var(--px-space-2); border-top: 1px solid var(--px-divider); }
+
+.px-timepicker { width: 200px; display: flex; flex-direction: column; gap: var(--px-space-2); }
+.px-timepicker__input {
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-2);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-base);
+  outline: none;
+}
+.px-timepicker__input:focus { border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
+.px-timepicker__list { max-height: 220px; overflow-y: auto; }
+.px-timepicker__option {
+  padding: var(--px-space-1) var(--px-space-2);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-base);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.px-timepicker__option:hover, .px-timepicker__option--active { background: var(--px-surface-hover); }
+.px-timepicker__option[aria-selected="true"] { color: var(--px-accent-text); font-weight: 600; }

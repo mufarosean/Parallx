@@ -11,7 +11,7 @@ import { googleSync } from './sync/googleClient.js';
 import { createButton } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
-import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, atTime, sameDay, formatHour, formatTimeShort, formatTimeRange } from './plannerDates.js';
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, sameDay, formatHour, formatTimeShort, formatTimeRange } from './plannerDates.js';
 import { type CalendarView, PANE_COMPACT_MAX, SYNC_SVG, el } from './plannerUi.js';
 import type { PlannerEditorPane } from './plannerEditorProvider.js';
 
@@ -156,14 +156,6 @@ export class PlannerCalendarViews {
     // Primary CTA.
     const addEvt = createButton(null, { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus', kind: 'primary', title: 'New Event (C)' });
     addEvt.classList.add('planner-cta');
-    addEvt.addEventListener('click', () => {
-      const start = atTime(this._pane._cursorDate, 9);
-      this._pane.eventPopover.openEventPopover({
-        mode: 'create',
-        startAt: start,
-        endAt: start + 60 * 60 * 1000,
-      }, addEvt.getBoundingClientRect());
-    });
     actions.appendChild(addEvt);
 
     if (this._pane._calendarView === 'month') await this._renderMonthView(body);

@@ -764,225 +764,95 @@
 }
 .planner-popover {
   width: 360px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 88%, white);
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 8px;
-  box-shadow:
-    0 1px 0 color-mix(in srgb, white 5%, transparent) inset,
-    0 22px 44px -8px rgba(0, 0, 0, 0.55),
-    0 8px 18px -6px rgba(0, 0, 0, 0.35);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  color: var(--px-text);
   display: flex;
   flex-direction: column;
   transform-origin: top left;
-  animation: planner-popover-in 200ms cubic-bezier(0.22, 1.05, 0.36, 1);
+  animation: planner-popover-in var(--px-dur-base) var(--px-ease-out);
 }
 @keyframes planner-popover-in {
   from { transform: translateY(-6px) scale(0.97); opacity: 0; }
   to   { transform: translateY(0)    scale(1);    opacity: 1; }
 }
+@media (prefers-reduced-motion: reduce) { .planner-popover { animation: none; } }
 
 .planner-popover__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 12px 8px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  padding: var(--px-space-3) var(--px-space-3) var(--px-space-2) var(--px-space-4);
+  border-bottom: 1px solid var(--px-divider);
 }
 .planner-popover__title { margin: 0; font-size: var(--px-text-base); font-weight: 600; letter-spacing: -0.01em; }
 .planner-popover__close {
   width: 24px; height: 24px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--px-text-muted);
-  cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.planner-popover__close:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent); color: var(--vscode-editor-foreground, #d4d4d4); }
-
-.planner-popover__body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
-
-/* Event / Task kind switcher — sharp segmented pair, underline accent */
-.planner-popover__kinds {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin: -4px -4px 4px;
-}
-.planner-popover__kind {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  background: transparent;
-  color: var(--px-text-muted);
-  font: inherit;
-  font-size: var(--px-text-base);
-  font-weight: 500;
-  cursor: pointer;
-  transition: color var(--px-dur-fast) var(--px-ease);
-}
-.planner-popover__kind:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
-.planner-popover__kind--active { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
-.planner-popover__kind--active::after {
-  content: '';
-  position: absolute;
-  left: 10px; right: 10px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--vscode-button-background, #0e639c);
-}
-
-.planner-popover__title-input,
-.planner-popover__field,
-.planner-popover__textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-muted);
+  cursor: pointer;
+}
+.planner-popover__close:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.planner-popover__body { padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-2); }
+.planner-popover__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-3) var(--px-space-4);
+  border-top: 1px solid var(--px-divider);
+}
+.planner-popover__spacer { flex: 1 1 auto; }
+.planner-popover__btn {
+  display: inline-flex;
+  align-items: center;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  cursor: pointer;
+}
+.planner-popover__btn:hover { background: var(--px-surface-hover); }
+.planner-popover__btn--primary { background: var(--px-accent); color: var(--px-text-on-accent); border-color: transparent; }
+.planner-popover__btn--primary:hover { background: var(--px-accent); filter: brightness(1.08); }
+
+/* ── The task and event dialogs: a label column, then the controls ─────── */
+.planner-form { width: 460px; }
+.planner-form__body { gap: var(--px-space-3); }
+.planner-form__title input { font-size: var(--px-text-md); font-weight: 500; height: var(--px-control-h-lg); }
+.planner-form__row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: start; gap: var(--px-space-3); }
+.planner-form__label { padding-top: 6px; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.planner-form__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.planner-form__controls > .ui-select, .planner-form__controls > .ui-input-box { flex: 1 1 100%; min-width: 0; }
+.planner-form__controls > .px-pickfield { flex: 1 1 0; }
+.planner-form__controls > .planner-form__time { flex: 0 0 104px; }
+.planner-form__inline { display: inline-flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); cursor: pointer; }
+.planner-form__notes {
+  width: 100%;
+  min-height: 64px;
+  box-sizing: border-box;
+  padding: var(--px-space-2);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
   background: var(--px-bg-inset);
   color: var(--px-text);
   font: inherit;
   font-size: var(--px-text-base);
-  transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
+  line-height: 1.45;
+  resize: none;
 }
-.planner-popover__title-input { font-size: var(--px-text-base); font-weight: 500; }
-.planner-popover__textarea { min-height: 64px; resize: vertical; }
-.planner-popover__title-input:focus,
-.planner-popover__field:focus,
-.planner-popover__textarea:focus {
-  outline: none;
-  border-color: var(--px-accent);
-}
-
-.planner-popover__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.planner-popover__row--labeled {
-  flex-wrap: nowrap;
-}
-.planner-popover__rowlabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 70px;
-  font-size: var(--px-text-sm);
-  font-weight: 500;
-  color: var(--px-text-secondary);
-}
-.planner-popover__rowlabel svg {
-  flex: 0 0 13px;
-  color: var(--px-text-muted);
-}
-.planner-popover__field--date { flex: 1 1 130px; min-width: 0; }
-.planner-popover__field--time { flex: 0 0 90px; }
-.planner-popover__field--full { flex: 1 1 100%; }
-/* A host for THE dropdown, which draws its own field: no second box around it. */
-.planner-popover__field--select { flex: 1 1 100%; padding: 0; border: 0; background: transparent; }
-.planner-popover__sep { color: var(--px-text-muted); font-size: var(--px-text-sm); }
-
-/* Status segmented control */
-.planner-popover__statusrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 2px;
-}
-.planner-popover__statuslabel {
-  flex: 0 0 70px;
-  font-size: var(--px-text-sm);
-  font-weight: 500;
-  color: var(--px-text-secondary);
-}
-.planner-popover__statusgroup {
-  display: inline-flex;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.planner-popover__statusbtn {
-  height: var(--px-control-h-sm);
-  padding: 0 12px;
-  border: 0;
-  background: transparent;
-  color: var(--px-text-secondary);
-  font: inherit;
-  font-size: var(--px-text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.planner-popover__statusbtn + .planner-popover__statusbtn {
-  border-left: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-}
-.planner-popover__statusbtn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
-.planner-popover__statusbtn--active {
-  /* Per Linear: limit accent-color usage. Status is internal state, not
-     the focused action — use the neutral selection treatment, not the
-     primary brand color. */
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  color: var(--vscode-editor-foreground, #f3f3f3);
-}
-
-.planner-popover__check {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--px-text-base);
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  cursor: pointer;
-}
-.planner-popover__check input { width: 14px; height: 14px; accent-color: var(--vscode-button-background, #0e639c); }
-
-.planner-popover__foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px 12px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-}
-.planner-popover__spacer { flex: 1 1 auto; }
-.planner-popover__btn {
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font: inherit;
-  cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  height: var(--px-control-h);
-  padding: 0 12px;
-  border-radius: var(--px-radius-sm);
-  font-size: var(--px-text-sm);
-  line-height: 1;
-}
-.planner-popover__btn:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 10%, transparent); }
-.planner-popover__btn--primary {
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
-  border-color: transparent;
-}
-.planner-popover__btn--primary:hover { filter: brightness(1.08); background: var(--vscode-button-background, #0e639c); }
-.planner-popover__btn--danger {
-  color: var(--px-danger);
-  border-color: color-mix(in srgb, var(--px-danger) 38%, transparent);
-}
-.planner-popover__btn--danger:hover {
-  background: color-mix(in srgb, var(--px-danger) 14%, transparent);
-  color: var(--px-danger);
-}
+.planner-form__notes:focus { outline: none; border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
+.planner-form__controls > .planner-popover__notesbar, .planner-form__controls > .planner-popover__links { flex: 1 1 100%; }
 
 /* ── Calendar chrome — sharp, no pills ────────────────────────────────── */
 

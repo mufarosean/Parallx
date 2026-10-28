@@ -1,7 +1,7 @@
 // plannerUi.ts — what the Planner pane's parts share: the editor API it is
 // handed, the tab and view names, its glyphs and colour palette, and the
 // small DOM helpers (el, the colour swatches, the event dialog's calendar
-// options).
+// options, the task and event dialogs' labelled rows and growing notes).
 
 import type { IDropdownItem } from '../../ui/dropdown.js';
 import type { PlannerCalendar } from './plannerTypes.js';
@@ -68,14 +68,11 @@ export const TASK_DOT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" 
 export const TASK_DONE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-export const CALENDAR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Calendar</span>';
-export const REPEAT_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Repeats</span>';
 
 // Link-chip glyphs: web (anchor/chain) vs internal (document).
 export const LINK_WEB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 export const LINK_DOC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 export const LINK_PLUS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
-export const COLOR_LABEL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.31 17.51 2 12 2z"/></svg><span>Color</span>';
 export const SYNC_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
 
 // Google Calendar's event palette (colorId → hex). Used by the colour pickers
@@ -153,4 +150,22 @@ export function eventCalendarItems(cals: readonly PlannerCalendar[]): IDropdownI
     value: c.id,
     label: anySynced && !c.sourceProvider ? `${c.name} · Not Synced` : c.name,
   }));
+}
+
+/** One labelled row of the form: the label, then its controls. */
+export function formRow(body: HTMLElement, label: string): HTMLElement {
+  const row = el('div', 'planner-form__row');
+  const name = el('span', 'planner-form__label');
+  name.textContent = label;
+  const controls = el('div', 'planner-form__controls');
+  row.append(name, controls);
+  body.appendChild(row);
+  return controls;
+}
+
+/** Notes grow with what is typed (to a limit) instead of a resize handle over the text. */
+export function autoGrow(area: HTMLTextAreaElement, max = 220): void {
+  const fit = () => { area.style.height = 'auto'; area.style.height = `${Math.min(area.scrollHeight + 2, max)}px`; };
+  area.addEventListener('input', fit);
+  requestAnimationFrame(fit);
 }
