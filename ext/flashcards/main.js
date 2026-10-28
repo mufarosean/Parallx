@@ -5122,7 +5122,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   font: inherit; font-size: var(--px-text-base);
   transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
 }
-.fc-textarea { resize: vertical; min-height: 64px; line-height: var(--px-leading-base); }
+.fc-textarea { resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); min-height: 64px; line-height: var(--px-leading-base); }
 .fc-input:focus, .fc-textarea:focus { outline: none; border-color: var(--px-accent); box-shadow: 0 0 0 3px var(--px-accent-faint); }
 .fc-input::placeholder, .fc-textarea::placeholder { color: var(--px-text-faint); }
 .fc-row { display: flex; gap: var(--px-space-2); align-items: center; flex-wrap: wrap; }
@@ -5426,7 +5426,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 }
 .fc-answers__note { font-size: var(--px-text-2xs); color: var(--px-text-faint); margin-top: 2px; }
 .fc-edit__rubric { margin-top: var(--px-space-3); }
-.fc-edit__rubric .fc-textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.fc-edit__rubric .fc-textarea { width: 100%; box-sizing: border-box; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); }
 .fc-study__produce { width: 100%; max-width: min(100%, 920px); margin-top: var(--px-space-5); text-align: left; }
 .fc-study__produce-label {
   font-size: var(--px-text-xs); font-weight: 700; text-transform: none;

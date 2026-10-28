@@ -217,7 +217,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-textarea {
   width: 100%; padding: 6px 9px; font-size: var(--px-text-sm); color: var(--px-text);
   background: var(--px-bg-inset); border: 1px solid var(--px-border-strong);
-  border-radius: var(--px-radius-sm); resize: vertical; font-family: inherit;
+  border-radius: var(--px-radius-sm); resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); font-family: inherit;
 }
 .ws-error { font-size: var(--px-text-sm); color: var(--px-danger); }
 
@@ -464,7 +464,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-tags__label { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .ws-tags__own, .ws-tags__more { display: contents; }
 .ws-tags__field { width: 160px; }
-.ws-quiz__notetext { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: var(--px-bg-inset); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); padding: 6px 9px; }
+.ws-quiz__notetext { width: 100%; box-sizing: border-box; min-height: 64px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: var(--px-bg-inset); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); padding: 6px 9px; }
 .ws-quiz__notepreview { font-size: var(--px-text-xs); color: var(--px-text-secondary); white-space: pre-wrap; margin-top: 2px; }
 
 /* ── Rewards ── */

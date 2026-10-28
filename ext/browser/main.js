@@ -358,7 +358,7 @@ const CSS = `
 .br-empty { padding: 8px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .br-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; font-size: 12px; }
 .br-sidebar-top { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.br-sidebar-top button.br-action.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, #fff); border-color: transparent; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.br-sidebar-top button.br-action { width: var(--px-control-h-sm); padding: 0; }
 .br-sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .br-section-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: normal; opacity: 0.75; cursor: pointer; user-select: none; }
 .br-section-head .br-chevron { margin-left: auto; transition: transform var(--px-dur-fast, 120ms); display: inline-flex; }
@@ -1744,13 +1744,13 @@ function createSidebar(container) {
   const root = el('div', 'br-sidebar');
   container.appendChild(root);
   const top = el('div', 'br-sidebar-top');
-  const newTab = el('button', 'br-action primary', { sceneId: 'browser.side.newTab', sceneCommand: 'browser.newTab', type: 'button', title: 'Open a new tab (Ctrl+T in a page)' });
-  newTab.innerHTML = icon('plus', 14) + '<span>New Tab</span>';
+  // One row of named icon buttons; the header's More Actions lists them in words.
+  const newTab = el('button', 'br-action', { sceneId: 'browser.side.newTab', sceneCommand: 'browser.newTab', type: 'button', title: 'New Tab (Ctrl+T in a page)' });
+  newTab.innerHTML = icon('plus', 14); newTab.setAttribute('aria-label', 'New Tab');
   newTab.addEventListener('click', () => openTab());
   top.appendChild(newTab);
   const privateTab = el('button', 'br-action', { sceneId: 'browser.side.newPrivateTab', sceneCommand: 'browser.newPrivateTab', type: 'button', title: 'Open a private tab: no history, and its cookies vanish when the last private tab closes' });
-  privateTab.innerHTML = icon('eye-closed', 14);
-  privateTab.setAttribute('aria-label', 'New Private Tab');
+  privateTab.innerHTML = icon('eye-closed', 14); privateTab.setAttribute('aria-label', 'New Private Tab');
   privateTab.addEventListener('click', () => openTab(undefined, { private: true }));
   top.appendChild(privateTab);
   // History is a page, not a sidebar list: no browser puts it in the sidebar.

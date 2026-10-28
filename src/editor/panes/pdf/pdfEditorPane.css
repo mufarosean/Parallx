@@ -698,7 +698,7 @@
 .pdf-highlight-popover .pdf-highlight-note {
   width: 100%;
   min-height: 72px;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   box-sizing: border-box;
   font-family: inherit;
 }

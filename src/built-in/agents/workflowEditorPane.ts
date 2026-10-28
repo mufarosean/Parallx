@@ -13,7 +13,7 @@ import { appDateParts, appTimeString } from '../../services/localTime.js';
 import './workflowEditor.css';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { getIcon } from '../../ui/iconRegistry.js';
+import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 import { createDropdownHandle, type IDropdownHandle, type IDropdownItem } from '../../ui/dropdown.js';
 import { NodeCanvas } from '../../ui/nodeCanvas.js';
 import type { WorkflowService } from '../../services/workflows/workflowService.js';
@@ -136,7 +136,7 @@ export class WorkflowEditorPane implements IDisposable {
     header.appendChild(pickerWrap); this._disposables.push(declareControl(this._runPicker.element, { id: 'workflows.editor.view', label: 'View a recorded run', kind: 'select', state: () => ({ kind: 'value', value: this._runPicker.value }) }));
 
     this._runBtn = $('button.wfe__btn.wfe__btn--primary') as HTMLButtonElement;
-    this._runBtn.textContent = 'Run Now';
+    this._runBtn.textContent = 'Run Now'; this._runBtn.prepend(createIconElement('play', 14));
     declareControl(this._runBtn, { id: 'workflows.editor.runNow', label: 'Run Now' });
     this._runBtn.addEventListener('click', () => { void this._runNow(); });
     header.appendChild(this._runBtn);

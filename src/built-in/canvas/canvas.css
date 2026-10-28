@@ -4046,7 +4046,7 @@
 .canvas-button-actions { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
 .canvas-button-action { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); }
 .canvas-button-action__head { display: flex; align-items: center; justify-content: space-between; font-weight: 500; }
-.canvas-button-action__text { min-height: 64px; height: auto; padding: 6px; resize: vertical; font-family: var(--px-font-mono); }
+.canvas-button-action__text { min-height: 64px; height: auto; padding: 6px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); font-family: var(--px-font-mono); }
 
 /* ── Embed block ── */
 .canvas-embed { margin: 0.75rem 0; }
@@ -4074,7 +4074,7 @@
 .canvas-mermaid__code {
   min-height: 120px;
   padding: 8px;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   background: var(--px-bg-inset);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm);

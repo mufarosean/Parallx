@@ -7,7 +7,7 @@
 
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
-import { createButton, createSectionLabel, createSurface, declareControl, sceneSlug } from '../../ui/kit.js';
+import { createButton, createSectionLabel, createSurface, createTimeField, declareControl, sceneSlug } from '../../ui/kit.js';
 import { svc } from './agentsServices.js';
 import type { WorkflowDoc } from '../../services/workflows/workflowTypes.js';
 
@@ -109,14 +109,10 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
     });
     chips.appendChild(b);
   }
-  const time = document.createElement('input');
-  time.type = 'time';
-  time.className = 'agents-routine__input agents-routine__time';
-  time.value = '07:45';
-  time.setAttribute('aria-label', 'Time');
-  declareControl(time, { id: 'agents.routineForm.time', label: 'Time', kind: 'input', state: () => ({ kind: 'value', value: time.value }) });
   const whenRow = $('div.agents-routine__when');
-  whenRow.append(chips, time);
+  whenRow.append(chips);
+  // The app's own time field (typed, or picked from a list), not the browser's.
+  const time = createTimeField(whenRow, { id: 'agents.routineForm.time', label: 'Time', value: '07:45', onChange: () => update() });
   when.append(whenLabel, whenRow);
   form.appendChild(when);
 
@@ -155,7 +151,6 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
     }
     for (const r of runs) { const row = $('div.agents-routine__run'); row.textContent = fmtRun(r); nextList.appendChild(row); }
   }
-  time.addEventListener('input', update);
   update();
 
   let savedId: string | null = null;
@@ -194,7 +189,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   form.addEventListener('submit', (e) => { e.preventDefault(); save(false); });
   host.appendChild(form);
   setTimeout(() => name.focus(), 0);
-  return () => form.remove();
+  return () => { time.dispose(); form.remove(); };
 }
 
 /**

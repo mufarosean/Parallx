@@ -22,7 +22,7 @@ export function injectTablesStyles() {
   style.id = STYLE_ID;
   style.textContent = `
 .tb-name { flex: 1; min-width: 0; font-size: var(--px-text-xl); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tb-editor { width: 100%; box-sizing: border-box; min-height: 260px; font-family: var(--px-font-mono); font-size: var(--px-text-sm); line-height: 1.5; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); color: var(--px-text); padding: var(--px-space-3); resize: vertical; white-space: pre; overflow: auto; tab-size: 2; }
+.tb-editor { width: 100%; box-sizing: border-box; min-height: 260px; font-family: var(--px-font-mono); font-size: var(--px-text-sm); line-height: 1.5; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); color: var(--px-text); padding: var(--px-space-3); resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); white-space: pre; overflow: auto; tab-size: 2; }
 .tb-editor:focus { outline: none; border-color: var(--px-accent); }
 .tb-controls { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .tb-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: var(--px-space-5); align-items: start; }

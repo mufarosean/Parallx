@@ -1181,7 +1181,7 @@ function injectStyles() {
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-md, 13px);
   line-height: 1.5;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   outline: none;
   box-sizing: border-box;
 }
@@ -1555,7 +1555,7 @@ function injectStyles() {
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   line-height: 1.5;
 }
 .tg-ce-textarea:focus {
@@ -1739,7 +1739,7 @@ function injectStyles() {
 .tg-drawer-input:focus, .tg-drawer-select:focus, .tg-drawer-textarea:focus {
   border-color: var(--vscode-focusBorder, #007fd4);
 }
-.tg-drawer-textarea { resize: vertical; min-height: 60px; }
+.tg-drawer-textarea { resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); min-height: 60px; }
 .tg-drawer-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tg-drawer-chip {
   display: inline-flex;
@@ -6244,7 +6244,7 @@ function renderChatEditor(container, parallx, input) {
     const msgInput = el('textarea');
     msgInput.placeholder = 'e.g. /ai write a really silly reply';
     msgInput.rows = 3;
-    msgInput.style.cssText = inputStyle + ' min-height:60px; max-height:120px; resize:vertical;';
+    msgInput.style.cssText = inputStyle + ' min-height:60px; max-height:120px; resize:none;field-sizing:content;max-height:var(--px-textarea-max-h);';
     body.appendChild(mkField('Message text to add/send when button is clicked:', msgInput)); tgDeclare(msgInput, 'textGenerator.chat.customShortcut.message', { label: 'Message text' });
 
     // Insertion type
@@ -6345,7 +6345,7 @@ function renderChatEditor(container, parallx, input) {
     const shortcuts = getThreadShortcuts();
     bulkInput.value = serializeShortcuts(shortcuts);
     bulkInput.rows = 16;
-    bulkInput.style.cssText = 'width:100%; box-sizing:border-box; padding:10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:monospace; line-height:1.5; resize:vertical; min-height:200px;';
+    bulkInput.style.cssText = 'width:100%; box-sizing:border-box; padding:10px; border:1px solid var(--vscode-input-border, var(--px-border)); border-radius:4px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font-size:12px; font-family:monospace; line-height:1.5; resize:none;field-sizing:content;max-height:var(--px-textarea-max-h); min-height:200px;';
     body.appendChild(bulkInput); tgDeclare(bulkInput, 'textGenerator.chat.bulkShortcuts.text', { label: 'Shortcuts' });
 
     modal.appendChild(body);

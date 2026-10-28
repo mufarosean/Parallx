@@ -116,7 +116,7 @@ export const MO_CSS_MORE = `
 .mo-tr-btn.has-rules { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-tr-btn.is-on { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-tr-rules { display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-tr-rules-box { width: 100%; box-sizing: border-box; resize: vertical; min-height: 88px; font: inherit; font-size: 12px; line-height: 1.45; padding: 6px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; outline: none; }
+.mo-tr-rules-box { width: 100%; box-sizing: border-box; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); min-height: 88px; font: inherit; font-size: 12px; line-height: 1.45; padding: 6px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; outline: none; }
 .mo-tr-rules-box:focus { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-tr-rules-status { font-size: 11px; min-height: 14px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-tr-btn.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text)); border-color: transparent; }
@@ -235,7 +235,7 @@ export const MO_CSS_MORE = `
 .mo-plan-slider { display: flex; flex-direction: column; gap: 2px; }
 .mo-plan-slider-head { display: flex; justify-content: space-between; font-size: 12px; }
 .mo-plan-slider input[type="range"] { width: 100%; margin: 0; accent-color: var(--vscode-focusBorder, var(--px-accent)); }
-.mo-plan-notes { min-height: 120px; resize: vertical; font: inherit; font-size: 12px; line-height: 1.4; }
+.mo-plan-notes { min-height: 120px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); font: inherit; font-size: 12px; line-height: 1.4; }
 .mo-plan-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .mo-plan-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .mo-plan-topbar-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; }

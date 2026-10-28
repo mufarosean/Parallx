@@ -1166,7 +1166,7 @@
 }
 .dashboard-field__markdown-input {
   min-height: 96px;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 .dashboard-field__markdown-preview {
   border: 1px solid var(--px-divider);
@@ -1294,7 +1294,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   font-size: var(--px-text-base);
   transition: border-color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
-.dashboard-field__textarea { min-height: 84px; resize: vertical; }
+.dashboard-field__textarea { min-height: 84px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); }
 .dashboard-field__input:focus,
 .dashboard-field__textarea:focus {
   outline: none;

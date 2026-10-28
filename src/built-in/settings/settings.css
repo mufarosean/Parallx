@@ -368,7 +368,7 @@
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
   border-radius: var(--parallx-radius-sm, 4px);
   padding: 6px 8px;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 
 .settings-editor__multiline:focus-visible {
@@ -388,7 +388,7 @@
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
   border-radius: var(--parallx-radius-sm, 4px);
   padding: 6px 8px;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 
 .settings-editor__json:focus-visible {

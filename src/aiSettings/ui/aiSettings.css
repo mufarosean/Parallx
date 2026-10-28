@@ -680,7 +680,7 @@
 }
 
 textarea.ai-settings-agent-card__field-input {
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   min-height: 48px;
   line-height: 1.4;
 }

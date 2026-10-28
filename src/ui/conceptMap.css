@@ -333,7 +333,7 @@
   font-size: 12px;
   padding: 8px 10px;
   box-sizing: border-box;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 
 .canvas-conceptmap__hint {

@@ -6476,7 +6476,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   outline: none;
 }
 .mo-detail-field textarea {
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   min-height: 60px;
 }
 .mo-detail-field input:read-only,
@@ -6964,7 +6964,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-album-field textarea {
   min-height: 60px;
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 .mo-album-contents-grid {
   display: flex;
@@ -7850,7 +7850,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 /* Inspector tabs: empty states, the text box, swatches, list rows, readouts */
 .mo-ce-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--px-space-2); padding: var(--px-space-2) 0; }
 .mo-ce-group-body { display: flex; flex-direction: column; gap: var(--px-space-2); }
-.mo-ce .mo-ce-textarea { flex: none; height: 56px; min-height: 40px; padding: var(--px-space-1) var(--px-space-2); resize: vertical; line-height: 1.4; font-family: var(--px-font-ui); width: 100%; }
+.mo-ce .mo-ce-textarea { flex: none; height: 56px; min-height: 40px; padding: var(--px-space-1) var(--px-space-2); resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); line-height: 1.4; font-family: var(--px-font-ui); width: 100%; }
 .mo-ce-seg button { white-space: nowrap; }
 .mo-ce-swatch--wheel { position: relative; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
 .mo-ce-swatch--wheel.mo-active { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); box-shadow: inset 0 0 0 4px var(--mo-ce-custom, transparent); }

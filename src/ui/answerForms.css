@@ -294,7 +294,7 @@
   background: var(--px-bg-inset);
   border: 1px solid var(--px-border);
   border-radius: var(--px-radius-sm);
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 
 .px-af-block__source:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }

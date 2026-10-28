@@ -219,7 +219,9 @@
   background: var(--px-bg-inset);
   color: var(--px-text);
   font: inherit;
-  resize: vertical;
+  font-size: var(--px-text-base); /* the same size as every other field in the app */
+  resize: none;
+  field-sizing: content;
 }
 .agents-run__note:focus, .agents-routine__input:focus { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 0; border-color: transparent; }
 .agents-run__steer-row { display: flex; align-items: center; gap: var(--px-space-2); }

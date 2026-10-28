@@ -5668,7 +5668,7 @@ function injectStyles() {
 /* Typed answer: a well on the card. */
 .st-ta { margin: 0 calc(var(--px-space-6) * -1) calc(var(--px-space-2) * -1); border-top: 1px solid var(--px-stock-line); padding: var(--px-space-4) var(--px-space-6) var(--px-space-5); }
 .st-ta__field, .st-ta__line, .st-ta__num { width: 100%; border: 1px solid var(--px-stock-line); border-radius: var(--px-radius-sm); padding: var(--px-space-2) var(--px-space-3); font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-stock-ink); background: var(--px-stock-well); outline: none; box-sizing: border-box; transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease); }
-.st-ta__field { min-height: 96px; resize: vertical; }
+.st-ta__field { min-height: 96px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); }
 .st-ta__field--essay { min-height: 130px; }
 .st-ta__line { height: 40px; }
 .st-ta__num { width: 180px; height: 40px; font-variant-numeric: tabular-nums; }

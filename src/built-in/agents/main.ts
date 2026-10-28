@@ -241,6 +241,9 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   const openRoutine = (): void => {
     if (closeRoutine) return;
     resolveServices(api);
+    // The form belongs to Routines: the tab row says so while it is open.
+    tabSwitch.value = 'routines';
+    currentTab = 'routines';
     body.replaceChildren();
     root.classList.add('agents-view--form');
     closeRoutine = renderRoutineForm(body, () => {

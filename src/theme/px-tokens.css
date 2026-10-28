@@ -242,6 +242,10 @@
   --px-menu-h-md: min(360px, calc(100vh - 16px));
   --px-menu-h-lg: min(480px, calc(100vh - 16px));
 
+  /* A text area grows with what is typed, up to this, then scrolls. None
+     has a resize handle: the handle sat over the text it was for. */
+  --px-textarea-max-h: min(360px, 50vh);
+
   /* Elevation — borders carry structure; shadows only for true float.
      Each step pairs a shadow with a 1px top inset highlight so raised
      surfaces read as physical layers catching light (the "material" feel),

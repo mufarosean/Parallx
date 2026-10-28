@@ -15,8 +15,9 @@
 
 .wfe__header {
   display: flex;
+  flex-wrap: wrap; /* a narrow pane wraps the controls onto a second line, never squeezes them */
   align-items: center;
-  gap: var(--px-space-3);
+  gap: var(--px-space-2) var(--px-space-3);
   padding: var(--px-space-2) var(--px-space-4);
   border-bottom: 1px solid var(--px-divider);
   flex: 0 0 auto;
@@ -34,7 +35,8 @@
   color: var(--px-text);
   font-size: var(--px-text-lg);
   font-weight: 600;
-  min-width: 120px;
+  flex: 1 1 160px;
+  min-width: 0;
   max-width: 320px;
   padding: var(--px-space-1);
   border-radius: var(--px-radius-sm);
@@ -79,6 +81,8 @@
   box-sizing: border-box;
   height: var(--px-control-h-sm);
   padding: 0 10px;
+  gap: var(--px-space-1);
+  white-space: nowrap;
   border-radius: var(--px-radius-sm);
   font-size: var(--px-text-sm);
   line-height: 1;
@@ -256,7 +260,7 @@
 }
 .wfe-ins__input:focus, .wfe-ins__textarea:focus { outline: var(--px-focus-width) solid var(--px-accent); }
 
-.wfe-ins__textarea { resize: vertical; }
+.wfe-ins__textarea { resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); }
 
 .wfe-ins__hint {
   font-size: var(--px-text-xs);

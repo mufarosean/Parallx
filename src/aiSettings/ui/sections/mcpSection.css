@@ -371,5 +371,5 @@
 .ai-settings-mcp-textarea {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: var(--px-text-sm);
-  resize: vertical;
+  resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }

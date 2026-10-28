@@ -1076,7 +1076,7 @@ function injectStyles() {
   color: var(--px-text, var(--vscode-input-foreground, #ccc));
   border: 1px solid var(--px-border, var(--vscode-input-border, #555));
   border-radius: var(--px-radius-sm, 4px); padding: 7px 9px; font: inherit; font-size: var(--px-text-sm, 12px);
-  min-height: 58px; resize: vertical;
+  min-height: 58px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
 .budget-drawer-foot {
   display: flex; align-items: center; gap: 8px;
