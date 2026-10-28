@@ -269,17 +269,30 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     act(requestId, () => answerApproval(taskId, requestId, resolution));
   };
 
+  /**
+   * Put a freshly drawn body in place, only if it differs from what is
+   * shown: every change event used to rebuild every card, and each new
+   * card faded in again, so a run's progress made the whole list blink.
+   * Cards fade in on the view's first paint only (agents-view--settled).
+   */
+  function swap(next: HTMLElement): void {
+    if (next.innerHTML !== body.innerHTML) {
+      const keep = body.scrollTop;
+      body.replaceChildren(...next.childNodes);
+      body.scrollTop = keep;
+    }
+    requestAnimationFrame(() => root.classList.add('agents-view--settled'));
+  }
+
   function paint(s: IAgentsSnapshot): void {
     root.classList.toggle('agents-view--paused', s.paused);
-
-    // Rebuild the body; sections keep their order, so nothing jumps.
-    body.replaceChildren();
-
-    if (s.paused) pausedNotice(body, api);
+    // Drawn off-screen, then swapped in only if anything differs (swap).
+    const host = body.cloneNode(false) as HTMLElement;
+    if (s.paused) pausedNotice(host, api);
 
     const nothing = !s.needsYou.length && !s.running.length && !s.upcoming.length && !s.done.length && !openFindings().length;
     if (nothing) {
-      createEmptyState(body, {
+      createEmptyState(host, {
         headline: 'Nothing running',
         hint: 'Tasks you hand to Chat in Agent mode, routines and the heartbeat show up here, with anything that needs your OK at the top.',
         icon: 'px-automations',
@@ -288,7 +301,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
 
     const findings = openFindings();
     if (s.needsYou.length || findings.length) {
-      const sec = section(body, 'Needs you', 'agents-section--needs');
+      const sec = section(host, 'Needs you', 'agents-section--needs');
       for (const f of findings) {
         const card = $('div.agents-card.agents-card--needs');
         const line = $('div.agents-card__line');
@@ -320,7 +333,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     }
 
     if (s.running.length) {
-      const sec = section(body, 'Running now');
+      const sec = section(host, 'Running now');
       for (const r of s.running) {
         const card = $(`div.agents-card.agents-card--${r.state}`);
         createSurface(card, { id: 'agents.run', owner: 'agents', label: r.name, instance: r.taskId });
@@ -357,7 +370,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     }
 
     if (s.upcoming.length) {
-      const sec = section(body, 'Coming up');
+      const sec = section(host, 'Coming up');
       for (const u of s.upcoming) {
         const row = $('div.agents-row');
         const when = $('span.agents-row__when'); when.textContent = u.when;
@@ -371,7 +384,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     }
 
     if (s.done.length) {
-      const sec = section(body, 'Done today');
+      const sec = section(host, 'Done today');
       for (const d of s.done) {
         const row = $(`div.agents-row.agents-row--${d.result}`);
         const icon = createIconElement(d.result === 'ok' ? 'circle-check' : d.result === 'failed' ? 'circle-alert' : 'circle-stop', 14);
@@ -388,8 +401,11 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
 
     const foot = $('div.agents-foot');
     createButton(foot, { id: 'agents.showHistory', command: 'agents.showHistory', label: 'See All History', kind: 'ghost', size: 'sm', onClick: () => _showTab?.('history') });
-    body.appendChild(foot);
+    host.appendChild(foot);
+    swap(host);
   }
+
+  let shownTab: AgentsTab | undefined;
 
   // Coalesce bursts of change events into one read per frame-ish.
   function repaint(): void {
@@ -400,20 +416,24 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
       if (disposed) return;
       if (closeRoutine) return;
       if (currentTab === 'now') {
-        void readSnapshot(api).then((s) => { if (!disposed && !closeRoutine && currentTab === 'now') paint(s); });
+        void readSnapshot(api).then((s) => { if (!disposed && !closeRoutine && currentTab === 'now') { shownTab = 'now'; paint(s); } });
         return;
       }
       // The other tabs draw themselves; the switch and paused note stay true.
       resolveServices(api);
       const paused = isPaused();
       root.classList.toggle('agents-view--paused', paused);
-      const keep = body.scrollTop;
-      body.replaceChildren();
-      if (paused) pausedNotice(body, api);
-      if (currentTab === 'routines') renderRoutines(body, api, openRoutine, repaint);
-      else if (currentTab === 'history') renderHistory(body, api, repaint);
-      else renderMind(body, api, repaint);
-      body.scrollTop = keep;
+      const next = body.cloneNode(false) as HTMLElement;
+      if (paused) pausedNotice(next, api);
+      const tab = currentTab;
+      const filled = tab === 'routines' ? (renderRoutines(next, api, openRoutine, repaint), undefined)
+        : tab === 'history' ? renderHistory(next, api, repaint)
+        : renderMind(next, api, repaint);
+      // A tab just opened shows at once (its "Reading…" line, then the
+      // read fills it in place); one already showing swaps only once its
+      // read is done, so a change never flashes the placeholder.
+      if (!filled || shownTab !== tab) { shownTab = tab; swap(next); return; }
+      void filled.then(() => { if (!disposed && !closeRoutine && currentTab === tab) swap(next); });
     }, 60);
   }
 

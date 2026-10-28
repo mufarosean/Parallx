@@ -136,7 +136,12 @@ export const TABLE_WIDGET: WidgetTypeRegistration<TableConfig> = {
     host.className = 'dtable__host';
     container.appendChild(host);
 
+    // What is on screen; painting the same again only flashed it.
+    let shown: string | null | undefined;
+    let latest = ctx.cachedOutput;
     function paint(cached: string | null): void {
+      if (cached === shown) return;
+      shown = cached;
       host.innerHTML = '';
       let data: TableData | null = null;
       if (cached) {
@@ -225,13 +230,16 @@ export const TABLE_WIDGET: WidgetTypeRegistration<TableConfig> = {
     paint(ctx.cachedOutput);
     const sub = ctx.onDidChangeConfig((next) => {
       cfg = normalize(next);
+      shown = undefined; // the chart columns changed: the same data paints anew
+      paint(latest);
       ctx.requestRefresh();
     });
 
     return {
-      refreshFromCache(cached: string | null) { paint(cached); },
+      refreshFromCache(cached: string | null) { latest = cached; paint(cached); },
       renderError(message: string | null) {
-        if (!message) { paint(ctx.cachedOutput); return; }
+        if (!message) { paint(latest); return; }
+        shown = undefined;
         host.innerHTML = '';
         const err = document.createElement('div');
         err.className = 'dtable__empty';

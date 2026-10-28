@@ -92,7 +92,8 @@ function outcomeWords(outcome: string): string {
   }
 }
 
-export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () => void): void {
+/** Draws the tab; the promise settles once its read has filled the list. */
+export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () => void): Promise<void> {
   const head = $('div.agents-hist__head');
   createSegmented(head, {
     id: 'agents.history.filter',
@@ -136,7 +137,7 @@ export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () =>
 
   const triggers = currentFilter === 'all' ? undefined : FILTER_TRIGGERS[currentFilter];
   const read = readRunRows({ sinceDays: 30, limit: 200, triggers });
-  void read.then((rows) => {
+  return read.then((rows) => {
     list.replaceChildren();
     const shown = rows.filter((r) => r.trigger !== 'chat');
     // The delivered result and its run record often describe the same run;

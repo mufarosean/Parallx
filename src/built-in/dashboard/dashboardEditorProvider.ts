@@ -26,11 +26,10 @@ import {
   type WidgetPlacement,
   type WidgetTypeRegistration,
 } from './dashboardTypes.js';
-import { renderMarkdownToDom } from './widgets/markdownRenderer.js';
+import { createMarkdownHandle } from './dashboardMarkdownHandle.js';
 import { applyWidgetAppearance } from './widgetAppearance.js';
 import { openAppearanceDrawer } from './appearanceDrawer.js';
 import { openWidgetSettingsDrawer } from './settingsDrawer.js';
-import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { isForPane } from './dashboardCommandTarget.js';
@@ -385,11 +384,17 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Widget rendering ───────────────────────────────────────────────────
 
+  private _renderSeq = 0;
+
   private async _renderAllWidgets(): Promise<void> {
     if (!this._gridEl) return;
+    // Read first, then swap in one go: clearing before the read showed an
+    // empty grid for a frame (the "reloading" flash), and two renders that
+    // overlapped mounted every card twice.
+    const seq = ++this._renderSeq;
+    const rows = await this._data.listWidgets(this._pageId);
+    if (seq !== this._renderSeq || this._disposed || !this._gridEl) return;
     this._gridEl.innerHTML = '';
-
-    // Dispose previous instances first.
     for (const inst of this._instances.values()) {
       try { inst.handle?.dispose(); } catch { /* noop */ }
       inst.configEmitter.dispose();
@@ -397,7 +402,6 @@ class DashboardEditorPane implements IDisposable {
     }
     this._instances.clear();
 
-    const rows = await this._data.listWidgets(this._pageId);
     if (rows.length === 0) {
       this._setEmptyState(true);
       return;
@@ -591,7 +595,7 @@ class DashboardEditorPane implements IDisposable {
         // don't need to ship a renderer.
         handle = typeReg.createWidget
           ? typeReg.createWidget(body, ctx)
-          : this._createMarkdownHandle(body, ctx);
+          : createMarkdownHandle(body, ctx, this._api);
       } catch (err) {
         console.error(`[Dashboard] widget renderer crashed for ${row.id}:`, err);
         body.innerHTML = `<div class="dashboard-widget__error">Widget failed to render.</div>`;
@@ -619,72 +623,6 @@ class DashboardEditorPane implements IDisposable {
       handle,
       configEmitter,
     });
-  }
-
-  /**
-   * Built-in body renderer for `renderMode: 'markdown'` widget types:
-   * paints the cached output as Markdown, mirrors the AI widgets' empty and
-   * error states, and re-paints from cache on delivery.
-   */
-  private _createMarkdownHandle(body: HTMLElement, ctx: WidgetContext<unknown>): WidgetHandle {
-    body.classList.add('dashboard-md');
-    const surface = el('div', 'dashboard-md__surface');
-    body.appendChild(surface);
-
-    // Doors, not posters: parallx:// links in rendered markdown route
-    // through the link resolver (e.g. the canvas page-embed's heading link
-    // opens the real page). Plain web links open externally as usual.
-    surface.addEventListener('click', (e) => {
-      const a = (e.target as HTMLElement).closest('a');
-      if (!a) return;
-      const href = a.getAttribute('href') ?? '';
-      if (!href.startsWith('parallx://')) return;
-      e.preventDefault();
-      try {
-        const services = (this._api as { services?: { has(id: { id: string }): boolean; get<T>(id: { id: string }): T } }).services;
-        if (services?.has(ILinkResolverService)) {
-          void services.get<import('../../links/linkResolverService.js').ILinkResolverService>(ILinkResolverService).open(href);
-        }
-      } catch (err) {
-        console.warn('[Dashboard] parallx:// link open failed:', err);
-      }
-    });
-
-    const paint = (cached: string | null): void => {
-      surface.innerHTML = '';
-      if (!cached) {
-        const empty = el('div', 'dashboard-md__empty');
-        empty.innerHTML = '<strong>Nothing here yet</strong><p>Click the refresh icon above to fill this widget.</p>';
-        surface.appendChild(empty);
-        return;
-      }
-      const md = el('div', 'dashboard-md__body');
-      md.appendChild(renderMarkdownToDom(cached));
-      surface.appendChild(md);
-    };
-    const paintError = (message: string): void => {
-      surface.innerHTML = '';
-      const err = el('div', 'dashboard-md__error');
-      const title = document.createElement('strong');
-      title.textContent = 'Couldn’t update this widget';
-      const detail = document.createElement('p');
-      detail.textContent = message;
-      err.appendChild(title);
-      err.appendChild(detail);
-      surface.appendChild(err);
-    };
-
-    if (ctx.errorMessage && !ctx.cachedOutput) paintError(ctx.errorMessage);
-    else paint(ctx.cachedOutput);
-
-    return {
-      refreshFromCache(cached: string | null) { paint(cached); },
-      renderError(message: string | null) {
-        if (message) paintError(message);
-        else paint(ctx.cachedOutput);
-      },
-      dispose() { /* nothing owned */ },
-    };
   }
 
   private _buildContext(row: DashboardWidgetRow, configEmitter: Emitter<unknown>): WidgetContext<unknown> {
@@ -839,22 +777,33 @@ class DashboardEditorPane implements IDisposable {
 
   // ── Reconcile (data-change driven) ─────────────────────────────────────
 
-  private async _reconcile(_kind: string, widgetId?: string): Promise<void> {
-    // Phase 1 is coarse: re-render the entire page. Phase 5 can optimise.
+  /**
+   * One change, one card. The page used to rebuild every card for any event
+   * it could not place: a page rename or schedule, and every cache or
+   * status event of a widget on ANOTHER page (those events carry no page),
+   * so one widget's refresh blanked and rebuilt every open dashboard.
+   */
+  private async _reconcile(kind: string, widgetId?: string): Promise<void> {
     if (!widgetId) {
-      await this._renderAllWidgets();
+      if (kind === 'page-renamed') {
+        const page = await this._data.getPage(this._pageId);
+        const titleEl = this._root?.querySelector('.dashboard-header__title') as HTMLElement | null;
+        if (page && titleEl) { titleEl.textContent = page.name; this._input?.setName?.(page.name); }
+      }
       return;
     }
     const inst = this._instances.get(widgetId);
     if (!inst) {
-      await this._renderAllWidgets();
+      if (kind !== 'widget-added') return; // not one of this page's
+      const row = await this._data.getWidget(widgetId);
+      if (!row || row.pageId !== this._pageId || this._instances.has(widgetId) || this._disposed) return;
+      this._setEmptyState(false);
+      this._mountWidget(row);
       return;
     }
-    // Mounted widget — sync cache / status from DB.
     const fresh = await this._data.getWidget(widgetId);
-    if (!fresh) {
-      // Widget was removed.
-      await this._renderAllWidgets();
+    if (!fresh || fresh.pageId !== this._pageId || kind === 'widget-removed') {
+      this._unmountWidget(widgetId);
       return;
     }
     inst.row = fresh;
@@ -862,6 +811,18 @@ class DashboardEditorPane implements IDisposable {
     const statusEl = inst.cardEl.querySelector('[data-role="status"]') as HTMLElement | null;
     if (statusEl) this._updateStatusBadge(statusEl, fresh.status, fresh.errorMessage);
     this._updateFooter(inst);
+  }
+
+  /** Take one card off the page (removed, or moved to another page). */
+  private _unmountWidget(widgetId: string): void {
+    const inst = this._instances.get(widgetId);
+    if (!inst) return;
+    try { inst.handle?.dispose(); } catch { /* noop */ }
+    inst.configEmitter.dispose();
+    this._scheduler.cancel(widgetId);
+    inst.cardEl.remove();
+    this._instances.delete(widgetId);
+    if (this._instances.size === 0) this._setEmptyState(true);
   }
 
   /**

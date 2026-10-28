@@ -40,13 +40,14 @@ export function balanceWords(cap: { assistanceShare: number | null; deskillingRi
   return cap.deskillingRisk ? `${base}, and growing; worth noticing` : base;
 }
 
-export function renderMind(host: HTMLElement, api: ParallxApi, repaint: () => void): void {
+/** Draws the tab; the promise settles once its read has filled it. */
+export function renderMind(host: HTMLElement, api: ParallxApi, repaint: () => void): Promise<void> {
   const mind = $('div.agents-mind');
   const loading = $('div.agents-hist__empty'); loading.textContent = 'Reading what it has learned…';
   mind.appendChild(loading);
   host.appendChild(mind);
 
-  void api.commands.executeCommand<IMindStatus>('parallx.mind.status').then((s) => {
+  return api.commands.executeCommand<IMindStatus>('parallx.mind.status').then((s) => {
     mind.replaceChildren();
     if (!s || s.available === false) {
       const n = $('div.agents-rt__hint'); n.textContent = 'What it learns needs workspace storage, which is not available here.';

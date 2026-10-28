@@ -57,6 +57,8 @@
   background: var(--px-bg-elevated);
   animation: agents-in var(--px-dur-base) var(--px-ease-out);
 }
+/* Only the first paint fades in; a repaint that brings a card back must not. */
+.agents-view--settled .agents-card, .agents-view--settled .px-empty { animation: none; }
 .agents-card--needs { border-color: var(--px-warning); }
 .agents-card__line { line-height: 1.45; }
 .agents-card__name { font-weight: 600; }

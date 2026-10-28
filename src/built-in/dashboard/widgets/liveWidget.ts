@@ -166,11 +166,14 @@ export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
       // Config changes only affect the next refresh — keep current render.
     });
 
+    // The latest cache, not the one it mounted with: clearing an error used
+    // to paint the mount-time content, then the fresh one (two reloads).
+    let latest = ctx.cachedOutput;
     return {
-      refreshFromCache(cached: string | null) { paint(cached); },
+      refreshFromCache(cached: string | null) { latest = cached; paint(cached); },
       renderError(message: string | null) {
         if (message) paintError(message);
-        else paint(ctx.cachedOutput);
+        else paint(latest);
       },
       dispose() { clearFrame(); sub.dispose(); },
     };

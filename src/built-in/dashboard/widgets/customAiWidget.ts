@@ -110,7 +110,11 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
     surface.className = 'dashboard-md__surface';
     container.appendChild(surface);
 
+    // What is on screen; painting the same again only flashed it.
+    let shown: string | null | undefined;
     function paint(cached: string | null): void {
+      if (cached === shown) return;
+      shown = cached;
       surface.innerHTML = '';
       if (!cached) {
         const empty = document.createElement('div');
@@ -129,6 +133,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
     }
 
     function paintError(message: string): void {
+      shown = undefined;
       surface.innerHTML = '';
       const err = document.createElement('div');
       err.className = 'dashboard-md__error';
@@ -151,11 +156,12 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
       // Config changes only affect the next refresh — keep current render.
     });
 
+    let latest = ctx.cachedOutput;
     return {
-      refreshFromCache(cached: string | null) { paint(cached); },
+      refreshFromCache(cached: string | null) { latest = cached; paint(cached); },
       renderError(message: string | null) {
         if (message) paintError(message);
-        else paint(ctx.cachedOutput);
+        else paint(latest);
       },
       dispose() { sub.dispose(); },
     };
