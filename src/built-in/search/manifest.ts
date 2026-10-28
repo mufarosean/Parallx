@@ -21,6 +21,14 @@ export const SEARCH_MANIFEST: IToolManifest = {
   // built-ins stay onStartupFinished; onCommand is the one real lazy path.
   activationEvents: ['onStartupFinished'],
   contributes: {
+    // Its sidebar's More Actions menu.
+    menus: {
+      'viewContainer/title': [
+        { command: 'search.collapseAll', title: 'Collapse All', group: '1_actions', when: "activeViewContainer == 'search-container'" },
+        { command: 'search.expandAll', title: 'Expand All', group: '1_actions', when: "activeViewContainer == 'search-container'" },
+        { command: 'search.clearResults', title: 'Clear Results', group: '2_clear', when: "activeViewContainer == 'search-container'" },
+      ],
+    },
     commands: [
       { id: 'search.findInFiles', title: 'Search: Find in Files',
         aiInvocable: true, aiDescription: 'Open the search view to find text across workspace files.' },

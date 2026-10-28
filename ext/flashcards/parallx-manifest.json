@@ -11,6 +11,15 @@
     "parallx": "^0.1.0"
   },
   "contributes": {
+    "menus": {
+      "viewContainer/title": [
+        { "command": "flashcards.study", "group": "1_study", "when": "activeViewContainer == 'flashcards-container'" },
+        { "command": "flashcards.newDeck", "group": "2_new", "when": "activeViewContainer == 'flashcards-container'" },
+        { "command": "flashcards.newCard", "group": "2_new", "when": "activeViewContainer == 'flashcards-container'" },
+        { "command": "flashcards.generate", "group": "2_new", "when": "activeViewContainer == 'flashcards-container'" },
+        { "command": "flashcards.stats", "group": "3_stats", "when": "activeViewContainer == 'flashcards-container'" }
+      ]
+    },
     "icons": [
       { "id": "px-flashcards", "svg": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"7.5\" y=\"5\" width=\"13\" height=\"10\" rx=\"1.5\"/><path d=\"M10.5 9 L17.5 9\"/><path d=\"M4.5 9 L4.5 17 A2 2 0 0 0 6.5 19 L15 19\"/></svg>" }
     ],

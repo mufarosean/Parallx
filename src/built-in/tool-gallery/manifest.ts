@@ -19,6 +19,12 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   // fiction today. onCommand-only tools are the real lazy candidates.
   activationEvents: ['onStartupFinished'],
   contributes: {
+    // Its sidebar's More Actions menu.
+    menus: {
+      'viewContainer/title': [
+        { command: 'tools.showInstalled', title: 'Show Installed Tools', group: '1_show', when: "activeViewContainer == 'tools-container'" },
+      ],
+    },
     commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools',
       aiInvocable: true, aiDescription: 'Show the list of installed tools and extensions.' }],
     viewContainers: [

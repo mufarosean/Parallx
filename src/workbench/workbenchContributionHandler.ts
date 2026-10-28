@@ -30,29 +30,13 @@ import type { ActivityBarPart, ActivityBarIconDescriptor } from '../parts/activi
 import type { WorkbenchContextManager } from '../context/workbenchContext.js';
 import type { Part } from '../parts/part.js';
 import type { Orientation } from '../layout/layoutTypes.js';
+import { resolveLegacyContainerId } from './legacyContainerIds.js';
+export { resolveLegacyContainerId } from './legacyContainerIds.js';
 
 // ─── Rails ───────────────────────────────────────────────────────────────────
 
 /** Which rail a view container is docked in. */
 export type ContainerRail = 'left' | 'right';
-
-// ─── Legacy container ids ────────────────────────────────────────────────────
-
-/**
- * Pre-4a persisted state (rail assignments, floating-box leaves) addressed
- * the builtin Explorer/Search containers by their VIEW ids. Those containers
- * are now contributed under their manifest ids; saved placements written
- * before the cut resolve through this map so a floated or moved Explorer
- * lands where the user left it instead of waiting on an id nothing creates.
- */
-const LEGACY_CONTAINER_IDS: Readonly<Record<string, string>> = {
-  'view.explorer': 'explorer-container',
-  'view.search': 'search-container',
-};
-
-export function resolveLegacyContainerId(id: string): string {
-  return LEGACY_CONTAINER_IDS[id] ?? id;
-}
 
 // ─── Host interface ──────────────────────────────────────────────────────────
 
@@ -71,6 +55,8 @@ export interface ContributionHandlerHost {
   togglePanel(): void;
   toggleAuxiliaryBar(): void;
   layoutViewContainers(): void;
+  /** A floating container's tool was turned off: take its box out of the grid. */
+  removeFloatingBox(containerId: string): void;
 }
 
 // ─── Contribution Handler ────────────────────────────────────────────────────
@@ -499,12 +485,26 @@ export class WorkbenchContributionHandler extends Disposable {
       this.applyPendingRailAssignment(info.id);
       this._onDidChangeRails.fire();
 
-      // Trigger a layout pass so the newly-added container gets proper dimensions.
-      this._host.layoutViewContainers();
+      this._host.layoutViewContainers(); // the new container gets its dimensions
     }
   }
 
   private _onToolContainerRemoved(containerId: string): void {
+    // Its tool is off: what the user hid of it is forgotten (turned on again,
+    // its icon is back), and a floating box leaves the grid with its icon.
+    this._host.activityBarPart.setIconHidden(containerId, false);
+    this._host.rightActivityBar?.setIconHidden(containerId, false);
+    const floatingVc = this._floatingContainers.get(containerId);
+    if (floatingVc) {
+      this._floatingContainers.delete(containerId);
+      this._host.removeFloatingBox(containerId);
+      floatingVc.dispose();
+      this._removeContributedActivityBarIcon(containerId);
+      this._host.rightActivityBar?.removeIcon(containerId);
+      this._forgetContainer(containerId);
+      return;
+    }
+
     const sidebarVc = this._contributedSidebarContainers.get(containerId);
     if (sidebarVc) {
       if (this._activeSidebarContainerId === containerId) {
@@ -513,9 +513,7 @@ export class WorkbenchContributionHandler extends Disposable {
       sidebarVc.dispose();
       this._contributedSidebarContainers.delete(containerId);
       this._removeContributedActivityBarIcon(containerId);
-      this._containerIcons.delete(containerId);
-      this._railAssignments.delete(containerId);
-      this._onDidChangeRails.fire();
+      this._forgetContainer(containerId);
       return;
     }
 
@@ -631,7 +629,7 @@ export class WorkbenchContributionHandler extends Disposable {
   // ── Activity bar icon management ──
 
   private _containerIconDescriptor(info: IContributedContainer): ActivityBarIconDescriptor {
-    const svgIcon = this._resolveCodiconSvg(info.icon);
+    const svgIcon = info.icon ? getIcon(info.icon) || undefined : undefined;
     return {
       id: info.id,
       icon: svgIcon ?? info.icon ?? info.title.charAt(0).toUpperCase(),
@@ -647,12 +645,11 @@ export class WorkbenchContributionHandler extends Disposable {
     this._host.activityBarPart.addIcon(descriptor);
   }
 
-  private _resolveCodiconSvg(icon?: string): string | undefined {
-    if (!icon) return undefined;
-    // Check the central icon registry directly
-    const fromRegistry = getIcon(icon);
-    if (fromRegistry) return fromRegistry;
-    return undefined;
+  /** A removed container's icon and rail are forgotten; the rails changed. */
+  private _forgetContainer(containerId: string): void {
+    this._containerIcons.delete(containerId);
+    this._railAssignments.delete(containerId);
+    this._onDidChangeRails.fire();
   }
 
   private _removeContributedActivityBarIcon(containerId: string): void {

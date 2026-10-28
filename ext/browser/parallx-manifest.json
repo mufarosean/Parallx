@@ -11,6 +11,15 @@
     "parallx": "^0.1.0"
   },
   "contributes": {
+    "menus": {
+      "viewContainer/title": [
+        { "command": "browser.newTab", "group": "1_new", "when": "activeViewContainer == 'browser-container'" },
+        { "command": "browser.newPrivateTab", "group": "1_new", "when": "activeViewContainer == 'browser-container'" },
+        { "command": "browser.openBookmarks", "group": "2_open", "when": "activeViewContainer == 'browser-container'" },
+        { "command": "browser.openHistory", "group": "2_open", "when": "activeViewContainer == 'browser-container'" },
+        { "command": "browser.clearData", "group": "3_data", "when": "activeViewContainer == 'browser-container'" }
+      ]
+    },
     "commands": [
       { "id": "browser.newTab", "title": "New Tab", "category": "Browser" },
       { "id": "browser.newPrivateTab", "title": "New Private Tab", "category": "Browser" },

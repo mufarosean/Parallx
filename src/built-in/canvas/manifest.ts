@@ -16,6 +16,17 @@ export const CANVAS_MANIFEST: IToolManifest = {
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
+    // Its sidebar's More Actions menu.
+    menus: {
+      'viewContainer/title': [
+        { command: 'canvas.newPage', title: 'New Page', group: '1_new', when: "activeViewContainer == 'canvas-container'" },
+        { command: 'canvas.newDatabase', title: 'New Database', group: '1_new', when: "activeViewContainer == 'canvas-container'" },
+        { command: 'canvas.showTemplatePicker', title: 'New From Template…', group: '1_new', when: "activeViewContainer == 'canvas-container'" },
+        { command: 'canvas.manageTemplates', title: 'Manage Templates…', group: '2_templates', when: "activeViewContainer == 'canvas-container'" },
+        { command: 'canvas.emptyTrash', title: 'Empty Trash…', group: '3_trash', when: "activeViewContainer == 'canvas-container'" },
+        { command: 'canvas.showKeyboardShortcuts', title: 'Keyboard Shortcuts', group: '4_help', when: "activeViewContainer == 'canvas-container'" },
+      ],
+    },
     commands: [
       // Audit decisions:
       // - canvas.newPage: DUPLICATE (covered by `canvas_create_page` AI tool).

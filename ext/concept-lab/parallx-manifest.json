@@ -22,7 +22,10 @@
       { "typeId": "conceptLab", "displayName": "Concept Lab" }
     ],
     "menus": {
-      "commandPalette": [{ "command": "conceptLab.open" }]
+      "commandPalette": [{ "command": "conceptLab.open" }],
+      "viewContainer/title": [
+        { "command": "conceptLab.open", "group": "1_open", "when": "activeViewContainer == 'conceptLab-container'" }
+      ]
     }
   }
 }

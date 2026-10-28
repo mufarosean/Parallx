@@ -123,9 +123,10 @@ export class ActivityBarPart extends Part {
   /** User-defined icon order (persisted). */
   private _iconOrder: string[] = [];
 
-  /** Icons the user hid from the ribbon (right-click › Hide). A per-user
-   *  preference: kept in localStorage, never workspace state. */
-  private readonly _hiddenIcons = new Set<string>(readHiddenIcons());
+  /** Icons the user hid from the ribbon (right-click › Hide). Kept with the
+   *  workspace's layout, as the tools that are on are, so hiding one in one
+   *  workspace hides it in no other. */
+  private readonly _hiddenIcons = new Set<string>(takeLegacyHiddenIcons());
 
   // ── Events ──
 
@@ -144,6 +145,9 @@ export class ActivityBarPart extends Part {
 
   private readonly _onDidChangeIconOrder = this._register(new Emitter<void>());
   readonly onDidChangeIconOrder: Event<void> = this._onDidChangeIconOrder.event;
+
+  private readonly _onDidChangeHiddenIcons = this._register(new Emitter<void>());
+  readonly onDidChangeHiddenIcons: Event<void> = this._onDidChangeHiddenIcons.event;
 
   /**
    * A container icon from ANOTHER ribbon (or any container drag source) was
@@ -288,12 +292,13 @@ export class ActivityBarPart extends Part {
   /**
    * Get all registered icon descriptors.
    */
-  /** Hide or show an icon on the ribbon; the choice persists for this user. */
+  /** Hide or show an icon on the ribbon; the choice is saved with the workspace. */
   setIconHidden(iconId: string, hidden: boolean): void {
+    if (hidden === this._hiddenIcons.has(iconId)) return;
     if (hidden) this._hiddenIcons.add(iconId); else this._hiddenIcons.delete(iconId);
-    writeHiddenIcons([...this._hiddenIcons]);
-    const btn = this._iconSection.querySelector(`[data-icon-id="${CSS.escape(iconId)}"]`);
+    const btn = [...this._iconSection.querySelectorAll<HTMLElement>('[data-icon-id]')].find((b) => b.dataset.iconId === iconId);
     btn?.classList.toggle('activity-bar-item--user-hidden', hidden);
+    this._onDidChangeHiddenIcons.fire();
   }
 
   isIconHidden(iconId: string): boolean {
@@ -434,10 +439,19 @@ export class ActivityBarPart extends Part {
     return {
       activeIconId: this._activeIconId,
       iconOrder: this._iconOrder,
+      hiddenIcons: [...this._hiddenIcons],
     };
   }
 
   protected override restorePartData(data: Record<string, unknown>): void {
+    if (Array.isArray(data.hiddenIcons)) {
+      this._hiddenIcons.clear();
+      for (const id of data.hiddenIcons) if (typeof id === 'string') this._hiddenIcons.add(id);
+      for (const btn of this._iconSection.querySelectorAll<HTMLElement>('[data-icon-id]')) {
+        btn.classList.toggle('activity-bar-item--user-hidden', this._hiddenIcons.has(btn.dataset.iconId ?? ''));
+      }
+    }
+
     // Restore icon order first, then active icon
     if (Array.isArray(data.iconOrder)) {
       this._iconOrder = data.iconOrder as string[];
@@ -737,20 +751,22 @@ export const activityBarPartDescriptor: PartDescriptor = {
   factory: () => new ActivityBarPart(),
 };
 
-// ── Hidden-icon preference ─────────────────────────────────────────────────
+// ── Hidden icons kept for the whole app (before they moved to the workspace) ──
 
-const HIDDEN_ICONS_KEY = 'parallx.activityBar.hiddenIcons';
+const LEGACY_HIDDEN_ICONS_KEY = 'parallx.activityBar.hiddenIcons';
 
-function readHiddenIcons(): string[] {
+/**
+ * The app-wide list, read once and removed: the first workspace opened keeps
+ * what was hidden, every other starts with everything shown.
+ */
+function takeLegacyHiddenIcons(): string[] {
   try {
-    const raw = localStorage.getItem(HIDDEN_ICONS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(LEGACY_HIDDEN_ICONS_KEY);
+    if (raw === null) return [];
+    localStorage.removeItem(LEGACY_HIDDEN_ICONS_KEY);
+    const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
   } catch {
     return [];
   }
-}
-
-function writeHiddenIcons(ids: string[]): void {
-  try { localStorage.setItem(HIDDEN_ICONS_KEY, JSON.stringify(ids)); } catch { /* storage unavailable */ }
 }

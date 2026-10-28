@@ -9,6 +9,8 @@
 //   5. Ready — CSS ready class, log
 // Teardown reverses (5→1).
 
+import { createIconElement } from '../ui/iconRegistry.js';
+import { wireRibbonMenu } from './ribbonMenu.js';
 import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { appDateTimeString } from '../services/localTime.js';
 import { addDisposableListener } from '../ui/dom.js';
@@ -1109,6 +1111,7 @@ export class Workbench extends Layout {
       togglePanel: () => this.togglePanel(),
       toggleAuxiliaryBar: () => this.toggleAuxiliaryBar(),
       layoutViewContainers: () => this._layoutViewContainers(),
+      removeFloatingBox: (containerId) => { this._containerBoxes.remove(containerId); },
     }));
     this._contributionHandler.setWorkbenchContext(this._workbenchContext);
 
@@ -2078,6 +2081,9 @@ export class Workbench extends Layout {
       this._saverListeners.add(editorGrid.onDidChange(() => this._workspaceSaver.requestSave()));
     }
     this._saverListeners.add(this._activityBarPart.onDidChangeIconOrder(() => this._workspaceSaver.requestSave()));
+    for (const bar of [this._activityBarPart, this._activityBarRight]) {
+      if (bar) this._saverListeners.add(bar.onDidChangeHiddenIcons(() => this._workspaceSaver.requestSave()));
+    }
 
     // Wire auto-save on editor changes (open, close, activate)
     const editorService = this._services.has(IEditorService) ? this._services.get(IEditorService) : undefined;
@@ -2253,31 +2259,9 @@ export class Workbench extends Layout {
       sidebarContent.appendChild(defaultContainer.element);
     }
 
-    // Right-click on the ribbon: hide this icon, or choose which to show.
-    // Thirteen unlabeled icons with no way to put any away was the busiest
-    // edge of the window; this is VS Code's and Obsidian's answer.
-    this._register(this._activityBarPart.onDidContextMenuIcon(({ iconId, x, y }) => {
-      const bar = this._activityBarPart;
-      const icons = bar.getIcons().filter((d) => !d.id.startsWith(PART_ICON_PREFIX));
-      const label = icons.find((d) => d.id === iconId)?.label ?? 'This Icon';
-      const visible = icons.filter((d) => !bar.isIconHidden(d.id));
-      const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
-        { id: `hide:${iconId}`, label: `Hide ‘${label}’`, group: '1_hide', disabled: visible.length <= 1 },
-        ...icons.map((d) => ({ id: `toggle:${d.id}`, label: d.label, group: '2_icons', checked: !bar.isIconHidden(d.id) })),
-        { id: 'show-all', label: 'Show All', group: '3_reset', disabled: visible.length === icons.length },
-      ];
-      const menu = ContextMenu.show({ items, anchor: { x, y } });
-      menu.onDidSelect(({ item }) => {
-        if (item.id === 'show-all') { for (const d of icons) bar.setIconHidden(d.id, false); return; }
-        const [kind, id] = [item.id.slice(0, item.id.indexOf(':')), item.id.slice(item.id.indexOf(':') + 1)];
-        if (kind === 'hide') { bar.setIconHidden(id, true); return; }
-        if (kind === 'toggle') {
-          const hide = !bar.isIconHidden(id);
-          if (hide && visible.length <= 1) return; // always keep one
-          bar.setIconHidden(id, hide);
-        }
-      });
-    }));
+    // Right-click on either ribbon: hide icons, or show them again.
+    this._register(wireRibbonMenu(this._activityBarPart, PART_ICON_PREFIX));
+    if (this._activityBarRight) this._register(wireRibbonMenu(this._activityBarRight, PART_ICON_PREFIX));
 
     // Wire icon click events — delegate container switching to handler
     this._register(this._activityBarPart.onDidClickIcon((event) => {
@@ -2335,7 +2319,7 @@ export class Workbench extends Layout {
       moreBtn.classList.add('sidebar-header-action-btn');
       moreBtn.title = 'More Actions…';
       moreBtn.setAttribute('aria-label', 'More Actions…'); this._register(declareControl(moreBtn, { id: 'sidebar.more', label: 'More Actions…', kind: 'iconButton' }));
-      moreBtn.textContent = '⋯';
+      moreBtn.appendChild(createIconElement('ellipsis', 16));
       this._register(addDisposableListener(moreBtn, 'click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
         // Item ids ARE command ids (Phase B menu contract). Each container's
@@ -2355,7 +2339,9 @@ export class Workbench extends Layout {
             group: m.group ?? '1_actions',
             keybinding: this._keybindingHint(m.commandId),
           }));
-        if (items.length === 0) return;
+        // Every container's menu ends with what the area itself can do, so
+        // no tool's More Actions is ever a button that does nothing.
+        items.push({ id: 'workbench.action.toggleSidebar', label: 'Hide Left Area', group: '9_area', keybinding: this._keybindingHint('workbench.action.toggleSidebar') });
         const menu = ContextMenu.show({
           items,
           anchor: { x: rect.left, y: rect.bottom + 2 },
@@ -3618,6 +3604,13 @@ export class Workbench extends Layout {
         // Close all editor tabs owned by this tool before deactivation
         await (this._editor as EditorPart).closeEditorsByOwner(toolId);
         await this._toolActivator.deactivate(toolId);
+        // A tool whose activation failed or has not finished fires no
+        // deactivate event, yet its ribbon icon and views are up (they come
+        // with registration). Remove them here too; a second removal is a no-op.
+        commandContribution.removeContributions(toolId);
+        keybindingContribution.removeContributions(toolId);
+        menuContribution.removeContributions(toolId);
+        this._viewContribution.removeContributions(toolId);
         // Also clear activation tracking so re-enable starts fresh
         activationEvents.clearActivated(toolId);
       }
@@ -3659,6 +3652,11 @@ export class Workbench extends Layout {
     // `onStartupFinished` will activate when fireStartupFinished() is called below.
     // Tools with `onCommand:` / `onView:` activate lazily when those events fire.
     await this._discoverAndRegisterExternalTools(registry, activationEvents);
+
+    // Every tool that is on has contributed its containers by now: a floating
+    // box saved for a container nobody contributes (its tool is off) goes,
+    // rather than waiting forever with "This view is loading".
+    this._containerBoxes.dropOrphans((id) => !!this._viewContribution.getContainer(id));
 
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();

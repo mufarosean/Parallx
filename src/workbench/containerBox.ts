@@ -28,7 +28,7 @@ import type { ViewContainer } from '../views/viewContainer.js';
 import type { PartDropZone } from './partDrag.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { $ } from '../ui/dom.js';
-import { resolveLegacyContainerId } from './workbenchContributionHandler.js';
+import { resolveLegacyContainerId } from './legacyContainerIds.js';
 
 export const CONTAINER_BOX_PREFIX = 'container:';
 
@@ -310,6 +310,32 @@ export class ContainerBoxManager extends Disposable {
     if (vc) this._host.dockContainer(containerId, vc, rail);
     this._host.requestSave();
     return true;
+  }
+
+  /**
+   * The container's tool was turned off: its box leaves the grid and is not
+   * re-docked (nothing of an off tool stays). Returns the container that sat
+   * in it, for its owner to dispose.
+   */
+  remove(containerId: string): ViewContainer | undefined {
+    const box = this._boxes.get(containerId);
+    if (!box) return undefined;
+    const vc = box.unseat();
+    this._host.removeFloatingView(box.id);
+    this._boxes.delete(containerId);
+    box.dispose();
+    this._host.requestSave();
+    return vc;
+  }
+
+  /**
+   * Waiting shells whose container no tool contributes (its tool is off, or
+   * gone) are dropped rather than kept "loading" forever.
+   */
+  dropOrphans(isContributed: (containerId: string) => boolean): void {
+    for (const [containerId, box] of [...this._boxes]) {
+      if (box.isWaiting && !isContributed(containerId)) this.remove(containerId);
+    }
   }
 
   /** Move a floating container's box to a window edge (command surface). */

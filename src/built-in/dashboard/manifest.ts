@@ -16,6 +16,14 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
+    // Its sidebar's More Actions menu.
+    menus: {
+      'viewContainer/title': [
+        { command: 'dashboard.newPage', title: 'New Page', group: '1_new', when: "activeViewContainer == 'dashboard-container'" },
+        { command: 'dashboard.addWidget', title: 'Add Widget…', group: '1_new', when: "activeViewContainer == 'dashboard-container'" },
+        { command: 'dashboard.refreshAll', title: 'Refresh All Widgets', group: '2_refresh', when: "activeViewContainer == 'dashboard-container'" },
+      ],
+    },
     commands: [
       { id: 'dashboard.open', title: 'Dashboard: Open',
         aiInvocable: true, aiDescription: 'Open the workspace dashboard.' },

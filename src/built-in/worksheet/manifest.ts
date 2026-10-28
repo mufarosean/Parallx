@@ -16,7 +16,17 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     // In the Tools menu while Worksheets runs.
-    menus: { 'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }] },
+    menus: {
+      'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }],
+      // Its sidebar's More Actions menu.
+      'viewContainer/title': [
+        { command: 'worksheet.practice', title: 'Start Practice Session', group: '1_practice', when: "activeViewContainer == 'worksheet-container'" },
+        { command: 'worksheet.generate', title: 'Generate Items', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
+        { command: 'worksheet.bank', title: 'Open Problem Bank', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
+        { command: 'worksheet.dashboard', title: 'Open Dashboard', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
+        { command: 'worksheet.settings', title: 'Settings', group: '3_settings', when: "activeViewContainer == 'worksheet-container'" },
+      ],
+    },
     commands: [
       { id: 'worksheet.open', title: 'Worksheets: Open Practice Items',
         aiInvocable: true, aiDescription: 'Open the practice items browser.' },

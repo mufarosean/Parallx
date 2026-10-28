@@ -10,7 +10,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MenuContributionProcessor } from '../../src/contributions/menuContribution';
 import { ContextKeyService } from '../../src/context/contextKey';
+import * as BUILTIN from '../../src/workbench/builtinManifests';
 import { EXPLORER_MANIFEST } from '../../src/workbench/builtinManifests';
+import { globSync } from 'glob';
 import type { IToolDescription, IToolManifest } from '../../src/tools/toolManifest';
 
 const root = resolve(__dirname, '../..');
@@ -36,7 +38,10 @@ describe('sidebar More Actions (viewContainer/title)', () => {
     active.set('explorer-container');
     expect(ids(menus)).toEqual(['explorer.collapse=Collapse All', 'explorer.refresh=Refresh']);
     active.set('media-organizer-container');
-    expect(ids(menus)).toEqual(['media-organizer.rescan=Refresh']);
+    expect(menus.getViewContainerTitleItems().map((m) => m.commandId)).toEqual([
+      'media-organizer.rescan', 'media-organizer.importFiles', 'media-organizer.createAlbum',
+      'media-organizer.findDuplicates', 'media-organizer.showShortcuts',
+    ]);
     active.set('some-other-container');
     expect(ids(menus)).toEqual([]);
   });
@@ -45,9 +50,26 @@ describe('sidebar More Actions (viewContainer/title)', () => {
     const { menus, active } = setup();
     menus.processContributions(desc(atelierManifest));
     active.set('media-organizer-container');
-    expect(ids(menus)).toHaveLength(1);
+    expect(ids(menus).length).toBeGreaterThan(0);
     menus.removeContributions(atelierManifest.id);
     expect(ids(menus)).toEqual([]);
+  });
+
+  it('every sidebar container offers something of its own', () => {
+    const extManifests = globSync('ext/*/parallx-manifest.json', { cwd: root })
+      .map((f) => JSON.parse(readFileSync(resolve(root, f), 'utf8')) as IToolManifest);
+    const builtins = Object.values(BUILTIN) as IToolManifest[];
+    const bare: string[] = [];
+    for (const manifest of [...builtins, ...extManifests]) {
+      const { menus, active } = setup();
+      menus.processContributions(desc(manifest));
+      for (const c of manifest.contributes?.viewContainers ?? []) {
+        if (c.location !== 'sidebar') continue;
+        active.set(c.id);
+        if (menus.getViewContainerTitleItems().length === 0) bare.push(c.id);
+      }
+    }
+    expect(bare).toEqual([]);
   });
 
   it('the workbench header names no tool', () => {

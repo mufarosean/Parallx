@@ -39,6 +39,8 @@ interface FakeBar {
   removeIcon(id: string): void;
   setActiveIcon(id: string | undefined): void;
   getIcons(): { id: string }[];
+  hidden: Set<string>;
+  setIconHidden(id: string, hidden: boolean): void;
 }
 
 function fakeBar(): FakeBar {
@@ -52,6 +54,8 @@ function fakeBar(): FakeBar {
     removeIcon(id) { bar.icons = bar.icons.filter((i) => i !== id); },
     setActiveIcon(id) { bar.active = id; },
     getIcons() { return bar.icons.map((id) => ({ id })); },
+    hidden: new Set(),
+    setIconHidden(id, hidden) { if (hidden) bar.hidden.add(id); else bar.hidden.delete(id); },
   };
   return bar;
 }
@@ -82,6 +86,7 @@ describe('container rails (one contributed sidebar path)', () => {
   let aux: ReturnType<typeof fakeRailPart>;
   let sidebarSlot: HTMLElement;
   let toggles: string[];
+  let removedBoxes: string[];
 
   /** Contribute a sidebar container (and optionally views) the manifest way. */
   function contribute(toolId: string, containerId: string, title: string, viewIds: string[] = []): void {
@@ -106,6 +111,7 @@ describe('container rails (one contributed sidebar path)', () => {
     sidebar = fakeRailPart();
     aux = fakeRailPart(true);
     toggles = [];
+    removedBoxes = [];
 
     const host: ContributionHandlerHost = {
       sidebar,
@@ -117,6 +123,7 @@ describe('container rails (one contributed sidebar path)', () => {
       togglePanel: () => toggles.push('panel'),
       toggleAuxiliaryBar: () => toggles.push('aux'),
       layoutViewContainers: () => {},
+      removeFloatingBox: (id) => { removedBoxes.push(id); },
     };
     handler = new WorkbenchContributionHandler(host);
 
@@ -283,6 +290,24 @@ describe('container rails (one contributed sidebar path)', () => {
     handler.setFloatingIconRail('explorer-container', 'right');
     expect(rightBar.icons.includes('explorer-container')).toBe(false);
   });
+
+  it('a tool turned off takes its floating box and its icon from both ribbons', () => {
+    contribute('tool.planner', 'planner-container', 'Planner');
+    handler.undockContainer('planner-container');
+    handler.setFloatingIconRail('planner-container', 'right');
+    expect(rightBar.icons).toContain('planner-container');
+    processor.removeContributions('tool.planner');
+    expect(removedBoxes).toEqual(['planner-container']);
+    expect(rightBar.icons).not.toContain('planner-container');
+    expect(leftBar.icons).not.toContain('planner-container');
+  });
+
+  it('a tool turned off forgets that its icon was hidden, so turning it on shows it', () => {
+    contribute('tool.planner', 'planner-container', 'Planner');
+    leftBar.setIconHidden('planner-container', true);
+    processor.removeContributions('tool.planner');
+    expect(leftBar.hidden.has('planner-container')).toBe(false);
+  });
 });
 
 // ── The ribbon as a drag surface ────────────────────────────────────────────
@@ -376,5 +401,41 @@ describe('activity bar as a container drag surface', () => {
     expect(document.activeElement).toBe(a);
     expect(a.tabIndex).toBe(0);
     bar.dispose();
+  });
+});
+
+// ── What the ribbon hides is the workspace's ───────────────────────────────
+
+describe('hidden ribbon icons', () => {
+  afterEach(() => { document.body.innerHTML = ''; scene.reset(); localStorage.clear(); });
+
+  function bar(): ActivityBarPart {
+    const b = new ActivityBarPart(PartId.ActivityBar, 'Bar', 'right', PartPosition.Left);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    b.create(host);
+    b.addIcon({ id: 'a', icon: 'folder', label: 'A' });
+    b.addIcon({ id: 'b', icon: 'folder', label: 'B' });
+    return b;
+  }
+
+  it('are saved with the workspace layout and restored from it, not from app-wide storage', () => {
+    const one = bar();
+    one.setIconHidden('a', true);
+    const saved = one.saveState();
+    expect(localStorage.getItem('parallx.activityBar.hiddenIcons')).toBeNull();
+
+    const other = bar(); // another workspace: nothing hidden
+    expect(other.isIconHidden('a')).toBe(false);
+    other.restoreState(saved);
+    expect(other.isIconHidden('a')).toBe(true);
+    expect(document.querySelectorAll('.activity-bar-item--user-hidden').length).toBe(2); // `a` in each
+  });
+
+  it('take the old app-wide list once, for the first workspace opened', () => {
+    localStorage.setItem('parallx.activityBar.hiddenIcons', JSON.stringify(['b']));
+    expect(bar().isIconHidden('b')).toBe(true);
+    expect(localStorage.getItem('parallx.activityBar.hiddenIcons')).toBeNull();
+    expect(bar().isIconHidden('b')).toBe(false);
   });
 });
