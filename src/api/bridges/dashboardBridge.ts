@@ -40,10 +40,11 @@ export const DASHBOARD_LIMITS = {
   /** Per-refresh timeout — refresh that doesn't complete is killed. */
   REFRESH_TIMEOUT_MS: 60_000,
   /**
-   * Per-refresh timeout for AI-category widgets: a background
-   * agent turn (research, tools, delivery) legitimately takes minutes.
+   * AI-category widgets have no refresh timeout of their own: the
+   * background turn's runner limits its working time. This only frees a
+   * scheduler slot if a turn never settles at all.
    */
-  AI_REFRESH_TIMEOUT_MS: 300_000,
+  AI_REFRESH_BACKSTOP_MS: 3_600_000,
 } as const;
 
 export interface WidgetPlacement {

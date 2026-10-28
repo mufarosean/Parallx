@@ -25,7 +25,8 @@ import { AnthropicProvider, getAnthropicBridge } from './providers/anthropicProv
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
-import { createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
+import { backgroundTurnsInFlight, createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
+import { wireEngineBrokerPresence } from './utilities/engineBrokerPresence.js';
 
 import {
   buildOpenclawCanvasParticipantServices,
@@ -511,18 +512,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
-  // Typing in a chat box tells the model engine broker you are about to
-  // send: queued background work stays still a moment longer.
+  // Typing in chat, and any key or press, tell the model engine broker
+  // you are here (chat/utilities/engineBrokerPresence.ts).
   {
     const engineBroker = languageModelsService.getEngineBroker?.();
-    if (engineBroker) {
-      const onInput = (e: globalThis.Event) => {
-        const t = e.target as Element | null;
-        if (t?.classList?.contains('parallx-chat-input-textarea')) engineBroker.noteUserActivity();
-      };
-      document.addEventListener('input', onInput, true);
-      context.subscriptions.push({ dispose: () => document.removeEventListener('input', onInput, true) });
-    }
+    if (engineBroker) context.subscriptions.push(wireEngineBrokerPresence(engineBroker));
   }
 
   // Sessions are restored by the workbench in Phase 5 (after DB binds).
@@ -1769,7 +1763,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               origin: 'workflow',
               originLabel: workflowName,
               initiator,
-              timeoutMs: 300_000,
               modelId: model,
               contextWindow,
             });
@@ -2212,7 +2205,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // serializes per loaded model) and at tools / approval handler.
         // Skipping the tick avoids those races. System-event payloads stay
         // queued and fire on the next viable tick.
+        // It also waits for a routine or AI widget turn already running:
+        // the two would take turns on the one local model call by call,
+        // each losing the other's prompt cache, and the run you asked for
+        // would stretch past its limit.
         shouldDeferTick: () => {
+          if (backgroundTurnsInFlight() > 0) return true;
           const sid = _activeWidget?.getSession()?.id;
           if (!sid) return false;
           return chatService.getSession(sid)?.requestInProgress === true;

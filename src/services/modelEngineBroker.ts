@@ -15,10 +15,14 @@
 // work. Everything else waits while an interactive call runs, while a chat
 // turn holds the engine's lease (its whole turn, tool steps included, plus a
 // short grace), and while you are typing in chat. A background call already
-// on the engine when chat arrives is preempted: its HTTP request is aborted
-// for real and the ticket goes back in the queue. Background output is
-// buffered until the call completes, so a preempted call simply resolves
-// later with a clean answer: the run never sees the pause.
+// on the engine when you are waiting on an answer (a chat turn, or a call
+// made while you are at the keyboard or pointer) is preempted: its HTTP
+// request is aborted for real and the ticket goes back in the queue. A call
+// nobody is waiting on (an extension's own work while you are away) does not
+// preempt. Background output is buffered until the call completes, so a
+// preempted call simply resolves later with a clean answer: the run never
+// sees the pause. The time a preempted call had run, and the time a model
+// takes to load, count as waiting, not as the run's working time.
 //
 // Engines that are not local (cloud providers) pass through untouched.
 
@@ -38,6 +42,12 @@ export const LEASE_GRACE_MS = 4_000;
 export const LEASE_IDLE_MS = 90_000;
 /** Typing in chat holds background work this long after each keystroke. */
 export const TYPING_HOLD_MS = 4_000;
+/** An untagged call made this soon after your last key or press is one you are waiting on. */
+export const USER_PRESENT_MS = 15_000;
+/** A model unused this long may have been unloaded by the engine (Ollama's default keep-alive). */
+export const MODEL_KEEP_ALIVE_MS = 5 * 60_000;
+/** At most this much of a cold call's wait for its first output counts as loading. */
+export const COLD_LOAD_CREDIT_MS = 120_000;
 /** Output cap for a background call that names none (thinking counts too). */
 export const BACKGROUND_MAX_TOKENS = 8_192;
 /** Output tokens a reasoning model may spend thinking before it answers. */
@@ -109,6 +119,8 @@ export interface IModelEngineBroker {
   beginInteractive(engine: string): IDisposable;
   /** You are typing in chat: hold background work a moment longer. */
   noteUserActivity(): void;
+  /** You pressed a key or the pointer anywhere: an untagged call now is one you wait on. */
+  noteUserInput(): void;
   /** Decide a call's class from its run id (set by the chat service). */
   setClassifier(fn: ((runId: string) => EnginePriority | undefined) | undefined): void;
   /** Where a run stands right now, if it has a call in flight. */
@@ -173,6 +185,9 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   /** Background waits until this time per engine (lease grace). */
   private readonly _holdUntil = new Map<string, number>();
   private _typingUntil = 0;
+  private _userInputAt = -Infinity;
+  /** The model each engine last served, and when (to tell a cold call). */
+  private readonly _lastServed = new Map<string, { modelId: string; at: number }>();
   private _timer: ReturnType<typeof setTimeout> | undefined;
   private _classifier: ((runId: string) => EnginePriority | undefined) | undefined;
   private readonly _runs = new Map<string, IRunBook>();
@@ -251,9 +266,12 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     ticket.controller = controller;
     ticket.state = 'running';
     this._leaseActivity.set(ticket.engine, this._now());
+    this._lastServed.set(ticket.engine, { modelId: ticket.modelId, at: this._now() });
     this._tickets.add(ticket);
     this._book(ticket.runId, (b) => { b.inFlight++; });
-    this._preemptBackground(ticket.engine);
+    // Only a call someone waits on pauses background work: a chat turn's
+    // (tagged with its run), or one made while you are at the keyboard.
+    if (ticket.runId || this._now() - this._userInputAt < USER_PRESENT_MS) this._preemptBackground(ticket.engine);
     this._changed();
     try {
       yield* start(options, controller.signal);
@@ -281,9 +299,21 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
         const onCallerAbort = () => controller.abort();
         req.signal?.addEventListener('abort', onCallerAbort, { once: true });
         const out: IChatResponseChunk[] = [];
+        // A model the engine has not served lately loads first: that wait
+        // is the engine's, not the run's work.
+        const last = this._lastServed.get(ticket.engine);
+        const startedAt = this._now();
+        let cold = !last || last.modelId !== ticket.modelId || startedAt - last.at > MODEL_KEEP_ALIVE_MS;
+        this._lastServed.set(ticket.engine, { modelId: ticket.modelId, at: startedAt });
         try {
           for await (const chunk of start(options, controller.signal)) {
             if (ticket.preempted) break;
+            if (cold) {
+              cold = false;
+              const loading = Math.min(this._now() - startedAt, COLD_LOAD_CREDIT_MS);
+              this._book(ticket.runId, (b) => { b.waitingMs += loading; });
+            }
+            this._lastServed.set(ticket.engine, { modelId: ticket.modelId, at: this._now() });
             out.push(chunk);
           }
           if (!ticket.preempted) {
@@ -327,10 +357,18 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   }
 
   private _requeue(ticket: ITicket): void {
+    // Preempted: the time it had run is thrown away with its output, so it
+    // counts as waiting, not as the run's work.
+    const ran = this._now() - ticket.since;
     ticket.state = 'queued';
     ticket.since = this._now();
     ticket.controller = undefined;
-    this._book(ticket.runId, (b) => { b.inFlight = Math.max(0, b.inFlight - 1); b.queued++; b.waitingSince ??= this._now(); });
+    this._book(ticket.runId, (b) => {
+      b.inFlight = Math.max(0, b.inFlight - 1);
+      b.queued++;
+      b.waitingMs += Math.max(0, ran);
+      b.waitingSince ??= this._now();
+    });
     this._changed();
   }
 
@@ -454,6 +492,10 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
       this._idleWaiters.add(waiter);
       this._pump();
     });
+  }
+
+  noteUserInput(): void {
+    this._userInputAt = this._now();
   }
 
   noteUserActivity(): void {

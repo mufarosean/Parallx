@@ -258,4 +258,39 @@ describe('capWithReasoningRoom', () => {
     expect(capWithReasoningRoom(30)).toBe(30 + REASONING_ROOM_TOKENS);
     expect(REASONING_ROOM_TOKENS).toBeGreaterThanOrEqual(2048);
   });
+
+  it('an untagged call nobody waits on does not pause background work; one made at the keyboard does', async () => {
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    const untagged = { engine: 'ollama', gated: true, modelId: 'm' };
+    const bg = collect(b.request(req('scheduled', 'run-1'), fakeStart(log, 'b', 4, 15)));
+    await new Promise((r) => setTimeout(r, 20));
+    await collect(b.request(untagged, fakeStart(log, 'x', 1, 5))); // you are away
+    expect(b.preemptions('run-1')).toBe(0);
+    b.noteUserInput();
+    await collect(b.request(untagged, fakeStart(log, 'y', 1, 5))); // you just pressed a key
+    expect(b.preemptions('run-1')).toBe(1);
+    expect(await bg).toBe('b0b1b2b3');
+  });
+
+  it('the time a preempted call had run counts as waiting, not as the run\'s work', async () => {
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    // Warm the model so loading credit stays out of the sum.
+    await collect(b.request(req('scheduled', 'warm'), fakeStart(log, 'w', 1, 1)));
+    const bg = collect(b.request(req('scheduled', 'run-1'), fakeStart(log, 'b', 4, 15)));
+    await new Promise((r) => setTimeout(r, 40)); // ran ~40ms, then thrown away
+    await collect(b.request(req('interactive', 'chat'), fakeStart(log, 'c', 1, 5)));
+    await bg;
+    expect(b.waitingMs('run-1')).toBeGreaterThanOrEqual(35);
+  });
+
+  it('a model the engine has not served counts its load as waiting, once', async () => {
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    await collect(b.request(req('scheduled', 'cold'), fakeStart(log, 'a', 2, 30)));
+    expect(b.waitingMs('cold')).toBeGreaterThanOrEqual(25); // the wait for its first output
+    await collect(b.request(req('scheduled', 'warm'), fakeStart(log, 'a', 2, 30)));
+    expect(b.waitingMs('warm')).toBeLessThan(25);
+  });
 });

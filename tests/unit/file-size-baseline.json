@@ -43,7 +43,7 @@
   "src/built-in/chat/data/chatDataService.ts": 2290,
   "src/built-in/chat/input/chatInput.css": 1427,
   "src/built-in/chat/input/chatInputPart.ts": 893,
-  "src/built-in/chat/main.ts": 3666,
+  "src/built-in/chat/main.ts": 3664,
   "src/built-in/chat/providers/ollamaProvider.ts": 1055,
   "src/built-in/chat/rendering/chatContentParts.ts": 1801,
   "src/built-in/chat/rendering/chatListRenderer.ts": 870,
@@ -52,7 +52,7 @@
   "src/built-in/dashboard/dashboard.css": 2462,
   "src/built-in/dashboard/dashboardEditorProvider.ts": 1416,
   "src/built-in/explorer/main.ts": 1813,
-  "src/built-in/planner/planner.css": 2036,
+  "src/built-in/planner/planner.css": 1906,
   "src/built-in/planner/plannerDataService.ts": 1401,
   "src/built-in/tool-gallery/main.ts": 985,
   "src/built-in/worksheet/ooxml.ts": 1034,
@@ -67,7 +67,7 @@
   "src/layout/grid.ts": 1506,
   "src/openclaw/openclawAttempt.ts": 880,
   "src/openclaw/openclawContextEngine.ts": 1080,
-  "src/openclaw/openclawCronService.ts": 1220,
+  "src/openclaw/openclawCronService.ts": 1098,
   "src/openclaw/openclawDefaultRuntimeSupport.ts": 915,
   "src/openclaw/openclawSystemPrompt.ts": 968,
   "src/services/chatService.ts": 1724,
@@ -79,8 +79,8 @@
   "src/services/workspaceMemoryService.ts": 818,
   "src/ui/conceptMap.ts": 1764,
   "src/views/viewContainer.ts": 1085,
-  "src/workbench.css": 2479,
+  "src/workbench.css": 2473,
   "src/workbench/layout.ts": 1954,
-  "src/workbench/workbench.ts": 4266,
-  "src/workbench/workbenchContributionHandler.ts": 923
+  "src/workbench/workbench.ts": 4264,
+  "src/workbench/workbenchContributionHandler.ts": 920
 }

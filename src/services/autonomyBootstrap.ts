@@ -16,6 +16,7 @@
 // late-bound: chat calls attachExecution(...) and then start(). The
 // background prompt runner stays chat-constructed for the same reason.
 
+import { adaptFsBridge, jsonFileStore, type AutonomyFs } from './autonomyFiles.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { ServiceCollection } from './serviceCollection.js';
 import { CronService, ICronService } from '../openclaw/openclawCronService.js';
@@ -37,14 +38,6 @@ import {
   IWorkspaceStorageService,
 } from './serviceTypes.js';
 
-interface AutonomyFsBridge {
-  readdir?: (path: string) => Promise<{ ok: boolean; entries?: Array<{ name: string }>; error?: string }>;
-  rename?: (oldPath: string, newPath: string) => Promise<{ ok: boolean; error?: string }>;
-  exists?: (path: string) => Promise<{ ok: boolean; exists?: boolean; error?: string }>;
-  mkdir?: (path: string) => Promise<{ ok: boolean; error?: string }>;
-  readFile?: (path: string, encoding: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  writeFile?: (path: string, data: string, encoding: string) => Promise<{ ok: boolean; error?: string }>;
-}
 
 /**
  * Construct, initialize, and DI-register the autonomy substrate. Call
@@ -57,10 +50,12 @@ export async function bootstrapAutonomyServices(
 ): Promise<IDisposable[]> {
   const disposables: IDisposable[] = [];
 
-  const bridge = (globalThis as { parallxElectron?: { appPath?: string; dataRoot?: string; fs?: AutonomyFsBridge } }).parallxElectron;
+  const bridge = (globalThis as { parallxElectron?: { appPath?: string; dataRoot?: string; fs?: unknown } }).parallxElectron;
   // Everything below lives under the DATA root (relocatable for probes).
   const appPath = bridge?.dataRoot ?? bridge?.appPath;
-  const fs = bridge?.fs;
+  // In the stores' shape: read as it was, the bridge's answers made every
+  // store start empty and save over its file (autonomyFiles.ts).
+  const fs = adaptFsBridge(bridge?.fs);
 
   // ── Feature flags — per-workspace storage, defaults apply. ──
   const flags = new AutonomyFeatureFlagsService(services.tryGet(IWorkspaceStorageService));
@@ -150,31 +145,7 @@ export async function bootstrapAutonomyServices(
   // `data/cron.json`, so every future fresh workspace would have silently
   // inherited M61-era global jobs. A new workspace now starts empty.)
   if (workspaceFolder && appPath && fs?.exists && fs.readFile && fs.writeFile && fs.mkdir) {
-    const cronJsonPath = `${workspaceFolder}/.parallx/cron.json`;
-    const cronJsonDir = `${workspaceFolder}/.parallx`;
-    cron.setPersistence({
-      load: async () => {
-        try {
-          const wsExists = await fs.exists!(cronJsonPath);
-          if (wsExists.ok && wsExists.exists) {
-            const result = await fs.readFile!(cronJsonPath, 'utf-8');
-            if (!result.ok || typeof result.data !== 'string') return null;
-            return JSON.parse(result.data);
-          }
-          return null;
-        } catch {
-          return null;
-        }
-      },
-      save: async (snapshot) => {
-        try {
-          await fs.mkdir!(cronJsonDir);
-          await fs.writeFile!(cronJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
-        } catch {
-          /* persistence failures don't affect in-memory truth */
-        }
-      },
-    });
+    cron.setPersistence(jsonFileStore(fs as Required<AutonomyFs>, `${workspaceFolder}/.parallx`, 'cron.json') as never);
     await cron.loadFromPersistence();
   }
 
@@ -232,31 +203,7 @@ export async function bootstrapAutonomyServices(
   if (journal) workflows.attachJournalFeed(journal.onDidAppend);
 
   if (workspaceFolder && appPath && fs?.exists && fs.readFile && fs.writeFile && fs.mkdir) {
-    const wfJsonPath = `${workspaceFolder}/.parallx/workflows.json`;
-    const wfJsonDir = `${workspaceFolder}/.parallx`;
-    workflows.setPersistence({
-      load: async () => {
-        try {
-          const wsExists = await fs.exists!(wfJsonPath);
-          if (wsExists.ok && wsExists.exists) {
-            const result = await fs.readFile!(wfJsonPath, 'utf-8');
-            if (!result.ok || typeof result.data !== 'string') return null;
-            return JSON.parse(result.data);
-          }
-          return null;
-        } catch {
-          return null;
-        }
-      },
-      save: async (snapshot) => {
-        try {
-          await fs.mkdir!(wfJsonDir);
-          await fs.writeFile!(wfJsonPath, JSON.stringify(snapshot, null, 2), 'utf-8');
-        } catch {
-          /* persistence failures don't affect in-memory truth */
-        }
-      },
-    });
+    workflows.setPersistence(jsonFileStore(fs as Required<AutonomyFs>, `${workspaceFolder}/.parallx`, 'workflows.json') as never);
     await workflows.loadFromPersistence();
   }
 

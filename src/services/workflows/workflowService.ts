@@ -125,8 +125,17 @@ export class WorkflowService implements IDisposable {
 
   async loadFromPersistence(): Promise<void> {
     if (!this._persistence) return;
+    let snap: Awaited<ReturnType<IWorkflowPersistence['load']>>;
     try {
-      const snap = await this._persistence.load();
+      snap = await this._persistence.load();
+    } catch (err) {
+      // The file is there but could not be read: saving now would replace
+      // the user's routines with this empty session's. Keep it; don't save.
+      this._saveBlocked = true;
+      console.error('[Workflows] could not read saved routines; changes this session will not be saved:', err);
+      return;
+    }
+    try {
       if (!snap || !Array.isArray(snap.docs)) return;
       this._docs.clear();
       let maxId = 0;
@@ -575,18 +584,36 @@ export class WorkflowService implements IDisposable {
     return count;
   }
 
-  private async _save(): Promise<void> {
-    if (!this._persistence) return;
-    try {
-      await this._persistence.save({
-        version: 1,
-        docs: [...this._docs.values()],
-        runs: [...this._runs],
-        ledger: Object.fromEntries(this._ledger),
-        schedules: Object.fromEntries(this._schedules),
-        dismissedSuggestions: [...this._dismissedSuggestions],
-      });
-    } catch { /* persistence failures never break the runtime */ }
+  private _saveBlocked = false;
+  private _saving: Promise<void> = Promise.resolve();
+  private _saveQueued = false;
+
+  /**
+   * Saves run one after another (two overlapping writes could land out of
+   * order, the older last); a save asked for while one runs folds into the
+   * next, which writes the state as it is then.
+   */
+  private _save(): Promise<void> {
+    if (!this._persistence || this._saveBlocked) return this._saving;
+    if (this._saveQueued) return this._saving;
+    this._saveQueued = true;
+    this._saving = this._saving.then(async () => {
+      this._saveQueued = false;
+      try {
+        await this._persistence?.save({
+          version: 1,
+          docs: [...this._docs.values()],
+          runs: [...this._runs],
+          ledger: Object.fromEntries(this._ledger),
+          schedules: Object.fromEntries(this._schedules),
+          dismissedSuggestions: [...this._dismissedSuggestions],
+        });
+      } catch (err) {
+        // In memory they stay true for this session; on disk they are not.
+        console.error('[Workflows] could not save routines:', err);
+      }
+    });
+    return this._saving;
   }
 }
 

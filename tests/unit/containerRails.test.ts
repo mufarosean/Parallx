@@ -414,8 +414,8 @@ describe('hidden ribbon icons', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     b.create(host);
-    b.addIcon({ id: 'a', icon: 'folder', label: 'A' });
-    b.addIcon({ id: 'b', icon: 'folder', label: 'B' });
+    b.addIcon({ id: 'a', icon: 'A', label: 'A', source: 'contributed' });
+    b.addIcon({ id: 'b', icon: 'B', label: 'B', source: 'contributed' });
     return b;
   }
 

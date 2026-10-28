@@ -4,7 +4,7 @@
 // AND manual since C4): single-flight per instance, AI fan-out capped by the
 // live `dashboard.aiRefreshConcurrency` setting, FIFO queue for the rest.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DashboardRefreshScheduler } from '../../src/built-in/dashboard/dashboardRefreshScheduler.js';
 import type { WidgetTypeRegistration } from '../../src/built-in/dashboard/dashboardTypes.js';
 
@@ -157,5 +157,27 @@ describe('DashboardRefreshScheduler — AI admission (M86 C4)', () => {
     await Promise.all([p1, p2]);
     expect(invokes).toBe(1);
     scheduler.dispose();
+  });
+});
+
+describe('DashboardRefreshScheduler — AI refreshes keep their own time', () => {
+  it('an AI refresh still running after many minutes is not failed by a wall clock (its runner limits working time)', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new DashboardRefreshScheduler(() => 1);
+      const aiType = makeType('ai');
+      scheduler.schedule('w', aiType, { kind: 'manual' }, async () => { /* unused */ });
+      const gate = deferred();
+      let outcome: 'ok' | 'failed' | undefined;
+      const run = scheduler.runOnce('w', () => gate.promise).then(() => { outcome = 'ok'; }, () => { outcome = 'failed'; });
+      await vi.advanceTimersByTimeAsync(15 * 60_000); // waiting behind other runs
+      expect(outcome).toBeUndefined();
+      gate.resolve();
+      await run;
+      expect(outcome).toBe('ok');
+      expect(scheduler.isBackedOff('w')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

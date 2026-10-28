@@ -5,7 +5,7 @@
 // for every run, ok/error result out.
 
 import { describe, it, expect, vi } from 'vitest';
-import { createBackgroundPromptRunner } from '../../src/built-in/chat/utilities/backgroundPromptRunner.js';
+import { backgroundTurnsInFlight, createBackgroundPromptRunner } from '../../src/built-in/chat/utilities/backgroundPromptRunner.js';
 import type { IChatContentPart } from '../../src/services/chatTypes.js';
 
 function makeDeps(overrides: {
@@ -84,6 +84,20 @@ describe('backgroundPromptRunner', () => {
     expect(purge).toHaveBeenCalledTimes(1);
     expect(logEntries).toHaveLength(1);
     expect(logEntries[0].metadata?.error).toBe(true);
+  });
+
+  it('counts its turns in flight (the heartbeat waits for them), down again whatever the outcome', async () => {
+    let finish!: () => void;
+    const { deps } = makeDeps({ sendRequest: () => new Promise<void>((r) => { finish = r; }) });
+    const run = createBackgroundPromptRunner(deps);
+    const pending = run({ text: 'refresh' });
+    expect(backgroundTurnsInFlight()).toBe(1);
+    finish();
+    await pending;
+    expect(backgroundTurnsInFlight()).toBe(0);
+    const failing = makeDeps({ sendRequest: async () => { throw new Error('down'); } });
+    await createBackgroundPromptRunner(failing.deps)({ text: 'x' });
+    expect(backgroundTurnsInFlight()).toBe(0);
   });
 
   it('defaults origin to dashboard and derives a label from the prompt', async () => {

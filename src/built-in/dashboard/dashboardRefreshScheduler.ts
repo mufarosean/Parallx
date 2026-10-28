@@ -188,16 +188,20 @@ export class DashboardRefreshScheduler extends Disposable {
     };
 
     const start = async (claimedAiSlot: boolean) => {
-      const timeoutMs = isAI ? DASHBOARD_LIMITS.AI_REFRESH_TIMEOUT_MS : DASHBOARD_LIMITS.REFRESH_TIMEOUT_MS;
+      // An AI refresh is a background turn: its runner limits the time it
+      // WORKS (waiting behind chat or another run does not count) and
+      // cancels the turn for real. A wall clock here failed turns that were
+      // still running, and backed the widget off while they finished.
+      const timeoutMs = isAI ? undefined : DASHBOARD_LIMITS.REFRESH_TIMEOUT_MS;
       const inner = invoke();
-      const backstop = setTimeout(() => releaseOnce(claimedAiSlot), timeoutMs + 120_000);
+      const backstop = setTimeout(() => releaseOnce(claimedAiSlot), (timeoutMs ?? DASHBOARD_LIMITS.AI_REFRESH_BACKSTOP_MS) + 120_000);
       void inner.catch(() => { /* observed below */ }).finally(() => {
         clearTimeout(backstop);
         releaseOnce(claimedAiSlot);
       });
       let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<void>((_, reject) => {
-        timeoutTimer = setTimeout(() => reject(new Error(`Refresh timed out after ${timeoutMs}ms`)), timeoutMs);
+        if (timeoutMs !== undefined) timeoutTimer = setTimeout(() => reject(new Error(`Refresh timed out after ${timeoutMs}ms`)), timeoutMs);
       });
       try {
         await Promise.race([inner, timeoutPromise]);

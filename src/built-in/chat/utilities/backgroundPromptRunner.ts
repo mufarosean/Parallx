@@ -127,7 +127,19 @@ export type IBackgroundPromptResult =
   | { readonly ok: true; readonly resultText: string; readonly model?: string }
   | { readonly ok: false; readonly error: string; readonly model?: string };
 
-const DEFAULT_TIMEOUT_MS = 240_000;
+/**
+ * Working time a background turn may use (waiting for the engine does not
+ * count). A routine or AI widget is a whole agent turn on a local model:
+ * read, look things up, deliver, several model calls each. Four minutes
+ * failed such turns that were progressing; ten is the heartbeat's own limit.
+ */
+const DEFAULT_TIMEOUT_MS = 600_000;
+
+/** Background turns running now (the heartbeat waits for them: see chat main). */
+let inFlight = 0;
+export function backgroundTurnsInFlight(): number {
+  return inFlight;
+}
 
 // ─── Runner ──────────────────────────────────────────────────────────────────
 
@@ -208,6 +220,7 @@ export function createBackgroundPromptRunner(
       return { ok: false, error, model };
     };
 
+    inFlight++; // paired with the finally below
     try {
       // The runner owns its own timeout: cancel the turn and report a REAL
       // failure rather than racing past an orphaned request (the old
@@ -268,6 +281,7 @@ export function createBackgroundPromptRunner(
       } catch { /* best-effort */ }
       // Always purge — scratch state never leaks (cron-executor parity).
       deps.chatService.purgeEphemeralSession(handle);
+      inFlight--;
     }
   };
 }

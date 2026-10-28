@@ -130,6 +130,7 @@ const FOLDER_RULES: Record<string, string[]> = {
 
   // ── utilities/ — mention resolution, shared helpers ──────────────────
   'utilities/backgroundPromptRunner.ts': [],  // M86 C4 — headless prompt turns (imports openclaw/services, outside chat)
+  'utilities/engineBrokerPresence.ts': [],  // tells the engine broker you are here (imports services, outside chat)
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
