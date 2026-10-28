@@ -4,7 +4,7 @@
 // of a character's people into a card of their own, and a card's lineage.
 // Split out of studio-core.js, which re-exports what other files import.
 
-import { sheetFromCharacter, stripDashes } from './studio-core.js';
+import { sheetFromCharacter, stripDashes } from './studio-sheet.js';
 
 const CONNECTION_FIELD_WORDS = { tagline: 30, description: 160, appearance: 90, backstory: 120, relationships: 90 };
 

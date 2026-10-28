@@ -27,6 +27,8 @@ import {
   sectionsPresent, characterFromSheet, sheetFromCharacter, connectionsBlock, parseRelationshipLines,
   SHEET_CRAFT_RULES, stripDashes, mergeSections,
 } from './studio-core.js';
+import { characterLink, clip, norm, rosterName } from './character-names.js';
+export { characterLink, clip, norm, rosterName } from './character-names.js';
 import { FIND_FULL_MAX, findResultText, searchCharacters } from './character-find.js';
 export { FIND_FULL_MAX, FIND_LIST_MAX, findTerms, searchCharacters, characterListLine, characterFullText, findResultText } from './character-find.js';
 
@@ -45,12 +47,7 @@ export const SAVE_TRIES_BEFORE_STOP = 3;
 /** Roster entries the brief lists by name; the rest are counted. */
 export const BRIEF_ROSTER_MAX = 60;
 
-const LINK_SEGMENT = 'creations';
 
-/** The link that opens a character in the Studio: `parallx://creations/character?file=<fileName>`. */
-export function characterLink(fileName) {
-  return `parallx://${LINK_SEGMENT}/character?file=${encodeURIComponent(String(fileName || ''))}`;
-}
 
 /** The file a character link names, or '' when it names none a character could have. */
 export function fileFromCharacterLink(parsed) {
@@ -297,12 +294,7 @@ export function checkSheet(sheet, { structure = null, allowEmpty = [] } = {}) {
 
 // ── A call's characters, together ──────────────────────────────────────────
 
-export const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-/** The roster's name for a character entry from scanCharacters. */
-export function rosterName(entry) {
-  return String((entry && (entry.frontmatter?.name || entry.rawData?.name)) || (entry && entry.fileName ? entry.fileName.replace(/\.(md|json)$/, '') : '')).trim();
-}
 
 /**
  * Read, check and connect every character of one save call. `roster` is
@@ -408,7 +400,6 @@ export function backLinkedCard(otherData, newName, how) {
 
 // ── The brief ──────────────────────────────────────────────────────────────
 
-export const clip = (t, words) => { const w = String(t || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean); return w.length <= words ? w.join(' ') : `${w.slice(0, words).join(' ')}...`; };
 
 /**
  * What a character sheet must be right now: the fields and their

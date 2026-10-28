@@ -2,8 +2,8 @@
 // roster by name or words, and the text the chat gets back for a find.
 // Split out of character-tool-core.js, which re-exports what other files import.
 
-import { characterLink, rosterName, norm, clip } from './character-tool-core.js';
-import { sheetFromCharacter, STUDIO_KEYS, STUDIO_FIELDS } from './studio-core.js';
+import { characterLink, rosterName, norm, clip } from './character-names.js';
+import { sheetFromCharacter, STUDIO_KEYS, STUDIO_FIELDS } from './studio-sheet.js';
 
 // ── Finding characters ─────────────────────────────────────────────────────
 // The roster, searchable by the chat: "who do I have that lives
