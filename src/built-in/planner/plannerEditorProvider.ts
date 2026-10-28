@@ -111,8 +111,9 @@ export class PlannerEditorPane implements IDisposable {
       }
     }
     // An EXPLICIT tab request from the sidebar wins over restored state.
-    const pendingTab = takePendingPlannerTab();
-    if (pendingTab) this._activeTab = pendingTab;
+    const pending = takePendingPlannerTab();
+    if (pending) this._activeTab = pending.tab;
+    if (pending?.tasksFilter) this._tasksFilter = pending.tasksFilter;
     this._input?.setName?.('Planner');
     this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
@@ -154,7 +155,9 @@ export class PlannerEditorPane implements IDisposable {
     // tab; non-active panes ignore it (root won't be connected).
     const onFocusTab = (e: Event) => {
       if (!this._root?.isConnected) return;
-      const tab = (e as CustomEvent<{ tab?: Tab }>).detail?.tab;
+      takePendingPlannerTab(); // handled here, so it must not also steer the next pane
+      const { tab, tasksFilter } = (e as CustomEvent<{ tab?: Tab; tasksFilter?: string }>).detail ?? {};
+      if (tasksFilter) this._tasksFilter = tasksFilter;
       if (tab === 'today' || tab === 'tasks' || tab === 'calendar') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);

@@ -19,7 +19,7 @@ import { IDatabaseService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider } from './plannerEditorProvider.js';
-import { setPendingPlannerNewTask } from './plannerNavState.js';
+import { setPendingPlannerNewTask, setPendingPlannerTab } from './plannerNavState.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
@@ -420,6 +420,16 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         iconHtml: PLANNER_ICON_HTML,
         instanceId: 'main',
       });
+    }),
+  );
+
+  // Tasks › Overdue: every open task whose day has passed (Today's Overdue count opens it).
+  context.subscriptions.push(
+    api.commands.registerCommand('planner.showOverdue', async () => {
+      setPendingPlannerTab('tasks', 'overdue');
+      await api.editors.openEditor({ typeId: 'planner', title: 'Planner', iconHtml: PLANNER_ICON_HTML, instanceId: 'main' });
+      // An open pane takes the event; one still building took the pending request.
+      document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab: 'tasks', tasksFilter: 'overdue' } }));
     }),
   );
 

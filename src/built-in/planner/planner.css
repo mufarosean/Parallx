@@ -460,17 +460,11 @@
 .planner-today__overdue { border-color: color-mix(in srgb, var(--px-danger) 45%, var(--px-border)); }
 .planner-today__overdue .planner-today__card-title .svg-icon { color: var(--px-danger); }
 .planner-today__count {
-  min-width: 18px;
-  padding: 1px var(--px-space-2);
-  border-radius: var(--px-radius-full);
-  background: var(--px-accent-soft);
-  color: var(--px-accent-text);
-  font-size: var(--px-text-xs);
-  font-weight: 600;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
+  min-width: 18px; padding: 1px var(--px-space-2); border-radius: var(--px-radius-full); background: var(--px-accent-soft);
+  color: var(--px-accent-text); font-size: var(--px-text-xs); font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
 }
-.planner-today__overdue .planner-today__count { background: var(--px-danger-soft); color: var(--px-danger); }
+.planner-today__overdue .planner-today__count { background: var(--px-danger-soft); color: var(--px-danger);  height: 20px; border-radius: var(--px-radius-full); }
+.planner-today__overdue .planner-today__count:hover { background: color-mix(in srgb, var(--px-danger) 24%, transparent); color: var(--px-danger); }
 
 .planner-today__review-item,
 .planner-today__overdue-item {

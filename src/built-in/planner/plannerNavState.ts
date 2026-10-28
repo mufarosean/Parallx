@@ -13,17 +13,22 @@
 export type PlannerTab = 'today' | 'tasks' | 'calendar';
 
 let _pendingTab: PlannerTab | null = null;
+/** With the Tasks tab, the list to show (a Tasks filter key, e.g. 'overdue'). */
+let _pendingFilter: string | null = null;
 
-/** Sidebar: record the tab to open before invoking openEditor. */
-export function setPendingPlannerTab(tab: PlannerTab): void {
+/** Sidebar: record the tab (and, for Tasks, the list) to open before invoking openEditor. */
+export function setPendingPlannerTab(tab: PlannerTab, tasksFilter: string | null = null): void {
   _pendingTab = tab;
+  _pendingFilter = tasksFilter;
 }
 
-/** Pane: consume the requested tab (one-shot). Returns null if none pending. */
-export function takePendingPlannerTab(): PlannerTab | null {
+/** Pane: consume the requested tab and list (one-shot). Returns null if none pending. */
+export function takePendingPlannerTab(): { tab: PlannerTab; tasksFilter: string | null } | null {
   const tab = _pendingTab;
+  const tasksFilter = _pendingFilter;
   _pendingTab = null;
-  return tab;
+  _pendingFilter = null;
+  return tab ? { tab, tasksFilter } : null;
 }
 
 // planner.newTask has the same race: it opens the editor and then dispatches

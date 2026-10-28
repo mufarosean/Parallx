@@ -25,6 +25,8 @@ export const PLANNER_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Create a new task via an input prompt.' },
       { id: 'planner.newEvent', title: 'Planner: New Event…',
         aiInvocable: true, aiDescription: 'Create a new calendar event via an input prompt.' },
+      { id: 'planner.showOverdue', title: 'Planner: Show Overdue Tasks',
+        aiInvocable: true, aiDescription: 'Open the Planner on the list of every overdue task.' },
     ],
     keybindings: [
       // NOTE: Ctrl+Shift+P is reserved for the Command Palette

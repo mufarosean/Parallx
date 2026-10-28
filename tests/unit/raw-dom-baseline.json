@@ -152,7 +152,7 @@
   "src/built-in/planner/plannerSidebar.ts": 14,
   "src/built-in/planner/plannerTaskList.ts": 40,
   "src/built-in/planner/plannerTaskPopover.ts": 44,
-  "src/built-in/planner/plannerToday.ts": 67,
+  "src/built-in/planner/plannerToday.ts": 66,
   "src/built-in/planner/plannerUi.ts": 4,
   "src/built-in/planner/widgets/calendarAgendaWidget.ts": 11,
   "src/built-in/planner/widgets/calendarViewWidget.ts": 28,

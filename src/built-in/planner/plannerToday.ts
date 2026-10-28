@@ -540,7 +540,12 @@ export class PlannerTodayView implements IDisposable {
     const head = el('div', 'planner-today__card-head');
     const title = el('h2', 'planner-today__card-title');
     title.append(createIconElement('circle-alert', 16), el('span', undefined, 'Overdue'));
-    head.append(title, el('span', 'planner-today__count', String(overdue.length)));
+    head.appendChild(title);
+    // The count opens the full list: the card shows the oldest few.
+    createButton(head, {
+      id: 'planner.today.showOverdue', command: 'planner.showOverdue', label: String(overdue.length), size: 'sm', kind: 'ghost',
+      title: `Show all ${plural(overdue.length, 'overdue task', 'overdue tasks')}`,
+    }).classList.add('planner-today__count');
     card.appendChild(head);
     for (const task of overdue.slice(0, REVIEW_PREVIEW)) {
       const item = el('div', 'planner-today__overdue-item');
@@ -562,6 +567,12 @@ export class PlannerTodayView implements IDisposable {
         },
       });
       card.appendChild(item);
+    }
+    if (overdue.length > REVIEW_PREVIEW) {
+      createButton(card, {
+        id: 'planner.today.showAllOverdue', command: 'planner.showOverdue',
+        label: `Show All ${overdue.length} Overdue`, icon: 'chevron-right', kind: 'ghost', size: 'sm',
+      }).classList.add('planner-today__more');
     }
     return card;
   }
