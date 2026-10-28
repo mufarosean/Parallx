@@ -1496,7 +1496,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 
 .dashboard-sidebar-menu {
-  min-width: 180px;
+  min-width: var(--px-menu-w-sm);
   background: var(--vscode-menu-background, #2c2c2c);
   color: var(--vscode-menu-foreground, #d4d4d4);
   border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);

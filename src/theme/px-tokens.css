@@ -228,6 +228,20 @@
   --px-control-h:    28px;
   --px-control-h-lg: 32px;
 
+  /* Menu sizes — three, no more. Every menu (context menus, menu-bar menus,
+     dropdown lists, pickers that list choices) takes its width from one
+     step and its height cap from one step; a longer list scrolls.
+       sm  a few short actions (copy menus, paste, row actions)
+       md  the usual menu: commands with shortcuts, submenus, the menu bar
+       lg  menus whose items carry a second line or long names (mentions,
+           slash commands) — and the widest any menu grows */
+  --px-menu-w-sm: 160px;
+  --px-menu-w-md: 240px;
+  --px-menu-w-lg: 320px;
+  --px-menu-h-sm: min(240px, calc(100vh - 16px));
+  --px-menu-h-md: min(360px, calc(100vh - 16px));
+  --px-menu-h-lg: min(480px, calc(100vh - 16px));
+
   /* Elevation — borders carry structure; shadows only for true float.
      Each step pairs a shadow with a 1px top inset highlight so raised
      surfaces read as physical layers catching light (the "material" feel),

@@ -948,6 +948,8 @@ Every token has a light-mode value. Test your surface in both (Settings › Appe
 
 **Control height (`--px-control-h*`):** 28 default · `-sm` 24 dense · `-xs` 22 panel toolbars · `-lg` 32 hero actions only.
 
+**Menu sizes (`--px-menu-w-*`, `--px-menu-h-*`):** three steps, no more. `sm` 160 wide, 240 tall (a few short actions) · `md` 240 wide, 360 tall (the usual menu, the menu bar) · `lg` 320 wide, 480 tall (items with a second line; the widest any menu grows). Heights stop at the window. A menu is as wide as its items between `sm` and `lg`; `ContextMenu.show({ size })` sets its floor and height cap. A list longer than its cap scrolls; never set a menu's width or height in pixels.
+
 ### 6.6 Layout
 
 1. Every tab starts with `createPageHeader`. Content below it, padded `--px-space-6` horizontally.

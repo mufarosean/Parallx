@@ -2819,7 +2819,7 @@
 .parallx-chat-copy-menu {
   position: fixed;
   z-index: 10000;
-  min-width: 160px;
+  min-width: var(--px-menu-w-sm);
   padding: 4px 0;
   border-radius: 6px;
   background: var(--vscode-menu-background, #252526);

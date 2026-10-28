@@ -808,7 +808,7 @@
   border-radius: var(--parallx-radius-md, 4px);
   box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
   padding: 4px 0;
-  max-height: 240px;
+  max-height: var(--px-menu-h-sm);
   overflow-y: auto;
 }
 

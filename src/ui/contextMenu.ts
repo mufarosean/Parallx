@@ -76,6 +76,12 @@ export interface IContextMenuOptions {
   readonly label?: string;
   /** Additional CSS class(es) for the root element. */
   readonly className?: string;
+  /**
+   * One of the three menu sizes (px-tokens.css): its least width and its
+   * height cap. Without it a menu is as wide as its items, from small to
+   * large, and as tall as the large cap.
+   */
+  readonly size?: 'sm' | 'md' | 'lg';
 }
 
 /** Fired when an item is selected. */
@@ -142,6 +148,7 @@ export class ContextMenu extends Disposable {
     // Build root element
     this._el = document.createElement('div');
     this._el.classList.add('context-menu');
+    if (_options.size) this._el.classList.add(`context-menu--${_options.size}`);
     if (_options.className) {
       this._el.classList.add(_options.className);
     }

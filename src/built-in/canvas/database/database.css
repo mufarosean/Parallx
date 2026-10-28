@@ -168,7 +168,7 @@
 
 /* ── Popovers & menus ── */
 .canvas-db-popover {
-  position: fixed; z-index: var(--px-canvas-z-menu); min-width: 220px; max-width: 320px;
+  position: fixed; z-index: var(--px-canvas-z-menu); min-width: var(--px-menu-w-md); max-width: var(--px-menu-w-lg);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.3));
   border-radius: var(--px-radius-md); box-shadow: var(--px-shadow-md);

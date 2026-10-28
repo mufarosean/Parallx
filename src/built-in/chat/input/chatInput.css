@@ -571,8 +571,8 @@
 /* ── Context picker (full VS Code-style "Add Context" menu) ── */
 
 .parallx-chat-context-picker {
-  width: 340px;
-  max-height: 400px;
+  width: var(--px-menu-w-lg);
+  max-height: var(--px-menu-h-md);
   display: flex;
   flex-direction: column;
   border-radius: var(--parallx-radius-md);

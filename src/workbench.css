@@ -282,8 +282,8 @@ html, body {
  *  dropdown: wider minimum width and a capped max-height.
  */
 .titlebar-dropdown {
-  min-width: 220px;
-  max-height: 400px;
+  min-width: var(--px-menu-w-md);
+  max-height: var(--px-menu-h-lg);
 }
 
 /* ── Window control close button (M3 Cap 1.3) ── */

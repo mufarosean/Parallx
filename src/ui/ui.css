@@ -364,8 +364,11 @@
 .context-menu {
   position: fixed;
   z-index: var(--px-z-popup);
-  min-width: 160px;
-  max-width: 320px;
+  /* Sizes: px-tokens.css "Menu sizes". A menu is as wide as its items
+     between the small and large steps; a size modifier sets its floor and
+     height cap. */
+  min-width: var(--px-menu-w-sm);
+  max-width: var(--px-menu-w-lg);
   padding: 4px 0;
   background: var(--vscode-menu-background);
   color: var(--vscode-menu-foreground);
@@ -375,8 +378,11 @@
   font-size: var(--parallx-fontSize-md);
   outline: none;
   overflow-y: auto;
-  max-height: calc(100vh - 16px);
+  max-height: var(--px-menu-h-lg);
 }
+.context-menu--sm { min-width: var(--px-menu-w-sm); max-height: var(--px-menu-h-sm); }
+.context-menu--md { min-width: var(--px-menu-w-md); max-height: var(--px-menu-h-md); }
+.context-menu--lg { min-width: var(--px-menu-w-lg); max-height: var(--px-menu-h-lg); }
 
 .context-menu-item {
   display: flex;
