@@ -324,6 +324,7 @@ export interface IChatUserMessage {
   readonly replayOfRequestId?: string;
   /** Timestamp when the message was sent. */
   readonly timestamp: number;
+  readonly offRecord?: boolean; // Do Not Remember This: the exchange stays in the chat, out of memory
 }
 
 /**
@@ -1357,8 +1358,7 @@ export interface IChatService extends IDisposable {
   setSessionManager(sessionManager: import('./serviceTypes.js').ISessionManager): void;
   /** Late-bind a workspace transcript service for canonical transcript persistence. */
   setTranscriptService(transcriptService: import('./serviceTypes.js').IWorkspaceTranscriptService): void;
-  /** Late-bind a memory-cleanup hook invoked on deleteSession so a deleted chat's
-   *  derived memory (conversation summary + embedding) is removed too. */
+  /** Late-bind a hook deleteSession runs so a deleted chat's derived memory (summary + embedding) goes too. */
   setMemoryCleanup(cleanup: (sessionId: string) => void | Promise<void>): void;
   /** Late-bind workspace-aware turn preparation helpers used before agent dispatch. */
   setTurnPreparationServices(services: IChatTurnPreparationServices): void;
@@ -1368,11 +1368,11 @@ export interface IChatService extends IDisposable {
   setRuntimeParticipantResolver?(resolver: ((participantId: string) => string) | undefined): void;
   /** Update the model ID for an existing session and persist. */
   updateSessionModel(sessionId: string, modelId: string): void;
+  setRequestOffRecord(sessionId: string, requestId: string, on: boolean): boolean; // Do Not Remember This, or take it back
 
   /** read a session's durable plan (the planning organ). */
   getSessionPlan?(sessionId: string): IChatSessionPlan | undefined;
-  /** write (or clear, with undefined) a session's durable plan.
-   *  Fires onDidChangeSession and schedules a persist. */
+  /** write (or clear, with undefined) a session's durable plan; fires onDidChangeSession and persists. */
   setSessionPlan?(sessionId: string, plan: IChatSessionPlan | undefined): void;
 
   /**

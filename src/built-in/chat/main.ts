@@ -27,7 +27,7 @@ import type { ChatWidget } from './widgets/chatWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
 import { backgroundTurnsInFlight, createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
 import { wireEngineBrokerPresence } from './utilities/engineBrokerPresence.js';
-import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js'; import { registerMemoryCommands } from './utilities/memoryCommands.js';
+import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js'; import { registerMemoryCommands, registerOffRecordCommand } from './utilities/memoryCommands.js';
 
 import {
   buildOpenclawCanvasParticipantServices,
@@ -623,7 +623,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const workspaceMemoryService = api.services.has(IWorkspaceMemoryService)
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
     : undefined;
-  context.subscriptions.push(...registerMemoryCommands(api.commands, workspaceMemoryService, (uri) => { void api.editors.openFileEditor(uri); })); // the lessons, for any view that shows them
+  context.subscriptions.push(...registerMemoryCommands(api.commands, workspaceMemoryService, (uri) => { void api.editors.openFileEditor(uri); }), registerOffRecordCommand(api.commands, chatService)); // the lessons, and Do Not Remember This
   const canonicalMemorySearchService = api.services.has(ICanonicalMemorySearchService)
     ? api.services.get<import('../../services/serviceTypes.js').ICanonicalMemorySearchService>(ICanonicalMemorySearchService)
     : undefined;

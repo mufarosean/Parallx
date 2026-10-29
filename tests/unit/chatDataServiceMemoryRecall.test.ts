@@ -256,6 +256,14 @@ describe('ChatDataService.recallMemories', () => {
     expect(harness.memoryService.storeMemory).not.toHaveBeenCalled();
   });
 
+  it('never summarizes into memory a chat with an exchange marked Do Not Remember This', async () => {
+    const harness = createDataService();
+    harness.chatService.getSession.mockReturnValue({ messages: [{ request: { text: 'a' } }, { request: { text: 'b', offRecord: true } }] } as never);
+    await harness.service.storeSessionMemory('session-42', 'A summary that would carry it.', 5);
+    expect(harness.workspaceMemoryService.appendSessionSummary).not.toHaveBeenCalled();
+    expect(harness.memoryService.storeMemory).not.toHaveBeenCalled();
+  });
+
   // M81 Phase 4 — extractPreferences/extractAndStorePreferences regex pipeline
   // was removed. Preferences are now agent-authored via `memory_write`. Tests
   // for that path live in tests/unit/memoryEditTool.test.ts.

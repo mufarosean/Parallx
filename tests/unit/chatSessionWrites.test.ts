@@ -73,6 +73,16 @@ describe('saving a chat (real SQLite, foreign keys on)', () => {
     expect(await answers(db)).toEqual(['one']);
   });
 
+  it('an exchange marked Do Not Remember stays marked after a reload', async () => {
+    const db = realDb();
+    await ensureChatTables(db);
+    const c = chat(['one', 'two']);
+    c.messages[1] = { ...c.messages[1], request: { ...c.messages[1].request, offRecord: true } };
+    await saveSession(db, c);
+    const back = (await loadSessionMessages(db, 'chat-1')).messages;
+    expect(back.map((m) => m.request.offRecord === true)).toEqual([false, true]);
+  });
+
   it('after a failed save, the next one writes everything again', async () => {
     const db = realDb();
     await ensureChatTables(db);

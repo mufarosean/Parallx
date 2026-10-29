@@ -3,7 +3,8 @@
 // tab says about where a lesson came from.
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { registerMemoryCommands } from '../../src/built-in/chat/utilities/memoryCommands';
+import { registerMemoryCommands, registerOffRecordCommand } from '../../src/built-in/chat/utilities/memoryCommands';
+import { offRecordRule } from '../../src/openclaw/participants/openclawDefaultParticipant';
 import { lessonOrigin } from '../../src/built-in/agents/agentsLessons';
 import { createRow, createSection } from '../../src/ui/kit';
 import { URI } from '../../src/platform/uri';
@@ -73,5 +74,22 @@ describe('the agent\'s lessons', () => {
     expect(sec.querySelector('.px-section-label')?.textContent).toBe('What it has written down');
     expect(row.querySelector('.px-row__name')?.textContent).toBe('Clark tail factor');
     expect((row.querySelector('.px-row__detail') as HTMLElement).title).toBe('chat-a');
+  });
+
+  it('Do Not Remember This: the command marks the exchange in its own chat', () => {
+    const c = commands();
+    const set = vi.fn(() => true);
+    registerOffRecordCommand(c, { getSessions: () => [{ id: 's1', messages: [{ request: { requestId: 'r1' } }] }, { id: 's2', messages: [{ request: { requestId: 'r2' } }] }], setRequestOffRecord: set });
+    expect(c.map.get('chat.setOffRecord')!('r2', true)).toBe(true);
+    expect(set).toHaveBeenCalledWith('s2', 'r2', true);
+    expect(c.map.get('chat.setOffRecord')!('nowhere', true)).toBe(false);
+  });
+
+  it('the marked exchanges become a rule for later turns: write nothing from them to memory', () => {
+    expect(offRecordRule([{ request: { text: 'hello' } }])).toBeUndefined();
+    const rule = offRecordRule([{ request: { text: 'My salary is 90k' } }, { request: { text: 'Plan my week', offRecord: false } }, { request: { text: 'I am  moving\nto Denver', offRecord: true } }])!;
+    expect(rule).toMatch(/Write nothing from them to memory/);
+    expect(rule).toContain('"I am moving to Denver"');
+    expect(rule).not.toContain('salary');
   });
 });

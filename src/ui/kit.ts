@@ -77,6 +77,9 @@ export function installKitCommands(service: { executeCommand(id: string, ...args
   _runCommand = (id, ...args) => service.executeCommand(id, ...args);
 }
 
+/** Run a command by id from a surface that is not a kit control (a menu item, say). */
+export function runKitCommand(command: string, ...args: unknown[]): void { runCommand({ command, args }); }
+
 function runCommand(action: IKitCommandAction): void {
   if (!_runCommand) { console.warn(`[kit] no command service yet; "${action.command}" not run`); return; }
   void _runCommand(action.command, ...(action.args ?? [])).catch((err) => console.warn(`[kit] command "${action.command}" failed:`, err));

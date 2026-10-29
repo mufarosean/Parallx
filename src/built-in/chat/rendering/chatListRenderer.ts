@@ -31,6 +31,7 @@ import type {
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
+import { runKitCommand } from '../../../ui/kit.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts
 export type { OpenAttachmentHandler } from '../chatTypes.js';
@@ -257,6 +258,7 @@ export class ChatListRenderer extends Disposable {
    * Key: pair index → { userEl, assistantEl, partCount }
    */
   private _renderedPairs: Map<number, { userEl: HTMLElement; assistantEl: HTMLElement; partCount: number }> = new Map();
+  private _lastMessages: readonly IChatRequestResponsePair[] = [];
 
   /** Set callback for when user clicks an attachment chip in a message. */
   setOpenAttachmentHandler(handler: OpenAttachmentHandler): void {
@@ -287,7 +289,6 @@ export class ChatListRenderer extends Disposable {
     this._register({ dispose: () => this._dismissContextMenu() });
 
     container.addEventListener('contextmenu', (e) => {
-      // Find the closest message body
       const target = e.target as HTMLElement;
       const messageBody = target.closest('.parallx-chat-message-body') as HTMLElement | null;
       if (!messageBody) { return; }
@@ -299,10 +300,10 @@ export class ChatListRenderer extends Disposable {
       const selectedText = selection?.toString().trim() ?? '';
       const hasSelection = selectedText.length > 0;
 
-      // THE context menu (ui/contextMenu), not a bespoke one: Copy, Copy All,
-      // and the door back into the conversation. "Ask Parallx About This"
-      // attaches the selected part of a reply as context and focuses the
-      // composer, so a follow-up can point at exactly the sentence it means.
+      // THE context menu (ui/contextMenu): Copy, Copy All; "Ask Parallx About This" attaches the selected part
+      // of a reply as context; Do Not Remember This keeps the exchange out of memory (memoryCommands.ts).
+      const requestId = (target.closest('[data-request-id]') as HTMLElement | null)?.dataset.requestId;
+      const off = this._lastMessages.find((p) => p.request.requestId === requestId)?.request.offRecord === true;
       const menu = ContextMenu.show({
         anchor: { x: e.clientX, y: e.clientY },
         className: 'parallx-chat-copy-menu',
@@ -311,6 +312,7 @@ export class ChatListRenderer extends Disposable {
           { id: 'copy-all', label: 'Copy All', group: '1', order: 2 },
           { id: 'ask', label: 'Ask Parallx About This', group: '2', order: 1, disabled: !hasSelection,
             renderIcon: (host) => { host.innerHTML = chatIcons.sparkle; } },
+          ...(requestId ? [{ id: 'off-record', label: off ? 'Remember This' : 'Do Not Remember This', group: '3', order: 1 }] : []),
         ],
       });
       this._contextMenu = menu;
@@ -319,15 +321,12 @@ export class ChatListRenderer extends Disposable {
           if (hasSelection) void navigator.clipboard.writeText(selectedText);
         } else if (item.id === 'copy-all') {
           void navigator.clipboard.writeText(messageBody.innerText);
+        } else if (item.id === 'off-record' && requestId) {
+          runKitCommand('chat.setOffRecord', requestId, !off);
         } else if (item.id === 'ask' && hasSelection) {
           document.dispatchEvent(new CustomEvent('parallx-selection-action', {
             bubbles: true,
-            detail: {
-              actionId: 'add-to-chat',
-              selectedText,
-              surface: 'chat',
-              source: { fileName: 'Parallx reply', filePath: 'chat:reply' },
-            },
+            detail: { actionId: 'add-to-chat', selectedText, surface: 'chat', source: { fileName: 'Parallx reply', filePath: 'chat:reply' } },
           }));
         }
         this._dismissContextMenu();
@@ -356,6 +355,7 @@ export class ChatListRenderer extends Disposable {
     messages: readonly IChatRequestResponsePair[],
     requestInProgress: boolean,
   ): void {
+    this._lastMessages = messages;
     // Same pair count, last turn streaming → update the last body in place.
     if (this._canIncrementalUpdate(container, messages)) {
       this._incrementalUpdate(container, messages, requestInProgress);
@@ -822,7 +822,6 @@ export class ChatListRenderer extends Disposable {
 
   /** Add copy button actions bar to an assistant message. */
   private _addMessageActions(root: HTMLElement, body: HTMLElement, request: IChatUserMessage, canRegenerate: boolean): void {
-    // Don't duplicate
     if (root.querySelector('.parallx-chat-message-actions')) { return; }
 
     const actions = $('div.parallx-chat-message-actions');

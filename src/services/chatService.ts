@@ -1049,12 +1049,22 @@ export class ChatService extends Disposable implements IChatService {
     return session;
   }
 
+  private _changed(sessionId: string): void { this._schedulePersist(sessionId); this._onDidChangeSession.fire(sessionId); } // save (debounced), tell the views
   updateSessionModel(sessionId: string, modelId: string): void {
     const session = this._sessions.get(sessionId);
     if (!session || session.modelId === modelId) return;
     session.modelId = modelId;
-    this._schedulePersist(sessionId);
-    this._onDidChangeSession.fire(sessionId);
+    this._changed(sessionId);
+  }
+
+  /** An exchange off the record: it stays in the chat; memory summaries leave it out and the model is told not to record it. */
+  setRequestOffRecord(sessionId: string, requestId: string, on: boolean): boolean {
+    const session = this._sessions.get(sessionId);
+    const i = session ? session.messages.findIndex((p) => p.request.requestId === requestId) : -1;
+    if (!session || i < 0) return false;
+    session.messages[i] = { ...session.messages[i], request: { ...session.messages[i].request, offRecord: on || undefined } };
+    this._changed(sessionId);
+    return true;
   }
 
   updateSessionContextWindow(sessionId: string, contextWindow: number | undefined): void {
@@ -1063,12 +1073,10 @@ export class ChatService extends Disposable implements IChatService {
     const next = contextWindow && contextWindow > 0 ? Math.floor(contextWindow) : undefined;
     if (session.contextWindowOverride === next) return;
     session.contextWindowOverride = next;
-    this._schedulePersist(sessionId);
-    this._onDidChangeSession.fire(sessionId);
+    this._changed(sessionId);
   }
 
   deleteSession(sessionId: string): void {
-    // Cancel any in-progress request
     const cts = this._activeCancellations.get(sessionId);
     if (cts) {
       cts.cancel();
@@ -1084,10 +1092,8 @@ export class ChatService extends Disposable implements IChatService {
       if (this._database) {
         deletePersistedSession(this._database, sessionId).catch((e) => { console.error('[ChatService] deletePersistedSession failed:', e); });
       }
-      // Remove the AI's memory derived from this session (conversation summary +
-      // its vector embedding), so a deleted chat isn't still recalled. The
-      // transcript file's index entries are cleaned by the indexer's file-delete
-      // watcher; durable curated memory (MEMORY.md) is workspace-level and kept.
+      // Remove the AI's memory from this session (summary + embedding) so a deleted chat isn't recalled;
+      // the indexer's delete watcher cleans the transcript's entries; MEMORY.md is workspace-level and kept.
       if (this._memoryCleanup) {
         Promise.resolve(this._memoryCleanup(sessionId)).catch((e) => { console.error('[ChatService] session memory cleanup failed:', e); });
       }
@@ -1105,18 +1111,12 @@ export class ChatService extends Disposable implements IChatService {
     return this._sessions.get(sessionId)?.plan;
   }
 
-  /**
-   * Write (or clear, with undefined) a session's durable plan. Fires the
-   * session-change event so the plan card re-renders live, and schedules a
-   * persist so the plan survives app restarts — it is the agent's mission
-   * anchor across compactions and reloads.
-   */
+  /** Write (or clear) a session's durable plan, the agent's anchor across compactions and restarts. */
   setSessionPlan(sessionId: string, plan: IChatSession['plan']): void {
     const session = this._sessions.get(sessionId);
     if (!session) { return; }
     session.plan = plan;
-    this._onDidChangeSession.fire(sessionId);
-    this._schedulePersist(sessionId);
+    this._changed(sessionId);
   }
 
   getSessions(): readonly IChatSession[] {

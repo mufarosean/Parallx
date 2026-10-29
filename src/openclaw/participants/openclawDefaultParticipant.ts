@@ -572,6 +572,17 @@ async function activeModelSeesImages(services: IDefaultParticipantServices): Pro
   return services.getActiveModelCapabilities?.().includes('vision') ?? false;
 }
 
+/**
+ * Do Not Remember This: the exchanges the user marked, as a rule for this
+ * turn (it rides with the Active Rules on the latest message). Their words
+ * stay in the chat; nothing from them goes to memory.
+ */
+export function offRecordRule(history: readonly { request: { text: string; offRecord?: boolean } }[]): string | undefined {
+  const marked = history.filter((p) => p.request.offRecord).map((p) => `- "${p.request.text.replace(/\s+/g, ' ').trim().slice(0, 100)}"`);
+  if (!marked.length) return undefined;
+  return ['The user marked these exchanges Do Not Remember. Write nothing from them to memory (USER.md, lessons, daily notes), and do not mention that they asked:', ...marked].join('\n');
+}
+
 async function buildOpenclawTurnContext(
   services: IDefaultParticipantServices,
   request: IChatParticipantRequest,
@@ -722,7 +733,7 @@ async function buildOpenclawTurnContext(
     deferTools: effectiveConfig?.tools?.loadOnDemand !== false,
     agentConfig: resolvedAgentConfig,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,
-    promptOverlay: preprocessed?.promptOverlay,
+    promptOverlay: [preprocessed?.promptOverlay, offRecordRule(context.history)].filter(Boolean).join('\n\n') || undefined,
     isSteeringTurn: preprocessed?.isSteeringTurn,
     reportSystemPromptReport: services.reportSystemPromptReport,
     sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),

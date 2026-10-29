@@ -391,6 +391,7 @@ function _reconstructPairs(messageRows: readonly IPersistedMessageRow[]): IChatR
         attachments: metadata.attachments,
         attempt: metadata.attempt ?? 0,
         replayOfRequestId: metadata.replayOfRequestId,
+        ...(metadata.offRecord ? { offRecord: true } : {}),
         timestamp: msg.timestamp,
       };
     } else if (msg.role === 'assistant' && pendingUser) {
@@ -580,6 +581,7 @@ function _serializeUserMessageMetadata(message: IChatUserMessage): Record<string
     attachments: message.attachments,
     attempt: message.attempt,
     replayOfRequestId: message.replayOfRequestId,
+    offRecord: message.offRecord || undefined,
   };
 }
 
@@ -593,6 +595,7 @@ function _deserializeUserMessageMetadata(partsJson: string): Partial<IChatUserMe
       attachments?: unknown;
       attempt?: unknown;
       replayOfRequestId?: unknown;
+      offRecord?: unknown;
     };
     return {
       requestId: typeof parsed.requestId === 'string' ? parsed.requestId : 'legacy-request',
@@ -602,6 +605,7 @@ function _deserializeUserMessageMetadata(partsJson: string): Partial<IChatUserMe
       attachments: Array.isArray(parsed.attachments) ? parsed.attachments as readonly IChatAttachment[] : undefined,
       attempt: typeof parsed.attempt === 'number' ? parsed.attempt : 0,
       replayOfRequestId: typeof parsed.replayOfRequestId === 'string' ? parsed.replayOfRequestId : undefined,
+      ...(parsed.offRecord === true ? { offRecord: true } : {}),
     };
   } catch {
     return {

@@ -1494,13 +1494,12 @@ export class ChatDataService {
   }
 
   async storeSessionMemory(sessionId: string, summary: string, messageCount: number): Promise<void> {
+    if (this._d.chatService.getSession(sessionId)?.messages.some((p) => p.request.offRecord)) return; // Do Not Remember This: a chat with a marked exchange is never summarized into memory
     if (this._d.workspaceMemoryService) {
       try {
         await this._d.workspaceMemoryService.appendSessionSummary(sessionId, summary, messageCount);
         return;
-      } catch {
-        // best-effort canonical write-back
-      }
+      } catch { /* best-effort canonical write-back */ }
     }
     if (!this._d.memoryService) { return; }
     try { await this._d.memoryService.storeMemory(sessionId, summary, messageCount); } catch { /* best-effort */ }

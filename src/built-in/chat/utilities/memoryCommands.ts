@@ -73,3 +73,19 @@ export function registerMemoryCommands(commands: ICommandRegistry, memory: IWork
     }),
   ];
 }
+
+/**
+ * Do Not Remember This (docs/MEMORY_BRIEF.md step 5): chat.setOffRecord
+ * (requestId, on) marks an exchange. It stays in the chat; memory summaries
+ * of the chat leave it out, and later turns tell the model not to record it.
+ */
+export function registerOffRecordCommand(
+  commands: ICommandRegistry,
+  chat: { getSessions(): readonly { id: string; messages: readonly { request: { requestId: string } }[] }[]; setRequestOffRecord(sessionId: string, requestId: string, on: boolean): boolean },
+): IDisposable {
+  return commands.registerCommand('chat.setOffRecord', (requestId: unknown, on: unknown) => {
+    if (typeof requestId !== 'string') return false;
+    const session = chat.getSessions().find((s) => s.messages.some((p) => p.request.requestId === requestId));
+    return session ? chat.setRequestOffRecord(session.id, requestId, on !== false) : false;
+  });
+}
