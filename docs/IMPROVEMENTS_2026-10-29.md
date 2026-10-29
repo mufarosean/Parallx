@@ -162,7 +162,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   - sessions saved by upsert, not delete-and-reinsert;
   - Active Rules moved out of the system prompt so the cache holds.
 
-  Source: IDEAS, FINISH E, APP 2.3. Open.
+  Source: IDEAS, FINISH E, APP 2.3. Done Oct 29 (all four). Found on the
+  way: renaming a chat before opening it deleted its messages; fixed.
 - **One model-call ledger** (who called, tokens, cache reads, timings): AI
   quality becomes numbers. IDEAS. Open.
 - **PDF Ask sees the whole page**, with the file name and retrieval limited to
