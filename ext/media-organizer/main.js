@@ -21972,8 +21972,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   secLook.appendChild(moEl('div', 'mo-clip-note', { textContent: 'Renders three real seconds from the playhead, so what you see is what exports.' }));
   let renderOverlay = null;
   let renderTempPath = '';
+  let resumeAfterRender = false; // rendering never stops the clip; only the render over it holds it, until Close
   async function closeRenderPreview() {
     if (renderOverlay) { renderOverlay.remove(); renderOverlay = null; }
+    if (resumeAfterRender) { resumeAfterRender = false; preview.play().catch(() => {}); }
     if (renderTempPath) {
       const p = renderTempPath; renderTempPath = '';
       try { _revokeCachedBlobUrlsFor([p]); } catch { /* ignore */ }
@@ -21988,14 +21990,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     await closeRenderPreview();
     const t0 = Math.max(0, Math.min(duration - 0.2, preview.currentTime));
     const t1 = Math.min(duration, t0 + 3);
-    renderBtn.disabled = true;
-    const prevLabel = renderBtn.textContent;
+    renderBtn.disabled = true; const prevLabel = renderBtn.textContent;
     renderBtn.textContent = 'Rendering…';
     status.textContent = 'Preview render…';
     const sepCh2 = _isWindows ? '\\' : '/';
     const outPath = base + sepCh2 + '.cliprender-' + Date.now() + '.mp4';
     try {
-      preview.pause();
       const vw = preview.videoWidth || 1280;
       const scalePct = Math.max(10, parseInt(sizeInput.value, 10) || 100);
       // Cap the preview at ~640 px wide so it renders in seconds.
@@ -22016,8 +22016,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         fontFile,
         onProgress: ({ pct }) => { renderBtn.textContent = `Rendering… ${Math.round(pct * 100)}%`; },
       });
-      renderTempPath = outPath;
-      const url = await localFileToUrl(outPath);
+      renderTempPath = outPath; const url = await localFileToUrl(outPath);
       renderOverlay = moEl('div', 'mo-render-preview');
       const v = document.createElement('video');
       v.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
@@ -22030,6 +22029,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       renderOverlay.append(v, bar);
       renderOverlay.addEventListener('click', (e) => e.stopPropagation());
       stage.appendChild(renderOverlay);
+      resumeAfterRender = !preview.paused; preview.pause();
       status.textContent = 'Preview render ready. Close it to return to the live preview.';
     } catch (err) {
       status.textContent = '';
