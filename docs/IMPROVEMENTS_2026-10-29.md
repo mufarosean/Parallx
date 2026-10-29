@@ -123,17 +123,27 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 
    The open questions were never answered.
    Raised: Colour 560 (Oct 16), System prompt (Oct 20). Not built.
-7. **Study that fits how you study.** These were built only in claude.ai
-   artifacts and are not in the app yet:
-   - mark a problem to return to;
-   - a Previous button;
-   - tell the AI to write a note;
-   - custom quiz types (answers that are lists);
-   - the AI edits a card with your approval;
-   - cards that look like the app's;
-   - tables that never scroll.
+7. **Study that fits how you study.** Checked against the two sessions they
+   came from (Exam 7 workspace, Oct 22 and 23; Flashcard artifact, Oct 24 to
+   27). Most are in the app already:
+   - Mark a problem to return to: Worksheets has Mark For Later and Next
+     Marked; Flashcards has flags, with a flag filter in custom study.
+   - Previous: Worksheets' quiz and review have Previous Problem. Flashcards
+     has Undo (Z), which takes the grade back and returns to that card.
+   - Cards that look like the app's: the artifact copied the app's own card.
+   - The AI edits a card with your approval: Flashcards' chat tool edits
+     cards and asks you to confirm each change.
+   - Tables that never scroll: done in Flashcards (Oct 29). A table fills the
+     card and keeps words whole; one too wide is scaled to fit.
+   Waiting on you:
+   - Flashcards Previous without undoing: look back at the last card, its
+     answer shown, without taking back its grade (the artifact's way)?
+   - Study notes: "a way to tell the ai to write a note", kept in one list
+     for making cards later. Flashcards drafts a card's own notes with AI;
+     a separate list of study notes is not in the app. Where should it live?
+   - Custom quiz types (answers that are lists): asked for the Concept Quiz,
+     which is your canvas database and skill, not an app surface.
 
-   Raised: Exam 7 workspace (Oct 22 and 23), Flashcard artifact (Oct 24 to 27).
 8. **Memory you can see and correct.**
    - A Memory tab showing where each lesson came from.
    - "Do Not Remember This".
