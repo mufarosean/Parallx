@@ -66,6 +66,7 @@ import {
   createDeleteFileTool,
 } from './writeTools.js';
 import { createRunCommandTool } from './terminalTools.js';
+import { createSkillDraftTool } from './skillDraftTool.js';
 import { createSurfaceSendTool, createSurfaceListTool } from './surfaceTools.js';
 import type { ISurfaceRouterService } from '../../../services/surfaceRouterService.js';
 import type { IAutonomyLogReader } from '../../../services/autonomyLogService.js';
@@ -121,6 +122,7 @@ export function registerBuiltInTools(
     createMemoryGetTool(fs, workspaceMemory),
     createMemorySearchTool(canonicalMemorySearch),
     createMemoryEditTool(workspaceMemory),
+    createSkillDraftTool(writer),
     createTranscriptGetTool(fs),
     createTranscriptSearchTool(transcriptSearch),
     // ── Write tools ──

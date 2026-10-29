@@ -472,6 +472,7 @@ export class SkillLoaderService extends Disposable {
     const seen = new Set<string>();
 
     for (const dir of dirs) {
+      if (dir.startsWith('_')) continue; // _drafts and the like: never callable (skillDraftTool.ts)
       const skillPath = `${SKILLS_DIR}/${dir}/SKILL.md`;
       const fileExists = await this._fs.exists(skillPath);
       if (!fileExists) { continue; }

@@ -321,6 +321,7 @@ select:disabled {
 /* Section (createSection): its label, then its rows. */
 .px-section { display: flex; flex-direction: column; gap: var(--px-space-2); }
 .px-section > .px-section-label { padding: 0; }
+.px-section[hidden] { display: none; }
 
 /* Row (createRow): a name over a quieter detail line; its buttons sit at the end. */
 .px-row { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-1) 0; }

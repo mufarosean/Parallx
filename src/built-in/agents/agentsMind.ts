@@ -11,7 +11,7 @@ import { $ } from '../../ui/dom.js';
 import { createButton, createEmptyState, createSectionLabel, createSurface } from '../../ui/kit.js';
 import { showConfirmModal } from '../../api/notificationService.js';
 import { svc, type ParallxApi } from './agentsServices.js';
-import { renderLessons } from './agentsLessons.js';
+import { renderLessons, renderSkillDrafts } from './agentsLessons.js';
 
 interface IMindStatus {
   available?: boolean;
@@ -122,8 +122,9 @@ export function renderMind(host: HTMLElement, api: ParallxApi, repaint: () => vo
     }
 
     const lessons = renderLessons(mind, api);
+    const drafts = renderSkillDrafts(mind, api);
     renderAllowed(mind, repaint);
-    return lessons;
+    return Promise.all([lessons, drafts]).then(() => undefined);
   }).catch(() => {
     mind.replaceChildren();
     renderAllowed(mind, repaint);

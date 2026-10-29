@@ -160,8 +160,15 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
    if any should go the other way.
 
 9. **The AI writes its own skills, held for your approval.** "We do need a
-   self-authoring for skills system."
-   Raised: Bad ideas (Sep 5), IDEAS. Brief written; open.
+   self-authoring for skills system." Built Oct 29 (docs/SKILL_AUTHORING_BRIEF.md
+   steps 1 and 2, on its recommended answers K1 and K3):
+   - the AI's `skill_draft` tool writes a draft into .parallx/skills/_drafts,
+     marked as the agent's and from which chat; the loader never loads a draft;
+   - Agents › Mind › Skills it has drafted: Review, Add (it becomes a skill
+     the AI can use), Dismiss (to the trash). The AI never adds its own.
+   Open: drafting by itself after a long task (step 3), logging how a skill
+   did and proposing fixes as drafts (step 4).
+
 10. **An app that knows itself, and builds itself.**
     - A registry of what is on, activation telemetry, self-diagnosis.
     - Later: the AI notices repeated asks and builds a mini-app or extension for them.

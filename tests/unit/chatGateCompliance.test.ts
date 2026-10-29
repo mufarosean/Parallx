@@ -92,6 +92,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/builtInTools.ts':  ['tools/'],
   'tools/fileTools.ts':     ['tools/'],         // sourceReading: live text as labelled blocks
   'tools/sourceReading.ts': [],
+  'tools/skillDraftTool.ts': [],  // the AI drafts a skill into .parallx/skills/_drafts for review
   'tools/memoryTools.ts':   [],
   'tools/mindTools.ts':     [],                // living-system — mind_remember (the agent curates its own MIND)
   'tools/pageTools.ts':     ['tools/'],
@@ -131,7 +132,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── utilities/ — mention resolution, shared helpers ──────────────────
   'utilities/backgroundPromptRunner.ts': [],  // M86 C4 — headless prompt turns (imports openclaw/services, outside chat)
   'utilities/engineBrokerPresence.ts': [],
-  'utilities/memoryCommands.ts': [],  // the agent's lessons, readable and correctable (imports services, outside chat)  // tells the engine broker you are here (imports services, outside chat)
+  'utilities/memoryCommands.ts': [],
+  'utilities/skillDraftCommands.ts': [],  // review of the AI's skill drafts (imports services, outside chat)  // the agent's lessons, readable and correctable (imports services, outside chat)  // tells the engine broker you are here (imports services, outside chat)
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
