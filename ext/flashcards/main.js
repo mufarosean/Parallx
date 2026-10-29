@@ -30,7 +30,7 @@
 // tests/unit/flashcards.test.ts — keep those functions side-effect free.
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
-import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js';
+import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js'; import { fcFitWide } from './fitWide.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -5510,8 +5510,8 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-study__notes-body { color: var(--px-text-secondary); line-height: 1.7; overflow-wrap: anywhere; }
 .fc-study__notes-body .px-markdown > :first-child { margin-top: 0; }
 .fc-study__notes-body .px-markdown > :last-child { margin-bottom: 0; }
-.fc-study__notes-body .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
-.fc-study__notes-body table { display: block; max-width: 100%; overflow-x: auto; }
+.fc-study__notes-body .katex-display { padding: 4px 0; }
+:is(.fc-card__body, .fc-study__notes-body) table { width: 100%; table-layout: auto; } :is(.fc-card__body, .fc-study__notes-body) :is(td, th) { overflow-wrap: normal; word-break: normal; hyphens: none; } :is(.fc-card__body, .fc-study__notes-body) th { white-space: nowrap; } /* never scroll, never split a word: fitWide.js */
 .fc-study__notes-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; }
 .fc-study__notes-status { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 /* Auto-grown (fcAutoGrow), so no min-height and no drag handle: the box is
@@ -7077,7 +7077,7 @@ function fcCreateStudyNotes(card, {
       textButton(actions, 'Cancel', cancel, 'flashcards.notes.cancel');
     }
     const body = el('div', 'fc-study__notes-body');
-    root.appendChild(body);
+    root.appendChild(fcFitWide(body));
     // Existing notes remain readable while a replacement is being drafted.
     const text = mode === 'draft' ? draft : card.notes || '';
     if (mode !== 'edit' && text.trim()) {
@@ -9651,7 +9651,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     qBody.appendChild(renderCardBody(card.cardType === 'cloze'
       ? fcRenderCloze(card.front, card.clozeIndex, 'front')
       : card.front));
-    qCard.appendChild(qBody);
+    qCard.appendChild(fcFitWide(qBody));
     col.appendChild(qCard);
 
     const answerHost = el('div', 'fc-study__answer-host');
@@ -9707,7 +9707,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       aBody.appendChild(renderCardBody(card.cardType === 'cloze'
         ? fcRenderCloze(card.front, card.clozeIndex, 'back') + (card.back ? `\n\n${card.back}` : '')
         : card.back));
-      aCard.appendChild(aBody);
+      aCard.appendChild(fcFitWide(aBody));
       // M98 grounding: the source line is a LINK back to the material —
       // canvas pages open in place, PDFs open and jump to the cited page.
       if (card.sourceLabel) {
