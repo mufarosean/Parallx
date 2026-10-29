@@ -16,6 +16,24 @@ import { INTENT_PARAM_NAME, INTENT_PARAM_SCHEMA } from '../../../services/toolIn
 import { recordCheckpoint } from '../../../services/fileCheckpointService.js';
 
 /** HARNESS.md §2.2 — checkpoint prior state; a failure never blocks the write. */
+/**
+ * Files whose bytes are not their text: Word, Excel, PDF, slides, e-books,
+ * images, archives. Reading one gives its extracted text; writing text back
+ * over it breaks the file (an edit corrupted a workbook this way). The write
+ * tools refuse them and say what to do instead.
+ */
+const BINARY_DOCUMENT = /\.(pdf|docx?|xls[xmb]?|pptx?|epub|od[tsp]|numbers|pages|key|zip|png|jpe?g|gif|webp|bmp|tiff?|heic|mp[34]|m4a|wav|mov|sqlite|db)$/i;
+
+/** The refusal for writing text into a binary document, or undefined when the path is a text file. */
+export function binaryDocumentRefusal(path: string, verb: 'edit' | 'write', isDocument = BINARY_DOCUMENT.test(path)): IToolResult | undefined {
+  if (!isDocument) return undefined;
+  return {
+    content: `"${path}" is not a text file (a document, workbook, image or archive): text ${verb === 'edit' ? 'edited into' : 'written over'} it would break it. `
+      + 'Write what you have into a new text file instead (for example .md, or .csv for a table), and tell the user.',
+    isError: true,
+  };
+}
+
 function checkpointSafely(
   path: string,
   priorContent: string | null,
@@ -147,6 +165,8 @@ export function createWriteFileTool(
 
       try {
         const cleanPath = sanitizeRelativePath(rawPath, writer);
+        const binary = binaryDocumentRefusal(cleanPath, 'write');
+        if (binary) return binary;
 
         // Does the file exist? null = unknown (the check itself failed);
         // unknown is never treated as "absent" (see the checkpoint below).
@@ -244,6 +264,8 @@ export function createEditFileTool(
 
       try {
         const cleanPath = sanitizeRelativePath(rawPath, writer);
+        const binary = binaryDocumentRefusal(cleanPath, 'edit');
+        if (binary) return binary;
 
         // M85 Slice C — read-before-edit. An anchor recalled from a stale
         // context can still match text whose surroundings changed; editing a
@@ -257,6 +279,8 @@ export function createEditFileTool(
         }
 
         const currentResult = await fs!.readFileContent(cleanPath);
+        // Its text was extracted from a document format (any extension): writing it back would break the file.
+        if (currentResult.type === 'rich-document') return binaryDocumentRefusal(cleanPath, 'edit', true)!;
         const currentContent = currentResult.content;
 
         // Find the old content

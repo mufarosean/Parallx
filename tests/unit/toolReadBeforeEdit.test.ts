@@ -115,6 +115,25 @@ describe('fs read-before-edit', () => {
     expect(result.content).toContain('3| line three');
   });
 
+  it('never writes text over a document: a workbook stays a workbook', async () => {
+    files.set('Practice.xlsx', 'extracted cell text');
+    files.set('notes.txt', 'plain');
+    const fsDoc: IBuiltInToolFileSystem = { ...fs, async readFileContent(p: string) {
+      const content = files.get(p) ?? '';
+      return { content, type: (p === 'renamed-workbook' ? 'rich-document' : 'text') as 'text', totalChars: content.length };
+    } };
+    files.set('renamed-workbook', 'extracted text of a workbook with no extension');
+    const edit = createEditFileTool(fsDoc, writer);
+    const write = createWriteFileTool(fsDoc, writer);
+    const a = await edit.handler({ path: 'Practice.xlsx', old_content: 'cell', new_content: 'CELL' }, token());
+    const b = await write.handler({ path: 'Report.docx', content: '# Report' }, token());
+    const c = await edit.handler({ path: 'renamed-workbook', old_content: 'workbook', new_content: 'book' }, token());
+    expect([a, b, c].every((r) => r.isError && /not a text file/.test(r.content))).toBe(true);
+    expect(files.get('Practice.xlsx')).toBe('extracted cell text');
+    expect(files.has('Report.docx')).toBe(false);
+    expect((await edit.handler({ path: 'notes.txt', old_content: 'plain', new_content: 'PLAIN' }, token())).isError).toBeFalsy();
+  });
+
   it('fails open without a session context', async () => {
     const edit = createEditFileTool(fs, writer);
     const result = await edit.handler({ path: 'notes.md', old_content: 'line two', new_content: 'LINE 2' }, token());

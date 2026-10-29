@@ -238,7 +238,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 
   Source: FINISH D. Open (stdio only).
 - **Stop the edit tool writing text over binary files** (it corrupted a
-  workbook). Practice workbook (Sep 5). Unclear.
+  workbook). Practice workbook (Sep 5). Done Oct 29: fs_edit_file and
+  fs_write_file refuse Word, Excel, PDF, slides, images and archives (and any
+  file read as an extracted document), and say to write a new text file.
 
 ### Agents, heartbeat and routines
 - **Heartbeat notices page edits**, not only source files. IDEAS. Open.
@@ -253,7 +255,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   AGENTS_PROPOSAL. Open.
 - **Per-routine "ask me first".** MOTION_AND_AGENTS. Open.
 - **Step editor:** the graph opens zoomed far out, and Preview Compiled Prompt
-  and Delete Node are word-only buttons. This session. Open.
+  and Delete Node are word-only buttons. Done Oct 29 (icons, an On switch, a
+  fit once the editor has its size).
 - **One "what the AI did" timeline and one stop switch** across Activity,
   Autonomy and Indexing. RESEARCH #10. Open.
 
