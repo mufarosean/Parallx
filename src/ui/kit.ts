@@ -335,6 +335,35 @@ export function createSectionLabel(container: HTMLElement | null | undefined, te
   return mount(container, el);
 }
 
+/** A section: its label, then what is put in it (the returned element). */
+export function createSection(container: HTMLElement | null | undefined, label: string, className?: string): HTMLElement {
+  const sec = document.createElement('section');
+  sec.className = className ? `px-section ${className}` : 'px-section';
+  createSectionLabel(sec, label);
+  return mount(container, sec);
+}
+
+/** A row of a list: a name over a quieter detail line; buttons added to it sit at its end. */
+export function createRow(container: HTMLElement | null | undefined, options: { readonly name: string; readonly detail?: string; readonly detailTitle?: string }): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'px-row';
+  const text = document.createElement('span');
+  text.className = 'px-row__text';
+  const name = document.createElement('span');
+  name.className = 'px-row__name';
+  name.textContent = options.name;
+  text.appendChild(name);
+  if (options.detail) {
+    const detail = document.createElement('span');
+    detail.className = 'px-row__detail';
+    detail.textContent = options.detail;
+    if (options.detailTitle) detail.title = options.detailTitle;
+    text.appendChild(detail);
+  }
+  row.appendChild(text);
+  return mount(container, row);
+}
+
 export function createEmptyState(container: HTMLElement | null | undefined, options: IKitEmptyStateOptions): HTMLElement {
   const root = document.createElement('div');
   root.className = 'px-empty';

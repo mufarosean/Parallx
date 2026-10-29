@@ -30,6 +30,7 @@ import { answerApproval, convertScheduledJobs, isPaused, onAnyChange, readSnapsh
 import { heartbeatActions, handledHeartbeat, isActionableHeartbeat, renderHistory } from './agentsHistory.js';
 import { renderRoutines } from './agentsRoutines.js';
 import { renderMind } from './agentsMind.js';
+import { registerLessonCommands } from './agentsLessons.js';
 import { WorkflowEditorPane } from './workflowEditorPane.js';
 import { AGENTS_SETTINGS_GROUP, registerAgentsSettings } from './agentsSettings.js';
 import { ISettingsRegistryService, ICanvasPageQueryService } from '../../services/serviceTypes.js';
@@ -95,6 +96,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   };
   context.subscriptions.push(api.commands.registerCommand('agents.showRoutines', () => showTab('routines')));
   context.subscriptions.push(api.commands.registerCommand('agents.showHistory', () => showTab('history')));
+  context.subscriptions.push(...registerLessonCommands(api, () => _showTab?.('mind')));
   context.subscriptions.push(api.commands.registerCommand('autonomyLog.markAllRead', () => { resolveServices(api); svc.log?.markRead(); }));
   context.subscriptions.push(api.commands.registerCommand('autonomyLog.clear', () => { resolveServices(api); svc.log?.clear(); }));
 

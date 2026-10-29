@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryEditTool, createMemoryGetTool } from '../../src/built-in/chat/tools/memoryTools';
+import { readLesson, stampLesson } from '../../src/services/lessonProvenance';
+import { appDayKey } from '../../src/services/localTime';
 import type { IBuiltInToolWorkspaceMemory } from '../../src/built-in/chat/chatTypes';
 import type { ICancellationToken } from '../../src/services/chatTypes';
 
@@ -476,6 +478,29 @@ describe('memory_write tool (M81 Phase 2)', () => {
       expect(result.content).toContain("action='remove'");
       // No lesson body should have been written
       expect(memory.files.has('.parallx/memory/lessons/one-more-lesson.md')).toBe(false);
+    });
+  });
+
+  describe('file=lesson provenance (MEMORY_BRIEF step 1)', () => {
+    it('every lesson records the chat and day it came from; a rewrite keeps the earlier source', async () => {
+      const t = createMemoryEditTool(memory);
+      await t.handler({ file: 'lesson', action: 'add', slug: 'clark-tail', description: 'Clark tail factor', entry: 'Tail factor via truncation.' }, noopToken, { sessionId: 'chat-a' });
+      let lesson = memory.files.get('.parallx/memory/lessons/clark-tail.md')!;
+      expect(readLesson(lesson).sources).toEqual([{ date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), session: 'chat-a' }]);
+      expect(readLesson(lesson).body.trim()).toBe('Tail factor via truncation.');
+
+      await t.handler({ file: 'lesson', action: 'replace', slug: 'clark-tail', entry: 'Tail factor via truncation at 20 years.' }, noopToken, { sessionId: 'chat-b' });
+      lesson = memory.files.get('.parallx/memory/lessons/clark-tail.md')!;
+      expect(readLesson(lesson).sources.map((x) => x.session)).toEqual(['chat-a', 'chat-b']);
+      expect(readLesson(lesson).body.trim()).toBe('Tail factor via truncation at 20 years.');
+    });
+
+    it('a lesson from before provenance reads as having no recorded source', () => {
+      expect(readLesson('# Old\n\nbody').sources).toEqual([]);
+      // The same chat on the same day is recorded once (the day as the app reads it, any time zone).
+      const now = new Date('2026-01-02T12:00:00Z');
+      const before = `---\nsources:\n  - ${appDayKey(now)} s1\n---\nold`;
+      expect(stampLesson('body', 's1', before, now).match(/s1/g)).toHaveLength(1);
     });
   });
 

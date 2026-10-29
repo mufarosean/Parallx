@@ -1,6 +1,8 @@
 import { appDayKey, appTime } from '../../../services/localTime.js';
+import { stampLesson } from '../../../services/lessonProvenance.js';
 import type {
   IChatTool,
+  IChatToolInvocationCallContext,
   IToolResult,
   ICancellationToken,
   ToolPermissionLevel,
@@ -476,7 +478,7 @@ export function createMemoryEditTool(
     requiresConfirmation: true,
     permissionLevel: 'requires-approval' as ToolPermissionLevel,
     category: 'memory',
-    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+    async handler(args: Record<string, unknown>, _token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> {
       if (!workspaceMemory) {
         return { content: 'memory_write is not available — no workspace folder is open.', isError: true };
       }
@@ -548,7 +550,8 @@ export function createMemoryEditTool(
             };
           }
 
-          await workspaceMemory.writeLessonFile(slug, entry);
+          // Every lesson records the chat and day it came from (lessonProvenance.ts).
+          await workspaceMemory.writeLessonFile(slug, stampLesson(entry, invocation?.sessionId));
           await workspaceMemory.addMemoryIndexEntry(slug, descriptionRaw);
           return { content: `Added lesson \`${slug}\` to MEMORY.md index and wrote lessons/${slug}.md.` };
         }
@@ -564,7 +567,7 @@ export function createMemoryEditTool(
           if (!existing.trim()) {
             return { content: `Lesson ${slug} doesn't exist. Use action=add instead.`, isError: true };
           }
-          await workspaceMemory.writeLessonFile(slug, entry);
+          await workspaceMemory.writeLessonFile(slug, stampLesson(entry, invocation?.sessionId, existing));
           if (descriptionRaw) {
             await workspaceMemory.addMemoryIndexEntry(slug, descriptionRaw);
             return { content: `Replaced lessons/${slug}.md and updated index description.` };
