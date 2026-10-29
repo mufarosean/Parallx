@@ -34,6 +34,7 @@ import type { Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { MarkdownPaste } from '../extensions/markdownPaste.js';
 import {
   hasImageExtension,
   fileUrlToPath,
@@ -515,6 +516,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     CharacterCount,
     HistoryAwareAutoJoiner,
     clipboardImagePaste,
+    MarkdownPaste, // plain-text Markdown pastes as blocks (extensions/markdownPaste.ts)
     imageFileDrop,
     UniqueID.configure({
       types: UNIQUE_ID_BLOCK_TYPES,

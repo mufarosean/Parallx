@@ -261,7 +261,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   Autonomy and Indexing. RESEARCH #10. Open.
 
 ### Canvas
-- **Paste Markdown as blocks.** IDEAS. Open (a daily hand-fix).
+- **Paste Markdown as blocks.** IDEAS. Done Oct 29: Markdown copied as plain
+  text (a chat's Copy button, a .md file, a code editor) pastes as headings,
+  lists, tables and formatting; a rich copy and a paste into code stay as they were.
 - **Images stored as files, not base64.** IDEAS. Open.
 - **Export a page with its sub-pages, and the whole workspace.** IDEAS. Open.
 - **Backlinks count both link formats.** IDEAS. Open.

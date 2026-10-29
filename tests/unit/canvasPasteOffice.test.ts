@@ -38,4 +38,18 @@ describe('paste from Office', () => {
       expect(paste(ed, {}, true)).toBe(true);
     } finally { ed.destroy(); }
   });
+
+  it('Markdown copied as plain text pastes as blocks; into a code block it stays text', () => {
+    const ed = make();
+    try {
+      expect(paste(ed, { 'text/plain': '## Clark\n\n- LDF\n- Cape Cod' }, false)).toBe(true);
+      expect(ed.getJSON().content?.map((n) => n.type)).toContain('heading');
+      expect(ed.getJSON().content?.map((n) => n.type)).toContain('bulletList');
+    } finally { ed.destroy(); }
+    const code = new Editor({ element: document.createElement('div'), extensions: createEditorExtensions(createLowlight(common), {}), content: '<pre><code>x</code></pre>' });
+    try {
+      code.commands.setTextSelection(2);
+      expect(paste(code, { 'text/plain': '## Not a heading here' }, false)).toBe(false);
+    } finally { code.destroy(); }
+  });
 });
