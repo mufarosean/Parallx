@@ -48,8 +48,12 @@ export const USER_PRESENT_MS = 15_000;
 export const MODEL_KEEP_ALIVE_MS = 5 * 60_000;
 /** At most this much of a cold call's wait for its first output counts as loading. */
 export const COLD_LOAD_CREDIT_MS = 120_000;
-/** Output cap for a background call that names none (thinking counts too). */
-export const BACKGROUND_MAX_TOKENS = 8_192;
+/**
+ * Output cap for a background call that names none (thinking counts too):
+ * room for a routine's report and the reasoning before it, while a model
+ * that loops still stops. A reply that hits it says it was cut off.
+ */
+export const BACKGROUND_MAX_TOKENS = 16_384;
 /** Output tokens a reasoning model may spend thinking before it answers. */
 export const REASONING_ROOM_TOKENS = 4_096;
 

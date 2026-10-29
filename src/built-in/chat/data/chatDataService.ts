@@ -43,7 +43,7 @@ import { Emitter, type Event } from '../../../platform/events.js';
 
 import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
-import { chatContextSize } from '../utilities/chatContextDefault.js';
+import { chatContextSize, rememberChatContextPick } from '../utilities/chatContextDefault.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { ISummarizationRequestOptions } from '../chatTypes.js';
 import type { IChatImageAttachment } from '../../../services/chatTypes.js';
@@ -829,11 +829,10 @@ export class ChatDataService {
     return this._d.languageModelsService.getActiveModel();
   }
 
+  /** The chat's window: its picked size, else the model's length (Ollama's cache, else what any provider reported); 0 while unknown. */
   getModelContextLength(): number {
-    const modelId = this._d.languageModelsService.getActiveModel() ?? '';
-    return (this._d.ollamaProvider as any).getCachedContextLength?.(modelId)
-      ?? (this._d.ollamaProvider as any).getActiveModelContextLength?.()
-      ?? 0;
+    const cached = (this._d.ollamaProvider as any).getCachedContextLength?.(this._d.languageModelsService.getActiveModel() ?? '');
+    return cached > 0 ? cached : Math.max(0, (this._d.languageModelsService as { getActiveModelContextLength?(): number }).getActiveModelContextLength?.() ?? 0);
   }
 
   sendSummarizationRequest(
@@ -2264,7 +2263,7 @@ export class ChatDataService {
       ...agentTaskServices,
       openAiSettings: this._d.openAiSettings,
       setContextLengthOverride: (contextWindow: number) => { // chatContextDefault.ts: the chat's own size, else the workspace default, else the model's
-        (this._d.ollamaProvider as { setContextLengthOverride?: (n: number) => void }).setContextLengthOverride?.(chatContextSize(contextWindow, this._d.unifiedConfigService?.getEffectiveConfig().model.contextWindow));
+        rememberChatContextPick(contextWindow); (this._d.ollamaProvider as { setContextLengthOverride?: (n: number) => void }).setContextLengthOverride?.(chatContextSize(contextWindow, this._d.unifiedConfigService?.getEffectiveConfig().model.contextWindow));
       },
     };
   }

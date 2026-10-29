@@ -610,3 +610,47 @@ describe('openclaw default participant — unhandled slash commands', () => {
     expect(content).toBe('plain question');
   });
 });
+
+// The context window a turn runs at. On Auto, the first turn after launch or a
+// model switch read the model's length before anyone had asked for it, got 0,
+// and ran at 8192 (sent as num_ctx too) on a 128K model. A routine's chosen
+// window was capped by whatever the visible chat was set to.
+describe('openclaw default participant — the context window', () => {
+  async function numCtxSent(services: Partial<IDefaultParticipantServices>, sessionId = 'session-ctx'): Promise<number | undefined> {
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([{ content: 'ok', done: true }]));
+    const participant = createOpenclawDefaultParticipant({
+      sendChatRequest,
+      getActiveModel: () => 'qwen3:32b',
+      getWorkspaceName: () => 'W',
+      getPageCount: vi.fn(async () => 0),
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      readFileRelative: vi.fn(async () => null),
+      unifiedConfigService: { getEffectiveConfig: () => ({ chat: {}, model: { temperature: 0.2, maxTokens: 0 } } as any) } as any,
+      ...services,
+    } as IDefaultParticipantServices);
+    await participant.handler(
+      { text: 'hello', requestId: 'r', mode: ChatMode.Agent, modelId: 'qwen3:32b', attempt: 0 } as IChatParticipantRequest,
+      { sessionId, history: [] } as IChatParticipantContext, createResponse(), createToken(),
+    );
+    return (sendChatRequest.mock.calls[0][1] as { numCtx?: number } | undefined)?.numCtx;
+  }
+
+  it('on Auto, asks the model for its length before the first turn instead of running at 8K', async () => {
+    let known = 0;
+    const numCtx = await numCtxSent({
+      getModelContextLength: () => known,
+      ensureActiveModelInfo: vi.fn(async () => { known = 131072; }),
+    });
+    expect(numCtx).toBe(131072);
+  });
+
+  it('a routine runs at the window it chose, whatever the chat on screen is set to', async () => {
+    const numCtx = await numCtxSent({
+      getModelContextLength: () => 16384, // the visible chat's pick
+      getSessionContextWindow: () => 65536,
+    }, 'ephemeral-routine-1');
+    expect(numCtx).toBe(65536);
+  });
+});

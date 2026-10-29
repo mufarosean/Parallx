@@ -42,11 +42,13 @@ export async function executeModelStream(
   toolCalls: IToolCall[];
   promptTokens?: number;
   completionTokens?: number;
+  doneReason?: string;
 }> {
   let markdown = '';
   let thinking = '';
   let promptTokens: number | undefined;
   let completionTokens: number | undefined;
+  let doneReason: string | undefined;
   const toolCalls: IToolCall[] = [];
 
   // The turn's cancel reaches the model call: Stop or a timeout closes the
@@ -76,6 +78,7 @@ export async function executeModelStream(
       if (typeof chunk.evalCount === 'number') {
         completionTokens = chunk.evalCount;
       }
+      if (chunk.doneReason) doneReason = chunk.doneReason;
     }
   } catch (error) {
     if (markdown) {
@@ -86,5 +89,11 @@ export async function executeModelStream(
     cancelSub?.dispose();
   }
 
-  return { markdown, thinking, toolCalls, promptTokens, completionTokens };
+  // An answer that ran out of room (the output limit, or the context window)
+  // stops mid-sentence and reads as finished. Say so where it ends.
+  if (doneReason === 'length' && markdown.trim() && !token.isCancellationRequested) {
+    try { response.warning('The model ran out of room and stopped here: the answer above is cut off.'); } catch { /* a closed stream */ }
+  }
+
+  return { markdown, thinking, toolCalls, promptTokens, completionTokens, doneReason };
 }

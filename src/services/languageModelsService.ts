@@ -295,12 +295,12 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   }
 
   /**
-   * Get the detected context length for the active model.
-   * Falls back to 4096 if not probed yet.
+   * The active model's context length as its provider reported it; 0 while
+   * unknown. Never a guess: a guessed 4096 used as a window would cap it.
    */
   getActiveModelContextLength(): number {
-    if (!this._activeModelId) { return 4096; }
-    return this._modelContextLengths.get(this._activeModelId) ?? 4096;
+    if (!this._activeModelId) { return 0; }
+    return this._modelContextLengths.get(this._activeModelId) ?? 0;
   }
 
   /**
@@ -355,7 +355,12 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     // visible chat switches to meanwhile (AGENT_RUNTIME_DESIGN.md §5).
     const runId = options?.engine?.runId;
     const pinned = runId ? this._runModelResolver?.(runId) : undefined;
-    const modelId = pinned && this._modelToProvider.has(pinned) ? pinned : this._activeModelId;
+    // A run set to a model that is not installed fails and says why; it used
+    // to run on whatever model the chat had, without a word.
+    if (pinned && !this._modelToProvider.has(pinned)) {
+      throw new Error(`This run is set to the model '${pinned}', which is not installed. Install it, or choose another model for the run.`);
+    }
+    const modelId = pinned || this._activeModelId;
     if (!modelId) {
       throw new Error('No active model selected. Please select a model before sending a request.');
     }

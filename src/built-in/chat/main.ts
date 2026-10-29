@@ -27,6 +27,7 @@ import type { ChatWidget } from './widgets/chatWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
 import { backgroundTurnsInFlight, createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
 import { wireEngineBrokerPresence } from './utilities/engineBrokerPresence.js';
+import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js';
 
 import {
   buildOpenclawCanvasParticipantServices,
@@ -789,7 +790,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           languageModelsService.setDefaultModel(nextDefault);
         }
         if (_ollamaProvider) {
-          _ollamaProvider.setContextLengthOverride(cfg.model.contextWindow || 0);
+          _ollamaProvider.setContextLengthOverride(chatContextSize(chatContextPick(), cfg.model.contextWindow));
         }
       }),
     );
@@ -3098,10 +3099,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const configSub = api.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('chat')) {
         applyFontSettings();
-        // Re-read context length override
-        const cfg = api.workspace.getConfiguration('chat');
-        const newCtxLen = cfg.get<number>('contextLength', 0);
-        _ollamaProvider?.setContextLengthOverride(newCtxLen);
       }
     });
     if (configSub && typeof (configSub as any).dispose === 'function') {

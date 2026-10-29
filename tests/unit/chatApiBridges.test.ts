@@ -195,3 +195,19 @@ describe('ChatBridge', () => {
     expect(tool?.ownerToolId).toBe('test-tool');
   });
 });
+
+// A background run keeps its own model. One set to a model that is not
+// installed used to run on whatever the chat had, without a word.
+describe('LanguageModelsService — a run\'s own model', () => {
+  it('a run pinned to a model that is not installed fails and names it', async () => {
+    const service = new LanguageModelsService();
+    service.registerProvider(createMockProvider());
+    await service.getModels();
+    service.setActiveModel('test-model');
+    service.setRunModelResolver((runId) => (runId === 'run-gone' ? 'uninstalled:7b' : runId === 'run-ok' ? 'test-model' : undefined));
+    const drain = async (runId: string) => { let text = ''; for await (const c of service.sendChatRequest([], { engine: { runId } } as never)) text += c.content ?? ''; return text; };
+
+    await expect(drain('run-gone')).rejects.toThrow(/uninstalled:7b.*not installed/);
+    expect(await drain('run-ok')).toBe('Hello from test');
+  });
+});

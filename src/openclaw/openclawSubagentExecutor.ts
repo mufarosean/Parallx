@@ -223,8 +223,8 @@ export function createSubagentTurnExecutor(
     // The spawner's Stop and time limit end the turn itself (which closes the
     // model request), not just the wait for it.
     control?.onSession?.(handle.sessionId);
-    // The model the spawn asked for (it used to be dropped); unknown models
-    // fall back to the run's pinned one at send time.
+    // The model the spawn asked for (it used to be dropped). One that is not
+    // installed fails the subagent's turn with that reason.
     if (model) { try { opts.chatService.updateSessionModel?.(handle.sessionId, model); } catch { /* keep the pinned model */ } }
     const onAbort = () => { try { opts.chatService.cancelRequest?.(handle.sessionId); } catch { /* best-effort */ } };
     control?.signal.addEventListener('abort', onAbort, { once: true });

@@ -579,18 +579,22 @@ async function buildOpenclawTurnContext(
   preprocessed?: { mentionContextBlocks?: readonly string[]; promptOverlay?: string; isSteeringTurn?: boolean },
   agentIdForResolve: string = 'default',
 ): Promise<IOpenclawTurnContext> {
-  // Token budget from model context length. getModelContextLength returns 0
-  // (not undefined) on cold start or for non-Ollama models, so `?? 8192`
-  // never rescued it — a 0 context window meant no num_ctx was sent and
-  // Ollama's small default silently truncated long prompts (M92's num_ctx
-  // lesson, applied to this rail).
+  // Token budget from the context window: the chat's pick, else the model's
+  // own length. The first turn after launch or a model switch used to read
+  // the length before anyone had asked the model for it, got 0, and ran at
+  // 8192, sent as num_ctx too, on a 128K model. Ask first (the wait ends
+  // after 3 s, and only happens while the length is unknown). 8192 is left
+  // only for a provider that does not answer, and says so in the log.
+  await services.ensureActiveModelInfo?.().catch(() => undefined);
   const rawContextWindow = services.getModelContextLength?.();
-  const modelWindow = typeof rawContextWindow === 'number' && rawContextWindow > 0 ? rawContextWindow : 8192;
-  // A background run that names a smaller window (a routine's Context)
-  // gets a smaller prompt budget. The size sent to the model stays the one
-  // already loaded (the engine broker adopts it), so nothing reloads.
+  const known = typeof rawContextWindow === 'number' && rawContextWindow > 0;
+  if (!known) console.warn('[OpenClaw] The model\'s context length is unknown (its provider did not answer); this turn is budgeted at 8192 tokens.');
+  const modelWindow = known ? rawContextWindow : 8192;
+  // A background run that names its window (a routine's Context) gets that
+  // window: the user chose it for this run, and the chat's own pick has
+  // nothing to do with it (it used to cap it).
   const runWindow = isEphemeralSessionId(context.sessionId) ? services.getSessionContextWindow?.(context.sessionId) : undefined;
-  const contextWindow = runWindow && runWindow > 0 ? Math.min(modelWindow, runWindow) : modelWindow;
+  const contextWindow = runWindow && runWindow > 0 ? runWindow : modelWindow;
   const budget = computeTokenBudget(contextWindow);
 
   // Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, etc.)

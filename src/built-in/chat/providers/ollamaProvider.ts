@@ -235,12 +235,12 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   private _contextLengthOverride = 0;
 
   /**
-   * The last context size a request named. A request that names none reuses
-   * it. Otherwise Ollama loads the model at its own default, the model's full
-   * length (262,144 for qwen3.x): that spills past the graphics card, and the
-   * next request naming the chat's size makes Ollama load the model again.
+   * The last context size (8K and up) a request named, per model; a request
+   * naming none reuses its model's, so Ollama does not reload it at its own
+   * default. One global value let a 2K marking call shrink the next sizeless
+   * call to any model, which Ollama then truncated from the top unseen.
    */
-  private _lastNumCtx = 0;
+  private readonly _lastNumCtx = new Map<string, number>();
 
   /** Models that returned 400 for think:true — skip on subsequent calls. */
   private _noThinkModels = new Set<string>();
@@ -275,7 +275,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     this._warmupTarget = target && target.modelId && target.numCtx > 0
       ? { modelId: target.modelId, numCtx: Math.floor(target.numCtx) }
       : undefined;
-    if (this._warmupTarget && this._lastNumCtx === 0) this._lastNumCtx = this._warmupTarget.numCtx;
+    if (this._warmupTarget && !this._lastNumCtx.has(this._warmupTarget.modelId)) this._lastNumCtx.set(this._warmupTarget.modelId, this._warmupTarget.numCtx);
   }
 
   /** Reset streaming parser state (called on model switch to avoid stale artifacts). */
@@ -527,11 +527,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       : this._contextLengthOverride > 0 ? this._contextLengthOverride : 0;
     if (named > 0) {
       ollamaOptions['num_ctx'] = named;
-      this._lastNumCtx = named;
+      if (named >= 8_192) this._lastNumCtx.set(modelId, named);
       this._onDidSendChatRequest.fire({ modelId, numCtx: named });
-    } else if (this._lastNumCtx > 0) {
-      const max = this._contextLengthCache.get(modelId);
-      ollamaOptions['num_ctx'] = max && max > 0 ? Math.min(this._lastNumCtx, max) : this._lastNumCtx;
+    } else if (this._lastNumCtx.has(modelId)) {
+      const last = this._lastNumCtx.get(modelId)!, max = this._contextLengthCache.get(modelId);
+      ollamaOptions['num_ctx'] = max && max > 0 ? Math.min(last, max) : last;
     }
     if (options) {
       // Negative temperature means "no opinion": omit the key so Ollama falls back to

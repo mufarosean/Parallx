@@ -344,6 +344,18 @@ describe('OllamaProvider', () => {
       p.dispose();
     });
 
+    it('a sizeless request reuses its own model\'s size, never a small one a short task named', async () => {
+      const { fetchMock, chats } = recordingFetch([]);
+      vi.stubGlobal('fetch', fetchMock);
+      const p = new OllamaProvider();
+      await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Hi' }], { numCtx: 32768 }));
+      await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Mark this' }], { numCtx: 2048 })); // a marking call
+      await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Rewrite this paragraph' }]));
+      await drain(p.sendChatRequest('gemma3:12b', [{ role: 'user', content: 'Other model' }]));
+      expect(chats.map((c) => (c.options as { num_ctx?: number } | undefined)?.num_ctx)).toEqual([32768, 2048, 32768, undefined]);
+      p.dispose();
+    });
+
     it('omits temperature when it is negative, so the model keeps its own tuned value', async () => {
       // -1 is the settings default: no opinion. Ollama then falls back to the
       // model's own PARAMETER temperature. A harness default sent here would
