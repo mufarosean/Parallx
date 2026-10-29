@@ -245,7 +245,8 @@ describe('external changes', () => {
     const wf = seedWorkflow(service);
     const { pane, container } = mount(service, wf.id);
     service.setEnabled(wf.id, true);
-    expect((container.querySelector('.wfe__btn--armed') as HTMLElement).textContent).toBe('Disable');
+    // On is a switch beside its word, set from the service.
+    expect(container.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('true');
     service.removeWorkflow(wf.id);
     expect(container.querySelector('.wfe__gone')?.textContent).toContain('no longer exists');
     pane.dispose();

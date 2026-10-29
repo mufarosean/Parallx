@@ -27,7 +27,7 @@ import {
 } from '../../services/workflows/workflowTypes.js';
 import { validateWorkflow } from '../../services/workflows/workflowGraph.js';
 import { KIND_META, PALETTE, connectTargets, nodeSummary, oneLine, type PaletteEntry } from './workflowPalette.js';
-import { createList, declareControl, sceneSlug } from '../../ui/kit.js';
+import { createList, createToggle, declareControl, sceneSlug, type IKitToggle } from '../../ui/kit.js';
 import { WEEKDAY_LABELS, type AutomationScheduleSpec } from '../../openclaw/cronScheduleSpec.js';
 
 // ── Node palette (the kind vocabulary as UI) ────────────────────────────────
@@ -53,7 +53,7 @@ export class WorkflowEditorPane implements IDisposable {
   private readonly _hintEl: HTMLElement;
   private readonly _inspector: HTMLElement;
   private readonly _canvasHost: HTMLElement;
-  private readonly _enabledBtn: HTMLButtonElement;
+  private readonly _enabledSwitch: IKitToggle;
   private readonly _runBtn: HTMLButtonElement;
   private _classDropdown!: IDropdownHandle;
   private _runPicker!: IDropdownHandle;
@@ -135,18 +135,13 @@ export class WorkflowEditorPane implements IDisposable {
     }));
     header.appendChild(pickerWrap); this._disposables.push(declareControl(this._runPicker.element, { id: 'workflows.editor.view', label: 'View a recorded run', kind: 'select', state: () => ({ kind: 'value', value: this._runPicker.value }) }));
 
-    this._runBtn = $('button.wfe__btn.wfe__btn--primary') as HTMLButtonElement;
-    this._runBtn.textContent = 'Run Now'; this._runBtn.prepend(createIconElement('play', 14));
-    declareControl(this._runBtn, { id: 'workflows.editor.runNow', label: 'Run Now' });
-    this._runBtn.addEventListener('click', () => { void this._runNow(); });
-    header.appendChild(this._runBtn);
+    // On or off is a switch beside its word, not a button whose word flips.
+    const onWrap = $('div.wfe__field');
+    onWrap.appendChild(this._fieldLabel('On'));
+    this._enabledSwitch = createToggle(onWrap, { id: 'workflows.editor.enabled', label: 'Routine on', onChange: (on) => this._commit({ enabled: on }) });
+    header.appendChild(onWrap);
 
-    this._enabledBtn = $('button.wfe__btn') as HTMLButtonElement;
-    declareControl(this._enabledBtn, { id: 'workflows.editor.enabled', label: 'Enabled', state: () => ({ kind: 'pressed', value: this._doc?.enabled === true }) });
-    this._enabledBtn.addEventListener('click', () => {
-      if (this._doc) this._commit({ enabled: !this._doc.enabled });
-    });
-    header.appendChild(this._enabledBtn);
+    this._runBtn = this._button(header, 'workflows.editor.runNow', 'Run Now', 'play', () => { void this._runNow(); }, 'wfe__btn--primary');
 
     this._root.appendChild(header);
 
@@ -397,8 +392,7 @@ export class WorkflowEditorPane implements IDisposable {
     if (!this._doc) return;
     this._nameInput.value = this._doc.name;
     this._classDropdown.value = this._doc.class;
-    this._enabledBtn.textContent = this._doc.enabled ? 'Disable' : 'Enable';
-    this._enabledBtn.classList.toggle('wfe__btn--armed', this._doc.enabled);
+    this._enabledSwitch.checked = this._doc.enabled;
     this._paintStatus();
     this._paintRunPicker();
     this._paintCanvas();
@@ -474,7 +468,7 @@ export class WorkflowEditorPane implements IDisposable {
     const steps = [
       'Add steps from the rail on the left.',
       'Hover a card and drag its dot onto another card to connect them.',
-      'Click a card to set it up, then Enable when it looks right.',
+      'Click a card to set it up, then turn the routine On when it looks right.',
     ];
     steps.forEach((text, i) => {
       const row = $('div.wfe__coach-step');
@@ -564,11 +558,7 @@ export class WorkflowEditorPane implements IDisposable {
         const line = $('div.wfe-ins__line');
         line.textContent = `${from?.label ?? edge.from} → ${to?.label ?? edge.to}`;
         this._inspector.appendChild(line);
-        const del = $('button.wfe__btn.wfe__btn--danger') as HTMLButtonElement;
-        del.textContent = 'Delete Connection';
-        declareControl(del, { id: 'workflows.editor.deleteSelection', label: 'Delete Connection' });
-        del.addEventListener('click', () => this._deleteSelection());
-        this._inspector.appendChild(del);
+        this._dangerButton('Delete Connection', 'unlink');
       }
       return;
     }
@@ -650,11 +640,7 @@ export class WorkflowEditorPane implements IDisposable {
           'Write it in language. Name tools by their exact names when it matters; the model orchestrates.', 10);
         this._numberField('Context Messages', node.contextMessages ?? 0, 0, 10,
           (v) => this._patchNode(node.id, { contextMessages: v }), 'recent chat lines to include');
-        const prev = $('button.wfe__btn') as HTMLButtonElement;
-        prev.textContent = 'Preview Compiled Prompt';
-        declareControl(prev, { id: 'workflows.editor.previewPrompt', label: 'Preview Compiled Prompt' });
-        prev.addEventListener('click', () => { void this._showCompiledPreview(node.id); });
-        this._inspector.appendChild(prev);
+        this._button(this._inspector, 'workflows.editor.previewPrompt', 'Preview Prompt', 'eye', () => { void this._showCompiledPreview(node.id); }, 'wfe-ins__action').title = 'What the AI receives when this runs';
         break;
       }
       case 'action.command': {
@@ -700,11 +686,23 @@ export class WorkflowEditorPane implements IDisposable {
     if (targets.length > 0 && this._mode === 'edit') {
       this._dropdownField('Connect To', { items: targets, placeholder: 'Pick a node', ariaLabel: 'Connect to' }, (to) => { if (to) this._onConnect(node.id, to); });
     }
-    const del = $('button.wfe__btn.wfe__btn--danger') as HTMLButtonElement;
-    del.textContent = 'Delete Node';
-    declareControl(del, { id: 'workflows.editor.deleteSelection', label: 'Delete Node' });
-    del.addEventListener('click', () => this._deleteSelection());
-    this._inspector.appendChild(del);
+    this._dangerButton('Delete Step', 'trash-2');
+  }
+
+  /** Delete what is selected: the inspector's last button, set apart. */
+  private _dangerButton(label: string, icon: string): void {
+    this._button(this._inspector, 'workflows.editor.deleteSelection', label, icon, () => this._deleteSelection(), 'wfe-ins__action', 'wfe-ins__action--danger');
+  }
+
+  /** A button with its icon before its words, declared to the scene. */
+  private _button(host: HTMLElement, id: string, label: string, icon: string, run: () => void, ...classes: string[]): HTMLButtonElement {
+    const btn = $('button.wfe__btn') as HTMLButtonElement;
+    btn.classList.add(...classes);
+    btn.append(createIconElement(icon, 14), label);
+    declareControl(btn, { id, label });
+    btn.addEventListener('click', run);
+    host.appendChild(btn);
+    return btn;
   }
 
   /** Nothing selected: workflow-level settings (the arbiter's knobs). */
@@ -804,15 +802,9 @@ export class WorkflowEditorPane implements IDisposable {
         this._inspector.appendChild(er);
       }
     }
-    const back = $('button.wfe__btn') as HTMLButtonElement;
-    back.textContent = 'Back To Editing';
-    declareControl(back, { id: 'workflows.editor.backToEditing', label: 'Back To Editing' });
-    back.addEventListener('click', () => {
-      this._mode = 'edit';
-      this._runPicker.value = 'edit';
-      this._paintAll();
-    });
-    this._inspector.appendChild(back);
+    this._button(this._inspector, 'workflows.editor.backToEditing', 'Back To Editing', 'arrow-left', () => {
+      this._mode = 'edit'; this._runPicker.value = 'edit'; this._paintAll();
+    }, 'wfe-ins__action');
   }
 
   /** Format picker: template dropdown + page dropdown, whichever loads. */
@@ -859,11 +851,7 @@ export class WorkflowEditorPane implements IDisposable {
     const pre = $('div.wfe-ins__preview');
     pre.textContent = 'Compiling\u2026';
     this._inspector.appendChild(pre);
-    const back = $('button.wfe__btn') as HTMLButtonElement;
-    back.textContent = 'Back';
-    declareControl(back, { id: 'workflows.editor.back', label: 'Back' });
-    back.addEventListener('click', () => this._paintInspector());
-    this._inspector.appendChild(back);
+    this._button(this._inspector, 'workflows.editor.back', 'Back', 'arrow-left', () => this._paintInspector(), 'wfe-ins__action');
     try {
       pre.textContent = await this._deps.service.compileMissionPreview(this._workflowId, nodeId);
     } catch (err) {

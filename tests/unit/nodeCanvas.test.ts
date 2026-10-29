@@ -225,6 +225,35 @@ describe('view & lifecycle', () => {
     host.remove();
   });
 
+  it('a fit made while the canvas was still opening fits again once it has its size, until the user moves the view', () => {
+    let onResize: () => void = () => {};
+    const RO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class { constructor(cb: () => void) { onResize = cb; } observe() {} disconnect() {} } as unknown as typeof ResizeObserver;
+    try {
+      const { host, canvas } = make();
+      const root = host.querySelector('.px-node-canvas') as HTMLElement;
+      let size = { width: 120, height: 90 }; // a sliver: the editor is still opening
+      root.getBoundingClientRect = () => ({ ...size, left: 0, top: 0, right: size.width, bottom: size.height, x: 0, y: 0, toJSON() {} }) as DOMRect;
+      canvas.setModel([N('a', 0, 0), N('b', 500, 0)], []);
+      canvas.fitToContent();
+      const squeezed = canvas.zoom;
+      size = { width: 1200, height: 700 };
+      onResize();
+      expect(canvas.zoom).toBeGreaterThan(squeezed);
+
+      // Once the user zooms, a resize leaves their view alone.
+      root.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 400 }));
+      const theirs = canvas.zoom;
+      size = { width: 300, height: 200 };
+      onResize();
+      expect(canvas.zoom).toBe(theirs);
+      canvas.dispose();
+      host.remove();
+    } finally {
+      globalThis.ResizeObserver = RO;
+    }
+  });
+
   it('dispose removes the DOM and leaves no live drag listeners', () => {
     const onMoveNodes = vi.fn();
     const { host, canvas } = make({ onMoveNodes });

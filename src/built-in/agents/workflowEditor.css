@@ -97,12 +97,12 @@
 }
 .wfe__btn--primary:hover { background: var(--px-accent-hover); }
 
-.wfe__btn--armed { border-color: var(--px-accent); color: var(--px-accent-text); }
-
-.wfe__btn--danger {
+/* An inspector's action (Preview Prompt, Back, Delete): its own line, apart from the fields. */
+.wfe-ins__action { display: flex; width: fit-content; margin-top: var(--px-space-2); }
+.wfe-ins__action--danger {
+  margin-top: var(--px-space-3);
   color: var(--px-danger, var(--px-text));
   border-color: var(--px-danger, var(--px-border));
-  margin-top: var(--px-space-3);
 }
 
 /* ── Hint pill ── */

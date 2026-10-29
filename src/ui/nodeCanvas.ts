@@ -116,6 +116,17 @@ export class NodeCanvas implements IDisposable {
   private _panX = 0;
   private _panY = 0;
   private _zoom = 1;
+  /**
+   * The view fitToContent last made, or 'pending' when it was asked before the
+   * canvas had a size. While the view is still that one, a resize fits again:
+   * a fit made while the editor was still opening (a sliver of its width)
+   * left the graph zoomed far out.
+   */
+  private _fitted: { zoom: number; panX: number; panY: number } | 'pending' | null = null;
+  private readonly _resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => {
+    const f = this._fitted;
+    if (f === 'pending' || (f && f.zoom === this._zoom && f.panX === this._panX && f.panY === this._panY)) this.fitToContent();
+  });
 
   private _drag: PointerDragHandle | null = null;
   private _dragPreview: RafThrottledFn<[number, number]> | null = null;
@@ -163,10 +174,12 @@ export class NodeCanvas implements IDisposable {
     this._root.setAttribute('aria-label', 'Graph');
     this._root.addEventListener('keydown', this._onKeyDown);
     this._root.addEventListener('focusin', this._onFocusIn);
+    this._resize?.observe(this._root);
   }
 
   dispose(): void {
     this._disposed = true;
+    this._resize?.disconnect();
     this._drag?.cancel();
     this._dragPreview?.dispose();
     this._root.removeEventListener('pointerdown', this._onPointerDown);
@@ -276,7 +289,7 @@ export class NodeCanvas implements IDisposable {
 
   /** Fit the whole graph into view (never zooms in past 1). */
   fitToContent(padding = 48): void {
-    if (this._nodes.size === 0) return;
+    if (this._nodes.size === 0) { this._fitted = 'pending'; return; }
     let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
     for (const v of this._nodes.values()) {
       minX = Math.min(minX, v.x);
@@ -285,13 +298,14 @@ export class NodeCanvas implements IDisposable {
       maxY = Math.max(maxY, v.y + v.h);
     }
     const rect = this._root.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return; // not laid out yet
+    if (rect.width < 10 || rect.height < 10) { this._fitted = 'pending'; return; } // not laid out yet: the resize fits
     const w = maxX - minX + 2 * padding;
     const h = maxY - minY + 2 * padding;
     this._zoom = Math.min(1, rect.width / w, rect.height / h);
     this._zoom = Math.max(MIN_ZOOM, this._zoom);
     this._panX = (rect.width - (maxX - minX) * this._zoom) / 2 - minX * this._zoom;
     this._panY = (rect.height - (maxY - minY) * this._zoom) / 2 - minY * this._zoom;
+    this._fitted = { zoom: this._zoom, panX: this._panX, panY: this._panY };
     this._applyTransform();
   }
 
