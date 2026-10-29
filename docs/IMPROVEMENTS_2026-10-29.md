@@ -92,16 +92,22 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
      was trained on. Prefer the declared length, or keep the larger one?
 
 4. **The UI must not look made by AI.**
-   - Word-only buttons and poor icons, across surfaces. The Agents, Browser
-     and Planner dialogs are done; a sweep of the rest is open.
-   - Cluttered screens from the Oct 1 usability audit (still open):
-     - cryptic chat composer controls;
-     - jargon on Welcome;
-     - 20 entries in the Tools sidebar;
-     - about 20 AI pages in Settings;
-     - navigation duplicated between sidebar and editor;
-     - a right activity bar holding only Chat.
-   - A task-based usability audit was proposed, not run.
+   Done (Oct 29):
+   - Word-only buttons: icons across Agents, chat permissions, canvas trash,
+     notifications, Worksheets, answer forms and Atelier's editors; the
+     routine editor's Enable/Disable became an On switch. The rule is in the
+     authoring guide (6.3) and `wordButtonRatchet.test.ts` holds the count:
+     79 left (Atelier plans, Study, Budget), and it can only fall.
+   - The routine editor no longer opens zoomed far out.
+   - Welcome lost its developer rows (/init, .parallx/).
+   - Already fixed since the Oct 1 audit: chat without Ollama shows a setup
+     state with a way forward; the right bar holds Chat and Agents.
+   Waiting on you (layout decisions, best mocked first):
+   - Settings has nine AI pages and four Agents pages. Merge them (e.g.
+     Model with Providers, Retrieval with Indexing)?
+   - The Tools sidebar's length, and navigation repeated between a tool's
+     sidebar and its editor.
+   - A task-based usability audit (needs you at the keyboard).
 
    Raised: Good UI (Sep 1), Claude design app improvement (Oct 1), this session (Oct 28).
 5. **Test with your real model before calling an AI feature done.** Act in

@@ -277,20 +277,21 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
     leftCol.appendChild(row);
   }
 
-  // AI Quick Start sub-section
+  // AI sub-section
   const aiTitle = $('h2');
   aiTitle.classList.add('welcome-section-title', 'welcome-section-title--ai');
-  aiTitle.textContent = 'AI Quick Start';
+  aiTitle.textContent = 'AI';
   leftCol.appendChild(aiTitle);
 
   // NOTE: these previously used 'ui-sparkle'/'ui-wand'/'ui-book-open' —
   // ids that never existed in the registry, so the rows rendered blank
   // icons. The AI rows wear the brand mark (never the sparkle cliché).
+  // Plain words, no developer rows: the slash command and the raw config
+  // file (.parallx/ai-config.json) stay in the command palette.
   const aiItems = [
     { icon: 'px-ai-mark', text: 'Open AI Chat', hint: 'Ctrl+Shift+I', command: 'chat.show' },
-    { icon: 'px-ai-mark', text: 'Set Up Workspace AI', hint: '/init', command: 'parallx.chat.openWithInit' },
+    { icon: 'px-ai-mark', text: 'Introduce This Workspace To The AI', hint: '', command: 'parallx.chat.openWithInit' },
     { icon: 'book-open', text: 'AI User Guide', hint: '', command: 'parallx.openAIUserGuide' },
-    { icon: 'gear', text: 'Workspace AI Config', hint: '.parallx/', command: 'parallx.openWorkspaceAIConfig' },
   ];
 
   for (const item of aiItems) {
