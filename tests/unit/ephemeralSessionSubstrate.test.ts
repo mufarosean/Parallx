@@ -194,7 +194,7 @@ describe('Ephemeral session substrate (M58 W5-A)', () => {
     await saveSession(db, parent, 'ws-1');
 
     expect(db.runs.length).toBeGreaterThan(0);
-    expect(db.runs.some(r => /INSERT OR REPLACE INTO chat_sessions/.test(r.sql))).toBe(true);
+    expect(db.runs.some(r => /INSERT INTO chat_sessions/.test(r.sql))).toBe(true);
   });
 
   it('deletePersistedSession early-returns on ephemeral ids (no SQL writes)', async () => {
@@ -291,7 +291,7 @@ describe('autonomous run archive on purge (M91 S2)', () => {
     chatService.purgeEphemeralSession(handle);
     await new Promise((r) => setTimeout(r, 0)); // let the fire-and-forget archive run
 
-    const wroteOrigin = runs.some((r) => String(r.sql).includes('INSERT OR REPLACE INTO chat_sessions') && (r.params ?? []).includes('heartbeat'));
+    const wroteOrigin = runs.some((r) => String(r.sql).includes('INTO chat_sessions') && (r.params ?? []).includes('heartbeat'));
     expect(wroteOrigin).toBe(true);
     expect(chatService.getSession(handle.sessionId)).toBeUndefined(); // still purged
   });
@@ -305,7 +305,7 @@ describe('autonomous run archive on purge (M91 S2)', () => {
 
     chatService.purgeEphemeralSession(handle);
     await new Promise((r) => setTimeout(r, 0));
-    expect(runs.some((r) => String(r.sql).includes('INSERT OR REPLACE INTO chat_sessions'))).toBe(false);
+    expect(runs.some((r) => String(r.sql).includes('INTO chat_sessions'))).toBe(false);
   });
 
   it('does NOT archive an empty run', async () => {
@@ -316,6 +316,6 @@ describe('autonomous run archive on purge (M91 S2)', () => {
     // no messages seeded
     chatService.purgeEphemeralSession(handle);
     await new Promise((r) => setTimeout(r, 0));
-    expect(runs.some((r) => String(r.sql).includes('INSERT OR REPLACE INTO chat_sessions'))).toBe(false);
+    expect(runs.some((r) => String(r.sql).includes('INTO chat_sessions'))).toBe(false);
   });
 });

@@ -336,6 +336,13 @@ export interface IIndexingPipelineService extends IDisposable {
 
   /** Whether the initial full indexing has completed at least once. */
   readonly isInitialIndexComplete: boolean;
+  /**
+   * Whether search can be served: the index holds rows (from an earlier run)
+   * or the initial pass is done. A workspace's startup pass re-walks every
+   * file; search used to stay off until it finished, though last run's index
+   * was there to search.
+   */
+  readonly hasSearchableIndex?: boolean;
 
   /** Start the full indexing pipeline (pages + files). */
   start(): Promise<void>;

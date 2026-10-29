@@ -27,7 +27,7 @@ export class CanonicalMemorySearchService extends Disposable implements ICanonic
   }
 
   isReady(): boolean {
-    return this._indexingPipelineService.isInitialIndexComplete;
+    return this._indexingPipelineService.hasSearchableIndex ?? this._indexingPipelineService.isInitialIndexComplete;
   }
 
   async search(

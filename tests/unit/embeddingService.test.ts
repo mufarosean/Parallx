@@ -147,6 +147,16 @@ describe('EmbeddingService', () => {
       expect(body.input).toBe('search_query: What is authentication?');
     });
 
+    it('one question asked twice at once (retrieval and memory recall) is embedded once', async () => {
+      fetchSpy.mockResolvedValue({ ok: true, json: async () => mockEmbedResponse(1) });
+      await service.ensureModel();
+      fetchSpy.mockClear();
+      const [a, b] = await Promise.all([service.embedQuery('tail factor'), service.embedQuery('tail factor')]);
+      expect(a).toBe(b);
+      await service.embedQuery('something else');
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
     it('keeps the model loaded for the next question (30 minutes, not Ollama\'s 5)', async () => {
       fetchSpy.mockResolvedValue({ ok: true, json: async () => mockEmbedResponse(1) });
       await service.embedQuery('tail factor');

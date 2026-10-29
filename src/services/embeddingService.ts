@@ -91,6 +91,8 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
    * unbounded map kept every vector (6 KB each) for the life of the app.
    */
   private readonly _cache = new LRUCache<string, number[]>(EMBEDDING_CACHE_MAX);
+  /** The last questions' vectors (or the call fetching them). */
+  private readonly _queryCache = new LRUCache<string, Promise<number[]>>(32);
 
   /** Whether the model is confirmed installed (avoids repeated checks). */
   private _modelVerified = false;
@@ -184,8 +186,14 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
    * @param query — the user's search/chat query
    */
   async embedQuery(query: string): Promise<number[]> {
-    const results = await this._embedBatch([`search_query: ${query}`]);
-    return results[0];
+    // One turn asks for the same question's vector several times at once
+    // (document retrieval, memory recall): they share one call.
+    const known = this._queryCache.get(query);
+    if (known) return known;
+    const asked = this._embedBatch([`search_query: ${query}`]).then((r) => r[0]);
+    this._queryCache.set(query, asked);
+    asked.catch(() => { if (this._queryCache.get(query) === asked) this._queryCache.delete(query); });
+    return asked;
   }
 
   /**
@@ -263,6 +271,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
    */
   clearCache(): void {
     this._cache.clear();
+    this._queryCache.clear();
   }
 
   /**

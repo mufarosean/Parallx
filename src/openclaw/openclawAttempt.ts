@@ -240,7 +240,6 @@ export async function executeOpenclawAttempt(
     runtimeInfo: context.runtimeInfo,
     systemPromptAddition: assembled.systemPromptAddition,
     preferencesPrompt: context.preferencesPrompt,
-    promptOverlay: context.promptOverlay,
     modelTier: resolveModelTier(context.runtimeInfo.model),
     systemBudgetTokens: Math.floor(context.tokenBudget * 0.10),
     agentIdentity: context.agentConfig?.identity,
@@ -297,7 +296,8 @@ export async function executeOpenclawAttempt(
   // So does the scene line: what is in front, focused and selected right
   // now (docs/SELF_DESCRIBING_UI_DESIGN.md step 8). Empty outside a window.
   const sceneLine = formatSceneLine(scene.describe());
-  let userContent = `${formatTurnClock(context.runtimeInfo.timeZone)}${sceneLine ? `\n${sceneLine}` : ''}\n${request.text}`;
+  // The rules for the files in play ride here too: they change with the open file, and in the system prompt every switch re-read the whole chat.
+  let userContent = `${context.promptOverlay ? `## Active Rules\n${context.promptOverlay}\n\n` : ''}${formatTurnClock(context.runtimeInfo.timeZone)}${sceneLine ? `\n${sceneLine}` : ''}\n${request.text}`;
   if (context.mentionContextBlocks?.length) {
     const contextSection = context.mentionContextBlocks.join('\n\n---\n\n');
     console.log(`[OpenClaw:Attempt] Prepending ${context.mentionContextBlocks.length} mention/attachment context block(s) to user message, total chars: ${contextSection.length}`);

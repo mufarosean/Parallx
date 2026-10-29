@@ -300,7 +300,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private _abortController: AbortController | null = null;
 
   /** Whether initial full indexing has completed at least once. */
-  private _initialIndexComplete = false;
+  private _initialIndexComplete = false; private _hasRows = false;
 
   /** ParallxIgnore instance for file exclusion. */
   private _ignore: ParallxIgnore = createParallxIgnore();
@@ -502,8 +502,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** Current progress snapshot. */
   get progress(): IndexingProgress { return { ...this._progress }; }
 
-  /** Whether initial full indexing has completed. */
+  /** Whether initial full indexing has completed. Search needs less: rows from an earlier run (hasSearchableIndex). */
   get isInitialIndexComplete(): boolean { return this._initialIndexComplete; }
+  get hasSearchableIndex(): boolean { return this._initialIndexComplete || this._hasRows; }
 
   /**
    * Start the full indexing pipeline.
@@ -523,10 +524,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._isIndexing = true;
     this._abortController = new AbortController();
     this._sessionGuard = this._sessionManager ? captureSession(this._sessionManager) : undefined;
+    void this._vectorStore.getStats().then((s) => { if (s.totalChunks > 0) this._hasRows = true; }, () => undefined);
 
-    // Defer the first run so the workbench can paint and built-in
-    // tool activations can settle before embedding CPU spikes. See
-    // docs/archive/root-audits/STARTUP_PERFORMANCE.md and Future_Improvements.md §1 Option 2.
+    // Defer the first run so the workbench paints and tool activations settle before embedding CPU spikes
+    // (docs/archive/root-audits/STARTUP_PERFORMANCE.md, Future_Improvements.md §1 Option 2).
     await this._waitForIdleStart();
     if (this._abortController?.signal.aborted) {
       this._isIndexing = false;
@@ -559,7 +560,6 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       // 3. Index all workspace files
       const fileCount = await this._indexAllFiles();
 
-      // Mark initial index as complete before setting up listeners.
       this._initialIndexComplete = true;
 
       // 4. Set up listeners

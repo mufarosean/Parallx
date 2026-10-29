@@ -923,7 +923,8 @@ export class ChatDataService {
   }
 
   isRAGAvailable(): boolean {
-    return this._d.indexingPipelineService?.isInitialIndexComplete ?? false;
+    const p = this._d.indexingPipelineService;
+    return !!p && (p.hasSearchableIndex ?? p.isInitialIndexComplete);
   }
 
   isIndexing(): boolean {
@@ -1001,7 +1002,7 @@ export class ChatDataService {
       };
       return undefined;
     }
-    if (!this._d.indexingPipelineService?.isInitialIndexComplete) {
+    if (!this.isRAGAvailable()) {
       this._lastTestDebugSnapshot = {
         ...this._lastTestDebugSnapshot,
         query,

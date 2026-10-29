@@ -27,7 +27,7 @@ function makeDb(): IChatPersistenceDatabase {
 
   const run = async (sql: string, params: unknown[] = []): Promise<{ changes: number }> => {
     const s = sql.replace(/\s+/g, ' ').trim();
-    if (s.startsWith('INSERT OR REPLACE INTO chat_sessions')) {
+    if (/^INSERT (OR REPLACE )?INTO chat_sessions/.test(s)) { // an upsert: the whole row here
       const row = {} as SessionRow;
       cols.forEach((c, i) => { (row as Record<string, unknown>)[c] = params[i]; });
       sessions.set(row.id, row);

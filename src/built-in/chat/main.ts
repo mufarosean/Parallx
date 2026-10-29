@@ -1465,7 +1465,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // Build retrieval accessor for fs_read_file (passages of a large file) and fs_grep_search (related passages)
     const retrievalAccessor = retrievalService && indexingPipelineService
       ? {
-        isReady: () => indexingPipelineService!.isInitialIndexComplete,
+        isReady: () => indexingPipelineService!.hasSearchableIndex ?? indexingPipelineService!.isInitialIndexComplete,
         async retrieve(query: string, sourceFilter?: string, pathPrefixes?: string[]) {
           // No hardcoded limits — retrieval params from AI Settings.
           const chunks = await retrievalService!.retrieve(query, {

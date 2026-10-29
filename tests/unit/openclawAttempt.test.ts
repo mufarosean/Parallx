@@ -496,6 +496,15 @@ describe('executeOpenclawAttempt', () => {
     expect(mentionMsg).toBeDefined();
   });
 
+  it('the rules for the files in play ride on the latest message, not the system prompt (which stays cached)', async () => {
+    const sendChatRequest = vi.fn(() => streamChunks([textChunk('Done')]));
+    const context = createContext({ sendChatRequest, promptOverlay: 'Use British spelling in *.md files.' });
+    await executeOpenclawAttempt(createRequest(), context, createAssembled(), createResponse(), createToken());
+    const messages = (sendChatRequest.mock.calls as any[][])[0][0] as IChatMessage[];
+    expect(messages[0].content).not.toContain('British spelling');
+    expect(messages.at(-1)!.content).toMatch(/^## Active Rules\nUse British spelling/);
+  });
+
   it('afterTurn called with final messages', async () => {
     const afterTurn = vi.fn(async () => {});
     const context = createContext({

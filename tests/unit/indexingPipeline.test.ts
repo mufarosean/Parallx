@@ -188,6 +188,30 @@ describe('IndexingPipelineService', () => {
     });
   });
 
+  describe('searchable before the startup pass ends', () => {
+    it('search turns on as soon as the index holds rows from an earlier run', async () => {
+      vectorStore.getStats.mockResolvedValue({ totalChunks: 120, totalSources: 9, bySourceType: {}, sourceCountByType: {} });
+      let release!: () => void;
+      embeddingService.ensureModel.mockImplementationOnce(() => new Promise<void>((r) => { release = r; }));
+      const run = pipeline.start();
+      await vi.waitFor(() => expect(pipeline.hasSearchableIndex).toBe(true));
+      expect(pipeline.isInitialIndexComplete).toBe(false); // the pass is still going
+      release();
+      await run;
+    });
+
+    it('an empty index is not searchable until the pass has run', async () => {
+      let release!: () => void;
+      embeddingService.ensureModel.mockImplementationOnce(() => new Promise<void>((r) => { release = r; }));
+      const run = pipeline.start();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(pipeline.hasSearchableIndex).toBe(false);
+      release();
+      await run;
+      expect(pipeline.hasSearchableIndex).toBe(true);
+    });
+  });
+
   describe('start()', () => {
     it('runs full pipeline: ensureModel → initialize → pages → files', async () => {
       // Setup: 2 pages, 0 files
