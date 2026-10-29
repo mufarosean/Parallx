@@ -130,7 +130,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
 
   const bar = $('div.agents-routine__actions');
   createButton(bar, { id: 'agents.routineForm.cancel', label: 'Cancel', kind: 'ghost', size: 'sm', onClick: () => onClose(false) });
-  const tryNow = createButton(bar, { id: 'agents.routineForm.tryNow', label: 'Try It Once Now', kind: 'secondary', size: 'sm', onClick: () => save(true) });
+  const tryNow = createButton(bar, { id: 'agents.routineForm.tryNow', label: 'Try It Once Now', icon: 'play', kind: 'secondary', size: 'sm', onClick: () => save(true) });
   const saveBtn = createButton(bar, { id: 'agents.routineForm.save', label: 'Save Routine', kind: 'primary', size: 'sm', onClick: () => save(false) });
   form.appendChild(bar);
 

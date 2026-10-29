@@ -144,6 +144,7 @@ export function hydrateAnswerForms(root: HTMLElement, opts: { save?: boolean; on
     createButton(slot, {
       id: null,
       label: 'Save To Page',
+      icon: 'file-plus',
       kind: 'ghost',
       size: 'sm',
       title: 'Save this to a new page, where it keeps working',

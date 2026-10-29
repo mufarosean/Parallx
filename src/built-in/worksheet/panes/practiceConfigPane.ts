@@ -104,7 +104,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
   declareControl(nameIn, { id: 'worksheet.builder.name', label: 'Quiz name', kind: 'input', hint: nameIn.title, state: () => ({ kind: 'value', value: nameIn.value }) });
   nameLabel.appendChild(nameIn);
   side.appendChild(nameLabel);
-  const startBtn = createButton(side, { id: 'worksheet.builder.start', label: 'Start Quiz', kind: 'primary' });
+  const startBtn = createButton(side, { id: 'worksheet.builder.start', label: 'Start Quiz', icon: 'play', kind: 'primary' });
   startBtn.classList.add('ws-builder__start');
 
   const filtersName = (): string => {
@@ -148,7 +148,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
       createFilterChip(host, { id: `worksheet.builder.${key}.${sceneSlug(value)}`, label, count: n, pressed: selected.has(value), onToggle: (on) => { if (on) selected.add(value); else selected.delete(value); syncSide(); } });
     }
     if (selected.size) {
-      createButton(host, { id: `worksheet.builder.${key}.clear`, label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { selected.clear(); renderFilters(); } });
+      createButton(host, { id: `worksheet.builder.${key}.clear`, label: 'Clear', icon: 'x', kind: 'ghost', size: 'sm', onClick: () => { selected.clear(); renderFilters(); } });
     }
   };
   const renderFilters = () => {

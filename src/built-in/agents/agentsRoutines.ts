@@ -114,7 +114,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   const foot = $('div.agents-rt__level');
   const lv = $('span'); lv.textContent = level ? `How much it may do alone: ${level.replace(/-/g, ' ')}` : '';
   foot.appendChild(lv);
-  createButton(foot, { id: 'agents.heartbeatSettings', command: 'agents.openSettings', label: 'Heartbeat Settings…', kind: 'ghost', size: 'sm', onClick: () => run('agents.openSettings', 'schema:Agents / Heartbeat') });
+  createButton(foot, { id: 'agents.heartbeatSettings', command: 'agents.openSettings', label: 'Heartbeat Settings…', icon: 'settings', kind: 'ghost', size: 'sm', onClick: () => run('agents.openSettings', 'schema:Agents / Heartbeat') });
   top.appendChild(foot);
   host.appendChild(top);
 
@@ -134,9 +134,9 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       const name = $('div.agents-card__name'); name.textContent = wf.name;
       const det = $('div.agents-card__detail'); det.textContent = wf.description ?? triggerWords(wf);
       const bar = $('div.agents-card__actions');
-      createButton(bar, { id: 'agents.suggestion.add', label: 'Add', kind: 'primary', size: 'sm', title: 'Keep it and turn it on', onClick: () => { try { svc.workflows?.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch (err) { void api.window.showErrorMessage(`Could not add "${wf.name}": ${errorText(err)}`); } } });
-      createButton(bar, { id: 'agents.suggestion.review', command: 'workflows.openEditor', label: 'Review', kind: 'secondary', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
-      createButton(bar, { id: 'agents.suggestion.dismiss', label: 'Dismiss', kind: 'ghost', size: 'sm', title: 'Delete the suggestion; this habit is not suggested again', onClick: () => { try { svc.workflows?.removeWorkflow(wf.id); } catch (err) { void api.window.showErrorMessage(`Could not dismiss "${wf.name}": ${errorText(err)}`); } } });
+      createButton(bar, { id: 'agents.suggestion.add', label: 'Add', icon: 'plus', kind: 'primary', size: 'sm', title: 'Keep it and turn it on', onClick: () => { try { svc.workflows?.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch (err) { void api.window.showErrorMessage(`Could not add "${wf.name}": ${errorText(err)}`); } } });
+      createButton(bar, { id: 'agents.suggestion.review', command: 'workflows.openEditor', label: 'Review', icon: 'pencil', kind: 'secondary', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
+      createButton(bar, { id: 'agents.suggestion.dismiss', label: 'Dismiss', icon: 'close', kind: 'ghost', size: 'sm', title: 'Delete the suggestion; this habit is not suggested again', onClick: () => { try { svc.workflows?.removeWorkflow(wf.id); } catch (err) { void api.window.showErrorMessage(`Could not dismiss "${wf.name}": ${errorText(err)}`); } } });
       card.append(name, det, bar);
       sec.appendChild(card);
     }
@@ -214,8 +214,8 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   const add = $('section.agents-section');
   createSectionLabel(add, 'Add a routine');
   const choices = $('div.agents-rt__add');
-  createButton(choices, { id: 'agents.routines.new', command: 'agents.newRoutine', label: 'New Routine…', kind: 'primary', size: 'sm', title: 'Say what to do and when', onClick: openNewRoutine });
-  if (svc.workflows) createButton(choices, { id: 'workflows.new', command: 'workflows.new', label: 'Build Steps…', kind: 'secondary', size: 'sm', title: 'Draw the steps yourself: triggers, context, agents, notifications', onClick: () => run('workflows.new') });
+  createButton(choices, { id: 'agents.routines.new', command: 'agents.newRoutine', label: 'New Routine…', icon: 'plus', kind: 'primary', size: 'sm', title: 'Say what to do and when', onClick: openNewRoutine });
+  if (svc.workflows) createButton(choices, { id: 'workflows.new', command: 'workflows.new', label: 'Build Steps…', icon: 'workflow', kind: 'secondary', size: 'sm', title: 'Draw the steps yourself: triggers, context, agents, notifications', onClick: () => run('workflows.new') });
   add.appendChild(choices);
   if (svc.workflows) {
     const hint = $('div.agents-rt__hint'); hint.textContent = 'Or start from one of these:';

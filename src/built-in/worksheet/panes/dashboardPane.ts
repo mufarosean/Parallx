@@ -434,7 +434,7 @@ function campaignSection(root: HTMLElement, items: InsightItem[], attempts: Insi
     const worth = el('span', 'ws-camp__xp', `$${(cents / 100).toFixed(2)} to cash out`);
     worth.title = `${availXp} XP at $${rate} per 100 XP.${cash.cents ? ` Cashed out so far: $${(cash.cents / 100).toFixed(2)} for ${cash.xp} XP.` : ''}`;
     cashRow.appendChild(worth);
-    if (availXp > 0 && actions.cashOut) createButton(cashRow, { id: 'worksheet.dashboard.cashOut', label: 'Cash Out…', size: 'sm', onClick: () => void actions.cashOut!(availXp, cents) });
+    if (availXp > 0 && actions.cashOut) createButton(cashRow, { id: 'worksheet.dashboard.cashOut', label: 'Cash Out…', icon: 'coins', size: 'sm', onClick: () => void actions.cashOut!(availXp, cents) });
     lvl.appendChild(cashRow);
   }
   colLevel.appendChild(lvl);

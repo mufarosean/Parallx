@@ -195,7 +195,7 @@ export class CanvasTrashPanel {
       const note = $('span.canvas-trash-panel-footer-note');
       note.textContent = 'Pages stay here until you empty the Trash.';
       this._footer.appendChild(note);
-      createButton(this._footer, { id: 'canvas.trash.empty', label: 'Empty Trash…', size: 'sm', kind: 'danger', command: 'canvas.emptyTrash' });
+      createButton(this._footer, { id: 'canvas.trash.empty', label: 'Empty Trash…', icon: 'trash-2', size: 'sm', kind: 'danger', command: 'canvas.emptyTrash' });
     }
   }
 
@@ -243,7 +243,7 @@ export class CanvasTrashPanel {
 
     const actions = $('div.canvas-trash-panel-actions');
     createButton(actions, {
-      id: `canvas.trash.restore.${page.id}`, label: 'Restore', size: 'sm', kind: 'secondary',
+      id: `canvas.trash.restore.${page.id}`, label: 'Restore', icon: 'rotate-ccw', size: 'sm', kind: 'secondary',
       title: entry.subPages ? 'Put this page and its sub-pages back where they were.' : 'Put this page back where it was.',
       command: 'canvas.restorePage', args: [page.id],
     });

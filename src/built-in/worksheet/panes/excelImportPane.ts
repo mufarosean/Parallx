@@ -31,7 +31,7 @@ export function createExcelImportPane(container: HTMLElement) {
   const dropHead = el('div', 'ws-drop__head', 'Choose an Excel workbook');
   const dropHint = el('div', 'ws-hint', 'Every sheet comes in with its formatting, the solution hidden until you reveal it, your ratings carried over. Importing the same workbook again adds new problems and can replace the sheets already in the bank.');
   dropHint.title = 'Other spreadsheets: Item/Answer sheet pairs and question-left, solution-right sheets are detected; anything else can be imported whole.';
-  const pickBtn = createButton(null, { id: 'worksheet.import.chooseFile', label: 'Choose Excel File…', kind: 'primary' });
+  const pickBtn = createButton(null, { id: 'worksheet.import.chooseFile', label: 'Choose Excel File…', icon: 'file-spreadsheet', kind: 'primary' });
   const status = el('span', 'ws-hint ws-drop__status');
   pickRow.append(dropIcon, dropHead, dropHint, pickBtn, status);
   root.appendChild(pickRow);
@@ -83,8 +83,8 @@ export function createExcelImportPane(container: HTMLElement) {
     if (items.length > 0) {
       createSectionLabel(listHost, `${items.length} practice ${items.length === 1 ? 'item' : 'items'} detected`);
       const toggles = el('div', 'ws-create__controls');
-      createButton(toggles, { id: 'worksheet.import.items.selectAll', label: 'Select All', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) if (r.item.kind !== 'whole') r.box.checked = true; } });
-      createButton(toggles, { id: 'worksheet.import.items.selectNone', label: 'Select None', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; } });
+      createButton(toggles, { id: 'worksheet.import.items.selectAll', label: 'Select All', icon: 'list-checks', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) if (r.item.kind !== 'whole') r.box.checked = true; } });
+      createButton(toggles, { id: 'worksheet.import.items.selectNone', label: 'Select None', icon: 'square', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; } });
       listHost.appendChild(toggles);
       for (const item of items) addRow(item, true, listHost);
     }
@@ -99,7 +99,7 @@ export function createExcelImportPane(container: HTMLElement) {
     }
 
     footHost.replaceChildren();
-    const importBtn = createButton(footHost, { id: 'worksheet.import.importItems', label: 'Import Selected Items', kind: 'primary' });
+    const importBtn = createButton(footHost, { id: 'worksheet.import.importItems', label: 'Import Selected Items', icon: 'download', kind: 'primary' });
     const countSelected = () => { const n = rows.filter((r) => r.box.checked).length; footNote.textContent = `${n} selected`; const l = importBtn.querySelector('.px-btn__label'); if (l) l.textContent = n ? `Import ${n} ${n === 1 ? 'Item' : 'Items'}` : 'Import Selected Items'; };
     listHost.onchange = () => countSelected();
     footer.style.display = '';
@@ -178,8 +178,8 @@ export function createExcelImportPane(container: HTMLElement) {
     createSectionLabel(listHost, `${problems.length} problems in ${fileLabel}`);
     listHost.appendChild(el('div', 'ws-hint', `${fresh} new, ${existing.size} already in the bank, ${rated} with a rating to carry over${timeline.length ? `, ${timeline.length} ${timeline.length === 1 ? 'day' : 'days'} of dashboard history` : ''}.`));
     const toggles = el('div', 'ws-create__controls');
-    createButton(toggles, { id: 'worksheet.import.problems.selectNew', label: 'Select New', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = !existing.has(r.problem.sheetName); countSelected(); } });
-    createButton(toggles, { id: 'worksheet.import.problems.selectNone', label: 'Select None', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; countSelected(); } });
+    createButton(toggles, { id: 'worksheet.import.problems.selectNew', label: 'Select New', icon: 'sparkles', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = !existing.has(r.problem.sheetName); countSelected(); } });
+    createButton(toggles, { id: 'worksheet.import.problems.selectNone', label: 'Select None', icon: 'square', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; countSelected(); } });
     listHost.appendChild(toggles);
     if (existing.size > 0) {
       const replaceRow = el('label', 'ws-import__row');
@@ -229,7 +229,7 @@ export function createExcelImportPane(container: HTMLElement) {
       listHost.appendChild(group);
     }
     footHost.replaceChildren();
-    const importBtn = createButton(footHost, { id: 'worksheet.import.importProblems', label: 'Import Selected Problems', kind: 'primary' });
+    const importBtn = createButton(footHost, { id: 'worksheet.import.importProblems', label: 'Import Selected Problems', icon: 'download', kind: 'primary' });
     footer.style.display = '';
     countSelected();
     importBtn.addEventListener('click', () => {

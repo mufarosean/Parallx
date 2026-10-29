@@ -84,9 +84,9 @@ export function registerAppConnections(api: AppConnectionsApi, state: Memento): 
       ).firstElementChild as HTMLElement;
       const box = overlay.querySelector<HTMLElement>('.parallx-modal-box')!;
       const row = overlay.querySelector<HTMLElement>('.parallx-modal-buttons')!;
-      const no = createButton(row, { id: null, label: 'Don\'t Allow', command: APP_PERMISSION_ANSWER_COMMAND, args: [id, 'never'] });
-      createButton(row, { id: null, label: 'Allow Once', command: APP_PERMISSION_ANSWER_COMMAND, args: [id, 'once'], kind: everyTime ? 'primary' : 'secondary' });
-      if (!everyTime) createButton(row, { id: null, label: 'Always Allow', kind: 'primary', command: APP_PERMISSION_ANSWER_COMMAND, args: [id, 'always'] });
+      const no = createButton(row, { id: null, label: 'Don\'t Allow', icon: 'x', command: APP_PERMISSION_ANSWER_COMMAND, args: [id, 'never'] });
+      createButton(row, { id: null, label: 'Allow Once', icon: 'check', command: APP_PERMISSION_ANSWER_COMMAND, args: [id, 'once'], kind: everyTime ? 'primary' : 'secondary' });
+      if (!everyTime) createButton(row, { id: null, label: 'Always Allow', icon: 'check-check', kind: 'primary', command: APP_PERMISSION_ANSWER_COMMAND, args: [id, 'always'] });
       doc.body.appendChild(overlay);
       const trap = keepTabInside(box);
       let done = false;
@@ -178,10 +178,10 @@ export function registerAppConnections(api: AppConnectionsApi, state: Memento): 
           for (const section of Array.from(container.querySelectorAll<HTMLElement>('.px-app-perm__app'))) {
             const appId = section.getAttribute('data-app') ?? '';
             const all = section.querySelector<HTMLElement>('.px-app-perm__all');
-            if (all) createButton(all, { id: null, label: 'Revoke All', size: 'sm', kind: 'ghost', command: REVOKE_APP_PERMISSION_COMMAND, args: [appId, '*'] });
+            if (all) createButton(all, { id: null, label: 'Revoke All', icon: 'shield-off', size: 'sm', kind: 'ghost', command: REVOKE_APP_PERMISSION_COMMAND, args: [appId, '*'] });
             for (const li of Array.from(section.querySelectorAll<HTMLElement>('li[data-tool]'))) {
               const slot = li.querySelector<HTMLElement>('.px-app-perm__revoke');
-              if (slot) createButton(slot, { id: null, label: 'Revoke', size: 'sm', kind: 'ghost', command: REVOKE_APP_PERMISSION_COMMAND, args: [appId, li.getAttribute('data-tool')] });
+              if (slot) createButton(slot, { id: null, label: 'Revoke', icon: 'shield-off', size: 'sm', kind: 'ghost', command: REVOKE_APP_PERMISSION_COMMAND, args: [appId, li.getAttribute('data-tool')] });
             }
           }
         };

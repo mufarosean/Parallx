@@ -232,7 +232,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         }
         sol.appendChild(gradeWrap);
       } else {
-        const again = createButton(null, { id: 'worksheet.sheet.tryAgain', label: 'Try Again', title: 'Start a fresh attempt from the original sheet.' });
+        const again = createButton(null, { id: 'worksheet.sheet.tryAgain', label: 'Try Again', icon: 'rotate-ccw', title: 'Start a fresh attempt from the original sheet.' });
         again.addEventListener('click', () => {
           void (async () => {
             if (!item) return;
@@ -257,7 +257,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       // AI critique of the work vs the model solution. Feedback,
       // never a score: CAS grades method, and false precision misleads.
       const reviewWrap = el('div', 'ws-item__review');
-      const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', title: 'Stages your cells, the model solution and a review brief in the chat. Add your question under the brief, then send.' });
+      const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', icon: 'message-square', title: 'Stages your cells, the model solution and a review brief in the chat. Add your question under the brief, then send.' });
       const reviewOut = el('div', 'ws-item__reviewout');
       reviewOut.style.display = 'none';
       reviewBtn.addEventListener('click', () => {
@@ -567,7 +567,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       header.replaceChildren(titleRow, noteHost);
       if (revealed && state.api?.lm) {
         const reviewWrap = el('div', 'ws-item__review');
-        const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', title: 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.' });
+        const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', icon: 'message-square', title: 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.' });
         const reviewOut = el('div', 'ws-item__reviewout');
         reviewOut.style.display = 'none';
         reviewBtn.addEventListener('click', () => {

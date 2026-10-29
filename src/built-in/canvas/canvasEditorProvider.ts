@@ -1535,8 +1535,8 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     if (removed) parts.push(`${removed} removed`);
     const hint = `${parts.join(' · ')}.${changed ? ' Hover a blue mark for the old text.' : ''}`;
     const root = this._showAiStatus('review', `Chat changed ${total} block${total === 1 ? '' : 's'}`, hint);
-    createButton(root, { id: 'canvas.aiReview.undo', label: 'Undo', kind: 'secondary', size: 'sm', title: 'Put the page back the way it was (Ctrl+Z)', onClick: () => this._undoAiEdit() });
-    createButton(root, { id: 'canvas.aiReview.keep', label: 'Keep', kind: 'primary', size: 'sm', onClick: () => this._endAiReview() });
+    createButton(root, { id: 'canvas.aiReview.undo', label: 'Undo', icon: 'undo-2', kind: 'secondary', size: 'sm', title: 'Put the page back the way it was (Ctrl+Z)', onClick: () => this._undoAiEdit() });
+    createButton(root, { id: 'canvas.aiReview.keep', label: 'Keep', icon: 'check', kind: 'primary', size: 'sm', onClick: () => this._endAiReview() });
 
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;

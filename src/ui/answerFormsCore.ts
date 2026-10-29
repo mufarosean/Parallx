@@ -394,10 +394,10 @@ function hydrateWorked(root: HTMLElement): void {
   const nav = box?.querySelector<HTMLElement>('.px-af-worked__nav');
   const key = box?.getAttribute('data-af-key');
   if (!box || !nav || !key) return;
-  const next = createButton(nav, { id: null, label: 'Next Step', kind: 'ghost', size: 'sm', command: WORKED_STEP_COMMAND, args: [key, 'next'] });
+  const next = createButton(nav, { id: null, label: 'Next Step', icon: 'chevron-right', kind: 'ghost', size: 'sm', command: WORKED_STEP_COMMAND, args: [key, 'next'] });
   next.classList.add('px-af-worked__next');
   nav.insertBefore(next, nav.firstChild);
-  const again = createButton(nav, { id: null, label: 'Start Over', kind: 'ghost', size: 'sm', command: WORKED_STEP_COMMAND, args: [key, 'reset'] });
+  const again = createButton(nav, { id: null, label: 'Start Over', icon: 'rotate-ccw', kind: 'ghost', size: 'sm', command: WORKED_STEP_COMMAND, args: [key, 'reset'] });
   again.classList.add('px-af-worked__again');
   again.hidden = true;
 }

@@ -99,13 +99,13 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
     const paused = task.status === 'paused' || task.status === 'blocked';
     const active = !['completed', 'failed', 'cancelled'].includes(task.status);
     if (active && !paused && !task.stopAfterCurrentStep && task.status !== 'awaiting-approval') {
-      createButton(bar, { id: 'agents.run.pause', label: 'Pause', kind: 'secondary', size: 'sm', title: 'Stop after the current step', onClick: () => { void svc.sessions?.requestStopAfterCurrentStep(taskId); } });
+      createButton(bar, { id: 'agents.run.pause', label: 'Pause', icon: 'pause', kind: 'secondary', size: 'sm', title: 'Stop after the current step', onClick: () => { void svc.sessions?.requestStopAfterCurrentStep(taskId); } });
     }
     if (paused) {
-      createButton(bar, { id: 'agents.run.continue', label: 'Continue', kind: 'primary', size: 'sm', onClick: () => { void svc.sessions?.continueTask(taskId).then(() => svc.execution?.runTask(taskId)); } });
+      createButton(bar, { id: 'agents.run.continue', label: 'Continue', icon: 'play', kind: 'primary', size: 'sm', onClick: () => { void svc.sessions?.continueTask(taskId).then(() => svc.execution?.runTask(taskId)); } });
     }
     if (task.status === 'awaiting-approval') {
-      createButton(bar, { id: 'agents.show', command: 'agents.show', label: 'Answer In Agents', kind: 'primary', size: 'sm' });
+      createButton(bar, { id: 'agents.show', command: 'agents.show', label: 'Answer In Agents', icon: 'message-square', kind: 'primary', size: 'sm' });
     }
     if (bar.childElementCount) head.appendChild(bar);
     if (task.blockerReason && paused) {
@@ -201,7 +201,7 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
     });
     row.appendChild(hint);
-    createButton(row, { id: 'agents.run.sendNote', label: 'Send Note', kind: 'secondary', size: 'sm', disabled: !!waiting, onClick: send });
+    createButton(row, { id: 'agents.run.sendNote', label: 'Send Note', icon: 'send', kind: 'secondary', size: 'sm', disabled: !!waiting, onClick: send });
     box.append(input, row);
     return box;
   };

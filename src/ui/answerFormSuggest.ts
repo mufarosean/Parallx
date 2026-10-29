@@ -42,8 +42,8 @@ function hydrateSuggestion(root: HTMLElement, _h: AnswerFormHydration): void {
   const actions = box?.querySelector<HTMLElement>('.px-af-suggest__actions');
   if (!box || !actions) return;
   const task = actions.getAttribute('data-af-task') ?? '';
-  createButton(actions, { id: null, label: 'Make A Mini-App', size: 'sm', command: STAGE_COMMAND, args: [{ text: `Make a mini-app for this: ${task}` }] });
-  createButton(actions, { id: null, label: 'Build An Extension…', size: 'sm', command: STAGE_COMMAND, args: [{ text: `Build an extension for this: ${task}` }] });
+  createButton(actions, { id: null, label: 'Make A Mini-App', icon: 'sparkles', size: 'sm', command: STAGE_COMMAND, args: [{ text: `Make a mini-app for this: ${task}` }] });
+  createButton(actions, { id: null, label: 'Build An Extension…', icon: 'puzzle', size: 'sm', command: STAGE_COMMAND, args: [{ text: `Build an extension for this: ${task}` }] });
   createButton(actions, { id: null, label: 'Not Now', kind: 'ghost', size: 'sm', command: DISMISS_COMMAND, args: [box.getAttribute('data-af-key'), 'dismiss'] });
 }
 

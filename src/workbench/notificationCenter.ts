@@ -100,7 +100,7 @@ export class NotificationCenter extends Disposable {
     header.appendChild(title);
     if (items.length > 0) {
       createButton(header, {
-        id: 'notificationCenter.clearAll', label: 'Clear All', kind: 'ghost', size: 'sm', title: 'Clear every notification.',
+        id: 'notificationCenter.clearAll', label: 'Clear All', icon: 'check-check', kind: 'ghost', size: 'sm', title: 'Clear every notification.',
         onClick: () => { for (const n of items) this._dismissed.add(n.id); this._service.dismissAll(); this._render(); this._onDidChangeUnread.fire(0); },
       });
     }

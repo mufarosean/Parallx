@@ -116,10 +116,11 @@ export function renderHistory(host: HTMLElement, api: ParallxApi, repaint: () =>
   const count = $('span.agents-hist__count');
   count.textContent = unread > 0 ? `${unread} new` : '';
   tools.appendChild(count);
-  createButton(tools, { id: 'autonomyLog.markAllRead', command: 'autonomyLog.markAllRead', label: 'Mark All Read', kind: 'ghost', size: 'sm', disabled: unread === 0, onClick: () => { svc.log?.markRead(); } });
+  createButton(tools, { id: 'autonomyLog.markAllRead', command: 'autonomyLog.markAllRead', label: 'Mark All Read', icon: 'check-check', kind: 'ghost', size: 'sm', disabled: unread === 0, onClick: () => { svc.log?.markRead(); } });
   createButton(tools, {
     id: 'agents.history.clear',
     label: 'Clear…',
+    icon: 'trash-2',
     kind: 'ghost',
     size: 'sm',
     disabled: (svc.log?.size ?? 0) === 0,
@@ -222,6 +223,7 @@ function renderRow(r: IRailRow, api: ParallxApi, repaint: () => void): HTMLEleme
       id: 'agents.history.run.view',
       command: 'chat.openArchivedRun',
       label: 'View Full Run',
+      icon: 'external-link',
       kind: 'ghost',
       size: 'sm',
       onClick: () => {

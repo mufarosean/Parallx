@@ -236,7 +236,7 @@ export function createGeneratePane(container: HTMLElement) {
       if (item.tags.length) meta.push(item.tags.map((t) => `#${t}`).join(' '));
       row.appendChild(el('div', 'ws-list__meta', meta.join(' · ')));
       const entry = { item, titleIn, partIns, dropped: false, row };
-      const dropBtn = createButton(null, { id: null, label: 'Drop', kind: 'ghost', size: 'sm' });
+      const dropBtn = createButton(null, { id: null, label: 'Drop', icon: 'x', kind: 'ghost', size: 'sm' });
       const dropLabel = dropBtn.querySelector('.px-btn__label') as HTMLElement;
       dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;
@@ -248,7 +248,7 @@ export function createGeneratePane(container: HTMLElement) {
       reviewHost.appendChild(row);
     }
 
-    const saveBtn = createButton(null, { id: 'worksheet.generate.save', label: `Save ${items.length} ${items.length === 1 ? 'Item' : 'Items'}`, kind: 'primary' });
+    const saveBtn = createButton(null, { id: 'worksheet.generate.save', label: `Save ${items.length} ${items.length === 1 ? 'Item' : 'Items'}`, icon: 'save', kind: 'primary' });
     saveBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => !r.dropped && r.titleIn.value.trim());

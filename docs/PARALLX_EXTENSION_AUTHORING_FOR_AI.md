@@ -837,8 +837,12 @@ api.ui.createPageHeader(root, {
 });
 
 // Buttons: kind 'primary' | 'secondary' (default) | 'ghost' | 'danger'; size 'md' (28) | 'sm' (24).
+// A button in a toolbar, a row or a card leads with an icon. The words that
+// answer a dialog (Cancel, Close, Done, Save) stay words. A state is a switch
+// (createToggle), never a button whose word flips (Enable / Disable).
+// wordButtonRatchet.test.ts counts the rest per file; the count only falls.
 api.ui.createButton(toolbar, { label: 'Add Account', icon: 'plus', onClick: add });
-api.ui.createButton(row, { label: 'Remove', kind: 'danger', size: 'sm', onClick: remove });
+api.ui.createButton(row, { label: 'Remove', icon: 'trash-2', kind: 'danger', size: 'sm', onClick: remove });
 
 // Toolbar actions are icons with a tooltip (title is required).
 api.ui.createIconButton(toolbar, { icon: 'filter', title: 'Filter', onClick: openFilter });

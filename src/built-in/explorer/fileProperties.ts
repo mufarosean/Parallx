@@ -86,7 +86,7 @@ export function showFileProperties(items: readonly IPropertiesItem[], copyText: 
     return dd;
   };
   const footer = $('div.explorer-properties-footer');
-  createButton(footer, { id: 'explorer.properties.copyPath', label: one ? 'Copy Path' : 'Copy Paths', kind: 'secondary', onClick: () => copyText(items.map((i) => i.path).join('\n')) });
+  createButton(footer, { id: 'explorer.properties.copyPath', label: one ? 'Copy Path' : 'Copy Paths', icon: 'copy', kind: 'secondary', onClick: () => copyText(items.map((i) => i.path).join('\n')) });
   createButton(footer, { id: 'explorer.properties.close', label: 'Close', kind: 'primary', onClick: () => overlay.hide() });
   dialog.append(title, grid, footer);
   overlay.onDidClose(() => overlay.dispose());

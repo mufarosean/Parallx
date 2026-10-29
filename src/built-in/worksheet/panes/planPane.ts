@@ -224,7 +224,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
       });
     }
     if (b.kind === 'session' && !v.done && canStart) {
-      createButton(act, { id: null, label: 'Mark Done', kind: 'ghost', size: 'sm', title: 'When the session ran outside the app, or the tool did not report it.', onClick: () => { void savePlanBlock(day, b.id, { doneAt: Date.now() }); } });
+      createButton(act, { id: null, label: 'Mark Done', icon: 'check', kind: 'ghost', size: 'sm', title: 'When the session ran outside the app, or the tool did not report it.', onClick: () => { void savePlanBlock(day, b.id, { doneAt: Date.now() }); } });
     }
     row.appendChild(act);
     return row;
@@ -319,7 +319,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
         chips.appendChild(el('span', 'ws-chip ws-chip--muted', n === 0 ? 'Not imported' : `${n} ${n === 1 ? 'question' : 'questions'}`));
         box.appendChild(chips);
         const acts = el('div', 'ws-plan__examacts');
-        if (v?.state?.sessionId) createButton(acts, { id: null, label: v.done ? 'Review Exam' : 'Resume Exam', size: 'sm', onClick: () => actions.openQuiz(v.state!.sessionId) });
+        if (v?.state?.sessionId) createButton(acts, { id: null, label: v.done ? 'Review Exam' : 'Resume Exam', icon: v.done ? 'eye' : 'play', size: 'sm', onClick: () => actions.openQuiz(v.state!.sessionId) });
         box.appendChild(acts);
         examsCard.body.appendChild(box);
       }

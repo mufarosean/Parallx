@@ -325,9 +325,9 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
         createSurface(card, { id: 'agents.approval', owner: 'agents', label: `${n.who} wants to ${lowerFirst(n.what)}`, instance: n.requestId });
         const bar = $('div.agents-card__actions');
         const waiting = busy.has(n.requestId);
-        createButton(bar, { id: 'agents.approval.allow', label: 'Allow', kind: 'primary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-once') });
-        createButton(bar, { id: 'agents.approval.allowTask', label: 'Allow This Task', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Don’t ask again until this task finishes', onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-for-task') });
-        createButton(bar, { id: 'agents.approval.reject', label: 'Reject', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'deny') });
+        createButton(bar, { id: 'agents.approval.allow', label: 'Allow', icon: 'check', kind: 'primary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-once') });
+        createButton(bar, { id: 'agents.approval.allowTask', label: 'Allow This Task', icon: 'check-check', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Don’t ask again until this task finishes', onClick: () => resolveApproval(n.taskId, n.requestId, 'approve-for-task') });
+        createButton(bar, { id: 'agents.approval.reject', label: 'Reject', icon: 'x', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => resolveApproval(n.taskId, n.requestId, 'deny') });
         card.appendChild(bar);
         sec.appendChild(card);
       }
@@ -356,13 +356,13 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
         {
           const bar = $('div.agents-card__actions');
           const waiting = busy.has(r.taskId);
-          if (r.kind !== 'run') createButton(bar, { id: 'agents.run.watch', command: 'agents.openRun', label: 'Watch', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
+          if (r.kind !== 'run') createButton(bar, { id: 'agents.run.watch', command: 'agents.openRun', label: 'Watch', icon: 'eye', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
           if (!r.action) { /* waiting on you, or already pausing */ } else if (r.action === 'stop') {
-            createButton(bar, { id: 'agents.run.stop', label: 'Stop', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop this run now', onClick: () => act(r.taskId, async () => { svc.chat?.cancelRequest(r.taskId); }) });
+            createButton(bar, { id: 'agents.run.stop', label: 'Stop', icon: 'square', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop this run now', onClick: () => act(r.taskId, async () => { svc.chat?.cancelRequest(r.taskId); }) });
           } else if (r.action === 'pause') {
-            createButton(bar, { id: 'agents.run.pause', label: 'Pause', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop after the current step', onClick: () => act(r.taskId, () => svc.sessions!.requestStopAfterCurrentStep(r.taskId)) });
+            createButton(bar, { id: 'agents.run.pause', label: 'Pause', icon: 'pause', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop after the current step', onClick: () => act(r.taskId, () => svc.sessions!.requestStopAfterCurrentStep(r.taskId)) });
           } else {
-            createButton(bar, { id: 'agents.run.continue', label: 'Continue', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => act(r.taskId, async () => { await svc.sessions!.continueTask(r.taskId); await svc.execution?.runTask(r.taskId); }) });
+            createButton(bar, { id: 'agents.run.continue', label: 'Continue', icon: 'play', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => act(r.taskId, async () => { await svc.sessions!.continueTask(r.taskId); await svc.execution?.runTask(r.taskId); }) });
           }
           card.appendChild(bar);
         }
@@ -401,7 +401,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     }
 
     const foot = $('div.agents-foot');
-    createButton(foot, { id: 'agents.showHistory', command: 'agents.showHistory', label: 'See All History', kind: 'ghost', size: 'sm', onClick: () => _showTab?.('history') });
+    createButton(foot, { id: 'agents.showHistory', command: 'agents.showHistory', label: 'See All History', icon: 'history', kind: 'ghost', size: 'sm', onClick: () => _showTab?.('history') });
     host.appendChild(foot);
     swap(host);
   }
@@ -484,7 +484,7 @@ function pausedNotice(host: HTMLElement, api: ParallxApi): void {
   const text = $('span.agents-paused__text');
   text.textContent = 'Agents are paused. Nothing runs on its own until Run In The Background is back on.';
   note.appendChild(text);
-  createButton(note, { id: 'agents.paused.openSettings', command: 'agents.openSettings', label: 'Open Settings', kind: 'ghost', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings', 'schema:Agents'); } });
+  createButton(note, { id: 'agents.paused.openSettings', command: 'agents.openSettings', label: 'Open Settings', icon: 'settings', kind: 'ghost', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings', 'schema:Agents'); } });
   host.appendChild(note);
 }
 

@@ -15083,7 +15083,7 @@ function buildVideoPlayer(container, fullPath, ctx, opts = {}) {
     const box = moEl('div', 'mo-player-error');
     box.appendChild(moEl('div', 'mo-player-error-title', { textContent: title }));
     if (detail) box.appendChild(moEl('div', 'mo-player-error-detail', { textContent: detail }));
-    api.ui.createButton(box, { label: 'Open Externally', kind: 'secondary', onClick: () => { window.parallxElectron.shell.openPath(fullPath).catch(() => {}); } });
+    api.ui.createButton(box, { label: 'Open Externally', icon: 'external-link', kind: 'secondary', onClick: () => { window.parallxElectron.shell.openPath(fullPath).catch(() => {}); } });
     stage.appendChild(box);
   }
 
@@ -19604,7 +19604,7 @@ function renderClipProject(container, api, projectId, input) {
     const bar = moEl('div', 'mo-ce-toolbar mo-cs-toolbar');
     const meta = moEl('span', 'mo-ce-meta');
     bar.append(ico('list-video'), moEl('span', 'mo-ce-name', { textContent: 'Sequence' }), meta, moEl('span', 'mo-ce-spacer'));
-    const exportBtn = api.ui.createButton(bar, { id: 'media-organizer.clipProject.exportSequence', label: 'Export Sequence…', kind: 'primary', title: 'Render every clip that is in and join them into one video' });
+    const exportBtn = api.ui.createButton(bar, { id: 'media-organizer.clipProject.exportSequence', label: 'Export Sequence…', icon: 'clapperboard', kind: 'primary', title: 'Render every clip that is in and join them into one video' });
     exportBtn.classList.add('mo-cs-export');
     root.appendChild(bar);
 
@@ -19818,7 +19818,7 @@ function renderClipProject(container, api, projectId, input) {
         // Said where the work is, like the editor's own note: no dialog to dismiss.
         statusEl.textContent = '';
         statusEl.append(moEl('span', 'mo-cs-status-text', { textContent: `Exported ${outName}${sizeText}`, title: out }));
-        api.ui.createButton(statusEl, { id: 'media-organizer.clipProject.showInFolder', label: 'Show in Folder', kind: 'ghost', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(out); } catch { /* ignore */ } } });
+        api.ui.createButton(statusEl, { id: 'media-organizer.clipProject.showInFolder', label: 'Show in Folder', icon: 'folder-open', kind: 'ghost', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(out); } catch { /* ignore */ } } });
         if (api.statusBar) api.statusBar.setMessage(`Sequence exported: ${outName}`, 4000);
       } catch (err) {
         if (scope.cancelled) {
@@ -21302,7 +21302,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const queueBadge = moEl('span', 'mo-ce-badge', { textContent: '0' });
   queueToggle.appendChild(queueBadge);
   const exportSplit = moEl('span', 'mo-ce-split');
-  const exportBtn = api.ui.createButton(exportSplit, { id: 'media-organizer.clipEditor.export', label: 'Export…', kind: 'primary', title: 'Export the clip, or every queued clip' });
+  const exportBtn = api.ui.createButton(exportSplit, { id: 'media-organizer.clipEditor.export', label: 'Export…', icon: 'download', kind: 'primary', title: 'Export the clip, or every queued clip' });
   // The button's words: what it does, then the estimate, quieter. A progress
   // fill (--mo-ce-progress) runs under them while a clip renders.
   const estimateEl = moEl('span', 'mo-ce-btn-sub');
@@ -21629,11 +21629,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   api.ui.createIconButton(queuePanelHead, { id: 'media-organizer.clipEditor.queue.close', icon: 'x', size: 'sm', title: 'Close the queue', onClick: () => setQueueOpen(false) });
   const queuePanelBody = moEl('div', 'mo-ce-queue-body');
   const queueFoot = moEl('div', 'mo-ce-queue-foot');
-  const queueUpdateBtn = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.update', label: 'Update Clip', title: 'Replace the clip being edited with the current settings (Q)', onClick: () => addBtn.click() });
-  const queueStopBtn = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.stopEditing', label: 'Stop Editing', kind: 'ghost', title: 'Stop editing this clip (settings stay as they are)', onClick: () => stopEditBtn.click() });
+  const queueUpdateBtn = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.update', label: 'Update Clip', icon: 'refresh-cw', title: 'Replace the clip being edited with the current settings (Q)', onClick: () => addBtn.click() });
+  const queueStopBtn = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.stopEditing', label: 'Stop Editing', icon: 'x', kind: 'ghost', title: 'Stop editing this clip (settings stay as they are)', onClick: () => stopEditBtn.click() });
   const queueSize = moEl('span', 'mo-ce-sum mo-ce-sum--left');
   queueFoot.append(moEl('span', 'mo-ce-spacer'), queueSize);
-  const queueExportAll = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.exportAll', label: 'Export All…', kind: 'primary', title: 'Export every queued clip into one folder', onClick: () => exportBtn.click() });
+  const queueExportAll = api.ui.createButton(queueFoot, { id: 'media-organizer.clipEditor.queue.exportAll', label: 'Export All…', icon: 'download', kind: 'primary', title: 'Export every queued clip into one folder', onClick: () => exportBtn.click() });
   queuePanel.append(queuePanelHead, queuePanelBody, queueFoot);
   function syncQueueFoot() {
     const editing = editingId != null && clipQueue.some((x) => x.id === editingId);
@@ -23689,7 +23689,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   zoomSlider.className = 'mo-clip-slider'; zoomSlider.title = 'Timeline zoom';
   zoomRow.appendChild(zoomSlider); moDeclare(zoomSlider, 'media-organizer.clipEditor.timeline.zoom', { label: 'Timeline zoom' });
   const zoomInBtn = api.ui.createIconButton(zoomRow, { id: 'media-organizer.clipEditor.timeline.zoomIn', icon: 'zoom-in', size: 'sm', title: 'Zoom in (Ctrl+scroll on the timeline)' });
-  api.ui.createButton(zoomRow, { id: 'media-organizer.clipEditor.timeline.fit', label: 'Fit', kind: 'ghost', size: 'sm', title: 'Show the whole video', onClick: () => setZoom(1) });
+  api.ui.createButton(zoomRow, { id: 'media-organizer.clipEditor.timeline.fit', label: 'Fit', icon: 'maximize', kind: 'ghost', size: 'sm', title: 'Show the whole video', onClick: () => setZoom(1) });
 
   function setZoom(z, anchorT) {
     const anchor = anchorT == null ? preview.currentTime : anchorT;
@@ -25156,7 +25156,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // \u2014 in/out times can therefore exceed the source duration; we clamp at
   // load. Save uses whatever is currently in the queue.
   const presetsRow = moEl('div', 'mo-clip-presets-row');
-  const saveBtn = api.ui.createButton(queueSaveSlot, { id: 'media-organizer.clipEditor.queue.savePreset', label: 'Save as Preset…', kind: 'ghost', size: 'sm', title: 'Save the queued clips as a named preset' });
+  const saveBtn = api.ui.createButton(queueSaveSlot, { id: 'media-organizer.clipEditor.queue.savePreset', label: 'Save as Preset…', icon: 'bookmark-plus', kind: 'ghost', size: 'sm', title: 'Save the queued clips as a named preset' });
   presetsRow.appendChild(moEl('span', 'mo-ce-group-title', { textContent: 'Presets' }));
   const presetsHost = moEl('div');
   presetsHost.style.display = 'flex';
@@ -25260,7 +25260,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const secQueue = addSection('queue', 'Queue');
   popFoot.appendChild(addBtn);
   popFoot.appendChild(moEl('span', 'mo-ce-spacer'));
-  api.ui.createButton(popFoot, { id: 'media-organizer.clipEditor.exportPopover.export', label: 'Export…', kind: 'primary', title: 'Export now with these settings', onClick: () => { setPopOpen(false); exportBtn.click(); } });
+  api.ui.createButton(popFoot, { id: 'media-organizer.clipEditor.exportPopover.export', label: 'Export…', icon: 'download', kind: 'primary', title: 'Export now with these settings', onClick: () => { setPopOpen(false); exportBtn.click(); } });
 
   secQueue.appendChild(queueWrap);
 
@@ -36327,7 +36327,7 @@ function renderImageEditor(container, api) {
   });
   // Save: Save As Copy is the safe main action; Save Over Original… is in its menu, in red, and still asks.
   const saveSplit = moEl('span', 'mo-edit-split');
-  const saveBtn = api.ui.createButton(saveSplit, { id: 'media-organizer.imageEditor.saveCopy', label: 'Save As Copy', kind: 'primary', size: 'sm', title: 'Write the edited picture beside the original (Ctrl+S)', onClick: () => void saveCopy() });
+  const saveBtn = api.ui.createButton(saveSplit, { id: 'media-organizer.imageEditor.saveCopy', label: 'Save As Copy', icon: 'copy', kind: 'primary', size: 'sm', title: 'Write the edited picture beside the original (Ctrl+S)', onClick: () => void saveCopy() });
   const saveMenuBtn = api.ui.createIconButton(saveSplit, { id: 'media-organizer.imageEditor.saveOptions', icon: 'chevron-down', size: 'sm', title: 'Save options' });
   saveMenuBtn.classList.add('mo-edit-split-menu');
   saveMenuBtn.addEventListener('click', () => {
@@ -37100,7 +37100,7 @@ function renderImageEditor(container, api) {
       }
       const others = openSection(panelBody, 'remove-others', 'Other Photos');
       others.appendChild(hint('The same mark on other photos? Find it there and remove it the same way. You choose the photos and see every find before anything changes.'));
-      const bulk = api.ui.createButton(null, { id: 'media-organizer.imageEditor.removeFromOthers', label: 'Remove From Other Photos…', kind: 'primary', size: 'sm', onClick: () => removeFromOthers() });
+      const bulk = api.ui.createButton(null, { id: 'media-organizer.imageEditor.removeFromOthers', label: 'Remove From Other Photos…', icon: 'eraser', kind: 'primary', size: 'sm', onClick: () => removeFromOthers() });
       bulk.disabled = !moEditShownRemovals(r).length;
       bulk.title = bulk.disabled ? 'Remove a mark on this photo first' : 'Look for these marks in other photos and remove them there too';
       others.appendChild(row(bulk));
@@ -37131,7 +37131,7 @@ function renderImageEditor(container, api) {
         card.appendChild(hint(`Downloading · ${Math.round(state.download.received / 1048576)} of ${mb} MB`));
         card.appendChild(row(textBtn('Cancel Download', () => void moBridge()?.invoke('models:cancelDownload', MO_EDIT_REMOVE_MODEL.sha256))));
       } else {
-        card.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.imageEditor.downloadModel', label: 'Download', kind: 'primary', size: 'sm', onClick: () => void downloadModel() }), textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
+        card.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.imageEditor.downloadModel', label: 'Download', icon: 'download', kind: 'primary', size: 'sm', onClick: () => void downloadModel() }), textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
         if (state.downloadError) card.appendChild(hint(state.downloadError));
       }
     } else {
@@ -37201,7 +37201,7 @@ function renderImageEditor(container, api) {
       }
     } else s.appendChild(hint('Choose 2× or 4× to make the saved copy larger and sharper.'));
     s.appendChild(hint(`Enhance runs SeedVR2 on this computer's graphics card. It is fastest with about 21 GB of its memory free; with less (a loaded Ollama model, say) it still runs, more slowly.`));
-    s.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.enhance.removeEngine', label: 'Remove the Enhance Engine…', kind: 'ghost', size: 'sm', command: 'media-organizer.enhance.removeEngine' })));
+    s.appendChild(row(api.ui.createButton(null, { id: 'media-organizer.enhance.removeEngine', label: 'Remove the Enhance Engine…', icon: 'trash-2', kind: 'ghost', size: 'sm', command: 'media-organizer.enhance.removeEngine' })));
   }
   // The enlarged picture, on the stage at 100%: drag (scroll) to look around.
   const previewEl = moEl('div', 'mo-edit-preview mo-hidden');
@@ -37457,7 +37457,7 @@ function renderImageEditor(container, api) {
     toast.innerHTML = '';
     toast.append(moEl('span', 'mo-edit-ico mo-edit-toast-ok', { innerHTML: moIcon('check', 14) }), moEl('span', 'mo-edit-toast-text', { textContent: text, title: path || '' }));
     if (path) api.ui.createButton(toast, { id: 'media-organizer.imageEditor.toast.showInFolder', label: 'Show in Folder', icon: 'folder-open', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(path); } catch { /* ignore */ } } });
-    if (photoId) api.ui.createButton(toast, { id: 'media-organizer.imageEditor.toast.open', label: 'Open', size: 'sm', onClick: () => void openPhotoTab(photoId, (path || '').split(/[\\/]/).pop()) });
+    if (photoId) api.ui.createButton(toast, { id: 'media-organizer.imageEditor.toast.open', label: 'Open', icon: 'external-link', size: 'sm', onClick: () => void openPhotoTab(photoId, (path || '').split(/[\\/]/).pop()) });
     api.ui.createIconButton(toast, { id: 'media-organizer.imageEditor.toast.close', icon: 'x', size: 'sm', title: 'Close', onClick: () => toast.classList.add('mo-hidden') });
     toast.classList.remove('mo-hidden');
     clearTimeout(toastTimer);

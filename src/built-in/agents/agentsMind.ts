@@ -85,7 +85,7 @@ export function renderMind(host: HTMLElement, api: ParallxApi, repaint: () => vo
       const text = $('span.agents-mind__text'); text.textContent = b.content;
       row.append(bar, text);
       createButton(row, {
-        id: 'agents.belief.forget', command: 'parallx.mind.forget', label: 'Forget', kind: 'ghost', size: 'sm', title: 'Tell the agent this is wrong',
+        id: 'agents.belief.forget', command: 'parallx.mind.forget', label: 'Forget', icon: 'eraser', kind: 'ghost', size: 'sm', title: 'Tell the agent this is wrong',
         onClick: () => { void api.commands.executeCommand('parallx.mind.forget', { id: b.id }).then(repaint).catch(() => undefined); },
       });
       sec.appendChild(row);
@@ -93,7 +93,7 @@ export function renderMind(host: HTMLElement, api: ParallxApi, repaint: () => vo
     if (beliefs.length) {
       const foot = $('div.agents-rt__add');
       createButton(foot, {
-        id: 'agents.mind.forgetAll', label: `Forget All ${beliefs.length}…`, kind: 'ghost', size: 'sm',
+        id: 'agents.mind.forgetAll', label: `Forget All ${beliefs.length}…`, icon: 'eraser', kind: 'ghost', size: 'sm',
         onClick: () => {
           void showConfirmModal(document.body, { message: `Forget all ${beliefs.length} of the agent’s beliefs?`, detail: 'This can’t be undone.', confirmLabel: 'Forget All', danger: true })
             .then((ok) => { if (ok) void api.commands.executeCommand('parallx.mind.clearAll').then(repaint).catch(() => undefined); });
@@ -147,13 +147,13 @@ function renderAllowed(host: HTMLElement, repaint: () => void): void {
     w.textContent = `Approved ${appDateString(new Date(p.approvedAt))} · used ${p.matchCount} time${p.matchCount === 1 ? '' : 's'}`;
     text.append(n, w);
     row.appendChild(text);
-    createButton(row, { id: 'agents.allowed.revoke', label: 'Revoke', kind: 'ghost', size: 'sm', title: 'Ask again next time', onClick: () => { void svc.patterns?.revoke(p.id).then(repaint); } });
+    createButton(row, { id: 'agents.allowed.revoke', label: 'Revoke', icon: 'shield-off', kind: 'ghost', size: 'sm', title: 'Ask again next time', onClick: () => { void svc.patterns?.revoke(p.id).then(repaint); } });
     sec.appendChild(row);
   }
   if (patterns.length > 1) {
     const foot = $('div.agents-rt__add');
     createButton(foot, {
-      id: 'agents.mind.revokeAll', label: 'Revoke All…', kind: 'ghost', size: 'sm',
+      id: 'agents.mind.revokeAll', label: 'Revoke All…', icon: 'shield-off', kind: 'ghost', size: 'sm',
       onClick: () => {
         void showConfirmModal(document.body, { message: 'Revoke every standing approval?', confirmLabel: 'Revoke All', danger: true })
           .then((ok) => { if (ok) void svc.patterns?.clear().then(repaint); });

@@ -95,7 +95,7 @@ export function createSettingsPane(container: HTMLElement) {
         sync();
       });
       const start = createButton(null, {
-        id: 'worksheet.settings.startCampaign', label: 'Start Campaign', kind: 'primary', disabled: problems.length === 0,
+        id: 'worksheet.settings.startCampaign', label: 'Start Campaign', icon: 'flag', kind: 'primary', disabled: problems.length === 0,
         title: problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, every one but the essay sheets, from today.`,
         onClick: () => { void startCampaign(planCampaign(problems.length, readDays(), Date.now(), [...rest])); },
       });
@@ -119,7 +119,7 @@ export function createSettingsPane(container: HTMLElement) {
       const p = campaignProgress(campaign, items, attempts);
       const off = restDaysLabel(campaign.restDays);
       const end = createButton(null, {
-        id: 'worksheet.settings.endCampaign', label: 'End Campaign…', kind: 'danger',
+        id: 'worksheet.settings.endCampaign', label: 'End Campaign…', icon: 'flag-off', kind: 'danger',
         title: 'Stops the campaign. Ratings and attempts stay; the streak, XP and draws are dropped.',
         onClick: () => {
           void (async () => {
@@ -145,7 +145,7 @@ export function createSettingsPane(container: HTMLElement) {
     examIn.addEventListener('change', () => { void setExamDate(examIn.value).then(() => render()); });
     declareControl(examIn, { id: 'worksheet.settings.examDate', label: 'Exam date', kind: 'input', state: () => ({ kind: 'value', value: examIn.value }) });
     examWrap.appendChild(examIn);
-    if (getExamDate()) createButton(examWrap, { id: 'worksheet.settings.clearExamDate', label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { void setExamDate('').then(() => render()); } });
+    if (getExamDate()) createButton(examWrap, { id: 'worksheet.settings.clearExamDate', label: 'Clear', icon: 'x', kind: 'ghost', size: 'sm', onClick: () => { void setExamDate('').then(() => render()); } });
     row(camp, 'Exam date', 'The Dashboard counts down to it.', examWrap, examIn.id);
 
     // XP as cash: what the campaign's points are worth, paid to yourself.
