@@ -313,7 +313,8 @@ async function touchDead() {
       const s = e.closest('[data-px-surface]');
       const cls = typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/)[0] : '';
       const label = (e.getAttribute('aria-label') || e.getAttribute('title') || '').trim().slice(0, 30);
-      out.push({ n: n++, hover, sig: `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : cls}${label ? ` "${label}"` : ''}`,
+      out.push({ n: n++, hover, key: { surface: s ? s.getAttribute('data-px-surface') : null, tag: e.tagName.toLowerCase(), cls: cls.slice(1), label },
+        sig: `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : cls}${label ? ` "${label}"` : ''}`,
         x: r.left + r.width / 2, y: r.top + r.height / 2, drag, axis: /col|ew|^[ew]-/.test(cur) ? 'x' : /row|ns|^[ns]-/.test(cur) ? 'y' : 'xy', canvas: e.tagName === 'CANVAS' });
     }
     return out;
@@ -328,6 +329,23 @@ async function touchDead() {
       const at = await page.evaluate((n) => { const e = document.querySelector(`[data-touch-cand="${n}"]`); if (!e) return null; const r = e.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = document.elementFromPoint(x, y); return r.width >= 3 && r.height >= 3 && top && (top === e || e.contains(top)) ? { x, y } : null; }, c.n);
       if (!at) continue;
       c.x = at.x; c.y = at.y;
+    }
+    if (!c.hover) {
+      // An earlier drag may have rebuilt the handles (an image editor redraws
+      // them after every change): find this one again where it is now, so
+      // the finger and the mouse both press the handle, not where it was.
+      const now = await page.evaluate(({ n, key }) => {
+        let e = document.querySelector(`[data-touch-cand="${n}"]`);
+        if (!e) {
+          const scope = (key.surface && document.querySelector(`[data-px-surface="${key.surface}"]`)) || document;
+          e = Array.from(scope.querySelectorAll(key.tag)).find((x) => (!key.cls || x.classList.contains(key.cls)) && (x.getAttribute('aria-label') || x.getAttribute('title') || '').trim().slice(0, 30) === key.label && x.getClientRects().length) ?? null;
+        }
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }, c);
+      if (!now) continue;
+      c.x = now.x; c.y = now.y;
     }
     touchTried.add(c.sig);
     // What changed on the page: DOM churn, a drag begun, a canvas redrawn.

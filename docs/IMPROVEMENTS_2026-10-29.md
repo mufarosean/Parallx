@@ -392,7 +392,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **The Tools page as cards with categories; the empty editor shows Start;
   Ctrl+P finds settings, tools and themes.** IDEAS. Open.
 - **Activity bar redesign:** 7 mockups, none chosen. Oct 17.
-- **Version number:** the shell says 0.2.0, `package.json` says 0.1.0. APP. Open.
+- **Version number:** the shell says 0.2.0, `package.json` says 0.1.0. APP.
+  Done Oct 29: the shell is package.json's version, held by a test.
 - **Twenty shipped themes, contrast-checked.** IDEAS. Open.
 
 ### Accessibility
@@ -412,7 +413,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Crash dumps, Copy Diagnostics, timing budgets.** RESEARCH. Open. Long
   probe runs here hit an intermittent Electron crash (this session); untraced.
 - **An embedding call every 30 seconds from an unknown source.** Mindmap
-  (Sep 15). Never traced.
+  (Sep 15). Not traced (needs your setup). Since Oct 29 a question asked
+  again (a dashboard saved query, say) reuses its vector instead of calling
+  Ollama, which removes one likely cause.
 - **The GPU driver reset that crashed the whole PC.** Mindmap (Sep 15).
   Suggestions made; unclear.
 - **Splits:**
