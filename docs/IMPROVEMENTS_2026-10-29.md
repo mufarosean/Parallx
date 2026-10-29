@@ -193,7 +193,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   quality becomes numbers. IDEAS. Open.
 - **PDF Ask sees the whole page**, with the file name and retrieval limited to
   that file; today it gets only the selected sentence. IDEAS. Open.
-- **Find in Files reads PDF, Word and Excel.** IDEAS. Open (`.pdf` still binary).
+- **Find in Files reads PDF, Word and Excel.** IDEAS. Done Oct 29: documents
+  are searched through the same text extraction the AI uses, a PDF's matches
+  say and open their page; each document is read again only when it changes.
 - **Modern local model defaults chosen by GPU memory** (today a 2024 32B model).
   RESEARCH #2. Open.
 - **Warn when a context size leaves too little GPU memory.** Mindmap (Sep 15).

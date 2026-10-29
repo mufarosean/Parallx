@@ -15,7 +15,9 @@ import { declareControl, createList, sceneSlug } from '../../ui/kit.js';
 import './search.css';
 
 import { SEARCH_EMPTY_STATES } from './searchEmptyStates.js';
-import { buildGlobMatcher, buildSearchRegex, getExtension, type SearchRegexOptions } from './searchPatterns.js';
+import { SearchDocumentReader, type IDocumentTextSource, type ISearchLine } from './searchDocuments.js';
+import { IFileService } from '../../services/serviceTypes.js';
+import { BINARY_EXTENSIONS, EXCLUDED_DIRS, buildGlobMatcher, buildSearchRegex, getExtension, type SearchRegexOptions } from './searchPatterns.js';
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -38,7 +40,7 @@ interface ParallxApi {
     readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly fs?: {
       readFile(uri: string): Promise<{ content: string; encoding: string }>;
-      readdir(uri: string): Promise<{ name: string; type: number }[]>;
+      readdir(uri: string): Promise<{ name: string; type: number; size?: number; mtime?: number }[]>;
       exists(uri: string): Promise<boolean>;
     };
     getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined; has(key: string): boolean };
@@ -47,8 +49,9 @@ interface ParallxApi {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
   editors: {
-    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: { line?: number; page?: number } }): Promise<void>;
   };
+  services?: { has(id: unknown): boolean; get<T>(id: unknown): T };
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -59,23 +62,6 @@ const MAX_RESULTS_PER_FILE = 999;
 const FILE_SCAN_DEPTH = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 const CONTEXT_CHARS = 60;
-
-/** Directories excluded from recursive scanning. */
-const EXCLUDED_DIRS = new Set([
-  'node_modules', '.git', '__pycache__', 'dist', 'build', '.next',
-  '.svn', '.hg', 'coverage', '.nyc_output', 'out', '.cache',
-]);
-
-/** Binary file extensions to skip when reading content. */
-const BINARY_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.webp',
-  '.mp3', '.mp4', '.wav', '.ogg', '.avi', '.mov', '.mkv', '.webm',
-  '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
-  '.woff', '.woff2', '.ttf', '.eot', '.otf',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
-  '.sqlite', '.db', '.lock',
-]);
 
 // ─── Search Result Model ─────────────────────────────────────────────────────
 
@@ -88,6 +74,8 @@ interface SearchMatch {
   matchLength: number;
   /** The full line text (trimmed for display) */
   lineText: string;
+  /** In a PDF: the page the line is on (1-based). */
+  page?: number;
 }
 
 interface FileResult {
@@ -106,6 +94,8 @@ interface SearchOptions extends SearchRegexOptions {
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let _api: ParallxApi;
+/** Reads PDF, Word, Excel and other documents' text for Find in Files (searchDocuments.ts). */
+let _docs: SearchDocumentReader | undefined;
 let _context: ToolContext;
 
 // Search state
@@ -135,6 +125,7 @@ let _toggleReplaceBtn: HTMLElement | null = null;
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   _api = api;
+  _docs = api.services?.has(IFileService) ? new SearchDocumentReader(api.services.get<IDocumentTextSource>(IFileService)) : undefined;
   _context = context;
 
   // Restore saved search options
@@ -514,9 +505,9 @@ async function searchDirectory(
           includeMatcher, excludeMatcher, depth + 1, version, onFile,
         );
       } else if (entry.type === FILE_TYPE_FILE) {
-        // Skip binary files
+        // Skip binary files, except the documents whose text can be read
         const ext = getExtension(entry.name);
-        if (BINARY_EXTENSIONS.has(ext)) continue;
+        if (BINARY_EXTENSIONS.has(ext) && !_docs?.isDocument(ext)) continue;
 
         // Apply include/exclude filters
         if (includeMatcher && !includeMatcher(childRelative)) continue;
@@ -525,7 +516,7 @@ async function searchDirectory(
         onFile();
 
         // Search file content
-        await searchFile(childUri, childRelative, entry.name, regex, version);
+        await searchFile(childUri, childRelative, entry.name, regex, version, entry);
       }
     }
   } catch (err) {
@@ -540,6 +531,7 @@ async function searchFile(
   fileName: string,
   regex: RegExp,
   version: number,
+  stamp: { mtime?: number; size?: number } = {},
 ): Promise<void> {
   if (_searchVersion !== version) return;
 
@@ -547,17 +539,22 @@ async function searchFile(
   if (!fs) return;
 
   try {
-    const { content } = await fs.readFile(uri);
-    if (_searchVersion !== version) return;
-
-    // Skip files that appear to be binary (null bytes in first 512 chars)
-    if (content.length > 0 && content.slice(0, 512).includes('\0')) return;
-
-    const lines = content.split('\n');
+    let lines: ISearchLine[];
+    if (_docs?.isDocument(getExtension(fileName))) {
+      const doc = await _docs.read(uri, stamp);
+      if (!doc || _searchVersion !== version) return;
+      lines = doc;
+    } else {
+      const { content } = await fs.readFile(uri);
+      if (_searchVersion !== version) return;
+      // Skip files that appear to be binary (null bytes in first 512 chars)
+      if (content.length > 0 && content.slice(0, 512).includes('\0')) return;
+      lines = content.split('\n').map((text) => ({ text }));
+    }
     const matches: SearchMatch[] = [];
 
     for (let i = 0; i < lines.length && matches.length < MAX_RESULTS_PER_FILE; i++) {
-      const line = lines[i];
+      const line = lines[i].text;
       // Reset regex for each line (for global flag)
       regex.lastIndex = 0;
       let match: RegExpExecArray | null;
@@ -569,6 +566,7 @@ async function searchFile(
           column: match.index,
           matchLength: match[0].length,
           lineText: line,
+          page: lines[i].page,
         });
 
         // Avoid infinite loop with zero-length matches
@@ -717,7 +715,7 @@ function renderFileGroup(fileResult: FileResult): HTMLElement {
     matchEl.className = 'search-match-item';
     matchEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      openResult(fileResult.uri, match.line, match.column);
+      openResult(fileResult.uri, match);
     });
 
     // Render line text with match highlighting
@@ -748,7 +746,7 @@ function renderMatchLine(container: HTMLElement, match: SearchMatch): void {
   // Line number
   const lineNum = $('span');
   lineNum.className = 'search-match-line-num';
-  lineNum.textContent = String(match.line + 1);
+  lineNum.textContent = match.page ? `p. ${match.page}` : String(match.line + 1);
   container.appendChild(lineNum);
 
   // Text before match
@@ -781,10 +779,10 @@ function getFileIcon(fileName: string): string {
   return getFileTypeIcon(normalized);
 }
 
-async function openResult(uri: string, _line: number, _column: number): Promise<void> {
+async function openResult(uri: string, match: SearchMatch): Promise<void> {
   try {
-    await _api.editors.openFileEditor(uri, { pinned: false });
-    // TODO: scroll to line when editor supports it
+    // At the match: a PDF's page, a text file's line.
+    await _api.editors.openFileEditor(uri, { pinned: false, reveal: match.page ? { page: match.page } : { line: match.line + 1 } });
   } catch (err) {
     console.error('[Search] Failed to open file:', err);
   }

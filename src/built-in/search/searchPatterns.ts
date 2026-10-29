@@ -89,3 +89,20 @@ export function getExtension(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
   return dot >= 0 ? fileName.slice(dot).toLowerCase() : '';
 }
+
+/** Directories excluded from recursive scanning. */
+export const EXCLUDED_DIRS = new Set([
+  'node_modules', '.git', '__pycache__', 'dist', 'build', '.next',
+  '.svn', '.hg', 'coverage', '.nyc_output', 'out', '.cache',
+]);
+
+/** Binary file extensions to skip when reading content. */
+export const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.svg', '.webp',
+  '.mp3', '.mp4', '.wav', '.ogg', '.avi', '.mov', '.mkv', '.webm',
+  '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
+  '.woff', '.woff2', '.ttf', '.eot', '.otf',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
+  '.sqlite', '.db', '.lock',
+]);
