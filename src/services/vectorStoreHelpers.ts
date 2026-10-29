@@ -30,6 +30,14 @@ export function toBoolean(value: number | boolean | null | undefined): boolean |
   return typeof value === 'boolean' ? value : value !== 0;
 }
 
+/**
+ * The least cosine similarity a chunk needs to reach the AI, unless AI
+ * Settings say otherwise (retrieval.minRelevance). A starting point for
+ * nomic-embed-text v1.5, not a measured one: each search's trace records the
+ * best similarity it saw, so the floor can be tuned against real questions.
+ */
+export const DEFAULT_MIN_RELEVANCE = 0.5;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -152,34 +160,6 @@ export function sanitizeFts5Query(query: string): string {
 }
 
 /**
- * Sanitize query with OR semantics for FTS5 fallback.
- * Used when AND returns too few results.
- *
- * OR semantics match documents containing ANY of the terms,
- * providing broader recall at the cost of precision.
- */
-export function sanitizeFts5QueryOr(query: string): string {
-  const cleaned = query
-    .replace(/[*"():^~{}[\]]/g, ' ')
-    .trim();
-
-  if (!cleaned) { return ''; }
-
-  const allTerms = cleaned.split(/\s+/).filter(Boolean);
-  if (allTerms.length === 0) { return ''; }
-
-  const contentTerms = allTerms.filter((t) => !isStopword(t));
-  const terms = contentTerms.length > 0 ? contentTerms : allTerms;
-
-  if (terms.length === 1) {
-    return `"${terms[0]}"`;
-  }
-
-  // OR semantics — explicit OR keyword between quoted terms
-  return terms.map((t) => `"${t}"`).join(' OR ');
-}
-
-/**
  * Reciprocal Rank Fusion — merges multiple ranked result lists.
  *
  * Formula: RRF(d) = Σ 1/(k + rank(d))
@@ -214,6 +194,7 @@ export function reciprocalRankFusion(
           chunkText: row.chunk_text,
           contextPrefix: row.context_prefix,
           score: contribution,
+          similarity: typeof row.distance === 'number' ? 1 - row.distance : undefined,
           sources: [listName],
           headingPath: row.heading_path,
           parentHeadingPath: row.parent_heading_path,

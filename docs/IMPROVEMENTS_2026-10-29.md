@@ -44,18 +44,31 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
    - "What changed since your last turn" is sent each turn.
 
 2. **Answers grounded in your own material, with no invention.**
-   - Fix the RAG engine first:
-     - add a cosine relevance gate, so "nothing found" can happen;
-     - use one threshold, not four (the 0.3 default retrieves nothing);
-     - stop the keyword search falling back to OR;
-     - keep the embedding model loaded.
-   - Then a newer embedding model (qwen3-embedding 0.6B or bge-m3) as its own
-     re-index step.
-   - Read whole source sections, cite document and page, and let chunks
-     remember their PDF page.
+   Done, waiting on a test with your local model:
+   - A relevance floor: a passage reaches the AI only when its meaning is
+     close enough to the question (cosine similarity, AI Settings, Retrieval,
+     `retrieval.minRelevance`, default 0.5). Keyword hits are measured the
+     same way, so "nothing in your material covers this" can now happen. The
+     relevance the AI sees next to each passage is that similarity, not a
+     rank score.
+   - One threshold. The old ones were a floor on rank scores that never pass
+     0.04; the 0.3 that config.json and the settings page carried retrieved
+     nothing at all. They are gone, and memory recall uses the same floor.
+   - Keyword search needs every word of the question; the OR fallback is gone.
+   - The embedding model stays loaded 30 minutes, like the chat model.
+   - To tune: the retrieval trace records the best similarity of each search
+     (`bestSimilarity`). If good passages are missed, lower the floor; if
+     off-topic ones get through, raise it. 0.5 is a starting point for
+     nomic-embed-text, not a measured one.
+   Already there: chunks carry their PDF page ("PDF page: page 13 of 30"),
+   `fs_read_file` with `query` reads the passages of a document, and citations
+   are checked labels that link to the spot.
+   Open:
+   - a newer embedding model (qwen3-embedding 0.6B or bge-m3), as its own
+     re-index step: both are 1024-wide, so the index table changes;
+   - read whole source sections around a hit.
 
    Raised: Mindmap print calibration (Oct 23), Backlog review (Aug 29), IDEAS.
-   Open.
 3. **No hidden limits.** The 8K Auto context cap was found on Oct 4 and its fix
    was still in progress when that session ended. Study was capped at 64K and the
    context pill went stale (both fixed). Check that nothing else caps context

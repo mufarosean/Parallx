@@ -90,25 +90,19 @@ describe('RetrievalService', () => {
       expect(results[0].sourceType).toBe('page_block');
     });
 
-    it('filters out results below minScore', async () => {
+    it('a chunk\'s score is its similarity to the query, in the store\'s order', async () => {
       vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, score: 0.05 }),
-        makeResult({ rowid: 2, score: 0.001, chunkText: 'low score' }),
+        makeResult({ rowid: 1, score: 0.032, similarity: 0.71 }),
+        makeResult({ rowid: 2, score: 0.016, similarity: 0.78, chunkText: 'ranked lower by fusion' }),
       ]);
 
       const results = await service.retrieve('query');
-      expect(results).toHaveLength(1);
-      expect(results[0].score).toBeGreaterThanOrEqual(0.01);
+      expect(results.map((r) => r.score)).toEqual([0.71, 0.78]);
     });
 
-    it('respects custom minScore option', async () => {
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, score: 0.05 }),
-        makeResult({ rowid: 2, score: 0.02 }),
-      ]);
-
-      const results = await service.retrieve('query', { minScore: 0.04 });
-      expect(results).toHaveLength(1);
+    it('passes a custom relevance floor to the store', async () => {
+      await service.retrieve('query', { minRelevance: 0.6 });
+      expect(vectorStore.search).toHaveBeenCalledWith(expect.any(Array), 'query', expect.objectContaining({ minRelevance: 0.6 }));
     });
 
     it('passes sourceFilter to VectorStoreService', async () => {
@@ -151,27 +145,24 @@ describe('RetrievalService', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('reads topK and minScore from config provider', async () => {
+    it('reads topK and the relevance floor from config, and gives the floor to the store for every search', async () => {
+      let floor = 0.55;
+      const setMinRelevance = vi.fn();
+      (vectorStore as unknown as { setMinRelevance: typeof setMinRelevance }).setMinRelevance = setMinRelevance;
       service.setConfigProvider({
-        getEffectiveConfig: () => ({
-          retrieval: {
-            ragTopK: 5,
-            ragScoreThreshold: 0.05,
-          },
-        }),
+        getEffectiveConfig: () => ({ retrieval: { ragTopK: 5, ragMinRelevance: floor } }),
       });
-      vectorStore.search.mockResolvedValue([
-        makeResult({ rowid: 1, score: 0.06 }),
-        makeResult({ rowid: 2, score: 0.03 }),
-      ]);
 
-      const results = await service.retrieve('query');
-      expect(results).toHaveLength(1); // 0.03 < minScore 0.05
+      await service.retrieve('query');
       expect(vectorStore.search).toHaveBeenCalledWith(
         expect.any(Array),
         'query',
-        expect.objectContaining({ topK: 5 }),
+        expect.objectContaining({ topK: 5, minRelevance: 0.55 }),
       );
+      // Memory recall searches the store directly; it reads the same setting, live.
+      const get = setMinRelevance.mock.calls[0][0] as () => number;
+      floor = 0.7;
+      expect(get()).toBe(0.7);
     });
 
     it('excludes .parallx internal artifacts from generic retrieval by default', async () => {
@@ -219,8 +210,8 @@ describe('RetrievalService', () => {
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, sourceId: 'policy', score: 0.12, chunkText: 'Collision deductible is $500.' }),
         makeResult({ rowid: 2, sourceId: 'contacts', score: 0.05, chunkText: 'Agent contact details.' }),
-        makeResult({ rowid: 3, sourceId: 'noise', score: 0.005, chunkText: 'Irrelevant noise.' }),
       ]);
+      (vectorStore as unknown as { getLastSearchTrace(): unknown }).getLastSearchTrace = () => ({ minRelevance: 0.5, bestSimilarity: 0.82 });
 
       await service.retrieve('collision deductible', { topK: 5 });
       const trace = service.getLastTrace();
@@ -228,9 +219,9 @@ describe('RetrievalService', () => {
       expect(trace).toBeDefined();
       expect(trace?.query).toBe('collision deductible');
       expect(trace?.topK).toBe(5);
-      expect(trace?.minScore).toBe(0.01);
-      expect(trace?.rawCandidateCount).toBe(3);
-      expect(trace?.afterScoreFilterCount).toBe(2); // 0.005 filtered
+      expect(trace?.minRelevance).toBe(0.5);
+      expect(trace?.bestSimilarity).toBe(0.82);
+      expect(trace?.rawCandidateCount).toBe(2);
       expect(trace?.finalCount).toBe(2);
       expect(trace?.finalChunks).toHaveLength(2);
     });

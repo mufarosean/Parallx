@@ -1,11 +1,11 @@
 // retrievalService.ts — IRetrievalService implementation
 //
 // Query-time retrieval: embeds a user query, runs hybrid search (vector + keyword
-// via VectorStoreService), applies score threshold filtering, and returns ranked
-// context chunks ready for injection into the LLM prompt.
+// via VectorStoreService, which keeps only chunks above the relevance floor),
+// and returns ranked context chunks ready for injection into the LLM prompt.
 //
 // Aligned with upstream OpenClaw search-manager.ts: embed → hybrid search →
-// filter by minScore → return top N. Two config knobs: maxResults, minScore.
+// relevance floor → return top N. Two config knobs: ragTopK, ragMinRelevance.
 
 import { Disposable } from '../platform/lifecycle.js';
 import type {
@@ -18,7 +18,6 @@ import type { SearchResult, SearchOptions, HybridSearchTrace } from './vectorSto
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const DEFAULT_TOP_K = 20;
-const DEFAULT_MIN_SCORE = 0.01;
 
 /** Rough token estimator: chars / 4 (same as defaultParticipant). */
 export function estimateTokens(text: string): number {
@@ -57,8 +56,8 @@ export interface RetrievalOptions {
   sourceIds?: string[];
   /** Restrict retrieval to sources whose source_id starts with one of these prefixes. */
   pathPrefixes?: string[];
-  /** Minimum relevance score (default: 0.01). */
-  minScore?: number;
+  /** Least cosine similarity to the query (default: AI Settings, retrieval.minRelevance). */
+  minRelevance?: number;
   /** Whether to include FTS5 keyword search (default: true). */
   includeKeyword?: boolean;
   /** Whether internal workspace artifacts such as `.parallx/*` may participate in retrieval. */
@@ -75,7 +74,7 @@ export interface RetrievedContext {
   contextPrefix: string;
   /** The chunk text content. */
   text: string;
-  /** Relevance score from hybrid search. */
+  /** Relevance: the chunk's cosine similarity to the query, 0 to 1. */
   score: number;
   /** For a PDF chunk, the page(s) its text is on, e.g. "page 13 of 30" (set by the caller). */
   page?: string;
@@ -88,9 +87,10 @@ export interface RetrievedContext {
 export interface RetrievalTrace {
   query: string;
   topK: number;
-  minScore: number;
+  minRelevance: number;
+  /** The best similarity any candidate had, kept or not: what to tune the floor by. */
+  bestSimilarity?: number;
   rawCandidateCount: number;
-  afterScoreFilterCount: number;
   finalCount: number;
   finalChunks: Array<{
     sourceType: string;
@@ -108,7 +108,7 @@ interface IRetrievalConfigProvider {
   getEffectiveConfig(): {
     retrieval: {
       ragTopK: number;
-      ragScoreThreshold: number;
+      ragMinRelevance: number;
     };
   };
 }
@@ -133,9 +133,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     this._vectorStore = vectorStore;
   }
 
-  /** Bind a config provider (UnifiedAIConfigService) for runtime defaults. */
+  /**
+   * Bind a config provider (UnifiedAIConfigService) for runtime defaults. The
+   * relevance floor goes to the vector store too, so every search (memory
+   * recall included) uses the one setting.
+   */
   setConfigProvider(provider: IRetrievalConfigProvider): void {
     this._configProvider = provider;
+    (this._vectorStore as { setMinRelevance?(get: () => number): void }).setMinRelevance?.(() => provider.getEffectiveConfig().retrieval.ragMinRelevance);
   }
 
   // ── Public API ──
@@ -146,9 +151,9 @@ export class RetrievalService extends Disposable implements IRetrievalService {
    * Aligned with upstream OpenClaw search-manager.ts:
    *   1. Embed query
    *   2. Hybrid search (vector + keyword via VectorStoreService)
+   *      (the relevance floor applies here, in the vector store)
    *   3. Internal artifact hygiene (.parallx files — desktop adaptation)
-   *   4. Score threshold filter
-   *   5. Return top N
+   *   4. Return top N
    */
   async retrieve(query: string, options?: RetrievalOptions): Promise<RetrievedContext[]> {
     if (!query.trim()) { return []; }
@@ -156,7 +161,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const cfg = this._configProvider?.getEffectiveConfig();
     const cfgRetrieval = cfg?.retrieval;
     const topK = options?.topK ?? cfgRetrieval?.ragTopK ?? DEFAULT_TOP_K;
-    const minScore = options?.minScore ?? cfgRetrieval?.ragScoreThreshold ?? DEFAULT_MIN_SCORE;
+    const minRelevance = options?.minRelevance ?? cfgRetrieval?.ragMinRelevance;
 
     // 1. Embed query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
@@ -167,7 +172,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       sourceFilter: options?.sourceFilter,
       sourceIds: options?.sourceIds,
       pathPrefixes: options?.pathPrefixes,
-      minScore: 0, // apply our own threshold after
+      minRelevance,
       includeKeyword: options?.includeKeyword ?? true,
     };
     const rawResults = await this._vectorStore.search(queryEmbedding, query, searchOptions);
@@ -176,16 +181,13 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     // 3. Internal artifact hygiene (.parallx files)
     const hygieneResult = this._applyInternalArtifactHygiene(rawResults, query, options);
 
-    // 4. Score threshold filter
-    const filtered = hygieneResult.results.filter(r => r.score >= minScore);
-
-    // 5. Map to RetrievedContext, trim to topK
-    const finalResults = filtered.slice(0, topK).map(r => ({
+    // 4. Map to RetrievedContext, trim to topK
+    const finalResults = hygieneResult.results.slice(0, topK).map(r => ({
       sourceType: r.sourceType,
       sourceId: r.sourceId,
       contextPrefix: r.contextPrefix,
       text: r.chunkText,
-      score: r.score,
+      score: r.similarity ?? 0,
       sources: [...r.sources],
       tokenCount: estimateTokens(r.chunkText),
     }));
@@ -194,9 +196,9 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     this._lastTrace = {
       query,
       topK,
-      minScore,
+      minRelevance: vectorStoreTrace?.minRelevance ?? minRelevance ?? 0,
+      bestSimilarity: vectorStoreTrace?.bestSimilarity,
       rawCandidateCount: rawResults.length,
-      afterScoreFilterCount: filtered.length,
       finalCount: finalResults.length,
       finalChunks: finalResults.map(c => ({
         sourceType: c.sourceType,

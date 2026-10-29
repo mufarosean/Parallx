@@ -35,6 +35,14 @@ const EMBED_TIMEOUT_MS = 30_000;
 /** Timeout for model pull operation. */
 const PULL_TIMEOUT_MS = 600_000; // 10 minutes
 
+/**
+ * How long Ollama keeps the embedding model loaded after a call. Its default
+ * is 5 minutes, so the first question after a pause waited for the model to
+ * load before anything could be retrieved. The chat model is kept 30 minutes
+ * too (ollamaProvider.ts).
+ */
+const EMBED_KEEP_ALIVE = '30m';
+
 /** Maximum batch size per /api/embed call. */
 const MAX_BATCH_SIZE = 64;
 /** How many document vectors the cache keeps (about 12 MB at 768 floats each). */
@@ -287,6 +295,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
         body: JSON.stringify({
           model: this._model,
           input: 'test',
+          keep_alive: EMBED_KEEP_ALIVE,
         }),
         signal: fetchSignal,
       });
@@ -370,6 +379,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
       model: this._model,
       input: cleanInputs.length === 1 ? cleanInputs[0] : cleanInputs,
       truncate: true, // Silently truncate inputs exceeding model's context length
+      keep_alive: EMBED_KEEP_ALIVE,
     };
 
     const response = await fetch(`${this._baseUrl}/api/embed`, {

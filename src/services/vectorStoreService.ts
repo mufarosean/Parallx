@@ -15,7 +15,7 @@
 //   - docs/archive/milestones/Parallx_Milestone_10.md DR-3 (sqlite-vec), DR-4 (FTS5), DR-5 (RRF)
 
 import { Disposable } from '../platform/lifecycle.js';
-import { VectorRow, toBoolean, float32ArrayToBuffer, normalizeVectorInPlace, sanitizeFts5Query, sanitizeFts5QueryOr, reciprocalRankFusion } from './vectorStoreHelpers.js';
+import { VectorRow, toBoolean, float32ArrayToBuffer, normalizeVectorInPlace, sanitizeFts5Query, reciprocalRankFusion, DEFAULT_MIN_RELEVANCE } from './vectorStoreHelpers.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { IDatabaseService, IVectorStoreService } from './serviceTypes.js';
@@ -35,8 +35,10 @@ const DEFAULT_CANDIDATE_K = 40;
 /** Default final top-K after fusion. */
 const DEFAULT_TOP_K = 10;
 
-/** Minimum RRF score threshold (chunks below this are dropped). */
-const DEFAULT_MIN_SCORE = 0.0;
+/** A row's cosine similarity to the query; sqlite-vec's cosine distance is 1 - similarity. A row without one counts as unrelated. */
+function similarityOf(row: VectorRow): number {
+  return typeof row.distance === 'number' ? 1 - row.distance : 0;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,8 +71,10 @@ export interface SearchResult {
   chunkText: string;
   /** Structural context prefix. */
   contextPrefix: string;
-  /** Fused relevance score (higher = more relevant). */
+  /** Fused rank score (higher = ranked higher); orders the results, means nothing on its own. */
   score: number;
+  /** Cosine similarity of the chunk to the query, 0 to 1: how relevant it is. */
+  similarity?: number;
   /** Which retrieval methods contributed to this result. */
   sources: string[];
   /** Nested heading breadcrumb for this chunk, if one exists. */
@@ -97,17 +101,14 @@ export interface SearchOptions {
   sourceIds?: string[];
   /** Restrict search to sources whose source_id starts with one of these prefixes (scope filtering). */
   pathPrefixes?: string[];
-  /** Minimum RRF score threshold. */
-  minScore?: number;
+  /** Least cosine similarity a chunk needs to be returned (default: the store's relevance floor). */
+  minRelevance?: number;
   /** Whether to include keyword (FTS5 BM25) search. */
   includeKeyword?: boolean;
 }
 
 export interface KeywordSearchTrace {
   query: string;
-  fallbackQuery?: string;
-  fallbackUsed: boolean;
-  andResultCount: number;
   finalResultCount: number;
 }
 
@@ -119,6 +120,11 @@ export interface HybridSearchTrace {
   sourceIds?: string[];
   pathPrefixes?: string[];
   includeKeyword: boolean;
+  /** The relevance floor applied, and the best similarity seen before it (to tune the floor by). */
+  minRelevance: number;
+  bestSimilarity?: number;
+  /** Candidates dropped for being less similar than the floor. */
+  belowFloorCount: number;
   vectorResultCount: number;
   keywordResultCount: number;
   fusedResultCount: number;
@@ -187,6 +193,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
   private readonly _db: IDatabaseService;
   private _lastSearchTrace: HybridSearchTrace | undefined;
+  private _minRelevance: () => number = () => DEFAULT_MIN_RELEVANCE;
 
   // ── Events ──
 
@@ -196,6 +203,11 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   constructor(databaseService: IDatabaseService) {
     super();
     this._db = databaseService;
+  }
+
+  /** Where the relevance floor comes from (AI Settings, retrieval.minRelevance); every search uses it. */
+  setMinRelevance(get: () => number): void {
+    this._minRelevance = get;
   }
 
   // ── Upsert ──
@@ -495,34 +507,46 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   ): Promise<SearchResult[]> {
     const topK = options.topK ?? DEFAULT_TOP_K;
     const includeKeyword = options.includeKeyword ?? true;
-    const minScore = options.minScore ?? DEFAULT_MIN_SCORE;
+    const minRelevance = options.minRelevance ?? this._minRelevance();
     const candidateK = DEFAULT_CANDIDATE_K;
 
     // 1. Vector similarity search
-    const vectorResults = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
+    const vectorRows = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
 
-    // 2. Keyword search (FTS5 BM25)
-    let keywordResults: VectorRow[] = [];
+    // 2. Keyword search (FTS5 BM25), every query word present
+    let keywordRows: VectorRow[] = [];
     let keywordTrace: KeywordSearchTrace | undefined;
     if (includeKeyword && queryText.trim()) {
-      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
-      keywordResults = keywordSearch.results;
+      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes, queryEmbedding);
+      keywordRows = keywordSearch.results;
       keywordTrace = keywordSearch.trace;
     }
 
-    // 3. Reciprocal Rank Fusion
+    // 3. The relevance floor. Both lists carry each chunk's cosine distance
+    //    to the query, so a chunk is kept only when it is about the question,
+    //    however it was found. Without a floor every question got the nearest
+    //    chunks in the workspace, on-point or not, and "nothing in your
+    //    material covers this" could never happen.
+    let bestSimilarity: number | undefined;
+    let belowFloorCount = 0;
+    const relevant = (rows: VectorRow[]): VectorRow[] => rows.filter((r) => {
+      const similarity = similarityOf(r);
+      if (bestSimilarity === undefined || similarity > bestSimilarity) bestSimilarity = similarity;
+      if (similarity >= minRelevance) return true;
+      belowFloorCount++;
+      return false;
+    });
+    const vectorResults = relevant(vectorRows);
+    const keywordResults = relevant(keywordRows);
+
+    // 4. Reciprocal Rank Fusion orders what is left
     const rankedLists = new Map<string, VectorRow[]>();
     rankedLists.set('vector', vectorResults);
     if (keywordResults.length > 0) {
       rankedLists.set('keyword', keywordResults);
     }
 
-    const fused = reciprocalRankFusion(rankedLists, RRF_K, topK);
-
-    // 4. Filter by minimum score and return
-    const finalResults = fused
-      .filter((r) => r.score >= minScore)
-      .slice(0, topK);
+    const finalResults = reciprocalRankFusion(rankedLists, RRF_K, topK);
 
     this._lastSearchTrace = {
       queryText,
@@ -532,9 +556,12 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       sourceIds: options.sourceIds ? [...options.sourceIds] : undefined,
       pathPrefixes: options.pathPrefixes ? [...options.pathPrefixes] : undefined,
       includeKeyword,
+      minRelevance,
+      bestSimilarity,
+      belowFloorCount,
       vectorResultCount: vectorResults.length,
       keywordResultCount: keywordResults.length,
-      fusedResultCount: fused.length,
+      fusedResultCount: finalResults.length,
       finalResultCount: finalResults.length,
       keywordTrace,
     };
@@ -1001,21 +1028,22 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     sourceFilter?: string,
     sourceIds?: string[],
     pathPrefixes?: string[],
+    queryEmbedding: number[] = [],
   ): Promise<{ results: VectorRow[]; trace: KeywordSearchTrace }> {
     // Sanitize query for FTS5 (escape special characters) — AND semantics
     const sanitized = sanitizeFts5Query(queryText);
     if (!sanitized) {
       return {
         results: [],
-        trace: {
-          query: '',
-          fallbackUsed: false,
-          andResultCount: 0,
-          finalResultCount: 0,
-        },
+        trace: { query: '', finalResultCount: 0 },
       };
     }
 
+    // Each hit's cosine distance to the query, measured on its stored vector,
+    // so the relevance floor judges keyword hits the same way as vector hits.
+    const embeddingBlob = queryEmbedding.length > 0 ? float32ArrayToBuffer(queryEmbedding) : undefined;
+    const distance = embeddingBlob ? 'vec_distance_cosine(v.embedding, ?)' : 'NULL';
+    const lead: unknown[] = embeddingBlob ? [embeddingBlob] : [];
     const runFts = async (ftsQuery: string): Promise<VectorRow[]> => {
       let sql: string;
       let params: unknown[];
@@ -1023,7 +1051,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
       if (sourceFilter || (sourceIds?.length ?? 0) > 0 || (pathPrefixes?.length ?? 0) > 0) {
         const whereClauses = ['fts_chunks MATCH ?'];
-        params = [ftsQuery];
+        params = [...lead, ftsQuery];
 
         if (sourceFilter) {
           whereClauses.push('f.source_type = ?');
@@ -1042,7 +1070,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         }
 
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
-             v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance,
+             v.chunk_index, v.chunk_text, v.context_prefix, ${distance} as distance,
              cm.heading_path, cm.parent_heading_path, cm.structural_role,
              im.document_kind, im.extraction_pipeline, im.extraction_fallback,
              im.classification_confidence, im.classification_reason
@@ -1056,7 +1084,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         params.push(topK);
       } else {
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
-             v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance,
+             v.chunk_index, v.chunk_text, v.context_prefix, ${distance} as distance,
              cm.heading_path, cm.parent_heading_path, cm.structural_role,
              im.document_kind, im.extraction_pipeline, im.extraction_fallback,
              im.classification_confidence, im.classification_reason
@@ -1067,7 +1095,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
                WHERE fts_chunks MATCH ?
                ORDER BY f.rank
                LIMIT ?`;
-        params = [ftsQuery, topK];
+        params = [...lead, ftsQuery, topK];
       }
 
       try {
@@ -1078,49 +1106,11 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       }
     };
 
-    // AND-first with OR fallback.
-    // AND semantics provide precision; if too few results, broaden to OR.
-    const andResults = await runFts(sanitized);
-
-    if (andResults.length >= Math.ceil(topK / 2)) {
-      return {
-        results: andResults,
-        trace: {
-          query: sanitized,
-          fallbackUsed: false,
-          andResultCount: andResults.length,
-          finalResultCount: andResults.length,
-        },
-      };
-    }
-
-    // AND returned too few results — try OR semantics for broader recall
-    const orQuery = sanitizeFts5QueryOr(queryText);
-    if (!orQuery || orQuery === sanitized) {
-      return {
-        results: andResults,
-        trace: {
-          query: sanitized,
-          fallbackUsed: false,
-          andResultCount: andResults.length,
-          finalResultCount: andResults.length,
-        },
-      }; // OR wouldn't differ (single term or same query)
-    }
-
-    const orResults = await runFts(orQuery);
-    const finalResults = orResults.length > andResults.length ? orResults : andResults;
-
-    return {
-      results: finalResults,
-      trace: {
-        query: sanitized,
-        fallbackQuery: orQuery,
-        fallbackUsed: finalResults === orResults,
-        andResultCount: andResults.length,
-        finalResultCount: finalResults.length,
-      },
-    };
+    // Every query word must be present. The OR fallback this replaced matched
+    // any one word, so a question's commonest word pulled in chunks about
+    // something else; finding by meaning is the vector search's job.
+    const results = await runFts(sanitized);
+    return { results, trace: { query: sanitized, finalResultCount: results.length } };
   }
 }
 

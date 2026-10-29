@@ -146,6 +146,12 @@ describe('EmbeddingService', () => {
       const body = JSON.parse(embedCall[1].body);
       expect(body.input).toBe('search_query: What is authentication?');
     });
+
+    it('keeps the model loaded for the next question (30 minutes, not Ollama\'s 5)', async () => {
+      fetchSpy.mockResolvedValue({ ok: true, json: async () => mockEmbedResponse(1) });
+      await service.embedQuery('tail factor');
+      for (const [, init] of fetchSpy.mock.calls) expect(JSON.parse(init.body).keep_alive).toBe('30m');
+    });
   });
 
   // ── Batch Embedding ──

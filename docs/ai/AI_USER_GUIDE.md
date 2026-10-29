@@ -1018,8 +1018,7 @@ The AI can **never** access files outside your open workspace folder. Every file
   "agent": {
     "maxIterations": 10,
     "autoRag": true,
-    "ragTopK": 5,
-    "ragScoreThreshold": 0.3
+    "ragTopK": 5
   },
   "indexing": {
     "autoIndex": true,
@@ -1029,6 +1028,11 @@ The AI can **never** access files outside your open workspace folder. Every file
   }
 }
 ```
+
+How close a passage must be to a question before the AI sees it is set in
+AI Settings, Retrieval, `retrieval.minRelevance` (0 to 1, default 0.5). The old
+`ragScoreThreshold` in config.json is ignored: it was a floor on rank scores
+that never pass 0.04, so its usual 0.3 retrieved nothing.
 
 ### Key Keyboard Shortcuts
 

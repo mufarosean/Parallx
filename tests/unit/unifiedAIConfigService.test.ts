@@ -46,7 +46,7 @@ describe('IUnifiedAIConfig defaults', () => {
   it('retrieval defaults match retrievalService constants', () => {
     // These must match the hardcoded values in retrievalService.ts
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragTopK).toBe(20);
-    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.01);
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragMinRelevance).toBe(0.5);
   });
 
   it('agent defaults match defaultParticipant constants', () => {
@@ -70,7 +70,10 @@ describe('fromLegacyParallxConfig', () => {
     expect(override.model?.chatModel).toBe('qwen2.5:32b-instruct');
     expect(override.retrieval?.autoRag).toBe(true);
     expect(override.retrieval?.ragTopK).toBe(10);
-    expect(override.retrieval?.ragScoreThreshold).toBe(0.3);
+    // config.json's old score floor (0.3, on rank-fusion scores that never pass
+    // 0.04) retrieved nothing; it is not carried over.
+    expect(override.retrieval).not.toHaveProperty('ragScoreThreshold');
+    expect(override.retrieval).not.toHaveProperty('ragMinRelevance');
     expect(override.agent?.maxIterations).toBe(10);
   });
 
@@ -229,7 +232,7 @@ describe('UnifiedAIConfigService', () => {
       expect(config.retrieval.ragTopK).toBe(15);
       // Other retrieval fields unchanged
       expect(config.retrieval.autoRag).toBe(true);
-      expect(config.retrieval.ragScoreThreshold).toBe(0.01);
+      expect(config.retrieval.ragMinRelevance).toBe(0.5);
     });
   });
 
@@ -431,7 +434,7 @@ describe('A.4 Consumer wiring', () => {
         getEffectiveConfig: () => ({
           retrieval: {
             ragTopK: 3,
-            ragScoreThreshold: 0.5,
+            ragMinRelevance: 0.5,
           },
         }),
       });
@@ -665,7 +668,7 @@ describe('Phase B: Workspace override persistence', () => {
       // overridden
       expect(config.retrieval.ragTopK).toBe(99);
       // not overridden — should be default
-      expect(config.retrieval.ragScoreThreshold).toBe(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold);
+      expect(config.retrieval.ragMinRelevance).toBe(DEFAULT_UNIFIED_CONFIG.retrieval.ragMinRelevance);
       expect(config.model.temperature).toBe(DEFAULT_UNIFIED_CONFIG.model.temperature);
     });
 

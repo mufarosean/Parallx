@@ -5,7 +5,6 @@ import { VectorStoreService } from '../../src/services/vectorStoreService.js';
 import {
   float32ArrayToBuffer,
   sanitizeFts5Query,
-  sanitizeFts5QueryOr,
   isStopword,
   reciprocalRankFusion,
 } from '../../src/services/vectorStoreHelpers.js';
@@ -140,26 +139,6 @@ describe('sanitizeFts5Query()', () => {
     expect(sanitizeFts5Query('grammar pages')).toBe('"grammar" "pages"');
     // M16: "table" is no longer a stopword → "tables" survives
     expect(sanitizeFts5Query('data tables charts')).toBe('"data" "tables" "charts"');
-  });
-});
-
-describe('sanitizeFts5QueryOr()', () => {
-  it('joins multiple terms with OR for broader recall', () => {
-    const result = sanitizeFts5QueryOr('collision deductible coverage');
-    expect(result).toBe('"collision" OR "deductible" OR "coverage"');
-  });
-
-  it('wraps single term same as AND version', () => {
-    expect(sanitizeFts5QueryOr('hello')).toBe('"hello"');
-  });
-
-  it('filters stopwords same as AND version', () => {
-    const result = sanitizeFts5QueryOr('what is the deductible for collision');
-    expect(result).toBe('"deductible" OR "collision"');
-  });
-
-  it('returns empty for empty input', () => {
-    expect(sanitizeFts5QueryOr('')).toBe('');
   });
 });
 
@@ -583,25 +562,57 @@ describe('VectorStoreService', () => {
       expect(results.length).toBeLessThanOrEqual(3);
     });
 
-    it('captures keyword fallback and fusion details in the search trace', async () => {
+    it('keyword search needs every word: one query, no OR fallback', async () => {
+      db.all.mockResolvedValueOnce([vectorRow(1, 'page_block', 'p1', 0, 'Architecture overview')]);
+      db.all.mockResolvedValueOnce([]); // keyword: nothing has both words
+
+      const results = await service.search([0.1, 0.2], 'architecture overview', { topK: 5, minRelevance: 0 });
+
+      expect(db.all).toHaveBeenCalledTimes(2);
+      const [sql, params] = db.all.mock.calls[1];
+      expect(sql).not.toContain(' OR ');
+      expect(params).toContain('"architecture" "overview"');
+      expect(results.map((r) => r.rowid)).toEqual([1]);
+      expect(service.getLastSearchTrace()?.keywordTrace?.finalResultCount).toBe(0);
+    });
+
+    it('keeps only chunks as similar to the query as the floor, from both lists', async () => {
       db.all.mockResolvedValueOnce([
-        vectorRow(1, 'page_block', 'p1', 0, 'Architecture overview'),
+        vectorRow(1, 'file_chunk', 'clark.pdf', 0, 'LDF curve fitting', 0.2), // similarity 0.8
+        vectorRow(2, 'file_chunk', 'budget.md', 0, 'Groceries in March', 0.62), // 0.38
       ]);
-      db.all.mockResolvedValueOnce([]); // AND keyword path
       db.all.mockResolvedValueOnce([
-        vectorRow(1, 'page_block', 'p1', 0, 'Architecture overview'),
-        vectorRow(2, 'file_chunk', 'ARCHITECTURE.md', 0, 'System architecture notes'),
-      ]); // OR fallback path
+        vectorRow(3, 'file_chunk', 'mack.pdf', 2, 'Mack chain ladder variance', 0.35), // 0.65
+        vectorRow(4, 'file_chunk', 'notes.md', 0, 'chain of thought, ladder rungs', 0.7), // 0.3
+      ]);
 
-      await service.search([0.1, 0.2], 'architecture overview', { topK: 5 });
+      const results = await service.search([0.1, 0.2], 'chain ladder', { minRelevance: 0.5 });
 
+      expect(results.map((r) => r.rowid).sort()).toEqual([1, 3]);
+      expect(results.find((r) => r.rowid === 1)?.similarity).toBeCloseTo(0.8);
       const trace = service.getLastSearchTrace();
-      expect(trace).toBeDefined();
-      expect(trace?.vectorResultCount).toBe(1);
-      expect(trace?.keywordResultCount).toBe(2);
-      expect(trace?.keywordTrace?.fallbackUsed).toBe(true);
-      expect(trace?.keywordTrace?.andResultCount).toBe(0);
-      expect(trace?.fusedResultCount).toBeGreaterThan(0);
+      expect(trace?.minRelevance).toBe(0.5);
+      expect(trace?.bestSimilarity).toBeCloseTo(0.8);
+      expect(trace?.belowFloorCount).toBe(2);
+    });
+
+    it('nothing on the question means nothing comes back', async () => {
+      db.all.mockResolvedValueOnce([vectorRow(1, 'file_chunk', 'budget.md', 0, 'Groceries', 0.6)]);
+      db.all.mockResolvedValueOnce([]);
+      expect(await service.search([0.1], 'tail factor', { minRelevance: 0.5 })).toEqual([]);
+    });
+
+    it('scores keyword hits on their stored vectors, and uses the floor it was given', async () => {
+      service.setMinRelevance(() => 0.9);
+      db.all.mockResolvedValueOnce([vectorRow(1, 'file_chunk', 'a.md', 0, 'close', 0.05)]);
+      db.all.mockResolvedValueOnce([vectorRow(2, 'file_chunk', 'b.md', 0, 'far', 0.3)]);
+
+      const results = await service.search([0.1, 0.2], 'tail factor');
+
+      const [sql, params] = db.all.mock.calls[1];
+      expect(sql).toContain('vec_distance_cosine(v.embedding, ?) as distance');
+      expect(params[0]).toBeInstanceOf(Uint8Array); // the query vector comes first
+      expect(results.map((r) => r.rowid)).toEqual([1]);
     });
 
     it('filters results by pathPrefixes in vector search (post-query)', async () => {

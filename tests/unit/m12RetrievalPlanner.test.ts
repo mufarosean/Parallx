@@ -90,7 +90,6 @@ describe('RetrievalService trace and pipeline', () => {
     expect(results).toHaveLength(2);
     expect(trace).toBeDefined();
     expect(trace?.rawCandidateCount).toBe(3);
-    expect(trace?.afterScoreFilterCount).toBe(3);
     expect(trace?.finalCount).toBe(2);
     expect(trace?.finalChunks).toHaveLength(2);
     expect(trace?.finalChunks[0]?.sourceId).toBe('policy');

@@ -13,6 +13,7 @@ import type { Event } from '../platform/events.js';
 import type { AISettingsProfile, DeepPartial } from './aiSettingsTypes.js';
 import type { IParallxConfig } from '../services/parallxConfigService.js';
 import type { IConfigFileSystem } from '../services/parallxConfigService.js';
+import { DEFAULT_MIN_RELEVANCE } from '../services/vectorStoreHelpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Unified Configuration Shape
@@ -67,8 +68,13 @@ export interface IUnifiedRetrievalConfig {
   readonly standingContextLate: boolean;
   /** Upstream: memorySearch.query.maxResults. Controls retrievalService top-K. */
   readonly ragTopK: number;
-  /** Upstream: memorySearch.query.minScore. RRF noise floor for retrievalService. */
-  readonly ragScoreThreshold: number;
+  /**
+   * Upstream: memorySearch.query.minScore. The relevance floor: the least
+   * cosine similarity (0 to 1) a passage needs to reach the AI, in every
+   * search. Replaces ragScoreThreshold, a floor on rank-fusion scores that
+   * never pass 0.04: its 0.3 setting retrieved nothing at all.
+   */
+  readonly ragMinRelevance: number;
 }
 
 // ─── Agent (from config.json) ────────────────────────────────────────────────
@@ -369,7 +375,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     autoRag: true,
     standingContextLate: true,
     ragTopK: 20,
-    ragScoreThreshold: 0.01,
+    ragMinRelevance: DEFAULT_MIN_RELEVANCE,
   },
   agent: {
     maxIterations: 25,
@@ -450,7 +456,6 @@ export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUn
     retrieval: {
       autoRag: config.agent.autoRag,
       ragTopK: config.agent.ragTopK,
-      ragScoreThreshold: config.agent.ragScoreThreshold,
     },
     agent: {
       maxIterations: config.agent.maxIterations,

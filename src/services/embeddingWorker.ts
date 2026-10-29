@@ -66,6 +66,7 @@ self.onmessage = async (ev) => {
       model,
       input: cleanInputs.length === 1 ? cleanInputs[0] : cleanInputs,
       truncate: true,
+      keep_alive: '30m', // as embeddingService.ts: the next question finds the model loaded
     };
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);

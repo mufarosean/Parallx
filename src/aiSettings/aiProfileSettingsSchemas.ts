@@ -19,6 +19,7 @@ import type {
 import type { IUnifiedAIConfigService } from './unifiedConfigTypes.js';
 import type { ChatThinkingView, IUnifiedAIConfig } from './unifiedConfigTypes.js';
 import type { DeepPartial } from './aiSettingsTypes.js';
+import { DEFAULT_MIN_RELEVANCE } from '../services/vectorStoreHelpers.js';
 
 // ─── Schema declarations ───────────────────────────────────────────────────
 //
@@ -169,17 +170,17 @@ const SCHEMAS: readonly IBoundSchema[] = ([
   } as IBoundSchema<number>,
   {
     schema: {
-      key: 'retrieval.scoreThreshold',
+      key: 'retrieval.minRelevance',
       type: 'number',
-      default: 0.3,
+      default: DEFAULT_MIN_RELEVANCE,
       scope: 'workspace',
-      description: 'Minimum RRF score for a chunk to be included.',
+      description: 'How close a passage must be to the question, from 0 to 1, before the AI sees it. Higher gives fewer, surer passages; lower gives more that may be off topic.',
       category: 'Retrieval',
       min: 0,
       max: 1,
     },
-    read: (c) => c.retrieval.ragScoreThreshold,
-    write: (v) => ({ retrieval: { ragScoreThreshold: v as number } }),
+    read: (c) => c.retrieval.ragMinRelevance,
+    write: (v) => ({ retrieval: { ragMinRelevance: v as number } }),
   } as IBoundSchema<number>,
 
   // ── Agent ──
