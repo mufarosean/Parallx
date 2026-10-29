@@ -60,13 +60,15 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
      (`bestSimilarity`). If good passages are missed, lower the floor; if
      off-topic ones get through, raise it. 0.5 is a starting point for
      nomic-embed-text, not a measured one.
-   Already there: chunks carry their PDF page ("PDF page: page 13 of 30"),
-   `fs_read_file` with `query` reads the passages of a document, and citations
-   are checked labels that link to the spot.
-   Open:
-   - a newer embedding model (qwen3-embedding 0.6B or bge-m3), as its own
-     re-index step: both are 1024-wide, so the index table changes;
-   - read whole source sections around a hit.
+   Already there: chunks carry their PDF page ("PDF page: page 13 of 30");
+   `fs_read_file` with `query` and `fs_grep_search` show whole source blocks
+   around a hit (a whole PDF page, a whole Markdown section up to 60 lines),
+   read from the file as it is now; citations are checked labels that link to
+   the spot.
+   Waiting on you: a newer embedding model (qwen3-embedding 0.6B or bge-m3).
+   It means downloading the model and re-indexing every workspace (both are
+   1024-wide, so the index is rebuilt), and the floor above has to be set
+   again for it.
 
    Raised: Mindmap print calibration (Oct 23), Backlog review (Aug 29), IDEAS.
 3. **No hidden limits.** The 8K Auto context cap was found on Oct 4 and its fix
