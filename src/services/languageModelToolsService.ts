@@ -320,6 +320,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         displaySummary: tool.displaySummary,
         profiles: tool.profiles,
         category: tool.category,
+        alwaysLoad: tool.alwaysLoad,
       }));
   }
 
@@ -342,6 +343,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         displaySummary: tool.displaySummary,
         profiles: tool.profiles,
         category: tool.category,
+        alwaysLoad: tool.alwaysLoad,
       }));
   }
 

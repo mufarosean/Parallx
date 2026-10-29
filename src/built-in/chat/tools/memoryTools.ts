@@ -83,6 +83,7 @@ export function createMemoryGetTool(
 ): IChatTool {
   return {
     name: 'memory_read',
+    alwaysLoad: true,
     displaySummary: 'Read canonical workspace memory.',
     description:
       'Reads from `.parallx/memory/`. Three modes: ' +
@@ -167,6 +168,7 @@ export function createMemoryGetTool(
 export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemorySearch | undefined): IChatTool {
   return {
     name: 'memory_search',
+    alwaysLoad: true,
     displaySummary: 'Semantic search over workspace memory.',
     description:
       'Semantic (embedding) search across the workspace canonical memory in `.parallx/memory/` ' +

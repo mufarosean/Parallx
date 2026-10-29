@@ -715,6 +715,7 @@ async function buildOpenclawTurnContext(
     autoRag: resolvedAgentConfig?.autoRag ?? effectiveConfig?.retrieval?.autoRag,
     toolState,
     maxToolIterations,
+    deferTools: effectiveConfig?.tools?.loadOnDemand !== false,
     agentConfig: resolvedAgentConfig,
     mentionContextBlocks: preprocessed?.mentionContextBlocks,
     promptOverlay: preprocessed?.promptOverlay,

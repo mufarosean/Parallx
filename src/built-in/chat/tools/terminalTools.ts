@@ -37,6 +37,7 @@ function isCommandBlocked(command: string): boolean {
 export function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined, workspaceRoot?: string): IChatTool {
   return {
     name: 'terminal_run_command',
+    alwaysLoad: true,
     displaySummary: 'Run a shell command (approval).',
     description: 'Run a shell command in the workspace directory. Dangerous commands are blocked.',
     parameters: {

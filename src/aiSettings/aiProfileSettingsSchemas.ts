@@ -211,6 +211,18 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     read: (c) => c.tools.workbenchControlEnabled,
     write: (v) => ({ tools: { workbenchControlEnabled: v as boolean } }),
   } as IBoundSchema<boolean>,
+  {
+    schema: {
+      key: 'tools.loadOnDemand',
+      type: 'boolean',
+      default: true,
+      scope: 'workspace',
+      description: 'Load tools when the AI needs them. With many tools on, the AI starts each turn with the few it uses most and looks up the rest by name, which keeps every request short. Turn off to send every tool every time.',
+      category: 'Tools',
+    },
+    read: (c) => c.tools.loadOnDemand,
+    write: (v) => ({ tools: { loadOnDemand: v as boolean } }),
+  } as IBoundSchema<boolean>,
 
   // (The heartbeat rows moved to Settings › Agents: built-in/agents/agentsSettings.ts.)
 ] as readonly IBoundSchema<unknown>[]);

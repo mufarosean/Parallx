@@ -143,6 +143,52 @@ describe('executeOpenclawAttempt', () => {
     expect(response.markdown).toHaveBeenCalledWith('Hello world');
   });
 
+  it('a long tool list goes behind tool_search; a loaded tool is sent from the next call and runs', async () => {
+    const big = (name: string, alwaysLoad = false) => ({ name, description: `${name} does its job. ${'More detail. '.repeat(30)}`, parameters: { type: 'object', properties: { q: { type: 'string', description: 'x'.repeat(300) } } }, ...(alwaysLoad ? { alwaysLoad: true } : {}) });
+    const defs = [big('fs_read_file', true), big('planner_captureEvent'), ...Array.from({ length: 40 }, (_, i) => big(`other_${i}`))];
+    const seen: string[][] = [];
+    let call = 0;
+    const sendChatRequest = vi.fn<IOpenclawTurnContext['sendChatRequest']>((_m, options) => {
+      seen.push((options?.tools ?? []).map((t) => t.name));
+      call++;
+      if (call === 1) return streamChunks([toolCallChunk('', [{ function: { name: 'tool_search', arguments: { names: ['planner_captureEvent'] } } }])]);
+      if (call === 2) return streamChunks([toolCallChunk('', [{ function: { name: 'planner_captureEvent', arguments: { q: 'lunch' } } }])]);
+      return streamChunks([textChunk('Added.')]);
+    });
+    const invokeToolWithRuntimeControl = vi.fn(async (_name: string): Promise<IToolResult> => ({ content: 'event created' }));
+    const result = await executeOpenclawAttempt(createRequest(), createContext({
+      sessionId: 'defer-1', sendChatRequest, invokeToolWithRuntimeControl, toolState: { availableDefinitions: defs } as any,
+    }), createAssembled(), createResponse(), createToken());
+    expect(seen[0]).toEqual(['fs_read_file', 'tool_search']);
+    expect(seen[1]).toEqual(['fs_read_file', 'planner_captureEvent', 'tool_search']);
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledTimes(1); // tool_search is answered in the loop
+    expect(invokeToolWithRuntimeControl.mock.calls[0][0]).toBe('planner_captureEvent');
+    const searchResult = (sendChatRequest.mock.calls[1][0] as Array<{ role: string; content: string }>).find((m) => m.role === 'tool');
+    expect(searchResult?.content).toContain('Loaded 1 tool');
+    expect(result.markdown).toBe('Added.');
+    // The next turn of the same chat keeps it loaded (the request settles).
+    const again = vi.fn<IOpenclawTurnContext['sendChatRequest']>((_m, options) => { seen.push((options?.tools ?? []).map((t) => t.name)); return streamChunks([textChunk('ok')]); });
+    await executeOpenclawAttempt(createRequest(), createContext({ sessionId: 'defer-1', sendChatRequest: again, toolState: { availableDefinitions: defs } as any }), createAssembled(), createResponse(), createToken());
+    expect(seen[3]).toContain('planner_captureEvent');
+  });
+
+  it('a deferred tool called by name with valid arguments runs (no search needed), and all tools go when deferral is off', async () => {
+    const big = (name: string) => ({ name, description: `${name}. ${'Detail. '.repeat(40)}`, parameters: { type: 'object', properties: { q: { type: 'string', description: 'x'.repeat(300) } } } });
+    const defs = Array.from({ length: 40 }, (_, i) => big(`t_${i}`));
+    let call = 0;
+    const sendChatRequest = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => {
+      call++;
+      return call === 1 ? streamChunks([toolCallChunk('', [{ function: { name: 't_7', arguments: { q: 'go' } } }])]) : streamChunks([textChunk('Done.')]);
+    });
+    const invokeToolWithRuntimeControl = vi.fn(async (_name: string): Promise<IToolResult> => ({ content: 'ran' }));
+    await executeOpenclawAttempt(createRequest(), createContext({ sessionId: 'defer-2', sendChatRequest, invokeToolWithRuntimeControl, toolState: { availableDefinitions: defs } as any }), createAssembled(), createResponse(), createToken());
+    expect(invokeToolWithRuntimeControl.mock.calls[0][0]).toBe('t_7');
+    expect((sendChatRequest.mock.calls[1][1]?.tools ?? []).map((t) => t.name)).toContain('t_7');
+    const off = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => streamChunks([textChunk('ok')]));
+    await executeOpenclawAttempt(createRequest(), createContext({ sessionId: 'defer-3', deferTools: false, sendChatRequest: off, toolState: { availableDefinitions: defs } as any }), createAssembled(), createResponse(), createToken());
+    expect(off.mock.calls[0][1]?.tools).toHaveLength(40);
+  });
+
   it('refuses a tool the turn did not offer: the catalog filter is honoured at dispatch', async () => {
     let callCount = 0;
     const sendChatRequest = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => {

@@ -38,64 +38,15 @@ import { MAX_TOOL_RESULT_CHARS, ROUND_RESULT_FLOOR_CHARS, capToolResultRound, wi
 export { capToolResultContent, capToolResultRound, withoutToolImages, elideLongToolCallArgs, normalizeToolResultContent } from './openclawToolResultCaps.js';
 import { scene, formatSceneLine } from '../ui/scene.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
+import { TOOL_SEARCH_NAME, loadedTools, planToolSurface, runToolSearch, type IToolSurface } from './openclawToolDeferral.js';
+import { _detectHallucinatedToolCall } from './openclawHallucinatedToolCall.js';
+export { _detectHallucinatedToolCall } from './openclawHallucinatedToolCall.js';
 import type { IResolvedAgentConfig } from './agents/openclawAgentConfig.js';
 import { resolveModelTier } from './openclawModelTier.js';
 import { validateCitations } from './openclawResponseValidation.js';
 import { executeModelStream } from './openclawModelStream.js';
 import { buildCitationCorrection, checkCitations, renderCitedAnswer, type ICitationContext } from './openclawCitationCheck.js';
 import { getSourceHandle, sessionSourceHandles, sourceHandleMark, sourceHandlesSince, wasLinkMinted } from '../services/sourceHandles.js';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/**
- * Escape a string for safe inclusion in a `RegExp` body. Used by
- * `_detectHallucinatedToolCall` so user-defined tool names that happen
- * to contain regex metacharacters can't blow up the matcher.
- */
-function _escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * M67 follow-up — detect model text that narrates a tool call without
- * the corresponding `tool_calls` structure being emitted. Two patterns
- * cover the dominant failure mode for OSS models:
- *
- *   Pattern A: "I (just )?(called|ran|invoked|executed) <tool_name>"
- *   Pattern B: "(used|using|with) (the )?<tool_name> tool"
- *
- * Matching is name-aware — the regex is built from the actually-
- * available tool catalog so it can't false-positive on natural-language
- * past tense like "I read the docs" or "I used the search bar."
- *
- * Returns the matched tool name (verbatim from the model's text) or
- * null when no hallucination is detected. Caller is responsible for
- * surfacing the warning to the user; this function is pure.
- *
- * Exported for unit testing only.
- */
-export function _detectHallucinatedToolCall(
-  markdown: string,
-  availableToolNames: readonly string[],
-): string | null {
-  if (!markdown || availableToolNames.length === 0) return null;
-  const namesAlt = availableToolNames.map(_escapeRegExp).join('|');
-  // `\\b` word boundaries on both ends keep `fs_read_file` from matching
-  // inside `pre_read_filefoo`; the alternation captures the tool name.
-  const verbsPast = '(?:called|ran|just\\s+ran|invoked|executed|just\\s+used|queried|queries)';
-  const patternA = new RegExp(
-    `\\bI\\s+(?:just\\s+)?${verbsPast}\\s+\`?(${namesAlt})\\b`,
-    'i',
-  );
-  const patternB = new RegExp(
-    `\\b(?:used|using|with)\\s+(?:the\\s+)?\`?(${namesAlt})\`?\\s+tool\\b`,
-    'i',
-  );
-  const m = patternA.exec(markdown) || patternB.exec(markdown);
-  return m ? m[1] : null;
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,6 +129,11 @@ export interface IOpenclawTurnContext {
   // Tool inputs
   readonly toolState: IOpenclawRuntimeToolState;
   readonly maxToolIterations: number;
+  /**
+   * Load tools on demand (openclawToolDeferral.ts): a long tool list goes
+   * behind `tool_search`. On unless the setting turns it off.
+   */
+  readonly deferTools?: boolean;
   // Model execution
   readonly sendChatRequest: (
     messages: readonly IChatMessage[],
@@ -357,9 +313,13 @@ export async function executeOpenclawAttempt(
   // 5. Execute model turn with tool loop
   //    Upstream: wrapOllamaCompatNumCtx wraps stream to inject num_ctx
   //    Parallx: pass tokenBudget as numCtx so Ollama allocates matching KV cache
+  // The tools each call carries: all of them while the list is small, else
+  // the always-loaded ones, what this chat has loaded, and tool_search.
+  const loaded = loadedTools(context.sessionId);
+  let surface: IToolSurface = planToolSurface(context.toolState.availableDefinitions, loaded, context.deferTools !== false);
   const requestOptions: IChatRequestOptions = {
     think: context.think !== false,
-    tools: context.toolState.availableDefinitions.length > 0 ? context.toolState.availableDefinitions : undefined,
+    tools: undefined,
     numCtx: context.tokenBudget,
     temperature: context.temperature,
     maxTokens: context.maxTokens || undefined,
@@ -430,11 +390,12 @@ export async function executeOpenclawAttempt(
     }
     const modelCallStart = Date.now();
     currentMessages = withoutErasedToolImages(currentMessages);
+    surface = planToolSurface(context.toolState.availableDefinitions, loaded, context.deferTools !== false);
     // Execute model call
     const turnResult = await executeModelStream(
       context.sendChatRequest,
       currentMessages,
-      requestOptions,
+      { ...requestOptions, tools: surface.send.length > 0 ? surface.send : undefined },
       response,
       token,
     );
@@ -606,8 +567,18 @@ export async function executeOpenclawAttempt(
       // walks straight past it. (Review fix 2026-09-02.)
       // (An empty catalog carries no filter: nothing was offered, so
       // nothing was withheld; the PDP alone gates that path.)
+      // tool_search is answered here: it loads deferred tools for the next call.
+      if (toolCall.function.name === TOOL_SEARCH_NAME && surface.deferred.length > 0) {
+        const found = runToolSearch(toolCall.function.arguments, surface.deferred, loaded);
+        toolCallCount++;
+        response.updateToolInvocation(toolCallId, { status: 'completed', isComplete: true, isError: false, result: { content: found.content } });
+        roundResults.push({ name: TOOL_SEARCH_NAME, content: found.content, isError: false });
+        continue;
+      }
       const offered = context.toolState.availableDefinitions;
       const definition = offered.find((d) => d.name === toolCall.function.name);
+      // A deferred tool called by name without a search is loaded by the call.
+      if (definition) loaded.add(definition.name);
       // Nor may a call carry an argument the offered schema does not declare:
       // the handler would drop it and run a different call from the one the
       // model wrote (toolArgumentCheck.ts). Refused before approval, so the

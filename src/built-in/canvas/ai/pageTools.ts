@@ -51,7 +51,7 @@ function requireDb(db: IBuiltInToolDatabase | undefined): asserts db is IBuiltIn
  */
 export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
-    name: 'canvas_find_pages',
+    name: 'canvas_find_pages', alwaysLoad: true,
     displaySummary: 'Find or list canvas pages.',
     description:
       'Discover canvas pages by full-text query, property filter, or both. No args lists recent pages. ' +
@@ -233,7 +233,7 @@ export function createReadPageTool(
   getCurrentPageId?: CurrentPageIdGetter,
 ): IChatTool {
   return {
-    name: 'canvas_read_page',
+    name: 'canvas_read_page', alwaysLoad: true,
     displaySummary: 'Read a canvas page (body + metadata + properties).',
     description:
       'Read a canvas page: metadata, properties, and the body as markdown with each top-level block after a `<!-- block:ID -->` line (the ids canvas_read_block / canvas_edit_block take). '
@@ -704,7 +704,7 @@ export function createCreatePageTool(
   writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
-    name: 'canvas_create_page',
+    name: 'canvas_create_page', alwaysLoad: true,
     displaySummary: 'Create a NEW canvas page (blank or from template).',
     description:
       'CREATE a NEW canvas page (only when it does not yet exist; edits go to `canvas_edit_page`). '
@@ -876,7 +876,7 @@ export function createEditPageTool(
   writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
-    name: 'canvas_edit_page',
+    name: 'canvas_edit_page', alwaysLoad: true,
     displaySummary: 'Edit (update) an existing canvas page from markdown.',
     description:
       'EDIT an EXISTING canvas page by UUID (does not create pages). '

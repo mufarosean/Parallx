@@ -1018,6 +1018,8 @@ export interface IToolDefinition {
    * family operates on.
    */
   readonly category?: ToolCategory;
+  /** Never deferred behind `tool_search` (openclawToolDeferral.ts): for the few tools most turns use. */
+  readonly alwaysLoad?: boolean;
 }
 
 /**
@@ -1162,16 +1164,12 @@ export interface IChatTool {
   readonly source?: 'built-in' | 'bridge' | 'mcp';
   /** Owning tool ID when contributed through ChatBridge. */
   readonly ownerToolId?: string;
-  /**
-   * Short prompt-only summary (≤120 chars). See `IToolDefinition.displaySummary`.
-   * Upstream parity: src/agents/tool-description-presets.ts.
-   */
+  /** Short prompt-only summary (≤120 chars). See `IToolDefinition.displaySummary`. */
   readonly displaySummary?: string;
-  /**
-   * Tool profile membership. See `IToolDefinition.profiles`.
-   * Upstream parity: src/agents/tool-catalog.ts CoreToolDefinition.profiles[].
-   */
+  /** Tool profile membership. See `IToolDefinition.profiles`. */
   readonly profiles?: readonly string[];
+  /** Never deferred. See `IToolDefinition.alwaysLoad`. */
+  readonly alwaysLoad?: boolean;
   /**
    * coarse feature-area grouping. Used by the settings UI to
    * sub-group inside the "Built-In" bucket, and by the system prompt's

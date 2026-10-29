@@ -142,6 +142,12 @@ export interface IUnifiedToolsConfig {
    * injected into the chat context (zero context window footprint).
    */
   readonly workbenchControlEnabled: boolean;
+  /**
+   * Load tools on demand: when every tool's schema together would be long,
+   * the model gets a few always-loaded tools and loads the rest through
+   * `tool_search` (openclawToolDeferral.ts). On by default.
+   */
+  readonly loadOnDemand: boolean;
 }
 
 // ─── Heartbeat ──────────────────────────────────────────────────────
@@ -382,6 +388,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   tools: {
     workbenchControlEnabled: false, // ships OFF; user opts in explicitly
+    loadOnDemand: true,
   },
   heartbeat: {
     enabled: false, // non-negotiable default — user opts in explicitly

@@ -99,6 +99,7 @@ function parseSteps(raw: unknown): { steps?: IChatSessionPlanStep[]; error?: str
 export function createPlanUpdateTool(host: IPlanToolHost | undefined): IChatTool {
   return {
     name: 'plan_update',
+    alwaysLoad: true,
     displaySummary: 'Create or update your durable working plan for this session.',
     description: 'Create or update your durable working plan for this session. '
       + 'The plan survives context compaction and session reloads, and is shown back to you every turn — it is your mission anchor for multi-step work. '

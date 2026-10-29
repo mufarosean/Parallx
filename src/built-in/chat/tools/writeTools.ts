@@ -120,6 +120,7 @@ export function createWriteFileTool(
 ): IChatTool {
   return {
     name: 'fs_write_file',
+    alwaysLoad: true,
     displaySummary: 'Create or overwrite a workspace file on disk (approval).',
     description: 'Create or overwrite a workspace FILE on disk. Path is relative to workspace root, forward slashes, no `./` or `..`. For canvas pages (the canvas page DB) use `canvas_create_page` or `canvas_edit_page` instead.',
     parameters: {
@@ -210,6 +211,7 @@ export function createEditFileTool(
 ): IChatTool {
   return {
     name: 'fs_edit_file',
+    alwaysLoad: true,
     displaySummary: 'Edit a workspace file on disk (approval).',
     description: 'Edit a workspace FILE on disk by exact find-and-replace. old_content must match exactly (whitespace-sensitive). For canvas pages use `canvas_edit_block` or `canvas_edit_page` instead.',
     parameters: {

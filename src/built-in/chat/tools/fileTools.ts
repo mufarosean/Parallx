@@ -98,6 +98,7 @@ async function buildWorkspaceTree(fs: IBuiltInToolFileSystem): Promise<string> {
 export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'fs_list_files',
+    alwaysLoad: true,
     displaySummary: 'List files / directories on disk.',
     description:
       'Lists files and directories on disk at a workspace path. ' +
@@ -141,6 +142,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
 export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined, retrieval?: IBuiltInToolRetrieval): IChatTool {
   return {
     name: 'fs_read_file',
+    alwaysLoad: true,
     displaySummary: 'Read a workspace file on disk.',
     description:
       'Reads a workspace file on disk — text (.md, .txt, source code) or documents (PDF, DOCX, EPUB, XLSX), of any size. ' +
@@ -307,6 +309,7 @@ function lineRangeBlock(doc: Extract<LiveDoc, { kind: 'line' }>, s: number, e: n
 export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'fs_search_files',
+    alwaysLoad: true,
     displaySummary: 'Find files on disk by name pattern.',
     description:
       'Finds files on disk by NAME pattern (case-insensitive substring of the filename). ' +
@@ -357,6 +360,7 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
 export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined, retrieval?: IBuiltInToolRetrieval): IChatTool {
   return {
     name: 'fs_grep_search',
+    alwaysLoad: true,
     displaySummary: 'Search file contents on disk by pattern.',
     description:
       'Searches the workspace for a text or regex pattern: exact matches in files, then, for plain text, ' +

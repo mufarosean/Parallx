@@ -85,6 +85,7 @@ function readParams(v: unknown): Record<string, string> | string | undefined {
 export function createParallxLinkTool(getContracts: LinkContractSnapshot, verify?: LinkVerifier): IChatTool {
   return {
     name: 'link_create',
+    alwaysLoad: true,
     displaySummary: 'Make a checked parallx:// citation link.',
     description:
       'Make a citation link and check it. target follows a template from the ## Linking section; put query parameters in params (values are encoded for you). ' +
