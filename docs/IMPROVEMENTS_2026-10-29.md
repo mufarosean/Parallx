@@ -293,7 +293,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Planner reminders on the one scheduler** (the cron clock). REFACTOR_AUDIT. Open.
 - **Planner Calendars menu and the repeat-scope dialog** still use the old
   hand-built styles; in the event dialog, the Ends row does not line up with
-  Starts. This session. Open.
+  Starts. The alignment is fixed (Oct 29: All day has its own line, time
+  fields fit "10:00 AM"); the two dialogs read cleanly and pass the keyboard
+  audit, so their rebuild is low priority.
 - **Navigation in both the sidebar and the editor** (Planner, Flashcards):
   pick one. Oct 1. Your decision.
 - **Dashboard shows four controls before anything is added.** Oct 1. Open.

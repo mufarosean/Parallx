@@ -143,6 +143,8 @@ export class PlannerEventPopover {
     // Starts and ends: moving the start keeps the length, as calendars do.
     const startsRow = formRow(body, 'Starts');
     const endsRow = formRow(body, 'Ends');
+    // All day has its own line, so Starts and Ends hold the same two fields and line up.
+    const allDayRow = formRow(body, '');
     // The time fields keep their values while All day is on, so the length
     // carried over is always the timed one.
     const startMs = () => fromDateTimeInputs(startDate.value, startTime.value);
@@ -174,7 +176,7 @@ export class PlannerEventPopover {
     const allDayText = el('span');
     allDayText.textContent = 'All day';
     allDayWrap.appendChild(allDayText);
-    startsRow.appendChild(allDayWrap);
+    allDayRow.appendChild(allDayWrap);
     startTime.disabled = endTime.disabled = allDay.checked;
 
     // Calendar: new events go where the user's "New events go to" setting
