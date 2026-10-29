@@ -71,11 +71,26 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
    again for it.
 
    Raised: Mindmap print calibration (Oct 23), Backlog review (Aug 29), IDEAS.
-3. **No hidden limits.** The 8K Auto context cap was found on Oct 4 and its fix
-   was still in progress when that session ended. Study was capped at 64K and the
-   context pill went stale (both fixed). Check that nothing else caps context
-   or models silently.
-   Raised: Light mode (Oct 4), Branch check (Oct 7), Oct 16 and 20. Unclear: the 8K fix.
+3. **No hidden limits.** Audited on Oct 29: every place a context window, an
+   output limit or a model is chosen. Fixed:
+   - Auto ran the first turn after launch or a model switch at 8K (the 8K
+     cap from Oct 4, still live in the main chat), and every turn on a
+     Claude model;
+   - a routine's Context was capped by the chat on screen;
+   - any settings change reset the chat's picked size;
+   - a call naming no size inherited the last size of any call to any model
+     (a 2K marking call shrank the next inline-AI call);
+   - a reply cut off at the length limit read as finished: it now says so,
+     and the background output cap is 16K;
+   - a run set to an uninstalled model ran on the chat's model unseen.
+   Waiting on you:
+   - Creations' Acts panel caps its planner at 1800 and 600 output tokens
+     with thinking on, so a reasoning model can spend it all thinking. A
+     Creations model call, so yours to change (add 4096 to each).
+   - The model's length is read generously: qwen3:8b declares 40,960 but is
+     listed at 128K (from its RoPE base), so Auto can ask past what the model
+     was trained on. Prefer the declared length, or keep the larger one?
+
 4. **The UI must not look made by AI.**
    - Word-only buttons and poor icons, across surfaces. The Agents, Browser
      and Planner dialogs are done; a sweep of the rest is open.
