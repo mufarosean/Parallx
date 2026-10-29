@@ -404,10 +404,13 @@ export function moEditMasks(ctx) {
     h.style.left = `${at.x}px`; h.style.top = `${at.y}px`;
     const d = ui.onDragPress(h, (e) => {
       e.preventDefault(); e.stopPropagation();
-      try { h.setPointerCapture(e.pointerId); } catch { /* the press is gone */ }
-      const mv = (ev) => { const q = ctx.fromScreen(ev.clientX, ev.clientY); move(q.u, q.v); ctx.requestRender(); };
-      const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); ctx.afterChange(true); };
-      h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+      // The drag follows the pointer on the window: every move redraws the
+      // handles (sync replaces them), and listeners on this one would stop
+      // after the first move, leaving the drag a few pixels long.
+      const id = e.pointerId;
+      const mv = (ev) => { if (ev.pointerId !== id) return; const q = ctx.fromScreen(ev.clientX, ev.clientY); move(q.u, q.v); ctx.requestRender(); };
+      const up = (ev) => { if (ev.pointerId !== id) return; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); ctx.afterChange(true); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
     }, { pointerEvents: true });
     h.addEventListener('keydown', (e) => {
       const a = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
