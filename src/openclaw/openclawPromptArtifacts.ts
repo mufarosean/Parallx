@@ -23,6 +23,8 @@ export interface IOpenclawPromptArtifactInput {
   readonly workspaceDigest: string;
   readonly skillState: IOpenclawRuntimeSkillState;
   readonly toolState: IOpenclawRuntimeToolState;
+  /** Some of the tools load only through `tool_search` (see openclawToolDeferral). */
+  readonly toolsLoadOnDemand?: boolean;
   readonly runtimeInfo: IOpenclawRuntimeInfo;
   readonly systemPromptAddition?: string;
   readonly preferencesPrompt?: string;
@@ -63,6 +65,7 @@ export function buildOpenclawPromptArtifacts(
     skillsCompact: input.skillState.compact,
     skillsTruncationNote: input.skillState.truncationNote || undefined,
     tools: toolSummaries,
+    toolsLoadOnDemand: input.toolsLoadOnDemand,
     runtimeInfo: input.runtimeInfo,
     systemPromptAddition: input.systemPromptAddition,
     preferencesPrompt: input.preferencesPrompt,
@@ -85,7 +88,7 @@ export function buildOpenclawPromptArtifacts(
       })
     : '';
   const toolSection = input.toolState.availableDefinitions.length > 0
-    ? buildToolSummariesSection(toolSummaries)
+    ? buildToolSummariesSection(toolSummaries, input.toolsLoadOnDemand)
     : '';
 
   return {

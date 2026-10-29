@@ -20,15 +20,29 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 ## What you asked for most (and is still open)
 
 1. **Chat that keeps up with Claude Code: the right tools and facts at the right time.**
-   - Tool schemas load on demand (`tool_search` or tool families). They cost
-     10 to 15K tokens on every turn today.
-   - Merge the six overlapping search tools and the three link tools.
-   - Load skills only when needed.
-   - Put the standing context after the history so the prompt cache holds.
-   - Tell the model what changed since its last turn.
+   Done, waiting on a test with your local model:
+   - Tool schemas load on demand. Core read/write tools are always loaded;
+     the rest are named in one `tool_search` catalog and join the request
+     once asked for, and stay for the rest of that chat. Per call, the tools
+     cost about a quarter of what they did. Setting: AI settings, Tools,
+     `tools.loadOnDemand` (on by default).
+   - The prompt says so when it teaches a tool that is not loaded yet, so the
+     model loads it rather than saying it cannot.
+   Already true when checked (nothing to build):
+   - Search tools: the six are now five (`fs_search_knowledge` went into
+     `fs_grep_search`). Each one searches a different thing (file names, file
+     and document contents, canvas pages, memory, past chats) and points to
+     the others; only the first four are always loaded.
+   - Link tools: the three do different jobs (a checked citation link, a link
+     between two blocks, nesting pages under a hub). Merging would make one
+     tool with three modes, which small models pick worse.
+   - Skills: the prompt carries only each skill's name, description and
+     location; the body is read when one applies.
+   - Standing context (plan, retrieved passages, memories) comes after the
+     history, so the history stays cached; the clock and scene ride on the
+     latest message only.
+   - "What changed since your last turn" is sent each turn.
 
-   Raised: Backlog review (Aug 29 to 31), FINISH Track D/E, IDEAS, RESEARCH #4/#13.
-   Open: nothing in `src/` defers tools.
 2. **Answers grounded in your own material, with no invention.**
    - Fix the RAG engine first:
      - add a cosine relevance gate, so "nothing found" can happen;

@@ -1,7 +1,8 @@
 // openclawToolDeferral.test.ts — a long tool list goes behind tool_search.
 import { describe, it, expect } from 'vitest';
 import type { IToolDefinition } from '../../src/services/chatTypes';
-import { DEFER_ABOVE_TOKENS, TOOL_SEARCH_NAME, catalogLine, loadedTools, planToolSurface, runToolSearch, toolTokens } from '../../src/openclaw/openclawToolDeferral';
+import { buildToolSummariesSection } from '../../src/openclaw/openclawSystemPrompt';
+import { DEFER_ABOVE_TOKENS, TOOL_SEARCH_NAME, catalogLine, defersTools, loadedTools, planToolSurface, runToolSearch, toolTokens } from '../../src/openclaw/openclawToolDeferral';
 
 const tool = (name: string, description: string, extra: Partial<IToolDefinition> = {}): IToolDefinition => ({
   name, description, parameters: { type: 'object', properties: { text: { type: 'string', description: 'x'.repeat(400) } } }, ...extra,
@@ -50,6 +51,20 @@ describe('which tools a model call carries', () => {
     const s = planToolSurface(list, new Set(['cron_add']));
     expect(s.send.map((d) => d.name)).toContain('cron_add');
     expect(s.deferred.map((d) => d.name)).not.toContain('cron_add');
+  });
+});
+
+describe('the prompt, when tools load on demand', () => {
+  it('says to load a named tool through tool_search, only when some are deferred', () => {
+    const big = bigList();
+    expect(defersTools(big)).toBe(true);
+    expect(defersTools(big, false)).toBe(false);
+    expect(defersTools([tool('a', 'A.')])).toBe(false);
+    // Fixed for a tool list: what a chat loads never changes it, so the prompt stays cacheable.
+    expect(defersTools(big.map((d) => ({ ...d, alwaysLoad: d.name.startsWith('extra') ? false : true })))).toBe(true);
+    const summaries = big.map((d) => ({ name: d.name, description: d.description }));
+    expect(buildToolSummariesSection(summaries, true)).toContain('listed in `tool_search`');
+    expect(buildToolSummariesSection(summaries)).not.toContain('tool_search');
   });
 });
 

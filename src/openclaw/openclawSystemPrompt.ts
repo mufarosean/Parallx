@@ -111,8 +111,8 @@ export interface IOpenclawSystemPromptParams {
   readonly skillsCompact?: boolean;
   /** Optional warning line prepended to the skills section (truncation notice). */
   readonly skillsTruncationNote?: string;
-  /** Tool name + description pairs for prompt injection */
-  readonly tools: readonly IToolSummary[];
+  /** Tool name + description pairs for prompt injection; with `toolsLoadOnDemand`, some only load through `tool_search`. */
+  readonly tools: readonly IToolSummary[]; readonly toolsLoadOnDemand?: boolean;
   /** Runtime metadata */
   readonly runtimeInfo: IOpenclawRuntimeInfo;
   /** Additional system prompt content from context engine assemble() */
@@ -204,7 +204,7 @@ export function buildOpenclawSystemPrompt(params: IOpenclawSystemPromptParams): 
 
   // 3. Tool summaries (upstream: buildToolSummaryMap in pi-embedded-runner/system-prompt.ts)
   if (params.tools.length > 0) {
-    sections.push(buildToolSummariesSection(params.tools));
+    sections.push(buildToolSummariesSection(params.tools, params.toolsLoadOnDemand));
   }
 
   // 3a. Memory section. The model already has `memory_read`/`memory_search`
@@ -415,7 +415,7 @@ ${entries}
  * is that tool descriptions are the selection signal and shouldn't be
  * duplicated in prose. We don't duplicate; we add orthogonal surface routing.
  */
-export function buildToolSummariesSection(tools: readonly IToolSummary[]): string {
+export function buildToolSummariesSection(tools: readonly IToolSummary[], loadOnDemand = false): string {
   // The function-calling schema already carries every tool's name, description,
   // and parameters, so this section does NOT re-list tools. It teaches the
   // surface prefixes and the routing between them, and ONLY for the tools
@@ -489,7 +489,7 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
 
   const lines = [
     '## Tooling',
-    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive snake_case; copy each name exactly as written in the schema.',
+    'Tool definitions (name, description, parameters) are provided in the function-calling schema for this turn. Each tool\'s description states what it does and when to use it — read it before calling. Tool names are case-sensitive snake_case; copy each name exactly as written in the schema.' + (loadOnDemand ? ' Not every tool is loaded at first: a tool named in these instructions but missing from your schema is listed in `tool_search`. Load it there, then call it; check `tool_search` before you say you cannot do something.' : ''),
   ];
   if (legend.length > 0) { lines.push('', 'Every tool name carries a **surface prefix** so you always know which resource it acts on:', ...legend); }
   if (routing.length > 0) { lines.push('', 'Routing rules:', ...routing, prefer); }

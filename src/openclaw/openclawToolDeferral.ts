@@ -51,13 +51,18 @@ export interface IToolSurface {
   readonly deferred: readonly IToolDefinition[];
 }
 
+/** Whether some of these tools wait behind `tool_search` (fixed for a tool list, whatever the chat has loaded). */
+export function defersTools(available: readonly IToolDefinition[], enabled = true): boolean {
+  return enabled && available.some((d) => !d.alwaysLoad) && toolTokens(available) > DEFER_ABOVE_TOKENS;
+}
+
 /**
  * Which tools this model call carries. Everything, when the list is small or
  * deferral is off; otherwise the always-loaded ones, those the chat has
  * loaded, and `tool_search` naming the rest.
  */
 export function planToolSurface(available: readonly IToolDefinition[], loaded: ReadonlySet<string>, enabled = true): IToolSurface {
-  if (!enabled || available.length === 0 || toolTokens(available) <= DEFER_ABOVE_TOKENS) return { send: available, deferred: [] };
+  if (!defersTools(available, enabled)) return { send: available, deferred: [] };
   const send: IToolDefinition[] = [];
   const deferred: IToolDefinition[] = [];
   for (const d of available) (d.alwaysLoad || loaded.has(d.name) ? send : deferred).push(d);

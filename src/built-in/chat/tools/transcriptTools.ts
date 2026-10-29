@@ -71,7 +71,7 @@ export function createTranscriptSearchTool(transcriptSearch: IBuiltInToolTranscr
   return {
     name: 'transcript_search',
     displaySummary: 'Search prior session transcripts.',
-    description: 'Keyword search over the session transcripts in `.parallx/sessions/`; results carry the session IDs transcript_get reads.',
+    description: 'Keyword search over the session transcripts in `.parallx/sessions/`: what was said or done in earlier chats (saved facts and lessons live in memory). Results carry the session IDs transcript_get reads.',
     parameters: {
       type: 'object',
       required: ['query'],

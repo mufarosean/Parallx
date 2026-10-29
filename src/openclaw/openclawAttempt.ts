@@ -38,7 +38,7 @@ import { MAX_TOOL_RESULT_CHARS, ROUND_RESULT_FLOOR_CHARS, capToolResultRound, wi
 export { capToolResultContent, capToolResultRound, withoutToolImages, elideLongToolCallArgs, normalizeToolResultContent } from './openclawToolResultCaps.js';
 import { scene, formatSceneLine } from '../ui/scene.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
-import { TOOL_SEARCH_NAME, loadedTools, planToolSurface, runToolSearch, type IToolSurface } from './openclawToolDeferral.js';
+import { TOOL_SEARCH_NAME, defersTools, loadedTools, planToolSurface, runToolSearch, type IToolSurface } from './openclawToolDeferral.js';
 import { _detectHallucinatedToolCall } from './openclawHallucinatedToolCall.js';
 export { _detectHallucinatedToolCall } from './openclawHallucinatedToolCall.js';
 import type { IResolvedAgentConfig } from './agents/openclawAgentConfig.js';
@@ -236,7 +236,7 @@ export async function executeOpenclawAttempt(
     bootstrapReport: context.bootstrapDebugReport,
     workspaceDigest: context.workspaceDigest,
     skillState: context.skillState,
-    toolState: context.toolState,
+    toolState: context.toolState, toolsLoadOnDemand: defersTools(context.toolState.availableDefinitions, context.deferTools !== false),
     runtimeInfo: context.runtimeInfo,
     systemPromptAddition: assembled.systemPromptAddition,
     preferencesPrompt: context.preferencesPrompt,
