@@ -674,10 +674,10 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   }
 
   async openLinkInExternalBrowser(href: string): Promise<void> {
-    // In-app links (to a page or block) open here, from a click or the
-    // bubble menu's open button alike.
+    // In-app links open here, from a click or the bubble menu's open button alike.
     const pageLink = parsePageLink(href);
     if (pageLink) return this._openPageLink(pageLink.pageId, pageLink.blockId);
+    if (href.startsWith('parallx://')) { await this._provider.executeCommand?.('canvas.openAppLink', href); return; } // a citation: a spot in a file, and the like
     const url = normalizeExternalWebLink(href);
     if (!url) {
       await this._provider.window?.showWarningMessage('Only http:// and https:// links can be opened.');

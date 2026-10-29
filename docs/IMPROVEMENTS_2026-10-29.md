@@ -268,7 +268,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   lists, tables and formatting; a rich copy and a paste into code stay as they were.
 - **Images stored as files, not base64.** IDEAS. Open.
 - **Export a page with its sub-pages, and the whole workspace.** IDEAS. Open.
-- **Backlinks count both link formats.** IDEAS. Open.
+- **Backlinks count both link formats.** IDEAS. Done Oct 29, with two bugs
+  found on the way: a parallx:// link (what the chat and its citations write)
+  lost its target in a page, and clicking one said "only http links".
 - **Slash menu leads with text**, with mid-line `/` and aliases. IDEAS. Partly done.
 - **Page chrome contribution points:** badges, a Connections panel, a page menu
   location. FINISH C. Partly done.

@@ -590,9 +590,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }
 
   // 3b. Persist expanded state on change (Task 6.2)
-  _sidebar.onExpandStateChanged = (expandedIds) => {
-    context.workspaceState.update('canvas.expandedPages', [...expandedIds]);
-  };
+  _sidebar.onExpandStateChanged = (expandedIds) => { context.workspaceState.update('canvas.expandedPages', [...expandedIds]); };
 
   // 4. Register editor provider for Canvas panes (Cap 5)
   const editorProvider = new CanvasEditorProvider(_dataService, api.window);
@@ -600,6 +598,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   editorProvider.setDatabaseService(_databaseService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   editorProvider.setExecuteCommand((id, ...args) => Promise.resolve(api.commands.executeCommand(id, ...args)));
+  context.subscriptions.push(api.commands.registerCommand('canvas.openAppLink', (uri: unknown) => typeof uri === 'string' && uri.startsWith('parallx://') ? api.links.open(uri) : false)); // a parallx:// link clicked in a page
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {

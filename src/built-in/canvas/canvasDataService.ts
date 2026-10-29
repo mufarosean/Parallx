@@ -36,7 +36,7 @@ import {
   normalizeCanvasContentForStorage,
   isUnreadableCanvasContent,
 } from './contentSchema.js';
-import { unwrapUnknownContent } from './unknownContent.js';
+import { unwrapUnknownContent } from './unknownContent.js'; import { pageLinkForms } from './pageLinks.js';
 
 // SaveStateKind / SaveStateEvent moved to canvasTypes.ts
 // so consumers can subscribe via ICanvasDataService without coupling to
@@ -2158,9 +2158,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   async getBacklinks(pageId: string): Promise<IPage[]> {
     const result = await this._db.all(
       `SELECT * FROM pages
-        WHERE is_archived = 0 AND id != ? AND instr(content, ?) > 0
+        WHERE is_archived = 0 AND id != ? AND (instr(content, ?) > 0 OR instr(content, ?) > 0)
         ORDER BY title COLLATE NOCASE`,
-      [pageId, `parallx-page:${pageId}`],
+      [pageId, ...pageLinkForms(pageId)],
     );
     if (result.error) throw new Error(result.error.message);
     return (result.rows ?? []).map(rowToPage);

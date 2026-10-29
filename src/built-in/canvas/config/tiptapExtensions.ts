@@ -454,10 +454,11 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       codeBlock: false,  // Replaced by CodeBlockLowlight via registry
       link: {
         openOnClick: false,
-        // In-app links to a page or block (pageLinks.ts) are allowed hrefs;
-        // otherwise the link would render with an empty one.  (Not listed in
-        // `protocols`: that would also autolink typed text.)
-        isAllowedUri: (url, ctx) => url.startsWith(`${PAGE_LINK_SCHEME}:`) || ctx.defaultValidate(url),
+        // In-app links are allowed hrefs: to a page or block (pageLinks.ts),
+        // and the app's own parallx:// links the chat and its citations write
+        // (a page, a spot in a PDF); otherwise the link renders with an empty
+        // one.  (Not listed in `protocols`: that would also autolink typed text.)
+        isAllowedUri: (url, ctx) => url.startsWith(`${PAGE_LINK_SCHEME}:`) || url.startsWith('parallx://') || ctx.defaultValidate(url),
         HTMLAttributes: {
           class: 'canvas-link',
         },
