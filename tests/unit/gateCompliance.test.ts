@@ -214,6 +214,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/mermaidNode.ts':             ['extensions/liveBlock'],
   'extensions/mermaidHost.ts':             [],   // the separate Mermaid bundle's entry
   'extensions/buttonNode.ts':              ['extensions/liveBlock', 'markdownImport'],
+  'extensions/markdownPaste.ts':           ['markdownImport'],   // plain-text Markdown pastes as blocks
   'extensions/linkedDatabaseNode.ts':      ['extensions/liveBlock'],
   'extensions/syncedBlockNode.ts':         ['extensions/liveBlock'],   // what live blocks get from the app (no canvas imports)
   'extensions/toolBlockNode.ts':           ['extensions/liveBlock'],   // blocks other tools bring (api.canvas.registerBlock)
