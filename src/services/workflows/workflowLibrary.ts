@@ -51,6 +51,27 @@ export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
     edges: [{ from: 't', to: 'c' }, { from: 'c', to: 'n' }],
   },
   {
+    // docs/MEMORY_BRIEF.md step 3: consolidation as a routine you can see,
+    // tune and turn off, not code. It only ever archives; you delete.
+    key: 'tidy-memory',
+    name: 'Tidy Memory',
+    description: 'Each night the agent tidies what it has written down: facts that keep coming up become lessons, lessons that say the same thing merge, and lessons nothing has needed in 90 days are archived. Nothing is deleted.',
+    class: 'quiet',
+    nodes: [
+      { id: 't', label: 'Each Night', kind: 'trigger.schedule', spec: { kind: 'daily', time: '02:40' }, x: 40, y: 80 },
+      {
+        id: 'g', label: 'Tidy The Lessons', kind: 'action.agentTurn', x: 280, y: 80,
+        prompt: 'Tidy the workspace memory in .parallx/memory. Read MEMORY.md (the index of lessons) and the daily files of the last week with memory_read. '
+          + '(1) A fact that appears on three or more different days and is not yet a lesson: add it as a lesson with memory_write. '
+          + '(2) Two lessons that say the same thing: rewrite one to hold both and remove the other (remove archives it). '
+          + '(3) For each lesson, memory_search its topic: if nothing from the last 90 days comes up, remove it (archives it). '
+          + 'Never delete a file any other way, never change USER.md, and never write anything the daily files mark as not to be remembered. '
+          + 'Finish with a short list of what you added, merged and archived, and why; if nothing needed doing, say so.',
+      },
+    ],
+    edges: [{ from: 't', to: 'g' }],
+  },
+  {
     key: 'scheduled-agent-task',
     name: 'Scheduled Agent Task',
     description: 'The blank scheduled turn: pick a time, write the task, the agent runs it.',

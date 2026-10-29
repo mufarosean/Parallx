@@ -144,13 +144,21 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
    - Custom quiz types (answers that are lists): asked for the Concept Quiz,
      which is your canvas database and skill, not an app surface.
 
-8. **Memory you can see and correct.**
-   - A Memory tab showing where each lesson came from.
-   - "Do Not Remember This".
-   - Nightly consolidation.
-   - Checkpoint memory writes too.
+8. **Memory you can see and correct.** Built Oct 29 on the brief's
+   recommended answers (docs/MEMORY_BRIEF.md: files stay the truth, the view
+   sits beside Mind, nothing is hard-deleted):
+   - every lesson records the chat and day it came from;
+   - Agents › Mind › What it has written down: each lesson, where it came
+     from, Open, Wrong (archives it and tells the agent) and Archive;
+   - Do Not Remember This on a reply's right-click menu: the exchange stays
+     in the chat, the chat is never summarised into memory, and the model is
+     told not to record it;
+   - a Tidy Memory routine in Agents › Routines (installed off): promote
+     recurring facts, merge duplicates, archive stale lessons.
+   Open: the memory token meter in the chat header, and checkpointing
+   memory writes. Brief decisions D1 to D5 were taken as recommended; say
+   if any should go the other way.
 
-   Raised: Bad ideas (Sep 5), Good UI (Sep 2), IDEAS. Brief written; open.
 9. **The AI writes its own skills, held for your approval.** "We do need a
    self-authoring for skills system."
    Raised: Bad ideas (Sep 5), IDEAS. Brief written; open.
