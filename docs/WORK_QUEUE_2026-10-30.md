@@ -7,8 +7,8 @@ commit and push after each item, and mark it here.
 ## I can do these without you
 
 ### Chat, memory, AI
-1. Memory token meter in the chat header (how much of the window memory takes).
-2. Memory writes can be undone (a checkpoint before each write).
+1. Done: the context meter's popup shows the memory that rode into the last turn.
+2. Done: memory writes leave /rewind checkpoints.
 3. One model-call ledger: who called, model, tokens, timings, in one place you can open.
 4. Heartbeat notices page edits, not only file changes.
 5. Web search without an API key (a no-key fallback when none is set).
@@ -18,14 +18,14 @@ commit and push after each item, and mark it here.
 
 ### Canvas
 8. Slash menu: mid-line `/` and aliases (the rest of "leads with text").
-9. Database: CSV import and export.
+9. Done: a database view's menu (right-click its tab) has Export as CSV… and Import CSV….
 
 ### Atelier
-10. One Duplicates page (Exact and Look-alike); menus in one order.
+10. Done: one Duplicates page with Exact and Look-alike tabs; photo, GIF and video menus show what applies, in one order.
 11. Upscale loads its engine once per batch.
 
 ### Budget
-12. The categorizer sees your past choices for the same merchant.
+12. Done: two or more of your own picks for a payee file it with no AI; fewer go into the prompt as past choices.
 
 ### Workbench and design system
 13. Ctrl+P finds settings, tools and themes, not only files.

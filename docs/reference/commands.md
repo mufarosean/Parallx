@@ -61,6 +61,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `canvas.duplicatePage` | Canvas: Duplicate Page | canvas |  |  |  |
 | `canvas.emptyTrash` | Canvas: Empty Trash… | canvas |  |  |  |
 | `canvas.exportAllPages` | Canvas: Export All Pages as Markdown… | canvas |  |  |  |
+| `canvas.exportDatabaseCsv` | Canvas: Export Database as CSV… | canvas |  |  |  |
+| `canvas.importCsvToDatabase` | Canvas: Import CSV into Database… | canvas |  |  |  |
 | `canvas.manageTemplates` | Canvas: Manage Templates | canvas |  |  |  |
 | `canvas.newDatabase` | Canvas: New Database | canvas |  |  |  |
 | `canvas.newPage` | Canvas: New Page | canvas |  |  |  |
