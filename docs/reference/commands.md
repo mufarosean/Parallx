@@ -122,6 +122,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.container.dock` | Dock Container to Rail | core | View |  |  |
 | `workbench.action.container.float` | Float Container | core | View |  |  |
 | `workbench.action.container.moveToEdge` | Move Container to Edge | core | View |  |  |
+| `workbench.action.copyDiagnostics` | Copy Diagnostics | core | Help |  |  |
 | `workbench.action.decreaseTextSize` | Decrease Text Size | core | View | Ctrl+- |  |
 | `workbench.action.decreaseViewHeight` | View: Make Focused Area Shorter | core | View | Ctrl+Alt+Shift+ArrowDown |  |
 | `workbench.action.decreaseViewWidth` | View: Make Focused Area Narrower | core | View | Ctrl+Alt+Shift+ArrowLeft |  |
