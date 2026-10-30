@@ -134,8 +134,8 @@ export { PAGE_ICON_RECENT_STORAGE_KEY, COVER_GALLERY } from '../config/blockRegi
 // slashMenuItems.ts is a pure data file.  Re-export its types and builder so
 // slashMenu.ts imports everything through canvasMenuRegistry — its single gate.
 
-export { buildSlashMenuItems } from './slashMenuItems.js';
-export type { SlashMenuItem, SlashBlockDef } from './slashMenuItems.js';
+export { buildSlashMenuItems, type SlashMenuItem, type SlashBlockDef } from './slashMenuItems.js';
+export { rankSlashItems, slashQueryAlive } from './slashMenuQuery.js';
 
 // ── Popup Insert Helpers (menu-child gate) ───────────────────────────────────
 // Popup files are menu-layer children.  Re-export them so no file outside the
@@ -364,7 +364,7 @@ export interface MenuBlockInfo {
   readonly iconIsText?: boolean;
   readonly defaultAttrs?: Record<string, any>;
   readonly defaultContent?: Record<string, any>;
-  readonly slashMenu?: { readonly label?: string; readonly description: string; readonly category?: string };
+  readonly slashMenu?: { readonly label?: string; readonly description: string; readonly category?: string; readonly aliases?: readonly string[] };
   readonly turnInto?: { readonly order: number; readonly shortcut?: string };
 }
 
@@ -724,7 +724,7 @@ export class CanvasMenuRegistry {
         name: 'toolBlock',
         label: c.registration.label,
         icon: c.registration.icon,
-        slashMenu: { description: c.registration.description, category: 'tools' },
+        slashMenu: { description: c.registration.description, category: 'tools', aliases: c.registration.aliases },
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
     return [..._getSlashMenuBlocks(), ...fromTools];

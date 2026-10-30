@@ -3,13 +3,21 @@
 // Extracted from canvasEditorProvider.ts (Phase 0).
 // Handles creating the slash menu popup, filtering items by typed text,
 // keyboard navigation, and executing the selected command.
+//
+// "/" opens the menu at the start of a line or after a space mid-line
+// (slashMenuQuery.ts has the rule and the ranking). Picked mid-line, an
+// inline item replaces the "/query" where it stands; a block item removes
+// the "/query" and goes in a new block after the line.
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import {
   svgIcon,
   buildSlashMenuItems,
+  rankSlashItems,
+  slashQueryAlive,
 } from './canvasMenuRegistry.js';
+import { inlineMathBeforeCaret, slashInsertRange, slashTriggerAt } from './slashMenuInsert.js';
 import type {
   SlashMenuItem,
   ICanvasMenu,
@@ -52,8 +60,8 @@ export class SlashMenuController implements ICanvasMenu {
   private _menu: HTMLElement | null = null;
   private _visible = false;
   private _filterText = '';
-  /** Start of the "/" line whose menu was closed with Esc (null: none). */
-  private _dismissedLine: number | null = null;
+  /** Position of the "/" whose menu was closed with Esc (null: none). */
+  private _dismissedSlash: number | null = null;
   private _selectedIndex = 0;
   private _registration: IDisposable | null = null;
 
@@ -96,7 +104,7 @@ export class SlashMenuController implements ICanvasMenu {
 
     const { $from } = state.selection;
 
-    // Only trigger at the start of an empty or text-only paragraph — never
+    // Only trigger in a line blocks can follow — never
     // in code (a "/" there is code: "// todo" + Enter turned the code block
     // into a to-do list) or in a text-only line (a toggle's summary, a toggle
     // heading's title), where no block can go.
@@ -106,26 +114,25 @@ export class SlashMenuController implements ICanvasMenu {
       return;
     }
 
-    const text = $from.parent.textContent;
+    const trigger = slashTriggerAt($from);
 
-    // A line whose menu was closed with Esc stays closed while it still
-    // starts with "/" (the next key used to reopen it).
-    const lineStart = $from.start();
-    if (this._dismissedLine !== null && (this._dismissedLine !== lineStart || !text.startsWith('/'))) {
-      this._dismissedLine = null;
+    // A "/" whose menu was closed with Esc stays closed while it is still
+    // there (the next key used to reopen it).
+    if (this._dismissedSlash !== null && this._dismissedSlash !== trigger?.from) {
+      this._dismissedSlash = null;
     }
-    if (this._dismissedLine === lineStart) {
+    if (!trigger || this._dismissedSlash === trigger.from) {
       this.hide();
       return;
     }
 
-    // Look for '/' at the start of the line
-    if (text.startsWith('/')) {
-      this._filterText = text.slice(1).toLowerCase();
-      this._show(editor);
-    } else {
+    // Words that found nothing, then a space: the "/" was text.
+    if (!slashQueryAlive(this._allItems(), trigger.query)) {
       this.hide();
+      return;
     }
+    this._filterText = trigger.query.toLowerCase();
+    this._show(editor);
   }
 
   private _show(editor: Editor): void {
@@ -179,9 +186,13 @@ export class SlashMenuController implements ICanvasMenu {
     }
   }
 
+  /** Not kept: tools add and remove their blocks as they are turned on and off. */
+  private _allItems(): SlashMenuItem[] {
+    return buildSlashMenuItems(this._registry.getSlashMenuBlocks());
+  }
+
   private _getFilteredItems(): SlashMenuItem[] {
-    // Not kept: tools add and remove their blocks as they are turned on and off.
-    const items = buildSlashMenuItems(this._registry.getSlashMenuBlocks());
+    const items = this._allItems();
 
     if (!this._filterText) {
       // No filter — hoist recents to the top while preserving full list ordering
@@ -201,12 +212,8 @@ export class SlashMenuController implements ICanvasMenu {
       return hoisted;
     }
 
-    const q = this._filterText.replace(/[^a-z0-9]/g, '');
-    return items.filter(item => {
-      const label = item.label.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const desc = item.description.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return label.includes(q) || desc.includes(q);
-    });
+    // Exact name or alias, then prefix, then substring, then description.
+    return rankSlashItems(items, this._filterText);
   }
 
   private _renderItems(items: SlashMenuItem[], editor: Editor): void {
@@ -300,7 +307,7 @@ export class SlashMenuController implements ICanvasMenu {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      this._dismissedLine = editor.state.selection.$from.start();
+      this._dismissedSlash = slashTriggerAt(editor.state.selection.$from)?.from ?? null;
       this.hide();
     }
   };
@@ -317,24 +324,18 @@ export class SlashMenuController implements ICanvasMenu {
     // The try/finally below guarantees the flag is restored even if the
     // insert path throws.
     this._host.suppressUpdate = true;
+    let insertedMathAt = -1;
     try {
-      const { $from } = editor.state.selection;
-      if ($from.depth < 1) return;
+      const range = slashInsertRange(editor, item);
+      if (!range) return;
 
-      const blockDepth = $from.depth;
-      const blockPos = $from.before(blockDepth);
-      const blockNode = editor.state.doc.nodeAt(blockPos);
-      if (!blockNode) return;
-
-      await this._registry.executeBlockInsert(item.blockId, editor, {
-        from: blockPos,
-        to: blockPos + blockNode.nodeSize,
-      }, {
+      await this._registry.executeBlockInsert(item.blockId, editor, range, {
         pageId: this._host.pageId,
         dataService: this._host.dataService,
         databaseService: this._host.databaseService,
         openEditor: this._host.openEditor,
       });
+      insertedMathAt = inlineMathBeforeCaret(editor);
     } finally {
       this._host.suppressUpdate = false;
     }
@@ -345,10 +346,16 @@ export class SlashMenuController implements ICanvasMenu {
     this.hide();
 
     // Auto-open inline math editor if an inline equation was just inserted
-    if (item.label === 'Inline Equation') {
+    if (item.blockId === 'inlineMath') {
       setTimeout(() => {
         const ed = this._host.editor;
-        if (!ed) return;
+        if (!ed || ed.isDestroyed) return;
+        const placed = insertedMathAt >= 0 ? ed.state.doc.nodeAt(insertedMathAt) : null;
+        const placedDom = placed?.type.name === 'inlineMath' ? ed.view.nodeDOM(insertedMathAt) : null;
+        if (placed && placedDom instanceof HTMLElement) {
+          this._registry.showInlineMathEditor(insertedMathAt, placed.attrs.latex || '', placedDom);
+          return;
+        }
         const allMath = this._host.editorContainer?.querySelectorAll('.tiptap-math.latex');
         if (allMath && allMath.length > 0) {
           const lastMath = allMath[allMath.length - 1] as HTMLElement;

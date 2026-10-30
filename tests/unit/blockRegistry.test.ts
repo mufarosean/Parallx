@@ -131,13 +131,18 @@ describe('blockRegistry', () => {
 
     it('returns every slash menu item', () => {
       // 28 after the /mindmap retirement, +1 for /concept map (the chat
-      // pattern promoted: outline in, diagram out).
-      expect(getSlashMenuBlocks()).toHaveLength(30 + ADDED_SLASH_LABELS.length);
+      // pattern promoted: outline in, diagram out), +1 for /text.
+      expect(getSlashMenuBlocks()).toHaveLength(31 + ADDED_SLASH_LABELS.length);
     });
 
-    it('includes Page as the first item (order 0)', () => {
-      const items = getSlashMenuBlocks();
-      expect(items[0].name).toBe('pageBlock');
+    it('leads with text: Text, headings, lists, then callout; pages near the end', () => {
+      const ids = getSlashMenuBlocks().map((b) => b.id);
+      expect(ids.slice(0, 4)).toEqual(['paragraph', 'heading-1', 'heading-2', 'heading-3']);
+      const firstNonText = ids.findIndex((id) => !/^(paragraph|heading-|toggleHeading-|bulletList|orderedList|taskList)/.test(id));
+      expect(ids[firstNonText]).toBe('callout');
+      for (const page of ['pageBlock', 'database', 'linkedDatabase', 'linkToPage']) {
+        expect(ids.indexOf(page)).toBeGreaterThan(ids.indexOf('subpageList'));
+      }
     });
   });
 
@@ -201,7 +206,7 @@ describe('blockRegistry', () => {
     /** Original labels from the hardcoded SLASH_MENU_ITEMS, in order.
      *  'Database' was added with the databases feature (pageBlock variant). */
     const ORIGINAL_SLASH_LABELS = [
-      'Page', 'Database', 'Link to Page', 'Heading 1', 'Heading 2', 'Heading 3',
+      'Text', 'Page', 'Database', 'Link to Page', 'Heading 1', 'Heading 2', 'Heading 3',
       'Bulleted List', 'Numbered List', 'To-do List',
       'Quote', 'Code', 'Divider',
       'Toggle List', 'Callout', 'Table',
@@ -214,7 +219,7 @@ describe('blockRegistry', () => {
     ];
 
     it('produces one item per slash block', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(30 + ADDED_SLASH_LABELS.length);
+      expect(SLASH_MENU_ITEMS).toHaveLength(31 + ADDED_SLASH_LABELS.length);
     });
 
     it('preserves all original labels', () => {

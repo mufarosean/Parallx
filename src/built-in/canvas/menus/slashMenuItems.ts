@@ -17,11 +17,18 @@
 /** Narrow block definition shape — only the fields slash-menu building needs. */
 export interface SlashBlockDef {
   readonly id: string;
+  /** ProseMirror node type name (tells an inline item from a block). */
+  readonly name?: string;
   readonly label: string;
   readonly icon: string;
   readonly iconIsText?: boolean;
   readonly defaultContent?: Record<string, any>;
-  readonly slashMenu?: { readonly label?: string; readonly description: string; readonly category?: string };
+  readonly slashMenu?: {
+    readonly label?: string;
+    readonly description: string;
+    readonly category?: string;
+    readonly aliases?: readonly string[];
+  };
 }
 
 export interface SlashMenuItem {
@@ -32,6 +39,10 @@ export interface SlashMenuItem {
   /** True when `icon` is a text glyph (H₁, T, …) rather than an icon id. */
   iconIsText: boolean;
   description: string;
+  /** Other names a search finds the item by ("h1", "todo", "-"). */
+  aliases: readonly string[];
+  /** ProseMirror node type name, when known. */
+  nodeName?: string;
   /** The group label shown above the item when nothing is typed. */
   group?: string;
 }
@@ -39,7 +50,7 @@ export interface SlashMenuItem {
 /** Slash menu group labels, by block category (sentence case). */
 const GROUP_LABELS: Record<string, string> = {
   page: 'Pages',
-  basic: 'Headings',
+  basic: 'Text',
   list: 'Lists',
   rich: 'Blocks',
   media: 'Media',
@@ -68,6 +79,8 @@ export function buildSlashMenuItems(defs: readonly SlashBlockDef[]): SlashMenuIt
     icon: def.icon,
     iconIsText: def.iconIsText === true,
     description: def.slashMenu!.description,
+    aliases: (def.slashMenu!.aliases ?? []).filter((a): a is string => typeof a === 'string'),
+    nodeName: def.name,
     group: def.slashMenu!.category ? GROUP_LABELS[def.slashMenu!.category] : undefined,
   }));
 }

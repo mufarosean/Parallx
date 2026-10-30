@@ -134,7 +134,7 @@ const GATE_RULES: Record<string, string[]> = {
   'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/', 'menus/imagePathResolver', 'pageLinks', 'imageStore'],
 
   // ── CanvasMenuRegistry children ─────────────────────────────────────────
-  'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry'],
+  'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry', 'menus/slashMenuInsert'],
   'menus/mentionMenu.ts':                  ['menus/canvasMenuRegistry', 'pageLinks'],   // "@" page picker
   'menus/bubbleMenu.ts':                   ['menus/canvasMenuRegistry'],
   'menus/blockActionMenu.ts':              ['menus/canvasMenuRegistry', 'pageLinks'],
@@ -145,6 +145,8 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/inlineAIReplace.ts':              [],  // Replace action: markdown in and out, tracked range
   'math/inlineMathEditor.ts':              ['menus/canvasMenuRegistry'],
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
+  'menus/slashMenuQuery.ts':               [],  // the "/" trigger rule and search ranking: pure
+  'menus/slashMenuInsert.ts':              ['menus/slashMenuQuery'],  // where the "/" is, where a pick goes
   'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
   'menus/inputIsolation.ts':               [],  // pure UI helper — no canvas imports
   'menus/insertTarget.ts':                 [],  // tracks an insert popup's target through edits (C11)

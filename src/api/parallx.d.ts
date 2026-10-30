@@ -1555,6 +1555,8 @@ export namespace canvas {
     readonly typeId: string;
     readonly label: string;
     readonly description: string;
+    /** Other names the / menu finds the block by, besides its label ("gallery", "photos"). An exact alias ranks first. */
+    readonly aliases?: readonly string[];
     readonly icon: string;
     readonly defaultConfig: Readonly<Record<string, unknown>>;
     readonly settings?: { readonly title: string; readonly fields: Readonly<Record<string, BlockField>> };

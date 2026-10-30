@@ -313,7 +313,15 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Backlinks count both link formats.** IDEAS. Done Oct 29, with two bugs
   found on the way: a parallx:// link (what the chat and its citations write)
   lost its target in a page, and clicking one said "only http links".
-- **Slash menu leads with text**, with mid-line `/` and aliases. IDEAS. Partly done.
+- **Slash menu leads with text**, with mid-line `/` and aliases. IDEAS. Done
+  Oct 30: `/` opens on Text, headings, lists, then callout; Page, Database,
+  Linked Database and Link to Page sit in a group near the end. A `/` after a
+  space opens it mid-line (not after a letter: "and/or", URLs, 10/30); a
+  block picked there goes in a new line after the current one, an inline
+  equation where the `/` was. Every block has aliases (`/h1`, `/todo`, `/-`,
+  `/>`, `/latex`), and tool blocks can declare their own
+  (`registerBlock({ aliases })`). An exact name or alias ranks first, then a
+  prefix, then a substring, then the description.
 - **Page chrome contribution points:** badges, a Connections panel, a page menu
   location. FINISH C. Partly done.
 - **One AI on a selection:** retire the inline mini-chat. FINISH B. Open.

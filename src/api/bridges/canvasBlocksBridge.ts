@@ -64,6 +64,8 @@ export interface CanvasBlockRegistration {
   readonly label: string;
   /** One line under the name in the / menu. */
   readonly description: string;
+  /** Other names the / menu finds the block by ("gallery", "photos"). */
+  readonly aliases?: readonly string[];
   /** An icon registry id. */
   readonly icon: string;
   readonly defaultConfig: Readonly<Record<string, unknown>>;
@@ -161,6 +163,9 @@ function validate(toolId: string, reg: CanvasBlockRegistration): void {
     if (typeof reg[key] !== 'string' || !reg[key]) throw new Error(`[api.canvas] Block "${reg.typeId}" needs a ${key}.`);
   }
   if (typeof reg.render !== 'function') throw new Error(`[api.canvas] Block "${reg.typeId}" needs a render function.`);
+  if (reg.aliases !== undefined && (!Array.isArray(reg.aliases) || reg.aliases.some((x) => typeof x !== 'string'))) {
+    throw new Error(`[api.canvas] Block "${reg.typeId}" aliases must be a list of strings.`);
+  }
   if (!reg.defaultConfig || typeof reg.defaultConfig !== 'object') throw new Error(`[api.canvas] Block "${reg.typeId}" needs a defaultConfig object.`);
 }
 

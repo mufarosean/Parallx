@@ -130,6 +130,7 @@ export interface SlashMenuConfig {
   readonly order: number;
   /** Category for grouping in slash menu UI. */
   readonly category: 'page' | 'basic' | 'list' | 'rich' | 'media' | 'layout' | 'math' | 'advanced' | 'tools';
+  readonly aliases?: readonly string[];  // other names a search finds it by ("h1", "todo", "-")
 }
 
 export interface TurnIntoConfig {
@@ -294,7 +295,6 @@ function _replaceBlockWithColumns(editor: Editor, range: { from: number; to: num
 // ── Block Definitions ───────────────────────────────────────────────────────
 
 const definitions: BlockDefinition[] = [
-
   // ── StarterKit blocks ──
 
   {
@@ -306,7 +306,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: undefined, // Paragraph is the default — not in slash menu
+    slashMenu: { description: 'Plain text', order: 0, category: 'basic', aliases: ['paragraph', 'plain', 'p'] },
     turnInto: { order: 0 },
     defaultContent: { type: 'paragraph' },
   },
@@ -320,7 +320,7 @@ const definitions: BlockDefinition[] = [
     kind: 'leaf',
     defaultAttrs: { level: 1 },
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Large heading', order: 1, category: 'basic' },
+    slashMenu: { description: 'Large heading', order: 1, category: 'basic', aliases: ['h1', 'title', '#'] },
     turnInto: { order: 1, shortcut: '#' },
     defaultContent: { type: 'heading', attrs: { level: 1 } },
     placeholder: 'Heading 1',
@@ -335,7 +335,7 @@ const definitions: BlockDefinition[] = [
     kind: 'leaf',
     defaultAttrs: { level: 2 },
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Medium heading', order: 2, category: 'basic' },
+    slashMenu: { description: 'Medium heading', order: 2, category: 'basic', aliases: ['h2', 'subtitle', '##'] },
     turnInto: { order: 2, shortcut: '##' },
     defaultContent: { type: 'heading', attrs: { level: 2 } },
     placeholder: 'Heading 2',
@@ -350,7 +350,7 @@ const definitions: BlockDefinition[] = [
     kind: 'leaf',
     defaultAttrs: { level: 3 },
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Small heading', order: 3, category: 'basic' },
+    slashMenu: { description: 'Small heading', order: 3, category: 'basic', aliases: ['h3', 'subheading', '###'] },
     turnInto: { order: 3, shortcut: '###' },
     defaultContent: { type: 'heading', attrs: { level: 3 } },
     placeholder: 'Heading 3',
@@ -363,7 +363,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Unordered list', order: 10, category: 'list' },
+    slashMenu: { description: 'Unordered list', order: 10, category: 'list', aliases: ['ul', 'bullet', 'bullets', '-', '*'] },
     turnInto: { order: 4 },
     defaultContent: {
       type: 'bulletList',
@@ -378,7 +378,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { label: 'Numbered List', description: 'Ordered list', order: 11, category: 'list' },
+    slashMenu: { label: 'Numbered List', description: 'Ordered list', order: 11, category: 'list', aliases: ['ol', 'numbers', '1.'] },
     turnInto: { order: 5 },
     defaultContent: {
       type: 'orderedList',
@@ -393,7 +393,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'container',
     capabilities: { ...STD_LEAF, isPageContainer: true },
-    slashMenu: { description: 'Block quote', order: 20, category: 'rich' },
+    slashMenu: { description: 'Block quote', order: 20, category: 'rich', aliases: ['blockquote', 'citation', '>', '"'] },
     turnInto: { order: 12 },
     defaultContent: {
       type: 'blockquote',
@@ -408,7 +408,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Horizontal rule', order: 22, category: 'rich' },
+    slashMenu: { description: 'Horizontal rule', order: 22, category: 'rich', aliases: ['hr', 'line', 'separator', '---'] },
     turnInto: undefined,
     defaultContent: { type: 'horizontalRule' },
   },
@@ -423,7 +423,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Task list with checkboxes', order: 12, category: 'list' },
+    slashMenu: { description: 'Task list with checkboxes', order: 12, category: 'list', aliases: ['todo', 'task', 'checkbox', 'check', '[]'] },
     turnInto: { order: 6 },
     defaultContent: {
       type: 'taskList',
@@ -443,7 +443,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: { ...STD_LEAF, suppressBubbleMenu: true },
-    slashMenu: { description: 'Code with syntax highlighting', order: 21, category: 'rich' },
+    slashMenu: { description: 'Code with syntax highlighting', order: 21, category: 'rich', aliases: ['codeblock', 'snippet', 'pre', '```'] },
     turnInto: { order: 11 },
     defaultContent: { type: 'codeBlock' },
     extension: (ctx) => CodeBlockLowlight.configure({
@@ -460,7 +460,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Upload or embed an image', order: 30, category: 'media' },
+    slashMenu: { description: 'Upload or embed an image', order: 30, category: 'media', aliases: ['picture', 'photo', 'img'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showImageInsertPopup(_editor, range),
@@ -474,7 +474,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'container',
     capabilities: CONTAINER_CAP,
-    slashMenu: { label: 'Toggle List', description: 'Collapsible content', order: 23, category: 'rich' },
+    slashMenu: { label: 'Toggle List', description: 'Collapsible content', order: 23, category: 'rich', aliases: ['toggle', 'collapse', 'details', 'accordion'] },
     turnInto: { order: 7 },
     defaultContent: {
       type: 'details',
@@ -502,7 +502,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: { ...STD_LEAF, allowInColumn: true },
-    slashMenu: { description: 'Insert a table', order: 24, category: 'rich' },
+    slashMenu: { description: 'Insert a table', order: 24, category: 'rich', aliases: ['grid', 'spreadsheet', 'rows'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (editor, range) => {
@@ -556,7 +556,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'inline',
     capabilities: { ...STD_LEAF, allowInColumn: false },
-    slashMenu: { description: 'Inline math within text', order: 41, category: 'math' },
+    slashMenu: { description: 'Inline math within text', order: 41, category: 'math', aliases: ['latex', 'math', 'formula', '$'] },
     turnInto: undefined,
     defaultContent: { type: 'inlineMath', attrs: { latex: 'f(x)', display: 'no' } },
     extension: () => InlineMathNode.configure({
@@ -577,7 +577,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'container',
     capabilities: { allowInColumn: true, customDragHandle: true, isPageContainer: true, suppressBubbleMenu: false },
-    slashMenu: { description: 'Highlighted info box', order: 25, category: 'rich' },
+    slashMenu: { description: 'Highlighted info box', order: 19.5, category: 'rich', aliases: ['note', 'info', 'tip', 'warning', 'admonition'] },
     turnInto: { order: 13 },
     defaultContent: {
       type: 'callout',
@@ -603,7 +603,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Full-width math equation', order: 40, category: 'math' },
+    slashMenu: { description: 'Full-width math equation', order: 40, category: 'math', aliases: ['latex', 'math', 'equation', 'eq', 'formula', '$$'] },
     turnInto: { order: 14 },
     defaultContent: { type: 'mathBlock', attrs: { latex: '' } },
     extension: () => MathBlock,
@@ -617,7 +617,7 @@ const definitions: BlockDefinition[] = [
     kind: 'container',
     defaultAttrs: { level: 1 },
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible large heading', order: 4, category: 'basic' },
+    slashMenu: { description: 'Collapsible large heading', order: 4, category: 'basic', aliases: ['toggle h1'] },
     turnInto: undefined,
     defaultContent: {
       type: 'toggleHeading',
@@ -648,7 +648,7 @@ const definitions: BlockDefinition[] = [
     kind: 'container',
     defaultAttrs: { level: 2 },
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible medium heading', order: 5, category: 'basic' },
+    slashMenu: { description: 'Collapsible medium heading', order: 5, category: 'basic', aliases: ['toggle h2'] },
     turnInto: undefined,
     defaultContent: {
       type: 'toggleHeading',
@@ -678,7 +678,7 @@ const definitions: BlockDefinition[] = [
     kind: 'container',
     defaultAttrs: { level: 3 },
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible small heading', order: 6, category: 'basic' },
+    slashMenu: { description: 'Collapsible small heading', order: 6, category: 'basic', aliases: ['toggle h3'] },
     turnInto: undefined,
     defaultContent: {
       type: 'toggleHeading',
@@ -708,7 +708,7 @@ const definitions: BlockDefinition[] = [
     kind: 'structural',
     defaultAttrs: { columns: 2 },
     capabilities: { ...STD_LEAF, allowInColumn: false },
-    slashMenu: { description: 'Split into 2 columns', order: 60, category: 'layout' },
+    slashMenu: { description: 'Split into 2 columns', order: 60, category: 'layout', aliases: ['columns', 'two columns', 'side by side'] },
     turnInto: { order: 8, },
     defaultContent: undefined,
     insertAction: (editor, range) => _replaceBlockWithColumns(editor, range, 2),
@@ -723,7 +723,7 @@ const definitions: BlockDefinition[] = [
     kind: 'structural',
     defaultAttrs: { columns: 3 },
     capabilities: { ...STD_LEAF, allowInColumn: false },
-    slashMenu: { description: 'Split into 3 columns', order: 61, category: 'layout' },
+    slashMenu: { description: 'Split into 3 columns', order: 61, category: 'layout', aliases: ['columns', 'three columns'] },
     turnInto: { order: 9, },
     defaultContent: undefined,
     insertAction: (editor, range) => _replaceBlockWithColumns(editor, range, 3),
@@ -737,7 +737,7 @@ const definitions: BlockDefinition[] = [
     kind: 'structural',
     defaultAttrs: { columns: 4 },
     capabilities: { ...STD_LEAF, allowInColumn: false },
-    slashMenu: { description: 'Split into 4 columns', order: 62, category: 'layout' },
+    slashMenu: { description: 'Split into 4 columns', order: 62, category: 'layout', aliases: ['columns', 'four columns'] },
     turnInto: { order: 10, },
     defaultContent: undefined,
     insertAction: (editor, range) => _replaceBlockWithColumns(editor, range, 4),
@@ -750,7 +750,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Link preview card', order: 70, category: 'advanced' },
+    slashMenu: { description: 'Link preview card', order: 70, category: 'advanced', aliases: ['link', 'url', 'web'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showBookmarkInsertPopup(_editor, range),
@@ -764,7 +764,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Ideas as a diagram: outline in, tree out', order: 71, category: 'advanced' },
+    slashMenu: { description: 'Ideas as a diagram: outline in, tree out', order: 71, category: 'advanced', aliases: ['mind map', 'mindmap', 'diagram', 'tree'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (editor, range) => {
@@ -784,7 +784,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Create and open a nested sub-page', order: 0, category: 'page' },
+    slashMenu: { description: 'Create and open a nested sub-page', order: 80, category: 'page', aliases: ['subpage', 'new page', 'doc'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {
@@ -912,7 +912,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Link to another page', order: 0.75, category: 'page' },
+    slashMenu: { description: 'Link to another page', order: 80.75, category: 'page', aliases: ['link', 'page link', '[[', 'mention'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (editor, range) => {
@@ -942,7 +942,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'New database with table & board views', order: 0.5, category: 'page' },
+    slashMenu: { description: 'New database with table & board views', order: 80.5, category: 'page', aliases: ['db', 'board', 'kanban', 'tracker'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {
@@ -1000,7 +1000,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Auto-generated from headings', order: 71, category: 'advanced' },
+    slashMenu: { description: 'Auto-generated from headings', order: 71, category: 'advanced', aliases: ['toc', 'contents', 'outline'] },
     turnInto: undefined,
     defaultContent: { type: 'tableOfContents' },
     extension: () => TableOfContents,
@@ -1015,7 +1015,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Pages that match a filter, kept up to date', order: 72, category: 'advanced' },
+    slashMenu: { description: 'Pages that match a filter, kept up to date', order: 72, category: 'advanced', aliases: ['dataview', 'query', 'filter'] },
     turnInto: undefined,
     defaultContent: { type: 'dataview', attrs: { query: '' } },
     extension: (ctx) => Dataview.configure({ live: ctx.live }),
@@ -1029,7 +1029,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'The path to this page', order: 73, category: 'advanced' },
+    slashMenu: { description: 'The path to this page', order: 73, category: 'advanced', aliases: ['path', 'crumbs'] },
     turnInto: undefined,
     defaultContent: { type: 'pageBreadcrumb' },
     extension: (ctx) => PageBreadcrumb.configure({ live: ctx.live }),
@@ -1043,7 +1043,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'All sub-pages of this page', order: 74, category: 'advanced' },
+    slashMenu: { description: 'All sub-pages of this page', order: 74, category: 'advanced', aliases: ['children', 'subpages'] },
     turnInto: undefined,
     defaultContent: { type: 'subpageList' },
     extension: (ctx) => SubpageList.configure({ live: ctx.live }),
@@ -1057,7 +1057,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Show a web page: maps, docs, designs, video', order: 34, category: 'media' },
+    slashMenu: { description: 'Show a web page: maps, docs, designs, video', order: 34, category: 'media', aliases: ['iframe', 'website', 'web page'] },
     turnInto: undefined,
     defaultContent: { type: 'embed', attrs: { src: '' } },
     extension: (ctx) => Embed.configure({ live: ctx.live }),
@@ -1071,7 +1071,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Flowcharts and diagrams from text', order: 72.5, category: 'advanced' },
+    slashMenu: { description: 'Flowcharts and diagrams from text', order: 72.5, category: 'advanced', aliases: ['mermaid', 'flowchart', 'diagram', 'chart'] },
     turnInto: undefined,
     defaultContent: { type: 'mermaidDiagram', attrs: { code: MERMAID_SAMPLE } },
     extension: () => MermaidDiagram,
@@ -1086,7 +1086,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Insert content, add a row or run an action in one click', order: 26, category: 'rich' },
+    slashMenu: { description: 'Insert content, add a row or run an action in one click', order: 26, category: 'rich', aliases: ['action', 'template button'] },
     turnInto: undefined,
     defaultContent: { type: 'buttonBlock', attrs: { label: 'New Entry', actions: '[]' } },
     extension: (ctx) => ButtonBlock.configure({ live: ctx.live }),
@@ -1100,7 +1100,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Show an existing database in this page', order: 0.6, category: 'page' },
+    slashMenu: { description: 'Show an existing database in this page', order: 80.6, category: 'page', aliases: ['linked view', 'db view'] },
     turnInto: undefined,
     defaultContent: { type: 'linkedDatabase', attrs: { databaseId: '', viewId: '' } },
     extension: (ctx) => LinkedDatabase.configure({ live: ctx.live }),
@@ -1115,7 +1115,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Content kept the same everywhere you paste it', order: 27, category: 'rich' },
+    slashMenu: { description: 'Content kept the same everywhere you paste it', order: 27, category: 'rich', aliases: ['sync', 'transclusion', 'reuse'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {
@@ -1182,7 +1182,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Embed a video', order: 31, category: 'media' },
+    slashMenu: { description: 'Embed a video', order: 31, category: 'media', aliases: ['movie', 'youtube', 'clip'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'video'),
@@ -1196,7 +1196,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Embed audio', order: 32, category: 'media' },
+    slashMenu: { description: 'Embed audio', order: 32, category: 'media', aliases: ['sound', 'music', 'mp3', 'recording'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'audio'),
@@ -1210,7 +1210,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Attach a file', order: 33, category: 'media' },
+    slashMenu: { description: 'Attach a file', order: 33, category: 'media', aliases: ['attachment', 'upload', 'pdf', 'document'] },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'fileAttachment'),
