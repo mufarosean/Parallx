@@ -316,5 +316,25 @@ The shortcuts sheet (10280–10336) is out of date from work earlier today:
 - **Fixed:** the four crashing confirmations (1.1) and the shortcuts sheet
   (5).
 
-**Still open:** folder management (step 3), one Duplicates (4), menus by
-kind (5), names (6), the album page (7), and the album page. The tool is now called Atelier (2026-10-01).
+**Built 2026-10-30 (steps 4 and 5):**
+
+- **One Duplicates** (`duplicates.js`). The sidebar's Duplicates row (and
+  Find Duplicates in the palette) opens one Duplicate Finder page with
+  Exact and Look-alike tabs. Look-alike reads the photos not yet hashed when
+  the tab opens, with progress and Stop (Continue resumes). Keep Only This
+  removes the rest of a group through the library's Delete, so the Delete
+  setting and Eraser apply (the old Send Others to OS Trash bypassed both).
+  Find Duplicates left the page ⋯ and the sidebar ⋯ menus. The sidebar count
+  now includes videos.
+- **Menus by kind and in one order** (`item-menu.js`). A photo, a GIF and a
+  video show only what applies (a GIF: no Edit Image, Select Similar,
+  Upscale or AI tagging; Optimize GIF only on GIFs; Add to Clip Project only
+  on videos). One item's menu and a selection's use the groups open, edit,
+  organise, AI, send, file, delete, in that order. Compare and Export… join
+  the selection menu; Add to Chat and Copy File Path wait under More; the
+  "4 selected" row is gone; Open File Location is now Show in Folder.
+  Optimize GIF stays in the edit group (not under More): with kinds applied
+  it shows only on GIFs, where it is the one edit.
+
+**Still open:** names (6), the album page (7). Folder management (3) is in `folder-rows.js`.
+The tool is now called Atelier (2026-10-01).

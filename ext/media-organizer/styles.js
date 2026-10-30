@@ -6,26 +6,21 @@ import { MO_PLAN_CSS } from './plan-styles.js';
 
 export const MO_CSS_MORE = `
 .mo-hidden { display: none !important; }
-/* Duplicate finder */
-.mo-dup-dialog { width: 800px; max-width: 96vw; }
-.mo-dup-body { padding: 12px 16px; max-height: 70vh; overflow-y: auto; }
-.mo-dup-summary { font-size: 12px; opacity: 0.8; margin-bottom: 12px; }
-.mo-dup-group {
-  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
-  border-radius: 4px; padding: 8px; margin-bottom: 10px;
-}
-.mo-dup-group-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
-.mo-dup-group-label { font-weight: 600; }
-.mo-dup-group-count { opacity: 0.7; }
-.mo-dup-list { display: flex; flex-direction: column; gap: 4px; }
-.mo-dup-row {
-  display: grid; grid-template-columns: auto 1fr; gap: 8px;
-  align-items: center; padding: 4px 6px;
-}
-.mo-dup-name { font-size: 12px; }
-.mo-dup-meta { font-size: 11px; opacity: 0.6; }
-.mo-dup-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
-.mo-dup-empty { padding: 24px; text-align: center; color: var(--px-text-muted); }
+/* Duplicate Finder (duplicates.js): Exact and Look-alike tabs, a card per group */
+.mo-dupf .mo-dupf-tabs { margin-top: var(--px-space-3); border-bottom: 1px solid var(--px-border); }
+.mo-dupf-panel { padding-top: var(--px-space-3); outline: none; }
+.mo-dupf-note { margin: 0 0 var(--px-space-3); font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.mo-dupf-progress { display: flex; align-items: center; gap: var(--px-space-3); margin-bottom: var(--px-space-3); font-size: var(--px-text-sm); }
+.mo-dupf-groups { display: flex; flex-direction: column; gap: var(--px-space-3); }
+.mo-dupf-group { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); padding: var(--px-space-2); }
+.mo-dupf-group-head { font-size: var(--px-text-sm); font-weight: 600; margin: 0 0 var(--px-space-2) var(--px-space-1); }
+.mo-dupf-row { display: grid; grid-template-columns: 48px 1fr auto; gap: var(--px-space-3); align-items: center; padding: var(--px-space-1); border-radius: var(--px-radius-sm); }
+.mo-dupf-row:hover, .mo-dupf-row:focus-within { background: var(--px-surface-hover); }
+.mo-dupf-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: var(--px-radius-sm); background: var(--px-surface-hover); }
+.mo-dupf-text { display: flex; flex-direction: column; min-width: 0; }
+.mo-dupf-name { font-size: var(--px-text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dupf-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dupf-actions { display: flex; align-items: center; gap: var(--px-space-1); }
 
 /* ═══ Home feed (Section 26B) ═══ */
 .mo-home-title { font-size: 15px; font-weight: 600; }

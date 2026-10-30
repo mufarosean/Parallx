@@ -40,7 +40,7 @@ describe('sidebar More Actions (viewContainer/title)', () => {
     active.set('media-organizer-container');
     expect(menus.getViewContainerTitleItems().map((m) => m.commandId)).toEqual([
       'media-organizer.rescan', 'media-organizer.importFiles', 'media-organizer.createAlbum',
-      'media-organizer.findDuplicates', 'media-organizer.showShortcuts',
+      'media-organizer.showShortcuts', // Find Duplicates left the menu: the sidebar's Duplicates row opens the finder
     ]);
     active.set('some-other-container');
     expect(ids(menus)).toEqual([]);

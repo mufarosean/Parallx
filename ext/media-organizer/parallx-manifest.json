@@ -63,7 +63,6 @@
         { "command": "media-organizer.rescan", "title": "Refresh", "group": "1_actions", "when": "activeViewContainer == 'media-organizer-container'" },
         { "command": "media-organizer.importFiles", "group": "2_add", "when": "activeViewContainer == 'media-organizer-container'" },
         { "command": "media-organizer.createAlbum", "group": "2_add", "when": "activeViewContainer == 'media-organizer-container'" },
-        { "command": "media-organizer.findDuplicates", "group": "3_tools", "when": "activeViewContainer == 'media-organizer-container'" },
         { "command": "media-organizer.showShortcuts", "group": "4_help", "when": "activeViewContainer == 'media-organizer-container'" }
       ]
     },

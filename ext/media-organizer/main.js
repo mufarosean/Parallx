@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -9949,7 +9949,7 @@ function renderBrowserSidebar(container, api) {
   const tagReviewItem = sidebarItem('px-ai-mark', 'Tag Review', null, () => moOpenTagReview(api), null, 'tag-review', true);
   const tagReviewCount = moEl('span', 'mo-sidebar-item-count mo-sidebar-item-badge');
   tagReviewItem.appendChild(tagReviewCount);
-  const dupItem = sidebarItem('copy', 'Duplicates', '', () => openGrid('duplicates', 'Duplicates'), null, 'grid:duplicates', true);
+  const dupItem = sidebarItem('copy', 'Duplicates', '', () => moOpenDuplicates(api), null, 'duplicates', true); // the Duplicate Finder: Exact and Look-alike (duplicates.js)
   sortBody.append(untaggedItem, tagReviewItem, dupItem);
   sections.appendChild(sortSection);
   const refreshTagReviewCount = () => {
@@ -10171,10 +10171,7 @@ function renderBrowserSidebar(container, api) {
         (SELECT COUNT(*) FROM mo_photos p WHERE p.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id))
           + (SELECT COUNT(*) FROM mo_videos v WHERE v.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM mo_videos_tags t WHERE t.video_id = v.id)) AS untagged,
         (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NOT NULL) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NOT NULL) AS trash`);
-      const dup = await db.get(`SELECT COUNT(DISTINCT pf.photo_id) AS n FROM mo_photos_files pf
-        JOIN mo_photos p ON p.id = pf.photo_id AND p.deleted_at IS NULL
-        JOIN mo_fingerprints f ON f.file_id = pf.file_id AND f.type = 'md5'
-        WHERE f.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`).catch(() => null);
+      const dup = await moDuplicateCount(db).catch(() => 0); // photos and videos with a byte-identical copy (duplicates.js)
       const set = (item, n) => {
         const c = item.querySelector('.mo-sidebar-item-count');
         if (c) c.textContent = fmtCount(n);
@@ -10186,7 +10183,7 @@ function renderBrowserSidebar(container, api) {
         // Trash shows when Delete goes there, or while anything is in it.
         trashFoot.classList.toggle('mo-hidden', !moDeleteToTrash() && !row.trash);
       }
-      set(dupItem, dup ? dup.n : 0);
+      set(dupItem, dup);
     } catch { /* counts are a help, never a blocker */ }
   }
   let countsTimer = null;
@@ -11437,7 +11434,6 @@ function renderGridBrowser(container, api, input) {
     more: [
       { label: 'Import Files…', icon: 'upload', onSelect: () => { api.commands.executeCommand('media-organizer.importFiles').catch(() => {}); } },
       { label: 'Rescan Library', icon: 'refresh-cw', onSelect: () => { api.commands.executeCommand('media-organizer.rescan').catch(() => {}); } },
-      { label: 'Find Duplicates', icon: 'copy', onSelect: () => { api.commands.executeCommand('media-organizer.findDuplicates').catch(() => {}); } },
       { label: 'Save As Smart Album', icon: 'bookmark', onSelect: () => { api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {}); } },
       { separator: true },
       { label: 'Keyboard Shortcuts', icon: 'keyboard', onSelect: () => { api.commands.executeCommand('media-organizer.showShortcuts').catch(() => {}); } },
@@ -13962,177 +13958,66 @@ function renderGridBrowser(container, api, input) {
       } });
       return out;
     }
-    const actions = [];
-    if (!isMulti) {
-      // Single-item actions
-      actions.push({ label: 'View Full Size', handler: () => handleCardViewFullSize(item) });
-      actions.push({ label: 'Edit Details', handler: () => handleCardOpen(item) });
-      if (item.type === 'photo') actions.push({ label: 'Edit Image', handler: () => void moOpenImageEditor(api, item.id) });
-      if (item.type === 'photo' && _moEditClipboard) actions.push({ label: 'Paste Edit', handler: () => void moEditPasteTo(api, [item.id]) });
-      if (item.type === 'photo' && _artToolsEnabled) actions.push({ label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) });
-      if (item.type === 'photo') {
-        actions.push({ label: 'Select Similar Photos', handler: () => selectSimilarPhotos(item) });
-      }
-      actions.push({ separator: true });
-      actions.push({ label: 'Copy Tags', icon: 'copy', key: 'Ctrl+Shift+C', handler: () => void moTagsCommand(api, 'copy', [`${item.type}:${item.id}`]) });
-      if (moTagClip()) actions.push({ label: 'Paste Tags', icon: 'clipboard-paste', key: 'Ctrl+Shift+V', handler: () => void moTagsCommand(api, 'paste', [`${item.type}:${item.id}`]) });
-      actions.push({ label: 'Tag\u2026', handler: () => {
-        const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
-        showBulkTagDialog(tmpState, api, () => {
-          // No grid refresh — dialog dispatches mo:tags-bulk-changed.
-        });
-      }});
-      if (item.type === 'photo') {
-        actions.push({ label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } });
-        actions.push({ label: 'Retag With AI', handler: () => { void moTagWithAIFromUI([item], api, 'retag'); } });
-      }
-      actions.push({ label: moIsFavorite(item) ? 'Remove From Favorites' : 'Add to Favorites', icon: 'star', key: 'F', handler: () => void toggleFavoriteTargets([`${item.type}:${item.id}`]) });
-      actions.push({ label: 'Color Label', submenu: [
-        { label: 'Clear', handler: () => colorLabelItemsByKey(null) },
-        { label: 'Red', handler: () => colorLabelItemsByKey('red') },
-        { label: 'Yellow', handler: () => colorLabelItemsByKey('yellow') },
-        { label: 'Green', handler: () => colorLabelItemsByKey('green') },
-        { label: 'Blue', handler: () => colorLabelItemsByKey('blue') },
-        { label: 'Purple', handler: () => colorLabelItemsByKey('purple') },
-      ]});
-      actions.push({ label: 'Add to Album\u2026', handler: () => {
-        const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
-        showAddToAlbumDialog(tmpState, api, () => loadPage());
-      }});
-      if (item.type === 'video') {
-        actions.push({ label: 'Add to Clip Project', submenu: moClipProjectMenu(api, async () => { const fp = await resolveItemFilePath(item); return fp ? [fp] : []; }) });
-      }
-      actions.push({ label: 'Add to Chat', handler: async () => {
-        const ok = await attachItemToChat(item);
-        if (ok && api.statusBar) api.statusBar.setMessage('Attached to chat', 2000);
-        else if (!ok) api.window.showInformationMessage('Could not attach this item to chat (no primary file).');
-      }});
-      // Optimize GIF — only show for .gif source files
-      if (item.type === 'photo') {
-        actions.push({ label: 'Optimize GIF\u2026', handler: async () => {
-          const fp = await resolveItemFilePath(item);
-          if (!fp || !/\.gif$/i.test(fp)) {
-            api.window.showInformationMessage('Optimize GIF only applies to .gif files.');
-            return;
-          }
-          showOptimizeGifDialog([{ path: fp, item }], api, () => loadPage());
-        }});
-        // Upscale (Section 38B): still photos only; the dialog says why a GIF is left out.
-        actions.push({ label: 'Upscale…', handler: () => { void moUpscaleItems([item], api, () => loadPage()); } });
-      }
-      actions.push({ separator: true });
-      actions.push({ label: 'Open File Location', handler: async () => {
-        const fp = await resolveItemFilePath(item);
-        if (fp && window.parallxElectron?.shell?.showItemInFolder) {
-          window.parallxElectron.shell.showItemInFolder(fp);
-        }
-      }});
-      actions.push({ label: 'Copy File Path', handler: async () => {
-        const fp = await resolveItemFilePath(item);
-        if (fp) {
-          try { await navigator.clipboard.writeText(fp); } catch { /* fallback */ }
-        }
-      }});
-      actions.push({ separator: true });
-      actions.push({ label: moDeleteLabel(), danger: true, handler: () => {
-        const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
-        showBulkDeleteDialog(tmpState, api, () => loadPage());
-      }});
-    } else {
-      // Multi-selection actions
-      actions.push({ label: `${state.selectedIds.size} selected`, handler: () => {} });
-      actions.push({ separator: true });
-      if (moTagClip()) actions.push({ label: `Paste Tags On ${state.selectedIds.size} Items`, icon: 'clipboard-paste', key: 'Ctrl+Shift+V', handler: () => void moTagsCommand(api, 'paste', [...state.selectedIds]) });
-      actions.push({ label: 'Tag\u2026', handler: () => {
-        showBulkTagDialog(state, api, () => {
-          if (selectionBar) selectionBar.update();
-          // No grid refresh — dialog dispatches mo:tags-bulk-changed.
-        });
-      }});
-      actions.push({ label: 'Tag With AI', handler: () => {
-        const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
-        void moTagWithAIFromUI(items, api);
-      }});
-      actions.push({ label: 'Retag With AI', handler: () => {
-        const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
-        void moTagWithAIFromUI(items, api, 'retag');
-      }});
-      {
-        const allFav = [...state.selectedIds].every((k) => moIsFavorite(state.items.find((x) => `${x.type}:${x.id}` === k)));
-        actions.push({ label: allFav ? 'Remove From Favorites' : 'Add to Favorites', icon: 'star', key: 'F', handler: () => void toggleFavoriteTargets() });
-      }
-      actions.push({ label: 'Color Label', submenu: [
-        { label: 'Clear', handler: () => colorLabelItemsByKey(null) },
-        { label: 'Red', handler: () => colorLabelItemsByKey('red') },
-        { label: 'Yellow', handler: () => colorLabelItemsByKey('yellow') },
-        { label: 'Green', handler: () => colorLabelItemsByKey('green') },
-        { label: 'Blue', handler: () => colorLabelItemsByKey('blue') },
-        { label: 'Purple', handler: () => colorLabelItemsByKey('purple') },
-      ]});
-      actions.push({ label: 'Add to Album\u2026', handler: () => {
-        showAddToAlbumDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
-      }});
-      const selectedVideos = state.items.filter((it) => it.type === 'video' && state.selectedIds.has(`${it.type}:${it.id}`));
-      if (selectedVideos.length) {
-        actions.push({ label: `Add ${selectedVideos.length} Video${selectedVideos.length === 1 ? '' : 's'} to Clip Project`, submenu: moClipProjectMenu(api, async () => {
-          const out = [];
-          for (const it of selectedVideos) { const fp = await resolveItemFilePath(it); if (fp) out.push(fp); }
-          return out;
-        }) });
-      }
-      actions.push({ label: 'Add to Chat', handler: async () => {
-        const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
-        // Cap at 20 to protect the chat composer from extreme right-click
-        // selections (e.g. "select all" on a 5k library + Add to Chat).
-        // The cap is generous; legitimate workflows stay below it.
+    // One item or the selection: what applies to its kinds (photo, GIF, video), in the order every media menu shares (item-menu.js).
+    const keys = isMulti ? [...state.selectedIds] : [`${item.type}:${item.id}`];
+    const picked = isMulti ? moItemsFromKeys(keys).map((k) => state.items.find((x) => x.type === k.type && x.id === k.id) || k) : [item];
+    const n = keys.length;
+    const photoIds = picked.filter((it) => moItemKind(it) === 'photo').map((it) => it.id);
+    const videos = picked.filter((it) => it.type === 'video');
+    const keyState = isMulti ? state : { selectedIds: new Set(keys) };
+    const refresh = () => { if (selectionBar) selectionBar.update(); loadPage(); };
+    const entries = [
+      !isMulti && { group: 'open', label: 'View Full Size', handler: () => handleCardViewFullSize(item) },
+      !isMulti && { group: 'open', label: 'Edit Details', handler: () => handleCardOpen(item) },
+      !isMulti && { group: 'edit', kinds: ['photo'], label: 'Edit Image', handler: () => void moOpenImageEditor(api, item.id) },
+      _moEditClipboard && { group: 'edit', kinds: ['photo'], label: 'Paste Edit', handler: () => void moEditPasteTo(api, photoIds) },
+      !isMulti && _artToolsEnabled && { group: 'edit', kinds: ['photo'], label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) },
+      // Upscale (Section 38B): still photos only.
+      { group: 'edit', kinds: ['photo'], label: 'Upscale…', handler: () => void moUpscaleItems(picked.filter((it) => moItemKind(it) === 'photo'), api, () => loadPage()) },
+      photoIds.length > 1 && { group: 'edit', kinds: ['photo'], label: 'Remove Marks From Selected', handler: () => void moBulkFromSelection(api, photoIds) },
+      { group: 'edit', kinds: ['gif'], label: isMulti ? 'Optimize GIFs…' : 'Optimize GIF…', handler: async () => {
+        const gifs = [];
+        for (const it of picked) { const fp = it.type === 'photo' ? await resolveItemFilePath(it) : null; if (fp && /\.gif$/i.test(fp)) gifs.push({ path: fp, item: it }); }
+        if (gifs.length === 0) { api.window.showInformationMessage('No .gif files in selection.'); return; }
+        showOptimizeGifDialog(gifs, api, refresh);
+      } },
+      { group: 'edit', kinds: ['video'], label: isMulti ? `Add ${videos.length} Video${videos.length === 1 ? '' : 's'} to Clip Project` : 'Add to Clip Project', submenu: moClipProjectMenu(api, async () => {
+        const out = [];
+        for (const it of videos) { const fp = await resolveItemFilePath(it); if (fp) out.push(fp); }
+        return out;
+      }) },
+      !isMulti && { group: 'organise', kinds: ['photo'], label: 'Select Similar Photos', handler: () => selectSimilarPhotos(item) },
+      !isMulti && { group: 'organise', label: 'Copy Tags', icon: 'copy', key: 'Ctrl+Shift+C', handler: () => void moTagsCommand(api, 'copy', keys) },
+      moTagClip() && { group: 'organise', label: isMulti ? `Paste Tags On ${n} Items` : 'Paste Tags', icon: 'clipboard-paste', key: 'Ctrl+Shift+V', handler: () => void moTagsCommand(api, 'paste', keys) },
+      // No grid refresh after tagging: the dialog dispatches mo:tags-bulk-changed.
+      { group: 'organise', label: 'Tag…', handler: () => showBulkTagDialog(keyState, api, () => { if (isMulti && selectionBar) selectionBar.update(); }) },
+      { group: 'organise', label: picked.every((it) => moIsFavorite(it)) ? 'Remove From Favorites' : 'Add to Favorites', icon: 'star', key: 'F', handler: () => void toggleFavoriteTargets(isMulti ? undefined : keys) },
+      { group: 'organise', label: 'Color Label', submenu: [['Clear', null], ['Red', 'red'], ['Yellow', 'yellow'], ['Green', 'green'], ['Blue', 'blue'], ['Purple', 'purple']].map(([text, color]) => ({ label: text, handler: () => colorLabelItemsByKey(color) })) },
+      { group: 'organise', label: 'Add to Album…', handler: () => showAddToAlbumDialog(keyState, api, refresh) },
+      { group: 'ai', kinds: ['photo'], label: 'Tag With AI', handler: () => void moTagWithAIFromUI(picked, api) },
+      { group: 'ai', kinds: ['photo'], label: 'Retag With AI', handler: () => void moTagWithAIFromUI(picked, api, 'retag') },
+      isMulti && { group: 'send', label: 'Compare', disabled: n < 2 || n > 4, title: n < 2 || n > 4 ? 'Select 2 to 4 items to compare' : 'Compare the selected items side by side', handler: () => { if (selectionBar) selectionBar.compare(); } },
+      isMulti && { group: 'send', label: 'Export…', handler: () => void exportSelectedItems(state, api) },
+      { group: 'send', rare: true, label: 'Add to Chat', handler: async () => {
+        // Capped at 20, so a right-click on "select all" cannot flood the chat composer.
         const MAX = 20;
-        const overflow = selectedItems.length - MAX;
-        const slice = selectedItems.slice(0, MAX);
+        const its = isMulti ? state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`)) : [item];
         let ok = 0;
-        for (const it of slice) {
-          // Sequential to preserve order in the composer attachment list.
-          if (await attachItemToChat(it)) ok++;
-        }
-        if (api.statusBar) {
-          const msg = overflow > 0
-            ? `Attached ${ok} to chat (${overflow} skipped, cap is ${MAX})`
-            : `Attached ${ok} to chat`;
-          api.statusBar.setMessage(msg, 2500);
-        }
-      }});
-      actions.push({ label: 'Upscale…', handler: () => {
-        const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
-        void moUpscaleItems(selectedItems, api, () => loadPage());
-      }});
-      if (_moEditClipboard) actions.push({ label: 'Paste Edit', handler: () => {
-        const ids = state.items.filter((it) => it.type === 'photo' && state.selectedIds.has(`${it.type}:${it.id}`)).map((it) => it.id);
-        void moEditPasteTo(api, ids);
-      }});
-      if (state.items.filter((it) => it.type === 'photo' && state.selectedIds.has(`${it.type}:${it.id}`)).length > 1) actions.push({ label: 'Remove Marks From Selected', handler: () => {
-        const ids = state.items.filter((it) => it.type === 'photo' && state.selectedIds.has(`${it.type}:${it.id}`)).map((it) => it.id);
-        void moBulkFromSelection(api, ids);
-      }});
-      // Optimize GIF — resolves selected items, filters to .gif files only
-      actions.push({ label: 'Optimize GIFs\u2026', handler: async () => {
-        const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
-        const resolved = await Promise.all(selectedItems.map(async (it) => {
-          if (it.type !== 'photo') return null;
-          const fp = await resolveItemFilePath(it);
-          return (fp && /\.gif$/i.test(fp)) ? { path: fp, item: it } : null;
-        }));
-        const gifs = resolved.filter(Boolean);
-        if (gifs.length === 0) {
-          api.window.showInformationMessage('No .gif files in selection.');
-          return;
-        }
-        showOptimizeGifDialog(gifs, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
-      }});
-      actions.push({ separator: true });
-      actions.push({ label: moDeleteLabel(), danger: true, handler: () => {
-        showBulkDeleteDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
-      }});
-    }
-    return actions;
+        for (const it of its.slice(0, MAX)) { if (await attachItemToChat(it)) ok++; } // in order, as the composer lists them
+        if (!isMulti && !ok) { api.window.showInformationMessage('Could not attach this item to chat (no primary file).'); return; }
+        if (api.statusBar) api.statusBar.setMessage(isMulti ? `Attached ${ok} to chat${its.length > MAX ? ` (${its.length - MAX} skipped, cap is ${MAX})` : ''}` : 'Attached to chat', 2500);
+      } },
+      !isMulti && { group: 'file', label: 'Show in Folder', handler: async () => {
+        const fp = await resolveItemFilePath(item);
+        if (fp && window.parallxElectron?.shell?.showItemInFolder) window.parallxElectron.shell.showItemInFolder(fp);
+      } },
+      !isMulti && { group: 'file', rare: true, label: 'Copy File Path', handler: async () => {
+        const fp = await resolveItemFilePath(item);
+        if (fp) { try { await navigator.clipboard.writeText(fp); } catch { /* no clipboard */ } }
+      } },
+      { group: 'delete', label: moDeleteLabel(), danger: true, handler: () => showBulkDeleteDialog(keyState, api, refresh) },
+    ];
+    return moArrangeMenu(entries, moKindsOf(picked));
   }
 
   gridArea.addEventListener('contextmenu', (e) => {
@@ -17418,7 +17303,7 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   updateBar();
   container.appendChild(bar);
 
-  return { update: updateBar, element: bar };
+  return { update: updateBar, element: bar, compare: () => compareBtn.click() }; // the right-click menu offers Compare too
 }
 
 // Parse selectedIds set into { photos: [id,...], videos: [id,...] }
@@ -28073,180 +27958,7 @@ async function moComputeSimilarPhotoIds(photoId, threshold) {
   return ids;
 }
 
-// ── Duplicate Finder ──
-async function moOpenDuplicateFinder(api) {
-  const exactRows = await db.all(
-    `SELECT fp.value AS hash, GROUP_CONCAT(fp.file_id) AS file_ids
-       FROM mo_fingerprints fp
-      WHERE fp.type = 'md5'
-      GROUP BY fp.value
-     HAVING COUNT(DISTINCT fp.file_id) > 1`
-  );
-  const phashRows = await db.all(
-    `SELECT i.file_id AS file_id, i.phash AS phash, f.basename AS basename, fl.path AS folder_path
-       FROM mo_image_files i
-       JOIN mo_files f ON f.id = i.file_id
-  LEFT JOIN mo_folders fl ON fl.id = f.folder_id
-      WHERE i.phash IS NOT NULL`
-  );
-
-  // Cluster pHash rows by Hamming distance ≤ 8 (greedy single-link)
-  const clusters = [];
-  const visited = new Set();
-  for (let i = 0; i < phashRows.length; i++) {
-    if (visited.has(i)) continue;
-    const seedBig = moSqliteToBigInt(phashRows[i].phash);
-    const group = [phashRows[i]];
-    visited.add(i);
-    for (let j = i + 1; j < phashRows.length; j++) {
-      if (visited.has(j)) continue;
-      const otherBig = moSqliteToBigInt(phashRows[j].phash);
-      if (moHammingDistance(seedBig, otherBig) <= 8) {
-        group.push(phashRows[j]); visited.add(j);
-      }
-    }
-    if (group.length > 1) clusters.push(group);
-  }
-
-  // Build modal
-  const overlay = moEl('div', 'mo-modal-overlay');
-  const dialog = moEl('div', 'mo-modal mo-dup-dialog');
-  overlay.appendChild(dialog);
-  const header = moEl('div', 'mo-modal-header');
-  header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Duplicate Finder' }));
-  const closeBtn = moEl('button', 'mo-modal-close', { sceneId: 'media-organizer.duplicates.close', sceneLabel: 'Close', textContent: '×' });
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
-  dialog.appendChild(header);
-
-  const body = moEl('div', 'mo-dup-body');
-  dialog.appendChild(body);
-
-  const summary = moEl('div', 'mo-dup-summary');
-  summary.textContent = `${exactRows.length} exact-match group${exactRows.length === 1 ? '' : 's'} (md5), ${clusters.length} near-duplicate cluster${clusters.length === 1 ? '' : 's'} (pHash ≤ 8).`;
-  body.appendChild(summary);
-
-  // Render exact match groups
-  for (const r of exactRows) {
-    const fileIds = r.file_ids.split(',').map(s => parseInt(s, 10));
-    const files = await db.all(
-      `SELECT f.id, f.basename, f.size, fl.path AS folder_path
-         FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
-        WHERE f.id IN (${fileIds.map(() => '?').join(',')})`, fileIds
-    );
-    body.appendChild(buildDupGroup(api, files, 'Exact match (md5)'));
-  }
-  for (const cluster of clusters) {
-    const ids = cluster.map(c => c.file_id);
-    const files = await db.all(
-      `SELECT f.id, f.basename, f.size, fl.path AS folder_path
-         FROM mo_files f LEFT JOIN mo_folders fl ON fl.id = f.folder_id
-        WHERE f.id IN (${ids.map(() => '?').join(',')})`, ids
-    );
-    body.appendChild(buildDupGroup(api, files, 'Near-duplicate (pHash)'));
-  }
-
-  if (exactRows.length === 0 && clusters.length === 0) {
-    const empty = moEl('div', 'mo-dup-empty');
-    empty.textContent = 'No duplicates found. (Run "Build Perceptual Hashes" first if you haven\'t.)';
-    body.appendChild(empty);
-  }
-
-  const footer = moEl('div', 'mo-modal-footer');
-  const close2 = moEl('button', 'mo-btn-secondary', { sceneId: 'media-organizer.duplicates.done', textContent: 'Close' });
-  close2.addEventListener('click', () => overlay.remove());
-  footer.appendChild(close2);
-  dialog.appendChild(footer);
-
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-}
-
-function buildDupGroup(api, files, label) {
-  const group = moEl('div', 'mo-dup-group');
-  const head = moEl('div', 'mo-dup-group-head');
-  head.appendChild(moEl('span', 'mo-dup-group-label', { textContent: label }));
-  head.appendChild(moEl('span', 'mo-dup-group-count', { textContent: `${files.length} file${files.length === 1 ? '' : 's'}` }));
-  group.appendChild(head);
-
-  const list = moEl('div', 'mo-dup-list');
-  group.appendChild(list);
-  // Auto-pick the largest as keeper
-  let keeperId = files.reduce((acc, f) => (f.size > (acc ? acc.size : -1) ? f : acc), null)?.id;
-
-  function renderList() {
-    list.innerHTML = '';
-    for (const f of files) {
-      const row = moEl('div', 'mo-dup-row');
-      const radio = document.createElement('input');
-      radio.type = 'radio'; radio.name = 'mo-dup-keep-' + label;
-      radio.checked = f.id === keeperId;
-      radio.addEventListener('change', () => { if (radio.checked) keeperId = f.id; });
-      row.appendChild(radio);
-      const name = moEl('div', 'mo-dup-name');
-      name.textContent = f.basename;
-      const meta = moEl('div', 'mo-dup-meta');
-      const sizeKb = (f.size / 1024).toFixed(1);
-      meta.textContent = `${sizeKb} KB · ${f.folder_path || '(no folder)'}`;
-      const text = moEl('div', 'mo-dup-text');
-      text.appendChild(name); text.appendChild(meta);
-      row.appendChild(text);
-      list.appendChild(row);
-    }
-  }
-  renderList();
-
-  const actions = moEl('div', 'mo-dup-actions');
-  const trashBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Send Others to OS Trash' });
-  trashBtn.addEventListener('click', async () => {
-    if (!keeperId) return;
-    const sep = _isWindows ? '\\' : '/';
-    const targets = files.filter(f => f.id !== keeperId);
-    if (targets.length === 0) return;
-    const ok = await api.window.showWarningMessage(
-      `Move ${targets.length} file(s) to OS trash? Database rows will be deleted.`,
-      { title: 'Move to Trash' }, { title: 'Cancel' }
-    );
-    if (!ok || ok.title !== 'Move to Trash') return;
-    // Capture which photos/videos point at these files BEFORE we delete the
-    // mo_files rows — afterwards the join-table cascade has already wiped
-    // the link rows we'd need to find them.
-    const targetFileIds = targets.map(f => f.id);
-    const ph = `(${targetFileIds.map(() => '?').join(',')})`;
-    const photoLinks = await db.all(`SELECT DISTINCT photo_id AS id FROM mo_photos_files WHERE file_id IN ${ph}`, targetFileIds).catch(() => []);
-    const videoLinks = await db.all(`SELECT DISTINCT video_id AS id FROM mo_videos_files WHERE file_id IN ${ph}`, targetFileIds).catch(() => []);
-    const affectedPhotoIds = photoLinks.map(r => r.id).filter(Number.isFinite);
-    const affectedVideoIds = videoLinks.map(r => r.id).filter(Number.isFinite);
-    let moved = 0, failed = 0, perm = 0;
-    for (const f of targets) {
-      const fpath = (f.folder_path || '') + sep + f.basename;
-      // useTrash:'auto' — files on the home volume go to the OS recycle bin;
-      // files on external/removable drives are permanently deleted in place
-      // so they never leak into the internal recycle bin.
-      const r = await window.parallxElectron.fs.delete(fpath, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }));
-      if (r && !r.error) {
-        await db.run('DELETE FROM mo_files WHERE id = ?', [f.id]);
-        moved++;
-        if (r.deletedPermanently) perm++;
-      } else {
-        failed++;
-      }
-    }
-    let msg = `Trashed ${moved} file${moved === 1 ? '' : 's'}`;
-    if (perm) msg += ` (${perm} on external drive permanently deleted)`;
-    if (failed) msg += `, ${failed} failed`;
-    api.window.showInformationMessage(msg + '.');
-    group.style.opacity = '0.4'; group.style.pointerEvents = 'none';
-    _notifySidebarRefresh();
-    // Incremental FTS update — drop the affected rows. They'll be re-inserted
-    // on the next post-scan rebuild with refreshed folder_text. Avoids the
-    // full-rebuild stall pattern that froze the workbench previously.
-    _refreshFtsForIds(affectedPhotoIds, affectedVideoIds).catch(() => {});
-  });
-  actions.appendChild(trashBtn);
-  group.appendChild(actions);
-  return group;
-}
+// ── Duplicate Finder: duplicates.js (one page, Exact and Look-alike tabs) ──
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 41: TRASH
@@ -38242,7 +37954,7 @@ export async function activate(api, context) {
         if (inputId.startsWith('plans:')) {
           return renderPlansTab(container, api, input);
         }
-        if (inputId === 'tag-review') {
+        if (inputId === 'duplicates') { moInjectStyles(); return moRenderDuplicates(container, api); } if (inputId === 'tag-review') {
           return renderTagReview(container, api);
         }
         if (inputId === MO_BULK_INSTANCE) {
@@ -38472,7 +38184,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.buildPHashes', () => moRunPHashIndexer(api))
   );
   _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.findDuplicates', () => moOpenDuplicateFinder(api))
+    api.commands.registerCommand('media-organizer.findDuplicates', () => moOpenDuplicates(api)), ...moDuplicatesActivate(api, { db, sep: _isWindows ? '\\' : '/', thumb: (img, type, id) => void resolveThumbnail(type, id, api).then((r) => { const p = r && (r.path || r.sourcePath); if (p) setThumbImgSrc(img, p, {}); }).catch(() => {}), open: (type, id) => api.editors.openEditor({ typeId: 'media-organizer-grid', title: type === 'video' ? 'Video' : 'Photo', icon: type === 'video' ? 'file-media' : 'image', instanceId: `detail:${type}:${id}` }), remove: (keys, done) => showBulkDeleteDialog({ selectedIds: new Set(keys) }, api, done), deleteToTrash: moDeleteToTrash, hashReady: async () => { await detectAllTools(); return !!_toolPaths.ffmpeg; }, phash: moComputePHash, toSqlite: moBigIntToSqlite, fromSqlite: moSqliteToBigInt })
   );
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.saveSmartAlbum', async () => {
