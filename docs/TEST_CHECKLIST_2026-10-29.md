@@ -171,6 +171,25 @@ me if it is not that.
 - **Tidy Memory:** in Agents › Routines › "Or start from one of these" there
   is a new **Tidy Memory** template (installs off).
 
+### 3.11 Concept Lab remembers where you were
+- **Do:** Open Concept Lab, open a module, step forward a few steps and
+  answer a prediction. Go back to the home. Restart the app and open it again.
+- **Expect:** The home starts with that module, "Step N of M…", and
+  **Resume** opens it on that step. Its card says the same. "How the lab
+  works" is at the bottom, closed.
+
+### 3.12 Atelier: a folder's right-click menu
+- **Do:** Atelier sidebar › Browse › Folders, right-click a folder.
+- **Expect:** Open, Rescan, Show in Folder, Remove From Library…. Try Remove
+  on a test folder: it says how many files leave, and after it the folder
+  and its photos are gone from Atelier while the files are still on disk.
+  Restart: it does not come back. Add Folder… on it brings it back.
+
+### 3.13 Empty dashboard
+- **Do:** Dashboard › new page.
+- **Expect:** "Nothing on this page yet" with one **Add Widget**; no other
+  buttons in the header until a widget is added.
+
 ### 3.10 Pictures on a page are files
 - **Do:** Paste a screenshot into a page (and drag a picture file in, and
   use /image › Upload).

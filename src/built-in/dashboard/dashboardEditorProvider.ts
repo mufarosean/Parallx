@@ -9,7 +9,7 @@
 //   - The settings drawer overlay
 
 import { openScheduleEditor } from './dashboardScheduleEditor.js';
-import { createSurface, declareControl } from '../../ui/kit.js';
+import { createButton, createEmptyState, createSurface, declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { escapeHtml } from '../../ui/format.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
@@ -309,27 +309,16 @@ class DashboardEditorPane implements IDisposable {
     gridWrap.appendChild(grid);
     this._gridEl = grid;
 
-    // Empty state lives inside gridWrap so it follows the same width
-    const empty = el('div', 'dashboard-empty');
-    empty.innerHTML = `
-      <div class="dashboard-empty__art">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="9" rx="1"/>
-          <rect x="14" y="3" width="7" height="5" rx="1"/>
-          <rect x="14" y="12" width="7" height="9" rx="1"/>
-          <rect x="3" y="16" width="7" height="5" rx="1"/>
-        </svg>
-      </div>
-      <h2 class="dashboard-empty__title">Make this yours</h2>
-      <p class="dashboard-empty__body">Add widgets to see your workspace at a glance: recent files, news briefs, the time, anything tools contribute.</p>
-    `;
-    const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
-    emptyAddBtn.type = 'button';
-    emptyAddBtn.textContent = 'Add Widget';
-    declareControl(emptyAddBtn, { id: 'dashboard.empty.addWidget', label: 'Add Widget' });
-    emptyAddBtn.addEventListener('click', () => void this._openWidgetPicker());
-    empty.appendChild(emptyAddBtn);
-    gridWrap.appendChild(empty);
+    // Empty state lives inside gridWrap so it follows the same width. The
+    // kit's own, with the one way out: Add Widget (the header shows nothing
+    // until there is something to refresh, schedule or hide).
+    const empty = createEmptyState(gridWrap, {
+      icon: 'layout-dashboard',
+      headline: 'Nothing on this page yet',
+      hint: 'Add widgets to see your workspace at a glance: recent files, the time, anything your tools add.',
+    });
+    empty.classList.add('dashboard-empty');
+    createButton(empty, { id: 'dashboard.empty.addWidget', label: 'Add Widget', icon: 'plus', kind: 'primary', command: 'dashboard.addWidget', args: [this._input?.id] }).classList.add('px-empty__action');
     this._emptyEl = empty;
 
     root.appendChild(gridWrap);

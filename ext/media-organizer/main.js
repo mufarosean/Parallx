@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -2609,7 +2609,7 @@ async function walkDirectory(rootPath, options, onProgress) {
   const entries = [];
 
   async function recurse(dirPath) {
-    if (_scanCancelled) return;
+    if (_scanCancelled || moIsExcluded(dirPath)) return; // a folder removed from the library stays out
     onProgress(dirPath);
 
     const result = await window.parallxElectron.fs.readdir(dirPath);
@@ -2957,7 +2957,7 @@ async function runScan(rootPath, api) {
     return null;
   }
 
-  const startTime = Date.now();
+  const startTime = Date.now(); moUnexclude(rootPath, moSetSetting); // added again: back in the library
   _scanRunning = true;
   _scanCancelled = false;
 
@@ -3138,7 +3138,7 @@ async function syncScanRootsToFsGate() {
 // ── Incremental processing ──
 
 async function processIncrementalCreate(filePath, given) {
-  if (isInternalPath(filePath)) return null;
+  if (isInternalPath(filePath) || moIsExcluded(filePath)) return null;
   const sep = _isWindows ? '\\' : '/';
   let lastSep = filePath.lastIndexOf(sep);
   let dirPath = lastSep > 0 ? filePath.slice(0, lastSep) : filePath;
@@ -3556,7 +3556,7 @@ function startWatcherForRoot(rootPath) {
       }
       for (const evt of payload.events) {
         // Skip internal .parallx paths (thumbnails, extension data)
-        if (isInternalPath(evt.path)) continue;
+        if (isInternalPath(evt.path) || moIsExcluded(evt.path)) continue;
         // Only care about media files
         const fileName = evt.path.split(/[/\\]/).pop();
         if (!classifyFile(fileName)) continue;
@@ -3602,8 +3602,8 @@ function stopAllWatchers() {
 // Compares filesystem state against DB for all scanned roots.
 // Detects new files, modified files (mtime changed), and deleted files.
 
-async function runDeltaScan(api) {
-  const roots = await getScanRoots();
+async function runDeltaScan(api, onlyFor) { // onlyFor: a folder; only the roots it shares
+  const roots = (await getScanRoots()).filter((r) => !onlyFor || moPathWithin(onlyFor, r.path) || moPathWithin(r.path, onlyFor));
   if (roots.length === 0) return;
 
   await detectAllTools();
@@ -10218,8 +10218,7 @@ function renderBrowserSidebar(container, api) {
         HAVING file_count > 0
         ORDER BY fo.path ASC
       `);
-      // Filter out internal .parallx paths (thumbnail dirs, extension data)
-      const filtered = rows.filter(row => !isInternalPath(row.path));
+      const filtered = rows.filter(row => !isInternalPath(row.path)); // not internal .parallx paths (thumbnail dirs, extension data)
       folderBody.innerHTML = '';
       folderCountSpan.textContent = filtered.length ? String(filtered.length) : '';
       if (filtered.length === 0) {
@@ -10258,6 +10257,7 @@ function renderBrowserSidebar(container, api) {
         const item = sidebarItem('folder', name, badge, () => openGrid(`folder:${row.id}`, name, 'folder'), moFolderParent(row.path), `grid:folder:${row.id}`);
         item.title = row.path;
         if (offline) { item.classList.add('is-offline'); item.title = 'Offline: the drive or folder is not available right now. Its photos are kept.'; }
+        item.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e.clientX, e.clientY, moFolderMenu({ open: () => openGrid(`folder:${row.id}`, name, 'folder'), rescan: async (path) => { api.window.showInformationMessage(`Rescanning "${name}"…`); if ((await getScanRoots()).some((r) => moPathWithin(path, r.path) || moPathWithin(r.path, path))) await runDeltaScan(api, path); else await runScan(path, api); }, reveal: (path) => window.parallxElectron.shell.openPath(path), removeDeps: { api, db, sep: _isWindows ? '\\' : '/', roots: getScanRoots, stopWatching: (rp) => { const w = _activeMediaWatchers.get(rp); if (w) { try { w.unsubscribe(); } catch { /* gone */ } window.parallxElectron.fs.unwatch(w.watchId).catch(() => {}); _activeMediaWatchers.delete(rp); } }, syncGate: syncScanRootsToFsGate, purge: processIncrementalDeleteBatch, setSetting: moSetSetting, changed: async () => { await moPruneOrphanFolderAlbums(); _notifySidebarRefresh(); document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } } }, row, name)); }); // Rescan, Show in Folder, Remove From Library (folder-rows.js)
         folderBody.appendChild(item);
       }
       syncCurrentRow();
@@ -38148,7 +38148,7 @@ export async function activate(api, context) {
   // optimizer tmp stat/delete) succeed against external media folders.
   // Without this, M67's _isAllowedWritePath/_isAllowedReadPath rejects
   // any path outside the workspace + APP_ROOT/data with EACCES.
-  await syncScanRootsToFsGate();
+  await syncScanRootsToFsGate(); await moLoadExcluded(moGetSetting);
 
   // Register scan command
   _commandDisposables.push(

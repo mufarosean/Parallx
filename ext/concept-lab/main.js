@@ -30,6 +30,7 @@
 // ============================================================================
 
 import { clDeclare, clKeyBars, clSlug, setSceneUi, svgEl } from './dom.js';
+import { clNoteProgress, clProgress, clStanding, clStandingText, setProgressStore } from './progress.js';
 
 /** Deterministic RNG — simulations must replay identically for tests. */
 function clMulberry32(seed) {
@@ -5396,31 +5397,25 @@ const CL_CSS = `
   padding-bottom: 2px;
 }
 
-/* ── Home guide ─────────────────────────────────────────────────────── */
+/* ── Home guide: how the lab works, closed after the ladder ─────────── */
 .cl-guide {
-  border: 1px solid var(--px-divider);
-  border-radius: var(--px-radius-lg);
-  background: var(--px-bg-inset);
-  padding: var(--px-space-4);
-  margin-bottom: var(--px-space-6);
+  border-top: 1px solid var(--px-divider);
+  padding-top: var(--px-space-3);
+  margin-top: var(--px-space-2);
 }
 .cl-guide-title {
   font-size: var(--px-text-sm);
   font-weight: 600;
-  color: var(--px-text); /* readable on the inset ground (WCAG AA 4.5:1) */
-  letter-spacing: 0.06em;
-  color: var(--px-text-faint);
-  margin-bottom: var(--px-space-3);
+  color: var(--px-text);
+  cursor: pointer;
 }
-.cl-guide-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: var(--px-space-3) var(--px-space-4);
-}
+.cl-guide[open] .cl-guide-title { margin-bottom: var(--px-space-3); }
 .cl-guide-item {
   display: flex;
   gap: var(--px-space-2);
   align-items: flex-start;
+  max-width: 72ch;
+  margin-bottom: var(--px-space-2);
 }
 .cl-guide-icon {
   display: inline-flex;
@@ -5429,16 +5424,29 @@ const CL_CSS = `
   margin-top: 1px;
 }
 .cl-guide-head {
-  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--px-text);
 }
 .cl-guide-text {
-  font-size: var(--px-text-xs);
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted);
   line-height: var(--px-leading-base);
-  margin-top: 1px;
 }
+
+/* ── Home: Continue strip ───────────────────────────────────────────── */
+.cl-continue {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-4);
+  border: 1px solid var(--px-divider);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-inset);
+  padding: var(--px-space-3) var(--px-space-4);
+  margin-bottom: var(--px-space-6);
+}
+.cl-continue-text { flex: 1 1 auto; min-width: 0; }
+.cl-continue-title { font-size: var(--px-text-base); font-weight: 600; }
+.cl-continue-where { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 
 /* ── Home (module cards) ────────────────────────────────────────────── */
 .cl-home {
@@ -5493,20 +5501,15 @@ const CL_CSS = `
 .cl-level { margin-bottom: var(--px-space-8); }
 .cl-level-head {
   display: flex;
-  align-items: flex-start;
-  gap: var(--px-space-3);
+  flex-direction: column;
+  gap: var(--px-space-1);
   margin-bottom: var(--px-space-3);
   padding-bottom: var(--px-space-2);
   border-bottom: 1px solid var(--px-divider);
 }
-.cl-level-num {
-  font-size: var(--px-text-xl);
-  font-weight: 700;
-  color: var(--px-text-faint);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
 .cl-level-title { font-size: var(--px-text-md); font-weight: 600; }
+.cl-card-standing { color: var(--px-text-muted); margin-top: var(--px-space-1); }
+.cl-card-done .cl-card-icon { color: var(--px-success); }
 .cl-level-tag { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 
 /* ── Connections: Builds On / Where The Exam Uses This ──────────────── */
@@ -6115,11 +6118,12 @@ function getLabState(mod) {
       values[p.key] = p.init;
       ranges[p.key] = { min: p.min, max: p.max, step: p.step };
     }
+    const rec = clProgress().modules[mod.id];
     st = {
       values, ranges,
       mode: null, data: null, query: null,
-      presetId: null, storyIndex: 0, ghosts: [],
-      predictAnswers: {},
+      presetId: null, storyIndex: rec ? clStanding(mod, rec).step : 0, ghosts: [],
+      predictAnswers: { ...(rec?.answers || {}) },
       fresh: true,
     };
     _paneState.params[mod.id] = st;
@@ -9904,119 +9908,82 @@ function renderPane(container) {
 }
 
 function renderHomeView(root) {
-  const home = document.createElement('div');
-  home.className = 'cl-home';
-  const title = document.createElement('div');
-  title.className = 'cl-home-title';
-  title.textContent = 'Concept Lab';
-  const sub = document.createElement('div');
-  sub.className = 'cl-home-sub';
-  sub.textContent = 'One ladder from coin-flip probability to Mack, Meyers, and the bootstrap. Concept modules teach the statistics; exam modules apply it on the papers’ own printed numbers. Climb in order, or jump in anywhere: every module links down to its foundations and up to where the exam uses it.';
-  home.appendChild(title);
-  home.appendChild(sub);
+  const div = (cls, text) => { const d = document.createElement('div'); d.className = cls; if (text !== undefined) d.textContent = text; return d; };
+  const home = div('cl-home');
+  home.appendChild(div('cl-home-title', 'Concept Lab'));
+  home.appendChild(div('cl-home-sub', 'From coin-flip probability to Mack, Meyers and the bootstrap. Concept modules teach the statistics; exam modules apply it on the papers’ own printed numbers.'));
+  const open = (mod) => { _paneState.route = { view: 'module', moduleId: mod.id }; _paneRerender?.(); };
+  const progress = clProgress();
 
-  const guide = document.createElement('div');
-  guide.className = 'cl-guide';
-  const guideTitle = document.createElement('div');
-  guideTitle.className = 'cl-guide-title';
-  guideTitle.textContent = 'How To Use The Lab';
-  guide.appendChild(guideTitle);
-  const grid = document.createElement('div');
-  grid.className = 'cl-guide-grid';
-  const tips = [
-    { icon: 'layers', head: 'Climb The Ladder', text: 'Levels 1 to 6 teach the statistics; level 7 is the exam papers on their own printed numbers. Jump in anywhere: Builds On and Where The Exam Uses This link every module down to its foundations and up to its payoff.' },
-    { icon: 'circle-dot', head: 'Follow The Story', text: 'Every module opens on a guided walk in the left column. Step through the dots; some steps ask you to COMMIT to a prediction before the reveal, because a guess you owned teaches more than a fact you read.' },
-    { icon: 'move-horizontal', head: 'Drag Anywhere', text: 'Sliders work, but so do the charts: drag the query marker, the today line on the fan, the candidate across the likelihood surface, the probability masses on the beam.' },
-    { icon: 'mouse-pointer-2', head: 'Hover To Trace', text: 'Hover any formula term, readout, or legend entry and the exact curve it drives lights up while everything else dims.' },
-    { icon: 'copy', head: 'Pin A Ghost', text: 'Pin Ghost freezes the current curve in place. Change anything and compare against where you were.' },
-    { icon: 'message-square', head: 'Ask The Instructor', text: 'In chat, ask to be SHOWN a concept ("open the MSE valley at Example 1"). The AI opens the right module with the values set.' },
-  ];
-  for (const tip of tips) {
-    const item = document.createElement('div');
-    item.className = 'cl-guide-item';
-    const icon = document.createElement('span');
-    icon.className = 'cl-guide-icon';
-    icon.innerHTML = clIcon(tip.icon, 15);
-    const body = document.createElement('div');
-    const head = document.createElement('div');
-    head.className = 'cl-guide-head';
-    head.textContent = tip.head;
-    const text = document.createElement('div');
-    text.className = 'cl-guide-text';
-    text.textContent = tip.text;
-    body.appendChild(head);
-    body.appendChild(text);
-    item.appendChild(icon);
-    item.appendChild(body);
-    grid.appendChild(item);
+  // Continue first: the module you were last in, on the step you left.
+  const lastMod = progress.last ? clGetModule(progress.last) : null;
+  if (lastMod) {
+    const standing = clStanding(lastMod, progress.modules[lastMod.id]);
+    const strip = div('cl-continue'), text = div('cl-continue-text');
+    const stepTitle = lastMod.story[standing.step]?.title;
+    text.appendChild(div('cl-continue-title', lastMod.title));
+    text.appendChild(div('cl-continue-where', clStandingText(standing) + (stepTitle && !standing.done ? `: ${stepTitle}` : '')));
+    strip.appendChild(text);
+    _api?.ui?.createButton?.(strip, { id: 'conceptLab.home.resume', label: 'Resume', icon: 'play', kind: 'primary', command: 'conceptLab.open', args: [lastMod.id], title: `Resume ${lastMod.title}` });
+    home.appendChild(strip);
   }
-  guide.appendChild(grid);
-  home.appendChild(guide);
 
   let i = 0;
   LEVELS.forEach((lvl, li) => {
     const mods = MODULES.filter((m) => m.level === lvl.id)
       .sort((a, b) => (a.ord ?? 99) - (b.ord ?? 99));
     if (!mods.length) return;
-    const section = document.createElement('div');
-    section.className = 'cl-level';
-    const head = document.createElement('div');
-    head.className = 'cl-level-head';
-    const num = document.createElement('span');
-    num.className = 'cl-level-num';
-    num.textContent = String(li + 1).padStart(2, '0');
-    const titles = document.createElement('div');
-    const lt = document.createElement('div');
-    lt.className = 'cl-level-title';
-    lt.textContent = lvl.title;
-    const tag = document.createElement('div');
-    tag.className = 'cl-level-tag';
-    tag.textContent = lvl.tagline;
-    titles.appendChild(lt); titles.appendChild(tag);
-    head.appendChild(num); head.appendChild(titles);
+    const section = div('cl-level'), head = div('cl-level-head');
+    head.appendChild(div('cl-level-title', `Level ${li + 1}: ${lvl.title}`));
+    head.appendChild(div('cl-level-tag', lvl.tagline));
     section.appendChild(head);
 
-    const cards = document.createElement('div');
-    cards.className = 'cl-cards';
+    const cards = div('cl-cards');
     for (const mod of mods) {
-      const card = document.createElement('div');
-      card.className = 'cl-card' + (mod.kind === 'concept' ? ' cl-card-concept' : '');
+      const standing = clStanding(mod, progress.modules[mod.id]);
+      const card = div('cl-card' + (mod.kind === 'concept' ? ' cl-card-concept' : '') + (standing.done ? ' cl-card-done' : ''));
       card.style.animationDelay = Math.min(i * 40, 480) + 'ms';
-      const chead = document.createElement('div');
-      chead.className = 'cl-card-head';
+      const chead = div('cl-card-head');
       const icon = document.createElement('span');
       icon.className = 'cl-card-icon';
-      icon.innerHTML = clIcon(mod.icon || 'line-chart', 18);
+      icon.innerHTML = clIcon(standing.done ? 'check' : (mod.icon || 'line-chart'), 18);
       const t = document.createElement('span');
       t.className = 'cl-card-title';
       t.textContent = mod.title;
       chead.appendChild(icon); chead.appendChild(t);
-      const s = document.createElement('div');
-      s.className = 'cl-card-sub';
-      s.textContent = mod.subtitle;
-      const foot = document.createElement('div');
-      foot.className = 'cl-card-paper';
-      if (mod.paper) {
-        foot.textContent = mod.paper.label;
-      } else {
-        // A concept card points forward: name the exam modules it feeds.
-        const feeds = (mod.bridges || [])
-          .map((b) => clGetModule(b.module)?.title)
-          .filter(Boolean)
-          .slice(0, 2);
-        foot.textContent = feeds.length ? 'Feeds ' + feeds.join(' · ') : lvl.tagline;
-      }
-      card.appendChild(chead); card.appendChild(s); card.appendChild(foot);
-      clDeclare(card, `conceptLab.home.${clSlug(mod.id)}`, { label: mod.title }); card.addEventListener('click', () => {
-        _paneState.route = { view: 'module', moduleId: mod.id };
-        _paneRerender?.();
-      });
+      // A concept card points forward: name the exam modules it feeds.
+      const feeds = (mod.bridges || []).map((b) => clGetModule(b.module)?.title).filter(Boolean).slice(0, 2);
+      const foot = div('cl-card-paper', mod.paper ? mod.paper.label : (feeds.length ? 'Feeds ' + feeds.join(' · ') : lvl.tagline));
+      if (standing.started) foot.appendChild(div('cl-card-standing', clStandingText(standing)));
+      card.appendChild(chead); card.appendChild(div('cl-card-sub', mod.subtitle)); card.appendChild(foot);
+      clDeclare(card, `conceptLab.home.${clSlug(mod.id)}`, { label: `${mod.title}. ${clStandingText(standing)}` }); card.addEventListener('click', () => open(mod));
       cards.appendChild(card);
       i++;
     }
     section.appendChild(cards);
     home.appendChild(section);
   });
+
+  // How the lab works: kept, closed, after the ladder.
+  const guide = document.createElement('details');
+  guide.className = 'cl-guide';
+  guide.innerHTML = '<summary class="cl-guide-title">How the lab works</summary>';
+  const tips = [
+    ['layers', 'Climb the ladder', 'Levels 1 to 6 teach the statistics; level 7 is the exam papers on their own printed numbers. Jump in anywhere: Builds On and Where The Exam Uses This link every module down to its foundations and up to its payoff.'],
+    ['circle-dot', 'Follow the story', 'Every module opens on a guided walk in the left column. Some steps ask you to commit to a prediction before the reveal: a guess you owned teaches more than a fact you read.'],
+    ['move-horizontal', 'Drag anywhere', 'Sliders work, and so do the charts: drag the query marker, the today line on the fan, the candidate across the likelihood surface, the probability masses on the beam.'],
+    ['mouse-pointer-2', 'Hover to trace', 'Hover any formula term, readout or legend entry and the curve it drives lights up while everything else dims.'],
+    ['copy', 'Pin a ghost', 'Pin Ghost freezes the current curve in place. Change anything and compare against where you were.'],
+    ['message-square', 'Ask to be shown', 'In chat, ask to be shown a concept ("open the MSE valley at Example 1"). The AI opens the right module with the values set.'],
+  ];
+  for (const [iconId, headText, bodyText] of tips) {
+    const item = div('cl-guide-item'), body = div('cl-guide-text', bodyText);
+    item.innerHTML = `<span class="cl-guide-icon">${clIcon(iconId, 15)}</span>`;
+    body.prepend(Object.assign(document.createElement('span'), { className: 'cl-guide-head', textContent: headText + '. ' }));
+    item.appendChild(body);
+    guide.appendChild(item);
+  }
+  home.appendChild(guide);
   root.appendChild(home);
   return () => {};
 }
@@ -10416,6 +10383,7 @@ function renderModuleView(root, mod) {
   function applyStory(i) {
     if (i < 0 || i >= mod.story.length) return;
     st.storyIndex = i;
+    clNoteProgress(mod, st);
     const step = mod.story[i];
     dots.forEach((d, j) => d.classList.toggle('cl-active', j === i));
     prevBtn.disabled = i === 0;
@@ -10452,9 +10420,10 @@ function renderModuleView(root, mod) {
     prevBtn.disabled = st.storyIndex === 0;
     nextBtn.disabled = st.storyIndex === mod.story.length - 1;
   } else {
-    applyStory(0);
+    applyStory(st.storyIndex); // the step you were on, from the last run
     if (!mod.story.length) applyPreset(mod.presets[0], false);
   }
+  clNoteProgress(mod, st);
 
   // AI-requested configuration outranks whatever state the mount restored:
   // the instructor said "look at THIS", so that is what renders.
@@ -10540,10 +10509,10 @@ async function openLab(moduleId, goHome) {
 // ============================================================================
 
 export async function activate(api, context) {
-  _api = api; setSceneUi(api.ui);
+  _api = api; setSceneUi(api.ui); setProgressStore(context?.workspaceState);
 
   context.subscriptions.push(
-    api.commands.registerCommand('conceptLab.open', () => openLab(null)),
+    api.commands.registerCommand('conceptLab.open', (moduleId) => openLab(typeof moduleId === 'string' && clGetModule(moduleId) ? moduleId : null)),
   );
 
   context.subscriptions.push(

@@ -671,8 +671,8 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   // wires them as command-palette entries; the pane reacts via DOM events
   // (simpler than threading editor focus tracking now).
   context.subscriptions.push(
-    api.commands.registerCommand('dashboard.addWidget', () => {
-      document.dispatchEvent(new CustomEvent('parallx.dashboard.addWidget', { detail: { editorId: activeDashboardEditorId(api.editors.openEditors) } }));
+    api.commands.registerCommand('dashboard.addWidget', (editorId?: unknown) => { // a pane's own button names its editor
+      document.dispatchEvent(new CustomEvent('parallx.dashboard.addWidget', { detail: { editorId: typeof editorId === 'string' ? editorId : activeDashboardEditorId(api.editors.openEditors) } }));
     }),
   );
   context.subscriptions.push(

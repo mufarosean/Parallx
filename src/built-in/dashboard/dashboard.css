@@ -61,7 +61,8 @@
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 .dashboard-header__title:hover {
-  color: var(--vscode-button-background, #007acc);
+  text-decoration: underline; /* click to rename; an accent colour failed contrast in light themes */
+  text-underline-offset: 3px;
 }.dashboard-header__actions {
   display: flex;
   align-items: center;
@@ -205,52 +206,8 @@
 
 /* ── Empty state ────────────────────────────────────────────────────────── */
 
-.dashboard-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 64px 24px;
-  border: 1px dashed color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 20%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 60%, transparent);
-}
+.dashboard-empty { padding: var(--px-space-8) var(--px-space-6); }
 .dashboard-empty--hidden { display: none; }
-
-.dashboard-empty__art {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 80px;
-  height: 80px;
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
-  color: var(--vscode-button-background, #0e639c);
-  margin-bottom: 20px;
-}
-
-.dashboard-empty__title {
-  margin: 0 0 6px;
-  font-size: var(--px-text-lg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--vscode-editor-foreground, #f3f3f3);
-}
-
-.dashboard-empty__body {
-  margin: 0 0 20px;
-  font-size: var(--px-text-base);
-  line-height: 1.55;
-  max-width: 420px;
-  color: var(--px-text-secondary);
-}
-
-.dashboard-empty__cta {
-  height: var(--px-control-h-lg);
-  padding: 0 16px;
-  font-size: var(--px-text-base);
-}
 
 /* ── Widget card ────────────────────────────────────────────────────────── */
 
@@ -2456,6 +2413,6 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 
 /* Empty page: the empty state carries the only call to action. */
-.dashboard-pane--empty .dashboard-header__actions > .dashboard-btn:not([data-role="header-collapse"]) {
-  display: none;
+.dashboard-pane--empty .dashboard-header__actions > .dashboard-btn {
+  display: none; /* nothing to refresh, schedule or hide yet: the empty state's Add Widget is the one action */
 }

@@ -94,7 +94,8 @@ const api = {
   },
 };
 
-const context = { subscriptions: [] as any[] };
+const memento = new Map<string, unknown>();
+const context = { subscriptions: [] as any[], workspaceState: { get: (k: string, d?: unknown) => (memento.has(k) ? memento.get(k) : d), update: async (k: string, v: unknown) => { memento.set(k, v); } } };
 
 beforeAll(async () => {
   await activate(api as any, context as any);
@@ -113,17 +114,20 @@ describe('concept lab pane', () => {
     expect(viewProviders.has('conceptLab.modules')).toBe(true);
   });
 
-  it('opening the lab shows the how-to guide and a card per module', async () => {
+  it('opening the lab shows a card per module, and the how-to guide closed after them', async () => {
     await api.commands.executeCommand('conceptLab.open');
     await settle();
     const cards = paneHost!.querySelectorAll('.cl-card');
     expect(cards.length).toBe(MODULES.length);
-    // The instructional: six interaction verbs above the module cards.
-    const guide = paneHost!.querySelector('.cl-guide')!;
-    expect(guide.textContent).toContain('How To Use The Lab');
+    // The instructional: six interaction verbs, closed, after the ladder; nothing to continue yet.
+    const guide = paneHost!.querySelector('details.cl-guide') as HTMLDetailsElement;
+    expect(guide.open).toBe(false);
+    expect(guide.previousElementSibling?.classList.contains('cl-level')).toBe(true);
+    expect(guide.textContent).toContain('How the lab works');
     expect(guide.querySelectorAll('.cl-guide-item').length).toBe(6);
-    expect(guide.textContent).toContain('Drag Anywhere');
-    expect(guide.textContent).toContain('Hover To Trace');
+    expect(guide.textContent).toContain('Drag anywhere');
+    expect(guide.textContent).toContain('Hover to trace');
+    expect(paneHost!.querySelector('.cl-continue')).toBeNull();
   });
 
   it('clicking a card enters the module with sliders, scenes, and formula', async () => {
@@ -488,12 +492,29 @@ describe('curriculum layer', () => {
     await settle();
     const levels = paneHost!.querySelectorAll('.cl-level');
     expect(levels.length).toBe(7);
-    expect(levels[0].querySelector('.cl-level-title')?.textContent).toBe('Probability & Random Variables');
-    expect(levels[6].querySelector('.cl-level-title')?.textContent).toBe('The Reserving Problem');
+    expect(levels[0].querySelector('.cl-level-title')?.textContent).toBe('Level 1: Probability & Random Variables');
+    expect(levels[6].querySelector('.cl-level-title')?.textContent).toBe('Level 7: The Reserving Problem');
     // A concept card's footer points forward instead of citing a paper.
     const claimCounter = [...paneHost!.querySelectorAll('.cl-card')].find((c) =>
       c.querySelector('.cl-card-title')?.textContent?.includes('Random Variables'))!;
     expect(claimCounter.querySelector('.cl-card-paper')?.textContent).toContain('Feeds');
+  });
+
+  it('home leads with the module you were last in, and Resume opens it on the step you left', async () => {
+    const progress = memento.get('conceptLab.progress') as { last: string; modules: Record<string, { step: number }> };
+    const last = MODULES.find((m: { id: string }) => m.id === progress?.last)!;
+    expect(last).toBeTruthy();
+    const strip = paneHost!.querySelector('.cl-continue')!;
+    expect(strip.querySelector('.cl-continue-title')?.textContent).toBe(last.title);
+    expect(strip.querySelector('.cl-continue-where')?.textContent).toMatch(/^(Step \d+ of \d+|Done)/);
+    expect(strip.nextElementSibling?.classList.contains('cl-level')).toBe(true);
+    const card = [...paneHost!.querySelectorAll('.cl-card')].find((c) => c.querySelector('.cl-card-title')?.textContent === last.title)!;
+    expect(card.querySelector('.cl-card-standing')?.textContent).toMatch(/Step|Done/);
+    await api.commands.executeCommand('conceptLab.open', last.id);
+    await settle();
+    expect(paneHost!.querySelector('.cl-title')?.textContent).toBe(last.title);
+    (paneHost!.querySelector('.cl-back') as HTMLElement).click();
+    await settle();
   });
 
   it('the Claim Counter draws years and the empirical readouts move', async () => {

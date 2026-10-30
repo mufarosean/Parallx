@@ -329,7 +329,10 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   audit, so their rebuild is low priority.
 - **Navigation in both the sidebar and the editor** (Planner, Flashcards):
   pick one. Oct 1. Your decision.
-- **Dashboard shows four controls before anything is added.** Oct 1. Open.
+- **Dashboard shows four controls before anything is added.** Oct 1. Done
+  Oct 30: an empty page shows the kit's empty state with one Add Widget and
+  no header buttons at all (the lone chevron went too); the title no longer
+  turns accent on hover (it failed contrast in light themes), it underlines.
 - **Dragging widgets out of a dashboard; merging arrangements.** Backlog
   review (Aug 29). Unclear.
 
@@ -338,7 +341,12 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Enhance stitches tiles out of order**, with CPU and GPU see-sawing. Oct 16.
   Not found yet; reproducing it needs a GPU run.
 - **Folder rows:** Rescan, Show in Folder, Remove From Library (a folder cannot
-  be removed today). MEDIA_ORGANIZER_AUDIT. Open.
+  be removed today). MEDIA_ORGANIZER_AUDIT. Done Oct 30: a folder row's
+  right-click menu has Open, Rescan, Show in Folder and Remove From
+  Library…, which asks with the file count, takes the folder's items out of
+  the library (files on disk untouched), stops watching it if it is a
+  watched folder, or keeps it out of later scans if it is inside one. Add
+  Folder… on it brings it back.
 - **One Duplicates page; albums as a library scope; menus in one order.**
   MEDIA_ORGANIZER_AUDIT. Open.
 - **Search photos by what is in them** (CLIP). IDEAS. Open.
@@ -403,7 +411,13 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Change a card's type through the AI.** Mindmap (Sep 14). Not covered.
 - **Lesson Builder:** material turned into lessons (OpenMAIC style). You
   called it "what I actually need" (Sep 5). Brief only.
-- **Concept Lab home:** Continue first, then the ladder. IDEAS. Open.
+- **Concept Lab home:** Continue first, then the ladder. IDEAS. Done Oct 30:
+  the module you were last in comes first, with its step and Resume; each
+  module card says where it stands ("Step 3 of 9, 1 of 2 predictions
+  answered", or Done with a check); the step and answers are kept with the
+  workspace, so they survive a restart and Resume lands on that step. The
+  heavy 01 to 07 became "Level 1: …"; the six tips moved, in sentence case,
+  into a closed "How the lab works" after the ladder.
 - **Flashcards on by default?** Oct 1. Your decision.
 
 ### Workbench and design system
