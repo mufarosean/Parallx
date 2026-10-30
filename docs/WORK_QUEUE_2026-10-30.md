@@ -1,0 +1,50 @@
+# Work queue (Oct 30)
+
+What is left on `docs/IMPROVEMENTS_2026-10-29.md`, split into what I can do
+without you and what waits on you. I work down the first list in order,
+commit and push after each item, and mark it here.
+
+## I can do these without you
+
+### Chat, memory, AI
+1. Memory token meter in the chat header (how much of the window memory takes).
+2. Memory writes can be undone (a checkpoint before each write).
+3. One model-call ledger: who called, model, tokens, timings, in one place you can open.
+4. Heartbeat notices page edits, not only file changes.
+5. Web search without an API key (a no-key fallback when none is set).
+6. A generic OpenAI-compatible provider (LM Studio, llama.cpp server, vLLM...).
+7. JSON schema instead of `format: 'json'` for the structured calls (can't be
+   tried on a real model here: flagged for you to test).
+
+### Canvas
+8. Slash menu: mid-line `/` and aliases (the rest of "leads with text").
+9. Database: CSV import and export.
+
+### Atelier
+10. One Duplicates page (Exact and Look-alike); menus in one order.
+11. Upscale loads its engine once per batch.
+
+### Budget
+12. The categorizer sees your past choices for the same merchant.
+
+### Workbench and design system
+13. Ctrl+P finds settings, tools and themes, not only files.
+14. Undo toast in the kit (and used where something is removed).
+15. Copy Diagnostics (versions, tools on, model, recent errors) for bug reports.
+16. Old size variables (`--parallx-fontSize`, `--parallx-radius`) moved onto `--px-*`.
+17. The empty editor shows Start (recent pages, files, new page).
+
+## Waiting on you
+
+- Per-routine "ask me first", and whether routine runs count as unattended
+  (the consent gap found Oct 30).
+- Settings: merge the nine AI pages and four Agents pages?
+- Flashcards Previous without undoing; where study notes live.
+- The AI's voice (default voice, Voice section).
+- Ctrl+N makes a New Page? Flashcards on by default? Navigation in sidebar
+  or editor? The Gmail filter default.
+- Explorer: how files should look. Activity bar redesign (7 mockups).
+- Anything AI that must be tried on your real model (Act in Creations, the
+  relevance floor value, chat names, PDF Ask).
+- Bigger moves best agreed first: Electron upgrade, MCP rework, mind maps in
+  their own tab, CLIP photo search, a first run that asks three things.
