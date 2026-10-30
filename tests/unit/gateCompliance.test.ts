@@ -231,6 +231,8 @@ const GATE_RULES: Record<string, string[]> = {
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports
   'export/pdfExportDialog.ts':             ['export/printHtml', 'config/fontRegistry'],  // dialog over the pure builders (ui/dropdown + pdfjs are external); resolves page fonts for embedding
   'export/pageBundle.ts':                  ['contentSchema', 'markdownExport', 'canvasTypes'],  // a page tree as a .zip of Markdown files
+  'database/databaseCsv.ts':               ['database/databaseTypes', 'database/databaseViewModel', 'database/cellValues', 'properties/propertyTypes'],  // a view as CSV and CSV back into rows (pure)
+  'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 
   // ── Fonts ───────────────────────────────────────────────────────────────
   // Open-ended font registry — pure data/util, only imports the settings

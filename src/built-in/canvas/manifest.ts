@@ -41,6 +41,8 @@ export const CANVAS_MANIFEST: IToolManifest = {
       { id: 'canvas.duplicatePage', title: 'Canvas: Duplicate Page' },
       { id: 'canvas.exportAllPages', title: 'Canvas: Export All Pages as Markdown…' },
       { id: 'canvas.storePicturesAsFiles', title: 'Canvas: Store Pictures as Files' },
+      { id: 'canvas.importCsvToDatabase', title: 'Canvas: Import CSV into Database…' },
+      { id: 'canvas.exportDatabaseCsv', title: 'Canvas: Export Database as CSV…' },
       { id: 'canvas.restorePage', title: 'Canvas: Restore Page from Trash',
         aiInvocable: true, aiDescription: 'Restore a page (and its sub-pages) from the Trash. Argument: pageId (string, required).' },
       { id: 'canvas.deletePageForever', title: 'Canvas: Delete Page Forever…' },

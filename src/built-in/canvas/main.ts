@@ -41,7 +41,7 @@ import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockR
 import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
-import { registerTrashCommands } from './canvasTrashPanel.js';
+import { registerTrashCommands } from './canvasTrashPanel.js'; import { registerDatabaseCsvCommands } from './database/databaseCsvActions.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1247,7 +1247,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  context.subscriptions.push(...registerTrashCommands(api, () => _dataService ?? undefined));
+  context.subscriptions.push(...registerTrashCommands(api, () => _dataService ?? undefined), ...registerDatabaseCsvCommands(api, () => _databaseService)); // Trash; a database's CSV import and export
   // canvas.deletePage — Delete the selected page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.deletePage', async (...args: unknown[]) => {

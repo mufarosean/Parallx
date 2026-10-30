@@ -13,8 +13,7 @@
 // View state (filter/sort/groupBy/column widths/hidden props) is VIEW-LOCAL
 // and persisted through DatabaseDataService.updateView — matching Notion.
 
-import type { IDisposable } from '../../../platform/lifecycle.js';
-import { DisposableStore } from '../../../platform/lifecycle.js';
+import { DisposableStore, type IDisposable } from '../../../platform/lifecycle.js';
 import type { DatabaseDataService } from './databaseDataService.js';
 import type {
   DatabaseViewType, FilterOp, IDatabaseProperty, IDatabaseRow, IDatabaseView, IFilterRule, ISortRule,
@@ -30,6 +29,7 @@ import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { wireBoardCardKeys } from './boardCardKeys.js';
+import { databaseCsvMenuItems } from './databaseCsvActions.js';
 import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import { onDragPress } from '../../../ui/touchDrag.js';
 
@@ -796,13 +796,13 @@ export class DatabaseEditorPane implements IDisposable {
           pop.appendChild(this._menuItem(`Group by ${p.name}`, () => void this._deps.db.updateView(this._databaseId, view.id, { groupBy: p.id })));
         }
       }
-      // Unhide any hidden properties.
-      const hidden = (view.config.hidden as string[] | undefined) ?? [];
+      const hidden = (view.config.hidden as string[] | undefined) ?? []; // hidden properties can be shown again
       for (const id of hidden) {
         pop.appendChild(this._menuItem(`Show "${this._propName(id)}"`, () => {
           void this._deps.db.updateView(this._databaseId, view.id, { config: { ...view.config, hidden: hidden.filter((h) => h !== id) } });
         }));
       }
+      pop.append(...databaseCsvMenuItems(this._deps.db, this._databaseId, view.id, (label, run) => this._menuItem(label, run)));
       if (this._views.length > 1) {
         pop.appendChild(this._menuItem('Delete view', () => void this._deps.db.deleteView(this._databaseId, view.id), true));
       }
