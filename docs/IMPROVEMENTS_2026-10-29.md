@@ -190,7 +190,10 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   Source: IDEAS, FINISH E, APP 2.3. Done Oct 29 (all four). Found on the
   way: renaming a chat before opening it deleted its messages; fixed.
 - **One model-call ledger** (who called, tokens, cache reads, timings): AI
-  quality becomes numbers. IDEAS. Open.
+  quality becomes numbers. IDEAS. Done Oct 30: AI: Show Model Calls lists the
+  last 500 calls (caller, model, tokens in and out, first token, total time,
+  outcome) and totals by caller, recorded in the engine broker; no prompt or
+  answer text is kept. Embedding calls are not in it.
 - **PDF Ask sees the whole page**, with the file name and retrieval limited to
   that file; it got only the selected sentence. IDEAS. Done Oct 30: Ask on a
   highlight gets the file name, the page number, the whole page (cut around
@@ -229,7 +232,10 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   work, then move Flashcards, Worksheets, Atelier tagging and Budget onto it.
   The generic `api.ai.embed` hook for extensions is the same idea (Creations
   RAG needs it). FINISH B, APP, Oct 24. Open.
-- **JSON schema instead of `format:'json'`** (10 callers). RESEARCH #5. Open.
+- **JSON schema instead of `format:'json'`** (10 callers). RESEARCH #5. Done
+  Oct 30 for every call with a fixed shape (Linking pages, Budget's four
+  stages, Creations' act brief, test drive, story memory, chat memory, Since
+  Then); Studio keeps plain JSON. Not tried on a real model.
 - **Claude provider options:** effort per task, refusal handling, context
   editing, the model list from the API. RESEARCH #4, IDEAS. Open.
 - **A generic OpenAI-compatible provider.** RESEARCH #14. Done Oct 30: AI
@@ -261,7 +267,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   file read as an extracted document), and say to write a new text file.
 
 ### Agents, heartbeat and routines
-- **Heartbeat notices page edits**, not only source files. IDEAS. Open.
+- **Heartbeat notices page edits**, not only source files. IDEAS. Done Oct 30:
+  one signal per page per ten minutes.
 - **Standing watches shown in Routines** (they live only in
   `.parallx/HEARTBEAT.md`). IDEAS. Open.
 - **Watch a routine run as it streams.** IDEAS. Done Oct 30: Watch on a
@@ -379,7 +386,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Search photos by what is in them** (CLIP). IDEAS. Open.
 - **Masks by light and colour range; name the masses with AI; paint mixes from
   measured pigments.** IDEAS. Open.
-- **Upscale loads its engine once per batch.** IDEAS. Open.
+- **Upscale loads its engine once per batch.** IDEAS. Done Oct 30: a batch is
+  one SeedVR2 run with the model kept loaded (engine/enlarge_many.py). Not run
+  on a GPU here.
 - **Clips code split out of `main.js` and loaded on demand.** IDEAS. Open.
 - **The image-pull script as an extension with a UI.** Sep 18 idea. Open.
 - **Eraser leftovers:** the 30-day trash purge leaves files on disk;
@@ -402,7 +411,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 
 ### Browser and Web Research
 - **Clip from the browser into a page.** IDEAS. Open.
-- **Web search without an API key** (a DuckDuckGo fallback). IDEAS. Open.
+- **Web search without an API key** (a DuckDuckGo fallback). IDEAS. Done Oct
+  30: with no Brave key, searches go through DuckDuckGo's HTML page. Not tried
+  against the live site (this container cannot reach it).
 - **Save-for-later inbox.** GitHub_Landscape. Open.
 - **The browser agent benchmarked on Claude and on local models; a Choose File
   control for uploads; a redirect check on every download hop.**
@@ -453,7 +464,7 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Kit gaps:**
   - card and stat tiles;
   - a dialog or side sheet;
-  - an Undo toast;
+  - an Undo toast (done Oct 30: `showUndoToast`, used when a page goes to Trash);
   - a colour picker;
   - a Kit Gallery page with screenshot baselines.
 
@@ -465,7 +476,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Explorer:** how files should look (your question from Oct 25, still
   open). This session.
 - **The Tools page as cards with categories; the empty editor shows Start;
-  Ctrl+P finds settings, tools and themes.** IDEAS. Open.
+  Ctrl+P finds settings, tools and themes.** IDEAS. Start and Ctrl+P done Oct
+  30; the Tools page as cards is open.
 - **Activity bar redesign:** 7 mockups, none chosen. Oct 17.
 - **Version number:** the shell says 0.2.0, `package.json` says 0.1.0. APP.
   Done Oct 29: the shell is package.json's version, held by a test.
@@ -485,7 +497,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 
   Source: APP 2.3, FINISH E. Open.
 - **Indexing in a utility process; one SQLite worker.** RESEARCH #7, APP. Partly done.
-- **Crash dumps, Copy Diagnostics, timing budgets.** RESEARCH. Open. Long
+- **Crash dumps, Copy Diagnostics, timing budgets.** RESEARCH. Copy
+  Diagnostics done Oct 30 (Help menu; paths, names and keys hidden). Long
   probe runs here hit an intermittent Electron crash (this session); untraced.
 - **An embedding call every 30 seconds from an unknown source.** Mindmap
   (Sep 15). Not traced (needs your setup). Since Oct 29 a question asked

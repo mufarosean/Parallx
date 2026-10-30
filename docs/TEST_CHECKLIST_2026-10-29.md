@@ -129,6 +129,24 @@ me if it is not that.
 
 ---
 
+### 2.8 Act runs, and the structured answers keep their shape
+- **Do:** In Creations, write an act (`/act` and a brief), Run it, then
+  Propose Next. Run a Budget sync with a few emails.
+- **Expect:** Act writes every beat as the character the beat names, and
+  Propose Next gives a brief. Budget files each email with one of your
+  categories. Nothing says "the model wrote no beats" or "malformed".
+
+### 2.9 Web search with no key
+- **Do:** With no Brave key set (Settings › Web Research), ask the chat to
+  look something up on the web.
+- **Expect:** Results come back (through DuckDuckGo). If DuckDuckGo asks for a
+  check, the error says to add a Brave key.
+
+### 2.10 Upscale several photos at once
+- **Do:** In Atelier, select three or more photos › Upscale….
+- **Expect:** "Loading the model" shows once, at the first photo; the others
+  start without the wait. Each result sits next to its original.
+
 ## 3. Quick checks (no model needed)
 
 ### 3.1 Paste Markdown into a page
@@ -224,6 +242,28 @@ me if it is not that.
   with each sub-page's `.md` (deeper ones in their own folders). Open it in
   any Markdown viewer (or Obsidian): the sub-page lines are links that open
   the sub-page files.
+
+### 3.14 The empty editor is Start
+- **Do:** Close every tab.
+- **Expect:** New Page, Open File…, and the last pages and files you opened;
+  Tab moves through them and Enter opens one.
+
+### 3.15 Undo after moving a page to Trash
+- **Do:** Delete a page (sidebar, page menu, or the palette).
+- **Expect:** A toast at the bottom: "… moved to Trash" with Undo. Undo
+  brings the page back where it was.
+
+### 3.16 Slash menu
+- **Do:** In a page, type `/` at the start of a line, then `and/or` and
+  ` /todo` in the middle of a line.
+- **Expect:** `/` opens on Text first; `and/or` opens nothing; ` /todo`
+  finds To-do List and puts it on the next line.
+
+### 3.17 Copy Diagnostics and Model Calls
+- **Do:** Help › Copy Diagnostics, paste it anywhere. Then the palette:
+  **AI: Show Model Calls** after a chat turn.
+- **Expect:** The report lists versions, tools and the model, with no folder
+  names or keys. Model Calls lists the turn with its tokens and times.
 
 ### 3.8 Small ones
 - Welcome shows version 0.1.0, and its AI section has three plain rows (no
