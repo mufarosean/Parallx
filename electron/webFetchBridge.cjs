@@ -23,7 +23,8 @@
 //          identifiability; gains privacy hygiene. No cookies, no Referer, no
 //          session jar still hold — nothing else about the request reveals identity.
 //   C11 — Per-turn / per-day budget in tool handler before calling bridge.
-//   C12 — webSearch allowlisted to api.search.brave.com only.
+//   C12 — webSearch allowlisted to api.search.brave.com, and to
+//         html.duckduckgo.com when no Brave key is set (duckDuckGoSearch.cjs).
 //   C13 — Test coverage; see tests/unit/webFetchBridge.test.ts.
 //   C14 — No fetch()/http/https require in ext/web-research/; grep test.
 //   C15 — main.cjs edit is two lines only.
@@ -337,7 +338,7 @@ async function _preflight(urlStr) {
   return parsed;
 }
 
-function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET' }) {
+function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET', body }) {
   return new Promise((resolve, reject) => {
     let parsed;
     try { parsed = new URL(urlStr); } catch {
@@ -377,6 +378,8 @@ function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET' }) {
       delete requestOpts.headers.authorization;
       delete requestOpts.headers.Referer;
       delete requestOpts.headers.referer;
+      // A form body (the DuckDuckGo search posts one) goes with its length, not chunked.
+      if (typeof body === 'string') requestOpts.headers['Content-Length'] = Buffer.byteLength(body);
 
       const req = https.request(requestOpts, (res) => {
         // C2 — manual redirect handling. Caller re-runs DNS+blocklist+HTTPS.
@@ -436,7 +439,7 @@ function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET' }) {
         }
       }
 
-      req.end();
+      req.end(typeof body === 'string' ? body : undefined);
     }).catch(reject);
   });
 }
@@ -505,7 +508,7 @@ async function doWebFetch({ url, turnId, accept, _injectedRequest, _injectedPref
  * { results: [{title,url,snippet}] } parsed from the Brave response, or
  * throws.
  */
-async function doWebSearch({ query, apiKey, turnId, _injectedFetch } = {}) {
+async function doWebSearch({ query, apiKey, turnId, _injectedFetch, _injectedPreflight } = {}) {
   if (typeof query !== 'string' || query.trim().length === 0) {
     throw _err('INVALID_QUERY', 'webSearch requires a non-empty query');
   }
@@ -531,7 +534,7 @@ async function doWebSearch({ query, apiKey, turnId, _injectedFetch } = {}) {
     if (parsed.hostname !== BRAVE_SEARCH_HOST) {
       throw _err('SEARCH_HOST_LOCKED', `webSearch host locked to ${BRAVE_SEARCH_HOST}`);
     }
-    await _preflight(url);
+    await (typeof _injectedPreflight === 'function' ? _injectedPreflight : _preflight)(url);
     if (turnId) {
       // search calls don't burn fetch backstop but we still want bounded growth
     }
@@ -567,6 +570,29 @@ async function doWebSearch({ query, apiKey, turnId, _injectedFetch } = {}) {
   }
 }
 
+/**
+ * The search, by the key: Brave when one is set, DuckDuckGo's HTML page when
+ * none is (electron/duckDuckGoSearch.cjs, loaded on the first keyless search).
+ * Both go through _preflight and _doSingleHopRequest, so HTTPS, the
+ * blocklist, the pinned DNS check, the wall clock and the body cap hold for
+ * either. Returns { results, provider }.
+ */
+async function runWebSearch({ query, apiKey, turnId, _injectedFetch, _injectedPreflight } = {}) {
+  if (typeof apiKey === 'string' && apiKey.length > 0) {
+    const r = await doWebSearch({ query, apiKey, turnId, _injectedFetch, _injectedPreflight });
+    return { results: r.results, provider: 'brave' };
+  }
+  const { searchDuckDuckGo } = require('./duckDuckGoSearch.cjs');
+  const r = await searchDuckDuckGo({
+    query,
+    hop: typeof _injectedFetch === 'function' ? _injectedFetch : _doSingleHopRequest,
+    preflight: typeof _injectedPreflight === 'function' ? _injectedPreflight : _preflight,
+    userAgent: FIXED_USER_AGENT,
+    timeoutMs: TOTAL_TIMEOUT_MS,
+  });
+  return { results: r.results, provider: 'duckduckgo' };
+}
+
 // ─── IPC registration ────────────────────────────────────────────────────────
 
 function setupWebFetchBridge(ipcMain, _appRoot, readSecret, opts) {
@@ -585,6 +611,9 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret, opts) {
   // (workspaceSeal.cjs), set by the renderer whether or not this tool is on.
   const isSealed = (opts && typeof opts.isSealed === 'function') ? opts.isSealed : workspaceSeal.isSealed;
   const SEALED_ERROR = { ok: false, error: { code: 'SEALED', message: 'This workspace is sealed: nothing leaves the machine.' } };
+  // Tests hand in a search transport and preflight; the app never does.
+  const searchTransport = opts ? opts.searchTransport : undefined;
+  const searchPreflight = opts ? opts.searchPreflight : undefined;
 
   ipcMain.handle('webFetch:request', async (_event, opts) => {
     if (isSealed()) return SEALED_ERROR;
@@ -613,22 +642,14 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret, opts) {
       const safe = opts && typeof opts === 'object' ? opts : {};
       // SECURITY: API key is read from safeStorage HERE (main process). The
       // renderer cannot pass it in — any `safe.apiKey` is intentionally
-      // ignored. Soft-error NO_API_KEY when the secret is missing so the
-      // extension can surface a clean message.
+      // ignored. No key is no error: the search goes through DuckDuckGo.
       const apiKey = await readSecret('webResearch.braveApiKey');
-      if (typeof apiKey !== 'string' || apiKey.length === 0) {
-        return {
-          ok: false,
-          error: {
-            code: 'NO_API_KEY',
-            message: 'Brave Search API key not configured (AI Settings → Web Research)',
-          },
-        };
-      }
-      const result = await doWebSearch({
+      const result = await runWebSearch({
         query: safe.query,
         apiKey,
         turnId: safe.turnId,
+        _injectedFetch: searchTransport,
+        _injectedPreflight: searchPreflight,
       });
       return { ok: true, result };
     } catch (err) {
@@ -686,6 +707,7 @@ module.exports = {
     decodeBody,
     doWebFetch,
     doWebSearch,
+    runWebSearch,
     DOMAIN_BLOCKLIST,
     PRIVATE_V4_CIDRS,
     FIXED_USER_AGENT,

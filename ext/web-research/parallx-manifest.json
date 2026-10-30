@@ -34,7 +34,7 @@
             "type": "string",
             "secret": true,
             "default": "",
-            "description": "Brave Search API key, needed for web searches. Get one at brave.com/search/api. Kept encrypted on this computer."
+            "description": "Optional. With a key, web searches go through Brave Search; without one, they go through DuckDuckGo, which limits how often it answers. Get a key at brave.com/search/api. Kept encrypted on this computer."
           },
           "webResearch.dailyBudget": {
             "label": "Searches Per Day",

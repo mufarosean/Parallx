@@ -161,20 +161,21 @@ describe('soft-error shape', () => {
   });
 });
 
-describe('missing Brave API key', () => {
-  it('soft-errors NO_API_KEY when the bridge reports the key is absent', async () => {
-    // The renderer-side extension no longer reads the API key — the
-    // main-process bridge reads it from safeStorage. Simulate the bridge
-    // returning the NO_API_KEY soft error.
+describe('a search error from the bridge', () => {
+  it('passes through as a soft error with the bridge\'s code', async () => {
+    // The renderer-side extension never reads the API key: the main-process
+    // bridge reads it from safeStorage (and searches DuckDuckGo without one).
+    // Simulate the bridge reporting a failure.
     ext.__test__._setBridge({
       'webSearch:request': async () => ({
         ok: false,
-        error: { code: 'NO_API_KEY', message: 'Brave Search API key not configured' },
+        error: { code: 'SEARCH_HTTP_401', message: 'Brave Search HTTP 401' },
       }),
       'webFetch:request': async () => ({ ok: false, error: { code: 'NO_BRIDGE', message: '' } }),
     });
     const r = await ext.__test__.webSearchTool({ query: 'q' }, 'turn-no-key');
     expect(r.isError).toBe(true);
-    expect(r.errorCode).toBe('NO_API_KEY');
+    expect(r.errorCode).toBe('SEARCH_HTTP_401');
+    expect(r.content).not.toMatch(/Settings › Web Research/);
   });
 });

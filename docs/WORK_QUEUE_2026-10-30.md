@@ -11,7 +11,7 @@ commit and push after each item, and mark it here.
 2. Done: memory writes leave /rewind checkpoints.
 3. Done: one model-call ledger: who called, model, tokens, timings and outcome, in one place you can open (AI: Show Model Calls).
 4. Done: the heartbeat notices page edits (one signal per page per ten minutes), not only file changes.
-5. Web search without an API key (a no-key fallback when none is set).
+5. Done: web search works with no API key (DuckDuckGo when no Brave key is set).
 6. Done: a generic OpenAI-compatible provider (LM Studio, llama.cpp server, vLLM...).
 7. JSON schema instead of `format: 'json'` for the structured calls (can't be
    tried on a real model here: flagged for you to test).

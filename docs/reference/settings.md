@@ -66,7 +66,7 @@ The settings tools declare in their manifests, with the tool that owns each. Set
 | `study.sessionSize` | number | 20 | study | Study | Questions per session. Refresh draws the next set from the same scope. |
 | `study.staleDays` | number | 14 | study | Study | Days without an answer before a clean concept counts as stale. |
 | `study.syllabus` | string | "" | study | Study | What your exam expects: paste the syllabus or learning objectives. Concepts and questions are aimed at it. Empty: questions follow the material alone. |
-| `webResearch.braveApiKey` | string | "" | web-research | Web Research | Brave Search API key, needed for web searches. Get one at brave.com/search/api. Kept encrypted on this computer. |
+| `webResearch.braveApiKey` | string | "" | web-research | Web Research | Optional. With a key, web searches go through Brave Search; without one, they go through DuckDuckGo, which limits how often it answers. Get a key at brave.com/search/api. Kept encrypted on this computer. |
 | `webResearch.browserFallback` | boolean | true | web-research | Web Research | When a site refuses the plain fetch (a 403 from a bot wall), load the page in a hidden browser window instead. If the site then asks you to prove you are human, the window is shown so you can tick the box; the read goes on once you have. The same rules apply: https only, nothing on this computer or the local network, nothing kept afterwards. |
 | `webResearch.dailyBudget` | number | 100 | web-research | Web Research | Most web searches allowed per day. Resets at local midnight. |
 | `webResearch.perTurnFetchCap` | number | 20 | web-research | Web Research | Most pages the AI may read in one reply. |
