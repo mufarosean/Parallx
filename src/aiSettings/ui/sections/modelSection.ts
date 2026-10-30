@@ -4,6 +4,8 @@
 // providers they want in this workspace and enters API keys for cloud ones:
 //   - Ollama (local)        — enable toggle (default on).
 //   - Claude (Anthropic)    — enable toggle (default off) + API key entry.
+//   - OpenAI-compatible     — enable toggle (default off) + server URL + an
+//                             optional API key, bound to that server.
 // Enabling/disabling a provider registers/unregisters it live (its models
 // appear/vanish in the Default Model picker below). Enable state is a
 // workspace-scoped registry setting (`ai.providers.<id>.enabled`); the Claude
@@ -13,8 +15,9 @@
 // Below Providers: Default Model + Default Context Length (workspace-scoped
 // unified config, unchanged).
 
-import { declareControl, sceneSlug } from '../../../ui/kit.js';
+import { createInput, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { addDisposableListener } from '../../../ui/dom.js';
+import { Emitter } from '../../../platform/events.js';
 import { InputBox } from '../../../ui/inputBox.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import type {
@@ -31,24 +34,28 @@ import type {
 } from '../../../services/chatTypes.js';
 import { getGlobalSettingsRegistry } from '../../../services/settingsRegistryService.js';
 
-// Minimal view of the main-process Claude key bridge (electron/anthropicBridge.cjs).
-// Accessed inline (not imported from built-in/chat) to keep the settings UI layer
-// free of a dependency on the chat extension. The API key lives only in main.
+// Minimal view of the main-process key bridges (electron/anthropicBridge.cjs,
+// electron/openaiCompatibleBridge.cjs). Accessed inline (not imported from
+// built-in/chat) to keep the settings UI layer free of a dependency on the chat
+// extension. API keys live only in main. A server-bound key (OpenAI-compatible)
+// is saved for, and checked against, the server URL set at the time.
 interface ICloudKeyBridge {
-  hasKey(): Promise<boolean>;
-  setKey(key: string): Promise<{ ok: boolean; error?: string }>;
+  hasKey(baseUrl?: string): Promise<boolean>;
+  setKey(key: string, baseUrl?: string): Promise<{ ok: boolean; error?: string }>;
   clearKey(): Promise<unknown>;
 }
-function cloudKeyBridge(): ICloudKeyBridge | undefined {
-  return (globalThis as { parallxElectron?: { anthropic?: ICloudKeyBridge } })
-    .parallxElectron?.anthropic;
+function cloudKeyBridge(d: IProviderDescriptor, baseUrl: () => string): ICloudKeyBridge | undefined {
+  const all = (globalThis as { parallxElectron?: Record<string, ICloudKeyBridge | undefined> }).parallxElectron;
+  const b = all?.[d.id];
+  if (!b || !d.baseUrlKey) return b;
+  return { hasKey: () => b.hasKey(baseUrl()), setKey: (key) => b.setKey(key, baseUrl()), clearKey: () => b.clearKey() };
 }
 
 /** Declarative provider catalog for the Providers group. Extend to add providers. */
 interface IProviderDescriptor {
   readonly id: string;
   readonly name: string;
-  readonly kind: 'Local' | 'Cloud';
+  readonly kind: 'Local' | 'Cloud' | 'Server';
   /** Workspace-scoped registry key toggling this provider. */
   readonly enabledKey: string;
   readonly enabledDefault: boolean;
@@ -56,6 +63,11 @@ interface IProviderDescriptor {
   readonly hasApiKey: boolean;
   readonly keyPlaceholder?: string;
   readonly keyHelp?: string;
+  /** The key is optional (the status says so instead of asking for one). */
+  readonly keyOptional?: boolean;
+  /** Workspace-scoped registry key holding the server URL, for providers that have one. */
+  readonly baseUrlKey?: string;
+  readonly baseUrlDefault?: string;
 }
 
 const PROVIDERS: readonly IProviderDescriptor[] = [
@@ -69,6 +81,13 @@ const PROVIDERS: readonly IProviderDescriptor[] = [
     keyPlaceholder: 'sk-ant-…',
     keyHelp: 'Anthropic API key. Stored encrypted on this machine, never in settings files or the renderer. Get one at console.anthropic.com.',
   },
+  {
+    id: 'openaiCompatible', name: 'OpenAI-Compatible Server', kind: 'Server',
+    enabledKey: 'ai.providers.openaiCompatible.enabled', enabledDefault: false, hasApiKey: true,
+    keyOptional: true, keyPlaceholder: 'API key (optional)',
+    baseUrlKey: 'ai.providers.openaiCompatible.baseUrl', baseUrlDefault: 'http://localhost:1234/v1',
+    keyHelp: 'LM Studio, llama.cpp server, vLLM, LocalAI or any service with /v1/chat/completions. The URL ends in /v1 (LM Studio: http://localhost:1234/v1, llama.cpp: http://localhost:8080/v1). The API key is optional, stored encrypted on this machine and sent only to the server it was saved for.',
+  },
 ];
 
 // ─── ModelSection ────────────────────────────────────────────────────────────
@@ -77,6 +96,8 @@ export class ModelSection extends SettingsSection {
 
   private readonly _unifiedService: IUnifiedAIConfigService | undefined;
   private readonly _lms: ILanguageModelsService | undefined;
+  /** Fires after a provider's server URL is saved (its key status depends on it). */
+  private readonly _baseUrlChanged = this._register(new Emitter<void>());
 
   private _modelDropdown!: Dropdown;
   private _contextInput!: InputBox;
@@ -202,7 +223,7 @@ export class ModelSection extends SettingsSection {
 
     const help = document.createElement('div');
     help.className = 'ai-settings-provider__grouphelp';
-    help.textContent = 'Choose which model providers are available in this workspace. Local Ollama runs on your machine; Claude sends data to Anthropic’s cloud, so enable it only for workspaces without sensitive material.';
+    help.textContent = 'Choose which model providers are available in this workspace. Local Ollama runs on your machine; Claude sends data to Anthropic’s cloud, and a server on another machine receives your chats, so enable those only for workspaces without sensitive material.';
     this.contentElement.appendChild(help);
 
     const isOn = (d: IProviderDescriptor): boolean => {
@@ -257,8 +278,9 @@ export class ModelSection extends SettingsSection {
       head.append(name, badge, status, toggleLabel);
       wrap.appendChild(head);
 
+      const baseUrl = d.baseUrlKey ? this._buildBaseUrl(wrap, d, registry) : () => '';
       if (d.hasApiKey) {
-        this._buildProviderKey(wrap, status, d);
+        this._buildProviderKey(wrap, status, d, baseUrl);
       } else {
         status.textContent = 'Runs locally';
       }
@@ -267,9 +289,31 @@ export class ModelSection extends SettingsSection {
     }
   }
 
-  /** Inline API-key entry for a cloud provider (currently Claude/Anthropic). */
-  private _buildProviderKey(wrap: HTMLElement, status: HTMLElement, d: IProviderDescriptor): void {
-    const bridge = cloudKeyBridge();
+  /** The server URL field of a provider that has one; returns a reader of the current URL. */
+  private _buildBaseUrl(wrap: HTMLElement, d: IProviderDescriptor, registry: ReturnType<typeof getGlobalSettingsRegistry>): () => string {
+    const key = d.baseUrlKey!;
+    const current = (): string => {
+      try { const v = registry?.getValue<string>(key); return typeof v === 'string' && v.trim() ? v.trim() : (d.baseUrlDefault ?? ''); }
+      catch { return d.baseUrlDefault ?? ''; }
+    };
+    const input = createInput(wrap, { id: `aiSettings.baseUrl.${sceneSlug(d.id)}`, label: `${d.name} URL`, placeholder: d.baseUrlDefault, value: current() });
+    this._register(input);
+    const save = (): void => {
+      const value = input.value.trim().replace(/\/+$/, '') || (d.baseUrlDefault ?? '');
+      input.value = value;
+      if (!registry || value === current()) return;
+      void registry.setValue(key, value).then(() => this._baseUrlChanged.fire()).catch(() => { input.value = current(); });
+    };
+    this._register(addDisposableListener(input.element, 'change', save));
+    if (registry) {
+      this._register(registry.onDidChange((c) => { if (c.key === key && input.value !== current()) input.value = current(); }));
+    }
+    return current;
+  }
+
+  /** Inline API-key entry for a cloud provider or a server that may ask for a key. */
+  private _buildProviderKey(wrap: HTMLElement, status: HTMLElement, d: IProviderDescriptor, baseUrl: () => string): void {
+    const bridge = cloudKeyBridge(d, baseUrl);
     if (!bridge) {
       status.textContent = 'Unavailable in this build';
       return;
@@ -306,11 +350,12 @@ export class ModelSection extends SettingsSection {
 
     const refresh = async (): Promise<void> => {
       const has = await bridge.hasKey().catch(() => false);
-      status.textContent = has ? 'API key set' : 'No API key';
+      status.textContent = has ? 'API key set' : (d.keyOptional ? 'No API key (optional)' : 'No API key');
       keyStatus.textContent = has ? '✓ Key saved' : '';
       clearBtn.style.display = has ? '' : 'none';
     };
     void refresh();
+    if (d.baseUrlKey) this._register(this._baseUrlChanged.event(() => void refresh()));
 
     this._register(addDisposableListener(saveBtn, 'click', () => {
       const value = input.value.trim();

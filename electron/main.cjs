@@ -269,11 +269,9 @@ _optionalBridges = setupOptionalBridges(ipcMain, {
   isAllowedWritePath: (p) => _isAllowedWritePath(p),
   boundsOnScreen: (b) => boundsOnScreen(b),
 });
-setupAnthropicBridge(ipcMain, {
-  readSecret: _readSecretString,
-  writeSecret: _writeSecretString,
-  deleteSecret: _deleteSecretString,
-});
+const _modelKeySecrets = { readSecret: _readSecretString, writeSecret: _writeSecretString, deleteSecret: _deleteSecretString };
+setupAnthropicBridge(ipcMain, _modelKeySecrets);
+require('./openaiCompatibleBridge.cjs').setupOpenAICompatibleBridge(ipcMain, _modelKeySecrets, { isSealed: isWorkspaceSealed });
 doclingBridge.setAppRoot(APP_ROOT);
 
 const USER_EXTENSIONS_DIR = path.join(APP_ROOT, 'data', 'extensions');

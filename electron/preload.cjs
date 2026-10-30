@@ -649,13 +649,9 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     },
   },
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Claude (Anthropic) cloud model bridge
-  // ══════════════════════════════════════════════════════════════════════════
-  //
-  // The API key lives ONLY in the main process (safeStorage); the renderer never
-  // sees it. Streaming /v1/messages runs in main and is relayed here as
-  // `anthropic:event` pushes. See electron/anthropicBridge.cjs.
+  // ── Model provider bridges ── The API key lives ONLY in the main process
+  // (safeStorage); the renderer never sees it. Streaming runs in main and is
+  // relayed as `anthropic:event` pushes. See electron/anthropicBridge.cjs.
 
   anthropic: {
     /** Whether an API key is stored. */
@@ -675,6 +671,9 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       return () => ipcRenderer.removeListener('anthropic:event', listener);
     },
   },
+
+  // OpenAI-compatible model servers: same contract, key bound to its server.
+  openaiCompatible: require('./openaiCompatibleBridge.cjs').openaiCompatiblePreloadApi(ipcRenderer),
 
   // ══════════════════════════════════════════════════════════════════════════
   // Storage API (M53 — Portable file-backed storage)

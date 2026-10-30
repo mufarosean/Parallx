@@ -129,6 +129,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── providers/ — LLM providers ──────────────────────────────────────────
   'providers/ollamaProvider.ts': [],
   'providers/anthropicProvider.ts': [],
+  'providers/openaiCompatibleProvider.ts': [],
+  'providers/openaiCompatibleRegistration.ts': ['providers/'],  // settings + live registration
 
   // ── utilities/ — mention resolution, shared helpers ──────────────────
   'utilities/backgroundPromptRunner.ts': [],  // M86 C4 — headless prompt turns (imports openclaw/services, outside chat)

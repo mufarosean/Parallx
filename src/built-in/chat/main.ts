@@ -21,7 +21,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import type { LinksApi } from '../../links/linksApi.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
-import { AnthropicProvider, getAnthropicBridge } from './providers/anthropicProvider.js';
+import { AnthropicProvider, getAnthropicBridge } from './providers/anthropicProvider.js'; import { wireOpenAICompatibleProvider } from './providers/openaiCompatibleRegistration.js';
 import { createChatView } from './widgets/chatView.js';
 import type { ChatWidget } from './widgets/chatWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
@@ -724,12 +724,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // ── 2b. Provider registration — each provider is enabled PER WORKSPACE ──
   //
-  // Both Ollama (local) and Claude (cloud) register with ILanguageModelsService
-  // only when enabled for THIS workspace, so the model picker shows exactly the
-  // providers the user turned on (AI Settings → Model → Providers). OllamaProvider
-  // is always CONSTRUCTED (ChatDataService depends on it) but its registration is
-  // gated. Flipping a toggle registers/unregisters live. The Claude API key lives
-  // only in the main process — the renderer never holds it.
+  // Ollama, Claude and an OpenAI-compatible server register with
+  // ILanguageModelsService only when enabled for THIS workspace (AI Settings →
+  // Model → Providers). OllamaProvider is always CONSTRUCTED (ChatDataService
+  // depends on it) but its registration is gated. Flipping a toggle registers or
+  // unregisters live. API keys live only in the main process.
   {
     const settingsReg = api.services.has(ISettingsRegistryService)
       ? api.services.get<ISettingsRegistryService>(ISettingsRegistryService)
@@ -764,6 +763,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     };
 
     syncProviders();
+    context.subscriptions.push(wireOpenAICompatibleProvider(settingsReg, languageModelsService));
     if (settingsReg) {
       context.subscriptions.push(settingsReg.onDidChange((c) => {
         if (c.key === 'ai.providers.ollama.enabled' || c.key === 'ai.providers.anthropic.enabled' || c.key === SEALED_WORKSPACE_SETTING) syncProviders();

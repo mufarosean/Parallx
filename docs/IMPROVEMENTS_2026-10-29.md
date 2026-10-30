@@ -232,7 +232,14 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **JSON schema instead of `format:'json'`** (10 callers). RESEARCH #5. Open.
 - **Claude provider options:** effort per task, refusal handling, context
   editing, the model list from the API. RESEARCH #4, IDEAS. Open.
-- **A generic OpenAI-compatible provider.** RESEARCH #14. Open.
+- **A generic OpenAI-compatible provider.** RESEARCH #14. Done Oct 30: AI
+  Settings › Model › Providers › OpenAI-Compatible Server (off by default):
+  a server URL (default http://localhost:1234/v1) and an optional API key,
+  stored encrypted and sent only to the server it was saved for. Models come
+  from GET /models as `openai-compatible::<id>`; chat streams
+  /chat/completions with tools, images and usage. All HTTP goes through
+  electron/openaiCompatibleBridge.cjs; a sealed workspace allows only a
+  server on this machine. Not tried on a real server here.
 - **Reasoning-effort control** in chat. Roleplay (Sep 15). Deferred by you.
 - **Evals:** a chat eval suite runnable on Claude, a judge, a retrieval golden
   set (recall@10). IDEAS, RESEARCH #8. Open.
