@@ -68,8 +68,20 @@ export function relativeLink(fromFile: string, toFile: string): string {
 
 const PAGE_LINK = /\]\(<?(?:parallx-page:|parallx:\/\/canvas\/page\/)([A-Za-z0-9_-]{1,64})(?:#[A-Za-z0-9_-]{1,64})?>?\)/g;
 const PAGE_BLOCK = /(<!-- parallx:block (\{"type":"pageBlock".*?\}) -->\n)(.*)(\n<!-- \/parallx:block -->)/g;
+/** A picture the page keeps as a workspace file (imageStore.ts), linked from the Markdown. */
+const MEDIA_LINK = /\]\(<?parallx-media:\/\/workspace\/\.parallx\/media\/([A-Za-z0-9._-]+)>?\)/g;
+/** Where the export puts those pictures, beside the top pages. */
+export const BUNDLE_MEDIA_DIR = 'media';
 
-/** Every file of the export: its path in the .zip, and its Markdown with page links pointing at files. */
+/** The stored pictures the pages show, by file name, each once. */
+export function bundleMedia(roots: readonly IBundlePage[]): string[] {
+  const names = new Set<string>();
+  const walk = (p: IBundlePage) => { for (const m of p.markdown.matchAll(MEDIA_LINK)) names.add(m[1]); p.children.forEach(walk); };
+  roots.forEach(walk);
+  return [...names];
+}
+
+/** Every file of the export: its path in the .zip, and its Markdown with page links and pictures pointing at files. */
 export function bundleFiles(roots: readonly IBundlePage[]): Map<string, string> {
   const pathOf = new Map<string, string>();
   const place = (pages: readonly IBundlePage[], dir: string) => {
@@ -90,6 +102,7 @@ export function bundleFiles(roots: readonly IBundlePage[]): Map<string, string> 
     const linkTo = (id: string) => { const there = pathOf.get(id); return there ? relativeLink(here, there) : undefined; };
     const text = page.markdown
       .replace(PAGE_LINK, (whole, id: string) => { const to = linkTo(id); return to ? `](${to})` : whole; })
+      .replace(MEDIA_LINK, (_whole, name: string) => `](${relativeLink(here, `${BUNDLE_MEDIA_DIR}/${name}`)})`)
       .replace(PAGE_BLOCK, (whole, open: string, json: string, line: string, close: string) => {
         const id = /"pageId":"([A-Za-z0-9_-]{1,64})"/.exec(json)?.[1];
         const to = id && linkTo(id);
@@ -102,11 +115,12 @@ export function bundleFiles(roots: readonly IBundlePage[]): Map<string, string> 
   return files;
 }
 
-/** The files as a .zip, base64 (what the file bridge writes as bytes). */
-export async function zipBundle(files: ReadonlyMap<string, string>): Promise<string> {
+/** The files as a .zip, base64 (what the file bridge writes as bytes); `media` adds the pictures, base64 by name. */
+export async function zipBundle(files: ReadonlyMap<string, string>, media: ReadonlyMap<string, string> = new Map()): Promise<string> {
   const JSZip = (await loadJsZip()).default;
   const zip = new JSZip();
   for (const [path, text] of files) zip.file(path, text);
+  for (const [name, b64] of media) zip.file(`${BUNDLE_MEDIA_DIR}/${name}`, b64, { base64: true });
   return zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
 }
 
@@ -128,7 +142,18 @@ interface IBundleApi {
  * (a page id) and canvas.exportAllPages: pick where the file goes, write it,
  * say how many pages a .zip holds.
  */
-export function registerPageBundleCommands(api: IBundleApi, source: () => IBundleSource | null): { dispose(): void }[] {
+export function registerPageBundleCommands(api: IBundleApi, source: () => IBundleSource | null, workspaceRoot: () => string | undefined = () => undefined): { dispose(): void }[] {
+  // A picture that cannot be read is left out; its page keeps the link.
+  const readMedia = async (names: readonly string[]) => {
+    const read = (window as { parallxElectron?: { fs?: { readFile?(p: string, e: string): Promise<{ content?: string; encoding?: string } | undefined> } } }).parallxElectron?.fs?.readFile;
+    const root = workspaceRoot()?.replace(/[\\/]+$/, '');
+    const out = new Map<string, string>();
+    for (const name of root && read ? names : []) {
+      const r = await read!(`${root}/.parallx/media/${name}`, 'base64').catch(() => undefined);
+      if (r?.content && r.encoding === 'base64') out.set(name, r.content);
+    }
+    return out;
+  };
   const run = async (rootIds: string[] | null, defaultName: string) => {
     const data = source();
     const electron = (window as { parallxElectron?: { dialog?: { saveFile?(o: unknown): Promise<string | null> }; fs?: { writeFile?(p: string, c: string, e: string): Promise<{ error?: { message?: string } | null } | undefined> } } }).parallxElectron;
@@ -138,7 +163,7 @@ export function registerPageBundleCommands(api: IBundleApi, source: () => IBundl
       if (!pages.length) { await api.window.showInformationMessage('There are no pages to export.'); return false; }
       const filePath = await electron.dialog.saveFile({ filters: [{ name: 'Zip', extensions: ['zip'] }], defaultName: `${fileNameFor(defaultName)}.zip` });
       if (!filePath) return false;
-      const result = await electron.fs.writeFile(filePath, await zipBundle(bundleFiles(pages)), 'base64');
+      const result = await electron.fs.writeFile(filePath, await zipBundle(bundleFiles(pages), await readMedia(bundleMedia(pages))), 'base64');
       if (result?.error) throw new Error(result.error.message ?? 'The file could not be written.');
       const n = countPages(pages);
       await api.window.showInformationMessage(`Exported ${n} ${n === 1 ? 'page' : 'pages'} as Markdown.`);

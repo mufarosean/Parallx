@@ -131,7 +131,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
-  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/', 'menus/imagePathResolver', 'pageLinks'],
+  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/', 'menus/imagePathResolver', 'pageLinks', 'imageStore'],
 
   // ── CanvasMenuRegistry children ─────────────────────────────────────────
   'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry'],
@@ -148,7 +148,7 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
   'menus/inputIsolation.ts':               [],  // pure UI helper — no canvas imports
   'menus/insertTarget.ts':                 [],  // tracks an insert popup's target through edits (C11)
-  'menus/imageInsertPopup.ts':             ['menus/inputIsolation', 'menus/imagePathResolver', 'menus/insertTarget'],  // pure UI
+  'menus/imageInsertPopup.ts':             ['menus/inputIsolation', 'menus/imagePathResolver', 'menus/insertTarget', 'imageStore'],  // pure UI
   'menus/imagePathResolver.ts':            [],  // pure utility — zero canvas imports
   'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu', 'menus/inputIsolation', 'menus/insertTarget'],  // pure UI
   'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu', 'menus/inputIsolation', 'menus/insertTarget'],  // pure UI
@@ -226,6 +226,7 @@ const GATE_RULES: Record<string, string[]> = {
   'invariants/canvasStructuralInvariants.ts': [],  // zero relative imports
 
   // ── PDF export (M93) ────────────────────────────────────────────────────
+  'imageStore.ts':                         [],                    // pictures as workspace files, not base64 in the page
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports
   'export/pdfExportDialog.ts':             ['export/printHtml', 'config/fontRegistry'],  // dialog over the pure builders (ui/dropdown + pdfjs are external); resolves page fonts for embedding
   'export/pageBundle.ts':                  ['contentSchema', 'markdownExport', 'canvasTypes'],  // a page tree as a .zip of Markdown files

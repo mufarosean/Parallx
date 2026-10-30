@@ -11,6 +11,7 @@ import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { isolateInputFromEditor } from './inputIsolation.js';
 import { looksLikeLocalPath, readLocalImageAsDataUrl } from './imagePathResolver.js';
+import { storeImageSrc } from '../imageStore.js';
 import { trackInsertTarget } from './insertTarget.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ export function showImageInsertPopup(
         const mime = ext === 'jpg' ? 'image/jpeg'
           : ext === 'svg' ? 'image/svg+xml'
           : `image/${ext}`;
-        insertImage(`data:${mime};base64,${result.content}`);
+        insertImage(await storeImageSrc(`data:${mime};base64,${result.content}`)); // a file in the workspace, not base64 in the page
       } catch (err) {
         console.error('[imageInsertPopup] Upload failed:', err);
         renderError('Upload failed. See the console.');
@@ -180,7 +181,7 @@ export function showImageInsertPopup(
         const result = await readLocalImageAsDataUrl(value);
         embedBtn.removeAttribute('disabled');
         if (result.error) { renderError(result.error); return; }
-        if (result.dataUrl) insertImage(result.dataUrl);
+        if (result.dataUrl) insertImage(await storeImageSrc(result.dataUrl));
         return;
       }
       insertImage(value);

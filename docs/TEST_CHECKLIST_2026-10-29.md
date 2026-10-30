@@ -171,6 +171,14 @@ me if it is not that.
 - **Tidy Memory:** in Agents › Routines › "Or start from one of these" there
   is a new **Tidy Memory** template (installs off).
 
+### 3.10 Pictures on a page are files
+- **Do:** Paste a screenshot into a page (and drag a picture file in, and
+  use /image › Upload).
+- **Expect:** It shows as before. In the workspace folder,
+  `.parallx/media/` has a file for it (a long hex name). Restart: still
+  there. Export the page as PDF: the picture prints. Older pages with
+  pictures still show theirs.
+
 ### 3.9 Budget asks before a sync
 - **Do:** Budget › Sync Now (Gmail connected).
 - **Expect:** After a moment a message: "N new emails from your banks and

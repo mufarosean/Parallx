@@ -25,6 +25,17 @@ describe('urls', () => {
     expect(M.pathFromMediaUrl('https://file/%2Ftmp%2Fx.mp4')).toBeNull();
     expect(M.pathFromMediaUrl('parallx-media://file/%2Ftmp%2Fx%00.mp4')).toBeNull();
   });
+  it('resolves a workspace link inside the open workspace, and nowhere else', () => {
+    const root = join(tmpdir(), 'ws');
+    expect(M.pathFromMediaUrl('parallx-media://workspace/.parallx/media/ab12.png', () => root)).toBe(join(root, '.parallx', 'media', 'ab12.png'));
+    expect(M.pathFromMediaUrl('parallx-media://workspace/.parallx/media/ab12.png', () => null)).toBeNull();
+    expect(M.pathFromMediaUrl('parallx-media://workspace/.parallx/media/ab12.png')).toBeNull();
+    // The URL parser folds dot segments at the root, so they cannot climb out of it.
+    expect(M.pathFromMediaUrl('parallx-media://workspace/%2E%2E/%2E%2E/etc/x.png', () => root)).toBe(join(root, 'etc', 'x.png'));
+    expect(M.pathFromMediaUrl('parallx-media://workspace/a%2F..%2F..%2Fx.png', () => root)).toBeNull();
+    expect(M.pathFromMediaUrl('parallx-media://workspace/%2Fetc%2Fx.png', () => root)).toBeNull();
+    expect(M.pathFromMediaUrl('parallx-media://workspace/C%3A%5Cx.png', () => root)).toBeNull();
+  });
   it('normalises traversal before the access check sees it', () => {
     expect(M.pathFromMediaUrl(M.mediaUrlFor('/work/space/../../etc/x.mp4'))).toBe(join('/', 'etc', 'x.mp4'));
   });

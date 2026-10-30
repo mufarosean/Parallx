@@ -38,7 +38,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js';
+import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { URI } from '../../platform/uri.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
 import { registerTrashCommands } from './canvasTrashPanel.js';
@@ -150,7 +150,7 @@ const _aiMutatedPageIds = new Set<string>();
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
-
+  setImageStoreHost(electronImageStoreHost(() => { const u = api.workspace.workspaceFolders?.[0]?.uri; return u ? URI.parse(u).fsPath : undefined; })); context.subscriptions.push({ dispose: () => setImageStoreHost(null) }); // pictures as files
   // ── Fonts ──────────────────────────────────────────────────────────────────
   // Register the workspace-default and custom-font-library settings, then load
   // the persisted custom fonts (injects their @font-face rules) so uploaded
@@ -414,7 +414,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       db,
       pageWriter,
       getCurrentPageId: () => canvasPageIdFromEditorId(editorService?.activeEditor?.id),
-      workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
+      workspaceRoot: ((u) => (u ? URI.parse(u).fsPath : undefined))(api.workspace.workspaceFolders?.[0]?.uri), // a path: the cover tool joins file names onto it
       templateApi: api,
       pageMutationNotifier,
       // Capture a revert point BEFORE a destructive AI edit lands (canvas_edit_page
@@ -1333,7 +1333,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  context.subscriptions.push(...registerPageBundleCommands(api, () => _dataService)); // Export With Sub-Pages, Export All Pages
+  context.subscriptions.push(...registerPageBundleCommands(api, () => _dataService, () => { const u = api.workspace.workspaceFolders?.[0]?.uri; return u ? URI.parse(u).fsPath : undefined; })); // Export With Sub-Pages, Export All Pages
   // canvas.movePageTo — Move To…: pick a new parent (or the top level) for a
   // page. Used by the page ⋯ menu and the sidebar's page menu.
   context.subscriptions.push(

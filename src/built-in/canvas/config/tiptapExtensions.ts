@@ -35,6 +35,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { MarkdownPaste } from '../extensions/markdownPaste.js';
+import { storeImageSrc } from '../imageStore.js';
 import {
   hasImageExtension,
   fileUrlToPath,
@@ -314,9 +315,10 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
               event.preventDefault();
 
               const reader = new FileReader();
-              reader.onload = () => {
-                const src = typeof reader.result === 'string' ? reader.result : '';
-                if (!src) return;
+              reader.onload = async () => {
+                // Kept as a file in the workspace (imageStore.ts), the page holding only its link.
+                const src = typeof reader.result === 'string' ? await storeImageSrc(reader.result) : '';
+                if (!src || view.isDestroyed) return;
 
                 const { from, to } = view.state.selection;
                 const imageNode = imageType.create({ src });
@@ -342,9 +344,10 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
   //   • Parallx file explorer rows (text/uri-list with `file:///…` URLs)
   //   • Plain text absolute paths  (text/plain with Windows or POSIX path)
   //
-  // Local paths are inlined as base64 data URLs because canvas's CSP forbids
-  // `file://` in `img-src`. Internal moves (`moved === true`) pass through so
-  // the column-drop plugin can handle block reordering.
+  // Local paths are read and stored as files in the workspace (imageStore.ts),
+  // shown over parallx-media:// because canvas's CSP forbids `file://` in
+  // `img-src`. Internal moves (`moved === true`) pass through so the
+  // column-drop plugin can handle block reordering.
   const imageFileDrop = Extension.create({
     name: 'imageFileDrop',
     addProseMirrorPlugins() {
@@ -398,7 +401,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
                 const sources: string[] = [];
                 for (const p of imagePaths) {
                   const r = await readLocalImageAsDataUrl(p);
-                  if (r.dataUrl) sources.push(r.dataUrl);
+                  if (r.dataUrl) sources.push(await storeImageSrc(r.dataUrl));
                   else if (r.error) console.warn('[imageFileDrop]', p, r.error);
                 }
                 for (const f of files) {
@@ -406,7 +409,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
                   const fullPath = (f as File & { path?: string }).path;
                   if (fullPath) {
                     const r = await readLocalImageAsDataUrl(fullPath);
-                    if (r.dataUrl) sources.push(r.dataUrl);
+                    if (r.dataUrl) sources.push(await storeImageSrc(r.dataUrl));
                     else if (r.error) console.warn('[imageFileDrop]', fullPath, r.error);
                     continue;
                   }
@@ -416,7 +419,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
                     reader.onerror = () => res('');
                     reader.readAsDataURL(f);
                   });
-                  if (dataUrl) sources.push(dataUrl);
+                  if (dataUrl) sources.push(await storeImageSrc(dataUrl));
                 }
                 if (sources.length === 0) return;
                 if (!editor || editor.isDestroyed) return;

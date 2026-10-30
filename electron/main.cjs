@@ -884,7 +884,7 @@ app.whenReady().then(async () => {
   // File-backed dashboard image/GIF assets (served over parallx-asset://).
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
   // Local video and audio, streamed with range requests (parallx-media://).
-  setupMediaStreamBridge(protocol, (absPath) => _isAllowedMediaReadPath(absPath));
+  setupMediaStreamBridge(protocol, (absPath) => _isAllowedMediaReadPath(absPath), () => _fsWorkspaceRoot);
   setupSandboxFrameBridge(ipcMain, protocol); // parallx-frame:// for sandboxed AI HTML
   require('./extensionDraftBridge.cjs').setupExtensionDraftBridge(ipcMain, USER_EXTENSIONS_DIR); // assistant-written extensions, after review
 

@@ -11,7 +11,10 @@
 // Access-Control-Allow-Origin so a <video crossOrigin="anonymous"> can still
 // be drawn to a canvas without tainting it.
 //
-// URL shape: parallx-media://file/<encodeURIComponent(absolute path)>
+// URL shape: parallx-media://file/<encodeURIComponent(absolute path)>, or
+// parallx-media://workspace/<path within the open workspace>, which a page
+// keeps for the pictures stored with it (.parallx/media): the link still
+// works when the workspace folder moves.
 
 const path = require('node:path');
 const fs = require('node:fs');
@@ -36,14 +39,20 @@ function mediaUrlFor(absPath) {
   return `${SCHEME}://file/${encodeURIComponent(String(absPath))}`;
 }
 
-/** The absolute path a request URL names, or null when it names none. */
-function pathFromMediaUrl(url) {
+/** The absolute path a request URL names, or null when it names none. `workspaceRoot` resolves a workspace link. */
+function pathFromMediaUrl(url, workspaceRoot) {
   let u;
   try { u = new URL(url); } catch { return null; }
-  if (u.protocol !== `${SCHEME}:` || u.hostname !== 'file') return null;
+  if (u.protocol !== `${SCHEME}:` || (u.hostname !== 'file' && u.hostname !== 'workspace')) return null;
   let p;
   try { p = decodeURIComponent(u.pathname.replace(/^\/+/, '')); } catch { return null; }
-  if (!p || p.includes('\0') || !path.isAbsolute(p)) return null;
+  if (!p || p.includes('\0')) return null;
+  if (u.hostname === 'workspace') {
+    const root = typeof workspaceRoot === 'function' ? workspaceRoot() : null;
+    if (!root || path.isAbsolute(p) || /^[a-zA-Z]:/.test(p) || p.split(/[\\/]/).includes('..')) return null;
+    return path.normalize(path.join(root, p));
+  }
+  if (!path.isAbsolute(p)) return null;
   // Normalised, not resolved: resolving puts the current drive in front of a drive-less path on Windows.
   return path.normalize(p);
 }
@@ -86,11 +95,12 @@ const MEDIA_SCHEME_SPEC = {
  * Wire the protocol handler. Call after app 'ready'.
  * @param {Electron.Protocol} protocol
  * @param {(absPath: string) => boolean} isAllowed  the fs bridge's read check
+ * @param {() => string | null} [workspaceRoot]  the open workspace's folder, for workspace links
  */
-function setupMediaStreamBridge(protocol, isAllowed) {
+function setupMediaStreamBridge(protocol, isAllowed, workspaceRoot) {
   protocol.handle(SCHEME, async (request) => {
     const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges' };
-    const filePath = pathFromMediaUrl(request.url);
+    const filePath = pathFromMediaUrl(request.url, workspaceRoot);
     const mime = filePath ? MEDIA_MIME[path.extname(filePath).toLowerCase()] : null;
     if (!filePath || !mime) return new Response(null, { status: 400, headers: cors });
     if (!isAllowed(filePath)) return new Response(null, { status: 403, headers: cors });

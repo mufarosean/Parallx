@@ -275,7 +275,18 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Paste Markdown as blocks.** IDEAS. Done Oct 29: Markdown copied as plain
   text (a chat's Copy button, a .md file, a code editor) pastes as headings,
   lists, tables and formatting; a rich copy and a paste into code stay as they were.
-- **Images stored as files, not base64.** IDEAS. Open.
+- **Images stored as files, not base64.** IDEAS. Done Oct 30: a pasted,
+  dropped or uploaded picture is written once to the workspace's
+  `.parallx/media/<hash>.<ext>` and the page keeps a short
+  `parallx-media://workspace/…` link, served from the open workspace (so it
+  moves with the folder) and printed by PDF export; Export With Sub-Pages
+  puts the pictures in the .zip's `media/`. SVGs, a page with no workspace
+  folder, or a failed write keep the data URL as before. Pages written
+  before keep their data URLs (they still show); nothing converts them yet.
+  Stored files are never deleted with a page (its trash and history still
+  show them). Found on the way: the AI's page-cover tool got the workspace
+  root as a `file://` URI, so a cover from a workspace path could not be
+  read; it gets the path now.
 - **Export a page with its sub-pages, and the whole workspace.** IDEAS. Done
   Oct 30: page menu › Export › Markdown With Sub-Pages…, the sidebar's page
   menu › Export With Sub-Pages…, and Canvas: Export All Pages as Markdown…

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
-import { bundleFiles, collectPages, countPages, fileNameFor, relativeLink, zipBundle, type IBundleSource } from '../../src/built-in/canvas/export/pageBundle';
+import { bundleFiles, bundleMedia, collectPages, countPages, fileNameFor, relativeLink, zipBundle, type IBundleSource } from '../../src/built-in/canvas/export/pageBundle';
 import { encodeCanvasContentFromDoc } from '../../src/built-in/canvas/contentSchema';
 import type { IPage } from '../../src/built-in/canvas/canvasTypes';
 import { markdownToTiptapJson } from '../../src/built-in/canvas/markdownImport';
@@ -32,7 +32,7 @@ const PAGES = [
   page('mack', 'Mack', 'course', [{ type: 'pageBlock', attrs: { id: 'b3', pageId: 'mackq', title: 'Questions' } }]),
   page('mackq', 'Questions', 'mack', [para({ type: 'text', text: 'Back to ' }, { type: 'text', text: 'the course', marks: [{ type: 'link', attrs: { href: 'parallx://canvas/page/course' } }] })]),
   page('dup', 'Clark', 'course'),
-  page('other', 'Other', null),
+  page('other', 'Other', null, [{ type: 'image', attrs: { id: 'i1', src: 'parallx-media://workspace/.parallx/media/ab12.png' } }]),
 ];
 
 describe('page bundle export', () => {
@@ -73,8 +73,12 @@ describe('page bundle export', () => {
     expect(pages.map((p) => p.title)).toEqual(['Exam 7: Notes', 'Other']);
     const files = bundleFiles(pages);
     expect(files.get('Exam 7_ Notes/Clark.md')).toContain('[elsewhere](../Other.md)');
-    const zip = await JSZip.loadAsync(await zipBundle(files), { base64: true });
-    expect(Object.keys(zip.files).filter((f) => !zip.files[f].dir).sort()).toEqual([...files.keys()].sort());
+    // A picture stored with the workspace travels in the .zip, and the page points at it.
+    expect(bundleMedia(pages)).toEqual(['ab12.png']);
+    expect(files.get('Other.md')).toContain('](media/ab12.png)');
+    const zip = await JSZip.loadAsync(await zipBundle(files, new Map([['ab12.png', btoa('PNGDATA')]])), { base64: true });
+    expect(Object.keys(zip.files).filter((f) => !zip.files[f].dir).sort()).toEqual([...files.keys(), 'media/ab12.png'].sort());
+    expect(await zip.file('media/ab12.png')!.async('string')).toBe('PNGDATA');
     expect(await zip.file('Other.md')!.async('string')).toBe(files.get('Other.md'));
   });
 });
