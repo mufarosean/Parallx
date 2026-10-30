@@ -11,6 +11,10 @@ import './theme/px-motion.css';   // purposeful motion for overlays
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';
 import { applySavedAppearance, healAppearanceFromDurable, healPresetsFromDurable } from './theme/pxAppearance.js'; // restore base palette + accent
+import { installRecentErrorCapture } from './platform/recentErrors.js';
+
+// The recent-error log for Help › Copy Diagnostics: first, so start-up failures are kept.
+installRecentErrorCapture();
 
 // ── Electron window controls bridge ──
 

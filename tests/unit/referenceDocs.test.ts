@@ -11,6 +11,7 @@ import { resolve } from 'path';
 import * as manifests from '../../src/workbench/builtinManifests.js';
 import type { IToolManifest } from '../../src/tools/toolManifest.js';
 import type { CommandDescriptor } from '../../src/commands/commandTypes.js';
+import * as diagnosticsCommands from '../../src/commands/diagnosticsCommands.js';
 import * as doclingCommands from '../../src/commands/doclingCommands.js';
 import * as editorCommands from '../../src/commands/editorCommands.js';
 import * as fileCommands from '../../src/commands/fileCommands.js';
@@ -27,6 +28,7 @@ const OUT = resolve(ROOT, 'docs/reference');
 
 /** The core command modules, by file name; the test below keeps this list complete. */
 const COMMAND_MODULES: Record<string, Record<string, unknown>> = {
+  'diagnosticsCommands.ts': diagnosticsCommands,
   'doclingCommands.ts': doclingCommands,
   'editorCommands.ts': editorCommands,
   'fileCommands.ts': fileCommands,

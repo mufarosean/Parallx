@@ -52,6 +52,7 @@ import {
 } from './focusCommands.js';
 import { installDocling } from './doclingCommands.js';
 import { questionsGetRegistry } from './questionCommands.js';
+import { copyDiagnostics } from './diagnosticsCommands.js';
 
 //  Layout Commands 
 
@@ -400,6 +401,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   selectColorTheme,
   // Docling
   installDocling,
+  // Help
+  copyDiagnostics,
   // Selection → AI command
   addSelectionToChat,
   // The question-provider registry, for extensions

@@ -148,6 +148,8 @@ export class MenuBuilder extends Disposable {
       { commandId: 'welcome.openWelcome', title: 'Welcome', group: '1_welcome', order: 1 },
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '2_commands', order: 1 },
       { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', group: '2_commands', order: 2 },
+      // Versions, tools on, the model and recent errors, scrubbed of paths and keys.
+      { commandId: 'workbench.action.copyDiagnostics', title: 'Copy Diagnostics', group: '3_report', order: 1 },
     ]));
 
     console.log('[MenuBuilder] Default menu bar items registered (%d menus)', defaultMenus.length);

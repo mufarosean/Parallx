@@ -11,6 +11,7 @@ const OPTIONAL_EVENTS = new Set(OPTIONAL_BRIDGE_EVENTS);
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
+  appInfo: require('./appInfo.cjs'), // versions for Help › Copy Diagnostics
   testMode: process.env.PARALLX_TEST_MODE === '1',
 
   /** Absolute path to the application root directory. */
