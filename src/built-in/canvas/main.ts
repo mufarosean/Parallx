@@ -38,7 +38,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { registerPageEditSignals } from './pageEditSignals.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js';
+import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { registerPageEditSignals } from './pageEditSignals.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js'; import { showUndoToast } from '../../ui/kit.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
 import { registerTrashCommands } from './canvasTrashPanel.js'; import { registerDatabaseCsvCommands } from './database/databaseCsvActions.js';
@@ -1271,7 +1271,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       if (confirmation?.title !== 'Move to Trash') return;
 
       try {
-        await _dataService.archivePage(pageId);
+        await _dataService.archivePage(pageId); const ds = _dataService; showUndoToast({ message: `"${page.title || 'Untitled'}" moved to Trash`, undo: async () => { await ds.restorePage(pageId); } });
       } catch (err) {
         console.error('[Canvas] Failed to move page to Trash:', err);
         await api.window.showErrorMessage('Could not move the page to the Trash.');

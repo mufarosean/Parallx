@@ -30,6 +30,8 @@ import { DateField, TimeField } from './dateTimeField.js';
 import { TabBar, type ITabBarItem, type ITabBarOptions } from './tabBar.js';
 import { scene, type SceneKind, type SceneState, type ISceneEntry } from './scene.js';
 import type { IDisposable } from '../platform/lifecycle.js';
+// The Undo toast (undoToast.ts): one at a time, at the bottom of the window.
+export { showUndoToast, type IUndoToastOptions, type IUndoToast } from './undoToast.js';
 
 export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'md' | 'sm';

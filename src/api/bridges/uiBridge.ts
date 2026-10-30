@@ -24,6 +24,8 @@ import {
   createList as kitCreateList,
   createTree as kitCreateTree,
   sceneSlug as kitSceneSlug,
+  showUndoToast as kitShowUndoToast,
+  type IUndoToastOptions,
   type IKitButtonOptions,
   type IKitInPlaceDeclaration,
   type IKitInputOptions,
@@ -144,5 +146,7 @@ export function createUiApi() {
     createList: (element: HTMLElement, options: IKitListOptions) => kitCreateList(element, options),
     createTree: (element: HTMLElement, options: IKitListOptions) => kitCreateTree(element, options),
     sceneSlug: (value: string) => kitSceneSlug(value),
+    // The Undo toast: what was just removed, with the way back for a few seconds.
+    showUndoToast: (options: IUndoToastOptions) => kitShowUndoToast(options),
   });
 }

@@ -18,7 +18,7 @@ import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
 import { resolveFontStack } from '../config/fontRegistry.js';
 import { fontMenuItems } from './pageFontMenu.js';
 import type { IExtensionMenuHandle, IExtensionMenuItem } from '../../../ui/contextMenu.js';
-import { createMenu, declareControl } from '../../../ui/kit.js';
+import { createMenu, declareControl, showUndoToast } from '../../../ui/kit.js';
 import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
@@ -266,7 +266,9 @@ export class PageChromeController {
   private async _movePageToTrash(): Promise<void> {
     const title = this._currentPage?.title || 'Untitled';
     if (this._host.confirmMoveToTrash && !(await this._host.confirmMoveToTrash(title))) return;
-    await this._host.dataService.archivePage(this._host.pageId);
+    const pageId = this._host.pageId, ds = this._host.dataService;
+    await ds.archivePage(pageId);
+    showUndoToast({ message: `"${title}" moved to Trash`, undo: async () => { await ds.restorePage(pageId); } });
   }
 
   /** Lock Page locks the whole page: body, title, icon, cover and font

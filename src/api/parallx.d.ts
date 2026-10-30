@@ -873,6 +873,25 @@ export namespace ui {
   export function createTree(element: HTMLElement, options: ListOptions): List;
   /** A dynamic value as an id segment: lower case, words joined by dashes ('Match Case' is 'match-case'; empty is 'none'). */
   export function sceneSlug(value: string): string;
+
+  export interface UndoToastOptions {
+    /** What happened, in a few words: "Widget removed". */
+    readonly message: string;
+    /** The way back. Runs once, when Undo is pressed. */
+    readonly undo: () => Promise<void> | void;
+    /** How long it shows, in ms, not counting time paused (pointer on it, focus in it). Default 8000. */
+    readonly timeoutMs?: number;
+    /** Told when the undo throws or rejects. Default: a console warning. */
+    readonly onError?: (err: unknown) => void;
+  }
+  export interface UndoToast { readonly element: HTMLElement; dismiss(): void; }
+  /**
+   * After something is removed and a way back exists: a toast at the bottom
+   * of the window with the message and Undo. One at a time (a new one
+   * replaces the old, whose Undo is gone); it never takes focus, is read by
+   * a screen reader, and closes on Escape from inside.
+   */
+  export function showUndoToast(options: UndoToastOptions): UndoToast;
 }
 
 /**

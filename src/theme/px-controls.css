@@ -329,3 +329,43 @@ select:disabled {
 .px-row__name { font-weight: 500; overflow-wrap: anywhere; }
 .px-row__detail { color: var(--px-text-muted); font-size: var(--px-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .px-row > .px-btn { flex: none; }
+
+/* Undo toast (showUndoToast, undoToast.ts): one line at the bottom centre of
+   the window, the message then Undo and Dismiss. The region is the live
+   region and lets clicks through; only the toast takes them. */
+.px-toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: var(--px-space-6);
+  transform: translateX(-50%);
+  z-index: var(--px-z-toast);
+  display: flex;
+  justify-content: center;
+  max-width: calc(100vw - 2 * var(--px-space-4));
+  pointer-events: none;
+}
+.px-toast-region:empty { display: none; }
+.px-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  min-width: 0;
+  padding: var(--px-space-1) var(--px-space-1) var(--px-space-1) var(--px-space-3);
+  background: var(--px-bg-elevated);
+  color: var(--px-text);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  box-shadow: var(--px-shadow-md);
+  font-size: var(--px-text-sm);
+  pointer-events: auto;
+  animation: px-toast-rise var(--px-dur-base) var(--px-ease-out);
+}
+@keyframes px-toast-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.px-toast__message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-toast__undo { color: var(--px-accent-text); font-weight: 600; }
+.px-toast > .px-btn { flex: none; }
+/* A finger needs a bigger target than a pointer. */
+[data-input-modality="touch"] .px-toast > .px-btn { height: var(--px-control-h-lg); min-width: var(--px-control-h-lg); }

@@ -26,7 +26,7 @@ import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 import { CanvasTrashPanel, trashEntries } from './canvasTrashPanel.js';
 import { pageLinkHref } from './pageLinks.js';
-import { createButton, createSurface, createTree, declareControl, sceneSlug } from '../../ui/kit.js';
+import { createButton, createSurface, createTree, declareControl, sceneSlug, showUndoToast } from '../../ui/kit.js';
 import { UndoToast } from './canvasSidebarToast.js';
 import { pageMoveForKey } from './canvasSidebarKeyboardMove.js';
 
@@ -1348,6 +1348,7 @@ export class CanvasSidebar {
       if (this._selectedPageId === pageId) {
         this._selectedPageId = null;
       }
+      showUndoToast({ message: `"${page.title || 'Untitled'}" moved to Trash`, undo: async () => { await this._dataService.restorePage(pageId); } });
     } catch (err) {
       console.error('[CanvasSidebar] Delete failed:', err);
     }
@@ -1378,9 +1379,10 @@ export class CanvasSidebar {
     if (!result?.title?.startsWith('Move')) return;
 
     let failed = 0;
+    const moved: string[] = [];
     for (const id of ids) {
       try {
-        await this._dataService.archivePage(id);
+        await this._dataService.archivePage(id); moved.push(id);
         if (this._selectedPageId === id) {
           this._selectedPageId = null;
         }
@@ -1390,6 +1392,7 @@ export class CanvasSidebar {
       }
     }
     this._clearMultiSelection();
+    if (moved.length) showUndoToast({ message: `${moved.length} ${moved.length === 1 ? 'page' : 'pages'} moved to Trash`, undo: async () => { for (const id of moved) await this._dataService.restorePage(id).catch(() => undefined); } });
     if (failed > 0) {
       this._surfaceError('Bulk delete', new Error(`${failed} of ${ids.length} pages failed to archive. See the console.`));
     }

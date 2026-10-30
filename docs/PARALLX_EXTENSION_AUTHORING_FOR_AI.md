@@ -876,6 +876,9 @@ const menu = api.ui.showContextMenu(btn, build(), { anchorPosition: 'above' }); 
 
 // Confirmations: the app's modal, never confirm().
 const ok = await api.window.showConfirmModal({ message: 'Delete this deck?', detail: 'Its 42 cards go too.', confirmLabel: 'Delete', danger: true });
+
+// Removed with a way back (the row can be put back): the Undo toast, not a question first.
+api.ui.showUndoToast({ message: 'Deck removed', undo: () => restoreDeck(deck) });
 ```
 
 If the kit lacks something you need, the kit grows (ask for it); the extension never clones a component.

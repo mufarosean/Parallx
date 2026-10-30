@@ -275,6 +275,7 @@
      belongs to whatever opened it, so it sits above every modal that can
      host one: Settings is a modal, and its dropdowns used to open behind it. */
   --px-z-modal:   20000;   /* dialogs and their scrims (Settings, confirms) */
+  --px-z-toast:   25000;   /* the Undo toast, over a dialog it may follow   */
   --px-z-popup:   30000;   /* context menus, dropdown lists                 */
   --px-z-tooltip: 99999;   /* tooltips, over everything                     */
 
