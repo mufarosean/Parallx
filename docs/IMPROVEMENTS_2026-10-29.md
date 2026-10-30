@@ -342,7 +342,12 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   pool.** Browser_agent (Sep 13). Not built.
 
 ### Budget
-- **Confirm before sync**, showing the email count. BUDGET_REVIEW, IDEAS. Open.
+- **Confirm before sync**, showing the email count. BUDGET_REVIEW, IDEAS. Done
+  Oct 30 for Sync Now and Run First Sync: once Gmail's list is in, it asks
+  "N new emails … <model> reads each one", Sync N Emails or Cancel; Cancel
+  reads nothing and leaves the last-sync time as it was; nothing new, no
+  question. The chat tool `budget.runSync` still runs without asking (the
+  chat's own tool permission covers it, and a routine has nobody to ask).
 - **The categorizer sees your past choices.** IDEAS. Open.
 - **Sync in the background lane.** IDEAS, FINISH B. Open.
 - **Pending to posted updates one row; counterparty accounts for transfers;

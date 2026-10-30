@@ -171,6 +171,13 @@ me if it is not that.
 - **Tidy Memory:** in Agents › Routines › "Or start from one of these" there
   is a new **Tidy Memory** template (installs off).
 
+### 3.9 Budget asks before a sync
+- **Do:** Budget › Sync Now (Gmail connected).
+- **Expect:** After a moment a message: "N new emails from your banks and
+  cards to read. <your model> reads each one…" with **Sync N Emails** and
+  **Cancel**. Cancel: nothing is read and "Last sync" does not change. With
+  no new emails it does not ask.
+
 ### 3.8 Export a page with its sub-pages
 - **Do:** On a page that has sub-pages, open its ⋯ menu › Export ›
   **Markdown With Sub-Pages…** and save the .zip. (Also in the sidebar's

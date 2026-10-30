@@ -72,8 +72,12 @@ async function triggerSyncFromUI(api, _opts = {}) {
   }
   _syncInFlight = true;
   try {
-    await api.window?.showInformationMessage?.('Budget sync started. Pulling and categorizing transaction emails…');
-    const counts = await budgetSync(api);
+    const counts = await budgetSync(api, { confirm: async ({ emails, modelId }) => {
+      const go = `Sync ${emails} ${emails === 1 ? 'Email' : 'Emails'}`;
+      const pick = await api.window?.showWarningMessage?.(`${emails} new ${emails === 1 ? 'email' : 'emails'} from your banks and cards to read. ${modelId} reads each one and files its transactions; on a local model this can take a while.`, { title: go }, { title: 'Cancel' });
+      return pick?.title === go;
+    } });
+    if (counts.cancelled) return { ok: false, cancelled: true, counts };
     const summary =
       `Budget sync complete: ${counts.confirmed} recorded, ` +
       `${counts.snapshot} balance snapshot(s), ${counts.review} flagged for review, ` +
@@ -7074,6 +7078,7 @@ async function getSyncStateValue(key) {
   if (!row) return undefined;
   try { return JSON.parse(row.value); } catch { return undefined; }
 }
+const setSyncStateValue = (key, value) => db.run('INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)', [key, JSON.stringify(value)]);
 
 // The sync cursor (`last_synced_at`) is DERIVED from durable state, never from
 // what was merely *seen* or from a caller-supplied date. `email_imports` holds
@@ -7110,23 +7115,21 @@ async function pickModelId(api) {
 
 // ─── Sync engine — M82 deterministic in-process loop ─────────────────────────
 //
-// Restored from the pre-M80 pipeline. Runs entirely in JS with one focused LLM
-// call per stage per email, so it is reliable on local models. Invoked by the
-// `budget.runSync` chat tool and by the dashboard "Run First Sync" / "Sync Now"
-// buttons (via triggerSyncFromUI). Returns the run counts.
-async function budgetSync(api) {
+// One focused LLM call per stage per email, so it is reliable on local models.
+// Run by the `budget.runSync` chat tool and the dashboard's Run First Sync /
+// Sync Now (triggerSyncFromUI, which passes `confirm`: once the emails are
+// fetched it is asked whether to read the new ones, told how many and with
+// which model, since that is the long part). Returns the run counts.
+async function budgetSync(api, opts = {}) {
   const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-  const startedAt = new Date().toISOString();
+  const startedAt = new Date().toISOString(), previousRunAt = await getSyncStateValue('last_run_at').catch(() => undefined);
   await syncLog(runId, 'info', 'fetch', 'Sync started');
 
   // Persist the run timestamp BEFORE we start so a crash mid-sync still leaves
   // a "we attempted at X" footprint, and the Dashboard "Last sync" card reflects
   // the actual run — not the email-cursor — so it always advances.
   try {
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_at', ?)`,
-      [JSON.stringify(startedAt)],
-    );
+    await setSyncStateValue('last_run_at', startedAt);
   } catch { /* sync_state table missing on first ever run is fine */ }
 
   _emitSync({ kind: 'start', runId, startedAt });
@@ -7197,6 +7200,16 @@ async function budgetSync(api) {
         (fetched.hitSafetyBelt ? `; stopped at safety cap ${BUDGET_GMAIL_HARD_PAGE_LIMIT}` : ''),
     );
 
+    if (opts.confirm) {
+      let fresh = 0;
+      for (const m of messages) if (m && m.id && !(await db.get('SELECT 1 AS x FROM email_imports WHERE gmail_message_id=?', [m.id]))) fresh++;
+      if (fresh > 0 && !(await opts.confirm({ emails: fresh, modelId }))) {
+        await syncLog(runId, 'info', 'fetch', `Cancelled before reading ${fresh} new email(s)`);
+        if (previousRunAt !== undefined) await setSyncStateValue('last_run_at', previousRunAt);
+        _emitSync({ kind: 'complete', runId, counts, cancelled: true }); // nothing read, the cursor where it was
+        return { ...counts, cancelled: true, waiting: fresh };
+      }
+    }
     // Fetched signal — the long part starts here. The dashboard banner can
     // now switch from "starting…" to "classifying N emails…" so the user
     // knows what's actually happening during the LLM phase.
@@ -7496,22 +7509,10 @@ async function budgetSync(api) {
     if (oldestStalled && settledCursor && oldestStalled <= settledCursor) {
       settledCursor = new Date(Date.parse(oldestStalled) - 1000).toISOString();
     }
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
-      [JSON.stringify(newestSeenId)],
-    );
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
-      [JSON.stringify(settledCursor)],
-    );
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
-      [JSON.stringify({ ok: true, ...counts })],
-    );
-    await db.run(
-      `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_at', ?)`,
-      [JSON.stringify(new Date().toISOString())],
-    );
+    await setSyncStateValue('last_gmail_message_id', newestSeenId);
+    await setSyncStateValue('last_synced_at', settledCursor);
+    await setSyncStateValue('last_run_status', { ok: true, ...counts });
+    await setSyncStateValue('last_run_at', new Date().toISOString());
     await syncLog(runId, 'info', 'commit', `Sync complete: ${JSON.stringify(counts)}`);
     if (_lastMalformedSample) {
       await syncLog(runId, 'warn', 'parse',
@@ -7525,7 +7526,7 @@ async function budgetSync(api) {
       if (promoted > 0) {
         counts.rulesLearned = promoted;
         // The run status was saved before promotion; record what it learned.
-        await db.run(`INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`, [JSON.stringify({ ok: true, ...counts })]);
+        await setSyncStateValue('last_run_status', { ok: true, ...counts });
       }
     } catch (e) {
       await syncLog(runId, 'warn', 'promote', 'Rule promotion failed: ' + (e instanceof Error ? e.message : String(e)));
@@ -7543,10 +7544,7 @@ async function budgetSync(api) {
     const message = err instanceof Error ? err.message : String(err);
     await syncLog(runId, 'error', 'fetch', message);
     try {
-      await db.run(
-        `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`,
-        [JSON.stringify({ ok: false, error: message, ...counts })],
-      );
+      await setSyncStateValue('last_run_status', { ok: false, error: message, ...counts });
     } catch { /* best-effort */ }
     _emitSync({ kind: 'error', runId, message, counts });
     throw err;
@@ -7751,14 +7749,8 @@ async function budgetToolSetSyncCursor(args = {}) {
   const previousCursor = await getSyncStateValue('last_synced_at');
   const lastMessageId = args.lastMessageId ?? args.last_gmail_message_id ?? null;
 
-  await db.run(
-    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_synced_at', ?)`,
-    [JSON.stringify(nextCursor)],
-  );
-  await db.run(
-    `INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_gmail_message_id', ?)`,
-    [JSON.stringify(lastMessageId || null)],
-  );
+  await setSyncStateValue('last_synced_at', nextCursor);
+  await setSyncStateValue('last_gmail_message_id', lastMessageId || null);
 
   const runId = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
@@ -9016,6 +9008,7 @@ export const __testables = {
   inferCadence,
   normalizeSyncCursorDate,
   fetchBudgetGmailMessages,
+  triggerSyncFromUI,
   parseCsvLine: _parseCsvLine,
   splitCsvRecords: _splitCsvRecords,
   csvDate: _csvDate,
