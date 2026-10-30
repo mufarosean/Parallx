@@ -15,6 +15,7 @@
 
 import { BUDGET_SYNC_SKILL } from './skills/budget-sync.js';
 import { drawerField } from './drawer.js';
+import { normalizeMerchant, loadPastChoices, pastChoicesFor, pastChoicesPrompt, PAST_CHOICE_MODEL } from './past-choices.js';
 
 // ─── Module-level state ────────────────────────────────────────────────────
 let _activated = false;
@@ -2072,6 +2073,8 @@ async function readTxHistory(row) {
   const catName = cat ? cat.name : null;
   if (!catName) {
     steps.push({ icon: 'tag', what: 'No category yet', detail: row.status === 'review' ? 'Pick one in Review.' : '' });
+  } else if (row.categorization_source === 'rule' && row.categorizer_model === PAST_CHOICE_MODEL) {
+    steps.push({ icon: 'user', what: `${catName}, as you filed this payee before`, detail: 'Your own past choices, no AI.' });
   } else if (row.categorization_source === 'rule') {
     const rule = row.matched_rule_id
       ? await db.get('SELECT pattern, hits, auto_created FROM categorization_rules WHERE id=?', [row.matched_rule_id]).catch(() => null)
@@ -5803,20 +5806,6 @@ async function loadActiveRules() {
   } catch { return []; }
 }
 
-// Payee text as the bank prints it carries a processor prefix, a store
-// number and a city: "SQ *COFFEE SHOP 0042 DENVER CO". A rule is matched
-// against this normalised form as well as the raw text, so one rule covers
-// a chain and its store numbers.
-function normalizeMerchant(text) {
-  let m = String(text || '').toLowerCase();
-  m = m.replace(/^(sq|tst|pp|paypal|py|amzn mktp|amazon\.com|sp|dd|ig|ppl)\s*\*\s*/, '');
-  m = m.replace(/\s*#\s*\d+\b/g, ' ').replace(/\b\d{3,}\b/g, ' ');
-  m = m.replace(/[^a-z0-9&' ]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const parts = m.split(' ');
-  if (parts.length >= 3 && /^[a-z]{2}$/.test(parts[parts.length - 1])) parts.pop();
-  return parts.join(' ').trim();
-}
-
 function ruleMatchesMerchant(rule, merchant) {
   if (!merchant || !rule || !rule.pattern) return false;
   const m = String(merchant).toLowerCase();
@@ -6875,9 +6864,9 @@ async function aiStage2(api, modelId, msg) {
   return { items, malformed: false };
 }
 
-async function aiStage3(api, modelId, tx, categoryNames) {
+async function aiStage3(api, modelId, tx, categoryNames, pastLines = []) {
   const sys = 'You pick the best-fitting budget category for a transaction. Respond with a single JSON object and nothing else. The category MUST be one of the listed names (case-insensitive); if none fits, pick "Other".';
-  const usr = `Merchant: ${tx.merchant ?? ''}\nAmount:   ${tx.amount} USD\nCategories: ${categoryNames.join(', ')}\n\nReturn:\n{ "category": <one of the listed category names> }`;
+  const usr = `Merchant: ${tx.merchant ?? ''}\nAmount:   ${tx.amount} USD\n${pastChoicesPrompt(pastLines)}Categories: ${categoryNames.join(', ')}\n\nReturn:\n{ "category": <one of the listed category names> }`;
   const r = await lmRunJson(api, modelId, sys, usr, 'categorize');
   if (!r || typeof r.category !== 'string') return null;
   return r.category.trim();
@@ -7229,7 +7218,7 @@ async function budgetSync(api, opts = {}) {
 
     // Cache active rules — applied BEFORE AI categorization (deterministic > probabilistic).
     const activeRules = await loadActiveRules();
-
+    const pastChoices = await loadPastChoices(db); // your own hand-set rows, checked before the AI
     let newestSeenIso = sinceIso;
     let newestSeenId = null;
 
@@ -7345,15 +7334,20 @@ async function budgetSync(api, opts = {}) {
             if (txType === 'purchase') {
               // 1) Deterministic rules first.
               const matched = await applyRules(item.merchant, activeRules);
+              const past = pastChoicesFor(pastChoices, item.merchant);
               if (matched) {
                 categoryId = matched.categoryId;
                 categorizerModel = 'rule:' + matched.ruleId;
                 categorizationSource = 'rule';
                 matchedRuleId = matched.ruleId;
+              } else if (past.direct) {
+                // 2) Your own consistent past picks, filed like a rule (the
+                // column allows no other source; categorizer_model says which).
+                [categoryId, categorizerModel, categorizationSource] = [past.direct.categoryId, PAST_CHOICE_MODEL, 'rule'];
               } else if (item.confidence !== 'low' && categoryNames.length > 0) {
-                // 2) AI fallback.
+                // 3) AI fallback, shown your past choices for the payee.
                 try {
-                  const picked = await aiStage3(api, modelId, item, categoryNames);
+                  const picked = await aiStage3(api, modelId, item, categoryNames, past.lines);
                   consecutiveStalls = 0;
                   if (picked) {
                     categoryId = categoryByName.get(picked.toLowerCase()) || null;
