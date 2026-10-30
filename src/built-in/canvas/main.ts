@@ -38,7 +38,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js';
+import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { registerPageEditSignals } from './pageEditSignals.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
 import { registerTrashCommands } from './canvasTrashPanel.js'; import { registerDatabaseCsvCommands } from './database/databaseCsvActions.js';
@@ -524,9 +524,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2b. The LEGACY per-page property system (PropertyDataService + property
   //     bar + page_properties/property_definitions tables) is RETIRED:
   //     properties live in DATABASES (Notion model). The legacy tables stay
-  //     on disk untouched as an archive (the one-time migration that moved
-  //     them is retired). created/modified are derived from
-  //     pages.created_at/updated_at — no seeding needed.
+  //     on disk untouched as an archive (the migration that moved them is
+  //     retired). created/modified come from pages.created_at/updated_at.
   context.subscriptions.push(
     dataServiceRef.onDidChangePage((event) => {
       if (event.kind !== PageChangeKind.Created) return;
@@ -542,6 +541,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         actor: _aiMutatedPageIds.has(event.pageId) ? 'agent' : 'user',
       }).catch(() => { /* perception is best-effort; never block page creation */ });
     }),
+    registerPageEditSignals((fn) => dataServiceRef.onDidSavePage(fn), (p) => { void api.commands?.executeCommand?.('parallx.autonomy.signal', p)?.catch?.(() => undefined); }), // edits wake the heartbeat too (pageEditSignals.ts)
   );
 
   // Canvas typing → the activity journal. onDidSavePage fires ONLY from the

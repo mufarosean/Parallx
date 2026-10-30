@@ -226,6 +226,7 @@ const GATE_RULES: Record<string, string[]> = {
   'invariants/canvasStructuralInvariants.ts': [],  // zero relative imports
 
   // ── PDF export (M93) ────────────────────────────────────────────────────
+  'pageEditSignals.ts':                    ['canvasTypes'],      // page edits wake the heartbeat
   'imageStore.ts':                         [],                    // pictures as workspace files, not base64 in the page
   'imageMigration.ts':                     ['imageStore', 'canvasTypes'],  // old pages' pictures moved out to files
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports

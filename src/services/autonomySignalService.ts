@@ -40,6 +40,12 @@ export interface IAutonomySignal {
    * user-gesture surfaces).
    */
   readonly actor?: 'user' | 'agent';
+  /**
+   * false: ongoing work (editing a page), not a discrete action, so habit
+   * detection does not learn it ("you edit X every morning" is not a task to
+   * automate). Absent means it may be learned.
+   */
+  readonly habit?: boolean;
 }
 
 function coerceString(v: unknown, fallback = ''): string {
@@ -59,6 +65,7 @@ export function normalizeAutonomySignal(raw: unknown): IAutonomySignal | null {
   const severity = r.severity === 'urgent' || r.severity === 'warn' ? r.severity : 'info';
   const detail = coerceString(r.detail).trim();
   const actor = r.actor === 'user' || r.actor === 'agent' ? r.actor : undefined;
+  const habit = r.habit === false ? false : undefined;
   return {
     source: coerceString(r.source, 'extension').trim() || 'extension',
     kind: coerceString(r.kind, 'signal').trim() || 'signal',
@@ -66,6 +73,7 @@ export function normalizeAutonomySignal(raw: unknown): IAutonomySignal | null {
     detail: detail ? detail.slice(0, 1000) : undefined,
     severity,
     actor,
+    ...(habit === false ? { habit } : {}),
   };
 }
 

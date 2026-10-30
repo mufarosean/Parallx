@@ -97,11 +97,11 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   if (paused) {
     statusCard(top, 'paused', 'Heartbeat', 'Paused with everything else');
   } else if (hb?.enabled) {
-    const card = statusCard(top, 'on', 'Heartbeat', `Looks over your workspace ${every(hb.intervalMs)}`, { id: 'parallx.wakeAgent', command: 'parallx.wakeAgent', label: 'Wake Now', icon: 'play', run: () => run('parallx.wakeAgent') }, setHeartbeat);
+    const card = statusCard(top, 'on', 'Heartbeat', `Reviews when your work changes, at most ${every(hb.intervalMs)}`, { id: 'parallx.wakeAgent', command: 'parallx.wakeAgent', label: 'Wake Now', icon: 'play', run: () => run('parallx.wakeAgent') }, setHeartbeat);
     void api.commands.executeCommand<{ lastRunMs?: number; nextDueMs?: number }>('parallx.heartbeat.status').then((s) => {
       const line = card.querySelector('.agents-rt__line');
       if (!s || !line) return;
-      const parts = [`Looks over your workspace ${every(hb.intervalMs)}`];
+      const parts = [`Reviews when your work changes, at most ${every(hb.intervalMs)}`];
       if (s.lastRunMs) parts.push(`last ${formatRelativeTime(s.lastRunMs, 'short')}`);
       if (s.nextDueMs && s.nextDueMs > Date.now()) parts.push(`next ${formatWhen(s.nextDueMs, Date.now())}`);
       line.textContent = parts.join(' · ');

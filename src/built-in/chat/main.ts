@@ -2640,7 +2640,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           // JUDGMENT on whether and how to offer automation. Code guarantees
           // the shot + the rails (cron); the model decides. Deduped to once per
           // habit so it never nags.
-          const action = sig.actor === 'agent' ? '' : [sig.source, sig.title].filter(Boolean).join(':');
+          const action = sig.actor === 'agent' || sig.habit === false ? '' : [sig.source, sig.title].filter(Boolean).join(':'); // ongoing work is not a habit
           if (action && mindService) {
             const mind = mindService;
             void (async () => {
