@@ -38,6 +38,11 @@ export function setFileEditorResolver(resolver: FileEditorResolverFn): void {
   _fileEditorResolver = resolver;
 }
 
+/** The editor input for a file URI or path, through the same resolver tools use; undefined before it is set. */
+export function resolveFileEditorInput(uri: string): Promise<IEditorInput | undefined> {
+  return _fileEditorResolver ? _fileEditorResolver(uri) : Promise.resolve(undefined);
+}
+
 // ─── Tool Editor Provider Registry (module-global) ───────────────────────────
 //
 // Tool-backed editors share a single editor input class (`ToolEditorInput`) but

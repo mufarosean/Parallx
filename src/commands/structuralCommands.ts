@@ -53,6 +53,7 @@ import {
 import { installDocling } from './doclingCommands.js';
 import { questionsGetRegistry } from './questionCommands.js';
 import { copyDiagnostics } from './diagnosticsCommands.js';
+import { openRecentItem } from './startCommands.js';
 
 //  Layout Commands 
 
@@ -362,7 +363,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   workspaceExportToFile,
   workspaceImportFromFile,
   // File
-  fileOpenFile,
+  fileOpenFile, openRecentItem,
   fileNewTextFile,
   fileSave,
   fileSaveAs,

@@ -222,7 +222,7 @@ import {
 import { migrateRetiredTheme } from '../theme/themeApply.js';
 import { watchSystemMode } from '../theme/systemMode.js';
 import { TEXT_SIZE_EXTRA_KEYBINDINGS, TEXT_SIZE_KEYBINDING_WHEN } from '../commands/textSizeCommands.js';
-import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
+import { setupEditorWatermark, updateWatermarkKeybindings, installEditorStart } from './workbenchWatermark.js';
 import { $ } from '../ui/dom.js';
 
 // Extracted modules (Fix 2.1 — decompose workbench.ts)
@@ -1313,7 +1313,7 @@ export class Workbench extends Layout {
 
     // Quick Access — unified overlay for commands + workspace switching
     this._commandPalette = new QuickAccessWidget(cmdService, this._recentsService);
-    this._register(this._commandPalette);
+    this._register(this._commandPalette); this._register(installEditorStart(this._editor.element, { recentOpens: () => this._recentsService.getRecentOpens(), hasCommand: (id) => cmdService.hasCommand(id), onDidChange: this._recentsService.onDidChangeOpens, onDidChangeCommand: (l) => { const a = cmdService.onDidRegisterCommand(l), b = cmdService.onDidUnregisterCommand(l); return { dispose: () => { a.dispose(); b.dispose(); } }; } }));
 
     // Wire editor group service for Go to Line provider
     const editorGroupSvc = this._services.get(IEditorGroupService);

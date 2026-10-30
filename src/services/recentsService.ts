@@ -18,6 +18,7 @@
 
 import type { IStorage } from '../platform/storage.js';
 import { createServiceIdentifier } from '../platform/types.js';
+import { Emitter, type Event } from '../platform/events.js';
 
 /** One opened thing. `key` dedups: `file:<uri>` or `page:<pageId>`. */
 export interface RecentOpenedItem {
@@ -32,6 +33,8 @@ export interface RecentOpenedItem {
 export interface IRecentsServiceShape {
   /** Resolves once the persisted lists are hydrated into memory. */
   readonly whenReady: Promise<void>;
+  /** Fires when the opened-items list changes (hydrated, or something opened). */
+  readonly onDidChangeOpens: Event<void>;
   /** Record an opened file/page (stamps ts, MRU-dedups, caps, persists). */
   recordOpen(item: Omit<RecentOpenedItem, 'ts'>): void;
   /** Every recently-opened item, most recent first. */
@@ -55,10 +58,12 @@ const FILE_URIS_CAP = 20;
 export class RecentsService implements IRecentsServiceShape {
   private _opens: RecentOpenedItem[] = [];
   private _commandIds: string[] = [];
+  private readonly _onDidChangeOpens = new Emitter<void>();
+  readonly onDidChangeOpens = this._onDidChangeOpens.event;
   readonly whenReady: Promise<void>;
 
   constructor(private readonly _storage: IStorage | undefined) {
-    this.whenReady = this._hydrate();
+    this.whenReady = this._hydrate().then(() => this._onDidChangeOpens.fire());
   }
 
   private async _hydrate(): Promise<void> {
@@ -89,6 +94,7 @@ export class RecentsService implements IRecentsServiceShape {
     const next: RecentOpenedItem = { ...item, ts: Date.now() };
     this._opens = [next, ...this._opens.filter((r) => r.key !== next.key)].slice(0, OPENS_CAP);
     void this._storage?.set(OPENS_KEY, JSON.stringify(this._opens));
+    this._onDidChangeOpens.fire();
   }
 
   getRecentOpens(): readonly RecentOpenedItem[] {

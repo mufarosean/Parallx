@@ -18,6 +18,7 @@ import * as fileCommands from '../../src/commands/fileCommands.js';
 import * as focusCommands from '../../src/commands/focusCommands.js';
 import * as layoutCommands from '../../src/commands/layoutCommands.js';
 import * as questionCommands from '../../src/commands/questionCommands.js';
+import * as startCommands from '../../src/commands/startCommands.js';
 import * as structuralCommands from '../../src/commands/structuralCommands.js';
 import * as textSizeCommands from '../../src/commands/textSizeCommands.js';
 import * as viewCommands from '../../src/commands/viewCommands.js';
@@ -35,6 +36,7 @@ const COMMAND_MODULES: Record<string, Record<string, unknown>> = {
   'focusCommands.ts': focusCommands,
   'layoutCommands.ts': layoutCommands,
   'questionCommands.ts': questionCommands,
+  'startCommands.ts': startCommands,
   'structuralCommands.ts': structuralCommands,
   'textSizeCommands.ts': textSizeCommands,
   'viewCommands.ts': viewCommands,

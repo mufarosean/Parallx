@@ -147,6 +147,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.movePartToEdge` | Move Part to Edge | core | View |  |  |
 | `workbench.action.nextEditor` | Open Next Editor | core | Editor | Ctrl+PageDown |  |
 | `workbench.action.openKeybindings` | Open Keyboard Shortcuts | core | Preferences | Ctrl+K Ctrl+S |  |
+| `workbench.action.openRecentItem` | Open Recent Item | core | File |  |  |
 | `workbench.action.openSettings` | Open Settings | core | Preferences |  |  |
 | `workbench.action.previousEditor` | Open Previous Editor | core | Editor | Ctrl+PageUp |  |
 | `workbench.action.quickOpen` | Go to File… | core | View | Ctrl+P |  |

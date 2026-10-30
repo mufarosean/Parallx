@@ -1,0 +1,35 @@
+/* editorStart.css — Start, on the empty editor (workbenchWatermark.ts).
+   The watermark lets clicks through to the editor area; Start takes them.
+   The actions sit side by side, the recent list below in one column of
+   left-aligned rows, then the shortcut hints. */
+
+.editor-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--px-space-5);
+  margin: var(--px-space-4) 0 var(--px-space-6);
+  pointer-events: auto;
+}
+.editor-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--px-space-2);
+}
+.editor-start-recent:empty { display: none; }
+.editor-start-list {
+  width: min(320px, calc(100vw - 2 * var(--px-space-6)));
+  gap: var(--px-space-1);
+  text-align: left;
+}
+.editor-start-list > .px-btn {
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+}
+.editor-start-list > .px-btn .px-btn__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

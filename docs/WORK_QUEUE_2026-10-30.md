@@ -32,7 +32,7 @@ commit and push after each item, and mark it here.
 14. Done: an Undo toast in the kit; moving a page to Trash offers Undo.
 15. Done: Help › Copy Diagnostics (versions, tools on, model, recent errors, paths and keys hidden).
 16. Done: old size variables (`--parallx-fontSize`, `--parallx-radius`) moved onto `--px-*`.
-17. The empty editor shows Start (recent pages, files, new page).
+17. Done: the empty editor is Start: New Page, Open File…, the last six pages and files opened, then the shortcuts.
 
 ## Waiting on you
 
