@@ -487,6 +487,11 @@ export class ChatTokenStatusBar extends Disposable {
       { label: 'Files', tokens: cats.files, total, subItems: subs?.files },
     ]);
 
+    // What memory rode into the last turn (already counted above, inside
+    // Files and Messages): how much of the window remembering costs.
+    const memory = memoryRows(this._services.getLastSystemPromptReport?.()?.memory);
+    if (memory.length) this._renderSection(popup, 'Memory in the last turn', memory.map((m) => ({ ...m, total })));
+
   }
 
   private _renderSection(
@@ -591,4 +596,15 @@ export class ChatTokenStatusBar extends Disposable {
     const k = n / 1024;
     return `${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
   }
+}
+
+/** The Memory rows of the meter: USER.md, continuity notes, recalled memories (chars ÷ 4); none when nothing rode in. */
+export function memoryRows(memory: { userChars: number; continuityChars: number; recalledChars: number } | undefined): { label: string; tokens: number }[] {
+  if (!memory) return [];
+  const rows = [
+    { label: 'About you (USER.md)', tokens: Math.ceil(memory.userChars / 4) },
+    { label: 'Continuity notes', tokens: Math.ceil(memory.continuityChars / 4) },
+    { label: 'Recalled memories', tokens: Math.ceil(memory.recalledChars / 4) },
+  ].filter((r) => r.tokens > 0);
+  return rows;
 }

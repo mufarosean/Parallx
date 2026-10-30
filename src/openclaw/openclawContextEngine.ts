@@ -105,8 +105,8 @@ export interface IOpenclawAssembleResult {
   readonly systemPromptAddition?: string;
   readonly ragSources: readonly { uri: string; label: string; index: number }[];
   readonly retrievedContextText: string;
+  readonly memoryChars?: { readonly continuity: number; readonly recalled: number }; // memory that rode in (the context meter)
 }
-
 export interface IOpenclawCompactParams {
   readonly sessionId: string;
   readonly tokenBudget: number;
@@ -372,10 +372,9 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     ]);
 
     // ── Build retrieval context sections (delivered via messages, not systemPromptAddition) ──
-    // Upstream pattern (context-engine/types.ts): AssembleResult.messages is the primary
-    // delivery channel for context. systemPromptAddition is for lightweight metadata only.
+    // Upstream pattern (context-engine/types.ts): AssembleResult.messages is the primary delivery channel for context; systemPromptAddition is for lightweight metadata only.
     const contextSections: string[] = [];
-    let usedRagTokens = 0;
+    let usedRagTokens = 0; const memoryChars = { continuity: params.mindText?.length ?? 0, recalled: 0 };
 
     // ── M85: Active plan — GUARANTEED first section, outside the RAG lanes ──
     // The plan is the agent's durable mission anchor. It is deliberately NOT
@@ -438,7 +437,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       const memoryTokens = estimateTokens(memoryResult);
       if (memoryTokens <= memoryLaneBudget && usedRagTokens + memoryTokens <= budget.rag) {
         contextSections.push(`## Recalled Memories\n${memoryResult}`);
-        usedRagTokens += memoryTokens;
+        usedRagTokens += memoryTokens; memoryChars.recalled = memoryResult.length;
       }
     }
 
@@ -496,6 +495,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
       systemPromptAddition: systemPromptAddition || undefined,
       ragSources,
       retrievedContextText,
+      memoryChars,
     };
   }
 

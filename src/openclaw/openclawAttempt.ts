@@ -267,7 +267,8 @@ export async function executeOpenclawAttempt(
     },
   });
   const systemPrompt = promptArtifacts.systemPrompt;
-  context.reportSystemPromptReport?.(promptArtifacts.report);
+  const userMd = context.bootstrapFiles.find((f) => /(^|\/)USER\.md$/i.test(f.name))?.content.length ?? 0; // the meter's Memory row
+  context.reportSystemPromptReport?.({ ...promptArtifacts.report, memory: { userChars: userMd, continuityChars: assembled.memoryChars?.continuity ?? 0, recalledChars: assembled.memoryChars?.recalled ?? 0 } });
 
   // 2b. System prompt budget check (warning only).
   //     RAG content now flows through assembled.messages, not systemPromptAddition,
@@ -285,8 +286,7 @@ export async function executeOpenclawAttempt(
   }
 
   // 4. Build messages: [system, ...context history, user (with mention context prepended)]
-  //    M2: Merge mention context blocks INTO the user message to avoid consecutive
-  //    user-role messages.  Ollama/LLMs expect alternating user/assistant turns;
+  //    M2: Merge mention context blocks INTO the user message to avoid consecutive user-role messages.  Ollama/LLMs expect alternating user/assistant turns;
   //    two consecutive user messages causes models to ignore the first one (the
   //    attachment content).  Prepending to the user message ensures the model
   //    sees attachment context and query in a single turn.

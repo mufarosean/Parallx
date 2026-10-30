@@ -265,6 +265,13 @@ describe('OpenclawContextEngine', () => {
         .toBeLessThan(contextMsg!.content.indexOf('## Retrieved Context'));
     });
 
+    it('says how much memory rode in, for the context meter', async () => {
+      await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
+      const mindText = '- [belief · 84%] User studies Exam 7 in the mornings';
+      const result = await engine.assemble({ sessionId: 's1', history: [], tokenBudget: 8192, prompt: 'continue', mindText });
+      expect(result.memoryChars).toEqual({ continuity: mindText.length, recalled: 'User prefers detailed answers with citations.'.length });
+    });
+
     it('M93 — no continuity section when mindText is absent or empty', async () => {
       await engine.bootstrap({ sessionId: 's1', tokenBudget: 8192 });
       const withEmpty = await engine.assemble({

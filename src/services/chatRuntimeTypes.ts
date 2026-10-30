@@ -122,6 +122,8 @@ export interface IOpenclawSystemPromptReport {
     readonly nonProjectContextChars: number;
   };
   readonly injectedWorkspaceFiles: readonly IOpenclawBootstrapDebugFile[];
+  /** Memory that rode into the turn, in chars: USER.md, the continuity notes, recalled memories. */
+  readonly memory?: { readonly userChars: number; readonly continuityChars: number; readonly recalledChars: number };
   readonly bootstrapWarningLines: readonly string[];
   readonly skills: {
     readonly promptChars: number;
