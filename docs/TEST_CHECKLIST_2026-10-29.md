@@ -171,6 +171,16 @@ me if it is not that.
 - **Tidy Memory:** in Agents › Routines › "Or start from one of these" there
   is a new **Tidy Memory** template (installs off).
 
+### 3.8 Export a page with its sub-pages
+- **Do:** On a page that has sub-pages, open its ⋯ menu › Export ›
+  **Markdown With Sub-Pages…** and save the .zip. (Also in the sidebar's
+  right-click menu, and **Canvas: Export All Pages as Markdown…** in the
+  command palette for everything.)
+- **Expect:** The .zip has the page's `.md`, and a folder of the same name
+  with each sub-page's `.md` (deeper ones in their own folders). Open it in
+  any Markdown viewer (or Obsidian): the sub-page lines are links that open
+  the sub-page files.
+
 ### 3.8 Small ones
 - Welcome shows version 0.1.0, and its AI section has three plain rows (no
   `/init` or `.parallx/` rows).

@@ -39,6 +39,7 @@ export const CANVAS_MANIFEST: IToolManifest = {
       { id: 'canvas.deletePage', title: 'Canvas: Delete Page' },
       { id: 'canvas.renamePage', title: 'Canvas: Rename Page' },
       { id: 'canvas.duplicatePage', title: 'Canvas: Duplicate Page' },
+      { id: 'canvas.exportAllPages', title: 'Canvas: Export All Pages as Markdown…' },
       { id: 'canvas.restorePage', title: 'Canvas: Restore Page from Trash',
         aiInvocable: true, aiDescription: 'Restore a page (and its sub-pages) from the Trash. Argument: pageId (string, required).' },
       { id: 'canvas.deletePageForever', title: 'Canvas: Delete Page Forever…' },

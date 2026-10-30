@@ -38,7 +38,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { pageMoveTargets } from './pageMoveTargets.js';
+import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
 import { registerTrashCommands } from './canvasTrashPanel.js';
@@ -1333,6 +1333,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  context.subscriptions.push(...registerPageBundleCommands(api, () => _dataService)); // Export With Sub-Pages, Export All Pages
   // canvas.movePageTo — Move To…: pick a new parent (or the top level) for a
   // page. Used by the page ⋯ menu and the sidebar's page menu.
   context.subscriptions.push(

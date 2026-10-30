@@ -1115,19 +1115,14 @@ export class PageChromeController {
       { label: 'Move To…', onSelect: () => { void this._host.executeCommand?.('canvas.movePageTo', this._host.pageId); } },
       {
         label: 'Save as Template…',
-        onSelect: async () => {
-          try {
-            await this._host.executeCommand?.('canvas.saveAsTemplate', this._host.pageId);
-          } catch (err) {
-            console.error('[Canvas] Save as template failed:', err);
-          }
-        },
+        onSelect: () => { this._host.executeCommand?.('canvas.saveAsTemplate', this._host.pageId)?.catch((err) => console.error('[Canvas] Save as template failed:', err)); },
       },
       { separator: true },
       {
         label: 'Export',
         submenu: [
           { label: 'Markdown…', onSelect: () => { this.exportMarkdown().catch((err) => console.error('[Canvas] Export failed:', err)); } },
+          { label: 'Markdown With Sub-Pages…', onSelect: () => { void this._host.executeCommand?.('canvas.exportPageWithSubPages', this._host.pageId); } },
           { label: 'PDF…', keybinding: 'Ctrl+Alt+P', onSelect: () => { this.exportPdf().catch((err) => console.error('[Canvas] PDF export failed:', err)); } },
         ],
       },

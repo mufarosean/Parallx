@@ -60,6 +60,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `canvas.deletePageForever` | Canvas: Delete Page Forever… | canvas |  |  |  |
 | `canvas.duplicatePage` | Canvas: Duplicate Page | canvas |  |  |  |
 | `canvas.emptyTrash` | Canvas: Empty Trash… | canvas |  |  |  |
+| `canvas.exportAllPages` | Canvas: Export All Pages as Markdown… | canvas |  |  |  |
 | `canvas.manageTemplates` | Canvas: Manage Templates | canvas |  |  |  |
 | `canvas.newDatabase` | Canvas: New Database | canvas |  |  |  |
 | `canvas.newPage` | Canvas: New Page | canvas |  |  |  |

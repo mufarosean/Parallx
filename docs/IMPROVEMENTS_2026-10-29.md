@@ -276,7 +276,12 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   text (a chat's Copy button, a .md file, a code editor) pastes as headings,
   lists, tables and formatting; a rich copy and a paste into code stay as they were.
 - **Images stored as files, not base64.** IDEAS. Open.
-- **Export a page with its sub-pages, and the whole workspace.** IDEAS. Open.
+- **Export a page with its sub-pages, and the whole workspace.** IDEAS. Done
+  Oct 30: page menu › Export › Markdown With Sub-Pages…, the sidebar's page
+  menu › Export With Sub-Pages…, and Canvas: Export All Pages as Markdown…
+  in the palette. One .zip: `Name.md` beside a `Name/` folder of its
+  sub-pages; sub-page blocks and links between exported pages point at their
+  files (Obsidian reads it); each file still reads back into a page.
 - **Backlinks count both link formats.** IDEAS. Done Oct 29, with two bugs
   found on the way: a parallx:// link (what the chat and its citations write)
   lost its target in a page, and clicking one said "only http links".

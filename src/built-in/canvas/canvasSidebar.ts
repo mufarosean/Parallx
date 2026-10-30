@@ -937,37 +937,15 @@ export class CanvasSidebar {
     });
     addAction({
       id: 'export-md',
-      label: 'Export as Markdown',
+      label: 'Export as Markdown…',
       iconId: 'export',
-      action: async () => {
-        try {
-          const fullPage = await this._dataService.getPage(page.id);
-          if (!fullPage) return;
-
-          const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
-          const { decodeCanvasContent } = await import('./contentSchema.js');
-          // Content is the versioned {schemaVersion, doc} envelope — raw
-          // JSON.parse hands the wrapper to the converter, which fails its
-          // doc-shape guard and exports title-only markdown.
-          const doc = decodeCanvasContent(fullPage.content).doc;
-
-          const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
-          const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
-
-          const electron = (window as any).parallxElectron;
-          if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) return;
-
-          const filePath = await electron.dialog.saveFile({
-            filters: [{ name: 'Markdown', extensions: ['md'] }],
-            defaultName: `${safeName}.md`,
-          });
-          if (filePath) {
-            await electron.fs.writeFile(filePath, markdown, 'utf-8');
-          }
-        } catch (err) {
-          console.error('[CanvasSidebar] Export failed:', err);
-        }
-      },
+      action: () => { void this._api.commands.executeCommand('canvas.exportPageMarkdown', page.id); },
+    });
+    addAction({
+      id: 'export-tree',
+      label: 'Export With Sub-Pages…',
+      iconId: 'export',
+      action: () => { void this._api.commands.executeCommand('canvas.exportPageWithSubPages', page.id); },
     });
     addAction({
       id: 'save-as-template',

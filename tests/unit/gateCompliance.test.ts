@@ -228,6 +228,7 @@ const GATE_RULES: Record<string, string[]> = {
   // ── PDF export (M93) ────────────────────────────────────────────────────
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports
   'export/pdfExportDialog.ts':             ['export/printHtml', 'config/fontRegistry'],  // dialog over the pure builders (ui/dropdown + pdfjs are external); resolves page fonts for embedding
+  'export/pageBundle.ts':                  ['contentSchema', 'markdownExport', 'canvasTypes'],  // a page tree as a .zip of Markdown files
 
   // ── Fonts ───────────────────────────────────────────────────────────────
   // Open-ended font registry — pure data/util, only imports the settings
