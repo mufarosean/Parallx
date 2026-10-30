@@ -5178,9 +5178,9 @@ const MO_CSS = `
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 4px 8px;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-family: inherit;
   outline: none;
 }
@@ -5196,9 +5196,9 @@ const MO_CSS = `
   background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a));
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-panel-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 3px 8px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -5210,19 +5210,19 @@ const MO_CSS = `
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 3px 6px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-family: inherit;
   outline: none;
 }
 .mo-toolbar-label {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
 }
 .mo-toolbar-count {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
   margin-left: auto;
@@ -5244,7 +5244,7 @@ const MO_CSS = `
   z-index: 6;
   margin: 4px 0 -2px;
   padding: 6px 2px;
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground, var(--px-text));
   background: var(--vscode-editor-background, var(--px-bg));
@@ -5256,7 +5256,7 @@ const MO_CSS = `
 .mo-card {
   display: flex;
   flex-direction: column;
-  border-radius: var(--parallx-radius-md, 6px);
+  border-radius: var(--px-radius-md);
   overflow: hidden;
   cursor: pointer;
   background: var(--vscode-editor-background);
@@ -5336,9 +5336,9 @@ const MO_CSS = `
   position: absolute;
   top: 4px;
   left: 4px;
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   padding: 1px 5px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: rgba(0,0,0,0.65);
   color: #fff;
   font-weight: 600;
@@ -5454,14 +5454,14 @@ const MO_CSS = `
   flex-shrink: 0;
 }
 .mo-card-title {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vscode-editor-foreground);
 }
 .mo-card-detail {
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
   overflow: hidden;
@@ -5481,7 +5481,7 @@ const MO_CSS = `
   flex-shrink: 0;
 }
 .mo-card-size {
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   white-space: nowrap;
   flex-shrink: 0;
@@ -5531,15 +5531,15 @@ const MO_CSS = `
   padding: 6px 12px;
   border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   flex-shrink: 0;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
 }
 .mo-page-btn {
   background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a));
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-panel-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 2px 8px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
 }
 .mo-page-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
@@ -5679,7 +5679,7 @@ const MO_CSS = `
   background: none; border: none; cursor: pointer; text-align: left;
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground, #ccc)); opacity: 0.78;
   padding: 4px 6px; border-radius: 4px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
 }
 .mo-sidebar-help-btn:hover { opacity: 1; background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06)); }
 .mo-sidebar-help-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
@@ -5795,7 +5795,7 @@ kbd.mo-key {
   text-align: center;
   padding: 24px 16px;
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
 }
 /* #4 Rich empty / first-run state */
 .mo-empty-rich {
@@ -5816,12 +5816,12 @@ kbd.mo-key {
 }
 .mo-empty-rich-icon svg { width: 40px; height: 40px; }
 .mo-empty-rich-title {
-  font-size: var(--parallx-fontSize-lg, 15px);
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--vscode-foreground, var(--px-text, #ddd));
 }
 .mo-empty-rich-sub {
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   max-width: 360px;
   line-height: 1.5;
 }
@@ -5987,12 +5987,12 @@ kbd.mo-key {
 .mo-menu-btn { gap: 6px; white-space: nowrap; }
 .mo-menu-btn-caret { display: inline-flex; opacity: 0.7; }
 .mo-menu-btn-icon { display: inline-flex; color: var(--px-text-secondary); }
-.mo-view-pop { position: fixed; z-index: 10000; min-width: 240px; background: var(--vscode-menu-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-menu-border, var(--px-border-strong)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 4px 16px rgba(0,0,0,0.4); padding: 6px; display: flex; flex-direction: column; gap: 2px; font-size: var(--parallx-fontSize-sm, 11px); color: var(--vscode-menu-foreground, var(--vscode-foreground, #ccc)); }
+.mo-view-pop { position: fixed; z-index: 10000; min-width: 240px; background: var(--vscode-menu-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-menu-border, var(--px-border-strong)); border-radius: var(--px-radius-md); box-shadow: 0 4px 16px rgba(0,0,0,0.4); padding: 6px; display: flex; flex-direction: column; gap: 2px; font-size: var(--px-text-sm); color: var(--vscode-menu-foreground, var(--vscode-foreground, #ccc)); }
 .mo-view-pop[hidden] { display: none; }
-.mo-view-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--parallx-radius-sm, 3px); min-height: 28px; box-sizing: border-box; }
+.mo-view-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--px-radius-sm); min-height: 28px; box-sizing: border-box; }
 .mo-view-row .mo-toolbar-label { min-width: 36px; }
 .mo-view-row .mo-zoom-slider { flex: 1; width: auto; }
-button.mo-view-row { background: transparent; border: none; color: inherit; font: inherit; font-size: var(--parallx-fontSize-sm, 11px); cursor: pointer; text-align: left; width: 100%; }
+button.mo-view-row { background: transparent; border: none; color: inherit; font: inherit; font-size: var(--px-text-sm); cursor: pointer; text-align: left; width: 100%; }
 button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-view-toggle.is-on { color: var(--vscode-textLink-foreground, var(--px-accent)); }
 /* The selection row takes the view row's place. */
@@ -6107,7 +6107,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-filter-tag-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mo-filter-row-label {
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   flex-shrink: 0;
   text-transform: none;
@@ -6126,10 +6126,10 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   align-items: center;
   gap: 3px;
   padding: 2px 6px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   white-space: nowrap;
 }
 .mo-tag-pill.exclude {
@@ -6139,7 +6139,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-tag-pill-remove {
   cursor: pointer;
   opacity: 0.6;
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   line-height: 1;
 }
 .mo-tag-pill-remove:hover { opacity: 1; }
@@ -6147,19 +6147,19 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-filter-tag-select {
   flex: 1;
   max-width: 200px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   padding: 2px 4px;
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
 }
 .mo-filter-tag-select:focus-visible, .mo-filter-date:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: -1px;
 }
 .mo-filter-depth-label {
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   display: flex;
   align-items: center;
@@ -6188,12 +6188,12 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   gap: 6px;
 }
 .mo-filter-date {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   padding: 2px 4px;
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   width: 130px;
 }
 .mo-filter-clear {
@@ -6210,7 +6210,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-filter-clear:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .mo-filter-empty {
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, #666);
   font-style: italic;
 }
@@ -6220,8 +6220,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   box-sizing: border-box;
   padding: 4px 8px;
   margin: 4px 0 2px;
-  font-size: var(--parallx-fontSize-xs, 11px);
-  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--px-text-xs);
+  border-radius: var(--px-radius-sm);
   border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
   background: var(--vscode-input-background, #2a2a2a);
   color: var(--vscode-input-foreground, var(--px-text, #ddd));
@@ -6237,11 +6237,11 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   overflow-y: auto;
   padding: 7px;
   border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
-  border-radius: var(--parallx-radius-sm, 4px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-input-background, rgba(0, 0, 0, 0.18));
 }
 .mo-tagpick-chip {
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   padding: 3px 10px;
   border-radius: 11px;
   cursor: pointer;
@@ -6288,7 +6288,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border-radius: 7px;
   background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   line-height: 14px;
   text-align: center;
   padding: 0 3px;
@@ -6418,7 +6418,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
 }
 .mo-detail-dl dt {
   opacity: 0.6;
@@ -6435,7 +6435,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-detail-star {
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md, 16px);
+  font-size: var(--px-text-base);
   color: var(--vscode-panel-border, var(--px-border, #555));
   transition: color 0.1s;
   background: none;
@@ -6454,7 +6454,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-detail-field label {
   display: block;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   opacity: 0.6;
   margin-bottom: 3px;
 }
@@ -6465,9 +6465,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-bg-elevated, #333));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 4px 6px;
-  font-size: var(--parallx-fontSize-base, 13px);
+  font-size: var(--px-text-base);
   font-family: inherit;
 }
 .mo-detail-field input:focus,
@@ -6500,8 +6500,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-badge-background, var(--px-bg-elevated, #333));
   color: var(--vscode-badge-foreground, #fff);
   padding: 2px 6px;
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-xs, 11px);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-xs);
 }
 .mo-detail-tag-pill button {
   background: none;
@@ -6510,7 +6510,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   cursor: pointer;
   padding: 0 2px;
   opacity: 0.7;
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   line-height: 1;
 }
 .mo-detail-tag-pill button:hover {
@@ -6525,9 +6525,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-bg-elevated, #333));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 4px 6px;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
 }
 .mo-detail-autocomplete input:focus {
   border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
@@ -6540,7 +6540,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   right: 0;
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   max-height: 150px;
   overflow-y: auto;
   z-index: 100;
@@ -6548,7 +6548,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-detail-autocomplete-item {
   padding: 4px 8px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
 }
 .mo-detail-autocomplete-item:hover,
 .mo-detail-autocomplete-item.selected {
@@ -6561,7 +6561,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   cursor: pointer;
   padding: 4px;
   opacity: 0.7;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
 }
 .mo-detail-nav-btn:hover {
   opacity: 1;
@@ -6581,7 +6581,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-detail-loading span {
   margin-left: 8px;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   opacity: 0.7;
 }
 .mo-detail-autocomplete-create {
@@ -6660,7 +6660,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   .mo-selection-bar .mo-sel-btn:not(.mo-sel-count) .mo-sel-label { display: none; }
 }
 .mo-bulk-dialog-warn {
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #999));
   margin: 4px 0 8px;
 }
@@ -6668,7 +6668,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
   margin: 4px 0 12px;
   cursor: pointer;
@@ -6694,7 +6694,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-bulk-dialog {
   background: var(--vscode-editor-background, var(--px-bg));
   border: 1px solid var(--vscode-panel-border, var(--px-bg-elevated, #333));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 16px;
   min-width: 360px;
   max-width: 500px;
@@ -6703,7 +6703,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-bulk-dialog h3 {
   margin: 0 0 12px 0;
-  font-size: var(--parallx-fontSize-base, 13px);
+  font-size: var(--px-text-base);
   font-weight: 600;
 }
 .mo-bulk-dialog-section {
@@ -6711,7 +6711,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-bulk-dialog-section label {
   display: block;
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   margin-bottom: 4px;
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #999));
 }
@@ -6722,8 +6722,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-input-background, var(--px-bg-elevated, #333));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-sm, 12px);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
 }
 .mo-bulk-mode-btns {
   display: flex;
@@ -6737,8 +6737,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: none;
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 10px);
-  border-radius: var(--parallx-radius-sm, 3px);
+  font-size: var(--px-text-xs);
+  border-radius: var(--px-radius-sm);
 }
 .mo-bulk-mode-btns button.active {
   background: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
@@ -6753,9 +6753,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-bulk-dialog-footer button {
   padding: 4px 12px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-widget-border, #444));
   background: none;
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
@@ -6775,10 +6775,10 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   padding: 4px;
   background: var(--vscode-input-background, var(--px-bg));
   border: 1px solid var(--vscode-input-border, var(--px-bg-elevated, #333));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
 }
 .mo-bulk-tag-chips-empty {
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   padding: 2px 4px;
   font-style: italic;
@@ -6791,7 +6791,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-badge-background, var(--px-border, #4d4d4d));
   color: var(--vscode-badge-foreground, #fff);
   border-radius: 10px;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   line-height: 16px;
 }
 .mo-bulk-tag-chip button {
@@ -6813,8 +6813,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-bg-elevated, #333));
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-sm, 12px);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
 }
 .mo-bulk-tag-search:focus {
   border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
@@ -6826,7 +6826,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   overflow-y: auto;
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
 }
 .mo-bulk-tag-row {
   display: flex;
@@ -6834,7 +6834,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   gap: 8px;
   padding: 4px 8px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   user-select: none;
 }
 .mo-bulk-tag-row:hover {
@@ -6929,7 +6929,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-album-header h2 {
   margin: 0;
-  font-size: var(--parallx-fontSize-base, 13px);
+  font-size: var(--px-text-base);
   flex: 1;
 }
 .mo-album-body {
@@ -6942,7 +6942,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-album-field label {
   display: block;
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   margin-bottom: 4px;
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #999));
 }
@@ -6953,8 +6953,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-input-background, var(--px-bg-elevated, #333));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-sm, 12px);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
   box-sizing: border-box;
 }
 .mo-album-field input:focus,
@@ -6988,7 +6988,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   position: absolute;
   top: 2px;
   right: 2px;
-  font-size: var(--parallx-fontSize-base, 14px);
+  font-size: var(--px-text-base);
   padding: 0 4px;
   z-index: 1;
 }
@@ -7150,7 +7150,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.7);
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
 }
 .mo-compare-bar .mo-cmp-spacer { flex: 1; }
 .mo-compare-bar button {
@@ -7158,9 +7158,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border: 1px solid rgba(255,255,255,0.18);
   color: #fff;
   padding: 4px 10px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
   line-height: 18px;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -7179,7 +7179,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   opacity: 0.85;
   padding: 2px 6px;
   border: 1px solid rgba(255,255,255,0.15);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   min-width: 48px;
   text-align: center;
 }
@@ -7197,7 +7197,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   flex-direction: column;
   background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   overflow: hidden;
 }
 .mo-compare-pane.mo-cmp-active {
@@ -7233,7 +7233,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   padding: 6px 10px;
   background: rgba(0, 0, 0, 0.6);
   border-top: 1px solid rgba(255,255,255,0.06);
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-xs);
 }
 .mo-cmp-info .mo-cmp-title {
   flex: 1;
@@ -7287,9 +7287,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, var(--vscode-foreground, #ccc));
   border: 1px solid var(--vscode-input-border, var(--px-border, #555));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 3px 6px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-family: inherit;
   outline: none;
   width: 100px;
@@ -7348,7 +7348,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   cursor: grabbing;
 }
 .mo-lb-zoom-indicator {
-  font-size: var(--parallx-fontSize-xs, 10px);
+  font-size: var(--px-text-xs);
   opacity: 0.7;
   white-space: nowrap;
 }

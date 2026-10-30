@@ -48,7 +48,7 @@ export const MO_CSS_MORE = `
   .mo-feed { padding-left: var(--px-space-3); padding-right: var(--px-space-3); }
 }
 .mo-feed-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.mo-feed-card { position: relative; width: 100%; border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; }
+.mo-feed-card { position: relative; width: 100%; border-radius: var(--px-radius-md); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; }
 .mo-feed-card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--px-dur-slow, 260ms) var(--px-ease, ease); }
 .mo-feed-card:hover img { transform: scale(1.02); }
 .mo-feed-card--loading { background: linear-gradient(100deg, var(--px-bg-inset, rgba(128,128,128,0.10)) 30%, var(--px-bg, rgba(128,128,128,0.20)) 50%, var(--px-bg-inset, rgba(128,128,128,0.10)) 70%); background-size: 200% 100%; animation: mo-skeleton-shimmer 1.3s ease-in-out infinite; }
@@ -87,7 +87,7 @@ export const MO_CSS_MORE = `
 .mo-similar-link { background: none; border: none; color: var(--vscode-textLink-foreground, var(--px-accent)); cursor: pointer; font-size: 11px; padding: 0; }
 .mo-similar-link:hover { text-decoration: underline; }
 .mo-similar-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.mo-similar-card { flex: 0 0 auto; width: 128px; height: 96px; border-radius: var(--parallx-radius-sm, 4px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; border: 1px solid transparent; }
+.mo-similar-card { flex: 0 0 auto; width: 128px; height: 96px; border-radius: var(--px-radius-sm); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; border: 1px solid transparent; }
 .mo-similar-card:hover { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-similar-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-similar-status { font-size: 11px; opacity: 0.7; }
@@ -105,13 +105,13 @@ export const MO_CSS_MORE = `
 .mo-tr-sub.is-error { color: var(--vscode-errorForeground, var(--px-text)); }
 .mo-tr-actions-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mo-tr-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; margin-right: 4px; }
-.mo-tr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 4px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.mo-tr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--px-radius-md); padding: 4px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .mo-tr-btn:hover:not(:disabled) { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-tr-btn:disabled { opacity: 0.5; cursor: default; }
 .mo-tr-btn.has-rules { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-tr-btn.is-on { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-tr-rules { display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-tr-rules-box { width: 100%; box-sizing: border-box; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); min-height: 88px; font: inherit; font-size: 12px; line-height: 1.45; padding: 6px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; outline: none; }
+.mo-tr-rules-box { width: 100%; box-sizing: border-box; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); min-height: 88px; font: inherit; font-size: 12px; line-height: 1.45; padding: 6px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--px-radius-md); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; outline: none; }
 .mo-tr-rules-box:focus { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-tr-rules-status { font-size: 11px; min-height: 14px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-tr-btn.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text)); border-color: transparent; }
@@ -122,7 +122,7 @@ export const MO_CSS_MORE = `
 .mo-tr-list { display: flex; flex-direction: column; }
 .mo-tr-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .mo-tr-row.is-queued, .mo-tr-row.is-running { opacity: 0.75; }
-.mo-tr-thumb { width: 132px; height: 99px; border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: zoom-in; }
+.mo-tr-thumb { width: 132px; height: 99px; border-radius: var(--px-radius-sm); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: zoom-in; }
 .mo-tr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-tr-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .mo-tr-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -134,21 +134,21 @@ export const MO_CSS_MORE = `
 .mo-tr-status.is-retag { background: transparent; color: var(--vscode-focusBorder, var(--px-accent)); border: 1px solid var(--vscode-focusBorder, var(--px-accent)); }
 .mo-tr-error { font-size: 11px; color: var(--vscode-errorForeground, var(--px-text)); }
 .mo-tr-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.mo-tr-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 2px 4px 2px 8px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); font-size: 11px; line-height: 16px; }
+.mo-tr-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 2px 4px 2px 8px; border-radius: var(--px-radius-sm); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); font-size: 11px; line-height: 16px; }
 .mo-tr-chip-path { color: var(--vscode-descriptionForeground, var(--px-text-secondary)); white-space: pre; }
 .mo-tr-chip-leaf { font-weight: 600; }
 .mo-tr-chip button { border: none; background: transparent; color: inherit; cursor: pointer; padding: 0 4px; margin-left: 2px; font-size: 13px; line-height: 1; opacity: 0.6; }
 .mo-tr-chip button:hover { opacity: 1; }
-.mo-tr-add-input { width: 170px; box-sizing: border-box; background: var(--vscode-input-background, var(--px-bg)); color: var(--vscode-input-foreground, var(--vscode-foreground, var(--px-text))); border: 1px solid var(--vscode-input-border, var(--px-bg-elevated)); border-radius: var(--parallx-radius-sm, 3px); padding: 3px 6px; font-size: 11px; }
+.mo-tr-add-input { width: 170px; box-sizing: border-box; background: var(--vscode-input-background, var(--px-bg)); color: var(--vscode-input-foreground, var(--vscode-foreground, var(--px-text))); border: 1px solid var(--vscode-input-border, var(--px-bg-elevated)); border-radius: var(--px-radius-sm); padding: 3px 6px; font-size: 11px; }
 .mo-tr-add-input:focus { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline: none; }
 .mo-tr-row-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 88px; }
 .mo-tr-empty { padding: 48px 14px; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-tr-suggest { position: fixed; z-index: 10005; min-width: 220px; max-width: 380px; max-height: 240px; overflow-y: auto; padding: 2px 0; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong)); border-radius: var(--parallx-radius-sm, 3px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+.mo-tr-suggest { position: fixed; z-index: 10005; min-width: 220px; max-width: 380px; max-height: 240px; overflow-y: auto; padding: 2px 0; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border-strong)); border-radius: var(--px-radius-sm); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
 .mo-tr-suggest-item { padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-tr-suggest-item:hover, .mo-tr-suggest-item.is-active { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 
 /* ── Preview copies and offline folders ── */
-.mo-player-preview-note { position: absolute; top: 12px; left: 12px; z-index: 5; padding: 4px 10px; font-size: 11px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-player-preview-note { position: absolute; top: 12px; left: 12px; z-index: 5; padding: 4px 10px; font-size: 11px; border-radius: var(--px-radius-sm); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-sidebar-item.is-offline { opacity: 0.6; }
 .mo-sidebar-item.is-offline .mo-sidebar-item-count { font-style: italic; }
 .mo-clip-hint { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
@@ -159,29 +159,29 @@ export const MO_CSS_MORE = `
 .mo-practice-img { max-width: 100%; max-height: 100%; object-fit: contain; transition: filter 120ms ease; }
 .mo-practice-img.is-mirror { transform: scaleX(-1); }
 .mo-practice-img.is-grey { filter: grayscale(1); }
-.mo-practice-hud { position: absolute; top: 12px; right: 14px; display: flex; align-items: baseline; gap: 10px; padding: 4px 10px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); font-variant-numeric: tabular-nums; }
+.mo-practice-hud { position: absolute; top: 12px; right: 14px; display: flex; align-items: baseline; gap: 10px; padding: 4px 10px; border-radius: var(--px-radius-sm); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); font-variant-numeric: tabular-nums; }
 .mo-practice-clock { font-size: 18px; font-weight: 600; }
 .mo-practice-hud.is-low .mo-practice-clock { color: var(--vscode-errorForeground, var(--px-danger)); }
 .mo-practice-counter { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-practice-controls { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); transition: opacity 160ms ease; }
-.mo-practice-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; }
+.mo-practice-controls { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: var(--px-radius-sm); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); transition: opacity 160ms ease; }
+.mo-practice-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; }
 .mo-practice-btn:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); }
 .mo-practice-btn.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); }
 .mo-practice-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--vscode-editorWidget-border, var(--px-border)); }
 .mo-practice-strip { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 4px; justify-content: center; padding: 8px 12px; overflow-x: auto; transition: opacity 160ms ease; }
-.mo-practice-strip-item { flex: 0 0 auto; width: 44px; height: 44px; border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; border: 2px solid transparent; opacity: 0.7; cursor: pointer; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-practice-strip-item { flex: 0 0 auto; width: 44px; height: 44px; border-radius: var(--px-radius-sm); overflow: hidden; border: 2px solid transparent; opacity: 0.7; cursor: pointer; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
 .mo-practice-strip-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-practice-strip-item.is-done { opacity: 0.45; }
 .mo-practice-strip-item.is-current { opacity: 1; border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-practice.is-idle .mo-practice-controls, .mo-practice.is-idle .mo-practice-strip { opacity: 0; pointer-events: none; }
-.mo-practice-notice { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 8px 16px; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); font-size: 14px; font-weight: 600; opacity: 0; transition: opacity 200ms ease; pointer-events: none; }
+.mo-practice-notice { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); padding: 8px 16px; border-radius: var(--px-radius-sm); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-editorWidget-border, var(--px-border)); font-size: 14px; font-weight: 600; opacity: 0; transition: opacity 200ms ease; pointer-events: none; }
 .mo-practice-notice.is-on { opacity: 1; }
 .mo-practice-end { position: absolute; inset: 0; overflow-y: auto; padding: 40px 32px; display: flex; flex-direction: column; align-items: center; gap: 18px; background: var(--vscode-editor-background, var(--px-bg)); }
 .mo-practice-end-title { font-size: 20px; font-weight: 600; }
 .mo-practice-end-sub { font-size: 13px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-practice-end-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 900px; }
 .mo-practice-end-item { width: 120px; cursor: pointer; }
-.mo-practice-end-item img { width: 120px; height: 120px; object-fit: cover; display: block; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-practice-end-item img { width: 120px; height: 120px; object-fit: cover; display: block; border-radius: var(--px-radius-sm); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
 .mo-practice-end-item span { display: block; margin-top: 4px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-practice-end-actions { display: flex; gap: 8px; }
 .mo-practice-empty { padding: 40px; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
@@ -194,7 +194,7 @@ export const MO_CSS_MORE = `
 .mo-practice-pooldetail .mo-dd { flex: 1 1 auto; }
 .mo-practice-summary { font-size: 12px; margin-left: 128px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-practice-poolcount { font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-practice-start { padding: 6px 16px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); font-size: 12px; font-weight: 600; cursor: pointer; }
+.mo-practice-start { padding: 6px 16px; border: 0; border-radius: var(--px-radius-sm); background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); font-size: 12px; font-weight: 600; cursor: pointer; }
 .mo-practice-start:hover { background: var(--vscode-button-hoverBackground, var(--px-accent)); }
 .mo-practice-start:disabled { opacity: 0.5; cursor: default; }
 .mo-practice-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
@@ -202,14 +202,14 @@ export const MO_CSS_MORE = `
 .mo-practice-section-title { font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: normal; opacity: 0.8; margin-bottom: 8px; }
 .mo-practice-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
 .mo-practice-thumb { width: 96px; cursor: pointer; }
-.mo-practice-thumb img { width: 96px; height: 96px; object-fit: cover; display: block; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-practice-thumb img { width: 96px; height: 96px; object-fit: cover; display: block; border-radius: var(--px-radius-sm); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
 .mo-practice-thumb span { display: block; margin-top: 3px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-practice-list { display: flex; flex-direction: column; }
-.mo-practice-list-row { display: flex; gap: 10px; align-items: center; padding: 6px 8px; font-size: 12px; border-radius: var(--parallx-radius-sm, 3px); cursor: pointer; }
+.mo-practice-list-row { display: flex; gap: 10px; align-items: center; padding: 6px 8px; font-size: 12px; border-radius: var(--px-radius-sm); cursor: pointer; }
 .mo-practice-list-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-practice-dim { color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-daily { display: flex; align-items: center; gap: 14px; margin: 0 16px 10px; padding: 10px 12px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
-.mo-daily img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; display: block; }
+.mo-daily { display: flex; align-items: center; gap: 14px; margin: 0 16px 10px; padding: 10px 12px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--px-radius-sm); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-daily img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--px-radius-sm); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; display: block; }
 .mo-daily-text { flex: 1 1 auto; min-width: 0; }
 .mo-daily-title { font-size: 13px; font-weight: 600; }
 .mo-daily-sub { font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); margin-top: 2px; }
@@ -219,7 +219,7 @@ export const MO_CSS_MORE = `
 /* ── Painting plans ── */
 .mo-plan { position: absolute; inset: 0; display: flex; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; }
 .mo-plan-tools { flex: 0 0 64px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
-.mo-plan-tool { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; opacity: 0.75; }
+.mo-plan-tool { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--vscode-foreground, var(--px-text)); cursor: pointer; opacity: 0.75; }
 .mo-plan-tools .mo-plan-tool { width: 56px; height: auto; padding: 6px 0 5px; flex-direction: column; gap: 3px; font-size: var(--px-text-2xs); }
 .mo-plan-tool:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); opacity: 1; }
 .mo-plan-tool.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); opacity: 1; }
@@ -247,7 +247,7 @@ export const MO_CSS_MORE = `
 .mo-plan-crophandle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
 .mo-plan-crophandle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
 .mo-plan-variants { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; overflow-x: auto; border-top: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-plan-variant { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid transparent; cursor: pointer; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-plan-variant { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; border-radius: var(--px-radius-sm); border: 1px solid transparent; cursor: pointer; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-plan-variant img { height: 56px; min-width: 24px; display: block; border-radius: 2px; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
 .mo-plan-variant:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-plan-variant.is-current { border-color: var(--vscode-focusBorder, var(--px-accent)); color: var(--vscode-foreground, var(--px-text)); }
@@ -258,7 +258,7 @@ export const MO_CSS_MORE = `
 .mo-pv-status { flex: 1 1 160px; min-width: 0; font-size: var(--px-text-xs); }
 .mo-plan-variants .mo-plan-variant-actions { flex-wrap: wrap; }
 .mo-plan-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
-.mo-plan-swatch { width: 28px; height: 28px; border-radius: var(--parallx-radius-sm, 3px); border: 1px solid rgba(0, 0, 0, 0.35); cursor: pointer; }
+.mo-plan-swatch { width: 28px; height: 28px; border-radius: var(--px-radius-sm); border: 1px solid rgba(0, 0, 0, 0.35); cursor: pointer; }
 /* Painting Plans: stages, the colour picker, saved colours and paint mixes (plan-colours.js) */
 .mo-pc-stagebar { display: flex; justify-content: center; align-self: center; max-width: 100%; margin: var(--px-space-2) var(--px-space-3) 0; overflow-x: auto; }
 .mo-pc-stages { display: flex; flex-direction: column; gap: var(--px-space-1); }
@@ -412,7 +412,7 @@ export const MO_CSS_MORE = `
 .mo-plan-section > .mo-clip-input--grow { flex: none; }
 .mo-plan-variant { font: inherit; color: inherit; background: transparent; }
 .mo-plan-shelf-item { display: flex; align-items: center; gap: 8px; font-size: 11px; }
-.mo-plan-shelf-item img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; }
+.mo-plan-shelf-item img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--px-radius-sm); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; }
 .mo-plan-shelf-item span { flex: 1 1 auto; }
 .mo-plans-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
 .mo-plans-head { display: flex; align-items: flex-end; gap: var(--px-space-4); margin-bottom: var(--px-space-4); }
@@ -656,7 +656,7 @@ export const MO_CSS_MORE = `
 .mo-br-marks { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .mo-br-marks:empty { display: none; }
 .mo-br-marks-label { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-br-mark { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-sm, 3px); font-size: 11px; cursor: pointer; }
+.mo-br-mark { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--px-radius-sm); font-size: 11px; cursor: pointer; }
 .mo-br-mark img { display: block; height: 36px; max-width: 180px; object-fit: contain; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
 .mo-br-mark.is-plain { opacity: 0.6; cursor: default; }
 .mo-br-pickbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 14px 0; }
@@ -666,7 +666,7 @@ export const MO_CSS_MORE = `
 .mo-br-filters:empty { display: none; }
 .mo-br-page .mo-dd.is-disabled { pointer-events: none; opacity: 0.5; }
 .mo-br-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 12px 14px 20px; align-items: start; }
-.mo-br-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--px-bg-inset, rgba(128, 128, 128, 0.06)); }
+.mo-br-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--px-radius-md); overflow: hidden; background: var(--px-bg-inset, rgba(128, 128, 128, 0.06)); }
 .mo-br-tile[hidden] { display: none; }
 .mo-br-tile.is-ticked, .mo-br-tile.is-busy { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .mo-br-tile.is-ticked { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, var(--px-accent)); }

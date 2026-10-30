@@ -8,7 +8,7 @@
   gap: 4px;
   cursor: pointer;
   padding: 0 18px 8px 36px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   user-select: none;
 }
@@ -47,19 +47,19 @@
   z-index: 10000;
   background: var(--vscode-menu-background);
   border: 1px solid var(--vscode-menu-border);
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   padding: 12px 16px;
   min-width: 220px;
   max-width: 280px;
   box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   line-height: 1.4;
 }
 
 /* Header */
 .parallx-token-popup-header {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground);
   margin-bottom: 4px;
@@ -73,7 +73,7 @@
 }
 
 .parallx-token-popup-summary-text {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -97,7 +97,7 @@
 }
 
 .parallx-token-popup-section-title {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--vscode-foreground);
   margin-bottom: 4px;
@@ -119,13 +119,13 @@
 }
 
 .parallx-token-popup-row-label {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   padding-left: 8px;
 }
 
 .parallx-token-popup-row-value {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground);
   font-variant-numeric: tabular-nums;
   min-width: 40px;

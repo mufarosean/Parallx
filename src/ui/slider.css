@@ -100,7 +100,7 @@
 .ui-slider__stops {
   position: relative;
   height: 18px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #717171);
   user-select: none;
 }

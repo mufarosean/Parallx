@@ -6,7 +6,7 @@
 
 .ai-settings-mcp-summary {
   margin-left: 8px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: normal;
   color: var(--vscode-descriptionForeground, #888);
 }
@@ -85,7 +85,7 @@
 }
 
 .ai-settings-mcp-name {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-weight: 500;
   color: var(--vscode-foreground, #ccc);
   white-space: nowrap;
@@ -95,7 +95,7 @@
 
 .ai-settings-mcp-detail {
   font-family: var(--px-font-mono);
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   overflow: hidden;
@@ -103,7 +103,7 @@
 }
 
 .ai-settings-mcp-badge {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   padding: 2px 8px;
   border-radius: 3px;
   white-space: nowrap;
@@ -119,7 +119,7 @@
 /* The sign-in progress box under a server's row (mcpAuthProgress.ts). */
 .ai-settings-mcp-auth {
   padding: 6px 12px 10px 38px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted);
   border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
 }
@@ -156,7 +156,7 @@
   color: var(--vscode-foreground, #ccc);
   padding: 3px 10px;
   border-radius: 3px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -180,7 +180,7 @@
   color: var(--vscode-textLink-foreground, #3794ff);
   padding: 8px;
   border-radius: 4px;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   cursor: pointer;
   width: 100%;
   text-align: center;
@@ -211,7 +211,7 @@
   border-radius: 3px;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #ccc);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: inherit;
   box-sizing: border-box;
 }
@@ -245,7 +245,7 @@
   border: none;
   color: var(--vscode-foreground, #ccc);
   padding: 6px 12px;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: inherit;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -267,7 +267,7 @@
 }
 
 .ai-settings-mcp-catalog-intro {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground, #888);
   margin-bottom: 4px;
 }
@@ -303,7 +303,7 @@
 }
 
 .ai-settings-mcp-catalog-card__desc {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -315,7 +315,7 @@
 }
 
 .ai-settings-mcp-catalog-card__home {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-textLink-foreground, #3794ff);
   text-decoration: none;
 }
@@ -325,13 +325,13 @@
 }
 
 .ai-settings-mcp-install-heading {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 500;
   color: var(--vscode-foreground, #ccc);
 }
 
 .ai-settings-mcp-install-desc {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground, #888);
 }
 
@@ -352,7 +352,7 @@
 }
 
 .ai-settings-mcp-install-label {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground, #ccc);
   font-weight: 500;
 }
@@ -363,7 +363,7 @@
 }
 
 .ai-settings-mcp-install-status {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-errorForeground, #f48771);
   min-height: 1em;
 }

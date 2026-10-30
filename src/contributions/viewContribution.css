@@ -23,7 +23,7 @@
   justify-content: center;
   height: 100%;
   color: var(--vscode-descriptionForeground, #6a6a6a);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
 }
 
 .contributed-view-placeholder__name {

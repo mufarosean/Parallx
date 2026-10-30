@@ -32,7 +32,7 @@
   height: 22px;
   line-height: 22px;
   padding: 0 8px 0 4px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 700;
   letter-spacing: normal;
   text-transform: none;
@@ -48,7 +48,7 @@
 .explorer-empty {
   padding: 16px;
   color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
 }
 
 .explorer-empty-open-btn {
@@ -59,7 +59,7 @@
   background: none;
   border: none;
   font: inherit;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 0;
   text-decoration: underline;
 }
@@ -142,7 +142,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   line-height: 22px;
   color: var(--vscode-foreground);
 }
@@ -178,7 +178,7 @@
   height: 22px;
   line-height: 22px;
   color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-style: italic;
 }
 
@@ -191,7 +191,7 @@
   height: 22px;
   line-height: 22px;
   color: var(--vscode-errorForeground);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
 }
 
 .tree-node-error-retry {
@@ -200,7 +200,7 @@
   background: none;
   border: none;
   font: inherit;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   padding: 0;
   text-decoration: underline;
 }
@@ -217,7 +217,7 @@
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   font: inherit;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 0 2px;
   outline: none;
   height: 18px;
@@ -249,7 +249,7 @@
 .open-editors-placeholder {
   padding: 8px 16px;
   color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-style: italic;
 }
 
@@ -260,7 +260,7 @@
   padding: 0 8px 0 10px;
   height: 22px;
   line-height: 22px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 700;
   text-transform: none;
   letter-spacing: normal;
@@ -276,7 +276,7 @@
   align-items: center;
   padding: 0 8px 0 20px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   line-height: 22px;
   height: 22px;
   white-space: nowrap;
@@ -330,8 +330,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--parallx-fontSize-base);
-  border-radius: var(--parallx-radius-sm);
+  font-size: var(--px-text-base);
+  border-radius: var(--px-radius-sm);
   opacity: 0;
   color: var(--vscode-icon-foreground);
   cursor: pointer;
@@ -359,5 +359,5 @@
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
   background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
 }

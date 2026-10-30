@@ -39,6 +39,8 @@ reg('fontFamily.mono',
 );
 
 // ─── Font Size ───────────────────────────────────────────────────────────────
+// Deprecated: the ThemeService bridge re-points every --parallx-fontSize-* and
+// --parallx-radius-* at a --px-* token, so these registry values never show.
 
 reg('fontSize.xs',   'Extra small text (labels, badges)',     '10px', '10px', '10px', '10px');
 reg('fontSize.sm',   'Small text (status bar, captions)',     '11px', '11px', '11px', '11px');

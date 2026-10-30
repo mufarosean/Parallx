@@ -50,7 +50,7 @@
   line-height: 1;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: var(--parallx-radius-sm, 4px);
+  border-radius: var(--px-radius-sm);
 }
 
 .settings-editor__close:hover {
@@ -266,7 +266,7 @@
   font-size: var(--px-text-xs);
   text-transform: capitalize;
   padding: 1px 6px;
-  border-radius: var(--parallx-radius-sm, 4px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-badge-background, rgba(128, 128, 128, 0.2));
   color: var(--vscode-badge-foreground, var(--vscode-foreground));
 }
@@ -366,7 +366,7 @@
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground, var(--vscode-foreground));
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
-  border-radius: var(--parallx-radius-sm, 4px);
+  border-radius: var(--px-radius-sm);
   padding: 6px 8px;
   resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }
@@ -386,7 +386,7 @@
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground, var(--vscode-foreground));
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
-  border-radius: var(--parallx-radius-sm, 4px);
+  border-radius: var(--px-radius-sm);
   padding: 6px 8px;
   resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
 }

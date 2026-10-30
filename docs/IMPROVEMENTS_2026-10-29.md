@@ -450,8 +450,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   - a Kit Gallery page with screenshot baselines.
 
   Source: FINISH A. Open.
-- **Old size variables** (`--parallx-fontSize`, `--parallx-radius`, about 400
-  uses) moved onto `--px-*`. FINISH A. Open.
+- **Old size variables** (`--parallx-fontSize`, `--parallx-radius`, about 650
+  uses) moved onto `--px-*`. FINISH A. Done: legacy names kept as aliases.
 - **Settings, Chat (about 50 hand-built buttons), Flashcards and Worksheets
   onto the kit.** FINISH F. Partly done.
 - **Explorer:** how files should look (your question from Oct 25, still

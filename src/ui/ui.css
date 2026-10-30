@@ -19,12 +19,12 @@
 .ui-input-box-input {
   width: 100%;
   padding: 6px 8px;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-family: inherit;
   color: var(--vscode-input-foreground);
   background-color: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border);
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   outline: none;
   box-sizing: border-box;
 }
@@ -42,7 +42,7 @@
 }
 
 .ui-input-box-validation {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-errorForeground);
   margin-top: 4px;
   min-height: 0; /* Collapses when empty */
@@ -88,7 +88,7 @@
   border: none;
   background: var(--vscode-editorGroupHeader-tabsBackground);
   color: var(--vscode-tab-inactiveForeground);
-  font-size: var(--parallx-fontSize-xl);
+  font-size: var(--px-text-lg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -225,12 +225,12 @@
 
 .ui-tab-sticky {
   margin-right: 2px;
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
 }
 
 .ui-tab-icon {
   margin-right: 4px;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
 }
 
 .ui-tab-label {
@@ -251,7 +251,7 @@
   top: 50%;
   transform: translateY(-50%);
   color: var(--px-text-secondary);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
 }
 
 /* The AI is writing into this tab: a breathing accent dot in the same
@@ -284,12 +284,12 @@
   right: 5px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   line-height: 1;
   opacity: 0;
   pointer-events: none;
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   padding: 0 2px;
   transition: opacity var(--px-dur-fast) var(--px-ease);
 }
@@ -319,8 +319,8 @@
   background: var(--vscode-tab-activeBackground, #1e1e1e);
   color: var(--vscode-tab-activeForeground, #fff);
   border: 1px solid var(--vscode-focusBorder, #007fd4);
-  border-radius: var(--parallx-radius-sm);
-  font-size: var(--parallx-fontSize-base);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-base);
   white-space: nowrap;
   pointer-events: none;
   z-index: 99999;
@@ -375,7 +375,7 @@
   border: 1px solid var(--vscode-menu-border);
   border-radius: 4px;
   box-shadow: 0 4px 16px var(--vscode-widget-shadow);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   outline: none;
   overflow-y: auto;
   max-height: var(--px-menu-h-lg);
@@ -455,7 +455,7 @@
 
 .context-menu-item-keybinding {
   margin-left: 24px;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -469,7 +469,7 @@
 /* Submenu arrow indicator */
 .context-menu-submenu-arrow {
   margin-left: 24px;
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -510,7 +510,7 @@
   border: none;
   color: var(--vscode-editorWidget-foreground, #cccccc);
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -547,7 +547,7 @@
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
   font-family: inherit;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   outline: none;
   border-radius: 2px;
   box-sizing: border-box;
@@ -570,7 +570,7 @@
 .find-replace-option-btn {
   width: 26px;
   height: var(--px-control-h-sm);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -579,7 +579,7 @@
   border: 1px solid transparent;
   color: var(--vscode-editorWidget-foreground, #cccccc);
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   padding: 0;
 }
 
@@ -594,7 +594,7 @@
 }
 
 .find-replace-match-count {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-editorWidget-foreground, #cccccc);
   white-space: nowrap;
   min-width: 60px;
@@ -616,7 +616,7 @@
 .find-replace-action-btn {
   width: 26px;
   height: var(--px-control-h-sm);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -624,7 +624,7 @@
   border: 1px solid transparent;
   color: var(--vscode-editorWidget-foreground, #cccccc);
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   padding: 0;
 }
 

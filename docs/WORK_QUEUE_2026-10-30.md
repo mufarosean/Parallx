@@ -31,7 +31,7 @@ commit and push after each item, and mark it here.
 13. Ctrl+P finds settings, tools and themes, not only files.
 14. Undo toast in the kit (and used where something is removed).
 15. Copy Diagnostics (versions, tools on, model, recent errors) for bug reports.
-16. Old size variables (`--parallx-fontSize`, `--parallx-radius`) moved onto `--px-*`.
+16. Done: old size variables (`--parallx-fontSize`, `--parallx-radius`) moved onto `--px-*`.
 17. The empty editor shows Start (recent pages, files, new page).
 
 ## Waiting on you

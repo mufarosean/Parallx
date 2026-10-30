@@ -259,7 +259,7 @@ const CSS = `
 .br-bookmarks-bar { display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); overflow: hidden; flex: 0 0 auto; }
 .br-notice { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); font-size: 12px; flex: 0 0 auto; }
 .br-notice-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.br-notice button { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 2px 10px; font-size: 12px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }
+.br-notice button { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--px-radius-md); padding: 2px 10px; font-size: 12px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }
 .br-notice button:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-notice button.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, #fff); border-color: transparent; }
 .br-bm-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 180px; padding: 2px 8px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
@@ -281,7 +281,7 @@ const CSS = `
 .br-table .num { text-align: right; font-variant-numeric: tabular-nums; width: 1%; white-space: nowrap; }
 .br-table td .br-btn { width: 22px; height: 22px; }
 .br-toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); flex: 0 0 auto; }
-.br-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: var(--parallx-radius-md, 6px); background: transparent; color: inherit; cursor: pointer; padding: 0; position: relative; }
+.br-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: var(--px-radius-md); background: transparent; color: inherit; cursor: pointer; padding: 0; position: relative; }
 .br-btn:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-btn:disabled { opacity: 0.35; cursor: default; }
 .br-btn:disabled:hover { background: transparent; }
@@ -293,7 +293,7 @@ const CSS = `
 .br-lock { display: inline-flex; opacity: 0.7; flex: 0 0 auto; }
 .br-lock.is-insecure { color: var(--vscode-errorForeground, var(--px-danger)); opacity: 1; }
 .br-address { flex: 1; min-width: 0; height: 100%; border: none; background: transparent; color: inherit; font: inherit; font-size: 13px; outline: none; }
-.br-suggest { position: absolute; left: 0; right: 0; top: 30px; z-index: 5; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; }
+.br-suggest { position: absolute; left: 0; right: 0; top: 30px; z-index: 5; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--px-radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; }
 .br-suggest-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .br-suggest-item:hover, .br-suggest-item.is-selected { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-suggest-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -318,7 +318,7 @@ const CSS = `
 .br-pane [hidden] { display: none !important; }
 .br-content { background-size: 100% 100%; background-repeat: no-repeat; background-position: 0 0; }
 .br-status { position: absolute; left: 0; bottom: 0; max-width: 70%; padding: 2px 8px; font-size: 11px; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-left: none; border-bottom: none; border-radius: 0 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 3; }
-.br-panel { position: absolute; top: 40px; right: 8px; width: 320px; z-index: 6; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 12px; font-size: 12px; }
+.br-panel { position: absolute; top: 40px; right: 8px; width: 320px; z-index: 6; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--px-radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 12px; font-size: 12px; }
 .br-panel h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
 .br-panel .br-muted { opacity: 0.7; }
 .br-panel-count { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 6px; }
@@ -344,7 +344,7 @@ const CSS = `
 .br-newtab-section { width: min(760px, 100%); }
 .br-newtab-section h3 { margin: 0 0 8px; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
 .br-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.br-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--parallx-radius-md, 6px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-editor-background, var(--px-bg)); cursor: pointer; text-align: left; color: inherit; font: inherit; min-width: 0; }
+.br-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--px-radius-md); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-editor-background, var(--px-bg)); cursor: pointer; text-align: left; color: inherit; font: inherit; min-width: 0; }
 .br-tile:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-tile-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .br-tile-host { font-size: 11px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

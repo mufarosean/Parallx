@@ -143,7 +143,7 @@
   height: 26px;
   padding: 0;
   border: none;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   cursor: pointer;
@@ -218,7 +218,7 @@
   height: 26px;
   padding: 0;
   border: none;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   cursor: pointer;
@@ -249,10 +249,10 @@
   height: var(--px-control-h-sm);
   padding: 0 10px;
   border: none;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
   white-space: nowrap;
@@ -274,7 +274,7 @@
   padding: 0 8px;
   gap: 4px;
   border: none;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: transparent;
 }
 
@@ -292,7 +292,7 @@
 .parallx-chat-picker-label {
   display: inline-flex;
   align-items: center;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: inherit;
 }
@@ -308,7 +308,7 @@
   max-height: 320px;
   overflow-y: auto;
   padding: 4px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
@@ -321,7 +321,7 @@
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground, #cccccc);
 }
 
@@ -352,7 +352,7 @@
 }
 
 .parallx-chat-picker-item-size {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
@@ -371,7 +371,7 @@
 }
 
 .parallx-chat-picker-item-description {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   white-space: nowrap;
 }
@@ -395,7 +395,7 @@
 }
 
 .parallx-chat-picker-autonomy-header {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   padding: 4px 8px 2px;
   text-transform: none;
@@ -404,7 +404,7 @@
 
 /* HARNESS.md 2.3 — the gating truth line above the Careful toggle. */
 .parallx-chat-picker-gating-truth {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   padding: 4px 8px 6px;
   line-height: 1.4;
@@ -464,11 +464,11 @@
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border-radius: var(--parallx-radius-full);
+  border-radius: var(--px-radius-full);
   border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 68%, transparent);
   background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 76%, transparent);
   color: var(--vscode-badge-foreground, #ffffff);
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-family: var(--parallx-fontFamily-ui);
   white-space: nowrap;
   max-width: 200px;
@@ -535,7 +535,7 @@
 
 .parallx-chat-context-chip-status {
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
 }
 
 .parallx-chat-context-chip-close,
@@ -575,7 +575,7 @@
   max-height: var(--px-menu-h-md);
   display: flex;
   flex-direction: column;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
@@ -596,7 +596,7 @@
   border-radius: 4px;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #cccccc);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: var(--parallx-fontFamily-ui);
   outline: none;
 }
@@ -617,7 +617,7 @@
 
 .parallx-chat-context-picker-header {
   padding: 4px 12px 2px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   text-transform: none;
@@ -637,7 +637,7 @@
   gap: 8px;
   padding: 4px 12px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground, #cccccc);
 }
 
@@ -673,7 +673,7 @@
 }
 
 .parallx-chat-context-picker-item-desc {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   white-space: nowrap;
   overflow: hidden;
@@ -683,7 +683,7 @@
 
 .parallx-chat-context-picker-empty {
   padding: 4px 12px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   font-style: italic;
 }
@@ -700,15 +700,15 @@
 }
 
 .parallx-chat-context-picker-count {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
 .parallx-chat-context-picker-done {
   padding: 2px 10px;
   border: none;
-  border-radius: var(--parallx-radius-sm);
-  font-size: var(--parallx-fontSize-sm);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
   font-family: var(--parallx-fontFamily-ui);
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #ffffff);
@@ -786,7 +786,7 @@
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
@@ -805,7 +805,7 @@
 }
 
 .parallx-chat-tool-picker-title {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
@@ -877,7 +877,7 @@
   border: none;
   background: transparent;
   color: var(--vscode-input-foreground, #cccccc);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: var(--parallx-fontFamily-ui);
   outline: none;
 }
@@ -893,7 +893,7 @@
   border-radius: 10px;
   background: var(--vscode-badge-background, #4d4d4d);
   color: var(--vscode-badge-foreground, #ffffff);
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
@@ -905,7 +905,7 @@
   border-radius: 4px;
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #ffffff);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
   flex-shrink: 0;
@@ -920,7 +920,7 @@
 
 .parallx-chat-tool-picker-description {
   padding: 8px 12px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   line-height: 1.4;
   flex-shrink: 0;
@@ -949,7 +949,7 @@
 }
 
 .parallx-chat-tool-picker-group-label {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
@@ -969,13 +969,13 @@
 }
 
 .parallx-chat-tool-picker-cat-label {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
 
 .parallx-chat-tool-picker-cat-desc {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   margin-left: auto;
 }
@@ -1027,7 +1027,7 @@
 }
 
 .parallx-chat-tool-picker-tool-name {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-weight: 500;
   color: var(--vscode-foreground, #cccccc);
   white-space: nowrap;
@@ -1035,7 +1035,7 @@
 }
 
 .parallx-chat-tool-picker-tool-desc {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   white-space: nowrap;
   overflow: hidden;
@@ -1059,10 +1059,10 @@
   padding: 4px 8px;
   min-height: 26px;
   border: none;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-family: inherit;
   cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
@@ -1079,15 +1079,15 @@
 
 .parallx-chat-context-menu-trigger-badge {
   padding: 1px 6px;
-  border-radius: var(--parallx-radius-full);
+  border-radius: var(--px-radius-full);
   background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 78%, transparent);
   color: var(--vscode-badge-foreground, #ffffff);
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   line-height: 1.6;
 }
 
 .parallx-chat-context-pills-arrow {
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   line-height: 1;
 }
 
@@ -1138,13 +1138,13 @@
 }
 
 .parallx-chat-context-menu-title {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
 }
 
 .parallx-chat-context-menu-summary {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
@@ -1174,7 +1174,7 @@
 }
 
 .parallx-chat-context-group-title-count {
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   text-transform: none;
   letter-spacing: 0;
@@ -1240,12 +1240,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
 }
 
 .parallx-chat-context-item-meta {
   opacity: 0.72;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
 }
 
 .parallx-chat-context-item-action {
@@ -1256,13 +1256,13 @@
   height: 24px;
   padding: 0;
   border: none;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: transparent;
   color: inherit;
   cursor: pointer;
   flex-shrink: 0;
   opacity: 0;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   line-height: 1;
   transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease);
 }
@@ -1311,12 +1311,12 @@
 }
 
 .parallx-chat-context-budget-summary {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground, #cccccc);
 }
 
 .parallx-chat-context-budget-detail {
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
@@ -1327,7 +1327,7 @@
   max-height: 300px;
   display: flex;
   flex-direction: column;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
@@ -1392,7 +1392,7 @@
 }
 
 .parallx-mention-item-label {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -1405,7 +1405,7 @@
 }
 
 .parallx-mention-item-desc {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #999);
   white-space: nowrap;
   overflow: hidden;
@@ -1419,7 +1419,7 @@
 
 .parallx-mention-empty {
   padding: 8px 12px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #999);
   text-align: center;
   font-style: italic;

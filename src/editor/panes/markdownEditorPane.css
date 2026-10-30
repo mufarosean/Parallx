@@ -19,7 +19,7 @@
   margin: 0 auto;
   padding: 24px 32px 64px;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   line-height: 1.6;
   word-wrap: break-word;
 }
@@ -83,7 +83,7 @@
 .markdown-content code {
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
   padding: 0.2em 0.4em;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   font-family: var(--parallx-fontFamily-mono);
   font-size: 0.9em;
 }
@@ -91,7 +91,7 @@
 .markdown-content pre {
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
   padding: 16px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   overflow-x: auto;
   margin-bottom: 16px;
 }
@@ -184,7 +184,7 @@
   padding: 8px 16px;
   margin-bottom: 16px;
   border-left: 4px solid;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   background: color-mix(in srgb, var(--px-text) 3%, transparent);
 }
 

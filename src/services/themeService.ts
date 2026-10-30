@@ -282,12 +282,12 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
 /**
  * Parallx design-token (type / radius / font) refinement bridge.
  *
- * The app uses a second token namespace, `--parallx-fontSize-*` /
- * `--parallx-radius-*` / `--parallx-fontFamily-*`, ~600 references across
- * the CSS. We remap those to the refined M83 scales (six-step type ladder,
- * consistent radii) so typography and rounding transform app-wide — the
- * structural change beyond color. Appended after the design-token lines so
- * these win.
+ * DEPRECATED aliases. `--parallx-fontSize-*` and `--parallx-radius-*` are
+ * the old size names; the app itself now uses the `--px-text-*` /
+ * `--px-radius-*` tokens directly (lg reads --px-text-md, md and base both
+ * read --px-text-base). They stay defined, as aliases of those tokens, only
+ * so third-party extensions written against them keep rendering the same.
+ * New code uses `--px-*`. Appended after the design-token lines so these win.
  */
 const THEME_PX_DESIGN_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   // Type ladder — nudge toward the refined six-step scale. 10px micro-text

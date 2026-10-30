@@ -129,10 +129,10 @@ function injectStyles() {
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 5px 8px;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   outline: none;
 }
 .tg-search:focus { border-color: var(--vscode-focusBorder, #007fd4); }
@@ -149,7 +149,7 @@ function injectStyles() {
 }
 .tg-scene-row { display: flex; align-items: center; gap: 8px; }
 .tg-scene-label {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #888);
   min-width: 160px;
 }
@@ -160,7 +160,7 @@ function injectStyles() {
   border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
   border-radius: 3px;
   padding: 4px 8px;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-family: inherit;
   outline: none;
 }
@@ -172,7 +172,7 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground, #aaa);
   padding: 4px 12px;
   border-radius: 3px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
 }
 .tg-scene-clear-btn:hover {
@@ -196,7 +196,7 @@ function injectStyles() {
   gap: 8px;
   padding: 7px 12px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   transition: background 80ms ease;
   user-select: none;
@@ -215,7 +215,7 @@ function injectStyles() {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
@@ -238,7 +238,7 @@ function injectStyles() {
   gap: 8px;
   padding: 7px 12px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   transition: background 80ms ease;
   min-height: var(--px-control-h-lg);
@@ -256,10 +256,10 @@ function injectStyles() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
 }
 .tg-chat-row-meta {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -274,7 +274,7 @@ function injectStyles() {
   width: 22px;
   height: 22px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
@@ -347,7 +347,7 @@ function injectStyles() {
   line-height: 1.2;
 }
 .tg-page-header-subtitle {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground);
   margin-top: 2px;
 }
@@ -368,7 +368,7 @@ function injectStyles() {
   flex-direction: column;
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
-  border-radius: var(--parallx-radius-lg, 8px);
+  border-radius: var(--px-radius-lg);
   padding: 16px;
   cursor: pointer;
   transition: border-color 120ms ease, box-shadow 120ms ease;
@@ -386,7 +386,7 @@ function injectStyles() {
 .tg-card-avatar {
   width: 36px;
   height: 36px;
-  border-radius: var(--parallx-radius-md, 6px);
+  border-radius: var(--px-radius-md);
   background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 15%, var(--vscode-editor-background) 85%);
   display: flex;
   align-items: center;
@@ -395,7 +395,7 @@ function injectStyles() {
 }
 .tg-card-avatar .tg-icon { color: var(--vscode-focusBorder, #007fd4); }
 .tg-card-name {
-  font-size: var(--parallx-fontSize-lg, 14px);
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--vscode-foreground);
   overflow: hidden;
@@ -404,7 +404,7 @@ function injectStyles() {
   flex: 1;
 }
 .tg-card-desc {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground);
   line-height: 1.4;
   flex: 1;
@@ -427,12 +427,12 @@ function injectStyles() {
   gap: 4px;
   padding: 4px 8px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   transition: background 80ms ease, color 80ms ease;
 }
 .tg-card-action:hover {
@@ -453,7 +453,7 @@ function injectStyles() {
 .tg-card--create:hover { color: var(--vscode-foreground); }
 .tg-card--create .tg-icon { color: inherit; }
 .tg-card--create-label {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-weight: 500;
 }
 
@@ -507,15 +507,15 @@ function injectStyles() {
   gap: 8px;
   padding: 6px 10px;
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm, 3px);
-  font-size: var(--parallx-fontSize-base, 12px);
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   transition: background 80ms ease;
 }
 .tg-recent-row:hover { background: var(--vscode-list-hoverBackground); }
 .tg-recent-row .tg-icon { color: var(--vscode-descriptionForeground); }
 .tg-recent-row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tg-recent-row-time { font-size: var(--parallx-fontSize-sm, 11px); color: var(--vscode-descriptionForeground); }
+.tg-recent-row-time { font-size: var(--px-text-sm); color: var(--vscode-descriptionForeground); }
 
 /* ═══ Settings form ═══ */
 .tg-settings-form { max-width: 480px; }
@@ -524,13 +524,13 @@ function injectStyles() {
 }
 .tg-form-label {
   display: block;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground);
   margin-bottom: 4px;
 }
 .tg-form-hint {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   margin-bottom: 4px;
 }
@@ -539,10 +539,10 @@ function injectStyles() {
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 5px 8px;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   outline: none;
   box-sizing: border-box;
 }
@@ -552,10 +552,10 @@ function injectStyles() {
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 5px 8px;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   outline: none;
 }
 .tg-form-select:focus { border-color: var(--vscode-focusBorder, #007fd4); }
@@ -567,15 +567,15 @@ function injectStyles() {
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
   border: none;
-  border-radius: var(--parallx-radius-md, 6px);
+  border-radius: var(--px-radius-md);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   cursor: pointer;
   transition: opacity 80ms ease;
 }
 .tg-form-save:hover { opacity: 0.85; }
 .tg-form-saved {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-testing-iconPassed, #73c991);
   margin-left: 8px;
   opacity: 0;
@@ -615,23 +615,23 @@ function injectStyles() {
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
 }
 .tg-chat-toolbar-label {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground);
 }
 .tg-chat-toolbar-select {
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 3px 6px;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-family: var(--parallx-fontFamily-ui);
   outline: none;
 }
 .tg-chat-toolbar-select:focus { border-color: var(--vscode-focusBorder, #007fd4); }
 .tg-chat-toolbar-spacer { flex: 1; }
 .tg-chat-toolbar-charname {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   font-weight: 500;
 }
@@ -664,7 +664,7 @@ function injectStyles() {
   gap: 6px;
 }
 .tg-msg-name {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 700;
   text-transform: none;
   letter-spacing: normal;
@@ -689,7 +689,7 @@ function injectStyles() {
 
 /* Message body — flat, no bubble */
 .tg-msg-body {
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -707,7 +707,7 @@ function injectStyles() {
 .tg-msg-body--editing {
   background: var(--vscode-input-background, var(--px-border));
   border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.08));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 8px;
   cursor: text;
 }
@@ -716,7 +716,7 @@ function injectStyles() {
   min-height: 60px;
   resize: none;
   font-family: inherit;
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   line-height: 1.6;
   background: transparent;
   color: var(--vscode-editor-foreground, #ccc);
@@ -732,11 +732,11 @@ function injectStyles() {
   padding: 2px 0;
 }
 .tg-inline-edit-btn--auto {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-family: inherit;
   padding: 3px 10px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
   background: transparent;
   color: var(--vscode-descriptionForeground);
@@ -772,7 +772,7 @@ function injectStyles() {
 }
 /* Turn bar and char-btn styles removed — unified shortcut buttons serve as turn controls */
 .tg-turn-status {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   white-space: nowrap;
 }
@@ -796,7 +796,7 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground, #888);
   text-transform: none;
   letter-spacing: normal;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
 }
 .tg-msg-body em { font-style: italic; }
 .tg-msg-body strong { font-weight: 700; }
@@ -811,7 +811,7 @@ function injectStyles() {
   height: 28px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
@@ -843,7 +843,7 @@ function injectStyles() {
 }
 .tg-welcome-name { font-size: 24px; }
 .tg-welcome-hint {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -879,7 +879,7 @@ function injectStyles() {
   background: transparent;
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   line-height: 1.45;
   resize: none;
   overflow-y: auto;
@@ -972,7 +972,7 @@ function injectStyles() {
   background: transparent;
   color: var(--vscode-descriptionForeground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
   white-space: nowrap;
   transition: background 80ms ease, color 80ms ease;
@@ -995,7 +995,7 @@ function injectStyles() {
   align-items: center;
   gap: 2px;
   margin-left: auto;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   visibility: hidden;
 }
@@ -1032,7 +1032,7 @@ function injectStyles() {
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
@@ -1047,7 +1047,7 @@ function injectStyles() {
 
 /* ═══ Token counter ═══ */
 .tg-token-count {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   white-space: nowrap;
   margin-right: 4px;
@@ -1155,7 +1155,7 @@ function injectStyles() {
   width: 22px;
   height: 22px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
@@ -1176,10 +1176,10 @@ function injectStyles() {
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground, #ccc);
   border: 1px solid var(--vscode-input-border, #555);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   padding: 8px;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   line-height: 1.5;
   resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   outline: none;
@@ -1197,9 +1197,9 @@ function injectStyles() {
   gap: 4px;
   padding: 3px 10px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
 }
 .tg-msg-edit-save {
@@ -1235,7 +1235,7 @@ function injectStyles() {
   flex-direction: column;
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
-  border-radius: var(--parallx-radius-lg, 8px);
+  border-radius: var(--px-radius-lg);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
@@ -1247,7 +1247,7 @@ function injectStyles() {
   border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-modal-title {
-  font-size: var(--parallx-fontSize-lg, 14px);
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--vscode-foreground);
 }
@@ -1258,7 +1258,7 @@ function injectStyles() {
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
@@ -1275,12 +1275,12 @@ function injectStyles() {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   line-height: 1.6;
   color: var(--vscode-foreground);
 }
 .tg-modal-body .tg-prompt-role {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
@@ -1293,14 +1293,14 @@ function injectStyles() {
   padding: 8px 12px;
   margin-bottom: 8px;
   background: color-mix(in srgb, var(--vscode-input-background, var(--px-border)) 50%, transparent);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   border-left: 3px solid var(--vscode-focusBorder, #007fd4);
 }
 .tg-modal-body .tg-prompt-diag {
   padding: 8px 12px;
   margin-bottom: 8px;
   background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--px-bg-elevated)) 80%, transparent);
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   border-left: 3px solid var(--vscode-charts-yellow, #d7ba7d);
   font-size: 11.5px;
 }
@@ -1315,7 +1315,7 @@ function injectStyles() {
   gap: 8px;
   padding: 8px 16px;
   border-top: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -1340,14 +1340,14 @@ function injectStyles() {
   color: var(--vscode-foreground);
 }
 .tg-chat-settings-subtitle {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
 }
 .tg-cs-section {
   margin-bottom: 20px;
 }
 .tg-cs-section-title {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
@@ -1362,7 +1362,7 @@ function injectStyles() {
 }
 .tg-cs-label {
   flex: 0 0 140px;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
 }
 .tg-cs-input {
@@ -1370,22 +1370,22 @@ function injectStyles() {
   max-width: 280px;
   padding: 4px 8px;
   border: 1px solid var(--vscode-input-border, var(--px-border));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
 }
 .tg-cs-select {
   flex: 1;
   max-width: 280px;
   padding: 4px 8px;
   border: 1px solid var(--vscode-input-border, var(--px-border));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-input-background, var(--px-border));
   color: var(--vscode-input-foreground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
 }
 .tg-cs-hint {
   font-size: 10px;
@@ -1439,7 +1439,7 @@ function injectStyles() {
   border-radius: 12px;
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   color: var(--vscode-foreground);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
 }
 .tg-cs-chip--active {
   border-color: var(--vscode-focusBorder, #007fd4);
@@ -1457,7 +1457,7 @@ function injectStyles() {
   border-radius: 12px;
   background: transparent;
   color: var(--vscode-foreground);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
   transition: border-color 80ms ease;
 }
@@ -1471,17 +1471,17 @@ function injectStyles() {
 .tg-cs-save-btn {
   padding: 6px 16px;
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   cursor: pointer;
   transition: background 80ms ease;
 }
 .tg-cs-save-btn:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 .tg-cs-saved {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: #73c991;
   opacity: 0;
   transition: opacity 200ms ease;
@@ -1509,7 +1509,7 @@ function injectStyles() {
   color: var(--vscode-foreground);
 }
 .tg-ce-subtitle {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
 }
 .tg-ce-field {
@@ -1517,13 +1517,13 @@ function injectStyles() {
 }
 .tg-ce-label {
   display: block;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground);
   margin-bottom: 4px;
 }
 .tg-ce-hint {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
   font-style: italic;
   margin-bottom: 4px;
@@ -1534,11 +1534,11 @@ function injectStyles() {
   box-sizing: border-box;
   padding: 6px 10px;
   border: 1px solid var(--vscode-input-border, var(--px-border));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
 }
 .tg-ce-input:focus {
   outline: none;
@@ -1550,11 +1550,11 @@ function injectStyles() {
   min-height: 80px;
   padding: 8px 10px;
   border: 1px solid var(--vscode-input-border, var(--px-border));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   resize: none; field-sizing: content; max-height: var(--px-textarea-max-h);
   line-height: 1.5;
 }
@@ -1569,11 +1569,11 @@ function injectStyles() {
   box-sizing: border-box;
   padding: 6px 10px;
   border: 1px solid var(--vscode-input-border, var(--px-border));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-input-background, var(--px-bg));
   color: var(--vscode-input-foreground, #ccc);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
 }
 .tg-ce-select:focus {
   outline: none;
@@ -1593,7 +1593,7 @@ function injectStyles() {
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   color: var(--vscode-descriptionForeground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
   transition: border-color 80ms ease, color 80ms ease;
 }
@@ -1618,11 +1618,11 @@ function injectStyles() {
 .tg-ce-cancel-btn {
   padding: 6px 16px;
   border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-foreground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   cursor: pointer;
 }
 .tg-ce-cancel-btn:hover {
@@ -1632,18 +1632,18 @@ function injectStyles() {
   margin-left: auto;
   padding: 6px 20px;
   border: 1px solid transparent;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--px-accent);
   color: #fff;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-weight: 600;
   cursor: pointer;
   transition: background 80ms ease;
 }
 .tg-ce-save-btn:hover { background: var(--px-accent-hover, #45a040); }
 .tg-ce-saved {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: #73c991;
   opacity: 0;
   transition: opacity 200ms ease;
@@ -1673,7 +1673,7 @@ function injectStyles() {
   outline: none;
   color: var(--vscode-input-foreground, #ddd);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
 }
 .tg-director-input::placeholder { color: var(--vscode-input-placeholderForeground, #6e6e6e); }
 
@@ -1701,7 +1701,7 @@ function injectStyles() {
   border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 .tg-drawer-title {
-  font-size: var(--parallx-fontSize-md, 13px);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground);
 }
@@ -1715,12 +1715,12 @@ function injectStyles() {
 }
 .tg-drawer-field { display: flex; flex-direction: column; gap: 4px; }
 .tg-drawer-label {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--vscode-foreground);
 }
 .tg-drawer-hint {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #888);
   line-height: 1.4;
 }
@@ -1730,7 +1730,7 @@ function injectStyles() {
   border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
   border-radius: 3px;
   padding: 5px 8px;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-family: var(--parallx-fontFamily-ui);
   outline: none;
   box-sizing: border-box;
@@ -1749,7 +1749,7 @@ function injectStyles() {
   border-radius: 10px;
   border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.15));
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground);
 }
 .tg-drawer-chip-remove {
@@ -1773,7 +1773,7 @@ function injectStyles() {
   background: transparent;
   color: var(--vscode-foreground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   cursor: pointer;
 }
 .tg-drawer-add-btn:hover, .tg-drawer-btn:hover { background: var(--vscode-list-hoverBackground); }
@@ -1786,7 +1786,7 @@ function injectStyles() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   cursor: pointer;
 }
@@ -1842,7 +1842,7 @@ function injectStyles() {
   gap: 8px;
   padding: 5px 12px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground);
   min-height: var(--px-control-h-sm);
 }
@@ -1903,13 +1903,13 @@ function injectStyles() {
   color: var(--vscode-foreground);
 }
 .tg-forge-subtitle {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground);
 }
 .tg-forge-controls { display: flex; flex-direction: column; gap: 8px; }
 .tg-forge-section {
   margin-top: 12px;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
@@ -1920,7 +1920,7 @@ function injectStyles() {
   width: 46px;
   flex-shrink: 0;
   text-align: right;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -1928,7 +1928,7 @@ function injectStyles() {
 .tg-forge-row-label {
   width: 90px;
   flex-shrink: 0;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--vscode-foreground);
 }
@@ -1970,11 +1970,11 @@ function injectStyles() {
   gap: 6px;
   padding: 6px 14px;
   border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.15));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   color: var(--vscode-foreground);
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   cursor: pointer;
 }
 .tg-forge-dice:hover { background: var(--vscode-list-hoverBackground); }
@@ -1985,11 +1985,11 @@ function injectStyles() {
   margin-left: auto;
   padding: 6px 20px;
   border: 1px solid transparent;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--px-accent);
   color: #fff;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   font-weight: 600;
   cursor: pointer;
   transition: background 80ms ease;
@@ -1999,16 +1999,16 @@ function injectStyles() {
 .tg-forge-output { display: flex; flex-direction: column; gap: 12px; }
 .tg-forge-status {
   padding: 10px 12px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
   color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
 }
 .tg-forge-status--error { color: var(--vscode-errorForeground, #f48771); }
 .tg-forge-field { display: flex; flex-direction: column; gap: 4px; }
 .tg-forge-field-head { display: flex; align-items: center; justify-content: space-between; }
 .tg-forge-field-label {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--vscode-foreground);
 }
@@ -2025,7 +2025,7 @@ function injectStyles() {
 .tg-forge-reroll:hover { background: var(--vscode-list-hoverBackground); color: var(--vscode-foreground); }
 .tg-forge-raw {
   padding: 10px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
   color: var(--vscode-descriptionForeground);
   font-size: 11px;
@@ -2036,10 +2036,10 @@ function injectStyles() {
 .tg-forge-final {
   padding: 12px;
   border: 1px solid var(--vscode-widget-border, rgba(255,255,255,0.1));
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
   color: var(--vscode-foreground);
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-base);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;

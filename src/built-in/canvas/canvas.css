@@ -40,7 +40,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   padding: 0;
   flex-shrink: 0;
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
@@ -65,7 +65,7 @@
   border-top: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));
   width: 100%;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 40%, transparent));
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-family: inherit;
   flex-shrink: 0;
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
@@ -79,9 +79,9 @@
 .canvas-sidebar-trash-badge {
   background: var(--vscode-badge-background, color-mix(in srgb, var(--px-text) 10%, transparent));
   color: var(--vscode-badge-foreground, color-mix(in srgb, var(--px-text) 50%, transparent));
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   padding: 1px 5px;
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   min-width: 14px;
   text-align: center;
 }
@@ -112,7 +112,7 @@
 .canvas-empty {
   padding: 16px;
   color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   text-align: center;
 }/* sidebar undo toast */
 .canvas-sidebar-toast {
@@ -122,7 +122,7 @@
   bottom: 44px;
   background: var(--px-bg-elevated);
   border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
-  border-radius: var(--parallx-radius-md, 6px);
+  border-radius: var(--px-radius-md);
   padding: 8px 10px;
   display: flex;
   align-items: center;
@@ -195,7 +195,7 @@
   letter-spacing: 0.5px;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-sidebar-recents-header:hover {
@@ -316,7 +316,7 @@
   max-height: 80vh;
   background: var(--vscode-editor-background, #1e1e1e);
   border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
-  border-radius: var(--parallx-radius-lg, 8px);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-lg);
   padding: 22px 22px 16px;
   overflow-y: auto;
@@ -342,7 +342,7 @@
 .canvas-template-card {
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
-  border-radius: var(--parallx-radius-md, 6px);
+  border-radius: var(--px-radius-md);
   padding: 14px 12px;
   text-align: left;
   color: var(--vscode-foreground);
@@ -423,7 +423,7 @@
   font-size: var(--px-text-sm);
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-template-picker-blank:hover,
@@ -463,7 +463,7 @@
   min-width: 200px;
   background: var(--vscode-menu-background, var(--vscode-editorWidget-background, #252526));
   border: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 10%, transparent));
-  border-radius: var(--parallx-radius-md, 6px);
+  border-radius: var(--px-radius-md);
   box-shadow: var(--px-shadow-lg);
   padding: 4px;
   font-family: var(--parallx-fontFamily-ui);
@@ -505,7 +505,7 @@
   max-height: 84vh;
   background: var(--vscode-editor-background, #1e1e1e);
   border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
-  border-radius: var(--parallx-radius-lg, 8px);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-lg);
   display: flex;
   flex-direction: column;
@@ -532,7 +532,7 @@
   line-height: 1;
   cursor: pointer;
   padding: 2px 8px;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
 }
 .canvas-shortcuts-close:hover {
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
@@ -598,7 +598,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding-right: 48px;
   position: relative;
   color: var(--vscode-foreground);
@@ -665,7 +665,7 @@
 
 .canvas-node-icon {
   flex-shrink: 0;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
 }
 
 /* ── Chevron (hidden by default, overlays icon on hover/expanded) ── */
@@ -681,7 +681,7 @@
   pointer-events: none;
   transition: transform var(--px-dur-base) var(--px-ease);
   cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
 }
 
 .canvas-node-chevron:hover {
@@ -788,7 +788,7 @@
   word-break: break-word;
   color: var(--vscode-editor-foreground);
   font-family: var(--canvas-page-font, var(--parallx-fontFamily-editor));
-  font-size: var(--parallx-fontSize-xl);
+  font-size: var(--px-text-lg);
   line-height: 1.625;
   outline: none;
   caret-color: var(--vscode-editorCursor-foreground);
@@ -1024,7 +1024,7 @@
   width: 16px;
   height: 16px;
   border: 2px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 30%, transparent));
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   background: transparent;
   cursor: pointer;
   display: grid;
@@ -1144,7 +1144,7 @@
 /* ── Highlight / mark ── */
 
 .canvas-tiptap-editor mark {
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   padding: 2px 4px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
@@ -1156,7 +1156,7 @@
   width: 100%;
   max-width: 100%;
   height: auto;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   margin: 2px 0;
   padding: 0;
   display: block;
@@ -1196,7 +1196,7 @@
   position: absolute;
   inset: 0;
   background-color: var(--vscode-list-dropBackground, rgba(35, 131, 226, 0.17));
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   pointer-events: none;
   z-index: 1;
 }
@@ -1257,7 +1257,7 @@
 /* Callout & details already have their own padding — just add border-radius */
 .canvas-tiptap-editor .canvas-callout[style*="background-color"],
 .canvas-tiptap-editor .canvas-details[style*="background-color"] {
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1381,7 +1381,7 @@
   z-index: calc(var(--px-canvas-z-menu) + 2);
   background: var(--vscode-menu-background, #252525);
   border: 1px solid var(--vscode-menu-border, color-mix(in srgb, var(--px-text) 10%, transparent));
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-md);
   padding: 4px;
   min-width: var(--px-menu-w-md);
@@ -1401,7 +1401,7 @@
 
 .block-action-header {
   padding: 4px 8px 2px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 500;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 35%, transparent));
   text-transform: capitalize;
@@ -1416,7 +1416,7 @@
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 80%, transparent));
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
@@ -1438,7 +1438,7 @@
 
 .block-action-icon--text {
   font-weight: 700;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
 }
 
 .block-action-label {
@@ -1447,7 +1447,7 @@
 }
 
 .block-action-shortcut {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 25%, transparent));
   margin-left: auto;
   font-family: inherit;
@@ -1461,7 +1461,7 @@
 }
 
 .block-action-check {
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   color: var(--vscode-textLink-foreground, rgba(var(--px-accent-rgb), 0.8));
   margin-left: auto;
 }
@@ -1488,7 +1488,7 @@
 
 .block-color-section-header {
   padding: 6px 8px 2px;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 500;
   color: var(--px-text-faint);
   user-select: none;
@@ -1501,7 +1501,7 @@
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   color: var(--px-text);
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
@@ -1518,7 +1518,7 @@
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   flex-shrink: 0;
   font-family: var(--parallx-fontFamily-ui);
 }
@@ -1540,7 +1540,7 @@
   padding: 4px 6px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-md);
   white-space: nowrap;
   animation: bubbleMenuFadeIn 0.12s ease-out;
@@ -1556,7 +1556,7 @@
   border: none;
   color: var(--px-text);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   min-width: 30px;
   height: var(--px-control-h);
   display: flex;
@@ -1597,7 +1597,7 @@
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
   color: var(--px-text);
   font: inherit;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 4px 8px;
   border-radius: 5px;
   outline: none;
@@ -1618,7 +1618,7 @@
   border: none;
   color: var(--px-text-secondary);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   width: 28px;
   height: 28px;
   display: flex;
@@ -1660,7 +1660,7 @@
   overflow-y: auto;
   background: var(--vscode-menu-background, #252525);
   border: 1px solid var(--vscode-menu-border, color-mix(in srgb, var(--px-text) 10%, transparent));
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-md);
   padding: 4px;
   animation: slashMenuFadeIn 0.1s ease-out;
@@ -1724,7 +1724,7 @@
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 80%, transparent));
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
@@ -1746,7 +1746,7 @@
 
 .canvas-slash-icon--text {
   font-weight: 700;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
 }
 
 .canvas-slash-label {
@@ -1847,7 +1847,7 @@
   align-items: center;
   justify-content: center;
   z-index: 1;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
@@ -1929,7 +1929,7 @@
   align-items: center;
   justify-content: center;
   z-index: 1;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 
@@ -2016,7 +2016,7 @@
 }
 
 .canvas-bookmark-title {
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   font-weight: 500;
   color: var(--px-text);
   white-space: nowrap;
@@ -2025,7 +2025,7 @@
 }
 
 .canvas-bookmark-description {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--px-text-muted);
   margin-top: 4px;
   display: -webkit-box;
@@ -2035,7 +2035,7 @@
 }
 
 .canvas-bookmark-url {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-faint);
   margin-top: 6px;
   display: flex;
@@ -2139,21 +2139,21 @@
   width: 320px;
   max-width: calc(100vw - 16px);
   padding: 10px 12px;
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   background: var(--vscode-editor-background);
   box-shadow: var(--px-shadow-lg);
 }
 
 .canvas-page-block-preview-title {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--px-text);
 }
 
 .canvas-page-block-preview-snippet {
   margin-top: 6px;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   line-height: 1.45;
   color: var(--px-text-secondary);
   display: -webkit-box;
@@ -2174,7 +2174,7 @@
 }
 
 .canvas-toc-title {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
@@ -2184,7 +2184,7 @@
 
 .canvas-toc-item {
   padding: 3px 0;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   color: var(--px-text-secondary);
   cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease);
@@ -2199,7 +2199,7 @@
 .canvas-toc-level-3 { padding-left: 32px; }
 
 .canvas-toc-empty {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   color: var(--px-text-faint);
   font-style: italic;
 }
@@ -2251,7 +2251,7 @@
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: 4px;
   color: var(--px-text-faint);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -2296,7 +2296,7 @@
 }
 
 .canvas-file-name {
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   font-weight: 500;
   color: var(--px-text);
   white-space: nowrap;
@@ -2305,7 +2305,7 @@
 }
 
 .canvas-file-size {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--px-text-faint);
   margin-top: 2px;
 }
@@ -2346,7 +2346,7 @@
 .canvas-tiptap-editor table th {
   background: var(--px-bg-inset);
   font-weight: 500;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   color: var(--px-text-secondary);
   /* Browsers default <th> to text-align: center; Notion and most modern
    * notes apps left-align header cells. Without this override the cursor
@@ -2594,7 +2594,7 @@
   margin: 8px 0;
   overflow-x: auto;
   font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   line-height: 1.6;
   tab-size: 2;
 }
@@ -2816,7 +2816,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
   font-family: inherit;
@@ -2873,7 +2873,7 @@
   background: rgba(0, 0, 0, 0.55);
   border: none;
   color: rgba(255, 255, 255, 0.85);
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -2898,7 +2898,7 @@
   justify-content: center;
   background: rgba(0, 0, 0, 0.4);
   color: rgba(255, 255, 255, 0.8);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   cursor: ns-resize;
   z-index: 10;
 }
@@ -3081,7 +3081,7 @@
   background: none;
   border: none;
   color: var(--px-text-faint);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
@@ -3098,7 +3098,7 @@
 }
 
 .canvas-affordance-btn span {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
 }
 
 /* ── Title ── */
@@ -3158,7 +3158,7 @@
   background: none;
   border: none;
   color: var(--px-text-muted);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 4px 12px;
   cursor: pointer;
   border-radius: 4px;
@@ -3172,7 +3172,7 @@
   background: none;
   border: none;
   color: var(--px-text-muted);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-family: inherit;
   padding: 4px 8px;
   border-radius: 4px;
@@ -3200,9 +3200,9 @@
   padding: 12px;
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   color: var(--px-text-secondary);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   cursor: pointer;
   text-align: center;
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
@@ -3215,7 +3215,7 @@
 }
 
 .canvas-image-insert-hint {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
@@ -3231,9 +3231,9 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--px-text);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 8px 12px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   outline: none;
   font-family: inherit;
 }
@@ -3247,8 +3247,8 @@
   background: var(--vscode-button-background);
   border: none;
   color: var(--px-text-on-accent);
-  font-size: var(--parallx-fontSize-md);
-  border-radius: var(--parallx-radius-md);
+  font-size: var(--px-text-base);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
@@ -3259,7 +3259,7 @@
 }
 
 .canvas-image-insert-error {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-errorForeground);
   margin-top: 8px;
 }
@@ -3292,7 +3292,7 @@
   background: none;
   border: none;
   color: var(--px-text-muted);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 4px 12px;
   cursor: pointer;
   border-radius: 4px;
@@ -3319,9 +3319,9 @@
   padding: 12px;
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   color: var(--px-text-secondary);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   cursor: pointer;
   text-align: center;
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
@@ -3334,7 +3334,7 @@
 }
 
 .canvas-media-insert-hint {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
@@ -3350,9 +3350,9 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--px-text);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 8px 12px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   outline: none;
   font-family: inherit;
 }
@@ -3366,8 +3366,8 @@
   background: var(--vscode-button-background);
   border: none;
   color: var(--px-text-on-accent);
-  font-size: var(--parallx-fontSize-md);
-  border-radius: var(--parallx-radius-md);
+  font-size: var(--px-text-base);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
@@ -3378,7 +3378,7 @@
 }
 
 .canvas-media-insert-error {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-errorForeground);
   margin-top: 8px;
 }
@@ -3400,7 +3400,7 @@
 }
 
 .canvas-bookmark-insert-title {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--px-text);
   margin-bottom: 8px;
@@ -3416,9 +3416,9 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--px-text);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 8px 12px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   outline: none;
   font-family: inherit;
 }
@@ -3432,8 +3432,8 @@
   background: var(--vscode-button-background);
   border: none;
   color: var(--px-text-on-accent);
-  font-size: var(--parallx-fontSize-md);
-  border-radius: var(--parallx-radius-md);
+  font-size: var(--px-text-base);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
@@ -3444,7 +3444,7 @@
 }
 
 .canvas-bookmark-insert-error {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-errorForeground);
   margin-top: 8px;
   min-height: 16px;
@@ -3457,7 +3457,7 @@
   min-width: var(--px-menu-w-sm);
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-lg);
   padding: 4px;
   animation: slashMenuFadeIn 0.1s ease-out;
@@ -3469,7 +3469,7 @@
   background: none;
   border: none;
   color: var(--px-text);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 6px 10px;
   text-align: left;
   border-radius: 4px;
@@ -3522,7 +3522,7 @@
 
 .canvas-cover-swatch {
   height: 48px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   transition: transform var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
   border: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
@@ -3539,9 +3539,9 @@
   padding: 12px;
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   color: var(--px-text-secondary);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   cursor: pointer;
   text-align: center;
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
@@ -3554,14 +3554,14 @@
 }
 
 .canvas-cover-upload-hint {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
 
 .canvas-cover-upload-error {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   color: var(--vscode-errorForeground);
   margin-top: 8px;
   text-align: center;
@@ -3577,9 +3577,9 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--px-text);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   padding: 8px 12px;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   outline: none;
   font-family: inherit;
 }
@@ -3593,8 +3593,8 @@
   background: var(--vscode-button-background);
   border: none;
   color: var(--px-text-on-accent);
-  font-size: var(--parallx-fontSize-md);
-  border-radius: var(--parallx-radius-md);
+  font-size: var(--px-text-base);
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   font-family: inherit;
 }
@@ -3645,7 +3645,7 @@
 /* ── Small Text Mode ── */
 
 .canvas-small-text .canvas-tiptap-editor {
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
 }
 
 .canvas-small-text .canvas-tiptap-editor h1 {
@@ -3684,7 +3684,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-sidebar-section-label {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
   color: var(--px-text-faint);
   text-transform: none;
@@ -3726,7 +3726,7 @@
   border: none;
   background: none;
   color: var(--px-text-faint);
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
   padding: 0;
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
@@ -3766,7 +3766,7 @@
   min-width: var(--canvas-sidebar-page-menu-control-height);
   height: var(--canvas-sidebar-page-menu-control-height);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--px-text-secondary);
   display: inline-flex;
@@ -3800,7 +3800,7 @@
   min-height: var(--canvas-sidebar-page-menu-control-height);
   height: var(--canvas-sidebar-page-menu-control-height);
   padding: 0 10px;
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--vscode-input-foreground);
@@ -3825,7 +3825,7 @@
   background: none;
   color: var(--px-text);
   min-height: var(--px-control-h);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3911,7 +3911,7 @@
   display: inline;
   cursor: pointer;
   padding: 1px 3px;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   background: none;
 }
 
@@ -4187,7 +4187,7 @@
 .canvas-math-block-empty {
   color: var(--px-text-faint);
   font-style: italic;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   user-select: none;
 }
 
@@ -4205,7 +4205,7 @@
   padding: 6px 6px 6px 10px;
   background: var(--vscode-editor-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
-  border-radius: var(--parallx-radius-lg);
+  border-radius: var(--px-radius-lg);
   box-shadow: var(--px-shadow-md);
   min-width: 600px;
   max-width: 900px;
@@ -4216,7 +4216,7 @@
   min-width: 0;
   padding: 5px 8px;
   font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   line-height: 1.4;
   color: var(--px-text);
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
@@ -4246,7 +4246,7 @@
   gap: 4px;
   padding: 5px 10px;
   margin-top: 1px;
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-weight: 500;
   color: var(--px-text-on-accent);
   background: var(--vscode-button-background);
@@ -4262,7 +4262,7 @@
 }
 
 .canvas-math-block-done-key {
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   opacity: 0.7;
 }
 
@@ -4276,7 +4276,7 @@
   padding: 10px 12px;
   background: var(--vscode-editorWidget-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   box-shadow: var(--px-shadow-md);
   min-width: 240px;
   max-width: 380px;
@@ -4286,7 +4286,7 @@
   width: 100%;
   padding: 6px 8px;
   font-family: var(--parallx-fontFamily-mono);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   line-height: 1.5;
   color: var(--px-text);
   background: var(--px-bg-inset);
@@ -4319,11 +4319,11 @@
 .canvas-inline-math-preview-empty {
   color: var(--px-text-faint);
   font-style: italic;
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
 }
 
 .canvas-inline-math-hint {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-faint);
   text-align: center;
 }
@@ -4481,7 +4481,7 @@
 }
 
 .canvas-ai-chat-title {
-  font-size: var(--parallx-fontSize-base);
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: rgba(var(--px-accent-rgb), 0.9);
   letter-spacing: 0.3px;
@@ -4492,7 +4492,7 @@
   border: none;
   color: var(--px-text-faint);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   width: 22px;
   height: 22px;
   display: flex;
@@ -4530,7 +4530,7 @@
   gap: 2px;
   padding: 6px 8px;
   background: rgba(var(--px-accent-rgb), 0.06);
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   border-left: 2px solid rgba(var(--px-accent-rgb), 0.3);
 }
 
@@ -4543,7 +4543,7 @@
 }
 
 .canvas-ai-chat-context-excerpt {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted);
   line-height: 1.4;
   overflow: hidden;
@@ -4583,7 +4583,7 @@
 }
 
 .canvas-ai-chat-msg-content {
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   line-height: 1.5;
   padding: 6px 10px;
   max-width: 90%;
@@ -4615,7 +4615,7 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   color: var(--px-text-muted);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   padding: 3px 8px;
   border-radius: 5px;
   font-family: inherit;
@@ -4652,9 +4652,9 @@
   flex: 1;
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   color: var(--px-text);
-  font-size: var(--parallx-fontSize-md);
+  font-size: var(--px-text-base);
   font-family: inherit;
   padding: 6px 8px;
   resize: none;
@@ -4678,13 +4678,13 @@
   border: 1px solid rgba(var(--px-accent-rgb), 0.3);
   color: rgba(var(--px-accent-rgb), 0.9);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-lg);
+  font-size: var(--px-text-md);
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   padding: 0;
   flex-shrink: 0;
   transition: background-color var(--px-dur-fast) var(--px-ease);
@@ -4867,7 +4867,7 @@
   to   { background-position: 200% 0; }
 }
 .canvas-ai-shimmer {
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   background-image: linear-gradient(
     100deg,
     transparent 20%,
@@ -4931,6 +4931,6 @@
 /* A block shown by following a link to it: a brief highlight. */
 .canvas-block--revealed {
   background: var(--px-accent-soft);
-  border-radius: var(--parallx-radius-md);
+  border-radius: var(--px-radius-md);
   transition: background-color var(--px-dur-slow) var(--px-ease);
 }

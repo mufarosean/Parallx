@@ -21,6 +21,10 @@ html, body {
   letter-spacing: -0.006em;
 }
 
+/* UI text size on body only: html keeps the browser's 16px, so rem units
+   stay where they were. */
+body { font-size: var(--px-text-base); }
+
 /* Headings sit tighter still. */
 h1, h2, h3, h4,
 .view-section-title,

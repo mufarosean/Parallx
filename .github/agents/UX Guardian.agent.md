@@ -75,7 +75,7 @@ Does the extension break or degrade existing Parallx surfaces?
 Does the extension look like a native part of Parallx?
 
 #### Typography
-- **Font sizes** — must use `var(--parallx-fontSize-{xs,sm,base,md,lg,xl})`, never hardcoded `px`/`rem`/`em` values
+- **Font sizes** — must use `var(--px-text-{xs,sm,base,md,lg,xl})`, never hardcoded `px`/`rem`/`em` values
 - **Font family** — must use `var(--parallx-fontFamily-ui)`, never `font-family: sans-serif` or named fonts
 
 #### Colors
@@ -89,7 +89,7 @@ Does the extension look like a native part of Parallx?
 - **Reference**: `src/ui/iconRegistry.generated.ts` for the full available icon set
 
 #### Spacing & Border Radius
-- **Border radius** — must use `var(--parallx-radius-sm)` or `var(--parallx-radius-md)`, never hardcoded `border-radius`
+- **Border radius** — must use `var(--px-radius-sm)` or `var(--px-radius-md)`, never hardcoded `border-radius`
 - **Spacing** — should follow the implicit 4px/8px/12px/16px scale used across the workbench (inspect `src/workbench.css` for patterns)
 
 #### Visual Consistency Reference Files
@@ -183,10 +183,10 @@ For every CSS file and inline style in the extension:
 #### Token Usage
 | Category | Token Required | Violations | Detail |
 |----------|---------------|------------|--------|
-| Font sizes | `--parallx-fontSize-*` | 0 | — |
+| Font sizes | `--px-text-*` | 0 | — |
 | Font family | `--parallx-fontFamily-ui` | 0 | — |
 | Colors | `var(--vscode-*)` | 1 | `#333` in grid.css:42 |
-| Border radius | `--parallx-radius-*` | 0 | — |
+| Border radius | `--px-radius-*` | 0 | — |
 
 #### Icons
 | Location | Method | Status |

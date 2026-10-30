@@ -43,7 +43,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--vscode-foreground, #ccc);
-  font-size: var(--parallx-fontSize-base, 13px);
+  font-size: var(--px-text-base);
 }
 
 .epub-toolbar-spacer {
@@ -86,7 +86,7 @@
   width: 42px;
   text-align: center;
   color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -128,7 +128,7 @@
   background: transparent;
   color: var(--vscode-sideBar-foreground, #ccc);
   text-align: left;
-  font-size: var(--parallx-fontSize-base, 13px);
+  font-size: var(--px-text-base);
   line-height: 1.35;
   cursor: pointer;
   overflow-wrap: anywhere;
@@ -269,7 +269,7 @@
   padding: 32px;
   text-align: center;
   color: var(--vscode-descriptionForeground, #999);
-  font-size: var(--parallx-fontSize-base, 13px);
+  font-size: var(--px-text-base);
 }
 
 .epub-reader-error {
@@ -280,7 +280,7 @@
   height: 24px;
   line-height: 24px;
   padding: 0 12px;
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-statusBar-foreground, #ccc);
   background: var(--vscode-statusBar-background, #333333);
   text-align: center;
