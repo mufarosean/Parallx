@@ -197,6 +197,9 @@ me if it is not that.
   `.parallx/media/` has a file for it (a long hex name). Restart: still
   there. Export the page as PDF: the picture prints. Older pages with
   pictures still show theirs.
+- **Then:** Ctrl+Shift+P › **Canvas: Store Pictures as Files**. It says how
+  many pictures it moved; older pages look the same and `.parallx/media/`
+  has their files.
 
 ### 3.9 Budget asks before a sync
 - **Do:** Budget › Sync Now (Gmail connected).

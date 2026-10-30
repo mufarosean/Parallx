@@ -13489,9 +13489,9 @@ function renderGridBrowser(container, api, input) {
   // Display mode toggle handlers
   function applyDisplayModeUi() {
     const mode = state.displayMode;
-    feedModeBtn.classList.toggle('active', mode === 'feed');
-    gridModeBtn.classList.toggle('active', mode === 'grid');
-    listModeBtn.classList.toggle('active', mode === 'list');
+    feedModeBtn.classList.toggle('active', mode === 'feed'); feedModeBtn.setAttribute('aria-pressed', String(mode === 'feed')); // a screen reader hears the layout that is on
+    gridModeBtn.classList.toggle('active', mode === 'grid'); gridModeBtn.setAttribute('aria-pressed', String(mode === 'grid'));
+    listModeBtn.classList.toggle('active', mode === 'list'); listModeBtn.setAttribute('aria-pressed', String(mode === 'list'));
     zoomGroup.style.display = mode === 'list' ? 'none' : '';
     // A feed has no pages: it scrolls. (Group By Date is disabled in the sort menu there.)
     paginationBar.style.display = mode === 'feed' ? 'none' : '';
@@ -30971,7 +30971,7 @@ async function moStartDailyStudy(api, opts) {
 // The Home card. Hidden while the tools are off; refreshes when a run ends.
 function moBuildDailyCard(api) {
   const el = moEl('div', 'mo-daily');
-  const img = moEl('img', null, { alt: '' });
+  const img = moEl('img', null, { alt: '', role: 'button', tabindex: '0', 'aria-label': "Open today's picture", sceneId: 'media-organizer.daily.picture', sceneLabel: "Open Today's Picture" }); // a keyboard reaches it too
   const text = moEl('div', 'mo-daily-text');
   const title = moEl('div', 'mo-daily-title', { textContent: 'Daily Study' });
   const sub = moEl('div', 'mo-daily-sub');
@@ -30981,7 +30981,7 @@ function moBuildDailyCard(api) {
   let disposed = false;
   let photoId = 0;
   let done = false;
-  img.addEventListener('click', () => { if (photoId) moOpenPhotoDetail(api, photoId); });
+  img.addEventListener('click', () => { if (photoId) moOpenPhotoDetail(api, photoId); }); img.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && photoId) { e.preventDefault(); moOpenPhotoDetail(api, photoId); } });
   btn.addEventListener('click', () => void moStartDailyStudy(api, { fresh: done }));
   async function refresh() {
     if (disposed) return;

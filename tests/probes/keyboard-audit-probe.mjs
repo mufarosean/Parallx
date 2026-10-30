@@ -537,7 +537,8 @@ async function popupProblems(label) {
     // A press that reloaded the window (a workspace switch): wait for it, then go on with the next screen.
     if (!(await workbenchAlive())) { problems.push(`${label} :: ${c.sig}: the window reloaded`); await waitWorkbench(); break; }
     const state = () => page.evaluate((roots) => {
-      const now = Array.from(document.querySelectorAll(roots)).filter((r) => r.getClientRects().length && !window.__popupBefore.has(r));
+      // A listbox laid out in the page (a photo grid a layout button re-drew) is content, not something that opened.
+      const now = Array.from(document.querySelectorAll(roots)).filter((r) => r.getClientRects().length && !window.__popupBefore.has(r) && !(r.getAttribute('role') === 'listbox' && getComputedStyle(r).position === 'static'));
       const r = now.pop();
       const a = document.activeElement;
       const drives = !!r && !!a && !!r.id && a.getAttribute('aria-controls') === r.id;

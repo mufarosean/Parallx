@@ -38,7 +38,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { URI } from '../../platform/uri.js';
+import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
 import { registerTrashCommands } from './canvasTrashPanel.js';
@@ -1333,7 +1333,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  context.subscriptions.push(...registerPageBundleCommands(api, () => _dataService, () => { const u = api.workspace.workspaceFolders?.[0]?.uri; return u ? URI.parse(u).fsPath : undefined; })); // Export With Sub-Pages, Export All Pages
+  context.subscriptions.push(...registerPageBundleCommands(api, () => _dataService, () => { const u = api.workspace.workspaceFolders?.[0]?.uri; return u ? URI.parse(u).fsPath : undefined; }), api.commands.registerCommand('canvas.storePicturesAsFiles', async () => { if (!_dataService) return; if (!api.workspace.workspaceFolders?.length) { await api.window.showErrorMessage('Pictures are stored in the workspace folder, and none is open.'); return; } const ds = _dataService; const r = await storePicturesAsFiles({ getPageTree: () => ds.getPageTree(), getArchivedPages: () => ds.getArchivedPages(), getPage: (id) => ds.getPage(id), rewritePageContent: (id, b, o) => ds.rewritePageContent(id, b, o), updatePage: (id, u) => ds.updatePage(id, u), notifyExternalPageMutation: (id, k) => ds.notifyExternalPageMutation(id, k), decode: (c) => decodeCanvasContent(c).doc }); await api.window.showInformationMessage(r.pictures ? `Moved ${r.pictures} ${r.pictures === 1 ? 'picture' : 'pictures'} from ${r.pages} ${r.pages === 1 ? 'page' : 'pages'} into .parallx/media.` : 'No page holds a picture inside it.'); })); // Export With Sub-Pages, Export All Pages; old pictures out of the pages (imageMigration.ts)
   // canvas.movePageTo — Move To…: pick a new parent (or the top level) for a
   // page. Used by the page ⋯ menu and the sidebar's page menu.
   context.subscriptions.push(

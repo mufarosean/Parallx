@@ -69,6 +69,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `canvas.saveAsTemplate` | Canvas: Save Page As Template | canvas |  |  |  |
 | `canvas.showKeyboardShortcuts` | Canvas: Show Keyboard Shortcuts | canvas |  |  |  |
 | `canvas.showTemplatePicker` | Canvas: Show Template Picker | canvas |  |  |  |
+| `canvas.storePicturesAsFiles` | Canvas: Store Pictures as Files | canvas |  |  |  |
 | `chat.clearPlan` | Chat: Clear Plan | chat |  |  |  |
 | `chat.clearSession` | Chat: Clear Session | chat |  |  |  |
 | `chat.focus` | Chat: Focus Input | chat |  |  |  |

@@ -227,6 +227,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // ── PDF export (M93) ────────────────────────────────────────────────────
   'imageStore.ts':                         [],                    // pictures as workspace files, not base64 in the page
+  'imageMigration.ts':                     ['imageStore', 'canvasTypes'],  // old pages' pictures moved out to files
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports
   'export/pdfExportDialog.ts':             ['export/printHtml', 'config/fontRegistry'],  // dialog over the pure builders (ui/dropdown + pdfjs are external); resolves page fonts for embedding
   'export/pageBundle.ts':                  ['contentSchema', 'markdownExport', 'canvasTypes'],  // a page tree as a .zip of Markdown files

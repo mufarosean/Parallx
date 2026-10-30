@@ -282,7 +282,8 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   moves with the folder) and printed by PDF export; Export With Sub-Pages
   puts the pictures in the .zip's `media/`. SVGs, a page with no workspace
   folder, or a failed write keep the data URL as before. Pages written
-  before keep their data URLs (they still show); nothing converts them yet.
+  before keep their data URLs (they still show); Canvas: Store Pictures as
+  Files (palette) moves them out too, covers included.
   Stored files are never deleted with a page (its trash and history still
   show them). Found on the way: the AI's page-cover tool got the workspace
   root as a `file://` URI, so a cover from a workspace path could not be
