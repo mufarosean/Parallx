@@ -92,6 +92,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'tools/builtInTools.ts':  ['tools/'],
   'tools/fileTools.ts':     ['tools/'],         // sourceReading: live text as labelled blocks
   'tools/sourceReading.ts': [],
+  'tools/memoryCheckpoints.ts': [],   // memory_write leaves /rewind checkpoints
   'tools/skillDraftTool.ts': [],  // the AI drafts a skill into .parallx/skills/_drafts for review
   'tools/memoryTools.ts':   [],
   'tools/mindTools.ts':     [],                // living-system — mind_remember (the agent curates its own MIND)

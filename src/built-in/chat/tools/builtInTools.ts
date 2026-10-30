@@ -76,6 +76,7 @@ import { createActivityLogTool } from './activityLogTool.js';
 import type { IActivityJournalService } from '../../../services/activityJournalService.js';
 import { createSessionsSpawnTool } from './subagentTools.js';
 import { bindCheckpointEnvironment } from '../../../services/fileCheckpointService.js';
+import { withMemoryCheckpoints } from './memoryCheckpoints.js';
 import { makeWorkspaceFileRemover } from './writeTools.js';
 import type { SubagentSpawner } from '../../../openclaw/openclawSubagentSpawn.js';
 
@@ -121,7 +122,7 @@ export function registerBuiltInTools(
     createGrepSearchTool(fs, retrieval),
     createMemoryGetTool(fs, workspaceMemory),
     createMemorySearchTool(canonicalMemorySearch),
-    createMemoryEditTool(workspaceMemory),
+    withMemoryCheckpoints(createMemoryEditTool(workspaceMemory), fs ? async (p) => ((await fs.exists(p)) ? (await fs.readFileContent(p)).content : null) : undefined), // /rewind undoes a memory write
     createSkillDraftTool(writer),
     createTranscriptGetTool(fs),
     createTranscriptSearchTool(transcriptSearch),
