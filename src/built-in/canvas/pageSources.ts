@@ -32,6 +32,7 @@ export function registerCanvasPageSources(
   subscriptions.push(registerQuickOpenSource({
     id: 'canvas.pages',
     group: 'pages',
+    kind: 'Page',
     listItems: async () => {
       const flat: { page: IPageSummaryTreeNode; path: string }[] = [];
       const walk = (nodes: readonly IPageSummaryTreeNode[], path: string): void => {

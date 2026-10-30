@@ -28,7 +28,8 @@ import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IRecentsServiceShape } from '../services/recentsService.js';
-import { getQuickOpenSources, type QuickOpenSourceItem } from '../services/quickOpenSources.js';
+import { getQuickOpenSources } from '../services/quickOpenSources.js';
+import { collectSourceRows, matchEntry, rankQuickOpenRows } from './quickOpenRanking.js';
 import { createSurface, createList, declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 
@@ -58,6 +59,8 @@ const EXCLUDED_DIRS = new Set([
 
 interface QuickAccessItem {
   id: string;
+  /** What the row is ("Setting"), shown as its category when kinds mix. */
+  kind?: string;
   label: string;
   /** Secondary text shown to the right of the label. */
   detail?: string;
@@ -360,32 +363,8 @@ class GeneralProvider implements IQuickAccessProvider {
   async getItems(query: string): Promise<QuickAccessItem[]> {
     const items: QuickAccessItem[] = [];
 
-    // ── What running tools contribute (Canvas pages), before files ──────
-    for (const source of getQuickOpenSources()) {
-      let entries: readonly QuickOpenSourceItem[];
-      try { entries = await source.listItems(); } catch { continue; }
-      const scored: { entry: QuickOpenSourceItem; score: number; labelMatches?: number[]; detailMatches?: number[] }[] = [];
-      entries.forEach((entry, order) => {
-        if (query.length === 0) { scored.push({ entry, score: order }); return; }
-        const onLabel = fuzzyMatch(query, entry.label);
-        if (onLabel) { scored.push({ entry, score: onLabel.score, labelMatches: onLabel.matches }); return; }
-        const onDetail = entry.detail ? fuzzyMatch(query, entry.detail) : null;
-        if (onDetail) scored.push({ entry, score: onDetail.score + 1, detailMatches: onDetail.matches });
-      });
-      if (query.length > 0) scored.sort((a, b) => a.score - b.score || a.entry.label.localeCompare(b.entry.label));
-      for (const { entry, score, labelMatches, detailMatches } of scored.slice(0, MAX_FILE_RESULTS)) {
-        items.push({
-          id: `${source.id}:${entry.id}`,
-          label: entry.label,
-          detail: entry.detail,
-          group: source.group,
-          score,
-          labelMatches,
-          detailMatches,
-          accept: () => entry.open(),
-        });
-      }
-    }
+    // ── What running tools contribute (pages, settings, tools, themes) ──
+    items.push(...await collectSourceRows(query, getQuickOpenSources(), MAX_FILE_RESULTS));
 
     // ── File results (M4 Cap 6) ─────────────────────────────────────────
     if (this._fileScanner) {
@@ -402,17 +381,8 @@ class GeneralProvider implements IQuickAccessProvider {
         for (const file of files) {
           if (query.length > 0) {
             // Match against filename first, then relative path
-            const nameResult = fuzzyMatch(query, file.name);
-            if (nameResult) {
-              scored.push({ entry: file, score: nameResult.score, isRecent: recentRank.has(file.uri), labelMatches: nameResult.matches });
-              continue;
-            }
-            const pathResult = fuzzyMatch(query, file.relativePath);
-            if (pathResult) {
-              scored.push({ entry: file, score: pathResult.score + 1, isRecent: recentRank.has(file.uri), detailMatches: pathResult.matches });
-              continue;
-            }
-            // No match
+            const match = matchEntry(query, file.name, file.relativePath);
+            if (match) scored.push({ entry: file, isRecent: recentRank.has(file.uri), ...match });
             continue;
           }
           scored.push({ entry: file, score: 0, isRecent: recentRank.has(file.uri) });
@@ -437,7 +407,8 @@ class GeneralProvider implements IQuickAccessProvider {
             label: entry.name,
             detail: entry.relativePath,
             group: 'files',
-            score: isRecent ? -1 : score,
+            kind: 'File',
+            score,
             isRecent,
             labelMatches,
             detailMatches,
@@ -453,7 +424,7 @@ class GeneralProvider implements IQuickAccessProvider {
           label: 'Searching files…',
           detail: '',
           group: 'files',
-          score: 0,
+          score: Number.MAX_SAFE_INTEGER,
           accept: () => {},
         });
       }
@@ -481,6 +452,7 @@ class GeneralProvider implements IQuickAccessProvider {
             label,
             detail: lastAccessed,
             group: 'recent workspaces',
+            kind: 'Workspace',
             score,
             accept: () => {
               workspaceService.switchWorkspace(entry.identity.path ?? entry.identity.id).catch((err) => {
@@ -494,9 +466,8 @@ class GeneralProvider implements IQuickAccessProvider {
       }
     }
 
-    // Sort: files before workspaces (group order), then within each group
-    // the items are already sorted by their insertion logic
-    return items;
+    // Each section arrives in its own order; ranking may mix them (quickOpenRanking.ts).
+    return rankQuickOpenRows(items, query);
   }
 }
 
@@ -982,7 +953,7 @@ export class QuickAccessWidget extends Disposable {
       empty.className = 'command-palette-empty';
       empty.textContent = this._activeProvider === this._commandsProvider
         ? 'No matching commands'
-        : 'No matching files or workspaces';
+        : 'Nothing matches';
       list.appendChild(empty);
       return;
     }

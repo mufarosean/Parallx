@@ -9,6 +9,7 @@
 //   VS Code extensionEditor.ts — editor pane, header, tabs, contribution tables
 
 import { renderDetailsTab, renderStatusTab } from './toolEditorTabs.js';
+import { registerToolQuickOpen } from './toolQuickOpen.js';
 import { declareControl } from '../../ui/kit.js';
 import './toolGallery.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
@@ -153,11 +154,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   }, { name: 'Installed Tools', icon: 'puzzle' });
   context.subscriptions.push(viewDisposable);
 
-  // Command to refresh the sidebar
-  const showCmd = api.commands.registerCommand('tools.showInstalled', () => {
-    _sidebarRefresh?.();
-  });
-  context.subscriptions.push(showCmd);
+  // Command to refresh the sidebar; Ctrl+P finds every tool, on or off (toolQuickOpen.ts).
+  context.subscriptions.push(api.commands.registerCommand('tools.showInstalled', () => { _sidebarRefresh?.(); }));
+  context.subscriptions.push(registerToolQuickOpen(api));
 }
 
 export function deactivate(): void {

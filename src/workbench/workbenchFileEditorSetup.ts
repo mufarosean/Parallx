@@ -8,7 +8,7 @@
 //   - Register built-in format readers (Markdown, Image, PDF, EPUB, Text)
 //   - Register the pane factory (input → pane routing)
 //   - Wire the URI resolver so EditorsBridge.openFileEditor() works
-//   - Wire the Quick Access file picker delegate
+//   - Wire the Quick Access file picker delegate, and its themes source
 
 import { DisposableStore } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
@@ -21,7 +21,9 @@ import {
 
   ICommandService,
   IGlobalStorageService,
+  IThemeService,
 } from '../services/serviceTypes.js';
+import { registerThemeQuickOpen } from './themeQuickOpen.js';
 import type { EditorPart } from '../parts/editorPart.js';
 import type { QuickAccessWidget } from '../commands/quickAccess.js';
 import type { CommandService } from '../commands/commandRegistry.js';
@@ -83,6 +85,10 @@ export function initFileEditorSetup(deps: FileEditorSetupDeps): DisposableStore 
   const disposables = new DisposableStore();
   const resolver = _initFileEditorResolver(deps, disposables);
   _initQuickAccessFilePicker(deps, disposables, resolver);
+  // Ctrl+P finds themes (modes, palettes, accents, saved themes) beside the files.
+  if (deps.services.has(IThemeService) && deps.services.has(IGlobalStorageService)) {
+    disposables.add(registerThemeQuickOpen(deps.services.get(IThemeService), deps.services.get(IGlobalStorageService)));
+  }
   return disposables;
 }
 

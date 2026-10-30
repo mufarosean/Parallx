@@ -57,7 +57,7 @@
   "src/built-in/worksheet/ooxml.ts": 1034,
   "src/built-in/worksheet/univerHost.ts": 1027,
   "src/built-in/worksheet/worksheetData.ts": 895,
-  "src/commands/quickAccess.ts": 1130,
+  "src/commands/quickAccess.ts": 1101,
   "src/editor/editorGroupView.ts": 870,
   "src/editor/panes/notebook/notebookEditorPane.ts": 1451,
   "src/editor/panes/pdf/pdfEditorPane.css": 1014,

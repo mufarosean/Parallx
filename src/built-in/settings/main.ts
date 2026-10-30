@@ -12,6 +12,7 @@ import { SettingsEditor } from './settingsEditor.js';
 import { KeyboardShortcutsPanel } from './keyboardShortcutsPanel.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { createPythonSettingsPanel } from './pythonSettingsPanel.js';
+import { registerSettingsQuickOpen, revealSettingRow } from './settingsQuickOpen.js';
 // ─── Local API type ──────────────────────────────────────────────────────────
 
 interface ParallxApi {
@@ -80,6 +81,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // Deep-links so menus can drop users straight onto a hub panel.
     api.commands.registerCommand('settings.openAppearance', () => openSettings('appearance')),
     api.commands.registerCommand('settings.openKeyboardShortcuts', () => openSettings('keyboard')),
+    // Ctrl+P finds every setting row and settings page, and opens it here.
+    registerSettingsQuickOpen(
+      () => api.services.has(ISettingsRegistryService) ? api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService) : undefined,
+      { openPage: openSettings, revealRow: (key) => revealSettingRow(key) },
+    ),
   );
 
   // ── M61 Phase 6 — workspace settings export / import / reset ──────────

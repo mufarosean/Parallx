@@ -404,3 +404,9 @@
 .settings-editor__json-status--error {
   color: var(--vscode-editorError-foreground, #f48771);
 }
+
+/* The row Ctrl+P opened Settings at (settingsQuickOpen.ts). */
+.settings-editor__row--found {
+  background: var(--px-accent-soft);
+  border-radius: var(--px-radius-sm);
+}
