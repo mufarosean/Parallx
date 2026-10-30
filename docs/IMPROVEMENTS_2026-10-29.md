@@ -219,7 +219,12 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
   - `/init` as a short interview.
 
   Source: Oct 20. Parked.
-- **Chats named by the model**, not by the first 47 characters. IDEAS. Open.
+- **Chats named by the model**, not by the first 47 characters. IDEAS. Done
+  Oct 30: after a chat's first answer its own model writes a 2-to-6-word
+  name in the background (waiting while you chat); a chat keeps its first
+  words until then, and keeps them if the model cannot answer. Routines'
+  and heartbeats' runs are not renamed. Setting `chat.nameWithModel` (on).
+  Not tried on a real model here.
 - **`api.ai.runTask`:** one task call, parser and watchdog for every tool's AI
   work, then move Flashcards, Worksheets, Atelier tagging and Budget onto it.
   The generic `api.ai.embed` hook for extensions is the same idea (Creations

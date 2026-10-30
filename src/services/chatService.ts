@@ -78,6 +78,7 @@ import type {
 } from './chatTypes.js';
 import { ChatRequestQueueKind } from './chatTypes.js';
 import { thinkingSettled, thinkingStartsCollapsed } from './chatThinkingView.js';
+import { firstWordsTitle } from './chatTitle.js';
 
 // ── Session URI scheme ──
 
@@ -1050,6 +1051,10 @@ export class ChatService extends Disposable implements IChatService {
   }
 
   private _changed(sessionId: string): void { this._schedulePersist(sessionId); this._onDidChangeSession.fire(sessionId); } // save (debounced), tell the views
+  setSessionTitle(sessionId: string, title: string): void {
+    const session = this._sessions.get(sessionId);
+    if (session && title && session.title !== title) { session.title = title; this._changed(sessionId); }
+  }
   updateSessionModel(sessionId: string, modelId: string): void {
     const session = this._sessions.get(sessionId);
     if (!session || session.modelId === modelId) return;
@@ -1379,13 +1384,8 @@ export class ChatService extends Disposable implements IChatService {
       session.messages.push(pair);
     }
 
-    // 4. Auto-generate title from first substantive message (skip greetings)
-    if (!isReplayReplacement && (!session.title || session.title === 'New Chat')) {
-      const GREETING_RE = /^\s*(hi|hey|hello|howdy|yo|sup|what's up|hiya|good\s*(morning|afternoon|evening)|greetings)\s*[!.,?]*\s*$/i;
-      if (!GREETING_RE.test(message)) {
-        session.title = message.length > 50 ? message.slice(0, 47) + '...' : message;
-      }
-    }
+    // 4. Named by its first substantive message (a greeting names nothing); the model renames it after its answer (chatTitle.ts).
+    if (!isReplayReplacement && (!session.title || session.title === 'New Chat')) session.title = firstWordsTitle(message) ?? session.title;
 
     session.requestInProgress = true;
     this._onDidChangeSession.fire(sessionId);

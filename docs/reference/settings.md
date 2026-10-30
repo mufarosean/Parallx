@@ -22,6 +22,7 @@ The settings tools declare in their manifests, with the tool that owns each. Set
 | `chat.defaultMode` | ask \\| edit \\| agent | "agent" | chat | Chat | Chat mode a new session starts in. |
 | `chat.fontFamily` | string | "" | chat | Chat | Chat message font family (empty = app font). |
 | `chat.fontSize` | number | 13 | chat | Chat | Chat message font size in pixels. |
+| `chat.nameWithModel` | boolean | true | chat | Chat | After its first answer, the chat's model names the chat in a few words. Off: a chat is named by its first words. |
 | `chat.ollama.baseUrl` | string | "http://localhost:11434" | chat | Chat | Ollama server URL. |
 | `dashboard.aiRefreshConcurrency` | number | 2 | dashboard | Dashboard | How many AI widget refreshes may run as background agents at the same time (1-8). Applies to scheduled refreshes and "Refresh all"; extra refreshes queue. |
 | `flashcards.aiModel` | string | "" | flashcards | Flashcards | Model id used for card generation and card discussion. Leave empty to use the chat's active model. |

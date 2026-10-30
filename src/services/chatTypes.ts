@@ -1338,8 +1338,8 @@ export interface IChatService extends IDisposable {
   deleteSession(sessionId: string): void;
   /** Get a session by ID. */
   getSession(sessionId: string): IChatSession | undefined;
-  /** Get all sessions. */
-  getSessions(): readonly IChatSession[];
+  getSessions(): readonly IChatSession[]; // all of them
+  setSessionTitle?(sessionId: string, title: string): void; // rename a session: saved, and the views told
   /** Restore persisted sessions from database. Called once on startup.
    * Loads session METADATA only (deferred hydration) — message bodies load
    * on demand via ensureSessionHydrated. */

@@ -69,6 +69,11 @@ export const CHAT_MANIFEST: IToolManifest = {
             description: 'Chat mode a new session starts in.',
             enum: ['ask', 'edit', 'agent'],
           },
+          'chat.nameWithModel': {
+            type: 'boolean',
+            default: true,
+            description: 'After its first answer, the chat\'s model names the chat in a few words. Off: a chat is named by its first words.',
+          },
           'chat.fontSize': {
             type: 'number',
             default: 13,

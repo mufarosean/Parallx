@@ -111,6 +111,15 @@ me if it is not that.
   not cover: it says the paper does not say, instead of inventing it.
 - **If wrong:** Tell me the paper, the page and what you asked.
 
+### 2.7 Chats are named by the model
+- **Do:** Start a new chat and ask something long ("Can you look at Clark's
+  paper and tell me how he picks the tail factor and why").
+- **Expect:** The chat list first shows the first words, then a few seconds
+  after the answer a short name ("Clark Tail Factor Selection").
+- **Also:** a chat that starts with "hi" is named by the first real question
+  after it. Turn it off in Settings › Chat › `chat.nameWithModel` and the
+  names stay the first words.
+
 ---
 
 ## 3. Quick checks (no model needed)

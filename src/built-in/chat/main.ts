@@ -27,7 +27,8 @@ import type { ChatWidget } from './widgets/chatWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
 import { backgroundTurnsInFlight, createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
 import { wireEngineBrokerPresence } from './utilities/engineBrokerPresence.js';
-import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js'; import { registerMemoryCommands, registerOffRecordCommand } from './utilities/memoryCommands.js'; import { registerSkillDraftCommands } from './utilities/skillDraftCommands.js';
+import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js'; import { registerMemoryCommands, registerOffRecordCommand } from './utilities/memoryCommands.js'; import { registerChatTitleNamer } from '../../services/chatTitle.js';
+import { registerSkillDraftCommands } from './utilities/skillDraftCommands.js';
 
 import {
   buildOpenclawCanvasParticipantServices,
@@ -285,8 +286,6 @@ function buildTestPlanStepInput(
       : undefined,
   };
 }
-
-
 
 // ── Module state ──
 
@@ -624,6 +623,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
     : undefined;
   context.subscriptions.push(...registerMemoryCommands(api.commands, workspaceMemoryService, (uri) => { void api.editors.openFileEditor(uri); }), registerOffRecordCommand(api.commands, chatService), ...registerSkillDraftCommands(api.commands, fileService, () => workspaceService?.folders?.[0]?.uri, (uri) => { void api.editors.openFileEditor(uri); })); // lessons, Do Not Remember This, skill drafts
+  if (chatService.onDidCompleteRequest && chatService.setSessionTitle) context.subscriptions.push(registerChatTitleNamer({ // the model names each chat after its first answer
+    onDidCompleteRequest: chatService.onDidCompleteRequest, getSession: (id) => chatService.getSession(id), setSessionTitle: (id, t) => chatService.setSessionTitle!(id, t),
+    sendChatRequestForModel: (m, msgs, o, sig) => languageModelsService.sendChatRequestForModel(m, msgs, o, sig), enabled: () => api.workspace.getConfiguration('chat').get<boolean>('nameWithModel', true) !== false }));
   const canonicalMemorySearchService = api.services.has(ICanonicalMemorySearchService)
     ? api.services.get<import('../../services/serviceTypes.js').ICanonicalMemorySearchService>(ICanonicalMemorySearchService)
     : undefined;
@@ -1396,8 +1398,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     canvasParticipantServices: openclawCanvasParticipantServices,
   }));
 
-
-
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
   if (languageModelToolsService && _permissionService) {
@@ -2142,7 +2142,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push({ dispose: () => { _statusSub.dispose(); _disposePyRegs(); } });
     }).catch(() => { /* tool module load failed — chat continues without it */ });
   }
-
 
   // ── 3b. Register chat-owned surface plugins ──
   // The surface router is created in the workbench Phase 5; the chat-owned
@@ -3301,7 +3300,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       });
     }),
   );
-
 
   // dashboard "Autonomy activity" widget (and any other surface that wants a
   // compact view of background agent activity). Mirrors the
