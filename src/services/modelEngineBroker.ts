@@ -54,18 +54,9 @@ export const COLD_LOAD_CREDIT_MS = 120_000;
  * that loops still stops. A reply that hits it says it was cut off.
  */
 export const BACKGROUND_MAX_TOKENS = 16_384;
-/** Output tokens a reasoning model may spend thinking before it answers. */
-export const REASONING_ROOM_TOKENS = 4_096;
-
-/**
- * The output cap for a short answer from a model that reasons first. The cap
- * counts the reasoning too, so a cap sized for the answer alone (a 3-word
- * label at 30 tokens) leaves a reasoning model nothing to answer with. A
- * model that does not reason stops at its answer either way.
- */
-export function capWithReasoningRoom(answerTokens: number): number {
-  return answerTokens + REASONING_ROOM_TOKENS;
-}
+// No caller sets its own output cap (one would count the reasoning too and
+// leave a thinking model nothing to answer with); BACKGROUND_MAX_TOKENS above
+// is the one guard, against a model that loops.
 
 /** How a caller tags a call (IChatRequestOptions.engine). */
 export interface IEngineCallTag {

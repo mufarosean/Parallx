@@ -90,6 +90,13 @@ for pages and PDFs gets exactly that. So:
   screen-reader names, contrast, dialogs, touch) and
   `tests/probes/touch-drag-probe.mjs`: both must report 0.
   `docs/ACCESSIBILITY.md` has the rules and the record.
+- One route to the model. Inside one extension (or the core), every AI call
+  goes through one function: Creations through `ext/creations-ai/model-route.js`,
+  the core through the language-models service. A part of a tool never keeps
+  its own AI rules. No call sets its own token cap or reasoning budget (a cap
+  counts the thinking too, and a thinking model then answers nothing: that
+  broke Act). The only limits are one the user set and the core's single
+  runaway guard for background calls.
 - Copy: Title Case for actions and titles, sentence case for section labels
   and hints, no uppercase micro-labels, no em dashes in labels, `…` when an
   action opens a dialog.

@@ -15,6 +15,7 @@
 // in the Studio is drawn with the kit alone.
 
 import { buildTryLineMessages, parseJsonLoose, stripDashes } from './studio-core.js';
+import { createModelRoute } from './model-route.js';
 
 const STOP = new Set(('a an the and or but if then so of to in on at by for with from into onto over under about as is are was were be been being it its this that these those he she they them his her their him i me my you your we our us not no nor do does did have has had will would can could should may might must just only very more most less than too also there here what which who whom whose when where why how all any each every some such own same other another one two up down out off again once while because until before after above below between through during without within against toward towards upon among around like').split(/\s+/));
 
@@ -204,11 +205,12 @@ export function mountTestDrive(host, deps) {
     deps.setMeta('Writing three scenes…');
     try {
       const { modelId, numCtx } = await deps.resolveModel();
-      const situations = parseSituations(await collect(deps.lm.sendChatRequest(modelId, buildSituationsMessages(sheet), { temperature: 0.9, think: false, format: 'json', numCtx })));
+      const route = createModelRoute(deps.lm);
+      const situations = parseSituations(await route.ask(modelId, buildSituationsMessages(sheet), { temperature: 0.9, think: false, format: 'json', numCtx }));
       const replies = [];
       for (let i = 0; i < situations.length; i++) {
         deps.setMeta(`Hearing them in scene ${i + 1} of ${situations.length}…`);
-        replies.push(stripDashes(await collect(deps.lm.sendChatRequest(modelId, buildDriveMessages(sheet, situations[i]), { temperature: 0.85, think: true, numCtx }))));
+        replies.push(stripDashes(await route.ask(modelId, buildDriveMessages(sheet, situations[i]), { temperature: 0.85, think: true, numCtx })));
       }
       const findings = readTestDrive(sheet, situations, replies);
       results = renderTestDriveMarkdown(situations, replies, findings);
@@ -230,9 +232,3 @@ export const TEST_DRIVE_COMMAND = 'textGenerator.studio.testDrive';
 let live = null;
 /** Runs the drive of the Studio last opened (one Studio is open at a time). */
 export function runLiveTestDrive() { return live ? live.run() : undefined; }
-
-async function collect(stream) {
-  let text = '';
-  for await (const chunk of stream) if (chunk && chunk.content) text += chunk.content;
-  return text;
-}

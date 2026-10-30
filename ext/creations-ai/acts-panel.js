@@ -20,28 +20,7 @@
 
 import { ACT_FILE, actStatusLine, actTimelineLine, beatTurn, buildActPlanMessages, buildNextActMessages, parseActFile, parseBeats, parseNextAct, renderActFile } from './acts.js';
 import { stripDashes } from './studio-core.js';
-
-async function collect(stream, onChunk) {
-  let text = '';
-  for await (const chunk of stream) { if (chunk && chunk.content) { text += chunk.content; if (onChunk) onChunk(text); } }
-  return text;
-}
-
-/** Room a model gets to reason before its answer (the chat's other thinking calls give the same). */
-export const ACT_REASONING_TOKENS = 4096;
-
-/**
- * One planning call that yields an answer: the cap is the answer's plus room
- * to reason, since a thinking model's reasoning counts against it (the plan
- * call had 1800 for both, so a reasoning model spent them all thinking and
- * the act failed with "the model wrote no beats"). A reply with no answer is
- * asked once more with thinking off.
- */
-export async function askForAnswer(lm, modelId, messages, opts, answerTokens) {
-  const first = await collect(lm.sendChatRequest(modelId, messages, { ...opts, think: true, maxTokens: answerTokens + ACT_REASONING_TOKENS }));
-  if (first.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '').trim()) return first;
-  return collect(lm.sendChatRequest(modelId, messages, { ...opts, think: false, maxTokens: answerTokens }));
-}
+import { createModelRoute } from './model-route.js';
 
 /** The runners by thread, for the panel's commands (a button names its thread). */
 const runners = new Map();
@@ -55,6 +34,7 @@ export function actCommand(action, threadId) {
 }
 
 export function createActRunner(deps) {
+  const route = createModelRoute(deps.lm); // the extension's one way to the model
   let stopRequested = false;
   let busy = false;
 
@@ -77,7 +57,7 @@ export function createActRunner(deps) {
       const { modelId, numCtx } = await deps.model();
       const cast = deps.cast().map((c) => ({ name: c.name, tagline: c.tagline, drives: c.drives }));
       const messages = buildActPlanMessages({ brief: text, cast, player: player(), others: deps.others(), scene: deps.scene(), memory: await deps.memory(), transcript: deps.transcript(), rules: deps.rules() });
-      const raw = await askForAnswer(deps.lm, modelId, messages, { temperature: 0.9, ...(numCtx ? { numCtx } : {}) }, 1800);
+      const raw = await route.ask(modelId, messages, { temperature: 0.9, think: true, numCtx });
       const beats = parseBeats(raw, { names: names(), player: player() });
       if (!beats.length) throw new Error('the model wrote no beats');
       await deps.fs.writeFile(deps.fileUri(ACT_FILE), renderActFile(text, beats));
@@ -152,7 +132,7 @@ export function createActRunner(deps) {
       const { modelId, numCtx } = await deps.model();
       const cast = deps.cast().map((c) => ({ name: c.name, tagline: c.tagline, drives: c.drives, secrets: c.secrets }));
       const messages = buildNextActMessages({ cast, memory: await deps.memory(), transcript: deps.transcript(), lastBrief: act() ? act().brief : '' });
-      const brief = parseNextAct(await askForAnswer(deps.lm, modelId, messages, { temperature: 0.9, format: 'json', ...(numCtx ? { numCtx } : {}) }, 600));
+      const brief = parseNextAct(await route.ask(modelId, messages, { temperature: 0.9, think: true, format: 'json', numCtx }));
       if (!brief) throw new Error('the model proposed nothing readable');
       deps.composer.set(`/act ${stripDashes(brief)}`);
     } catch (err) {

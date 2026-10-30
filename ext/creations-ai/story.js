@@ -18,6 +18,7 @@ import {
   buildBeatMessages, buildMemoryMessages, cleanBeat, storyMarkdown, storyFileName, storyWords,
 } from './story-core.js';
 import { parseJsonLoose, stripDashes, countWords } from './studio-core.js';
+import { createModelRoute } from './model-route.js';
 
 const STYLE_ID = 'creations-story-styles';
 const AUTOSAVE_MS = 800;
@@ -562,7 +563,7 @@ export function renderStoryPane(container, parallx, ctx, deps) {
     return { modelId, numCtx: ctxPick > 0 ? ctxPick : (settings.defaultContextWindow || undefined), dialogueRules: typeof settings.dialogueRules === 'string' ? settings.dialogueRules : '' };
   }
   async function streamText(modelId, numCtx, messages, onPartial, options = {}) {
-    const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.85, think: true, numCtx, ...options });
+    const stream = createModelRoute(parallx.lm).stream(modelId, messages, { temperature: 0.85, think: true, numCtx, ...options }); // the one route: no cap of its own
     let text = '';
     for await (const chunk of stream) {
       if (state.disposed || state.stop) break;

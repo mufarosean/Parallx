@@ -20,13 +20,13 @@ import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterL
 import { takeCharacterDraft, keepCharacterDraft, dropCharacterDraft, clearCharacterDrafts } from './character-drafts.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
-import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
+import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
 import { TEST_DRIVE_COMMAND, runLiveTestDrive } from './drive.js';
-import { openingNote, pickDirection } from './initiative.js';
+import { openingNote, pickDirection } from './initiative.js'; import { createModelRoute } from './model-route.js';
 import { sceneMovedOn, whoLivedThrough, buildSinceThenMessages, parseSinceThen, sinceThenLine, mountSinceThen, sinceThenCommand, SINCE_THEN_COMMANDS } from './since-then.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -2570,13 +2570,8 @@ function parseSlashCommand(input) {
 // could starve the model of conversation entirely and produce drift.
 const MIN_HISTORY_FRACTION = 0.15;
 
-/**
- * Output tokens a model may spend reasoning before it answers. Every
- * Creations call reasons (Mufaro, 2026-10-11); a call with an output cap
- * adds this on top, because the cap counts the reasoning too and a cap
- * sized for the answer alone leaves nothing to answer with.
- */
-const TG_REASONING_TOKENS = 4096;
+// Every model call goes through model-route.js (createModelRoute(parallx.lm)):
+// one way to the model for all of Creations, with no token cap of its own.
 
 function computeTokenBudget(contextWindow, settings = null) {
   const total = Math.max(0, Math.floor(contextWindow));
@@ -4600,10 +4595,10 @@ async function autoExtractMemoryBackground({
   ].join('');
 
   try {
-    const stream = parallx.lm.sendChatRequest(modelId, [
+    const stream = createModelRoute(parallx.lm).stream(modelId, [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: userPrompt },
-    ], { temperature: 0.2, maxTokens: 1500 + TG_REASONING_TOKENS, think: true, format: 'json', ...(numCtx ? { numCtx } : {}) });
+    ], { temperature: 0.2, think: true, format: 'json', numCtx });
     let raw = '';
     for await (const chunk of stream) {
       if (chunk?.content) raw += chunk.content;
@@ -5427,7 +5422,7 @@ function renderChatEditor(container, parallx, input) {
       const memory = await loadThreadMemory(fs, workspaceUri, threadId).catch(() => ({ facts: [], beats: [], notes: '' }));
       const messages = buildSinceThenMessages({ cast, others: [...supportingCards, ...connectedCards], before, after, memory, lastTurn: narratorTurn });
       let raw = '';
-      for await (const chunk of parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, think: false, format: 'json', maxTokens: 600, numCtx: await chatContextWindow(modelId) })) if (chunk?.content) raw += chunk.content;
+      raw = await createModelRoute(parallx.lm).ask(modelId, messages, { temperature: 0.9, think: false, format: 'json', numCtx: await chatContextWindow(modelId) });
       const lines = parseSinceThen(raw, cast.map((c) => c.name));
       if (!lines.length) return;
       sinceThenLines = lines;
@@ -5940,7 +5935,7 @@ function renderChatEditor(container, parallx, input) {
     try {
       const messages = await directorMessages(char ? [{ name, char }] : [], { characterKinds, narratorKinds });
       let raw = '';
-      for await (const chunk of parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(characterKinds.length + narratorKinds.length), think: false, numCtx: await chatContextWindow(modelId) })) if (chunk?.content) raw += chunk.content;
+      raw = await createModelRoute(parallx.lm).ask(modelId, messages, { temperature: 0.9, think: false, numCtx: await chatContextWindow(modelId) });
       const pick = pickDirection(parseDirections(raw, [name], { characterKinds, narratorKinds }), name, { latitude: resolveLatitude(char, currentSettings) });
       return pick ? pick.text : null;
     } catch (err) { console.warn('[TextGenerator] Auto-direct asked nothing this turn:', err); return null; }
@@ -5990,9 +5985,8 @@ function renderChatEditor(container, parallx, input) {
     try {
       const numCtx = await chatContextWindow(modelId);
       if (run !== _directionsRun) return;
-      // Room for every option asked for (the Narrator's, then each character's); no reasoning: Directions are short and wanted at once.
-      const optionCount = (narratorKinds.length ? narratorKinds.length : 0) + (characterKinds.length ? chosen.length * characterKinds.length : 0);
-      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(optionCount), think: false, ...(numCtx ? { numCtx } : {}) });
+      // No reasoning: Directions are short and wanted at once. No cap either: every option asked for gets written.
+      const stream = createModelRoute(parallx.lm).stream(modelId, messages, { temperature: 0.9, think: false, numCtx });
       for await (const chunk of stream) {
         if (run !== _directionsRun) return;
         if (!chunk?.content) continue;
@@ -6932,7 +6926,7 @@ function renderChatEditor(container, parallx, input) {
         const _userDispName = getUserName();
         if (_userDispName && _userDispName.toLowerCase() !== activeName) _otherNames.push(_userDispName);
         if (activeName !== 'narrator') _otherNames.push('Narrator');
-        const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker, false, _otherNames));
+        const stream = createModelRoute(parallx.lm).stream(modelId, messagesForApi, getGenerationOptions(continueSpeaker, false, _otherNames));
         let fullResponse = '';
         let isThinking = false;
         for await (const chunk of stream) {
@@ -7213,7 +7207,7 @@ function renderChatEditor(container, parallx, input) {
 
   function getGenerationOptions(speaker, asUser = false, knownOtherNames = []) {
     const character = !asUser && speaker && speaker !== NARRATOR_SPEAKER ? getCharacterByFile(speaker) : null;
-    const maxTokens = character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? undefined;
+    const userLimit = character?.frontmatter.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens ?? undefined; // the user's own length setting, the only limit
 
     // M-fix-5 — defensive stop tokens. If the model starts emitting a
     // tag for a different character (`<<Other>>` or `\nOther:`), halt
@@ -7234,7 +7228,7 @@ function renderChatEditor(container, parallx, input) {
     return {
       think: true,
       temperature: character?.frontmatter.temperature ?? currentSettings?.defaultTemperature ?? 0.8,
-      ...(maxTokens ? { maxTokens } : {}),
+      ...(userLimit ? { userLimit } : {}),
       ...(stop.length > 0 ? { stop } : {}),
       numCtx,
     };
@@ -7270,12 +7264,7 @@ function renderChatEditor(container, parallx, input) {
         { role: 'system', content: `You are a turn-order selector for a group roleplay. Available characters: ${charNames.join(', ')}. The last speaker was "${lastCharFile ? (characters.find(c => c.fileName === lastCharFile)?.frontmatter.name || lastCharFile) : 'unknown'}". Based on the recent conversation, reply with ONLY the name of the character who should speak next. Do not add any explanation.` },
         { role: 'user', content: recentLines || '(conversation just started)' },
       ];
-      // The cap leaves room to reason before the name (30 tokens alone went to reasoning).
-      const stream = parallx.lm.sendChatRequest(modelId, prompt, { temperature: 0.3, think: true, maxTokens: 30 + TG_REASONING_TOKENS });
-      let response = '';
-      for await (const chunk of stream) {
-        if (chunk.content) response += chunk.content;
-      }
+      const response = await createModelRoute(parallx.lm).ask(modelId, prompt, { temperature: 0.3, think: true });
       const picked = response.trim().replace(/^"|"$/g, '');
       const resolved = resolveCharacterReference(picked);
       if (resolved && resolved !== NARRATOR_SPEAKER && files.includes(resolved)) {
@@ -7490,7 +7479,7 @@ function renderChatEditor(container, parallx, input) {
       if (activeName !== 'narrator') _knownOtherNames.push('Narrator');
 
       const _genOpts = getGenerationOptions(effectiveSpeaker, asUser, _knownOtherNames);
-      const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, _genOpts);
+      const stream = createModelRoute(parallx.lm).stream(modelId, messagesForApi, _genOpts);
       let fullResponse = '';
       let isThinking = false;
       let doneReason = '';
@@ -7552,10 +7541,10 @@ function renderChatEditor(container, parallx, input) {
         // window) and stopped mid-reply. Say so, instead of leaving a reply
         // that simply ends, and offer to carry it on.
         if (doneReason === 'length' && !gen.stopRequested) {
-          console.warn('[TextGenerator] Reply stopped at the length limit (done_reason "length").', { maxTokens: _genOpts.maxTokens, numCtx: _genOpts.numCtx });
+          console.warn('[TextGenerator] Reply stopped at the length limit (done_reason "length").', { userLimit: _genOpts.userLimit, numCtx: _genOpts.numCtx });
           showToast(
-            _genOpts.maxTokens
-              ? `This reply hit the ${_genOpts.maxTokens}-token limit and was cut off.`
+            _genOpts.userLimit
+              ? `This reply hit your ${_genOpts.userLimit}-token limit (Settings, Max tokens per response) and was cut off.`
               : 'This reply ran out of room in the context window and was cut off.',
             'Continue',
             () => void handleSlashCommand({ command: 'continue' }),
@@ -7659,7 +7648,7 @@ function renderChatEditor(container, parallx, input) {
           const _userDispName = getUserName();
           if (_userDispName && _userDispName.toLowerCase() !== _activeName) _otherNames.push(_userDispName);
           if (_activeName !== 'narrator') _otherNames.push('Narrator');
-          const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, getGenerationOptions(continueSpeaker, false, _otherNames));
+          const stream = createModelRoute(parallx.lm).stream(modelId, messagesForApi, getGenerationOptions(continueSpeaker, false, _otherNames));
           let fullResponse = '';
           let isThinking = false;
           for await (const chunk of stream) {

@@ -75,16 +75,6 @@ export const NARRATOR = 'Narrator';
  */
 export const DIRECTOR_MAX_CAST = Infinity;
 
-/**
- * The most a director reply may run, in tokens: room for the reading of the
- * scene and every option asked for, each a line with its "then" part, so
- * the last characters on a big card are not cut off. Never under 1,200 (the
- * old fixed cap) nor over 6,000.
- */
-export function directorReplyTokens(optionCount) {
-  const n = Math.max(0, Number(optionCount) || 0);
-  return Math.min(6000, Math.max(1200, 300 + n * 70));
-}
 
 /** A kind label at the start of a line ("Push:", "New Scene -"), among `kinds`: [key, rest] or null. */
 const labelledKind = (line, kinds) => {

@@ -14,7 +14,6 @@ import type { IChatMarkdownContent, IChatMessage, IChatRequestOptions, IChatResp
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import { isEphemeralSessionId } from './chatSessionPersistence.js';
-import { capWithReasoningRoom } from './modelEngineBroker.js';
 
 const GREETING = /^\s*(hi|hey|hello|howdy|yo|sup|what's up|hiya|good\s*(morning|afternoon|evening)|greetings)\s*[!.,?]*\s*$/i;
 /** The longest name the model's answer is cut to. */
@@ -97,7 +96,7 @@ export function registerChatTitleNamer(deps: IChatTitleNamerDeps): IDisposable {
     void (async () => {
       let raw = '';
       for await (const chunk of deps.sendChatRequestForModel(session.modelId, titleMessages(exchange.question, exchange.answer),
-        { temperature: 0.2, think: false, maxTokens: capWithReasoningRoom(40), engine: { priority: 'helper', label: 'Naming a chat' } })) {
+        { temperature: 0.2, think: false, engine: { priority: 'helper', label: 'Naming a chat' } })) {
         raw += chunk.content ?? '';
       }
       const title = cleanModelTitle(raw);

@@ -29,7 +29,6 @@ import type {
 } from './mindMapRefreshOrchestrator.js';
 import type { SemanticGraphSourceType } from './semanticGraphService.js';
 import { semanticSourceToNodeId } from './semanticGraphService.js';
-import { capWithReasoningRoom } from './modelEngineBroker.js';
 import {
   dbscan,
   groupByCluster,
@@ -48,8 +47,6 @@ const DBSCAN_EPSILON = 0.3;
 const DBSCAN_MIN_POINTS = 3;
 /** Carry-over threshold — fraction of original members that must survive. */
 const CARRY_OVER_THRESHOLD = 0.7;
-/** Tokens for the label itself (1-3 words); the call's cap adds room to reason. */
-const LABEL_MAX_TOKENS = 30;
 /** Estimated wall-clock cost in seconds per source for the orchestrator's preview. */
 const ESTIMATED_SECONDS_PER_SOURCE = 1;
 
@@ -233,7 +230,7 @@ export class ConceptNodeService extends Disposable {
         // Automatic background work: waits while you chat (engine broker).
         // The model reasons first, so the cap leaves room for that before
         // the label.
-        { temperature: 0.2, think: true, maxTokens: capWithReasoningRoom(LABEL_MAX_TOKENS), engine: { priority: 'maintenance', label: 'Naming clusters' } },
+        { temperature: 0.2, think: true, engine: { priority: 'maintenance', label: 'Naming clusters' } },
         signal,
       );
       for await (const chunk of stream) {

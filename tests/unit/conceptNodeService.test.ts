@@ -296,11 +296,11 @@ describe('ConceptNodeService', () => {
     expect(first.label).toBe('Bayesian Statistics');
     expect(first.member_count).toBe(3);
 
-    // The model reasons first, and the cap leaves room for that before the
-    // 1-3 word label (a 30-token cap left a reasoning model nothing to say).
+    // The model reasons first, with no cap of the call's own (a 30-token cap
+    // left a reasoning model nothing to say); the broker's guard is the limit.
     const labelOptions = vi.mocked(lm.sendChatRequestForModel).mock.calls[0][2];
     expect(labelOptions).toMatchObject({ think: true });
-    expect(labelOptions!.maxTokens).toBeGreaterThan(30 + 1000);
+    expect(labelOptions!.maxTokens).toBeUndefined();
 
     // Three member-of edges
     const memberOfEdges = db.semanticGraphEdges.filter((e) => e.kind === 'member-of');

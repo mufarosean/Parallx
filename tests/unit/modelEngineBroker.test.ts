@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ModelEngineBroker, BACKGROUND_MAX_TOKENS, LEASE_GRACE_MS, LEASE_IDLE_MS, capWithReasoningRoom, REASONING_ROOM_TOKENS } from '../../src/services/modelEngineBroker';
+import { ModelEngineBroker, BACKGROUND_MAX_TOKENS, LEASE_GRACE_MS, LEASE_IDLE_MS } from '../../src/services/modelEngineBroker';
 import type { EngineStart, EnginePriority } from '../../src/services/modelEngineBroker';
 import type { IChatRequestOptions, IChatResponseChunk } from '../../src/services/chatTypes';
 
@@ -253,12 +253,7 @@ describe('ModelEngineBroker', () => {
   });
 });
 
-describe('capWithReasoningRoom', () => {
-  it('adds room to reason on top of the answer, since the cap counts the reasoning too', () => {
-    expect(capWithReasoningRoom(30)).toBe(30 + REASONING_ROOM_TOKENS);
-    expect(REASONING_ROOM_TOKENS).toBeGreaterThanOrEqual(2048);
-  });
-
+describe('untagged calls', () => {
   it('an untagged call nobody waits on does not pause background work; one made at the keyboard does', async () => {
     const b = new ModelEngineBroker();
     const log: ICallLog[] = [];

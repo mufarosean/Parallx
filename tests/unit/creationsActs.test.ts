@@ -12,7 +12,9 @@ import {
 // @ts-expect-error — JS module with no types
 } from '../../ext/creations-ai/acts.js';
 // @ts-expect-error — JS module with no types
-import { createActRunner, actCommand, askForAnswer, ACT_REASONING_TOKENS } from '../../ext/creations-ai/acts-panel.js';
+import { createActRunner, actCommand } from '../../ext/creations-ai/acts-panel.js';
+// @ts-expect-error — JS module with no types
+import { createModelRoute } from '../../ext/creations-ai/model-route.js';
 
 const names = ['Ada Lovelace', 'Tom Price'];
 const player = { name: 'Alex', plays: '' };
@@ -236,9 +238,10 @@ describe('the runner', () => {
 });
 
 // A reasoning model, as Ollama and Claude stream one: the reasoning comes as
-// `thinking` chunks and counts against maxTokens; the answer (`content`) comes
-// only if room is left. With the plan's old 1800-token cap the reasoning took
-// it all, the answer was empty and Act failed with "the model wrote no beats".
+// `thinking` chunks and counts against any token cap; the answer (`content`)
+// comes only if room is left. Act's plan call capped both at 1800 tokens, the
+// reasoning took them all and Act failed with "the model wrote no beats".
+// Every Creations call now goes through model-route.js, which sets no cap.
 describe('Act with a reasoning model', () => {
   const BEATS = '1. Narrator: Dawn over the harbour || the day begins\n2. Ada: Counts the crates';
   function reasoningModel(reasoningTokens: number) {
@@ -250,7 +253,7 @@ describe('Act with a reasoning model', () => {
         return (async function* () {
           if (opts.think) {
             yield { content: '', thinking: 'Let me plan the act carefully. '.repeat(10) };
-            if ((opts.maxTokens ?? Infinity) <= reasoningTokens) return; // the cap ran out inside the reasoning
+            if ((opts.maxTokens ?? Infinity) <= reasoningTokens) return; // a cap ran out inside the reasoning
           }
           yield { content: BEATS };
         })();
@@ -258,24 +261,27 @@ describe('Act with a reasoning model', () => {
     };
   }
 
-  it('gives the plan room to reason before its answer', async () => {
+  it('plans with no cap of its own, so the reasoning cannot eat the answer', async () => {
     const lm = reasoningModel(3000);
-    expect(await askForAnswer(lm, 'm', [], { temperature: 0.9 }, 1800)).toBe(BEATS);
-    expect(lm.calls).toEqual([{ temperature: 0.9, think: true, maxTokens: 1800 + ACT_REASONING_TOKENS }]);
+    const files = new Map<string, string>();
+    const thread: any = { act: null };
+    const runner = createActRunner({
+      lm, threadId: 't9', gen: { isGenerating: false }, fileUri: (n: string) => `t9/${n}`, thread: () => thread,
+      saveMeta: (u: any) => Object.assign(thread, u), cast: () => [{ file: 'ada.json', name: 'Ada' }], userName: () => 'Alex', userPlays: () => '',
+      fs: { readFile: async () => { throw new Error('none'); }, writeFile: async (u: string, c: string) => { files.set(u, c); } },
+      model: async () => ({ modelId: 'm', numCtx: 0 }), memory: async () => ({ facts: [], beats: [] }), others: () => [], scene: () => null, rules: () => '', transcript: () => [],
+      showToast: () => {}, repaint: () => {},
+    } as any);
+    await runner.plan('A morning, 2 turns');
+    expect(thread.act.status).toBe('planned');
+    expect(thread.act.beats).toHaveLength(2);
+    expect(lm.calls).toEqual([{ temperature: 0.9, think: true }]);
   });
 
-  it('asks once more without thinking when the reasoning still ate the answer', async () => {
-    const lm = reasoningModel(1e9);
-    expect(await askForAnswer(lm, 'm', [], {}, 1800)).toBe(BEATS);
+  it('asks once more without thinking when a reply has no answer in it', async () => {
+    const lm = reasoningModel(0);
+    const route = createModelRoute({ sendChatRequest: (m: string, x: any[], o: any) => lm.sendChatRequest(m, x, { ...o, maxTokens: o.think ? 0 : o.maxTokens }) });
+    expect(await route.ask('m', [], { think: true })).toBe(BEATS);
     expect(lm.calls.map((c) => c.think)).toEqual([true, false]);
-    expect(lm.calls[1].maxTokens).toBe(1800);
-  });
-
-  it('a reply that is only a <think> block counts as no answer', async () => {
-    const calls: any[] = [];
-    const lm = { sendChatRequest: (_m: string, _x: any[], opts: any) => { calls.push(opts); return (async function* () { yield { content: opts.think ? '<think>hmm, planning…' : BEATS }; })(); } };
-    expect(await askForAnswer(lm, 'm', [], {}, 600)).toBe(BEATS);
-    expect(calls).toHaveLength(2);
   });
 });
-

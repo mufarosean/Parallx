@@ -94,8 +94,7 @@ describe('an extraction writes Facts and Timeline into memories.md', () => {
     const r = await __testables.autoExtractMemoryBackground({ parallx: w.parallx, fs: w.fs, workspaceUri: 'ws', threadId: 't1', modelId: 'm', numCtx: 8192, recentMessages: long, existingSemantic: [] });
     expect(r).toMatchObject({ ok: true, facts: 0, beats: 0 });
     expect(seen[0].options).toMatchObject({ format: 'json', numCtx: 8192, think: true });
-    // The cap leaves room to reason before the 1,500-token answer.
-    expect(seen[0].options.maxTokens).toBeGreaterThan(1500 + 1000);
+    expect(seen[0].options.maxTokens).toBeUndefined(); // no cap: the reasoning can never eat the answer (model-route.js)
     expect(seen[0].messages[0].content).toContain('Return STRICT JSON');
     expect(seen[0].messages[1].content.length).toBeLessThanOrEqual(12_100);
   });
