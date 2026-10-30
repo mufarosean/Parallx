@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceStop } from './enhance-engine.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
+import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -27125,13 +27125,6 @@ async function moPurgeOrphanEnhance(api) {
   } catch (err) { console.warn('[media-organizer] could not sweep Enhance work folders:', err && err.message); }
 }
 
-/** "photo.jpg" -> "photo-2x.png"; n > 1 adds " (n)" before the extension. */
-function moUpscaleOutputName(basename, scale, n = 1) {
-  const dot = basename.lastIndexOf('.');
-  const stem = dot > 0 ? basename.slice(0, dot) : basename;
-  return `${stem}-${scale}x${n > 1 ? ` (${n})` : ''}.png`;
-}
-
 /** Refuse a job that would produce an absurd file. Unknown dimensions pass. */
 function moUpscaleGuard(width, height, scale) {
   const w = Number(width);
@@ -27139,17 +27132,6 @@ function moUpscaleGuard(width, height, scale) {
   if (!(w > 0 && h > 0)) return { ok: true, outputPixels: null };
   const outputPixels = w * scale * h * scale;
   return { ok: outputPixels <= MO_UPSCALE_MAX_OUTPUT_PIXELS, outputPixels };
-}
-
-async function moUpscaleUniqueOutputPath(srcPath, scale) {
-  const sep = srcPath.includes('\\') ? '\\' : '/';
-  const dir = srcPath.slice(0, srcPath.lastIndexOf(sep));
-  const base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
-  for (let n = 1; n < 100; n++) {
-    const candidate = dir + sep + moUpscaleOutputName(base, scale, n);
-    if (!(await window.parallxElectron.fs.exists(candidate))) return candidate;
-  }
-  return null;
 }
 
 /** Ingest a freshly written file exactly as a scan would (file row,
@@ -27354,70 +27336,57 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     progressWrap.style.display = '';
     const startedAt = Date.now();
     let done = 0;
-    let failed = 0;
-    let skippedBig = 0;
     let trashed = 0;
     const failures = [];
-    for (let i = 0; i < targets.length; i++) {
-      if (cancelled) break;
-      const t = targets[i];
-      if (!t._guard || !t._guard.ok) { skippedBig++; continue; }
-      progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}`;
-      progressFill.style.width = `${Math.round((i / count) * 100)}%`;
-      if (_statusBarItem) { _statusBarItem.text = `$(sync~spin) Upscale ${i + 1} / ${count}`; _statusBarItem.show(); }
-      const out = await moUpscaleUniqueOutputPath(t.path, scale);
-      if (!out) { failed++; failures.push(`${t.basename}: no free output name`); continue; }
+    const go = targets.filter((t) => t._guard && t._guard.ok);
+    const skippedBig = count - go.length;
+    progressLabel.textContent = 'Starting…';
+    // One engine run for the whole batch (upscale-batch.js): the model loads once, not once a photo.
+    const res = await moUpscaleBatch(go, scale, {
+      exists: (p) => window.parallxElectron.fs.exists(p),
       // The engine reads JPEG, PNG, WebP, TIFF and BMP; anything else (HEIC, RAW previews) becomes a PNG first.
-      let r = null; let written = false;
-      try {
-        await moEnhanceTemp(api, async (dir) => {
-          let input = t.path;
-          if (!MO_ENHANCE_READS.test(t.path)) {
-            if (!_toolPaths.magick) throw new Error('This kind of file needs ImageMagick, which was not found.');
-            input = dir + (_isWindows ? '\\' : '/') + 'source.png';
-            const c = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(t.path)} ${shellQuote(input)}`, { timeout: 120_000 });
-            if (!c || c.exitCode !== 0) throw new Error('The photo could not be read.');
-          }
-          await moEnhanceRun(input, out, scale, (p) => {
-            progressLabel.textContent = `Upscaling ${i + 1} of ${count}: ${t.basename}. ${p.label}`;
-            progressFill.style.width = `${Math.round(((i + p.fraction) / count) * 100)}%`;
-          }, { workDir: dir, onRunId: (id) => { currentRun = id; } });
-        });
-        written = await window.parallxElectron.fs.exists(out);
-      } catch (err) {
-        if (err && err.stopped) { cancelled = true; break; }
-        r = { stderr: (err && err.message) || String(err) };
-      } finally {
-        currentRun = null;
-      }
-      if (!written) {
-        failed++;
-        failures.push(`${t.basename}: ${(r && r.stderr) || 'no picture was written'}`);
-        console.warn('[MediaOrganizer] upscale failed:', t.path, r);
-        continue;
-      }
-      let photo = null;
-      try { photo = await moIngestNewImage(out); } catch (err) { console.warn('[MediaOrganizer] upscale ingest failed:', err); }
-      // The copy is a photo of its own beside the original, so it carries the
-      // original's tags, albums, rating and details, as a copy saved from the editor does.
-      let carried = false;
-      if (photo) {
-        try { await moTransferPhotoMetadata(t.item.id, photo.id, t.basename); carried = true; } catch (err) { console.warn('[MediaOrganizer] upscale: the original\'s details could not be carried over:', err); }
-      }
-      if (photo && deleteCheckbox.checked) {
-        // Only once the copy is in the library with the original's details:
-        // move the original to Trash. An ingest failure leaves the original alone.
-        try {
-          if (!carried) throw new Error('the details were not carried over');
-          await moMoveToTrash(api, [{ type: 'photo', id: t.item.id }]);
-          trashed++;
-        } catch (err) {
-          console.warn('[MediaOrganizer] upscale delete-original failed:', err);
-          failures.push(`${t.basename}: upscaled, but the original could not be moved to Trash`);
+      readsDirectly: (p) => MO_ENHANCE_READS.test(p),
+      convert: async (src, png) => {
+        if (!_toolPaths.magick) throw new Error('This kind of file needs ImageMagick, which was not found.');
+        const c = await window.parallxElectron.terminal.exec(`${shellInvoke(_toolPaths.magick)} ${shellQuote(src)} ${shellQuote(png)}`, { timeout: 120_000 });
+        if (!c || c.exitCode !== 0) throw new Error('The photo could not be read.');
+      },
+      withTemp: (work) => moEnhanceTemp(api, work), dispose: (paths) => moDisposeTemp(api, paths),
+      runOne: moEnhanceRun, runMany: moEnhanceRunMany, onRunId: (id) => { currentRun = id; if (cancelled) void moEnhanceStop(id); }, isCancelled: () => cancelled,
+      onProgress: ({ target: t, label, fraction }) => {
+        const n = targets.indexOf(t) + 1;
+        progressLabel.textContent = `Upscaling ${n} of ${count}: ${t.basename}. ${label}`;
+        progressFill.style.width = `${Math.round(fraction * 100)}%`;
+        if (_statusBarItem) { _statusBarItem.text = `$(sync~spin) Upscale ${n} / ${count}`; _statusBarItem.show(); }
+      },
+      finish: async (t, out) => {
+        let photo = null;
+        try { photo = await moIngestNewImage(out); } catch (err) { console.warn('[MediaOrganizer] upscale ingest failed:', err); }
+        // The copy is a photo of its own beside the original, so it carries the
+        // original's tags, albums, rating and details, as a copy saved from the editor does.
+        let carried = false;
+        if (photo) {
+          try { await moTransferPhotoMetadata(t.item.id, photo.id, t.basename); carried = true; } catch (err) { console.warn('[MediaOrganizer] upscale: the original\'s details could not be carried over:', err); }
         }
-      }
-      done++;
-    }
+        if (photo && deleteCheckbox.checked) {
+          // Only once the copy is in the library with the original's details:
+          // move the original to Trash. An ingest failure leaves the original alone.
+          try {
+            if (!carried) throw new Error('the details were not carried over');
+            await moMoveToTrash(api, [{ type: 'photo', id: t.item.id }]);
+            trashed++;
+          } catch (err) {
+            console.warn('[MediaOrganizer] upscale delete-original failed:', err);
+            failures.push(`${t.basename}: upscaled, but the original could not be moved to Trash`);
+          }
+        }
+        done++;
+      },
+    });
+    currentRun = null;
+    if (res.stopped) cancelled = true;
+    const failed = res.failures.length;
+    for (const f of res.failures) { failures.push(`${f.target.basename}: ${f.message}`); console.warn('[MediaOrganizer] upscale failed:', f.target.path, f.message); }
     progressFill.style.width = '100%';
     if (_statusBarItem) { _statusBarItem.hide(); }
     const secs = Math.max(1, Math.round((Date.now() - startedAt) / 1000));

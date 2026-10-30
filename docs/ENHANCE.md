@@ -101,9 +101,18 @@ PyTorch index, Hugging Face), only during setup.
 - SeedVR2's image reading and writing are changed to work on paths with any
   characters (OpenCV's imread and imwrite fail on Windows outside ASCII);
   engine/seedvr2/NOTICE lists the changes.
-- The library's Upscale uses the same engine, one photo at a time (the
-  model loads for each, about 10 s). Files the engine cannot read (HEIC)
-  become a PNG first, through the bundled ImageMagick.
+- The library's Upscale uses the same engine. Several photos go through one
+  run (`enhance.py --jobs`, `engine/enhance_batch.py`), so the model loads
+  once for the batch, not once a photo (about 10 s each): `engine/enlarge_many.py`
+  runs SeedVR2's own per-file step with the cache its command line keeps for
+  a folder, taking every photo's pieces in turn (pieces of different photos
+  differ in size, which one command-line run cannot take). A photo is cut
+  while the one before it is enlarged; each is joined and written as soon
+  as its pieces are back, under `.part` and then renamed, so Stop keeps the
+  photos already done and leaves no half picture. A failure in one photo is
+  reported for that photo and the rest go on. One photo still goes through
+  the single-picture run. Files the engine cannot read (HEIC) become a PNG
+  first, through the bundled ImageMagick.
 - Removed: Real-ESRGAN, its setup dialog and script, the tile-size setting,
   the Photo / Art model choice.
 

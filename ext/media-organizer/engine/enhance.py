@@ -1,6 +1,7 @@
 """Enhance: enlarge a picture with SeedVR2 7B sharp, in overlapping pieces.
 
     python enhance.py --input IN --output OUT.png --scale 2 [--piece-out 4096]
+    python enhance.py --jobs JOBS.json --scale 2 [--piece-out 4096] --work-dir DIR
 
 Runs in the runtime Parallx installs (docs/ENHANCE.md); the model files are in
 the folder named by PARALLX_RUNTIME_FILES. A whole camera photo does not fit
@@ -10,7 +11,8 @@ are joined with feathered edges. --piece-out is the size of an enlarged
 piece: 4096 needs about 20 GB of free graphics memory, 2048 about 12 GB.
 
 Progress: one JSON object per line on stdout. A failure: one plain sentence
-on stderr after "ENHANCE-ERROR: ", and exit code 2.
+on stderr after "ENHANCE-ERROR: ", and exit code 2. With --jobs, many pictures
+go through one run, so the model loads once for all of them (enhance_batch.py).
 """
 
 import argparse
@@ -42,15 +44,35 @@ def fail(message):
     sys.exit(2)
 
 
+class Problem(Exception):
+    """A failure the user is told about, in one plain sentence."""
+
+
+def engine_options(files, resolution):
+    """SeedVR2's options for one size of piece: `resolution` is the enlarged piece's short side."""
+    return ['--output_format', 'png', '--dit_model', DIT, '--model_dir', files, '--resolution', str(resolution),
+            '--batch_size', '1', '--seed', '42', '--color_correction', 'lab',
+            '--cache_dit', '--cache_vae', '--dit_offload_device', 'cpu', '--vae_offload_device', 'cpu',
+            '--vae_encode_tiled', '--vae_decode_tiled']
+
+
+def why_stopped(code, said):
+    """The sentence for an engine that stopped with `code`, from the last lines it printed."""
+    if re.search(r'out of memory|OutOfMemory|CUDA error: out', said, re.I):
+        return 'The graphics card ran out of memory. Close programs that use it (a loaded Ollama model, a game) and try again.'
+    last = [l for l in said.splitlines() if 'ERROR' in l or 'Error' in l]
+    return 'The enlargement stopped: ' + (re.sub(r'^\[[^\]]*\]\s*\S*\s*', '', last[-1]) if last else f'code {code}.')
+
+
 def read(path):
     """The picture as 8-bit BGR, and its alpha (or None). Paths with any characters work."""
     try:
         data = np.fromfile(path, dtype=np.uint8)
     except OSError:
-        fail('The picture could not be read.')
+        raise Problem('The picture could not be read.')
     img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
     if img is None:
-        fail('The picture is in a format Enhance cannot read.')
+        raise Problem('The picture is in a format Enhance cannot read.')
     if img.dtype == np.uint16:
         img = (img / 257).round().astype(np.uint8)
     elif img.dtype != np.uint8:
@@ -67,7 +89,7 @@ def read(path):
 def write(path, img):
     ok, encoded = cv2.imencode('.png', img)
     if not ok:
-        fail('The enlarged picture could not be encoded.')
+        raise Problem('The enlarged picture could not be encoded.')
     encoded.tofile(path)
 
 
@@ -124,10 +146,10 @@ def join(pieces, outdir, scale, width, height, band):
         x0, y0, x1, y1 = (p[k] * scale for k in ('x0', 'y0', 'x1', 'y1'))
         path = os.path.join(outdir, p['name'])
         if not os.path.exists(path):
-            fail('A piece of the picture was not enlarged.')
+            raise Problem('A piece of the picture was not enlarged.')
         t = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if t is None:
-            fail('A piece of the picture could not be read back.')
+            raise Problem('A piece of the picture could not be read back.')
         if t.shape[1] != x1 - x0 or t.shape[0] != y1 - y0:
             t = cv2.resize(t, (x1 - x0, y1 - y0), interpolation=cv2.INTER_LANCZOS4)
         w = (ramp(y1 - y0, p['top'] * scale, p['bottom'] * scale, band)[:, None] * ramp(x1 - x0, p['left'] * scale, p['right'] * scale, band)[None, :])[..., None]
@@ -136,10 +158,20 @@ def join(pieces, outdir, scale, width, height, band):
     return np.clip(acc / np.maximum(wsum, 1e-6) + 0.5, 0, 255).astype(np.uint8)
 
 
+def finish(out, alpha):
+    """The joined picture with its alpha (enlarged the plain way), ready to write."""
+    if alpha is None:
+        return out
+    up = cv2.resize(alpha, (out.shape[1], out.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+    return np.dstack([out, up])
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--input', required=True)
-    ap.add_argument('--output', required=True)
+    ap.add_argument('--input')
+    ap.add_argument('--output')
+    # A list of {"input", "output"}: every picture in one run (enhance_batch.py).
+    ap.add_argument('--jobs')
     ap.add_argument('--scale', type=int, choices=(2, 4), default=2)
     ap.add_argument('--piece-out', type=int, choices=(2048, 4096), default=4096)
     # The pieces are copies of the user's picture: Parallx gives a folder in the workspace and
@@ -147,12 +179,25 @@ def main():
     # when this process is stopped. Without one (the self-test's made-up picture) a temp folder is used.
     ap.add_argument('--work-dir')
     a = ap.parse_args()
+    if not a.jobs and not (a.input and a.output):
+        ap.error('--input and --output, or --jobs, are needed')
 
     files = os.environ.get('PARALLX_RUNTIME_FILES', '')
     for name in (DIT, VAE):
         if not os.path.isfile(os.path.join(files, name)):
             fail('The Enhance engine is missing a model file. Set it up again from the Enhance tool.')
+    try:
+        if a.jobs:
+            import enhance_batch
+            enhance_batch.run(a, files)
+        else:
+            one(a, files)
+    except Problem as p:
+        fail(str(p))
 
+
+def one(a, files):
+    """One picture: its pieces through SeedVR2's own command line."""
     say(stage='read')
     img, alpha = read(a.input)
     height, width = img.shape[:2]
@@ -169,11 +214,7 @@ def main():
         for p in pieces:
             write(os.path.join(indir, p['name']), img[p['y0']:p['y1'], p['x0']:p['x1']])
         short = min(pieces[0]['x1'] - pieces[0]['x0'], pieces[0]['y1'] - pieces[0]['y0'])
-        cmd = [sys.executable, CLI, indir, '--output', outdir, '--output_format', 'png',
-               '--dit_model', DIT, '--model_dir', files, '--resolution', str(short * a.scale),
-               '--batch_size', '1', '--seed', '42', '--color_correction', 'lab',
-               '--cache_dit', '--cache_vae', '--dit_offload_device', 'cpu', '--vae_offload_device', 'cpu',
-               '--vae_encode_tiled', '--vae_decode_tiled']
+        cmd = [sys.executable, CLI, indir, '--output', outdir, *engine_options(files, short * a.scale)]
         say(stage='enlarge', done=0, total=len(pieces))
         tail = []
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=os.path.dirname(CLI),
@@ -184,19 +225,12 @@ def main():
             if m:
                 say(stage='enlarge', done=int(m.group(1)) - 1, total=int(m.group(2)))
         code = proc.wait()
-        said = '\n'.join(tail)
         if code != 0 or len([n for n in os.listdir(outdir) if n.endswith('.png')]) < len(pieces):
-            if re.search(r'out of memory|OutOfMemory|CUDA error: out', said, re.I):
-                fail('The graphics card ran out of memory. Close programs that use it (a loaded Ollama model, a game) and try again.')
-            last = [l for l in tail if 'ERROR' in l or 'Error' in l]
-            fail('The enlargement stopped: ' + (re.sub(r'^\[[^\]]*\]\s*\S*\s*', '', last[-1]) if last else f'code {code}.'))
+            fail(why_stopped(code, '\n'.join(tail)))
         say(stage='enlarge', done=len(pieces), total=len(pieces))
 
         say(stage='join')
-        out = join(pieces, outdir, a.scale, width, height, max(32, round(piece * OVERLAP)) * a.scale)
-        if alpha is not None:
-            up = cv2.resize(alpha, (out.shape[1], out.shape[0]), interpolation=cv2.INTER_LANCZOS4)
-            out = np.dstack([out, up])
+        out = finish(join(pieces, outdir, a.scale, width, height, max(32, round(piece * OVERLAP)) * a.scale), alpha)
         write(a.output, out)
         say(stage='done', width=int(out.shape[1]), height=int(out.shape[0]))
     finally:

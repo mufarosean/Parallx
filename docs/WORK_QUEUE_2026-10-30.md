@@ -22,7 +22,7 @@ commit and push after each item, and mark it here.
 
 ### Atelier
 10. Done: one Duplicates page with Exact and Look-alike tabs; photo, GIF and video menus show what applies, in one order.
-11. Upscale loads its engine once per batch.
+11. Done: Upscale loads its engine once per batch (one SeedVR2 run for all the photos; needs a try on your card).
 
 ### Budget
 12. Done: two or more of your own picks for a payee file it with no AI; fewer go into the prompt as past choices.

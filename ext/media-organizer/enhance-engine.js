@@ -1,7 +1,8 @@
 // enhance-engine.js — Enhance's engine: SeedVR2 7B sharp, in a runtime the
 // app installs once on the user's click (docs/ENHANCE.md; the core side is
 // electron/runtimeBridge.cjs). The editor's Enhance and the library's Upscale
-// both enlarge through moEnhanceRun.
+// of one photo enlarge through moEnhanceRun; Upscale of several photos goes
+// through moEnhanceRunMany, one run that loads the model once for all of them.
 //
 // This file declares the runtime (Python, the package lists in engine/, the
 // two model files with their sizes and SHA-256), shows the card that sets it
@@ -201,15 +202,9 @@ export function moEnhanceCard(api, whenReady) {
  * removes it). Throws an Error whose message is for the user.
  */
 export async function moEnhanceRun(input, output, scale, onProgress, opts = {}) {
-  const b = bridge();
-  if (!b) throw new Error('Enhance needs the desktop app.');
-  if (!(await moEnhanceReady())) throw new Error('Enhance is not set up yet. Choose Set Up Enhance in the Enhance tool.');
-  const machine = await b.invoke('runtimes:check', moEnhanceSpec());
-  const card = machine && machine.cards && machine.cards[0];
-  // Large pieces when there is room; otherwise small ones. The engine moves what does not fit to
-  // system memory, so it still runs (slower) when another program, such as an Ollama model, holds the card.
-  const piece = (card && PIECES.find((p) => card.freeMiB >= p.freeMiB)) || PIECES[PIECES.length - 1];
-  const runId = `enhance-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const b = await readyBridge();
+  const piece = await pickPiece(b);
+  const runId = newRunId();
   if (opts.onRunId) opts.onRunId(runId);
   runListeners.set(runId, (d) => {
     if (!onProgress) return;
@@ -228,8 +223,95 @@ export async function moEnhanceRun(input, output, scale, onProgress, opts = {}) 
     const r = await b.invoke('runtimes:run', moEnhanceSpec(), enginePath('enhance.py'), ['--input', input, '--output', output, '--scale', String(scale), '--piece-out', String(piece.out), ...(opts.workDir ? ['--work-dir', opts.workDir] : [])], runId);
     if (r && r.ok) return;
     if (r && r.stopped) throw Object.assign(new Error('Stopped.'), { stopped: true });
-    const said = /ENHANCE-ERROR: (.*)/.exec(String((r && r.stderr) || ''));
-    throw new Error(said ? said[1].trim() : (r && r.error) || 'The enlargement failed.');
+    throw new Error(failureOf(r));
+  } finally {
+    runListeners.delete(runId);
+  }
+}
+
+async function readyBridge() {
+  const b = bridge();
+  if (!b) throw new Error('Enhance needs the desktop app.');
+  if (!(await moEnhanceReady())) throw new Error('Enhance is not set up yet. Choose Set Up Enhance in the Enhance tool.');
+  return b;
+}
+/** Large pieces when there is room; otherwise small ones. The engine moves what does not fit to
+ *  system memory, so it still runs (slower) when another program, such as an Ollama model, holds the card. */
+async function pickPiece(b) {
+  const machine = await b.invoke('runtimes:check', moEnhanceSpec());
+  const card = machine && machine.cards && machine.cards[0];
+  return (card && PIECES.find((p) => card.freeMiB >= p.freeMiB)) || PIECES[PIECES.length - 1];
+}
+const newRunId = () => `enhance-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+function failureOf(r) {
+  const said = /ENHANCE-ERROR: (.*)/.exec(String((r && r.stderr) || ''));
+  return said ? said[1].trim() : (r && r.error) || 'The enlargement failed.';
+}
+
+/** The engine's options for a batch: the job list, the scale, the piece size, the work folder. */
+export function moEnhanceManyArgs(jobsPath, scale, pieceOut, workDir) {
+  return ['--jobs', jobsPath, '--scale', String(scale), '--piece-out', String(pieceOut), '--work-dir', workDir];
+}
+
+/**
+ * Follows a batch's progress lines (engine/enhance_batch.py) for `count`
+ * photos. The returned function takes one line and gives what to show,
+ * { index, label, fraction } with the fraction over the whole batch; a
+ * finished photo gives { photo: { index, ok, error, work } }; anything else null.
+ */
+export function moEnhanceManyProgress(count) {
+  let finished = 0;
+  let started = false;   // a piece is back, so the model is loaded
+  const n = Math.max(1, count);
+  return (d) => {
+    if (!d || typeof d !== 'object') return null;
+    if (d.stage === 'read') return { index: 0, label: 'Reading the pictures', fraction: 0 };
+    if (d.stage === 'enlarge') {
+      const total = Math.max(1, d.total || 1);
+      const done = Math.min(d.done || 0, total);
+      if (done > 0) started = true;
+      const label = done >= total ? 'Enlarged'
+        : started ? `Enlarging piece ${done + 1} of ${total}` : `Loading the model and enlarging piece 1 of ${total}`;
+      return { index: d.photo, label, fraction: Math.min(1, (finished + done / total) / n) };
+    }
+    if (d.stage === 'photo') {
+      finished++;
+      if (d.ok) started = true;
+      return { photo: { index: d.photo, ok: !!d.ok, error: d.ok ? '' : String(d.error || 'The enlargement failed.'), work: d.work || '' } };
+    }
+    return null;
+  };
+}
+
+/**
+ * Enlarge many pictures in one run, so the model loads once for all of them.
+ * jobs: [{ input, output }], each output a PNG. opts.workDir (required: the
+ * job list and every piece go there; the caller removes it), opts.onRunId,
+ * opts.onPhoto({ index, ok, error, work }) as each picture is finished (work:
+ * its folder of pieces, done with). onProgress({ index, label, fraction }).
+ * Resolves { ok, stopped, error }: a picture never reported failed with `error`.
+ */
+export async function moEnhanceRunMany(jobs, scale, onProgress, opts = {}) {
+  const b = await readyBridge();
+  if (!opts.workDir) throw new Error('Enhance needs a work folder.');
+  const jobsPath = opts.workDir + (opts.workDir.includes('\\') ? '\\' : '/') + 'jobs.json';
+  const wrote = await window.parallxElectron.fs.writeFile(jobsPath, JSON.stringify(jobs.map((j) => ({ input: j.input, output: j.output }))), 'utf8');
+  if (wrote && wrote.error) throw new Error('The list of pictures could not be written.');
+  const piece = await pickPiece(b);
+  const runId = newRunId();
+  if (opts.onRunId) opts.onRunId(runId);
+  const follow = moEnhanceManyProgress(jobs.length);
+  runListeners.set(runId, (d) => {
+    const v = follow(d);
+    try {
+      if (v && v.photo) { if (opts.onPhoto) opts.onPhoto(v.photo); } else if (v && onProgress) onProgress(v);
+    } catch { /* the caller closed */ }
+  });
+  try {
+    const r = await b.invoke('runtimes:run', moEnhanceSpec(), enginePath('enhance.py'), moEnhanceManyArgs(jobsPath, scale, piece.out, opts.workDir), runId);
+    if (r && r.ok) return { ok: true, stopped: false, error: '' };
+    if (r && r.stopped) return { ok: false, stopped: true, error: 'Stopped.' };
+    return { ok: false, stopped: false, error: failureOf(r) };
   } finally {
     runListeners.delete(runId);
   }
