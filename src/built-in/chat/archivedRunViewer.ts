@@ -76,3 +76,54 @@ export function renderArchivedRun(
 
   return { dispose() { container.innerHTML = ''; } };
 }
+
+/**
+ * A run's viewer, live while it runs: Watch on a running card in Agents
+ * opens it. While the run's session is still in memory the transcript fills
+ * in as it streams (redrawn at most once a frame, kept scrolled to the end
+ * unless you scrolled up); once the run ends and is archived it shows the
+ * archived transcript, the same as History's View Full Run.
+ */
+export function mountRunViewer(
+  container: HTMLElement,
+  source: {
+    live(): IChatSession | undefined;
+    onChange(listener: () => void): { dispose(): void };
+    archived(): Promise<IChatSession | null>;
+  },
+  origin?: string,
+): { dispose(): void } {
+  let disposed = false;
+  let handle: { dispose(): void } = { dispose() { /* nothing drawn yet */ } };
+  let frame = 0;
+  let sub: { dispose(): void } | undefined;
+  const scroller = () => container.querySelector<HTMLElement>('.archived-run-view__scroll');
+  const drawLive = (run: IChatSession) => {
+    const el = scroller();
+    const atEnd = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    handle.dispose();
+    handle = renderArchivedRun(container, run, origin);
+    container.querySelector('.archived-run-view__sub')?.append(' · running');
+    const next = scroller();
+    if (next && atEnd) next.scrollTop = next.scrollHeight;
+  };
+  // Kept listening: a run that has just ended may be archived a moment later.
+  const showArchived = () => {
+    void source.archived().catch(() => null).then((run) => { if (!disposed) { handle.dispose(); handle = renderArchivedRun(container, run, origin); } });
+  };
+  const live = source.live();
+  if (live) {
+    drawLive(live);
+    sub = source.onChange(() => {
+      if (frame || disposed) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const run = source.live();
+        if (run) drawLive(run); else showArchived();
+      });
+    });
+  } else {
+    showArchived();
+  }
+  return { dispose() { disposed = true; if (frame) cancelAnimationFrame(frame); sub?.dispose(); handle.dispose(); } };
+}

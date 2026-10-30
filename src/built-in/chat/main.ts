@@ -75,7 +75,7 @@ import { FilesystemSurfacePlugin } from '../../services/surfaces/filesystemSurfa
 import { CanvasSurfacePlugin } from '../canvas/surfaces/canvasSurface.js';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../openclaw/openclawHeartbeatRunner.js';
 import { createHeartbeatTurnExecutor } from '../../openclaw/openclawHeartbeatExecutor.js';
-import { ARCHIVED_RUN_EDITOR_TYPE, renderArchivedRun } from './archivedRunViewer.js';
+import { ARCHIVED_RUN_EDITOR_TYPE, mountRunViewer } from './archivedRunViewer.js';
 import { runHeartbeatDeterministicLane } from '../../openclaw/heartbeatDeterministicLane.js';
 import { buildPlanFacts, contentHashPrefix } from '../../openclaw/heartbeatTriggers.js';
 import { HEARTBEAT_PURPOSE_PATH, parseHeartbeatPurpose } from '../../openclaw/heartbeatPurpose.js';
@@ -3278,12 +3278,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       createEditorPane(container: HTMLElement, input?: unknown): { dispose(): void } {
         const sessionId = (input as { id?: string } | undefined)?.id ?? '';
         const meta = _archivedRunMeta.get(sessionId);
-        let handle: { dispose(): void } = { dispose() { /* replaced on load */ } };
-        void _archivedChatSvc.getArchivedRun(sessionId).then((run) => {
-          handle = renderArchivedRun(container, run, meta?.origin);
-        }).catch(() => {
-          handle = renderArchivedRun(container, null, meta?.origin);
-        });
+        // Live while the run's session is in memory (Watch from Agents), then its archive.
+        const handle = mountRunViewer(container, { live: () => (_archivedChatSvc.getActiveRuns().some((r) => r.runId === sessionId) ? chatService.getSession(sessionId) : undefined), onChange: (fn) => { const subs = [chatService.onDidChangeSession((id) => { if (id === sessionId) fn(); }), _archivedChatSvc.onDidArchiveRun(fn)]; return { dispose: () => subs.forEach((d) => d.dispose()) }; }, archived: () => _archivedChatSvc.getArchivedRun(sessionId) }, meta?.origin);
         return { dispose() { handle.dispose(); _archivedRunMeta.delete(sessionId); } };
       },
     }),

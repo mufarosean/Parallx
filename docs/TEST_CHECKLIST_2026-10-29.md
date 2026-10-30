@@ -96,6 +96,13 @@ me if it is not that.
   of room and stopped here", that is the new warning (it used to end
   silently mid-sentence). Tell me where you saw it.
 
+### 2.4b Watch a routine as it runs
+- **Do:** Agents › Routines › a routine › Run Now. In Agents › Now, on its
+  card under Running now, press **Watch**.
+- **Expect:** A tab with the run's transcript that fills in as the model
+  writes ("running" in its header). When it finishes, the same tab shows
+  the full archived run.
+
 ### 2.5 Write tools never break a document
 - **Do:** Ask the AI to "change cell B2 in <some workbook>.xlsx".
 - **Expect:** It refuses to write into the .xlsx and offers a new .md or

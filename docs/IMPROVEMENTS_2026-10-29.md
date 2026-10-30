@@ -257,14 +257,23 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Heartbeat notices page edits**, not only source files. IDEAS. Open.
 - **Standing watches shown in Routines** (they live only in
   `.parallx/HEARTBEAT.md`). IDEAS. Open.
-- **Watch a routine run as it streams.** IDEAS. Open.
+- **Watch a routine run as it streams.** IDEAS. Done Oct 30: Watch on a
+  running background run (routine, heartbeat, widget) in Agents › Now opens
+  its transcript read-only, filling in as it streams, and it turns into the
+  archived transcript when the run ends. Not seen on a live model here.
 - **Routines start with the day's facts**, from sources tools register. IDEAS. Open.
 - **A fully headless heartbeat** for when chat was never opened. HEARTBEAT. Open.
 - **The AI drafts workflows from habits it notices**, for your approval. Bad
   ideas (Sep 5). Suggested workflows shipped; drafting is open.
 - **Named agents:** a Team tab, an editor, hand-offs, per-agent memory.
   AGENTS_PROPOSAL. Open.
-- **Per-routine "ask me first".** MOTION_AND_AGENTS. Open.
+- **Per-routine "ask me first".** MOTION_AND_AGENTS. Open, needs you (Oct 30):
+  approvals live on Agents tasks, and a routine's run is not one, so its
+  "may I?" needs a home in Agents › Now and a rule for how long a run waits.
+  Found while looking: routine runs are not marked as unattended, so they
+  run with the consent of a chat you type in (with Auto on, everything runs
+  unasked), though the code's comments say routines keep the approval gate.
+  Which one is right is your call.
 - **Step editor:** the graph opens zoomed far out, and Preview Compiled Prompt
   and Delete Node are word-only buttons. Done Oct 29 (icons, an On switch, a
   fit once the editor has its size).
@@ -322,7 +331,9 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **Ctrl+N makes a New Page?** Oct 1. Your decision.
 
 ### Planner and Dashboard
-- **Planner reminders on the one scheduler** (the cron clock). REFACTOR_AUDIT. Open.
+- **Planner reminders on the one scheduler** (the cron clock). REFACTOR_AUDIT.
+  Open, low value: the reminders already stop when Planner is off; the audit
+  lists the move as its own decision, last.
 - **Planner Calendars menu and the repeat-scope dialog** still use the old
   hand-built styles; in the event dialog, the Ends row does not line up with
   Starts. The alignment is fixed (Oct 29: All day has its own line, time

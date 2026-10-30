@@ -358,7 +358,8 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
         {
           const bar = $('div.agents-card__actions');
           const waiting = busy.has(r.taskId);
-          if (r.kind !== 'run') createButton(bar, { id: 'agents.run.watch', command: 'agents.openRun', label: 'Watch', icon: 'eye', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
+          // A background run (routine, heartbeat, widget) opens its transcript, filling in as it streams.
+          createButton(bar, { id: 'agents.run.watch', command: r.kind === 'run' ? 'chat.openArchivedRun' : 'agents.openRun', label: 'Watch', icon: 'eye', kind: 'secondary', size: 'sm', onClick: () => { void (r.kind === 'run' ? api.commands.executeCommand('chat.openArchivedRun', { sessionId: r.taskId, title: r.name }) : api.commands.executeCommand('agents.openRun', r.taskId, r.name)); } });
           if (!r.action) { /* waiting on you, or already pausing */ } else if (r.action === 'stop') {
             createButton(bar, { id: 'agents.run.stop', label: 'Stop', icon: 'square', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop this run now', onClick: () => act(r.taskId, async () => { svc.chat?.cancelRequest(r.taskId); }) });
           } else if (r.action === 'pause') {
