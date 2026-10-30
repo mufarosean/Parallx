@@ -80,6 +80,9 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `chat.stop` | Chat: Stop Response | chat |  |  |  |
 | `chat.toggle` | Chat: Toggle Chat Panel | chat |  |  |  |
 | `conceptLab.open` | Open Concept Lab | concept-lab | Concept Lab |  |  |
+| `chat.clearModelCalls` | Clear Model Calls | core | AI |  |  |
+| `chat.closeModelCalls` | Close Model Calls | core | AI |  |  |
+| `chat.showModelCalls` | Show Model Calls | core | AI |  |  |
 | `edit.copy` | Copy | core | Edit | Ctrl+C |  |
 | `edit.cut` | Cut | core | Edit | Ctrl+X |  |
 | `edit.find` | Find | core | Edit | Ctrl+F |  |
