@@ -15,7 +15,7 @@
 // in the Studio is drawn with the kit alone.
 
 import { buildTryLineMessages, parseJsonLoose, stripDashes } from './studio-core.js';
-import { createModelRoute } from './model-route.js';
+import { createModelRoute } from './model-route.js'; import { SITUATIONS_SCHEMA } from './schemas.js';
 
 const STOP = new Set(('a an the and or but if then so of to in on at by for with from into onto over under about as is are was were be been being it its this that these those he she they them his her their him i me my you your we our us not no nor do does did have has had will would can could should may might must just only very more most less than too also there here what which who whom whose when where why how all any each every some such own same other another one two up down out off again once while because until before after above below between through during without within against toward towards upon among around like').split(/\s+/));
 
@@ -206,7 +206,7 @@ export function mountTestDrive(host, deps) {
     try {
       const { modelId, numCtx } = await deps.resolveModel();
       const route = createModelRoute(deps.lm);
-      const situations = parseSituations(await route.ask(modelId, buildSituationsMessages(sheet), { temperature: 0.9, think: false, format: 'json', numCtx }));
+      const situations = parseSituations(await route.ask(modelId, buildSituationsMessages(sheet), { temperature: 0.9, think: false, format: SITUATIONS_SCHEMA, numCtx }));
       const replies = [];
       for (let i = 0; i < situations.length; i++) {
         deps.setMeta(`Hearing them in scene ${i + 1} of ${situations.length}…`);

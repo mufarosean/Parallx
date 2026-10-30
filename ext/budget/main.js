@@ -16,6 +16,7 @@
 import { BUDGET_SYNC_SKILL } from './skills/budget-sync.js';
 import { drawerField } from './drawer.js';
 import { normalizeMerchant, loadPastChoices, pastChoicesFor, pastChoicesPrompt, PAST_CHOICE_MODEL } from './past-choices.js';
+import { budgetStageSchema } from './ai-schemas.js';
 
 // ─── Module-level state ────────────────────────────────────────────────────
 let _activated = false;
@@ -6678,13 +6679,14 @@ const BUDGET_DEFAULT_GMAIL_QUERY = 'from:chase.com';
 // actionable diagnostics instead of silently classifying as "other".
 let _lastMalformedSample = null;
 
-function budgetLmOptions(_stage) {
+function budgetLmOptions(stage, shape) {
   // No maxTokens — let the model think and answer to completion. Reasoning is
-  // asked for explicitly: left unset, only some local models reason.
+  // asked for explicitly: left unset, only some local models reason. The
+  // format is the stage's JSON schema (ai-schemas.js), plain JSON without one.
   return {
     think: true,
     temperature: 0,
-    format: 'json',
+    format: budgetStageSchema(stage, shape) || 'json',
     numCtx: BUDGET_LM_NUM_CTX,
   };
 }
@@ -6768,12 +6770,12 @@ async function budgetStreamWithStall(stream, onChunk, { stallMs = BUDGET_LM_STAL
   }
 }
 
-async function lmRunJson(api, modelId, systemPrompt, userPrompt, stage = 'default') {
+async function lmRunJson(api, modelId, systemPrompt, userPrompt, stage = 'default', shape = {}) {
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user',   content: userPrompt   },
   ];
-  const opts = budgetLmOptions(stage);
+  const opts = budgetLmOptions(stage, shape);
   const collect = async (msgs) => {
     let out = '';
     await budgetStreamWithStall(api.lm.sendChatRequest(modelId, msgs, opts), (chunk) => {
@@ -6817,7 +6819,7 @@ async function aiStage1(api, modelId, msg) {
     `  • "other"           — statement-ready notice, marketing, security alerts, password resets, etc. (no money moved).\n\n` +
     `Account-kind hint should reflect which kind of account the event hits (use the body text — credit-card emails usually mention "Visa", "Mastercard", or a card name; bank emails mention "Total Checking", "Savings").\n\n` +
     `Return:\n{\n  "event_type":         <one of the strings above>,\n  "account_kind_hint":  <"checking" | "savings" | "credit_card" | "other">\n}`;
-  const r = await lmRunJson(api, modelId, sys, usr, 'classify');
+  const r = await lmRunJson(api, modelId, sys, usr, 'classify', { eventTypes: [...TX_TYPE_VALUES, 'balance_summary', 'other'] });
   if (!r || typeof r !== 'object') return { event_type: 'other', account_kind_hint: 'other', malformed: true };
   let eventType = typeof r.event_type === 'string' ? r.event_type.trim().toLowerCase() : 'other';
   // Defensive normalization — if the model emits the old labels we collapse
@@ -6867,7 +6869,7 @@ async function aiStage2(api, modelId, msg) {
 async function aiStage3(api, modelId, tx, categoryNames, pastLines = []) {
   const sys = 'You pick the best-fitting budget category for a transaction. Respond with a single JSON object and nothing else. The category MUST be one of the listed names (case-insensitive); if none fits, pick "Other".';
   const usr = `Merchant: ${tx.merchant ?? ''}\nAmount:   ${tx.amount} USD\n${pastChoicesPrompt(pastLines)}Categories: ${categoryNames.join(', ')}\n\nReturn:\n{ "category": <one of the listed category names> }`;
-  const r = await lmRunJson(api, modelId, sys, usr, 'categorize');
+  const r = await lmRunJson(api, modelId, sys, usr, 'categorize', { categoryNames });
   if (!r || typeof r.category !== 'string') return null;
   return r.category.trim();
 }

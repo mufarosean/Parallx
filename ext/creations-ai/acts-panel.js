@@ -20,7 +20,7 @@
 
 import { ACT_FILE, actStatusLine, actTimelineLine, beatTurn, buildActPlanMessages, buildNextActMessages, parseActFile, parseBeats, parseNextAct, renderActFile } from './acts.js';
 import { stripDashes } from './studio-core.js';
-import { createModelRoute } from './model-route.js';
+import { createModelRoute } from './model-route.js'; import { NEXT_ACT_SCHEMA } from './schemas.js';
 
 /** The runners by thread, for the panel's commands (a button names its thread). */
 const runners = new Map();
@@ -132,7 +132,7 @@ export function createActRunner(deps) {
       const { modelId, numCtx } = await deps.model();
       const cast = deps.cast().map((c) => ({ name: c.name, tagline: c.tagline, drives: c.drives, secrets: c.secrets }));
       const messages = buildNextActMessages({ cast, memory: await deps.memory(), transcript: deps.transcript(), lastBrief: act() ? act().brief : '' });
-      const brief = parseNextAct(await route.ask(modelId, messages, { temperature: 0.9, think: true, format: 'json', numCtx }));
+      const brief = parseNextAct(await route.ask(modelId, messages, { temperature: 0.9, think: true, format: NEXT_ACT_SCHEMA, numCtx }));
       if (!brief) throw new Error('the model proposed nothing readable');
       deps.composer.set(`/act ${stripDashes(brief)}`);
     } catch (err) {

@@ -49,6 +49,13 @@ const MAX_PARTNERS_PER_SOURCE = 20;
 const EXCERPT_CHARS_PER_SIDE = 1500;
 /** Minimum confidence to accept a non-'none' classification. Low-confidence → treated as 'none'. */
 const MIN_CONFIDENCE_FOR_EDGE = 0.55;
+
+/** The answer's shape, sent as the format so Ollama and OpenAI-compatible servers hold the model to it. */
+const LINEAGE_SCHEMA = {
+  type: 'object',
+  properties: { relationship: { type: 'string', enum: ['extends', 'refutes', 'none'] }, confidence: { type: 'number' } },
+  required: ['relationship', 'confidence'],
+};
 /** Average wall-clock cost per source (multiple pairs). Used by the orchestrator estimate. */
 const ESTIMATED_SECONDS_PER_SOURCE = 30;
 
@@ -377,9 +384,8 @@ export class LineageClassifierService extends Disposable {
         modelId,
         messages,
         // Automatic background work: waits while you chat (engine broker).
-        // The model reasons first, so the cap leaves room for that before
-        // the 200-token JSON answer.
-        { temperature: 0.1, format: 'json', think: true, engine: { priority: 'maintenance', label: 'Linking pages' } },
+        // The answer is held to LINEAGE_SCHEMA where the provider can.
+        { temperature: 0.1, format: LINEAGE_SCHEMA, think: true, engine: { priority: 'maintenance', label: 'Linking pages' } },
         signal,
       );
       for await (const chunk of stream) {

@@ -21,7 +21,7 @@ import { takeCharacterDraft, keepCharacterDraft, dropCharacterDraft, clearCharac
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
-import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
+import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js'; import { MEMORY_CATEGORY_ORDER, MEMORY_EXTRACT_SCHEMA, sinceThenSchema } from './schemas.js';
 import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
@@ -4255,7 +4255,6 @@ const MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES = 6;
 const MEMORY_TIMELINE_TAIL = 20;
 const MEMORY_SEMANTIC_FILE = 'memory.semantic.jsonl';
 const MEMORY_EPISODIC_FILE = 'memory.episodic.jsonl';
-const MEMORY_CATEGORY_ORDER = ['relationship', 'trait', 'event', 'place', 'preference', 'other'];
 
 function _memoryFileUri(workspaceUri, threadId, fileName) {
   return resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/${fileName}`);
@@ -4598,7 +4597,7 @@ async function autoExtractMemoryBackground({
     const stream = createModelRoute(parallx.lm).stream(modelId, [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: userPrompt },
-    ], { temperature: 0.2, think: true, format: 'json', numCtx });
+    ], { temperature: 0.2, think: true, format: MEMORY_EXTRACT_SCHEMA, numCtx });
     let raw = '';
     for await (const chunk of stream) {
       if (chunk?.content) raw += chunk.content;
@@ -5422,7 +5421,7 @@ function renderChatEditor(container, parallx, input) {
       const memory = await loadThreadMemory(fs, workspaceUri, threadId).catch(() => ({ facts: [], beats: [], notes: '' }));
       const messages = buildSinceThenMessages({ cast, others: [...supportingCards, ...connectedCards], before, after, memory, lastTurn: narratorTurn });
       let raw = '';
-      raw = await createModelRoute(parallx.lm).ask(modelId, messages, { temperature: 0.9, think: false, format: 'json', numCtx: await chatContextWindow(modelId) });
+      raw = await createModelRoute(parallx.lm).ask(modelId, messages, { temperature: 0.9, think: false, format: sinceThenSchema(cast.map((c) => c.name)), numCtx: await chatContextWindow(modelId) });
       const lines = parseSinceThen(raw, cast.map((c) => c.name));
       if (!lines.length) return;
       sinceThenLines = lines;

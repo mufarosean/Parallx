@@ -13,8 +13,9 @@ commit and push after each item, and mark it here.
 4. Done: the heartbeat notices page edits (one signal per page per ten minutes), not only file changes.
 5. Done: web search works with no API key (DuckDuckGo when no Brave key is set).
 6. Done: a generic OpenAI-compatible provider (LM Studio, llama.cpp server, vLLM...).
-7. JSON schema instead of `format: 'json'` for the structured calls (can't be
-   tried on a real model here: flagged for you to test).
+7. Done: the structured calls send their JSON schema (Linking pages; Budget's
+   four stages; Creations' act brief, test drive, story memory, chat memory,
+   Since Then). Studio keeps plain JSON. Not tried on a real model here.
 
 ### Canvas
 8. Done: the slash menu opens on Text, opens mid-line after a space, finds blocks by alias (h1, ul, todo, ---...).

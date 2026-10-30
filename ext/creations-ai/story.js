@@ -18,7 +18,7 @@ import {
   buildBeatMessages, buildMemoryMessages, cleanBeat, storyMarkdown, storyFileName, storyWords,
 } from './story-core.js';
 import { parseJsonLoose, stripDashes, countWords } from './studio-core.js';
-import { createModelRoute } from './model-route.js';
+import { createModelRoute } from './model-route.js'; import { STORY_MEMORY_SCHEMA } from './schemas.js';
 
 const STYLE_ID = 'creations-story-styles';
 const AUTOSAVE_MS = 800;
@@ -667,7 +667,7 @@ export function renderStoryPane(container, parallx, ctx, deps) {
     setStatus('Updating Memory', 'accent');
     try {
       const { modelId, numCtx } = await resolveModel();
-      const raw = await streamText(modelId, numCtx, buildMemoryMessages(state.story, since), null, { temperature: 0.2, format: 'json' });
+      const raw = await streamText(modelId, numCtx, buildMemoryMessages(state.story, since), null, { temperature: 0.2, format: STORY_MEMORY_SCHEMA });
       const parsed = parseJsonLoose(raw);
       const mem = parsed && typeof parsed.memory === 'string' ? stripDashes(parsed.memory).trim() : '';
       if (!mem) throw new Error('Nothing came back.');
