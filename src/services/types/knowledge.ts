@@ -344,6 +344,9 @@ export interface IIndexingPipelineService extends IDisposable {
    */
   readonly hasSearchableIndex?: boolean;
 
+  /** A file's id in the index (its workspace-relative path), to scope a search to it. */
+  sourceIdFor?(absolutePath: string): string;
+
   /** Start the full indexing pipeline (pages + files). */
   start(): Promise<void>;
 

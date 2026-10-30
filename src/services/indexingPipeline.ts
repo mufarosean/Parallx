@@ -696,7 +696,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * @param filePath — absolute filesystem path (from file watcher or external caller)
    */
   async reindexFile(filePath: string): Promise<void> {
-    const relativePath = this._toRelativePath(filePath);
+    const relativePath = this.sourceIdFor(filePath);
     const t0 = performance.now();
     try {
       const changed = await this._indexSingleFile(filePath, relativePath);
@@ -1076,7 +1076,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    *   If omitted, computed via _toRelativePath().
    */
   private async _indexSingleFile(absolutePath: string, relativePath?: string): Promise<boolean> {
-    const relPath = relativePath ?? this._toRelativePath(absolutePath);
+    const relPath = relativePath ?? this.sourceIdFor(absolutePath);
     const uri = URI.file(absolutePath);
     const ext = getExtension(absolutePath);
     const isRichDoc = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
@@ -1401,7 +1401,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       if (!ext || (!INDEXABLE_EXTENSIONS.has(ext) && !RICH_DOCUMENT_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext))) { continue; }
 
       // Use workspace-relative path for DB operations (matches stored sourceId)
-      const relativePath = this._toRelativePath(filePath);
+      const relativePath = this.sourceIdFor(filePath);
 
       // Respect .parallxignore on the incremental path too. The full walk has
       // always honoured it (_walkDirectory), but this handler filtered on
@@ -1467,7 +1467,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * when transcript indexing is on. Files directly in `.parallx` count.
    */
   private _isIndexableRelPath(relativePath: string): boolean {
-    // _toRelativePath returns the absolute path for a file outside every folder.
+    // sourceIdFor returns the absolute path for a file outside every folder.
     if (/^([/\\]|[A-Za-z]:)/.test(relativePath)) return false;
     const segs = relativePath.split('/');
     for (let i = 0; i < segs.length - 1; i++) {
@@ -1482,8 +1482,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }
     return true;
   }
-
-  private _toRelativePath(absolutePath: string): string {
+  /** A file's id in the index: its path within the workspace folder that holds it. */
+  sourceIdFor(absolutePath: string): string {
     const normalized = absolutePath.replace(/\\/g, '/');
     for (const folder of this._workspaceService.folders) {
       const root = folder.uri.fsPath.replace(/\\/g, '/');

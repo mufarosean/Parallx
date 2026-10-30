@@ -192,7 +192,11 @@ not get asked for again. Short source tags: **IDEAS** = `IDEAS_2026-10-23`,
 - **One model-call ledger** (who called, tokens, cache reads, timings): AI
   quality becomes numbers. IDEAS. Open.
 - **PDF Ask sees the whole page**, with the file name and retrieval limited to
-  that file; today it gets only the selected sentence. IDEAS. Open.
+  that file; it got only the selected sentence. IDEAS. Done Oct 30: Ask on a
+  highlight gets the file name, the page number, the whole page (cut around
+  the passage past 8,000 characters) and the passages of the same file that
+  bear on the question, and is told to say when the paper does not answer.
+  Not tried on a real model here (no Ollama in the cloud container).
 - **Find in Files reads PDF, Word and Excel.** IDEAS. Done Oct 29: documents
   are searched through the same text extraction the AI uses, a PDF's matches
   say and open their page; each document is read again only when it changes.

@@ -3,12 +3,13 @@
 // saved per file, toggled off or recoloured by highlighting again, undone
 // and redone. Undo belongs to one document: the pane keeps its store when
 // it opens another PDF, and an undo there must not bring back a highlight
-// from the one before.
+// from the one before. Asking the AI about a highlight gives it the file,
+// the whole page and that file's passages, not only the highlighted words.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PdfHighlightStore, type PdfHighlightStoreHost } from '../../src/editor/panes/pdf/pdfHighlightStore';
 
-function setup() {
+function setup(over: Partial<PdfHighlightStoreHost> = {}) {
   const saved = new Map<string, string>();
   const storage = {
     get: async (k: string) => saved.get(k),
@@ -38,6 +39,8 @@ function setup() {
     capturedText: () => 'Excess loss',
     clearSelectionOverlay: () => {},
     continueInChat: () => {},
+    pageSource: async () => ({}),
+    ...over,
   };
   const select = () => {
     const range = document.createRange();
@@ -111,5 +114,35 @@ describe('PdfHighlightStore', () => {
     store.createFromSelection('pink');
     store.close();
     expect(JSON.parse(saved.get('parallx.pdfHighlights:a.pdf')!)[0].color).toBe('pink');
+  });
+
+  it('asks about a highlight with its file, its whole page and passages from that file', async () => {
+    vi.useRealTimers();
+    const sent: { role: string; content: string }[][] = [];
+    const scopes: unknown[] = [];
+    const provider = {
+      async *sendChatRequest(messages: readonly { role: string; content: string }[]) { sent.push([...messages]); yield { content: 'It is the retention.' }; },
+      retrieveContext: async (_q: string, scope?: unknown) => { scopes.push(scope); return '[1] Brosius p.4: the retention is set by treaty.'; },
+    };
+    const { store, select } = setup({
+      commands: () => ({ executeCommand: async <T,>() => provider as T }),
+      pageSource: async (n) => ({ fileName: 'brosius.pdf', filePath: '/w/papers/brosius.pdf', pageCount: 12, pageText: `Page ${n}. Excess loss development above the retention.` }),
+    });
+    await store.load('/w/papers/brosius.pdf');
+    select();
+    const [hl] = store.createFromSelection('yellow');
+    store.openPopover(hl, new DOMRect(0, 0, 10, 10));
+    const ask = document.querySelector<HTMLTextAreaElement>('.pdf-highlight-ask')!;
+    ask.value = 'What is the retention here?';
+    ask.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    const system = sent[0][0].content;
+    expect(system).toContain('"brosius.pdf", page 1 of 12');
+    expect(system).toContain('Excess loss\n---');
+    expect(system).toContain('Page 1. Excess loss development above the retention.');
+    expect(system).toContain('the retention is set by treaty');
+    expect(scopes).toEqual([{ filePath: '/w/papers/brosius.pdf' }]);
+    expect(sent[0].at(-1)).toEqual({ role: 'user', content: 'What is the retention here?' });
+    store.dismissPopover();
   });
 });

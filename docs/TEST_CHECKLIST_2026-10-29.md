@@ -101,6 +101,16 @@ me if it is not that.
 - **Expect:** It refuses to write into the .xlsx and offers a new .md or
   .csv file instead. Your workbook is unchanged.
 
+### 2.6 Ask about a PDF highlight sees the whole page
+- **Do:** In one of your papers, highlight a sentence that says "this
+  factor" or "the table above" (something that only makes sense with the
+  page around it). Open the highlight's panel and ask "What does this refer
+  to?"
+- **Expect:** The answer uses the rest of the page (it names the factor or
+  the table) and can mention the paper by name. Ask something the paper does
+  not cover: it says the paper does not say, instead of inventing it.
+- **If wrong:** Tell me the paper, the page and what you asked.
+
 ---
 
 ## 3. Quick checks (no model needed)

@@ -3118,7 +3118,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           options?: { temperature?: number; maxTokens?: number; think?: boolean },
           signal?: AbortSignal,
         ) => AsyncIterable<IChatResponseChunk>;
-        retrieveContext?: (query: string) => Promise<string | undefined>;
+        retrieveContext?: (query: string, scope?: { filePath?: string }) => Promise<string | undefined>;
       } = {
         sendChatRequest: (messages, options, signal) => {
           // Through the model service, so the call takes its place in the
@@ -3127,11 +3127,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return languageModelsService.sendChatRequestForModel(modelId, messages, options, signal);
         },
         retrieveContext: retrievalService && indexingPipelineService
-          ? async (query: string): Promise<string | undefined> => {
-            if (!indexingPipelineService!.isInitialIndexComplete) return undefined;
-            try {
-              // No hardcoded limits — retrieval params from AI Settings.
-              const chunks = await retrievalService!.retrieve(query);
+          ? async (query: string, scope?: { filePath?: string }): Promise<string | undefined> => {
+            const index = indexingPipelineService!;
+            if (!(index.hasSearchableIndex ?? index.isInitialIndexComplete)) return undefined;
+            try { // retrieval params from AI Settings; a file scope keeps to that file
+              const only = scope?.filePath && index.sourceIdFor ? index.sourceIdFor(scope.filePath) : undefined;
+              const chunks = await retrievalService!.retrieve(query, only ? { sourceIds: [only] } : undefined);
               return chunks.length > 0 ? retrievalService!.formatContext(chunks) : undefined;
             } catch { return undefined; }
           }

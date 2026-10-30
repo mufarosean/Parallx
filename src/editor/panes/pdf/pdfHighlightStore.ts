@@ -12,6 +12,7 @@ import { highlightRgba, rectsOverlap, cloneHighlight } from './pdfHighlights.js'
 import type { PdfHighlight, PdfHighlightAction, PdfHighlightCanvasLink, PdfHighlightRect } from './pdfHighlights.js';
 import { openHighlightPopover, type HighlightPopover } from './pdfHighlightPopover.js';
 import type { InlineAIProvider, IPaneCommandService, SelectionOverlayRect } from './pdfTypes.js';
+import type { PassageContext } from './pdfPassagePrompt.js';
 
 /** What the highlights need from the pane. */
 export interface PdfHighlightStoreHost {
@@ -28,6 +29,8 @@ export interface PdfHighlightStoreHost {
   clearSelectionOverlay(): void;
   /** Take a highlight and its discussion to the chat panel. */
   continueInChat(hl: PdfHighlight): void;
+  /** The open file and one page's text, for a question about a passage on it. */
+  pageSource(pageNumber: number): Promise<{ fileName?: string; filePath?: string; pageCount?: number; pageText?: string }>;
 }
 
 const SAVE_DELAY_MS = 300;
@@ -260,6 +263,7 @@ export class PdfHighlightStore {
         this.dismissPopover();
       },
       inlineAI: () => this._loadInlineAI(),
+      passageContext: (h, question) => this._passageContext(h, question),
       newAISignal: () => {
         this._aiAbort?.abort();
         this._aiAbort = new AbortController();
@@ -274,6 +278,16 @@ export class PdfHighlightStore {
       const pop = this._popover.element;
       setTimeout(() => pop.querySelector<HTMLTextAreaElement>('.pdf-highlight-ask')?.focus(), 0);
     }
+  }
+
+  /** The page and file around a passage, and the file's passages that bear on the question. */
+  private async _passageContext(hl: PdfHighlight, question: string): Promise<PassageContext> {
+    const src = await this._host.pageSource(hl.page).catch(() => ({} as Awaited<ReturnType<PdfHighlightStoreHost['pageSource']>>));
+    const ai = await this._loadInlineAI();
+    const related = src.filePath && ai?.retrieveContext
+      ? await ai.retrieveContext(`${question}\n${hl.text}`.slice(0, 1000), { filePath: src.filePath }).catch(() => undefined)
+      : undefined;
+    return { fileName: src.fileName, pageNumber: hl.page, pageCount: src.pageCount, pageText: src.pageText, related };
   }
 
   /** Close the review panel, wherever the close comes from. */

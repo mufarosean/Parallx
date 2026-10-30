@@ -52,6 +52,7 @@ import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import { declareControl } from '../../../ui/kit.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
+import { pageSource } from './pdfPassagePrompt.js';
 import { PdfOutline } from './pdfOutline.js';
 import { PdfSearchBar } from './pdfSearchBar.js';
 
@@ -104,7 +105,6 @@ export class PdfEditorPane extends EditorPane {
   private _thumbnailVisible = false;
   private _thumbs: PdfThumbnails | null = null;
 
-  // Page labels
   private _pageLabels: string[] | null = null;
 
   // ── PDF.js components ────────────────────────────────────────────────
@@ -136,6 +136,7 @@ export class PdfEditorPane extends EditorPane {
     capturedText: () => this._selectionMenu?.capturedText ?? '',
     clearSelectionOverlay: () => this._selectionOverlay.clear(),
     continueInChat: (hl) => this._selectionActions.continueInChat(hl),
+    pageSource: (n) => pageSource(this._pdfDoc, this._currentInput, n),
   });
   private readonly _selectionActions = new PdfSelectionActions({
     file: () => (this._currentInput ? { name: this._currentInput.name, fsPath: this._currentInput.uri.fsPath } : null),
@@ -147,7 +148,6 @@ export class PdfEditorPane extends EditorPane {
     highlights: this._highlightStore,
   });
   private _selectionMenu: PdfSelectionMenu | null = null;
-
   // ── M84: inline AI + canvas partnership ──────────────────────────────
   private _commandService: IPaneCommandService | undefined;
 

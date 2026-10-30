@@ -13,6 +13,7 @@ import { pdfButton } from './pdfButtons.js';
 import { HIGHLIGHT_COLORS, highlightSolid } from './pdfHighlights.js';
 import type { PdfHighlight } from './pdfHighlights.js';
 import type { InlineAIProvider } from './pdfTypes.js';
+import { passagePrompt, type PassageContext } from './pdfPassagePrompt.js';
 
 /** What the review panel needs from the highlights it belongs to. */
 export interface HighlightPopoverHost {
@@ -28,6 +29,8 @@ export interface HighlightPopoverHost {
   continueInChat(hl: PdfHighlight): void;
   /** The chat's inline-AI provider, or null when chat is off. */
   inlineAI(): Promise<InlineAIProvider | null>;
+  /** Where the passage sits (file, page, the page's text) and what else in the file bears on `question`. */
+  passageContext(hl: PdfHighlight, question: string): Promise<PassageContext>;
   /** A signal for a new AI answer; any answer still streaming stops. */
   newAISignal(): AbortSignal;
   /** A click outside closed the panel; `onTab` when it landed on a margin tab. */
@@ -256,13 +259,9 @@ function buildThreadSection(parent: HTMLElement, hl: PdfHighlight, host: Highlig
     renderTurns();
     host.save();
 
-    // The system message anchors the passage; earlier turns give continuity.
-    const messages: IChatMessage[] = [{
-      role: 'system',
-      content: 'You are helping a reader understand a passage from a PDF document. '
-        + 'The passage is:\n\n---\n' + (hl.text || '(image selection)') + '\n---\n\n'
-        + 'Answer their questions about it clearly and concisely.',
-    }];
+    // The system message anchors the passage in its page and file; earlier turns give continuity.
+    const where = await host.passageContext(hl, question).catch((): PassageContext => ({ pageNumber: hl.page }));
+    const messages: IChatMessage[] = [{ role: 'system', content: passagePrompt(hl.text, where) }];
     for (const turn of hl.thread) {
       messages.push({ role: turn.role === 'ai' ? 'assistant' : 'user', content: turn.text });
     }

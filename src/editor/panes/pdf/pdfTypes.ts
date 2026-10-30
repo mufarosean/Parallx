@@ -26,7 +26,8 @@ export interface InlineAIProvider {
     options?: { temperature?: number; maxTokens?: number; think?: boolean },
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk>;
-  retrieveContext?: (query: string) => Promise<string | undefined>;
+  /** The workspace's indexed passages for `query`; `filePath` keeps to one file. */
+  retrieveContext?: (query: string, scope?: { filePath?: string }) => Promise<string | undefined>;
 }
 
 /** The command service, as much of it as the pane uses. */
