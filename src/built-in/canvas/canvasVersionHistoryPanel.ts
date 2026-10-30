@@ -99,7 +99,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
       extensions: createEditorExtensions(lowlight, { dataService, pageId }),
       content: '',
       editable: false,
-      editorProps: { attributes: { class: 'canvas-tiptap-editor canvas-vh-doc' } },
+      editorProps: { attributes: { class: 'canvas-tiptap-editor canvas-vh-doc', 'aria-label': 'The page at this version', 'aria-readonly': 'true' } },
     });
     void dataService.getPage(pageId).then((p) => {
       if (p?.fontFamily) pageHost.style.setProperty('--canvas-page-font', resolveFontStack(p.fontFamily));
@@ -196,8 +196,8 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
         const empty = $('div.canvas-vh-empty');
         empty.textContent = 'No versions yet. A version is saved every few minutes while you edit.';
         listEl.appendChild(empty);
-        meta.hidden = true;
-        footer.hidden = true;
+        preview.style.display = 'none'; // nothing to show; focus goes to Close, inside the dialog
+        closeBtn.focus();
         return;
       }
       let day = '';

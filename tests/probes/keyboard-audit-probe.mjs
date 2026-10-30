@@ -39,7 +39,7 @@ const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-k
 const only = process.argv.slice(3);
 
 const SCREENS = [
-  ['boot'], ['welcome.openWelcome'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
+  ['boot'], ['start'], ['welcome.openWelcome'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
   ['dashboard.open'], ['agents.show'], ['agents.showRoutines'], ['tools.showInstalled'], ['chat.show'], ['workflows.new'],
   ['settings.open'], ['settings.open', 'ai'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],
@@ -652,6 +652,8 @@ async function open(first, args) {
   await page.keyboard.press('Escape');
   if (first === 'pdf') return openFile(page, 'reading.pdf');
   if (first === 'boot') return;
+  // Start: the empty editor, every tab closed.
+  if (first === 'start') { for (let i = 0; i < 12 && await page.evaluate(() => !!document.querySelector('.editor-watermark.hidden')); i++) { await cmd(page, 'workbench.action.closeActiveEditor'); await page.waitForTimeout(200); } return; }
   if (first.startsWith('seed:')) return seedScreens[first]?.();
   const r = await cmd(page, first.replace(/^ext:/, ''), ...args);
   if (r !== true) console.log(`[open] ${first}: ${r}`);
@@ -683,6 +685,7 @@ const DIALOGS = [
   { name: 'notifications panel (bell)', opener: ['activitybar.notifications'], open: { key: 'Enter' }, root: '[data-px-surface="notificationCenter"]', modal: false },
   { name: 'dropdown', setup: ['workflows.new'], opener: ['workflows.editor.class', 'button'], open: { key: 'Enter' }, root: '.ui-dropdown__list', modal: false },
   { name: 'settings', opener: ['activitybar.explorer-container'], open: { cmd: ['settings.open'] }, root: '[data-px-surface="settings"]', modal: true },
+  { name: 'model calls', opener: ['activitybar.explorer-container'], open: { cmd: ['chat.showModelCalls'] }, root: '.px-model-calls', modal: true },
   { name: 'confirm', opener: ['activitybar.explorer-container'], open: { cmd: ['workspace.resetConfig'] }, root: '[data-px-surface="confirm"]', modal: true },
   { name: 'input box', setup: ['canvas.newPage'], opener: ['canvas.page.menu'], open: { cmd: ['canvas.renamePage', '$page'] }, root: '[data-px-surface="inputBox"]', modal: true },
   { name: 'prompt toast', setup: ['canvas.newPage'], opener: ['canvas.page.menu'], open: { cmd: ['canvas.deletePage', '$page'] }, root: '[data-px-surface="notification"]', modal: false },

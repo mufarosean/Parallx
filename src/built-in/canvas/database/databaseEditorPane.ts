@@ -24,7 +24,7 @@ import { isChecked, normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
-import { createButton, createIconButton } from '../../../ui/kit.js';
+import { createButton, createIconButton, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
@@ -375,13 +375,13 @@ export class DatabaseEditorPane implements IDisposable {
     for (const p of props) {
       const th = el('th', 'canvas-db-th');
       th.appendChild(createTypeIconElement(p.type, 14));
-      th.appendChild(el('span', '', p.name));
-      th.addEventListener('click', () => this._openHeaderMenu(th, p, view));
+      // The name is the header's control (keys and a name for screen readers); the th stays a column header.
+      declareControl(th.appendChild(el('span', '', p.name)), { id: `database.column.${sceneSlug(p.id)}`, label: p.name || 'Property' }); th.addEventListener('click', () => this._openHeaderMenu(th, p, view));
       this._attachResize(th, p.id, view);
       headRow.appendChild(th);
     }
     const addTh = el('th', 'canvas-db-th canvas-db-th--add', '+');
-    addTh.title = 'Add a property';
+    addTh.title = 'Add a property'; addTh.setAttribute('aria-label', 'Add a Property'); declareControl(addTh, { id: 'database.addProperty', label: 'Add a Property' });
     addTh.addEventListener('click', () => this._openAddPropertyPopover(addTh));
     headRow.appendChild(addTh);
     thead.appendChild(headRow);
@@ -424,7 +424,7 @@ export class DatabaseEditorPane implements IDisposable {
     const newLabel = el('span', 'canvas-db-newrow__label');
     newLabel.innerHTML = svgIcon('plus');
     newLabel.appendChild(el('span', '', 'New'));
-    newTd.appendChild(newLabel);
+    newTd.appendChild(newLabel); newLabel.setAttribute('aria-label', 'New Row'); declareControl(newLabel, { id: 'database.newRowCell', label: 'New Row' });
     newTd.colSpan = props.length + 2;
     newTd.addEventListener('click', () => void this._addRow());
     newTr.appendChild(newTd);
