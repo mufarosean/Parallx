@@ -21,6 +21,8 @@ import type { Event } from '../platform/events.js';
 import type { IStorage } from '../platform/storage.js';
 import { ModelEngineBroker } from './modelEngineBroker.js';
 import type { IModelEngineBroker } from './modelEngineBroker.js';
+import { ModelCallLedger } from './modelCallLedger.js';
+import type { IModelCallLedger } from './modelCallLedger.js';
 import type {
   ILanguageModelsService,
   ILanguageModelProvider,
@@ -68,7 +70,9 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   // ── Active model ──
 
   private _activeModelId: string | undefined;
-  private readonly _broker = this._register(new ModelEngineBroker());
+  /** Every model call this session, without its text (AI: Show Model Calls). */
+  private readonly _callLedger = this._register(new ModelCallLedger());
+  private readonly _broker = this._register(new ModelEngineBroker(undefined, undefined, this._callLedger));
 
   // ── Storage (optional — late-bound via setStorage) ──
 
@@ -459,6 +463,11 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
   getEngineBroker(): IModelEngineBroker {
     return this._broker;
+  }
+
+  /** The record of every model call (who, model, tokens, timings, outcome). */
+  getCallLedger(): IModelCallLedger {
+    return this._callLedger;
   }
 
   getEngineForModel(modelId: string): string | undefined {

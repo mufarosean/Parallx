@@ -71,7 +71,9 @@ export class LanguageModelBridge {
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
     this._throwIfDisposed();
-    return this._service.sendChatRequestForModel(modelId, messages, options, signal);
+    // The call ledger names the tool that asked; a tool cannot claim another's id.
+    const tagged: IChatRequestOptions = { ...(options ?? {}), engine: { ...(options?.engine ?? {}), source: this._toolId } };
+    return this._service.sendChatRequestForModel(modelId, messages, tagged, signal);
   }
 
   /**

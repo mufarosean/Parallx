@@ -16,6 +16,7 @@ import * as doclingCommands from '../../src/commands/doclingCommands.js';
 import * as editorCommands from '../../src/commands/editorCommands.js';
 import * as fileCommands from '../../src/commands/fileCommands.js';
 import * as focusCommands from '../../src/commands/focusCommands.js';
+import * as modelCallsCommands from '../../src/commands/modelCallsCommands.js';
 import * as layoutCommands from '../../src/commands/layoutCommands.js';
 import * as questionCommands from '../../src/commands/questionCommands.js';
 import * as startCommands from '../../src/commands/startCommands.js';
@@ -35,6 +36,7 @@ const COMMAND_MODULES: Record<string, Record<string, unknown>> = {
   'fileCommands.ts': fileCommands,
   'focusCommands.ts': focusCommands,
   'layoutCommands.ts': layoutCommands,
+  'modelCallsCommands.ts': modelCallsCommands,
   'questionCommands.ts': questionCommands,
   'startCommands.ts': startCommands,
   'structuralCommands.ts': structuralCommands,

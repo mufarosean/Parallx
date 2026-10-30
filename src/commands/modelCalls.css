@@ -1,0 +1,23 @@
+/* modelCalls.css — the Model Calls dialog (modelCallsView.ts): a header with
+   Clear and Close, the totals by caller, then the calls in a list that
+   scrolls on its own. */
+.px-model-calls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-4);
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  padding: 0 var(--px-space-5) var(--px-space-5);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  color: var(--px-text);
+}
+.px-model-calls > .px-page-header { padding: var(--px-space-5) 0 0; gap: var(--px-space-2); }
+.px-model-calls > .px-page-header > .px-page-header__titles { flex: 1; }
+.px-model-calls > .px-page-header > .px-btn { flex: none; }
+.px-model-calls__totals { flex: none; max-height: 30%; overflow: auto; }
+.px-model-calls__recent { flex: 1; min-height: 0; overflow: auto; }
+.px-model-calls__recent:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); }
+.px-model-calls__recent .px-row__detail { white-space: normal; }

@@ -31,6 +31,7 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { IChatRequestOptions, IChatResponseChunk } from './chatTypes.js';
+import type { ModelCallLedger } from './modelCallLedger.js';
 
 export type EnginePriority = 'interactive' | 'resumed' | 'scheduled' | 'helper' | 'maintenance';
 
@@ -66,6 +67,8 @@ export interface IEngineCallTag {
   readonly priority?: EnginePriority;
   /** Short words for the Agents view ("Morning Brief"). */
   readonly label?: string;
+  /** The tool that made the call through `parallx.lm` (its id); set by the bridge, for the call ledger. */
+  readonly source?: string;
 }
 
 export interface IEngineRequest {
@@ -195,6 +198,8 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   constructor(
     private readonly _concurrency: ConcurrencyFn = () => 1,
     private readonly _now: () => number = () => Date.now(),
+    /** Where every call is recorded (modelCallLedger.ts): who, model, tokens, timings, outcome. */
+    private readonly _ledger?: ModelCallLedger,
   ) {
     super();
     this._register(toDisposable(() => { if (this._timer) clearTimeout(this._timer); }));
@@ -222,6 +227,14 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   async *request(req: IEngineRequest, start: EngineStart): AsyncIterable<IChatResponseChunk> {
     const tag = req.options?.engine;
     const priority = this._classify(tag);
+    // Every call passes here, so this is where the ledger hears of it.
+    const call = this._ledger?.begin({ engine: req.engine, modelId: req.modelId, priority, tag });
+    if (!call) { yield* this._route(req, priority, start); return; }
+    yield* call.track(this._route(req, priority, call.watch(start)), req.signal);
+  }
+
+  private async *_route(req: IEngineRequest, priority: EnginePriority, start: EngineStart): AsyncIterable<IChatResponseChunk> {
+    const tag = req.options?.engine;
     const options = this._policy(req, priority);
     if (options?.numCtx && options.numCtx > 0) this._shape.set(req.engine, { modelId: req.modelId, numCtx: options.numCtx });
 

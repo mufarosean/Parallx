@@ -3120,10 +3120,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         retrieveContext?: (query: string, scope?: { filePath?: string }) => Promise<string | undefined>;
       } = {
         sendChatRequest: (messages, options, signal) => {
-          // Through the model service, so the call takes its place in the
-          // engine broker's order (and works for any provider's model).
+          // Through the model service: the call takes its place in the engine
+          // broker's order, works for any provider's model, and is named in the call ledger.
           const modelId = languageModelsService.getActiveModel() ?? '';
-          return languageModelsService.sendChatRequestForModel(modelId, messages, options, signal);
+          return languageModelsService.sendChatRequestForModel(modelId, messages, { ...options, engine: { label: 'Inline AI' } }, signal);
         },
         retrieveContext: retrievalService && indexingPipelineService
           ? async (query: string, scope?: { filePath?: string }): Promise<string | undefined> => {

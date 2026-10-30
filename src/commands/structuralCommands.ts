@@ -54,6 +54,7 @@ import { installDocling } from './doclingCommands.js';
 import { questionsGetRegistry } from './questionCommands.js';
 import { copyDiagnostics } from './diagnosticsCommands.js';
 import { openRecentItem } from './startCommands.js';
+import { showModelCalls, clearModelCalls, closeModelCalls } from './modelCallsCommands.js';
 
 //  Layout Commands 
 
@@ -404,6 +405,10 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   installDocling,
   // Help
   copyDiagnostics,
+  // AI: the model-call ledger
+  showModelCalls,
+  clearModelCalls,
+  closeModelCalls,
   // Selection → AI command
   addSelectionToChat,
   // The question-provider registry, for extensions
