@@ -67,14 +67,14 @@ export function formatCallRow(record: IModelCallRecord, nameOf: ToolNameOf, time
 }
 
 /** A caller's session totals as a row. */
-export function formatTotalsRow(t: IModelCallTotals): { name: string; detail: string } {
+export function formatTotalsRow(t: IModelCallTotals, nameOf: ToolNameOf = () => undefined): { name: string; detail: string } {
   const parts = [
     `${count(t.calls)} ${t.calls === 1 ? 'call' : 'calls'}`,
     tokensText(t.promptTokens, t.answerTokens),
     `${formatDuration(t.totalMs)} in all`,
   ];
   if (t.errors) parts.push(`${count(t.errors)} ${t.errors === 1 ? 'error' : 'errors'}`);
-  return { name: t.caller, detail: parts.join(' · ') };
+  return { name: callerText(t, nameOf), detail: parts.join(' · ') };
 }
 
 let _open: { overlay: Overlay; dispose(): void } | undefined;
@@ -108,7 +108,7 @@ export function showModelCallsDialog(ledger: IModelCallLedger, nameOf: ToolNameO
     const rows = ledger.entries();
     const sums = ledger.totals();
     totals.hidden = sums.length === 0;
-    for (const t of sums) createRow(totals, formatTotalsRow(t));
+    for (const t of sums) createRow(totals, formatTotalsRow(t, nameOf));
     if (rows.length === 0) {
       createEmptyState(recent, { icon: 'activity', headline: 'No model calls yet', hint: 'Each call to the model shows here as it is made.' });
       return;

@@ -39,6 +39,10 @@ export interface IRecentsServiceShape {
   recordOpen(item: Omit<RecentOpenedItem, 'ts'>): void;
   /** Every recently-opened item, most recent first. */
   getRecentOpens(): readonly RecentOpenedItem[];
+  /** A recorded item's new name (a page renamed); its place in the list stays. */
+  retitle(key: string, title: string): void;
+  /** Drop an item that is gone (a page moved to Trash or deleted). */
+  forget(key: string): void;
   /** Just the file URIs, most recent first (palette ordering, Welcome). */
   getRecentFileUris(): string[];
   /** Record a command execution in the palette MRU. */
@@ -93,12 +97,29 @@ export class RecentsService implements IRecentsServiceShape {
   recordOpen(item: Omit<RecentOpenedItem, 'ts'>): void {
     const next: RecentOpenedItem = { ...item, ts: Date.now() };
     this._opens = [next, ...this._opens.filter((r) => r.key !== next.key)].slice(0, OPENS_CAP);
+    this._saveOpens();
+  }
+
+  private _saveOpens(): void {
     void this._storage?.set(OPENS_KEY, JSON.stringify(this._opens));
     this._onDidChangeOpens.fire();
   }
 
   getRecentOpens(): readonly RecentOpenedItem[] {
     return this._opens;
+  }
+
+  retitle(key: string, title: string): void {
+    const at = this._opens.findIndex((r) => r.key === key);
+    if (at < 0 || this._opens[at].title === title) return;
+    this._opens = this._opens.map((r, i) => (i === at ? { ...r, title } : r));
+    this._saveOpens();
+  }
+
+  forget(key: string): void {
+    if (!this._opens.some((r) => r.key === key)) return;
+    this._opens = this._opens.filter((r) => r.key !== key);
+    this._saveOpens();
   }
 
   getRecentFileUris(): string[] {

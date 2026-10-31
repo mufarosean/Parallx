@@ -11,6 +11,7 @@
 //   node scripts/build.mjs              → development (no minification, inline sourcemaps)
 //   node scripts/build.mjs --production → production  (minified, external sourcemaps)
 import { build } from 'esbuild';
+import { addIgnoreList } from './sourceMapIgnoreList.mjs';
 import { copyFile, cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -54,6 +55,9 @@ await build({
   assetNames: 'fonts/[name]',
   plugins: [lazyVendorPlugin(), rawTextPlugin],
 });
+// DevTools links each console message to the code that logged it, not to the
+// recent-error log's console wrapper (scripts/sourceMapIgnoreList.mjs).
+addIgnoreList('dist/renderer/main.js');
 
 // ── Vendor bundles ─────────────────────────────────────────────────────────
 // pdf.js, highlight.js and JSZip are parsed when something first needs them

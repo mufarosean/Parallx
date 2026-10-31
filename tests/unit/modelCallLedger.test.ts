@@ -216,4 +216,24 @@ describe('model calls view text', () => {
     expect(formatTotalsRow({ caller: 'Chat', calls: 2, promptTokens: 10, answerTokens: 4, totalMs: 1500, errors: 1 }))
       .toEqual({ name: 'Chat', detail: '2 calls · 10 in, 4 out · 1.5 s in all · 1 error' });
   });
+
+describe('totals keep tools apart', () => {
+  it('a tool calling itself "Chat" gets its own row, named with the tool', async () => {
+    const { ModelCallLedger } = await import('../../src/services/modelCallLedger');
+    const { formatTotalsRow } = await import('../../src/commands/modelCallsView');
+    let t = 0;
+    const ledger = new ModelCallLedger(() => (t += 10));
+    const run = async (tag: { label?: string; source?: string; runId?: string }) => {
+      const rec = ledger.begin({ engine: 'ollama', modelId: 'm', priority: 'interactive', tag });
+      for await (const _ of rec.track((async function* () { yield { content: 'x', done: true }; })())) { /* drain */ }
+    };
+    await run({ runId: 'r1' });
+    await run({ label: 'Chat', source: 'acme.tool' });
+    const sums = ledger.totals();
+    expect(sums).toHaveLength(2);
+    const names = sums.map((s) => formatTotalsRow(s, (id) => (id === 'acme.tool' ? 'Acme' : undefined)).name).sort();
+    expect(names).toEqual(['Chat', 'Chat (Acme)']);
+  });
+});
+
 });

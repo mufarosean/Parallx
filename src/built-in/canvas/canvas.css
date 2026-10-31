@@ -114,62 +114,6 @@
   color: var(--vscode-descriptionForeground);
   font-size: var(--px-text-base);
   text-align: center;
-}/* sidebar undo toast */
-.canvas-sidebar-toast {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 44px;
-  background: var(--px-bg-elevated);
-  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
-  border-radius: var(--px-radius-md);
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--px-text-sm);
-  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 92%, transparent));
-  box-shadow: var(--px-shadow-md);
-  z-index: 100;
-  animation: canvas-toast-rise 0.18s ease;
-}
-@keyframes canvas-toast-rise {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.canvas-sidebar-toast-text {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.canvas-sidebar-toast-undo {
-  background: none;
-  border: 1px solid rgba(var(--px-accent-rgb), 0.5);
-  color: var(--px-accent-text);
-  padding: 3px 9px;
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: var(--px-text-xs);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color var(--px-dur-fast) var(--px-ease);
-}
-.canvas-sidebar-toast-undo:hover {
-  background: rgba(var(--px-accent-rgb), 0.16);
-}
-.canvas-sidebar-toast-close {
-  background: none;
-  border: none;
-  color: var(--px-text-muted);
-  font-size: var(--px-text-md);
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 4px;
-  border-radius: 3px;
-}
-.canvas-sidebar-toast-close:hover {
-  color: var(--px-text);
 }
 .canvas-tree {
   position: relative;

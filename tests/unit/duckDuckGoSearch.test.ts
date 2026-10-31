@@ -321,6 +321,9 @@ describe('doDuckDuckGoSearch', () => {
     await expect(doDuckDuckGoSearch({ query: 'q', preflight: okPreflight, hop: page(NO_RESULTS_PAGE) })).resolves.toEqual({ results: [] });
     await expect(doDuckDuckGoSearch({ query: 'q', preflight: okPreflight, hop: page('<html><body>Something else</body></html>') }))
       .rejects.toMatchObject({ code: 'DDG_UNREADABLE' });
+    // A results page whose result markup changed: unreadable, not "no results".
+    await expect(doDuckDuckGoSearch({ query: 'q', preflight: okPreflight, hop: page('<html><body><div id="links" class="results"><div class="web-result"><a class="title" href="https://example.com/">Example</a></div></div></body></html>') }))
+      .rejects.toMatchObject({ code: 'DDG_UNREADABLE' });
   });
 
   it('an empty query is refused before any request', async () => {

@@ -118,14 +118,13 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/conceptMapNode.ts':          ['config/blockRegistry'],
   // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
   'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog', 'config/fontRegistry', 'header/pageFontMenu'],
-  'canvasSidebarToast.ts':                 [],  // the sidebar's undo toast, split out of canvasSidebar
   'canvasSidebarKeyboardMove.ts':          ['canvasTypes'],  // Ctrl+Shift+arrows in the page tree, split out of canvasSidebar
   // The page menu's Font section, split out of pageChrome.
   'header/pageFontMenu.ts':                ['config/blockRegistry', 'config/fontRegistry', 'canvasTypes'],
   // contentSchema: the versioned-envelope decoder for the md-export action
   // (raw JSON.parse of page.content hands the wrapper to the converter and
   // silently exports title-only markdown — the M93 flashcards bug).
-  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks', 'canvasSidebarToast', 'canvasSidebarKeyboardMove', 'canvasTrashPanel'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks', 'canvasSidebarKeyboardMove', 'canvasTrashPanel'],
   'canvasTrashPanel.ts':                   ['config/blockRegistry', 'contentSchema', 'canvasTypes'],  // the sidebar's Trash, split out of canvasSidebar
   'canvasVersionDiff.ts':                  [],  // what a saved version changed: pure, no canvas imports
 
@@ -229,6 +228,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // ── PDF export (M93) ────────────────────────────────────────────────────
   'pageEditSignals.ts':                    ['canvasTypes'],      // page edits wake the heartbeat
+  'pageRecents.ts':                        ['canvasTypes'],      // renames and Trash keep the recent list true
   'imageStore.ts':                         [],                    // pictures as workspace files, not base64 in the page
   'imageMigration.ts':                     ['imageStore', 'canvasTypes'],  // old pages' pictures moved out to files
   'export/printHtml.ts':                   [],                    // pure builders — zero canvas imports

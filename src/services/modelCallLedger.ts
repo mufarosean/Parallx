@@ -55,6 +55,8 @@ export interface IModelCallRecord {
 
 export interface IModelCallTotals {
   readonly caller: string;
+  /** The tool the calls came from, when a tool made them: a label never merges one tool's calls into another caller's. */
+  readonly source?: string;
   readonly calls: number;
   readonly promptTokens: number;
   readonly answerTokens: number;
@@ -120,7 +122,8 @@ export class ModelCallLedger extends Disposable implements IModelCallLedger {
   private _nextId = 1;
   /** Oldest first. */
   private _records: MutableRecord[] = [];
-  private readonly _totals = new Map<string, { calls: number; promptTokens: number; answerTokens: number; totalMs: number; errors: number }>();
+  /** By caller and source: the same label from two tools (or from a tool and the app) stays two rows. */
+  private readonly _totals = new Map<string, { caller: string; source?: string; calls: number; promptTokens: number; answerTokens: number; totalMs: number; errors: number }>();
   private _changeQueued = false;
 
   constructor(
@@ -135,7 +138,7 @@ export class ModelCallLedger extends Disposable implements IModelCallLedger {
   }
 
   totals(): readonly IModelCallTotals[] {
-    return [...this._totals].map(([caller, t]) => ({ caller, ...t })).sort((a, b) => b.calls - a.calls || a.caller.localeCompare(b.caller));
+    return [...this._totals.values()].map((t) => ({ ...t })).sort((a, b) => b.calls - a.calls || a.caller.localeCompare(b.caller));
   }
 
   clear(): void {
@@ -206,8 +209,9 @@ export class ModelCallLedger extends Disposable implements IModelCallLedger {
     record.outcome = outcome;
     record.totalMs = Math.max(0, this._now() - record.startedAt);
     if (error) record.error = error;
-    let t = this._totals.get(record.caller);
-    if (!t) { t = { calls: 0, promptTokens: 0, answerTokens: 0, totalMs: 0, errors: 0 }; this._totals.set(record.caller, t); }
+    const key = `${record.caller}\u0000${record.source ?? ''}`;
+    let t = this._totals.get(key);
+    if (!t) { t = { caller: record.caller, ...(record.source ? { source: record.source } : {}), calls: 0, promptTokens: 0, answerTokens: 0, totalMs: 0, errors: 0 }; this._totals.set(key, t); }
     t.calls++;
     t.promptTokens += record.promptTokens ?? 0;
     t.answerTokens += record.answerTokens ?? 0;

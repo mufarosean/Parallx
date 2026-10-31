@@ -186,10 +186,14 @@ function isChallengePage(status, body) {
     || /action\s*=\s*"[^"]*anomaly\.js/i.test(page);
 }
 
-/** A results page that found nothing says so; anything else is a page we cannot read. */
+/**
+ * A results page that found nothing says so with its no-results marker.
+ * Anything else with no results is a page we cannot read: every results
+ * page has id="links", so that alone would read a changed layout as "no
+ * results" and hide the problem.
+ */
 function _isEmptyResultsPage(body) {
-  const page = String(body || '');
-  return /class\s*=\s*"[^"]*\b(no-results|result--no-result)\b/i.test(page) || /id\s*=\s*"links"/i.test(page);
+  return /class\s*=\s*"[^"]*\b(no-results|result--no-result)\b/i.test(String(body || ''));
 }
 
 // ─── Pacing ──────────────────────────────────────────────────────────────────

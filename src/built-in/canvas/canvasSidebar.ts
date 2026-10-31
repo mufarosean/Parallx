@@ -26,8 +26,7 @@ import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 import { CanvasTrashPanel, trashEntries } from './canvasTrashPanel.js';
 import { pageLinkHref } from './pageLinks.js';
-import { createButton, createSurface, createTree, declareControl, sceneSlug, showUndoToast } from '../../ui/kit.js';
-import { UndoToast } from './canvasSidebarToast.js';
+import { createButton, createSurface, createTree, declareControl, sceneSlug, showUndoToast, type IUndoToast } from '../../ui/kit.js';
 import { pageMoveForKey } from './canvasSidebarKeyboardMove.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -133,10 +132,8 @@ export class CanvasSidebar {
   private _filterQuery = '';
 
   // ── Undo toast ──
-  // Active toast element + timer used to dismiss the previous toast when
-  // a new operation surfaces another one. Single-toast-at-a-time policy
-  // avoids stacked toasts on rapid sequential moves.
-  private readonly _undoToast = new UndoToast();
+  // The kit's (one at a time, app-wide); kept to close it with the sidebar.
+  private _undoToast: IUndoToast | null = null;
 
   constructor(
     private readonly _dataService: ICanvasDataService,
@@ -1348,7 +1345,7 @@ export class CanvasSidebar {
       if (this._selectedPageId === pageId) {
         this._selectedPageId = null;
       }
-      showUndoToast({ message: `"${page.title || 'Untitled'}" moved to Trash`, undo: async () => { await this._dataService.restorePage(pageId); } });
+      this._showUndoToast(`"${page.title || 'Untitled'}" moved to Trash`, async () => { await this._dataService.restorePage(pageId); });
     } catch (err) {
       console.error('[CanvasSidebar] Delete failed:', err);
     }
@@ -1392,7 +1389,7 @@ export class CanvasSidebar {
       }
     }
     this._clearMultiSelection();
-    if (moved.length) showUndoToast({ message: `${moved.length} ${moved.length === 1 ? 'page' : 'pages'} moved to Trash`, undo: async () => { for (const id of moved) await this._dataService.restorePage(id).catch(() => undefined); } });
+    if (moved.length) this._showUndoToast(`${moved.length} ${moved.length === 1 ? 'page' : 'pages'} moved to Trash`, async () => { let left = 0; for (const id of moved) await this._dataService.restorePage(id).catch(() => { left++; }); if (left) throw new Error(`${left} of ${moved.length} pages could not be restored. They are still in the Trash.`); });
     if (failed > 0) {
       this._surfaceError('Bulk delete', new Error(`${failed} of ${ids.length} pages failed to archive. See the console.`));
     }
@@ -1861,19 +1858,14 @@ export class CanvasSidebar {
     return true;
   }
 
-  /**
-   * Show an undo toast. The toast is a non-modal
-   * affordance near the bottom of the sidebar; clicking Undo invokes
-   * the supplied callback. Replaces any active toast and auto-dismisses
-   * after 5 seconds.
-   */
+  /** The kit's Undo toast for what the sidebar just did; a failed undo is reported like any sidebar error. */
   private _showUndoToast(label: string, undo: () => Promise<void>): void {
-    const container = this._treeList?.parentElement;
-    if (container) this._undoToast.show(container, label, undo, (err) => this._surfaceError('Undo', err));
+    this._undoToast = showUndoToast({ message: label, undo, onError: (err) => this._surfaceError('Undo', err) });
   }
 
   private _dismissUndoToast(): void {
-    this._undoToast.dismiss();
+    this._undoToast?.dismiss();
+    this._undoToast = null;
   }
 
   /**
