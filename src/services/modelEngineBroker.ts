@@ -69,6 +69,13 @@ export interface IEngineCallTag {
   readonly label?: string;
   /** The tool that made the call through `parallx.lm` (its id); set by the bridge, for the call ledger. */
   readonly source?: string;
+  /**
+   * A person is waiting on this call though it runs on its own: a job they
+   * started and are watching (a sync they pressed Sync Now for). Like a chat
+   * turn, it pauses background work on its engine and holds it off briefly
+   * after, so a job's calls one after another never queue behind it.
+   */
+  readonly attended?: boolean;
 }
 
 export interface IEngineRequest {
@@ -278,8 +285,11 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     this._tickets.add(ticket);
     this._book(ticket.runId, (b) => { b.inFlight++; });
     // Only a call someone waits on pauses background work: a chat turn's
-    // (tagged with its run), or one made while you are at the keyboard.
-    if (ticket.runId || this._now() - this._userInputAt < USER_PRESENT_MS) this._preemptBackground(ticket.engine);
+    // (tagged with its run), one tagged attended (a job you started and are
+    // watching), or one made while you are at the keyboard. Any other call
+    // would sit in the engine's own queue behind a background generation.
+    const attended = !!req.options?.engine?.attended;
+    if (ticket.runId || attended || this._now() - this._userInputAt < USER_PRESENT_MS) this._preemptBackground(ticket.engine);
     this._changed();
     try {
       yield* start(options, controller.signal);
@@ -288,6 +298,9 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
       // A consumer that stops early must not leave the generation running.
       controller.abort();
       this._leaseActivity.set(ticket.engine, this._now());
+      // An attended job's next call follows in a moment: background work
+      // starting in between would only be paused again, or hold it up.
+      if (attended) this._holdUntil.set(ticket.engine, Math.max(this._holdUntil.get(ticket.engine) ?? 0, this._now() + LEASE_GRACE_MS));
       this._finish(ticket);
     }
   }

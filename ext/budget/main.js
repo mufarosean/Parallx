@@ -6683,7 +6683,10 @@ function budgetLmOptions(stage, shape) {
   // No maxTokens — let the model think and answer to completion. Reasoning is
   // asked for explicitly: left unset, only some local models reason. The
   // format is the stage's JSON schema (ai-schemas.js), plain JSON without one.
+  // A sync is started by a person (Sync Now, or asking in chat) and watched:
+  // its calls go ahead of background AI work rather than queue behind it.
   return {
+    engine: { label: 'Budget sync', attended: true },
     think: true,
     temperature: 0,
     format: budgetStageSchema(stage, shape) || 'json',

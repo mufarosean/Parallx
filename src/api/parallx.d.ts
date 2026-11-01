@@ -1681,6 +1681,14 @@ export interface ChatRequestOptions {
   readonly format?: string | object;
   readonly seed?: number;
   readonly think?: boolean;
+  /**
+   * How the call is shown and scheduled. `label` names it in AI › Show Model
+   * Calls. `attended`: a person started this job and is watching it (a sync
+   * they pressed a button for), so it goes ahead of background AI work
+   * (routines, page linking) instead of waiting behind it. Leave it unset for
+   * work that runs on its own.
+   */
+  readonly engine?: { readonly label?: string; readonly attended?: boolean };
 }
 
 /**

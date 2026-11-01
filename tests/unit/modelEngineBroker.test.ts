@@ -268,6 +268,32 @@ describe('untagged calls', () => {
     expect(await bg).toBe('b0b1b2b3');
   });
 
+  it('an attended call (a job you started and watch, like a sync) goes ahead of background work, and keeps the engine between its calls', async () => {
+    vi.useFakeTimers();
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    const attended = { engine: 'ollama', gated: true, modelId: 'm', options: { engine: { attended: true, label: 'Budget sync' } } };
+    const bg = collect(b.request(req('scheduled', 'run-1'), fakeStart(log, 'b', 4, 1000)));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(log.length).toBe(1);
+    // You are away (no key for minutes), yet the sync's call does not wait behind the run.
+    const first = collect(b.request(attended, fakeStart(log, 's', 1, 10)));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(await first).toBe('s0');
+    expect(log[0].aborted).toBe(true);
+    expect(b.preemptions('run-1')).toBe(1);
+    // Between the job's calls the run waits: the next call finds the engine free.
+    await vi.advanceTimersByTimeAsync(LEASE_GRACE_MS - 1000);
+    expect(log.length).toBe(2);
+    const second = collect(b.request(attended, fakeStart(log, 't', 1, 10)));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(await second).toBe('t0');
+    expect(b.preemptions('run-1')).toBe(1);
+    // After the job, the run resumes and finishes.
+    await vi.advanceTimersByTimeAsync(LEASE_GRACE_MS + 5000);
+    expect(await bg).toBe('b0b1b2b3');
+  });
+
   it('the time a preempted call had run counts as waiting, not as the run\'s work', async () => {
     const b = new ModelEngineBroker();
     const log: ICallLog[] = [];

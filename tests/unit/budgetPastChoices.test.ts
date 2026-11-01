@@ -93,6 +93,7 @@ const flat = (sql: string) => sql.replace(/\s+/g, ' ').trim();
 function syncWith(merchant: string, history: Row[]) {
   const inserts: unknown[][] = [];
   const prompts: string[] = [];
+  const options: Record<string, unknown>[] = [];
   __setDbBridge({
     async run(sql: string, params: unknown[] = []) { if (/^INSERT INTO transactions \(id, gmail_message_id, merchant/.test(flat(sql))) inserts.push(params); return {}; },
     async get() { return { row: undefined }; },
@@ -114,7 +115,8 @@ function syncWith(merchant: string, history: Row[]) {
     },
     lm: {
       getActiveModel: () => 'qwen3:14b',
-      sendChatRequest: (_m: string, msgs: { role: string; content: string }[]) => {
+      sendChatRequest: (_m: string, msgs: { role: string; content: string }[], opts?: Record<string, unknown>) => {
+        options.push(opts ?? {});
         if (msgs[0].content.startsWith('You pick')) prompts.push(msgs[1].content);
         return (async function* () { yield { content: JSON.stringify(reply(msgs[0].content)), done: true }; })();
       },
@@ -125,7 +127,7 @@ function syncWith(merchant: string, history: Row[]) {
       showErrorMessage: async (m: string) => { throw new Error(`unexpected error: ${m}`); },
     },
   };
-  return { api, inserts, prompts };
+  return { api, inserts, prompts, options };
 }
 
 describe('budget sync uses your past choices', () => {
@@ -146,5 +148,12 @@ describe('budget sync uses your past choices', () => {
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("Amount:   6.5 USD\nThe user's past choices for this merchant, newest first:\n  • SQ *BLUE BOTTLE 0042 → Dining (chosen)\nCategories: Dining, Groceries");
     expect([inserts[0][6], inserts[0][11], inserts[0][13]]).toEqual(['c-groceries', 'qwen3:14b', 'ai']);
+  });
+
+  it('every sync call is marked attended, so it goes ahead of background AI work', async () => {
+    const { api, options } = syncWith('SQ *BLUE BOTTLE 0311', []);
+    await triggerSyncFromUI(api);
+    expect(options.length).toBeGreaterThan(0);
+    for (const o of options) expect(o.engine).toEqual({ label: 'Budget sync', attended: true });
   });
 });
