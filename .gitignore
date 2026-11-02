@@ -40,3 +40,4 @@ venv/
 ext/creations-ai/.bench-main-*.js
 ext/creations-ai/test/.*-ws-*/
 ext/creations-ai/test/.*-cache.json
+ext/creations-ai/test/.*-cache.judge/

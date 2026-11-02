@@ -51,6 +51,7 @@ last ran in July, on another model.
 | Connected people, and People In Their Lives in chat | 10-06 | No |
 | Regenerate with a direction | 10-07 | No |
 | Directions (four notes per character) | 10-07 | Stand-in model only |
+| How People Talk and Immersive RP rewritten for the exchange: answer first, react to news, strangers trade names, a voice habit never in a character's two replies running (reading bench, Part 5) | 11-01 | Yes, 11-01: five scenes on gemma4:31b at 65536, read by the session; `last-reading-after*.md` |
 
 ## Three layers
 
@@ -317,6 +318,29 @@ baseline in both orders; and a calibration sheet of twenty exchanges you
 mark yourself, with the judge's agreement reported per criterion. A
 criterion under 80 percent agreement is rewritten or dropped before anyone
 tunes against it.
+
+**The judge.** The reading bench is judged by the Claude Code session that
+runs it, first by reading the scenes, and for the tables by `--judge
+session` (`harness-common.mjs`): the harness writes each judge prompt to a
+file, the session answers it in the JSON the prompt asks for, and the next
+run takes the answers into the cache. With the same reader marking and
+judging, the calibration sheet says nothing and is skipped; it is for a
+model judge.
+
+**The flow it plays** is the owner's: no Scene panel (`--plain`), the
+situation in Sam's opening line, 65536 context. The first run, 2026-11-01,
+at the brief's 131072, took two to three times longer per reply than play
+does and was the cause of a false alarm about speed.
+
+**First result, 2026-11-01.** Baseline before: strangers never exchanged
+names, "You waiting on someone?" asked twice and never answered, Sam's
+nudge echoed in six replies running, a voice habit (a count, a Leeds
+story) in every reply, the loan signed at reply 7 with no bargaining, the
+letter met with no reaction. After the rewrite of the shipped rules, the
+Immersive RP text, and the Turn Contract's habit line: every question
+answered or visibly dodged, news met with questions and a decision ("I am
+going"), the want pressed over eleven replies, one story in thirteen Ilan
+replies, one count in a scene. Median reply 20 seconds at 65536.
 
 **The bar** (provisional until calibrated): takes up at least 90 percent of
 replies, answers at least 80, dead ends at most 10 per 100, moves at least

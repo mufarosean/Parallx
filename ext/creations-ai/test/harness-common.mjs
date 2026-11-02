@@ -10,6 +10,11 @@
 //                       not per call); all = both, in that order (default)
 //   --model <tag>       the player: the model you play Creations with (gemma4:31b)
 //   --judge <tag>       the judge, never the player and of another family (qwen3.8:27b)
+//   --judge session     the judge is the Claude Code session that runs the bench: each
+//                       judge prompt is written to <cache>.judge/<key>.prompt.md and its
+//                       case is skipped until <key>.answer.json sits beside it (the JSON
+//                       the prompt asks for); the same command run again takes the
+//                       answers into the cache and finishes the report
 //   --num-ctx <n>       num_ctx for every call (65536, as you play; at most 131072)
 //   --samples <n>       samples per case (3)
 //   --cache <path>      raw outputs, by label (os tmpdir by default)
@@ -48,6 +53,7 @@ export function parseArgs(argv, defaults = {}) {
   };
   if (!['play', 'judge', 'all'].includes(opts.pass)) throw new Error(`--pass must be play, judge or all, not "${opts.pass}"`);
   if (opts.model === opts.judge) throw new Error('The judge must not be the player model: models rate their own writing higher.');
+  opts.judgeDir = opts.judge === 'session' ? `${opts.cache.replace(/.json$/i, '')}.judge` : '';
   return opts;
 }
 
@@ -61,6 +67,8 @@ export function createGateway(opts, { mockRespond }) {
   const calls = [];
   const gw = {
     calls,
+    /** Live calls in progress; a driver waits for zero before its next send. */
+    inflight: 0,
     async load() {
       try { cache = { player: {}, judge: {}, ...JSON.parse(await fsp.readFile(opts.cache, 'utf8')) }; } catch { /* first run */ }
     },
@@ -84,10 +92,46 @@ export function createGateway(opts, { mockRespond }) {
       const key = `${label} @${createHash('sha1').update(JSON.stringify([model, messages, temperature, json, think])).digest('hex').slice(0, 12)}`;
       const owns = opts.pass === 'all' || (opts.pass === 'play' && role === 'player') || (opts.pass === 'judge' && role === 'judge');
       if (opts.replay || !owns || (!opts.fresh && typeof cache[role]?.[key] === 'string')) {
-        const content = cache[role]?.[key];
+        let content = cache[role]?.[key];
+        if (typeof content !== 'string' && (opts.replay || !owns)) {
+          // The prompt is not what the play sent (a background job that raced
+          // the next turn then and not now): the one answer cached under this
+          // label is still that turn's reply.
+          const same = Object.keys(cache[role] || {}).filter((k) => k.startsWith(`${label} @`));
+          if (same.length === 1) { content = cache[role][same[0]]; console.log(`  [${role}] ${label}: the prompt differs from the play's; its cached reply used`); }
+        }
         if (typeof content !== 'string') throw new SkipCase(`no cached ${role} output for "${label}"`);
         calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, cached: true });
         return content;
+      }
+      // The session judge: the prompt goes to a file, the answer comes back from one.
+      if (role === 'judge' && opts.judgeDir) {
+        const safe = key.replace(/[^\w.@-]+/g, '_');
+        const answerFile = path.join(opts.judgeDir, `${safe}.answer.json`);
+        let answer = '';
+        try { answer = (await fsp.readFile(answerFile, 'utf8')).trim(); } catch { /* not answered yet */ }
+        if (answer) {
+          calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0 });
+          cache[role] ??= {};
+          cache[role][key] = answer;
+          await gw.save();
+          console.log(`  [judge] ${label}: answered by the session`);
+          return answer;
+        }
+        await fsp.mkdir(opts.judgeDir, { recursive: true });
+        await fsp.writeFile(path.join(opts.judgeDir, `${safe}.prompt.md`), `<!-- answer in ${safe}.answer.json -->
+# ${label}
+
+## System
+
+${messages.map((m) => (m.role === 'system' ? m.content : '')).join('')}
+
+## User
+
+${messages.map((m) => (m.role === 'user' ? m.content : '')).join('')}
+`, 'utf8');
+        calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, pending: true });
+        throw new SkipCase(`awaiting the session judge: ${safe}.prompt.md`);
       }
       // One retry after a failed call (Ollama hiccups over hours); a call that
       // fails twice is recorded with its error, so a harness waiting on it
@@ -95,6 +139,7 @@ export function createGateway(opts, { mockRespond }) {
       let started = 0;
       let j;
       let content = '';
+      gw.inflight++;
       for (let attempt = 1; ; attempt++) {
       try {
       started = Date.now();
@@ -136,6 +181,7 @@ export function createGateway(opts, { mockRespond }) {
         if (attempt >= 2) {
           calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, error: why });
           console.log(`  [${role}] ${label}: FAILED: ${why}`);
+          gw.inflight--;
           throw err;
         }
         console.log(`  [${role}] ${label}: retrying after: ${why}`);
@@ -148,6 +194,7 @@ export function createGateway(opts, { mockRespond }) {
       cache[role][key] = content;
       await gw.save();
       console.log(`  [${role}] ${label}: ${(rec.ms / 1000).toFixed(1)}s, prompt ${rec.promptTokens} tok, output ${rec.evalTokens} tok`);
+      gw.inflight--;
       return content;
     },
     /** Embeddings through the local nomic-embed-text; null in mock/replay or when it is not there. */

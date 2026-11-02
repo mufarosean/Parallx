@@ -36,6 +36,8 @@
 //   node ext/creations-ai/test/run-reading-bench.mjs --only baseline,novel --samples 1
 //   --turns <n>           character replies per scene after the opening (12)
 //   --order alternate|auto  who speaks next: the other lead (default), or the chat's own turn order
+//   --plain               no Scene panel: the situation reaches the model only through Sam's opening line
+//   --scenes a,b          only these scenes (all five by default)
 //   --calibration-sheet   --replay: writes reading-calibration.md, 20 exchanges for you to mark
 //   --calibrate           --replay: compares your marks with the judge's
 //   other options: harness-common.mjs (--model, --judge, --samples, --num-ctx, --pass, --cache, --report)
@@ -54,6 +56,10 @@ const argv = process.argv.slice(2);
 const after = (flag, dflt) => (argv.includes(flag) ? argv[argv.indexOf(flag) + 1] : dflt);
 const TURNS = Math.max(4, Number(after('--turns', 12)) || 12);
 const ORDER = after('--order', 'alternate') === 'auto' ? 'auto' : 'alternate';
+// --plain: no Scene panel, as most play is; the situation reaches the model only through Sam's opening line.
+const PLAIN = argv.includes('--plain');
+// --scenes a,b: only these scenes (all five by default).
+const SCENES_ONLY = new Set(String(after('--scenes', '')).split(',').map((s) => s.trim()).filter(Boolean));
 const CAL_FILE = path.join(__dirname, 'reading-calibration.md');
 const USER = 'Sam';
 
@@ -273,8 +279,8 @@ async function playScene(variant, sample, scene) {
   const capturedFrom = d.captured.length;
   const container = await d.startThread({
     id: threadId, title: key, files, ...(variant.preset ? { writingPresetOverride: variant.preset } : {}),
-    // Where and when, as the chat's own Scene panel holds it (rendered into every turn's prompt).
-    sceneState: { ...scene.scene, present: [...scene.leads.map((l) => l.name), USER], updatedAt: Date.now() },
+    // Where and when, as the chat's own Scene panel holds it (rendered into every turn's prompt); none with --plain.
+    ...(PLAIN ? {} : { sceneState: { ...scene.scene, present: [...scene.leads.map((l) => l.name), USER], updatedAt: Date.now() } }),
   });
   let empty = 0;
   // What is going on goes in Sam's opening narration, as a player sets a scene.
@@ -304,6 +310,14 @@ async function playScene(variant, sample, scene) {
   runs.push({ variant, sample, scene, key, replies: msgs.filter((m) => m.author === 'ai').map((m) => ({ name: m.name, content: m.content })), userLines, turnPrompts, firstTurnText, empty });
 }
 
+/** Every promise settled, then the first rejection thrown: a SkipCase among them skips the case. */
+async function allOrSkip(promises) {
+  const settled = await Promise.allSettled(promises);
+  const failed = settled.find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+  return settled.map((r) => r.value);
+}
+
 async function guarded(id, fn) {
   try { return await fn(); } catch (err) {
     if (err instanceof SkipCase) { report.skip(id, err.message); return undefined; }
@@ -315,7 +329,7 @@ async function guarded(id, fn) {
 const CAL = argv.includes('--calibration-sheet') || argv.includes('--calibrate');
 for (const variant of wanted) {
   for (let s = 1; s <= opts.samples; s++) {
-    for (const scene of SCENES) await guarded(`${variant.id}#${s} ${scene.id}`, () => playScene(variant, s, scene));
+    for (const scene of SCENES.filter((sc) => !SCENES_ONLY.size || SCENES_ONLY.has(sc.id))) await guarded(`${variant.id}#${s} ${scene.id}`, () => playScene(variant, s, scene));
   }
 }
 if (d) await d.cleanup();
@@ -384,15 +398,18 @@ for (const run of runs) {
   if (!run.replies.length) continue;
   await guarded(`judge ${run.key}`, async () => {
     const user = `Scene: ${run.scene.situation}\n\nThe two:\n${castLine(run.scene)}\n\nThe scene, replies numbered:\n\n${transcriptOf(run)}`;
-    const ex = await judgeJson(gw, `EXCHANGE: ${run.key}`, EXCHANGE_JUDGE, user);
-    run.exchange = Array.isArray(ex?.replies) ? ex.replies : [];
-    if (!run.exchange.length) report.check(`${run.key}.exchangeJudge`, 'the exchange judge gave a verdict', false, 'no JSON came back; the play is cached, so --pass judge --fresh asks again');
-    const sc = await judgeJson(gw, `SCENE: ${run.key}`, SCENE_JUDGE, `${run.scene.strangers ? 'STRANGERS\n\n' : ''}${user}`);
-    run.sceneScore = sc && sc.scores ? sc : null;
     // Style identification on the third reply (past the opening's momentum).
     const sample = run.replies[Math.min(2, run.replies.length - 1)];
     const labels = [...new Set(wanted.map((v) => v.label))];
-    const st = await judgeJson(gw, `STYLE: ${run.key}`, STYLE_JUDGE, `Styles:\n${labels.map((l) => `- ${l}`).join('\n')}\n\nThe reply:\n${sample.content}`);
+    // The three questions go out together, so a session judge gets every prompt in one run.
+    const [ex, sc, st] = await allOrSkip([
+      judgeJson(gw, `EXCHANGE: ${run.key}`, EXCHANGE_JUDGE, user),
+      judgeJson(gw, `SCENE: ${run.key}`, SCENE_JUDGE, `${run.scene.strangers ? 'STRANGERS\n\n' : ''}${user}`),
+      judgeJson(gw, `STYLE: ${run.key}`, STYLE_JUDGE, `Styles:\n${labels.map((l) => `- ${l}`).join('\n')}\n\nThe reply:\n${sample.content}`),
+    ]);
+    run.exchange = Array.isArray(ex?.replies) ? ex.replies : [];
+    if (!run.exchange.length) report.check(`${run.key}.exchangeJudge`, 'the exchange judge gave a verdict', false, 'no JSON came back; the play is cached, so --pass judge --fresh asks again');
+    run.sceneScore = sc && sc.scores ? sc : null;
     run.styleGuess = st?.style || '';
     run.styleFeatures = Array.isArray(st?.features) ? st.features : [];
   });
@@ -407,8 +424,7 @@ for (const run of runs) {
   if (!base) continue;
   await guarded(`pair ${run.key}`, async () => {
     const ask = async (a, b, tag) => judgeJson(gw, `PAIR: ${run.key} ${tag}`, PAIR_JUDGE, `Scene: ${run.scene.situation}\n\nThe two:\n${castLine(run.scene)}\n\n=== WRITER A ===\n${sceneText(a)}\n\n=== WRITER B ===\n${sceneText(b)}`);
-    const ab = await ask(run, base, 'AB');
-    const ba = await ask(base, run, 'BA');
+    const [ab, ba] = await allOrSkip([ask(run, base, 'AB'), ask(base, run, 'BA')]);
     // Score per criterion: + when the variant won, by its strength; averaged over both orders.
     const score = {};
     for (const c of PAIR_CRITERIA) {
@@ -536,7 +552,8 @@ for (const v of wanted) {
 for (const run of runs) {
   // The scene reached the model: its place from the scene state, and a phrase of the situation, in the first turn's request.
   const phrase = run.scene.situation.split('. ')[1] || run.scene.situation;
-  report.check(`${run.key}.scene`, 'the place and the situation are in the first turn\'s request', run.firstTurnText.includes(`Location: ${run.scene.scene.location}`) && run.firstTurnText.includes(phrase.slice(0, 40)), `${run.scene.scene.location}; ${phrase.slice(0, 40)}`);
+  if (PLAIN) report.check(`${run.key}.scene`, 'the situation is in the first turn\'s request', run.firstTurnText.includes(phrase.slice(0, 40)), phrase.slice(0, 40));
+  else report.check(`${run.key}.scene`, 'the place and the situation are in the first turn\'s request', run.firstTurnText.includes(`Location: ${run.scene.scene.location}`) && run.firstTurnText.includes(phrase.slice(0, 40)), `${run.scene.scene.location}; ${phrase.slice(0, 40)}`);
   const names = run.replies.map((r) => r.name);
   const alternates = names.every((n, i) => i === 0 || n !== names[i - 1] || run.userLines.some((u) => u.turn === i));
   if (ORDER === 'alternate') report.check(`${run.key}.turns`, 'the two took turns', alternates, names.join(' > '));

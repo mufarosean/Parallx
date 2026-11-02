@@ -3342,6 +3342,7 @@ function buildSystemPrompt(params = {}) {
     '- Never prepend a speaker tag (no `<<Name>>`, no `Name:`); the interface adds the label automatically.',
     '- Character-specific instructions override the writing style preset when they conflict.',
     '- Quoted phrases in a character\'s voice notes ("Says: ...", "Might say: ...") show how they talk; they are examples, not lines to say. Use one rarely, never the same one twice in a scene, never to open a reply.',
+    '- A habit named in a character\'s voice notes (tells stories, counts out loud, asks instead of answering) is a tendency, not a rule for every line. Before writing, look at that character\'s last reply in the history: a habit shown there stays out of this reply, which is plain speech answering what was just said.',
   ].join('\n'));
 
   // 4. Lore — substitute {{char}}/{{user}} template vars.
@@ -3670,7 +3671,7 @@ function assembleContext(params) {
       // The anchor sits right before generation: a quoted phrase in it gets
       // said scene after scene, and a voice given as a rule goes into every
       // line. So the quotes are named as examples and the voice as a tendency.
-      const personaLine = (anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '') + latitudeAnchor(resolveLatitude(respondChar, settings), rName);
+      const personaLine = (anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then. Read ${rName}'s last reply in the history: a habit shown there (a story, a count, a saying, a dialect word) stays out of this one (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '') + latitudeAnchor(resolveLatitude(respondChar, settings), rName);
       speakerLateAnchor = `[You are ${rName}. Sound like ${rName}. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
       // Variation: the phrases that repeat across this speaker's last five
@@ -9590,9 +9591,27 @@ function studioDeps() {
  * in every line. Measured with the dialogue bench
  * (ext/creations-ai/test/run-dialogue-bench.mjs, 2026-10-08): against the
  * previous rules, a quarter fewer lines a person would not say and half the
- * metaphors. Craft, not format; the user edits it in Settings.
+ * metaphors. 2026-11-01, from reading two-character scenes
+ * (run-reading-bench.mjs): questions dropped, news met with no reaction,
+ * strangers never exchanging names, a voice habit in every reply, and a
+ * bystander ordered about instead of an answer given; the exchange rules
+ * and the habit rule answer those. Craft, not format; the user edits it in
+ * Settings.
  */
 const DEFAULT_DIALOGUE_RULES = [
+  '- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.',
+  '- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.',
+  '- A reply takes up what was just said before anything else. When someone wants to know something, they ask it plainly. They answer the question that was asked, briefly, or dodge it in a way the other person can see; then they say what they want to say, and leave the other person something to answer. Nobody says a thing and stops, and nobody turns to a bystander or a chore to avoid answering.',
+  '- When something that matters is said (a storm coming, a letter, a request, bad news), the listener has a view of it: they ask, doubt, worry, plan, refuse or bargain, and it shows in what they say next. Nothing said is left on the floor.',
+  '- People who have just met do what people do: a name, where from, what brings you here; and they take up the answers.',
+  '- Humour comes from a specific thing in the scene or a specific person, never from a character announcing a joke or a quip that would fit any scene.',
+  '- Nobody summarises their feelings or the scene. If a line could be printed on a mug, cut it.',
+  '- People speak plainly. A metaphor is rare and only one a person like them would actually use; most lines have none.',
+  "- Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase (a count, a saying, a story, a dialect word, a question instead of an answer) are tendencies, not rules for every line: they show a few times in a scene, not in every line. If this character's last reply showed one (a story, a count), this reply does not.",
+].join('\n');
+
+/** The rules shipped 2026-10-08 to 2026-11-01: settings still holding them word for word get the new ones. */
+const PREVIOUS_DIALOGUE_RULES = [
   '- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.',
   '- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.',
   '- When someone wants to know something, they ask it plainly. They answer the question that was asked, briefly, then say what they want to say. They interrupt, trail off and change the subject like real people.',
@@ -9602,8 +9621,8 @@ const DEFAULT_DIALOGUE_RULES = [
   "- Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase show a few times in a scene, not in every line.",
 ].join('\n');
 
-/** The rules shipped before 2026-10-08: settings still holding them word for word get the new ones. */
-const PREVIOUS_DIALOGUE_RULES = [
+/** The rules shipped before 2026-10-08. */
+const OLDER_DIALOGUE_RULES = [
   '- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.',
   '- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.',
   '- People answer the question they heard, not the one that was asked. They interrupt, trail off, change the subject, and say less than they mean.',
@@ -9612,9 +9631,9 @@ const PREVIOUS_DIALOGUE_RULES = [
 ].join('\n');
 
 
-/** Settings saved with the previous shipped rules, untouched, move to the current ones; edited rules stay. */
+/** Settings saved with an earlier shipped text, untouched, move to the current ones; edited rules stay. */
 function migrateDialogueRules(settings) {
-  if (settings && settings.dialogueRules === PREVIOUS_DIALOGUE_RULES) settings.dialogueRules = DEFAULT_DIALOGUE_RULES;
+  if (settings && (settings.dialogueRules === PREVIOUS_DIALOGUE_RULES || settings.dialogueRules === OLDER_DIALOGUE_RULES)) settings.dialogueRules = DEFAULT_DIALOGUE_RULES;
   return settings;
 }
 
