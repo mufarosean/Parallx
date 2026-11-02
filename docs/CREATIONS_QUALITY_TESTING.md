@@ -287,81 +287,49 @@ yours and fix the measure.
 
 ## Part 5: Reads like a book
 
-Written 2026-11-02, after play showed what Parts 1 to 4 do not measure: a
-character says "the storm is getting closer" and nobody thinks about it or
-takes it anywhere; two strangers skip what strangers say (names, where
-from, what brings you here); the styles make the prose convincing without
-being styles (a judge could not say which is a novel and which is not). The
-dialogue bench judges single lines; this part judges the exchange and the
-page. `run-reading-bench.mjs`, variants in `reading-variants.md`, human
-anchors in `reading-anchors.md`, and `docs/CREATIONS_READING_BENCH_BRIEF.md`
-is the set of instructions for running it on the study machine.
+Added 2026-11-02 for the faults play found that Parts 1 to 4 do not measure:
+a character says "the storm is getting closer" and nobody thinks about it
+or takes it anywhere; two strangers skip what strangers say; the styles make
+prose convincing without being styles. The dialogue bench judges single
+lines. `run-reading-bench.mjs` judges the exchange and the page; its header
+lists every measure. `docs/CREATIONS_READING_BENCH_BRIEF.md` says how to run
+it.
 
-**How it plays.** Two characters talk to each other through the real chat.
-Sam opens the scene and then sends `/ai @"Name"` so the two of them carry
-it (`--order auto` lets the chat's own turn order pick instead); a nudge
-from Sam at reply 6 pushes a stalled scene the same way in every variant.
-Five scenes, each written for one failure:
+**How it plays.** Two characters talk to each other through the real chat:
+Sam opens the scene, then sends `/ai @"Name"` so the two of them carry it,
+with one nudge from Sam at reply 6 so a stalled scene is pushed the same way
+in every variant. Five scenes, each written for one failure:
 
 | Scene | Leads | Catches |
 |---|---|---|
-| strangers | Nora, Joan | two people who have just met skip what people say when they meet |
-| storm | Nora, Ilan | a line said and dropped: nobody thinks about it or takes it anywhere |
-| news | Ilan, Nora | news that gets no reaction: no questions, no shock, nothing practical |
-| favour | Nora, Ilan | a want made once and left: no pressing, refusing, bargaining |
+| strangers | Nora, Joan | two people who have just met skip names, where from, what brings you here |
+| storm | Nora, Ilan | a line said and dropped |
+| news | Ilan, Nora | news with no reaction |
+| favour | Nora, Ilan | a want made once and never pressed |
 | argument | Nora, Ilan | anger with no subtext |
 
-**Measures.** Mechanical first; the judge is of another family, and every
-judge score carries a quote so it can be checked.
+**What makes it a benchmark.** Every judge score carries the quote that
+earned it. The rubric is EQ-Bench Creative Writing v3's criteria with
+definitions written here. Three things keep the judge honest: human
+anchors (`reading-anchors.md`, public-domain scenes scored on the same
+rubric, so the bar is "within two points of a book"); head to head against
+baseline in both orders; and a calibration sheet of twenty exchanges you
+mark yourself, with the judge's agreement reported per criterion. A
+criterion under 80 percent agreement is rewritten or dropped before anyone
+tunes against it.
 
-- Per reply (judge): *takes up* what was just said; *answers* what it was
-  asked; *gives* the other something to answer (the inverse is a dead end);
-  *thinks* (a thought shown, not a feeling named); *moves* (something new
-  enters); *tells* (a feeling or trait named outright, a fault).
-- Per scene (judge): a rubric drawn from EQ-Bench Creative Writing v3's
-  criteria, 0 to 10 with the quote that earned the score: believable
-  dialogue, nuanced characters, emotionally engaging, emotionally complex,
-  coherent, sentences flow, reader engagement; and the negatives
-  tell-don't-show, purple prose, forced metaphor, meandering, amateurish.
-  Then *went somewhere* (1 to 5, and where), *distinct* (could the two be
-  told apart without names), and for the strangers scene the checklist:
-  names, where from, what they do, why here, took up the answers.
-- Style identification (judge): shown one reply and the list of styles in
-  the run, which was it written in, and the three features that told it. A
-  style the judge cannot tell from the others is not a style.
-- Head to head (judge, both orders, as EQ-Bench does): each variant's scene
-  against baseline's on EQ-Bench's pairwise criteria plus two of ours (the
-  two talk to each other; the scene goes somewhere).
-- Anchors: scenes from public-domain novels in `reading-anchors.md`, scored
-  on the same rubric. The bar is "within two points of a book", not a
-  number the judge happened to like.
-- Mechanical: speech share, questions per ten lines, replies showing a
-  thought, person and tense, "said" per reply, replies ending on a question,
-  stock tells, dashes, motif echoes, novelty by thirds. These describe a
-  style's shape (a screenplay and a novel should differ here) and keep the
-  judge honest.
+**The bar** (provisional until calibrated): takes up at least 90 percent of
+replies, answers at least 80, dead ends at most 10 per 100, moves at least
+60, tells at most 10 per 100, went somewhere and distinct at least 4 of 5,
+the positive rubric at least 7 and within two of the anchors, the negative
+rubric at most 3, the style told apart at least 80 percent. The report marks
+every variant against each.
 
-**The bar for "satisfied"** (provisional until calibrated): takes up at
-least 90 percent, answers at least 80, dead ends at most 10 per 100, moves
-at least 60, tells at most 10 per 100, went somewhere at least 4, distinct
-at least 4, the positive rubric at least 7 and within two of the anchors,
-the negative rubric at most 3, style told apart at least 80 percent. The
-report marks every variant against each bar.
-
-**Calibrate before trusting it.** `--replay --calibration-sheet` writes
-`reading-calibration.md`, twenty exchanges to mark by hand (takes up, gives,
-thinks, moves); `--replay --calibrate` reports the judge's agreement with
-each mark. A criterion under 80 percent agreement is not one to tune
-against: rewrite its definition in the judge prompt, or drop it.
-
-**Variants** (`reading-variants.md`): baseline (immersive-rp, as shipped),
-natural-rp, screenplay, conversation-rules (baseline with four rules about
-answering, giving, strangers and having a view added to How People Talk),
-novel (close third, past tense, thinking on the page, scene beats), and
-novel-no-thinking (the same without the thinking rule). One change per
-variant, so the numbers say what each change did. A style that wins here
-ships as a preset in `writing-style.js`; its rules that win on their own
-ship in the default dialogue rules.
+**Variants** (`reading-variants.md`): baseline, natural-rp, screenplay, the
+conversation rules on their own, a novel style (close third, past tense,
+thinking on the page, scene beats), and that style without the thinking
+rule. One change per variant. A style that wins ships as a preset; rules
+that win on their own ship in the default dialogue rules.
 
 ## Published benchmarks: what to borrow
 
