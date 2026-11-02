@@ -698,24 +698,28 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _ollamaProvider = new OllamaProvider(ollamaBaseUrl);
   context.subscriptions.push(_ollamaProvider);
 
-  // Launch warm-up (docs/ai/CHAT_CONTEXT_WINDOW.md): load the model and
-  // context the chat last ran with, never a guess. Remembered across
-  // restarts; a request for the chat's own model that names a size updates it.
+  // No chat model is loaded at launch (docs/ai/CHAT_CONTEXT_WINDOW.md): the
+  // first request loads its own model at its own size, so nothing the app
+  // starts on its own holds the engine against it. The engine broker learns
+  // the loaded shape from every sized request.
+  context.subscriptions.push(_ollamaProvider.onDidSendChatRequest(({ modelId, numCtx }) => {
+    languageModelsService.getEngineBroker?.()?.noteLoadedShape('ollama', modelId, numCtx); /* every sized request */
+  }));
+  // Per model, kept across restarts (this machine's card does not change):
+  // the size last named for it, which is what Auto runs it at, and the size
+  // measured to fit on the card when a load the app sized spilled.
   {
-    const LAST_CHAT_LOAD_KEY = 'chat.lastModelLoad';
-    type LastChatLoad = { modelId?: unknown; numCtx?: unknown };
-    const provider = _ollamaProvider;
-    const remembered = context.globalState.get<LastChatLoad>(LAST_CHAT_LOAD_KEY);
-    if (remembered && typeof remembered.modelId === 'string' && typeof remembered.numCtx === 'number') {
-      provider.setWarmupTarget({ modelId: remembered.modelId, numCtx: remembered.numCtx });
-    }
-    context.subscriptions.push(provider.onDidSendChatRequest(({ modelId, numCtx }) => {
-      languageModelsService.getEngineBroker?.()?.noteLoadedShape('ollama', modelId, numCtx); // one loaded shape, warm-up included
-      if (modelId !== languageModelsService.getActiveModel()) return;
-      const prev = context.globalState.get<LastChatLoad>(LAST_CHAT_LOAD_KEY);
-      if (prev && prev.modelId === modelId && prev.numCtx === numCtx) return;
-      void context.globalState.update(LAST_CHAT_LOAD_KEY, { modelId, numCtx }).catch(() => { /* the next request tries again */ });
-    }));
+    const SIZES_KEY = 'chat.lastSizes';
+    const FITS_KEY = 'chat.contextFits';
+    const remember = (key: string, modelId: string, numCtx: number): void => {
+      const all = context.globalState.get<Record<string, number>>(key) ?? {};
+      if (all[modelId] === numCtx) return;
+      void context.globalState.update(key, { ...all, [modelId]: numCtx }).catch(() => { /* kept next time */ });
+    };
+    _ollamaProvider.setLastNamedSizes(context.globalState.get<Record<string, number>>(SIZES_KEY) ?? {});
+    _ollamaProvider.setKnownContextFits(context.globalState.get<Record<string, number>>(FITS_KEY) ?? {});
+    context.subscriptions.push(_ollamaProvider.onDidSendChatRequest(({ modelId, numCtx }) => { if (numCtx >= 8_192) remember(SIZES_KEY, modelId, numCtx); }));
+    context.subscriptions.push(_ollamaProvider.onDidLearnContextFit(({ modelId, numCtx }) => remember(FITS_KEY, modelId, numCtx)));
   }
 
   // Apply user-configured context length override (0 = let Ollama decide)

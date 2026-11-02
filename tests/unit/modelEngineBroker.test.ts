@@ -195,24 +195,25 @@ describe('ModelEngineBroker', () => {
     expect(Math.abs(log[0].started - log[1].started)).toBeLessThan(15);
   });
 
-  it('chat turns set the loaded context size; every other call to that model runs at it, smaller or larger', async () => {
+  it('a sized call keeps its size and sets the loaded shape; a sizeless call runs at the loaded shape', async () => {
     const b = new ModelEngineBroker();
     const log: ICallLog[] = [];
     const chat = (numCtx: number) => ({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx, engine: { runId: 'chat-1' } } });
-    const bg = (numCtx: number) => ({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx, engine: { priority: 'scheduled' as const, runId: 'r' } } });
+    const bg = (numCtx?: number) => ({ engine: 'ollama', gated: true, modelId: 'm', options: { ...(numCtx ? { numCtx } : {}), engine: { priority: 'scheduled' as const, runId: 'r' } } });
     await collect(b.request(chat(65536), fakeStart(log, 'c', 1, 1)));
     expect(b.loadedShape('ollama')).toEqual({ modelId: 'm', numCtx: 65536 });
-    await collect(b.request(bg(8192), fakeStart(log, 's', 1, 1)));     // asked for less
-    await collect(b.request(bg(262144), fakeStart(log, 'l', 1, 1)));   // asked for more: no reload either
-    await collect(b.request({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx: 16384 } }, fakeStart(log, 'u', 1, 1))); // an extension
-    expect(log.slice(1).map((e) => e.options?.numCtx)).toEqual([65536, 65536, 65536]);
-    // The launch warm-up's load is the shape too.
+    await collect(b.request(bg(), fakeStart(log, 's', 1, 1)));                                                                      // no size: the loaded one
+    await collect(b.request({ engine: 'ollama', gated: true, modelId: 'm', options: {} }, fakeStart(log, 'u', 1, 1)));              // an extension, no size: the loaded one
+    await collect(b.request({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx: 131072 } }, fakeStart(log, 'x', 1, 1))); // an extension at the user's 128K: kept
+    expect(log.slice(1).map((e) => e.options?.numCtx)).toEqual([65536, 65536, 131072]);
+    expect(b.loadedShape('ollama')).toEqual({ modelId: 'm', numCtx: 131072 }); // and it is the shape now
+    // The launch warm-up's load is the shape too, for sizeless calls to that model.
     b.noteLoadedShape('ollama', 'm2', 32768);
-    await collect(b.request({ ...bg(8192), modelId: 'm2' }, fakeStart(log, 'w', 1, 1)));
+    await collect(b.request({ ...bg(), modelId: 'm2' }, fakeStart(log, 'w', 1, 1)));
     expect(log[4].options?.numCtx).toBe(32768);
-    // Your chat at a new size sets it.
-    await collect(b.request(chat(131072), fakeStart(log, 'c2', 1, 1)));
-    expect(b.loadedShape('ollama')).toEqual({ modelId: 'm', numCtx: 131072 });
+    // A sized background call to the warm model keeps its own size.
+    await collect(b.request({ ...bg(8192), modelId: 'm2' }, fakeStart(log, 'w2', 1, 1)));
+    expect(log[5].options?.numCtx).toBe(8192);
   });
 
   it('maintenance work waits for chat to let go, and can be cancelled', async () => {

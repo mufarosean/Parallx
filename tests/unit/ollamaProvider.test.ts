@@ -308,26 +308,70 @@ describe('OllamaProvider', () => {
     }
     const drain = async (it: AsyncIterable<unknown>) => { for await (const _chunk of it) { /* drain */ } };
 
-    it('warms the model and context the chat last ran with, not the first model Ollama lists', async () => {
+    it('loads nothing at launch: no chat model and no embedding model until a request asks', async () => {
       const { fetchMock, chats } = recordingFetch(['qwen3.6:latest', 'qwen3.8:27b']);
       vi.stubGlobal('fetch', fetchMock);
       const p = new OllamaProvider();
-      p.setWarmupTarget({ modelId: 'qwen3.8:27b', numCtx: 163840 });
       await new Promise((r) => setTimeout(r, 400));
-      expect(chats).toEqual([expect.objectContaining({ model: 'qwen3.8:27b', messages: [], options: { num_ctx: 163840 } })]);
+      expect(chats).toEqual([]);
+      expect(fetchMock.mock.calls.filter(([input]) => /api\/(embed|chat|generate)/.test(String(input)))).toEqual([]);
       p.dispose();
     });
 
-    it('warms nothing when nothing is remembered, or the remembered model is gone', async () => {
-      const { fetchMock, chats } = recordingFetch(['qwen3.6:latest']);
+    it('a request with no size and nothing remembered still names one: the model\'s length capped at 65536, never nothing', async () => {
+      const { fetchMock, chats } = recordingFetch([]);
       vi.stubGlobal('fetch', fetchMock);
-      const none = new OllamaProvider();
-      const gone = new OllamaProvider();
-      gone.setWarmupTarget({ modelId: 'qwen3.8:27b', numCtx: 163840 });
-      await new Promise((r) => setTimeout(r, 400));
-      expect(chats).toEqual([]);
-      none.dispose();
-      gone.dispose();
+      const p = new OllamaProvider();
+      await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Rewrite the voice' }]));
+      expect(chats.map((c) => (c.options as { num_ctx?: number } | undefined)?.num_ctx)).toEqual([65536]);
+      p.dispose();
+    });
+
+    it('a size the app chose that spills off the card is measured and sent again at the size that fits; the fit is kept', async () => {
+      const GiB = 1024 ** 3;
+      const chats: Record<string, unknown>[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/api/version')) return jsonResponse({ version: '0.12.0' });
+        if (url.includes('/api/tags')) return jsonResponse({ models: [{ ...tag('gemma4:31b'), size: 20 * GiB }] });
+        if (url.includes('/api/ps')) return jsonResponse({ models: chats.length ? [{ name: 'gemma4:31b', size: 40 * GiB, size_vram: 30 * GiB, context_length: (chats[chats.length - 1].options as { num_ctx: number }).num_ctx }] : [] });
+        if (url.includes('/api/chat')) {
+          chats.push(JSON.parse(String(init?.body ?? '{}')));
+          const first = chats.length === 1;
+          // The first attempt never answers (spilled); the second answers at once.
+          return new Response(new ReadableStream({
+            start(ctrl) {
+              if (first) { init?.signal?.addEventListener('abort', () => { try { ctrl.error(new DOMException('aborted', 'AbortError')); } catch { /* closed */ } }); return; }
+              ctrl.enqueue(new TextEncoder().encode(JSON.stringify({ model: 'm', message: { role: 'assistant', content: 'Hi' }, done: true }) + '\n'));
+              ctrl.close();
+            },
+          }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch to: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const was = OllamaProvider.FIT_POLL_MS; OllamaProvider.FIT_POLL_MS = 5;
+      const p = new OllamaProvider();
+      try {
+        await p.listModels();
+        const learned: number[] = [];
+        p.onDidLearnContextFit(({ numCtx }) => learned.push(numCtx));
+        const sent: number[] = [];
+        p.onDidSendChatRequest(({ numCtx }) => sent.push(numCtx));
+        let text = '';
+        for await (const c of p.sendChatRequest('gemma4:31b', [{ role: 'user', content: 'Rewrite the voice' }])) text += c.content ?? '';
+        expect(text).toBe('Hi');
+        expect(chats.map((c) => (c.options as { num_ctx: number }).num_ctx)).toEqual([65536, 22 * 1024]);
+        expect(learned).toEqual([22 * 1024]);
+        expect(sent).toEqual([22 * 1024]);
+        // The next sizeless request goes straight to the fit; a size the caller names is kept.
+        for await (const _c of p.sendChatRequest('gemma4:31b', [{ role: 'user', content: 'Again' }])) { /* drain */ }
+        for await (const _c of p.sendChatRequest('gemma4:31b', [{ role: 'user', content: 'At 128K' }], { numCtx: 131072 })) { /* drain */ }
+        expect(chats.slice(2).map((c) => (c.options as { num_ctx: number }).num_ctx)).toEqual([22 * 1024, 131072]);
+      } finally {
+        OllamaProvider.FIT_POLL_MS = was;
+        p.dispose();
+      }
     });
 
     it('names a context size on every request: one without a size reuses the last size named', async () => {
@@ -351,8 +395,8 @@ describe('OllamaProvider', () => {
       await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Hi' }], { numCtx: 32768 }));
       await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Mark this' }], { numCtx: 2048 })); // a marking call
       await drain(p.sendChatRequest('qwen3.8:27b', [{ role: 'user', content: 'Rewrite this paragraph' }]));
-      await drain(p.sendChatRequest('gemma3:12b', [{ role: 'user', content: 'Other model' }]));
-      expect(chats.map((c) => (c.options as { num_ctx?: number } | undefined)?.num_ctx)).toEqual([32768, 2048, 32768, undefined]);
+      await drain(p.sendChatRequest('gemma3:12b', [{ role: 'user', content: 'Other model' }])); // no size named for this model yet: the cap, never nothing
+      expect(chats.map((c) => (c.options as { num_ctx?: number } | undefined)?.num_ctx)).toEqual([32768, 2048, 32768, 65536]);
       p.dispose();
     });
 

@@ -36,10 +36,13 @@
 //   5. A call someone waits on (interactive, attended) that gets no output
 //      for INTERACTIVE_FIRST_OUTPUT_MS fails with a message and lets go of
 //      the engine. Nothing can hold "Thinking" for ever.
-//   6. One loaded shape per engine (model and context size), set by your chat
-//      turns and the launch warm-up. Every other call runs at that size: a
-//      different size makes Ollama load the model again, minutes each way
-//      for a large model, and the prompt cache is lost.
+//   6. One loaded shape per engine (model and context size): the last size
+//      any call named. Nothing is loaded at launch. A call that names no
+//      size runs at it, so it never makes Ollama load the model again. A
+//      call that names its size keeps it: the size is the user's choice (a
+//      thread's Context, a workspace default), and a rule that overrode it
+//      with the loaded shape ran 128K threads at a 256K warm-up, past the
+//      card, for minutes a turn.
 //   7. A lease a turn has not used for LEASE_IDLE_MS stops holding the
 //      engine, so nothing a turn awaits can wait on the turn for ever.
 //
@@ -597,19 +600,19 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
    * Per-class request shaping.
    *
    * Loaded shape (rule 6): a model loaded at one context size reloads when a
-   * request names another. Your chat turns set the size. Every other call to
-   * that model runs at the loaded size, whether it asked for less or for
-   * more: a bigger window costs nothing once loaded, and a smaller one is
-   * what the caller budgets its prompt at (the participant caps a run's
-   * window at the loaded size). With nothing loaded a call keeps its own.
+   * request names another. Any sized call sets the shape; a sizeless call to
+   * that model runs at it. A sized call keeps its size, however it compares.
    *
    * Output cap: calls below interactive that name no cap get one (thinking counts).
    */
   private _policy(req: IEngineRequest, priority: EnginePriority): IChatRequestOptions | undefined {
     let options = req.options;
-    const setsShape = priority === 'interactive' && !!options?.engine?.runId;
+    // A call that names its size keeps it: the size is the user's (a thread's
+    // Context, a workspace default), and overriding it with the loaded shape
+    // ran a 128K thread at the 256K the warm-up had loaded, past the card.
+    // A sizeless call runs at the loaded shape, so it never reloads the model.
     const loaded = this._shape.get(req.engine);
-    if (!setsShape && loaded && loaded.modelId === req.modelId && (options?.numCtx ?? 0) !== loaded.numCtx) {
+    if (!((options?.numCtx ?? 0) > 0) && loaded && loaded.modelId === req.modelId) {
       options = { ...(options ?? {}), numCtx: loaded.numCtx };
     }
     if (priority !== 'interactive' && !(options?.maxTokens && options.maxTokens > 0)) {

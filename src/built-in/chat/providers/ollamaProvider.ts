@@ -16,6 +16,7 @@
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
+import { watchContextFit } from './ollamaContextFit.js';
 import type {
   ILanguageModelProvider,
   ILanguageModelInfo,
@@ -169,15 +170,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   /** True while in the startup burst window (fast polling). */
   private _startupBurst = true;
 
-  /** True once we've already sent a pre-load request (avoids duplicates). */
-  private _preloadRequested = false;
-
-  /**
-   * What to warm at launch: the model and context the chat last ran with,
-   * remembered by the chat across restarts (setWarmupTarget). With nothing
-   * remembered, nothing is warmed: the first request loads its own model.
-   */
-  private _warmupTarget: { modelId: string; numCtx: number } | undefined;
 
   private readonly _onDidChangeStatus = this._register(new Emitter<IProviderStatus>());
   readonly onDidChangeStatus: Event<IProviderStatus> = this._onDidChangeStatus.event;
@@ -241,6 +233,25 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
    * call to any model, which Ollama then truncated from the top unseen.
    */
   private readonly _lastNumCtx = new Map<string, number>();
+  /** The weights on disk per model (/api/tags), for the context fit. */
+  private readonly _weightBytes = new Map<string, number>();
+  /** The context size known to fit on the card per model, from a measured load (ollamaContextFit.ts). */
+  private readonly _contextFits = new Map<string, number>();
+  private readonly _onDidLearnContextFit = this._register(new Emitter<{ readonly modelId: string; readonly numCtx: number }>());
+  /** A model's fitting context was measured; the chat keeps it across restarts. */
+  readonly onDidLearnContextFit: Event<{ readonly modelId: string; readonly numCtx: number }> = this._onDidLearnContextFit.event;
+  /** How often a load the app sized is looked at, and for how long. */
+  static FIT_POLL_MS = 2_000;
+  static FIT_WATCH_MS = 120_000;
+
+  /** Fits learned earlier (the chat's global state), fed back at launch. */
+  setKnownContextFits(fits: Readonly<Record<string, number>>): void {
+    for (const [modelId, numCtx] of Object.entries(fits)) if (modelId && numCtx > 0) this._contextFits.set(modelId, Math.floor(numCtx));
+  }
+  /** The size last named for each model in earlier sessions: what Auto runs that model at. */
+  setLastNamedSizes(sizes: Readonly<Record<string, number>>): void {
+    for (const [modelId, numCtx] of Object.entries(sizes)) if (modelId && numCtx >= 8_192 && !this._lastNumCtx.has(modelId)) this._lastNumCtx.set(modelId, Math.floor(numCtx));
+  }
 
   /** Models that returned 400 for think:true — skip on subsequent calls. */
   private _noThinkModels = new Set<string>();
@@ -270,14 +281,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     this._contextLengthOverride = Math.max(0, Math.floor(value));
   }
 
-  /** What the launch warm-up loads (see _warmupTarget); also the size a sizeless request reuses. */
-  setWarmupTarget(target: { modelId: string; numCtx: number } | undefined): void {
-    this._warmupTarget = target && target.modelId && target.numCtx > 0
-      ? { modelId: target.modelId, numCtx: Math.floor(target.numCtx) }
-      : undefined;
-    if (this._warmupTarget && !this._lastNumCtx.has(this._warmupTarget.modelId)) this._lastNumCtx.set(this._warmupTarget.modelId, this._warmupTarget.numCtx);
-  }
-
   /** Reset streaming parser state (called on model switch to avoid stale artifacts). */
   resetStreamState(): void {
     this._noThinkModels.clear();
@@ -294,7 +297,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     const loaded = this._loadedModels[0];
     if (!loaded) { return 0; }
     const cached = this._contextLengthCache.get(loaded);
-    if (cached !== undefined) { return cached; }
+    if (cached !== undefined) { return Math.min(cached, OllamaProvider.AUTO_MAX_CONTEXT); }
     // Fire-and-forget background fetch
     this.getModelInfo(loaded).then((info) => {
       this._contextLengthCache.set(loaded, info.contextLength);
@@ -313,8 +316,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     if (!modelId) { return 0; }
     // No pick: the loaded size, so Auto never reloads the model at its full length (minutes, and past the card, for a large one).
     const live = this.loadedContextLength(modelId); if (live > 0) { return live; }
+    const fit = this._contextFits.get(modelId); if (fit) { return fit; } // measured on this card
     const cached = this._contextLengthCache.get(modelId);
-    if (cached !== undefined) { return cached; }
+    if (cached !== undefined) { return Math.min(cached, OllamaProvider.AUTO_MAX_CONTEXT); }
     // Fire-and-forget background fetch
     this.getModelInfo(modelId).then((info) => {
       this._contextLengthCache.set(modelId, info.contextLength);
@@ -355,47 +359,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   // ── Model Pre-loading ──
 
-  /**
-   * Pre-loads a chat model (and the embedding model) into VRAM so the
-   * first real request doesn't pay a cold-start penalty.
-   *
-   * Sends a zero-token `/api/chat` request with `keep_alive: '30m'` and
-   * a single-token `/api/embed` request to warm both models in parallel.
-   * `numCtx` is the size the chat will ask for: loaded at any other size,
-   * the chat's first request makes Ollama load the model again.
-   * Fire-and-forget — failures are silently logged.
-   */
-  async preloadModel(modelId: string, numCtx = 0): Promise<void> {
-    if (!modelId) { return; }
-
-    const warmChat = fetch(`${this._baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [],
-        keep_alive: '30m',
-        ...(numCtx > 0 ? { options: { num_ctx: Math.floor(numCtx) } } : {}),
-      }),
-    }).then(r => { // a load the engine broker's loaded shape must know (every other call runs at it)
-      if (!r.ok) { console.warn(`[OllamaProvider] preload chat model failed: HTTP ${r.status}`); } else if (numCtx > 0) this._onDidSendChatRequest.fire({ modelId, numCtx: Math.floor(numCtx) });
-    }).catch(err => { console.warn('[OllamaProvider] preload chat model error:', err); });
-
-    const warmEmbed = fetch(`${this._baseUrl}/api/embed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'nomic-embed-text',
-        input: 'warmup',
-        keep_alive: '30m',
-      }),
-    }).then(r => { if (!r.ok) { console.warn(`[OllamaProvider] preload embed model failed: HTTP ${r.status}`); } })
-      .catch(err => { console.warn('[OllamaProvider] preload embed model error:', err); });
-
-    await Promise.all([warmChat, warmEmbed]);
-    console.log(`[OllamaProvider] Pre-loaded models: ${modelId} + nomic-embed-text`);
-  }
-
   // ── ILanguageModelProvider ──
 
   async checkAvailability(): Promise<IProviderStatus> {
@@ -432,6 +395,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       METADATA_TIMEOUT_MS,
     );
 
+    for (const m of response.models) if (m.size > 0) this._weightBytes.set(m.name, m.size);
     return response.models.map((m) => ({
       id: m.name,
       displayName: this._formatDisplayName(m.name),
@@ -534,9 +498,14 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       ollamaOptions['num_ctx'] = named;
       if (named >= 8_192) this._lastNumCtx.set(modelId, named);
       this._onDidSendChatRequest.fire({ modelId, numCtx: named });
-    } else if (this._lastNumCtx.has(modelId)) {
-      const last = this._lastNumCtx.get(modelId)!, max = this._contextLengthCache.get(modelId);
-      ollamaOptions['num_ctx'] = max && max > 0 ? Math.min(last, max) : last;
+    } else {
+      // No size from the caller: the size the model is loaded at, else the
+      // size measured to fit on this card, else the last size a request
+      // named, else the model's own length capped (the first attempt, which
+      // is measured). Never nothing: with nothing, Ollama uses its own
+      // default, the model's full length on a machine set so.
+      const live = this.loadedContextLength(modelId), fit = this._contextFits.get(modelId) ?? 0, last = this._lastNumCtx.get(modelId) ?? 0, known = this._contextLengthCache.get(modelId) ?? 0;
+      ollamaOptions['num_ctx'] = live > 0 ? live : fit > 0 ? fit : last > 0 ? last : Math.min(known > 0 ? known : OllamaProvider.AUTO_MAX_CONTEXT, OllamaProvider.AUTO_MAX_CONTEXT);
     }
     if (options) {
       // Negative temperature means "no opinion": omit the key so Ollama falls back to
@@ -569,10 +538,35 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
     body['keep_alive'] = '30m'; // loaded 30 minutes after the last request, not Ollama's 5: no cold start mid-session
 
+    // A size the app chose on its own is measured (ollamaContextFit.ts): a
+    // load that spills off the card is sent again, once, at the size that fits.
+    const chosenByApp = !(options?.numCtx && options.numCtx > 0) && !(this._contextLengthOverride > 0);
+    const size = Number(ollamaOptions['num_ctx']) || 0;
+    const watch = chosenByApp && size > 0 && !this._contextFits.has(modelId)
+      ? watchContextFit({ modelId, contextLength: size, weightBytes: this._weightBytes.get(modelId), pollMs: OllamaProvider.FIT_POLL_MS, maxMs: OllamaProvider.FIT_WATCH_MS,
+        ps: () => this._fetchJson<OllamaPsResponse>(`${this._baseUrl}/api/ps`, { method: 'GET' }, METADATA_TIMEOUT_MS),
+        onFit: (fit) => { this._contextFits.set(modelId, fit); this._onDidLearnContextFit.fire({ modelId, numCtx: fit }); } })
+      : undefined;
+    try {
+      for await (const chunk of this._streamOnce(modelId, body, signal, thinkTag, watch?.signal)) { watch?.stop(); yield chunk; }
+    } catch (err) {
+      if (!(watch && watch.refit > 0) || signal?.aborted) throw err;
+    } finally { watch?.stop(); }
+    if (watch && watch.refit > 0 && !signal?.aborted) {
+      body['options'] = { ...ollamaOptions, num_ctx: watch.refit };
+      this._lastNumCtx.set(modelId, watch.refit);
+      this._onDidSendChatRequest.fire({ modelId, numCtx: watch.refit });
+      yield* this._streamOnce(modelId, body, signal, thinkTag);
+    }
+  }
+
+  /** One attempt at /api/chat with the body as built; `stopSignal` ends it from inside (a spilled load). */
+  private async *_streamOnce(modelId: string, body: Record<string, unknown>, signal: AbortSignal | undefined, thinkTag: { open: boolean }, stopSignal?: AbortSignal): AsyncIterable<IChatResponseChunk> {
     // The caller's abort signal is forwarded (Stop, the engine broker's
     // first-output watchdog). No total timeout: it would cut a long thinking
     // answer short.
     const controller = new AbortController();
+    if (stopSignal) stopSignal.addEventListener('abort', () => controller.abort(), { once: true });
 
     if (signal) {
       if (signal.aborted) {
@@ -801,6 +795,17 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   /** Maximum context length Parallx will request (matches Ollama desktop max). */
   private static readonly MAX_CONTEXT_LENGTH = 262144; // 256K
+  /**
+   * The first attempt for a model the app has never run: Auto with nothing
+   * loaded, no size measured and none ever named for it. A model's own
+   * length is what it can address, not what runs: a 31B model at 131072 on
+   * a 32 GB card is reported by Ollama as sitting on the card and generates
+   * at 4 tokens a second, the driver having spilled it unseen; at 65536 the
+   * same model runs at 50. After the first run, Auto is the size the user
+   * last named for the model, kept across restarts; a size the user names
+   * is never capped.
+   */
+  static readonly AUTO_MAX_CONTEXT = 65536;
 
   private _extractContextLength(
     modelInfo: Record<string, unknown>,
@@ -902,42 +907,16 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       this._startupBurst = false;
       // Also poll loaded models
       await this._pollLoadedModels();
-
-      // Pre-load the active model on first availability detection
-      if (!this._preloadRequested && this._loadedModels.length === 0) {
-        this._preloadRequested = true;
-        // Defer to avoid blocking the poll cycle — preload is fire-and-forget
-        this._triggerPreload();
-      }
+      // Nothing is loaded here. A chat model loaded on the app's own
+      // initiative at launch held the engine while the user's first request,
+      // for another model at another size, waited behind it. The embedding
+      // service warms its own model when indexing starts (ensureModel).
     } else {
       this._consecutiveFailures++;
     }
 
     // Reschedule with dynamic interval
     this._schedulePoll();
-  }
-
-  /**
-   * Trigger the launch warm-up: the model and context the chat last ran
-   * with (setWarmupTarget), when Ollama is first seen with nothing loaded.
-   * Nothing remembered, or the model no longer installed: nothing is warmed.
-   * (Guessing the first model Ollama lists, at Ollama's full default size,
-   * loaded a model the chat did not use and pushed the chat's own model off
-   * the graphics card.)
-   */
-  private _triggerPreload(): void {
-    const target = this._warmupTarget;
-    if (!target) return;
-    // Use setTimeout to avoid blocking the poll cycle
-    setTimeout(async () => {
-      try {
-        const models = await this.listModels();
-        if (!models.some((m) => m.id === target.modelId)) return;
-        await this.preloadModel(target.modelId, target.numCtx);
-      } catch (err) {
-        console.warn('[OllamaProvider] _triggerPreload failed:', err);
-      }
-    }, 100);
   }
 
   private async _pollLoadedModels(): Promise<void> {

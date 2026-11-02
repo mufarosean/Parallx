@@ -16,9 +16,40 @@ The `Ctx` dropdown under the chat input sets a chat's context size.
   time a chat is shown.
 - With no pick and no workspace default, the size is the one the model is
   already loaded at (Ollama's `/api/ps`), so Auto never makes Ollama load the
-  model again at its full length; the model's own length only while nothing
-  is loaded. Every call but the chat's runs at the loaded size (the engine
-  broker's loaded shape, `docs/AGENT_RUNTIME_DESIGN.md` §3).
+  model again at its full length; while nothing is loaded, the size last
+  named for the model, else its own length capped at 65536
+  (`OllamaProvider.AUTO_MAX_CONTEXT`; Creations caps its own Auto the same). A 256K model's context cache at its full length
+  runs past a 32 GB card into system memory, and a turn then takes minutes:
+  seen 2026-11-02, when a warm-up remembered at 262144 reloaded Qwen3.8 at
+  every launch and the broker ran every 128K thread at it. A size the user
+  names (the chat's Ctx, a thread's Context, a workspace default) is kept as
+  is, above the cap too. The Ollama provider loads nothing at launch; the
+  embedding service warms its own model when indexing starts
+  (`ensureModel`). The launch warm-up of the chat model (2026-09-11
+  to 2026-11-02) loaded the model the chat last ran with, and the user's first
+  request, for another model at another size, waited behind that load for
+  minutes or until it timed out.
+- **A size the app chose is measured** (`ollamaContextFit.ts`). While such a
+  request runs, the provider reads `/api/ps`: a model loaded at that size
+  with less on the card than it takes has spilled into system memory. From
+  Ollama's own numbers (the load's size, what sat on the card, the weights
+  from `/api/tags`) it works out the largest context that fits, aborts the
+  attempt, sends it again once at that size, and keeps the fit per model in
+  the chat's global state (`chat.contextFits`) for every later Auto. A load
+  that sits on the card is kept as fitting at its size. A size the user
+  names is never measured or changed. The order for a sizeless request:
+  the loaded size, the measured fit, the last size named for the model (kept
+  across restarts, `chat.lastSizes`: what the user runs that model at), and
+  for a model never run, its length capped at 65536. That bound is from
+  this machine: a 31B model at 131072 is reported by Ollama as on the card
+  and generates at 4 tokens a second, the driver having spilled it unseen,
+  which no number from Ollama shows; at 65536 it runs at 50. The ps-based
+  fit catches a spill Ollama reports, not that one.
+- A call that names no size runs at the engine's loaded size (the engine
+  broker's loaded shape, `docs/AGENT_RUNTIME_DESIGN.md` §3); a call that
+  names one keeps it and becomes the loaded shape. A request never leaves
+  without `num_ctx`: Ollama's own default for a sizeless request is whatever
+  its app setting says, 262144 on the owner's machine.
 - Each turn, the runtime reads that provider-wide value, not the chat's own
   field. `buildOpenclawTurnContext` (`src/openclaw/participants/openclawDefaultParticipant.ts`)
   calls `getModelContextLength()`, which reaches `OllamaProvider.getCachedContextLength`.

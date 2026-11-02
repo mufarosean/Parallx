@@ -270,21 +270,26 @@ describe('the sequences that failed in use', () => {
     expect(b.snapshot('ollama')[0]?.queued ?? []).toEqual([]);
   });
 
-  it('a day of calls at every size loads the model once: your chat sets the shape, everything else runs at it', async () => {
+  it('a day of sizeless calls loads the model once at the shape the chat set; a call that names its size is run at it', async () => {
     vi.useFakeTimers();
     const b = new ModelEngineBroker();
     const e = new FakeEngine(30_000);
-    b.noteLoadedShape('ollama', MODEL, 163_840); // the launch warm-up, at the chat's last size
-    e.loaded = { modelId: MODEL, numCtx: 163_840 };
+    b.noteLoadedShape('ollama', MODEL, 131_072); // the launch warm-up, at the chat's last size
+    e.loaded = { modelId: MODEL, numCtx: 131_072 };
     const run = async (req: IEngineRequest, label: string) => { const p = collect(b.request(req, e.start(label, MODEL, { chunks: 1, stepMs: 1_000 }))); await tick(LEASE_GRACE_MS + 40_000); return p; };
-    await run(requestOf('chat', 'chat-1', 163_840), 'chat');
-    await run(requestOf('scheduled', 'routine', 262_144), 'routine');   // a routine set to the model's full length
-    await run(requestOf('attended', undefined, 16_384), 'budget');     // a sync that once named its own size
-    await run(requestOf('extension'), 'inline');                        // inline AI, no size of its own
-    await run(requestOf('helper', 'helper', 8_192), 'helper');
-    await run(requestOf('chat', 'chat-2', 163_840), 'chat-again');
+    await run(requestOf('chat', 'chat-1', 131_072), 'chat');
+    await run(requestOf('scheduled', 'routine'), 'routine');            // a routine with no size of its own
+    await run(requestOf('attended'), 'budget');                        // a sync with none
+    await run(requestOf('extension'), 'inline');                        // inline AI, none
+    await run(requestOf('helper', 'helper'), 'helper');
+    await run(requestOf('chat', 'chat-2', 131_072), 'chat-again');
     expect(e.reloads).toBe(0);
-    expect(new Set(e.attempts.map((a) => a.numCtx))).toEqual(new Set([163_840]));
+    expect(new Set(e.attempts.map((a) => a.numCtx))).toEqual(new Set([131_072]));
+    // An extension thread the user set to 64K runs at 64K (one reload, the user's), and sizeless calls follow it.
+    await run(requestOf('extension', undefined, 65_536), 'creations-thread');
+    await run(requestOf('extension'), 'inline-again');
+    expect(e.reloads).toBe(1);
+    expect(e.attempts.slice(-2).map((a) => a.numCtx)).toEqual([65_536, 65_536]);
   });
 
   it('a silent engine: a chat turn and a sync each fail with a message after five minutes, and the engine is free again', async () => {

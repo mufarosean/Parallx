@@ -127,7 +127,8 @@ const FOLDER_RULES: Record<string, string[]> = {
   'widgets/chatEmptyStateKeys.ts': ['pickers/'],  // the empty state's strip reads the mode picker's metadata
 
   // ── providers/ — LLM providers ──────────────────────────────────────────
-  'providers/ollamaProvider.ts': [],
+  'providers/ollamaProvider.ts': ['providers/'],  // ollamaContextFit: the size that fits, from Ollama's numbers
+  'providers/ollamaContextFit.ts': [],
   'providers/anthropicProvider.ts': [],
   'providers/openaiCompatibleProvider.ts': [],
   'providers/openaiCompatibleRegistration.ts': ['providers/'],  // settings + live registration

@@ -56,10 +56,16 @@ const CTX_WINDOW_PRESETS = [
  * the model's own context length. 8192 only when Ollama could not report
  * the model's length.
  */
+// Auto (no override, no default) is the model's length capped at the size a
+// 30B model runs at on a 32 GB card: at its full length, or at 131072, the
+// context cache spills into system memory and a turn takes minutes. A size
+// the user names (the thread's Context, the Default context window) is
+// kept as is.
+const AUTO_MAX_CONTEXT = 65536;
 function resolveContextWindow({ override, settingsDefault, modelLength } = {}) {
-  for (const v of [override, settingsDefault, modelLength]) {
+  for (const [v, cap] of [[override, 0], [settingsDefault, 0], [modelLength, AUTO_MAX_CONTEXT]]) {
     const n = Number(v);
-    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+    if (Number.isFinite(n) && n > 0) return cap > 0 ? Math.min(Math.floor(n), cap) : Math.floor(n);
   }
   return 8192;
 }

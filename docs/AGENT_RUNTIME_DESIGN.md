@@ -122,14 +122,21 @@ Neither needs a setting.
 The broker tracks each model's **loaded shape** (model + context size), the
 thing that, when it changes, makes Ollama reload.
 
-- **Your chat turns set the shape**, and so does the launch warm-up (it
-  loads the size the chat last ran at). You choose the context, the chip
-  shows it; nothing caps it. A chat on Auto runs at the size the model is
-  already loaded at, not the model's full length.
-- **Every other call runs at the loaded shape**, whether it asked for less or
-  for more: a reload of a large model costs minutes each way and the prompt
-  cache. A run's own window (a routine's Context) is its prompt budget, up to
-  the loaded size. With nothing loaded a call keeps its own size.
+- **Any call that names a size sets the shape**: your chat turns, a
+  Creations thread's Context, a routine's. Nothing is loaded at launch (the
+  embedding service warms its own model when indexing starts): a launch
+  warm-up of the chat model held the engine
+  while the user's first request, for another model, waited behind it
+  (2026-11-02). You choose the context, the chip shows it;
+  a size you name is never changed. A chat on Auto runs at the size the
+  model is already loaded at; with nothing loaded, the model's own length
+  capped at 131072 (`docs/ai/CHAT_CONTEXT_WINDOW.md`), because a 256K cache
+  runs past the card and a turn then takes minutes.
+- **A call that names no size runs at the loaded shape**, so it never makes
+  Ollama reload: a reload of a large model costs minutes each way and the
+  prompt cache. A call that names its size keeps it: overriding it with the
+  loaded shape ran the owner's 128K threads at a 256K warm-up (2026-11-02).
+  A run's own window (a routine's Context) is its prompt budget.
 - **Every caller names a size,** so a call that names none can never trigger
   Ollama's own default and a surprise reload. This includes extensions; the
   broker fills it in.
@@ -214,7 +221,7 @@ call a turn makes carries its run id).
 | Working-time clocks | Yes | Helpers (120 s), background prompts and routines (240-300 s), heartbeat and scheduled jobs (10 min, new) leave out time spent waiting. |
 | Output cap | Yes | 8192 tokens for background calls that name none (thinking counts). |
 | Runs pin their model | Yes | At start, or the routine's / helper's own model. A routine's context size is its prompt budget. |
-| Loaded shape | Yes | Chat sets the size; everyone else adopts it when theirs is smaller or unnamed. A background call that needs more keeps its size (it only runs while chat is idle). |
+| Loaded shape | Yes | Any sized call sets the size; a sizeless call adopts it. A call that names its size keeps it, whatever the loaded shape. |
 | Other-model fallback | Removed | A load error now says the model may not fit at this context size. |
 | Engine profiles | Partly | `/api/ps` placement (on GPU, partly on CPU, on CPU) in the engine chip. Learned parallelism, measured speeds and co-residence are **not built**: background work runs one at a time on any model (always safe), and chat is never queued behind anything, so nothing needs them yet. |
 | Maintenance class | Yes | Indexing batches wait while chat holds the engine (at most a minute); the page-link and cluster-name classifiers queue as maintenance. Query and single-document embeddings are part of chat turns and never wait. |

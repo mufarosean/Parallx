@@ -11,8 +11,11 @@ const { resolveContextWindow, migrateContextDefault, assembleContext } = __testa
 const tok = (n: number) => 'word '.repeat(n);
 
 describe('chat context window', () => {
-  it('Auto uses the model length', () => {
+  it('Auto uses the model length, capped at 65536; a size the user named is kept above it', () => {
     expect(resolveContextWindow({ override: null, settingsDefault: 0, modelLength: 40960 })).toBe(40960);
+    expect(resolveContextWindow({ override: null, settingsDefault: 0, modelLength: 262144 })).toBe(65536);
+    expect(resolveContextWindow({ override: null, settingsDefault: 131072, modelLength: 262144 })).toBe(131072);
+    expect(resolveContextWindow({ override: 262144, settingsDefault: 0, modelLength: 262144 })).toBe(262144);
   });
 
   it('a size picked in the chat wins, then one set in Settings', () => {
