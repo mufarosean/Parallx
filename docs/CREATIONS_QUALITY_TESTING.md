@@ -52,6 +52,7 @@ last ran in July, on another model.
 | Regenerate with a direction | 10-07 | No |
 | Directions (four notes per character) | 10-07 | Stand-in model only |
 | How People Talk and Immersive RP rewritten for the exchange: answer first, react to news, strangers trade names, a voice habit never in a character's two replies running (reading bench, Part 5) | 11-01 | Yes, 11-01: five scenes on gemma4:31b at 65536, read by the session; `last-reading-after*.md` |
+| Card standard (Voice as tendency with how often, Reminder a fact; `card-rules.js` findings in the Studio and the character tool) | 11-02 | Yes, 11-02: Kelder Quay cast, five scenes standard and as rules, read by the session; `last-reading-castb*.md` |
 
 ## Three layers
 
@@ -341,6 +342,32 @@ Immersive RP text, and the Turn Contract's habit line: every question
 answered or visibly dodged, news met with questions and a decision ("I am
 going"), the want pressed over eleven replies, one story in thirteen Ilan
 replies, one count in a scene. Median reply 20 seconds at 65536.
+
+**Second result, 2026-11-02, the card shape.** The Kelder Quay cast played
+its five scenes twice, once written to the card standard and once as rules
+(`last-reading-castb.md`, `last-reading-castb-rules.md`; 65 replies each,
+gemma4:31b at 65536, `--plain`, read by the session). With the standard
+cards no habit ran every line: Beatrix made no literary reference in
+thirteen replies, Lucía used one Spanish word in thirteen, Dag said more
+than expected once, about the tide; strangers traded names, where from and
+what for in their first two replies; every question was answered or dodged
+in sight; four of five scenes went somewhere (the crate out on a trolley,
+the S.S. Marigold found in the ledger, boots on and "Do I board?", a visit
+to the bookshop at five). With the same cards as rules every absolute was
+obeyed in every reply: an author quoted in ten of thirteen Beatrix replies,
+half of them invented; Henrik's "You ask X, but the question is Y" in five
+of seven, up to four times a reply; a Spanish word in all thirteen Lucía
+replies; Dag one sentence in all thirteen and the nudge ("I need an answer
+by eight, Dag") unanswered; cake or tea offered in all six Mo replies; a
+figure in all seven Jen replies. Two rules scenes went nowhere: the boat
+scene looped ("She knows the gear." "She is a deckhand." "She will do.")
+and the brass plate was never read. Left open on the standard side: the
+sisters never came back to the letter (Jen dodged it in sight at reply 1
+and nobody pushed; Sam was silent, so this is his to retry in play),
+Henrik's German word came in five of seven replies against "now and then",
+and Dag released a crate he was holding without a word about the manifest.
+One of 65 standard replies came back empty after 2,764 tokens of thinking.
+Median reply 24 seconds standard, 28 as rules (45 on the florid scene).
 
 **The bar** (provisional until calibrated): takes up at least 90 percent of
 replies, answers at least 80, dead ends at most 10 per 100, moves at least
