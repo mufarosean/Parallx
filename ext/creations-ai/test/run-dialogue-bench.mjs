@@ -35,10 +35,8 @@ const USER = 'Sam';
 // ── Levers: dialogue-variants.md, and the app's own shipped rules ──────────
 
 async function shippedRules() {
-  const src = await fsp.readFile(path.join(__dirname, '..', 'main.js'), 'utf8');
-  const m = /const DEFAULT_DIALOGUE_RULES = \[([\s\S]*?)\]\.join\('\\n'\);/.exec(src);
-  if (!m) throw new Error('DEFAULT_DIALOGUE_RULES not found in main.js');
-  return [...m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((x) => x[1].replace(/\\'/g, "'"));
+  const { DEFAULT_DIALOGUE_RULES } = await import('../dialogue-rules.js');
+  return DEFAULT_DIALOGUE_RULES.split('\n');
 }
 
 async function readVariants(shipped) {
@@ -73,17 +71,19 @@ async function readVariants(shipped) {
 }
 
 // The per-turn voice reminder (main.js, generateTurn's late anchor), as shipped
-// since 2026-10-08 (the voice as a tendency). The bench runs other versions of
-// it from a temporary copy of the chat; the app is untouched.
-const ANCHOR_LINE = "const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';";
+// since 2026-11-01 (the voice as a tendency; a habit shown in the character's
+// last reply stays out of this one). The bench runs other versions of it from
+// a temporary copy of the chat; the app is untouched. The latitude anchor
+// appended after it is left as it is.
+const ANCHOR_LINE = "const personaLine = (anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then. Read ${rName}'s last reply in the history: a habit shown there (a story, a count, a saying, a dialect word) stays out of this one (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '')";
 const STRICT = 'Sound like ${rName}.';
 const ANCHORS = {
   // The reminder before 2026-10-08: the voice as a rule for every line.
   previous: (src) => src
-    .replace(ANCHOR_LINE, "const personaLine = anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';")
+    .replace(ANCHOR_LINE, "const personaLine = (anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '')")
     .replace(STRICT, "Stay strictly in ${rName}'s voice."),
   // No voice text in the reminder at all: the voice stays in the portrait at the top.
-  identity: (src) => src.replace(ANCHOR_LINE, "const personaLine = '';"),
+  identity: (src) => src.replace(ANCHOR_LINE, "const personaLine = ('')"),
 };
 async function patchedMain(anchor) {
   const src = await fsp.readFile(path.join(__dirname, '..', 'main.js'), 'utf8');

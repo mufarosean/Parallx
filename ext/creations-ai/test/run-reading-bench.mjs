@@ -66,10 +66,8 @@ const USER = 'Sam';
 // ── Levers: reading-variants.md ───────────────────────────────────────────
 
 async function shippedRules() {
-  const src = await fsp.readFile(path.join(__dirname, '..', 'main.js'), 'utf8');
-  const m = /const DEFAULT_DIALOGUE_RULES = \[([\s\S]*?)\]\.join\('\\n'\);/.exec(src);
-  if (!m) throw new Error('DEFAULT_DIALOGUE_RULES not found in main.js');
-  return [...m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((x) => x[1].replace(/\\'/g, "'"));
+  const { DEFAULT_DIALOGUE_RULES } = await import('../dialogue-rules.js');
+  return DEFAULT_DIALOGUE_RULES.split('\n');
 }
 
 async function readVariants(shipped) {
