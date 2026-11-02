@@ -18,7 +18,7 @@
 // transcript() → [{ name, content }], composer: { set(text) },
 // openFile(uri), showToast(text), repaint() }.
 
-import { ACT_FILE, actStatusLine, actTimelineLine, beatTurn, buildActPlanMessages, buildNextActMessages, parseActFile, parseBeats, parseNextAct, renderActFile } from './acts.js';
+import { ACT_FILE, actStatusLine, actTimelineLine, beatTurn, buildActPlanMessages, buildNextActMessages, parseActFile, parseBeats, parseNextAct, parseTurnScript, renderActFile, scriptBeats } from './acts.js';
 import { stripDashes } from './studio-core.js';
 import { createModelRoute } from './model-route.js'; import { NEXT_ACT_SCHEMA } from './schemas.js';
 
@@ -72,6 +72,30 @@ export function createActRunner(deps) {
     }
   }
 
+  /**
+   * Pasted turns ("/nar ...", "/ai @Name ...", "/you ...", two or more) run
+   * as an act with no planning: written to act.md as they are, then Run.
+   * A name nobody in the chat answers to stops it before any turn is taken.
+   * False when the text is not pasted turns, so the chat reads it as usual.
+   */
+  async function runScript(text) {
+    const script = parseTurnScript(text);
+    if (!script) return false;
+    if (busy || deps.gen.isGenerating) { deps.showToast('A turn is being written. Paste the turns again once it is done.'); return true; }
+    const { beats, missing } = scriptBeats(script, { names: names(), player: player() });
+    if (missing.length) {
+      deps.showToast(`Not in this chat: ${missing.join(', ')}. Add ${missing.length === 1 ? 'them' : 'everyone'} in Chat Settings, then paste the turns again.`);
+      return true;
+    }
+    const n = beats.length;
+    const title = script.title || `Pasted turns (${n})`;
+    await deps.fs.writeFile(deps.fileUri(ACT_FILE), renderActFile(title, beats));
+    setAct({ brief: title, beats, index: 0, status: 'planned', source: 'pasted', createdAt: Date.now() }, 'pasted turns');
+    if (script.unnamed) deps.showToast(`Skipped ${script.unnamed} "/ai" ${script.unnamed === 1 ? 'line' : 'lines'} with no @Name.`);
+    await run();
+    return true;
+  }
+
   /** The beats from act.md, read fresh, from the current index; each one a turn. */
   async function run() {
     const cur = act();
@@ -100,7 +124,7 @@ export function createActRunner(deps) {
       setAct({ ...act(), index, status: 'done', finishedAt: Date.now() }, 'act done');
       try { await deps.rememberBeat(actTimelineLine(brief, beats.length)); } catch { /* the chat itself is the record */ }
       try { await deps.extractMemory(); } catch { /* the next exchange extracts */ }
-      deps.showToast('The act has run. Write the next one with /act, or ask for a proposal.');
+      deps.showToast('The act has run. Paste the next turns, write an act with /act, or ask for a proposal.');
     } finally {
       busy = false;
       deps.repaint();
@@ -168,7 +192,7 @@ export function createActRunner(deps) {
     }
   }
 
-  const runner = { plan, run, stop, continueAfterPlayer, propose: proposeNext, proposeNext, waiting, render, isBusy: () => busy, openSheet: () => deps.openFile(deps.fileUri(ACT_FILE)), release: () => { if (runners.get(deps.threadId) === runner) runners.delete(deps.threadId); } };
+  const runner = { plan, runScript, run, stop, continueAfterPlayer, propose: proposeNext, proposeNext, waiting, render, isBusy: () => busy, openSheet: () => deps.openFile(deps.fileUri(ACT_FILE)), release: () => { if (runners.get(deps.threadId) === runner) runners.delete(deps.threadId); } };
   runners.set(deps.threadId, runner);
   return runner;
 }

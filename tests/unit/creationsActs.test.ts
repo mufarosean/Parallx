@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ACT_FILE, MAX_BEATS, YOU, beatsAskedFor, buildActPlanMessages, resolveBeatSpeaker, parseBeats, renderActFile, parseActFile,
-  beatTurn, beatCommand, actTimelineLine, buildNextActMessages, parseNextAct, actStatusLine,
+  beatTurn, beatCommand, actTimelineLine, buildNextActMessages, parseNextAct, actStatusLine, parseTurnScript, scriptBeats,
 // @ts-expect-error — JS module with no types
 } from '../../ext/creations-ai/acts.js';
 // @ts-expect-error — JS module with no types
@@ -126,6 +126,7 @@ describe('the runner', () => {
     const toasts: string[] = [];
     const beatsRemembered: string[] = [];
     let extracted = 0;
+    let asked = 0;
     const thread: any = { act: null, userPlaysAs: null };
     const gen = { isGenerating: false, stopRequested: false, lastError: null as any };
     let composer = '';
@@ -135,7 +136,7 @@ describe('the runner', () => {
         createButton: (c: HTMLElement, o: any) => { const b = document.createElement('button'); b.textContent = o.label; b.disabled = !!o.disabled; b.dataset.command = o.command; b.dataset.args = JSON.stringify(o.args || []); c.appendChild(b); return b; },
         renderMarkdown: (md: string) => { const d = document.createElement('div'); d.className = 'px-markdown'; d.textContent = md; return d; },
       },
-      lm: { sendChatRequest: (_m: string, messages: any[]) => chunks([messages[0].content.startsWith('You plan one act') ? planReply : '{"brief": "The summer she leaves."}']) },
+      lm: { sendChatRequest: (_m: string, messages: any[]) => { asked++; return chunks([messages[0].content.startsWith('You plan one act') ? planReply : '{"brief": "The summer she leaves."}']); } },
       fs: { readFile: async (uri: string) => { if (!files.has(uri)) throw new Error('no file'); return { content: files.get(uri) }; }, writeFile: async (uri: string, content: string) => { files.set(uri, content); } },
       threadId: 't1', gen, fileUri: (name: string) => `t1/${name}`, thread: () => thread, narratorSpeaker: '__narrator__',
       saveMeta: (updates: any) => { Object.assign(thread, updates); },
@@ -147,7 +148,7 @@ describe('the runner', () => {
       others: () => [], scene: () => null, rules: () => '', transcript: () => [],
       composer: { set: (t: string) => { composer = t; } }, openFile: async () => {}, showToast: (t: string) => toasts.push(t), repaint: () => {},
     };
-    return { runner: createActRunner(deps), files, turns, toasts, thread, gen, beatsRemembered, get composer() { return composer; }, get extracted() { return extracted; } };
+    return { runner: createActRunner(deps), files, turns, toasts, thread, gen, beatsRemembered, get composer() { return composer; }, get extracted() { return extracted; }, get asked() { return asked; } };
   }
 
   it('plans into act.md, runs the beats as turns, pauses for the player, goes on after they write, and remembers the act', async () => {
@@ -213,6 +214,32 @@ describe('the runner', () => {
     expect(w.composer).toBe('/act The summer she leaves.');
   });
 
+  it('runs pasted turns as written, with no plan asked of the model, pausing for the player', async () => {
+    const w = world('1. Narrator: never asked for');
+    expect(await w.runner.runScript('just a message')).toBe(false);
+    const ran = await w.runner.runScript('# Chapter 1\n/nar The howl comes.\n/ai @Ada Bars the door.\n/you Decide\n/ai @Tom Laughs');
+    expect(ran).toBe(true);
+    expect(w.asked).toBe(0);
+    expect(w.thread.act.source).toBe('pasted');
+    expect(w.files.get('t1/act.md')).toContain('# Chapter 1');
+    expect(w.files.get('t1/act.md')).toContain('2. Ada Lovelace: Bars the door.');
+    expect(w.turns.map((t) => t.speaker)).toEqual(['__narrator__', 'ada.json']);
+    expect(w.turns[0].instruction).toContain('The howl comes. Beat 1 of 4');
+    expect(w.thread.act.status).toBe('waiting');
+    expect(await w.runner.continueAfterPlayer()).toBe(true);
+    expect(w.turns.map((t) => t.speaker)).toEqual(['__narrator__', 'ada.json', 'tom.json']);
+    expect(w.thread.act.status).toBe('done');
+    expect(w.beatsRemembered).toEqual(['An act ran (4 turns): Chapter 1']);
+  });
+
+  it('pasted turns naming someone not in the chat take no turn and say who is missing', async () => {
+    const w = world('');
+    expect(await w.runner.runScript('/nar Dawn.\n/ai @Lira Waves.')).toBe(true);
+    expect(w.turns).toHaveLength(0);
+    expect(w.thread.act).toBeNull();
+    expect(w.toasts.at(-1)).toContain('Not in this chat: Lira');
+  });
+
   it('draws the panel with the kit: the state line, Run, Open act.md, Propose, each a command naming the thread; the sheet with run beats struck through', async () => {
     const w = world('1. Narrator: Dawn\n2. Ada: Counts');
     const host = document.createElement('div');
@@ -234,6 +261,57 @@ describe('the runner', () => {
     expect(host.textContent).toContain('Done: 2 beats ran.');
     expect(host.textContent).toContain('~~1. Narrator: Dawn~~');
     expect([...host.querySelectorAll('button')].map((b) => b.textContent)[0]).toBe('Run Again');
+  });
+});
+
+describe('pasted turns', () => {
+  const chapter = [
+    '## Chapter 2: The Road',
+    '',
+    'Add Lira to the chat first.',
+    '',
+    '**1.**',
+    '```',
+    '/nar Two days on the cart track. Do not write Soren\'s words or actions.',
+    '```',
+    '**2.**',
+    '```',
+    '/ai @Soren Answer the gate knights politely,',
+    'then wander the town wide-eyed.',
+    '```',
+    '3. /ai @"Ada Lovelace" Offer to explain the board — kindly.',
+    '- /you Decide whether to trust her',
+    '/nar',
+    '',
+    'A note on turn 2: cut the last line if it feels off.',
+    '/ai Nobody named here',
+  ].join('\n');
+
+  it('reads a chapter pasted whole: the heading names it; numbering, bold, fences and notes are skipped; a wrapped line carries its turn on', () => {
+    const script = parseTurnScript(chapter);
+    expect(script.title).toBe('Chapter 2: The Road');
+    expect(script.turns).toEqual([
+      { kind: 'narrator', name: 'Narrator', note: 'Two days on the cart track. Do not write Soren\'s words or actions.' },
+      { kind: 'character', name: 'Soren', note: 'Answer the gate knights politely, then wander the town wide-eyed.' },
+      { kind: 'character', name: 'Ada Lovelace', note: 'Offer to explain the board, kindly.' },
+      { kind: 'you', name: 'You', note: 'Decide whether to trust her' },
+      { kind: 'narrator', name: 'Narrator', note: 'Carry the scene on' },
+    ]);
+    expect(script.unnamed).toBe(1);
+  });
+
+  it('one direction is still a direction, and plain text is not turns', () => {
+    expect(parseTurnScript('/nar Dawn breaks.')).toBeNull();
+    expect(parseTurnScript('She walks in.\n/ai @Ada answer her')).toBeNull();
+    expect(parseTurnScript('Hello there.\nHow are you?')).toBeNull();
+    expect(parseTurnScript('/nar Dawn.\n/nar Noon.')).not.toBeNull();
+  });
+
+  it('names each speaker as the chat knows them, and lists the names nobody answers to', () => {
+    const script = parseTurnScript('/ai @ada Counts\n/ai @Lira Asks\n/ai @Narrator Rain falls\n/you Speak');
+    const { beats, missing } = scriptBeats(script, { names, player });
+    expect(beats.map((b: any) => `${b.kind}:${b.speaker}`)).toEqual(['character:Ada Lovelace', 'narrator:Narrator', 'you:You']);
+    expect(missing).toEqual(['Lira']);
   });
 });
 

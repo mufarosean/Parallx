@@ -26,6 +26,7 @@ import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemor
 import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
+import { parseTurnScript } from './acts.js';
 import { TEST_DRIVE_COMMAND, runLiveTestDrive } from './drive.js';
 import { openingNote, pickDirection } from './initiative.js'; import { createModelRoute } from './model-route.js';
 import { sceneMovedOn, whoLivedThrough, buildSinceThenMessages, parseSinceThen, sinceThenLine, mountSinceThen, sinceThenCommand, SINCE_THEN_COMMANDS } from './since-then.js';
@@ -7768,6 +7769,14 @@ function renderChatEditor(container, parallx, input) {
 
   async function handleUserInput(text) {
     if (!text.trim()) return;
+    // Two or more "/nar", "/ai @Name" or "/you" lines pasted together run
+    // as an act, turn by turn as written (acts-panel.js runScript).
+    if (parseTurnScript(text)) {
+      setSideMode('act');
+      await actRunner.runScript(text);
+      updateChrome();
+      return;
+    }
     const slashCommand = parseSlashCommand(text);
     if (slashCommand) {
       await handleSlashCommand(slashCommand);

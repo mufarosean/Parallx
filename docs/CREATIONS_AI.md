@@ -958,6 +958,19 @@ them. The lever is how tightly the chat holds the card. Built:
   and send. The panel shares the chat's side panel with Memory (the film
   button). Files: `acts.js` (pure), `acts-panel.js` (the runner and the
   panel, kit only); tests: `creationsActs`.
+- **Pasted turns.** Turns written ahead run without a plan: paste two or
+  more lines that start "/nar", "/ai @Name" (or @"Two Names") or "/you"
+  into the message box and send. They run as an act, in order, exactly as
+  written: written to `act.md`, shown in the Act panel, with Stop,
+  Continue, the player's pause ("/you") and the Timeline line at the end
+  as for a planned act. A chapter file pasted whole works: its first "#"
+  heading names the act; list numbers, bold labels, code fences and notes
+  between the turns are skipped; a line right under a turn (no blank line
+  between) carries it on. A name nobody in the chat answers to stops it
+  before any turn, naming who to add. One "/nar" or "/ai" line on its own
+  is still a single direction. Files: `acts.js` (`parseTurnScript`,
+  `scriptBeats`), `acts-panel.js` (`runScript`), `main.js`
+  (`handleUserInput`); tests: `creationsActs`.
 - **Initiative.** An empty chat offers "Let Ada Start" for each character:
   a first turn from the middle of their own day, toward the player who
   has just arrived, so a chat need not open with the player's line. And

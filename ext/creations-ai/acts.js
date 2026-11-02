@@ -165,6 +165,80 @@ export function beatTurn(beat, index, total, brief, { narratorSpeaker, fileFor }
   return { speaker: fileFor ? fileFor(beat.speaker) : beat.speaker, instruction };
 }
 
+// ── Pasted turns ────────────────────────────────────────────────────────────
+// Turns written ahead, one "/nar ..." or "/ai @Name ..." per turn, are pasted
+// together rather than sent one at a time, and run as an act with no
+// planning: the turns as written, in order, through the same runner (Stop,
+// Continue, the player's pause, the Timeline line at the end). A chapter
+// file pasted whole works: a "# " heading names it, and numbering, bold
+// labels, code fences and notes between the turns are skipped.
+
+/** The fewest turn lines a message needs to be read as pasted turns (one is a plain direction). */
+export const MIN_SCRIPT_TURNS = 2;
+
+const SCRIPT_TURN = /^\/(nar|ai|you)(?:\s+([\s\S]*))?$/i;
+
+/**
+ * Pasted turns from a message: `{ title, turns: [{ kind: 'narrator' |
+ * 'character' | 'you', name, note }] }`, or null when it holds fewer than
+ * MIN_SCRIPT_TURNS turn lines. A turn is a line starting "/nar", "/ai
+ * @Name" (or @"Two Names") or "/you", after any list number or bold; a
+ * line right under a turn with no blank line between carries it on; every
+ * other line is skipped. "/ai" with no name is skipped and counted in
+ * `unnamed`.
+ */
+export function parseTurnScript(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const turns = [];
+  let title = '';
+  let unnamed = 0;
+  let open = null; // the turn a following line carries on
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    if (!trimmed || /^(```|~~~)/.test(trimmed)) { open = null; continue; }
+    const heading = /^#{1,6}\s+(.+)$/.exec(trimmed);
+    if (heading) { if (!title) title = heading[1].trim(); open = null; continue; }
+    const line = trimmed.replace(/^(?:\*\*|__)?(?:[-*•]\s+|\d+[.)]\s*)(?:\*\*|__)?\s*/, '').trim();
+    const m = SCRIPT_TURN.exec(line);
+    if (!m) {
+      // Carries the turn above on; a numbering or a note after a blank line does not.
+      if (open && line && !/^(?:\*\*|__)?\d+[.)]/.test(trimmed) && !trimmed.startsWith('>')) open.note = `${open.note} ${line}`.trim();
+      else open = null;
+      continue;
+    }
+    const kind = m[1].toLowerCase();
+    let rest = (m[2] || '').trim();
+    if (kind === 'nar') { open = { kind: 'narrator', name: NARRATOR, note: rest }; turns.push(open); continue; }
+    if (kind === 'you') { open = { kind: 'you', name: YOU, note: rest }; turns.push(open); continue; }
+    const at = /^@"([^"]+)"\s*([\s\S]*)$/.exec(rest) || /^@(\S+)\s*([\s\S]*)$/.exec(rest);
+    if (!at) { unnamed++; open = null; continue; }
+    rest = at[2].trim();
+    open = { kind: 'character', name: at[1].trim(), note: rest };
+    turns.push(open);
+  }
+  if (turns.length < MIN_SCRIPT_TURNS) return null;
+  // A bare "/nar" or "/ai @Name" still takes its turn; the act file needs words on the line to keep it.
+  const bare = { narrator: 'Carry the scene on', character: 'Take the next turn', you: 'Your turn' };
+  for (const t of turns) t.note = stripDashes(t.note.replace(/<[^>\n]+>/g, '').replace(/\s+/g, ' ').trim()) || bare[t.kind];
+  return { title, turns, unnamed };
+}
+
+/**
+ * Pasted turns as beats, each character named as the chat knows them:
+ * `{ beats, missing }`, `missing` the names nobody in the chat answers to.
+ */
+export function scriptBeats(script, { names = [], player = { name: '', plays: '' } } = {}) {
+  const beats = [];
+  const missing = [];
+  for (const t of (script && script.turns) || []) {
+    if (t.kind !== 'character') { beats.push({ speaker: t.name, kind: t.kind, note: t.note, then: '' }); continue; }
+    const who = resolveBeatSpeaker(t.name, { names, player });
+    if (!who) { if (!missing.includes(t.name)) missing.push(t.name); continue; }
+    beats.push({ speaker: who.name, kind: who.kind, ...(who.as ? { as: who.as } : {}), note: t.note, then: '' });
+  }
+  return { beats, missing };
+}
+
 /** The composer text for a beat, as a typed direction would be. */
 export function beatCommand(beat) {
   return directionCommand(beat.kind === 'narrator' ? NARRATOR : beat.speaker, beat.note);
@@ -204,7 +278,7 @@ export function parseNextAct(raw) {
 
 /** The act's state line for the panel. */
 export function actStatusLine(act) {
-  if (!act || !act.brief) return 'No act yet. Write one in the message box: /act followed by the brief.';
+  if (!act || !act.brief) return 'No act yet. Write one in the message box: /act followed by the brief, or paste turns, one "/nar" or "/ai @Name" line each.';
   const n = Array.isArray(act.beats) ? act.beats.length : 0;
   switch (act.status) {
     case 'running': return `Running: beat ${Math.min(n, (act.index || 0) + 1)} of ${n}.`;
