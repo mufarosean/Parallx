@@ -10,13 +10,13 @@ export const STUDIO_FIELDS = [
   { key: 'description', label: 'Overview', rows: 5, hint: 'Who they are, their life and work, how they behave.' },
   { key: 'appearance', label: 'Appearance', rows: 4, hint: 'What they look like and what they wear.' },
   { key: 'personality', label: 'Personality', rows: 4, hint: 'Their temperament, how they treat people, the need under it.' },
-  { key: 'voice', label: 'Voice', rows: 4, hint: 'How they speak in general: tone, rhythm, register.' },
+  { key: 'voice', label: 'Voice', rows: 4, hint: 'How they speak in general, one line each: tone; rhythm; register. A habit or a catchphrase as a tendency with how often ("tells a story once or twice in a scene, when a question gets too close"), never "always" or "never". Other sample lines go in the example dialogue.' },
   { key: 'backstory', label: 'Backstory', rows: 5, hint: 'Where they come from and the turning points that made them.' },
   { key: 'drives', label: 'Drives', rows: 3, hint: 'What they want, what they fear, what stands in the way.' },
   { key: 'secrets', label: 'Secrets', rows: 2, hint: 'What they hide, and from whom.' },
   { key: 'relationships', label: 'Relationships', rows: 3, hint: 'The people who matter to them and how things stand.' },
   { key: 'exampleDialogue', label: 'Example Dialogue', rows: 8, hint: 'Three exchanges. The chat imitates these more than anything else.' },
-  { key: 'reminder', label: 'Reminder', rows: 2, hint: 'The one thing the chat must never forget about them.' },
+  { key: 'reminder', label: 'Reminder', rows: 2, hint: 'The one fact to keep straight: who they are to someone, what they hide, where things stand now. Not how they talk; that is the voice.' },
 ];
 export const STUDIO_KEYS = STUDIO_FIELDS.map((f) => f.key);
 

@@ -45,6 +45,12 @@ describe('readCard', () => {
     expect(readCard({ ...clean, reminder: 'Nora never names her feelings; she counts, sorts and asks.' }).map((f: Finding) => f.kind)).toEqual(['talk']);
   });
 
+  it('a catchphrase with how often is a tendency; the same phrase as a rule is a line to repeat', () => {
+    expect(readCard({ ...clean, voice: 'Strained and quick.\nBursts and pauses.\nShowbiz slang.\nSays \'and that is the tragedy\' now and then, after a bit lands.' })).toEqual([]);
+    expect(readCard({ ...clean, voice: 'Strained and quick.\nBursts and pauses.\nShowbiz slang.\nSays \'and that is the tragedy\' once or twice in a scene, after a bit lands.' })).toEqual([]);
+    expect(readCard({ ...clean, voice: 'Strained and quick.\nBursts and pauses.\nShowbiz slang.\nSays \'and that is the tragedy\' every time a bit lands.' }).map((f: Finding) => f.kind)).toEqual(['quote']);
+  });
+
   it('the findings read as Markdown with the line and the fix', () => {
     const md = cardFindingsMarkdown(readCard({ ...clean, voice: 'Clipped.\nCounts things out loud, always.\nPlain words.' }));
     expect(md).toMatch(/\*\*On the card\*\*/);

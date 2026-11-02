@@ -976,6 +976,55 @@ them. The lever is how tightly the chat holds the card. Built:
   Dismiss writes nothing. Story time only, never the clock. Files:
   `since-then.js`; tests: `creationsInitiative`.
 
+## Writing a card that plays well (the standard, 2026-11-02)
+
+The chat obeys a card literally. A line written as a rule for how they talk
+is obeyed in every reply, and the character becomes the rule. A line written
+as a tendency with how often shows now and then, and the character stays a
+person. That is the whole standard; the three fields it concerns:
+
+- **Voice** is how they speak in general, one line each: the tone; the
+  rhythm (sentence length, questions or statements, silences); the register
+  (plain or formal, the words of their trade and place). A habit may be a
+  fourth line, as a tendency with how often: "tells a story now and then,
+  when a question gets too close"; "a German word now and then when the
+  English one will not do". Never "always", "never", "every time",
+  "instead of". How often is something a reader can see on the page, never
+  a span of time or a silence the chat cannot measure ("counts out loud
+  when a pause lasts three seconds" never fired in a scene). A catchphrase
+  is that same fourth line, the phrase in quotes with how often: in the
+  Voice as a rule or a "Might say" it is said in every reply, and left
+  only in the example dialogue it is never said at all. "Now and then"
+  reads as rarely to the model: measured across twelve habits written that
+  way, a scene of thirteen replies showed each habit zero or one time (one
+  outlier at five). "Once or twice in a scene" brought the catchphrase to
+  one in seven; a count tied to checking vitals stayed at zero even when
+  she checked them. So the choice today is zero or one against every
+  line; no wording short of a rule makes a habit reliable, and a rule
+  makes it the whole character. Any other sample line belongs in the
+  example dialogue, where it is one of three.
+- **Personality** is temperament and how they treat people, with the need
+  under it. Not a rule for how they talk ("never answers with less than a
+  story" is a Voice rule in the wrong field, and still a rule).
+- **Reminder** is the one fact to keep straight: who they are to someone,
+  what they hide, where things stand now. "Mo and her sister own the cafe;
+  a developer has made an offer" keeps a scene true. "Mo never lets a
+  silence last and always offers food" goes into every reply.
+
+Where the app guides this: the Studio's field hints say it before anyone
+types; `card-rules.js` reads every card and shows "On the card" findings
+under Test Drive, with the fix, as the user types; the chat's character
+tool notes the same lines when the model writes a card; and the field
+requirements the model writes to (Studio and chat) state the standard, so
+a generated card follows it without the user knowing it exists. Measured
+2026-11-02: nine cards the app wrote from one-line concepts, three of
+which stated a rule ("always says arr", "answers every question with a
+joke", "counts everything out loud and never talks about her feelings"),
+all read clean; the rule became a tendency in the Voice ("adds a guttural
+sound to the end of sentences often") and a line or two of the example
+dialogue. The same seven hand-written cards played both ways are in
+`docs/CREATIONS_QUALITY_TESTING.md`, Part 5.
+
 ## Quality testing
 
 How to measure character creation, roleplay and Directions with a real

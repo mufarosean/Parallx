@@ -10,10 +10,12 @@
 const ABSOLUTE = /\b(always|never|only ever|every time|in every (line|reply|sentence|turn)|constantly|all the time|instead of|cannot help|can't help|without fail|at every opportunity|whenever (she|he|they) can)\b/i;
 const QUOTE_LABEL = /^\s*(might say|never says|says|catchphrase|signature (line|phrase)|typical line)\s*:/i;
 const QUOTED = /["“”]|(^|[\s(:])'[^'\n]{3,}'(?=[\s).,;!?]|$)/;
+// A quoted phrase with how often is a catchphrase as a tendency, not a line to repeat.
+const TENDENCY = /\b(now and then|sometimes|occasionally|once (or twice )?(in|a) (a )?(scene|while)|from time to time|every so often|rarely|seldom|not often)\b/i;
 const TALK = /\b(speak|speaks|talk|talks|say|says|answer|answers|answering|replies|reply|ask|asks|name|names|voice|sound|sounds|tone|word|words|sentence|sentences|question|questions|story|stories|metaphor|metaphors|phrase|phrases|accent|dialect|feeling|feelings|joke|jokes|count|counts)\b/i;
 
-const FIX_RULE = 'Say it as a tendency with how often, so the chat can leave it out of a reply: "tells a story now and then, when a question gets too close."';
-const FIX_QUOTE = 'Cut the line from Voice; a sample line belongs in the example dialogue, where it is one of three and not a rule.';
+const FIX_RULE = 'Say it as a tendency with how often, so the chat can leave it out of a reply: "tells a story once or twice in a scene, when a question gets too close."';
+const FIX_QUOTE = 'A line in the Voice is said scene after scene. A catchphrase stays only as a tendency with how often ("says \'and that is the tragedy\' once or twice in a scene, after a bit lands"); any other sample line belongs in the example dialogue, where it is one of three.';
 const FIX_TALK = 'Make the Reminder a fact to keep straight (who they are to someone, what they hide, where things stand). How they talk is Voice, as a tendency.';
 
 const lines = (text) => String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
@@ -28,7 +30,8 @@ export function readCard(sheet) {
   const found = [];
   const s = sheet && typeof sheet === 'object' ? sheet : {};
   for (const line of lines(s.voice)) {
-    if (QUOTE_LABEL.test(line) || QUOTED.test(line)) found.push({ key: 'voice', kind: 'quote', label: 'A line to repeat', line: short(line), fix: FIX_QUOTE });
+    const asTendency = TENDENCY.test(line) && !ABSOLUTE.test(line) && !QUOTE_LABEL.test(line);
+    if ((QUOTE_LABEL.test(line) || QUOTED.test(line)) && !asTendency) found.push({ key: 'voice', kind: 'quote', label: 'A line to repeat', line: short(line), fix: FIX_QUOTE });
     else if (ABSOLUTE.test(line)) found.push({ key: 'voice', kind: 'rule', label: 'Voice as a rule', line: short(line), fix: FIX_RULE });
   }
   for (const line of lines(s.personality)) {

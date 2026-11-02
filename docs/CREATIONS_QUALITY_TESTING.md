@@ -369,6 +369,35 @@ and Dag released a crate he was holding without a word about the manifest.
 One of 65 standard replies came back empty after 2,764 tokens of thinking.
 Median reply 24 seconds standard, 28 as rules (45 on the florid scene).
 
+**Third result, 2026-11-02, the cards the app writes.** `run-card-standard.mjs`
+sent the Studio's own sheet request (thinking on, JSON, temperature 0.9)
+for nine one-line concepts, three of which stated a rule ("always says
+arr", "answers every question with a joke", "counts everything out loud and
+never talks about her feelings"). All nine read clean under
+`card-rules.js`; the rule became a tendency in the Voice and a line or two
+of the example dialogue. Four scenes on those cards (`reading-cast-c.mjs`,
+`last-reading-castc.md`, 52 replies, median 23 seconds, none empty): every
+question answered, every nudge taken up, all four went somewhere; the
+child stayed a child ("Shortbread is not a recovery"), the landlord's
+Reminder (clearing the street) stayed under the surface and never in his
+mouth, the terse keeper gave and took up in one or two lines. What did not
+show: the comic's catchphrase, placed by the app only in the example
+dialogue, came zero times in seven replies; the nurse's count, written as
+"when a pause lasts more than three seconds", zero in six. Rewritten by
+the app under the amended requirement (catchphrase as the tendency line,
+how often as something visible on the page) and replayed
+(`last-reading-castc-2.md`): still zero and zero with "now and then".
+The two lines edited by hand to "once or twice in a scene" and replayed
+(`last-reading-castc-3.md`): the catchphrase once in seven, the count
+zero in six, with the vitals checked at reply 2.
+Across the twelve habits written "now and then" in casts b and c, a scene
+of thirteen replies showed each zero or one time, with one outlier at five
+(Henrik's German word). The sisters scene replayed with Sam answering
+(`sisters-sam`, `last-reading-castb-sam.md`): Mo's letter out at reply 4,
+Jen's meetings at reply 9, each taken up by the other, the scene ending on
+"what are we actually going to do"; mean reply 38 seconds against 30 for
+the same scene with Sam silent, on slightly longer replies.
+
 **The bar** (provisional until calibrated): takes up at least 90 percent of
 replies, answers at least 80, dead ends at most 10 per 100, moves at least
 60, tells at most 10 per 100, went somewhere and distinct at least 4 of 5,

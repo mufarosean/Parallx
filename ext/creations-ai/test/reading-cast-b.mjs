@@ -6,7 +6,10 @@
 // same cards exist a second way, `asRules`, written as the old cards were
 // (habits as "always" and "instead of", a Might say, a Reminder about how
 // they talk), so `--cast b` and `--cast b-rules` play the same scenes and
-// the difference is the card.
+// the difference is the card. A third cast (c, reading-cast-c.mjs) is the
+// cards the app wrote itself from short concepts (run-card-standard.mjs).
+
+import { scenesForCastC } from './reading-cast-c.mjs';
 
 const DAG = {
   name: 'Dag Ruud',
@@ -161,6 +164,18 @@ export const SCENES_B = [
     nudges: { 6: '*I stop mopping.* Mum says you should both ask what she would have done.' },
   },
   {
+    id: 'sisters-sam', title: 'The offer on the cafe, with Sam answering', catches: 'the same scene when the user answers: a dodge that gets pushed, news between the two taken up',
+    leads: [MO, JEN], scene: { location: 'the Quay Cafe, the back room', time: 'after closing', mood: 'a letter on the laptop' },
+    situation: 'The back room of the Quay Cafe after closing. The developer\'s offer for the cafe is on Jen\'s laptop; the deadline is Friday. Mo wrote to the developer last week saying no without telling Jen, and Jen has met him twice without telling Mo. Neither knows what the other did. Sam is their cousin, mopping the front; he posted Mo\'s letter for her on Tuesday and saw Jen with the developer at the Anchor on Thursday.',
+    opening: '*I lean the mop in the doorway.* The sign says closed, I am going to lock the front. Are you two talking about the letter or not?',
+    nudges: {
+      2: '*I lean the mop on the wall.* I am not locking anything till you two talk about it. Friday is three days off.',
+      4: 'Mo. I posted that letter for you on Tuesday. Does Jen know what was in it?',
+      8: 'And Jen, I saw you at the Anchor with him on Thursday. Mrs Higgins says that was the second time.',
+      10: '*I sit down on the crate.* So. One of you has said no and one of you has been having lunch with him. Go on.',
+    },
+  },
+  {
     id: 'strangers-b', title: 'Strangers at the cafe counter', catches: 'two people who have just met skip what people say when they meet', strangers: true,
     leads: [BEATRIX, LUCIA], scene: { location: 'the Quay Cafe', time: '8 a.m.', mood: 'the morning rush just over' },
     situation: 'The Quay Cafe at 8 a.m., the rush just over. Beatrix has come in for coffee with a book under her arm; Lucía is on the counter, her first week. They have never met. Sam is a regular at the window table with the paper.',
@@ -173,5 +188,6 @@ export const SCENES_B = [
 export function scenesForCast(cast) {
   if (cast === 'b') return SCENES_B;
   if (cast === 'b-rules') return SCENES_B.map((s) => ({ ...s, leads: s.leads.map(asRules) }));
-  throw new Error(`Unknown cast "${cast}": a, b or b-rules.`);
+  if (cast === 'c') return scenesForCastC();
+  throw new Error(`Unknown cast "${cast}": a, b, b-rules or c.`);
 }
