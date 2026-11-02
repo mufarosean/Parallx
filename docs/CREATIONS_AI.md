@@ -905,6 +905,19 @@ them. The lever is how tightly the chat holds the card. Built:
   validator and the Chat Behaviour page say the same. Older cards keep
   their lines; the Turn Contract still reads a quoted phrase as register,
   not a line.
+- **Habits are tendencies; the Reminder is a fact.** The standard for a
+  card, generated or hand-written: Voice is tone, rhythm, register, and a
+  habit only as a fourth line with how often ("tells a story now and then,
+  when a question gets too close"), never "always", "never" or "instead
+  of"; Personality is temperament and how they treat people, not a rule
+  for how they talk; the Reminder is the fact to keep straight (who they
+  are to someone, what they hide, where things stand), never a talk rule.
+  Written as rules, those lines go into every reply: a locksmith whose card
+  says "tells stories instead of opinions" told one in thirteen replies of
+  thirteen. `card-rules.js` reads any card for such lines; the Studio shows
+  them under Test Drive before any model call, with the fix, and the chat's
+  character tool notes them. Never a blocked save. Tests:
+  `creationsCardRules`.
 - **Latitude.** How tightly a chat holds a card, on the ambiguous sections
   only (Personality, Voice, Drives, Secrets; appearance and facts are
   always as written). Tight: the card is a script. Loose (the default): a

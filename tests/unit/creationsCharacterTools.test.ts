@@ -46,13 +46,13 @@ function goodSheet(name: string, o: Record<string, any> = {}) {
       'Physicality: Sits with both feet planted and leans in to listen; her hands are never still.',
     ].join('\n\n'),
     personality: 'Warm, nosy and quick to laugh; she wants company and drives it off by talking too much.',
-    voice: 'Talks fast, in long run-on sentences.\nAsks questions she answers herself.\nGoes quiet only when the weather turns.\nMight say: \'Sit, the kettle is on.\'\nNever says: \'I am fine\' or \'whatever\'.',
+    voice: 'Warm and quick, a laugh under most of it.\nTalks fast, in long run-on sentences, and asks questions she answers herself.\nPlain island words, the weather and the boats; goes quiet now and then when the weather turns.',
     backstory: 'Born on the mainland in 1971, she came to the Rock at twenty to marry the keeper and stayed when he left.',
     drives: 'Wants: someone to stay the winter.\nFears: the light being automated.\nIn the way: her own mouth.',
     secrets: 'She posts letters to her husband that she never sends.',
     relationships: 'Dana Holm: her daughter, in Bergen, calls on Sundays.\nOld Tom: the boatman, the only one who listens.',
     exampleDialogue: '[USER]: Is the boat late?\n[AI]: Late is a word for people who expect things, love, sit down.\n[USER]: Who were the letters for?\n[AI]: The post goes Tuesday. Tea?\n[USER]: Nice weather.\n[AI]: Wait an hour.',
-    reminder: `${name} never lets anyone leave without feeding them.`,
+    reminder: `${name} has kept the Skerry Rock light alone since her husband left; her daughter Dana is in Bergen.`,
     ...o,
   };
 }

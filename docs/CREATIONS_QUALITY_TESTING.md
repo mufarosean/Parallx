@@ -355,6 +355,18 @@ thinking on the page, scene beats), and that style without the thinking
 rule. One change per variant. A style that wins ships as a preset; rules
 that win on their own ship in the default dialogue rules.
 
+**Casts** (`--cast`): the Albion Street cast (a) is two cards written the
+old way, habits as rules and a Might say. The Kelder Quay cast (b,
+`reading-cast-b.mjs`) is seven cards written to the card standard
+(`card-rules.js`: Voice as tone, rhythm, register and one tendency with how
+often; the Reminder a fact), chosen to be unlike each other: terse, florid,
+formal, a child, a second-language speaker, two sisters who sound alike.
+`b-rules` is the same seven cards written as rules. Five scenes: a shipment
+held (terse against florid), a brass plate in the library (a child against
+a formal adult), asking for a boat (second language; a want refused with
+reasons), the offer on the cafe (the sisters: told apart, subtext), and
+strangers at the counter. Played both ways, the difference is the card.
+
 ## Published benchmarks: what to borrow
 
 None of these can run against Creations as they are. They test raw models

@@ -16,6 +16,7 @@
 
 import { buildTryLineMessages, parseJsonLoose, stripDashes } from './studio-core.js';
 import { createModelRoute } from './model-route.js'; import { SITUATIONS_SCHEMA } from './schemas.js';
+import { readCard, cardFindingsMarkdown } from './card-rules.js';
 
 const STOP = new Set(('a an the and or but if then so of to in on at by for with from into onto over under about as is are was were be been being it its this that these those he she they them his her their him i me my you your we our us not no nor do does did have has had will would can could should may might must just only very more most less than too also there here what which who whom whose when where why how all any each every some such own same other another one two up down out off again once while because until before after above below between through during without within against toward towards upon among around like').split(/\s+/));
 
@@ -194,6 +195,9 @@ export function mountTestDrive(host, deps) {
   let results = null;
   const paint = () => {
     host.replaceChildren();
+    // What the card itself will make the chat do, before any model call.
+    const onCard = cardFindingsMarkdown(readCard(deps.sheet()));
+    if (onCard) host.appendChild(deps.ui.renderMarkdown(onCard));
     deps.ui.createButton(host, { id: 'textGenerator.studio.testDrive.run', command: TEST_DRIVE_COMMAND, label: results ? 'Drive Again' : 'Drive', icon: 'play', size: 'sm', title: 'Three scenes from their sheet: the work, pressure on what they hide, idle talk' });
     if (results) host.appendChild(deps.ui.renderMarkdown(results));
   };
@@ -223,7 +227,7 @@ export function mountTestDrive(host, deps) {
     }
   }
   paint();
-  live = { run };
+  live = { run, refresh: paint };
   return live;
 }
 
@@ -232,3 +236,5 @@ export const TEST_DRIVE_COMMAND = 'textGenerator.studio.testDrive';
 let live = null;
 /** Runs the drive of the Studio last opened (one Studio is open at a time). */
 export function runLiveTestDrive() { return live ? live.run() : undefined; }
+/** Redraws the card findings after the sheet changed (an edit, a generated field). */
+export function refreshLiveTestDrive() { if (live) live.refresh(); }

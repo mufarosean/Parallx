@@ -30,6 +30,7 @@ import {
 import { characterLink, clip, norm, rosterName } from './character-names.js';
 export { characterLink, clip, norm, rosterName } from './character-names.js';
 import { FIND_FULL_MAX, findResultText, searchCharacters } from './character-find.js';
+import { cardNotes } from './card-rules.js';
 export { FIND_FULL_MAX, FIND_LIST_MAX, findTerms, searchCharacters, characterListLine, characterFullText, findResultText } from './character-find.js';
 
 export { mergeSections };
@@ -289,6 +290,8 @@ export function checkSheet(sheet, { structure = null, allowEmpty = [] } = {}) {
     if (words > 14) notes.push(`tagline is ${words} words (ten is the aim).`);
     if (sheet.name && sheet.tagline.toLowerCase().includes(sheet.name.split(' ')[0].toLowerCase())) notes.push('tagline uses the name (it should say who they are without it).');
   }
+  // A voice or reminder written as a rule goes into every reply (card-rules.js).
+  notes.push(...cardNotes(sheet));
   return { problems, notes };
 }
 

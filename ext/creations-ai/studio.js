@@ -24,7 +24,7 @@ import {
 import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 import { latitudeItems, coerceLatitude } from './latitude.js';
-import { mountTestDrive } from './drive.js'; import { createModelRoute } from './model-route.js';
+import { mountTestDrive, refreshLiveTestDrive } from './drive.js'; import { createModelRoute } from './model-route.js';
 
 const STYLE_ID = 'creations-studio-styles';
 const AUTOSAVE_MS = 800;
@@ -578,7 +578,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     area.rows = f.rows;
     area.placeholder = f.hint || '';
     area.setAttribute('aria-label', f.label);
-    area.addEventListener('input', () => { state.sheet[f.key] = area.value; autogrow(area); hideUndo(f.key); if (f.key === 'tagline') taglineLine.textContent = area.value.trim(); markDirty(); });
+    area.addEventListener('input', () => { state.sheet[f.key] = area.value; autogrow(area); hideUndo(f.key); if (f.key === 'tagline') taglineLine.textContent = area.value.trim(); markDirty(); if (f.key === 'voice' || f.key === 'personality' || f.key === 'reminder') refreshLiveTestDrive(); });
     const acts = el('div', 'cs-row-actions');
     const undoBtn = iconButton('undo-2', `Undo the last reroll of ${f.label.toLowerCase()}`, () => undoReroll(f.key)); undoBtn.style.display = 'none';
     const lockBtn = iconButton('lock', `Lock ${f.label.toLowerCase()} so Generate and Reroll leave it alone`, () => toggleLock(f.key));
@@ -637,7 +637,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     } else if (rows[key]) {
       rows[key].area.value = value;
       autogrow(rows[key].area);
-      if (key === 'tagline') taglineLine.textContent = value.trim();
+      if (key === 'tagline') taglineLine.textContent = value.trim(); else if (key === 'voice' || key === 'personality' || key === 'reminder') refreshLiveTestDrive();
     }
     if (!opts.silent) markDirty();
   }

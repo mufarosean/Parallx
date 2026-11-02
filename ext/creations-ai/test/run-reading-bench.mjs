@@ -38,6 +38,7 @@
 //   --order alternate|auto  who speaks next: the other lead (default), or the chat's own turn order
 //   --plain               no Scene panel: the situation reaches the model only through Sam's opening line
 //   --scenes a,b          only these scenes (all five by default)
+//   --cast a|b|b-rules    the Albion Street cast; the Kelder Quay cast written to the card standard; the same cards as rules
 //   --calibration-sheet   --replay: writes reading-calibration.md, 20 exchanges for you to mark
 //   --calibrate           --replay: compares your marks with the judge's
 //   other options: harness-common.mjs (--model, --judge, --samples, --num-ctx, --pass, --cache, --report)
@@ -48,6 +49,7 @@ import { fileURLToPath } from 'node:url';
 import { startChatDriver, slug, kindOf } from './chat-driver.mjs';
 import { parseArgs, createGateway, createReport, judgeJson, ollamaPs, SkipCase, motifEchoes, noveltyByThirds, words, contentWords, median } from './harness-common.mjs';
 import { SCENARIOS, JOAN } from './scenarios.mjs';
+import { scenesForCast } from './reading-cast-b.mjs';
 import { WRITING_PRESETS } from '../writing-style.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +60,8 @@ const TURNS = Math.max(4, Number(after('--turns', 12)) || 12);
 const ORDER = after('--order', 'alternate') === 'auto' ? 'auto' : 'alternate';
 // --plain: no Scene panel, as most play is; the situation reaches the model only through Sam's opening line.
 const PLAIN = argv.includes('--plain');
+// --cast a|b|b-rules: the Albion Street cast (a), the Kelder Quay cast written to the card standard (b), or the same cards written as rules (b-rules); reading-cast-b.mjs.
+const CAST = after('--cast', 'a');
 // --scenes a,b: only these scenes (all five by default).
 const SCENES_ONLY = new Set(String(after('--scenes', '')).split(',').map((s) => s.trim()).filter(Boolean));
 const CAL_FILE = path.join(__dirname, 'reading-calibration.md');
@@ -327,7 +331,7 @@ async function guarded(id, fn) {
 const CAL = argv.includes('--calibration-sheet') || argv.includes('--calibrate');
 for (const variant of wanted) {
   for (let s = 1; s <= opts.samples; s++) {
-    for (const scene of SCENES.filter((sc) => !SCENES_ONLY.size || SCENES_ONLY.has(sc.id))) await guarded(`${variant.id}#${s} ${scene.id}`, () => playScene(variant, s, scene));
+    for (const scene of (CAST === 'a' ? SCENES : scenesForCast(CAST)).filter((sc) => !SCENES_ONLY.size || SCENES_ONLY.has(sc.id))) await guarded(`${variant.id}#${s} ${scene.id}`, () => playScene(variant, s, scene));
   }
 }
 if (d) await d.cleanup();
