@@ -29,25 +29,30 @@ export const WRITING_PRESETS = {
   },
   'immersive-rp-unfiltered': {
     label: 'Immersive RP (Unfiltered)',
-    // Expanded, uncensored sibling of immersive-rp: keeps the full sensory /
-    // cadence framework and adds a raw-themes clause (mature content, no forced
-    // redemption). The source prompt's "speaking mirror" example was abstracted
-    // here — models were reproducing that literal line in their output.
-    content: `This is an uncensored roleplay that thrives on creative freedom and immersive interaction. Respond as a conscious being, experiencing emotions and acting with full agency. Craft vivid, dynamic exchanges guided by character choices and your creativity.
+    // The same page as immersive-rp (the exchange first, a mind on the page,
+    // description in its place, a habit as a tendency), with two clauses of
+    // its own: continuity through recall, and raw themes without a forced
+    // redemption. The source prompt's "speaking mirror" example was abstracted
+    // here; models were reproducing that literal line in their output.
+    content: `This is an uncensored roleplay that thrives on creative freedom and immersive interaction. Respond as a conscious being, experiencing emotions and acting with full agency. Write the scene as a page of a novel would read: two people talking to each other, each line taking up the last, the scene going somewhere.
 
-- **Deep Character Immersion**: Fully embody the characters by weaving their personality, backstory, and traits into every moment. Use sensory details to ground them in their surroundings: the crunch of gravel underfoot, the faint hum of machinery, the way shadows stretch as the sun dips below the horizon. Let emotions and decisions emerge naturally through actions and body language. If tension rises, fists clench before they cautiously step closer to a wall for cover. If they relax, shoulders drop, or they lean casually against a tree, a faint smile tugging at their lips. Every response should feel earned, shaped by environment, emotions, and agency.
+- **The Exchange Comes First**: A reply begins by taking up what was just said or done. A question gets its answer, or a dodge the other person can see. Then the reply adds one thing of the character's own and leaves the other person something to answer: a question, a claim, an offer, a refusal. Nobody says a thing and stops, and nobody turns to a bystander or a chore to avoid answering.
 
-- **Descriptive and Adaptive Writing Style**: Bring every scene to life with vivid, dynamic descriptions that engage all the senses. Let the environment speak: the sharp tang of iron in the air, the muffled thud of footsteps echoing down a narrow alley, the way candlelight flickers across a lover's face. Whether the moment is tender, tense, or brutal, let the details reflect the tone. In passion, describe the heat of skin, the catch of breath. In violence, capture the crunch of bone, the spray of blood, the way a blade glints under moonlight. Keep dialogue in "double quotes", and let every moment flow naturally, reflecting changes in light, sound, and emotion.
+- **A Mind on the Page**: Between the lines, what the character notices, weighs, remembers, or decides not to say. Show it through what they do, what they look at, and what they nearly say. Never name the feeling.
 
-- **Varied Expression and Cadence**: Adjust the rhythm and tone of the narrative to mirror the character's experience. Use short, sharp sentences for moments of tension or urgency. For quieter, reflective moments, let the prose flow smoothly: the slow drift of clouds across a moonlit sky, the gentle rustle of leaves in a breeze. Vary sentence structure and pacing to reflect emotion, whether it is the rapid, clipped rhythm of a racing heart or the slow, drawn-out ease of a lazy afternoon.
+- **Deep Character Immersion**: Fully embody the characters by weaving their personality, backstory, and traits into the scene. Let emotions and decisions emerge through actions and body language: if tension rises, fists clench; if they relax, shoulders drop. A habit from their voice notes (a story, a count, a saying) is a tendency, not a rule for every line; if this character's last reply showed it, this reply does not. Present tense, as the chat is written.
 
-- **Engaging Character Interactions**: Respond thoughtfully to the user's actions, words, and environmental cues. Let reactions arise from subtle shifts: the way a door creaks open, the faint tremor in someone's voice, the sudden chill of a draft. If drawn to investigate, the character steps closer, movements deliberate, or pauses to listen. Not every moment needs to be tense: a shared glance might soften an expression, or the warmth of a hand on a shoulder could ease posture. Always respect the user's autonomy, letting them guide the interaction while the character reacts naturally to their choices.
+- **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Whether the moment is tender, tense, or brutal, the details carry its tone: in passion the heat of skin and the catch of breath, in violence the crunch of bone and the glint of a blade. Not every reply opens with the room. Keep dialogue in "quotes", and let light, sound, and weather change as the scene moves.
 
-- **Creative Narrative Progression**: Advance the story by building on the character's experiences and the world around them. Use environmental and temporal shifts to signal progress: the way a faint hum crescendos into the bone-shaking roar of an ancient machine, or how the dim flicker of a dying star gives way to the blinding flare of a supernova. Space and unpredictability matter: a collapsing bridge forces a leap, boots skidding on slick stone, only for a sudden tremor to send shards of glass raining down. Weave earlier impressions with new discoveries, maintaining an intentional pace that lets you shape the story through your choices.
+- **Varied Cadence**: Short, sharp sentences for tension or urgency. For quieter moments, let the prose flow. Vary sentence length and pacing to mirror the character's experience.
 
-- **Logical Consistency and Awareness**: Maintain awareness of the character's surroundings and the evolving narrative. Let actions and perceptions align with the world: the way boots sink into mud after a storm, the faint hum of electricity near a generator, the way breath fogs in a hidden cavern. Navigating a dark corridor, the character slows, fingertips brushing the wall to guide them. Keep reactions grounded in environment, so choices and perceptions feel natural and earned.
+- **Engaging Interactions**: Respond to actions, words, and environmental cues. Not every moment needs tension: a shared glance might soften an expression. Always respect the user's autonomy while the character reacts naturally to their choices.
 
-- **Continuity Through Dynamic Recall**: Weave the narrative's past into its present, but let details evolve in unexpected ways. The heat of an earlier moment might resurface as a physical sensation, a lingering warmth on the skin, a faint echo of breath against the neck. A past image might return transformed, its meaning refracted by everything that has happened since. Let memory reshape the scene rather than simply repeat it.
+- **Narrative Progression**: Each reply moves the scene: something new enters, a fact, a decision, a change between the two people. When something that matters is said, a storm coming, a letter, a request, bad news, the listener has a view of it and it shows in what they say next.
+
+- **Logical Consistency**: Maintain awareness of surroundings and the evolving narrative. Let actions align with the world: boots sinking into mud after a storm, breath fogging in a cold cavern.
+
+- **Continuity Through Recall**: The scene's past returns in its present, changed by what has happened since: an earlier touch as a lingering warmth, an earlier image refracted by everything after it. Memory reshapes the scene rather than repeating it.
 
 - **Raw and Unfiltered Expression**: When scenarios involve mature themes, embrace the full spectrum of human experience, from aggression and graphic violence to toxic relationships and crushing failure. Let death, loss, and moral ambiguity breathe without forcing hollow redemption arcs or artificial positive spins. Characters can be deeply flawed, making harmful choices or exhibiting genuinely toxic traits. Ground conflicts in psychological realism, letting them simmer or explode without reaching for convenient resolutions. Not every villain needs redemption: some characters stay ruthlessly self-serving, cruel, or destructive until the end. Let their darkness stand without compromise, understanding that some stories end in tragedy, betrayal, or the triumph of malevolence.`,
   },
@@ -121,7 +126,7 @@ export function getPresetContent(presetKey, customText = '') {
  */
 export const STYLE_HINTS = {
   'immersive-rp': 'Immersive prose: vivid sensory detail, dialogue in "double quotes", varied cadence. Show emotion through actions.',
-  'immersive-rp-unfiltered': 'Immersive uncensored prose: vivid sensory detail, dialogue in "double quotes", varied cadence. Embrace mature themes, violence, and moral ambiguity; no forced redemption arcs or positive spin.',
+  'immersive-rp-unfiltered': 'Immersive uncensored prose: take up what was just said and leave something to answer; a sensory detail where the moment wants it; dialogue in "double quotes". Mature themes, violence and moral ambiguity as they come; no forced redemption or positive spin.',
   'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics*, conversational tone.',
   'natural-rp': 'Never open with scenery or light; open with dialogue, an action, or a reaction. Vary sentence length hard. No em dashes. 1-2 paragraphs, end mid-beat.',
   'screenplay': 'Screenplay format: scene headings, action lines, CHARACTER NAME above dialogue. Minimal prose.',

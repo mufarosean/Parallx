@@ -60,3 +60,9 @@ Scene: every reply is a beat in a scene. The viewpoint character wants something
 Talk: people answer what was just said, then add one thing of their own. A question gets an answer, or a dodge the other person notices. Strangers do what strangers do: names, where from, what brings you here, and they take up the answers. A line leaves the other person something to answer. Nobody says a thing and stops.
 Mechanics: "said" and "asked", or an action beat; at most one beat per line of dialogue. Paragraphs of one to four sentences. Dialogue in double quotes. Past tense throughout, no slips into the present. No em dashes.
 Prose: concrete and particular; no stock images; sentences of different lengths. Two to five paragraphs. End the reply mid-scene, on something the other person has to answer.
+
+## unfiltered
+The Unfiltered sibling of the baseline preset, after it was given the same page.
+Preset: immersive-rp-unfiltered
+Label: Immersive RP (Unfiltered)
+Rules: shipped
