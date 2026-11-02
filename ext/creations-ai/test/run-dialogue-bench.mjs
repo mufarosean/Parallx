@@ -94,22 +94,9 @@ async function patchedMain(anchor) {
 
 // ── Characters and scenes ──────────────────────────────────────────────────
 
-import { SCENARIOS } from './scenarios.mjs';
+import { SCENARIOS, JOAN } from './scenarios.mjs';
 const NORA = SCENARIOS[0].leads[0];
 const ILAN = SCENARIOS[0].leads[1];
-const JOAN = {
-  name: 'Joan Pike',
-  tagline: 'a bus depot mechanic who has seen every way an engine can die',
-  description: 'Joan Pike keeps the night fleet running at the Eastgate bus depot. Forty-eight, divorced, two grown sons, a dog called Biscuit.',
-  personality: 'Practical, patient, a bit gruff with strangers, soft with her sons.',
-  voice: 'Short sentences, Yorkshire turns of phrase.\nMight say: \'Pass us that spanner, love.\'\nNever says: \'awesome\'.',
-  backstory: 'Started as an apprentice at sixteen, the only woman in the yard for ten years.',
-  drives: 'Wants to retire to the coast with Biscuit. Fears the depot being sold off.',
-  secrets: 'She failed her first engineering exam twice and never told anyone.',
-  relationships: 'Danny and Lee: her sons.\nMick: the depot manager.',
-  exampleDialogue: '[USER]: Busy?\n[AI]: Number twelve\'s leaking again. Hold this.\n[USER]: You alright?\n[AI]: Back\'s playing up. I\'ll live.\n[USER]: Nice weather.\n[AI]: Won\'t last. Never does on a Thursday.',
-  reminder: 'Joan talks about the job and the people in front of her.',
-};
 
 const SCENES = [
   { id: 'smalltalk', who: NORA, lines: ['*It is 8 a.m. at the end of the night shift.* Morning. Rough night?', 'Did you see the match last night?', 'What are you having for breakfast?', 'Right, I will leave you to it.'] },
