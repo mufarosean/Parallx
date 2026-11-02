@@ -426,7 +426,16 @@ api.lm.parseJson(replyText)                        // → the JSON in a reply (o
 ```
 
 `messages`: `[{ role: 'system'|'user'|'assistant'|'tool', content: string }]`.
-`options`: `{ temperature?, topP?, maxTokens?, format?, seed?, think?, tools? }`.
+`options`: `{ temperature?, topP?, maxTokens?, format?, seed?, think?, tools?, engine? }`.
+`engine`: `{ label?, attended?, background? }`. A call with neither flag is one
+someone waits on: it starts now, ahead of background AI work (routines, page
+linking). `attended`: a job the person started and watches, made of many calls
+(a sync): ahead of background work too, and a chat turn may pause one (it is
+retried unseen). `background`: nobody waits on it (memory extraction after an
+exchange): it runs when the engine is free. `label` names the call in AI ›
+Show Model Calls. One context size: every call runs at the size the model is
+loaded at (the chat's); a `numCtx` of your own only counts while nothing is
+loaded.
 
 ### 4.9 `api.chat` (may be undefined)
 

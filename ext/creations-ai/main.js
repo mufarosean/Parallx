@@ -4597,7 +4597,7 @@ async function autoExtractMemoryBackground({
     const stream = createModelRoute(parallx.lm).stream(modelId, [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: userPrompt },
-    ], { temperature: 0.2, think: true, format: MEMORY_EXTRACT_SCHEMA, numCtx });
+    ], { temperature: 0.2, think: true, format: MEMORY_EXTRACT_SCHEMA, numCtx, engine: { label: 'Memory', background: true } }); // nobody waits on it: after chat and jobs
     let raw = '';
     for await (const chunk of stream) {
       if (chunk?.content) raw += chunk.content;

@@ -43,7 +43,7 @@ import { Emitter, type Event } from '../../../platform/events.js';
 
 import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
-import { chatContextSize, rememberChatContextPick } from '../utilities/chatContextDefault.js';
+import { chatContextSize, rememberChatContextPick, loadedContextLength } from '../utilities/chatContextDefault.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { ISummarizationRequestOptions } from '../chatTypes.js';
 import type { IChatImageAttachment } from '../../../services/chatTypes.js';
@@ -835,15 +835,16 @@ export class ChatDataService {
     return cached > 0 ? cached : Math.max(0, (this._d.languageModelsService as { getActiveModelContextLength?(): number }).getActiveModelContextLength?.() ?? 0);
   }
 
+  getLoadedContextLength(): number { return loadedContextLength(this._d.languageModelsService); }
+
   sendSummarizationRequest(
     messages: readonly IChatMessage[],
     signal?: AbortSignal,
     options?: ISummarizationRequestOptions,
   ): AsyncIterable<IChatResponseChunk> {
-    // The summarizer serves compaction, which runs precisely when the
-    // conversation is at the window's edge. Sent without num_ctx it fell back
-    // to the provider default and was truncated or rejected on exactly the
-    // sessions that needed it. The caller passes the session's own budget.
+    // The summarizer serves compaction, at the window's edge: sent without
+    // num_ctx it was truncated on exactly the sessions that needed it, so the
+    // caller passes the session's own budget.
     const requestOptions: IChatRequestOptions | undefined = (options?.numCtx && options.numCtx > 0) || options?.engine || options?.think !== undefined
       ? {
         ...(options?.numCtx && options.numCtx > 0 ? { numCtx: options.numCtx } : {}),

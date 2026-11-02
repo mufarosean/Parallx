@@ -1,28 +1,47 @@
 // modelEngineBroker.ts — one door to each local model engine (docs/AGENT_RUNTIME_DESIGN.md).
 //
-// Every model call is a ticket with a priority class. For an engine that
-// runs on this machine (Ollama: one GPU, often one request at a time) the
-// broker decides who goes next:
+// A local engine (Ollama: one GPU, one request at a time) cannot be shared
+// by asking it nicely: whoever's request reaches it first holds it until
+// that answer is done. So every model call is a ticket in one of five
+// classes, and the broker decides who goes next:
 //
-//   interactive  your chat turn, inline AI, panes, extensions (the default)
-//   resumed      a run you just answered
-//   scheduled    routines, the heartbeat, scheduled jobs, dashboard refreshes
-//   helper       runs spawned by a background run
-//   maintenance  indexing and warm-ups
+//   interactive  a call someone is waiting on: your chat turn, a refresh you
+//                clicked, inline AI, an extension's call (the default for
+//                every call that says nothing else)
+//   attended     a job you started and are watching, made of many calls
+//                (a Budget sync): engine.attended
+//   scheduled    routines, the heartbeat, scheduled jobs, scheduled refreshes
+//   helper       runs spawned by a background run; an extension's own quiet
+//                work (engine.background through parallx.lm)
+//   maintenance  page linking, cluster names, memory write-back
 //
-// Interactive calls stream straight through; they are never queued behind
-// each other (the server orders them, as before) and never behind background
-// work. Everything else waits while an interactive call runs, while a chat
-// turn holds the engine's lease (its whole turn, tool steps included, plus a
-// short grace), and while you are typing in chat. A background call already
-// on the engine when you are waiting on an answer (a chat turn, or a call
-// made while you are at the keyboard or pointer) is preempted: its HTTP
-// request is aborted for real and the ticket goes back in the queue. A call
-// nobody is waiting on (an extension's own work while you are away) does not
-// preempt. Background output is buffered until the call completes, so a
-// preempted call simply resolves later with a clean answer: the run never
-// sees the pause. The time a preempted call had run, and the time a model
-// takes to load, count as waiting, not as the run's working time.
+// The rules, each the answer to a failure seen in use:
+//   1. An interactive call never waits: it starts now, and pauses every
+//      lower-class call on its engine (the request is aborted for real and
+//      the ticket goes back in the queue). Two interactive calls are ordered
+//      by the engine itself. There is no judging whether anyone is waiting:
+//      a call that waits behind background work is a feature that looks
+//      broken, while a routine paused for a moment resumes unseen.
+//   2. Lower classes wait while an interactive call runs, while a chat turn
+//      holds the engine's lease (its whole turn, tool steps included, plus a
+//      short grace), and while you are typing in chat. Among themselves they
+//      go by class, then age; a queued call of a higher class pauses a
+//      running one of a lower class.
+//   3. Everything below interactive is buffered: a paused call is retried
+//      from scratch and its caller gets one clean answer, never a pause.
+//      The time it had run, and a model's loading, count as waiting, not as
+//      the run's work.
+//   4. An attended job's calls come one after another: after each, lower
+//      classes stay off the engine for the grace, so the next finds it free.
+//   5. A call someone waits on (interactive, attended) that gets no output
+//      for INTERACTIVE_FIRST_OUTPUT_MS fails with a message and lets go of
+//      the engine. Nothing can hold "Thinking" for ever.
+//   6. One loaded shape per engine (model and context size), set by your chat
+//      turns and the launch warm-up. Every other call runs at that size: a
+//      different size makes Ollama load the model again, minutes each way
+//      for a large model, and the prompt cache is lost.
+//   7. A lease a turn has not used for LEASE_IDLE_MS stops holding the
+//      engine, so nothing a turn awaits can wait on the turn for ever.
 //
 // Engines that are not local (cloud providers) pass through untouched.
 
@@ -33,9 +52,9 @@ import type { Event } from '../platform/events.js';
 import type { IChatRequestOptions, IChatResponseChunk } from './chatTypes.js';
 import type { ModelCallLedger } from './modelCallLedger.js';
 
-export type EnginePriority = 'interactive' | 'resumed' | 'scheduled' | 'helper' | 'maintenance';
+export type EnginePriority = 'interactive' | 'attended' | 'scheduled' | 'helper' | 'maintenance';
 
-const RANK: Record<EnginePriority, number> = { interactive: 0, resumed: 1, scheduled: 2, helper: 3, maintenance: 4 };
+const RANK: Record<EnginePriority, number> = { interactive: 0, attended: 1, scheduled: 2, helper: 3, maintenance: 4 };
 
 /** After a chat turn ends, background work waits this long (you may reply). */
 export const LEASE_GRACE_MS = 4_000;
@@ -43,8 +62,6 @@ export const LEASE_GRACE_MS = 4_000;
 export const LEASE_IDLE_MS = 90_000;
 /** Typing in chat holds background work this long after each keystroke. */
 export const TYPING_HOLD_MS = 4_000;
-/** An untagged call made this soon after your last key or press is one you are waiting on. */
-export const USER_PRESENT_MS = 15_000;
 /** A model unused this long may have been unloaded by the engine (Ollama's default keep-alive). */
 export const MODEL_KEEP_ALIVE_MS = 5 * 60_000;
 /** At most this much of a cold call's wait for its first output counts as loading. */
@@ -77,10 +94,10 @@ export interface IEngineCallTag {
   /** The tool that made the call through `parallx.lm` (its id); set by the bridge, for the call ledger. */
   readonly source?: string;
   /**
-   * A person is waiting on this call though it runs on its own: a job they
-   * started and are watching (a sync they pressed Sync Now for). Like a chat
-   * turn, it pauses background work on its engine and holds it off briefly
-   * after, so a job's calls one after another never queue behind it.
+   * A job a person started and is watching (a sync they pressed Sync Now
+   * for): the attended class. Its calls go ahead of background work, each
+   * holds background work off for a moment after, and a chat turn may pause
+   * one (it is retried unseen, so the job gets one clean answer).
    */
   readonly attended?: boolean;
 }
@@ -131,8 +148,6 @@ export interface IModelEngineBroker {
   beginInteractive(engine: string): IDisposable;
   /** You are typing in chat: hold background work a moment longer. */
   noteUserActivity(): void;
-  /** You pressed a key or the pointer anywhere: an untagged call now is one you wait on. */
-  noteUserInput(): void;
   /** Decide a call's class from its run id (set by the chat service). */
   setClassifier(fn: ((runId: string) => EnginePriority | undefined) | undefined): void;
   /** Where a run stands right now, if it has a call in flight. */
@@ -146,6 +161,8 @@ export interface IModelEngineBroker {
   snapshot(engine?: string): readonly IEngineSnapshot[];
   /** The model and context size last sent to an engine (what it has loaded). */
   loadedShape(engine: string): { readonly modelId: string; readonly numCtx: number } | undefined;
+  /** The engine loaded this model at this size outside the broker (the launch warm-up). */
+  noteLoadedShape(engine: string, modelId: string, numCtx: number): void;
   /**
    * Maintenance work (indexing embeddings): resolves once no chat holds the
    * engine, so indexing never competes with you for the GPU.
@@ -196,8 +213,9 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   private readonly _leases = new Map<string, number>();
   /** Background waits until this time per engine (lease grace). */
   private readonly _holdUntil = new Map<string, number>();
+  /** Classes below attended wait until this time per engine (an attended job's next call is due). */
+  private readonly _jobHoldUntil = new Map<string, number>();
   private _typingUntil = 0;
-  private _userInputAt = -Infinity;
   /** The model each engine last served, and when (to tell a cold call). */
   private readonly _lastServed = new Map<string, { modelId: string; at: number }>();
   private _timer: ReturnType<typeof setTimeout> | undefined;
@@ -227,6 +245,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
 
   private _classify(tag: IEngineCallTag | undefined): EnginePriority {
     if (tag?.priority && tag.priority in RANK) return tag.priority;
+    if (tag?.attended) return 'attended';
     if (tag?.runId && this._classifier) {
       try {
         const p = this._classifier(tag.runId);
@@ -291,12 +310,8 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     this._lastServed.set(ticket.engine, { modelId: ticket.modelId, at: this._now() });
     this._tickets.add(ticket);
     this._book(ticket.runId, (b) => { b.inFlight++; });
-    // Only a call someone waits on pauses background work: a chat turn's
-    // (tagged with its run), one tagged attended (a job you started and are
-    // watching), or one made while you are at the keyboard. Any other call
-    // would sit in the engine's own queue behind a background generation.
-    const attended = !!req.options?.engine?.attended;
-    if (ticket.runId || attended || this._now() - this._userInputAt < USER_PRESENT_MS) this._preemptBackground(ticket.engine);
+    // Rule 1: it starts now, and whatever lower-class call is on the engine gives way.
+    this._preemptBackground(ticket.engine);
     this._changed();
     try {
       yield* this._withFirstOutputWatchdog(req, start(options, controller.signal), controller);
@@ -305,9 +320,6 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
       // A consumer that stops early must not leave the generation running.
       controller.abort();
       this._leaseActivity.set(ticket.engine, this._now());
-      // An attended job's next call follows in a moment: background work
-      // starting in between would only be paused again, or hold it up.
-      if (attended) this._holdUntil.set(ticket.engine, Math.max(this._holdUntil.get(ticket.engine) ?? 0, this._now() + LEASE_GRACE_MS));
       this._finish(ticket);
     }
   }
@@ -349,9 +361,11 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     try {
       while (!buffer) {
         await this._waitForGrant(ticket, req.signal);
+        // Paused between the grant and its start (a higher class arrived in
+        // that moment): back in the queue, before any request is made.
+        if (ticket.preempted) { ticket.preempted = false; this._requeue(ticket); continue; }
         const controller = new AbortController();
         ticket.controller = controller;
-        ticket.preempted = false;
         const onCallerAbort = () => controller.abort();
         req.signal?.addEventListener('abort', onCallerAbort, { once: true });
         const out: IChatResponseChunk[] = [];
@@ -362,7 +376,8 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
         let cold = !last || last.modelId !== ticket.modelId || startedAt - last.at > MODEL_KEEP_ALIVE_MS;
         this._lastServed.set(ticket.engine, { modelId: ticket.modelId, at: startedAt });
         try {
-          for await (const chunk of start(options, controller.signal)) {
+          const attempt = start(options, controller.signal);
+          for await (const chunk of (ticket.priority === 'attended' ? this._withFirstOutputWatchdog(req, attempt, controller) : attempt)) {
             if (ticket.preempted) break;
             if (cold) {
               cold = false;
@@ -385,9 +400,12 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
           req.signal?.removeEventListener('abort', onCallerAbort);
           controller.abort();
         }
-        if (!buffer) this._requeue(ticket);
+        if (!buffer) { ticket.preempted = false; this._requeue(ticket); }
       }
     } finally {
+      // Rule 4: an attended job's next call follows in a moment; lower
+      // classes starting in between would only be paused again.
+      if (ticket.priority === 'attended') this._jobHoldUntil.set(ticket.engine, Math.max(this._jobHoldUntil.get(ticket.engine) ?? 0, this._now() + LEASE_GRACE_MS));
       this._finish(ticket);
     }
     for (const chunk of buffer) yield chunk;
@@ -464,10 +482,13 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
       }
       if (blockedUntil === Infinity) continue; // a lease or interactive call; its end pumps
       if (blockedUntil > now) { wakeAt = Math.min(wakeAt, blockedUntil); continue; }
+      const jobHold = this._jobHoldUntil.get(engine) ?? 0;
       const queued = [...this._tickets]
         .filter((t) => t.engine === engine && t.state === 'queued' && t.grant)
         .sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.enqueuedAt - b.enqueuedAt || a.id - b.id);
       for (const t of queued) {
+        // Rule 4: an attended job's next call is due; the classes below it wait for it.
+        if (jobHold > now && RANK[t.priority] > RANK.attended) { wakeAt = Math.min(wakeAt, jobHold); continue; }
         const running = [...this._tickets].filter((r) => r.engine === engine && r.state === 'running');
         if (running.length >= Math.max(1, this._concurrency(engine, t.modelId))) {
           // More urgent work is waiting: a running call of a lower class (page
@@ -563,10 +584,6 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     });
   }
 
-  noteUserInput(): void {
-    this._userInputAt = this._now();
-  }
-
   noteUserActivity(): void {
     this._typingUntil = this._now() + TYPING_HOLD_MS;
     // Typing does not stop work already running; it only keeps the queue
@@ -579,23 +596,21 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   /**
    * Per-class request shaping.
    *
-   * Loaded shape: a model loaded at one context size reloads (seconds, and
-   * the prompt cache is lost) when a request names another. Your chat
-   * turns set the size. Everyone else (background runs, extensions, inline
-   * AI) adopts the loaded size when theirs is smaller or unnamed: a bigger
-   * window costs nothing once loaded, and their prompt budget stays their
-   * own. A background call that needs more than is loaded keeps its size;
-   * it only ever runs while chat is idle, so the reload never lands on you.
+   * Loaded shape (rule 6): a model loaded at one context size reloads when a
+   * request names another. Your chat turns set the size. Every other call to
+   * that model runs at the loaded size, whether it asked for less or for
+   * more: a bigger window costs nothing once loaded, and a smaller one is
+   * what the caller budgets its prompt at (the participant caps a run's
+   * window at the loaded size). With nothing loaded a call keeps its own.
    *
-   * Output cap: background calls that name no cap get one (thinking counts).
+   * Output cap: calls below interactive that name no cap get one (thinking counts).
    */
   private _policy(req: IEngineRequest, priority: EnginePriority): IChatRequestOptions | undefined {
     let options = req.options;
     const setsShape = priority === 'interactive' && !!options?.engine?.runId;
     const loaded = this._shape.get(req.engine);
-    if (!setsShape && loaded && loaded.modelId === req.modelId) {
-      const asked = options?.numCtx ?? 0;
-      if (asked < loaded.numCtx) options = { ...(options ?? {}), numCtx: loaded.numCtx };
+    if (!setsShape && loaded && loaded.modelId === req.modelId && (options?.numCtx ?? 0) !== loaded.numCtx) {
+      options = { ...(options ?? {}), numCtx: loaded.numCtx };
     }
     if (priority !== 'interactive' && !(options?.maxTokens && options.maxTokens > 0)) {
       options = { ...(options ?? {}), maxTokens: BACKGROUND_MAX_TOKENS };
@@ -606,6 +621,10 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   /** The model and context size last sent to an engine (what it has loaded). */
   loadedShape(engine: string): { readonly modelId: string; readonly numCtx: number } | undefined {
     return this._shape.get(engine);
+  }
+
+  noteLoadedShape(engine: string, modelId: string, numCtx: number): void {
+    if (modelId && numCtx > 0) this._shape.set(engine, { modelId, numCtx });
   }
 
   // ── Runs ──

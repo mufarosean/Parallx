@@ -37,13 +37,21 @@ Priority classes, highest first:
 
 | Class | Who | Notes |
 |---|---|---|
-| **interactive** | your chat turn, inline canvas AI, extension calls made from a click | holds a lease for the whole turn |
-| **resumed** | a run you just answered (approval, steering note) | you're looking at it |
-| **scheduled** | routines, the heartbeat, scheduled jobs | |
-| **helper** | runs spawned by a background run | a helper spawned *by your chat turn* is interactive: you're waiting |
-| **maintenance** | embeddings and indexing, warm-ups | yields to everything |
+| **interactive** | your chat turn, a refresh you clicked, inline AI, and every extension call that says nothing else | starts now, never waits; a chat turn holds a lease for the whole turn |
+| **attended** | a job you started and watch, made of many calls (a Budget sync): `engine.attended` | goes ahead of background work; holds it off for the grace after each call; a chat turn pauses it and it is retried unseen |
+| **scheduled** | routines, the heartbeat, scheduled jobs, scheduled dashboard refreshes | |
+| **helper** | runs spawned by a background run; an extension's own quiet work (`engine.background`) | a helper spawned *by your chat turn* is interactive: you're waiting |
+| **maintenance** | page linking, cluster names, memory write-back | yields to everything |
 
-The broker keeps one queue per model and grants slots by priority, then age.
+The broker keeps one queue per engine and grants by class, then age. A queued
+call of a higher class pauses a running one of a lower class. There is no
+guessing whether anyone is waiting on an untagged call: it is interactive. A
+call that waits behind background work is a feature that looks broken; a
+routine paused for a moment resumes unseen. A call someone waits on
+(interactive, attended) that gets no output for five minutes fails with a
+message and lets go of the engine, so nothing shows "Thinking" for ever.
+`tests/unit/modelEngineScenarios.test.ts` runs every class against every
+state of the engine, against a fake Ollama that serves one request at a time.
 
 ### The interactive lease
 
@@ -114,12 +122,14 @@ Neither needs a setting.
 The broker tracks each model's **loaded shape** (model + context size), the
 thing that, when it changes, makes Ollama reload.
 
-- **Interactive calls set the shape.** You choose the context, the chip shows
-  it; nothing caps it.
-- **Background and helper calls use the loaded shape.** If they need less room,
-  they get a smaller *prompt budget* instead of a different context size,
-  which would force a reload. If they need more than is loaded, they wait for
-  an idle engine before reloading, and never during a lease.
+- **Your chat turns set the shape**, and so does the launch warm-up (it
+  loads the size the chat last ran at). You choose the context, the chip
+  shows it; nothing caps it. A chat on Auto runs at the size the model is
+  already loaded at, not the model's full length.
+- **Every other call runs at the loaded shape**, whether it asked for less or
+  for more: a reload of a large model costs minutes each way and the prompt
+  cache. A run's own window (a routine's Context) is its prompt budget, up to
+  the loaded size. With nothing loaded a call keeps its own size.
 - **Every caller names a size,** so a call that names none can never trigger
   Ollama's own default and a surprise reload. This includes extensions; the
   broker fills it in.

@@ -71,8 +71,10 @@ export class LanguageModelBridge {
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
     this._throwIfDisposed();
-    // The call ledger names the tool that asked; a tool cannot claim another's id.
-    const tagged: IChatRequestOptions = { ...(options ?? {}), engine: { ...(options?.engine ?? {}), source: this._toolId } };
+    // The call ledger names the tool that asked; a tool cannot claim another's
+    // id. `background` is the API's word for the helper class.
+    const { background, ...tag } = (options?.engine ?? {}) as IChatRequestOptions['engine'] & { background?: boolean };
+    const tagged: IChatRequestOptions = { ...(options ?? {}), engine: { ...tag, ...(background ? { priority: 'helper' as const } : {}), source: this._toolId } };
     return this._service.sendChatRequestForModel(modelId, messages, tagged, signal);
   }
 

@@ -601,11 +601,14 @@ async function buildOpenclawTurnContext(
   const known = typeof rawContextWindow === 'number' && rawContextWindow > 0;
   if (!known) console.warn('[OpenClaw] The model\'s context length is unknown (its provider did not answer); this turn is budgeted at 8192 tokens.');
   const modelWindow = known ? rawContextWindow : 8192;
-  // A background run that names its window (a routine's Context) gets that
-  // window: the user chose it for this run, and the chat's own pick has
-  // nothing to do with it (it used to cap it).
+  // A run (a routine's Context, a refresh) gets the window it was set to, up
+  // to the size the model is loaded at: the engine broker runs every call
+  // but your chat's at the loaded size (a different one makes Ollama load
+  // the model again), so a run budgeted past it would have its prompt cut.
   const runWindow = isEphemeralSessionId(context.sessionId) ? services.getSessionContextWindow?.(context.sessionId) : undefined;
-  const contextWindow = runWindow && runWindow > 0 ? runWindow : modelWindow;
+  const loadedWindow = isEphemeralSessionId(context.sessionId) ? (services.getLoadedContextLength?.() ?? 0) : 0;
+  const wanted = runWindow && runWindow > 0 ? runWindow : modelWindow;
+  const contextWindow = loadedWindow > 0 ? Math.min(wanted, loadedWindow) : wanted;
   const budget = computeTokenBudget(contextWindow);
 
   // Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, etc.)

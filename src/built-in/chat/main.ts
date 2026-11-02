@@ -710,6 +710,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       provider.setWarmupTarget({ modelId: remembered.modelId, numCtx: remembered.numCtx });
     }
     context.subscriptions.push(provider.onDidSendChatRequest(({ modelId, numCtx }) => {
+      languageModelsService.getEngineBroker?.()?.noteLoadedShape('ollama', modelId, numCtx); // one loaded shape, warm-up included
       if (modelId !== languageModelsService.getActiveModel()) return;
       const prev = context.globalState.get<LastChatLoad>(LAST_CHAT_LOAD_KEY);
       if (prev && prev.modelId === modelId && prev.numCtx === numCtx) return;
@@ -1106,6 +1107,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
+    getLoadedContextLength: () => dataService.getLoadedContextLength(),
     getSessionContextWindow: (sid) => chatService.getSession(sid)?.contextWindowOverride,
     sendSummarizationRequest: (m, s, o) => dataService.sendSummarizationRequest(m, s, o),
     getFileCount: fsAccessor ? () => dataService.getFileCount() : undefined,

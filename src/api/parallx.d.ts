@@ -1683,12 +1683,14 @@ export interface ChatRequestOptions {
   readonly think?: boolean;
   /**
    * How the call is shown and scheduled. `label` names it in AI › Show Model
-   * Calls. `attended`: a person started this job and is watching it (a sync
-   * they pressed a button for), so it goes ahead of background AI work
-   * (routines, page linking) instead of waiting behind it. Leave it unset for
-   * work that runs on its own.
+   * Calls. A call with neither flag is one someone waits on: it goes first,
+   * ahead of background AI work. `attended`: a job a person started and is
+   * watching, made of many calls (a sync); its calls go ahead of background
+   * work too, and a chat turn may pause one (it is retried unseen).
+   * `background`: nobody waits on this (memory extraction after an
+   * exchange); it runs when the engine is free, after chat and jobs.
    */
-  readonly engine?: { readonly label?: string; readonly attended?: boolean };
+  readonly engine?: { readonly label?: string; readonly attended?: boolean; readonly background?: boolean };
 }
 
 /**

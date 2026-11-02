@@ -14,6 +14,11 @@ The `Ctx` dropdown under the chat input sets a chat's context size.
   See `ChatWidget` in `src/built-in/chat/widgets/chatWidget.ts`: the picker's
   `onPick`, and `setSession`, which pushes the chat's own value (or 0) each
   time a chat is shown.
+- With no pick and no workspace default, the size is the one the model is
+  already loaded at (Ollama's `/api/ps`), so Auto never makes Ollama load the
+  model again at its full length; the model's own length only while nothing
+  is loaded. Every call but the chat's runs at the loaded size (the engine
+  broker's loaded shape, `docs/AGENT_RUNTIME_DESIGN.md` §3).
 - Each turn, the runtime reads that provider-wide value, not the chat's own
   field. `buildOpenclawTurnContext` (`src/openclaw/participants/openclawDefaultParticipant.ts`)
   calls `getModelContextLength()`, which reaches `OllamaProvider.getCachedContextLength`.

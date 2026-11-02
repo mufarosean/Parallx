@@ -36,7 +36,7 @@ const req = (priority: EnginePriority, runId?: string, signal?: AbortSignal, gat
 afterEach(() => { vi.useRealTimers(); });
 
 describe('ModelEngineBroker', () => {
-  it('runs background tickets one at a time, highest class first, then by age', async () => {
+  it('runs background tickets one at a time, highest class first (a higher class arriving pauses a lower one running), then by age', async () => {
     const b = new ModelEngineBroker();
     const log: ICallLog[] = [];
     const order: string[] = [];
@@ -49,7 +49,7 @@ describe('ModelEngineBroker', () => {
       run('scheduled', 's2'),
     ]);
     await all;
-    expect(order).toEqual(['h', 's1', 's2', 'h2', 'm']);
+    expect(order).toEqual(['s1', 's2', 'h', 'h2', 'm']) // h started first, gave way to the scheduled pair, and finished after them;
     // Never two at once.
     for (let i = 1; i < log.length; i++) expect(log[i].started).toBeGreaterThanOrEqual(log[i - 1].started);
   });
@@ -195,22 +195,24 @@ describe('ModelEngineBroker', () => {
     expect(Math.abs(log[0].started - log[1].started)).toBeLessThan(15);
   });
 
-  it('chat turns set the loaded context size; everyone else adopts it unless they need more', async () => {
+  it('chat turns set the loaded context size; every other call to that model runs at it, smaller or larger', async () => {
     const b = new ModelEngineBroker();
     const log: ICallLog[] = [];
-    const call = (options: IChatRequestOptions, label: string, modelId = 'm') =>
-      collect(b.request({ engine: 'ollama', gated: true, modelId, options }, fakeStart(log, label, 1, 1)));
-    await call({ numCtx: 163840, engine: { runId: 'chat' } }, 'chat');
-    await call({ numCtx: 16384 }, 'ext');                                          // extension: smaller → loaded
-    await call({ engine: { priority: 'scheduled' } }, 'bg-none');                  // unnamed → loaded
-    await call({ numCtx: 32768, engine: { priority: 'scheduled' } }, 'bg-small');  // smaller → loaded
-    await call({ numCtx: 32768, engine: { priority: 'scheduled' } }, 'other', 'm2'); // other model: its own
-    expect(log.map((l) => l.options?.numCtx)).toEqual([163840, 163840, 163840, 163840, 32768]);
-    // The other model is now what is loaded; the chat sets it back.
-    await call({ numCtx: 65536, engine: { runId: 'chat' } }, 'chat2');
+    const chat = (numCtx: number) => ({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx, engine: { runId: 'chat-1' } } });
+    const bg = (numCtx: number) => ({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx, engine: { priority: 'scheduled' as const, runId: 'r' } } });
+    await collect(b.request(chat(65536), fakeStart(log, 'c', 1, 1)));
     expect(b.loadedShape('ollama')).toEqual({ modelId: 'm', numCtx: 65536 });
-    await call({ numCtx: 200000, engine: { priority: 'scheduled' } }, 'bg-big');   // needs more: keeps it
-    expect(log[log.length - 1].options?.numCtx).toBe(200000);
+    await collect(b.request(bg(8192), fakeStart(log, 's', 1, 1)));     // asked for less
+    await collect(b.request(bg(262144), fakeStart(log, 'l', 1, 1)));   // asked for more: no reload either
+    await collect(b.request({ engine: 'ollama', gated: true, modelId: 'm', options: { numCtx: 16384 } }, fakeStart(log, 'u', 1, 1))); // an extension
+    expect(log.slice(1).map((e) => e.options?.numCtx)).toEqual([65536, 65536, 65536]);
+    // The launch warm-up's load is the shape too.
+    b.noteLoadedShape('ollama', 'm2', 32768);
+    await collect(b.request({ ...bg(8192), modelId: 'm2' }, fakeStart(log, 'w', 1, 1)));
+    expect(log[4].options?.numCtx).toBe(32768);
+    // Your chat at a new size sets it.
+    await collect(b.request(chat(131072), fakeStart(log, 'c2', 1, 1)));
+    expect(b.loadedShape('ollama')).toEqual({ modelId: 'm', numCtx: 131072 });
   });
 
   it('maintenance work waits for chat to let go, and can be cancelled', async () => {
@@ -254,18 +256,23 @@ describe('ModelEngineBroker', () => {
 });
 
 describe('untagged calls', () => {
-  it('an untagged call nobody waits on does not pause background work; one made at the keyboard does', async () => {
+  it('an untagged call (an extension, inline AI) starts now and pauses background work; one tagged background waits its turn', async () => {
     const b = new ModelEngineBroker();
     const log: ICallLog[] = [];
     const untagged = { engine: 'ollama', gated: true, modelId: 'm' };
     const bg = collect(b.request(req('scheduled', 'run-1'), fakeStart(log, 'b', 4, 15)));
     await new Promise((r) => setTimeout(r, 20));
-    await collect(b.request(untagged, fakeStart(log, 'x', 1, 5))); // you are away
-    expect(b.preemptions('run-1')).toBe(0);
-    b.noteUserInput();
-    await collect(b.request(untagged, fakeStart(log, 'y', 1, 5))); // you just pressed a key
+    await collect(b.request(untagged, fakeStart(log, 'x', 1, 5)));
     expect(b.preemptions('run-1')).toBe(1);
+    expect(log[1].label).toBe('x'); // it ran at once; the run resumed after
     expect(await bg).toBe('b0b1b2b3');
+    const quiet = { engine: 'ollama', gated: true, modelId: 'm', options: { engine: { priority: 'helper' as const, label: 'Memory' } } };
+    const bg2 = collect(b.request(req('scheduled', 'run-2'), fakeStart(log, 'c', 2, 15)));
+    await new Promise((r) => setTimeout(r, 20));
+    const q = collect(b.request(quiet, fakeStart(log, 'q', 1, 5)));
+    expect(await bg2).toBe('c0c1');
+    expect(b.preemptions('run-2')).toBe(0);
+    expect(await q).toBe('q0');
   });
 
   it('a call you wait on that gets no output fails with a message after five minutes, and frees the engine', async () => {

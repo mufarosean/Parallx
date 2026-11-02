@@ -251,6 +251,8 @@ export interface IDefaultParticipantServices {
   maxIterations?: number;
   networkTimeout?: number;
   getModelContextLength?(): number;
+  /** The context size the active model is loaded at on its engine, or 0 (the broker's loaded shape). */
+  getLoadedContextLength?(): number;
   /** A run's own context window, when it names one (a routine's "Context"). Background runs size their prompt to it. */
   getSessionContextWindow?(sessionId: string): number | undefined;
   sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly numCtx?: number; readonly engine?: IChatRequestOptions['engine']; readonly think?: boolean }): AsyncIterable<IChatResponseChunk>;

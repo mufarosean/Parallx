@@ -15,3 +15,11 @@ export function chatContextSize(own: number | undefined, workspaceDefault: numbe
 let chatPick = 0;
 export function rememberChatContextPick(own: number | undefined): void { chatPick = Math.max(0, Math.floor(own ?? 0)); }
 export function chatContextPick(): number { return chatPick; }
+
+/** The size the active model is loaded at on its engine (the broker's loaded shape), or 0. */
+export function loadedContextLength(lms: { getActiveModel(): string | undefined; getEngineForModel?(id: string): string | undefined; getEngineBroker?(): { loadedShape(engine: string): { modelId: string; numCtx: number } | undefined } | undefined }): number {
+  const model = lms.getActiveModel();
+  const engine = model ? lms.getEngineForModel?.(model) : undefined;
+  const shape = engine ? lms.getEngineBroker?.()?.loadedShape(engine) : undefined;
+  return shape && shape.modelId === model ? shape.numCtx : 0;
+}

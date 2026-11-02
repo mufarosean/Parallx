@@ -311,6 +311,8 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   getCachedContextLength(modelId: string): number {
     if (this._contextLengthOverride > 0) { return this._contextLengthOverride; }
     if (!modelId) { return 0; }
+    // No pick: the loaded size, so Auto never reloads the model at its full length (minutes, and past the card, for a large one).
+    const live = this.loadedContextLength(modelId); if (live > 0) { return live; }
     const cached = this._contextLengthCache.get(modelId);
     if (cached !== undefined) { return cached; }
     // Fire-and-forget background fetch
@@ -320,6 +322,8 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     return 0;
   }
 
+  /** The context size a model is loaded at (Ollama's /api/ps), or 0. */
+  loadedContextLength(modelId: string): number { return this._placements.find((p) => p.modelId === modelId)?.contextLength ?? 0; }
   /**
    * Async version that fetches context length if not cached.
    * Returns the real context length or 0 if no model is loaded.
@@ -373,8 +377,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
         keep_alive: '30m',
         ...(numCtx > 0 ? { options: { num_ctx: Math.floor(numCtx) } } : {}),
       }),
-    }).then(r => { if (!r.ok) { console.warn(`[OllamaProvider] preload chat model failed: HTTP ${r.status}`); } })
-      .catch(err => { console.warn('[OllamaProvider] preload chat model error:', err); });
+    }).then(r => { // a load the engine broker's loaded shape must know (every other call runs at it)
+      if (!r.ok) { console.warn(`[OllamaProvider] preload chat model failed: HTTP ${r.status}`); } else if (numCtx > 0) this._onDidSendChatRequest.fire({ modelId, numCtx: Math.floor(numCtx) });
+    }).catch(err => { console.warn('[OllamaProvider] preload chat model error:', err); });
 
     const warmEmbed = fetch(`${this._baseUrl}/api/embed`, {
       method: 'POST',
@@ -562,16 +567,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
     if (Object.keys(ollamaOptions).length > 0) body['options'] = ollamaOptions;
 
-    // Keep the model loaded in VRAM for 30 minutes after the last request
-    // instead of Ollama's default 5 minutes. This eliminates cold-start
-    // penalties during active study sessions.
-    body['keep_alive'] = '30m';
+    body['keep_alive'] = '30m'; // loaded 30 minutes after the last request, not Ollama's 5: no cold start mid-session
 
-    // Forward the caller's abort signal (user cancellation + participant stall
-    // timeout).  No hard total timeout here — the participant-level stall
-    // timeout (resets on each chunk) is the correct safeguard against hung
-    // connections.  A fixed total timeout would kill long-running thinking
-    // models (qwen3, DeepSeek-R1) mid-response.
+    // The caller's abort signal is forwarded (Stop, the engine broker's
+    // first-output watchdog). No total timeout: it would cut a long thinking
+    // answer short.
     const controller = new AbortController();
 
     if (signal) {
