@@ -21,9 +21,10 @@ are never touched.
 
 ## Steps
 
-1. **Wiring.** `--mock --samples 1 --turns 6 --report /tmp/reading-mock.md`.
-   Every check passes except the "meets every provisional bar" ones, which
-   canned replies cannot. Fix the harness before spending GPU time.
+1. **Wiring.** `--mock --only baseline,novel --samples 1 --turns 4 --report /tmp/reading-mock.md`
+   (a few minutes: the real chat runs in jsdom for every turn). Every check
+   passes except the two "meets every provisional bar" ones, which canned
+   replies cannot. Fix the harness before spending GPU time.
 2. **Anchors.** Fill `ext/creations-ai/test/reading-anchors.md` with the
    three scenes it names, from Project Gutenberg, public-domain text only.
    No model needed; the next judge pass scores them.

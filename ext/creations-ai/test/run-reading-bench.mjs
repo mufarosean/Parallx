@@ -110,35 +110,35 @@ const ILAN = SCENARIOS[0].leads[1];
 const SCENES = [
   {
     id: 'strangers', title: 'Strangers in a waiting room', catches: 'two people who have just met skip what people say when they meet',
-    leads: [NORA, JOAN], strangers: true,
+    leads: [NORA, JOAN], strangers: true, scene: { location: 'the A&E waiting room at St Jude\'s', time: '2 a.m.', mood: 'tired, fluorescent, a long wait' },
     situation: 'The A&E waiting room at St Jude\'s, 2 a.m. Nora Vasquez is waiting for her friend Ilan, who is being stitched after a call-out went wrong. Joan Pike has brought one of her drivers in with a crushed hand. The two women have never met. Sam is the porter, in and out with a trolley.',
     opening: '*I wheel the trolley past the two of you.* Machine is out of order, before you try it. There is a kettle at the desk if you ask nicely.',
     nudges: { 6: '*I come back for the trolley.* Still here, the pair of you? They said another hour.' },
   },
   {
     id: 'storm', title: 'The storm is getting closer', catches: 'a line that is said and dropped: nobody thinks about it or takes it anywhere',
-    leads: [NORA, ILAN],
+    leads: [NORA, ILAN], scene: { location: 'the Albion Street pharmacy', time: '11 p.m.', mood: 'a storm coming' },
     situation: 'The Albion Street pharmacy, 11 p.m. The radio has just said the storm reaches the city at four. The pharmacy\'s back roof leaks in heavy rain, and Ilan\'s van is parked under the old plane tree outside. Sam is sorting the bread delivery at the end of the counter.',
     opening: '*I turn the radio down.* Four o\'clock, they said. That is your roof, Nora. And that tree is right over your van, Ilan.',
     nudges: { 6: '*I look out at the sky.* It is getting darker already.' },
   },
   {
     id: 'news', title: 'News with no reaction', catches: 'news that is announced and not answered: no questions, no shock, nothing practical',
-    leads: [ILAN, NORA],
+    leads: [ILAN, NORA], scene: { location: 'Ilan\'s locksmith shop', time: 'after closing', mood: 'a letter on the counter' },
     situation: 'Ilan\'s locksmith shop, after closing. Ilan has had a letter this morning: his daughter Mira, who has not spoken to him in two years, is getting married in June, and the letter is from her fiance, not from her. Nora has come round with the takings bag she minds for him. Sam is fixing the shop\'s buzzer by the door.',
     opening: '*I hold up the buzzer\'s cover.* This is held on with a plaster. Ilan, you look like someone died. What is the letter?',
     nudges: { 6: '*I put the screwdriver down.* So are you going, or not?' },
   },
   {
     id: 'favour', title: 'A want that is pressed', catches: 'a request that is made once and left: no pressing, no refusing, no bargaining',
-    leads: [NORA, ILAN],
+    leads: [NORA, ILAN], scene: { location: 'the Albion Street pharmacy', time: '3 a.m.', mood: 'quiet' },
     situation: 'The pharmacy at 3 a.m., quiet. The chain has offered to sell Nora the shop, but the bank wants a second name on the loan, and the only person she can ask is Ilan, who lost his first shop and has a reason he never says for fearing the bank. Sam is on a break, eating a roll at the counter.',
     opening: '*I push the crate aside.* Go on then. You have been staring at that envelope since I came in. What is it?',
     nudges: { 6: 'Sounds like a no to me, Nora.' },
   },
   {
     id: 'argument', title: 'An argument with something under it', catches: 'anger with no subtext: people saying exactly what they mean and nothing else',
-    leads: [NORA, ILAN],
+    leads: [NORA, ILAN], scene: { location: 'the Albion Street pharmacy', time: '1 a.m.', mood: 'something unsaid' },
     situation: 'The pharmacy, 1 a.m. An insurance assessor came in today asking Nora questions about the fire at Ilan\'s first shop, years ago, and about the wiring. Nora said nothing to him. Ilan has just come in for his evening paper and does not know. Sam is restocking the fridge.',
     opening: '*I shut the fridge.* Ilan, there was a man in a suit here today asking about you. Nora talked to him for ages.',
     nudges: { 6: '*I keep my head in the fridge.* Should I go?' },
@@ -156,20 +156,30 @@ const MOCK_REPLIES = [
   '"Because I knew what you would say." *She pushes the envelope across.* "Read it. Then say no."',
 ];
 let mockN = 0;
+let judgeN = 0;
+/** As a real judge answers: now and then the JSON comes fenced, with a word before it. */
+function messy(json) {
+  judgeN++;
+  return judgeN % 7 === 0 ? `Here is my verdict:\n\`\`\`json\n${json}\n\`\`\`` : json;
+}
 function mockRespond(label, messages, { role }) {
   if (role === 'judge') {
     const u = messages[1].content;
-    if (/^STYLE:/.test(label)) { const m = /Styles:\n((?:- .+\n?)+)/.exec(u); const first = m ? m[1].split('\n')[0].replace(/^- /, '').trim() : 'x'; return JSON.stringify({ style: first, features: ['past tense', 'said tags', 'thought shown'] }); }
-    if (/^PAIR:/.test(label)) return JSON.stringify({ reasoning: 'mock', winners: Object.fromEntries(PAIR_CRITERIA.map((c, i) => [c.key, { winner: i % 2 ? 'A' : 'B', strength: 2 }])) });
+    if (/^STYLE:/.test(label)) { const m = /Styles:\n((?:- .+\n?)+)/.exec(u); const first = m ? m[1].split('\n')[0].replace(/^- /, '').trim() : 'x'; return messy(JSON.stringify({ style: first, features: ['past tense', 'said tags', 'thought shown'] })); }
+    if (/^PAIR:/.test(label)) return messy(JSON.stringify({ reasoning: 'mock', winners: Object.fromEntries(PAIR_CRITERIA.map((c, i) => [c.key, { winner: i % 2 ? 'A' : 'B', strength: 2 }])) }));
     if (/^SCENE:/.test(label)) {
       const out = { scores: Object.fromEntries(RUBRIC.map((c) => [c.key, { score: c.negative ? 3 : 6, quote: 'mock' }])), wentSomewhere: 3, where: 'mock', distinct: 4 };
       if (u.includes('STRANGERS')) out.strangers = { names: true, whereFrom: true, whatTheyDo: false, whyHere: true, tookUpAnswers: true };
-      return JSON.stringify(out);
+      return messy(JSON.stringify(out));
     }
     const n = (u.match(/^\s*\[\d+\] /gm) || []).length;
-    return JSON.stringify({ replies: Array.from({ length: n }, (_, i) => ({ n: i + 1, takesUp: i % 3 !== 2, quote: 'mock', answers: i % 2 ? true : null, gives: i % 4 !== 2, thinks: i % 2 === 1, moves: i % 3 === 0, tells: i % 5 === 4, why: '' })) });
+    return messy(JSON.stringify({ replies: Array.from({ length: n }, (_, i) => ({ n: i + 1, takesUp: i % 3 !== 2, quote: 'mock', answers: i % 2 ? true : null, gives: i % 4 !== 2, thinks: i % 2 === 1, moves: i % 3 === 0, tells: i % 5 === 4, why: '' })) }));
   }
   mockN++;
+  // As a real player answers: curly quotes, a reply with no quotes at all, a think block that leaked.
+  if (mockN % 9 === 0) return '\u201cWhere were you when it went up?\u201d She did not look at him.';
+  if (mockN % 13 === 0) return 'He thought about the fire for a long moment and said nothing, and then he picked up the paper and went out.';
+  if (mockN % 17 === 0) return '<think>who speaks</think>"I heard you," he said. "Say it again anyway."';
   return MOCK_REPLIES[mockN % MOCK_REPLIES.length];
 }
 
@@ -261,11 +271,17 @@ async function playScene(variant, sample, scene) {
   const threadId = `rb-${slug(key)}`;
   d.setLabel(`${key} open`);
   const capturedFrom = d.captured.length;
-  const container = await d.startThread({ id: threadId, title: key, files, ...(variant.preset ? { writingPresetOverride: variant.preset } : {}), situation: scene.situation });
+  const container = await d.startThread({
+    id: threadId, title: key, files, ...(variant.preset ? { writingPresetOverride: variant.preset } : {}),
+    // Where and when, as the chat's own Scene panel holds it (rendered into every turn's prompt).
+    sceneState: { ...scene.scene, present: [...scene.leads.map((l) => l.name), USER], updatedAt: Date.now() },
+  });
   let empty = 0;
-  const userLines = [{ turn: 0, text: scene.opening }];
+  // What is going on goes in Sam's opening narration, as a player sets a scene.
+  const opening = `*${scene.situation}*\n\n${scene.opening}`;
+  const userLines = [{ turn: 0, text: opening }];
   d.setLabel(`${key} t0`);
-  if (!(await d.sendTurn(container, threadId, scene.opening))) empty++;
+  if (!(await d.sendTurn(container, threadId, opening))) empty++;
   for (let t = 1; t <= TURNS; t++) {
     d.setLabel(`${key} t${t}`);
     const nudge = scene.nudges?.[t];
@@ -282,8 +298,10 @@ async function playScene(variant, sample, scene) {
   }
   container.remove();
   const msgs = await d.readMessages(threadId);
-  const turnPrompts = d.captured.slice(capturedFrom).filter((r) => kindOf(r.messages) === 'turn').map((r) => r.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n'));
-  runs.push({ variant, sample, scene, key, replies: msgs.filter((m) => m.author === 'ai').map((m) => ({ name: m.name, content: m.content })), userLines, turnPrompts, empty });
+  const turnRequests = d.captured.slice(capturedFrom).filter((r) => kindOf(r.messages) === 'turn');
+  const turnPrompts = turnRequests.map((r) => r.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n'));
+  const firstTurnText = (turnRequests[0]?.messages || []).map((m) => m.content).join('\n');
+  runs.push({ variant, sample, scene, key, replies: msgs.filter((m) => m.author === 'ai').map((m) => ({ name: m.name, content: m.content })), userLines, turnPrompts, firstTurnText, empty });
 }
 
 async function guarded(id, fn) {
@@ -353,7 +371,7 @@ function transcriptOf(run) {
   const out = [];
   let n = 0;
   const nudges = new Map(run.userLines.map((u) => [u.turn, u.text]));
-  out.push(`${USER}: ${run.scene.opening}`);
+  out.push(`${USER}: ${run.userLines[0].text}`);
   run.replies.forEach((r, i) => {
     if (i > 0 && nudges.has(i)) out.push(`${USER}: ${nudges.get(i)}`);
     out.push(`[${++n}] ${r.name}: ${r.content}`);
@@ -368,6 +386,7 @@ for (const run of runs) {
     const user = `Scene: ${run.scene.situation}\n\nThe two:\n${castLine(run.scene)}\n\nThe scene, replies numbered:\n\n${transcriptOf(run)}`;
     const ex = await judgeJson(gw, `EXCHANGE: ${run.key}`, EXCHANGE_JUDGE, user);
     run.exchange = Array.isArray(ex?.replies) ? ex.replies : [];
+    if (!run.exchange.length) report.check(`${run.key}.exchangeJudge`, 'the exchange judge gave a verdict', false, 'no JSON came back; the play is cached, so --pass judge --fresh asks again');
     const sc = await judgeJson(gw, `SCENE: ${run.key}`, SCENE_JUDGE, `${run.scene.strangers ? 'STRANGERS\n\n' : ''}${user}`);
     run.sceneScore = sc && sc.scores ? sc : null;
     // Style identification on the third reply (past the opening's momentum).
@@ -515,6 +534,9 @@ for (const v of wanted) {
   if (v.rules !== undefined) report.check(`${v.id}.rules`, v.rules.trim() ? 'its rules are in the prompt' : 'no rules are in the prompt', v.rules.trim() ? sys.includes(v.rules.trim().split('\n').pop().trim()) : !sys.includes('## How People Talk'));
 }
 for (const run of runs) {
+  // The scene reached the model: its place from the scene state, and a phrase of the situation, in the first turn's request.
+  const phrase = run.scene.situation.split('. ')[1] || run.scene.situation;
+  report.check(`${run.key}.scene`, 'the place and the situation are in the first turn\'s request', run.firstTurnText.includes(`Location: ${run.scene.scene.location}`) && run.firstTurnText.includes(phrase.slice(0, 40)), `${run.scene.scene.location}; ${phrase.slice(0, 40)}`);
   const names = run.replies.map((r) => r.name);
   const alternates = names.every((n, i) => i === 0 || n !== names[i - 1] || run.userLines.some((u) => u.turn === i));
   if (ORDER === 'alternate') report.check(`${run.key}.turns`, 'the two took turns', alternates, names.join(' > '));
@@ -536,7 +558,7 @@ report.section('Samples');
 for (const s of summaries) {
   const mine = runs.filter((r) => r.variant.id === s.variant.id && (r.exchange || []).length);
   const bad = [];
-  for (const r of mine) for (const e of r.exchange) if (!e.takesUp || !e.gives) { const rep = r.replies[e.n - 1]; const prev = r.replies[e.n - 2]; if (rep) bad.push(`[${r.scene.id} #${r.sample} reply ${e.n}] ${!e.takesUp ? 'does not take up' : ''}${!e.takesUp && !e.gives ? ', ' : ''}${!e.gives ? 'gives nothing to answer' : ''}: ${e.why || ''}\n  before: ${(prev?.content || r.scene.opening).replace(/\s+/g, ' ').slice(0, 220)}\n  reply:  ${rep.content.replace(/\s+/g, ' ').slice(0, 320)}`); }
+  for (const r of mine) for (const e of r.exchange) if (!e.takesUp || !e.gives) { const rep = r.replies[e.n - 1]; const prev = r.replies[e.n - 2]; if (rep) bad.push(`[${r.scene.id} #${r.sample} reply ${e.n}] ${!e.takesUp ? 'does not take up' : ''}${!e.takesUp && !e.gives ? ', ' : ''}${!e.gives ? 'gives nothing to answer' : ''}: ${e.why || ''}\n  before: ${(prev?.content || r.userLines[0].text).replace(/\s+/g, ' ').slice(0, 220)}\n  reply:  ${rep.content.replace(/\s+/g, ' ').slice(0, 320)}`); }
   if (bad.length) report.sample(`${s.variant.id}: exchanges that fail`, bad.slice(0, 12).join('\n\n'));
   const best = mine.filter((r) => r.sceneScore).sort((a, b) => Number(b.sceneScore.scores?.readerEngagement?.score || 0) - Number(a.sceneScore.scores?.readerEngagement?.score || 0))[0];
   if (best) report.sample(`${s.variant.id}: best scene (${best.scene.id} #${best.sample}, engagement ${best.sceneScore.scores?.readerEngagement?.score}; where it went: ${best.sceneScore.where || ''})`, best.replies.map((r) => `${r.name}: ${r.content}`).join('\n\n').slice(0, 5000));
@@ -551,7 +573,7 @@ if (argv.includes('--calibration-sheet')) {
   const sheet = ['# Reading bench calibration', '', 'For each exchange mark the four with y or n: takes up what was just said; gives the other something to answer; shows a thought; moves the scene. Then run with --replay --calibrate.', ''];
   chosen.forEach(({ r, e }, i) => {
     const rep = r.replies[e.n - 1], prev = r.replies[e.n - 2];
-    sheet.push(`## ${i + 1}. ${r.key} reply ${e.n}`, '', `Before (${prev?.name || USER}): ${(prev?.content || r.scene.opening).trim()}`, '', `Reply (${rep.name}): ${rep.content.trim()}`, '', 'takesUp: ', 'gives: ', 'thinks: ', 'moves: ', '');
+    sheet.push(`## ${i + 1}. ${r.key} reply ${e.n}`, '', `Before (${prev?.name || USER}): ${(prev?.content || r.userLines[0].text).trim()}`, '', `Reply (${rep.name}): ${rep.content.trim()}`, '', 'takesUp: ', 'gives: ', 'thinks: ', 'moves: ', '');
   });
   await fsp.writeFile(CAL_FILE, sheet.join('\n'), 'utf8');
   console.log(`Calibration sheet: ${CAL_FILE} (${chosen.length} exchanges)`);
