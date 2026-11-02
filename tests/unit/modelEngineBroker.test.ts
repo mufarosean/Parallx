@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ModelEngineBroker, BACKGROUND_MAX_TOKENS, LEASE_GRACE_MS, LEASE_IDLE_MS } from '../../src/services/modelEngineBroker';
+import { ModelEngineBroker, BACKGROUND_MAX_TOKENS, LEASE_GRACE_MS, LEASE_IDLE_MS, INTERACTIVE_FIRST_OUTPUT_MS } from '../../src/services/modelEngineBroker';
 import type { EngineStart, EnginePriority } from '../../src/services/modelEngineBroker';
 import type { IChatRequestOptions, IChatResponseChunk } from '../../src/services/chatTypes';
 
@@ -266,6 +266,44 @@ describe('untagged calls', () => {
     await collect(b.request(untagged, fakeStart(log, 'y', 1, 5))); // you just pressed a key
     expect(b.preemptions('run-1')).toBe(1);
     expect(await bg).toBe('b0b1b2b3');
+  });
+
+  it('a call you wait on that gets no output fails with a message after five minutes, and frees the engine', async () => {
+    vi.useFakeTimers();
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    // An engine that never answers: the request hangs until aborted.
+    const silent: EngineStart = (_o, signal) => (async function* () {
+      await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+      yield { content: 'never', done: true } as IChatResponseChunk;
+    })();
+    const chat = collect(b.request(req('interactive', 'chat'), silent));
+    chat.catch(() => undefined);
+    const bg = collect(b.request(req('scheduled', 'run-1'), fakeStart(log, 'b', 1, 5)));
+    await vi.advanceTimersByTimeAsync(INTERACTIVE_FIRST_OUTPUT_MS - 1000);
+    expect(log.length).toBe(0); // the chat's call still holds the engine
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(chat).rejects.toThrow(/gave no answer for 5 minutes.*ollama ps/);
+    await vi.advanceTimersByTimeAsync(LEASE_GRACE_MS + 1000);
+    expect(await bg).toBe('b0'); // background work goes on once the stuck call is failed
+  });
+
+  it('more urgent background work pauses a running call of a lower class, which resumes after', async () => {
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    const linking = collect(b.request(req('maintenance', 'link'), fakeStart(log, 'm', 4, 15)));
+    await new Promise((r) => setTimeout(r, 20));
+    const refresh = collect(b.request(req('scheduled', 'widget'), fakeStart(log, 's', 1, 5)));
+    expect(await refresh).toBe('s0');
+    expect(b.preemptions('link')).toBe(1);
+    expect(await linking).toBe('m0m1m2m3');
+    // The lower class never pauses a higher one.
+    const run = collect(b.request(req('scheduled', 'run'), fakeStart(log, 'r', 3, 15)));
+    await new Promise((r) => setTimeout(r, 20));
+    const later = collect(b.request(req('maintenance', 'late'), fakeStart(log, 'l', 1, 5)));
+    expect(await run).toBe('r0r1r2');
+    expect(b.preemptions('run')).toBe(0);
+    expect(await later).toBe('l0');
   });
 
   it('an attended call (a job you started and watch, like a sync) goes ahead of background work, and keeps the engine between its calls', async () => {

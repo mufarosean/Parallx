@@ -6671,8 +6671,10 @@ async function evalBudgetStatus(monthKey) {
 // (qwen3, DeepSeek-R1, etc.) that spends tokens reasoning before emitting the
 // JSON answer. We do NOT suppress thinking and we do NOT cap output tokens —
 // a tight num_predict cap truncates the model mid-thought so it never reaches
-// the JSON. num_ctx is generous so the prompt + reasoning + answer all fit.
-const BUDGET_LM_NUM_CTX = 16384;
+// the JSON. No context size of its own either: a size other than the chat's
+// makes Ollama load the model again at each switch between the two, and the
+// chat's size (the one the model is loaded at) fits an email's prompt and
+// reasoning with room to spare.
 const BUDGET_GMAIL_HARD_PAGE_LIMIT = 50;
 const BUDGET_DEFAULT_GMAIL_QUERY = 'from:chase.com';
 // Captured raw output of the first parse failure per run so we can surface
@@ -6690,7 +6692,6 @@ function budgetLmOptions(stage, shape) {
     think: true,
     temperature: 0,
     format: budgetStageSchema(stage, shape) || 'json',
-    numCtx: BUDGET_LM_NUM_CTX,
   };
 }
 
@@ -7167,7 +7168,7 @@ async function budgetSync(api, opts = {}) {
       : firstSyncSinceIso(cfg);
 
     const modelId = await pickModelId(api);
-    await syncLog(runId, 'info', 'model', `Using ${modelId} with numCtx=${BUDGET_LM_NUM_CTX}`);
+    await syncLog(runId, 'info', 'model', `Using ${modelId} at the chat's context size`);
 
     // Issuer query is configurable so users can plug in additional banks/cards
     // without editing the extension. Keep the default narrow to avoid pulling

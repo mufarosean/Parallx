@@ -50,6 +50,13 @@ export const MODEL_KEEP_ALIVE_MS = 5 * 60_000;
 /** At most this much of a cold call's wait for its first output counts as loading. */
 export const COLD_LOAD_CREDIT_MS = 120_000;
 /**
+ * A call you wait on that has produced nothing for this long is failed with
+ * a message, instead of showing "Thinking" for as long as the engine stays
+ * silent. Loading a large model at a large context takes a minute or two;
+ * five is past any load. Background calls have their run's own limit.
+ */
+export const INTERACTIVE_FIRST_OUTPUT_MS = 5 * 60_000;
+/**
  * Output cap for a background call that names none (thinking counts too):
  * room for a routine's report and the reasoning before it, while a model
  * that loops still stops. A reply that hits it says it was cut off.
@@ -292,7 +299,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     if (ticket.runId || attended || this._now() - this._userInputAt < USER_PRESENT_MS) this._preemptBackground(ticket.engine);
     this._changed();
     try {
-      yield* start(options, controller.signal);
+      yield* this._withFirstOutputWatchdog(req, start(options, controller.signal), controller);
     } finally {
       req.signal?.removeEventListener('abort', onCallerAbort);
       // A consumer that stops early must not leave the generation running.
@@ -302,6 +309,34 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
       // starting in between would only be paused again, or hold it up.
       if (attended) this._holdUntil.set(ticket.engine, Math.max(this._holdUntil.get(ticket.engine) ?? 0, this._now() + LEASE_GRACE_MS));
       this._finish(ticket);
+    }
+  }
+
+  /** The stream, failed with a plain message if its first output never comes. */
+  private async *_withFirstOutputWatchdog(req: IEngineRequest, stream: AsyncIterable<IChatResponseChunk>, controller: AbortController): AsyncIterable<IChatResponseChunk> {
+    const it = stream[Symbol.asyncIterator]();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let silent = false;
+    const watchdog = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        silent = true;
+        controller.abort();
+        reject(new Error(`${req.modelId} gave no answer for ${Math.round(INTERACTIVE_FIRST_OUTPUT_MS / 60_000)} minutes. The model engine ('${req.engine}') is not answering: check that it is running and that the model is loaded (for Ollama, 'ollama ps'), then try again.`));
+      }, INTERACTIVE_FIRST_OUTPUT_MS);
+    });
+    watchdog.catch(() => undefined);
+    const next = it.next();
+    next.catch(() => undefined); // if the watchdog wins, this one rejects on its own later
+    try {
+      let step = await Promise.race([next, watchdog]);
+      if (timer !== undefined) clearTimeout(timer);
+      while (!step.done) {
+        yield step.value;
+        step = await it.next();
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      if (silent) { try { await it.return?.(); } catch { /* the aborted stream is done with */ } }
     }
   }
 
@@ -433,8 +468,16 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
         .filter((t) => t.engine === engine && t.state === 'queued' && t.grant)
         .sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.enqueuedAt - b.enqueuedAt || a.id - b.id);
       for (const t of queued) {
-        const running = [...this._tickets].filter((r) => r.engine === engine && r.state === 'running').length;
-        if (running >= Math.max(1, this._concurrency(engine, t.modelId))) break;
+        const running = [...this._tickets].filter((r) => r.engine === engine && r.state === 'running');
+        if (running.length >= Math.max(1, this._concurrency(engine, t.modelId))) {
+          // More urgent work is waiting: a running call of a lower class (page
+          // linking, say, under a scheduled refresh) gives way and resumes after.
+          const lower = running
+            .filter((r) => r.priority !== 'interactive' && !r.preempted && RANK[r.priority] > RANK[t.priority])
+            .sort((a, b) => RANK[b.priority] - RANK[a.priority])[0];
+          if (lower) this._preemptTicket(lower);
+          break;
+        }
         t.state = 'running';
         t.since = now;
         this._book(t.runId, (b) => {
@@ -474,11 +517,16 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   private _preemptBackground(engine: string): void {
     for (const t of this._tickets) {
       if (t.engine !== engine || t.priority === 'interactive' || t.state !== 'running' || t.preempted) continue;
-      t.preempted = true;
-      t.preemptions++;
-      this._book(t.runId, (b) => { b.preemptions++; });
-      t.controller?.abort();
+      this._preemptTicket(t);
     }
+  }
+
+  /** A running background call stops now and goes back in the queue (its caller never sees the pause). */
+  private _preemptTicket(t: ITicket): void {
+    t.preempted = true;
+    t.preemptions++;
+    this._book(t.runId, (b) => { b.preemptions++; });
+    t.controller?.abort();
   }
 
   // ── Lease ──

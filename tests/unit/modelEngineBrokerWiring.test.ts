@@ -107,6 +107,31 @@ describe('model engine broker wiring', () => {
     s.service.purgeEphemeralSession(outside);
   });
 
+  it('a refresh you clicked runs like a chat turn: ahead of background work, holding the engine for its turn', async () => {
+    const s = await setup();
+    const chat = s.service.createSession(undefined, LOCAL);
+    const routine = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'workflow' });
+    const clicked = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'dashboard', waitedOn: true });
+    const scheduled = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'dashboard' });
+    expect(s.service.classifyRun(clicked.sessionId)).toBe('interactive');
+    expect(s.service.classifyRun(scheduled.sessionId)).toBe('scheduled');
+
+    // While the clicked refresh's turn runs, a routine's call waits, as it would for a chat turn.
+    const turn = s.service.sendRequest(clicked.sessionId, 'Refresh');
+    await s.inTurn;
+    const routineCall = collect(s.lms.sendChatRequestForModel(LOCAL, [{ role: 'user', content: 'r' }], { engine: { runId: routine.sessionId } }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.local.calls.length).toBe(0);
+    expect(s.lms.getEngineBroker().getRunState(routine.sessionId)).toBe('waiting');
+    expect(await collect(s.lms.sendChatRequestForModel(LOCAL, [{ role: 'user', content: 'y' }], { engine: { runId: clicked.sessionId } }))).toBe('ok');
+    s.release();
+    await turn;
+    expect(await routineCall).toBe('ok'); // resumed after the refresh's turn
+    s.service.purgeEphemeralSession(clicked);
+    s.service.purgeEphemeralSession(scheduled);
+    s.service.purgeEphemeralSession(routine);
+  });
+
   it('a helper takes the class of the run that spawned it', async () => {
     const s = await setup();
     const chat = s.service.createSession(undefined, LOCAL);

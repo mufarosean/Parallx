@@ -156,4 +156,10 @@ describe('budget sync uses your past choices', () => {
     expect(options.length).toBeGreaterThan(0);
     for (const o of options) expect(o.engine).toEqual({ label: 'Budget sync', attended: true });
   });
+
+  it('names no context size of its own: the model stays loaded at the chat\'s', async () => {
+    const { api, options } = syncWith('SQ *BLUE BOTTLE 0311', []);
+    await triggerSyncFromUI(api);
+    for (const o of options) expect(o.numCtx).toBeUndefined();
+  });
 });

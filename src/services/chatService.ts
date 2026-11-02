@@ -112,6 +112,7 @@ export interface IEphemeralSessionSeed {
   readonly label?: string;
   /** The run (session id) that spawned this one, for a helper. */
   readonly spawnedBy?: string;
+  readonly waitedOn?: boolean; // you started it and wait on it (a Refresh click): it runs like a chat turn
 }
 
 /** A background run in progress (an ephemeral session with a turn running). */
@@ -689,7 +690,7 @@ export class ChatService extends Disposable implements IChatService {
    * system prompt for that session only; regular chat is never touched.
    */
   private readonly _ephemeralSystemPrompts = new Map<string, string>();
-  /** Helpers spawned while your chat turn waited on them (they count as chat). */
+  /** Runs that count as chat: helpers your chat turn waited on, and runs you started and wait on (seed.waitedOn). */
   private readonly _interactiveHelpers = new Set<string>();
   /** Background runs: label, and when their current turn started. */
   private readonly _runLabels = new Map<string, string>();
@@ -1186,11 +1187,10 @@ export class ChatService extends Disposable implements IChatService {
     };
 
     this._sessions.set(id, session);
-    // A helper spawned while your chat turn is running is one you are
-    // waiting on: it shares the turn's place at the front of the queue.
+    // A run you wait on shares a chat turn's place at the front of the queue: one you started, or a helper spawned while your turn runs.
     // When the spawning run is known it decides; otherwise the chat this
     // helper forks from being mid-turn is the sign you are waiting on it.
-    if (session.origin === 'subagent') {
+    if (seed.waitedOn) this._interactiveHelpers.add(id); else if (session.origin === 'subagent') {
       const waitedOnByYou = seed.spawnedBy
         ? !isEphemeralSessionId(seed.spawnedBy) || this._interactiveHelpers.has(seed.spawnedBy)
         : !!parent && !isEphemeralSessionId(parent.id) && parent.requestInProgress;
@@ -1399,7 +1399,7 @@ export class ChatService extends Disposable implements IChatService {
 
     // Your chat turn holds the model engine for its whole length, tool steps
     // included: background work waits, and any already running gives way.
-    const engineLease = isEphemeralSessionId(sessionId) ? undefined : this._beginEngineLease(session.modelId);
+    const engineLease = isEphemeralSessionId(sessionId) && !this._interactiveHelpers.has(sessionId) ? undefined : this._beginEngineLease(session.modelId); // your chat, or a run you wait on, holds the model for its turn
     if (isEphemeralSessionId(sessionId)) { this._runStarted.set(sessionId, Date.now()); this._onDidChangeRuns.fire(); }
 
     // Everything from here on ends in onDidCompleteRequest, however it ends.
@@ -1618,15 +1618,15 @@ export class ChatService extends Disposable implements IChatService {
 
   /**
    * The model engine's priority class for a run (docs/AGENT_RUNTIME_DESIGN.md):
-   * your chat sessions, and helpers your chat turn waits on, are interactive;
-   * helpers of background runs are helpers; every other background run
-   * (heartbeat, routines, scheduled jobs, dashboards) is scheduled.
+   * your chat sessions, and runs you wait on (a helper of your turn, a Refresh
+   * you clicked), are interactive; helpers of background runs are helpers;
+   * every other background run (heartbeat, routines, scheduled jobs) is scheduled.
    */
   classifyRun(runId: string): EnginePriority | undefined {
-    if (!isEphemeralSessionId(runId)) return 'interactive';
+    if (!isEphemeralSessionId(runId) || this._interactiveHelpers.has(runId)) return 'interactive';
     const session = this._sessions.get(runId);
     if (!session) return undefined;
-    if (session.origin === 'subagent') return this._interactiveHelpers.has(runId) ? 'interactive' : 'helper';
+    if (session.origin === 'subagent') return 'helper';
     return 'scheduled';
   }
 
