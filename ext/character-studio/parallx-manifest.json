@@ -4,7 +4,7 @@
   "name": "Character Studio",
   "version": "0.1.0",
   "publisher": "parallx",
-  "description": "Shape realistic people in 3D with sliders, choose their look, and export them for other 3D programs.",
+  "description": "Make anime-style 3D characters: mix bodies, faces and hair, shape them with sliders, colour them and give them a mood.",
   "main": "main.js",
   "activationEvents": ["onStartupFinished"],
   "engines": { "parallx": "^0.1.0" },

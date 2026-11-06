@@ -72,6 +72,10 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `canvas.showKeyboardShortcuts` | Canvas: Show Keyboard Shortcuts | canvas |  |  |  |
 | `canvas.showTemplatePicker` | Canvas: Show Template Picker | canvas |  |  |  |
 | `canvas.storePicturesAsFiles` | Canvas: Store Pictures as Files | canvas |  |  |  |
+| `characterStudio.new` | New Character | character-studio | Character Studio |  |  |
+| `characterStudio.open` | Open Character Studio | character-studio | Character Studio |  |  |
+| `characterStudio.redo` | Redo Character Change | character-studio | Character Studio |  |  |
+| `characterStudio.undo` | Undo Character Change | character-studio | Character Studio |  |  |
 | `chat.clearPlan` | Chat: Clear Plan | chat |  |  |  |
 | `chat.clearSession` | Chat: Clear Session | chat |  |  |  |
 | `chat.focus` | Chat: Focus Input | chat |  |  |  |

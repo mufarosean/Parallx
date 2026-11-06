@@ -53,6 +53,8 @@ export function createChoiceGrid(container: HTMLElement | null | undefined, opti
     face.className = 'ui-choice-grid__face';
     if (item.rgb) face.style.backgroundColor = `rgb(${item.rgb.map((c) => Math.round(Math.min(1, Math.max(0, c)) * 255)).join(', ')})`;
     if (item.image) { const img = document.createElement('img'); img.alt = ''; img.src = item.image; face.appendChild(img); }
+    // A swatch with no colour of its own ("as it was", "none") shows a diagonal line
+    if (!item.rgb && !item.image && variant === 'swatch') face.classList.add('ui-choice-grid__face--none');
     tile.appendChild(face);
     if (variant === 'picture') {
       const name = document.createElement('span');

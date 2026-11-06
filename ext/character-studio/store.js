@@ -1,34 +1,5 @@
-// store.js — characters in the extension's own database, one row each.
-
-/** A new character: a young adult, every detail at rest, a first look. */
-export function defaultCharacter(figure) {
-  const pick = (kind, name) => (figure.items.find((i) => i.kind === kind && i.name === name) || figure.items.find((i) => i.kind === kind) || {}).id || 'none';
-  return {
-    version: 1,
-    body: { gender: 1, age: 2 / 3, muscle: 0.5, weight: 0.5, height: 0.5, proportions: 0.5 },
-    details: {},
-    symmetric: true,
-    look: {
-      skin: (figure.meta.skins.find((s) => s.name === 'young_caucasian_female') || figure.meta.skins[0]).id,
-      iris: (figure.meta.irises.find((i) => i.name === 'brown') || figure.meta.irises[0]).id,
-      hair: pick('hair', 'long01'), hairColour: 'natural',
-      eyebrows: pick('eyebrows', 'eyebrow001'), eyelashes: pick('eyelashes', 'eyelashes01'),
-    },
-  };
-}
-
-/** A stored character's data, made whole against the defaults (fields added later fill in). */
-export function normaliseCharacter(data, figure) {
-  const d = defaultCharacter(figure);
-  const src = data && typeof data === 'object' ? data : {};
-  const clamp = (v, lo, hi, dflt) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt);
-  const body = {};
-  for (const k of Object.keys(d.body)) body[k] = clamp(src.body && src.body[k], 0, 1, d.body[k]);
-  const details = {};
-  for (const [k, v] of Object.entries(src.details || {})) if (figure.detailByLabel.has(k) && Number.isFinite(v) && v !== 0) details[k] = clamp(v, -1, 1, 0);
-  const look = { ...d.look, ...(src.look || {}) };
-  return { version: 1, body, details, symmetric: src.symmetric !== false, look };
-}
+// store.js — characters in the extension's own database, one row each (the
+// character itself is JSON: see anime.js defaultCharacter).
 
 const newId = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 

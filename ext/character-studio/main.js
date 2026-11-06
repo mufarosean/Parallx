@@ -1,22 +1,37 @@
-// Character Studio — a realistic character creator (docs/CHARACTER_STUDIO.md).
+// Character Studio — an anime character creator (docs/CHARACTER_STUDIO.md).
 //
 // While it runs: a Characters list in its own sidebar, an editor tab per
-// character, its commands and styles. Turned off, all of it goes. The figure
-// (about 30 MB) loads the first time a character opens, not before.
+// character, its commands and styles. Turned off, all of it goes. A
+// character's model files load when its tab opens, not before.
 
 import { CS_CSS } from './styles.js';
-import { Store, defaultCharacter } from './store.js';
-import { loadFigure } from './figure.js';
+import { Store } from './store.js';
+import { defaultCharacter } from './anime.js';
 import { createCharacterEditor } from './panel.js';
 
 const EDITOR = 'character-studio';
 let sheet = null;
-let figurePromise = null;
+let cataloguePromise = null;
+const portraitCache = new Map();
 
-/** The figure, loaded once while the tool runs. */
-function figure(api) {
-  if (!figurePromise) figurePromise = loadFigure(api).catch((err) => { figurePromise = null; throw err; });
-  return figurePromise;
+/** The characters the tool ships (models/models.json), read once while it runs. */
+function catalogue(api) {
+  if (!cataloguePromise) cataloguePromise = api.env.readAsset('models/models.json').then((b) => JSON.parse(new TextDecoder().decode(b))).catch((err) => { cataloguePromise = null; throw err; });
+  return cataloguePromise;
+}
+
+/** Each character's portrait ('face' or 'body'), as picture URLs, from models/portraits. */
+function portraits(api, framing) {
+  if (!portraitCache.has(framing)) {
+    portraitCache.set(framing, catalogue(api).then(async (cat) => {
+      const out = new Map();
+      for (const m of cat.models) {
+        try { const b = await api.env.readAsset(`models/portraits/${m.id}-${framing}.webp`); out.set(m.id, URL.createObjectURL(new Blob([b], { type: 'image/webp' }))); } catch { /* none yet */ }
+      }
+      return out;
+    }));
+  }
+  return portraitCache.get(framing);
 }
 
 export async function activate(api, context) {
@@ -27,7 +42,8 @@ export async function activate(api, context) {
   const store = new Store(api);
   const ready = store.open().catch((err) => { console.error('[CharacterStudio] database:', err); throw err; });
   const ctx = {
-    get figure() { return figure(api); },
+    get catalogue() { return catalogue(api); },
+    portraits: (framing) => portraits(api, framing),
     store, editors: new Map(), current: null,
     onDeleted: (id) => {
       const open = api.editors.openEditors.find((e) => e.id.endsWith(`:${EDITOR}:${id}`));
@@ -39,9 +55,9 @@ export async function activate(api, context) {
   const openCharacter = (id, name) => api.editors.openEditor({ typeId: EDITOR, title: name || 'Character', icon: 'user', instanceId: id });
   async function newCharacter() {
     await ready;
-    const fig = await figure(api);
+    const cat = await catalogue(api);
     const name = await store.freeName('Character');
-    const id = await store.create(name, defaultCharacter(fig));
+    const id = await store.create(name, defaultCharacter(cat));
     await openCharacter(id, name);
   }
 
@@ -58,7 +74,8 @@ export async function activate(api, context) {
   sub(api.commands.registerCommand('characterStudio.redo', (id) => { const e = editor(id); if (e) e.redo(); }));
   sub(api.commands.registerCommand('characterStudio.view', (id, action) => { const e = editor(id); if (e) e.view(action); }));
   sub(api.commands.registerCommand('characterStudio.reset', (id, part) => { const e = editor(id); if (e) e.reset(part); }));
-  sub(api.commands.registerCommand('characterStudio.export', (id) => { const e = editor(id); if (e) return e.exportNow(); }));
+  sub(api.commands.registerCommand('characterStudio.picture', (id) => { const e = editor(id); if (e) return e.picture(); }));
+  sub(api.commands.registerCommand('characterStudio.randomise', (id) => { const e = editor(id); if (e) e.randomise(); }));
   sub(api.commands.registerCommand('characterStudio.openCharacter', async (id) => { const r = await store.get(id); if (r) await openCharacter(r.id, r.name); }));
   sub(api.commands.registerCommand('characterStudio.characterMenu', async (id) => {
     const r = await store.get(id);
@@ -121,5 +138,7 @@ export async function activate(api, context) {
 
 export function deactivate() {
   if (sheet) { document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet); sheet = null; }
-  figurePromise = null;
+  cataloguePromise = null;
+  for (const p of portraitCache.values()) p.then((m) => { for (const url of m.values()) URL.revokeObjectURL(url); }, () => {});
+  portraitCache.clear();
 }

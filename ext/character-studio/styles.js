@@ -11,18 +11,18 @@ export const CS_CSS = `
 .cs-canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--px-accent); }
 .cs-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: var(--px-space-6); text-align: center; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .cs-stage-tools { position: absolute; top: var(--px-space-2); left: var(--px-space-2); display: flex; gap: var(--px-space-1); padding: var(--px-space-1); background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); box-shadow: var(--px-shadow-sm); }
-.cs-controls { flex: none; width: 340px; max-width: 45%; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--px-divider); background: var(--px-bg); }
-.cs-tabs { flex: none; padding: 0 var(--px-space-3); border-bottom: 1px solid var(--px-divider); }
+.cs-controls { flex: none; width: 360px; max-width: 45%; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--px-divider); background: var(--px-bg); }
+.cs-tabs { flex: none; padding: 0 var(--px-space-2); border-bottom: 1px solid var(--px-divider); }
+.cs-tabs .ui-tab { flex: 1 1 0; min-width: 0; justify-content: center; padding: 0 var(--px-space-2); }
 .cs-tab-body { flex: 1; overflow: auto; padding: var(--px-space-3) var(--px-space-4) var(--px-space-6); }
 .cs-slider { padding: var(--px-space-1) 0 var(--px-space-2); }
 .cs-slider-head { display: flex; justify-content: space-between; gap: var(--px-space-2); font-size: var(--px-text-sm); }
 .cs-slider-name { color: var(--px-text-secondary); }
 .cs-slider-value { color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cs-row-actions { display: flex; gap: var(--px-space-2); padding-top: var(--px-space-3); }
-.cs-detail-tools { display: flex; flex-direction: column; gap: var(--px-space-2); padding-bottom: var(--px-space-3); margin-bottom: var(--px-space-2); border-bottom: 1px solid var(--px-divider); }
-.cs-detail-tools > * { align-self: stretch; }
-.cs-detail-tools > button { align-self: flex-start; }
-.cs-look-row { display: flex; flex-direction: column; gap: var(--px-space-1); padding-bottom: var(--px-space-3); }
+
+.cs-section { padding-bottom: var(--px-space-4); }
+.cs-section > .ui-choice-grid { margin-top: var(--px-space-2); }
 
 /* The characters list (sidebar) */
 .cs-side { display: flex; flex-direction: column; height: 100%; min-height: 0; }
