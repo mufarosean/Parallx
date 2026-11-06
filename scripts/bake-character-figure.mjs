@@ -27,14 +27,17 @@
  * Coordinates: Y up, metres, facing +Z (glTF's frame). MakeHuman's files are
  * Y up in decimetres; Anny turns them Z up for Blender, which --check undoes.
  *
- * Run:   node scripts/bake-character-figure.mjs --anny <anny>/src/anny/data
+ * Run:   node scripts/bake-character-figure.mjs --anny <anny>/src/anny/data --assets <pack>
+ *        (<pack>: the extracted MakeHuman system asset pack, CC0; see figure/NOTICE.md;
+ *        ffmpeg on the PATH converts its textures to WebP)
  * Check: add --check <dir> with Anny's cached rig dumped as raw arrays
  *        (template_bone_heads, bone_heads_blendshapes, blendshape_labels):
  *        every bone head Anny computes is compared with ours.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -116,15 +119,102 @@ function addTarget(dense, t, w) {
 // ── The bake ──────────────────────────────────────────────────────────────
 
 const SCALE = 0.1;   // decimetres to metres
-const KEEP_GROUPS = [
-  { group: 'body', part: 'skin' },
-  { group: 'helper-l-eye', part: 'eyes' },
-  { group: 'helper-r-eye', part: 'eyes' },
-  { group: 'helper-upper-teeth', part: 'teeth' },
-  { group: 'helper-lower-teeth', part: 'teeth' },
-  { group: 'helper-tongue', part: 'tongue' },
+// The body is drawn from base.obj; eyes, teeth, tongue, brows, lashes and
+// hair are MakeHuman proxies (below) fitted to it.
+const KEEP_GROUPS = [{ group: 'body', part: 'skin' }];
+const PARTS = ['skin'];
+
+// ── Proxies (MakeHuman .mhclo): eyes, brows, lashes, hair, teeth, tongue ──
+//
+// Each proxy vertex is a weighted mix of three body vertices plus an offset
+// scaled by how far apart two reference vertices are on each axis (MakeHuman
+// proxy.py getCoords), so it follows every slider.
+
+/** The proxies and materials Character Studio ships (MakeHuman system assets, CC0). */
+const ASSET_KINDS = [
+  { kind: 'eyes', dir: 'eyes', only: ['high-poly'] },
+  { kind: 'eyebrows', dir: 'eyebrows' },
+  { kind: 'eyelashes', dir: 'eyelashes' },
+  { kind: 'hair', dir: 'hair' },
+  { kind: 'teeth', dir: 'teeth', only: ['teeth_base'] },
+  { kind: 'tongue', dir: 'tongue' },
 ];
-const PARTS = ['skin', 'eyes', 'teeth', 'tongue'];
+
+function readKeyValues(file) {
+  const out = {};
+  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+    const i = line.search(/\s/);
+    if (i < 0) continue;
+    const key = line.slice(0, i); const value = line.slice(i + 1).trim();
+    if (!(key in out)) out[key] = value;
+  }
+  return out;
+}
+
+/** A .mhclo: header fields and, per proxy vertex, three references, weights and an offset (decimetres). */
+function readMhclo(file) {
+  const head = {}; const refs = []; const weights = []; const offsets = [];
+  // Number lines belong to the last section opened ("verts" or "delete_verts"); a
+  // keyword line between them (some files put "material" there) does not close it.
+  let section = null;
+  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const p = line.split(/\s+/);
+    if (p[0] === 'verts') { section = 'verts'; continue; }
+    if (p[0] === 'delete_verts') { section = 'delete'; continue; }
+    if (/^-?\d/.test(p[0])) {
+      if (section !== 'verts') continue;
+      if (p.length === 1) { const v = Number(p[0]); refs.push(v, v, v); weights.push(1, 0, 0); offsets.push(0, 0, 0); }
+      else { refs.push(+p[0], +p[1], +p[2]); weights.push(+p[3], +p[4], +p[5]); offsets.push(+p[6] || 0, +p[7] || 0, +p[8] || 0); }
+      continue;
+    }
+    if (p[0] === 'x_scale' || p[0] === 'y_scale' || p[0] === 'z_scale') head[p[0]] = [Number(p[1]), Number(p[2]), Number(p[3])];
+    else if (!(p[0] in head)) head[p[0]] = p.slice(1).join(' ');
+  }
+  return { head, refs, weights, offsets };
+}
+
+/** Collect every proxy and its material from the extracted asset pack. */
+function readAssetPack(dir) {
+  const items = [];
+  for (const { kind, dir: sub, only } of ASSET_KINDS) {
+    const root = join(dir, sub);
+    for (const name of readdirSync(root).sort()) {
+      if (only && !only.includes(name)) continue;
+      const mhclo = join(root, name, `${name}.mhclo`);
+      if (!existsSync(mhclo)) continue;
+      const clo = readMhclo(mhclo);
+      const mesh = readObj(join(root, name, clo.head.obj_file));
+      const matFile = clo.head.material ? resolve(join(root, name), clo.head.material) : null;
+      const mat = matFile && existsSync(matFile) ? readKeyValues(matFile) : {};
+      const texture = mat.diffuseTexture ? resolve(dirname(matFile), mat.diffuseTexture) : null;
+      items.push({ kind, id: `${kind}/${name}`, name, clo, mesh, texture, transparent: /true/i.test(mat.transparent || ''), doubleSided: /false/i.test(mat.backfaceCull || '') });
+    }
+  }
+  // Iris colours (one eye mesh, several textures) and skins (textures on the body's UVs)
+  const irises = []; const eyeMats = join(dir, 'eyes', 'materials');
+  for (const f of readdirSync(eyeMats).filter((f) => f.endsWith('.mhmat')).sort()) {
+    const m = readKeyValues(join(eyeMats, f));
+    if (m.diffuseTexture) irises.push({ id: `iris/${f.replace('.mhmat', '')}`, name: f.replace('.mhmat', ''), texture: join(eyeMats, m.diffuseTexture) });
+  }
+  const skins = []; const skinRoot = join(dir, 'skins');
+  for (const name of readdirSync(skinRoot).sort()) {
+    if (name.includes('special_suit') || name.startsWith('toon')) continue;
+    const matFile = join(skinRoot, name, `${name}.mhmat`);
+    if (!existsSync(matFile)) continue;
+    const m = readKeyValues(matFile);
+    if (m.diffuseTexture) skins.push({ id: `skin/${name}`, name, texture: join(skinRoot, name, m.diffuseTexture) });
+  }
+  return { items, irises, skins };
+}
+
+/** Convert a texture to WebP (ffmpeg on the PATH), keeping alpha when it has one. */
+function toWebp(src, dest, { alpha = false, quality = 90 } = {}) {
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-c:v', 'libwebp', '-quality', String(quality), '-pix_fmt', alpha ? 'yuva420p' : 'yuv420p', dest]);
+}
 
 /** Anny's nudity edits (full_model.py get_edited_mesh_faces), on the body's faces. */
 function editBodyFaces(faces) {
@@ -269,6 +359,14 @@ function main(argv) {
   }
   const used = new Uint8Array(VF);
   for (const faces of partFaces.values()) for (const f of faces) for (const [vi] of f) used[vi] = 1;
+  // Proxies keep the body vertices they hang from (some are helper vertices nobody draws)
+  const assetsDir = arg('--assets');
+  if (!assetsDir || !existsSync(join(assetsDir, 'hair'))) throw new Error('Pass --assets <the extracted MakeHuman system asset pack>.');
+  const pack = readAssetPack(assetsDir);
+  for (const it of pack.items) {
+    for (const v of it.clo.refs) used[v] = 1;
+    for (const k of ['x_scale', 'y_scale', 'z_scale']) { used[it.clo.head[k][0]] = 1; used[it.clo.head[k][1]] = 1; }
+  }
   const keep = []; const newIndex = new Int32Array(VF).fill(-1);
   for (let i = 0; i < VF; i++) if (used[i]) { newIndex[i] = keep.length; keep.push(i); }
   const V = keep.length;
@@ -394,6 +492,37 @@ function main(argv) {
   }
   put('skinIndex', skinIdx); put('skinWeight', skinW);
 
+  // Proxies: references into the kept vertices, weights, offsets; their own UVs and triangles
+  mkdirSync(join(out, 'textures'), { recursive: true });
+  const texName = (id) => id.replace(/[^a-z0-9]+/gi, '-') + '.webp';
+  const items = pack.items.map((it, n) => {
+    const { refs, weights, offsets, head } = it.clo;
+    const count = refs.length / 3;
+    if (count !== it.mesh.positions.length / 3) throw new Error(`${it.id}: ${count} fitted vertices for ${it.mesh.positions.length / 3} in its mesh.`);
+    const key = `p${n}`;
+    put(`${key}r`, Uint32Array.from(refs, (v) => newIndex[v]));
+    put(`${key}w`, Float32Array.from(weights));
+    put(`${key}o`, Float32Array.from(offsets));
+    const keyMap = new Map(); const src = []; const uv = []; const idx = [];
+    for (const faces of it.mesh.groups.values()) for (const f of faces) {
+      const ids = f.map(([vi, ti]) => {
+        const k = vi * 1e6 + (ti >= 0 ? ti : 0);
+        let g = keyMap.get(k);
+        if (g === undefined) { g = src.length; keyMap.set(k, g); src.push(vi); uv.push(ti >= 0 ? it.mesh.uvs[ti * 2] : 0, ti >= 0 ? it.mesh.uvs[ti * 2 + 1] : 0); }
+        return g;
+      });
+      for (let k = 1; k + 1 < ids.length; k++) idx.push(ids[0], ids[k], ids[k + 1]);
+    }
+    put(`${key}s`, Uint32Array.from(src)); put(`${key}u`, Float32Array.from(uv)); put(`${key}i`, Uint32Array.from(idx));
+    let texture = null;
+    if (it.texture && existsSync(it.texture)) { texture = `textures/${texName(it.id)}`; toWebp(it.texture, join(out, texture), { alpha: it.transparent, quality: 92 }); }
+    const scale = ['x_scale', 'y_scale', 'z_scale'].map((k) => [newIndex[head[k][0]], newIndex[head[k][1]], head[k][2]]);
+    return { kind: it.kind, id: it.id, name: it.name, key, vertexCount: count, scale, texture, transparent: it.transparent, doubleSided: it.doubleSided };
+  });
+  const irises = pack.irises.map((t) => { const f = `textures/${texName(t.id)}`; toWebp(t.texture, join(out, f), { quality: 92 }); return { id: t.id, name: t.name, texture: f }; });
+  const skins = pack.skins.map((t) => { const f = `textures/${texName(t.id)}`; toWebp(t.texture, join(out, f), { quality: 90 }); return { id: t.id, name: t.name, texture: f }; });
+  console.log(`proxies: ${items.length}, irises: ${irises.length}, skins: ${skins.length}`);
+
   const meta = {
     format: 1,
     source: 'MakeHuman CC0 assets as shipped by Anny (NAVER Labs, Apache-2.0); converted by scripts/bake-character-figure.mjs',
@@ -402,6 +531,7 @@ function main(argv) {
     features: FEATURES, rank, cornerCount: C,
     bones: bones.map((b) => ({ name: b.name, parent: b.parent, roll: b.roll })),
     details: detailMeta,
+    items, irises, skins,
     sections,
   };
   mkdirSync(out, { recursive: true });
