@@ -31,7 +31,7 @@ const SOURCE_GLOBS = ['src/**/*.ts', 'ext/**/*.js'];
 const NOT_COUNTED = [
   '**/node_modules/**', 'ext/**/vendor/**', '**/*.generated.ts', '**/*.d.ts',
   'ext/study/main.js', 'ext/**/readability.js', 'ext/**/test/**',
-  'src/ui/kit.ts', 'src/ui/scene.ts', 'src/ui/toggle.ts', 'src/ui/inputBox.ts', 'src/ui/dropdown.ts',
+  'src/ui/kit.ts', 'src/ui/block.ts', 'src/ui/scene.ts', 'src/ui/toggle.ts', 'src/ui/inputBox.ts', 'src/ui/dropdown.ts',
   'src/ui/slider.ts', 'src/ui/tabBar.ts', 'src/ui/segmentedControl.ts', 'src/ui/contextMenu.ts',
   'src/ui/dateTimeField.ts', 'src/ui/undoToast.ts',
   'src/ui/externalLinks.ts', // the window's link guard, not a control

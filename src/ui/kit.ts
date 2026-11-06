@@ -31,6 +31,9 @@ import { TabBar, type ITabBarItem, type ITabBarOptions } from './tabBar.js';
 import { scene, type SceneKind, type SceneState, type ISceneEntry } from './scene.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 // The Undo toast (undoToast.ts): one at a time, at the bottom of the window.
+export { createBlock, type IKitBlockOptions } from './block.js';
+export { installKitCommands, runKitCommand } from './kitCommands.js';
+import { runCommand } from './kitCommands.js';
 export { showUndoToast, type IUndoToastOptions, type IUndoToast } from './undoToast.js';
 
 export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -69,23 +72,7 @@ export interface IKitSurface {
   dispose(): void;
 }
 
-// ── Commands ─────────────────────────────────────────────────────────────────
-
-type CommandRunner = (id: string, ...args: unknown[]) => Promise<unknown>;
-let _runCommand: CommandRunner | undefined;
-
-/** Called once at boot with the command service, so a control can run a command by id. */
-export function installKitCommands(service: { executeCommand(id: string, ...args: unknown[]): Promise<unknown> }): void {
-  _runCommand = (id, ...args) => service.executeCommand(id, ...args);
-}
-
-/** Run a command by id from a surface that is not a kit control (a menu item, say). */
-export function runKitCommand(command: string, ...args: unknown[]): void { runCommand({ command, args }); }
-
-function runCommand(action: IKitCommandAction): void {
-  if (!_runCommand) { console.warn(`[kit] no command service yet; "${action.command}" not run`); return; }
-  void _runCommand(action.command, ...(action.args ?? [])).catch((err) => console.warn(`[kit] command "${action.command}" failed:`, err));
-}
+// ── Commands (src/ui/kitCommands.ts) ─────────────────────────────────────────
 
 /**
  * The click handler a control gets from its options. A command alone runs
@@ -355,34 +342,6 @@ export function createSection(container: HTMLElement | null | undefined, label: 
   sec.className = className ? `px-section ${className}` : 'px-section';
   createSectionLabel(sec, label);
   return mount(container, sec);
-}
-
-/** Elements that are never controls: layout, text, pictures. A button, link or field comes from its own kit function. */
-const BLOCK_TAGS = new Set(['div', 'span', 'p', 'section', 'header', 'footer', 'figure', 'figcaption', 'ul', 'ol', 'li', 'img', 'canvas', 'strong', 'em', 'small']);
-
-export interface IKitBlockOptions {
-  readonly className?: string;
-  readonly text?: string;
-  /** Plain attributes (role, aria-*, alt, src, data-*); never an event handler. */
-  readonly attrs?: Readonly<Record<string, string>>;
-}
-
-/**
- * A layout or text element: the one way a tool makes the elements around its
- * controls (docs/SELF_DESCRIBING_UI_DESIGN.md: not a control, never declared).
- * Refuses a tag that would be a control, and on* attributes.
- */
-export function createBlock(container: HTMLElement | null | undefined, tag: string, options: IKitBlockOptions = {}): HTMLElement {
-  const t = String(tag).toLowerCase();
-  if (!BLOCK_TAGS.has(t)) throw new Error(`createBlock makes layout and text only, not <${t}>: use the kit's control for it.`);
-  const e = document.createElement(t);
-  if (options.className) e.className = options.className;
-  if (options.text != null) e.textContent = options.text;
-  for (const [k, v] of Object.entries(options.attrs ?? {})) {
-    if (/^on/i.test(k)) throw new Error(`createBlock does not set event handlers (${k}).`);
-    e.setAttribute(k, v);
-  }
-  return mount(container, e);
 }
 
 /** A row of a list: a name over a quieter detail line; buttons added to it sit at its end. */

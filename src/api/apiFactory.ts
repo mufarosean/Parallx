@@ -8,7 +8,6 @@
 // ensures all such calls are scoped to the calling tool and tracked
 // for cleanup.
 
-import { assistantTimeZone } from '../services/localTime.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { createUiApi, type UiApi } from './bridges/uiBridge.js';
@@ -33,7 +32,6 @@ import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { StatusBarAlignment } from '../services/serviceTypes.js';
 import { IAutonomySignalService } from '../services/autonomySignalService.js';
 import { IActivityJournalService } from '../services/activityJournalService.js';
-import { PARALLX_VERSION } from '../tools/toolValidator.js';
 import type { INotificationService } from '../services/serviceTypes.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
 import { ViewsBridge } from './bridges/viewsBridge.js';
@@ -76,7 +74,7 @@ import {
   ILanguageModelToolsService,
 } from '../services/chatTypes.js';
 import { ICanvasPageQueryService } from '../services/serviceTypes.js';
-import { resolveToolAssetPath } from '../tools/toolAssetPath.js';
+import { createToolEnv, type ToolEnv } from './envApi.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -267,15 +265,7 @@ export interface ParallxApiObject {
     /** Fires when the set of registered tools changes (registration or unregistration). */
     onDidChangeTools: (listener: () => void) => IDisposable;
   };
-  readonly env: {
-    readonly appName: string;
-    readonly appVersion: string;
-    readonly toolPath: string;
-    /** The app's time zone (IANA): the Time Zone setting, or this computer's when empty. Read it when you need it; it can change. */
-    readonly timeZone: string;
-    /** The bytes of a file inside the tool's own folder (a mesh, a model, an image it ships), by relative path. Rejects outside it. */
-    readAsset(relativePath: string): Promise<ArrayBuffer>;
-  };
+  readonly env: ToolEnv;
   readonly services: {
     /**
      * Get a DI service instance by its ServiceIdentifier.
@@ -924,22 +914,7 @@ export function createToolApi(
       },
     }),
 
-    env: Object.freeze({
-      appName: 'Parallx',
-      appVersion: PARALLX_VERSION,
-      toolPath: toolDescription.toolPath,
-      get timeZone() { return assistantTimeZone(); },
-      async readAsset(relativePath: string): Promise<ArrayBuffer> {
-        const full = resolveToolAssetPath(toolDescription.toolPath, relativePath);
-        if (!full) throw new Error(`"${relativePath}" is not a path inside the tool's folder.`);
-        const bridge = (globalThis as any).parallxElectron;
-        if (!bridge?.readToolAsset) throw new Error('Reading tool files needs the desktop app.');
-        const r = await bridge.readToolAsset(full);
-        if (!r || 'error' in r) throw new Error((r && r.error) || `Could not read "${relativePath}".`);
-        const b: Uint8Array = r.bytes;
-        return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
-      },
-    }),
+    env: createToolEnv(toolDescription.toolPath),
 
     // Per-extension isolated database — only available for external (non-builtin) tools.
     // Built-in tools use the shared workspace database via the DatabaseService.

@@ -1270,26 +1270,6 @@ ipcMain.handle('tools:uninstall', async (_event, toolId) => {
  * @param {string} filePath — Absolute path to the .js file.
  * @returns {{ source: string }} on success or {{ error: string }} on failure.
  */
-// A tool's own data files (a model, a mesh, an image it ships), as bytes:
-// api.env.readAsset. Same folders as tool modules; the renderer has already
-// confined the path to the calling tool's folder (src/tools/toolAssetPath.ts).
-const TOOL_ASSET_MAX_BYTES = 512 * 1024 * 1024;
-ipcMain.handle('tools:read-asset', async (_event, filePath) => {
-  try {
-    if (!filePath || typeof filePath !== 'string') return { error: 'Invalid file path' };
-    const normalized = path.normalize(filePath);
-    const roots = [USER_EXTENSIONS_DIR, path.join(app.getAppPath(), 'tools'), path.join(APP_ROOT, 'ext')].map((r) => path.normalize(r) + path.sep);
-    if (!roots.some((r) => normalized.startsWith(r))) return { error: 'Access denied: path is outside tool directories' };
-    const stat = await fs.stat(normalized);
-    if (!stat.isFile()) return { error: 'Not a file' };
-    if (stat.size > TOOL_ASSET_MAX_BYTES) return { error: 'The file is larger than 512 MB' };
-    const bytes = await fs.readFile(normalized);
-    return { bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength) };
-  } catch (err) {
-    return { error: `Failed to read asset: ${err.message}` };
-  }
-});
-
 ipcMain.handle('tools:read-module', async (_event, filePath) => {
   try {
     if (!filePath || typeof filePath !== 'string') {

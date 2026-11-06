@@ -415,7 +415,7 @@ Files: `src/**/*.ts` and `ext/**/*.js`, ignoring `**/node_modules/**`,
 `**/*.generated.ts`, `**/*.d.ts`, `ext/study/main.js`,
 `ext/**/readability.js`, `ext/**/test/**`, third-party code an extension
 bundles (`ext/**/vendor/**`, generated, never edited), and the kit and the components
-it wraps: `src/ui/kit.ts`, `src/ui/scene.ts`, `src/ui/toggle.ts`,
+it wraps: `src/ui/kit.ts`, `src/ui/block.ts`, `src/ui/scene.ts`, `src/ui/toggle.ts`,
 `src/ui/inputBox.ts`, `src/ui/dropdown.ts`, `src/ui/slider.ts`,
 `src/ui/tabBar.ts`, `src/ui/segmentedControl.ts`, `src/ui/contextMenu.ts`,
 `src/ui/dateTimeField.ts`.
