@@ -76,6 +76,7 @@ import {
   ILanguageModelToolsService,
 } from '../services/chatTypes.js';
 import { ICanvasPageQueryService } from '../services/serviceTypes.js';
+import { resolveToolAssetPath } from '../tools/toolAssetPath.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -272,6 +273,8 @@ export interface ParallxApiObject {
     readonly toolPath: string;
     /** The app's time zone (IANA): the Time Zone setting, or this computer's when empty. Read it when you need it; it can change. */
     readonly timeZone: string;
+    /** The bytes of a file inside the tool's own folder (a mesh, a model, an image it ships), by relative path. Rejects outside it. */
+    readAsset(relativePath: string): Promise<ArrayBuffer>;
   };
   readonly services: {
     /**
@@ -926,6 +929,16 @@ export function createToolApi(
       appVersion: PARALLX_VERSION,
       toolPath: toolDescription.toolPath,
       get timeZone() { return assistantTimeZone(); },
+      async readAsset(relativePath: string): Promise<ArrayBuffer> {
+        const full = resolveToolAssetPath(toolDescription.toolPath, relativePath);
+        if (!full) throw new Error(`"${relativePath}" is not a path inside the tool's folder.`);
+        const bridge = (globalThis as any).parallxElectron;
+        if (!bridge?.readToolAsset) throw new Error('Reading tool files needs the desktop app.');
+        const r = await bridge.readToolAsset(full);
+        if (!r || 'error' in r) throw new Error((r && r.error) || `Could not read "${relativePath}".`);
+        const b: Uint8Array = r.bytes;
+        return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+      },
     }),
 
     // Per-extension isolated database — only available for external (non-builtin) tools.

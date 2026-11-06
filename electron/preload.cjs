@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   uninstallTool: (toolId) => ipcRenderer.invoke('tools:uninstall', toolId),
   /** Read a tool module's source code for blob URL loading (external tools only). Returns { source } or { error }. */
   readToolModule: (filePath) => ipcRenderer.invoke('tools:read-module', filePath),
+  readToolAsset: (filePath) => ipcRenderer.invoke('tools:read-asset', filePath),
 
   // ── Native OS drag-and-drop ──
   /**

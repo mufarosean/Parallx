@@ -1638,6 +1638,14 @@ export namespace env {
    * need it: the user can change it.
    */
   export const timeZone: string;
+
+  /**
+   * The bytes of a file the tool ships in its own folder (a mesh, a model,
+   * an image), by a path relative to that folder: `readAsset('figure/body.bin')`.
+   * Rejects a path that is absolute or climbs out of the folder, and a file
+   * over 512 MB. Code files are imported, not read: this is for data.
+   */
+  export function readAsset(relativePath: string): Promise<ArrayBuffer>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

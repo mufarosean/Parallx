@@ -543,7 +543,10 @@ api.env.appName       // 'Parallx'
 api.env.appVersion    // semver
 api.env.toolPath      // absolute path to this extension's directory
 api.env.timeZone      // the app's time zone, an IANA name such as 'America/Chicago'
+await api.env.readAsset('figure/body.bin')   // → ArrayBuffer: a data file the extension ships
 ```
+
+`api.env.readAsset(relativePath)` reads a data file from the extension's own folder (a mesh, a model, an image), as an `ArrayBuffer`. The path is relative to the folder; an absolute path, a URL or `..` is refused, and so is a file over 512 MB. Code is imported (`import './x.js'`), never read this way.
 
 `api.env.timeZone` is the one time zone for the whole app: the Time Zone setting (Settings › General), or this computer's zone when that is empty. Use it for every "today", day boundary and date label (`new Intl.DateTimeFormat('en-CA', { timeZone: api.env.timeZone })`) so your dates agree with the assistant and every other tool. Read it each time you need it (the user can change it while you run); never hardcode a zone (a test rejects `timeZone: 'Area/City'` literals in tools).
 
