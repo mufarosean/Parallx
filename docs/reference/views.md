@@ -12,7 +12,6 @@ The view containers (an activity bar icon, a panel tab) and the views tools cont
 | `browser-container` | Browser | browser | sidebar |  |
 | `budget-container` | Budget | budget | sidebar |  |
 | `canvas-container` | Canvas | canvas | sidebar |  |
-| `characterStudio-container` | Character Studio | character-studio | sidebar |  |
 | `chat-container` | Chat | chat | auxiliaryBar |  |
 | `conceptLab-container` | Concept Lab | concept-lab | sidebar |  |
 | `text-generator-container` | Creations AI | creations-ai | sidebar |  |
@@ -35,7 +34,6 @@ The view containers (an activity bar icon, a panel tab) and the views tools cont
 | `browser.sidebar` | Browser | browser | browser-container |  |
 | `budget.nav` | Budget | budget | budget-container |  |
 | `view.canvas` | Pages | canvas | canvas-container |  |
-| `characterStudio.characters` | Characters | character-studio | characterStudio-container |  |
 | `view.chat` | Chat | chat | chat-container |  |
 | `conceptLab.modules` | Modules | concept-lab | conceptLab-container |  |
 | `textGenerator.home` | Creations AI | creations-ai | text-generator-container |  |

@@ -24,14 +24,12 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
-    "@pixiv/three-vrm": "3.5.5",
     "@playwright/test": "^1.58.2",
     "electron": "^40.2.1",
     "esbuild": "^0.27.3",
     "jsdom": "^28.1.0",
     "lucide-static": "^1.7.0",
     "playwright": "^1.58.2",
-    "three": "0.187.0",
     "typescript": "^5.5.0",
     "vitest": "^4.0.18"
   },
