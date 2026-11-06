@@ -13,6 +13,8 @@ import {
   createPageHeader as kitCreatePageHeader,
   createSectionLabel as kitCreateSectionLabel,
   createBlock as kitCreateBlock,
+  createChoiceGrid as kitCreateChoiceGrid,
+  type IKitChoiceGridOptions,
   type IKitBlockOptions,
   createSegmented as kitCreateSegmented,
   createSurface as kitCreateSurface,
@@ -130,6 +132,7 @@ export function createUiApi() {
     createEmptyState: (container: HTMLElement | null, options: IKitEmptyStateOptions) => kitCreateEmptyState(container, options),
     createSectionLabel: (container: HTMLElement | null, text: string) => kitCreateSectionLabel(container, text),
     createBlock: (container: HTMLElement | null, tag: string, options?: IKitBlockOptions) => kitCreateBlock(container, tag, options),
+    createChoiceGrid: (container: HTMLElement | null, options: IKitChoiceGridOptions) => kitCreateChoiceGrid(container, options),
     createFilterChip: (container: HTMLElement | null, options: IKitFilterChipOptions) => kitCreateFilterChip(container, options),
     createSegmented: (container: HTMLElement | null, options: IKitSegmentedOptions) => kitCreateSegmented(container, options),
     // The scene (docs/SELF_DESCRIBING_UI_DESIGN.md): a region of the

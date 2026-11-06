@@ -85,6 +85,26 @@ describe('api.ui and the scene', () => {
     expect(commits).toEqual([0.75]);
   });
 
+  it('a choice grid is a named radio group: one tile in the tab order, arrows choose', () => {
+    const picked: string[] = [];
+    const g = ui.createChoiceGrid(host, { id: 'studio.hair', label: 'Hair colour', variant: 'swatch', value: 'b', onChange: (v: string) => picked.push(v),
+      items: [{ value: 'a', label: 'Black', rgb: [0, 0, 0] }, { value: 'b', label: 'Brown', rgb: [0.4, 0.2, 0.1] }, { value: 'c', label: 'Blonde', rgb: [0.9, 0.7, 0.4] }] });
+    const tiles = [...g.element.querySelectorAll('[role="radio"]')] as HTMLElement[];
+    expect(g.element.getAttribute('role')).toBe('radiogroup');
+    expect(tiles.map((t) => t.getAttribute('aria-label'))).toEqual(['Black', 'Brown', 'Blonde']);
+    expect(tiles.map((t) => t.tabIndex)).toEqual([-1, 0, -1]);
+    expect(tiles[1].getAttribute('aria-checked')).toBe('true');
+    tiles[1].focus();
+    tiles[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(picked).toEqual(['c']);
+    expect(g.value).toBe('c');
+    expect(scene.find('studio.hair')[0].state?.()).toEqual({ kind: 'value', value: 'c' });
+    tiles[0].click();
+    expect(picked).toEqual(['c', 'a']);
+    g.value = 'b';
+    expect(picked).toEqual(['c', 'a']);
+  });
+
   it('a block is layout or text only', () => {
     const b = ui.createBlock(host, 'span', { className: 'x-name', text: 'Ada', attrs: { 'aria-hidden': 'true' } });
     expect(b.tagName).toBe('SPAN');

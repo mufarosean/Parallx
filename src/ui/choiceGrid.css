@@ -1,0 +1,42 @@
+/* choiceGrid.css — the kit's grid of picture tiles or colour swatches (choiceGrid.ts). */
+
+.ui-choice-grid {
+  display: grid;
+  gap: var(--px-space-2);
+}
+.ui-choice-grid--picture { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+.ui-choice-grid--swatch { grid-template-columns: repeat(auto-fill, 28px); gap: var(--px-space-2); }
+
+.ui-choice-grid__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--px-space-1);
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--px-text-secondary);
+  font: inherit;
+  font-size: var(--px-text-xs);
+  cursor: pointer;
+  border-radius: var(--px-radius-md);
+}
+.ui-choice-grid__face {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-inset);
+  box-shadow: inset 0 0 0 1px var(--px-border);
+}
+.ui-choice-grid--picture .ui-choice-grid__face { aspect-ratio: 1; }
+.ui-choice-grid--swatch .ui-choice-grid__face { width: 28px; height: 28px; border-radius: var(--px-radius-full); }
+.ui-choice-grid__face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ui-choice-grid__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+
+.ui-choice-grid__tile:hover .ui-choice-grid__face { box-shadow: inset 0 0 0 1px var(--px-border-strong); }
+.ui-choice-grid__tile--selected .ui-choice-grid__face { box-shadow: 0 0 0 2px var(--px-accent); }
+.ui-choice-grid__tile--selected .ui-choice-grid__label { color: var(--px-text); font-weight: 600; }
+.ui-choice-grid__tile:focus-visible { outline: none; }
+.ui-choice-grid__tile:focus-visible .ui-choice-grid__face { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 4px var(--px-accent); }

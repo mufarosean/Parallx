@@ -720,6 +720,20 @@ export namespace ui {
    */
   export function createBlock(container: HTMLElement | null, tag: string, options?: { readonly className?: string; readonly text?: string; readonly attrs?: Readonly<Record<string, string>> }): HTMLElement;
 
+  /**
+   * One choice from a grid of picture tiles (a portrait each) or colour swatches:
+   * a radio group, arrow keys move between tiles, one tile in the tab order.
+   * `rgb` is a colour as data (0..1 each), never a styling literal.
+   */
+  export function createChoiceGrid(container: HTMLElement | null, options: {
+    readonly id: string;
+    readonly label: string;
+    readonly items: readonly { readonly value: string; readonly label: string; readonly image?: string; readonly rgb?: readonly [number, number, number] }[];
+    readonly value?: string;
+    readonly variant?: 'picture' | 'swatch';
+    readonly onChange?: (value: string) => void;
+  }): { readonly element: HTMLElement; value: string; setImage(value: string, image: string): void; dispose(): void };
+
   export interface FilterChipOptions extends ControlDeclaration {
     readonly label: string;
     /** Drawn after the label in a fainter tone. */
