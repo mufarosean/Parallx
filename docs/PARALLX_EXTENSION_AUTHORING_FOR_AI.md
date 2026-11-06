@@ -867,6 +867,14 @@ api.ui.createEmptyState(body, {
   action: { label: 'Import CSV', onClick: importCsv },
 });
 
+// Layout and text around your controls: the kit's block, never document.createElement.
+// Refuses control tags (button, input, a, select) and on* attributes; rawDomRatchet counts the rest.
+const card = api.ui.createBlock(body, 'div', { className: 'budget-card' });
+api.ui.createBlock(card, 'span', { className: 'budget-card-name', text: account.name });
+
+// A header or empty-state action can run a command instead of a handler (kitHandlerRatchet counts onClick):
+// primary: { label: 'Export…', icon: 'download', command: 'budget.export', args: [accountId] }
+
 // Section label inside a page or sidebar.
 api.ui.createSectionLabel(sidebar, 'Accounts');
 

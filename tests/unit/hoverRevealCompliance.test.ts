@@ -47,7 +47,7 @@ type Counts = Record<string, number>;
 
 export function measureHoverReveals(): Counts {
   const out: Counts = {};
-  const files = globSync(['src/**/*.css', 'src/**/*.ts', 'ext/**/*.css', 'ext/**/*.js'], { cwd: ROOT, ignore: ['**/node_modules/**', '**/*.d.ts', '**/*.generated.ts', 'ext/**/test/**'] }).sort();
+  const files = globSync(['src/**/*.css', 'src/**/*.ts', 'ext/**/*.css', 'ext/**/*.js'], { cwd: ROOT, ignore: ['**/node_modules/**', 'ext/**/vendor/**', '**/*.d.ts', '**/*.generated.ts', 'ext/**/test/**'] }).sort();
   for (const f of files) {
     const text = readFileSync(resolve(ROOT, f), 'utf8');
     if (!f.endsWith('.css') && !/:hover/.test(text)) continue;

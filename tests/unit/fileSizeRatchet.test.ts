@@ -24,7 +24,7 @@ export const FILE_LINE_BUDGET = 800;
 
 const SOURCE_GLOBS = ['src/**/*.{ts,css}', 'ext/**/*.{js,css}', 'electron/**/*.{cjs,mjs,js}', 'scripts/**/*.{mjs,cjs,js}'];
 const NOT_COUNTED = [
-  '**/node_modules/**',
+  '**/node_modules/**', 'ext/**/vendor/**',
   '**/*.generated.ts',
   '**/*.d.ts',
   'ext/study/main.js',

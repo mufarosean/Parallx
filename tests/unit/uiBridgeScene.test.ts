@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { scene } from '../../src/ui/scene.js';
 import { createUiApi } from '../../src/api/bridges/uiBridge.js';
+import { installKitCommands } from '../../src/ui/kit.js';
 
 let host: HTMLElement;
 let ui: ReturnType<typeof createUiApi>;
@@ -82,6 +83,26 @@ describe('api.ui and the scene', () => {
     input.dispatchEvent(new Event('change'));
     expect(changes).toEqual([0.75]);
     expect(commits).toEqual([0.75]);
+  });
+
+  it('a block is layout or text only', () => {
+    const b = ui.createBlock(host, 'span', { className: 'x-name', text: 'Ada', attrs: { 'aria-hidden': 'true' } });
+    expect(b.tagName).toBe('SPAN');
+    expect(b.textContent).toBe('Ada');
+    expect(b.getAttribute('aria-hidden')).toBe('true');
+    expect(b.parentElement).toBe(host);
+    expect(() => ui.createBlock(host, 'button')).toThrow();
+    expect(() => ui.createBlock(host, 'a')).toThrow();
+    expect(() => ui.createBlock(host, 'div', { attrs: { onclick: 'x()' } })).toThrow();
+  });
+
+  it('a header action with a command and no handler runs its command with its arguments', async () => {
+    const ran: unknown[][] = [];
+    installKitCommands({ executeCommand: async (...a: unknown[]) => { ran.push(a); } });
+    ui.createPageHeader(host, { title: 'Studio', primary: { id: 'studio.export', label: 'Export…', command: 'studio.export', args: ['c1'] } });
+    (host.querySelector('[data-px-id="studio.export"]') as HTMLButtonElement).click();
+    await Promise.resolve();
+    expect(ran).toEqual([['studio.export', 'c1']]);
   });
 
   it('sceneSlug is the kit one, for dynamic id segments', () => {

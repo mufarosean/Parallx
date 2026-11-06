@@ -29,7 +29,7 @@ export const MOUSE_PRESS_PATTERNS: readonly RegExp[] = [
 ];
 
 const SOURCE_GLOBS = ['src/**/*.ts', 'ext/**/*.js'];
-const NOT_COUNTED = ['**/node_modules/**', '**/*.generated.ts', '**/*.d.ts', 'ext/**/readability.js', 'ext/**/test/**', 'src/ui/touchDrag.ts'];
+const NOT_COUNTED = ['**/node_modules/**', 'ext/**/vendor/**', '**/*.generated.ts', '**/*.d.ts', 'ext/**/readability.js', 'ext/**/test/**', 'src/ui/touchDrag.ts'];
 
 type Counts = Record<string, number>;
 

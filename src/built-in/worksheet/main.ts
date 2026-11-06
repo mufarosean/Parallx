@@ -113,7 +113,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
             configureQuiz: (preset) => { state.quizPreset = preset; openBuilder(); },
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
             openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
-            openHome: () => BACK_TO_HOME.onClick(),
+            openHome: () => BACK_TO_HOME.onClick?.(),
             examDate: () => getExamDate(),
             xpCashRate: () => getXpCashRate(),
             cashOut: async (xp, cents) => {

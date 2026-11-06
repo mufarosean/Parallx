@@ -136,7 +136,7 @@ export function planActions(): PlanActions {
       return events.filter((e) => e.source.startsWith('ext:')).map((e) => ({ object: e.object, detail: e.detail ?? '', ts: e.ts }));
     },
     renderIcon: (id, size) => { try { return state.api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
-    openHome: () => BACK_TO_HOME.onClick(),
+    openHome: () => BACK_TO_HOME.onClick?.(),
     importPlan: () => void pickAndImportPlan(),
     removePlan: () => {
       void (async () => {

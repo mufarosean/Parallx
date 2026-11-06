@@ -674,7 +674,13 @@ export namespace ui {
     readonly icon?: string;
     readonly title?: string;
     readonly disabled?: boolean;
-    readonly onClick: () => void;
+    /** The action's id in the scene. */
+    readonly id?: string;
+    /** The command the action runs (recorded in the scene), with `args`. */
+    readonly command?: string;
+    readonly args?: readonly unknown[];
+    /** Runs instead of `command` when both are given; optional when `command` is. */
+    readonly onClick?: () => void;
   }
   export interface PageHeaderOptions {
     readonly title: string;
@@ -704,6 +710,15 @@ export namespace ui {
 
   /** A section label inside a page or sidebar: sentence case, never uppercase. */
   export function createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
+
+  /**
+   * A layout or text element around your controls (div, span, p, section,
+   * header, footer, figure, figcaption, ul, ol, li, img, canvas, strong, em,
+   * small): `createBlock(row, 'span', { className: 'x-name', text: name })`.
+   * Not a control and never declared; a button, link or field comes from its
+   * own kit function, and the block refuses those tags and on* attributes.
+   */
+  export function createBlock(container: HTMLElement | null, tag: string, options?: { readonly className?: string; readonly text?: string; readonly attrs?: Readonly<Record<string, string>> }): HTMLElement;
 
   export interface FilterChipOptions extends ControlDeclaration {
     readonly label: string;

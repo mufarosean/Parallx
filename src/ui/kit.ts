@@ -166,9 +166,18 @@ export interface IKitAction {
   readonly icon?: string;
   readonly title?: string;
   readonly disabled?: boolean;
-  /** The command the action runs, recorded in the scene; `onClick` still runs it. */
+  /** The command the action runs, recorded in the scene; with `onClick` too, the handler runs instead. */
   readonly command?: string;
-  readonly onClick: () => void;
+  /** The arguments `command` runs with. */
+  readonly args?: readonly unknown[];
+  /** Optional when `command` is given: the action then runs the command. */
+  readonly onClick?: () => void;
+}
+
+/** What an action does when chosen: its handler, or else its command. */
+function runAction(a: IKitAction): void {
+  if (a.onClick) a.onClick();
+  else if (a.command) runCommand({ command: a.command, args: a.args });
 }
 
 export interface IKitPageHeaderOptions {
@@ -348,6 +357,34 @@ export function createSection(container: HTMLElement | null | undefined, label: 
   return mount(container, sec);
 }
 
+/** Elements that are never controls: layout, text, pictures. A button, link or field comes from its own kit function. */
+const BLOCK_TAGS = new Set(['div', 'span', 'p', 'section', 'header', 'footer', 'figure', 'figcaption', 'ul', 'ol', 'li', 'img', 'canvas', 'strong', 'em', 'small']);
+
+export interface IKitBlockOptions {
+  readonly className?: string;
+  readonly text?: string;
+  /** Plain attributes (role, aria-*, alt, src, data-*); never an event handler. */
+  readonly attrs?: Readonly<Record<string, string>>;
+}
+
+/**
+ * A layout or text element: the one way a tool makes the elements around its
+ * controls (docs/SELF_DESCRIBING_UI_DESIGN.md: not a control, never declared).
+ * Refuses a tag that would be a control, and on* attributes.
+ */
+export function createBlock(container: HTMLElement | null | undefined, tag: string, options: IKitBlockOptions = {}): HTMLElement {
+  const t = String(tag).toLowerCase();
+  if (!BLOCK_TAGS.has(t)) throw new Error(`createBlock makes layout and text only, not <${t}>: use the kit's control for it.`);
+  const e = document.createElement(t);
+  if (options.className) e.className = options.className;
+  if (options.text != null) e.textContent = options.text;
+  for (const [k, v] of Object.entries(options.attrs ?? {})) {
+    if (/^on/i.test(k)) throw new Error(`createBlock does not set event handlers (${k}).`);
+    e.setAttribute(k, v);
+  }
+  return mount(container, e);
+}
+
 /** A row of a list: a name over a quieter detail line; buttons added to it sit at its end. */
 export function createRow(container: HTMLElement | null | undefined, options: { readonly name: string; readonly detail?: string; readonly detailTitle?: string }): HTMLElement {
   const row = document.createElement('div');
@@ -389,7 +426,7 @@ export function createEmptyState(container: HTMLElement | null | undefined, opti
   }
   if (options.action) {
     const a = options.action;
-    const btn = createButton(root, { id: a.id ?? null, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
+    const btn = createButton(root, { id: a.id ?? null, command: a.command, args: a.args, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => runAction(a) });
     btn.classList.add('px-empty__action');
   }
   return mount(container, root);
@@ -415,7 +452,7 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
     a.textContent = back.label;
     a.appendChild(createIconElement('chevron-right', 12));
     if (back.title) a.title = back.title;
-    a.addEventListener('click', () => back.onClick());
+    a.addEventListener('click', () => runAction(back));
     titles.appendChild(a);
     if (back.id) declareControl(a, { id: back.id, label: back.label, hint: back.title, command: back.command });
   }
@@ -436,16 +473,16 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
   const secondary = options.secondary ?? [];
   const visible = secondary.slice(0, MAX_SECONDARY);
   const overflow: IExtensionMenuItem[] = secondary.slice(MAX_SECONDARY).map((a) => ({
-    label: a.label, icon: a.icon, disabled: a.disabled, tooltip: a.title, onSelect: a.onClick,
+    label: a.label, icon: a.icon, disabled: a.disabled, tooltip: a.title, onSelect: () => runAction(a),
   }));
   const more = [...overflow, ...(overflow.length && options.more?.length ? [{ separator: true }] : []), ...(options.more ?? [])];
 
   for (const a of visible) {
-    createButton(actions, { id: a.id ?? null, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'secondary', onClick: () => a.onClick() });
+    createButton(actions, { id: a.id ?? null, command: a.command, args: a.args, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'secondary', onClick: () => runAction(a) });
   }
   if (options.primary) {
     const a = options.primary;
-    createButton(actions, { id: a.id ?? null, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
+    createButton(actions, { id: a.id ?? null, command: a.command, args: a.args, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => runAction(a) });
   }
   if (more.length) {
     const btn = createIconButton(actions, { id: 'pageHeader.more', icon: 'ellipsis', title: 'More Actions' });

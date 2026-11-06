@@ -21,7 +21,7 @@ const BASELINE = resolve(__dirname, 'kit-handler-baseline.json');
 
 const SOURCE_GLOBS = ['src/**/*.ts', 'ext/**/*.js'];
 const NOT_COUNTED = [
-  '**/node_modules/**', '**/*.generated.ts', '**/*.d.ts',
+  '**/node_modules/**', 'ext/**/vendor/**', '**/*.generated.ts', '**/*.d.ts',
   'ext/study/main.js', 'ext/**/readability.js', 'ext/**/test/**',
   'src/ui/kit.ts', 'src/ui/scene.ts',
 ];
