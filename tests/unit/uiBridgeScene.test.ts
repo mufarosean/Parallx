@@ -69,6 +69,21 @@ describe('api.ui and the scene', () => {
     expect(scene.find('budget.tab.accounts')[0].state?.()).toEqual({ kind: 'pressed', value: true });
   });
 
+  it('a slider moves from code without firing, and reports a finished move', () => {
+    const changes: number[] = []; const commits: number[] = [];
+    const s = ui.createSlider(host, { id: 'studio.height', label: 'Height', min: 0, max: 1, step: 0.01, value: 0.5, onChange: (v: number) => changes.push(v), onCommit: (v: number) => commits.push(v) });
+    s.setValue(0.25);
+    expect(s.value).toBe(0.25);
+    expect(scene.find('studio.height')[0].state?.()).toEqual({ kind: 'number', value: 0.25 });
+    expect(changes).toEqual([]);
+    const input = s.element.querySelector('input') as HTMLInputElement;
+    input.value = '0.75';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('change'));
+    expect(changes).toEqual([0.75]);
+    expect(commits).toEqual([0.75]);
+  });
+
   it('sceneSlug is the kit one, for dynamic id segments', () => {
     expect(ui.sceneSlug('Saved So Far')).toBe('saved-so-far');
     expect(ui.sceneSlug('')).toBe('none');

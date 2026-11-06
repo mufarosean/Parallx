@@ -682,11 +682,15 @@ export interface IKitSliderOptions extends IKitControlDeclaration {
   readonly value?: number;
   readonly disabled?: boolean;
   readonly onChange?: (value: number) => void;
+  /** When a move ends (the thumb let go, a key press done): the moment to save or record an undo step. */
+  readonly onCommit?: (value: number) => void;
 }
 
 export interface IKitSlider {
   readonly element: HTMLElement;
   readonly value: number;
+  /** Move the thumb from code (a loaded value, a reset); fires neither onChange nor onCommit. */
+  setValue(value: number): void;
   dispose(): void;
 }
 
@@ -695,11 +699,13 @@ export function createSlider(container: HTMLElement | null | undefined, options:
   const host = container ?? document.createElement('div');
   const slider = new Slider(host, { min: options.min, max: options.max, step: options.step, value: options.value, ariaLabel: options.label, disabled: options.disabled });
   if (options.onChange) slider.onDidChange(options.onChange);
+  if (options.onCommit) slider.onDidCommit(options.onCommit);
   setRole(slider.element, 'slider');
   const reg = declare(slider.element, 'slider', options, options.label, { state: () => ({ kind: 'number', value: slider.value }) });
   return {
     element: slider.element,
     get value() { return slider.value; },
+    setValue(value: number) { slider.value = value; },
     dispose() { reg.dispose(); slider.dispose(); slider.element.remove(); },
   };
 }

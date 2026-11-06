@@ -841,8 +841,11 @@ export namespace ui {
     readonly value?: number;
     readonly disabled?: boolean;
     readonly onChange?: (value: number) => void;
+    /** When a move ends (the thumb let go, a key press done): save or record an undo step here. */
+    readonly onCommit?: (value: number) => void;
   }
-  export interface Slider { readonly element: HTMLElement; readonly value: number; dispose(): void; }
+  /** setValue moves the thumb from code (a loaded value, a reset) without firing onChange or onCommit. */
+  export interface Slider { readonly element: HTMLElement; readonly value: number; setValue(value: number): void; dispose(): void; }
   /** A number on a range (role slider). */
   export function createSlider(container: HTMLElement | null, options: SliderOptions): Slider;
 
