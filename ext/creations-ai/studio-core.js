@@ -12,6 +12,8 @@
 
 import { STUDIO_FIELDS, STUDIO_KEYS, PORTRAIT_SECTIONS, emptySheet, stripDashes, splitRoleInstruction, sheetFromCharacter } from './studio-sheet.js';
 export { STUDIO_FIELDS, STUDIO_KEYS, emptySheet, stripDashes, splitRoleInstruction, sheetFromCharacter } from './studio-sheet.js';
+import { SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, countWords, normLabel, SECTION_HEAD, paragraphs, sectionOfParagraph, sectionsPresent, fieldShortfall, expansionDirection } from './sheet-register.js';
+export { SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, countWords, sectionOfParagraph, sectionsPresent, fieldShortfall, expansionDirection } from './sheet-register.js';
 import { connectionsBlock, connectionsRequirement } from './studio-connections.js';
 export { connectionDigest, connectionsBlock, backLinkLine, withRelationshipLine, parseRelationshipLines, relationConcept, lineageOf } from './studio-connections.js';
 
@@ -117,11 +119,6 @@ export function collapseWhitespace(text) {
     .trim();
 }
 
-export function countWords(text) {
-  const t = String(text || '').trim();
-  return t ? t.split(/\s+/).length : 0;
-}
-
 /**
  * Keep the first `maxWords` words, cut back to the last sentence end in the
  * final stretch so the model never sees a half sentence. Returns
@@ -215,7 +212,7 @@ export const DEFAULT_SHEET_STRUCTURE = [
   '# keeps its usual shape. Add "(no labels)" after a heading for plain paragraphs.',
   '',
   'Appearance',
-  '- Overview: the impression at first sight, in one or two sentences',
+  '- Overview: the impression at first sight, what anyone notices from across a room',
   '- Height and build: height, weight, frame, posture, how they carry it',
   '- Face: eyes, hair, skin, the features people remember, what the face does at rest',
   '- Clothes: what they wear day to day and how they wear it',
@@ -266,7 +263,7 @@ export function structureRequirement(key, entry) {
   const skeleton = entry.labels
     ? entry.sections.map((s) => `${s.name}: ...`).join('\\n\\n')
     : entry.sections.map(() => '...').join('\\n\\n');
-  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character, several sentences each; none is skipped, merged or padded out. The sections: ${list}. Written like: "${skeleton}" with each ... a full paragraph. A "${key}" with fewer than ${n} paragraphs is incomplete and wrong.`;
+  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character that the chat can describe or act on, ${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words each; none is skipped, merged or padded out. The sections: ${list}. Written like: "${skeleton}" with each ... a full paragraph. A "${key}" with fewer than ${n} paragraphs is incomplete and wrong.`;
 }
 
 /** The sheet's own rule for a structure, in the system message: models weigh it more there. */
@@ -276,47 +273,6 @@ export function structureSystemLine(structure) {
   const parts = keys.map((k) => `"${k}" (${structure[k].sections.length} sections: ${structure[k].sections.map((x) => x.name).join(', ')})`);
   return `Some fields have a required structure, given under Field requirements: ${parts.join('; ')}. Write EVERY section named, each as its own paragraph, in order. A field with fewer paragraphs than its sections is incomplete and wrong; never merge two sections into one paragraph.`;
 }
-
-const normLabel = (t) => String(t || '').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-
-/** A section's label at the start of a line, any length: "Face:", "**Face:**", "## Face -", a whole question. */
-const SECTION_HEAD = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]+?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/;
-
-/** The structure section a paragraph starts with, by its label; '' when it names none of `entry`'s. */
-export function sectionOfParagraph(paragraph, entry) {
-  if (!entry || !Array.isArray(entry.sections)) return '';
-  const m = SECTION_HEAD.exec(String(paragraph || '').trimStart().split('\n')[0]);
-  if (!m) return '';
-  const n = normLabel(m[1]);
-  const hit = entry.sections.find((x) => normLabel(x.name) === n);
-  return hit ? hit.name : '';
-}
-
-/**
- * Which of a structure's sections a field's text has. With labels, a section
- * is present when a paragraph or a line begins with its label (bold or not,
- * a colon or a dash after it); without, paragraphs are counted in order.
- * `{ present, missing }`, both lists of section names.
- */
-export function sectionsPresent(value, entry) {
-  const text = String(value || '').replace(/\r/g, '');
-  const sections = entry && Array.isArray(entry.sections) ? entry.sections : [];
-  const paras = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  if (!entry || !entry.labels) {
-    return { present: sections.slice(0, paras.length).map((x) => x.name), missing: sections.slice(paras.length).map((x) => x.name) };
-  }
-  const heads = new Set();
-  for (const line of text.split('\n')) {
-    const m = SECTION_HEAD.exec(line);
-    if (m) heads.add(normLabel(m[1]));
-  }
-  const present = [];
-  const missing = [];
-  for (const x of sections) (heads.has(normLabel(x.name)) ? present : missing).push(x.name);
-  return { present, missing };
-}
-
-const paragraphs = (t) => String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 
 /**
  * A structured field with only some of its sections sent: those sections
@@ -371,9 +327,11 @@ export function buildSectionMessages(ctx, sheet, key, section, entry, direction 
   const s = (entry && entry.sections || []).find((x) => x.name === section) || { name: section, hint: '' };
   const base = buildFieldMessages(ctx, sheet, key, direction);
   const ask = [
-    `Rewrite ONLY the "${s.name}" section of the ${label}${s.hint ? ` (${s.hint})` : ''}${String(direction || '').trim() ? ', following the user\'s direction for it:' : ': a fresh take, consistent with the rest of the sheet, about the same length.'}`,
-    ...(String(direction || '').trim() ? [`DIRECTION: ${String(direction).trim()}`, 'The direction leads: change what it asks to change, and keep the rest of the sheet true. Plain and concrete, no purple filler.'] : []),
+    `Rewrite ONLY the "${s.name}" section of the ${label}${s.hint ? ` (${s.hint})` : ''}${String(direction || '').trim() ? ', following the user\'s direction for it:' : `: a fresh take, consistent with the rest of the sheet, ${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words.`}`,
+    ...(String(direction || '').trim() ? [`DIRECTION: ${String(direction).trim()}`, 'The direction leads: change what it asks to change, and keep the rest of the sheet true. Plain, literal and concrete, every sentence something the chat can act on; no figures of speech, no filler.'] : []),
     `Return the "${key}" key with ONE paragraph: the ${s.name} section, starting with "${s.name}:". Do not write the other sections of the ${label}; they stay exactly as they are.`,
+    '',
+    FIELD_CRAFT_RULES,
   ].join('\n');
   const user = base[1].content;
   const cut = user.indexOf('Current character sheet JSON:');
@@ -393,12 +351,23 @@ export function sectionNamedIn(direction, entry) {
   return hits.length === 1 ? hits[0].name : '';
 }
 
-/** The direction for a rewrite that adds what a structured field lacks and keeps what it has. */
-export function completionDirection(entry, missing) {
+/**
+ * The direction for a rewrite that adds what a structured field lacks and
+ * keeps what it has: `missing` sections are added, `thin` ones grown to the
+ * section floor with their facts kept, every other paragraph stays word for word.
+ */
+export function completionDirection(entry, missing, thin = []) {
   const names = Array.isArray(missing) ? missing : [];
+  const grow = (Array.isArray(thin) ? thin : []).filter((n) => !names.includes(n));
   const all = entry.sections.map((x) => x.name).join(', ');
-  const want = entry.sections.filter((x) => names.includes(x.name)).map((x) => (x.hint ? `${x.name} (${x.hint})` : x.name)).join('; ');
-  return `Keep every paragraph that is already there, word for word, and ADD the missing sections: ${want}. Each missing section is its own paragraph of several concrete sentences${entry.labels ? ', starting with its label and a colon' : ''}, placed in the order of the structure. The result has all ${entry.sections.length} sections, in this order: ${all}. Nothing else changes.`;
+  const describe = (list) => entry.sections.filter((x) => list.includes(x.name)).map((x) => (x.hint ? `${x.name} (${x.hint})` : x.name)).join('; ');
+  const label = entry.labels ? ', starting with its label and a colon' : '';
+  const words = `${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words of concrete detail the chat can describe or act on`;
+  const parts = [];
+  if (names.length) parts.push(`Keep every paragraph that is already there, word for word, and ADD the missing sections: ${describe(names)}. Each missing section is its own paragraph of ${words}${label}, placed in the order of the structure.`);
+  if (grow.length) parts.push(`${names.length ? 'Also' : 'Keep every other paragraph word for word, and'} EXPAND the thin sections: ${describe(grow)}. Each keeps every fact it already states and grows to ${words}, as its own paragraph${label}; no figures of speech, no filler.`);
+  parts.push(`The result has all ${entry.sections.length} sections, in this order: ${all}. Nothing else changes.`);
+  return parts.join(' ');
 }
 
 /** Every field's requirement, with the structured fields' lines in place of their usual ones. */
@@ -415,11 +384,11 @@ export function fieldRequirements(structure) {
 const FIELD_REQUIREMENTS = [
   '- "name": their name. The NAME given above when there is one, exactly; otherwise the canon\'s name when there is one. Otherwise a first name and surname from the character\'s own country and generation, the kind found in a phone book there. Never the fiction defaults: Elias, Elara, Silas, Marcus, Mara, Mira, Thorne, Vance, Vane, Aris, Kael, Vex, Wren. The same rule for every named person in the sheet.',
   '- "tagline": at most ten words, no name, not a restatement of the concept: the one line that says who they are now.',
-  '- "description": 1-2 paragraphs: who they are, their background, occupation and daily life, and how they behave. Concrete specifics over adjectives.',
-  '- "appearance": one vivid paragraph: their physical appearance and typical clothing, faithful to the canon and the concept. Any physical trait the concept states replaces any attribute given below.',
-  '- "personality": one paragraph: their temperament, how they treat people, what they openly want, and the hidden need that conflicts with it.',
+  `- "description": 1-2 paragraphs, ${FIELD_WORDS.description[0]} to ${FIELD_WORDS.description[1]} words: who they are, their background, occupation and daily life, and how they behave, with the particulars the chat can use (where they live and work, what a day of theirs holds, what they do when a stranger speaks to them). Concrete specifics over adjectives.`,
+  `- "appearance": one paragraph of ${FIELD_WORDS.appearance[0]} to ${FIELD_WORDS.appearance[1]} words: their physical appearance and typical clothing, faithful to the canon and the concept, as things the chat can describe when they walk in (height and build, face and hair, what they wear and how they wear it, how they move). Any physical trait the concept states replaces any attribute given below.`,
+  `- "personality": one paragraph of ${FIELD_WORDS.personality[0]} to ${FIELD_WORDS.personality[1]} words: their temperament, how they treat people, what they openly want, and the hidden need that conflicts with it, each shown by what they do in a situation the chat may meet (a stranger at the door, bad news, being contradicted).`,
   '- "voice": three short lines, one per line with a line break between them, each a third-person description of how they speak in general: the tone; the rhythm (sentence length, questions or statements, how they handle silence); the register (plain or formal, the words of their trade and their place). Nothing tied to one mood or one situation, no sample lines, no quoted phrases, no phrases they use or never use: those make the chat repeat them. Sample lines belong in the example dialogue. A habit (counting, stories, a dialect word) may be a fourth line only as a tendency with how often ("tells a story once or twice in a scene, when a question gets too close"), never as "always", "never" or "instead of": written as a rule it goes into every reply. A catchphrase the concept gives is that fourth line, the phrase in single quotes with how often ("says \'and that is the tragedy\' once or twice in a scene, after a bit lands"); left out of the voice it is never said. How often is something a reader can see on the page (when a question gets too close, when she is checking a list), never a span of time or a silence the chat cannot measure.',
-  '- "backstory": 1-2 paragraphs in the past tense: where they come from, with places and ages, and at least one turning point that made them who they are.',
+  `- "backstory": 1-2 paragraphs, ${FIELD_WORDS.backstory[0]} to ${FIELD_WORDS.backstory[1]} words, in the past tense: where they come from, with places and ages, and at least one turning point that made them who they are.`,
   '- "drives": exactly three lines with a line break between them, each starting with its label: "Wants: ..." (what they openly want), "Fears: ..." (what they privately fear), "In the way: ..." (a person, a habit, a fact).',
   '- "secrets": one or two sentences: what they hide and who must never learn it.',
   '- "relationships": two to four named people, one per line with a line break between them, each starting "<Their name>: " then who they are to the character and how things stand between them right now.',
@@ -427,14 +396,17 @@ const FIELD_REQUIREMENTS = [
   '- "reminder": one third-person sentence: the single most important fact to keep straight about this character (who they are to someone, what they hide, where things stand now). Not how they talk: that is the voice, and a reminder written as a talk rule ("answers with stories, never with feelings") goes into every reply.',
 ].join('\n');
 
-const CRAFT_RULES = [
-  'Craft rules:',
-  '- The temperament comes from the concept and the canon, not from a default. Not every character is quiet, precise and cold; people are also warm, talkative, funny, anxious, sloppy, vain or boastful. Decide what this one is and let every field show it.',
-  '- No stock details: no scar, no trembling hands, no rigid posture, no steel-grey eyes unless the concept or the canon gives them. No stock phrases, no "eyes sparkling", no purple filler. Concrete specifics a reader would remember.',
-  '- Third person everywhere except inside the example dialogue, and no "you" at all outside it, not even the general "you"; say "a person" or "anyone".',
-  '- Inside the JSON strings, quote phrases with single quotes, never double quotes. Write every one of the twelve fields, "name" first; the object is not finished until "reminder" is written.',
-  `- ${NO_DASHES}`,
-].join('\n');
+const CRAFT_LINES = [
+  'The temperament comes from the concept and the canon, not from a default. Not every character is quiet, precise and cold; people are also warm, talkative, funny, anxious, sloppy, vain or boastful. Decide what this one is and let every field show it.',
+  'No stock details: no scar, no trembling hands, no rigid posture, no steel-grey eyes unless the concept or the canon gives them. No stock phrases, no "eyes sparkling", no filler. Concrete specifics the chat can describe and a reader would remember.',
+  'Every sentence passes the test above: the chat can describe, do, say or keep straight something because of it. A figure of speech fails it; so does a sentence that interprets or sums up.',
+  'Third person everywhere except inside the example dialogue, and no "you" at all outside it, not even the general "you"; say "a person" or "anyone".',
+  'Inside the JSON strings, quote phrases with single quotes, never double quotes. Write every one of the twelve fields, "name" first; the object is not finished until "reminder" is written.',
+  NO_DASHES,
+];
+const CRAFT_RULES = ['Craft rules:', ...CRAFT_LINES.map((l) => `- ${l}`)].join('\n');
+/** The same rules for one field's rewrite: without the line about the whole object. */
+const FIELD_CRAFT_RULES = ['Craft rules:', ...CRAFT_LINES.filter((l) => !l.startsWith('Inside the JSON strings')).map((l) => `- ${l}`)].join('\n');
 /** The craft rules every sheet is written to, for callers outside the Studio (the chat's character tools). */
 export const SHEET_CRAFT_RULES = CRAFT_RULES;
 
@@ -448,6 +420,8 @@ export function buildSheetMessages({ concept = '', focus = '', canon = [], spec 
   const structureLine = structureSystemLine(structure);
   const system = [
     'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
+    SHEET_PURPOSE,
+    SHEET_REGISTER,
     ...(structureLine ? [structureLine] : []),
     'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you", and never the general "you" either ("if you catch them early" becomes "if caught early"); the only "you" is inside the example dialogue. Never write instructions. It should all read as one consistent character portrait.',
     `Return ONLY a single JSON object with EXACTLY these string keys, in this order: ${STUDIO_KEYS.map((k) => `"${k}"`).join(', ')}. No markdown, no commentary.`,
@@ -547,7 +521,7 @@ export function buildFieldMessages({ concept = '', focus = '', canon = [], spec 
   const connReq = key === 'relationships' || key === 'description' || key === 'backstory' ? connectionsRequirement(connections) : '';
   const requirement = [fieldRequirements(structure).split('\n').find((l) => l.startsWith(`- "${key}"`)) || '', connReq].filter(Boolean).join('\n');
   return [
-    { role: 'system', content: `You are a character designer. Write in the THIRD PERSON as a description of the character; never address anyone as "you", not even the general "you"; never write instructions. Return ONLY a JSON object with exactly one string key: "${key}". No commentary. ${NO_DASHES}` },
+    { role: 'system', content: `You are a character designer. ${SHEET_PURPOSE}\n${SHEET_REGISTER}\nWrite in the THIRD PERSON as a description of the character; never address anyone as "you", not even the general "you"; never write instructions. Return ONLY a JSON object with exactly one string key: "${key}". No commentary. ${NO_DASHES}` },
     { role: 'user', content: [
       ...context,
       'Current character sheet JSON:', JSON.stringify(sheet, null, 2), '',
@@ -555,11 +529,13 @@ export function buildFieldMessages({ concept = '', focus = '', canon = [], spec 
         ? [
           `Rewrite ONLY the ${label}, following the user's direction for it:`,
           `DIRECTION: ${String(direction).trim()}`,
-          'The direction leads: change what it asks to change, add what it asks for, and keep the rest of the sheet true. Length is what the direction needs: if it asks for more detail or depth, write more (up to about three times the current length); otherwise keep about the same length. Plain and concrete, no purple filler, no stock phrases.',
+          'The direction leads: change what it asks to change, add what it asks for, and keep the rest of the sheet true. Length is what the direction needs: if it asks for more detail or depth, write more (up to about three times the current length); otherwise keep about the same length. Plain, literal and concrete, every sentence something the chat can act on; no figures of speech, no stock phrases.',
           `The usual shape of the ${label}, which the direction may override (a shape given as sections is kept: the direction changes what is in them):`,
         ]
-        : [`Rewrite ONLY the ${label}: a fresh take, consistent with the rest of the sheet but written differently than before. Keep to the same length as the current one or shorter; plain and concrete, no purple filler, no stock phrases.`]),
+        : [`Rewrite ONLY the ${label}: a fresh take, consistent with the rest of the sheet but written differently than before, to the usual length of the ${label} given below. Plain, literal and concrete, every sentence something the chat can act on; no figures of speech, no stock phrases.`]),
       requirement,
+      '',
+      FIELD_CRAFT_RULES,
     ].join('\n') },
   ];
 }

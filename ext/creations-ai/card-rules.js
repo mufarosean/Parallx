@@ -1,11 +1,14 @@
 // card-rules.js — reads a character card for the lines that make the chat
 // perform the card instead of the person: a Voice or Personality written as a
 // rule for every line ("always", "never", "instead of"), a quoted line that
-// then gets said scene after scene, and a Reminder that says how they talk
-// rather than what to keep straight. Findings, never errors: the Studio shows
-// them under Test Drive before any model call, the chat's character tool
-// notes them, and a save is never blocked. The chat already reads a habit as
-// a tendency; a card written as one gives it less to fight.
+// then gets said scene after scene, a Reminder that says how they talk
+// rather than what to keep straight, and a figure of speech in
+// a descriptive field ("her clothes are her armour", "as if", "a testament
+// to"), which the chat plays literally or cannot play at all. Findings,
+// never errors: the Studio shows them under Test Drive before any model
+// call, the chat's character tool notes them, and a save is never blocked.
+// The chat already reads a habit as a tendency; a card written as one gives
+// it less to fight.
 
 const ABSOLUTE = /\b(always|never|only ever|every time|in every (line|reply|sentence|turn)|constantly|all the time|instead of|cannot help|can't help|without fail|at every opportunity|whenever (she|he|they) can)\b/i;
 const QUOTE_LABEL = /^\s*(might say|never says|says|catchphrase|signature (line|phrase)|typical line)\s*:/i;
@@ -14,6 +17,23 @@ const QUOTED = /["“”]|(^|[\s(:])'[^'\n]{3,}'(?=[\s).,;!?]|$)/;
 const TENDENCY = /\b(now and then|sometimes|occasionally|once (or twice )?(in|a) (a )?(scene|while)|from time to time|every so often|rarely|seldom|not often)\b/i;
 const TALK = /\b(speak|speaks|talk|talks|say|says|answer|answers|answering|replies|reply|ask|asks|name|names|voice|sound|sounds|tone|word|words|sentence|sentences|question|questions|story|stories|metaphor|metaphors|phrase|phrases|accent|dialect|feeling|feelings|joke|jokes|count|counts)\b/i;
 
+// A figure of speech in a field the chat describes from. Each pattern is one
+// the sheet prompt forbids by name or a stock interpretive turn; a literal
+// use ("works as a map maker", "betrays her brother") is kept out by the
+// word that must follow.
+const FIGURE = new RegExp([
+  '\\bas (if|though)\\b',
+  '\\b(is|are|was|were|become|becomes|became|serves? as|doubles? as|functions? as|acts? as) (her|his|their|its|a kind of|a sort of|a form of|an?|the) (armou?r|mask|shield|fortress|weapon|cage|map|canvas|statement|manifesto|rebellion|declaration|second skin|battlefield|suit of armou?r|war paint)(?=[.,;:!?]| against| for| from| that| which| in| to| of|$)',
+  '\\ba testament to\\b', '\\bspeaks? volumes\\b', '\\btells? (its|their|his|her) own story\\b', '\\bevery inch (a|an|the)\\b', '\\ba study in\\b',
+  '\\bwears? (it|them|his \\w+|her \\w+|their \\w+) (like|as) (a|an|the)\\b', '\\bworn like (a|an)\\b', '\\betched (into|across) (her|his|their)\\b', '\\bhaunted by\\b', '\\bbelies?\\b',
+  '\\b(the|a) (ghost|echo) of\\b', '\\bquiet (strength|defiance|rebellion|dignity|rage)\\b', '\\bwritten (on|across|all over) (her|his|their) (face|body|hands)\\b',
+  '\\b(less|more) (a|an) \\w+ than (a|an)\\b',
+  // The interpretive tails a verbose model leaves on an otherwise literal sheet.
+  '\\blooks? like (a|an|the|someone|something)\\b', '\\breads? as\\b', '\\bthe (effect|impression|result) is\\b', '\\bnot so much \\w+ as\\b',
+].join('|'), 'i');
+const FIGURE_KEYS = ['description', 'appearance', 'personality', 'backstory'];
+
+const FIX_FIGURE = 'The chat plays this literally or cannot play it at all. Say the fact behind it, something the chat can describe or do: what they wear and how they put it on, what they do when someone comments on it. Figures of speech belong in the example dialogue only, in their own mouth.';
 const FIX_RULE = 'Say it as a tendency with how often, so the chat can leave it out of a reply: "tells a story once or twice in a scene, when a question gets too close."';
 const FIX_QUOTE = 'A line in the Voice is said scene after scene. A catchphrase stays only as a tendency with how often ("says \'and that is the tragedy\' once or twice in a scene, after a bit lands"); any other sample line belongs in the example dialogue, where it is one of three.';
 const FIX_TALK = 'Make the Reminder a fact to keep straight (who they are to someone, what they hide, where things stand). How they talk is Voice, as a tendency.';
@@ -42,6 +62,13 @@ export function readCard(sheet) {
   for (const line of lines(s.reminder)) {
     if (TALK.test(line) && (ABSOLUTE.test(line) || /\b(with|in|through|by)\s+(stories|questions|metaphors|silence|jokes)\b/i.test(line))) found.push({ key: 'reminder', kind: 'talk', label: 'Reminder about how they talk', line: short(line), fix: FIX_TALK });
   }
+  for (const key of FIGURE_KEYS) {
+    for (const line of lines(s[key])) {
+      for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+        if (FIGURE.test(sentence)) found.push({ key, kind: 'figure', label: 'A figure of speech', line: short(sentence), fix: FIX_FIGURE });
+      }
+    }
+  }
   return found;
 }
 
@@ -53,7 +80,7 @@ export function cardNotes(sheet) {
 /** The findings as Markdown for the Studio: a heading, one bullet per line, the fix under it. */
 export function cardFindingsMarkdown(findings) {
   if (!findings.length) return '';
-  const out = ['**On the card**: lines the chat will obey in every reply.', ''];
+  const out = ['**On the card**: lines the chat will obey in every reply, or play literally.', ''];
   for (const f of findings) out.push(`- **${f.label}** (${f.key}): "${f.line}"  \n  ${f.fix}`);
   return out.join('\n');
 }

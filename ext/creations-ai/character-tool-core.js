@@ -25,7 +25,7 @@
 import {
   STUDIO_FIELDS, STUDIO_KEYS, cleanFieldValue, emptySheet, fieldRequirements, structureSystemLine,
   sectionsPresent, characterFromSheet, sheetFromCharacter, connectionsBlock, parseRelationshipLines,
-  SHEET_CRAFT_RULES, stripDashes, mergeSections,
+  SHEET_CRAFT_RULES, SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, fieldShortfall, stripDashes, mergeSections,
 } from './studio-core.js';
 import { characterLink, clip, norm, rosterName } from './character-names.js';
 export { characterLink, clip, norm, rosterName } from './character-names.js';
@@ -263,10 +263,16 @@ export function checkSheet(sheet, { structure = null, allowEmpty = [] } = {}) {
   // A structured field (Settings, Sheet structure): every section, by its label.
   for (const [key, entry] of Object.entries(structure && typeof structure === 'object' ? structure : {})) {
     if (!entry || !entry.sections || !entry.sections.length || !sheet[key]) continue;
-    const { missing } = sectionsPresent(sheet[key], entry);
+    const { missing, thin } = fieldShortfall(key, sheet[key], entry);
     if (missing.length) {
       problems.push(`${key} is missing ${missing.length === 1 ? 'the section' : 'the sections'} ${missing.join(', ')}: write all ${entry.sections.length} sections, each its own paragraph${entry.labels ? ' starting with its label and a colon' : ''}, in this order: ${entry.sections.map((x) => x.name).join(', ')}. Keep the sections already written.`);
     }
+    if (thin.length) notes.push(`${key}: the ${thin.join(', ')} ${thin.length === 1 ? 'section is' : 'sections are'} thin (${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words each is the aim): add concrete detail the chat can describe or act on.`);
+  }
+  // A field with no structure, well under its length: the chat has little to play from.
+  for (const key of Object.keys(FIELD_WORDS)) {
+    if (structure && structure[key] && structure[key].sections && structure[key].sections.length) continue;
+    if (fieldShortfall(key, sheet[key], null).short) notes.push(`${key} is short (${FIELD_WORDS[key][0]} to ${FIELD_WORDS[key][1]} words is the aim): add concrete detail the chat can describe or act on.`);
   }
   if (sheet.exampleDialogue) {
     const n = dialogueExchanges(sheet.exampleDialogue);
@@ -414,6 +420,7 @@ export function buildCharacterBrief({ structure = null, roster = [], connectTo =
   const parts = [];
   parts.push('# Writing a Creations character', '');
   parts.push('Write each character as a sheet of twelve fields, then save them with creations_save_characters. Everything is in the third person, a description of the character; the only "you" is inside the example dialogue.');
+  parts.push('', SHEET_PURPOSE, SHEET_REGISTER);
   parts.push('The concept is what the user asked for in this chat, with everything they gave for it: their words (however long), canvas pages, files, links you read, and any photos attached. It is authoritative: never contradict it, and keep its details.');
   parts.push('Photos: when photos of the person are attached, write the appearance from what you see in them (build, height as it reads, face, hair, skin, clothes, bearing and how they hold themselves), concrete and specific. Do not invent what a photo does not show beyond what the concept says.');
   parts.push('Several characters: send them all in one save call (up to 8). They can be connected to each other by name, and each one\'s relationships can name the others.');

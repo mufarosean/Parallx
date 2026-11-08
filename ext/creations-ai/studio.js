@@ -14,7 +14,6 @@ import {
   STUDIO_FIELDS, STUDIO_KEYS, emptySheet, cleanSheet, cleanFieldValue,
   condenseText, formatWords,
   buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages, parseSheetStructure, DEFAULT_SHEET_STRUCTURE,
-  sectionsPresent, completionDirection,
   buildPitchMessages, parsePitches, pitchAsConcept, parseRelationshipLines, relationConcept,
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
   editCanonFact, applyCanonEdits, sourcesKey,
@@ -24,7 +23,7 @@ import {
 import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 import { latitudeItems, coerceLatitude } from './latitude.js';
-import { mountTestDrive, refreshLiveTestDrive } from './drive.js'; import { createModelRoute } from './model-route.js';
+import { mountTestDrive, refreshLiveTestDrive } from './drive.js'; import { createModelRoute } from './model-route.js'; import { createShortFieldPass } from './studio-complete.js';
 
 const STYLE_ID = 'creations-studio-styles';
 const AUTOSAVE_MS = 800;
@@ -738,46 +737,17 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     r.err.style.display = '';
   }
 
-  // ── Structured fields: what the model left out, asked for again ──────────
-  // A model told to write five sections often writes three. After a sheet
-  // or a reroll, each structured field is checked against the structure;
-  // what is missing is asked for once, as a rewrite that keeps the rest
-  // word for word. Still short, the row says which sections are missing and
-  // offers Complete.
+  // ── Short fields: what the model left out or wrote thin (studio-complete.js) ──
   function structureFor(key) {
     const entry = state.structure && state.structure[key];
     return entry && entry.sections && entry.sections.length ? entry : null;
   }
-  async function completeField(key, modelId, numCtx) {
-    const entry = structureFor(key);
-    if (!entry || !rows[key] || state.locks.has(key)) return true;
-    let { missing } = sectionsPresent(state.sheet[key], entry);
-    if (missing.length === 0) { clearRowError(key); return true; }
-    const r = rows[key];
-    r.row.classList.add('cs-row--busy');
-    setStatus(`Completing ${r.label.toLowerCase()}`, 'accent');
-    try {
-      const { parsed } = await streamJson(modelId, numCtx, buildFieldMessages(context(), state.sheet, key, completionDirection(entry, missing)));
-      const next = parsed && typeof parsed[key] === 'string' ? cleanFieldValue(key, parsed[key]) : '';
-      // Taken only when it keeps what was there and adds something.
-      if (next && sectionsPresent(next, entry).present.length > sectionsPresent(state.sheet[key], entry).present.length) setField(key, next);
-    } catch { /* the notice below says what is still missing */ }
-    finally { r.row.classList.remove('cs-row--busy'); }
-    missing = sectionsPresent(state.sheet[key], entry).missing;
-    if (missing.length === 0) { clearRowError(key); return true; }
-    rowError(key, `Not every section came back. Missing: ${missing.join(', ')}.`, () => void completeFieldAgain(key), 'Complete');
-    return false;
-  }
-  async function completeFieldAgain(key) {
-    if (state.busy) return;
-    state.busy = true;
-    try { const { modelId, numCtx } = await resolveModel(); await completeField(key, modelId, numCtx); }
-    catch (err) { rowError(key, `Could not complete ${rows[key].label.toLowerCase()}. ${err?.message || ''}`.trim(), () => void completeFieldAgain(key), 'Complete'); }
-    finally { state.busy = false; refreshStatus(); }
-  }
-  async function completeStructured(modelId, numCtx) {
-    for (const key of Object.keys(state.structure || {})) await completeField(key, modelId, numCtx);
-  }
+  const shortPass = createShortFieldPass({
+    state: () => state, rows: () => rows, structureFor, context: () => context(), streamJson: (...a) => streamJson(...a), resolveModel: () => resolveModel(),
+    setField: (...a) => setField(...a), showUndo: (...a) => showUndo(...a), rowError: (...a) => rowError(...a), clearRowError: (k) => clearRowError(k), setStatus: (...a) => setStatus(...a), refreshStatus: () => refreshStatus(),
+  });
+  const completeField = (key, modelId, numCtx, grow) => shortPass.completeField(key, modelId, numCtx, grow);
+  const completeShort = (modelId, numCtx) => shortPass.completeShort(modelId, numCtx);
   function toggleSteer(key) {
     const r = rows[key];
     if (!r || state.locks.has(key)) return;
@@ -1416,7 +1386,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (!parsed || typeof parsed.name !== 'string') throw new Error('The model did not return a character. Try again, or pick another model.');
       fillSheet(cleanSheet(parsed), { skip: keepName ? ['name'] : [] });
       for (const k of STUDIO_KEYS) hideUndo(k);
-      await completeStructured(modelId, numCtx);
+      await completeShort(modelId, numCtx);
       renderPitches();
       make.close();
       sheetSec.open();
@@ -1459,7 +1429,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.undo.set(key, state.sheet[key]);
       setField(key, next);
       showUndo(key);
-      await completeField(key, modelId, numCtx);
+      await completeField(key, modelId, numCtx, false);
       // Done: the box closes and forgets the direction and the section; Undo brings the old text back.
       r.steerInput.value = '';
       r.section = '';

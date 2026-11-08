@@ -17,7 +17,13 @@ type Chunk = { content?: string };
 
 const SHEET = {
   name: 'Ada Lovelace', tagline: 'Counts what others feel', description: 'Ada counts everything.',
-  appearance: 'Overview: Tall, ink on her cuffs.\n\nHeight and build: Five foot nine, narrow.\n\nFace: Grey eyes that do not blink enough.\n\nClothes: Black, mended at the elbows.\n\nPhysicality: Sits very straight and taps a count on her knee.',
+  appearance: [
+    'Overview: Tall, ink on her cuffs. She has the look of someone up all night with a ledger who would do it again tonight.',
+    'Height and build: Five foot nine and narrow, long arms, a stoop she corrects whenever she notices it, which is often and never for long.',
+    'Face: Grey eyes that do not blink enough, dark hair pinned flat, a pale face that goes still when she is counting and moves only afterwards.',
+    'Clothes: Black wool dresses mended at the elbows, a white collar changed daily, flat boots, and a pencil behind one ear she forgets is there.',
+    'Physicality: Sits very straight, taps a count on her knee with two fingers, stands up when she thinks, and holds a page far from her face.',
+  ].join('\n\n'),
   personality: 'Dry and exact.', voice: 'Short lines. Says "noted". Never says "whatever".', backstory: 'Born in 1815 in London.',
   drives: 'Wants order. Fears chaos. Her brother stands in the way.', secrets: 'She cannot add in her head.', relationships: 'Babbage: strained.',
   exampleDialogue: '[USER]: hi\n[AI]: Noted.', reminder: 'Ada never lies.',
@@ -209,7 +215,7 @@ describe('the Studio screen', () => {
     await flush();
     const first = w.requests.filter((r) => r.messages[0].content.includes('character designer for roleplay fiction')).at(-1)!;
     expect(first.messages[1].content).toMatch(/"backstory": written as 2 separate paragraphs/);
-    expect(first.messages[1].content).toMatch(/"appearance": one vivid paragraph/);
+    expect(first.messages[1].content).toMatch(/"appearance": one paragraph of 100 to 180 words/);
     structure = '';
     buttonNamed(root, 'Generate').click();
     await flush();
@@ -829,11 +835,47 @@ describe('a structured field the model left short (2026-10-06)', () => {
     expect(areaOf(root, 'appearance').value).toContain('Clothes: Black.');
     const err = rowOf(root, 'appearance').querySelector('.cs-row-error') as HTMLElement;
     expect(err.textContent).toContain('Missing: Height and build, Physicality.');
+    expect(err.textContent).toContain('Thin: Overview, Face, Clothes.');
     expect(buttonNamed(err, 'Complete')).toBeTruthy();
     const before = w.requests.length;
     buttonNamed(err, 'Complete').click();
     await flush(900);
     expect(w.requests.length).toBe(before + 1);
+  });
+});
+
+describe('a field the model wrote thin (2026-11-08)', () => {
+  it('a short overview gets a notice and Expand, which asks once at the field\'s full length and takes a longer reply', async () => {
+    const w = makeWorld();
+    const orig = w.parallx.lm.sendChatRequest;
+    const long = 'Ada Lovelace keeps the accounts of a shipping house in Wapping and counts everything she sees. '.repeat(10).trim();
+    w.parallx.lm.sendChatRequest = (model: string, messages: { role: string; content: string }[], options: any) => {
+      const sys = messages[0].content; const user = messages[1].content;
+      if (sys.includes('exactly one string key: "description"') && user.includes('EXPAND it to its full length')) { w.requests.push({ messages, options }); return chunks([JSON.stringify({ description: long })]); }
+      return orig(model, messages, options);
+    };
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'A countess who counts');
+    buttonNamed(root, 'Generate').click();
+    await flush(900);
+    // The sheet came back with a three-word overview: the row says so, and no call was made for it on its own.
+    const err = rowOf(root, 'description').querySelector('.cs-row-error') as HTMLElement;
+    expect(err.style.display).not.toBe('none');
+    expect(err.textContent).toContain('The overview is short: 3 words, where 120 to 220 are asked for.');
+    expect(w.requests.some((r) => r.messages[1].content.includes('EXPAND it to its full length'))).toBe(false);
+    // A structured field at length has no notice.
+    expect((rowOf(root, 'appearance').querySelector('.cs-row-error') as HTMLElement).style.display).toBe('none');
+    buttonNamed(err, 'Expand').click();
+    await flush(900);
+    const ask = w.requests.find((r) => r.messages[1].content.includes('EXPAND it to its full length'))!;
+    expect(ask).toBeTruthy();
+    expect(ask.messages[0].content).toContain('What the sheet is for');
+    expect(ask.messages[1].content).toContain('Keep every fact the overview already states');
+    expect(areaOf(root, 'description').value).toBe(long);
+    expect(err.style.display).toBe('none');
+    expect(rowOf(root, 'description').classList.contains('cs-row--undo')).toBe(true);
   });
 });
 

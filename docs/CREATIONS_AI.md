@@ -1038,6 +1038,53 @@ sound to the end of sentences often") and a line or two of the example
 dialogue. The same seven hand-written cards played both ways are in
 `docs/CREATIONS_QUALITY_TESTING.md`, Part 5.
 
+## The sheet is instructions for a model (built 2026-11-08)
+
+Mufaro, after writing characters with two models: one wrote figures of
+speech into the sheet ("she dresses professionally... her clothes are her
+armour"), the other wrote too little. The cause was the same for both: the
+prompt said what each field holds and never said who reads it. Nobody reads
+the sheet. It is handed, word for word, to the chat model as its
+instructions for playing the character, and that model cannot ask a
+question: whatever the sheet leaves open it guesses, whatever the sheet
+says it takes literally. A model that knows this writes what the chat can
+act on, and stops writing what it cannot.
+
+So every writer of a sheet is now told that first (`SHEET_PURPOSE` and
+`SHEET_REGISTER` in `studio-core.js`): the Studio's whole sheet, a
+field's Rewrite, a section's Rewrite, the completion pass, and the chat's
+character tools (`buildCharacterBrief`). The register follows from the
+purpose: a dossier, literal and specific; no metaphor, simile or image
+outside the example dialogue; no sentence that interprets the one before
+it or sums the person up; no adjective where the fact behind it would do.
+The test for every sentence: could the chat describe, do, say or keep
+straight something because of it? If not, the fact behind it or nothing.
+Figurative speech has one place, the character's own mouth in the example
+dialogue, when they would talk that way.
+
+Length is a word range now, not an adjective (`FIELD_WORDS`,
+`SECTION_WORDS`): a floor so a terse model gives the chat enough, a
+ceiling so a verbose one stops before it pads. Description 120 to 220
+words, appearance 100 to 180 (or 30 to 90 per section when the Sheet
+structure applies), personality 80 to 160, backstory 150 to 280. The
+Studio checks the result (`fieldShortfall`): a structured field with a
+section missing or thin (under 60% of the section floor) is asked for
+once more, keeping the rest word for word, the same pass that already
+completed missing sections; a field with no structure that is under its
+floor gets a notice on its row and an Expand button, with no call of its
+own, since a short overview is the user's to lengthen. A plain Rewrite
+targets the field's usual length rather than "the same or shorter", and
+every rewrite carries the craft rules the whole sheet is written to. The
+chat's save notes the same thin sections and short fields, without
+blocking.
+
+`card-rules.js` reads the descriptive fields for figures of speech as
+well ("as if", "her clothes are her armour", "a testament to", "a mask
+of", "speaks volumes"...), one finding per sentence, shown under Test
+Drive with the fix and noted by the chat's character tool: the safety net
+for a model that writes one anyway. Literal uses stay clean: "works as a
+map maker", "betrays her brother", a figure inside the example dialogue.
+
 ## Quality testing
 
 How to measure character creation, roleplay and Directions with a real

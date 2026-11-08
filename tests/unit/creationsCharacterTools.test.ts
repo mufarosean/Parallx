@@ -37,17 +37,17 @@ function goodSheet(name: string, o: Record<string, any> = {}) {
   return {
     name,
     tagline: 'Keeps the light and the gossip',
-    description: `${name} keeps the last manned light on Skerry Rock and runs the island shop in the mornings.`,
+    description: `${name} keeps the last manned light on Skerry Rock, a mile off the Norwegian coast, and runs the island shop from seven until noon. Her day starts with the log and the weather call to the mainland, then the shop, then the climb to the lamp room at dusk. She knows every boat by its engine note and every islander by their order. When a stranger comes in she asks where they are staying before they have found the counter, and keeps asking until she knows.`,
     appearance: [
-      'Overview: A square woman in her fifties who looks built for wind.',
-      'Height and build: Five foot six, heavy in the shoulders, about twelve stone.',
-      'Face: Wind-reddened cheeks, grey eyes, a nose broken once and set crooked.',
-      'Clothes: A navy fisherman\'s jumper darned at both elbows, oilskin trousers.',
-      'Physicality: Sits with both feet planted and leans in to listen; her hands are never still.',
+      'Overview: A square woman in her fifties, weathered, who stands with her feet apart and watches the door of any room she is in.',
+      'Height and build: Five foot six, heavy in the shoulders, about twelve stone, with the thick forearms of someone who hauls rope and crates every day.',
+      'Face: Wind-reddened cheeks, grey eyes, a nose broken once and set crooked, short grey hair she cuts herself, and a gap between her front teeth.',
+      'Clothes: A navy fisherman\'s jumper darned at both elbows, oilskin trousers, rubber boots, and a wool hat she takes off only indoors and forgets in the shop.',
+      'Physicality: Sits with both feet planted and leans in to listen; her hands are never still, folding receipts, wiping the counter, turning a cup.',
     ].join('\n\n'),
-    personality: 'Warm, nosy and quick to laugh; she wants company and drives it off by talking too much.',
+    personality: 'Warm, nosy and quick to laugh; she wants company and drives it off by talking too much. She feeds anyone who sits down and asks about their mother within ten minutes. Bad news she meets with work: the kettle, the log, the stairs to the lamp. Contradicted, she laughs first and comes back to the point an hour later, worded differently.',
     voice: 'Warm and quick, a laugh under most of it.\nTalks fast, in long run-on sentences, and asks questions she answers herself.\nPlain island words, the weather and the boats; goes quiet now and then when the weather turns.',
-    backstory: 'Born on the mainland in 1971, she came to the Rock at twenty to marry the keeper and stayed when he left.',
+    backstory: 'Born in Molde in 1971, the youngest of four, she left school at sixteen for the fish counter at the Coop and came to the Rock at twenty to marry Arne Holm, the keeper. Their daughter Dana was born on the island in 1994 and left for Bergen at eighteen. Arne left in 2009, on the Tuesday boat, with one bag, and she took over the log that night and never gave it back. When the authority moved to automate the light in 2016 she wrote to the ministry every week for a year until they left it manned, and she keeps the letters in the shop till.',
     drives: 'Wants: someone to stay the winter.\nFears: the light being automated.\nIn the way: her own mouth.',
     secrets: 'She posts letters to her husband that she never sends.',
     relationships: 'Dana Holm: her daughter, in Bergen, calls on Sundays.\nOld Tom: the boatman, the only one who listens.',
@@ -149,6 +149,18 @@ describe('the checks', () => {
     expect(dialogueExchanges('[AI]: hello\n[USER]: hi')).toBe(0);
   });
 
+  it('notes a thin section, a short field and a figure of speech, and blocks none of them (2026-11-08)', () => {
+    const thin = checkSheet(readIncomingCharacter(goodSheet('Marit Holm', { description: 'Marit keeps the light.', appearance: goodSheet('Marit Holm').appearance.replace(/Clothes: .*/, 'Clothes: Wool.') })).sheet, { structure: STRUCTURE });
+    expect(thin.problems).toEqual([]);
+    expect(thin.notes).toContain('appearance: the Clothes section is thin (30 to 90 words each is the aim): add concrete detail the chat can describe or act on.');
+    expect(thin.notes).toContain('description is short (120 to 220 words is the aim): add concrete detail the chat can describe or act on.');
+    // With no structure the appearance has its own floor; a figure of speech is noted from card-rules.
+    const loose = checkSheet(readIncomingCharacter(goodSheet('Marit Holm', { appearance: 'Square and red; her jumper is her armour.' })).sheet, { structure: {} });
+    expect(loose.problems).toEqual([]);
+    expect(loose.notes.join('\n')).toMatch(/appearance is short \(100 to 180 words is the aim\)/);
+    expect(loose.notes.join('\n')).toMatch(/appearance a figure of speech: "Square and red; her jumper is her armour\."/);
+  });
+
   it('notes what does not stop a save', () => {
     const { problems, notes } = checkSheet(readIncomingCharacter(goodSheet('Marit Holm', { tagline: 'Marit keeps the light and the gossip and the post and the weather and the boats too' })).sheet, { structure: STRUCTURE });
     expect(problems).toEqual([]);
@@ -238,12 +250,14 @@ describe('the brief', () => {
     expect(b).toMatch(/Several characters: send them all in one save call \(up to 8\)/);
     expect(b).toContain('Craft rules:');
     expect(b).toContain('Write all twelve fields for every character.');
+    expect(b).toContain('What the sheet is for: it is handed, word for word, to another AI');
+    expect(b).toContain('Clothes are clothes, never armour');
     expect(b).toContain('- Lord Ashby: Owns the valley');
     expect(b).toContain('CONNECTED PEOPLE');
     expect(b).toContain('Ashby holds Harrow Court, a grey house above the river.');
     expect(b).toContain('Send to creations_save_characters:');
     expect(buildCharacterBrief({ structure: {}, roster: [] })).toContain('- (empty)');
-    expect(buildCharacterBrief({ structure: {}, roster: [] })).toMatch(/"appearance": one vivid paragraph/);
+    expect(buildCharacterBrief({ structure: {}, roster: [] })).toMatch(/"appearance": one paragraph of 100 to 180 words/);
     // The shape to send comes before the roster: a result cut short loses the roster's tail, not the shape.
     expect(b.indexOf('Send to creations_save_characters:')).toBeLessThan(b.indexOf('Roster ('));
     expect(b).toContain('To fix a character, send its name and only the fields that change');
@@ -426,7 +440,7 @@ describe('the tools, through the chat', () => {
     const r = await w.call('creations_character_brief', {});
     expect(r.isError).toBeFalsy();
     expect(r.content).toMatch(/"personality" \(3 sections: Temper, With people, Under it\)/);
-    expect(r.content).toMatch(/"appearance": one vivid paragraph/);
+    expect(r.content).toMatch(/"appearance": one paragraph of 100 to 180 words/);
     expect(r.content).toContain('- Lord Ashby: Owns the valley');
   });
 
@@ -720,6 +734,7 @@ describe('editing a character', () => {
       'Changed Marit Holm: parallx://creations/character?file=character-marit.json',
       '- appearance: the Face section (the rest kept)',
       '- a line added to Tom Hale\'s card',
+      'note: appearance: the Face section is thin (30 to 90 words each is the aim): add concrete detail the chat can describe or act on.',
       '',
       'What it said before is kept: the user can undo it in the Studio, or you can, with "undo": true. Give the user the link exactly as written above.',
     ].join('\n'));

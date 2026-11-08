@@ -99,12 +99,12 @@ describe('prompts', () => {
   it('a rewrite with a direction follows it and lets it set the length', () => {
     const [, plain] = buildFieldMessages({ concept: 'A guard' }, { name: 'X', backstory: 'old' }, 'backstory');
     expect(plain.content).not.toContain('DIRECTION');
-    expect(plain.content).toContain('same length as the current one or shorter');
+    expect(plain.content).toContain('to the usual length of the backstory given below');
     for (const blank of ['', '   ']) expect(buildFieldMessages({}, { backstory: 'old' }, 'backstory', blank)[1].content).toBe(buildFieldMessages({}, { backstory: 'old' }, 'backstory')[1].content);
     const [, steered] = buildFieldMessages({ concept: 'A guard' }, { name: 'X', backstory: 'old' }, 'backstory', '  More about the war years and her brother.  ');
     expect(steered.content).toContain('DIRECTION: More about the war years and her brother.');
     expect(steered.content).toContain('The direction leads');
-    expect(steered.content).not.toContain('same length as the current one or shorter');
+    expect(steered.content).not.toContain('to the usual length of the backstory given below');
     expect(steered.content).toContain('turning point'); // the field's own requirement still frames it
     expect(steered.content).not.toMatch(/[—–]/);
   });
@@ -317,9 +317,9 @@ describe('the sheet structure (2026-10-06)', () => {
     const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
     const [, user] = buildSheetMessages({ concept: 'A ferry captain', structure: st });
     expect(user.content).toContain('Height and build');
-    expect(user.content).not.toMatch(/"appearance": one vivid paragraph/);
+    expect(user.content).not.toMatch(/"appearance": one paragraph of 100 to 180 words/);
     const [, usual] = buildSheetMessages({ concept: 'A ferry captain' });
-    expect(usual.content).toMatch(/"appearance": one vivid paragraph/);
+    expect(usual.content).toMatch(/"appearance": one paragraph of 100 to 180 words/);
     const [, reroll] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { appearance: 'Tall.' }, 'appearance');
     expect(reroll.content).toContain('5 separate paragraphs');
     const [, steered] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { appearance: 'Tall.' }, 'appearance', 'more about her hands');
@@ -430,6 +430,72 @@ describe('a structured field, checked (2026-10-06)', () => {
     expect(system.content).toContain('Some fields have a required structure');
     expect(user.content).toContain('Written like: "Overview: ...\\n\\nHeight and build: ...\\n\\nFace: ...\\n\\nClothes: ...\\n\\nPhysicality: ..."');
     expect(buildSheetMessages({ concept: 'x' })[0].content).not.toContain('required structure');
+  });
+});
+
+describe('the sheet is instructions for a model (2026-11-08)', () => {
+  const { SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, fieldShortfall, expansionDirection, buildSectionMessages } = core;
+  const entry = parseSheetStructure(DEFAULT_SHEET_STRUCTURE).appearance;
+  const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ');
+
+  it('every writer of a sheet is told who reads it, and the register that follows', () => {
+    expect(SHEET_PURPOSE).toMatch(/handed, word for word, to another AI as its only instructions/);
+    expect(SHEET_PURPOSE).toMatch(/every sentence hands it something to act on/);
+    expect(SHEET_REGISTER).toMatch(/Clothes are clothes, never armour/);
+    expect(SHEET_REGISTER).toMatch(/could the chat describe, do, say or keep straight something because of it/);
+    const [system, user] = buildSheetMessages({ concept: 'A guard' });
+    expect(system.content).toContain(SHEET_PURPOSE);
+    expect(system.content).toContain(SHEET_REGISTER);
+    expect(user.content).toContain('Every sentence passes the test above');
+    expect(user.content).not.toContain('purple');
+    const [fs, fu] = buildFieldMessages({ concept: 'A guard' }, { name: 'X', backstory: 'old' }, 'backstory');
+    expect(fs.content).toContain(SHEET_PURPOSE);
+    expect(fs.content).toContain(SHEET_REGISTER);
+    expect(fu.content).toContain('Craft rules:');
+    expect(fu.content).not.toContain('Write every one of the twelve fields');
+    expect(fu.content).toContain('no figures of speech, no stock phrases');
+    const [, su] = buildSectionMessages({}, { appearance: 'Overview: Tall.' }, 'appearance', 'Face', entry);
+    expect(su.content).toContain(`${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words`);
+    expect(su.content).toContain('Craft rules:');
+    for (const m of [system, user, fs, fu, su]) expect(m.content).not.toMatch(/[—–]/);
+  });
+
+  it('lengths are word ranges, a floor and a ceiling, in the requirements and in the structure', () => {
+    const reqs = fieldRequirements(null);
+    expect(reqs).toContain(`"description": 1-2 paragraphs, ${FIELD_WORDS.description[0]} to ${FIELD_WORDS.description[1]} words`);
+    expect(reqs).toContain(`"appearance": one paragraph of ${FIELD_WORDS.appearance[0]} to ${FIELD_WORDS.appearance[1]} words`);
+    expect(reqs).toContain(`"personality": one paragraph of ${FIELD_WORDS.personality[0]} to ${FIELD_WORDS.personality[1]} words`);
+    expect(reqs).toContain(`"backstory": 1-2 paragraphs, ${FIELD_WORDS.backstory[0]} to ${FIELD_WORDS.backstory[1]} words`);
+    expect(structureRequirement('appearance', entry)).toContain(`${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words each`);
+    expect(structureRequirement('appearance', entry)).not.toContain('several sentences');
+  });
+
+  it('fieldShortfall: missing and thin sections, a short field, nothing for one at length', () => {
+    const full = entry.sections.map((s: { name: string }) => `${s.name}: ${words(20)}`).join('\n\n');
+    expect(fieldShortfall('appearance', full, entry)).toEqual({ missing: [], thin: [], short: false });
+    expect(fieldShortfall('appearance', 'Overview: Tall, ink on her cuffs.\n\nFace: Grey eyes.', entry)).toEqual({ missing: ['Height and build', 'Clothes', 'Physicality'], thin: ['Overview', 'Face'], short: false });
+    // A section's words run to the next label, on whatever line it starts.
+    expect(fieldShortfall('appearance', `Overview: ${words(10)}\n${words(10)}\nFace: ${words(5)}`, entry).thin).toEqual(['Face']);
+    const plain = { labels: false, sections: [{ name: 'A', hint: '' }, { name: 'B', hint: '' }] };
+    expect(fieldShortfall('personality', `${words(20)}\n\nshort.`, plain)).toEqual({ missing: [], thin: ['B'], short: false });
+    expect(fieldShortfall('description', 'Ada counts everything.', null)).toEqual({ missing: [], thin: [], short: true });
+    expect(fieldShortfall('description', words(72), null).short).toBe(false);
+    expect(fieldShortfall('description', '', null).short).toBe(false);
+    expect(fieldShortfall('voice', 'Low.', null).short).toBe(false);
+  });
+
+  it('the completion direction adds what is missing and grows what is thin; the expansion direction keeps the facts', () => {
+    const both = completionDirection(entry, ['Face'], ['Overview', 'Face']);
+    expect(both).toMatch(/^Keep every paragraph that is already there, word for word, and ADD the missing sections: Face \(eyes/);
+    expect(both).toContain('Also EXPAND the thin sections: Overview (the impression at first sight, what anyone notices from across a room). Each keeps');
+    expect(both).toContain(`${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words of concrete detail the chat can describe or act on`);
+    const thinOnly = completionDirection(entry, [], ['Clothes']);
+    expect(thinOnly).toMatch(/^Keep every other paragraph word for word, and EXPAND the thin sections: Clothes \(what they wear/);
+    expect(thinOnly).not.toContain('ADD the missing sections');
+    expect(thinOnly).toMatch(/all 5 sections, in this order: Overview, Height and build, Face, Clothes, Physicality\. Nothing else changes\.$/);
+    const grow = expansionDirection('description');
+    expect(grow).toMatch(/^Keep every fact the overview already states and EXPAND it to its full length, 120 to 220 words/);
+    expect(grow).toContain('No figures of speech, no filler, no summing up.');
   });
 });
 
