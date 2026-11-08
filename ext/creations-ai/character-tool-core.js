@@ -267,12 +267,12 @@ export function checkSheet(sheet, { structure = null, allowEmpty = [] } = {}) {
     if (missing.length) {
       problems.push(`${key} is missing ${missing.length === 1 ? 'the section' : 'the sections'} ${missing.join(', ')}: write all ${entry.sections.length} sections, each its own paragraph${entry.labels ? ' starting with its label and a colon' : ''}, in this order: ${entry.sections.map((x) => x.name).join(', ')}. Keep the sections already written.`);
     }
-    if (thin.length) notes.push(`${key}: the ${thin.join(', ')} ${thin.length === 1 ? 'section is' : 'sections are'} thin (${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words each is the aim): add concrete detail the chat can describe or act on.`);
+    if (thin.length) notes.push(`${key}: the ${thin.join(', ')} ${thin.length === 1 ? 'section is' : 'sections are'} thin (at least ${SECTION_WORDS} words each): add concrete detail the chat can describe or act on.`);
   }
   // A field with no structure, well under its length: the chat has little to play from.
   for (const key of Object.keys(FIELD_WORDS)) {
     if (structure && structure[key] && structure[key].sections && structure[key].sections.length) continue;
-    if (fieldShortfall(key, sheet[key], null).short) notes.push(`${key} is short (${FIELD_WORDS[key][0]} to ${FIELD_WORDS[key][1]} words is the aim): add concrete detail the chat can describe or act on.`);
+    if (fieldShortfall(key, sheet[key], null).short) notes.push(`${key} is short (at least ${FIELD_WORDS[key]} words): add concrete detail the chat can describe or act on.`);
   }
   if (sheet.exampleDialogue) {
     const n = dialogueExchanges(sheet.exampleDialogue);

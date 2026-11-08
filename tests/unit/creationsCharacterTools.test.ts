@@ -152,12 +152,12 @@ describe('the checks', () => {
   it('notes a thin section, a short field and a figure of speech, and blocks none of them (2026-11-08)', () => {
     const thin = checkSheet(readIncomingCharacter(goodSheet('Marit Holm', { description: 'Marit keeps the light.', appearance: goodSheet('Marit Holm').appearance.replace(/Clothes: .*/, 'Clothes: Wool.') })).sheet, { structure: STRUCTURE });
     expect(thin.problems).toEqual([]);
-    expect(thin.notes).toContain('appearance: the Clothes section is thin (30 to 90 words each is the aim): add concrete detail the chat can describe or act on.');
-    expect(thin.notes).toContain('description is short (120 to 220 words is the aim): add concrete detail the chat can describe or act on.');
+    expect(thin.notes).toContain('appearance: the Clothes section is thin (at least 30 words each): add concrete detail the chat can describe or act on.');
+    expect(thin.notes).toContain('description is short (at least 120 words): add concrete detail the chat can describe or act on.');
     // With no structure the appearance has its own floor; a figure of speech is noted from card-rules.
     const loose = checkSheet(readIncomingCharacter(goodSheet('Marit Holm', { appearance: 'Square and red; her jumper is her armour.' })).sheet, { structure: {} });
     expect(loose.problems).toEqual([]);
-    expect(loose.notes.join('\n')).toMatch(/appearance is short \(100 to 180 words is the aim\)/);
+    expect(loose.notes.join('\n')).toMatch(/appearance is short \(at least 100 words\)/);
     expect(loose.notes.join('\n')).toMatch(/appearance a figure of speech: "Square and red; her jumper is her armour\."/);
   });
 
@@ -257,7 +257,7 @@ describe('the brief', () => {
     expect(b).toContain('Ashby holds Harrow Court, a grey house above the river.');
     expect(b).toContain('Send to creations_save_characters:');
     expect(buildCharacterBrief({ structure: {}, roster: [] })).toContain('- (empty)');
-    expect(buildCharacterBrief({ structure: {}, roster: [] })).toMatch(/"appearance": one paragraph of 100 to 180 words/);
+    expect(buildCharacterBrief({ structure: {}, roster: [] })).toMatch(/"appearance": one paragraph of at least 100 words/);
     // The shape to send comes before the roster: a result cut short loses the roster's tail, not the shape.
     expect(b.indexOf('Send to creations_save_characters:')).toBeLessThan(b.indexOf('Roster ('));
     expect(b).toContain('To fix a character, send its name and only the fields that change');
@@ -440,7 +440,7 @@ describe('the tools, through the chat', () => {
     const r = await w.call('creations_character_brief', {});
     expect(r.isError).toBeFalsy();
     expect(r.content).toMatch(/"personality" \(3 sections: Temper, With people, Under it\)/);
-    expect(r.content).toMatch(/"appearance": one paragraph of 100 to 180 words/);
+    expect(r.content).toMatch(/"appearance": one paragraph of at least 100 words/);
     expect(r.content).toContain('- Lord Ashby: Owns the valley');
   });
 
@@ -734,7 +734,7 @@ describe('editing a character', () => {
       'Changed Marit Holm: parallx://creations/character?file=character-marit.json',
       '- appearance: the Face section (the rest kept)',
       '- a line added to Tom Hale\'s card',
-      'note: appearance: the Face section is thin (30 to 90 words each is the aim): add concrete detail the chat can describe or act on.',
+      'note: appearance: the Face section is thin (at least 30 words each): add concrete detail the chat can describe or act on.',
       '',
       'What it said before is kept: the user can undo it in the Studio, or you can, with "undo": true. Give the user the link exactly as written above.',
     ].join('\n'));

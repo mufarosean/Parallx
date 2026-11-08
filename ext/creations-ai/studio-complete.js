@@ -38,7 +38,7 @@ export function createShortFieldPass(d) {
   }
   function lackText(key, lack) {
     const label = d.rows()[key].label.toLowerCase();
-    if (lack.short) return `The ${label} is short: ${countWords(sheet(key))} words, where ${FIELD_WORDS[key][0]} to ${FIELD_WORDS[key][1]} are asked for.`;
+    if (lack.short) return `The ${label} is short: ${countWords(sheet(key))} words, where at least ${FIELD_WORDS[key]} are asked for.`;
     const parts = [];
     if (lack.missing.length) parts.push(`Missing: ${lack.missing.join(', ')}.`);
     if (lack.thin.length) parts.push(`Thin: ${lack.thin.join(', ')}.`);

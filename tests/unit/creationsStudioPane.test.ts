@@ -215,7 +215,7 @@ describe('the Studio screen', () => {
     await flush();
     const first = w.requests.filter((r) => r.messages[0].content.includes('character designer for roleplay fiction')).at(-1)!;
     expect(first.messages[1].content).toMatch(/"backstory": written as 2 separate paragraphs/);
-    expect(first.messages[1].content).toMatch(/"appearance": one paragraph of 100 to 180 words/);
+    expect(first.messages[1].content).toMatch(/"appearance": one paragraph of at least 100 words/);
     structure = '';
     buttonNamed(root, 'Generate').click();
     await flush();
@@ -863,7 +863,7 @@ describe('a field the model wrote thin (2026-11-08)', () => {
     // The sheet came back with a three-word overview: the row says so, and no call was made for it on its own.
     const err = rowOf(root, 'description').querySelector('.cs-row-error') as HTMLElement;
     expect(err.style.display).not.toBe('none');
-    expect(err.textContent).toContain('The overview is short: 3 words, where 120 to 220 are asked for.');
+    expect(err.textContent).toContain('The overview is short: 3 words, where at least 120 are asked for.');
     expect(w.requests.some((r) => r.messages[1].content.includes('EXPAND it to its full length'))).toBe(false);
     // A structured field at length has no notice.
     expect((rowOf(root, 'appearance').querySelector('.cs-row-error') as HTMLElement).style.display).toBe('none');

@@ -12,7 +12,7 @@
 
 import { STUDIO_FIELDS, STUDIO_KEYS, PORTRAIT_SECTIONS, emptySheet, stripDashes, splitRoleInstruction, sheetFromCharacter } from './studio-sheet.js';
 export { STUDIO_FIELDS, STUDIO_KEYS, emptySheet, stripDashes, splitRoleInstruction, sheetFromCharacter } from './studio-sheet.js';
-import { SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, countWords, normLabel, SECTION_HEAD, paragraphs, sectionOfParagraph, sectionsPresent, fieldShortfall, expansionDirection } from './sheet-register.js';
+import { SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, atLeast, countWords, normLabel, SECTION_HEAD, paragraphs, sectionOfParagraph, sectionsPresent, fieldShortfall, expansionDirection } from './sheet-register.js';
 export { SHEET_PURPOSE, SHEET_REGISTER, FIELD_WORDS, SECTION_WORDS, countWords, sectionOfParagraph, sectionsPresent, fieldShortfall, expansionDirection } from './sheet-register.js';
 import { connectionsBlock, connectionsRequirement } from './studio-connections.js';
 export { connectionDigest, connectionsBlock, backLinkLine, withRelationshipLine, parseRelationshipLines, relationConcept, lineageOf } from './studio-connections.js';
@@ -263,7 +263,7 @@ export function structureRequirement(key, entry) {
   const skeleton = entry.labels
     ? entry.sections.map((s) => `${s.name}: ...`).join('\\n\\n')
     : entry.sections.map(() => '...').join('\\n\\n');
-  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character that the chat can describe or act on, ${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words each; none is skipped, merged or padded out. The sections: ${list}. Written like: "${skeleton}" with each ... a full paragraph. A "${key}" with fewer than ${n} paragraphs is incomplete and wrong.`;
+  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character that the chat can describe or act on, ${atLeast(SECTION_WORDS)} each; none is skipped, merged or padded out. The sections: ${list}. Written like: "${skeleton}" with each ... a full paragraph. A "${key}" with fewer than ${n} paragraphs is incomplete and wrong.`;
 }
 
 /** The sheet's own rule for a structure, in the system message: models weigh it more there. */
@@ -327,7 +327,7 @@ export function buildSectionMessages(ctx, sheet, key, section, entry, direction 
   const s = (entry && entry.sections || []).find((x) => x.name === section) || { name: section, hint: '' };
   const base = buildFieldMessages(ctx, sheet, key, direction);
   const ask = [
-    `Rewrite ONLY the "${s.name}" section of the ${label}${s.hint ? ` (${s.hint})` : ''}${String(direction || '').trim() ? ', following the user\'s direction for it:' : `: a fresh take, consistent with the rest of the sheet, ${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words.`}`,
+    `Rewrite ONLY the "${s.name}" section of the ${label}${s.hint ? ` (${s.hint})` : ''}${String(direction || '').trim() ? ', following the user\'s direction for it:' : `: a fresh take, consistent with the rest of the sheet, ${atLeast(SECTION_WORDS)}.`}`,
     ...(String(direction || '').trim() ? [`DIRECTION: ${String(direction).trim()}`, 'The direction leads: change what it asks to change, and keep the rest of the sheet true. Plain, literal and concrete, every sentence something the chat can act on; no figures of speech, no filler.'] : []),
     `Return the "${key}" key with ONE paragraph: the ${s.name} section, starting with "${s.name}:". Do not write the other sections of the ${label}; they stay exactly as they are.`,
     '',
@@ -362,7 +362,7 @@ export function completionDirection(entry, missing, thin = []) {
   const all = entry.sections.map((x) => x.name).join(', ');
   const describe = (list) => entry.sections.filter((x) => list.includes(x.name)).map((x) => (x.hint ? `${x.name} (${x.hint})` : x.name)).join('; ');
   const label = entry.labels ? ', starting with its label and a colon' : '';
-  const words = `${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words of concrete detail the chat can describe or act on`;
+  const words = `${atLeast(SECTION_WORDS)} of concrete detail the chat can describe or act on`;
   const parts = [];
   if (names.length) parts.push(`Keep every paragraph that is already there, word for word, and ADD the missing sections: ${describe(names)}. Each missing section is its own paragraph of ${words}${label}, placed in the order of the structure.`);
   if (grow.length) parts.push(`${names.length ? 'Also' : 'Keep every other paragraph word for word, and'} EXPAND the thin sections: ${describe(grow)}. Each keeps every fact it already states and grows to ${words}, as its own paragraph${label}; no figures of speech, no filler.`);
@@ -384,11 +384,11 @@ export function fieldRequirements(structure) {
 const FIELD_REQUIREMENTS = [
   '- "name": their name. The NAME given above when there is one, exactly; otherwise the canon\'s name when there is one. Otherwise a first name and surname from the character\'s own country and generation, the kind found in a phone book there. Never the fiction defaults: Elias, Elara, Silas, Marcus, Mara, Mira, Thorne, Vance, Vane, Aris, Kael, Vex, Wren. The same rule for every named person in the sheet.',
   '- "tagline": at most ten words, no name, not a restatement of the concept: the one line that says who they are now.',
-  `- "description": 1-2 paragraphs, ${FIELD_WORDS.description[0]} to ${FIELD_WORDS.description[1]} words: who they are, their background, occupation and daily life, and how they behave, with the particulars the chat can use (where they live and work, what a day of theirs holds, what they do when a stranger speaks to them). Concrete specifics over adjectives.`,
-  `- "appearance": one paragraph of ${FIELD_WORDS.appearance[0]} to ${FIELD_WORDS.appearance[1]} words: their physical appearance and typical clothing, faithful to the canon and the concept, as things the chat can describe when they walk in (height and build, face and hair, what they wear and how they wear it, how they move). Any physical trait the concept states replaces any attribute given below.`,
-  `- "personality": one paragraph of ${FIELD_WORDS.personality[0]} to ${FIELD_WORDS.personality[1]} words: their temperament, how they treat people, what they openly want, and the hidden need that conflicts with it, each shown by what they do in a situation the chat may meet (a stranger at the door, bad news, being contradicted).`,
+  `- "description": 1-2 paragraphs, ${atLeast(FIELD_WORDS.description)}: who they are, their background, occupation and daily life, and how they behave, with the particulars the chat can use (where they live and work, what a day of theirs holds, what they do when a stranger speaks to them). Concrete specifics over adjectives.`,
+  `- "appearance": one paragraph of ${atLeast(FIELD_WORDS.appearance)}: their physical appearance and typical clothing, faithful to the canon and the concept, as things the chat can describe when they walk in (height and build, face and hair, what they wear and how they wear it, how they move). Any physical trait the concept states replaces any attribute given below.`,
+  `- "personality": one paragraph of ${atLeast(FIELD_WORDS.personality)}: their temperament, how they treat people, what they openly want, and the hidden need that conflicts with it, each shown by what they do in a situation the chat may meet (a stranger at the door, bad news, being contradicted).`,
   '- "voice": three short lines, one per line with a line break between them, each a third-person description of how they speak in general: the tone; the rhythm (sentence length, questions or statements, how they handle silence); the register (plain or formal, the words of their trade and their place). Nothing tied to one mood or one situation, no sample lines, no quoted phrases, no phrases they use or never use: those make the chat repeat them. Sample lines belong in the example dialogue. A habit (counting, stories, a dialect word) may be a fourth line only as a tendency with how often ("tells a story once or twice in a scene, when a question gets too close"), never as "always", "never" or "instead of": written as a rule it goes into every reply. A catchphrase the concept gives is that fourth line, the phrase in single quotes with how often ("says \'and that is the tragedy\' once or twice in a scene, after a bit lands"); left out of the voice it is never said. How often is something a reader can see on the page (when a question gets too close, when she is checking a list), never a span of time or a silence the chat cannot measure.',
-  `- "backstory": 1-2 paragraphs, ${FIELD_WORDS.backstory[0]} to ${FIELD_WORDS.backstory[1]} words, in the past tense: where they come from, with places and ages, and at least one turning point that made them who they are.`,
+  `- "backstory": 1-2 paragraphs, ${atLeast(FIELD_WORDS.backstory)}, in the past tense: where they come from, with places and ages, and at least one turning point that made them who they are.`,
   '- "drives": exactly three lines with a line break between them, each starting with its label: "Wants: ..." (what they openly want), "Fears: ..." (what they privately fear), "In the way: ..." (a person, a habit, a fact).',
   '- "secrets": one or two sentences: what they hide and who must never learn it.',
   '- "relationships": two to four named people, one per line with a line break between them, each starting "<Their name>: " then who they are to the character and how things stand between them right now.',
@@ -400,6 +400,7 @@ const CRAFT_LINES = [
   'The temperament comes from the concept and the canon, not from a default. Not every character is quiet, precise and cold; people are also warm, talkative, funny, anxious, sloppy, vain or boastful. Decide what this one is and let every field show it.',
   'No stock details: no scar, no trembling hands, no rigid posture, no steel-grey eyes unless the concept or the canon gives them. No stock phrases, no "eyes sparkling", no filler. Concrete specifics the chat can describe and a reader would remember.',
   'Every sentence passes the test above: the chat can describe, do, say or keep straight something because of it. A figure of speech fails it; so does a sentence that interprets or sums up.',
+  'Length has a floor and no ceiling. Write as much as the facts need, in full, never cut short to fit; what is cut is filler, never a fact the chat could use.',
   'Third person everywhere except inside the example dialogue, and no "you" at all outside it, not even the general "you"; say "a person" or "anyone".',
   'Inside the JSON strings, quote phrases with single quotes, never double quotes. Write every one of the twelve fields, "name" first; the object is not finished until "reminder" is written.',
   NO_DASHES,

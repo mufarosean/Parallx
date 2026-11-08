@@ -1062,12 +1062,14 @@ straight something because of it? If not, the fact behind it or nothing.
 Figurative speech has one place, the character's own mouth in the example
 dialogue, when they would talk that way.
 
-Length is a word range now, not an adjective (`FIELD_WORDS`,
-`SECTION_WORDS`): a floor so a terse model gives the chat enough, a
-ceiling so a verbose one stops before it pads. Description 120 to 220
-words, appearance 100 to 180 (or 30 to 90 per section when the Sheet
-structure applies), personality 80 to 160, backstory 150 to 280. The
-Studio checks the result (`fieldShortfall`): a structured field with a
+Length is a floor now, not an adjective, and there is no ceiling
+(`FIELD_WORDS`, `SECTION_WORDS`): description at least 120 words,
+appearance at least 100 (or 30 per section when the Sheet structure
+applies), personality at least 80, backstory at least 150, "and as many
+more as the facts need". Mufaro makes very long characters on purpose and
+a cap would cut facts; the register, not a cap, is what keeps the filler
+out, and the craft rules say so ("Length has a floor and no ceiling").
+The Studio checks the result (`fieldShortfall`): a structured field with a
 section missing or thin (under 60% of the section floor) is asked for
 once more, keeping the rest word for word, the same pass that already
 completed missing sections; a field with no structure that is under its

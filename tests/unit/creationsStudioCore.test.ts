@@ -317,9 +317,9 @@ describe('the sheet structure (2026-10-06)', () => {
     const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
     const [, user] = buildSheetMessages({ concept: 'A ferry captain', structure: st });
     expect(user.content).toContain('Height and build');
-    expect(user.content).not.toMatch(/"appearance": one paragraph of 100 to 180 words/);
+    expect(user.content).not.toMatch(/"appearance": one paragraph of at least 100 words/);
     const [, usual] = buildSheetMessages({ concept: 'A ferry captain' });
-    expect(usual.content).toMatch(/"appearance": one paragraph of 100 to 180 words/);
+    expect(usual.content).toMatch(/"appearance": one paragraph of at least 100 words/);
     const [, reroll] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { appearance: 'Tall.' }, 'appearance');
     expect(reroll.content).toContain('5 separate paragraphs');
     const [, steered] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { appearance: 'Tall.' }, 'appearance', 'more about her hands');
@@ -455,18 +455,21 @@ describe('the sheet is instructions for a model (2026-11-08)', () => {
     expect(fu.content).not.toContain('Write every one of the twelve fields');
     expect(fu.content).toContain('no figures of speech, no stock phrases');
     const [, su] = buildSectionMessages({}, { appearance: 'Overview: Tall.' }, 'appearance', 'Face', entry);
-    expect(su.content).toContain(`${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words`);
+    expect(su.content).toContain('at least 30 words, and as many more as the facts need');
     expect(su.content).toContain('Craft rules:');
     for (const m of [system, user, fs, fu, su]) expect(m.content).not.toMatch(/[—–]/);
   });
 
-  it('lengths are word ranges, a floor and a ceiling, in the requirements and in the structure', () => {
+  it('lengths are floors with no ceiling, in the requirements, the structure and the craft rules', () => {
     const reqs = fieldRequirements(null);
-    expect(reqs).toContain(`"description": 1-2 paragraphs, ${FIELD_WORDS.description[0]} to ${FIELD_WORDS.description[1]} words`);
-    expect(reqs).toContain(`"appearance": one paragraph of ${FIELD_WORDS.appearance[0]} to ${FIELD_WORDS.appearance[1]} words`);
-    expect(reqs).toContain(`"personality": one paragraph of ${FIELD_WORDS.personality[0]} to ${FIELD_WORDS.personality[1]} words`);
-    expect(reqs).toContain(`"backstory": 1-2 paragraphs, ${FIELD_WORDS.backstory[0]} to ${FIELD_WORDS.backstory[1]} words`);
-    expect(structureRequirement('appearance', entry)).toContain(`${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words each`);
+    const more = ', and as many more as the facts need';
+    expect(reqs).toContain(`"description": 1-2 paragraphs, at least ${FIELD_WORDS.description} words${more}`);
+    expect(reqs).toContain(`"appearance": one paragraph of at least ${FIELD_WORDS.appearance} words${more}`);
+    expect(reqs).toContain(`"personality": one paragraph of at least ${FIELD_WORDS.personality} words${more}`);
+    expect(reqs).toContain(`"backstory": 1-2 paragraphs, at least ${FIELD_WORDS.backstory} words${more}`);
+    expect(reqs).not.toMatch(/\d+ to \d+ words/);
+    expect(structureRequirement('appearance', entry)).toContain(`at least ${SECTION_WORDS} words${more} each`);
+    expect(buildSheetMessages({ concept: 'A guard' })[1].content).toContain('Length has a floor and no ceiling.');
     expect(structureRequirement('appearance', entry)).not.toContain('several sentences');
   });
 
@@ -488,13 +491,13 @@ describe('the sheet is instructions for a model (2026-11-08)', () => {
     const both = completionDirection(entry, ['Face'], ['Overview', 'Face']);
     expect(both).toMatch(/^Keep every paragraph that is already there, word for word, and ADD the missing sections: Face \(eyes/);
     expect(both).toContain('Also EXPAND the thin sections: Overview (the impression at first sight, what anyone notices from across a room). Each keeps');
-    expect(both).toContain(`${SECTION_WORDS[0]} to ${SECTION_WORDS[1]} words of concrete detail the chat can describe or act on`);
+    expect(both).toContain(`at least ${SECTION_WORDS} words, and as many more as the facts need of concrete detail the chat can describe or act on`);
     const thinOnly = completionDirection(entry, [], ['Clothes']);
     expect(thinOnly).toMatch(/^Keep every other paragraph word for word, and EXPAND the thin sections: Clothes \(what they wear/);
     expect(thinOnly).not.toContain('ADD the missing sections');
     expect(thinOnly).toMatch(/all 5 sections, in this order: Overview, Height and build, Face, Clothes, Physicality\. Nothing else changes\.$/);
     const grow = expansionDirection('description');
-    expect(grow).toMatch(/^Keep every fact the overview already states and EXPAND it to its full length, 120 to 220 words/);
+    expect(grow).toMatch(/^Keep every fact the overview already states and EXPAND it to its full length, at least 120 words, and as many more as the facts need/);
     expect(grow).toContain('No figures of speech, no filler, no summing up.');
   });
 });
