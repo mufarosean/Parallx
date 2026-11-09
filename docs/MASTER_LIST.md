@@ -60,6 +60,63 @@ it is.
 no twisty): show both on the real tree and let him pick. Whether the
 indent and row height change with it.
 
+### Three sidebar icons: Creations AI, Browser, Worksheets
+
+**His words (2026-11-09):** "I do not like the icons for Creations AI,
+Browser, and Worksheets."
+
+**What exists today.** Creations AI's sidebar container uses `px-writer`
+(`ext/creations-ai/parallx-manifest.json`), Browser uses `globe`
+(`ext/browser/parallx-manifest.json`), Worksheets uses `file-spreadsheet`
+(`src/built-in/worksheet/manifest.ts`). All three come from the icon
+registry, so a change is a new or different registry icon, not a stray
+asset.
+
+**Scope.** Draw candidates in the registry's own style (stroke weight,
+corner radius, optical size of the other activity-bar icons) and show
+him a row of them against the bar before choosing. Any new icon is
+registered and named; the manifest names it.
+
+### The primary sidebar loses two seats: Tools and Search
+
+**His words (2026-11-09):** "instead of having search and tools as icons
+in primary sidebar, they should function as commands or through view.
+We moved settings to be launched from view menu in top ribbon, I think
+tools can be moved there as well ... the place where you can see the
+extensions that are enabled and enable disable etc. Search is also
+another that I think could be triggered by ctrl f. think how search
+works in Excel ... if the editor the user had open when they hit ctrl f
+was a document or canvas page or database, the default would be to
+search within the document, but then we would have a toggle in case the
+user was trying to search from whole workspace. this allows us to clear
+two spots from the primary sidebar."
+
+**What exists today.** Tools is the built-in tool gallery, a sidebar
+container (`tools-container`, icon `px-tools`, `src/built-in/tool-gallery`).
+Search is the built-in search sidebar (`search-container`,
+`src/built-in/search`). Settings already opens from the View menu
+(`settings.open` in `menuBuilder.ts`). Ctrl+F is `edit.find`, which asks
+the active pane for its own find bar; the text editor and the PDF pane
+have one, so Ctrl+F already searches within those documents. Canvas
+pages and databases have no find bar of their own, and workspace search
+has no keyboard route but the sidebar.
+
+**Scope, two parts.**
+
+- *Tools:* a View menu entry and a command open the gallery as an editor
+  or a panel; the sidebar seat goes. Same move Settings made.
+- *Search:* Ctrl+F opens one find surface. Its default scope is the
+  active editor (document, canvas page, database) when that editor can
+  be searched, with a toggle to the whole workspace; with no searchable
+  editor open it opens on the workspace. Canvas pages and databases gain
+  an in-document find so the default holds for them. The sidebar seat
+  goes; workspace results keep their list, tree, collapse and clear.
+
+**Unknown.** Where workspace results live once the sidebar seat is gone
+(a panel at the bottom, or the find surface growing a results list);
+whether the gallery wants to be an editor tab or a panel; what the two
+freed seats are used for, if anything.
+
 ### Home: one front door for everything recent
 
 **His words (2026-11-09):** "a sort of home ... navigated to by hitting
