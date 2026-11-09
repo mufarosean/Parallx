@@ -457,8 +457,18 @@ the transcripts were read whole). What each style did, and the line in
   the only variant with motif echoes (5). Answer: a heading only when the
   place or the time changes.
 
-The late reminders (STYLE_HINTS) were changed to match. Not re-measured
-yet: the next bench run on the same scenes is the proof.
+The late reminders (STYLE_HINTS) were changed to match. Re-measured the
+same day on the same scenes (`last-reading-styles-after.md`), read whole:
+Immersive RP 82 to 50 words a reply with speech up from 55 to 74 percent,
+the beat-line-beat-line shape gone and the weather beats mostly gone, the
+scenes still moving (the sisters reach the wiring, the fryers and the
+offer); Natural RP from 96 to 4 percent of replies ending in a question,
+and the strongest scenes of the four (the sisters get to the arrears, the
+letter's date and a valuation); Casual RP from 32 to 0 percent first
+person, every beat naming its actor; Screenplay from five motif echoes to
+one, no heading until the place changes. One character habit survives
+every style: Beatrix's "would you be a dear", which is her card, not the
+style.
 
 ## Published benchmarks: what to borrow
 
