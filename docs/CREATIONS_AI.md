@@ -891,20 +891,27 @@ Not built, on purpose, and talked through first:
   beats that wait for a condition rather than a turn count, so the
   characters never steer toward a plot they should not know.
 
-- **Scoped to the chat (built 2026-11-09).** Mufaro: the lists were
-  global, and every chat was forced to follow them; he wanted global as
-  the default and custom suggestions per chat. Chat Settings (the drawer)
-  now has the same two lists under the standing note, each with a
-  dropdown: Follow Settings (the default; the chat uses the Settings
-  lists, or the shipped ones) or This Chat's Own List, which copies the
-  Settings list into the chat so it is edited rather than written from
-  nothing, and from then on the chat reads its own (empty meaning none of
-  that sort in this chat). Stored on the thread as `directionsCharacter`
-  and `directionsNarrator`, null meaning follow. `directionKinds` in
-  `director.js` is the one resolver, read by Suggest Directions and
-  Auto-direct alike; the empty-lists message says where to add some, the
-  chat or Settings. `directions-scope.js` draws the fields with the kit.
-  Tests: `creationsDirector.test.ts`, `creationsDirectionsScope.test.ts`.
+- **Scoped to the chat, and to each character in it (built 2026-11-09).**
+  Mufaro: the lists were global and every chat was forced to follow them;
+  he wanted global as the default and custom suggestions per chat, and
+  then, since a move list is about what a person might do and the chef
+  and the daughter do not want the same moves, per character within the
+  chat. Chat Settings (the drawer) now has, under the standing note, one
+  field per character in the chat ("Directions for Henrik (this chat)")
+  and one for the Narrator, each with a dropdown: Follow Settings (the
+  default; the Settings list, or the shipped one) or This Chat's Own List,
+  which copies the Settings list in so it is edited rather than written
+  from nothing; from then on that character (or the Narrator) reads their
+  own, empty meaning none for them here. Stored on the thread as
+  `directionsByCharacter[file]` (absent means follow) and
+  `directionsNarrator` (null means follow); a character leaving the chat
+  takes their list with them. `directionKinds(thread, settings, {
+  characterFile })` in `director.js` is the one resolver, read by Suggest
+  Directions and Auto-direct alike; the director's prompt asks each
+  character for their own kinds when they differ, and the parser reads
+  each group by theirs; the empty-lists message says where to add some,
+  the chat or Settings. `directions-scope.js` draws the fields with the
+  kit. Tests: `creationsDirector.test.ts`, `creationsDirectionsScope.test.ts`.
 
 ## Room to be a person (built 2026-10-23)
 

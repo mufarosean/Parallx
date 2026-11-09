@@ -1,16 +1,13 @@
 // directions-scope.js — Creations AI: the kinds of direction a chat offers,
-// scoped. Creations Settings holds the two lists every chat follows by
-// default (for each character, for the Narrator); a chat may keep its own
-// two lists instead, each started from the Settings list so it is edited,
-// not written from nothing, and each empty meaning none of that sort in
-// this chat. Drawn with the kit alone; mounted in the chat drawer.
+// scoped. Creations Settings holds the lists every chat follows by default
+// (one for each character, one for the Narrator); in a chat, each character
+// may keep a list of their own (the chef and the daughter do not want the
+// same moves), and the Narrator one list for the chat. An own list starts as
+// a copy of the Settings list so it is edited, not written from nothing, and
+// an own empty list means none of that sort here. Drawn with the kit alone;
+// mounted in the chat drawer.
 
 import { DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
-
-const LISTS = [
-  { key: 'directionsCharacter', label: 'Directions for each character', fallback: DEFAULT_CHARACTER_DIRECTIONS, hint: `What Suggest Directions offers each character in this chat, one per line as "Label: what it means", up to ${MAX_DIRECTION_KINDS}. Empty means no character options here.` },
-  { key: 'directionsNarrator', label: 'Directions for the Narrator', fallback: DEFAULT_NARRATOR_DIRECTIONS, hint: `The Narrator's options in this chat: moves for the story itself, one per line, up to ${MAX_DIRECTION_KINDS}. Empty means no Narrator options here.` },
-];
 
 /** The scope values of the dropdown. */
 export const FOLLOW_SETTINGS = '';
@@ -23,23 +20,55 @@ export function settingsList(settings, key, fallback) {
 }
 
 /**
- * Two fields in the chat drawer, one per list: a dropdown (Follow Settings,
+ * The lists a chat can scope: one per character in it, then the Narrator's.
+ * Each reads and writes its place on the thread: a character's list lives in
+ * `thread.directionsByCharacter[file]` (absent means follow), the Narrator's
+ * in `thread.directionsNarrator` (null means follow).
+ */
+export function directionLists(thread, characters, saveMeta) {
+  const lists = (Array.isArray(characters) ? characters : []).filter((c) => c && c.file).map((c) => ({
+    key: `directionsByCharacter.${c.file}`,
+    label: `Directions for ${c.name || c.file}`,
+    settingsKey: 'directionsCharacter',
+    fallback: DEFAULT_CHARACTER_DIRECTIONS,
+    hint: `What Suggest Directions offers ${c.name || 'this character'} in this chat, one per line as "Label: what it means", up to ${MAX_DIRECTION_KINDS}. Empty means no options for them here.`,
+    get: () => (thread.directionsByCharacter && typeof thread.directionsByCharacter === 'object' ? thread.directionsByCharacter[c.file] : undefined),
+    set: (v) => {
+      const map = { ...(thread.directionsByCharacter && typeof thread.directionsByCharacter === 'object' ? thread.directionsByCharacter : {}) };
+      if (v === null) delete map[c.file]; else map[c.file] = v;
+      saveMeta({ directionsByCharacter: map }, 'directions');
+    },
+  }));
+  lists.push({
+    key: 'directionsNarrator',
+    label: 'Directions for the Narrator',
+    settingsKey: 'directionsNarrator',
+    fallback: DEFAULT_NARRATOR_DIRECTIONS,
+    hint: `The Narrator's options in this chat: moves for the story itself, one per line, up to ${MAX_DIRECTION_KINDS}. Empty means no Narrator options here.`,
+    get: () => thread.directionsNarrator,
+    set: (v) => saveMeta({ directionsNarrator: v }, 'directions'),
+  });
+  return lists;
+}
+
+/**
+ * The fields in the chat drawer, one per list: a dropdown (Follow Settings,
  * This Chat's Own List) and, for an own list, the textarea holding it.
  *   ui: the kit (createBlock)
  *   select: makes the app's dropdown from { className, layout, items, value, onChange }
  *   fieldWrap: the drawer's labelled field (label, control element)
- *   thread: the chat; `directionsCharacter` and `directionsNarrator` are null (follow) or a string (own)
- *   saveMeta: saves fields on the thread
+ *   thread, saveMeta: the chat and how its fields are saved
  *   settings: Creations Settings, or a getter for them
+ *   characters: [{ file, name }] in the chat
  * Returns one { key, area, scope } per list.
  */
-export function mountDirectionsScope(host, { ui, select, fieldWrap, thread, saveMeta, settings }) {
+export function mountDirectionsScope(host, { ui, select, fieldWrap, thread, saveMeta, settings, characters = [] }) {
   const current = () => (typeof settings === 'function' ? settings() : settings) || {};
   const mounted = [];
-  for (const list of LISTS) {
-    const own = typeof thread[list.key] === 'string';
+  for (const list of directionLists(thread, characters, saveMeta)) {
+    const own = typeof list.get() === 'string';
     const area = ui.createBlock(null, 'textarea', { className: 'tg-drawer-textarea', attrs: { rows: '4', placeholder: 'One kind per line, as "Label: what it means".', 'aria-label': `${list.label}, this chat's list` } });
-    area.value = own ? thread[list.key] : '';
+    area.value = own ? list.get() : '';
     area.hidden = !own;
     const scope = select({
       className: 'tg-drawer-select',
@@ -49,14 +78,14 @@ export function mountDirectionsScope(host, { ui, select, fieldWrap, thread, save
       onChange: (v) => {
         if (v === OWN_LIST) {
           // An own list begins as a copy of the Settings list, to edit.
-          if (typeof thread[list.key] !== 'string') {
-            area.value = settingsList(current(), list.key, list.fallback);
-            saveMeta({ [list.key]: area.value }, 'directions');
+          if (typeof list.get() !== 'string') {
+            area.value = settingsList(current(), list.settingsKey, list.fallback);
+            list.set(area.value);
           }
           area.hidden = false;
           area.focus();
         } else {
-          saveMeta({ [list.key]: null }, 'directions');
+          list.set(null);
           area.hidden = true;
         }
       },
@@ -64,7 +93,7 @@ export function mountDirectionsScope(host, { ui, select, fieldWrap, thread, save
     const wrap = fieldWrap(`${list.label} (this chat)`, scope.element);
     wrap.appendChild(area);
     ui.createBlock(wrap, 'div', { className: 'tg-drawer-hint', text: list.hint });
-    area.addEventListener('change', () => { if (!area.hidden) saveMeta({ [list.key]: area.value }, 'directions'); });
+    area.addEventListener('change', () => { if (!area.hidden) list.set(area.value); });
     host.appendChild(wrap);
     mounted.push({ key: list.key, area, scope });
   }

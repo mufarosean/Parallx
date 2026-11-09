@@ -38,16 +38,20 @@ export const DEFAULT_NARRATOR_DIRECTIONS = [
 export const MAX_DIRECTION_KINDS = 8;
 
 /**
- * The kinds for a chat. A chat with its own list (a string on the thread,
- * empty meaning none of that sort here) uses it; otherwise the Settings
- * list; otherwise the shipped default. `scope` says where each came from
- * ('chat' or 'settings'), for the message when both lists are empty.
+ * The kinds for a chat. A character with a list of their own in this chat
+ * (`thread.directionsByCharacter[file]`, a string, empty meaning none for
+ * them here) uses it; the Narrator likewise (`thread.directionsNarrator`);
+ * otherwise the Settings list; otherwise the shipped default. `scope` says
+ * where each came from ('chat' or 'settings'), for the message when every
+ * list is empty.
  */
-export function directionKinds(thread, settings) {
+export function directionKinds(thread, settings, { characterFile = null } = {}) {
   const pick = (own, global, fallback) => (typeof own === 'string'
     ? { text: own, scope: 'chat' }
     : { text: typeof global === 'string' ? global : fallback, scope: 'settings' });
-  const c = pick(thread?.directionsCharacter, settings?.directionsCharacter, DEFAULT_CHARACTER_DIRECTIONS);
+  const byChar = thread?.directionsByCharacter;
+  const ownChar = characterFile && byChar && typeof byChar === 'object' ? byChar[characterFile] : undefined;
+  const c = pick(ownChar, settings?.directionsCharacter, DEFAULT_CHARACTER_DIRECTIONS);
   const n = pick(thread?.directionsNarrator, settings?.directionsNarrator, DEFAULT_NARRATOR_DIRECTIONS);
   return { characterKinds: parseDirectionKinds(c.text), narratorKinds: parseDirectionKinds(n.text), scope: { character: c.scope, narrator: n.scope } };
 }
@@ -143,14 +147,19 @@ export function directorCast(cast, { present = [], lastSpeaker = null, max = DIR
  *   transcript: [{ name, content }] — the recent turns, oldest first
  *   recentNotes: string[] — the director's notes the last turns were written with
  *   rules: string — the user's dialogue rules, if any
+ *   characterKinds: the kinds for every character without `kinds` of their own on their cast entry
  */
 export function buildDirectorPrompt({
   cast = [], others = [], scene = null, memory = {}, transcript = [], recentNotes = [], rules = '',
   narrator = true, characterKinds = DIRECTION_KINDS, narratorKinds = NARRATOR_KINDS,
 } = {}) {
-  const forCast = characterKinds.length > 0 && cast.length > 0;
+  const kindsOf = (c) => (Array.isArray(c.kinds) ? c.kinds : characterKinds);
+  const asked = cast.filter((c) => c && c.name && kindsOf(c).length > 0);
+  const forCast = asked.length > 0;
   const forNarrator = narrator && narratorKinds.length > 0;
-  const names = forCast ? cast.map((c) => c.name) : [];
+  const names = asked.map((c) => c.name);
+  const sig = (kinds) => kinds.map((k) => k.key).join('|');
+  const shared = forCast && asked.every((c) => sig(kindsOf(c)) === sig(kindsOf(asked[0])));
   const count = (n) => (n === 1 ? 'one option, of this kind' : `exactly ${n} options, one of each kind`);
   const narratorRules = forNarrator ? [
     '',
@@ -161,8 +170,9 @@ export function buildDirectorPrompt({
     'When an option brings someone in, name someone from the Others list when one fits. Never contradict the memory, never end the story.',
   ] : [];
   const characterRules = forCast ? [
-    `For each character named at the end, write ${count(characterKinds.length)}:`,
-    kindLines(characterKinds),
+    ...(shared
+      ? [`For each character named at the end, write ${count(kindsOf(asked[0]).length)}:`, kindLines(kindsOf(asked[0]))]
+      : ['For each character named at the end, write the options asked for them, one of each of their kinds:', ...asked.flatMap((c) => [`${c.name}: ${count(kindsOf(c).length)}.`, kindLines(kindsOf(c))])]),
     '',
     'Each option:',
     '- Answers the last turn. It is what this character does next because of what was just said or what just happened, and it names something from that turn: a person, a word, an object, an event. Their wants, secrets and history shape how they answer; they never replace the answer.',
@@ -192,7 +202,7 @@ export function buildDirectorPrompt({
     '<one sentence>',
     '',
     ...(forNarrator ? [`## ${NARRATOR}`, formatLines(narratorKinds), ''] : []),
-    ...(forCast ? [`## ${names[0]}`, formatLines(characterKinds)] : []),
+    ...(forCast ? [`## ${names[0]}`, formatLines(kindsOf(asked[0]))] : []),
   ].join('\n').replace(/\n+$/, '');
 
   const parts = [];
@@ -252,9 +262,9 @@ export function buildDirectorPrompt({
  * nothing yet is left out. Cut-off last lines are kept only once the reply
  * is `complete`.
  */
-export function parseDirections(raw, names = [], { complete = true, characterKinds = DIRECTION_KINDS, narratorKinds = NARRATOR_KINDS } = {}) {
-  const kindsFor = (name) => (name === NARRATOR ? narratorKinds : characterKinds);
-  const allKinds = [...characterKinds, ...narratorKinds];
+export function parseDirections(raw, names = [], { complete = true, characterKinds = DIRECTION_KINDS, narratorKinds = NARRATOR_KINDS, kindsByName = null } = {}) {
+  const kindsFor = (name) => (name === NARRATOR ? narratorKinds : (kindsByName && Array.isArray(kindsByName[name]) ? kindsByName[name] : characterKinds));
+  const allKinds = [...characterKinds, ...narratorKinds, ...Object.values(kindsByName || {}).flat()];
   let text = String(raw || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*$/i, '');
   if (!complete) {
     const nl = text.lastIndexOf('\n');

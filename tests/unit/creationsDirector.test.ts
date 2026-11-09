@@ -10,7 +10,7 @@ import { parseSituation, DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHAR
 describe('the kinds a chat uses', () => {
   const settings = { directionsCharacter: 'Push: act\nStall: wait', directionsNarrator: 'Event: something lands' };
   it('follow Settings by default, the shipped lists when Settings has none', () => {
-    const k = directionKinds({ directionsCharacter: null, directionsNarrator: null }, settings);
+    const k = directionKinds({ directionsByCharacter: {}, directionsNarrator: null }, settings, { characterFile: 'ada.json' });
     expect(k.characterKinds.map((x: any) => x.label)).toEqual(['Push', 'Stall']);
     expect(k.narratorKinds.map((x: any) => x.label)).toEqual(['Event']);
     expect(k.scope).toEqual({ character: 'settings', narrator: 'settings' });
@@ -18,15 +18,36 @@ describe('the kinds a chat uses', () => {
     expect(shipped.characterKinds.length).toBe(parseDirectionKinds(DEFAULT_CHARACTER_DIRECTIONS).length);
     expect(shipped.narratorKinds.length).toBe(parseDirectionKinds(DEFAULT_NARRATOR_DIRECTIONS).length);
   });
-  it("a chat's own list wins, list by list; an own empty list means none of that sort here", () => {
-    const k = directionKinds({ directionsCharacter: 'Confess: they say the thing', directionsNarrator: '' }, settings);
-    expect(k.characterKinds.map((x: any) => x.label)).toEqual(['Confess']);
-    expect(k.narratorKinds).toEqual([]);
-    expect(k.scope).toEqual({ character: 'chat', narrator: 'chat' });
-    const half = directionKinds({ directionsCharacter: null, directionsNarrator: 'Storm: weather turns' }, settings);
+  it("a character's own list in the chat wins for them alone; an own empty list means none for them here", () => {
+    const thread = { directionsByCharacter: { 'ada.json': 'Confess: they say the thing', 'tom.json': '' }, directionsNarrator: '' };
+    const ada = directionKinds(thread, settings, { characterFile: 'ada.json' });
+    expect(ada.characterKinds.map((x: any) => x.label)).toEqual(['Confess']);
+    expect(ada.narratorKinds).toEqual([]);
+    expect(ada.scope).toEqual({ character: 'chat', narrator: 'chat' });
+    expect(directionKinds(thread, settings, { characterFile: 'tom.json' }).characterKinds).toEqual([]);
+    // A third character with no list of their own follows Settings.
+    const vera = directionKinds(thread, settings, { characterFile: 'vera.json' });
+    expect(vera.characterKinds.map((x: any) => x.label)).toEqual(['Push', 'Stall']);
+    expect(vera.scope.character).toBe('settings');
+    const half = directionKinds({ directionsByCharacter: {}, directionsNarrator: 'Storm: weather turns' }, settings, { characterFile: 'ada.json' });
     expect(half.characterKinds.map((x: any) => x.label)).toEqual(['Push', 'Stall']);
     expect(half.narratorKinds.map((x: any) => x.label)).toEqual(['Storm']);
     expect(half.scope).toEqual({ character: 'settings', narrator: 'chat' });
+  });
+  it('the prompt asks each character for their own kinds when they differ, and the parser reads each by theirs', () => {
+    const confess = parseDirectionKinds('Confess: they admit something\nLeave: they go');
+    const push = parseDirectionKinds('Push: they act\nStall: they wait\nMove: they change the scene');
+    const [system] = buildDirectorPrompt({ cast: [{ name: 'Ada', kinds: confess }, { name: 'Tom', kinds: push }], narrator: false }).map((m: any) => m.content);
+    expect(system).toContain('write the options asked for them, one of each of their kinds:');
+    expect(system).toContain('Ada: exactly 2 options, one of each kind.\n- Confess: they admit something.\n- Leave: they go.');
+    expect(system).toContain('Tom: exactly 3 options, one of each kind.\n- Push: they act.');
+    expect(system).toContain('## Ada\nConfess: <one sentence>');
+    // A character with no kinds is not asked.
+    const [sys2, user2] = buildDirectorPrompt({ cast: [{ name: 'Ada', kinds: confess }, { name: 'Tom', kinds: [] }], narrator: false }).map((m: any) => m.content);
+    expect(sys2).toContain('write exactly 2 options, one of each kind:');
+    expect(user2).toContain('Write the options for: Ada.');
+    const got = parseDirections('## Ada\nLeave: Walks out\nConfess: Says she took it\n## Tom\nStall: Pours another\nPush: Names the price\nMove: Locks the door', ['Ada', 'Tom'], { kindsByName: { Ada: confess, Tom: push } });
+    expect(got.map((g: any) => [g.name, g.options.map((o: any) => o.kind)])).toEqual([['Ada', ['confess', 'leave']], ['Tom', ['push', 'stall', 'move']]]);
   });
 });
 

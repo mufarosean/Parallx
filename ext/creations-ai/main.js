@@ -4048,7 +4048,7 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.writingPresetOverride === undefined) thread.writingPresetOverride = '';
   if (thread.responseLengthOverride === undefined) thread.responseLengthOverride = '';
   if (thread.standingNote === undefined) thread.standingNote = '';
-  if (thread.directionsCharacter === undefined) thread.directionsCharacter = null; if (thread.directionsNarrator === undefined) thread.directionsNarrator = null;
+  if (!thread.directionsByCharacter || typeof thread.directionsByCharacter !== 'object') thread.directionsByCharacter = {}; if (thread.directionsNarrator === undefined) thread.directionsNarrator = null;
   if (thread.smartTurnOrder === undefined) thread.smartTurnOrder = false;
   if (!Array.isArray(thread.supportingCast)) thread.supportingCast = [];
   if (thread.act === undefined) thread.act = null;
@@ -5926,11 +5926,11 @@ function renderChatEditor(container, parallx, input) {
   }
 
   /** The director's messages for `chosen` ([{ name, char }]): Suggest Directions and auto-direct both ask this way. */
-  async function directorMessages(chosen, { characterKinds, narratorKinds }) {
+  async function directorMessages(chosen, { characterKinds = [], narratorKinds, kindsByName = null }) {
     const story = messageHistory.filter((m) => m && m.content && m.hiddenFrom !== 'ai' && m.kind !== 'ooc');
     let memory = { facts: [], beats: [], notes: '' };
     try { memory = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* the prompt goes without it */ }
-    const cast = chosen.map(({ name, char }) => { const sheet = sheetFromCharacter(char.rawData || {}); return { name, tagline: sheet.tagline, drives: sheet.drives, secrets: sheet.secrets, relationships: sheet.relationships }; });
+    const cast = chosen.map(({ name, char }) => { const sheet = sheetFromCharacter(char.rawData || {}); return { name, tagline: sheet.tagline, drives: sheet.drives, secrets: sheet.secrets, relationships: sheet.relationships, ...(kindsByName ? { kinds: kindsByName[name] || [] } : {}) }; });
     return buildDirectorPrompt({
       cast, others: [...supportingCards, ...connectedCards], scene: thread.sceneState || null, memory,
       transcript: story.slice(-14).map((m) => ({ name: getVisibleName(m), content: m.content })),
@@ -5944,7 +5944,7 @@ function renderChatEditor(container, parallx, input) {
     const modelId = (rawId && models.some((m) => m.id === rawId)) ? rawId : models[0]?.id;
     const char = speaker === NARRATOR_SPEAKER ? null : characters.find((c) => c.fileName === speaker);
     if (!modelId || !parallx.lm?.sendChatRequest || (!char && speaker !== NARRATOR_SPEAKER)) return null;
-    const kinds = directionKinds(thread, currentSettings);
+    const kinds = directionKinds(thread, currentSettings, { characterFile: speaker });
     const characterKinds = char ? kinds.characterKinds : [];
     const narratorKinds = char ? [] : kinds.narratorKinds;
     if (!characterKinds.length && !narratorKinds.length) return null;
@@ -5977,24 +5977,23 @@ function renderChatEditor(container, parallx, input) {
     const lastSpeaker = [...story].reverse().find((m) => m.characterFile)?.characterFile || null;
     const roster = characters.map((c) => ({ file: c.fileName, name: getCharacterName(c), char: c }));
     const chosen = directorCast(roster, { present: thread.sceneState?.present || [], lastSpeaker });
-    // The kinds are the user's, read fresh at every ask: this chat's own
-    // lists where it has them, else Settings; an empty list means no options of that sort.
+    // The kinds are the user's, read fresh at every ask: each character's own
+    // list in this chat where they have one, the Narrator's own, else Settings; empty means no options of that sort.
     const settings = await loadSettings(fs, workspaceUri).catch(() => currentSettings || {});
     if (run !== _directionsRun) return;
-    const { characterKinds, narratorKinds, scope } = directionKinds(thread, settings);
-    if (characterKinds.length === 0 && narratorKinds.length === 0) {
-      const ownLists = scope.character === 'chat' || scope.narrator === 'chat';
+    const perChar = chosen.map((c) => ({ ...c, ...directionKinds(thread, settings, { characterFile: c.file }) }));
+    const { narratorKinds, scope: narScope } = directionKinds(thread, settings);
+    const kindsByName = Object.fromEntries(perChar.map((c) => [c.name, c.characterKinds]));
+    if (perChar.every((c) => c.characterKinds.length === 0) && narratorKinds.length === 0) {
+      const ownLists = narScope.narrator === 'chat' || perChar.some((c) => c.scope.character === 'chat');
       renderDirections({ error: ownLists ? 'This chat has no kinds of direction set. Add some under Directions in Chat Settings, or set them back to Follow Settings.' : 'No kinds of direction are set. Add some under Directions in Creations Settings.' });
       return;
     }
     // The Narrator's group (moves for the story itself) comes first.
-    const names = [
-      ...(narratorKinds.length ? [NARRATOR] : []),
-      ...(characterKinds.length ? chosen.map((c) => c.name) : []),
-    ];
+    const names = [...(narratorKinds.length ? [NARRATOR] : []), ...perChar.filter((c) => c.characterKinds.length).map((c) => c.name)];
     renderDirections({ status: `Reading the scene for ${names.map((n) => (n === NARRATOR ? 'the Narrator' : n)).join(', ')}…`, busy: true });
 
-    const messages = await directorMessages(chosen, { characterKinds, narratorKinds });
+    const messages = await directorMessages(chosen, { narratorKinds, kindsByName });
     if (run !== _directionsRun) return;
 
     let raw = '';
@@ -6007,7 +6006,7 @@ function renderChatEditor(container, parallx, input) {
         if (run !== _directionsRun) return;
         if (!chunk?.content) continue;
         raw += chunk.content;
-        const partial = parseDirections(raw, names, { complete: false, characterKinds, narratorKinds });
+        const partial = parseDirections(raw, names, { complete: false, narratorKinds, kindsByName });
         const reading = parseSituation(raw, { complete: false });
         if (partial.length || reading) renderDirections({ groups: partial, status: 'Writing…', busy: true, situation: reading });
       }
@@ -6017,7 +6016,7 @@ function renderChatEditor(container, parallx, input) {
       return;
     }
     if (run !== _directionsRun) return;
-    const groups = parseDirections(raw, names, { characterKinds, narratorKinds });
+    const groups = parseDirections(raw, names, { narratorKinds, kindsByName });
     if (!groups.length) {
       console.warn('[TextGenerator] Directions: nothing readable in the reply. It began:', raw.slice(0, 200));
       renderDirections({ error: 'The model did not suggest anything this time.' });
@@ -8277,7 +8276,7 @@ function renderChatEditor(container, parallx, input) {
     });
     bodyEl.appendChild(fieldWrap('Standing director\'s note', standingArea, 'Injected close to generation on EVERY turn. The megaphone next to the reply box is the one-shot version.'));
     // Directions for this chat (directions-scope.js): follow Settings, or the chat's own lists.
-    mountDirectionsScope(bodyEl, { ui: parallx.ui, select: (o) => tgSelect(parallx, o), fieldWrap, thread, saveMeta, settings: () => currentSettings });
+    mountDirectionsScope(bodyEl, { ui: parallx.ui, select: (o) => tgSelect(parallx, o), fieldWrap, thread, saveMeta, settings: () => currentSettings, characters: characters.map((c) => ({ file: c.fileName, name: getCharacterName(c) })) });
 
     // ── Toggles ──
     const toggleRow = (labelText, checked, onChange, hintText) => {
