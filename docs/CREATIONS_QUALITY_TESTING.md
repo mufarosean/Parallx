@@ -470,6 +470,22 @@ one, no heading until the place changes. One character habit survives
 every style: Beatrix's "would you be a dear", which is her card, not the
 style.
 
+**Room on the page (2026-11-09).** Mufaro's standard for a turn: verbose,
+not in an unnecessary way, but in a way that paints the picture well.
+Natural RP worked but wrote little next to Immersive, so he always ended
+up on Immersive. The cause was in the preset: "Default to 1-2 paragraphs.
+Leave room for the other person", and no clause for what fills a reply
+besides speech (70 percent of its words were dialogue, 0 percent of
+replies showed a thought). The cap is gone; a PAINT THE MOMENT rule gives
+it the room a page of a novel gives the moment, what the character
+notices, weighs and decides not to say, the particulars the moment turns
+on, three or four paragraphs as the moment needs and a short reply only
+when the moment is quick. Immersive RP's Shape of a Reply rule, which the
+re-measure showed had cut it from 82 to 50 words a reply, now says it
+trims filler, not the picture. Not re-measured yet (the GPU was in use);
+the next bench run on the same scenes is the proof, with words a reply
+and replies showing a thought the two numbers to watch.
+
 ## Published benchmarks: what to borrow
 
 None of these can run against Creations as they are. They test raw models

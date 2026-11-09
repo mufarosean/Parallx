@@ -19,7 +19,7 @@ export const WRITING_PRESETS = {
 
 - **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Not every reply opens with the room, and the weather, the light and the view from the window appear only when someone acts on them. Keep dialogue in "quotes".
 
-- **The Shape of a Reply**: At most one action beat for each line of speech, and some lines stand alone. Not every reply is beat, line, beat, line. Speech is tagged with "says" or with nothing: never with how the voice sounds or what plays on the lips.
+- **The Shape of a Reply**: At most one action beat for each line of speech, and some lines stand alone. Not every reply is beat, line, beat, line. Speech is tagged with "says" or with nothing: never with how the voice sounds or what plays on the lips. This trims filler, not the picture: a reply keeps the room a page of a novel gives the moment, filled by the mind on the page and the particulars the moment turns on, more at a turning point, never cut short to fit a shape.
 
 - **Varied Cadence**: Short, sharp sentences for tension or urgency. For quieter moments, let the prose flow. Vary sentence length and pacing to mirror the character's experience.
 
@@ -46,7 +46,7 @@ export const WRITING_PRESETS = {
 
 - **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Whether the moment is tender, tense, or brutal, the details carry its tone: in passion the heat of skin and the catch of breath, in violence the crunch of bone and the glint of a blade. Not every reply opens with the room, and the weather, the light and the view from the window appear only when someone acts on them. Keep dialogue in "quotes".
 
-- **The Shape of a Reply**: At most one action beat for each line of speech, and some lines stand alone. Not every reply is beat, line, beat, line. Speech is tagged with "says" or with nothing: never with how the voice sounds or what plays on the lips.
+- **The Shape of a Reply**: At most one action beat for each line of speech, and some lines stand alone. Not every reply is beat, line, beat, line. Speech is tagged with "says" or with nothing: never with how the voice sounds or what plays on the lips. This trims filler, not the picture: a reply keeps the room a page of a novel gives the moment, filled by the mind on the page and the particulars the moment turns on, more at a turning point, never cut short to fit a shape.
 
 - **Varied Cadence**: Short, sharp sentences for tension or urgency. For quieter moments, let the prose flow. Vary sentence length and pacing to mirror the character's experience.
 
@@ -82,7 +82,7 @@ export const WRITING_PRESETS = {
 - Vary cadence hard: mix very short sentences with long flowing ones.
 - Concrete, specific detail only: no stock imagery (no dancing candlelight, no held breath, no shivers).
 - Never use em dashes or en dashes. Use commas, periods, or ellipses instead.
-- Default to 1-2 paragraphs. Leave room for the other person.
+- PAINT THE MOMENT: a reply has the room a page of a novel gives it, never a cap. Between the lines of speech, what the character notices, weighs, remembers, or decides not to say, shown through what they do and look at; the one or two particulars of the room, the other person, or the thing in hand that this moment turns on. Three or four paragraphs as the moment needs, more at a turning point; a short reply only when the moment itself is quick, a yes, a refusal, a door. Every detail is one this scene needs; none is filler.
 - End mid-beat on something the other person has to answer: a claim, an offer, a refusal, an action, an unfinished thought. A question now and then, never in every reply; a run of replies that all end in a question reads as an interview. Never summarize the scene.`,
   },
   'screenplay': {
@@ -132,7 +132,7 @@ export const STYLE_HINTS = {
   'immersive-rp': 'Immersive prose: a sensory detail where the moment wants it, dialogue in "double quotes", varied cadence and shape; at most one beat per line, tags are "says" or nothing. Show emotion through what they do.',
   'immersive-rp-unfiltered': 'Immersive uncensored prose: take up what was just said and leave something to answer; a sensory detail where the moment wants it; dialogue in "double quotes". Mature themes, violence and moral ambiguity as they come; no forced redemption or positive spin.',
   'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics* naming who acts when more than one character is in the scene, conversational tone.',
-  'natural-rp': 'Never open with scenery or light; open with dialogue, an action, or a reaction. Vary sentence length hard. No em dashes. 1-2 paragraphs, end mid-beat on something to answer, not a question every time.',
+  'natural-rp': 'Never open with scenery or light; open with dialogue, an action, or a reaction. Vary sentence length hard. No em dashes. Paint the moment: what the character notices and weighs between the lines, the particulars it turns on, the room a page would give it. End mid-beat on something to answer, not a question every time.',
   'screenplay': 'Screenplay format: a scene heading only when place or time changes, action lines, CHARACTER NAME above dialogue. Minimal prose.',
   'none': '',
   'custom': '',
