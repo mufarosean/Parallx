@@ -28,6 +28,38 @@ How the app looks and moves: new surfaces, polish of existing ones, the
 feel of browsing. His gate for Voice ("improve the surfaces a bit more,
 make the app feel more polished") is met by work in this section.
 
+### File explorer: the tree's look
+
+**His words (2026-11-09):** "we need to change the UI of file explorer.
+particularly the little arrows, they feel dated, not modern enough."
+
+**What it is.** The explorer tree draws a small filled triangle before
+every folder (collapsed pointing right, open pointing down), with the
+folder icon after it. That twisty is the dated part. The modern tree
+(Finder, the GitHub file tree, Linear, Notion's sidebar) uses a thin
+chevron that appears on hover or focus and turns on open, or folds the
+open state into the folder icon itself and shows no twisty at all;
+rows breathe more, indent guides are faint lines, selection is a soft
+pill.
+
+**What exists today (verified).** The explorer draws its own tree in
+`src/built-in/explorer/main.ts`: the arrow is a text glyph, "▾" or "▸",
+in a `tree-node-chevron` span, which is why it reads as dated; the font
+draws it, not the icon registry. The canvas sidebar already uses the
+registry's `chevron-right` icon turned by a class. There is no shared
+tree control in the kit yet.
+
+**Scope.** Replace the glyph with the registry chevron, drawn and turned
+the way the canvas sidebar does it, and decide hover-reveal against
+always-shown on the real tree. If a second tree wants the same look, that
+is the moment to lift it into the kit, not before. Keyboard behaviour
+(Left and Right to fold and unfold, the names the probes read) stays as
+it is.
+
+**Unknown.** Which of the two directions he wants (chevron on hover, or
+no twisty): show both on the real tree and let him pick. Whether the
+indent and row height change with it.
+
 ### Home: one front door for everything recent
 
 **His words (2026-11-09):** "a sort of home ... navigated to by hitting
