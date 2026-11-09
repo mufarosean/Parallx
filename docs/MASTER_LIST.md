@@ -9,7 +9,24 @@ that item; the list is the queue, not the plan.
 How to read an entry: what it is, what the user gets, what exists today,
 and what is unknown (a licence, a size, a bar not yet researched).
 
-## App improvements
+The sections, by his rule (2026-11-09): improvements to surfaces that
+already exist, UI improvements, and completely new extensions are kept
+apart, so a month's plan can be read by kind. Verification he is owed and
+ideas he has heard and set aside come last.
+
+## Existing surfaces: improvements
+
+Changes to what is already there: a tool, a pane, a prompt, a pipeline.
+
+- **Story tab writing style.** The Story tab (`story-core.js`,
+  buildBeatMessages) uses no writing preset; only chats do. Not raised
+  with him yet; recorded here so it is not forgotten.
+
+## UI improvements
+
+How the app looks and moves: new surfaces, polish of existing ones, the
+feel of browsing. His gate for Voice ("improve the surfaces a bit more,
+make the app feel more polished") is met by work in this section.
 
 ### Home: one front door for everything recent
 
@@ -53,21 +70,11 @@ third thing beside them.
 verify); where the summaries are stored so they are written once; how
 the provider reports changes without a timer per tool.
 
-### Open from recent work (verified, small)
+## New extensions
 
-- The Story tab (`story-core.js`, buildBeatMessages) uses no writing
-  preset; only chats do. Not raised with him yet.
-- Re-measure on gemma4:31b at 64K, owed since 2026-11-09: the writing
-  styles after the room change (words a reply, replies showing a thought),
-  and the two knowledge cases (father, daughter, chef; the two strangers).
-- His verdict in the app, owed: Style Text and Start Custom From This;
-  the per-character direction lists in Chat Settings; a generated sheet on
-  Gemma and Qwen.
-
-## Future extensions
-
-All four came from the Papers With Code read of 2026-11-09. Licences are
-not checked for any of them; that is the first step of each.
+Completely new tools, each its own extension in `ext/`, on or off by the
+user. All four came from the Papers With Code read of 2026-11-09.
+Licences are not checked for any of them; that is the first step of each.
 
 ### Read Anything: a better local reader for scans and photos of pages
 
@@ -149,6 +156,17 @@ never over the original.
 
 **Unknown.** Licences; VRAM at his image sizes; speed per edit; ComfyUI
 stays off the table (decided earlier, do not re-raise).
+
+## Verification owed
+
+Shipped work he has not yet judged, and measurements not yet taken.
+
+- Re-measure on gemma4:31b at 64K, owed since 2026-11-09: the writing
+  styles after the room change (words a reply, replies showing a thought),
+  and the two knowledge cases (father, daughter, chef; the two strangers).
+- His verdict in the app: Style Text and Start Custom From This; the
+  per-character direction lists in Chat Settings; a generated sheet on
+  Gemma and Qwen.
 
 ## Heard, not on the list
 
