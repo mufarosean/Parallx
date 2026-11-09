@@ -71,6 +71,11 @@ for pages and PDFs gets exactly that. So:
 
 ## House rules worth knowing first
 
+- Future work has one home: `docs/MASTER_LIST.md` (app improvements and
+  future extensions, with the owner's words on each). An idea goes there
+  when he says so; nothing on it is agreed until he says go on that item.
+  Do not open new briefs or idea files beside it.
+
 - UI uses the app's own system: `--px-*` tokens (`src/theme/px-tokens.css`),
   the kit (`src/ui/kit.ts`, `api.ui.*` for extensions), icons from the icon
   registry. Anything genuinely new is registered there (a Tier 3 component
