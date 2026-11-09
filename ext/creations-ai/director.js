@@ -38,6 +38,21 @@ export const DEFAULT_NARRATOR_DIRECTIONS = [
 export const MAX_DIRECTION_KINDS = 8;
 
 /**
+ * The kinds for a chat. A chat with its own list (a string on the thread,
+ * empty meaning none of that sort here) uses it; otherwise the Settings
+ * list; otherwise the shipped default. `scope` says where each came from
+ * ('chat' or 'settings'), for the message when both lists are empty.
+ */
+export function directionKinds(thread, settings) {
+  const pick = (own, global, fallback) => (typeof own === 'string'
+    ? { text: own, scope: 'chat' }
+    : { text: typeof global === 'string' ? global : fallback, scope: 'settings' });
+  const c = pick(thread?.directionsCharacter, settings?.directionsCharacter, DEFAULT_CHARACTER_DIRECTIONS);
+  const n = pick(thread?.directionsNarrator, settings?.directionsNarrator, DEFAULT_NARRATOR_DIRECTIONS);
+  return { characterKinds: parseDirectionKinds(c.text), narratorKinds: parseDirectionKinds(n.text), scope: { character: c.scope, narrator: n.scope } };
+}
+
+/**
  * A kinds list from its Settings text: one per line, "Label: what it
  * means" (a bare label works too). Blank lines, # lines and repeats are
  * skipped; a label is at most four words. Empty text, no kinds.

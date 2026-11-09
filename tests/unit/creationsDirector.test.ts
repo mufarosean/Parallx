@@ -5,7 +5,30 @@
 
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { parseSituation, DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+import { parseSituation, DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directionKinds, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+
+describe('the kinds a chat uses', () => {
+  const settings = { directionsCharacter: 'Push: act\nStall: wait', directionsNarrator: 'Event: something lands' };
+  it('follow Settings by default, the shipped lists when Settings has none', () => {
+    const k = directionKinds({ directionsCharacter: null, directionsNarrator: null }, settings);
+    expect(k.characterKinds.map((x: any) => x.label)).toEqual(['Push', 'Stall']);
+    expect(k.narratorKinds.map((x: any) => x.label)).toEqual(['Event']);
+    expect(k.scope).toEqual({ character: 'settings', narrator: 'settings' });
+    const shipped = directionKinds({}, {});
+    expect(shipped.characterKinds.length).toBe(parseDirectionKinds(DEFAULT_CHARACTER_DIRECTIONS).length);
+    expect(shipped.narratorKinds.length).toBe(parseDirectionKinds(DEFAULT_NARRATOR_DIRECTIONS).length);
+  });
+  it("a chat's own list wins, list by list; an own empty list means none of that sort here", () => {
+    const k = directionKinds({ directionsCharacter: 'Confess: they say the thing', directionsNarrator: '' }, settings);
+    expect(k.characterKinds.map((x: any) => x.label)).toEqual(['Confess']);
+    expect(k.narratorKinds).toEqual([]);
+    expect(k.scope).toEqual({ character: 'chat', narrator: 'chat' });
+    const half = directionKinds({ directionsCharacter: null, directionsNarrator: 'Storm: weather turns' }, settings);
+    expect(half.characterKinds.map((x: any) => x.label)).toEqual(['Push', 'Stall']);
+    expect(half.narratorKinds.map((x: any) => x.label)).toEqual(['Storm']);
+    expect(half.scope).toEqual({ character: 'settings', narrator: 'chat' });
+  });
+});
 
 // The reading tests run on four kinds, the list as first shipped; the
 // shipped default is now three (Deepen dropped), and the list is the user's.

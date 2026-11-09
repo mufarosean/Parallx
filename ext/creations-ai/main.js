@@ -21,9 +21,9 @@ import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterL
 import { takeCharacterDraft, keepCharacterDraft, dropCharacterDraft, clearCharacterDrafts } from './character-drafts.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
-import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
+import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js'; import { MEMORY_CATEGORY_ORDER, MEMORY_EXTRACT_SCHEMA, sinceThenSchema } from './schemas.js';
-import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStylePreview, STYLE_COMMANDS, runStyleCommand } from './style-preview.js';
+import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStylePreview, STYLE_COMMANDS, runStyleCommand } from './style-preview.js'; import { mountDirectionsScope } from './directions-scope.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js'; import { characterSheet, cardAsKnownBy, knowledgeRule, knowledgeReminder, PRESENT_MEANING, loreAddress, memoryAddress } from './knowledge.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
 import { parseTurnScript } from './acts.js';
@@ -4048,6 +4048,7 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.writingPresetOverride === undefined) thread.writingPresetOverride = '';
   if (thread.responseLengthOverride === undefined) thread.responseLengthOverride = '';
   if (thread.standingNote === undefined) thread.standingNote = '';
+  if (thread.directionsCharacter === undefined) thread.directionsCharacter = null; if (thread.directionsNarrator === undefined) thread.directionsNarrator = null;
   if (thread.smartTurnOrder === undefined) thread.smartTurnOrder = false;
   if (!Array.isArray(thread.supportingCast)) thread.supportingCast = [];
   if (thread.act === undefined) thread.act = null;
@@ -5943,9 +5944,9 @@ function renderChatEditor(container, parallx, input) {
     const modelId = (rawId && models.some((m) => m.id === rawId)) ? rawId : models[0]?.id;
     const char = speaker === NARRATOR_SPEAKER ? null : characters.find((c) => c.fileName === speaker);
     if (!modelId || !parallx.lm?.sendChatRequest || (!char && speaker !== NARRATOR_SPEAKER)) return null;
-    const s = currentSettings || {};
-    const characterKinds = char ? parseDirectionKinds(typeof s.directionsCharacter === 'string' ? s.directionsCharacter : DEFAULT_CHARACTER_DIRECTIONS) : [];
-    const narratorKinds = char ? [] : parseDirectionKinds(typeof s.directionsNarrator === 'string' ? s.directionsNarrator : DEFAULT_NARRATOR_DIRECTIONS);
+    const kinds = directionKinds(thread, currentSettings);
+    const characterKinds = char ? kinds.characterKinds : [];
+    const narratorKinds = char ? [] : kinds.narratorKinds;
     if (!characterKinds.length && !narratorKinds.length) return null;
     const name = char ? getCharacterName(char) : NARRATOR;
     try {
@@ -5976,15 +5977,14 @@ function renderChatEditor(container, parallx, input) {
     const lastSpeaker = [...story].reverse().find((m) => m.characterFile)?.characterFile || null;
     const roster = characters.map((c) => ({ file: c.fileName, name: getCharacterName(c), char: c }));
     const chosen = directorCast(roster, { present: thread.sceneState?.present || [], lastSpeaker });
-    // The kinds are the user's, read fresh from Settings at every ask:
-    // one list for the characters, one for the Narrator; an empty list
-    // means no options of that sort.
+    // The kinds are the user's, read fresh at every ask: this chat's own
+    // lists where it has them, else Settings; an empty list means no options of that sort.
     const settings = await loadSettings(fs, workspaceUri).catch(() => currentSettings || {});
     if (run !== _directionsRun) return;
-    const characterKinds = parseDirectionKinds(typeof settings?.directionsCharacter === 'string' ? settings.directionsCharacter : DEFAULT_CHARACTER_DIRECTIONS);
-    const narratorKinds = parseDirectionKinds(typeof settings?.directionsNarrator === 'string' ? settings.directionsNarrator : DEFAULT_NARRATOR_DIRECTIONS);
+    const { characterKinds, narratorKinds, scope } = directionKinds(thread, settings);
     if (characterKinds.length === 0 && narratorKinds.length === 0) {
-      renderDirections({ error: 'No kinds of direction are set. Add some under Directions in Creations Settings.' });
+      const ownLists = scope.character === 'chat' || scope.narrator === 'chat';
+      renderDirections({ error: ownLists ? 'This chat has no kinds of direction set. Add some under Directions in Chat Settings, or set them back to Follow Settings.' : 'No kinds of direction are set. Add some under Directions in Creations Settings.' });
       return;
     }
     // The Narrator's group (moves for the story itself) comes first.
@@ -8276,6 +8276,8 @@ function renderChatEditor(container, parallx, input) {
       saveMeta({ standingNote: standingArea.value }, 'standing note');
     });
     bodyEl.appendChild(fieldWrap('Standing director\'s note', standingArea, 'Injected close to generation on EVERY turn. The megaphone next to the reply box is the one-shot version.'));
+    // Directions for this chat (directions-scope.js): follow Settings, or the chat's own lists.
+    mountDirectionsScope(bodyEl, { ui: parallx.ui, select: (o) => tgSelect(parallx, o), fieldWrap, thread, saveMeta, settings: () => currentSettings });
 
     // ── Toggles ──
     const toggleRow = (labelText, checked, onChange, hintText) => {

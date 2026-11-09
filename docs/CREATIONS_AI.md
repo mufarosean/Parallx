@@ -891,6 +891,21 @@ Not built, on purpose, and talked through first:
   beats that wait for a condition rather than a turn count, so the
   characters never steer toward a plot they should not know.
 
+- **Scoped to the chat (built 2026-11-09).** Mufaro: the lists were
+  global, and every chat was forced to follow them; he wanted global as
+  the default and custom suggestions per chat. Chat Settings (the drawer)
+  now has the same two lists under the standing note, each with a
+  dropdown: Follow Settings (the default; the chat uses the Settings
+  lists, or the shipped ones) or This Chat's Own List, which copies the
+  Settings list into the chat so it is edited rather than written from
+  nothing, and from then on the chat reads its own (empty meaning none of
+  that sort in this chat). Stored on the thread as `directionsCharacter`
+  and `directionsNarrator`, null meaning follow. `directionKinds` in
+  `director.js` is the one resolver, read by Suggest Directions and
+  Auto-direct alike; the empty-lists message says where to add some, the
+  chat or Settings. `directions-scope.js` draws the fields with the kit.
+  Tests: `creationsDirector.test.ts`, `creationsDirectionsScope.test.ts`.
+
 ## Room to be a person (built 2026-10-23)
 
 The owner's manual edits to every generated card had one direction: less
