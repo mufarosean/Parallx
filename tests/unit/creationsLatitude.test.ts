@@ -61,13 +61,18 @@ describe('in the roleplay prompt', () => {
   const tom = { fileName: 'tom.json', frontmatter: { name: 'Tom' }, sections: { roleInstruction: 'Tom runs the bar.' }, rawData: {} };
   const history = [{ id: 'h1', author: 'user', name: 'Alex', content: 'Hello.' }];
 
-  it('frames each card at its own level, the Settings default for the rest', () => {
+  it("frames the speaker's card at its own level; the other cards are given as the speaker knows them, with no framing", () => {
     const out = assembleContext({ characters: [ada, tom], history, userMessage: 'Well?', contextWindow: 8192, userName: 'Alex', respondAs: 'ada.json', settings: { defaultLatitude: 'tight' } });
     const system = out.messages[0].content;
     expect(system).toContain("How to read Ada's Personality, Voice, Drives and Secrets: as where Ada started");
-    expect(system).toContain("How to read Tom's Personality, Voice, Drives and Secrets: as written, every turn");
+    // Tom is not being written this turn: his card comes as Ada knows him (knowledge.js), and the framing is for writing a card.
+    expect(system).not.toContain("How to read Tom's");
+    expect(system).toContain('Ada has not met Tom before this chat');
     // The framing sits under the card, inside its cast entry.
     expect(system.indexOf('Ada counts things.')).toBeLessThan(system.indexOf("How to read Ada's"));
+    // Writing Tom, his card is framed at the Settings default.
+    const tomTurn = assembleContext({ characters: [ada, tom], history, userMessage: 'Well?', contextWindow: 8192, userName: 'Alex', respondAs: 'tom.json', settings: { defaultLatitude: 'tight' } });
+    expect(tomTurn.messages[0].content).toContain("How to read Tom's Personality, Voice, Drives and Secrets: as written, every turn");
   });
 
   it('the late anchor carries the Open permission for the speaker, and nothing extra at Loose', () => {

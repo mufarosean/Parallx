@@ -5,7 +5,7 @@
 // Start Custom From This fills an empty custom style and never overwrites one.
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { describePreset, mountStylePreview, mountCustomStylePreview } from '../../ext/creations-ai/style-preview.js';
+import { describePreset, mountStylePreview, mountCustomStylePreview, runStyleCommand } from '../../ext/creations-ai/style-preview.js';
 // @ts-expect-error — JS module with no types
 import { WRITING_PRESETS, STYLE_HINTS } from '../../ext/creations-ai/writing-style.js';
 
@@ -24,12 +24,13 @@ const ui = {
     container?.appendChild(e);
     return e;
   },
-  createButton(container: HTMLElement | null, o: { label: string; onClick?: (e: MouseEvent) => void; title?: string }) {
+  // As the kit does: a button with a command runs it with its args.
+  createButton(container: HTMLElement | null, o: { label: string; command?: string; args?: unknown[]; title?: string }) {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = o.label;
     if (o.title) b.title = o.title;
-    if (o.onClick) b.addEventListener('click', o.onClick);
+    if (o.command) b.addEventListener('click', () => runStyleCommand(o.command!, o.args ?? []));
     container?.appendChild(b);
     return b;
   },

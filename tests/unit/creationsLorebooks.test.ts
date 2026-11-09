@@ -140,7 +140,8 @@ describe('the lore in the prompt', () => {
     const sel = selectLore([book], { userText: 'Blackstone again.' });
     const out = assembleContext({ characters: [ada], history: [], userMessage: 'Blackstone again.', contextWindow: 8192, respondAs: 'ada.json', loreSelection: sel });
     const sys = out.messages[0].content;
-    expect(sys).toContain('## World & Lore\nThese are facts of this world.');
+    // Addressed to the speaker first (knowledge.js), then the lore as written.
+    expect(sys).toContain("## World & Lore\nThe world as it is. Ada knows the part of it a person in Ada's place would know, and nothing a person in that place could not.\n\nThese are facts of this world.");
     expect(sys).toContain('### Blackstone Keep\nThe keep burned in 1888.');
     expect(sys).toContain('- Lord Ashby: Owns the valley');
     expect(out.loreRender.full.map((x: any) => x.entry.heading)).toContain('Blackstone Keep');

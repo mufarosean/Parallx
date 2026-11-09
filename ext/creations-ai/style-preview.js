@@ -34,12 +34,28 @@ export function describePreset(key, customText = '') {
  * returning one or a promise of one). `onStartCustom(text)` adds Start
  * Custom From This, shown for a shipped preset only.
  */
+/** The commands the preview's buttons run; the argument names the preview (its idBase). */
+export const STYLE_COMMANDS = { showText: 'textGenerator.style.showText', startCustom: 'textGenerator.style.startCustom' };
+const mounted = new Map();
+
+/** Runs one of STYLE_COMMANDS on the preview named by its first argument. */
+export function runStyleCommand(command, args = []) {
+  const p = mounted.get(args[0]);
+  if (!p) return;
+  if (command === STYLE_COMMANDS.showText) p.toggle();
+  else if (command === STYLE_COMMANDS.startCustom) p.startCustom();
+}
+
 export function mountStylePreview(host, ui, select, { customText = '', onStartCustom = null, idBase = 'textGenerator.style' } = {}) {
   const wrap = ui.createBlock(host, 'div', { className: 'tg-style-preview' });
   const body = ui.createBlock(null, 'div', { className: 'tg-style-preview-body' });
   body.hidden = true;
-  const toggle = ui.createButton(wrap, { id: `${idBase}.showText`, label: 'Style Text', kind: 'ghost', size: 'sm', icon: 'eye', title: 'Show what this style tells the model', onClick: () => { body.hidden = !body.hidden; toggle.setAttribute('aria-expanded', String(!body.hidden)); if (!body.hidden) void refresh(); } });
+  const toggle = ui.createButton(wrap, { id: `${idBase}.showText`, label: 'Style Text', kind: 'ghost', size: 'sm', icon: 'eye', title: 'Show what this style tells the model', command: STYLE_COMMANDS.showText, args: [idBase] });
   toggle.setAttribute('aria-expanded', 'false');
+  mounted.set(idBase, {
+    toggle() { body.hidden = !body.hidden; toggle.setAttribute('aria-expanded', String(!body.hidden)); if (!body.hidden) void refresh(); },
+    startCustom() { if (onStartCustom) onStartCustom(describePreset(select.value, '').text); },
+  });
   wrap.appendChild(body);
   const note = ui.createBlock(body, 'p', { className: 'tg-style-preview-hint' });
   const text = ui.createBlock(body, 'div', { className: 'tg-style-preview-text', attrs: { role: 'region', 'aria-label': 'Style text', tabindex: '0' } });
@@ -47,7 +63,7 @@ export function mountStylePreview(host, ui, select, { customText = '', onStartCu
   let start = null;
   if (onStartCustom) {
     const actions = ui.createBlock(body, 'div', { className: 'tg-style-preview-actions' });
-    start = ui.createButton(actions, { id: `${idBase}.startCustom`, label: 'Start Custom From This', kind: 'secondary', size: 'sm', icon: 'copy', title: 'Copy this text into the custom style, to edit', onClick: () => onStartCustom(describePreset(select.value, '').text) });
+    start = ui.createButton(actions, { id: `${idBase}.startCustom`, label: 'Start Custom From This', kind: 'secondary', size: 'sm', icon: 'copy', title: 'Copy this text into the custom style, to edit', command: STYLE_COMMANDS.startCustom, args: [idBase] });
   }
   async function refresh() {
     const custom = typeof customText === 'function' ? await customText() : customText;

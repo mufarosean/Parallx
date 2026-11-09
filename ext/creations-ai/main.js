@@ -23,8 +23,8 @@ import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js'; import { MEMORY_CATEGORY_ORDER, MEMORY_EXTRACT_SCHEMA, sinceThenSchema } from './schemas.js';
-import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStylePreview } from './style-preview.js';
-import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
+import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStylePreview, STYLE_COMMANDS, runStyleCommand } from './style-preview.js';
+import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js'; import { characterSheet, cardAsKnownBy, knowledgeRule, knowledgeReminder, PRESENT_MEANING, loreAddress, memoryAddress } from './knowledge.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
 import { parseTurnScript } from './acts.js';
 import { TEST_DRIVE_COMMAND, runLiveTestDrive } from './drive.js';
@@ -3198,12 +3198,13 @@ function buildSystemPrompt(params = {}) {
   // once. Every speaker in the log, the user included, is a character to
   // the model, so the banner uses the user's display name.
   let bannerName = null;
+  let respondChar = null;
   if (respondAs === SELF_SPEAKER) {
     bannerName = userName || 'Anon';
   } else if (respondAs === NARRATOR_SPEAKER) {
     bannerName = 'Narrator';
   } else if (respondAs) {
-    const respondChar = characters.find((c) =>
+    respondChar = characters.find((c) =>
       c.fileName === respondAs || (c.frontmatter.name || '').toLowerCase() === String(respondAs).toLowerCase()
     );
     bannerName = respondChar
@@ -3261,7 +3262,7 @@ function buildSystemPrompt(params = {}) {
   // unless the model emitted a <scene-update/> tag.
   const sceneBlock = renderSceneStateBlock(sceneState);
   if (sceneBlock) {
-    parts.push(['## Current Scene', sceneBlock].join('\n'));
+    parts.push(['## Current Scene', sceneBlock, ...(respondChar && sceneState.present?.length ? [PRESENT_MEANING] : [])].join('\n'));
   }
 
   // 1d. Scene-update emission instruction — tells the model how to
@@ -3277,23 +3278,28 @@ function buildSystemPrompt(params = {}) {
     ].join('\n'));
   }
 
-  // 2. Cast definitions — each character's full roleInstruction block.
-  // Example dialogue is only included for the active speaker to save tokens in multi-char threads.
+  // 2. Cast. The speaker's own card in full; every other card as the speaker
+  // knows that person (knowledge.js), so the writer holds no more about the
+  // others than the character does. With no speaking character (the user,
+  // the Narrator), every card in full: that writer is not a mind in the story.
+  const speakerSheet = respondChar ? characterSheet(respondChar) : null;
   for (const char of characters) {
     const name = char.frontmatter.name || char.fileName.replace(/\.(md|json)$/, '');
     const roleInstruction = char.sections.roleInstruction;
     const charParts = [];
-
-    if (roleInstruction) {
-      charParts.push(substituteVars(roleInstruction, name, userName));
-      charParts.push(latitudeFraming(resolveLatitude(char, { defaultLatitude }), name));
-    }
-    // Only include example dialogue for the character who is about to speak,
-    // or always if there's only one character (no need to scope).
     const isActiveSpeaker = characters.length <= 1 ||
       !respondAs ||
       respondAs === char.fileName ||
       (char.frontmatter.name || '').toLowerCase() === String(respondAs || '').toLowerCase();
+    if (speakerSheet && !isActiveSpeaker) {
+      // Another person's reminder is their own fact to keep straight, often what they hide.
+      castEntries.push(substituteVars(cardAsKnownBy(bannerName, speakerSheet, name, characterSheet(char)), name, userName));
+      continue;
+    }
+    if (roleInstruction) {
+      charParts.push(substituteVars(roleInstruction, name, userName));
+      charParts.push(latitudeFraming(resolveLatitude(char, { defaultLatitude }), name));
+    }
     if (char.sections.exampleDialogue && isActiveSpeaker) {
       charParts.push('#### Example Dialogue\n' + substituteVars(char.sections.exampleDialogue, name, userName));
     }
@@ -3349,6 +3355,7 @@ function buildSystemPrompt(params = {}) {
     '- Never write, narrate, quote, or describe internal thoughts for any other character. If you find yourself starting to write a different `<<Name>>` block, STOP.',
     ...(supporting.length > 0 || connected.length > 0 ? [`- The one exception: the ${supporting.length > 0 ? 'Supporting Cast' : 'People In Their Lives'} listed ${supporting.length > 0 ? 'above' : 'above, once in the scene,'} may be given a line or two inside your turn. They are the only other people whose words you may write, and they never take the turn over.`] : []),
     '- Never prepend a speaker tag (no `<<Name>>`, no `Name:`); the interface adds the label automatically.',
+    ...(respondChar ? [`- ${knowledgeRule(bannerName)}`] : []),
     '- Character-specific instructions override the writing style preset when they conflict.',
     '- Quoted phrases in a character\'s voice notes ("Says: ...", "Might say: ...") show how they talk; they are examples, not lines to say. Use one rarely, never the same one twice in a scene, never to open a reply.',
     '- A habit named in a character\'s voice notes (tells stories, counts out loud, asks instead of answering) is a tendency, not a rule for every line. Before writing, look at that character\'s last reply in the history: a habit shown there stays out of this reply, which is plain speech answering what was just said.',
@@ -3357,13 +3364,13 @@ function buildSystemPrompt(params = {}) {
   // 4. Lore — substitute {{char}}/{{user}} template vars.
   if (loreContent) {
     const primaryName = characters[0] ? (characters[0].frontmatter.name || characters[0].fileName.replace(/\.(md|json)$/, '')) : '';
-    parts.push('## World & Lore\n' + substituteVars(loreContent, primaryName, userName));
+    parts.push('## World & Lore\n' + (respondChar ? loreAddress(bannerName) + '\n\n' : '') + substituteVars(loreContent, primaryName, userName));
   }
 
   // 5. Thread memory — substitute {{char}}/{{user}} template vars.
   if (memoryContent) {
     const primaryName = characters[0] ? (characters[0].frontmatter.name || characters[0].fileName.replace(/\.(md|json)$/, '')) : '';
-    parts.push('## Conversation Memories\nWhat has happened in this chat so far. Where it differs from a character\'s description above, this is the present: the description is how things stood when the story began.\n\n' + substituteVars(memoryContent, primaryName, userName));
+    parts.push('## Conversation Memories\nWhat has happened in this chat so far. Where it differs from a character\'s description above, this is the present: the description is how things stood when the story began.' + (respondChar ? ' ' + memoryAddress(bannerName) : '') + '\n\n' + substituteVars(memoryContent, primaryName, userName));
   }
 
   // 6. Active turn. Same shape for every speaker — the user-persona,
@@ -3736,7 +3743,7 @@ function assembleContext(params) {
     if (isNarrator) {
       activeTurnLine = 'Active turn: Narrator. Write only the next narrative beat in prose. Do not write any character\'s spoken dialogue. Do not begin with a `<<Name>>` tag or any speaker prefix.';
     } else {
-      activeTurnLine = `Active turn: ${bannerName}. Write ONLY ${bannerName}'s next turn. Do not write, narrate, quote, or describe internal thoughts for any other character. Do not begin your reply with \`<<${bannerName}>>\` or any speaker prefix — the interface adds the label automatically. If you start to write for any other character, STOP immediately.`;
+      activeTurnLine = `Active turn: ${bannerName}. Write ONLY ${bannerName}'s next turn. Do not write, narrate, quote, or describe internal thoughts for any other character. Do not begin your reply with \`<<${bannerName}>>\` or any speaker prefix — the interface adds the label automatically. If you start to write for any other character, STOP immediately.${speakerChar ? ' ' + knowledgeReminder(bannerName) : ''}`;
     }
   }
 
@@ -10991,6 +10998,7 @@ export function activate(parallx, context) {
   paneCmd('textGenerator.chat.acts', (t) => _livePanes.get(t)?.toggleActs());
   paneCmd('textGenerator.chat.open', (t, file) => _livePanes.get(t)?.openWith(file));
   for (const [action, id] of Object.entries(ACT_COMMANDS)) paneCmd(id, (t) => actCommand(action, t));
+  for (const id of Object.values(STYLE_COMMANDS)) paneCmd(id, (k) => runStyleCommand(id, [k]));
   for (const [action, id] of Object.entries(SINCE_THEN_COMMANDS)) paneCmd(id, (t) => sinceThenCommand(action, t));
   context.subscriptions.push(parallx.commands.registerCommand(TEST_DRIVE_COMMAND, () => runLiveTestDrive()));
 

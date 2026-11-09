@@ -1108,6 +1108,58 @@ Drive with the fix and noted by the chat's character tool: the safety net
 for a model that writes one anyway. Literal uses stay clean: "works as a
 map maker", "betrays her brother", a figure inside the example dialogue.
 
+## What the character knows (built 2026-11-09)
+
+Mufaro's cases: a father asks the chef for salmon in the kitchen, goes up
+to his daughter's room, and before he mentions dinner she says she can
+always eat fish; two strangers meet and one speaks as if they knew the
+other's past. He asked for the general rule, not a patch for one case:
+"a general rule that checks whether the words or actions of a character
+align with the knowledge they have in the context of the story".
+
+The cause is one fact about the prompt. It is rebuilt every turn as one
+document addressed to one reader, the model, and every section is given to
+that reader whole: every character's full card (Secrets and Drives
+included), the lore, the memories, the whole transcript, and then "write
+as Daughter". Nothing in it said which part is in the character's head. A
+model with no notion of separate minds writes from all it holds.
+
+The fix (`knowledge.js`) draws the line between the writer's knowledge and
+the character's, in every section rather than in one:
+
+- **Cast.** The speaker's own card is theirs in full. Every other
+  character's card is given as the speaker knows that person. Someone
+  known (either card's Relationships names the other, by full or first
+  name) is given by Overview, Appearance, Personality and Background, with
+  a line saying how they stand is on the speaker's own card and that their
+  wants, fears and secrets are known only as this chat has shown them. A
+  stranger is given by Appearance alone, with a line that the speaker has
+  not met them and knows nothing else, not even the name until it is
+  given. Nobody is ever given another person's Drives, Secrets, Voice,
+  Relationships, example dialogue or reminder. With no speaking character
+  (the user's own turn, the Narrator), every card is whole: that writer is
+  not a mind in the story. The Director keeps everything too.
+- **Current Scene.** When Present is set, it says what absence means:
+  anyone not listed is elsewhere and hears nothing said here.
+- **World and Lore.** Addressed: the world as it is; the character knows
+  the part a person in their place would, and nothing such a person could
+  not.
+- **Conversation Memories.** Addressed: the character knows what happened
+  in their presence and what they were told.
+- **The rule.** Once in the Turn Contract (the character knows only what
+  their card holds and what this chat has shown or told them; every other
+  card is given as they know that person; a line that needs what they
+  could not know is not written) and once more, short, in the late block
+  right before the reply.
+
+No new data, no screen, no second model call. The Relationships field is
+the switch between known and stranger, which the Studio fills for
+connected characters; two people who know each other only in a backstory
+paragraph read as strangers until one card's Relationships names the
+other. Tests: `tests/unit/creationsKnowledge.test.ts`. The play of both
+cases on gemma4:31b at 64K is recorded in `docs/CREATIONS_QUALITY_TESTING.md`,
+Part 5, once run.
+
 ## Quality testing
 
 How to measure character creation, roleplay and Directions with a real
