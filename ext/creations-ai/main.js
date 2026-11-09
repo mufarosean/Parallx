@@ -23,7 +23,7 @@ import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js'; import { MEMORY_CATEGORY_ORDER, MEMORY_EXTRACT_SCHEMA, sinceThenSchema } from './schemas.js';
-import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js';
+import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStyleEditor } from './style-preview.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
 import { parseTurnScript } from './acts.js';
@@ -8237,9 +8237,11 @@ function renderChatEditor(container, parallx, input) {
         ...Object.entries(WRITING_PRESETS).map(([key, p]) => ({ value: key, label: p.label })),
       ],
       value: thread.writingPresetOverride || '',
-      onChange: (v) => { saveMeta({ writingPresetOverride: v || '' }, 'writing style'); },
+      onChange: (v) => { saveMeta({ writingPresetOverride: v || '' }, 'writing style'); void drawerStylePreview.refresh(); },
     });
-    bodyEl.appendChild(fieldWrap('Writing style (this chat)', presetSel.element, 'Overrides the character and global writing style for this chat only.'));
+    const presetWrap = fieldWrap('Writing style (this chat)', presetSel.element, 'Overrides the character and global writing style for this chat only.');
+    bodyEl.appendChild(presetWrap);
+    const drawerStylePreview = mountStylePreview(presetWrap, parallx.ui, { get value() { return presetSel.value || currentSettings?.defaultWritingPreset || 'immersive-rp'; } }, { idBase: 'textGenerator.chat.drawer.style', customText: () => currentSettings?.customWritingStyle || '' });
 
     // ── Response length override ──
     const lenSel = tgSelect(parallx, {
@@ -9724,8 +9726,7 @@ function renderSettingsPage(container, parallx) {
 
     if (inputType === 'select' && opts.options) {
       const dd = tgSelect(parallx, {
-        className: 'tg-form-select',
-        layout: 'full',
+        className: 'tg-form-select', layout: 'full', onChange: opts.onChange || null,
         items: opts.options.map((opt) => ({ value: opt.value, label: opt.label || opt.value })),
       });
       group.appendChild(dd.element);
@@ -9778,25 +9779,15 @@ function renderSettingsPage(container, parallx) {
   const ctxInput = formGroup('Default context window', 'Tokens the prompt and reply share, sent to Ollama as num_ctx. 0 = Auto, the model\'s own context length. The Ctx picker in a chat overrides this.', 'number', 'defaultContextWindow', { min: 0, max: 1048576 });
   const userNameInput = formGroup('User display name', 'Used in {{user}} template substitution', 'text', 'userName');
   const sourceWordsInput = formGroup('Words Kept Per Source', 'How much of each source the Character Studio keeps, in words. Default 1500.', 'number', 'studioSourceWords', { min: 200, max: 20000, step: 100 });
+  let stylePreview = null;
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
-    options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })),
+    options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })), onChange: () => void stylePreview?.refresh(),
   });
-
-  // Custom writing-style editor — the prompt text used when any chat selects
-  // the "Custom" preset. Always visible so users can draft a custom style
-  // before switching the dropdown over.
-  const customStyleGroup = el('div', 'tg-form-group');
-  customStyleGroup.appendChild(el('label', 'tg-form-label', { text: 'Custom writing style' }));
-  customStyleGroup.appendChild(el('div', 'tg-form-hint', {
-    text: 'Used when a chat or character selects the "Custom" preset. Markdown is fine. This text is injected verbatim under "## Writing Style".',
-  }));
-  const customStyleInput = el('textarea', 'tg-form-input');
-  customStyleInput.rows = 10;
-  customStyleInput.style.fontFamily = 'var(--vscode-editor-font-family, monospace)';
-  customStyleInput.style.minHeight = '180px';
-  customStyleInput.placeholder = '- Write in second-person, present tense.\n- Keep paragraphs short.\n- Lean into sensory detail and quiet beats.';
-  customStyleGroup.appendChild(customStyleInput);
-  form.appendChild(customStyleGroup);
+  // The Style Text preview under the preset and the custom style editor (style-preview.js):
+  // the shipped styles readable, and a custom one started from any of them.
+  const customStyle = mountCustomStyleEditor(form, parallx.ui, el, presetSelect);
+  stylePreview = customStyle.preview;
+  const customStyleInput = customStyle.input;
   // Dialogue rules: the one block of craft that rides in every roleplay and
   // story prompt. Shipped with a default; the user's text once edited.
   const rulesGroup = el('div', 'tg-form-group');
@@ -9913,7 +9904,7 @@ function renderSettingsPage(container, parallx) {
     ctxInput.value = s.defaultContextWindow;
     userNameInput.value = s.userName;
     sourceWordsInput.value = s.studioSourceWords || DEFAULT_SETTINGS.studioSourceWords;
-    presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
+    presetSelect.value = s.defaultWritingPreset || 'immersive-rp'; void stylePreview?.refresh();
     customStyleInput.value = s.customWritingStyle || '';
     rulesInput.value = typeof s.dialogueRules === 'string' ? s.dialogueRules : DEFAULT_DIALOGUE_RULES;
     latitudeSelect.value = resolveLatitude(null, s);
@@ -10070,15 +10061,15 @@ function renderCharacterEditor(container, parallx, input) {
   ));
 
   const presetSelect = tgSelect(parallx, {
-    className: 'tg-ce-select',
-    layout: 'full',
+    className: 'tg-ce-select', layout: 'full', onChange: () => void cardStylePreview.refresh(),
     items: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ value: key, label: p.label })),
   });
   const presetField = field(
     `${icon('pencil-line', 14)} General writing instructions`,
-    'These instructions apply to the whole chat, regardless of which character is currently speaking. It\'s for defining general writing style and the "type of experience".',
+    'These instructions apply to the whole chat, regardless of which character is currently speaking. It\'s for defining general writing style and the "type of experience". Style Text shows what the chosen style tells the model.',
     presetSelect.element,
   );
+  const cardStylePreview = mountStylePreview(presetField, parallx.ui, presetSelect, { idBase: 'textGenerator.characterEditor.style', customText: async () => (await loadSettings(fs, workspaceUri).catch(() => DEFAULT_SETTINGS)).customWritingStyle || '' });
   // Inheritance chain (matches the actual prompt wiring): a per-chat
   // override set in the chat's settings drawer wins; otherwise this
   // character value; otherwise the global default.
@@ -10345,7 +10336,7 @@ function renderCharacterEditor(container, parallx, input) {
     userDescInput.value = data.userDescription || '';
     reminderInput.value = data.reminder || '';
     voiceAnchorInput.value = data.voiceAnchor || '';
-    presetSelect.value = data.writingPreset || 'immersive-rp';
+    presetSelect.value = data.writingPreset || 'immersive-rp'; void cardStylePreview.refresh();
     povSelect.value = data.pov || '';
     initialMsgInput.value = data.initialMessages || '';
     userReminderInput.value = data.userReminder || '';

@@ -474,15 +474,16 @@ describe('the sheet is instructions for a model (2026-11-08)', () => {
   });
 
   it('fieldShortfall: missing and thin sections, a short field, nothing for one at length', () => {
-    const full = entry.sections.map((s: { name: string }) => `${s.name}: ${words(20)}`).join('\n\n');
+    const full = entry.sections.map((s: { name: string }) => `${s.name}: ${words(25)}`).join('\n\n');
     expect(fieldShortfall('appearance', full, entry)).toEqual({ missing: [], thin: [], short: false });
     expect(fieldShortfall('appearance', 'Overview: Tall, ink on her cuffs.\n\nFace: Grey eyes.', entry)).toEqual({ missing: ['Height and build', 'Clothes', 'Physicality'], thin: ['Overview', 'Face'], short: false });
     // A section's words run to the next label, on whatever line it starts.
-    expect(fieldShortfall('appearance', `Overview: ${words(10)}\n${words(10)}\nFace: ${words(5)}`, entry).thin).toEqual(['Face']);
+    expect(fieldShortfall('appearance', `Overview: ${words(12)}\n${words(12)}\nFace: ${words(5)}`, entry).thin).toEqual(['Face']);
     const plain = { labels: false, sections: [{ name: 'A', hint: '' }, { name: 'B', hint: '' }] };
-    expect(fieldShortfall('personality', `${words(20)}\n\nshort.`, plain)).toEqual({ missing: [], thin: ['B'], short: false });
+    expect(fieldShortfall('personality', `${words(25)}\n\nshort.`, plain)).toEqual({ missing: [], thin: ['B'], short: false });
     expect(fieldShortfall('description', 'Ada counts everything.', null)).toEqual({ missing: [], thin: [], short: true });
-    expect(fieldShortfall('description', words(72), null).short).toBe(false);
+    expect(fieldShortfall('description', words(90), null).short).toBe(false);
+    expect(fieldShortfall('description', words(80), null).short).toBe(true);
     expect(fieldShortfall('description', '', null).short).toBe(false);
     expect(fieldShortfall('voice', 'Low.', null).short).toBe(false);
   });

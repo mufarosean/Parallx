@@ -29,6 +29,10 @@ Rules: shipped
 Preset: screenplay
 Rules: shipped
 
+## casual-rp
+Preset: casual-rp
+Rules: shipped
+
 ## conversation-rules
 What the conversation rules do on their own, with the baseline style.
 Label: Immersive RP with conversation rules

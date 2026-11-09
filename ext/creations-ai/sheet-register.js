@@ -33,7 +33,7 @@ export const SECTION_WORDS = 30;
 /** How long is said in a prompt: the floor, and that there is no cap. */
 export const atLeast = (n) => `at least ${n} words, and as many more as the facts need`;
 /** Under this share of its floor a field or a section is thin, and the Studio asks for it again. */
-const THIN_SHARE = 0.6;
+const THIN_SHARE = 0.75;
 
 export function countWords(text) {
   const t = String(text || '').trim();

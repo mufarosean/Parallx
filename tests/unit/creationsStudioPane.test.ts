@@ -19,7 +19,7 @@ const SHEET = {
   name: 'Ada Lovelace', tagline: 'Counts what others feel', description: 'Ada counts everything.',
   appearance: [
     'Overview: Tall, ink on her cuffs. She has the look of someone up all night with a ledger who would do it again tonight.',
-    'Height and build: Five foot nine and narrow, long arms, a stoop she corrects whenever she notices it, which is often and never for long.',
+    'Height and build: Five foot nine and narrow, with long arms and a stoop she corrects whenever she notices it, which is often and never for long.',
     'Face: Grey eyes that do not blink enough, dark hair pinned flat, a pale face that goes still when she is counting and moves only afterwards.',
     'Clothes: Black wool dresses mended at the elbows, a white collar changed daily, flat boots, and a pencil behind one ear she forgets is there.',
     'Physicality: Sits very straight, taps a count on her knee with two fingers, stands up when she thinks, and holds a page far from her face.',

@@ -1080,6 +1080,27 @@ every rewrite carries the craft rules the whole sheet is written to. The
 chat's save notes the same thin sections and short fields, without
 blocking.
 
+The Studio treats a field or section under three quarters of its floor as
+thin (after the floor-only prompt, Gemma 4 wrote a 93-word description
+where 120 was asked and a 112-word backstory where 150 was): a thin
+section is completed on its own, a thin field gets the notice and Expand,
+and each requirement line ends by saying a field under its floor is
+incomplete and wrong, the wording the structure rule already used and
+models obey.
+
+**The styles, visible (built 2026-11-08).** A writing style was a name in
+a dropdown; nobody could read what "Immersive RP" tells the model, and a
+custom style had to be written from nothing. Under every style dropdown
+(Settings, the character card, a chat's own override) a Style Text
+disclosure shows the chosen preset's full text and the short reminder of
+it that rides right before the reply; Custom shows the custom text or says
+it is empty; None says that nothing is sent. In Settings, Start Custom From
+This copies the shown text into the custom style and switches the preset
+to Custom, so a custom style begins from the shipped one nearest to it; a
+custom style with text in it is never overwritten (the disclosure says to
+clear it first). `style-preview.js`, tested in
+`creationsStylePreview.test.ts`.
+
 `card-rules.js` reads the descriptive fields for figures of speech as
 well ("as if", "her clothes are her armour", "a testament to", "a mask
 of", "speaks volumes"...), one finding per sentence, shown under Test
