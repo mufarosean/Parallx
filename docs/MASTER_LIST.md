@@ -22,6 +22,24 @@ Changes to what is already there: a tool, a pane, a prompt, a pipeline.
   buildBeatMessages) uses no writing preset; only chats do. Not raised
   with him yet; recorded here so it is not forgotten.
 
+- **A trash for files, as pages have one (a thought, his, 2026-11-09).**
+  His words: "Currently, we only have a visible trash for canvas pages
+  only. The regular editors do not have a trash and that feels fine, but
+  maybe for any editor that opens from file explorer, we should have a
+  trash, unless we perma-delete something. IDK, just a thought on this
+  one." What exists (verified): canvas pages go to an in-app trash
+  (`canvasDataService`, shown in the canvas sidebar) with a confirm. A
+  file deleted from the explorer goes to the Windows Recycle Bin when it
+  is on the same volume, and is deleted in place when it is on another
+  volume, by design, so plaintext never leaves an encrypted drive
+  (`fsDelete` in `src/built-in/explorer/main.ts`, policy `auto`). So the
+  gap is not lost data; it is that nothing in the app shows a deleted
+  file or brings it back, and on another volume the delete is final with
+  the same gesture. If it is built: one Trash surface for both kinds
+  (pages and files), files restored from the Recycle Bin where they went
+  there, and a clearly different gesture, named as permanent, where the
+  volume forbids a bin. Not asked for; a thought to weigh.
+
 ## UI improvements
 
 How the app looks and moves: new surfaces, polish of existing ones, the
