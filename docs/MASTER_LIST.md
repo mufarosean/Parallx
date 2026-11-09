@@ -38,7 +38,50 @@ Changes to what is already there: a tool, a pane, a prompt, a pipeline.
   the same gesture. If it is built: one Trash surface for both kinds
   (pages and files), files restored from the Recycle Bin where they went
   there, and a clearly different gesture, named as permanent, where the
-  volume forbids a bin. Not asked for; a thought to weigh.
+  volume forbids a bin. Not asked for; a thought to weigh. His second
+  word on it, same day: "Maybe there is no real need for a unified
+  delete. Just something to explore, it gets complicated with permanent
+  delete and the drive we are on." So: explore only, no build implied.
+
+### Worksheets: a full redesign, generalized
+
+**His words (2026-11-09):** "a full redesign of worksheets. A lot of what
+I built for it, I built specifically for studying for exam 7. we need to
+generalize, improve it quite a bit, etc."
+
+**What exists today (verified from the file list).** `src/built-in/worksheet`
+is two things grown together. One is a spreadsheet tool: the Univer host
+(lazy bundle, one engine per window), formulas and references, display
+numbers, equation images, Excel import and xlsx export, a sidebar, a
+worksheet block for pages. The other is a study program built on top of
+it for Exam 7: the Problem Bank and its filters, problem import, recipes,
+practice sessions and their config and run panes, quizzes, the review
+pane, the campaign, the day plan, the roster, rewards and their sync, the
+study clock, progress insights, solution visibility, a Generate pane that
+writes problems with a model. The manifest's sidebar title is Worksheets;
+much of the surface is the bank.
+
+**Direction.** Separate the two along the first principle. The
+spreadsheet stays a general tool anyone uses for any table. The study
+program becomes what it is, a study tool, generic in its nouns (items,
+sets, sessions, a plan, progress) so it serves any exam, course or
+skill, and lives where a user can turn it on or off without losing the
+spreadsheet. Nothing in either names Exam 7, the CAS or his readings;
+his data keeps working through the same generic shapes. The redesign is
+the moment to raise the spreadsheet's own quality (he said "improve it
+quite a bit").
+
+**Bar to research first.** For the spreadsheet: what a person expects
+from a sheet in a notes app (Notion databases, Coda tables, Excel's
+core) and where Univer already gets there. For the study program: the
+practice tools he rates (his Rising Fellow materials, Anki's sessions)
+and the shape of a session, a bank and a plan that is domain-free. Get
+his yes on both lists before building; see the research-the-bar rule.
+
+**Unknown.** Whether the study half becomes its own built-in or an
+extension; how much of the Exam 7 data model (recipes, roster, campaign)
+generalizes and how much is his alone and stays in his workspace; the
+migration of his existing banks and sessions.
 
 ## UI improvements
 
