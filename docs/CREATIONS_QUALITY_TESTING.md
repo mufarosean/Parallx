@@ -423,6 +423,43 @@ a formal adult), asking for a boat (second language; a want refused with
 reasons), the offer on the cafe (the sisters: told apart, subtext), and
 strangers at the counter. Played both ways, the difference is the card.
 
+### The four shipped styles on Gemma 4 at 64K (read 2026-11-08)
+
+Mufaro asked for a story-quality run across scenarios with the style docs
+tuned from it. The reading bench played Immersive RP, Natural RP, Casual RP
+and Screenplay on three cast-B scenes (strangers at the cafe counter, a
+terse voice against a florid one, the sisters' argument), eight replies
+each, gemma4:31b at num_ctx 65536, read by the session
+(`ext/creations-ai/test/last-reading-styles.md` has the mechanical table;
+the transcripts were read whole). What each style did, and the line in
+`writing-style.js` that answers it:
+
+- **Immersive RP** (the default): the scenes went somewhere (the strangers
+  reached boats and papers), but every reply had the same shape, beat,
+  line, beat, line; every line of speech carried a sensory beat ("the
+  ceramic warm in her hand", "a small smile playing on her lips"); the
+  terse harbour master got a weather beat in every reply; tags were "she
+  says, her voice carrying a hint of amusement". Longest replies (82
+  words). Answer: a new rule, The Shape of a Reply (one beat per line at
+  most, some lines alone, tags are "says" or nothing); weather, light and
+  the window only when someone acts on them; the "fists clench, shoulders
+  drop" example replaced, since the model wrote it as a code.
+- **Natural RP**: the tightest talk and the most movement (the sisters got
+  from the floors to the electric, the insurance and the offer), but 96
+  percent of replies ended with a question, an interview. Answer: end on
+  something to answer, a question now and then, never every reply.
+- **Casual RP**: the terse voice at its best ("The council does not read
+  books."), short and quick, but first person with two characters in the
+  scene left the reader guessing whose beat *I* was. Answer: first person
+  with one character; with more, every beat names who acts.
+- **Screenplay**: a scene heading on every reply, and a different one each
+  time (INT. QUAY CAFE - MORNING, THE SERVICE AREA - MORNING, CAFE - DAY),
+  the only variant with motif echoes (5). Answer: a heading only when the
+  place or the time changes.
+
+The late reminders (STYLE_HINTS) were changed to match. Not re-measured
+yet: the next bench run on the same scenes is the proof.
+
 ## Published benchmarks: what to borrow
 
 None of these can run against Creations as they are. They test raw models

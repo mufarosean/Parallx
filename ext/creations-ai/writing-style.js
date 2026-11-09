@@ -15,9 +15,11 @@ export const WRITING_PRESETS = {
 
 - **A Mind on the Page**: Between the lines, what the character notices, weighs, remembers, or decides not to say. Show it through what they do, what they look at, and what they nearly say. Never name the feeling.
 
-- **Deep Character Immersion**: Fully embody the characters by weaving their personality, backstory, and traits into the scene. Let emotions and decisions emerge through actions and body language: if tension rises, fists clench; if they relax, shoulders drop. A habit from their voice notes (a story, a count, a saying) is a tendency, not a rule for every line; if this character's last reply showed it, this reply does not. Present tense, as the chat is written.
+- **Deep Character Immersion**: Fully embody the characters by weaving their personality, backstory, and traits into the scene. Let emotions and decisions emerge through what they do and say; the body does what this person would do, never a stock sign for a feeling. A habit from their voice notes (a story, a count, a saying) is a tendency, not a rule for every line; if this character's last reply showed it, this reply does not. Present tense, as the chat is written.
 
-- **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Not every reply opens with the room. Keep dialogue in "quotes", and let light, sound, and weather change as the scene moves.
+- **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Not every reply opens with the room, and the weather, the light and the view from the window appear only when someone acts on them. Keep dialogue in "quotes".
+
+- **The Shape of a Reply**: At most one action beat for each line of speech, and some lines stand alone. Not every reply is beat, line, beat, line. Speech is tagged with "says" or with nothing: never with how the voice sounds or what plays on the lips.
 
 - **Varied Cadence**: Short, sharp sentences for tension or urgency. For quieter moments, let the prose flow. Vary sentence length and pacing to mirror the character's experience.
 
@@ -40,9 +42,11 @@ export const WRITING_PRESETS = {
 
 - **A Mind on the Page**: Between the lines, what the character notices, weighs, remembers, or decides not to say. Show it through what they do, what they look at, and what they nearly say. Never name the feeling.
 
-- **Deep Character Immersion**: Fully embody the characters by weaving their personality, backstory, and traits into the scene. Let emotions and decisions emerge through actions and body language: if tension rises, fists clench; if they relax, shoulders drop. A habit from their voice notes (a story, a count, a saying) is a tendency, not a rule for every line; if this character's last reply showed it, this reply does not. Present tense, as the chat is written.
+- **Deep Character Immersion**: Fully embody the characters by weaving their personality, backstory, and traits into the scene. Let emotions and decisions emerge through what they do and say; the body does what this person would do, never a stock sign for a feeling. A habit from their voice notes (a story, a count, a saying) is a tendency, not a rule for every line; if this character's last reply showed it, this reply does not. Present tense, as the chat is written.
 
-- **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Whether the moment is tender, tense, or brutal, the details carry its tone: in passion the heat of skin and the catch of breath, in violence the crunch of bone and the glint of a blade. Not every reply opens with the room. Keep dialogue in "quotes", and let light, sound, and weather change as the scene moves.
+- **Descriptive Writing, In Its Place**: A sensory detail or two where the moment wants it, concrete and particular: the smudge on the counter, the door that sticks. Whether the moment is tender, tense, or brutal, the details carry its tone: in passion the heat of skin and the catch of breath, in violence the crunch of bone and the glint of a blade. Not every reply opens with the room, and the weather, the light and the view from the window appear only when someone acts on them. Keep dialogue in "quotes".
+
+- **The Shape of a Reply**: At most one action beat for each line of speech, and some lines stand alone. Not every reply is beat, line, beat, line. Speech is tagged with "says" or with nothing: never with how the voice sounds or what plays on the lips.
 
 - **Varied Cadence**: Short, sharp sentences for tension or urgency. For quieter moments, let the prose flow. Vary sentence length and pacing to mirror the character's experience.
 
@@ -58,13 +62,13 @@ export const WRITING_PRESETS = {
   },
   'casual-rp': {
     label: 'Casual RP',
-    content: `Write in first person, present tense. Keep responses conversational and natural — like a text chat between friends who happen to be roleplaying.
+    content: `Write in present tense. Keep responses conversational and natural, like a text chat between friends who happen to be roleplaying. With one character in the chat, write in first person; with more than one, every action beat names who is doing it (*Lucía nods*), so a reader always knows whose line it is.
 
 - Short paragraphs, 1-3 sentences each
 - Dialogue **always in "double quotes"**, actions/beats in *asterisks*, never the other way around
-- Keep descriptions brief — focus on what the character notices, not exhaustive scene-setting
-- Match the energy of the conversation — playful when it's light, serious when it matters
-- Don't over-describe emotions — show them through dialogue and small actions
+- Keep descriptions brief: focus on what the character notices, not exhaustive scene-setting
+- Match the energy of the conversation: playful when it's light, serious when it matters
+- Don't over-describe emotions: show them through dialogue and small actions
 - It's okay to use contractions, fragments, and casual language`,
   },
   'natural-rp': {
@@ -79,18 +83,18 @@ export const WRITING_PRESETS = {
 - Concrete, specific detail only: no stock imagery (no dancing candlelight, no held breath, no shivers).
 - Never use em dashes or en dashes. Use commas, periods, or ellipses instead.
 - Default to 1-2 paragraphs. Leave room for the other person.
-- End mid-beat with a hook: a question, a gesture, an unfinished thought. Never summarize the scene.`,
+- End mid-beat on something the other person has to answer: a claim, an offer, a refusal, an action, an unfinished thought. A question now and then, never in every reply; a run of replies that all end in a question reads as an interview. Never summarize the scene.`,
   },
   'screenplay': {
     label: 'Screenplay',
     content: `Write in screenplay format. Use scene headings, action lines, and dialogue blocks.
 
 Format:
-- Scene headings: INT./EXT. LOCATION - TIME
+- Scene headings: INT./EXT. LOCATION - TIME, only when the place or the time changes. A reply that continues the scene has no heading; the scene is already set.
 - Action lines: Present tense, brief, visual descriptions only
 - Dialogue: CHARACTER NAME centered, dialogue below
 - Parentheticals: (whispering), (to herself), etc.
-- Minimal prose — let dialogue and action carry the story
+- Minimal prose: let dialogue and action carry the story
 - No internal monologue unless shown through action or dialogue`,
   },
   'none': {
@@ -114,22 +118,22 @@ export function getPresetContent(presetKey, customText = '') {
  * Compact one-line style summaries used for late-stage reinforcement.
  *
  * The full preset blob sits at the TOP of the system prompt (good for
- * orientation) but is often 300–500 tokens away from the actual
+ * orientation) but is often 300 to 500 tokens away from the actual
  * generation point. Small local models forget specifics by then. The
- * late-stage block re-injects a 15–25 token distillation right before
+ * late-stage block re-injects a 15 to 25 token distillation right before
  * the user turn so the style signal is present at the most-attended
  * position. Pairs with the same-block response-length reminder.
  *
  * Keys must match WRITING_PRESETS keys exactly. `custom` and `none`
- * have no compact form — the user-defined / empty preset can't be
+ * have no compact form: the user-defined or empty preset cannot be
  * summarised reliably.
  */
 export const STYLE_HINTS = {
-  'immersive-rp': 'Immersive prose: vivid sensory detail, dialogue in "double quotes", varied cadence. Show emotion through actions.',
+  'immersive-rp': 'Immersive prose: a sensory detail where the moment wants it, dialogue in "double quotes", varied cadence and shape; at most one beat per line, tags are "says" or nothing. Show emotion through what they do.',
   'immersive-rp-unfiltered': 'Immersive uncensored prose: take up what was just said and leave something to answer; a sensory detail where the moment wants it; dialogue in "double quotes". Mature themes, violence and moral ambiguity as they come; no forced redemption or positive spin.',
-  'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics*, conversational tone.',
-  'natural-rp': 'Never open with scenery or light; open with dialogue, an action, or a reaction. Vary sentence length hard. No em dashes. 1-2 paragraphs, end mid-beat.',
-  'screenplay': 'Screenplay format: scene headings, action lines, CHARACTER NAME above dialogue. Minimal prose.',
+  'casual-rp': 'Casual chat: short paragraphs, dialogue in "double quotes", action beats in *italics* naming who acts when more than one character is in the scene, conversational tone.',
+  'natural-rp': 'Never open with scenery or light; open with dialogue, an action, or a reaction. Vary sentence length hard. No em dashes. 1-2 paragraphs, end mid-beat on something to answer, not a question every time.',
+  'screenplay': 'Screenplay format: a scene heading only when place or time changes, action lines, CHARACTER NAME above dialogue. Minimal prose.',
   'none': '',
   'custom': '',
 };
