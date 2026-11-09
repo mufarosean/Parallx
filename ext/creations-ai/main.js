@@ -8276,7 +8276,8 @@ function renderChatEditor(container, parallx, input) {
     });
     bodyEl.appendChild(fieldWrap('Standing director\'s note', standingArea, 'Injected close to generation on EVERY turn. The megaphone next to the reply box is the one-shot version.'));
     // Directions for this chat (directions-scope.js): follow Settings, or the chat's own lists.
-    mountDirectionsScope(bodyEl, { ui: parallx.ui, select: (o) => tgSelect(parallx, o), fieldWrap, thread, saveMeta, settings: () => currentSettings, characters: characters.map((c) => ({ file: c.fileName, name: getCharacterName(c) })) });
+    // Each list's field is a textarea of the standing note's kind (the kit has no multi-line control).
+    mountDirectionsScope(bodyEl, { ui: parallx.ui, textarea: () => standingArea.cloneNode(false), select: (o) => tgSelect(parallx, o), fieldWrap, thread, saveMeta, settings: () => currentSettings, characters: characters.map((c) => ({ file: c.fileName, name: getCharacterName(c) })) });
 
     // ── Toggles ──
     const toggleRow = (labelText, checked, onChange, hintText) => {

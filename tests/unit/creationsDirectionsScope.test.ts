@@ -11,16 +11,12 @@ import { mountDirectionsScope, directionLists, settingsList, FOLLOW_SETTINGS, OW
 // @ts-expect-error — JS module with no types
 import { DEFAULT_NARRATOR_DIRECTIONS, DEFAULT_CHARACTER_DIRECTIONS } from '../../ext/creations-ai/director.js';
 
-const ui = {
-  createBlock(container: HTMLElement | null, tag: string, o: { className?: string; text?: string; attrs?: Record<string, string> } = {}) {
-    const e = document.createElement(tag);
-    if (o.className) e.className = o.className;
-    if (o.text != null) e.textContent = o.text;
-    for (const [k, v] of Object.entries(o.attrs || {})) e.setAttribute(k, v);
-    container?.appendChild(e);
-    return e;
-  },
-};
+import { createBlock } from '../../src/ui/block.js';
+
+// The kit's own createBlock, which makes layout and text only and throws on
+// anything else: the drawer failed to open when a textarea was asked of it.
+const ui = { createBlock };
+const textarea = () => document.createElement('textarea');
 type Sel = { element: HTMLElement; value: string; onChange: (v: string) => void; items: { value: string; label: string }[] };
 const select = (o: { items: Sel['items']; value: string; onChange: (v: string) => void }): Sel => ({ element: document.createElement('span'), value: o.value, onChange: o.onChange, items: o.items });
 const fieldWrap = (label: string, control: HTMLElement) => {
@@ -36,7 +32,7 @@ function mount(thread: Record<string, unknown>, settings: Record<string, unknown
   const host = document.createElement('div');
   const saved: Record<string, unknown>[] = [];
   const saveMeta = (u: Record<string, unknown>) => { Object.assign(thread, u); saved.push(u); };
-  const fields = mountDirectionsScope(host, { ui, select, fieldWrap, thread, saveMeta, settings: () => settings, characters });
+  const fields = mountDirectionsScope(host, { ui, textarea, select, fieldWrap, thread, saveMeta, settings: () => settings, characters });
   return { host, saved, fields };
 }
 

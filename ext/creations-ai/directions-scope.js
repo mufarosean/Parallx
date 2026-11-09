@@ -54,7 +54,8 @@ export function directionLists(thread, characters, saveMeta) {
 /**
  * The fields in the chat drawer, one per list: a dropdown (Follow Settings,
  * This Chat's Own List) and, for an own list, the textarea holding it.
- *   ui: the kit (createBlock)
+ *   ui: the kit (createBlock, for the hint)
+ *   textarea: makes an empty multi-line field like the drawer's others (the kit has no multi-line control)
  *   select: makes the app's dropdown from { className, layout, items, value, onChange }
  *   fieldWrap: the drawer's labelled field (label, control element)
  *   thread, saveMeta: the chat and how its fields are saved
@@ -62,12 +63,16 @@ export function directionLists(thread, characters, saveMeta) {
  *   characters: [{ file, name }] in the chat
  * Returns one { key, area, scope } per list.
  */
-export function mountDirectionsScope(host, { ui, select, fieldWrap, thread, saveMeta, settings, characters = [] }) {
+export function mountDirectionsScope(host, { ui, textarea, select, fieldWrap, thread, saveMeta, settings, characters = [] }) {
   const current = () => (typeof settings === 'function' ? settings() : settings) || {};
   const mounted = [];
   for (const list of directionLists(thread, characters, saveMeta)) {
     const own = typeof list.get() === 'string';
-    const area = ui.createBlock(null, 'textarea', { className: 'tg-drawer-textarea', attrs: { rows: '4', placeholder: 'One kind per line, as "Label: what it means".', 'aria-label': `${list.label}, this chat's list` } });
+    const area = textarea();
+    area.className = 'tg-drawer-textarea';
+    area.setAttribute('rows', '4');
+    area.setAttribute('placeholder', 'One kind per line, as "Label: what it means".');
+    area.setAttribute('aria-label', `${list.label}, this chat's list`);
     area.value = own ? list.get() : '';
     area.hidden = !own;
     const scope = select({
