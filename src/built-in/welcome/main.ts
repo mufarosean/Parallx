@@ -3,7 +3,7 @@
 // Shows a welcome page in the editor area on first launch.
 // Demonstrates: editor opening API, command contribution, globalState.
 
-import { declareControl } from '../../ui/kit.js';
+import { declareControl, sceneSlug } from '../../ui/kit.js';
 import './welcome.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -445,5 +445,6 @@ function _createRecentRow(icon: string, label: string, detail: string, onClick: 
   row.appendChild(iconSpan);
   row.appendChild(textWrap);
   row.addEventListener('click', onClick);
+  declareControl(row, { id: `welcome.recent.${sceneSlug(`${label} ${detail}`)}`, label: detail ? `${label}, ${detail}` : label });
   return row;
 }

@@ -5,7 +5,7 @@
 // Start Custom From This fills an empty custom style and never overwrites one.
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { describePreset, mountStylePreview, mountCustomStyleEditor } from '../../ext/creations-ai/style-preview.js';
+import { describePreset, mountStylePreview, mountCustomStylePreview } from '../../ext/creations-ai/style-preview.js';
 // @ts-expect-error — JS module with no types
 import { WRITING_PRESETS, STYLE_HINTS } from '../../ext/creations-ai/writing-style.js';
 
@@ -83,17 +83,15 @@ describe('mountStylePreview', () => {
   });
 });
 
-describe('mountCustomStyleEditor', () => {
+describe('mountCustomStylePreview', () => {
   it('Start Custom From This fills an empty custom style with the preset text and switches to Custom; a filled one is left alone', async () => {
-    const form = el('div');
     const group = el('div', 'tg-form-group');
     const dd = el('span');
     group.appendChild(dd);
-    form.appendChild(group);
+    const input = el('textarea') as HTMLTextAreaElement;
     const select = { element: dd, value: 'natural-rp' };
-    const { input, preview } = mountCustomStyleEditor(form, ui, el, select);
+    const preview = mountCustomStylePreview(ui, select, input);
     await flush();
-    expect(form.querySelector('.tg-form-label')?.textContent).toBe('Custom writing style');
     expect(group.querySelector('.tg-style-preview')).toBeTruthy(); // under the preset dropdown, not under the textarea
     buttonNamed(group, 'Style Text').click();
     await flush();

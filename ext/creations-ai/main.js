@@ -23,7 +23,7 @@ import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js'; import { MEMORY_CATEGORY_ORDER, MEMORY_EXTRACT_SCHEMA, sinceThenSchema } from './schemas.js';
-import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStyleEditor } from './style-preview.js';
+import { WRITING_PRESETS, getPresetContent, getStyleHint, getLengthHint, POV_OPTIONS, getPovContent } from './writing-style.js'; import { mountStylePreview, mountCustomStylePreview } from './style-preview.js';
 import { resolveLatitude, latitudeFraming, latitudeAnchor, latitudeItems, DEFAULT_LATITUDE } from './latitude.js';
 import { createActRunner, actCommand, ACT_COMMANDS } from './acts-panel.js';
 import { parseTurnScript } from './acts.js';
@@ -527,6 +527,7 @@ function injectStyles() {
 
 /* ═══ Settings form ═══ */
 .tg-settings-form { max-width: 480px; }
+.tg-style-preview { margin-top: var(--px-space-2); display: flex; flex-direction: column; gap: var(--px-space-2); align-items: flex-start; } .tg-style-preview-body { width: 100%; display: flex; flex-direction: column; gap: var(--px-space-2); } .tg-style-preview-text { width: 100%; box-sizing: border-box; max-height: 320px; overflow: auto; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-divider); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); color: var(--px-text); font-family: var(--px-font-mono); font-size: var(--px-text-sm); line-height: 1.5; white-space: pre-wrap; margin: 0; } .tg-style-preview-hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-secondary); } .tg-style-preview-actions { display: flex; gap: var(--px-space-2); flex-wrap: wrap; }
 .tg-form-group {
   margin-bottom: 16px;
 }
@@ -9783,11 +9784,19 @@ function renderSettingsPage(container, parallx) {
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
     options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })), onChange: () => void stylePreview?.refresh(),
   });
-  // The Style Text preview under the preset and the custom style editor (style-preview.js):
-  // the shipped styles readable, and a custom one started from any of them.
-  const customStyle = mountCustomStyleEditor(form, parallx.ui, el, presetSelect);
-  stylePreview = customStyle.preview;
-  const customStyleInput = customStyle.input;
+  // Custom writing-style editor: the prompt text used when any chat selects the "Custom" preset.
+  const customStyleGroup = el('div', 'tg-form-group');
+  customStyleGroup.appendChild(el('label', 'tg-form-label', { text: 'Custom writing style' }));
+  customStyleGroup.appendChild(el('div', 'tg-form-hint', { text: 'Used when a chat or character selects the "Custom" preset. Markdown is fine. This text is injected verbatim under "## Writing Style". To begin from a shipped style, pick it above, open Style Text and choose Start Custom From This.' }));
+  const customStyleInput = el('textarea', 'tg-form-input');
+  customStyleInput.rows = 10;
+  customStyleInput.style.fontFamily = 'var(--px-font-mono)';
+  customStyleInput.style.minHeight = '180px';
+  customStyleInput.placeholder = '- Write in second-person, present tense.\n- Keep paragraphs short.\n- Lean into sensory detail and quiet beats.';
+  customStyleGroup.appendChild(customStyleInput);
+  form.appendChild(customStyleGroup);
+  // The Style Text preview under the preset (style-preview.js): the shipped styles readable, a custom one started from any of them.
+  stylePreview = mountCustomStylePreview(parallx.ui, presetSelect, customStyleInput);
   // Dialogue rules: the one block of craft that rides in every roleplay and
   // story prompt. Shipped with a default; the user's text once edited.
   const rulesGroup = el('div', 'tg-form-group');

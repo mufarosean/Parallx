@@ -9,25 +9,10 @@
 // In Settings, Start Custom From This copies the shown text into the custom
 // style, so a custom style begins from the shipped one nearest to it.
 //
-// Drawn with the kit alone; the only elements here are blocks and buttons.
+// Drawn with the kit alone (blocks and buttons); its styles are in main.js's
+// sheet with the rest of the Settings form's.
 
 import { WRITING_PRESETS, STYLE_HINTS } from './writing-style.js';
-
-const STYLE_ID = 'tg-style-preview-styles';
-
-export function injectStylePreviewStyles() {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-.tg-style-preview { margin-top: var(--px-space-2); display: flex; flex-direction: column; gap: var(--px-space-2); align-items: flex-start; }
-.tg-style-preview-body { width: 100%; display: flex; flex-direction: column; gap: var(--px-space-2); }
-.tg-style-preview-text { width: 100%; box-sizing: border-box; max-height: 320px; overflow: auto; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-divider); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); color: var(--px-text); font-family: var(--px-font-mono); font-size: var(--px-text-sm); line-height: 1.5; white-space: pre-wrap; margin: 0; }
-.tg-style-preview-hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
-.tg-style-preview-actions { display: flex; gap: var(--px-space-2); flex-wrap: wrap; }
-`;
-  document.head.appendChild(style);
-}
 
 /** What a preset sends, in words a reader can check: the full text and the late reminder. */
 export function describePreset(key, customText = '') {
@@ -50,7 +35,6 @@ export function describePreset(key, customText = '') {
  * Custom From This, shown for a shipped preset only.
  */
 export function mountStylePreview(host, ui, select, { customText = '', onStartCustom = null, idBase = 'textGenerator.style' } = {}) {
-  injectStylePreviewStyles();
   const wrap = ui.createBlock(host, 'div', { className: 'tg-style-preview' });
   const body = ui.createBlock(null, 'div', { className: 'tg-style-preview-body' });
   body.hidden = true;
@@ -82,24 +66,14 @@ export function mountStylePreview(host, ui, select, { customText = '', onStartCu
 }
 
 /**
- * The Settings page's custom style editor with the preview under the
- * default preset dropdown: the label, the hint, the textarea, and Start
- * Custom From This, which fills an empty textarea and switches the dropdown
- * to Custom. A textarea with text in it is never overwritten: the button
- * says so and does nothing until it is cleared. Returns the textarea.
+ * The Settings page's preview under the default preset dropdown, tied to
+ * the custom style textarea: Custom shows what is typed, and Start Custom
+ * From This fills an empty textarea with the shown preset and switches the
+ * dropdown to Custom. A textarea with text in it is never overwritten: the
+ * disclosure says so and nothing changes until it is cleared.
  */
-export function mountCustomStyleEditor(form, ui, el, presetSelect) {
-  const group = el('div', 'tg-form-group');
-  group.appendChild(el('label', 'tg-form-label', { text: 'Custom writing style' }));
-  group.appendChild(el('div', 'tg-form-hint', { text: 'Used when a chat or character selects the "Custom" preset. Markdown is fine. This text is injected verbatim under "## Writing Style". To begin from a shipped style, pick it above, open Style Text and choose Start Custom From This.' }));
-  const input = el('textarea', 'tg-form-input');
-  input.rows = 10;
-  input.style.fontFamily = 'var(--px-font-mono)';
-  input.style.minHeight = '180px';
-  input.placeholder = '- Write in second-person, present tense.\n- Keep paragraphs short.\n- Lean into sensory detail and quiet beats.';
-  group.appendChild(input);
-  form.appendChild(group);
-  const preview = mountStylePreview(presetSelect.element.parentElement || form, ui, presetSelect, {
+export function mountCustomStylePreview(ui, presetSelect, input) {
+  const preview = mountStylePreview(presetSelect.element.parentElement, ui, presetSelect, {
     customText: () => input.value,
     idBase: 'textGenerator.settings.style',
     onStartCustom: (text) => {
@@ -112,5 +86,5 @@ export function mountCustomStyleEditor(form, ui, el, presetSelect) {
     },
   });
   input.addEventListener('input', () => { if (presetSelect.value === 'custom' && preview.open) void preview.refresh(); });
-  return { input, preview };
+  return preview;
 }
