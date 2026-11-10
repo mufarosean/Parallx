@@ -96,10 +96,11 @@ export function getFileTypeIcon(ext: string): string {
 }
 
 /**
- * Get the SVG markup for a folder icon (colored variant).
+ * Get the SVG markup for a folder icon: closed, or open when `open` is set
+ * (a tree's unfolded folder).
  */
-export function getFolderIcon(): string {
-  return _icons.get('filetype-folder') ?? _icons.get('folder') ?? '';
+export function getFolderIcon(open = false): string {
+  return _icons.get(open ? 'filetype-folder-open' : 'filetype-folder') ?? _icons.get('folder') ?? '';
 }
 
 /**

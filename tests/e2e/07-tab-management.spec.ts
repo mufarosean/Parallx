@@ -94,8 +94,7 @@ test.describe('Tab Management', () => {
 
     // Expand src and open index.ts (also pinned)
     const srcFolder = window.locator('.tree-node', { hasText: 'src' }).first();
-    const chevron = srcFolder.locator('.tree-node-chevron');
-    if ((await chevron.textContent()) === '▸') {
+    if ((await srcFolder.getAttribute('aria-expanded')) === 'false') {
       await srcFolder.click();
       await window.waitForTimeout(500);
     }

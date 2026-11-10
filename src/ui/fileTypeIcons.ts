@@ -37,6 +37,11 @@ function mediaBase(fillColor: string, innerSvg: string): string {
   );
 }
 
+/** Folder outline: stroked in the row's text colour. */
+function folder(inner: string): string {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+}
+
 // ── File-Type Icons ───────────────────────────────────────────────────────────
 
 /** Map of filetype icon IDs → colored SVG markup. */
@@ -114,13 +119,15 @@ export const FILE_TYPE_ICONS: Record<string, string> = {
   'filetype-log':   docBase('#a0aec0', 'LOG'),
   'filetype-env':   docBase('#ecc94b', 'ENV', '#333'),
 
-  // ── Folder: drawn in the row's text colour so it reads in every mode ──
-  'filetype-folder': svg(
-    `<path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>`
+  // ── Folder: drawn in the row's text colour so it reads in every mode.
+  // The closed and the open folder are one pair (Lucide's geometry, a
+  // lighter stroke to sit beside the file-type pages): a tree shows which
+  // folders are open by the folder itself.
+  'filetype-folder': folder(
+    `<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`
   ),
-  'filetype-folder-open': svg(
-    `<path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H6.5a2 2 0 0 0-1.9 1.4L2 18V6z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>` +
-    `<path d="M4.6 11H20l-2.4 8H2.2l2.4-8z" fill="currentColor" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>`
+  'filetype-folder-open': folder(
+    `<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`
   ),
 };
 

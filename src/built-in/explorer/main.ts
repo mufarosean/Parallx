@@ -23,7 +23,7 @@ import { explorerMenuItems } from './explorerContextMenu.js';
 import { showFileProperties } from './fileProperties.js';
 import { $ } from '../../ui/dom.js';
 import { glideHighlight } from '../../ui/glide.js';
-import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
+import { createIconElement, getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
 import { RECENT_ITEMS_WIDGET, setupRecentItemsTracking } from './recentItemsWidget.js';
 import { URI } from '../../platform/uri.js';
 import type { IFileLocateResult } from '../../services/fileLocator.js';
@@ -516,12 +516,12 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   el.setAttribute('data-uri', node.uri);
   // Computed layout dimension — allowed inline per project rules
   el.style.paddingLeft = `${depth * INDENT_PX + 4}px`;
-
-  // Chevron for directories
+  el.style.setProperty('--tree-depth', String(depth)); // its indent guides (explorer.css)
+  // Chevron for directories: the registry's chevron, turned when open.
   if (node.type === FILE_TYPE_DIRECTORY) {
-    const chevron = $('span');
-    chevron.className = 'tree-node-chevron';
-    chevron.textContent = node.expanded ? '▾' : '▸';
+    el.setAttribute('aria-expanded', String(node.expanded));
+    const chevron = createIconElement('chevron-right', 14);
+    chevron.classList.add('tree-node-chevron', ...(node.expanded ? ['tree-node-chevron--open'] : []));
     el.appendChild(chevron);
   } else {
     const spacer = $('span');
@@ -533,7 +533,7 @@ function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNod
   const icon = $('span');
   icon.className = 'tree-node-icon';
   if (node.type === FILE_TYPE_DIRECTORY) {
-    icon.innerHTML = getFolderIcon();
+    icon.innerHTML = getFolderIcon(node.expanded);
   } else {
     const extMatch = node.name.match(/\.([a-zA-Z0-9]+)$/);
     icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');

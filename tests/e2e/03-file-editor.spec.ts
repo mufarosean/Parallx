@@ -33,9 +33,7 @@ test.describe('File Editor', () => {
       // Expand the folder
       for (let i = 0; i < parts.length - 1; i++) {
         const folderNode = window.locator('.tree-node', { hasText: parts[i] }).first();
-        const chevron = folderNode.locator('.tree-node-chevron');
-        const text = await chevron.textContent();
-        if (text === '▸') {
+        if ((await folderNode.getAttribute('aria-expanded')) === 'false') {
           await folderNode.click();
           await window.waitForTimeout(500);
         }

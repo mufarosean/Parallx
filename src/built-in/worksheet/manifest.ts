@@ -65,7 +65,7 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: false, aiDescription: 'Open a quiz by its id: an open one resumes, a finished one reviews.' },
     ],
     viewContainers: [
-      { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },
+      { id: 'worksheet-container', title: 'Worksheets', icon: 'calculator', location: 'sidebar' as const },
     ],
     views: [
       { id: 'view.worksheet', name: 'Practice Items', defaultContainerId: 'worksheet-container' },

@@ -136,15 +136,33 @@
 
 /* ── Chevron ── */
 
+/* The registry's chevron-right, muted; it points down when the folder is
+   open. (It was a text glyph the font drew: heavy and off-centre.) */
 .tree-node-chevron {
-  width: 16px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--px-text-xs);
-  line-height: 22px;
-  color: var(--vscode-foreground);
+  margin: 0 1px;
+  color: var(--px-text-muted);
+}
+.tree-node-chevron svg {
+  stroke-width: 1.75;
+}
+.tree-node-chevron--open svg {
+  transform: rotate(90deg);
+}
+.tree-node:hover .tree-node-chevron,
+.tree-node--selected .tree-node-chevron {
+  color: var(--px-text-secondary);
+}
+
+/* Indent guides: one faint line per level, under the parent's chevron. */
+.tree-node::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--tree-depth, 0) * 20px);
+  background: repeating-linear-gradient(to right, transparent 0 11px, var(--px-border) 11px 12px, transparent 12px 20px);
+  pointer-events: none;
 }
 
 .tree-node-spacer {
