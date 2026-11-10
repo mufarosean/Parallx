@@ -391,6 +391,8 @@ export interface OpenEditorOptions {
   readonly icon?: string;
   /** Optional unique instance ID (for multiple editors of same type). */
   readonly instanceId?: string;
+  /** Open beside the active editor (the group to its right, split when there is none); an editor already open elsewhere is shown where it is. */
+  readonly side?: boolean;
 }
 
 // ─── The Parallx API ─────────────────────────────────────────────────────────

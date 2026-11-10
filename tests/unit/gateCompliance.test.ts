@@ -235,6 +235,10 @@ const GATE_RULES: Record<string, string[]> = {
   'export/pdfExportDialog.ts':             ['export/printHtml', 'config/fontRegistry'],  // dialog over the pure builders (ui/dropdown + pdfjs are external); resolves page fonts for embedding
   'export/pageBundle.ts':                  ['contentSchema', 'markdownExport', 'canvasTypes'],  // a page tree as a .zip of Markdown files
   'database/databaseCsv.ts':               ['database/databaseTypes', 'database/databaseViewModel', 'database/cellValues', 'properties/propertyTypes'],  // a view as CSV and CSV back into rows (pure)
+  'database/viewConfig.ts':                ['database/databaseTypes', 'database/calculations'],  // a view's config, typed (pure)
+  'database/calculations.ts':              ['properties/propertyTypes', 'database/cellValues'],  // the calculations row (pure)
+  'database/cellRender.ts':                ['database/databaseTypes', 'database/cellValues'],  // a cell's value, read-only, for every type
+  'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 
   // ── Fonts ───────────────────────────────────────────────────────────────

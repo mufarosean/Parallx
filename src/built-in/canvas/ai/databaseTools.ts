@@ -28,7 +28,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
       name: 'canvas_create_database',
       displaySummary: 'Create a Notion-style database.',
       description:
-      'CREATE a database. Optionally nest via `parentId`; `properties` defines columns beyond the seeded Status select. Add rows with `canvas_add_database_row`.',
+      'CREATE a database. Optionally nest via `parentId`; `properties` defines its columns (a database made without any starts with a Status select). Add rows with `canvas_add_database_row`.',
       parameters: {
         type: 'object',
         required: ['title'],
@@ -57,8 +57,9 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
         const title = String(args['title'] ?? '').trim();
         if (!title) return { content: 'title is required', isError: true };
         const parentId = typeof args['parentId'] === 'string' && args['parentId'].trim() ? (args['parentId'] as string).trim() : undefined;
-        const info = await db.createDatabase({ title, parentId });
         const extra = Array.isArray(args['properties']) ? (args['properties'] as { name?: unknown; type?: unknown; options?: unknown }[]) : [];
+        // A caller that names its columns gets exactly those; only a bare database starts with a Tags column.
+        const info = await db.createDatabase({ title, parentId, seedDefaults: extra.length === 0 });
         const added: string[] = [];
         for (const p of extra) {
           const name = String(p?.name ?? '').trim();
@@ -72,7 +73,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
           added.push(name);
         }
         return {
-          content: `Created database "${title}" (id: ${info.id})${parentId ? ` under ${parentId}` : ''} with columns: Status${added.length ? ', ' + added.join(', ') : ''}. Add rows with canvas_add_database_row.`,
+          content: `Created database "${title}" (id: ${info.id})${parentId ? ` under ${parentId}` : ''} with columns: ${added.length ? added.join(', ') : 'Status'}. Add rows with canvas_add_database_row.`,
         };
       },
     },

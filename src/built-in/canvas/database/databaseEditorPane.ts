@@ -1,17 +1,16 @@
-// databaseEditorPane.ts — the full-page database editor (Notion-parity UI).
+// databaseEditorPane.ts — the full-page database editor (docs/DATABASES.md).
 //
-// Anatomy (researched against Notion's help-center docs):
+// Anatomy (Notion's):
 //   icon + title
 //   view tabs row (type icon + name per view, + add view) ··· toolbar:
-//     [Filter] [Sort] [New]
+//     [Filter] [Sort] [⋯ view settings] [New]
 //   active-rule chips row (when the view has filters/sorts)
-//   body → TABLE view (typed headers with menus, pinned title column, inline
-//     editors, + new column, + New row) or
-//     BOARD view (a column per group option, cards; dragging a card, or
-//     Ctrl+Shift+Left/Right on it, writes the group property).
+//   body → one of the views: TABLE (tableView.ts) or BOARD (here, until
+//     step 4 moves it out).
 //
-// View state (filter/sort/groupBy/column widths/hidden props) is VIEW-LOCAL
-// and persisted through DatabaseDataService.updateView — matching Notion.
+// View state (filter/sort/groupBy/column widths/hidden props/order/wrap/
+// freeze/calculations/how rows open) is VIEW-LOCAL and persisted through
+// DatabaseDataService.updateView — matching Notion. viewConfig.ts reads it.
 
 import { DisposableStore, type IDisposable } from '../../../platform/lifecycle.js';
 import type { DatabaseDataService } from './databaseDataService.js';
@@ -20,26 +19,28 @@ import type {
 } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
 import { applyFilter, applySort, boardDropValue, groupRows, seedForFilter } from './databaseViewModel.js';
-import { isChecked, normalizeDateValue, toNumber } from './cellValues.js';
+import { normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
-import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
-import { createButton, createIconButton, declareControl, sceneSlug } from '../../../ui/kit.js';
+import { createIconElement, resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { createButton, createIconButton, createMenu } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { wireBoardCardKeys } from './boardCardKeys.js';
 import { databaseCsvMenuItems } from './databaseCsvActions.js';
-import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
-import { onDragPress } from '../../../ui/touchDrag.js';
+import { renderTableView, type ITableViewDeps } from './tableView.js';
+import { moveInOrder, orderedProperties, patchRecord, readViewConfig, visibleProperties } from './viewConfig.js';
+import { calcOptionsFor, type CalcKind } from './calculations.js';
+import { PILL_COLORS, optionColor, pill as pillInto } from './cellRender.js';
+import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
+
+export { PILL_COLORS };
 
 function renderPageIconHtml(icon: string | null | undefined): string {
   const id = resolvePageIcon(icon);
   return id ? (svgIcon(id) || '') : '';
 }
-
-/** Notion's named option-pill palette. */
-export const PILL_COLORS = ['default', 'gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const;
 
 const PROPERTY_TYPES: { type: PropertyType; label: string }[] = [
   { type: 'text', label: 'Text' },
@@ -100,6 +101,8 @@ export interface IDatabasePaneDeps {
   readonly db: DatabaseDataService;
   /** Open a row as a page (canvas editor). */
   openPage(pageId: string): void;
+  /** Open a row beside this editor (the view's "side peek"); without it, rows open as pages. */
+  openPageBeside?(pageId: string): void;
   /** Rename the database page (title lives on pages). */
   renamePage(pageId: string, title: string): Promise<void>;
   /** The app's confirmation modal, for actions that lose data. */
@@ -114,13 +117,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 }
 
 function pill(text: string, color: string): HTMLElement {
-  const span = el('span', `canvas-db-pill canvas-db-pill--${PILL_COLORS.includes(color as never) ? color : 'default'}`, text);
-  return span;
-}
-
-function optionColor(prop: IDatabaseProperty, value: string): string {
-  const options = (prop.config as { options?: { value: string; color?: string }[] }).options ?? [];
-  return options.find((o) => o.value === value)?.color ?? 'default';
+  return pillInto(null, text, color);
 }
 
 /** Adapt a database property to the IPropertyDefinition shape the shared
@@ -134,6 +131,8 @@ function asDefinition(prop: IDatabaseProperty): IPropertyDefinition {
 
 export class DatabaseEditorPane implements IDisposable {
   private readonly _disposables = new DisposableStore();
+  /** What the current body render registered (listeners, drags); cleared on each render. */
+  private _bodyStore = new DisposableStore();
   private _disposed = false;
 
   private _props: IDatabaseProperty[] = [];
@@ -273,7 +272,7 @@ export class DatabaseEditorPane implements IDisposable {
     const tabs = el('div', 'canvas-db-tabs');
     for (const view of this._views) {
       const tab = el('button', `canvas-db-tab${view.id === this.activeView?.id ? ' canvas-db-tab--active' : ''}`);
-      tab.appendChild(createTypeIconElement(view.type === 'board' ? 'tags' : 'text', 14));
+      tab.appendChild(createIconElement(view.type === 'board' ? 'kanban' : 'table', 14));
       tab.appendChild(el('span', '', view.name));
       tab.addEventListener('click', () => { this._activeViewId = view.id; this._embed?.onViewChange?.(view.id); this._render(); });
       tab.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openViewMenu(tab, view); });
@@ -287,9 +286,10 @@ export class DatabaseEditorPane implements IDisposable {
     const toolbar = el('div', 'canvas-db-toolbar');
     const filterBtn = createButton(null, { id: 'database.filter', label: 'Filter', kind: 'ghost', size: 'sm', icon: 'filter', onClick: () => this._openFilterPopover(filterBtn) });
     const sortBtn = createButton(null, { id: 'database.sort', label: 'Sort', kind: 'ghost', size: 'sm', icon: 'arrow-up-down', onClick: () => this._openSortPopover(sortBtn) });
+    const settingsBtn = createIconButton(null, { id: 'database.viewSettings', icon: 'more-horizontal', title: 'View Settings…', size: 'sm', onClick: () => this._openViewSettings(settingsBtn) });
     const newBtn = createButton(null, { id: 'database.newRow', label: 'New', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => void this._addRow() });
     newBtn.classList.add('canvas-db-newbtn');
-    toolbar.append(filterBtn, sortBtn, newBtn);
+    toolbar.append(filterBtn, sortBtn, settingsBtn, newBtn);
     bar.appendChild(toolbar);
     this._root.appendChild(bar);
 
@@ -301,6 +301,7 @@ export class DatabaseEditorPane implements IDisposable {
         const chip = el('span', 'canvas-db-chip');
         chip.textContent = `${this._propName(rule.propertyId)} ${FILTER_OPS.find((f) => f.op === rule.op)?.label ?? rule.op}${rule.value !== undefined && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' ? ` ${String(rule.value)}` : ''}`;
         const x = el('button', 'canvas-db-chip__x', '×');
+        x.setAttribute('aria-label', 'Remove filter');
         x.addEventListener('click', () => void this._updateActiveView({ filter: { ...view.filter, rules: view.filter.rules.filter((_, j) => j !== i) } }));
         chip.appendChild(x);
         chips.appendChild(chip);
@@ -309,6 +310,7 @@ export class DatabaseEditorPane implements IDisposable {
         const chip = el('span', 'canvas-db-chip canvas-db-chip--sort');
         chip.textContent = `↕ ${this._propName(rule.propertyId)} ${rule.dir === 'asc' ? '↑' : '↓'}`;
         const x = el('button', 'canvas-db-chip__x', '×');
+        x.setAttribute('aria-label', 'Remove sort');
         x.addEventListener('click', () => void this._updateActiveView({ sort: view.sort.filter((_, j) => j !== i) }));
         chip.appendChild(x);
         chips.appendChild(chip);
@@ -327,8 +329,7 @@ export class DatabaseEditorPane implements IDisposable {
   }
 
   private _visibleProps(view: IDatabaseView): IDatabaseProperty[] {
-    const hidden = new Set((view.config.hidden as string[] | undefined) ?? []);
-    return this._props.filter((p) => !hidden.has(p.id));
+    return visibleProperties(this._props, view);
   }
 
   private _viewRows(view: IDatabaseView): IDatabaseRow[] {
@@ -339,184 +340,35 @@ export class DatabaseEditorPane implements IDisposable {
     const body = this._root.querySelector('.canvas-db-body');
     const view = this.activeView;
     if (!body || !view) return;
+    this._bodyStore.dispose();
+    this._bodyStore = new DisposableStore();
     body.textContent = '';
     if (view.type === 'board') this._renderBoard(body as HTMLElement, view);
-    else this._renderTable(body as HTMLElement, view);
+    else renderTableView(body as HTMLElement, { view, props: this._props, rows: this._viewRows(view) }, this._tableDeps(), this._bodyStore);
   }
 
-  // ── Render: table view ─────────────────────────────────────────────────────
-
-  private _renderTable(body: HTMLElement, view: IDatabaseView): void {
-    const props = this._visibleProps(view);
-    const widths = (view.config.widths as Record<string, number> | undefined) ?? {};
-    const rows = this._viewRows(view);
-
-    const table = el('table', 'canvas-db-table');
-    const colgroup = el('colgroup');
-    const titleCol = el('col');
-    titleCol.style.width = `${widths[TITLE_KEY] ?? 260}px`;
-    colgroup.appendChild(titleCol);
-    for (const p of props) {
-      const col = el('col');
-      col.style.width = `${widths[p.id] ?? 160}px`;
-      colgroup.appendChild(col);
-    }
-    colgroup.appendChild(el('col')); // + column
-    table.appendChild(colgroup);
-
-    // Header.
-    const thead = el('thead');
-    const headRow = el('tr');
-    const titleTh = el('th', 'canvas-db-th canvas-db-th--title');
-    titleTh.appendChild(createTypeIconElement('text', 14));
-    titleTh.appendChild(el('span', '', 'Name'));
-    this._attachResize(titleTh, TITLE_KEY, view);
-    headRow.appendChild(titleTh);
-    for (const p of props) {
-      const th = el('th', 'canvas-db-th');
-      th.appendChild(createTypeIconElement(p.type, 14));
-      // The name is the header's control (keys and a name for screen readers); the th stays a column header.
-      declareControl(th.appendChild(el('span', '', p.name)), { id: `database.column.${sceneSlug(p.id)}`, label: p.name || 'Property' }); th.addEventListener('click', () => this._openHeaderMenu(th, p, view));
-      this._attachResize(th, p.id, view);
-      headRow.appendChild(th);
-    }
-    const addTh = el('th', 'canvas-db-th canvas-db-th--add', '+');
-    addTh.title = 'Add a property'; addTh.setAttribute('aria-label', 'Add a Property'); declareControl(addTh, { id: 'database.addProperty', label: 'Add a Property' });
-    addTh.addEventListener('click', () => this._openAddPropertyPopover(addTh));
-    headRow.appendChild(addTh);
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    // Body.
-    const tbody = el('tbody');
-    for (const row of rows) {
-      const tr = el('tr', 'canvas-db-row');
-      // Title cell: icon + title, hover OPEN.
-      const titleTd = el('td', 'canvas-db-cell canvas-db-cell--title');
-      const titleWrap = el('div', 'canvas-db-cell__titlewrap');
-      if (row.icon) {
-        const ic = el('span', 'canvas-db-cell__icon');
-        ic.innerHTML = renderPageIconHtml(row.icon);
-        titleWrap.appendChild(ic);
-      }
-      const titleText = el('span', 'canvas-db-cell__titletext', row.title || 'Untitled');
-      titleText.addEventListener('click', () => this._beginRenameRow(titleText, row));
-      titleWrap.appendChild(titleText);
-      const openBtn = el('button', 'canvas-db-openbtn', 'Open');
-      openBtn.addEventListener('click', (e) => { e.stopPropagation(); this._deps.openPage(row.pageId); });
-      titleWrap.appendChild(openBtn);
-      titleTd.appendChild(titleWrap);
-      titleTd.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openRowMenu(e, row); });
-      tr.appendChild(titleTd);
-
-      for (const p of props) {
-        const td = el('td', 'canvas-db-cell');
-        this._renderCell(td, p, row);
-        tr.appendChild(td);
-      }
-      tr.appendChild(el('td', 'canvas-db-cell canvas-db-cell--pad'));
-      tbody.appendChild(tr);
-    }
-
-    // + New row.
-    const newTr = el('tr', 'canvas-db-newrow');
-    const newTd = el('td', 'canvas-db-newrow__cell');
-    const newLabel = el('span', 'canvas-db-newrow__label');
-    newLabel.innerHTML = svgIcon('plus');
-    newLabel.appendChild(el('span', '', 'New'));
-    newTd.appendChild(newLabel); newLabel.setAttribute('aria-label', 'New Row'); declareControl(newLabel, { id: 'database.newRowCell', label: 'New Row' });
-    newTd.colSpan = props.length + 2;
-    newTd.addEventListener('click', () => void this._addRow());
-    newTr.appendChild(newTd);
-    tbody.appendChild(newTr);
-    table.appendChild(tbody);
-    body.appendChild(table);
-
-    // Footer count (calculations row, minimal: count).
-    body.appendChild(el('div', 'canvas-db-count', `${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`));
+  /** How a row opens from the active view: beside the table (side peek) or as a page. */
+  private _openRow(pageId: string): void {
+    const view = this.activeView;
+    const beside = view ? readViewConfig(view.config).openIn === 'side' : false;
+    if (beside && this._deps.openPageBeside) this._deps.openPageBeside(pageId);
+    else this._deps.openPage(pageId);
   }
 
-  private _renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow): void {
-    td.textContent = '';
-    const value = row.values[prop.id];
-    // Checkbox toggles immediately (no edit mode).
-    if (prop.type === 'checkbox') {
-      // isChecked: an older "false" string reads unchecked, as it filters.
-      const checked = isChecked(value);
-      const box = el('div', `canvas-db-check${checked ? ' canvas-db-check--on' : ''}`);
-      box.addEventListener('click', () => void this._deps.db.setCellValue(this._databaseId, row.pageId, prop.id, !checked));
-      td.appendChild(box);
-      return;
-    }
-    const display = el('div', 'canvas-db-cell__value');
-    if (prop.type === 'select' && typeof value === 'string' && value) {
-      display.appendChild(pill(value, optionColor(prop, value)));
-    } else if (prop.type === 'tags' && Array.isArray(value) && value.length > 0) {
-      for (const v of value) display.appendChild(pill(String(v), optionColor(prop, String(v))));
-    } else if (prop.type === 'url' && typeof value === 'string' && value) {
-      const a = el('a', 'canvas-db-cell__link', value);
-      a.addEventListener('click', (e) => e.stopPropagation());
-      (a as HTMLAnchorElement).href = value;
-      (a as HTMLAnchorElement).target = '_blank';
-      display.appendChild(a);
-    } else if (value !== null && value !== undefined && value !== '') {
-      display.textContent = Array.isArray(value) ? value.join(', ') : String(value);
-    }
-    display.addEventListener('click', () => {
-      // Swap to the shared inline editor for this type.
-      td.textContent = '';
-      const editor = createPropertyEditor(asDefinition(prop), value ?? null, (next) => {
-        void this._deps.db.setCellValue(this._databaseId, row.pageId, prop.id, next);
-      });
-      editor.classList.add('canvas-db-cell__editor');
-      td.appendChild(editor);
-      const input = editor.querySelector('input, [contenteditable]') as HTMLElement | null;
-      input?.focus();
-    });
-    td.appendChild(display);
-  }
-
-  private _beginRenameRow(titleText: HTMLElement, row: IDatabaseRow): void {
-    const input = el('input', 'canvas-db-titleinput') as HTMLInputElement;
-    input.value = row.title;
-    titleText.replaceWith(input);
-    input.focus();
-    input.select();
-    const commit = () => {
-      const next = input.value.trim() || 'Untitled';
-      if (next !== row.title) void this._deps.db.renameRow(this._databaseId, row.pageId, next);
-      else this._renderBody();
+  private _tableDeps(): ITableViewDeps {
+    return {
+      setCell: (pageId, propertyId, value) => this._deps.db.setCellValue(this._databaseId, pageId, propertyId, value),
+      renameRow: (pageId, title) => this._deps.db.renameRow(this._databaseId, pageId, title),
+      openRow: (pageId) => this._openRow(pageId),
+      addRow: () => this._addRow(),
+      updateView: (patch) => this._updateActiveView(patch),
+      openHeaderMenu: (anchor, prop) => (prop ? this._openHeaderMenu(anchor, prop, this.activeView!) : this._openTitleMenu(anchor, this.activeView!)),
+      openAddProperty: (anchor) => this._openAddPropertyPopover(anchor),
+      openRowMenu: (e, row) => this._openRowMenu(e, row),
+      openCalcMenu: (anchor, key, type) => this._openCalcMenu(anchor, key, type),
+      editorFor: (prop, value, onChange) => createPropertyEditor(asDefinition(prop), value, onChange),
+      rowIcon: (icon) => { if (!icon) return null; const id = resolvePageIcon(icon); return id ? createIconElement(id, 16) : null; },
     };
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-      if (e.key === 'Escape') { input.value = row.title; input.blur(); }
-    });
-  }
-
-  private _attachResize(th: HTMLElement, key: string, view: IDatabaseView): void {
-    const grip = el('div', 'canvas-db-resize');
-    const save = (w: number) => void this._updateActiveView({ config: { ...view.config, widths: { ...((view.config.widths as Record<string, number>) ?? {}), [key]: Math.max(80, Math.round(w)) } } });
-    // The keyboard's drag: with focus on the header, View: Make Focused Area Wider / Narrower size the column.
-    registerKeyboardResize(th, { axis: 'width', resize: (d) => { const w = th.getBoundingClientRect().width; if (d < 0 && w <= 80) return false; save(w + d); return true; } });
-    onDragPress(grip, (e) => { // mouse, pen or finger
-      e.preventDefault(); e.stopPropagation();
-      const startX = e.clientX, startW = th.getBoundingClientRect().width;
-      const onMove = (ev: MouseEvent) => {
-        const w = Math.max(80, Math.round(startW + (ev.clientX - startX)));
-        const table = th.closest('table');
-        const index = [...th.parentElement!.children].indexOf(th);
-        const col = table?.querySelectorAll('col')[index] as HTMLElement | undefined;
-        if (col) col.style.width = `${w}px`;
-      };
-      const onUp = (ev: MouseEvent) => {
-        document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
-        save(startW + (ev.clientX - startX));
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-    th.appendChild(grip);
   }
 
   // ── Render: board view ─────────────────────────────────────────────────────
@@ -568,8 +420,8 @@ export class DatabaseEditorPane implements IDisposable {
           else line.textContent = Array.isArray(v) ? v.join(', ') : String(v);
           card.appendChild(line);
         }
-        card.addEventListener('click', () => this._deps.openPage(row.pageId));
-        wireBoardCardKeys(card, { open: () => this._deps.openPage(row.pageId), menu: (x, y) => this._openRowMenu(new MouseEvent('contextmenu', { clientX: x, clientY: y }), row),
+        card.addEventListener('click', () => this._openRow(row.pageId));
+        wireBoardCardKeys(card, { open: () => this._openRow(row.pageId), menu: (x, y) => this._openRowMenu(new MouseEvent('contextmenu', { clientX: x, clientY: y }), row),
           move: (step) => { const to = groups[groups.indexOf(group) + step]; if (to) void this._deps.db.setCellValue(this._databaseId, row.pageId, groupProp.id, boardDropValue(row.values[groupProp.id], group.key, to.key, groupProp.type === 'tags')); } });
         card.addEventListener('dragstart', (e) => {
           e.dataTransfer?.setData('text/parallx-db-row', row.pageId);
@@ -621,6 +473,11 @@ export class DatabaseEditorPane implements IDisposable {
     await this._deps.db.updateView(this._databaseId, view.id, patch);
   }
 
+  private _patchConfig(patch: Record<string, unknown>): Promise<void> {
+    const view = this.activeView;
+    return view ? this._updateActiveView({ config: { ...view.config, ...patch } }) : Promise.resolve();
+  }
+
   // ── Popovers & menus ───────────────────────────────────────────────────────
 
   /** Controls (Dropdowns) owned by the CURRENT popover — they register
@@ -655,10 +512,34 @@ export class DatabaseEditorPane implements IDisposable {
     return item;
   }
 
+  /** The kit's menu, anchored below `anchor`. */
+  private _menu(anchor: HTMLElement, label: string, items: readonly IExtensionMenuItem[]): void {
+    this._closePopover();
+    createMenu(anchor, { id: null, label, items });
+  }
+
+  /** The items a column shares with the Name column: wrap, freeze, sort. */
+  private _columnItems(key: string, view: IDatabaseView): IExtensionMenuItem[] {
+    const cfg = readViewConfig(view.config);
+    const frozen = cfg.freeze === key;
+    return [
+      { label: 'Sort Ascending', icon: 'arrow-up', onSelect: () => void this._updateActiveView({ sort: [{ propertyId: key, dir: 'asc' }] }) },
+      { label: 'Sort Descending', icon: 'arrow-down', onSelect: () => void this._updateActiveView({ sort: [{ propertyId: key, dir: 'desc' }] }) },
+      { separator: true },
+      { label: 'Wrap Text', icon: 'rows', checked: !!cfg.wrap[key], onSelect: () => void this._updateActiveView({ config: patchRecord(view.config, 'wrap', key, cfg.wrap[key] ? null : true) }) },
+      { label: frozen ? 'Unfreeze Columns' : 'Freeze Up to This Column', icon: 'pin', onSelect: () => void this._patchConfig({ freeze: frozen ? null : key }) },
+    ];
+  }
+
+  private _openTitleMenu(anchor: HTMLElement, view: IDatabaseView): void {
+    this._menu(anchor, 'Name column', this._columnItems(TITLE_KEY, view));
+  }
+
   private _openHeaderMenu(th: HTMLElement, prop: IDatabaseProperty, view: IDatabaseView): void {
     this._openPopover(th, (pop) => {
       const rename = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       rename.value = prop.name;
+      rename.setAttribute('aria-label', 'Property name');
       rename.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           const name = rename.value.trim();
@@ -667,11 +548,18 @@ export class DatabaseEditorPane implements IDisposable {
         }
       });
       pop.appendChild(rename);
+      const cfg = readViewConfig(view.config);
+      const ordered = this._visibleProps(view).map((p) => p.id);
+      const at = ordered.indexOf(prop.id);
       pop.appendChild(this._menuItem('Sort ascending', () => void this._updateActiveView({ sort: [{ propertyId: prop.id, dir: 'asc' }] })));
       pop.appendChild(this._menuItem('Sort descending', () => void this._updateActiveView({ sort: [{ propertyId: prop.id, dir: 'desc' }] })));
+      pop.appendChild(this._menuItem(cfg.wrap[prop.id] ? 'Clip text' : 'Wrap text', () => void this._updateActiveView({ config: patchRecord(view.config, 'wrap', prop.id, cfg.wrap[prop.id] ? null : true) })));
+      pop.appendChild(this._menuItem(cfg.freeze === prop.id ? 'Unfreeze columns' : 'Freeze up to this column', () => void this._patchConfig({ freeze: cfg.freeze === prop.id ? null : prop.id })));
+      if (at > 0) pop.appendChild(this._menuItem('Move left', () => void this._patchConfig({ order: moveInOrder(this._props, view, prop.id, -1) })));
+      if (at >= 0 && at < ordered.length - 1) pop.appendChild(this._menuItem('Move right', () => void this._patchConfig({ order: moveInOrder(this._props, view, prop.id, 1) })));
       pop.appendChild(this._menuItem('Hide in view', () => {
-        const hidden = [...(((view.config.hidden as string[]) ?? [])), prop.id];
-        void this._updateActiveView({ config: { ...view.config, hidden } });
+        const hidden = [...cfg.hidden, prop.id];
+        void this._patchConfig({ hidden });
       }));
       if (prop.type === 'select' || prop.type === 'tags') {
         pop.appendChild(this._menuItem('Edit options…', () => this._openOptionsEditor(th, prop)));
@@ -687,6 +575,63 @@ export class DatabaseEditorPane implements IDisposable {
         });
       }, true));
     });
+  }
+
+  /** The calculation under a column. */
+  private _openCalcMenu(anchor: HTMLElement, key: string, type: PropertyType | 'title'): void {
+    const view = this.activeView;
+    if (!view) return;
+    const current = readViewConfig(view.config).calc[key] ?? (key === TITLE_KEY ? 'count' : 'none');
+    const items: IExtensionMenuItem[] = [];
+    let group: string | null = null;
+    for (const o of calcOptionsFor(type)) {
+      if (group && o.group !== group) items.push({ separator: true });
+      group = o.group;
+      items.push({ label: o.label, checked: o.kind === current, onSelect: () => void this._updateActiveView({ config: patchRecord(view.config, 'calc', key, o.kind === 'none' ? null : (o.kind as CalcKind)) }) });
+    }
+    this._menu(anchor, 'Calculate', items);
+  }
+
+  /** The view's settings: layout, properties, wrap, freeze, how rows open, CSV, rename, delete. */
+  private _openViewSettings(anchor: HTMLElement): void {
+    const view = this.activeView;
+    if (!view) return;
+    const cfg = readViewConfig(view.config);
+    const allWrapped = this._visibleProps(view).every((p) => cfg.wrap[p.id]) && !!cfg.wrap[TITLE_KEY];
+    const properties: IExtensionMenuItem[] = orderedProperties(this._props, cfg).map((p) => ({
+      label: p.name, icon: cfg.hidden.includes(p.id) ? 'eye-off' : 'eye', checked: !cfg.hidden.includes(p.id), keepOpen: true,
+      onSelect: () => void this._patchConfig({ hidden: cfg.hidden.includes(p.id) ? cfg.hidden.filter((h) => h !== p.id) : [...cfg.hidden, p.id] }),
+    }));
+    const freezeItems: IExtensionMenuItem[] = [
+      { label: 'None', checked: cfg.freeze === null, onSelect: () => void this._patchConfig({ freeze: null }) },
+      { label: 'Name', checked: cfg.freeze === TITLE_KEY, onSelect: () => void this._patchConfig({ freeze: TITLE_KEY }) },
+      ...this._visibleProps(view).map((p) => ({ label: p.name, checked: cfg.freeze === p.id, onSelect: () => void this._patchConfig({ freeze: p.id }) })),
+    ];
+    const items: IExtensionMenuItem[] = [
+      { label: 'Layout', icon: view.type === 'board' ? 'kanban' : 'table', submenu: [
+        { label: 'Table', icon: 'table', checked: view.type === 'table', onSelect: () => void this._updateActiveView({ type: 'table' }) },
+        { label: 'Board', icon: 'kanban', checked: view.type === 'board', onSelect: () => void this._updateActiveView({ type: 'board' }) },
+      ] },
+      { label: 'Properties', icon: 'sliders-horizontal', submenu: properties.length ? properties : [{ label: 'No properties yet', disabled: true }] },
+      { separator: true },
+      { label: 'Wrap All Columns', icon: 'rows', checked: allWrapped, onSelect: () => {
+        const wrap: Record<string, boolean> = {};
+        if (!allWrapped) { wrap[TITLE_KEY] = true; for (const p of this._props) wrap[p.id] = true; }
+        void this._patchConfig({ wrap });
+      } },
+      { label: 'Freeze Up To', icon: 'pin', submenu: freezeItems },
+      { label: 'Open Rows In', icon: 'panel-right', submenu: [
+        { label: 'Side Peek', icon: 'panel-right', checked: cfg.openIn === 'side', onSelect: () => void this._patchConfig({ openIn: 'side' }) },
+        { label: 'Full Page', icon: 'maximize', checked: cfg.openIn === 'full', onSelect: () => void this._patchConfig({ openIn: 'full' }) },
+      ] },
+      ...(view.type === 'board' ? [{ label: 'Group By', icon: 'kanban', submenu: this._props.filter((p) => p.type === 'select' || p.type === 'tags' || p.type === 'status').map((p) => ({ label: p.name, checked: view.groupBy === p.id, onSelect: () => void this._updateActiveView({ groupBy: p.id }) })) }] : []),
+      { separator: true },
+      ...databaseCsvMenuItems<IExtensionMenuItem>(this._deps.db, this._databaseId, view.id, (label, run) => ({ label, icon: label.startsWith('Export') ? 'download' : 'upload', onSelect: run })),
+      { separator: true },
+      { label: 'Rename View…', icon: 'pencil', onSelect: () => this._openViewMenu(anchor, view) },
+      ...(this._views.length > 1 ? [{ label: 'Delete View', icon: 'trash-2', danger: true, onSelect: () => void this._deps.db.deleteView(this._databaseId, view.id) }] : []),
+    ];
+    this._menu(anchor, 'View settings', items);
   }
 
   private _openOptionsEditor(anchor: HTMLElement, prop: IDatabaseProperty): void {
@@ -725,6 +670,7 @@ export class DatabaseEditorPane implements IDisposable {
       pop.appendChild(list);
       const add = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       add.placeholder = 'New option, Enter to add';
+      add.setAttribute('aria-label', 'New option');
       add.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && add.value.trim()) {
           options.push({ value: add.value.trim(), color: PILL_COLORS[(options.length + 1) % PILL_COLORS.length], orig: undefined });
@@ -751,6 +697,7 @@ export class DatabaseEditorPane implements IDisposable {
     this._openPopover(anchor, (pop) => {
       const name = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       name.placeholder = 'Property name';
+      name.setAttribute('aria-label', 'Property name');
       pop.appendChild(name);
       for (const { type, label } of PROPERTY_TYPES) {
         const item = el('button', 'canvas-db-menuitem');
@@ -769,20 +716,18 @@ export class DatabaseEditorPane implements IDisposable {
   }
 
   private _openAddViewMenu(anchor: HTMLElement): void {
-    this._openPopover(anchor, (pop) => {
-      const mk = (label: string, type: DatabaseViewType) => this._menuItem(label, async () => {
-        const v = await this._deps.db.addView(this._databaseId, label, type);
-        this._activeViewId = v.id;
-      });
-      pop.appendChild(mk('Table', 'table'));
-      pop.appendChild(mk('Board', 'board'));
-    });
+    const mk = (label: string, icon: string, type: DatabaseViewType): IExtensionMenuItem => ({ label, icon, onSelect: async () => {
+      const v = await this._deps.db.addView(this._databaseId, label, type);
+      this._activeViewId = v.id;
+    } });
+    this._menu(anchor, 'Add a view', [mk('Table', 'table', 'table'), mk('Board', 'kanban', 'board')]);
   }
 
   private _openViewMenu(anchor: HTMLElement, view: IDatabaseView): void {
     this._openPopover(anchor, (pop) => {
       const rename = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       rename.value = view.name;
+      rename.setAttribute('aria-label', 'View name');
       rename.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           const name = rename.value.trim();
@@ -796,7 +741,7 @@ export class DatabaseEditorPane implements IDisposable {
           pop.appendChild(this._menuItem(`Group by ${p.name}`, () => void this._deps.db.updateView(this._databaseId, view.id, { groupBy: p.id })));
         }
       }
-      const hidden = (view.config.hidden as string[] | undefined) ?? []; // hidden properties can be shown again
+      const hidden = readViewConfig(view.config).hidden; // hidden properties can be shown again
       for (const id of hidden) {
         pop.appendChild(this._menuItem(`Show "${this._propName(id)}"`, () => {
           void this._deps.db.updateView(this._databaseId, view.id, { config: { ...view.config, hidden: hidden.filter((h) => h !== id) } });
@@ -806,6 +751,7 @@ export class DatabaseEditorPane implements IDisposable {
       if (this._views.length > 1) {
         pop.appendChild(this._menuItem('Delete view', () => void this._deps.db.deleteView(this._databaseId, view.id), true));
       }
+      setTimeout(() => rename.focus(), 0);
     });
   }
 
@@ -910,7 +856,7 @@ export class DatabaseEditorPane implements IDisposable {
         ariaLabel: 'Sort direction',
       });
       this._popoverDisposables.push(propSel, dirSel);
-      const apply = el('button', 'canvas-db-popover__primary', 'Add sort');
+      const apply = el('button', 'canvas-db-popover__primary', 'Add Sort');
       apply.addEventListener('click', () => {
         const rule: ISortRule = {
           propertyId: propSel.value ?? TITLE_KEY,
@@ -938,22 +884,20 @@ export class DatabaseEditorPane implements IDisposable {
   }
 
   private _openRowMenu(e: MouseEvent, row: IDatabaseRow): void {
-    const anchor = el('span');
-    anchor.style.position = 'fixed';
-    anchor.style.left = `${e.clientX}px`;
-    anchor.style.top = `${e.clientY}px`;
-    document.body.appendChild(anchor);
-    this._openPopover(anchor, (pop) => {
-      pop.appendChild(this._menuItem('Open', () => this._deps.openPage(row.pageId)));
-      pop.appendChild(this._menuItem('Delete Row…', () => void this._deleteRow(row), true));
-    });
-    setTimeout(() => anchor.remove(), 0);
+    this._closePopover();
+    createMenu(new DOMRect(e.clientX, e.clientY, 0, 0), { id: null, label: 'Row', items: [
+      { label: 'Open', icon: 'maximize', onSelect: () => this._openRow(row.pageId) },
+      { label: 'Open as Page', icon: 'file', onSelect: () => this._deps.openPage(row.pageId) },
+      { separator: true },
+      { label: 'Delete Row…', icon: 'trash-2', danger: true, onSelect: () => void this._deleteRow(row) },
+    ] });
   }
 
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
     this._closePopover();
+    this._bodyStore.dispose();
     this._disposables.dispose();
     this._root.remove();
   }

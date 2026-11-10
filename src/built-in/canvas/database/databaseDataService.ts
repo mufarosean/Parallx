@@ -156,8 +156,8 @@ export class DatabaseDataService extends Disposable {
   /**
    * Create a database: a page row (delegated — sidebar events fire), the
    * databases row, a starter property (Status select — unless
-   * `seedDefaults: false`), and a default table view. Optionally nested
-   * under a parent page.
+   * `seedDefaults: false`; a caller naming its own columns passes that), and
+   * a default table view. Optionally nested under a parent page.
    */
   async createDatabase(opts: { title?: string; parentId?: string | null; seedDefaults?: boolean } = {}): Promise<IDatabaseInfo> {
     const page = opts.parentId

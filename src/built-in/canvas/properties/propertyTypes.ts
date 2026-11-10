@@ -20,7 +20,26 @@ export type PropertyType =
   | 'datetime'
   | 'tags'
   | 'select'
-  | 'url';
+  | 'url'
+  // Round 2 (docs/DATABASES.md step 3): stored like text or a select …
+  | 'status'
+  | 'email'
+  | 'phone'
+  | 'files'
+  | 'unique_id'
+  // … or never stored: derived from the row when it is read (rowCompute.ts).
+  | 'created_time'
+  | 'last_edited_time'
+  | 'formula'
+  | 'relation'
+  | 'rollup';
+
+/** Types whose value is derived when read, never written to a cell. */
+export const COMPUTED_PROPERTY_TYPES: ReadonlySet<PropertyType> = new Set<PropertyType>(['created_time', 'last_edited_time', 'formula', 'rollup']);
+
+export function isComputedType(type: PropertyType): boolean {
+  return COMPUTED_PROPERTY_TYPES.has(type);
+}
 
 // ─── Property Definition ─────────────────────────────────────────────────────
 

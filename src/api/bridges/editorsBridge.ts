@@ -105,6 +105,8 @@ export interface OpenEditorOptions {
    */
   readonly iconHtml?: string;
   readonly instanceId?: string;
+  /** Open beside the active editor (the group to its right, split when there is none). */
+  readonly side?: boolean;
 }
 
 // ─── Editors Bridge ──────────────────────────────────────────────────────────
@@ -226,7 +228,9 @@ export class EditorsBridge {
     );
 
     if (this._editorService) {
-      await this._editorService.openEditor(input, { pinned: true });
+      const sideGroup = options.side ? this._sideGroupFor(input) : undefined;
+      await this._editorService.openEditor(input, { pinned: true }, sideGroup);
+      if (sideGroup) this._editorGroupService?.activateGroup(sideGroup);
     } else {
       console.warn(`[EditorsBridge] No editor service available — cannot open editor "${options.title}"`);
     }

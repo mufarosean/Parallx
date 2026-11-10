@@ -132,10 +132,10 @@ export async function importCsvIntoDatabase(db: DatabaseDataService, databaseId:
 }
 
 /** The view menu's two entries, built with the menu's own item maker. */
-export function databaseCsvMenuItems(
+export function databaseCsvMenuItems<T = HTMLElement>(
   db: DatabaseDataService, databaseId: string, viewId: string,
-  item: (label: string, run: () => void) => HTMLElement,
-): HTMLElement[] {
+  item: (label: string, run: () => void) => T,
+): T[] {
   return [
     item('Export as CSV…', () => void exportDatabaseCsv(db, databaseId, viewId)),
     item('Import CSV…', () => void importCsvIntoDatabase(db, databaseId)),

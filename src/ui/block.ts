@@ -2,7 +2,9 @@
 // one way a tool makes the elements around its controls.
 
 /** Elements that are never controls: layout, text, pictures. A button, link or field comes from its own kit function. */
-const BLOCK_TAGS = new Set(['div', 'span', 'p', 'section', 'header', 'footer', 'figure', 'figcaption', 'ul', 'ol', 'li', 'img', 'canvas', 'strong', 'em', 'small']);
+const BLOCK_TAGS = new Set(['div', 'span', 'p', 'section', 'header', 'footer', 'figure', 'figcaption', 'ul', 'ol', 'li', 'img', 'canvas', 'strong', 'em', 'small',
+  // A table's structure is layout too: its cells hold the controls, they are not controls.
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col', 'caption']);
 
 export interface IKitBlockOptions {
   readonly className?: string;

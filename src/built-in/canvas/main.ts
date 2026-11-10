@@ -82,7 +82,7 @@ interface ParallxApi {
   };
   editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
-    openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
+    openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string; side?: boolean }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
@@ -616,7 +616,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         const pageId = (input?.instanceId as string) ?? (input?.id as string) ?? '';
         return new DatabaseEditorPane(container, pageId, {
           db: _databaseService!,
-          openPage: (id) => void openPageInEditor(id),
+          openPage: (id) => void openPageInEditor(id), openPageBeside: (id) => void openPageInEditor(id, { side: true }),
           renamePage: async (id, title) => { await _dataService?.updatePage(id, { title }); },
           confirm: (o) => api.window.showConfirmModal(o),
         });
@@ -1506,7 +1506,7 @@ async function captureNoteToCanvas(
  * Silently no-ops if the canvas extension hasn't activated yet, the API
  * isn't bound, or the page doesn't exist.
  */
-export async function openPageInEditor(pageId: string): Promise<void> {
+export async function openPageInEditor(pageId: string, opts?: { side?: boolean }): Promise<void> {
   if (!_api || !_dataService) return;
   let page;
   try {
@@ -1524,7 +1524,7 @@ export async function openPageInEditor(pageId: string): Promise<void> {
       title: page.title,
       icon: page.icon ?? undefined,
       iconHtml: renderPageIconHtml(page.icon),
-      instanceId: pageId,
+      instanceId: pageId, side: opts?.side,
     });
   } catch (err) {
     console.warn('[Canvas] openPageInEditor: openEditor failed for', pageId, err);

@@ -16,7 +16,7 @@ export interface LiveBlockServices {
   /** Fires (debounced) after pages, database rows or other workspace data changed. */
   onDidChangeWorkspace(listener: () => void): { dispose(): void };
   /** Open a page in its editor (a database in the database editor). */
-  openPage(pageId: string): void;
+  openPage(pageId: string, opts?: { side?: boolean }): void;
   /** Run an app command; other tools answer blocks through their commands. */
   executeCommand(id: string, ...args: unknown[]): Promise<unknown>;
   /** The page the editor shows. */

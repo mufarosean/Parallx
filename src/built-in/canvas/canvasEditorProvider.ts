@@ -76,7 +76,7 @@ const lowlight = createLowlight(common);
 const CANVAS_RIBBON_HEIGHT = 26;
 // ─── Canvas Editor Provider ─────────────────────────────────────────────────
 
-export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }) => Promise<void>;
+export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string; side?: boolean }) => Promise<void>;
 
 interface CanvasWindowApi {
   showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -447,7 +447,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       mountDatabaseView: db ? (container, databaseId, options) => {
         const pane = new DatabaseEditorPane(container, databaseId, {
           db,
-          openPage: (id) => services.openPage(id),
+          openPage: (id) => services.openPage(id), openPageBeside: (id) => services.openPage(id, { side: true }),
           renamePage: async (id, title) => { await this._dataService.updatePage(id, { title }); },
         }, options);
         return { dispose: () => pane.dispose() };
@@ -457,7 +457,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         addRow: async (databaseId, title) => (await db.addRow(databaseId, title)).pageId,
       } : undefined,
       onDidChangeWorkspace: (listener) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; },
-      openPage: (pageId) => {
+      openPage: (pageId, opts) => {
         void (async () => {
           const page = await this._dataService.getPage(pageId).catch(() => null);
           await this._openEditor?.({
@@ -465,7 +465,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
             title: page?.title || 'Untitled',
             icon: page?.icon ?? undefined,
             iconHtml: renderPageIconHtml(page?.icon ?? null),
-            instanceId: pageId,
+            instanceId: pageId, side: opts?.side,
           });
         })();
       },
