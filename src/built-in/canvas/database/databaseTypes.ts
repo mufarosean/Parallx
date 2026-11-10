@@ -9,7 +9,11 @@
 
 import type { PropertyType } from '../properties/propertyTypes.js';
 
-export type DatabaseViewType = 'table' | 'board';
+export type DatabaseViewType = 'table' | 'board' | 'list' | 'gallery' | 'calendar' | 'timeline' | 'chart';
+export const DATABASE_VIEW_TYPES: readonly DatabaseViewType[] = ['table', 'board', 'list', 'gallery', 'calendar', 'timeline', 'chart'];
+export function asViewType(raw: unknown): DatabaseViewType {
+  return DATABASE_VIEW_TYPES.includes(raw as DatabaseViewType) ? (raw as DatabaseViewType) : 'table';
+}
 
 export interface IDatabaseInfo {
   readonly id: string;            // = page id

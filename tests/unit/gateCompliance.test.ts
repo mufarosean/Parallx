@@ -244,6 +244,16 @@ const GATE_RULES: Record<string, string[]> = {
   'database/uniqueIds.ts':                 ['database/databaseDataService', 'database/databaseTypes'],  // the ID property's numbers
   'properties/propertyTypeMeta.ts':        ['properties/propertyTypes'],  // the one list of property types
   'properties/propertyEditorsMore.ts':     ['properties/propertyTypes', 'database/cellRender', 'imageStore'],  // editors for the round-2 types (kit-built)
+  'database/viewShared.ts':                ['database/databaseTypes', 'database/viewConfig', 'database/cellRender', 'database/boardCardKeys'],  // what every view shares: deps, the card
+  'database/boardView.ts':                 ['database/databaseTypes', 'database/databaseViewModel', 'database/viewConfig', 'database/cellRender', 'database/viewShared'],  // the board
+  'database/listView.ts':                  ['database/viewConfig', 'database/cellRender', 'database/viewShared'],  // the list
+  'database/galleryView.ts':               ['database/viewConfig', 'database/viewShared'],  // the gallery
+  'database/calendarView.ts':              ['database/databaseTypes', 'database/viewConfig', 'database/calendarDates', 'database/viewShared', 'database/cellRender', 'properties/propertyTypes'],  // the calendar
+  'database/timelineView.ts':              ['database/databaseTypes', 'database/viewConfig', 'database/calendarDates', 'database/calendarView', 'database/viewShared', 'properties/propertyTypes'],  // the timeline
+  'database/chartView.ts':                 ['database/viewConfig', 'database/chartData', 'database/viewShared'],  // the chart
+  'database/chartData.ts':                 ['database/databaseTypes', 'database/viewConfig', 'database/databaseViewModel', 'database/cellValues', 'database/calendarDates'],  // what a chart draws (pure)
+  'database/calendarDates.ts':             [],  // days for the calendar and timeline (pure)
+  'database/pagePreview.ts':               ['contentSchema'],  // a page's first picture (pure)
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 

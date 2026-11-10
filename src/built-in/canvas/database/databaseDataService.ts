@@ -26,7 +26,7 @@ import type {
   IFilterConfig,
   ISortRule,
 } from './databaseTypes.js';
-import { EMPTY_FILTER } from './databaseTypes.js';
+import { EMPTY_FILTER, asViewType } from './databaseTypes.js';
 import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
 import { coerceCellValue, missingOptions } from './cellValues.js';
 import { backfillUniqueIds, nextUniqueIds } from './uniqueIds.js';
@@ -43,7 +43,7 @@ function rowToView(r: Record<string, unknown>): IDatabaseView {
     id: r.id as string,
     databaseId: r.database_id as string,
     name: (r.name as string) ?? 'Default view',
-    type: ((r.type as string) === 'board' ? 'board' : 'table') as DatabaseViewType,
+    type: asViewType(r.type),
     groupBy: (r.group_by as string) ?? null,
     hideEmptyGroups: !!(r.hide_empty_groups as number),
     filter: parseFilterConfig(r.filter_config as string),

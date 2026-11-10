@@ -268,3 +268,115 @@ th.canvas-db-col--frozen { z-index: 4; }
    The panel reuses the PropertyBar DOM + propertyBar.css (same UI as before
    the migration — Notion's database-page property panel anatomy). It renders
    the page's single HOME database schema; no panel-specific styles needed. */
+
+/* ── Cards (board, gallery): preview, title, properties ── */
+.canvas-db-card__preview { margin: -8px -10px 8px; aspect-ratio: 16 / 9; background: var(--px-bg-inset); border-radius: var(--px-radius-md) var(--px-radius-md) 0 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.canvas-db-card__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.canvas-db-card__propname { color: var(--px-text-muted); margin-right: 6px; }
+.canvas-db-card__propvalue { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.canvas-db-card__icon svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
+.canvas-db-card:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.canvas-db-card--small { padding: 6px 8px; font-size: var(--px-text-sm); }
+.canvas-db-card--small .canvas-db-card__preview { aspect-ratio: 2 / 1; margin: -6px -8px 6px; }
+.canvas-db-card--large .canvas-db-card__preview { aspect-ratio: 4 / 3; }
+
+/* ── Board lanes (sub-groups) ── */
+.canvas-db-boardroot { display: flex; flex-direction: column; gap: var(--px-space-4); }
+.canvas-db-lane__head { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-3) 0 0; border-top: 1px solid var(--px-divider); }
+.canvas-db-lane:first-child .canvas-db-lane__head { border-top: none; padding-top: 0; }
+.canvas-db-lane__title { font-weight: 600; }
+.canvas-db-board__head .px-btn { margin-left: auto; color: var(--px-text-muted); }
+
+/* ── List view ── */
+.canvas-db-list { display: flex; flex-direction: column; }
+.canvas-db-list__row { display: flex; align-items: center; gap: var(--px-space-3); padding: 2px 0; border-bottom: 1px solid var(--px-divider); min-height: 34px; }
+.canvas-db-list__row:hover { background: var(--px-surface-hover); }
+.canvas-db-list__title { font-weight: 500; color: var(--px-text); flex: 0 1 auto; min-width: 0; max-width: 60%; }
+.canvas-db-list__title .px-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-db-list__icon svg { width: 16px; height: 16px; }
+.canvas-db-list__props { margin-left: auto; display: flex; gap: var(--px-space-3); align-items: center; flex-wrap: wrap; justify-content: flex-end; color: var(--px-text-secondary); font-size: var(--px-text-sm); padding-right: var(--px-space-2); }
+.canvas-db-list__prop { display: inline-flex; align-items: center; gap: 4px; max-width: 240px; }
+.canvas-db-list__value { display: inline-flex; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-db-list__empty { padding: var(--px-space-4) 0; color: var(--px-text-muted); }
+.canvas-db-list__new, .canvas-db-newcard { padding: 2px 0; }
+.canvas-db-list__new .px-btn, .canvas-db-newcard .px-btn { color: var(--px-text-secondary); }
+
+/* ── Gallery view ── */
+.canvas-db-gallery { display: grid; gap: var(--px-space-4); padding-top: var(--px-space-3); grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.canvas-db-gallery--small { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--px-space-3); }
+.canvas-db-gallery--large { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.canvas-db-card--gallery { min-height: 60px; }
+.canvas-db-card--new { display: flex; align-items: center; justify-content: center; background: none; border-style: dashed; box-shadow: none; cursor: default; }
+
+/* ── Calendar and timeline bars ── */
+.canvas-db-calbar { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-3) 0 var(--px-space-2); }
+.canvas-db-calbar__title { font-weight: 600; font-size: var(--px-text-md); }
+.canvas-db-calbar__by { color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.canvas-db-calbar__nav { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.canvas-db-calgrid { display: grid; grid-template-rows: auto repeat(6, minmax(96px, auto)); border-top: 1px solid var(--px-border); border-left: 1px solid var(--px-border); }
+.canvas-db-calgrid__head, .canvas-db-calgrid__row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.canvas-db-calgrid__weekday { padding: 4px 8px; font-size: var(--px-text-xs); color: var(--px-text-muted); border-right: 1px solid var(--px-border); border-bottom: 1px solid var(--px-border); text-align: right; }
+.canvas-db-calday { border-right: 1px solid var(--px-border); border-bottom: 1px solid var(--px-border); padding: 4px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.canvas-db-calday--out { background: var(--px-bg-inset); }
+.canvas-db-calday--out .canvas-db-calday__num { color: var(--px-text-faint); }
+.canvas-db-calday--over { box-shadow: inset 0 0 0 2px var(--px-accent); }
+.canvas-db-calday__top { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
+.canvas-db-calday__num { font-size: var(--px-text-sm); color: var(--px-text-secondary); padding: 0 4px; }
+.canvas-db-calday--today .canvas-db-calday__num { background: var(--px-accent); color: var(--px-text-on-accent); border-radius: var(--px-radius-full); min-width: 20px; height: 20px; line-height: 20px; text-align: center; padding: 0 5px; }
+.canvas-db-calday__add { opacity: 0; }
+.canvas-db-calday:hover .canvas-db-calday__add, .canvas-db-calday:focus-within .canvas-db-calday__add, [data-input-modality="touch"] .canvas-db-calday .canvas-db-calday__add { opacity: 1; }
+.canvas-db-calday__chips { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.canvas-db-calchip { justify-content: flex-start; max-width: 100%; background: var(--px-bg-elevated); border: 1px solid var(--px-border); color: var(--px-text); font-weight: 500; }
+.canvas-db-calchip .px-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-db-calchip__extra { margin-left: auto; display: inline-flex; }
+.canvas-db-calchip__icon svg { width: 14px; height: 14px; }
+.canvas-db-caltray { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-2); padding: var(--px-space-3) 0; }
+.canvas-db-caltray__label { color: var(--px-text-muted); font-size: var(--px-text-sm); }
+
+/* ── Timeline ── */
+.canvas-db-tl { display: flex; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); overflow: hidden; }
+.canvas-db-tl__names { flex: 0 0 220px; border-right: 1px solid var(--px-border); background: var(--px-bg); }
+.canvas-db-tl__corner, .canvas-db-tl__name { height: 36px; display: flex; align-items: center; padding: 0 var(--px-space-2); border-bottom: 1px solid var(--px-divider); min-width: 0; }
+.canvas-db-tl__corner { height: 44px; color: var(--px-text-muted); font-size: var(--px-text-sm); border-bottom: 1px solid var(--px-border); }
+.canvas-db-tl__name .px-btn { max-width: 100%; }
+.canvas-db-tl__name .px-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-db-tl__name--empty { color: var(--px-text-muted); }
+.canvas-db-tl__scroll { flex: 1; overflow-x: auto; overflow-y: hidden; position: relative; }
+.canvas-db-tl__grid { position: relative; }
+.canvas-db-tl__head { display: flex; height: 44px; border-bottom: 1px solid var(--px-border); }
+.canvas-db-tl__day { flex: 0 0 34px; width: 34px; box-sizing: border-box; text-align: center; font-size: var(--px-text-xs); color: var(--px-text-muted); padding-top: 22px; border-right: 1px solid var(--px-divider); position: relative; }
+.canvas-db-tl__day--weekend { background: var(--px-bg-inset); }
+.canvas-db-tl__day--first { border-left: 1px solid var(--px-border); }
+.canvas-db-tl__day--today { color: var(--px-accent-text); font-weight: 600; }
+.canvas-db-tl__month { position: absolute; top: 4px; left: 4px; white-space: nowrap; font-size: var(--px-text-xs); color: var(--px-text-secondary); }
+.canvas-db-tl__lane { position: relative; height: 36px; border-bottom: 1px solid var(--px-divider); background: repeating-linear-gradient(to right, transparent 0 33px, var(--px-divider) 33px 34px); }
+.canvas-db-tl__bar { position: absolute; top: 6px; height: 24px; background: var(--px-accent-soft); border: 1px solid var(--px-accent); border-radius: var(--px-radius-sm); display: flex; align-items: center; padding: 0 8px; cursor: grab; box-sizing: border-box; touch-action: none; }
+.canvas-db-tl__bar:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.canvas-db-tl__barlabel { font-size: var(--px-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.canvas-db-tl__grip { position: absolute; right: -1px; top: -1px; bottom: -1px; width: 8px; cursor: ew-resize; border-radius: 0 var(--px-radius-sm) var(--px-radius-sm) 0; }
+.canvas-db-tl__grip:hover { background: var(--px-accent); }
+.canvas-db-tl__todayline { position: absolute; top: 44px; bottom: 0; width: 2px; background: var(--px-accent); opacity: 0.6; pointer-events: none; }
+
+/* ── Chart ── */
+.canvas-db-chart { padding-top: var(--px-space-3); max-width: 760px; }
+.canvas-db-chart__title { font-weight: 600; margin-bottom: var(--px-space-2); }
+.canvas-db-chart__figure { margin: 0; }
+.canvas-db-chart__svg { width: 100%; height: auto; display: block; }
+.canvas-db-chart__svg--donut { max-width: 320px; margin: 0 auto; }
+.canvas-db-chart__grid { stroke: var(--px-divider); stroke-width: 1; }
+.canvas-db-chart__axis { fill: var(--px-text-muted); font-size: 11px; font-family: var(--px-font-ui); }
+.canvas-db-chart__value { fill: var(--px-text-secondary); font-size: 11px; font-family: var(--px-font-ui); }
+.canvas-db-chart__center { fill: var(--px-text); font-size: 24px; font-weight: 600; font-family: var(--px-font-ui); }
+.canvas-db-chart__line { fill: none; stroke-width: 2; }
+.canvas-db-chart__dot { stroke: var(--px-bg); stroke-width: 1.5; }
+.canvas-db-chart__slice { stroke: var(--px-bg); stroke-width: 1.5; }
+.canvas-db-chart__fill--1 { fill: rgb(var(--px-viz-1)); } .canvas-db-chart__fill--2 { fill: rgb(var(--px-viz-2)); } .canvas-db-chart__fill--3 { fill: rgb(var(--px-viz-3)); }
+.canvas-db-chart__fill--4 { fill: rgb(var(--px-viz-4)); } .canvas-db-chart__fill--5 { fill: rgb(var(--px-viz-5)); } .canvas-db-chart__fill--6 { fill: rgb(var(--px-viz-6)); }
+.canvas-db-chart__stroke--1 { stroke: rgb(var(--px-viz-1)); }
+.canvas-db-chart__swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.canvas-db-chart__swatch--1 { background: rgb(var(--px-viz-1)); } .canvas-db-chart__swatch--2 { background: rgb(var(--px-viz-2)); } .canvas-db-chart__swatch--3 { background: rgb(var(--px-viz-3)); }
+.canvas-db-chart__swatch--4 { background: rgb(var(--px-viz-4)); } .canvas-db-chart__swatch--5 { background: rgb(var(--px-viz-5)); } .canvas-db-chart__swatch--6 { background: rgb(var(--px-viz-6)); }
+.canvas-db-chart__legend { list-style: none; margin: var(--px-space-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-4); font-size: var(--px-text-sm); }
+.canvas-db-chart__key { display: inline-flex; align-items: center; gap: 2px; }
+.canvas-db-chart__keyvalue { color: var(--px-text-secondary); margin-left: 4px; }
+.canvas-db-chart__total { margin-top: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-sm); }

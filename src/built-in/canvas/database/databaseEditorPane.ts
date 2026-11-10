@@ -18,7 +18,7 @@ import type {
   DatabaseViewType, FilterOp, IDatabaseProperty, IDatabaseRow, IDatabaseView, IFilterRule, ISortRule,
 } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
-import { applyFilter, applySort, boardDropValue, groupRows, seedForFilter } from './databaseViewModel.js';
+import { applyFilter, applySort, seedForFilter } from './databaseViewModel.js';
 import { normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
@@ -27,16 +27,25 @@ import { createButton, createIconButton, createMenu } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
-import { wireBoardCardKeys } from './boardCardKeys.js';
 import { databaseCsvMenuItems } from './databaseCsvActions.js';
 import { renderTableView, type ITableViewDeps } from './tableView.js';
+import { renderBoardView } from './boardView.js';
+import { renderListView } from './listView.js';
+import { renderGalleryView } from './galleryView.js';
+import { renderCalendarView, dateProperties } from './calendarView.js';
+import { renderTimelineView } from './timelineView.js';
+import { renderChartView } from './chartView.js';
+import { groupableProperties, measurableProperties } from './chartData.js';
+import { firstImageSrc } from './pagePreview.js';
+import type { IViewDeps } from './viewShared.js';
+import { DATABASE_VIEW_TYPES } from './databaseTypes.js';
 import { renderDatabaseHeader, type IDatabaseIdentity } from './databaseHeader.js';
 import { updateDatabaseMeta } from './databaseMeta.js';
 import { withDerivedValues } from './rowCompute.js';
 import { PROPERTY_TYPE_META, STATUS_GROUPS, defaultConfigFor } from '../properties/propertyTypeMeta.js';
 import { moveInOrder, orderedProperties, patchRecord, readViewConfig, visibleProperties } from './viewConfig.js';
 import { calcOptionsFor, type CalcKind } from './calculations.js';
-import { PILL_COLORS, optionColor, pill as pillInto } from './cellRender.js';
+import { PILL_COLORS } from './cellRender.js';
 import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 
 export { PILL_COLORS };
@@ -82,6 +91,17 @@ function filterOpsFor(type: PropertyType | 'title'): { op: FilterOp; label: stri
   }
 }
 
+/** Each view type's name and icon, for tabs and menus. */
+const VIEW_META: Record<DatabaseViewType, { label: string; icon: string }> = {
+  table: { label: 'Table', icon: 'table' },
+  board: { label: 'Board', icon: 'kanban' },
+  list: { label: 'List', icon: 'list' },
+  gallery: { label: 'Gallery', icon: 'layout-grid' },
+  calendar: { label: 'Calendar', icon: 'calendar' },
+  timeline: { label: 'Timeline', icon: 'calendar-days' },
+  chart: { label: 'Chart', icon: 'chart-bar' },
+};
+
 /** A database shown inside a page (the Linked Database block). */
 export interface IDatabasePaneEmbedOptions {
   /** The view to show first (the block remembers it). */
@@ -99,7 +119,7 @@ export interface IDatabasePaneDeps {
   /** Rename the database page (title lives on pages). */
   renamePage(pageId: string, title: string): Promise<void>;
   /** The database's page row (cover, lock) and its writer; without them the header shows title and icon only. */
-  getPage?(pageId: string): Promise<{ coverUrl: string | null; coverYOffset: number } | null>;
+  getPage?(pageId: string): Promise<{ coverUrl: string | null; coverYOffset: number; content?: string } | null>;
   updatePage?(pageId: string, patch: { icon?: string | null; coverUrl?: string | null; coverYOffset?: number }): Promise<void>;
   /** The page world's changes (an icon set from the sidebar): the header follows. */
   onDidChangePage?(listener: (pageId: string) => void): IDisposable;
@@ -112,10 +132,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function pill(text: string, color: string): HTMLElement {
-  return pillInto(null, text, color);
 }
 
 /** Adapt a database property to the IPropertyDefinition shape the shared
@@ -208,6 +224,7 @@ export class DatabaseEditorPane implements IDisposable {
     if (signature === this._rowsSignature) return;
     this._rowsSignature = signature;
     this._rows = withDerivedValues(rows, this._props);
+    this._previews.clear();
     this._renderWhenIdle('body');
   }
 
@@ -267,7 +284,7 @@ export class DatabaseEditorPane implements IDisposable {
     const tabs = el('div', 'canvas-db-tabs');
     for (const view of this._views) {
       const tab = el('button', `canvas-db-tab${view.id === this.activeView?.id ? ' canvas-db-tab--active' : ''}`);
-      tab.appendChild(createIconElement(view.type === 'board' ? 'kanban' : 'table', 14));
+      tab.appendChild(createIconElement(VIEW_META[view.type].icon, 14));
       tab.appendChild(el('span', '', view.name));
       tab.addEventListener('click', () => { this._activeViewId = view.id; this._embed?.onViewChange?.(view.id); this._render(); });
       tab.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openViewMenu(tab, view); });
@@ -340,8 +357,37 @@ export class DatabaseEditorPane implements IDisposable {
     this._bodyStore.dispose();
     this._bodyStore = new DisposableStore();
     body.textContent = '';
-    if (view.type === 'board') this._renderBoard(body as HTMLElement, view);
-    else renderTableView(body as HTMLElement, { view, props: this._props, rows: this._viewRows(view), locked: this._identity.isLocked }, this._tableDeps(), this._bodyStore);
+    const state = { view, props: this._props, rows: this._viewRows(view), locked: this._identity.isLocked };
+    const host = body as HTMLElement;
+    switch (view.type) {
+      case 'board': renderBoardView(host, state, this._viewDeps(), this._bodyStore); break;
+      case 'list': renderListView(host, state, this._viewDeps(), this._bodyStore); break;
+      case 'gallery': renderGalleryView(host, state, this._viewDeps(), this._bodyStore); break;
+      case 'calendar': renderCalendarView(host, state, this._viewDeps(), this._bodyStore); break;
+      case 'timeline': renderTimelineView(host, state, this._viewDeps(), this._bodyStore); break;
+      case 'chart': renderChartView(host, state, this._viewDeps(), this._bodyStore); break;
+      default: renderTableView(host, state, this._tableDeps(), this._bodyStore);
+    }
+  }
+
+  /** A page's first picture, once per page per pane. */
+  private readonly _previews = new Map<string, Promise<string | null>>();
+  private _pagePreview(pageId: string): Promise<string | null> {
+    let p = this._previews.get(pageId);
+    if (!p) {
+      p = this._deps.getPage ? this._deps.getPage(pageId).then((page) => firstImageSrc(page?.content ?? null)).catch(() => null) : Promise.resolve(null);
+      this._previews.set(pageId, p);
+    }
+    return p;
+  }
+
+  private _viewDeps(): IViewDeps {
+    const t = this._tableDeps();
+    return {
+      setCell: t.setCell, openRow: t.openRow, updateView: (patch) => this._updateActiveView(patch), openRowMenu: t.openRowMenu, rowIcon: t.rowIcon,
+      addRow: (seed) => this._addRow(seed),
+      pagePreview: (id) => this._pagePreview(id),
+    };
   }
 
   /** How a row opens from the active view: beside the table (side peek) or as a page. */
@@ -378,89 +424,6 @@ export class DatabaseEditorPane implements IDisposable {
       onSelect: () => void this._deps.db.setOptions(this._databaseId, prop.id, options.map((o) => (o.value === value ? { ...o, color: c } : o))),
     }));
     this._menu(anchor, `Colour of ${value}`, [{ label: value, disabled: true }, { separator: true }, ...items]);
-  }
-
-  // ── Render: board view ─────────────────────────────────────────────────────
-
-  private _renderBoard(body: HTMLElement, view: IDatabaseView): void {
-    const groupProp = this._props.find((p) => p.id === view.groupBy)
-      ?? this._props.find((p) => p.type === 'status' || p.type === 'select')
-      ?? null;
-    if (!groupProp) {
-      const empty = el('div', 'canvas-db-board-empty', 'Board view needs a select property to group by. Add one with + in the table view.');
-      body.appendChild(empty);
-      return;
-    }
-    const optionOrder = ((groupProp.config as { options?: { value: string; color?: string }[] }).options ?? []).map((o) => o.value);
-    const rows = this._viewRows(view);
-    const groups = groupRows(rows, groupProp.id, optionOrder)
-      .filter((g) => !(view.hideEmptyGroups && g.rows.length === 0));
-
-    const board = el('div', 'canvas-db-board');
-    for (const group of groups) {
-      const colEl = el('div', 'canvas-db-board__col');
-      colEl.dataset.group = group.key;
-
-      const head = el('div', 'canvas-db-board__head');
-      head.appendChild(group.key
-        ? pill(group.key, optionColor(groupProp, group.key))
-        : el('span', 'canvas-db-pill canvas-db-pill--default', `No ${groupProp.name}`));
-      head.appendChild(el('span', 'canvas-db-board__count', String(group.rows.length)));
-      const addCard = el('button', 'canvas-db-board__add', '+');
-      addCard.title = 'New row in this group';
-      addCard.addEventListener('click', () => void this._addRow(group.key ? { [groupProp.id]: group.key } : {}));
-      head.appendChild(addCard);
-      colEl.appendChild(head);
-
-      const list = el('div', 'canvas-db-board__cards');
-      for (const row of group.rows) {
-        const card = el('div', 'canvas-db-card');
-        card.draggable = true;
-        card.dataset.pageId = row.pageId;
-        const cardTitle = el('div', 'canvas-db-card__title', row.title || 'Untitled');
-        card.appendChild(cardTitle);
-        // A couple of visible non-group properties on the card.
-        for (const p of this._visibleProps(view).filter((p) => p.id !== groupProp.id).slice(0, 3)) {
-          const v = row.values[p.id];
-          if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) continue;
-          const line = el('div', 'canvas-db-card__prop');
-          if (p.type === 'select' || p.type === 'status') line.appendChild(pill(String(v), optionColor(p, String(v))));
-          else if (p.type === 'tags' && Array.isArray(v)) { for (const t of v) line.appendChild(pill(String(t), optionColor(p, String(t)))); }
-          else line.textContent = Array.isArray(v) ? v.join(', ') : String(v);
-          card.appendChild(line);
-        }
-        card.addEventListener('click', () => this._openRow(row.pageId));
-        wireBoardCardKeys(card, { open: () => this._openRow(row.pageId), menu: (x, y) => this._openRowMenu(new MouseEvent('contextmenu', { clientX: x, clientY: y }), row),
-          move: (step) => { const to = groups[groups.indexOf(group) + step]; if (to) void this._deps.db.setCellValue(this._databaseId, row.pageId, groupProp.id, boardDropValue(row.values[groupProp.id], group.key, to.key, groupProp.type === 'tags')); } });
-        card.addEventListener('dragstart', (e) => {
-          e.dataTransfer?.setData('text/parallx-db-row', row.pageId);
-          // The column it leaves: a tags card stands in one column per tag.
-          e.dataTransfer?.setData('text/parallx-db-group', group.key);
-          card.classList.add('canvas-db-card--dragging');
-        });
-        card.addEventListener('dragend', () => card.classList.remove('canvas-db-card--dragging'));
-        card.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openRowMenu(e, row); });
-        list.appendChild(card);
-      }
-      colEl.appendChild(list);
-
-      // Drop target: dragging a card here writes the group property.
-      colEl.addEventListener('dragover', (e) => { e.preventDefault(); colEl.classList.add('canvas-db-board__col--over'); });
-      colEl.addEventListener('dragleave', () => colEl.classList.remove('canvas-db-board__col--over'));
-      colEl.addEventListener('drop', (e) => {
-        e.preventDefault();
-        colEl.classList.remove('canvas-db-board__col--over');
-        const pageId = e.dataTransfer?.getData('text/parallx-db-row');
-        if (pageId) {
-          const fromKey = e.dataTransfer?.getData('text/parallx-db-group') ?? '';
-          const current = rows.find((r) => r.pageId === pageId)?.values[groupProp.id];
-          const value = boardDropValue(current, fromKey, group.key, groupProp.type === 'tags');
-          void this._deps.db.setCellValue(this._databaseId, pageId, groupProp.id, value);
-        }
-      });
-      board.appendChild(colEl);
-    }
-    body.appendChild(board);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -619,10 +582,8 @@ export class DatabaseEditorPane implements IDisposable {
       ...this._visibleProps(view).map((p) => ({ label: p.name, checked: cfg.freeze === p.id, onSelect: () => void this._patchConfig({ freeze: p.id }) })),
     ];
     const items: IExtensionMenuItem[] = [
-      { label: 'Layout', icon: view.type === 'board' ? 'kanban' : 'table', submenu: [
-        { label: 'Table', icon: 'table', checked: view.type === 'table', onSelect: () => void this._updateActiveView({ type: 'table' }) },
-        { label: 'Board', icon: 'kanban', checked: view.type === 'board', onSelect: () => void this._updateActiveView({ type: 'board' }) },
-      ] },
+      { label: 'Layout', icon: VIEW_META[view.type].icon, submenu: DATABASE_VIEW_TYPES.map((t) => ({ label: VIEW_META[t].label, icon: VIEW_META[t].icon, checked: view.type === t, onSelect: () => void this._updateActiveView({ type: t }) })) },
+      ...this._layoutSettings(view, cfg),
       { label: 'Properties', icon: 'sliders-horizontal', submenu: properties.length ? properties : [{ label: 'No properties yet', disabled: true }] },
       { separator: true },
       { label: 'Wrap All Columns', icon: 'rows', checked: allWrapped, onSelect: () => {
@@ -635,7 +596,6 @@ export class DatabaseEditorPane implements IDisposable {
         { label: 'Side Peek', icon: 'panel-right', checked: cfg.openIn === 'side', onSelect: () => void this._patchConfig({ openIn: 'side' }) },
         { label: 'Full Page', icon: 'maximize', checked: cfg.openIn === 'full', onSelect: () => void this._patchConfig({ openIn: 'full' }) },
       ] },
-      ...(view.type === 'board' ? [{ label: 'Group By', icon: 'kanban', submenu: this._props.filter((p) => p.type === 'select' || p.type === 'tags' || p.type === 'status').map((p) => ({ label: p.name, checked: view.groupBy === p.id, onSelect: () => void this._updateActiveView({ groupBy: p.id }) })) }] : []),
       { separator: true },
       ...databaseCsvMenuItems<IExtensionMenuItem>(this._deps.db, this._databaseId, view.id, (label, run) => ({ label, icon: label.startsWith('Export') ? 'download' : 'upload', onSelect: run })),
       { separator: true },
@@ -643,6 +603,44 @@ export class DatabaseEditorPane implements IDisposable {
       ...(this._views.length > 1 ? [{ label: 'Delete View', icon: 'trash-2', danger: true, onSelect: () => void this._deps.db.deleteView(this._databaseId, view.id) }] : []),
     ];
     this._menu(anchor, 'View settings', items);
+  }
+
+  /** The settings a layout has: grouping, cards, dates, the chart. */
+  private _layoutSettings(view: IDatabaseView, cfg: ReturnType<typeof readViewConfig>): IExtensionMenuItem[] {
+    const items: IExtensionMenuItem[] = [];
+    const pick = (label: string, icon: string, choices: { id: string | null; label: string }[], current: string | null, set: (id: string | null) => void): IExtensionMenuItem =>
+      ({ label, icon, submenu: choices.map((c) => ({ label: c.label, checked: current === c.id, onSelect: () => set(c.id) })) });
+    const groupable = this._props.filter((p) => p.type === 'select' || p.type === 'tags' || p.type === 'status');
+    if (view.type === 'board') {
+      items.push(pick('Group By', 'kanban', groupable.map((p) => ({ id: p.id, label: p.name })), view.groupBy, (id) => void this._updateActiveView({ groupBy: id })));
+      const subs = this._props.filter((p) => (p.type === 'select' || p.type === 'tags' || p.type === 'status' || p.type === 'checkbox') && p.id !== view.groupBy);
+      items.push(pick('Sub-group By', 'rows', [{ id: null, label: 'None' }, ...subs.map((p) => ({ id: p.id, label: p.name }))], cfg.subGroupBy, (id) => void this._patchConfig({ subGroupBy: id })));
+      items.push({ label: 'Hide Empty Groups', icon: 'eye-off', checked: view.hideEmptyGroups, onSelect: () => void this._updateActiveView({ hideEmptyGroups: !view.hideEmptyGroups }) });
+    }
+    if (view.type === 'board' || view.type === 'gallery' || view.type === 'list') {
+      if (view.type !== 'list') {
+        items.push(pick('Card Size', 'maximize', [{ id: 'small', label: 'Small' }, { id: 'medium', label: 'Medium' }, { id: 'large', label: 'Large' }], cfg.cardSize, (id) => void this._patchConfig({ cardSize: id })));
+        const files = this._props.filter((p) => p.type === 'files');
+        items.push(pick('Card Preview', 'image', [{ id: null, label: 'None' }, { id: 'page', label: 'Page content' }, ...files.map((p) => ({ id: p.id, label: p.name }))], cfg.preview, (id) => void this._patchConfig({ preview: id })));
+      }
+      items.push({ label: 'Show Property Names', icon: 'text', checked: cfg.showPropertyNames, onSelect: () => void this._patchConfig({ showPropertyNames: !cfg.showPropertyNames }) });
+    }
+    if (view.type === 'calendar' || view.type === 'timeline') {
+      const dates = dateProperties(this._props).map((p) => ({ id: p.id, label: p.name }));
+      items.push(pick(view.type === 'calendar' ? 'Calendar By' : 'Timeline By', 'calendar', dates, cfg.dateProperty ?? dates[0]?.id ?? null, (id) => void this._patchConfig({ dateProperty: id })));
+      if (view.type === 'timeline') items.push(pick('End Date', 'calendar-days', [{ id: null, label: 'None (one day each)' }, ...dates], cfg.endDateProperty, (id) => void this._patchConfig({ endDateProperty: id })));
+      if (view.type === 'calendar') items.push(pick('Week Starts On', 'calendar-days', [{ id: '0', label: 'Sunday' }, { id: '1', label: 'Monday' }], String(view.config['weekStart'] === 1 ? 1 : 0), (id) => void this._patchConfig({ weekStart: id === '1' ? 1 : 0 })));
+    }
+    if (view.type === 'chart') {
+      items.push(pick('Chart Type', 'chart-bar', [{ id: 'bar', label: 'Bar' }, { id: 'line', label: 'Line' }, { id: 'donut', label: 'Donut' }], cfg.chart.kind, (id) => void this._patchConfig({ chart: { ...cfg.chart, kind: id } })));
+      const groups = groupableProperties(this._props).map((p) => ({ id: p.id, label: p.name }));
+      items.push(pick('Chart By', 'tag', groups, cfg.chart.groupBy ?? groups[0]?.id ?? null, (id) => void this._patchConfig({ chart: { ...cfg.chart, groupBy: id } })));
+      const measures = measurableProperties(this._props);
+      items.push(pick('Measure', 'sigma', [{ id: 'count', label: 'Count of rows' }, ...measures.flatMap((p) => [{ id: `sum:${p.id}`, label: `Sum of ${p.name}` }, { id: `average:${p.id}`, label: `Average of ${p.name}` }])],
+        cfg.chart.aggregate === 'count' ? 'count' : `${cfg.chart.aggregate}:${cfg.chart.measure}`,
+        (id) => { const [agg, prop] = (id ?? 'count').split(':'); void this._patchConfig({ chart: { ...cfg.chart, aggregate: agg, measure: prop ?? 'count' } }); }));
+    }
+    return items;
   }
 
   private _openOptionsEditor(anchor: HTMLElement, prop: IDatabaseProperty): void {
@@ -747,7 +745,7 @@ export class DatabaseEditorPane implements IDisposable {
       const v = await this._deps.db.addView(this._databaseId, label, type);
       this._activeViewId = v.id;
     } });
-    this._menu(anchor, 'Add a view', [mk('Table', 'table', 'table'), mk('Board', 'kanban', 'board')]);
+    this._menu(anchor, 'Add a view', DATABASE_VIEW_TYPES.map((t) => mk(VIEW_META[t].label, VIEW_META[t].icon, t)));
   }
 
   private _openViewMenu(anchor: HTMLElement, view: IDatabaseView): void {
