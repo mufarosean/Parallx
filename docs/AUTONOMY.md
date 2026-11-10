@@ -118,9 +118,9 @@ flags, pattern memory, the approval service and the difference between
 "you clicked" and "it was scheduled". Web content stays data, never
 instructions; that guard is about injection, not distrust of the AI.
 
-### 3. The Observer: learns, suggests, never does the work
+### 3. The Pulse: observes, learns, and acts on its own judgment
 
-The heartbeat and the mind are replaced by one quiet part with two halves.
+The heartbeat and the mind are replaced by one part with three halves of one loop: it records, it reflects, and it acts.
 
 **Recording (no model).** The app notes meaningful interactions as they
 happen: commands run, settings changed, layout adjusted, routines run by
@@ -143,8 +143,25 @@ becomes a routine in one step. A dismissed insight never returns. His
 choices are part of what the next reflection reads, so it learns what kind
 of suggestion he values.
 
-The Observer never performs a job, never acts on an old plan, and never
-raises the same thing twice.
+**The pulse (the autonomous actor).** Corrected 2026-11-10 after Mufaro's
+challenge: a routine is a scheduled prompt, which is automation, not
+autonomy. Autonomy is the AI deciding for itself that something is worth
+doing, and doing it. So the pulse stays, rebuilt on the same record:
+
+- It wakes when something meaningful changes (a routine failed, a deadline
+  moved close, a new file landed, an insight was accepted), with a slow
+  fallback beat. Never a model call on a short timer for nothing.
+- It sees the whole picture: every routine and its last result, the Record,
+  Insights, the workspace's pages, tasks and calendar.
+- It may act, with the same power as any other run, under the same rule:
+  what it does is recorded, undoable, and notified. A routine failed this
+  morning; the pulse reads why, fixes what it can, runs it again and tells
+  him.
+- It knows who owns what. It never redoes a job a routine already did
+  today, never follows an old chat plan, never raises the same thing twice.
+- What it chooses to do and how he reacts (kept, undone, dismissed) is what
+  the reflection learns from. Initiative he undoes shrinks; initiative he
+  keeps grows.
 
 ### Notifications
 
