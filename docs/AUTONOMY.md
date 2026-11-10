@@ -243,10 +243,16 @@ against what happened. Insights shows the record: of the things it called
 month. If it is not getting better, that is visible, and it is a fault to
 fix, not a thing to explain away.
 
-**Honest limits.** One person produces little data on rare events, so some
-beliefs stay wide for a long time; the system says so instead of
-pretending. And statistics cannot invent a hypothesis: noticing that a
-daily resize means a missing preset is the model's work.
+**Scope: predictable work only (his rule).** The purpose is to take
+recurring, predictable work off him over time. Rare events are his, and the
+system does not try to predict them. So a belief exists only for something
+that recurs: a hypothesis that does not gather evidence within a fixed
+window is dropped, not kept alive and uncertain. The measure of success is
+plain: how much recurring work has moved from him to the AI, and stayed
+there without being undone.
+
+Statistics cannot invent a hypothesis: noticing that a daily resize means a
+missing preset is the model's work.
 
 This settles one open question below: at the start every belief is wide,
 so initiative begins by suggesting, and earns the right to act belief by
