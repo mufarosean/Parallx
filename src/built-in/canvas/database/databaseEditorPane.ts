@@ -49,6 +49,7 @@ import { loadRelatedDatabases, relationConfig, setRelationValue, type IRelatedDa
 import { rollupDisplayProperty, rollupValue } from './rollups.js';
 import { showRelationDialog, showRollupDialog } from './relationDialogs.js';
 import { showFormulaDialog } from './formulaDialog.js';
+import { canRetype, retypeMenuItems } from './propertyRetype.js';
 import { createRowFromTemplate, defaultTemplateId, templatesMenuItems, type ITemplatePages } from './templates.js';
 import { formulaResultType, formulaValue, type Ast, FormulaError } from './formula.js';
 import { PROPERTY_TYPE_META, STATUS_GROUPS, defaultConfigFor } from '../properties/propertyTypeMeta.js';
@@ -629,6 +630,7 @@ export class DatabaseEditorPane implements IDisposable, IDatabasePaneActions {
         pop.appendChild(this._menuItem('Edit options…', () => this._openOptionsEditor(th, prop)));
       }
       const stored = this._props.find((p) => p.id === prop.id) ?? prop;
+      if (canRetype(stored)) pop.appendChild(this._menuItem('Change type…', () => this._menu(th, 'Change type', retypeMenuItems(this._deps.db, this._databaseId, stored))));
       if (stored.type === 'rollup') pop.appendChild(this._menuItem('Edit rollup…', () => void showRollupDialog(th, this._deps.db, this._databaseId, this._props, stored, () => {})));
       if (stored.type === 'formula') pop.appendChild(this._menuItem('Edit formula…', () => void showFormulaDialog(th, this._deps.db, this._databaseId, this._props, this._rows[0] ?? null, stored, () => {})));
       if (stored.type === 'relation') {

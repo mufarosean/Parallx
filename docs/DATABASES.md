@@ -100,6 +100,7 @@ real SQLite database. Mufaro's verdict on the whole is owed.
 | 4 Views round 2 | `21a69f21` | List, Gallery, Calendar, Timeline, Chart; board sub-groups, card size and preview |
 | 5 Relation and rollup | `68da3d93` | One-way or synced relations with a link picker; rollups shown as what they compute |
 | 6 Formula, 7 Templates | see git | The formula language and its dialog; new-row templates with a default; the linked block's view chooser |
+| Change Type (2026-11-10) | see git | A column's menu changes its type between the plain types, converting every cell: text that repeats becomes a select with an option per distinct value (`database/propertyRetype.ts`); the user is asked before any value is cleared. Raised when Author in the quotes database had to stop being text. |
 
 Known limits, said plainly:
 

@@ -260,6 +260,7 @@ const GATE_RULES: Record<string, string[]> = {
   'database/viewSettings.ts':              ['database/databaseDataService', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/databaseCsvActions', 'database/calendarView', 'database/chartData', 'properties/propertyTypes'],  // the view settings and calculations menus
   'database/formula.ts':                   [],  // the formula language (pure)
   'database/formulaDialog.ts':             ['database/databaseDataService', 'database/databaseTypes', 'database/formula', 'database/cellRender'],  // the formula dialog (kit-built)
+  'database/propertyRetype.ts':            ['database/databaseDataService', 'database/databaseTypes', 'database/cellValues', 'database/cellRender', 'properties/propertyTypes', 'properties/propertyTypeMeta'],  // Change Type: a column's values carried to another type
   'database/templates.ts':                 ['database/databaseDataService', 'database/databaseMeta'],  // new-row templates
   'database/databaseCommands.ts':          [],  // the database editor's commands (no DOM, no imports)
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
