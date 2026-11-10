@@ -18,36 +18,15 @@ ideas he has heard and set aside come last.
 
 Changes to what is already there: a tool, a pane, a prompt, a pipeline.
 
-- **Story tab writing style.** The Story tab (`story-core.js`,
-  buildBeatMessages) uses no writing preset; only chats do. Not raised
-  with him yet; recorded here so it is not forgotten.
-
-- **A trash for files, as pages have one (a thought, his, 2026-11-09).**
-  His words: "Currently, we only have a visible trash for canvas pages
-  only. The regular editors do not have a trash and that feels fine, but
-  maybe for any editor that opens from file explorer, we should have a
-  trash, unless we perma-delete something. IDK, just a thought on this
-  one." What exists (verified): canvas pages go to an in-app trash
-  (`canvasDataService`, shown in the canvas sidebar) with a confirm. A
-  file deleted from the explorer goes to the Windows Recycle Bin when it
-  is on the same volume, and is deleted in place when it is on another
-  volume, by design, so plaintext never leaves an encrypted drive
-  (`fsDelete` in `src/built-in/explorer/main.ts`, policy `auto`). So the
-  gap is not lost data; it is that nothing in the app shows a deleted
-  file or brings it back, and on another volume the delete is final with
-  the same gesture. If it is built: one Trash surface for both kinds
-  (pages and files), files restored from the Recycle Bin where they went
-  there, and a clearly different gesture, named as permanent, where the
-  volume forbids a bin. Not asked for; a thought to weigh. His second
-  word on it, same day: "Maybe there is no real need for a unified
-  delete. Just something to explore, it gets complicated with permanent
-  delete and the drive we are on." So: explore only, no build implied.
-
 ### Worksheets: a full redesign, generalized
 
 **His words (2026-11-09):** "a full redesign of worksheets. A lot of what
 I built for it, I built specifically for studying for exam 7. we need to
 generalize, improve it quite a bit, etc."
+
+**Status (2026-11-10):** agreed, it will be done. His words: "Worksheets
+full redesign we will do, but we will not start with it today." Not
+started; the bar research below still comes first.
 
 **What exists today (verified from the file list).** `src/built-in/worksheet`
 is two things grown together. One is a spreadsheet tool: the Univer host
@@ -327,5 +306,10 @@ Recorded so they are not proposed again as new.
 - **Research Desk (Papers With Code inside Parallx):** "I like the idea,
   but not as a native." If it comes, it is an extension, never core.
   The pwc-cli SKILL.md could be loaded as a chat skill with no build.
+- **Story tab writing style** (the Story tab uses no writing preset,
+  only chats do): removed by him, 2026-11-10.
+- **A trash for files, or one Trash for pages and files:** his own
+  thought of 2026-11-09, removed by him, 2026-11-10. Files still go to
+  the Recycle Bin on the same volume and are deleted in place on another.
 - Music generation (ACE-Step 1.5, YuE2): not offered; next to the
   rejected soundscape round of 2026-09.
