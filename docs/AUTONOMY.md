@@ -163,7 +163,17 @@ doing, and doing it. So the pulse stays, rebuilt on the same record:
   the reflection learns from. Initiative he undoes shrinks; initiative he
   keeps grows.
 
-### Notifications
+W i n d o w s   S u b s y s t e m   f o r   L i n u x   h a s   n o   i n s t a l l e d   d i s t r i b u t i o n s . 
+ 
+ Y o u   c a n   r e s o l v e   t h i s   b y   i n s t a l l i n g   a   d i s t r i b u t i o n   w i t h   t h e   i n s t r u c t i o n s   b e l o w : 
+ 
+ 
+ 
+ U s e   ' w s l . e x e   - - l i s t   - - o n l i n e '   t o   l i s t   a v a i l a b l e   d i s t r i b u t i o n s 
+ 
+ a n d   ' w s l . e x e   - - i n s t a l l   < D i s t r o > '   t o   i n s t a l l . 
+ 
+ ### Notifications
 
 Three reasons, one channel, always on: a routine acted (one quiet line,
 with Undo), something failed (with why), something needs him. They also sit
