@@ -173,7 +173,8 @@
   justify-content: center;
   color: var(--px-text-muted);
 }
-.search-file-chevron svg { width: 11px; height: 11px; }
+.search-file-chevron svg { stroke-width: 1.75; }
+.search-file-chevron--open svg { transform: rotate(90deg); }
 
 .search-file-icon {
   flex: 0 0 16px;
@@ -254,3 +255,23 @@
   border-radius: 2px;
   padding: 0 1px;
 }
+
+/* ── Inside Find (Ctrl+F): the results under the field ── */
+.find-surface-body.search-view {
+  overflow: hidden;
+}
+.find-surface-body .search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.search-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--px-space-1);
+  padding: var(--px-space-1) var(--px-space-2);
+  border-top: 1px solid var(--px-divider);
+}
+/* A wide list: the words before the match keep their own width. */
+.search-match-context:has(+ .search-match-highlight) { flex: 0 1 auto; }
+.search-match-highlight { flex-shrink: 0; }

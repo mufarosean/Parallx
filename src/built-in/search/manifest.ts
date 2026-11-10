@@ -10,28 +10,15 @@ export const SEARCH_MANIFEST: IToolManifest = {
   name: 'Search',
   version: '1.0.0',
   publisher: 'parallx',
-  description: 'Find in Files: workspace-wide text search with results tree.',
+  description: 'Find in Files: the Workspace scope of Find (Ctrl+F), with results grouped by file.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  // EAGER by architecture, not by choice (Phase D step 9 post-mortem):
-  // every workbench view pre-materializes when its manifest processes —
-  // so onView can never fire lazily. (Retirement 4a deleted the demo
-  // placeholder that a 'lazy' search once showed forever; the constraint
-  // itself remains.) Until views materialize on demand, view-owning
-  // built-ins stay onStartupFinished; onCommand is the one real lazy path.
+  // Eager: it registers Find's Workspace scope, which Ctrl+F shows from the start.
   activationEvents: ['onStartupFinished'],
   contributes: {
-    // Its sidebar's More Actions menu.
-    menus: {
-      'viewContainer/title': [
-        { command: 'search.collapseAll', title: 'Collapse All', group: '1_actions', when: "activeViewContainer == 'search-container'" },
-        { command: 'search.expandAll', title: 'Expand All', group: '1_actions', when: "activeViewContainer == 'search-container'" },
-        { command: 'search.clearResults', title: 'Clear Results', group: '2_clear', when: "activeViewContainer == 'search-container'" },
-      ],
-    },
     commands: [
       { id: 'search.findInFiles', title: 'Search: Find in Files',
-        aiInvocable: true, aiDescription: 'Open the search view to find text across workspace files.' },
+        aiInvocable: true, aiDescription: 'Open Find on the whole workspace, to find text across its files.' },
       { id: 'search.clearResults', title: 'Search: Clear Results',
         aiInvocable: true, aiDescription: 'Clear the current search results.' },
       { id: 'search.collapseAll', title: 'Search: Collapse All Results',
@@ -41,12 +28,6 @@ export const SEARCH_MANIFEST: IToolManifest = {
     ],
     keybindings: [
       { command: 'search.findInFiles', key: 'Ctrl+Shift+F' },
-    ],
-    viewContainers: [
-      { id: 'search-container', title: 'Search', icon: 'search', location: 'sidebar' as const },
-    ],
-    views: [
-      { id: 'view.search', name: 'Search', defaultContainerId: 'search-container' },
     ],
   },
 };

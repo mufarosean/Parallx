@@ -270,17 +270,6 @@ export const decreaseViewHeight = resizeCommand('workbench.action.decreaseViewHe
 
 // ─── Sidebar view switch ─────────────────────────────────────────────────────
 
-export const showSearchView: CommandDescriptor = {
-  id: 'workbench.view.search',
-  title: 'Search: Show Search',
-  category: 'View',
-  aiInvocable: true,
-  aiDescription: 'Reveal the search view in the sidebar.',
-  handler(ctx) {
-    wb(ctx).showSidebarView('view.search');
-  },
-};
-
 export const showExplorerView: CommandDescriptor = {
   id: 'workbench.view.explorer',
   title: 'Explorer: Show Explorer',

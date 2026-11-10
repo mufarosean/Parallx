@@ -6,6 +6,7 @@ import { CONTAINER_DRAG_TYPE, VIEW_TAB_DRAG_TYPE } from '../platform/dragTypes.j
 import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show } from '../ui/dom.js';
 import { declareControl } from '../ui/kit.js';
+import { createIconElement } from '../ui/iconRegistry.js';
 import { showTabVisibilityMenu } from './viewTabVisibilityMenu.js';
 import { beginPointerDrag, onDragPress } from '../ui/interactionMode.js';
 import { IGridView } from '../layout/gridView.js';
@@ -595,8 +596,6 @@ export class ViewContainer extends Disposable implements IGridView {
       show(section.body);
       section.header.setAttribute('aria-expanded', 'true');
       section.wrapper.classList.remove('collapsed');
-      const chevron = section.header.querySelector('.view-section-chevron') as HTMLElement | null;
-      if (chevron) chevron.textContent = '▾';
       view.setVisible(true);
     } else {
       // Collapse
@@ -604,8 +603,6 @@ export class ViewContainer extends Disposable implements IGridView {
       hide(section.body);
       section.header.setAttribute('aria-expanded', 'false');
       section.wrapper.classList.add('collapsed');
-      const chevron = section.header.querySelector('.view-section-chevron') as HTMLElement | null;
-      if (chevron) chevron.textContent = '▸';
       view.setVisible(false);
     }
 
@@ -627,9 +624,9 @@ export class ViewContainer extends Disposable implements IGridView {
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', 'true');
 
-    const chevron = $('span');
+    // The registry's chevron; workbench.css turns it while the section is open.
+    const chevron = createIconElement('chevron-right', 14);
     chevron.classList.add('view-section-chevron');
-    chevron.textContent = '▾';
     header.appendChild(chevron);
 
     const title = $('span');

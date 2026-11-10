@@ -14,23 +14,12 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   description: 'Tool Gallery: shows all registered tools, their status, and contributions.',
   main: './main.js',
   engines: { parallx: '^0.1.0' },
-  // EAGER by architecture (see the Search note): its contributed view
-  // materializes at boot via _addViewToContainer, so lazy-on-view is a
-  // fiction today. onCommand-only tools are the real lazy candidates.
+  // Eager: Ctrl+P lists every tool from the start (toolQuickOpen.ts).
   activationEvents: ['onStartupFinished'],
   contributes: {
-    // Its sidebar's More Actions menu.
-    menus: {
-      'viewContainer/title': [
-        { command: 'tools.showInstalled', title: 'Show Installed Tools', group: '1_show', when: "activeViewContainer == 'tools-container'" },
-      ],
-    },
-    commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools',
+    commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Tools and Extensions',
       aiInvocable: true, aiDescription: 'Show the list of installed tools and extensions.' }],
-    viewContainers: [
-      { id: 'tools-container', title: 'Tools', icon: 'px-tools', location: 'sidebar' as const },
-    ],
-    views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
-    editors: [{ typeId: 'tool-detail', displayName: 'Tool Details' }],
+    // No sidebar seat: the gallery opens as an editor tab from the View menu.
+    editors: [{ typeId: 'tool-gallery', displayName: 'Tools and Extensions' }, { typeId: 'tool-detail', displayName: 'Tool Details' }],
   },
 };

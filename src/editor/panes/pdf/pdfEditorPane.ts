@@ -55,6 +55,7 @@ import { PdfThumbnails } from './pdfThumbnails.js';
 import { pageSource } from './pdfPassagePrompt.js';
 import { PdfOutline } from './pdfOutline.js';
 import { PdfSearchBar } from './pdfSearchBar.js';
+import type { IFindTarget } from '../../../ui/findTargets.js';
 
 const PANE_ID = 'pdf-editor-pane';
 const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
@@ -842,18 +843,14 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Keyboard ─────────────────────────────────────────────────────────
 
-  /**
-   * Ctrl+F. The workbench keybinding service owns Ctrl+F (edit.find): it
-   * catches the key in the capture phase, stops it, and calls showFind() on
-   * the active pane — so the pane's own keydown never sees it.
-   */
-  showFind(): void {
-    this._search?.toggle(true);
+  /** What Find (Ctrl+F) searches here: the viewer's own finder (pdfSearchBar.ts). */
+  getFindTarget(): IFindTarget | undefined {
+    return this._search?.findTarget();
   }
 
   private _onKeyDown(e: KeyboardEvent): void {
     // Ctrl+F and Ctrl+P never arrive here: the workbench keybinding service
-    // takes them first (edit.find → showFind() above; Ctrl+P is Go to File).
+    // takes them first (edit.find, the Find surface; Ctrl+P is Go to File).
     // Print lives in the ⋯ menu.
 
     // Don't intercept keyboard when search input or page input is focused

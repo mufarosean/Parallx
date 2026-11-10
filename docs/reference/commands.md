@@ -86,6 +86,10 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `edit.copy` | Copy | core | Edit | Ctrl+C |  |
 | `edit.cut` | Cut | core | Edit | Ctrl+X |  |
 | `edit.find` | Find | core | Edit | Ctrl+F |  |
+| `edit.findClose` | Close Find | core | Edit |  |  |
+| `edit.findNext` | Find Next | core | Edit |  |  |
+| `edit.findPrevious` | Find Previous | core | Edit |  |  |
+| `edit.findToggleOption` | Find: Toggle Match Case, Whole Word or Regular Expression | core | Edit |  |  |
 | `edit.paste` | Paste | core | Edit | Ctrl+V |  |
 | `edit.redo` | Redo | core | Edit | Ctrl+Shift+Z |  |
 | `edit.replace` | Replace | core | Edit | Ctrl+H |  |
@@ -177,7 +181,6 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.widget.returnToDashboard` | Return Widget to Dashboard | core | View |  |  |
 | `workbench.action.widget.setContentAlign` | Align Widget Content | core | View |  |  |
 | `workbench.view.explorer` | Explorer: Show Explorer | core | View |  |  |
-| `workbench.view.search` | Search: Show Search | core | View |  |  |
 | `workbench.view.show` | View: Show View | core | View |  |  |
 | `workspace.addFolderToWorkspace` | Add Folder to Workspace… | core | Workspace |  |  |
 | `workspace.closeFolder` | Close Folder | core | Workspace | Ctrl+K Ctrl+F |  |
@@ -295,7 +298,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `terminal.clear` | Terminal: Clear | terminal |  |  |  |
 | `terminal.restart` | Terminal: Restart Shell | terminal |  |  |  |
 | `theme-editor.open` | Parallx: Appearance | theme-editor |  |  |  |
-| `tools.showInstalled` | Tools: Show Installed Tools | tool-gallery |  |  |  |
+| `tools.showInstalled` | Tools: Show Tools and Extensions | tool-gallery |  |  |  |
 | `welcome.openWelcome` | Welcome: Show Welcome Page | welcome |  |  |  |
 | `worksheet.addTag` | Worksheets: Add Tag to Problem | worksheet |  |  |  |
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |

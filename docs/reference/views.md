@@ -20,9 +20,7 @@ The view containers (an activity bar icon, a panel tab) and the views tools cont
 | `flashcards-container` | Flashcards | flashcards | sidebar |  |
 | `media-organizer-container` | Atelier | media-organizer | sidebar |  |
 | `planner-container` | Planner | planner | sidebar |  |
-| `search-container` | Search | search | sidebar |  |
 | `study-container` | Study | study | sidebar |  |
-| `tools-container` | Tools | tool-gallery | sidebar |  |
 | `worksheet-container` | Worksheets | worksheet | sidebar |  |
 
 ## Views
@@ -46,9 +44,7 @@ The view containers (an activity bar icon, a panel tab) and the views tools cont
 | `mediaOrganizer.browser` | Atelier | media-organizer | media-organizer-container |  |
 | `view.output` | Output | output | panel |  |
 | `view.planner` | Tasks | planner | planner-container |  |
-| `view.search` | Search | search | search-container |  |
 | `study.materials` | Materials | study | study-container |  |
 | `view.terminal` | Terminal | terminal | panel |  |
-| `view.tools` | Installed Tools | tool-gallery | tools-container |  |
 | `view.worksheet` | Practice Items | worksheet | worksheet-container |  |
 | `view.workspaceGraph` | Workspace Graph | workspace-graph | view.explorer |  |

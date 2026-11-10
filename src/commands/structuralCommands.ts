@@ -17,6 +17,7 @@ import type { CommandDescriptor } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService } from '../services/serviceTypes.js';
+import type { IFindService } from '../services/findService.js';
 import { wb } from './structuralCommandTypes.js';
 import { ALL_LAYOUT_COMMANDS } from './layoutCommands.js';
 import { ALL_TEXT_SIZE_COMMANDS } from './textSizeCommands.js';
@@ -28,7 +29,7 @@ import {
   toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode, saveLayout, addWidget, adoptWidget,
   viewMoveToSidebar, viewMoveToPanel, partResize,
   increaseViewWidth, decreaseViewWidth, increaseViewHeight, decreaseViewHeight,
-  showSearchView, showExplorerView, showView,
+  showExplorerView, showView,
 } from './viewCommands.js';
 import {
   toggleWordWrap, changeEncoding,
@@ -230,13 +231,22 @@ const editFind: CommandDescriptor = {
   category: 'Edit',
   keybinding: 'Ctrl+F',
   handler(ctx) {
-    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
-    const pane = editorGroupService?.activeGroup?.activePane;
-    if (pane && typeof (pane as any).showFind === 'function') {
-      (pane as any).showFind();
-    }
+    // One Find surface: the active editor first, wider scopes a switch away.
+    ctx.getService<IFindService>('IFindService')?.open();
   },
 };
+
+/** Find's own controls, as commands (the palette and the model reach them too). They act while Find is open. */
+const findCommand = (id: string, title: string, run: (find: IFindService, ...args: unknown[]) => void): CommandDescriptor => ({
+  id, title, category: 'Edit',
+  handler(ctx, ...args) { const find = ctx.getService<IFindService>('IFindService'); if (find) run(find, ...args); },
+});
+const editFindNext = findCommand('edit.findNext', 'Find Next', (f) => f.step(1));
+const editFindPrevious = findCommand('edit.findPrevious', 'Find Previous', (f) => f.step(-1));
+const editFindClose = findCommand('edit.findClose', 'Close Find', (f) => f.close());
+const editFindToggleOption = findCommand('edit.findToggleOption', 'Find: Toggle Match Case, Whole Word or Regular Expression', (f, option) => {
+  if (option === 'caseSensitive' || option === 'wholeWord' || option === 'useRegex') f.toggleOption(option);
+});
 
 const editReplace: CommandDescriptor = {
   id: 'edit.replace',
@@ -376,7 +386,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   editCut,
   editCopy,
   editPaste,
-  editFind,
+  editFind, editFindNext, editFindPrevious, editFindClose, editFindToggleOption,
   editReplace,
   // View move
   viewMoveToSidebar,
@@ -394,7 +404,6 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   focusActivityBar,
   focusStatusBar,
   // Sidebar view switch
-  showSearchView,
   showExplorerView,
   showView,
   // Preferences

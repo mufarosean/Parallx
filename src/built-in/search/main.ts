@@ -1,7 +1,10 @@
 // Search Built-In Tool — workspace-wide text search
 //
 // Implements:
-//   • Find in Files (Ctrl+Shift+F) — text search across workspace files
+//   • Find in Files (Ctrl+Shift+F) — text search across workspace files,
+//     as the Workspace scope of Find (services/findService.ts): the field
+//     and the three toggles are Find's, the results under them are drawn here.
+//     With this tool off, Find has no Workspace switch.
 //   • Results tree grouped by file with match context
 //   • Case-sensitive, whole-word, regex toggle options
 //   • Include/exclude glob patterns
@@ -11,25 +14,23 @@
 //   src/vs/workbench/contrib/search/browser/searchView.ts
 //   src/vs/workbench/services/search/common/textSearchManager.ts
 
-import { declareControl, createList, sceneSlug } from '../../ui/kit.js';
+import { declareControl, createBlock, createButton, createList } from '../../ui/kit.js';
 import './search.css';
 
 import { SEARCH_EMPTY_STATES } from './searchEmptyStates.js';
 import { SearchDocumentReader, type IDocumentTextSource, type ISearchLine } from './searchDocuments.js';
 import { IFileService } from '../../services/serviceTypes.js';
+import { IFindService } from '../../services/findService.js';
 import { BINARY_EXTENSIONS, EXCLUDED_DIRS, buildGlobMatcher, buildSearchRegex, getExtension, type SearchRegexOptions } from './searchPatterns.js';
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $,  hide, show } from '../../ui/dom.js';
-import { getFileTypeIcon, getIcon } from '../../ui/iconRegistry.js';
+import { createIconElement, getFileTypeIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ParallxApi {
-  views: {
-    registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): IDisposable }, options?: Record<string, unknown>): IDisposable;
-  };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable;
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
@@ -60,7 +61,6 @@ const FILE_TYPE_FILE = 1;
 const FILE_TYPE_DIRECTORY = 2;
 const MAX_RESULTS_PER_FILE = 999;
 const FILE_SCAN_DEPTH = 10;
-const SEARCH_DEBOUNCE_MS = 300;
 const CONTEXT_CHARS = 60;
 
 // ─── Search Result Model ─────────────────────────────────────────────────────
@@ -100,8 +100,6 @@ let _context: ToolContext;
 
 // Search state
 let _query = '';
-let _replaceText = '';
-let _showReplace = false;
 let _options: SearchOptions = {
   caseSensitive: false,
   wholeWord: false,
@@ -114,12 +112,12 @@ let _totalMatches = 0;
 let _searchVersion = 0;
 
 // DOM elements
-let _queryInput: HTMLInputElement | null = null;
-let _replaceInput: HTMLInputElement | null = null;
-let _replaceRow: HTMLElement | null = null;
 let _resultsContainer: HTMLElement | null = null;
 let _messageEl: HTMLElement | null = null;
-let _toggleReplaceBtn: HTMLElement | null = null;
+/** Sets the short count beside Find's field. */
+let _report: ((summary: string) => void) | null = null;
+/** Which match Enter last opened (step). */
+let _stepIndex = -1;
 
 // ─── Activation ──────────────────────────────────────────────────────────────
 
@@ -134,23 +132,23 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     _options = { ..._options, ...saved };
   }
 
-  // Register view provider
-  context.subscriptions.push(
-    api.views.registerViewProvider('view.search', {
-      createView(container: HTMLElement): IDisposable {
-        return createSearchView(container);
+  // The Workspace scope of Find. Without the Find service there is nowhere to search from.
+  const find = api.services?.has(IFindService) ? api.services.get<IFindService>(IFindService) : undefined;
+  if (find) {
+    context.subscriptions.push(find.registerScope({
+      id: 'workspace',
+      label: 'Workspace',
+      mount: mountResults,
+      search(query, options) {
+        _query = query;
+        _options = { ..._options, ...options };
+        _stepIndex = -1;
+        triggerSearch();
       },
-    }),
-  );
-
-  // Register commands
-  context.subscriptions.push(
-    api.commands.registerCommand('search.findInFiles', () => {
-      // Focus the search view, then focus the query input
-      api.commands.executeCommand('workbench.view.search').catch(() => {});
-      setTimeout(() => _queryInput?.focus(), 100);
-    }),
-  );
+      step,
+    }));
+  }
+  context.subscriptions.push(api.commands.registerCommand('search.findInFiles', () => { find?.open('workspace'); }));
 
   context.subscriptions.push(
     api.commands.registerCommand('search.clearResults', () => {
@@ -174,101 +172,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 }
 
 export function deactivate(): void {
-  _queryInput = null;
-  _replaceInput = null;
-  _replaceRow = null;
   _resultsContainer = null;
   _messageEl = null;
-  _toggleReplaceBtn = null;
+  _report = null;
   _results = [];
 }
 
 // ─── View Creation ───────────────────────────────────────────────────────────
 
-function createSearchView(container: HTMLElement): IDisposable {
+/** The results under Find's field: the include and exclude filters, the status line, the list. */
+function mountResults(container: HTMLElement, report: (summary: string) => void): IDisposable {
   container.classList.add('search-view');
-
-  // ── Header / Input Area ──
-  const header = $('div');
-  header.className = 'search-header';
-
-  // Toggle replace button
-  _toggleReplaceBtn = $('button');
-  _toggleReplaceBtn.className = 'search-toggle-replace';
-  _toggleReplaceBtn.title = 'Toggle Replace';
-  declareControl(_toggleReplaceBtn, { id: 'search.toggleReplace', label: 'Toggle Replace', kind: 'iconButton', state: () => ({ kind: 'pressed', value: !!_replaceInput && _replaceInput.offsetParent !== null }) });
-  _toggleReplaceBtn.innerHTML = getIcon('toggle-replace')!;
-  _toggleReplaceBtn.addEventListener('click', () => {
-    _showReplace = !_showReplace;
-    _toggleReplaceBtn!.classList.toggle('active', _showReplace);
-    _showReplace ? show(_replaceRow!) : hide(_replaceRow!);
-  });
-  header.appendChild(_toggleReplaceBtn);
-
-  // Input rows wrapper
-  const inputRows = $('div');
-  inputRows.className = 'search-input-rows';
-
-  // Search row
-  const searchRow = $('div');
-  searchRow.className = 'search-input-row';
-
-  _queryInput = $('input');
-  _queryInput.type = 'text';
-  _queryInput.className = 'search-input';
-  _queryInput.placeholder = 'Search';
-  declareControl(_queryInput, { id: 'search.query', label: 'Search', kind: 'input', state: () => ({ kind: 'value', value: _queryInput?.value ?? '' }) });
-  _queryInput.spellcheck = false;
-  _queryInput.value = _query;
-  searchRow.appendChild(_queryInput);
-
-  // Option toggles container
-  const optionToggles = $('div');
-  optionToggles.className = 'search-option-toggles';
-
-  optionToggles.appendChild(
-    createToggleButton('Aa', 'Match Case', _options.caseSensitive, (v) => {
-      _options.caseSensitive = v;
-      saveOptions();
-      triggerSearch();
-    }),
-  );
-  optionToggles.appendChild(
-    createToggleButton('Ab|', 'Match Whole Word', _options.wholeWord, (v) => {
-      _options.wholeWord = v;
-      saveOptions();
-      triggerSearch();
-    }),
-  );
-  optionToggles.appendChild(
-    createToggleButton('.*', 'Use Regular Expression', _options.useRegex, (v) => {
-      _options.useRegex = v;
-      saveOptions();
-      triggerSearch();
-    }),
-  );
-
-  searchRow.appendChild(optionToggles);
-  inputRows.appendChild(searchRow);
-
-  // Replace row
-  _replaceRow = $('div');
-  _replaceRow.className = 'search-input-row search-replace-row';
-  _showReplace ? show(_replaceRow) : hide(_replaceRow);
-
-  _replaceInput = $('input');
-  _replaceInput.type = 'text';
-  _replaceInput.className = 'search-input';
-  _replaceInput.placeholder = 'Replace';
-  declareControl(_replaceInput, { id: 'search.replace', label: 'Replace', kind: 'input', state: () => ({ kind: 'value', value: _replaceInput?.value ?? '' }) });
-  _replaceInput.spellcheck = false;
-  _replaceInput.value = _replaceText;
-  _replaceRow.appendChild(_replaceInput);
-
-  inputRows.appendChild(_replaceRow);
-  header.appendChild(inputRows);
-
-  container.appendChild(header);
+  _report = report;
 
   // ── Filters (include/exclude) ──
   const filtersSection = $('div');
@@ -333,69 +248,26 @@ function createSearchView(container: HTMLElement): IDisposable {
   createList(_resultsContainer, { id: 'search.results', label: 'Results', rows: () => Array.from(_resultsContainer?.querySelectorAll<HTMLElement>('.search-result-item, .search-file-group') ?? []), selected: () => [] });
   container.appendChild(_resultsContainer);
 
-  // ── Event handlers ──
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  _queryInput.addEventListener('input', () => {
-    _query = _queryInput!.value;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => triggerSearch(), SEARCH_DEBOUNCE_MS);
-  });
+  // What the sidebar's More Actions menu held.
+  const footer = createBlock(container, 'div', { className: 'search-footer' });
+  createButton(footer, { id: 'search.collapseAll', label: 'Collapse All', kind: 'ghost', size: 'sm', command: 'search.collapseAll' });
+  createButton(footer, { id: 'search.clearResults', label: 'Clear', kind: 'ghost', size: 'sm', command: 'search.clearResults' });
 
-  _queryInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (debounceTimer) clearTimeout(debounceTimer);
-      triggerSearch();
-    }
-    if (e.key === 'Escape') {
-      _queryInput!.blur();
-    }
-  });
-
-  _replaceInput!.addEventListener('input', () => {
-    _replaceText = _replaceInput!.value;
-  });
-
-  // Render initial state
   updateMessage();
+  renderResults();
 
   return {
     dispose() {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      _queryInput = null;
-      _replaceInput = null;
-      _replaceRow = null;
+      container.classList.remove('search-view');
+      container.replaceChildren();
       _resultsContainer = null;
       _messageEl = null;
-      _toggleReplaceBtn = null;
+      _report = null;
     },
   };
 }
 
-// ─── Toggle Button Factory ───────────────────────────────────────────────────
-
-function createToggleButton(
-  label: string,
-  title: string,
-  initial: boolean,
-  onToggle: (active: boolean) => void,
-): HTMLElement {
-  const btn = $('button');
-  btn.className = 'search-option-btn';
-  btn.title = title;
-  btn.textContent = label;
-  if (initial) btn.classList.add('active');
-  declareControl(btn, { id: `search.${sceneSlug(title)}`, label: title, kind: 'toggle', state: () => ({ kind: 'pressed', value: btn.classList.contains('active') }) });
-
-  btn.addEventListener('click', () => {
-    btn.classList.toggle('active');
-    onToggle(btn.classList.contains('active'));
-  });
-
-  return btn;
-}
-
-// ─── Search Execution ────────────────────────────────────────────────────────
+// ─── Search Execution ───────────────────────────────────────────────────────
 
 let _debounceHandle: ReturnType<typeof setTimeout> | null = null;
 
@@ -455,9 +327,7 @@ async function executeSearch(): Promise<void> {
       // registry voice: warm line + a concrete next step.
       updateMessage(`No matches for "${query}". ${SEARCH_EMPTY_STATES.noResults.hint}`);
     } else {
-      updateMessage(
-        `${_totalMatches} result${_totalMatches !== 1 ? 's' : ''} in ${_results.length} file${_results.length !== 1 ? 's' : ''}`,
-      );
+      updateMessage(); // the count is beside Find's field
     }
 
     renderResults();
@@ -613,7 +483,16 @@ function clearResults(): void {
   updateMessage();
 }
 
+/** Enter in Find: open the next (or the previous) match, wrapping round. */
+function step(delta: 1 | -1): void {
+  const all = _results.flatMap((r) => r.matches.map((m) => ({ uri: r.uri, match: m })));
+  if (!all.length) return;
+  _stepIndex = (_stepIndex + delta + all.length) % all.length;
+  void openResult(all[_stepIndex].uri, all[_stepIndex].match);
+}
+
 function updateMessage(text?: string): void {
+  _report?.(_results.length ? `${_totalMatches} in ${_results.length} file${_results.length !== 1 ? 's' : ''}` : '');
   if (!_messageEl) return;
 
   if (text) {
@@ -665,13 +544,13 @@ function renderFileGroup(fileResult: FileResult): HTMLElement {
   fileHeader.className = 'search-file-header';
   fileHeader.addEventListener('click', () => {
     fileResult.expanded = !fileResult.expanded;
-    chevron.textContent = fileResult.expanded ? '▾' : '▸';
+    chevron.classList.toggle('search-file-chevron--open', fileResult.expanded);
     fileResult.expanded ? show(matchList) : hide(matchList);
   });
 
-  const chevron = $('span');
-  chevron.className = 'search-file-chevron';
-  chevron.textContent = fileResult.expanded ? '▾' : '▸';
+  const chevron = createIconElement('chevron-right', 14);
+  chevron.classList.add('search-file-chevron');
+  chevron.classList.toggle('search-file-chevron--open', fileResult.expanded);
   fileHeader.appendChild(chevron);
 
   const fileIcon = $('span');

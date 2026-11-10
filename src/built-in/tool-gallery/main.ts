@@ -9,6 +9,7 @@
 //   VS Code extensionEditor.ts — editor pane, header, tabs, contribution tables
 
 import { renderDetailsTab, renderStatusTab } from './toolEditorTabs.js';
+import { pressable } from './pressable.js';
 import { registerToolQuickOpen } from './toolQuickOpen.js';
 import { declareControl } from '../../ui/kit.js';
 import './toolGallery.css';
@@ -146,16 +147,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   });
   context.subscriptions.push(editorDisposable);
 
-  // Register the sidebar view provider
-  const viewDisposable = api.views.registerViewProvider('view.tools', {
-    createView(container: HTMLElement): IDisposable {
+  // The gallery is an editor tab (View > Tools and Extensions), as Settings is. Ctrl+P finds every tool (toolQuickOpen.ts).
+  context.subscriptions.push(api.editors.registerEditorProvider('tool-gallery', {
+    createEditorPane(container: HTMLElement): IDisposable {
+      container.classList.add('tool-gallery-page');
       return renderToolSidebar(container, api);
     },
-  }, { name: 'Installed Tools', icon: 'puzzle' });
-  context.subscriptions.push(viewDisposable);
-
-  // Command to refresh the sidebar; Ctrl+P finds every tool, on or off (toolQuickOpen.ts).
-  context.subscriptions.push(api.commands.registerCommand('tools.showInstalled', () => { _sidebarRefresh?.(); }));
+  }));
+  context.subscriptions.push(api.commands.registerCommand('tools.showInstalled', () =>
+    api.editors.openEditor({ typeId: 'tool-gallery', title: 'Tools and Extensions', icon: 'px-tools', instanceId: 'tool-gallery' }).then(() => _sidebarRefresh?.())));
   context.subscriptions.push(registerToolQuickOpen(api));
 }
 
@@ -343,6 +343,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       });
     });
 
+    pressable(row);
     return row;
   }
 
@@ -372,7 +373,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       }
       refresh();
     });
-
+    pressable(header, !collapsed);
     return header;
   }
 

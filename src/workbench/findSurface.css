@@ -1,0 +1,77 @@
+/* findSurface.css — the Find bar (Ctrl+F) and its match marks. */
+
+.find-surface {
+  position: fixed;
+  z-index: 40;
+  width: min(430px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg), var(--px-edge-light);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
+  overflow: hidden;
+}
+
+.find-surface[hidden] {
+  display: none;
+}
+
+.find-surface-row {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-1);
+  padding: var(--px-space-2);
+}
+.find-surface-row--options {
+  justify-content: space-between;
+  padding-top: 0;
+  min-height: 0;
+}
+.find-surface-row .ui-input-box {
+  flex: 1;
+  min-width: 0;
+}
+.find-surface-count {
+  flex-shrink: 0;
+  padding: 0 var(--px-space-1);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.find-surface--none .find-surface-count {
+  color: rgb(var(--px-red-rgb));
+}
+.find-surface-toggles {
+  display: flex;
+  gap: var(--px-space-1);
+  margin-left: auto;
+}
+.find-surface-toggle--on {
+  background: var(--px-accent-soft);
+  color: var(--px-accent-text);
+}
+
+/* A scope's own results, under the field. */
+.find-surface-body:empty {
+  display: none;
+}
+.find-surface-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(52vh, 460px);
+  border-top: 1px solid var(--px-divider);
+}
+
+/* Matches in the document, drawn without touching its DOM. */
+::highlight(px-find) {
+  background-color: var(--vscode-editor-findMatchHighlightBackground);
+}
+::highlight(px-find-current) {
+  background-color: var(--vscode-editor-findMatchBackground);
+}

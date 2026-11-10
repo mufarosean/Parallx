@@ -24,6 +24,7 @@ import { $,  hide, show } from '../../ui/dom.js';
 import { getLanguageForFileName } from '../../services/languageDetection.js';
 import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
 import { takeFileReveal } from '../fileReveal.js';
+import { textareaFindTarget, type IFindTarget } from '../../ui/findTargets.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -397,14 +398,10 @@ export class TextEditorPane extends EditorPane {
 
   // ── Find & Replace ──
 
-  /** Show the find bar (Ctrl+F). If already visible, re-focus it. */
-  showFind(): void {
-    if (!this._findWidget) return;
-    if (this._findWidget.visible) {
-      this._findWidget.focusFind();
-    } else {
-      this._findWidget.show(false);
-    }
+  /** What Find (Ctrl+F) searches here: the text, the match shown as the selection. */
+  getFindTarget(): IFindTarget | undefined {
+    if (this._findWidget?.visible) this._findWidget.hide(); // Replace's own bar steps aside
+    return this._textarea ? textareaFindTarget(this._textarea) : undefined;
   }
 
   /** Show the find+replace bar (Ctrl+H). */

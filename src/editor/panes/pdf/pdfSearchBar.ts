@@ -5,6 +5,7 @@
 // viewer's event bus; its count and not-found state come back the same way.
 
 import { declareControl } from '../../../ui/kit.js';
+import type { FindCount, FindOptions, IFindTarget } from '../../../ui/findTargets.js';
 import type { EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { $, hide, show } from '../../../ui/dom.js';
 import { setupTooltip } from '../../../ui/tooltip.js';
@@ -22,6 +23,7 @@ export interface PdfSearchBarHost {
 interface MatchesCount { current: number; total: number }
 
 export class PdfSearchBar {
+  private readonly _countListeners = new Set<(count: FindCount) => void>();
   private readonly _input: HTMLInputElement;
   private readonly _count: HTMLElement;
   private _open = false;
@@ -125,14 +127,44 @@ export class PdfSearchBar {
     this._dispatch('find');
   }
 
+  /**
+   * The document as Find's target (Ctrl+F, workbench/findSurface.ts): the
+   * viewer finds and counts across every page, the surface shows the count.
+   */
+  findTarget(): IFindTarget {
+    let query = '';
+    let options: FindOptions = { caseSensitive: false, wholeWord: false, useRegex: false };
+    const send = (type: string, findPrevious = false): void => {
+      this._host.eventBus()?.dispatch('find', { source: this._host.source, type, query, caseSensitive: options.caseSensitive, entireWord: options.wholeWord, highlightAll: true, findPrevious });
+    };
+    const clear = (): void => { this._host.eventBus()?.dispatch('findbarclose', { source: this._host.source }); };
+    return {
+      find: (q, o) => {
+        if (this._open) this.toggle(false);
+        query = q; options = o;
+        if (!q) { clear(); return { current: 0, total: 0 }; }
+        send('find');
+        return undefined;
+      },
+      step: (delta) => { if (query) send('again', delta < 0); return undefined; },
+      clear,
+      onDidChangeCount: (listener) => {
+        this._countListeners.add(listener);
+        return { dispose: () => { this._countListeners.delete(listener); } };
+      },
+    };
+  }
+
   /** A new document's event bus: show its match count and not-found state. */
   attach(eventBus: EventBus, notFoundState: number): void {
     eventBus.on('updatefindmatchescount', (evt: { matchesCount: MatchesCount }) => {
       const { current, total } = evt.matchesCount;
+      for (const l of this._countListeners) l({ current, total });
       this._count.textContent = total > 0 ? `${current} of ${total}` : '';
     });
     eventBus.on('updatefindcontrolstate', (evt: { state: number; matchesCount?: MatchesCount }) => {
       if (evt.state === notFoundState) {
+        for (const l of this._countListeners) l({ current: 0, total: 0 });
         this._count.textContent = 'No matches';
         this._bar.classList.add('is-not-found');
       } else {

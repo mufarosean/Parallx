@@ -393,13 +393,10 @@ html, body {
   outline-offset: -1px;
 }
 
-.view-section-chevron {
-  flex-shrink: 0;
-  width: 16px;
-  font-size: var(--px-text-xs);
-  line-height: 22px;
-  color: var(--vscode-sideBarSectionHeader-foreground);
-}
+.view-section-chevron { margin: 0 1px; color: var(--px-text-muted); }
+.view-section-chevron svg { stroke-width: 1.75; }
+/* The registry's chevron-right, turned while the section is open. */
+.view-section:not(.collapsed) > .view-section-header .view-section-chevron svg { transform: rotate(90deg); }
 
 .view-section-title {
   flex: 1;

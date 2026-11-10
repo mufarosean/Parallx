@@ -1,6 +1,8 @@
 // workbenchServices.ts — service registration and initialization
 
 import { installKitCommands } from '../ui/kit.js';
+import { IFindService } from '../services/findService.js';
+import { FindSurface } from './findSurface.js';
 import { setAssistantTimeZone } from '../services/localTime.js';
 import { setChatThinkingView } from '../services/chatThinkingView.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
@@ -84,6 +86,8 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   services.registerInstance(ICommandService, new CommandService(services));
   // A kit control that declares a command runs it through this service.
   installKitCommands(services.get(ICommandService));
+  // Find (Ctrl+F): one surface over the editor in front; tools add wider scopes.
+  services.registerInstance(IFindService, new FindSurface(services));
 
   // ── Tool Registry (M2 Capability 1) ──
   services.registerInstance(IToolRegistryService, new ToolRegistry());

@@ -83,6 +83,7 @@ export class MenuBuilder extends Disposable {
     this._register(this._titlebar.registerMenuBarDropdownItems('view', [
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
       { commandId: 'settings.open', title: 'Settings', group: '1_settings', order: 1 },
+      { commandId: 'tools.showInstalled', title: 'Tools and Extensions', group: '1_settings', order: 1.5 },
       { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', group: '1_settings', order: 2 },
       { commandId: 'settings.openAppearance', title: 'Appearance…', group: '1_settings', order: 3 },
       // Same names as the commands and the title-bar buttons: the toggles act
@@ -140,7 +141,7 @@ export class MenuBuilder extends Disposable {
       // tools add themselves while they run (contributes.menus
       // "menubar/tools", setToolsMenuItems): none is listed here.
       { commandId: 'dashboard.open', title: 'Dashboard', group: '1_open', order: 0 },
-      { commandId: 'tools.showInstalled', title: 'Manage Tools…', group: '9_manage', order: 1 },
+      { commandId: 'tools.showInstalled', title: 'Tools and Extensions', group: '9_manage', order: 1 },
     ]));
 
     // Register dropdown items for Help menu
