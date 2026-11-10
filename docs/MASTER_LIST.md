@@ -85,26 +85,117 @@ and its tests; nothing more is queued on them):
 - **Home, first version.** The Parallx icon opens it: search, a chip per
   tool and per tag, recent items as cards or a list. Tools feed it
   through `registerHomeSource` (`api.home.registerSource` for
-  extensions). Pages and files feed it today.
+  extensions). Pages and files feed it today. He judged it short of the
+  idea; the redesign is the next entry.
 
-### Home: what is left
+### Home: a redesign, not yet designed
 
-His design is agreed (2026-11-10: "aligned with home design"). Not done
-in the first version:
+**Where it stands (2026-11-10).** A first version shipped the same day
+(the Parallx icon opens it; pages and files feed it through
+`registerHomeSource`). His verdict: "all you built was a recent files
+thing." A second mock-up (Continue, Today, Needs You, a stream, a status
+line) also missed: it read as an admin page. No third design exists.
+The contribution point and `api.home` are in the code and can serve the
+redesign; the page itself is to be redrawn.
 
-- **The extensions' own items.** Creations AI (characters, chats,
-  lorebooks), Budget, Flashcards, the Media Organizer and the rest each
-  need a source of their own, written in the extension. Until then Home
-  shows pages and files only.
-- **The written summary.** A card's line is the item's opening words
-  today. His words were "an automatic one-line summary": a summary the
-  model writes once per item and keeps, through the core's
-  language-models service. Unknown: where it is stored, and when it is
-  refreshed.
-- **Tags.** Home shows the tags a source gives; pages and files give
-  none yet.
-- **Launch.** Home opens from the icon; the Welcome page still opens on
-  first launch. Not asked: whether Home takes its place.
+**His words on what Home is (2026-11-10, spelling corrected):** "My
+vision for home is to, in a way, be something that allows the user to
+jump into work. To feel inspired. Really, really take inspiration from
+the site I linked and how it looks." And earlier the same day: "I think
+a unified home is useful, one with standard things on it." "Imagine home
+being the default page that gets opened when a user opens a workspace."
+
+**Settled by him:**
+
+- Home is an ordinary tab. "Home is not a fixed tab, it should be able
+  to be closed."
+- Opening it with the workspace is the user's choice, per workspace.
+  "The way we do this is, if the setting is on, we override whatever
+  last opened state file to point to the home editor tab."
+- Welcome stays for new workspaces. "The welcome page, in my
+  experience, only runs on new workspaces, so that is true still. If it
+  is a new workspace, we use welcome."
+- A width setting. "I also want the setting to allow dynamic width of
+  the content on the home tab. I work on a very large monitor sometimes,
+  and having dynamic width will be perfect for me."
+
+**The bar.** paperswithcode.co, and this time looked at, not described
+from memory: the cloud container could not reach the site on
+2026-11-10, so neither mock-up was drawn from it. Before the next
+design, see the real pages (his screenshots, or a session that can
+reach the site) and show him what was taken from them.
+
+**Unknown.** What "inspired" looks like on the page (a guess, not his:
+his own work shown well, visual and browsable, with the day's quote as
+the one static piece). Whether the Daily Brief below shows on Home as a
+card that opens the page, or stays apart. Which of the first version's
+parts survive.
+
+**Still true from the first version, if its stream is kept:** the
+extensions do not feed it yet (each needs its own source); a card's
+line is the item's opening words, not a summary the model wrote; pages
+and files carry no tags.
+
+### Daily Brief: a report a routine writes, in place of a dashboard
+
+**His words (2026-11-10, spelling corrected):** "I had a dashboard named
+home on my personal workspace, and it had the date time widget, and it
+also had the AI widget that ran a prompt to research a quote. It also
+had news stories. AI runs and looks up top 10 headlines in the city and
+summarizes and links them for me. These are static things that should
+update daily." "What if instead of a dashboard, I created a report
+instead. I think that is smarter. Something that allows more things to
+be written. We still create a quote and store it in database, we can
+push it to a surface. But then maybe we have a routine that runs after
+all the routines, that takes a canvas page template for daily brief,
+takes the quote, writes a brief summary/explanation of the quote, then
+pulls the top 10 headlines, maybe it does ten local, and another 10
+national, and 5 main global, with brief summaries of each and links
+directly to the articles. Then we do a brief of new emails, a summary
+that just lets me know if there is an unread email, finances summary -
+this requires a budget refresh/sync, then pulls info from that."
+
+**What it is.** One canvas page a day, written from a template by a
+routine that runs after the day's other routines: the quote with a
+short explanation; headlines (ten local, ten national, five global),
+each summarised and linked to its article; whether there is unread
+email; a finance summary taken after a Budget sync. The quote is also
+kept in the database so a surface (Home) can show it.
+
+**How it stays modular.** Each part belongs to the tool that owns the
+data (Budget's summary, the mail tool's unread count, web research for
+headlines); the brief is a template with slots those tools fill, and a
+slot whose tool is off is left out. Nothing in the core names them.
+
+**Unknown.** Which tool owns email (none reads mail today, to verify);
+where the routine's order ("after all the routines") is declared; one
+page per day or one page rewritten; his city and sources for local
+news; what happens to the brief on a day the model or the network is
+unavailable.
+
+### Dashboards: reimagined as a place to brainstorm and link work
+
+**His words (2026-11-10, spelling corrected):** "Dashboards were my
+attempt at designing custom dashboards for myself." "My current problem
+with dashboards is that I really, really do not use them. I want to
+reimagine them as a brainstorming space or a place to link different
+work. Something to unify the painting plans, the AI workflows, the
+mindmaps, etc." "Do you remember how Atelier created the plan
+dashboards, think of them that way, but for all pieces of the app. If
+what I want is to build a static view, then why not build it into the
+app." "I believe the real question is, are we being redundant here?"
+"Let's think through that thoroughly. For now, we focus on home."
+
+**What it is.** Not a board of static widgets (a static view worth
+having is built into the app; the daily ones become the Daily Brief).
+A working surface where pieces from different tools sit side by side
+and are linked: a painting plan, an AI workflow, a mind map, pages,
+files. Atelier's plan boards are the model, widened to every tool.
+
+**Status.** To be thought through thoroughly with him, after Home. No
+design, no build. Open from the start: what becomes of the existing
+dashboards and their widgets, and how this differs from a canvas page
+that embeds blocks.
 
 ### Text arrows elsewhere
 
