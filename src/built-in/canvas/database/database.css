@@ -380,3 +380,18 @@ th.canvas-db-col--frozen { z-index: 4; }
 .canvas-db-chart__key { display: inline-flex; align-items: center; gap: 2px; }
 .canvas-db-chart__keyvalue { color: var(--px-text-secondary); margin-left: 4px; }
 .canvas-db-chart__total { margin-top: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-sm); }
+
+/* ── Relation editor and the relation / rollup dialogs ── */
+.canvas-prop-relation { display: flex; flex-direction: column; gap: var(--px-space-1); min-width: 220px; }
+.canvas-prop-relation__list { display: flex; flex-wrap: wrap; gap: 4px; }
+.canvas-prop-relation__chip { display: inline-flex; align-items: center; gap: 2px; background: var(--px-bg-inset); border-radius: var(--px-radius-sm); padding: 1px 2px 1px 4px; max-width: 100%; }
+.canvas-prop-relation__title { padding: 0 4px; }
+.canvas-prop-relation__picker { min-width: 280px; }
+.canvas-prop-relation__results { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+.canvas-prop-relation__result { justify-content: flex-start; }
+.canvas-prop-relation__result .px-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-db-dialog { min-width: 320px; gap: var(--px-space-2); }
+.canvas-db-dialog__field { display: flex; flex-direction: column; gap: 2px; }
+.canvas-db-dialog__fieldlabel { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.canvas-db-dialog__hint { color: var(--px-text-secondary); padding: 4px 6px; }
+.canvas-db-dialog__actions { display: flex; justify-content: flex-end; gap: var(--px-space-1); margin-top: var(--px-space-1); }

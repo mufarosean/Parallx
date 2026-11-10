@@ -24,18 +24,25 @@ export interface IDeriveContext {
   formula?(prop: IDatabaseProperty, row: IDatabaseRow, values: Record<string, unknown>): unknown;
   /** A rollup's value for a row (step 5). */
   rollup?(prop: IDatabaseProperty, row: IDatabaseRow, values: Record<string, unknown>): unknown;
+  /** The related pages a relation's ids name: {id, title, icon}, in order; unknown ids are kept as ids. */
+  relation?(prop: IDatabaseProperty, ids: readonly string[]): readonly { id: string; title: string; icon: string | null }[];
 }
 
 /** Each row with its computed properties filled in. Rows without computed properties come back as they are. */
 export function withDerivedValues(rows: readonly IDatabaseRow[], props: readonly IDatabaseProperty[], ctx: IDeriveContext = {}): IDatabaseRow[] {
-  const computed = props.filter((p) => isComputedType(p.type));
+  const computed = props.filter((p) => isComputedType(p.type) || (p.type === 'relation' && !!ctx.relation));
   if (computed.length === 0) return [...rows];
-  // Formulas may read rollups; rollups may read stored cells: created/edited first, then rollups, then formulas.
+  // Relations first (rollups read their ids), then created/edited, rollups, formulas.
   const order = [...computed].sort((a, b) => rank(a) - rank(b));
   return rows.map((row) => {
     const values: Record<string, unknown> = { ...row.values };
     for (const p of order) {
       switch (p.type) {
+        case 'relation': {
+          const ids = Array.isArray(values[p.id]) ? (values[p.id] as unknown[]).map((x) => (typeof x === 'string' ? x : String((x as { id?: string })?.id ?? ''))).filter(Boolean) : [];
+          values[p.id] = ctx.relation!(p, ids);
+          break;
+        }
         case 'created_time': values[p.id] = timestampToLocalDatetime(row.createdAt); break;
         case 'last_edited_time': values[p.id] = timestampToLocalDatetime(row.updatedAt); break;
         case 'rollup': values[p.id] = ctx.rollup ? ctx.rollup(p, row, values) : null; break;
@@ -48,5 +55,5 @@ export function withDerivedValues(rows: readonly IDatabaseRow[], props: readonly
 }
 
 function rank(p: IDatabaseProperty): number {
-  return p.type === 'formula' ? 2 : p.type === 'rollup' ? 1 : 0;
+  return p.type === 'formula' ? 3 : p.type === 'rollup' ? 2 : p.type === 'relation' ? 0 : 1;
 }

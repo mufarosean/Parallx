@@ -5,7 +5,7 @@
 
 import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
 import { propertyTypeMeta } from './propertyTypeMeta.js';
-import { createFilesEditor, createReadOnlyEditor } from './propertyEditorsMore.js';
+import { createFilesEditor, createReadOnlyEditor, createRelationEditor } from './propertyEditorsMore.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { declareControl } from '../../../ui/kit.js';
@@ -73,6 +73,14 @@ export interface IPropertyEditorContext {
    * one id per cell would repeat under one surface.
    */
   sceneId?: string;
+  /** What a relation editor needs: the related database's rows, and a way to make one. */
+  relations?: IRelationEditorHost;
+}
+
+export interface IRelationEditorHost {
+  listRows(databaseId: string): Promise<{ pageId: string; title: string; icon: string | null }[]>;
+  createRow(databaseId: string, title: string): Promise<string>;
+  openPage?(pageId: string): void;
 }
 
 export function createPropertyEditor(
@@ -102,6 +110,7 @@ function _buildEditor(definition: IPropertyDefinition, value: unknown, onChange:
     case 'status': return _createSelectEditor(value as string | null, definition, onChange);
     case 'email': case 'phone': return _createTextEditor(value as string | null, onChange);
     case 'files': return createFilesEditor(definition, value, onChange);
+    case 'relation': return createRelationEditor(definition, value, onChange, context?.relations);
     case 'created_time': case 'last_edited_time': case 'unique_id': case 'formula': case 'rollup': return createReadOnlyEditor(definition, value);
     default: return _createTextEditor(value as string | null, onChange);
   }

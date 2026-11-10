@@ -243,7 +243,7 @@ const GATE_RULES: Record<string, string[]> = {
   'database/rowCompute.ts':                ['database/databaseTypes', 'properties/propertyTypes'],  // computed values of a row (pure)
   'database/uniqueIds.ts':                 ['database/databaseDataService', 'database/databaseTypes'],  // the ID property's numbers
   'properties/propertyTypeMeta.ts':        ['properties/propertyTypes'],  // the one list of property types
-  'properties/propertyEditorsMore.ts':     ['properties/propertyTypes', 'database/cellRender', 'imageStore'],  // editors for the round-2 types (kit-built)
+  'properties/propertyEditorsMore.ts':     ['properties/propertyTypes', 'properties/propertyEditors', 'database/cellRender', 'imageStore'],  // editors for the round-2 types (kit-built)
   'database/viewShared.ts':                ['database/databaseTypes', 'database/viewConfig', 'database/cellRender', 'database/boardCardKeys'],  // what every view shares: deps, the card
   'database/boardView.ts':                 ['database/databaseTypes', 'database/databaseViewModel', 'database/viewConfig', 'database/cellRender', 'database/viewShared'],  // the board
   'database/listView.ts':                  ['database/viewConfig', 'database/cellRender', 'database/viewShared'],  // the list
@@ -254,6 +254,10 @@ const GATE_RULES: Record<string, string[]> = {
   'database/chartData.ts':                 ['database/databaseTypes', 'database/viewConfig', 'database/databaseViewModel', 'database/cellValues', 'database/calendarDates'],  // what a chart draws (pure)
   'database/calendarDates.ts':             [],  // days for the calendar and timeline (pure)
   'database/pagePreview.ts':               ['contentSchema'],  // a page's first picture (pure)
+  'database/relations.ts':                 ['database/databaseDataService', 'database/databaseTypes'],  // relation properties and their mirrors
+  'database/rollups.ts':                   ['database/databaseTypes', 'properties/propertyTypes', 'database/calculations', 'database/cellValues', 'database/relations'],  // a rollup's value (pure)
+  'database/relationDialogs.ts':           ['database/databaseDataService', 'database/databaseTypes', 'database/relations', 'database/rollups'],  // the relation and rollup dialogs (kit-built)
+  'database/viewSettings.ts':              ['database/databaseDataService', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/databaseCsvActions', 'database/calendarView', 'database/chartData', 'properties/propertyTypes'],  // the view settings and calculations menus
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 

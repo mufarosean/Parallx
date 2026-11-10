@@ -14,6 +14,7 @@
 //   select, status  option name | null
 //   tags      option names[]
 //   files     { name, src }[]           (src: a workspace media path or a URL)
+//   relation  page ids[]                 (shown as titles once the row is derived)
 //   unique_id integer | null            (assigned, never typed: uniqueIds.ts)
 //   created_time, last_edited_time, formula, rollup: never stored (rowCompute.ts)
 //   text, url, email, phone  string | null
@@ -67,6 +68,17 @@ export function coerceCellValue(type: PropertyType, value: unknown): CoerceResul
   const blank = value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
   if (isComputedType(type)) return no(`a ${type.replace(/_/g, ' ')} column is computed and cannot be set`);
   switch (type) {
+    case 'relation': {
+      if (blank) return yes([]);
+      const list = Array.isArray(value) ? value : [value];
+      const ids: string[] = [];
+      for (const item of list) {
+        const id = typeof item === 'string' ? item.trim() : (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string' ? (item as { id: string }).id : '');
+        if (!id) return no(`a relation takes page ids, not ${JSON.stringify(item)}`);
+        if (!ids.includes(id)) ids.push(id);
+      }
+      return yes(ids);
+    }
     case 'unique_id': {
       if (blank) return yes(null);
       const n = toNumber(value);

@@ -21,8 +21,15 @@ function isEmptyValue(v: unknown): boolean {
   return false;
 }
 
+/** The words a value compares and sorts by: a related page by its title. */
+function textOf(x: unknown): string {
+  if (x && typeof x === 'object' && !Array.isArray(x)) { const o = x as { title?: unknown; id?: unknown }; return String(o.title ?? o.id ?? ''); }
+  return String(x ?? '');
+}
+
 function asComparable(v: unknown): number | string | null {
   if (typeof v === 'number') return v;
+  if (v && typeof v === 'object' && !Array.isArray(v)) return textOf(v);
   if (typeof v === 'boolean') return v ? 1 : 0;
   if (typeof v === 'string') {
     const n = Number(v);
@@ -86,7 +93,7 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule, type?: Propert
     case 'is_empty': return isEmptyValue(v);
     case 'is_not_empty': return !isEmptyValue(v);
     case 'equals': {
-      if (Array.isArray(v)) return v.some((x) => String(x) === String(rule.value));
+      if (Array.isArray(v)) return v.some((x) => textOf(x) === String(rule.value));
       if (typeof v === 'boolean' || typeof rule.value === 'boolean') {
         return Boolean(v) === Boolean(rule.value === true || rule.value === 'true');
       }
@@ -96,8 +103,8 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule, type?: Propert
     case 'contains': {
       const needle = String(rule.value ?? '').toLowerCase();
       if (needle === '') return true;
-      if (Array.isArray(v)) return v.some((x) => String(x).toLowerCase().includes(needle));
-      return String(v ?? '').toLowerCase().includes(needle);
+      if (Array.isArray(v)) return v.some((x) => textOf(x).toLowerCase().includes(needle));
+      return textOf(v).toLowerCase().includes(needle);
     }
     case 'greater_than': {
       const a = asComparable(v); const b = asComparable(rule.value);
@@ -178,8 +185,8 @@ export function applySort(rows: readonly IDatabaseRow[], sort: readonly ISortRul
       if (ae && be) continue;
       if (ae) return 1;  // empties last, regardless of direction
       if (be) return -1;
-      const ac = asComparable(Array.isArray(av) ? av.join(',') : av);
-      const bc = asComparable(Array.isArray(bv) ? bv.join(',') : bv);
+      const ac = asComparable(Array.isArray(av) ? av.map(textOf).join(',') : av);
+      const bc = asComparable(Array.isArray(bv) ? bv.map(textOf).join(',') : bv);
       let cmp: number;
       if (typeof ac === 'number' && typeof bc === 'number') cmp = ac - bc;
       else cmp = String(ac).localeCompare(String(bc), undefined, { sensitivity: 'base' });

@@ -182,6 +182,7 @@ export function planCsvImport(table: readonly (readonly string[])[], props: read
 
 /** A CSV cell as the value a property of `type` stores, or why it cannot be. */
 export function csvTextToValue(type: PropertyType, text: string): { ok: true; value: unknown } | { ok: false; reason: string } {
+  if (type === 'relation' || type === 'rollup' || type === 'formula' || type === 'created_time' || type === 'last_edited_time') return { ok: false, reason: `a ${type.replace(/_/g, ' ')} column is not imported` };
   if (type === 'tags') return coerceCellValue('tags', text.split(',').map((s) => s.trim()).filter(Boolean));
   if (type === 'text' || type === 'url' || type === 'email' || type === 'phone' || type === 'status') return coerceCellValue(type, text);
   if (type === 'files') return coerceCellValue('files', text.split(',').map((s) => s.trim()).filter(Boolean));

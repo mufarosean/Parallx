@@ -99,7 +99,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
   for (const p of props) {
     const th = tableEl(headRow, 'canvas-db-th', 'th');
     th.setAttribute('scope', 'col');
-    th.appendChild(createTypeIconElement(p.type, 14));
+    th.appendChild(createTypeIconElement(p.sourceType ?? p.type, 14));
     const name = createBlock(th, 'span', { className: 'canvas-db-th__name', text: p.name });
     store.add(declareControl(name, { id: `database.column.${sceneSlug(p.id)}`, label: p.name || 'Property' }));
     store.add(addDisposableListener(th, 'click', () => deps.openHeaderMenu(th, p)));
@@ -199,7 +199,7 @@ function renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow,
   }
   const display = createBlock(td, 'div', { className: 'canvas-db-cell__value' });
   renderCellValue(display, prop, value);
-  if (isComputedType(prop.type)) { display.classList.add('canvas-db-cell__value--computed'); return; }
+  if (isComputedType(prop.sourceType ?? prop.type)) { display.classList.add('canvas-db-cell__value--computed'); return; }
   if (deps.openOptionMenu && (prop.type === 'select' || prop.type === 'tags' || prop.type === 'status')) {
     store.add(addDisposableListener(display, 'contextmenu', (e) => {
       const pillEl = (e.target as HTMLElement).closest<HTMLElement>('.canvas-db-pill');

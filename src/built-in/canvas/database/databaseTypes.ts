@@ -32,6 +32,8 @@ export interface IDatabaseProperty {
   readonly type: PropertyType;
   readonly config: Record<string, unknown>;
   readonly sortOrder: number;
+  /** Set on a rollup shown as what it computes (a number, a date): the stored type, for its icon and its menu. */
+  readonly sourceType?: PropertyType;
 }
 
 export type FilterOp =

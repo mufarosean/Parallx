@@ -20,6 +20,8 @@ import { applyFilter, applySort } from '../database/databaseViewModel.js';
 import { isComputedType, type PropertyType } from '../properties/propertyTypes.js';
 import { PROPERTY_TYPE_META, defaultConfigFor } from '../properties/propertyTypeMeta.js';
 import { withDerivedValues } from '../database/rowCompute.js';
+import { loadRelatedDatabases, relationConfig } from '../database/relations.js';
+import { rollupValue } from '../database/rollups.js';
 
 const VALID_TYPES: PropertyType[] = PROPERTY_TYPE_META.filter((m) => !isComputedType(m.type) && m.type !== 'relation').map((m) => m.type);
 const VALID_OPS: FilterOp[] = ['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty', 'greater_than', 'less_than'];
@@ -198,7 +200,11 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
             ? TITLE_KEY
             : (props.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? name);
 
-        let rows = withDerivedValues(await db.listRows(databaseId), props);
+        const related = await loadRelatedDatabases(db, props);
+        let rows = withDerivedValues(await db.listRows(databaseId), props, {
+          relation: (prop, ids) => { const t = related.get(relationConfig(prop).databaseId); return ids.map((id) => ({ id, title: t?.rows.get(id)?.title ?? 'Untitled', icon: null })); },
+          rollup: (prop, _row, values) => rollupValue(prop, values, props, related),
+        });
         if (Array.isArray(args['filter'])) {
           const rules: IFilterRule[] = (args['filter'] as { property?: unknown; op?: unknown; value?: unknown }[])
             .filter((f) => f && typeof f.property === 'string' && VALID_OPS.includes(f.op as FilterOp))
