@@ -87,6 +87,10 @@ export function valueText(prop: IDatabaseProperty, value: unknown): string {
 export function renderCellValue(container: HTMLElement, prop: IDatabaseProperty, value: unknown): boolean {
   container.textContent = '';
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) return false;
+  if (value && typeof value === 'object' && !Array.isArray(value) && typeof (value as { error?: unknown }).error === 'string') {
+    createBlock(container, 'span', { className: 'canvas-db-cell__error', text: (value as { error: string }).error, attrs: { role: 'alert' } });
+    return true;
+  }
   switch (prop.type) {
     case 'select':
     case 'status':

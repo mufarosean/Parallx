@@ -22,6 +22,7 @@ import { PROPERTY_TYPE_META, defaultConfigFor } from '../properties/propertyType
 import { withDerivedValues } from '../database/rowCompute.js';
 import { loadRelatedDatabases, relationConfig } from '../database/relations.js';
 import { rollupValue } from '../database/rollups.js';
+import { FormulaError, formulaValue } from '../database/formula.js';
 
 const VALID_TYPES: PropertyType[] = PROPERTY_TYPE_META.filter((m) => !isComputedType(m.type) && m.type !== 'relation').map((m) => m.type);
 const VALID_OPS: FilterOp[] = ['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty', 'greater_than', 'less_than'];
@@ -204,6 +205,12 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
         let rows = withDerivedValues(await db.listRows(databaseId), props, {
           relation: (prop, ids) => { const t = related.get(relationConfig(prop).databaseId); return ids.map((id) => ({ id, title: t?.rows.get(id)?.title ?? 'Untitled', icon: null })); },
           rollup: (prop, _row, values) => rollupValue(prop, values, props, related),
+          formula: (prop, row, values) => formulaValue(String(prop.config['expression'] ?? ''), (name) => {
+            if (name.toLowerCase() === 'name') return row.title;
+            const p = props.find((x) => x.name.toLowerCase() === name.toLowerCase());
+            if (!p) throw new FormulaError(`No property named "${name}"`);
+            return values[p.id];
+          }),
         });
         if (Array.isArray(args['filter'])) {
           const rules: IFilterRule[] = (args['filter'] as { property?: unknown; op?: unknown; value?: unknown }[])

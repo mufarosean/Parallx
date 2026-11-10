@@ -258,6 +258,9 @@ const GATE_RULES: Record<string, string[]> = {
   'database/rollups.ts':                   ['database/databaseTypes', 'properties/propertyTypes', 'database/calculations', 'database/cellValues', 'database/relations'],  // a rollup's value (pure)
   'database/relationDialogs.ts':           ['database/databaseDataService', 'database/databaseTypes', 'database/relations', 'database/rollups'],  // the relation and rollup dialogs (kit-built)
   'database/viewSettings.ts':              ['database/databaseDataService', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/databaseCsvActions', 'database/calendarView', 'database/chartData', 'properties/propertyTypes'],  // the view settings and calculations menus
+  'database/formula.ts':                   [],  // the formula language (pure)
+  'database/formulaDialog.ts':             ['database/databaseDataService', 'database/databaseTypes', 'database/formula', 'database/cellRender'],  // the formula dialog (kit-built)
+  'database/templates.ts':                 ['database/databaseDataService', 'database/databaseMeta'],  // new-row templates
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 

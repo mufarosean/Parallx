@@ -448,13 +448,13 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         const pane = new DatabaseEditorPane(container, databaseId, {
           db,
           openPage: (id) => services.openPage(id), openPageBeside: (id) => services.openPage(id, { side: true }),
-          renamePage: async (id, title) => { await this._dataService.updatePage(id, { title }); }, getPage: (id) => this._dataService.getPage(id), updatePage: async (id, patch) => { await this._dataService.updatePage(id, patch); }, onDidChangePage: (l) => this._dataService.onDidChangePage((e) => l(e.pageId)),
+          renamePage: async (id, title) => { await this._dataService.updatePage(id, { title }); }, getPage: (id) => this._dataService.getPage(id), updatePage: async (id, patch) => { await this._dataService.updatePage(id, patch); }, createPage: async (parent, title) => (await this._dataService.createPage(parent, title)).id, onDidChangePage: (l) => this._dataService.onDidChangePage((e) => l(e.pageId)),
         }, options);
         return { dispose: () => pane.dispose() };
       } : undefined,
       databases: db ? {
         list: () => db.listDatabases(),
-        addRow: async (databaseId, title) => (await db.addRow(databaseId, title)).pageId,
+        addRow: async (databaseId, title) => (await db.addRow(databaseId, title)).pageId, views: async (databaseId) => (await db.listViews(databaseId)).map((v) => ({ id: v.id, name: v.name, type: v.type })),
       } : undefined,
       onDidChangeWorkspace: (listener) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; },
       openPage: (pageId, opts) => {

@@ -617,7 +617,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         return new DatabaseEditorPane(container, pageId, {
           db: _databaseService!,
           openPage: (id) => void openPageInEditor(id), openPageBeside: (id) => void openPageInEditor(id, { side: true }),
-          renamePage: async (id, title) => { await _dataService?.updatePage(id, { title }); }, getPage: (id) => _dataService!.getPage(id), updatePage: async (id, patch) => { await _dataService?.updatePage(id, patch); }, onDidChangePage: (l) => _dataService!.onDidChangePage((e) => l(e.pageId)),
+          renamePage: async (id, title) => { await _dataService?.updatePage(id, { title }); }, getPage: (id) => _dataService!.getPage(id), updatePage: async (id, patch) => { await _dataService?.updatePage(id, patch); }, createPage: async (parent, title) => (await _dataService!.createPage(parent, title)).id, onDidChangePage: (l) => _dataService!.onDidChangePage((e) => l(e.pageId)),
           confirm: (o) => api.window.showConfirmModal(o),
         });
       },

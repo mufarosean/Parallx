@@ -46,6 +46,8 @@ export interface LiveSyncedContent {
 }
 
 export interface LiveDatabaseAccess {
+  /** A database's views, for the Linked Database block's chooser. */
+  views?(databaseId: string): Promise<readonly { id: string; name: string; type: string }[]>;
   list(): Promise<LivePageSummary[]>;
   /** Add a row titled `title`; returns the new row page's id. */
   addRow(databaseId: string, title: string): Promise<string>;

@@ -45,6 +45,9 @@ import { withDerivedValues } from './rowCompute.js';
 import { loadRelatedDatabases, relationConfig, setRelationValue, type IRelatedDatabase } from './relations.js';
 import { rollupDisplayProperty, rollupValue } from './rollups.js';
 import { showRelationDialog, showRollupDialog } from './relationDialogs.js';
+import { showFormulaDialog } from './formulaDialog.js';
+import { createRowFromTemplate, createTemplate, defaultTemplateId, listTemplates, removeTemplate, setDefaultTemplate, type ITemplatePages } from './templates.js';
+import { formulaResultType, formulaValue, type Ast, FormulaError } from './formula.js';
 import { PROPERTY_TYPE_META, STATUS_GROUPS, defaultConfigFor } from '../properties/propertyTypeMeta.js';
 import { moveInOrder, patchRecord, readViewConfig, visibleProperties } from './viewConfig.js';
 import { PILL_COLORS } from './cellRender.js';
@@ -110,8 +113,10 @@ export interface IDatabasePaneDeps {
   /** Rename the database page (title lives on pages). */
   renamePage(pageId: string, title: string): Promise<void>;
   /** The database's page row (cover, lock) and its writer; without them the header shows title and icon only. */
-  getPage?(pageId: string): Promise<{ coverUrl: string | null; coverYOffset: number; content?: string } | null>;
-  updatePage?(pageId: string, patch: { icon?: string | null; coverUrl?: string | null; coverYOffset?: number }): Promise<void>;
+  getPage?(pageId: string): Promise<{ title: string; icon: string | null; coverUrl: string | null; coverYOffset: number; content?: string } | null>;
+  updatePage?(pageId: string, patch: { title?: string; icon?: string | null; coverUrl?: string | null; coverYOffset?: number; content?: string }): Promise<void>;
+  /** A page under `parentId` that is not a row (a template). */
+  createPage?(parentId: string, title: string): Promise<string>;
   /** The page world's changes (an icon set from the sidebar): the header follows. */
   onDidChangePage?(listener: (pageId: string) => void): IDisposable;
   /** The app's confirmation modal, for actions that lose data. */
@@ -228,10 +233,21 @@ export class DatabaseEditorPane implements IDisposable {
     this._renderWhenIdle('body');
   }
 
-  /** Rows with their computed cells: relations as titles, rollups, created and edited times. */
+  /** Parsed formulas, by expression; cleared when properties change. */
+  private readonly _formulaCache = new Map<string, Ast | FormulaError>();
+
+  /** Rows with their computed cells: relations as titles, rollups, created and edited times, formulas. */
   private _derive(rows: IDatabaseRow[]): IDatabaseRow[] {
     const stored = this._props;
+    this._formulaCache.clear();
     return withDerivedValues(rows, stored, {
+      formula: (prop, row, values) => formulaValue(String(prop.config['expression'] ?? ''), (name) => {
+        if (name.toLowerCase() === 'name') return row.title;
+        const p = stored.find((x) => x.name.toLowerCase() === name.toLowerCase());
+        if (!p) throw new FormulaError(`No property named "${name}"`);
+        if (p.id === prop.id) throw new FormulaError('A formula cannot use itself');
+        return values[p.id];
+      }, this._formulaCache),
       relation: (prop, ids) => {
         const target = this._related.get(relationConfig(prop).databaseId);
         return ids.map((id) => { const r = target?.rows.get(id); return r ? { id, title: r.title || 'Untitled', icon: r.icon } : { id, title: 'Untitled', icon: null }; });
@@ -240,9 +256,13 @@ export class DatabaseEditorPane implements IDisposable {
     });
   }
 
-  /** The properties as the views show them: a rollup as what it computes (a number, a date, the original type). */
+  /** The properties as the views show them: a rollup or a formula as what it computes (a number, a date, the original type). */
   private get _displayProps(): IDatabaseProperty[] {
-    return this._props.map((p) => (p.type === 'rollup' ? { ...rollupDisplayProperty(p, this._props, this._related), sourceType: 'rollup' as const } : p));
+    return this._props.map((p) => {
+      if (p.type === 'rollup') return { ...rollupDisplayProperty(p, this._props, this._related), sourceType: 'rollup' as const };
+      if (p.type === 'formula') return { ...p, type: formulaResultType(this._rows.map((r) => r.values[p.id])), config: {}, sourceType: 'formula' as const };
+      return p;
+    });
   }
 
   /** Rebuilding the table under a field being typed in threw the typing
@@ -321,6 +341,11 @@ export class DatabaseEditorPane implements IDisposable {
     const newBtn = createButton(null, { id: 'database.newRow', label: 'New', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => void this._addRow() });
     newBtn.classList.add('canvas-db-newbtn');
     toolbar.append(filterBtn, sortBtn, settingsBtn, newBtn);
+    if (this._templatePages() && !locked) {
+      const tplBtn = createIconButton(null, { id: 'database.templates', icon: 'chevron-down', title: 'Templates…', size: 'sm', onClick: () => void this._openTemplatesMenu(tplBtn) });
+      tplBtn.classList.add('canvas-db-newbtn__more');
+      toolbar.appendChild(tplBtn);
+    }
     bar.appendChild(toolbar);
     this._root.appendChild(bar);
 
@@ -465,13 +490,46 @@ export class DatabaseEditorPane implements IDisposable {
 
   /** A new row starts with what the view's filter asks for (so it stays in
    *  view) plus `seedValues` (a board column's value), in one write. */
-  private async _addRow(seedValues: Record<string, unknown> = {}): Promise<void> {
+  private async _addRow(seedValues: Record<string, unknown> = {}, templateId?: string | null): Promise<void> {
     const seed = seedForFilter(this.activeView?.filter, (id) => this._props.find((p) => p.id === id)?.type);
     try {
-      await this._deps.db.addRow(this._databaseId, seed.title, { ...seed.values, ...seedValues });
+      const pages = this._templatePages();
+      const template = templateId === undefined && pages ? await defaultTemplateId(this._deps.db, pages, this._databaseId) : templateId;
+      if (template && pages) await createRowFromTemplate(this._deps.db, pages, this._databaseId, template, { ...seed.values, ...seedValues }, seed.title);
+      else await this._deps.db.addRow(this._databaseId, seed.title, { ...seed.values, ...seedValues });
     } catch (err) {
       console.error('[Database] Add row failed:', err);
     }
+  }
+
+  /** The page reader and writer templates need; null when the host gave none. */
+  private _templatePages(): ITemplatePages | null {
+    const { getPage, updatePage, createPage } = this._deps;
+    return getPage && updatePage && createPage ? { getPage, updatePage, createPage } : null;
+  }
+
+  /** The menu beside New: each template, a blank row, and the templates' upkeep. */
+  private async _openTemplatesMenu(anchor: HTMLElement): Promise<void> {
+    const pages = this._templatePages();
+    if (!pages) return;
+    const templates = await listTemplates(this._deps.db, pages, this._databaseId);
+    const items: IExtensionMenuItem[] = [
+      ...templates.map((t) => ({ label: t.title, icon: 'file', checked: t.isDefault, tooltip: t.isDefault ? 'The default: what New makes' : undefined, onSelect: () => void this._addRow({}, t.id) })),
+      { label: 'Blank Row', icon: 'plus', onSelect: () => void this._addRow({}, null) },
+      { separator: true },
+      { label: 'New Template…', icon: 'copy', onSelect: () => void createTemplate(this._deps.db, pages, this._databaseId).then((id) => this._deps.openPage(id)) },
+    ];
+    if (templates.length) {
+      items.push(
+        { label: 'Default Template', icon: 'check', submenu: [
+          { label: 'Blank', checked: !templates.some((t) => t.isDefault), onSelect: () => void setDefaultTemplate(this._deps.db, this._databaseId, null) },
+          ...templates.map((t) => ({ label: t.title, checked: t.isDefault, onSelect: () => void setDefaultTemplate(this._deps.db, this._databaseId, t.id) })),
+        ] },
+        { label: 'Edit Template', icon: 'pencil', submenu: templates.map((t) => ({ label: t.title, onSelect: () => this._deps.openPage(t.id) })) },
+        { label: 'Remove Template', icon: 'trash-2', submenu: templates.map((t) => ({ label: t.title, danger: true, onSelect: () => void removeTemplate(this._deps.db, this._databaseId, t.id) })) },
+      );
+    }
+    this._menu(anchor, 'Templates', items);
   }
 
   private async _updateActiveView(patch: Parameters<DatabaseDataService['updateView']>[2]): Promise<void> {
@@ -575,6 +633,7 @@ export class DatabaseEditorPane implements IDisposable {
       }
       const stored = this._props.find((p) => p.id === prop.id) ?? prop;
       if (stored.type === 'rollup') pop.appendChild(this._menuItem('Edit rollup…', () => void showRollupDialog(th, this._deps.db, this._databaseId, this._props, stored, () => {})));
+      if (stored.type === 'formula') pop.appendChild(this._menuItem('Edit formula…', () => void showFormulaDialog(th, this._deps.db, this._databaseId, this._props, this._rows[0] ?? null, stored, () => {})));
       if (stored.type === 'relation') {
         const target = this._related.get(relationConfig(stored).databaseId);
         if (target) pop.appendChild(this._menuItem(`Open ${target.title}`, () => this._deps.openPage(target.id)));
@@ -689,7 +748,7 @@ export class DatabaseEditorPane implements IDisposable {
       const list = el('div', 'canvas-db-typelist');
       let group: string | null = null;
       for (const { type, label, group: g } of PROPERTY_TYPE_META) {
-        if (type === 'formula') continue; // step 6 adds its dialog
+
         if (g !== group) { group = g; list.appendChild(el('div', 'canvas-db-popover__label', g === 'basic' ? 'Basic' : 'Advanced')); }
         const item = el('button', 'canvas-db-menuitem');
         item.appendChild(createTypeIconElement(type, 14));
@@ -701,6 +760,7 @@ export class DatabaseEditorPane implements IDisposable {
           const live = (): HTMLElement => this._root.querySelector<HTMLElement>('[data-px-id="database.addProperty"]') ?? anchor;
           if (type === 'relation') { void showRelationDialog(live(), this._deps.db, this._databaseId, () => {}); return; }
           if (type === 'rollup') { void showRollupDialog(live(), this._deps.db, this._databaseId, this._props, null, () => {}); return; }
+          if (type === 'formula') { void showFormulaDialog(live(), this._deps.db, this._databaseId, this._props, this._rows[0] ?? null, null, () => {}); return; }
           void this._deps.db.addProperty(this._databaseId, propName, type, defaultConfigFor(type));
         });
         list.appendChild(item);

@@ -578,7 +578,10 @@ export class DatabaseDataService extends Disposable {
       'SELECT database_id FROM database_pages WHERE page_id = ? ORDER BY created_at LIMIT 1',
       [pageId],
     );
-    return res.row ? (res.row.database_id as string) : null;
+    if (res.row) return res.row.database_id as string;
+    // A template page (templates.ts): its database's config names it.
+    const t = await this._db.get("SELECT id FROM databases WHERE instr(config, ?) > 0 LIMIT 1", [`"${pageId}"`]);
+    return t.row ? (t.row.id as string) : null;
   }
 
   /**

@@ -77,12 +77,29 @@ export const LinkedDatabase = Node.create<LiveBlockOptions>({
             );
             select.setAttribute('aria-label', 'Database');
             popoverRow(pop, 'Database', select);
+            // The view to show: the database's views, refreshed when another database is chosen.
+            const viewSelect = selectControl([{ value: '', label: 'First view' }], String(current.attrs.viewId ?? ''));
+            viewSelect.setAttribute('aria-label', 'View');
+            popoverRow(pop, 'View', viewSelect);
+            const fillViews = (): void => {
+              const id = select.value;
+              viewSelect.replaceChildren();
+              const add = (value: string, label: string): void => { viewSelect.add(new Option(label, value)); };
+              add('', 'First view');
+              if (!id || !live?.databases?.views) return;
+              void live.databases.views(id).then((views) => {
+                for (const v of views) add(v.id, `${v.name} (${v.type})`);
+                if (id === String(current.attrs.databaseId ?? '')) viewSelect.value = String(current.attrs.viewId ?? '');
+              });
+            };
+            fillViews();
+            select.addEventListener('change', fillViews);
             const done = document.createElement('button');
             done.type = 'button';
             done.className = 'canvas-live-popover__primary';
             done.textContent = 'Show Database';
             done.addEventListener('click', () => {
-              if (select.value) setBlockAttrs(editor, getPos, { databaseId: select.value, viewId: '' });
+              if (select.value) setBlockAttrs(editor, getPos, { databaseId: select.value, viewId: viewSelect.value });
               close();
             });
             pop.appendChild(done);
