@@ -191,6 +191,67 @@ move the line for each kind of initiative. What he keeps grows; what he
 undoes shrinks. The weighing is therefore tuned on his real behaviour, not
 on a benchmark.
 
+## How it learns: beliefs with credibility (Mufaro's proposal, 2026-11-10)
+
+The model does not arrive smart about him, and it is not retrained. It
+becomes smart about him by the oldest sound method there is: start with a
+wide prior, observe, update. The language model's part is to propose
+hypotheses and say what they mean. Statistics decides how much to believe
+them and when to act on them.
+
+**A belief is a hypothesis about something that matters, with a
+probability and its evidence.** Not "the next file he will touch" (the old
+system scored exactly that, and it was worthless). The things worth
+predicting:
+
+- he will want this job done today, at about this time
+- he will accept a suggestion of this kind
+- he will keep, or undo, an action of this kind
+- this adjustment he keeps making means a setting is wrong for him
+
+**Updating is credibility weighting.** The estimate for each belief is
+
+    Z x (what he has actually done) + (1 - Z) x (the prior),  Z = n / (n + k)
+
+With no data Z is 0 and the estimate is the prior: the model's general
+judgment, held weakly. Each observation moves Z toward 1 and the estimate
+toward his own record. For yes or no outcomes this is the Beta-Binomial
+update: accepted and dismissed counts are the two parameters, and the
+width of the distribution is the honest statement of how unsure it is.
+
+**Kinds share strength.** A new belief does not start from nothing. It
+borrows from what is already known about beliefs of its kind (how he
+treats layout suggestions, how he treats routine suggestions), so learning
+one thing speeds the next.
+
+**He changes, so old evidence fades.** Observations lose weight with age.
+A habit from before the exam does not outvote this month.
+
+**Acting is a decision under that uncertainty.**
+
+- Wide belief: say nothing, or suggest. Never act.
+- Narrow belief, high probability he keeps it, action reversible: act, and
+  tell him.
+- The line is expected value: the chance he keeps it times what it saves
+  him, against the chance he undoes it times what that costs him.
+- A small, bounded share of suggestions go to beliefs that are still
+  uncertain, because a belief never tested never narrows.
+
+**The proof is calibration, shown to him.** Every prediction is scored
+against what happened. Insights shows the record: of the things it called
+80% likely, how many happened; and whether that is improving month on
+month. If it is not getting better, that is visible, and it is a fault to
+fix, not a thing to explain away.
+
+**Honest limits.** One person produces little data on rare events, so some
+beliefs stay wide for a long time; the system says so instead of
+pretending. And statistics cannot invent a hypothesis: noticing that a
+daily resize means a missing preset is the model's work.
+
+This settles one open question below: at the start every belief is wide,
+so initiative begins by suggesting, and earns the right to act belief by
+belief.
+
 ## What he sees
 
 One place, Agents, with four views:
