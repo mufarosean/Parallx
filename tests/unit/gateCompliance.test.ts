@@ -261,6 +261,7 @@ const GATE_RULES: Record<string, string[]> = {
   'database/formula.ts':                   [],  // the formula language (pure)
   'database/formulaDialog.ts':             ['database/databaseDataService', 'database/databaseTypes', 'database/formula', 'database/cellRender'],  // the formula dialog (kit-built)
   'database/templates.ts':                 ['database/databaseDataService', 'database/databaseMeta'],  // new-row templates
+  'database/databaseCommands.ts':          [],  // the database editor's commands (no DOM, no imports)
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 

@@ -70,7 +70,7 @@ function renderLane(parent: HTMLElement, rows: readonly IDatabaseRow[], groupPro
     if (group.key) pill(head, group.key, optionColor(groupProp, group.key));
     else createBlock(head, 'span', { className: 'canvas-db-pill canvas-db-pill--default', text: noValueLabel(groupProp) });
     createBlock(head, 'span', { className: 'canvas-db-board__count', text: String(group.rows.length) });
-    if (!state.locked || true) renderAddHere(head, `New row in ${group.key || noValueLabel(groupProp)}`, () => void deps.addRow({ ...(laneSeed ?? {}), ...(group.key ? { [groupProp.id]: multi ? [group.key] : group.key } : {}) }));
+    renderAddHere(head, `New row in ${group.key || noValueLabel(groupProp)}`, { ...(laneSeed ?? {}), ...(group.key ? { [groupProp.id]: multi ? [group.key] : group.key } : {}) });
     const list = createBlock(colEl, 'div', { className: 'canvas-db-board__cards' });
     for (const row of group.rows) {
       renderCard(list, row, state, deps, store, {

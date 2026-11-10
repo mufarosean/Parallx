@@ -9,7 +9,7 @@
 import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 import type { PropertyType } from '../properties/propertyTypes.js';
 import type { DatabaseDataService } from './databaseDataService.js';
-import type { DatabaseViewType, IDatabaseProperty, IDatabaseView } from './databaseTypes.js';
+import type { DatabaseViewType, IDatabaseProperty, IDatabaseView, ISortRule } from './databaseTypes.js';
 import { DATABASE_VIEW_TYPES, TITLE_KEY } from './databaseTypes.js';
 import { orderedProperties, patchRecord, readViewConfig, type IViewConfig } from './viewConfig.js';
 import { calcOptionsFor, type CalcKind } from './calculations.js';
@@ -132,4 +132,17 @@ export function calcMenuItems(view: IDatabaseView, key: string, type: PropertyTy
     items.push({ label: o.label, checked: o.kind === current, onSelect: () => apply(patchRecord(view.config, 'calc', key, o.kind === 'none' ? null : (o.kind as CalcKind))) });
   }
   return items;
+}
+
+/** The items a column shares with the Name column: sort, wrap, freeze. */
+export function columnItems(key: string, view: IDatabaseView, update: (patch: { sort?: readonly ISortRule[]; config?: Record<string, unknown> }) => Promise<void>): IExtensionMenuItem[] {
+  const cfg = readViewConfig(view.config);
+  const frozen = cfg.freeze === key;
+  return [
+    { label: 'Sort Ascending', icon: 'arrow-up', onSelect: () => void update({ sort: [{ propertyId: key, dir: 'asc' }] }) },
+    { label: 'Sort Descending', icon: 'arrow-down', onSelect: () => void update({ sort: [{ propertyId: key, dir: 'desc' }] }) },
+    { separator: true },
+    { label: 'Wrap Text', icon: 'rows', checked: !!cfg.wrap[key], onSelect: () => void update({ config: patchRecord(view.config, 'wrap', key, cfg.wrap[key] ? null : true) }) },
+    { label: frozen ? 'Unfreeze Columns' : 'Freeze Up to This Column', icon: 'pin', onSelect: () => void update({ config: { ...view.config, freeze: frozen ? null : key } }) },
+  ];
 }

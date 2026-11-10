@@ -16,5 +16,6 @@ export function renderGalleryView(body: HTMLElement, state: IViewState, deps: IV
     card.classList.add('canvas-db-card--gallery');
   }
   const add = createBlock(grid, 'div', { className: 'canvas-db-card canvas-db-card--new' });
-  createButton(add, { id: 'database.newRowCell', label: 'New', icon: 'plus', kind: 'ghost', size: 'sm', onClick: () => void deps.addRow() });
+  createButton(add, { id: 'database.newRowCell', label: 'New', icon: 'plus', kind: 'ghost', size: 'sm', command: 'database.addRow' });
+  void deps;
 }

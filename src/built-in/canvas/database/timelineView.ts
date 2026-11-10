@@ -11,11 +11,17 @@ import type { IDatabaseProperty, IDatabaseRow } from './databaseTypes.js';
 import { readViewConfig } from './viewConfig.js';
 import { addDays, addMonths, dayOfValue, daysBetween, daysInMonth, firstOfMonth, monthOf, monthTitle, shortDay, todayKey, weekdayOf, type DayKey } from './calendarDates.js';
 import { calendarProperty, dateProperties } from './calendarView.js';
-import { renderAddHere, type IViewDeps, type IViewState } from './viewShared.js';
+import type { IViewDeps, IViewState } from './viewShared.js';
 import { isComputedType } from '../properties/propertyTypes.js';
 
 const DAY_PX = 34;
 const shownMonth = new Map<string, string>();
+
+/** Move the timeline `viewId` shows a month back or on, or to today (the database.previous/next/today commands). */
+export function navigateTimeline(viewId: string, how: 'previous' | 'next' | 'today'): void {
+  const month = shownMonth.get(viewId) ?? monthOf(todayKey());
+  shownMonth.set(viewId, how === 'today' ? monthOf(todayKey()) : addMonths(month, how === 'next' ? 1 : -1));
+}
 
 export function renderTimelineView(body: HTMLElement, state: IViewState, deps: IViewDeps, store: DisposableStore): void {
   const startProp = calendarProperty(state);
@@ -28,10 +34,9 @@ export function renderTimelineView(body: HTMLElement, state: IViewState, deps: I
   createBlock(bar, 'span', { className: 'canvas-db-calbar__title', text: monthTitle(month), attrs: { 'aria-live': 'polite' } });
   if (startProp) createBlock(bar, 'span', { className: 'canvas-db-calbar__by', text: endProp ? `${startProp.name} to ${endProp.name}` : `by ${startProp.name}` });
   const nav = createBlock(bar, 'div', { className: 'canvas-db-calbar__nav' });
-  const go = (m: string): void => { shownMonth.set(state.view.id, m); body.textContent = ''; renderTimelineView(body, state, deps, store); };
-  createIconButton(nav, { id: 'database.timeline.prev', icon: 'chevron-left', title: 'Previous Month', size: 'sm', onClick: () => go(addMonths(month, -1)) });
-  createButton(nav, { id: 'database.timeline.today', label: 'Today', kind: 'ghost', size: 'sm', icon: 'calendar', onClick: () => go(monthOf(todayKey())) });
-  createIconButton(nav, { id: 'database.timeline.next', icon: 'chevron-right', title: 'Next Month', size: 'sm', onClick: () => go(addMonths(month, 1)) });
+  createIconButton(nav, { id: 'database.timeline.prev', icon: 'chevron-left', title: 'Previous Month', size: 'sm', command: 'database.previous' });
+  createButton(nav, { id: 'database.timeline.today', label: 'Today', kind: 'ghost', size: 'sm', icon: 'calendar', command: 'database.today' });
+  createIconButton(nav, { id: 'database.timeline.next', icon: 'chevron-right', title: 'Next Month', size: 'sm', command: 'database.next' });
 
   if (!startProp) {
     createBlock(root, 'div', { className: 'canvas-db-board-empty', text: 'A timeline needs a date property for its start, and another for its end. Add them from the table view, or pick them under Timeline By in the view settings.' });
@@ -68,7 +73,7 @@ export function renderTimelineView(body: HTMLElement, state: IViewState, deps: I
     const endRaw = endProp ? dayOfValue(row.values[endProp.id]) : null;
     const end = endRaw && daysBetween(start, endRaw) >= 0 ? endRaw : start;
     const nameEl = createBlock(names, 'div', { className: 'canvas-db-tl__name' });
-    const open = createButton(nameEl, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: row.icon ? undefined : 'file', title: row.title || 'Untitled', onClick: () => deps.openRow(row.pageId) });
+    const open = createButton(nameEl, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: row.icon ? undefined : 'file', title: row.title || 'Untitled', command: 'database.openRow', args: [row.pageId] });
     const icon = deps.rowIcon(row.icon); if (icon) open.insertBefore(icon, open.firstChild);
     const lane = createBlock(grid, 'div', { className: 'canvas-db-tl__lane' });
     const offset = daysBetween(first, start);
@@ -122,9 +127,9 @@ export function renderTimelineView(body: HTMLElement, state: IViewState, deps: I
     const tray = createBlock(root, 'div', { className: 'canvas-db-caltray' });
     createBlock(tray, 'span', { className: 'canvas-db-caltray__label', text: `No ${startProp.name}` });
     for (const row of undated) {
-      const chip = createButton(tray, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: 'file', onClick: () => deps.openRow(row.pageId) });
+      const chip = createButton(tray, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: 'file', command: 'database.openRow', args: [row.pageId] });
       chip.classList.add('canvas-db-calchip');
-      if (editable) renderAddHere(tray, `Put ${row.title || 'Untitled'} on today`, () => void deps.setCell(row.pageId, startProp.id, keepTime(null, today, startProp)));
+      if (editable) createIconButton(tray, { id: null, icon: 'plus', title: `Put ${row.title || 'Untitled'} on today`, size: 'sm', command: 'database.setCell', args: [row.pageId, startProp.id, keepTime(null, today, startProp)] });
     }
   }
   // Start scrolled to the month's first day.

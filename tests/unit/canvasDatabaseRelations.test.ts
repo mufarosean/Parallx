@@ -11,6 +11,7 @@ import { applyFilter, applySort } from '../../src/built-in/canvas/database/datab
 import { coerceCellValue } from '../../src/built-in/canvas/database/cellValues';
 import { TITLE_KEY } from '../../src/built-in/canvas/database/databaseTypes';
 import { realSqlite } from './realSqlite';
+import { installDatabaseCommandStub } from './databaseCommandStub';
 // @ts-expect-error — jsdom ships no types here
 import { JSDOM } from 'jsdom';
 
@@ -18,6 +19,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBe
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'HTMLTableCellElement', 'Node', 'Event', 'KeyboardEvent', 'MouseEvent', 'FocusEvent', 'DOMRect', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame']) {
   (globalThis as any)[key] = key === 'window' ? dom.window : (dom.window as any)[key];
 }
+installDatabaseCommandStub();
 
 let env: ReturnType<typeof realSqlite>;
 let pages: CanvasDataService;

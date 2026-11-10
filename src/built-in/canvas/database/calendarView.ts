@@ -15,6 +15,12 @@ import { isComputedType } from '../properties/propertyTypes.js';
 /** The month each calendar view shows, for the session (not a saved setting). */
 const shownMonth = new Map<string, string>();
 
+/** Move the calendar `viewId` shows a month back or on, or to today (the database.previous/next/today commands). */
+export function navigateCalendar(viewId: string, how: 'previous' | 'next' | 'today'): void {
+  const month = shownMonth.get(viewId) ?? monthOf(todayKey());
+  shownMonth.set(viewId, how === 'today' ? monthOf(todayKey()) : addMonths(month, how === 'next' ? 1 : -1));
+}
+
 export function dateProperties(props: readonly IDatabaseProperty[]): IDatabaseProperty[] {
   return props.filter((p) => p.type === 'date' || p.type === 'datetime' || p.type === 'created_time' || p.type === 'last_edited_time');
 }
@@ -37,10 +43,9 @@ export function renderCalendarView(body: HTMLElement, state: IViewState, deps: I
   createBlock(bar, 'span', { className: 'canvas-db-calbar__title', text: monthTitle(month), attrs: { 'aria-live': 'polite' } });
   if (dateProp) createBlock(bar, 'span', { className: 'canvas-db-calbar__by', text: `by ${dateProp.name}` });
   const nav = createBlock(bar, 'div', { className: 'canvas-db-calbar__nav' });
-  const go = (m: string): void => { shownMonth.set(state.view.id, m); body.textContent = ''; renderCalendarView(body, state, deps, store); };
-  createIconButton(nav, { id: 'database.calendar.prev', icon: 'chevron-left', title: 'Previous Month', size: 'sm', onClick: () => go(addMonths(month, -1)) });
-  createButton(nav, { id: 'database.calendar.today', label: 'Today', kind: 'ghost', size: 'sm', icon: 'calendar', onClick: () => go(monthOf(todayKey())) });
-  createIconButton(nav, { id: 'database.calendar.next', icon: 'chevron-right', title: 'Next Month', size: 'sm', onClick: () => go(addMonths(month, 1)) });
+  createIconButton(nav, { id: 'database.calendar.prev', icon: 'chevron-left', title: 'Previous Month', size: 'sm', command: 'database.previous' });
+  createButton(nav, { id: 'database.calendar.today', label: 'Today', kind: 'ghost', size: 'sm', icon: 'calendar', command: 'database.today' });
+  createIconButton(nav, { id: 'database.calendar.next', icon: 'chevron-right', title: 'Next Month', size: 'sm', command: 'database.next' });
 
   if (!dateProp) {
     createBlock(root, 'div', { className: 'canvas-db-board-empty', text: 'A calendar needs a date property. Add one from the table view, or pick one under Calendar By in the view settings.' });
@@ -65,7 +70,7 @@ export function renderCalendarView(body: HTMLElement, state: IViewState, deps: I
       const dayEl = createBlock(rowEl, 'div', { className: `canvas-db-calday${cell.inMonth ? '' : ' canvas-db-calday--out'}${cell.key === today ? ' canvas-db-calday--today' : ''}`, attrs: { role: 'gridcell', 'data-day': cell.key } });
       const top = createBlock(dayEl, 'div', { className: 'canvas-db-calday__top' });
       createBlock(top, 'span', { className: 'canvas-db-calday__num', text: String(Number(cell.key.slice(8, 10))) });
-      if (editable && !state.locked) renderAddHere(top, `New row on ${cell.key}`, () => void deps.addRow({ [dateProp.id]: dateProp.type === 'datetime' ? `${cell.key}T09:00` : cell.key })).classList.add('canvas-db-calday__add');
+      if (editable && !state.locked) renderAddHere(top, `New row on ${cell.key}`, { [dateProp.id]: dateProp.type === 'datetime' ? `${cell.key}T09:00` : cell.key }).classList.add('canvas-db-calday__add');
       const chips = createBlock(dayEl, 'div', { className: 'canvas-db-calday__chips' });
       for (const r of byDay.get(cell.key) ?? []) renderChip(chips, r, dateProp, cell.key, state, deps, store, editable);
       if (editable) {
@@ -95,7 +100,7 @@ function moved(current: unknown, day: DayKey, prop: IDatabaseProperty): string {
 }
 
 function renderChip(parent: HTMLElement, row: IDatabaseRow, dateProp: IDatabaseProperty, day: DayKey | null, state: IViewState, deps: IViewDeps, store: DisposableStore, editable: boolean): void {
-  const chip = createButton(parent, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: row.icon ? undefined : 'file', title: row.title || 'Untitled', onClick: () => deps.openRow(row.pageId) });
+  const chip = createButton(parent, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: row.icon ? undefined : 'file', title: row.title || 'Untitled', command: 'database.openRow', args: [row.pageId] });
   chip.classList.add('canvas-db-calchip');
   const icon = deps.rowIcon(row.icon);
   if (icon) { icon.classList.add('canvas-db-calchip__icon'); chip.insertBefore(icon, chip.firstChild); }

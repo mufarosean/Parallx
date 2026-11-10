@@ -29,6 +29,7 @@ export interface IDatabaseIdentity {
 }
 
 export interface IDatabaseHeaderDeps {
+  readonly databaseId: string;
   /** Inside a page: the title opens the database and nothing here edits. */
   readonly embed: boolean;
   /** Show an empty description field (Add Description was chosen). */
@@ -44,10 +45,30 @@ export interface IDatabaseHeaderDeps {
   menuItems(): IExtensionMenuItem[];
 }
 
-/** Render the header into `root`. Returns the element after which the view tabs go. */
-export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity, deps: IDatabaseHeaderDeps, store: DisposableStore): HTMLElement {
+/** What the database commands do on the header (databaseCommands.ts). */
+export interface IDatabaseHeaderHandle {
+  openIconPicker(anchor: HTMLElement): void;
+  openMenu(anchor: HTMLElement): void;
+  openCoverPicker(anchor: HTMLElement): void;
+  removeCover(): void;
+  startReposition(): void;
+  finishReposition(save: boolean): void;
+  addDescription(): void;
+}
+
+/** Render the header into `root`. Returns the handle the commands act on. */
+export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity, deps: IDatabaseHeaderDeps, store: DisposableStore): IDatabaseHeaderHandle {
   const wrap = createBlock(root, 'div', { className: 'canvas-db-identity' });
-  if (info.coverUrl && !deps.embed) renderCover(wrap, info, deps, store);
+  const cover = info.coverUrl && !deps.embed ? renderCover(wrap, info, deps, store) : null;
+  const handle: IDatabaseHeaderHandle = {
+    openIconPicker: (anchor) => { if (!info.isLocked && !deps.embed) openIconPicker(anchor, info, deps); },
+    openMenu: (anchor) => openDatabaseMenu(anchor, info, deps),
+    openCoverPicker: (anchor) => { if (!info.isLocked && !deps.embed) openCoverPicker(anchor, wrap, cover?.el ?? null, deps, store); },
+    removeCover: () => { if (!info.isLocked) deps.setCover(null); },
+    startReposition: () => cover?.startReposition(),
+    finishReposition: (save) => cover?.finishReposition(save),
+    addDescription: () => { if (!info.isLocked) deps.requestDescription(); },
+  };
 
   const header = createBlock(wrap, 'div', { className: `canvas-db-header${info.coverUrl && !deps.embed ? ' canvas-db-header--covered' : ''}` });
   const iconId = info.icon ? resolvePageIcon(info.icon) : '';
@@ -55,15 +76,15 @@ export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity,
     const iconEl = createBlock(header, 'span', { className: 'canvas-db-header__icon' });
     iconEl.appendChild(createIconElement(iconId || 'table', deps.embed ? 18 : 28));
   } else {
-    const iconBtn = createIconButton(header, { id: 'database.icon', icon: iconId || 'table', title: info.icon ? 'Change Icon…' : 'Add Icon…', onClick: () => openIconPicker(iconBtn, info, deps) });
+    const iconBtn = createIconButton(header, { id: 'database.icon', icon: iconId || 'table', title: info.icon ? 'Change Icon…' : 'Add Icon…', command: 'database.icon' });
     iconBtn.classList.add('canvas-db-header__icon', 'canvas-db-header__iconbtn');
     if (!info.icon) iconBtn.classList.add('canvas-db-header__iconbtn--empty');
   }
 
   if (deps.embed) {
-    createButton(header, { id: 'database.openFromEmbed', label: info.title, kind: 'ghost', icon: 'external-link', title: 'Open the database', onClick: () => deps.openDatabase() })
+    createButton(header, { id: 'database.openFromEmbed', label: info.title, kind: 'ghost', icon: 'external-link', title: 'Open the database', command: 'database.openDatabase' })
       .classList.add('canvas-db-header__title', 'canvas-db-header__open');
-    return wrap;
+    return handle;
   }
 
   const titleEl = createBlock(header, 'div', { className: 'canvas-db-header__title', text: info.title, attrs: { role: 'textbox', 'aria-label': 'Database title', 'aria-multiline': 'false' } });
@@ -80,7 +101,7 @@ export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity,
     titleEl.setAttribute('aria-readonly', 'true');
   }
 
-  const menuBtn = createIconButton(header, { id: 'database.menu', icon: 'more-horizontal', title: 'Database Menu…', size: 'sm', onClick: () => openDatabaseMenu(menuBtn, info, deps) });
+  const menuBtn = createIconButton(header, { id: 'database.menu', icon: 'more-horizontal', title: 'Database Menu…', size: 'sm', command: 'database.menu' });
   menuBtn.classList.add('canvas-db-header__menu');
 
   // Description: a quiet line under the title, when there is one or one was asked for.
@@ -104,12 +125,12 @@ export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity,
   // Affordances above the title: what the database does not have yet (shown on hover, focus or touch, in the pane's top padding).
   if (!info.isLocked && (!info.icon || !info.coverUrl || !info.description)) {
     const row = createBlock(wrap, 'div', { className: 'canvas-db-affordances' });
-    if (!info.icon) createButton(row, { id: 'database.addIcon', label: 'Add Icon', icon: 'smile', kind: 'ghost', size: 'sm', onClick: (e) => openIconPicker(e.currentTarget as HTMLElement, info, deps) });
-    if (!info.coverUrl) createButton(row, { id: 'database.addCover', label: 'Add Cover', icon: 'image', kind: 'ghost', size: 'sm', onClick: (e) => openCoverPicker(e.currentTarget as HTMLElement, root, null, deps, store) });
-    if (!info.description && !deps.wantDescription) createButton(row, { id: 'database.addDescription', label: 'Add Description', icon: 'text', kind: 'ghost', size: 'sm', onClick: () => deps.requestDescription() });
+    if (!info.icon) createButton(row, { id: 'database.addIcon', label: 'Add Icon', icon: 'smile', kind: 'ghost', size: 'sm', command: 'database.icon' });
+    if (!info.coverUrl) createButton(row, { id: 'database.addCover', label: 'Add Cover', icon: 'image', kind: 'ghost', size: 'sm', command: 'database.cover.add' });
+    if (!info.description && !deps.wantDescription) createButton(row, { id: 'database.addDescription', label: 'Add Description', icon: 'text', kind: 'ghost', size: 'sm', command: 'database.addDescription' });
     wrap.insertBefore(row, header);
   }
-  return wrap;
+  return handle;
 }
 
 function openIconPicker(anchor: HTMLElement, info: IDatabaseIdentity, deps: IDatabaseHeaderDeps): void {
@@ -159,7 +180,7 @@ function openDatabaseMenu(anchor: HTMLElement, info: IDatabaseIdentity, deps: ID
 }
 
 /** The cover above the header: the image at its offset, and on hover Change, Reposition and Remove. */
-function renderCover(wrap: HTMLElement, info: IDatabaseIdentity, deps: IDatabaseHeaderDeps, store: DisposableStore): void {
+function renderCover(wrap: HTMLElement, info: IDatabaseIdentity, deps: IDatabaseHeaderDeps, store: DisposableStore): { el: HTMLElement; startReposition(): void; finishReposition(save: boolean): void } {
   const cover = createBlock(wrap, 'div', { className: 'canvas-page-cover canvas-db-cover', attrs: { role: 'img', 'aria-label': 'Cover' } });
   const url = info.coverUrl!;
   const isGradient = /^(linear|radial)-gradient\(/.test(url);
@@ -170,16 +191,18 @@ function renderCover(wrap: HTMLElement, info: IDatabaseIdentity, deps: IDatabase
     cover.style.backgroundSize = 'cover';
   };
   apply(info.coverYOffset);
-  if (info.isLocked) return;
+  let startReposition = (): void => {};
+  let finishReposition = (_save: boolean): void => {};
+  if (info.isLocked) return { el: cover, startReposition, finishReposition };
 
   const controls = createBlock(cover, 'div', { className: 'canvas-cover-controls' });
   let repositioning = false;
-  const changeBtn = createButton(controls, { id: 'database.cover.change', label: 'Change Cover…', icon: 'image', size: 'sm', onClick: () => openCoverPicker(changeBtn, wrap, cover, deps, store) });
+  const changeBtn = createButton(controls, { id: 'database.cover.change', label: 'Change Cover…', icon: 'image', size: 'sm', command: 'database.cover.change' });
   changeBtn.classList.add('canvas-cover-btn');
   if (!isGradient) {
-    const repositionBtn = createButton(controls, { id: 'database.cover.reposition', label: 'Reposition', icon: 'move', size: 'sm', onClick: () => startReposition() });
+    const repositionBtn = createButton(controls, { id: 'database.cover.reposition', label: 'Reposition', icon: 'move', size: 'sm', command: 'database.cover.reposition' });
     repositionBtn.classList.add('canvas-cover-btn');
-    const startReposition = (): void => {
+    startReposition = (): void => {
       if (repositioning) return;
       repositioning = true;
       let offset = info.coverYOffset;
@@ -189,6 +212,7 @@ function renderCover(wrap: HTMLElement, info: IDatabaseIdentity, deps: IDatabase
       overlay.tabIndex = 0;
       const actions = createBlock(cover, 'div', { className: 'canvas-cover-reposition-actions' });
       const finish = (save: boolean): void => {
+        if (!repositioning) return;
         repositioning = false;
         cover.classList.remove('canvas-cover--repositioning');
         overlay.remove(); actions.remove();
@@ -196,8 +220,9 @@ function renderCover(wrap: HTMLElement, info: IDatabaseIdentity, deps: IDatabase
         if (save) deps.setCover(url, offset); else apply(info.coverYOffset);
       };
       const setOffset = (next: number): void => { offset = Math.max(0, Math.min(1, next)); apply(offset); };
-      createButton(actions, { id: 'database.cover.cancelReposition', label: 'Cancel', kind: 'ghost', size: 'sm', onClick: () => finish(false) }).classList.add('canvas-cover-btn');
-      createButton(actions, { id: 'database.cover.saveReposition', label: 'Save Position', icon: 'check', size: 'sm', kind: 'primary', onClick: () => finish(true) }).classList.add('canvas-cover-btn', 'canvas-cover-btn--primary');
+      finishReposition = finish;
+      createButton(actions, { id: 'database.cover.cancelReposition', label: 'Cancel', kind: 'ghost', size: 'sm', command: 'database.cover.cancelReposition' }).classList.add('canvas-cover-btn');
+      createButton(actions, { id: 'database.cover.saveReposition', label: 'Save Position', icon: 'check', size: 'sm', kind: 'primary', command: 'database.cover.saveReposition' }).classList.add('canvas-cover-btn', 'canvas-cover-btn--primary');
       store.add(addDisposableListener(overlay, 'keydown', (e) => {
         if (e.key === 'ArrowUp') { e.preventDefault(); setOffset(offset - 0.02); }
         else if (e.key === 'ArrowDown') { e.preventDefault(); setOffset(offset + 0.02); }
@@ -215,5 +240,6 @@ function renderCover(wrap: HTMLElement, info: IDatabaseIdentity, deps: IDatabase
       overlay.focus();
     };
   }
-  createButton(controls, { id: 'database.cover.remove', label: 'Remove', icon: 'x', size: 'sm', onClick: () => deps.setCover(null) }).classList.add('canvas-cover-btn');
+  createButton(controls, { id: 'database.cover.remove', label: 'Remove', icon: 'x', size: 'sm', command: 'database.cover.remove' }).classList.add('canvas-cover-btn');
+  return { el: cover, startReposition: () => startReposition(), finishReposition: (save) => finishReposition(save) };
 }

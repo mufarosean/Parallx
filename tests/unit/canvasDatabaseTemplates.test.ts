@@ -6,6 +6,7 @@ import { DatabaseDataService } from '../../src/built-in/canvas/database/database
 import { DatabaseEditorPane } from '../../src/built-in/canvas/database/databaseEditorPane';
 import { createRowFromTemplate, createTemplate, defaultTemplateId, listTemplates, removeTemplate, setDefaultTemplate, type ITemplatePages } from '../../src/built-in/canvas/database/templates';
 import { realSqlite } from './realSqlite';
+import { installDatabaseCommandStub } from './databaseCommandStub';
 // @ts-expect-error — jsdom ships no types here
 import { JSDOM } from 'jsdom';
 
@@ -13,6 +14,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBe
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'HTMLTableCellElement', 'Node', 'Event', 'KeyboardEvent', 'MouseEvent', 'FocusEvent', 'DOMRect', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame']) {
   (globalThis as any)[key] = key === 'window' ? dom.window : (dom.window as any)[key];
 }
+installDatabaseCommandStub();
 
 let env: ReturnType<typeof realSqlite>;
 let pagesSvc: CanvasDataService;

@@ -11,6 +11,7 @@ import { firstImageSrc } from '../../src/built-in/canvas/database/pagePreview';
 import { asViewType } from '../../src/built-in/canvas/database/databaseTypes';
 import { defaultConfigFor } from '../../src/built-in/canvas/properties/propertyTypeMeta';
 import { realSqlite } from './realSqlite';
+import { installDatabaseCommandStub } from './databaseCommandStub';
 // @ts-expect-error — jsdom ships no types here
 import { JSDOM } from 'jsdom';
 
@@ -18,6 +19,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBe
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'HTMLTableCellElement', 'Node', 'Event', 'KeyboardEvent', 'MouseEvent', 'FocusEvent', 'DOMRect', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame']) {
   (globalThis as any)[key] = key === 'window' ? dom.window : (dom.window as any)[key];
 }
+installDatabaseCommandStub();
 
 describe('calendar days (pure)', () => {
   it('adds days across a month and a year, and counts them back', () => {

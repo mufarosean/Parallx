@@ -15,7 +15,7 @@ export function renderListView(body: HTMLElement, state: IViewState, deps: IView
   const list = createBlock(body, 'div', { className: 'canvas-db-list', attrs: { role: 'list' } });
   for (const row of state.rows) {
     const line = createBlock(list, 'div', { className: 'canvas-db-list__row', attrs: { role: 'listitem' } });
-    const open = createButton(line, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: row.icon ? undefined : 'file', onClick: () => deps.openRow(row.pageId) });
+    const open = createButton(line, { id: null, label: row.title || 'Untitled', kind: 'ghost', size: 'sm', icon: row.icon ? undefined : 'file', command: 'database.openRow', args: [row.pageId] });
     open.classList.add('canvas-db-list__title');
     const icon = deps.rowIcon(row.icon);
     if (icon) { icon.classList.add('canvas-db-list__icon'); open.insertBefore(icon, open.firstChild); }

@@ -6,6 +6,7 @@
 // a row from the default (or blank), and the menu beside New offers each.
 
 import type { DatabaseDataService } from './databaseDataService.js';
+import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 import { getDatabaseConfig, updateDatabaseMeta } from './databaseMeta.js';
 
 export interface ITemplatePages {
@@ -77,4 +78,26 @@ export async function defaultTemplateId(db: DatabaseDataService, pages: ITemplat
   const cfg = await getDatabaseConfig(db, databaseId);
   if (!cfg.defaultTemplate) return null;
   return (await pages.getPage(cfg.defaultTemplate).catch(() => null)) ? cfg.defaultTemplate : null;
+}
+
+/** The menu beside New: each template, a blank row, and the templates' upkeep. */
+export async function templatesMenuItems(db: DatabaseDataService, pages: ITemplatePages, databaseId: string, on: { addRow(templateId: string | null): void; openPage(pageId: string): void }): Promise<IExtensionMenuItem[]> {
+  const templates = await listTemplates(db, pages, databaseId);
+  const items: IExtensionMenuItem[] = [
+    ...templates.map((t) => ({ label: t.title, icon: 'file', checked: t.isDefault, tooltip: t.isDefault ? 'The default: what New makes' : undefined, onSelect: () => on.addRow(t.id) })),
+    { label: 'Blank Row', icon: 'plus', onSelect: () => on.addRow(null) },
+    { separator: true },
+    { label: 'New Template…', icon: 'copy', onSelect: () => void createTemplate(db, pages, databaseId).then((id) => on.openPage(id)) },
+  ];
+  if (templates.length) {
+    items.push(
+      { label: 'Default Template', icon: 'check', submenu: [
+        { label: 'Blank', checked: !templates.some((t) => t.isDefault), onSelect: () => void setDefaultTemplate(db, databaseId, null) },
+        ...templates.map((t) => ({ label: t.title, checked: t.isDefault, onSelect: () => void setDefaultTemplate(db, databaseId, t.id) })),
+      ] },
+      { label: 'Edit Template', icon: 'pencil', submenu: templates.map((t) => ({ label: t.title, onSelect: () => on.openPage(t.id) })) },
+      { label: 'Remove Template', icon: 'trash-2', submenu: templates.map((t) => ({ label: t.title, danger: true, onSelect: () => void removeTemplate(db, databaseId, t.id) })) },
+    );
+  }
+  return items;
 }

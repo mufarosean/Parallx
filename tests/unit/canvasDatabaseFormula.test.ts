@@ -6,6 +6,7 @@ import { DatabaseDataService } from '../../src/built-in/canvas/database/database
 import { DatabaseEditorPane } from '../../src/built-in/canvas/database/databaseEditorPane';
 import { evaluateFormula, formulaResultType, formulaValue, isFormulaError, parseFormula } from '../../src/built-in/canvas/database/formula';
 import { realSqlite } from './realSqlite';
+import { installDatabaseCommandStub } from './databaseCommandStub';
 // @ts-expect-error — jsdom ships no types here
 import { JSDOM } from 'jsdom';
 
@@ -13,6 +14,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBe
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'HTMLTableCellElement', 'Node', 'Event', 'KeyboardEvent', 'MouseEvent', 'FocusEvent', 'DOMRect', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame']) {
   (globalThis as any)[key] = key === 'window' ? dom.window : (dom.window as any)[key];
 }
+installDatabaseCommandStub();
 
 const row: Record<string, unknown> = { Pages: 320, Read: true, Title: 'Letters', Started: '2026-11-03', Ended: '2026-11-10', Tags: ['stoic', 'letters'], Empty: null, Price: '12.5' };
 const f = (src: string) => formulaValue(src, (n) => row[n]);
@@ -32,6 +34,9 @@ describe('the formula language', () => {
   });
   it('has the common functions, with the method form too', () => {
     expect(f('if(prop("Read"), "done", "not yet")')).toBe('done');
+    // Only the branch taken runs: an error in the other is no error.
+    expect(f('if(empty(prop("Empty")), "none", dateBetween(prop("Empty"), prop("Started"), "days"))')).toBe('none');
+    expect(f('or(true, 1 / 0)')).toBe(true);
     expect(f('round(10 / 3, 2)')).toBe(3.33);
     expect(f('max(1, 5, 3) + min(4, 2)')).toBe(7);
     expect(f('length(prop("Title"))')).toBe(7);

@@ -36,7 +36,7 @@ import type { IPageSummary, IPageSummaryTreeNode, PageChangeEvent, PageMutationF
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
-import { DatabaseEditorPane } from './database/databaseEditorPane.js';
+import { DatabaseEditorPane } from './database/databaseEditorPane.js'; import { registerDatabaseCommands } from './database/databaseCommands.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { registerPageEditSignals } from './pageEditSignals.js'; import { registerPageRecents } from './pageRecents.js'; import { IRecentsService, type IRecentsServiceShape } from '../../services/recentsService.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js'; import { showUndoToast } from '../../ui/kit.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
@@ -607,10 +607,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 4a. Database editor — full-page Notion-style database views. The editor-id
-  // scaffolding for `*:database:<pageId>` has existed since M84; this registers
-  // the actual pane behind it.
+  // 4a. Database editor — full-page Notion-style database views, and its
+  // commands (docs/DATABASES.md): the pane the user is in answers them.
   context.subscriptions.push(
+    registerDatabaseCommands((id, handler) => api.commands.registerCommand(id, handler)),
     api.editors.registerEditorProvider('database', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
         const pageId = (input?.instanceId as string) ?? (input?.id as string) ?? '';

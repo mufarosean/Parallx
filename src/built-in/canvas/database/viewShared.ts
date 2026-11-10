@@ -99,13 +99,14 @@ export function renderCard(container: HTMLElement, row: IDatabaseRow, state: IVi
 /** The "+ New" control a view ends with. */
 export function renderNewRow(container: HTMLElement, deps: IViewDeps, seed?: Record<string, unknown>, className = 'canvas-db-newcard'): HTMLElement {
   const host = createBlock(container, 'div', { className });
-  createButton(host, { id: 'database.newRowCell', label: 'New', icon: 'plus', kind: 'ghost', size: 'sm', onClick: () => void deps.addRow(seed) });
+  createButton(host, { id: 'database.newRowCell', label: 'New', icon: 'plus', kind: 'ghost', size: 'sm', command: 'database.addRow', args: [seed ?? {}] });
+  void deps;
   return host;
 }
 
 /** A small round + for a group or a day. */
-export function renderAddHere(container: HTMLElement, title: string, onClick: () => void): HTMLButtonElement {
-  return createIconButton(container, { id: null, icon: 'plus', title, size: 'sm', onClick });
+export function renderAddHere(container: HTMLElement, title: string, seed: Record<string, unknown>): HTMLButtonElement {
+  return createIconButton(container, { id: null, icon: 'plus', title, size: 'sm', command: 'database.addRow', args: [seed] });
 }
 
 /** The words a group's heading shows for an empty key. */

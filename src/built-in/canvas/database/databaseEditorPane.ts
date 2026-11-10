@@ -26,7 +26,7 @@ import { createIconElement, resolvePageIcon } from '../config/iconRegistry.js';
 import { createButton, createIconButton, createMenu } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
-import { attachPopupDismiss } from '../../../ui/dom.js';
+import { addDisposableListener, attachPopupDismiss } from '../../../ui/dom.js';
 import { databaseCsvMenuItems } from './databaseCsvActions.js';
 import { renderTableView, type ITableViewDeps } from './tableView.js';
 import { renderBoardView } from './boardView.js';
@@ -38,15 +38,18 @@ import { renderChartView } from './chartView.js';
 import { firstImageSrc } from './pagePreview.js';
 import type { IViewDeps } from './viewShared.js';
 import { DATABASE_VIEW_TYPES } from './databaseTypes.js';
-import { VIEW_META, calcMenuItems, viewSettingsItems } from './viewSettings.js';
-import { renderDatabaseHeader, type IDatabaseIdentity } from './databaseHeader.js';
+import { VIEW_META, calcMenuItems, columnItems, viewSettingsItems } from './viewSettings.js';
+import { renderDatabaseHeader, type IDatabaseHeaderHandle, type IDatabaseIdentity } from './databaseHeader.js';
+import { clearActiveDatabasePane, setActiveDatabasePane, type IDatabasePaneActions } from './databaseCommands.js';
+import { navigateCalendar } from './calendarView.js';
+import { navigateTimeline } from './timelineView.js';
 import { updateDatabaseMeta } from './databaseMeta.js';
 import { withDerivedValues } from './rowCompute.js';
 import { loadRelatedDatabases, relationConfig, setRelationValue, type IRelatedDatabase } from './relations.js';
 import { rollupDisplayProperty, rollupValue } from './rollups.js';
 import { showRelationDialog, showRollupDialog } from './relationDialogs.js';
 import { showFormulaDialog } from './formulaDialog.js';
-import { createRowFromTemplate, createTemplate, defaultTemplateId, listTemplates, removeTemplate, setDefaultTemplate, type ITemplatePages } from './templates.js';
+import { createRowFromTemplate, defaultTemplateId, templatesMenuItems, type ITemplatePages } from './templates.js';
 import { formulaResultType, formulaValue, type Ast, FormulaError } from './formula.js';
 import { PROPERTY_TYPE_META, STATUS_GROUPS, defaultConfigFor } from '../properties/propertyTypeMeta.js';
 import { moveInOrder, patchRecord, readViewConfig, visibleProperties } from './viewConfig.js';
@@ -139,7 +142,7 @@ function asDefinition(prop: IDatabaseProperty): IPropertyDefinition {
   };
 }
 
-export class DatabaseEditorPane implements IDisposable {
+export class DatabaseEditorPane implements IDisposable, IDatabasePaneActions {
   private readonly _disposables = new DisposableStore();
   /** What the current body render registered (listeners, drags); cleared on each render. */
   private _bodyStore = new DisposableStore();
@@ -155,6 +158,8 @@ export class DatabaseEditorPane implements IDisposable {
   private _title = '';
   private _icon: string | null = null;
   private _wantDescription = false;
+  /** The header's actions, for the database commands. */
+  header: IDatabaseHeaderHandle | null = null;
   private _identity: IDatabaseIdentity = { title: '', icon: null, coverUrl: null, coverYOffset: 0.5, description: null, isLocked: false };
 
   private readonly _root: HTMLElement;
@@ -172,6 +177,9 @@ export class DatabaseEditorPane implements IDisposable {
       this._activeViewId = _embed.viewId ?? null;
     }
     this._container.appendChild(this._root);
+    setActiveDatabasePane(this);
+    this._disposables.add(addDisposableListener(this._root, 'focusin', () => setActiveDatabasePane(this)));
+    this._disposables.add(addDisposableListener(this._root, 'pointerdown', () => setActiveDatabasePane(this), true));
     this._disposables.add(this._deps.db.onDidChangeStructure((id) => { if (id === this._databaseId) void this._reload(); }));
     this._disposables.add(this._deps.db.onDidChangeRows((id) => { if (id === this._databaseId || this._related.has(id)) void this._reloadRows(); }));
     if (this._deps.onDidChangePage) this._disposables.add(this._deps.onDidChangePage((id) => { if (id === this._databaseId) void this._reload(); }));
@@ -302,7 +310,8 @@ export class DatabaseEditorPane implements IDisposable {
     // Header: cover, icon, title, description, the database menu (databaseHeader.ts).
     this._headerStore.dispose();
     this._headerStore = new DisposableStore();
-    renderDatabaseHeader(this._root, this._identity, {
+    this.header = renderDatabaseHeader(this._root, this._identity, {
+      databaseId: this._databaseId,
       embed: !!this._embed,
       wantDescription: this._wantDescription,
       requestDescription: () => { this._wantDescription = true; this._render(); },
@@ -328,21 +337,21 @@ export class DatabaseEditorPane implements IDisposable {
       tabs.appendChild(tab);
     }
     if (!locked) {
-      const addView = createIconButton(null, { id: 'database.addView', icon: 'plus', title: 'Add a View…', size: 'sm', onClick: () => this._openAddViewMenu(addView) });
+      const addView = createIconButton(null, { id: 'database.addView', icon: 'plus', title: 'Add a View…', size: 'sm', command: 'database.addView' });
       addView.classList.add('canvas-db-tab--add');
       tabs.appendChild(addView);
     }
     bar.appendChild(tabs);
 
     const toolbar = el('div', 'canvas-db-toolbar');
-    const filterBtn = createButton(null, { id: 'database.filter', label: 'Filter', kind: 'ghost', size: 'sm', icon: 'filter', onClick: () => this._openFilterPopover(filterBtn) });
-    const sortBtn = createButton(null, { id: 'database.sort', label: 'Sort', kind: 'ghost', size: 'sm', icon: 'arrow-up-down', onClick: () => this._openSortPopover(sortBtn) });
-    const settingsBtn = createIconButton(null, { id: 'database.viewSettings', icon: 'more-horizontal', title: 'View Settings…', size: 'sm', onClick: () => this._openViewSettings(settingsBtn) });
-    const newBtn = createButton(null, { id: 'database.newRow', label: 'New', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => void this._addRow() });
+    const filterBtn = createButton(null, { id: 'database.filter', label: 'Filter', kind: 'ghost', size: 'sm', icon: 'filter', command: 'database.filter' });
+    const sortBtn = createButton(null, { id: 'database.sort', label: 'Sort', kind: 'ghost', size: 'sm', icon: 'arrow-up-down', command: 'database.sort' });
+    const settingsBtn = createIconButton(null, { id: 'database.viewSettings', icon: 'more-horizontal', title: 'View Settings…', size: 'sm', command: 'database.viewSettings' });
+    const newBtn = createButton(null, { id: 'database.newRow', label: 'New', kind: 'primary', size: 'sm', icon: 'plus', command: 'database.addRow' });
     newBtn.classList.add('canvas-db-newbtn');
     toolbar.append(filterBtn, sortBtn, settingsBtn, newBtn);
     if (this._templatePages() && !locked) {
-      const tplBtn = createIconButton(null, { id: 'database.templates', icon: 'chevron-down', title: 'Templates…', size: 'sm', onClick: () => void this._openTemplatesMenu(tplBtn) });
+      const tplBtn = createIconButton(null, { id: 'database.templates', icon: 'chevron-down', title: 'Templates…', size: 'sm', command: 'database.templates' });
       tplBtn.classList.add('canvas-db-newbtn__more');
       toolbar.appendChild(tplBtn);
     }
@@ -432,6 +441,25 @@ export class DatabaseEditorPane implements IDisposable {
     };
   }
 
+  addRow(seed: Record<string, unknown> = {}, templateId?: string | null): Promise<void> { return this._addRow(seed, templateId); }
+  openRow(pageId: string): void { this._openRow(pageId); }
+  openDatabase(): void { this._deps.openPage(this._databaseId); }
+  setCell(pageId: string, propertyId: string, value: unknown): Promise<void> { return this._setCell(pageId, propertyId, value); }
+  openTemplatesMenu(anchor: HTMLElement): void { void this._openTemplatesMenu(anchor); }
+  openViewSettings(anchor: HTMLElement): void { this._openViewSettings(anchor); }
+  openFilter(anchor: HTMLElement): void { this._openFilterPopover(anchor); }
+  openSort(anchor: HTMLElement): void { this._openSortPopover(anchor); }
+  openAddView(anchor: HTMLElement): void { this._openAddViewMenu(anchor); }
+  openAddProperty(anchor: HTMLElement): void { this._openAddPropertyPopover(anchor); }
+  openCalcMenu(anchor: HTMLElement, key: string, type: string): void { this._openCalcMenu(anchor, key, type as PropertyType | 'title'); }
+  /** A calendar or timeline moves a month back or on, or to today. */
+  navigate(how: 'previous' | 'next' | 'today'): void {
+    const view = this.activeView;
+    if (!view) return;
+    if (view.type === 'calendar') navigateCalendar(view.id, how); else if (view.type === 'timeline') navigateTimeline(view.id, how); else return;
+    this._renderBody();
+  }
+
   /** How a row opens from the active view: beside the table (side peek) or as a page. */
   private _openRow(pageId: string): void {
     const view = this.activeView;
@@ -508,28 +536,10 @@ export class DatabaseEditorPane implements IDisposable {
     return getPage && updatePage && createPage ? { getPage, updatePage, createPage } : null;
   }
 
-  /** The menu beside New: each template, a blank row, and the templates' upkeep. */
+  /** The menu beside New (templates.ts). */
   private async _openTemplatesMenu(anchor: HTMLElement): Promise<void> {
     const pages = this._templatePages();
-    if (!pages) return;
-    const templates = await listTemplates(this._deps.db, pages, this._databaseId);
-    const items: IExtensionMenuItem[] = [
-      ...templates.map((t) => ({ label: t.title, icon: 'file', checked: t.isDefault, tooltip: t.isDefault ? 'The default: what New makes' : undefined, onSelect: () => void this._addRow({}, t.id) })),
-      { label: 'Blank Row', icon: 'plus', onSelect: () => void this._addRow({}, null) },
-      { separator: true },
-      { label: 'New Template…', icon: 'copy', onSelect: () => void createTemplate(this._deps.db, pages, this._databaseId).then((id) => this._deps.openPage(id)) },
-    ];
-    if (templates.length) {
-      items.push(
-        { label: 'Default Template', icon: 'check', submenu: [
-          { label: 'Blank', checked: !templates.some((t) => t.isDefault), onSelect: () => void setDefaultTemplate(this._deps.db, this._databaseId, null) },
-          ...templates.map((t) => ({ label: t.title, checked: t.isDefault, onSelect: () => void setDefaultTemplate(this._deps.db, this._databaseId, t.id) })),
-        ] },
-        { label: 'Edit Template', icon: 'pencil', submenu: templates.map((t) => ({ label: t.title, onSelect: () => this._deps.openPage(t.id) })) },
-        { label: 'Remove Template', icon: 'trash-2', submenu: templates.map((t) => ({ label: t.title, danger: true, onSelect: () => void removeTemplate(this._deps.db, this._databaseId, t.id) })) },
-      );
-    }
-    this._menu(anchor, 'Templates', items);
+    if (pages) this._menu(anchor, 'Templates', await templatesMenuItems(this._deps.db, pages, this._databaseId, { addRow: (t) => void this._addRow({}, t), openPage: (id) => this._deps.openPage(id) }));
   }
 
   private async _updateActiveView(patch: Parameters<DatabaseDataService['updateView']>[2]): Promise<void> {
@@ -583,26 +593,13 @@ export class DatabaseEditorPane implements IDisposable {
     createMenu(anchor, { id: null, label, items });
   }
 
-  /** The items a column shares with the Name column: wrap, freeze, sort. */
-  private _columnItems(key: string, view: IDatabaseView): IExtensionMenuItem[] {
-    const cfg = readViewConfig(view.config);
-    const frozen = cfg.freeze === key;
-    return [
-      { label: 'Sort Ascending', icon: 'arrow-up', onSelect: () => void this._updateActiveView({ sort: [{ propertyId: key, dir: 'asc' }] }) },
-      { label: 'Sort Descending', icon: 'arrow-down', onSelect: () => void this._updateActiveView({ sort: [{ propertyId: key, dir: 'desc' }] }) },
-      { separator: true },
-      { label: 'Wrap Text', icon: 'rows', checked: !!cfg.wrap[key], onSelect: () => void this._updateActiveView({ config: patchRecord(view.config, 'wrap', key, cfg.wrap[key] ? null : true) }) },
-      { label: frozen ? 'Unfreeze Columns' : 'Freeze Up to This Column', icon: 'pin', onSelect: () => void this._patchConfig({ freeze: frozen ? null : key }) },
-    ];
-  }
-
   private _openTitleMenu(anchor: HTMLElement, view: IDatabaseView): void {
-    this._menu(anchor, 'Name column', this._columnItems(TITLE_KEY, view));
+    this._menu(anchor, 'Name column', columnItems(TITLE_KEY, view, (patch) => this._updateActiveView(patch)));
   }
 
   private _openHeaderMenu(th: HTMLElement, prop: IDatabaseProperty, view: IDatabaseView): void {
     // Locked: the column's name, options and existence are fixed; its view settings are not.
-    if (this._identity.isLocked) { this._menu(th, prop.name, this._columnItems(prop.id, view)); return; }
+    if (this._identity.isLocked) { this._menu(th, prop.name, columnItems(prop.id, view, (patch) => this._updateActiveView(patch))); return; }
     this._openPopover(th, (pop) => {
       const rename = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       rename.value = prop.name;
@@ -951,6 +948,7 @@ export class DatabaseEditorPane implements IDisposable {
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    clearActiveDatabasePane(this);
     this._closePopover();
     this._bodyStore.dispose();
     this._headerStore.dispose();

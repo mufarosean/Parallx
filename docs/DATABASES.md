@@ -88,5 +88,33 @@ report 0.
 
 ## Record
 
-Filled in as steps ship: the commit, what the step changed in the app, what
-was checked, and what Mufaro said.
+All seven steps shipped on 2026-11-09, each checked in a hidden copy of the
+app (screenshots of every view, dialog and menu) and by unit tests on a
+real SQLite database. Mufaro's verdict on the whole is owed.
+
+| Step | Commit | What changed in the app |
+| --- | --- | --- |
+| 1 Table done right | `d955ee7a` | Resize that works, wrap/clip, freeze, reorder, calculations row, side peek, arrow keys, no stray Status column |
+| 2 Identity | `d50694ec` | Icon picker, cover (change, reposition, remove), description, lock |
+| 3 Types round 2 | `e4f61a36` | Status, email, phone, files and media, ID, created and last edited time; pill colour menu |
+| 4 Views round 2 | `21a69f21` | List, Gallery, Calendar, Timeline, Chart; board sub-groups, card size and preview |
+| 5 Relation and rollup | `68da3d93` | One-way or synced relations with a link picker; rollups shown as what they compute |
+| 6 Formula, 7 Templates | see git | The formula language and its dialog; new-row templates with a default; the linked block's view chooser |
+
+Known limits, said plainly:
+
+- A linked database block shows one of the database's own views; a view's
+  filter and sort are the view's wherever it is shown (Notion's linked
+  views can filter independently). A view made for a page is a view of the
+  database.
+- Formulas have no map/filter over lists and no person or button types;
+  the function list is in `database/formula.ts`.
+- A relation's synced setting is chosen when it is made; to change it,
+  make the relation again.
+- Center peek (a row opened in a modal over the view) is not built; rows
+  open beside the view or as a page.
+- Template pages show under the database in the sidebar, as pages.
+
+Checks run at the end: `npm run typecheck`, the full `npx vitest run`,
+`npm run build`, and the keyboard and touch probes (recorded below when
+they ran).

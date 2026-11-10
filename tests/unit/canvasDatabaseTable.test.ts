@@ -9,6 +9,7 @@ import { TITLE_KEY } from '../../src/built-in/canvas/database/databaseTypes';
 import { calculate, calcOptionsFor } from '../../src/built-in/canvas/database/calculations';
 import { readViewConfig, visibleProperties, moveInOrder, placeInOrder, frozenKeys, patchRecord } from '../../src/built-in/canvas/database/viewConfig';
 import { realSqlite } from './realSqlite';
+import { installDatabaseCommandStub } from './databaseCommandStub';
 // @ts-expect-error — jsdom ships no types here
 import { JSDOM } from 'jsdom';
 
@@ -16,6 +17,7 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBe
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'HTMLTableCellElement', 'Node', 'Event', 'KeyboardEvent', 'MouseEvent', 'DOMRect', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame']) {
   (globalThis as any)[key] = key === 'window' ? dom.window : (dom.window as any)[key];
 }
+installDatabaseCommandStub();
 
 describe('calculations (pure)', () => {
   it('counts, sums and dates by what a column holds', () => {
@@ -182,12 +184,14 @@ describe('the table on a real database', () => {
     mount(d.id);
     await until(() => headers().length === 3);
     (host.querySelector('.canvas-db-openbtn') as HTMLElement).click();
+    await until(() => opened.length === 1);
     expect(opened).toEqual([{ id: a.pageId, side: true }]);
     const [view] = await dbs.listViews(d.id);
     await dbs.updateView(d.id, view!.id, { config: { openIn: 'full' } });
     await until(() => (pane!.activeView?.config as any)?.openIn === 'full');
     await new Promise((r) => setTimeout(r, 50));
     (host.querySelector('.canvas-db-openbtn') as HTMLElement).click();
+    await until(() => opened.length === 2);
     expect(opened[1]).toEqual({ id: a.pageId, side: false });
   });
 

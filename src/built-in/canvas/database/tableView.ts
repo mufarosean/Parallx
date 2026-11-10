@@ -109,7 +109,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
   }
   const addTh = tableEl(headRow, 'canvas-db-th canvas-db-th--add', 'th');
   addTh.setAttribute('scope', 'col');
-  if (!state.locked) createIconButton(addTh, { id: 'database.addProperty', icon: 'plus', title: 'Add a Property', size: 'sm', onClick: () => deps.openAddProperty(addTh) });
+  if (!state.locked) createIconButton(addTh, { id: 'database.addProperty', icon: 'plus', title: 'Add a Property', size: 'sm', command: 'database.addProperty' });
   // Dropping a dragged column on + puts it last.
   store.add(addDisposableListener(addTh, 'dragover', (e) => { if (e.dataTransfer?.types.includes(COL_DRAG_TYPE)) { e.preventDefault(); addTh.classList.add('canvas-db-th--drop'); } }));
   store.add(addDisposableListener(addTh, 'dragleave', () => addTh.classList.remove('canvas-db-th--drop')));
@@ -136,7 +136,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
     if (icon) { icon.classList.add('canvas-db-cell__icon'); wrap.appendChild(icon); }
     const text = createBlock(wrap, 'span', { className: 'canvas-db-cell__titletext', text: row.title || 'Untitled' });
     store.add(addDisposableListener(text, 'click', () => beginRename(text, row, deps)));
-    createIconButton(wrap, { id: null, icon: 'maximize', title: 'Open', size: 'sm', onClick: (e) => { e.stopPropagation(); deps.openRow(row.pageId); } }).classList.add('canvas-db-openbtn');
+    createIconButton(wrap, { id: null, icon: 'maximize', title: 'Open', size: 'sm', command: 'database.openRow', args: [row.pageId] }).classList.add('canvas-db-openbtn');
     store.add(addDisposableListener(titleTd, 'contextmenu', (e) => { e.preventDefault(); deps.openRowMenu(e, row); }));
 
     for (const p of props) {
@@ -156,7 +156,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
   const newTr = tableEl(tbody, 'canvas-db-newrow', 'tr');
   const newTd = tableEl(newTr, 'canvas-db-newrow__cell', 'td');
   (newTd as HTMLTableCellElement).colSpan = props.length + 2;
-  createButton(newTd, { id: 'database.newRowCell', label: 'New', icon: 'plus', kind: 'ghost', size: 'sm', onClick: () => void deps.addRow() });
+  createButton(newTd, { id: 'database.newRowCell', label: 'New', icon: 'plus', kind: 'ghost', size: 'sm', command: 'database.addRow' });
 
   // Calculations.
   const tfoot = tableEl(table, '', 'tfoot');
@@ -170,7 +170,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
       id: null, kind: 'ghost', size: 'sm', icon: 'chevron-down',
       label: kind === 'none' ? 'Calculate' : calcLabel(kind),
       title: `Calculate ${key === TITLE_KEY ? 'Name' : (props.find((p) => p.id === key)?.name ?? '')}`,
-      onClick: () => deps.openCalcMenu(td, key, type),
+      command: 'database.calculate', args: [key, type],
     });
     btn.classList.add('canvas-db-calc__btn');
     if (kind === 'none') btn.classList.add('canvas-db-calc__btn--empty');
@@ -192,7 +192,7 @@ function renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow,
   const value = row.values[prop.id];
   if (prop.type === 'checkbox') {
     const checked = isChecked(value);
-    const box = createIconButton(td, { id: null, icon: checked ? 'check-square' : 'square', title: checked ? 'Checked' : 'Unchecked', size: 'sm', onClick: () => void deps.setCell(row.pageId, prop.id, !checked) });
+    const box = createIconButton(td, { id: null, icon: checked ? 'check-square' : 'square', title: checked ? 'Checked' : 'Unchecked', size: 'sm', command: 'database.setCell', args: [row.pageId, prop.id, !checked] });
     box.classList.add('canvas-db-checkbtn');
     box.setAttribute('aria-pressed', String(checked));
     return;

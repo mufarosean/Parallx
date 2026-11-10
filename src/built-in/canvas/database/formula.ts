@@ -329,6 +329,11 @@ export function evaluateFormula(ast: Ast, resolve: PropResolver): FormulaValue {
         }
       }
       case 'call': {
+        // if, ifs, and, or take only the branches they need: an error in a branch not taken is no error.
+        if (n.fn === 'if') { if (n.args.length !== 3) throw new FormulaError('if(condition, then, else) takes three parts'); return truthy(ev(n.args[0]!)) ? ev(n.args[1]!) : ev(n.args[2]!); }
+        if (n.fn === 'ifs') { for (let i = 0; i + 1 < n.args.length; i += 2) if (truthy(ev(n.args[i]!))) return ev(n.args[i + 1]!); return n.args.length % 2 ? ev(n.args[n.args.length - 1]!) : null; }
+        if (n.fn === 'and') { for (const a of n.args) if (!truthy(ev(a))) return false; return true; }
+        if (n.fn === 'or') { for (const a of n.args) if (truthy(ev(a))) return true; return false; }
         const fn = FUNCTIONS[n.fn];
         if (!fn) throw new FormulaError(`Unknown function ${n.fn}()`);
         return fn(n.args.map(ev), ev, n.args);
