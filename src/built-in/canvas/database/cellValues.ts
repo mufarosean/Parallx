@@ -77,10 +77,10 @@ export function coerceCellValue(type: PropertyType, value: unknown): CoerceResul
       const list = Array.isArray(value) ? value : [value];
       const out: { name: string; src: string }[] = [];
       for (const item of list) {
-        if (typeof item === 'string') { const src = item.trim(); if (src) out.push({ name: src.split(/[\\/]/).pop() || src, src }); continue; }
+        if (typeof item === 'string') { const src = item.trim(); if (src) out.push({ name: fileNameOf(src), src }); continue; }
         if (item && typeof item === 'object' && typeof (item as { src?: unknown }).src === 'string') {
           const src = String((item as { src: string }).src).trim();
-          const name = String((item as { name?: unknown }).name ?? '').trim() || src.split(/[\\/]/).pop() || src;
+          const name = String((item as { name?: unknown }).name ?? '').trim() || fileNameOf(src);
           if (src) out.push({ name, src });
           continue;
         }
@@ -151,6 +151,14 @@ export function coerceCellValue(type: PropertyType, value: unknown): CoerceResul
     }
   }
 }
+
+/** A file's name from its source: the last path segment, or "Image" / "File" for a data URL. */
+export function fileNameOf(src: string): string {
+  if (/^data:/i.test(src)) return /^data:image\//i.test(src) ? 'Image' : 'File';
+  const last = src.split(/[\\/]/).pop()?.split(/[?#]/)[0] ?? '';
+  return (last && decodeURIComponentSafe(last)) || src;
+}
+function decodeURIComponentSafe(s: string): string { try { return decodeURIComponent(s); } catch { return s; } }
 
 /** Names in a select/tags value that are not yet options of the property. */
 export function missingOptions(type: PropertyType, value: unknown, options: readonly { value: string }[]): string[] {

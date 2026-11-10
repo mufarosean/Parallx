@@ -584,18 +584,20 @@ export class DatabaseEditorPane implements IDisposable {
     const items: IExtensionMenuItem[] = [
       { label: 'Layout', icon: VIEW_META[view.type].icon, submenu: DATABASE_VIEW_TYPES.map((t) => ({ label: VIEW_META[t].label, icon: VIEW_META[t].icon, checked: view.type === t, onSelect: () => void this._updateActiveView({ type: t }) })) },
       ...this._layoutSettings(view, cfg),
-      { label: 'Properties', icon: 'sliders-horizontal', submenu: properties.length ? properties : [{ label: 'No properties yet', disabled: true }] },
+      ...(view.type === 'chart' ? [] : [{ label: 'Properties', icon: 'sliders-horizontal', submenu: properties.length ? properties : [{ label: 'No properties yet', disabled: true }] }]),
       { separator: true },
-      { label: 'Wrap All Columns', icon: 'rows', checked: allWrapped, onSelect: () => {
-        const wrap: Record<string, boolean> = {};
-        if (!allWrapped) { wrap[TITLE_KEY] = true; for (const p of this._props) wrap[p.id] = true; }
-        void this._patchConfig({ wrap });
-      } },
-      { label: 'Freeze Up To', icon: 'pin', submenu: freezeItems },
-      { label: 'Open Rows In', icon: 'panel-right', submenu: [
+      ...(view.type === 'table' ? [
+        { label: 'Wrap All Columns', icon: 'rows', checked: allWrapped, onSelect: () => {
+          const wrap: Record<string, boolean> = {};
+          if (!allWrapped) { wrap[TITLE_KEY] = true; for (const p of this._props) wrap[p.id] = true; }
+          void this._patchConfig({ wrap });
+        } },
+        { label: 'Freeze Up To', icon: 'pin', submenu: freezeItems },
+      ] : []),
+      ...(view.type === 'chart' ? [] : [{ label: 'Open Rows In', icon: 'panel-right', submenu: [
         { label: 'Side Peek', icon: 'panel-right', checked: cfg.openIn === 'side', onSelect: () => void this._patchConfig({ openIn: 'side' }) },
         { label: 'Full Page', icon: 'maximize', checked: cfg.openIn === 'full', onSelect: () => void this._patchConfig({ openIn: 'full' }) },
-      ] },
+      ] }]),
       { separator: true },
       ...databaseCsvMenuItems<IExtensionMenuItem>(this._deps.db, this._databaseId, view.id, (label, run) => ({ label, icon: label.startsWith('Export') ? 'download' : 'upload', onSelect: run })),
       { separator: true },
