@@ -1,208 +1,250 @@
 # Autonomy: the redesign
 
 Written 2026-11-10 after the daily quote routine failed in three different
-ways in one morning. This is a design for Mufaro's yes. Nothing in it is
-built, and nothing is agreed until he says so.
+ways in one morning; rewritten the same day after reading the primary
+sources for the four ideas worth taking. This is a design for Mufaro's yes.
+Nothing in it is built, and nothing is agreed until he says so.
+
+## The aim
+
+An AI that works in the background of a private, local workspace: does the
+jobs it was given, notices what needs doing, prepares things before he asks,
+learns how he works, and can be given real power because everything it does
+can be seen and reversed. It must not break when a person touches it: app
+closed, laptop asleep, model down, a crash mid-run, an edit made while it
+works.
 
 ## What happened, and what it showed
 
-On 2026-11-10 one small job (find a quote, record it, show it) was touched by
-three separate actors, none of which knew about the others:
+On 2026-11-10 one small job (find a quote, record it, show it) was touched
+by three actors that did not know about each other. The routine ran the
+right prompt and was refused at the write, because a scheduled run is
+trusted less than a click. The heartbeat read two stale chat plans, did the
+job the old way and wrote a badly sourced quote to the retired page. The
+dashboard widget holds a third copy of the job. The refused run was logged
+"ok", the refusal said "rejected by user" when nobody was asked, and
+nothing notified him.
 
-- The routine ran the right prompt and was refused at the write. A run the
-  user starts is trusted; the same routine on its own schedule is not.
-- The heartbeat, a second loop, read two stale chat plans, did the job the
-  old way, and wrote a badly sourced quote to the retired page.
-- The dashboard widget holds its own copy of the same job with its own
-  refresh.
+## What exists today
 
-The refused run was logged as "ok". The refusal said "rejected by user" when
-no user was asked. Nothing notified him. The reminder about the stale plan
-had been closed before and came back.
+About 55,000 lines touch autonomy: three schedulers (cron service, routines,
+widget refresh), a heartbeat in five files, a ten-module "mind" that stores
+click timestamps and guesses the next file touched, five overlapping
+permission gates, feature flags that disagree with behaviour, and four logs
+none of which can undo anything. State lives in JSON files and one large
+blob of workspace state. Each problem got a new layer and each layer made
+the others less true. All of it is replaced; none of it is built on.
 
-## What exists today (read in full before writing this)
+## The four ideas, where each falls short, and what Parallx does instead
 
-About 55,000 lines touch autonomy. The parts:
+Read from the primary sources on 2026-11-10 (links at the end).
 
-| Part | What it does | Verdict |
-| --- | --- | --- |
-| Cron service | The first scheduler, ported from OpenClaw. His `cron.json` is empty | Dead weight |
-| Workflows | Routines as node graphs, with their own schedule | The one scheduler worth keeping, simplified |
-| Widget refresh scheduler | A third scheduler, per dashboard widget | Duplicate |
-| Heartbeat runner, executor, deterministic lane, triggers, watches file | A model review every few minutes plus rule checks (stalled plans, overdue tasks) | Acts on work it does not own; nags; costs a model call per beat |
-| Mind: beliefs, predictions scored by Brier, surprise, sequence predictor, skill probe, capability meter, nag governor, action ledger, habit detector, reflection | "Learning" | Records clicks and guesses the next file. 444 KB of predictions, no insight |
-| Permission service, policy decision point, autonomy dial (4 levels), feature flags, pattern memory, approval service, task rail, follow-ups | Who may do what | Five overlapping gates. Flags in his workspace say the heartbeat is off while it runs |
-| Autonomy log, autonomy event log, activity journal, activity log | Four records of what happened | No one of them can undo anything |
-| Surface router | Where output goes | All his outputs are switched off, so nothing reached him |
+### 1. Checkpointing (Claude Code)
 
-The pattern: each problem got a new layer, and each layer made the others
-less true. The redesign removes layers; it does not add one.
+**What it is.** A checkpoint before every turn; rewind restores the files
+the AI edited. Unattended runs do not stop to ask.
 
-## The bar
+**Where it falls short.** Only edits made through the file tools are
+tracked. Shell changes, background subagents and anything outside the
+session are not. It covers code files, nothing else.
 
-- **Claude Code**: unattended runs do not stop to ask. Every file edit is
-  checkpointed and can be rewound. Trust comes from undo, not from prompts.
-- **OpenClaw** (the system the heartbeat was ported from): two loops with
-  two jobs. Scheduled jobs do work in their own isolated run. The heartbeat
-  only checks a short list and says nothing when nothing is wrong. Heavy work
-  never belongs in the heartbeat.
-- **ChatGPT Pulse**: learning is a once-a-day piece of real thinking over
-  what the person has been doing, delivered as a short set of cards, steered
-  by the person's feedback on each card.
+**Parallx.** The app owns everything the AI can touch: pages, database
+rows, planner, dashboards, workspace files. So every AI write goes through
+one gateway, and a **run is one checkpoint over all of it**. That gives two
+things no one else has:
 
-## Principles (his words, made rules)
+- **A run is atomic.** It lands whole or it is rewound. A crash, a model
+  failure or a timeout mid-run leaves the workspace exactly as it was.
+- **Undo a run, or one change in it,** from the Record, days later. If he
+  has edited the same thing since, Undo shows both versions and he chooses;
+  it never overwrites his work.
 
-1. **Power, then reversal.** The AI gets the power the work needs. The user
-   gets the power to see and reverse anything it did. Approval is not the
-   safety system; the record and undo are.
-2. **One owner per job.** A job lives in exactly one place. Nothing else
-   does it, repeats it, or reminds about it.
-3. **Once means once.** A daily routine runs once a day whenever the app is
-   next open, knows it ran, and is never confused by a manual run.
-4. **Say it when it matters.** A notification when the AI acted, when
-   something failed, when something needs him. Silence otherwise.
-5. **Thinking where it counts.** No model call on a timer for nothing. The
-   model thinks when it does a job and when it reflects, with thinking on.
-6. **Learning means insight.** An observation about how he works, with its
-   evidence, turned into a suggestion he can accept, edit or dismiss.
-7. **Fewer parts.** Three parts, each one thing.
+A tool states how its writes are reversed when it registers (a contribution
+point, so extensions' tools take part). The only actions that ask are the
+ones no checkpoint can reverse: permanent delete, shell commands, anything
+that leaves the machine. A routine is granted those once, in plain words,
+when he saves it. Web content stays data, never instructions.
 
-## The design: three parts
+### 2. The heartbeat (OpenClaw)
 
-### 1. Routines: the only place work is defined
+**What it is.** A periodic check that reads a short list and stays silent
+when nothing is wrong.
 
-A routine is a prompt, a trigger, and where its result shows. A dashboard
-widget that refreshes is a routine whose result shows in that widget: the
-widget stops having its own prompt and timer. The quote job becomes one
-routine, shown in one widget.
+**Where it falls short.** OpenClaw itself has retired the heartbeat as a
+separate thing: it is now an ordinary job in the one scheduler, idle-only,
+answering "no reply" when there is nothing to say. Each check starts with
+fresh, blind context. Missed slots are rescheduled, and an interrupted run
+gets one retry.
 
-**Schedule by period, not by clock tick.** A daily routine set for 05:20
-means: once per day, at or after 05:20. The rule the scheduler follows:
+**Parallx.** One engine runs everything: his routines and the pulse. The
+pulse is not a second system; it is the AI's own standing job on the same
+engine, with the same record, the same undo and the same notifications.
 
-- When the app is open and the time is past the slot, and this period has
-  no successful run, run it. Laptop off at 05:20, opened at 08:00: it runs
-  at 08:00.
-- A successful run satisfies the period however it started: schedule, the
-  widget's Refresh, Run Now, or chat. If he ran it by hand at 05:00, the
-  05:20 slot is already satisfied.
-- A second manual run the same day just runs, because he asked. It is
-  recorded and changes nothing about tomorrow.
-- A failed run does not satisfy the period. It retries a small fixed number
-  of times, then notifies him with the reason. It never logs "ok".
-- "Next run" shown in the app is computed from the same record, so it
-  cannot disagree with what happened.
+- **Wakes on meaning, not a short timer:** a run failed, a deadline came
+  close, something he waits on arrived, an insight was accepted. A slow
+  fallback beat covers the rest. It runs when the app is idle and yields to
+  his chat.
+- **Starts informed, never blind** (the briefing, below).
+- **May act.** It can fix and re-run a failed routine, prepare what is
+  coming, tidy what it was told to keep tidy. Recorded, undoable, notified.
+- **Knows ownership.** A job has one owner. The pulse never redoes a job a
+  routine did this period and never follows an old chat plan.
 
-Every run uses the model he chose for the routine, thinking on, in its own
-isolated session, and ends in exactly one result: done, or failed with why.
+**Schedules are periods, not clock ticks.** "Daily at 05:20" means once per
+day, at or after 05:20:
 
-### 2. The Record: everything the AI did, each with Undo
+- Past the slot with no successful run this period: run. Laptop off at
+  05:20, opened at 08:00: it runs at 08:00.
+- A successful run satisfies the period however it started: schedule,
+  widget, Run Now, chat.
+- A second manual run the same day runs because he asked, and changes
+  nothing about tomorrow.
+- A failed or interrupted run does not satisfy the period. The pulse reads
+  why and retries with what it learned; after a small fixed number of
+  tries he is told, with the reason. Nothing is ever logged "ok" that did
+  not land.
+- "Next run" is computed from the same record, so it cannot disagree with
+  what happened.
 
-One record replaces the four logs. Each entry: who (which routine or chat),
-when, what changed, and Undo.
+A dashboard widget that refreshes is a routine whose result shows in that
+widget. One job, one definition.
 
-**Authority.** There is one question for any action: can it be undone?
+### 3. Proactive memory ("Remember When It Matters")
 
-- **Undoable** (edit a page, add or change a database row, create a page,
-  edit a workspace file, change a planner task, render a widget): runs, for
-  chat and for routines alike. The change is captured so Undo restores the
-  state before it. Pages already keep revisions; rows and pages already go
-  to trash; file edits gain a snapshot. A tool states how it is undone when
-  it is registered; a tool with no undo is treated as the next kind.
-- **Cannot be undone, or leaves the machine** (permanent delete, shell
-  commands, sending email, posting to the web): the only actions that ask.
-  A routine that needs one is granted it once, when he saves the routine,
-  in plain words. After that the routine never asks.
+**What it is.** A separate memory agent beside the working agent. It keeps
+a small bank of knowledge (stable facts) and procedure (what was tried, what
+failed, what worked) and speaks only when a memory would change the next
+action. Silence is the normal answer.
 
-This removes the three permission levels, the four-level dial, the feature
-flags, pattern memory, the approval service and the difference between
-"you clicked" and "it was scheduled". Web content stays data, never
-instructions; that guard is about injection, not distrust of the AI.
+**Where it falls short.** It runs on every step, which is a second model
+call each time, and its errors are errors of judgment: overconfident
+guesses, repeating what is already known.
 
-### 3. The Pulse: observes, learns, and acts on its own judgment
+**Parallx.** Memory is written at the end of every run and at reflection,
+not on every step, and each entry carries its evidence.
 
-The heartbeat and the mind are replaced by one part with three halves of one loop: it records, it reflects, and it acts.
+- **Procedure, per job.** What this routine tried, what failed and what
+  worked. This morning's run lost several steps to a site that refuses the
+  fetch; the next run should start already knowing which sources work.
+- **Knowledge of him and the workspace.** How he works, what he prefers,
+  what the workspace now holds. This replaces the `AGENTS.md` nobody keeps
+  true.
+- **Governed by his verdicts.** An entry he corrects or dismisses is gone.
+  An entry nothing has confirmed for a long time fades. Every entry can be
+  read and edited by him in one place.
 
-**Recording (no model).** The app notes meaningful interactions as they
-happen: commands run, settings changed, layout adjusted, routines run by
-hand, what he accepted, dismissed or undid. Not tabs clicked, not files
-guessed.
+### 4. Anticipate and learn (ProAct)
 
-**Reflection (one real thinking pass a day).** Once a day, when the app is
-idle, the model reads the day's interactions, the workspace's context and
-its own earlier insights, and writes to one place he can open: Insights.
-Each insight has three lines:
+**What it is.** In idle time the agent predicts what the person will need
+next, scores each candidate on relevance, the gap it fills, the value it
+adds and timeliness, does the work for those above a line, and decides for
+each result: push it, queue it, or just keep it.
 
-- what it saw, with the evidence ("resized the primary sidebar within a
-  minute of launch on 6 of the last 7 days")
-- what it thinks that means ("the sidebar's launch width is wrong for you")
-- what it suggests ("remember the width", or "a layout preset feature", or
-  "run this at 05:20 as a routine")
+**Where it falls short.** It was measured on synthetic conversations with a
+model as judge. Bigger budgets produced more low-value pushes, and in 43%
+of the cases where it anticipated correctly the person's effort did not
+drop. Its score is never checked against what the person actually did.
 
-He accepts, edits or dismisses each one. An accepted routine suggestion
-becomes a routine in one step. A dismissed insight never returns. His
-choices are part of what the next reflection reads, so it learns what kind
-of suggestion he values.
+**Parallx.** The same loop, graded by reality.
 
-**The pulse (the autonomous actor).** Corrected 2026-11-10 after Mufaro's
-challenge: a routine is a scheduled prompt, which is automation, not
-autonomy. Autonomy is the AI deciding for itself that something is worth
-doing, and doing it. So the pulse stays, rebuilt on the same record:
+- **Signals are his real interactions**, not chat text: commands run,
+  settings changed, layout adjusted, routines run by hand, what he opens
+  each morning, what he keeps, undoes or dismisses.
+- **Reflection** is one real thinking pass a day, with thinking on. It
+  writes **Insights**: what it saw with the evidence ("resized the primary
+  sidebar within a minute of launch on 6 of the last 7 days"), what that
+  means, what it suggests (remember the width; a layout preset; a routine).
+- **Anticipation** is prepared work: the thing he will want is ready
+  before he asks, stored quietly, offered at the right moment.
+- **The line moves with him.** Every insight and every act of initiative
+  ends in his verdict: accepted, used, edited, undone, dismissed. Those
+  verdicts set how much of each kind of initiative the pulse takes. What he
+  keeps grows; what he undoes shrinks. At most one push in a window; the
+  rest wait in the feed.
 
-- It wakes when something meaningful changes (a routine failed, a deadline
-  moved close, a new file landed, an insight was accepted), with a slow
-  fallback beat. Never a model call on a short timer for nothing.
-- It sees the whole picture: every routine and its last result, the Record,
-  Insights, the workspace's pages, tasks and calendar.
-- It may act, with the same power as any other run, under the same rule:
-  what it does is recorded, undoable, and notified. A routine failed this
-  morning; the pulse reads why, fixes what it can, runs it again and tells
-  him.
-- It knows who owns what. It never redoes a job a routine already did
-  today, never follows an old chat plan, never raises the same thing twice.
-- What it chooses to do and how he reacts (kept, undone, dismissed) is what
-  the reflection learns from. Initiative he undoes shrinks; initiative he
-  keeps grows.
+## The briefing: what every run is told
 
-W i n d o w s   S u b s y s t e m   f o r   L i n u x   h a s   n o   i n s t a l l e d   d i s t r i b u t i o n s . 
- 
- Y o u   c a n   r e s o l v e   t h i s   b y   i n s t a l l i n g   a   d i s t r i b u t i o n   w i t h   t h e   i n s t r u c t i o n s   b e l o w : 
- 
- 
- 
- U s e   ' w s l . e x e   - - l i s t   - - o n l i n e '   t o   l i s t   a v a i l a b l e   d i s t r i b u t i o n s 
- 
- a n d   ' w s l . e x e   - - i n s t a l l   < D i s t r o > '   t o   i n s t a l l . 
- 
- ### Notifications
+Today a routine gets the chat prompt and a stale `AGENTS.md`; the pulse gets
+"default: ignore" and a list of 15 pages. Neither knows what routines exist
+or what they did. Every autonomous run starts from one briefing built fresh
+from the app's own state:
 
-Three reasons, one channel, always on: a routine acted (one quiet line,
-with Undo), something failed (with why), something needs him. They also sit
-in Needs You until handled.
+- who he is and how he works (memory, accepted insights)
+- what this workspace is now
+- the state of autonomous work: each routine, its last result, today's
+  Record, what is waiting on him
+- for this job: its procedure memory
+- the job itself, or for the pulse, what woke it
+
+## What he sees
+
+One place, Agents, with four views and nothing else to learn:
+
+- **Now**: what is running, what needs him, what is next.
+- **Routines**: the jobs, each with its schedule, its last result and its
+  granted powers.
+- **Record**: everything the AI did, newest first, each with Undo.
+- **Insights**: what it has learned and what it suggests, each with its
+  evidence and Accept, Edit, Dismiss.
+
+Notifications, always on, for three reasons only: the AI acted (one quiet
+line with Undo), something failed (with why), something needs him.
+
+## Robustness: the rules that cannot be broken
+
+State lives in the workspace database, not JSON files, under one writer.
+
+| What happens | What the system does |
+| --- | --- |
+| App closed or laptop asleep at the slot | Runs at next open, once |
+| Crash, power loss or timeout mid-run | Run marked interrupted, its changes rewound, retried |
+| Model unavailable | Run fails with that reason, retries with backoff, then tells him |
+| He edits the same page while a run works | The run's change is merged by block; on a true conflict his edit wins and the run's version is offered |
+| Two things due at once | One autonomous run at a time, in order; chat always goes first |
+| The same job reachable two ways | One owner; the period rule makes a second automatic run impossible |
+| A run does nothing useful | Ends "nothing to do", silent, recorded |
+| An action that cannot be undone, not granted | The run finishes everything else, and the one action waits in Needs You with a notification |
+| Memory or an insight is wrong | He corrects or dismisses it once; it does not return |
+
+Every row is a test that runs unattended, with a controlled clock and
+injected crashes, before any step is called done. Judgment (insights, the
+pulse's choices) is checked on his real model, never a mock.
 
 ## What is deleted
 
-The cron service, the widget refresh scheduler, the heartbeat runner,
-executor, deterministic lane, triggers and watches file, the mind folder
-(beliefs, predictions, surprise, skill probe, capability meter, nag
-governor, action ledger, sequence predictor), pattern memory, task rail,
-follow-ups, the autonomy feature flags, the autonomy dial, the three extra
-logs. The habit detector's one good idea (a thing done at the same time most
-days) moves into Recording.
+The cron service, the widget refresh scheduler, the heartbeat's five files
+and its watches file, the mind folder, pattern memory, task rail,
+follow-ups, the autonomy feature flags, the four-level dial, the three
+permission levels, the approval service, and three of the four logs.
 
 ## Order of work
 
-Each step ships whole, with its tests, and the old part it replaces is
-removed in the same step.
+Each step ships whole with its tests, and removes the old part it replaces.
 
-1. The Record and Undo, and authority by reversibility.
-2. One scheduler with the period rule; widgets become routine results.
-3. Notifications and Needs You.
-4. The Observer: recording, reflection, Insights.
-5. Remove what is left of the old system; migrate his routine and widget.
+1. The write gateway, run checkpoints, the Record with Undo, authority by
+   reversibility.
+2. The one engine: period schedules, atomic runs, recovery; widgets become
+   routine results; his quote routine and widget migrated.
+3. Notifications and the Now view.
+4. The briefing and memory (procedure per job, knowledge of him and the
+   workspace).
+5. The pulse on the engine: wake on meaning, act, ownership.
+6. Reflection, Insights, anticipation, and the verdict loop.
+7. Remove what is left of the old system.
 
 ## Open questions for him
 
-- Should a routine that acted notify every time, or only on the first run
-  and on failure?
-- Insights: a page in the workspace he can edit, or a tab in Agents?
-- Reflection time: when the app has been idle, or a set hour?
+- A routine that acted: notify every time, or only on first run, failure
+  and anything unusual?
+- Reflection: when the app has been idle, or at a set hour?
+- The pulse's starting initiative before it has verdicts to learn from:
+  suggest only, or act on what is clearly reversible?
+
+## Sources
+
+- Claude Code checkpointing: https://code.claude.com/docs/en/checkpointing
+- Claude Code permission modes: https://code.claude.com/docs/en/permission-modes
+- OpenClaw automation: https://docs.openclaw.ai/automation
+- OpenClaw heartbeat (retired into automation jobs): https://docs.openclaw.ai/gateway/heartbeat
+- Remember When It Matters: https://arxiv.org/html/2607.08716v1
+- Anticipate and Learn (ProAct): https://arxiv.org/html/2605.25971
