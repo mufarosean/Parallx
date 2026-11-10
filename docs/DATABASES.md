@@ -115,6 +115,9 @@ Known limits, said plainly:
   open beside the view or as a page.
 - Template pages show under the database in the sidebar, as pages.
 
-Checks run at the end: `npm run typecheck`, the full `npx vitest run`,
-`npm run build`, and the keyboard and touch probes (recorded below when
-they ran).
+Checks run at the end, 2026-11-09, on the final code: `npm run typecheck`
+passed; the full `npx vitest run` passed (674 files, 8985 tests; one
+literal focus-ring width in database.css was moved to the token first);
+`npm run build` completed; `tests/probes/keyboard-audit-probe.mjs`
+reported 0 in every category over 342 screens and 10 dialogs;
+`tests/probes/touch-drag-probe.mjs` reported all drags ok.
