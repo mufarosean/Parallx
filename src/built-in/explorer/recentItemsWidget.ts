@@ -26,6 +26,7 @@ import { formatRelativeTime } from '../../ui/relativeTime.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import { IRecentsService, type IRecentsServiceShape, type RecentOpenedItem } from '../../services/recentsService.js';
+import { registerExplorerHomeSource } from './homeSource.js';
 
 // ─── Recency tracking (tap + read commands) ──────────────────────────────────
 //
@@ -63,6 +64,8 @@ export function setupRecentItemsTracking(api: TrackerApi, context: ToolContext):
   );
   if (!recents) return;
   const sink = recents;
+  // Home shows the files opened here (homeSource.ts).
+  context.subscriptions.push(registerExplorerHomeSource(api as object, sink));
 
   let editorService: IEditorService | undefined;
   try {

@@ -165,6 +165,7 @@ import type { WorkbenchWidgetHost } from '../built-in/dashboard/dashboardTypes.j
 import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as SearchTool from '../built-in/search/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
+import * as HomeTool from '../built-in/home/main.js';
 import * as TerminalTool from '../built-in/terminal/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as IndexingLogTool from '../built-in/indexing-log/main.js';
@@ -184,7 +185,7 @@ import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
   SEARCH_MANIFEST,
-  WELCOME_MANIFEST,
+  WELCOME_MANIFEST, HOME_MANIFEST,
   TERMINAL_MANIFEST,
   OUTPUT_MANIFEST,
   INDEXING_LOG_MANIFEST,
@@ -3982,7 +3983,7 @@ export class Workbench extends Layout {
     const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
       { manifest: EXPLORER_MANIFEST, module: ExplorerTool },
       { manifest: SEARCH_MANIFEST, module: SearchTool },
-      { manifest: WELCOME_MANIFEST, module: WelcomeTool },
+      { manifest: WELCOME_MANIFEST, module: WelcomeTool }, { manifest: HOME_MANIFEST, module: HomeTool },
       // Terminal before Output so the panel tab order reads
       // Terminal · Output · Indexing · AI Diagnostics.
       { manifest: TERMINAL_MANIFEST, module: TerminalTool },
@@ -4173,7 +4174,6 @@ export class Workbench extends Layout {
 
   /**
    * Programmatically switch to a specific sidebar view and ensure sidebar is visible.
-   * Used by commands like `workbench.view.search` (Ctrl+Shift+F).
    */
   showSidebarView(viewId: string): void {
     this._contributionHandler.showSidebarView(viewId);

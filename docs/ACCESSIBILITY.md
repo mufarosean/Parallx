@@ -222,3 +222,12 @@ editor's graph was not declared (it is a list now, its nodes rows).
 
 Still the owner's: a listen-through with a real screen reader (NVDA or
 Narrator), which no probe replaces.
+
+2026-11-10, after the UI round (explorer tree, Find, Tools and
+Extensions, Home): the explorer's rows now say whether a folder is open
+(`aria-expanded`); Find is a named search region whose buttons are
+commands, Escape closes it and puts focus back where it was; the tool
+gallery's rows and group headers, which a keyboard could not reach as an
+editor tab, are buttons now; Home's items are buttons and its title-bar
+icon is a named button. keyboard-audit-probe.mjs on the changed screens
+(boot, Home, Explorer, Find, Tools and Extensions): 0 on every count.

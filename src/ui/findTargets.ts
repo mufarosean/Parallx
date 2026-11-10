@@ -123,7 +123,7 @@ export function domFindTarget(root: HTMLElement): IFindTarget {
     if (current >= 0) reg.set(HIGHLIGHT_CURRENT, makeHighlight([ranges[current]])); else reg.delete(HIGHLIGHT_CURRENT);
   };
   const reveal = (): void => {
-    ranges[current]?.startContainer.parentElement?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    ranges[current]?.startContainer.parentElement?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
   };
   return {
     find(query, options) {
@@ -135,7 +135,7 @@ export function domFindTarget(root: HTMLElement): IFindTarget {
         const top = root.getBoundingClientRect().top;
         current = 0;
         for (let i = 0; i < Math.min(ranges.length, 400); i++) {
-          if (ranges[i].getBoundingClientRect().bottom >= top) { current = i; break; }
+          if ((ranges[i].getBoundingClientRect?.().bottom ?? top) >= top) { current = i; break; }
         }
         reveal();
       }

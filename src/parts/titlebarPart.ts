@@ -15,9 +15,9 @@ import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { IWindowService } from '../services/serviceTypes.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
-import { declareControl } from '../ui/kit.js';
+import { createIconButton, declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
-import { getIcon } from '../ui/iconRegistry.js';
+import { createIconElement, getIcon } from '../ui/iconRegistry.js';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -656,11 +656,10 @@ export class TitlebarPart extends Part {
     this._leftSlot.setAttribute('role', 'menubar'); this._leftSlot.setAttribute('aria-label', 'Application Menu');
     rootContainer.appendChild(this._leftSlot);
 
-    // App icon — the one logo (brandIcons px-mark); sized by CSS.
-    const appIcon = $('span');
-    appIcon.classList.add('titlebar-app-icon');
-    appIcon.innerHTML = getIcon('px-mark');
-    this._leftSlot.appendChild(appIcon);
+    // App icon — the one logo (brandIcons px-mark); sized by CSS. It opens Home.
+    const appIcon = createIconButton(this._leftSlot, { id: 'titlebar.home', icon: 'px-mark', title: 'Home', command: 'home.open' });
+    appIcon.className = 'titlebar-app-icon';
+    appIcon.replaceChildren(createIconElement('px-mark', 20));
 
     this._menuBarContainer = this._leftSlot;
 

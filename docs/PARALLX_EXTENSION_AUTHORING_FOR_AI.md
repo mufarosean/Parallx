@@ -196,7 +196,6 @@ A **view** is rendered content inside a container. Multiple views may share a co
 | ID | Where it lives |
 |---|---|
 | `view.explorer` | File explorer sidebar |
-| `view.search` | Search sidebar |
 | `view.canvas` | Canvas pages sidebar |
 | `view.chat` | AI chat sidebar |
 
@@ -634,6 +633,41 @@ Design rules for widgets:
   the same summary query as its chat tool — see `ext/budget/main.js`,
   `buildMtdSpendWidget`, for the reference implementation).
 - Guard for older shells: `if (api.dashboard?.registerWidgetType) { … }`.
+
+### 4.16 `api.home` — put your items on Home
+
+Home is the page behind the Parallx icon: everything recent from every
+tool that is on, with search. If your extension keeps things a person
+comes back to (characters, decks, a ledger, an album), register a source
+while you run. Turned off, your items leave Home; nothing else changes.
+
+```js
+_disposables.push(api.home.registerSource({
+  id: 'decks',                 // stable within your extension
+  label: 'Flashcards',         // your name, as the filter chip says it
+  async listRecent(limit) {    // newest first
+    return recentDecks(limit).map((d) => ({
+      id: d.id,
+      title: d.name,
+      kind: 'Deck',            // singular
+      icon: 'layers',          // registry icon id
+      summary: `${d.cards} cards, ${d.due} due today`,   // one line; you know your items
+      tags: d.tags,
+      where: 'Decks',
+      touchedAt: d.updatedAt,  // milliseconds since the epoch
+      open: () => api.commands.executeCommand('flashcards.openDeck', d.id),
+    }));
+  },
+  async search(query, limit) { /* optional: items beyond the recent ones */ },
+  onDidChange: onDecksChanged, // optional: (listener) => IDisposable
+}));
+```
+
+- Guard for older shells: `if (api.home?.registerSource) { … }`.
+- Keep `listRecent` cheap: Home calls it when it opens and when you say
+  something changed. No timers.
+- Search is yours only for what is not recent; Home already filters the
+  recent items by title, summary, kind and tag.
 
 ---
 

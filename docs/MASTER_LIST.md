@@ -68,136 +68,51 @@ How the app looks and moves: new surfaces, polish of existing ones, the
 feel of browsing. His gate for Voice ("improve the surfaces a bit more,
 make the app feel more polished") is met by work in this section.
 
-### File explorer: the tree's look
+Shipped 2026-11-10, on his picks from the mock-ups (each is in the code
+and its tests; nothing more is queued on them):
 
-**His words (2026-11-09):** "we need to change the UI of file explorer.
-particularly the little arrows, they feel dated, not modern enough."
+- **File explorer tree.** The registry chevron in place of the text
+  glyph, the folder icon open or closed, faint indent guides, the same
+  chevron on the section headers. File-type icons untouched.
+- **Three sidebar icons.** Creations AI a storybook, Browser a window,
+  Worksheets the calculator.
+- **Tools and Search out of the sidebar.** Tools and Extensions is an
+  editor tab from the View menu. Ctrl+F is one Find surface: this
+  document first (text, PDF, and now canvas pages, databases and any
+  tool's editor), with a switch to Workspace that the Search tool adds
+  while it runs; results sit under the field. Ctrl+Shift+F opens it on
+  Workspace.
+- **Home, first version.** The Parallx icon opens it: search, a chip per
+  tool and per tag, recent items as cards or a list. Tools feed it
+  through `registerHomeSource` (`api.home.registerSource` for
+  extensions). Pages and files feed it today.
 
-**What it is.** The explorer tree draws a small filled triangle before
-every folder (collapsed pointing right, open pointing down), with the
-folder icon after it. That twisty is the dated part. The modern tree
-(Finder, the GitHub file tree, Linear, Notion's sidebar) uses a thin
-chevron that appears on hover or focus and turns on open, or folds the
-open state into the folder icon itself and shows no twisty at all;
-rows breathe more, indent guides are faint lines, selection is a soft
-pill.
+### Home: what is left
 
-**What exists today (verified).** The explorer draws its own tree in
-`src/built-in/explorer/main.ts`: the arrow is a text glyph, "▾" or "▸",
-in a `tree-node-chevron` span, which is why it reads as dated; the font
-draws it, not the icon registry. The canvas sidebar already uses the
-registry's `chevron-right` icon turned by a class. There is no shared
-tree control in the kit yet.
+His design is agreed (2026-11-10: "aligned with home design"). Not done
+in the first version:
 
-**Scope.** Replace the glyph with the registry chevron, drawn and turned
-the way the canvas sidebar does it, and decide hover-reveal against
-always-shown on the real tree. If a second tree wants the same look, that
-is the moment to lift it into the kit, not before. Keyboard behaviour
-(Left and Right to fold and unfold, the names the probes read) stays as
-it is.
+- **The extensions' own items.** Creations AI (characters, chats,
+  lorebooks), Budget, Flashcards, the Media Organizer and the rest each
+  need a source of their own, written in the extension. Until then Home
+  shows pages and files only.
+- **The written summary.** A card's line is the item's opening words
+  today. His words were "an automatic one-line summary": a summary the
+  model writes once per item and keeps, through the core's
+  language-models service. Unknown: where it is stored, and when it is
+  refreshed.
+- **Tags.** Home shows the tags a source gives; pages and files give
+  none yet.
+- **Launch.** Home opens from the icon; the Welcome page still opens on
+  first launch. Not asked: whether Home takes its place.
 
-**Unknown.** Which of the two directions he wants (chevron on hover, or
-no twisty): show both on the real tree and let him pick. Whether the
-indent and row height change with it.
+### Text arrows elsewhere
 
-### Three sidebar icons: Creations AI, Browser, Worksheets
-
-**His words (2026-11-09):** "I do not like the icons for Creations AI,
-Browser, and Worksheets."
-
-**What exists today.** Creations AI's sidebar container uses `px-writer`
-(`ext/creations-ai/parallx-manifest.json`), Browser uses `globe`
-(`ext/browser/parallx-manifest.json`), Worksheets uses `file-spreadsheet`
-(`src/built-in/worksheet/manifest.ts`). All three come from the icon
-registry, so a change is a new or different registry icon, not a stray
-asset.
-
-**Scope.** Draw candidates in the registry's own style (stroke weight,
-corner radius, optical size of the other activity-bar icons) and show
-him a row of them against the bar before choosing. Any new icon is
-registered and named; the manifest names it.
-
-### The primary sidebar loses two seats: Tools and Search
-
-**His words (2026-11-09):** "instead of having search and tools as icons
-in primary sidebar, they should function as commands or through view.
-We moved settings to be launched from view menu in top ribbon, I think
-tools can be moved there as well ... the place where you can see the
-extensions that are enabled and enable disable etc. Search is also
-another that I think could be triggered by ctrl f. think how search
-works in Excel ... if the editor the user had open when they hit ctrl f
-was a document or canvas page or database, the default would be to
-search within the document, but then we would have a toggle in case the
-user was trying to search from whole workspace. this allows us to clear
-two spots from the primary sidebar."
-
-**What exists today.** Tools is the built-in tool gallery, a sidebar
-container (`tools-container`, icon `px-tools`, `src/built-in/tool-gallery`).
-Search is the built-in search sidebar (`search-container`,
-`src/built-in/search`). Settings already opens from the View menu
-(`settings.open` in `menuBuilder.ts`). Ctrl+F is `edit.find`, which asks
-the active pane for its own find bar; the text editor and the PDF pane
-have one, so Ctrl+F already searches within those documents. Canvas
-pages and databases have no find bar of their own, and workspace search
-has no keyboard route but the sidebar.
-
-**Scope, two parts.**
-
-- *Tools:* a View menu entry and a command open the gallery as an editor
-  or a panel; the sidebar seat goes. Same move Settings made.
-- *Search:* Ctrl+F opens one find surface. Its default scope is the
-  active editor (document, canvas page, database) when that editor can
-  be searched, with a toggle to the whole workspace; with no searchable
-  editor open it opens on the workspace. Canvas pages and databases gain
-  an in-document find so the default holds for them. The sidebar seat
-  goes; workspace results keep their list, tree, collapse and clear.
-
-**Unknown.** Where workspace results live once the sidebar seat is gone
-(a panel at the bottom, or the find surface growing a results list);
-whether the gallery wants to be an editor tab or a panel; what the two
-freed seats are used for, if anything.
-
-### Home: one front door for everything recent
-
-**His words (2026-11-09):** "a sort of home ... navigated to by hitting
-the Parallx icon in the top left of the app ... a home dashboard page,
-mimicking Papers With Code, but not exactly, where extensions can push the
-recent files there ... a unified navigation of recent files, user can
-search across the different extensions they have installed."
-
-**What it is.** Parallx holds several kinds of thing a person comes back
-to: files in the explorer, canvas pages, and what tools keep for
-themselves (Creations' characters, chats, lorebooks and tables; the Media
-Organizer's library; Budget's ledger). Today each lives behind its own
-tool. Home is a page, opened from the Parallx icon, that shows them as
-one stream: recent items across every kind, each as a card with a title,
-an automatic one-line summary, its tags, where it lives and when it was
-touched; a search box that searches across all of them; browsing by kind
-and by tag, quick enough to flick through.
-
-**The bar.** paperswithcode.co: fast page-to-page browsing, a summary
-written for every item, tags shown on the card, search that is the first
-thing on the page, trends and recents as the default view. Not a copy;
-the feel of it.
-
-**How it stays modular (the first principle).** The core defines one
-contribution point, a recents-and-search provider: a tool registers "here
-are my recent items, here is how to search them, here is how to open
-one". Canvas and the explorer register as built-ins; every extension
-registers while it runs and vanishes from Home when turned off. Home
-itself knows no tool by name. The summary comes from the same provider
-(a tool knows how to describe its own items) or, when a tool gives none,
-from the core's language-models service over the item's text.
-
-**What exists today.** The Welcome page (`src/built-in/welcome`, command
-`welcome.openWelcome`): recent workspaces and recent files, first-launch
-only. The dashboard with its widgets. Neither spans tools, neither
-searches. Home is the successor to the Welcome page's recent rows, not a
-third thing beside them.
-
-**Unknown.** What the Parallx icon does today on click (nothing bound, to
-verify); where the summaries are stored so they are written once; how
-the provider reports changes without a timer per tool.
+Found while replacing the explorer's: the same dated text glyphs (▾ ▸ ▼
+▶) remain in the dropdown component, the chat's tool-result caret, its
+context pills and token bar, the tool detail page's sections and two
+canvas property pickers. Not raised with him; recorded so it is not
+forgotten.
 
 ## New extensions
 

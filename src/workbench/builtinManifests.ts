@@ -1,4 +1,4 @@
-// builtinManifests.ts — the 18 built-in tools' manifests, in one list.
+// builtinManifests.ts — the 19 built-in tools' manifests, in one list.
 //
 // Each manifest lives with its tool (src/built-in/<tool>/manifest.ts); this
 // file gathers them for the workbench, which pairs each with its module at
@@ -8,6 +8,7 @@
 export { EXPLORER_MANIFEST } from '../built-in/explorer/manifest.js';
 export { SEARCH_MANIFEST } from '../built-in/search/manifest.js';
 export { WELCOME_MANIFEST } from '../built-in/welcome/manifest.js';
+export { HOME_MANIFEST } from '../built-in/home/manifest.js';
 export { TERMINAL_MANIFEST } from '../built-in/terminal/manifest.js';
 export { OUTPUT_MANIFEST } from '../built-in/output/manifest.js';
 export { INDEXING_LOG_MANIFEST } from '../built-in/indexing-log/manifest.js';

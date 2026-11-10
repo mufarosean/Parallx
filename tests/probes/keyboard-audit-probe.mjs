@@ -39,7 +39,7 @@ const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-k
 const only = process.argv.slice(3);
 
 const SCREENS = [
-  ['boot'], ['start'], ['welcome.openWelcome'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
+  ['boot'], ['start'], ['welcome.openWelcome'], ['home.open'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
   ['dashboard.open'], ['agents.show'], ['agents.showRoutines'], ['tools.showInstalled'], ['chat.show'], ['workflows.new'],
   ['settings.open'], ['settings.open', 'ai'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],

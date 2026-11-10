@@ -237,6 +237,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `flashcards.stats` | Show Progress & Stats | flashcards | Flashcards |  |  |
 | `flashcards.study` | Study Due Cards | flashcards | Flashcards |  |  |
 | `flashcards.studyTag` | Study One Tag | flashcards | Flashcards |  |  |
+| `home.open` | Home: Open Home | home |  |  |  |
+| `home.openItem` | Home: Open Item | home |  |  |  |
 | `indexingLog.clear` | Indexing: Clear Log | indexing-log |  |  |  |
 | `indexingLog.toggleErrorFilter` | Indexing: Toggle Error Filter | indexing-log |  |  |  |
 | `media-organizer.buildPHashes` | Build Perceptual Hashes (find near-duplicates) | media-organizer | Atelier |  |  |

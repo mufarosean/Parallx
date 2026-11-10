@@ -55,6 +55,7 @@ import {
   type GraphProvider,
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
+import { registerHomeSource, type HomeSource } from '../services/homeSources.js';
 import { CanvasBlocksBridge, createCanvasApi, type CanvasApi } from './bridges/canvasBlocksBridge.js';
 import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js'; import { callToolAsApp } from '../services/appConnections.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
@@ -243,6 +244,8 @@ export interface ParallxApiObject {
     /** Metadata snapshot of every contributed widget type, across all tools. */
     listWidgetTypes(): readonly import('./bridges/dashboardBridge.js').WidgetTypeDescriptor[];
   };
+  /** Home: a tool's recent items and how to search and open them (services/homeSources.ts). Gone when the tool stops. */
+  readonly home: { registerSource(source: HomeSource): IDisposable };
   readonly canvas: CanvasApi;
   readonly tools: {
     /** Fires when a tool starts or stops (turned on or off). */
@@ -823,6 +826,9 @@ export function createToolApi(
       getAll: () => workspaceGraphBridge.getAll(),
     }),
 
+    home: Object.freeze({
+      registerSource: (source: HomeSource) => { const d = registerHomeSource({ ...source, id: `${toolId}:${source.id}` }); subscriptions.push(d); return d; },
+    }),
     dashboard: Object.freeze({
       registerWidgetType: <TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>) =>
         dashboardBridge.registerWidgetType(registration),

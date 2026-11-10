@@ -14,7 +14,7 @@ import os from 'node:os';
 import { PROJECT_ROOT, launchApp, cmd, setToolEnabled, openFile, tinyPdf } from './scene.mjs';
 
 const SCREENS = [
-  ['boot'], ['welcome.openWelcome'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
+  ['boot'], ['welcome.openWelcome'], ['home.open'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
   ['dashboard.open'], ['agents.show'], ['agents.showRoutines'], ['tools.showInstalled'], ['chat.show'], ['workflows.new'],
   ['settings.open'], ['settings.open', 'ai'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],

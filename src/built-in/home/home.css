@@ -1,0 +1,182 @@
+/* home.css — Home: the search field, the chips, and the stream as cards or a list. */
+
+.home {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
+}
+.home-column {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--px-space-8) var(--px-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-4);
+  box-sizing: border-box;
+}
+
+.home-search .ui-input-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: 0 var(--px-space-3);
+  color: var(--px-text-muted);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+}
+.home-search .ui-input-box:focus-within {
+  border-color: var(--px-accent);
+}
+.home-search .ui-input-box-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: none;
+  outline: none;
+  color: var(--px-text);
+  font-size: var(--px-text-md);
+}
+
+.home-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--px-space-2);
+}
+.home-chips:empty {
+  display: none;
+}
+.home-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--px-space-3);
+}
+.home-heading {
+  font-weight: 600;
+}
+
+.home-body--cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--px-space-3);
+}
+.home-body--list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* One item: a button that opens it. */
+.home-card,
+.home-row {
+  font: inherit;
+  text-align: left;
+  color: var(--px-text-secondary);
+  cursor: pointer;
+  min-width: 0;
+}
+.home-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'kind when' 'title title' 'summary summary' 'tags tags' 'where where';
+  align-content: start;
+  gap: var(--px-space-2);
+  padding: var(--px-space-4);
+  background: var(--px-base-05);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+}
+.home-card:hover {
+  background: var(--px-bg-elevated);
+  border-color: var(--px-border-strong);
+}
+.home-row {
+  display: grid;
+  grid-template-columns: 16px minmax(140px, 1.1fr) minmax(0, 2fr) auto 64px;
+  grid-template-areas: 'kind title summary tags when';
+  align-items: center;
+  gap: var(--px-space-3);
+  min-height: 36px;
+  padding: 0 var(--px-space-2);
+  background: none;
+  border: 0;
+  border-radius: var(--px-radius-md);
+}
+.home-row:hover {
+  background: var(--px-surface-hover);
+}
+/* A row keeps the kind's icon and drops its words. */
+.home-row .home-item-kind span:not(.svg-icon),
+.home-row .home-item-where {
+  display: none;
+}
+
+.home-item-kind {
+  grid-area: kind;
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+}
+.home-item-title {
+  grid-area: title;
+  font-size: var(--px-text-md);
+  font-weight: 600;
+  color: var(--px-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-row .home-item-title {
+  font-size: var(--px-text-base);
+  font-weight: 500;
+}
+.home-item-summary {
+  grid-area: summary;
+  font-size: var(--px-text-sm);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-row .home-item-summary {
+  -webkit-line-clamp: 1;
+  color: var(--px-text-muted);
+}
+.home-item-tags {
+  grid-area: tags;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--px-space-1);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+}
+.home-item-tags:empty {
+  display: none;
+}
+.home-item-tags span {
+  padding: 0 var(--px-space-2);
+  background: var(--px-bg-inset);
+  border-radius: var(--px-radius-sm);
+}
+.home-item-where {
+  grid-area: where;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-faint);
+}
+.home-item-when {
+  grid-area: when;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}

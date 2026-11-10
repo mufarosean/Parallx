@@ -1559,6 +1559,44 @@ export namespace dashboard {
 }
 
 /**
+ * Home: the page behind the Parallx icon, with everything recent from every
+ * tool that is on. A tool that keeps things of its own registers a source
+ * while it runs; turned off, its items leave Home.
+ */
+export namespace home {
+  export interface HomeItem {
+    /** Unique within the source. */
+    readonly id: string;
+    readonly title: string;
+    /** One item's kind, singular: 'Character', 'Deck', 'Ledger'. */
+    readonly kind: string;
+    /** Registry icon id for the kind. */
+    readonly icon?: string;
+    /** One line on what it holds. */
+    readonly summary?: string;
+    readonly tags?: readonly string[];
+    /** Where it lives: 'Decks / Exam 7'. */
+    readonly where?: string;
+    /** When it was last touched, in milliseconds since the epoch. */
+    readonly touchedAt: number;
+    readonly open: () => void;
+  }
+  export interface HomeSource {
+    /** Stable within the tool. */
+    readonly id: string;
+    /** The tool's name, as its filter chip says it. */
+    readonly label: string;
+    /** The most recently touched items, newest first. */
+    listRecent(limit: number): Promise<readonly HomeItem[]>;
+    /** Items matching the query, beyond the recent ones. */
+    search?(query: string, limit: number): Promise<readonly HomeItem[]>;
+    /** Fires when what is recent changed. */
+    readonly onDidChange?: Event<void>;
+  }
+  export function registerSource(source: HomeSource): IDisposable;
+}
+
+/**
  * The `parallx.tools` API namespace.
  * Tool registry metadata and enablement control.
  */
