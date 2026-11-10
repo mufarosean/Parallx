@@ -448,7 +448,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         const pane = new DatabaseEditorPane(container, databaseId, {
           db,
           openPage: (id) => services.openPage(id), openPageBeside: (id) => services.openPage(id, { side: true }),
-          renamePage: async (id, title) => { await this._dataService.updatePage(id, { title }); },
+          renamePage: async (id, title) => { await this._dataService.updatePage(id, { title }); }, getPage: (id) => this._dataService.getPage(id), updatePage: async (id, patch) => { await this._dataService.updatePage(id, patch); }, onDidChangePage: (l) => this._dataService.onDidChangePage((e) => l(e.pageId)),
         }, options);
         return { dispose: () => pane.dispose() };
       } : undefined,

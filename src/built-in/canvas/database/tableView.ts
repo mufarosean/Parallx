@@ -47,6 +47,8 @@ export interface ITableViewState {
   readonly props: readonly IDatabaseProperty[];
   /** Filtered and sorted already. */
   readonly rows: readonly IDatabaseRow[];
+  /** A locked database: no new columns from here. */
+  readonly locked?: boolean;
 }
 
 const COL_DRAG_TYPE = 'text/parallx-db-col';
@@ -105,7 +107,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
   }
   const addTh = tableEl(headRow, 'canvas-db-th canvas-db-th--add', 'th');
   addTh.setAttribute('scope', 'col');
-  createIconButton(addTh, { id: 'database.addProperty', icon: 'plus', title: 'Add a Property', size: 'sm', onClick: () => deps.openAddProperty(addTh) });
+  if (!state.locked) createIconButton(addTh, { id: 'database.addProperty', icon: 'plus', title: 'Add a Property', size: 'sm', onClick: () => deps.openAddProperty(addTh) });
   // Dropping a dragged column on + puts it last.
   store.add(addDisposableListener(addTh, 'dragover', (e) => { if (e.dataTransfer?.types.includes(COL_DRAG_TYPE)) { e.preventDefault(); addTh.classList.add('canvas-db-th--drop'); } }));
   store.add(addDisposableListener(addTh, 'dragleave', () => addTh.classList.remove('canvas-db-th--drop')));

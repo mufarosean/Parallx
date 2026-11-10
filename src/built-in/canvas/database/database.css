@@ -12,6 +12,24 @@
   font-size: var(--px-text-base);
 }
 .canvas-db-header { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-2); }
+.canvas-db-identity { position: relative; }
+.canvas-db-cover { margin: calc(-1 * var(--px-space-6)) calc(-1 * var(--px-space-8)) var(--px-space-4); width: auto; }
+.canvas-db-header--covered { margin-top: -20px; }
+.canvas-db-header__iconbtn { width: 40px; height: 40px; padding: 0; }
+.canvas-db-header__iconbtn svg { width: 28px; height: 28px; }
+.canvas-db-header__iconbtn--empty { opacity: 0.55; }
+.canvas-db-header__iconbtn--empty:hover, .canvas-db-header__iconbtn--empty:focus-visible { opacity: 1; }
+.canvas-db-header__title[contenteditable="true"]:focus-visible { box-shadow: 0 0 0 2px var(--px-accent); border-radius: var(--px-radius-sm); }
+.canvas-db-header__menu { opacity: 0; margin-left: var(--px-space-1); }
+.canvas-db-identity:hover .canvas-db-header__menu, .canvas-db-identity:focus-within .canvas-db-header__menu, [data-input-modality="touch"] .canvas-db-identity .canvas-db-header__menu { opacity: 1; }
+.canvas-db-description { color: var(--px-text-secondary); font-size: var(--px-text-base); line-height: 20px; min-height: 20px; margin: 0 0 var(--px-space-2) 2px; outline: none; max-width: 720px; white-space: pre-wrap; }
+.canvas-db-description--empty { opacity: 0; }
+.canvas-db-description--empty:empty::before { content: attr(data-placeholder); color: var(--px-text-muted); }
+.canvas-db-identity:hover .canvas-db-description--empty, .canvas-db-identity:focus-within .canvas-db-description--empty, [data-input-modality="touch"] .canvas-db-identity .canvas-db-description--empty { opacity: 1; }
+.canvas-db-description[contenteditable="true"]:focus-visible { box-shadow: 0 0 0 2px var(--px-accent); border-radius: var(--px-radius-sm); }
+.canvas-db-affordances { display: flex; gap: var(--px-space-1); margin: 0 0 var(--px-space-2) -6px; opacity: 0; }
+.canvas-db-identity:hover .canvas-db-affordances, .canvas-db-identity:focus-within .canvas-db-affordances, [data-input-modality="touch"] .canvas-db-identity .canvas-db-affordances { opacity: 1; }
+.canvas-db-affordances .px-btn { color: var(--px-text-muted); }
 /* Inside a page (Linked Database block): no page padding or own scroll, a
    small title that opens the database. */
 .canvas-db-pane.canvas-db-pane--embedded { height: auto; overflow: visible; padding: 0; font-size: var(--px-text-sm); }
@@ -21,6 +39,7 @@
 .canvas-db-header__open { background: none; border: none; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .canvas-db-header__open:hover { text-decoration: underline; }
 .canvas-db-header__icon svg { width: 28px; height: 28px; }
+.canvas-db-header__open.px-btn { font-size: var(--px-text-lg); font-weight: 600; padding-left: 0; }
 .canvas-db-header__title {
   font-size: var(--px-text-xl); font-weight: 700; outline: none; min-width: 120px;
 }

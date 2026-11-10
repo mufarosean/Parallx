@@ -31,7 +31,7 @@ import { EMPTY_FILTER } from './databaseTypes.js';
 import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
 import { coerceCellValue, missingOptions } from './cellValues.js';
 
-interface DatabaseBridge {
+export interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
   get(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; row?: Record<string, unknown> | null }>;
   all(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; rows?: Record<string, unknown>[] }>;
@@ -793,12 +793,11 @@ export class DatabaseDataService extends Disposable {
   /** Notify listeners that a database's rows/cells changed via an external
    *  writer (e.g. the canvas_set_page_property tool's raw upsert) so open
    *  database editors and row sections refresh. */
-  notifyRowsChanged(databaseId: string): void {
-    this._onDidChangeRows.fire(databaseId);
-  }
+  notifyRowsChanged(databaseId: string): void { this._onDidChangeRows.fire(databaseId); }
+  notifyStructureChanged(databaseId: string): void { this._onDidChangeStructure.fire(databaseId); }
+  /** The SQL bridge, for the modules that extend this service (databaseMeta.ts and the like). */
+  get bridge(): DatabaseBridge { return this._db; }
 
-  /** The databases this page is a member (row) of. Drives the row-page
-   *  properties section shown when a row is opened as a page. */
   /** Live databases the user made (not the app's bookkeeping ones), by title. */
   async listDatabases(): Promise<{ id: string; title: string; icon: string | null }[]> {
     const res = await this._db.all(

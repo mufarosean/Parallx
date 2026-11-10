@@ -22,7 +22,7 @@ import { applyFilter, applySort, boardDropValue, groupRows, seedForFilter } from
 import { normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
-import { createIconElement, resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { createIconElement, resolvePageIcon } from '../config/iconRegistry.js';
 import { createButton, createIconButton, createMenu } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
@@ -30,17 +30,14 @@ import { attachPopupDismiss } from '../../../ui/dom.js';
 import { wireBoardCardKeys } from './boardCardKeys.js';
 import { databaseCsvMenuItems } from './databaseCsvActions.js';
 import { renderTableView, type ITableViewDeps } from './tableView.js';
+import { renderDatabaseHeader, type IDatabaseIdentity } from './databaseHeader.js';
+import { updateDatabaseMeta } from './databaseMeta.js';
 import { moveInOrder, orderedProperties, patchRecord, readViewConfig, visibleProperties } from './viewConfig.js';
 import { calcOptionsFor, type CalcKind } from './calculations.js';
 import { PILL_COLORS, optionColor, pill as pillInto } from './cellRender.js';
 import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 
 export { PILL_COLORS };
-
-function renderPageIconHtml(icon: string | null | undefined): string {
-  const id = resolvePageIcon(icon);
-  return id ? (svgIcon(id) || '') : '';
-}
 
 const PROPERTY_TYPES: { type: PropertyType; label: string }[] = [
   { type: 'text', label: 'Text' },
@@ -105,6 +102,11 @@ export interface IDatabasePaneDeps {
   openPageBeside?(pageId: string): void;
   /** Rename the database page (title lives on pages). */
   renamePage(pageId: string, title: string): Promise<void>;
+  /** The database's page row (cover, lock) and its writer; without them the header shows title and icon only. */
+  getPage?(pageId: string): Promise<{ coverUrl: string | null; coverYOffset: number } | null>;
+  updatePage?(pageId: string, patch: { icon?: string | null; coverUrl?: string | null; coverYOffset?: number }): Promise<void>;
+  /** The page world's changes (an icon set from the sidebar): the header follows. */
+  onDidChangePage?(listener: (pageId: string) => void): IDisposable;
   /** The app's confirmation modal, for actions that lose data. */
   confirm?(options: { message: string; detail?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean>;
 }
@@ -133,6 +135,7 @@ export class DatabaseEditorPane implements IDisposable {
   private readonly _disposables = new DisposableStore();
   /** What the current body render registered (listeners, drags); cleared on each render. */
   private _bodyStore = new DisposableStore();
+  private _headerStore = new DisposableStore();
   private _disposed = false;
 
   private _props: IDatabaseProperty[] = [];
@@ -141,6 +144,7 @@ export class DatabaseEditorPane implements IDisposable {
   private _activeViewId: string | null = null;
   private _title = '';
   private _icon: string | null = null;
+  private _identity: IDatabaseIdentity = { title: '', icon: null, coverUrl: null, coverYOffset: 0.5, description: null, isLocked: false };
 
   private readonly _root: HTMLElement;
   private _activePopover: HTMLElement | null = null;
@@ -159,6 +163,7 @@ export class DatabaseEditorPane implements IDisposable {
     this._container.appendChild(this._root);
     this._disposables.add(this._deps.db.onDidChangeStructure((id) => { if (id === this._databaseId) void this._reload(); }));
     this._disposables.add(this._deps.db.onDidChangeRows((id) => { if (id === this._databaseId) void this._reloadRows(); }));
+    if (this._deps.onDidChangePage) this._disposables.add(this._deps.onDidChangePage((id) => { if (id === this._databaseId) void this._reload(); }));
     void this._reload();
   }
 
@@ -175,16 +180,18 @@ export class DatabaseEditorPane implements IDisposable {
   private async _reload(): Promise<void> {
     const seq = ++this._loadSeq;
     const db = this._deps.db;
-    const [info, props, views, rows] = await Promise.all([
+    const [info, props, views, rows, page] = await Promise.all([
       db.getDatabase(this._databaseId),
       db.listProperties(this._databaseId),
       db.listViews(this._databaseId),
       db.listRows(this._databaseId),
+      this._deps.getPage?.(this._databaseId).catch(() => null) ?? Promise.resolve(null),
     ]);
     if (this._disposed || seq !== this._loadSeq) return;
     this._rowsSignature = JSON.stringify(rows);
     this._title = info?.title ?? 'Untitled';
     this._icon = info?.icon ?? null;
+    this._identity = { title: this._title, icon: this._icon, coverUrl: page?.coverUrl ?? null, coverYOffset: page?.coverYOffset ?? 0.5, description: info?.description ?? null, isLocked: !!info?.isLocked };
     this._props = props;
     this._views = views;
     this._rows = rows;
@@ -241,31 +248,20 @@ export class DatabaseEditorPane implements IDisposable {
     this._closePopover();
     this._root.textContent = '';
 
-    // Header: icon + editable title.
-    const header = el('div', 'canvas-db-header');
-    const iconEl = el('span', 'canvas-db-header__icon');
-    // A database without its own icon shows a table, as in the sidebar.
-    iconEl.innerHTML = this._icon ? renderPageIconHtml(this._icon) : svgIcon('table');
-    header.appendChild(iconEl);
-    if (this._embed) {
-      // Inside a page the title opens the database; it is renamed there.
-      const open = el('button', 'canvas-db-header__title canvas-db-header__open', this._title);
-      (open as HTMLButtonElement).type = 'button';
-      open.title = 'Open the database';
-      open.addEventListener('click', () => this._deps.openPage(this._databaseId));
-      header.appendChild(open);
-    } else {
-      const titleEl = el('div', 'canvas-db-header__title', this._title);
-      titleEl.contentEditable = 'true';
-      titleEl.spellcheck = false;
-      titleEl.addEventListener('blur', () => {
-        const next = (titleEl.textContent ?? '').trim() || 'Untitled';
-        if (next !== this._title) { this._title = next; void this._deps.renamePage(this._databaseId, next); }
-      });
-      titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); } });
-      header.appendChild(titleEl);
-    }
-    this._root.appendChild(header);
+    // Header: cover, icon, title, description, the database menu (databaseHeader.ts).
+    this._headerStore.dispose();
+    this._headerStore = new DisposableStore();
+    renderDatabaseHeader(this._root, this._identity, {
+      embed: !!this._embed,
+      rename: (title) => { this._title = title; void this._deps.renamePage(this._databaseId, title); },
+      setIcon: (icon) => void this._deps.updatePage?.(this._databaseId, { icon }).then(() => this._reload()),
+      setCover: (url, y) => void this._deps.updatePage?.(this._databaseId, url === null ? { coverUrl: null } : y === undefined ? { coverUrl: url } : { coverUrl: url, coverYOffset: y }).then(() => this._reload()),
+      setDescription: (text) => void updateDatabaseMeta(this._deps.db, this._databaseId, { description: text }),
+      setLocked: (locked) => void updateDatabaseMeta(this._deps.db, this._databaseId, { isLocked: locked }),
+      openDatabase: () => this._deps.openPage(this._databaseId),
+      menuItems: () => this.activeView ? databaseCsvMenuItems<IExtensionMenuItem>(this._deps.db, this._databaseId, this.activeView.id, (label, run) => ({ label, icon: label.startsWith('Export') ? 'download' : 'upload', onSelect: run })) : [],
+    }, this._headerStore);
+    const locked = this._identity.isLocked;
 
     // View tabs + toolbar.
     const bar = el('div', 'canvas-db-tabbar');
@@ -278,9 +274,11 @@ export class DatabaseEditorPane implements IDisposable {
       tab.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openViewMenu(tab, view); });
       tabs.appendChild(tab);
     }
-    const addView = createIconButton(null, { id: 'database.addView', icon: 'plus', title: 'Add a View…', size: 'sm', onClick: () => this._openAddViewMenu(addView) });
-    addView.classList.add('canvas-db-tab--add');
-    tabs.appendChild(addView);
+    if (!locked) {
+      const addView = createIconButton(null, { id: 'database.addView', icon: 'plus', title: 'Add a View…', size: 'sm', onClick: () => this._openAddViewMenu(addView) });
+      addView.classList.add('canvas-db-tab--add');
+      tabs.appendChild(addView);
+    }
     bar.appendChild(tabs);
 
     const toolbar = el('div', 'canvas-db-toolbar');
@@ -344,7 +342,7 @@ export class DatabaseEditorPane implements IDisposable {
     this._bodyStore = new DisposableStore();
     body.textContent = '';
     if (view.type === 'board') this._renderBoard(body as HTMLElement, view);
-    else renderTableView(body as HTMLElement, { view, props: this._props, rows: this._viewRows(view) }, this._tableDeps(), this._bodyStore);
+    else renderTableView(body as HTMLElement, { view, props: this._props, rows: this._viewRows(view), locked: this._identity.isLocked }, this._tableDeps(), this._bodyStore);
   }
 
   /** How a row opens from the active view: beside the table (side peek) or as a page. */
@@ -536,6 +534,8 @@ export class DatabaseEditorPane implements IDisposable {
   }
 
   private _openHeaderMenu(th: HTMLElement, prop: IDatabaseProperty, view: IDatabaseView): void {
+    // Locked: the column's name, options and existence are fixed; its view settings are not.
+    if (this._identity.isLocked) { this._menu(th, prop.name, this._columnItems(prop.id, view)); return; }
     this._openPopover(th, (pop) => {
       const rename = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       rename.value = prop.name;
@@ -898,6 +898,7 @@ export class DatabaseEditorPane implements IDisposable {
     this._disposed = true;
     this._closePopover();
     this._bodyStore.dispose();
+    this._headerStore.dispose();
     this._disposables.dispose();
     this._root.remove();
   }

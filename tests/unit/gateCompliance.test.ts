@@ -238,6 +238,8 @@ const GATE_RULES: Record<string, string[]> = {
   'database/viewConfig.ts':                ['database/databaseTypes', 'database/calculations'],  // a view's config, typed (pure)
   'database/calculations.ts':              ['properties/propertyTypes', 'database/cellValues'],  // the calculations row (pure)
   'database/cellRender.ts':                ['database/databaseTypes', 'database/cellValues'],  // a cell's value, read-only, for every type
+  'database/databaseHeader.ts':            ['config/iconRegistry', 'menus/coverMenu', 'menus/canvasMenuRegistry'],  // cover, icon, title, description, the database menu
+  'database/databaseMeta.ts':              ['database/databaseDataService'],  // description, lock and settings of a database
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 
