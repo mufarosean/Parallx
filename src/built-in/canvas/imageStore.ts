@@ -83,3 +83,23 @@ export async function storeImageSrc(src: string, host: IImageStoreHost | null = 
     return src; // kept in the page, as before
   }
 }
+
+/**
+ * Keep any file (a PDF, a sheet, a picture) in the workspace's media folder
+ * under its own name, and return the link a cell keeps for it. Two files
+ * with one name and different bytes get different names; the same bytes
+ * come back as the same link. `null` when there is no workspace to write to.
+ */
+export async function storeWorkspaceFile(fileName: string, base64: string, host: IImageStoreHost | null = _host): Promise<string | null> {
+  const root = host?.workspaceRoot()?.replace(/[\/]+$/, '');
+  if (!host || !root) return null;
+  try {
+    const safe = fileName.replace(/[\/:*?"<>|]+/g, '_').trim() || 'file';
+    const rel = `${MEDIA_DIR}/${(await sha256Hex(base64)).slice(0, 8)}-${safe}`;
+    const abs = `${root}/${rel}`;
+    if (!(await host.exists(abs)) && !(await host.writeBase64(abs, base64))) return null;
+    return workspaceMediaSrc(rel);
+  } catch {
+    return null;
+  }
+}

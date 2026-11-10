@@ -40,6 +40,8 @@ export interface ITableViewDeps {
   editorFor(prop: IDatabaseProperty, value: unknown, onChange: (v: unknown) => void): HTMLElement;
   /** A row's page icon as an element, or null for none. */
   rowIcon(icon: string | null): HTMLElement | null;
+  /** The menu on an option pill (its colour), where the option is used. */
+  openOptionMenu?(anchor: HTMLElement, prop: IDatabaseProperty, value: string): void;
 }
 
 export interface ITableViewState {
@@ -198,6 +200,14 @@ function renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow,
   const display = createBlock(td, 'div', { className: 'canvas-db-cell__value' });
   renderCellValue(display, prop, value);
   if (isComputedType(prop.type)) { display.classList.add('canvas-db-cell__value--computed'); return; }
+  if (deps.openOptionMenu && (prop.type === 'select' || prop.type === 'tags' || prop.type === 'status')) {
+    store.add(addDisposableListener(display, 'contextmenu', (e) => {
+      const pillEl = (e.target as HTMLElement).closest<HTMLElement>('.canvas-db-pill');
+      if (!pillEl) return;
+      e.preventDefault(); e.stopPropagation();
+      deps.openOptionMenu!(pillEl, prop, pillEl.textContent ?? '');
+    }));
+  }
   const edit = (): void => {
     td.textContent = '';
     const editor = deps.editorFor(prop, value ?? null, (next) => { void deps.setCell(row.pageId, prop.id, next); });

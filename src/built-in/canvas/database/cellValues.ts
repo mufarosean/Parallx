@@ -11,11 +11,14 @@
 //   number    finite number | null
 //   date      "YYYY-MM-DD" | null
 //   datetime  "YYYY-MM-DDTHH:mm" | null   (local time, as the editor writes it)
-//   select    option name | null
+//   select, status  option name | null
 //   tags      option names[]
-//   text, url string | null
+//   files     { name, src }[]           (src: a workspace media path or a URL)
+//   unique_id integer | null            (assigned, never typed: uniqueIds.ts)
+//   created_time, last_edited_time, formula, rollup: never stored (rowCompute.ts)
+//   text, url, email, phone  string | null
 
-import type { PropertyType } from '../properties/propertyTypes.js';
+import { isComputedType, type PropertyType } from '../properties/propertyTypes.js';
 
 export type CoerceResult = { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string };
 
@@ -62,7 +65,29 @@ function no(reason: string): CoerceResult { return { ok: false, reason }; }
 /** The value to store for a property of `type`, or why it cannot be stored. */
 export function coerceCellValue(type: PropertyType, value: unknown): CoerceResult {
   const blank = value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+  if (isComputedType(type)) return no(`a ${type.replace(/_/g, ' ')} column is computed and cannot be set`);
   switch (type) {
+    case 'unique_id': {
+      if (blank) return yes(null);
+      const n = toNumber(value);
+      return n === null || !Number.isInteger(n) || n < 1 ? no(`an ID takes a whole number, not ${JSON.stringify(value)}`) : yes(n);
+    }
+    case 'files': {
+      if (blank) return yes([]);
+      const list = Array.isArray(value) ? value : [value];
+      const out: { name: string; src: string }[] = [];
+      for (const item of list) {
+        if (typeof item === 'string') { const src = item.trim(); if (src) out.push({ name: src.split(/[\\/]/).pop() || src, src }); continue; }
+        if (item && typeof item === 'object' && typeof (item as { src?: unknown }).src === 'string') {
+          const src = String((item as { src: string }).src).trim();
+          const name = String((item as { name?: unknown }).name ?? '').trim() || src.split(/[\\/]/).pop() || src;
+          if (src) out.push({ name, src });
+          continue;
+        }
+        return no(`files are names and paths, not ${JSON.stringify(item)}`);
+      }
+      return yes(out);
+    }
     case 'checkbox': {
       if (blank) return yes(false);
       if (typeof value === 'boolean') return yes(value);
@@ -90,11 +115,12 @@ export function coerceCellValue(type: PropertyType, value: unknown): CoerceResul
       if (!d) return no(`a date and time takes YYYY-MM-DDTHH:mm, not ${JSON.stringify(value)}`);
       return yes(d.length === 10 ? `${d}T00:00` : d);
     }
-    case 'select': {
+    case 'select':
+    case 'status': {
       if (blank) return yes(null);
       if (Array.isArray(value)) {
         if (value.length > 1) return no('a select takes one option, not a list');
-        return coerceCellValue('select', value[0]);
+        return coerceCellValue(type, value[0]);
       }
       if (typeof value === 'string' || typeof value === 'number') return yes(String(value).trim());
       return no(`a select takes an option name, not ${JSON.stringify(value)}`);
@@ -110,8 +136,14 @@ export function coerceCellValue(type: PropertyType, value: unknown): CoerceResul
       }
       return yes(out);
     }
+    case 'email': {
+      if (blank) return yes(null);
+      if (typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return no(`an email column takes an address like name@example.com, not ${JSON.stringify(value)}`);
+      return yes(value.trim());
+    }
     case 'text':
     case 'url':
+    case 'phone':
     default: {
       if (value === null || value === undefined) return yes(null);
       if (typeof value === 'object') return no(`a ${type} column takes text, not ${JSON.stringify(value)}`);
@@ -122,7 +154,7 @@ export function coerceCellValue(type: PropertyType, value: unknown): CoerceResul
 
 /** Names in a select/tags value that are not yet options of the property. */
 export function missingOptions(type: PropertyType, value: unknown, options: readonly { value: string }[]): string[] {
-  if (type !== 'select' && type !== 'tags') return [];
+  if (type !== 'select' && type !== 'tags' && type !== 'status') return [];
   const names = Array.isArray(value) ? value.map(String) : (typeof value === 'string' && value ? [value] : []);
   const known = new Set(options.map((o) => o.value));
   return names.filter((n) => !known.has(n));

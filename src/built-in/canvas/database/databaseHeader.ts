@@ -31,6 +31,9 @@ export interface IDatabaseIdentity {
 export interface IDatabaseHeaderDeps {
   /** Inside a page: the title opens the database and nothing here edits. */
   readonly embed: boolean;
+  /** Show an empty description field (Add Description was chosen). */
+  readonly wantDescription?: boolean;
+  requestDescription(): void;
   rename(title: string): void;
   setIcon(icon: string | null): void;
   setCover(url: string | null, yOffset?: number): void;
@@ -80,9 +83,10 @@ export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity,
   const menuBtn = createIconButton(header, { id: 'database.menu', icon: 'more-horizontal', title: 'Database Menu…', size: 'sm', onClick: () => openDatabaseMenu(menuBtn, info, deps) });
   menuBtn.classList.add('canvas-db-header__menu');
 
-  // Description: a quiet line under the title; empty, it is an affordance.
-  if (info.description || !info.isLocked) {
+  // Description: a quiet line under the title, when there is one or one was asked for.
+  if (info.description || (deps.wantDescription && !info.isLocked)) {
     const desc = createBlock(wrap, 'div', { className: `canvas-db-description${info.description ? '' : ' canvas-db-description--empty'}`, text: info.description ?? '', attrs: { role: 'textbox', 'aria-label': 'Database description', 'aria-multiline': 'true', 'data-placeholder': 'Add a description' } });
+    if (!info.description) setTimeout(() => desc.focus(), 0);
     if (!info.isLocked) {
       desc.contentEditable = 'true';
       desc.spellcheck = true;
@@ -97,11 +101,13 @@ export function renderDatabaseHeader(root: HTMLElement, info: IDatabaseIdentity,
     }
   }
 
-  // Affordances: what the database does not have yet (shown on hover, focus or touch).
-  if (!info.isLocked && (!info.icon || !info.coverUrl)) {
+  // Affordances above the title: what the database does not have yet (shown on hover, focus or touch, in the pane's top padding).
+  if (!info.isLocked && (!info.icon || !info.coverUrl || !info.description)) {
     const row = createBlock(wrap, 'div', { className: 'canvas-db-affordances' });
     if (!info.icon) createButton(row, { id: 'database.addIcon', label: 'Add Icon', icon: 'smile', kind: 'ghost', size: 'sm', onClick: (e) => openIconPicker(e.currentTarget as HTMLElement, info, deps) });
     if (!info.coverUrl) createButton(row, { id: 'database.addCover', label: 'Add Cover', icon: 'image', kind: 'ghost', size: 'sm', onClick: (e) => openCoverPicker(e.currentTarget as HTMLElement, root, null, deps, store) });
+    if (!info.description && !deps.wantDescription) createButton(row, { id: 'database.addDescription', label: 'Add Description', icon: 'text', kind: 'ghost', size: 'sm', onClick: () => deps.requestDescription() });
+    wrap.insertBefore(row, header);
   }
   return wrap;
 }
@@ -145,6 +151,7 @@ function openDatabaseMenu(anchor: HTMLElement, info: IDatabaseIdentity, deps: ID
     if (info.coverUrl) items.push({ label: 'Remove Cover', icon: 'image', onSelect: () => deps.setCover(null) });
     items.push({ separator: true });
   }
+  if (!info.isLocked && !info.description) items.push({ label: 'Add Description', icon: 'text', onSelect: () => deps.requestDescription() });
   items.push({ label: info.isLocked ? 'Unlock Database' : 'Lock Database', icon: info.isLocked ? 'lock-open' : 'lock', tooltip: 'Locked, its columns, views, title and description cannot be changed; rows still can.', onSelect: () => deps.setLocked(!info.isLocked) });
   const more = deps.menuItems();
   if (more.length) items.push({ separator: true }, ...more);

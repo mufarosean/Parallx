@@ -32,6 +32,8 @@ import { databaseCsvMenuItems } from './databaseCsvActions.js';
 import { renderTableView, type ITableViewDeps } from './tableView.js';
 import { renderDatabaseHeader, type IDatabaseIdentity } from './databaseHeader.js';
 import { updateDatabaseMeta } from './databaseMeta.js';
+import { withDerivedValues } from './rowCompute.js';
+import { PROPERTY_TYPE_META, STATUS_GROUPS, defaultConfigFor } from '../properties/propertyTypeMeta.js';
 import { moveInOrder, orderedProperties, patchRecord, readViewConfig, visibleProperties } from './viewConfig.js';
 import { calcOptionsFor, type CalcKind } from './calculations.js';
 import { PILL_COLORS, optionColor, pill as pillInto } from './cellRender.js';
@@ -39,16 +41,6 @@ import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 
 export { PILL_COLORS };
 
-const PROPERTY_TYPES: { type: PropertyType; label: string }[] = [
-  { type: 'text', label: 'Text' },
-  { type: 'number', label: 'Number' },
-  { type: 'select', label: 'Select' },
-  { type: 'tags', label: 'Multi-select' },
-  { type: 'date', label: 'Date' },
-  { type: 'datetime', label: 'Date & time' },
-  { type: 'checkbox', label: 'Checkbox' },
-  { type: 'url', label: 'URL' },
-];
 
 const FILTER_OPS: { op: FilterOp; label: string }[] = [
   { op: 'equals', label: 'is' },
@@ -67,9 +59,12 @@ function filterOpsFor(type: PropertyType | 'title'): { op: FilterOp; label: stri
       // Unchecked and never set read the same (cellValues.ts).
       return [{ op: 'is_not_empty', label: 'is checked' }, { op: 'is_empty', label: 'is not checked' }];
     case 'number':
+    case 'unique_id':
       return FILTER_OPS.filter((o) => o.op !== 'contains');
     case 'date':
     case 'datetime':
+    case 'created_time':
+    case 'last_edited_time':
       return [
         { op: 'equals', label: 'is' },
         { op: 'not_equals', label: 'is not' },
@@ -80,6 +75,7 @@ function filterOpsFor(type: PropertyType | 'title'): { op: FilterOp; label: stri
       ];
     case 'select':
     case 'tags':
+    case 'status':
       return FILTER_OPS.filter((o) => o.op !== 'greater_than' && o.op !== 'less_than');
     default:
       return FILTER_OPS;
@@ -144,6 +140,7 @@ export class DatabaseEditorPane implements IDisposable {
   private _activeViewId: string | null = null;
   private _title = '';
   private _icon: string | null = null;
+  private _wantDescription = false;
   private _identity: IDatabaseIdentity = { title: '', icon: null, coverUrl: null, coverYOffset: 0.5, description: null, isLocked: false };
 
   private readonly _root: HTMLElement;
@@ -194,7 +191,7 @@ export class DatabaseEditorPane implements IDisposable {
     this._identity = { title: this._title, icon: this._icon, coverUrl: page?.coverUrl ?? null, coverYOffset: page?.coverYOffset ?? 0.5, description: info?.description ?? null, isLocked: !!info?.isLocked };
     this._props = props;
     this._views = views;
-    this._rows = rows;
+    this._rows = withDerivedValues(rows, props);
     if (!this._activeViewId || !views.some((v) => v.id === this._activeViewId)) {
       this._activeViewId = views[0]?.id ?? null;
     }
@@ -210,7 +207,7 @@ export class DatabaseEditorPane implements IDisposable {
     const signature = JSON.stringify(rows);
     if (signature === this._rowsSignature) return;
     this._rowsSignature = signature;
-    this._rows = rows;
+    this._rows = withDerivedValues(rows, this._props);
     this._renderWhenIdle('body');
   }
 
@@ -253,6 +250,8 @@ export class DatabaseEditorPane implements IDisposable {
     this._headerStore = new DisposableStore();
     renderDatabaseHeader(this._root, this._identity, {
       embed: !!this._embed,
+      wantDescription: this._wantDescription,
+      requestDescription: () => { this._wantDescription = true; this._render(); },
       rename: (title) => { this._title = title; void this._deps.renamePage(this._databaseId, title); },
       setIcon: (icon) => void this._deps.updatePage?.(this._databaseId, { icon }).then(() => this._reload()),
       setCover: (url, y) => void this._deps.updatePage?.(this._databaseId, url === null ? { coverUrl: null } : y === undefined ? { coverUrl: url } : { coverUrl: url, coverYOffset: y }).then(() => this._reload()),
@@ -355,7 +354,7 @@ export class DatabaseEditorPane implements IDisposable {
 
   private _tableDeps(): ITableViewDeps {
     return {
-      setCell: (pageId, propertyId, value) => this._deps.db.setCellValue(this._databaseId, pageId, propertyId, value),
+      setCell: (pageId, propertyId, value) => this._deps.db.setCellValue(this._databaseId, pageId, propertyId, value).catch((err) => { console.warn('[Database] cell not set:', err instanceof Error ? err.message : err); this._renderBody(); }),
       renameRow: (pageId, title) => this._deps.db.renameRow(this._databaseId, pageId, title),
       openRow: (pageId) => this._openRow(pageId),
       addRow: () => this._addRow(),
@@ -366,14 +365,26 @@ export class DatabaseEditorPane implements IDisposable {
       openCalcMenu: (anchor, key, type) => this._openCalcMenu(anchor, key, type),
       editorFor: (prop, value, onChange) => createPropertyEditor(asDefinition(prop), value, onChange),
       rowIcon: (icon) => { if (!icon) return null; const id = resolvePageIcon(icon); return id ? createIconElement(id, 16) : null; },
+      openOptionMenu: (anchor, prop, value) => this._openOptionColorMenu(anchor, prop, value),
     };
+  }
+
+  /** An option's colour, changed from a cell that shows it (Notion lets you, from the pill's menu). */
+  private _openOptionColorMenu(anchor: HTMLElement, prop: IDatabaseProperty, value: string): void {
+    const options = ((prop.config as { options?: { value: string; color: string; group?: string }[] }).options ?? []);
+    const current = options.find((o) => o.value === value)?.color ?? 'default';
+    const items: IExtensionMenuItem[] = PILL_COLORS.filter((c) => c !== 'gray').map((c) => ({
+      label: c === 'default' ? 'Default' : c.charAt(0).toUpperCase() + c.slice(1), checked: c === current,
+      onSelect: () => void this._deps.db.setOptions(this._databaseId, prop.id, options.map((o) => (o.value === value ? { ...o, color: c } : o))),
+    }));
+    this._menu(anchor, `Colour of ${value}`, [{ label: value, disabled: true }, { separator: true }, ...items]);
   }
 
   // ── Render: board view ─────────────────────────────────────────────────────
 
   private _renderBoard(body: HTMLElement, view: IDatabaseView): void {
     const groupProp = this._props.find((p) => p.id === view.groupBy)
-      ?? this._props.find((p) => p.type === 'select')
+      ?? this._props.find((p) => p.type === 'status' || p.type === 'select')
       ?? null;
     if (!groupProp) {
       const empty = el('div', 'canvas-db-board-empty', 'Board view needs a select property to group by. Add one with + in the table view.');
@@ -413,7 +424,7 @@ export class DatabaseEditorPane implements IDisposable {
           const v = row.values[p.id];
           if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) continue;
           const line = el('div', 'canvas-db-card__prop');
-          if (p.type === 'select') line.appendChild(pill(String(v), optionColor(p, String(v))));
+          if (p.type === 'select' || p.type === 'status') line.appendChild(pill(String(v), optionColor(p, String(v))));
           else if (p.type === 'tags' && Array.isArray(v)) { for (const t of v) line.appendChild(pill(String(t), optionColor(p, String(t)))); }
           else line.textContent = Array.isArray(v) ? v.join(', ') : String(v);
           card.appendChild(line);
@@ -561,7 +572,7 @@ export class DatabaseEditorPane implements IDisposable {
         const hidden = [...cfg.hidden, prop.id];
         void this._patchConfig({ hidden });
       }));
-      if (prop.type === 'select' || prop.type === 'tags') {
+      if (prop.type === 'select' || prop.type === 'tags' || prop.type === 'status') {
         pop.appendChild(this._menuItem('Edit options…', () => this._openOptionsEditor(th, prop)));
       }
       pop.appendChild(this._menuItem('Delete property', () => {
@@ -638,8 +649,9 @@ export class DatabaseEditorPane implements IDisposable {
     this._openPopover(anchor, (pop) => {
       // `orig` is the option's stored name: renaming one renames it in every
       // cell that holds it (DatabaseDataService.setOptions).
-      const options = ((((prop.config as { options?: { value: string; color: string }[] }).options) ?? []))
-        .map((o) => ({ value: o.value, color: o.color, orig: o.value as string | undefined }));
+      const options = ((((prop.config as { options?: { value: string; color: string; group?: string }[] }).options) ?? []))
+        .map((o) => ({ value: o.value, color: o.color, group: o.group, orig: o.value as string | undefined }));
+      const isStatus = prop.type === 'status';
       const list = el('div', 'canvas-db-options');
       const error = el('div', 'canvas-db-popover__error');
       const renderList = () => {
@@ -658,6 +670,17 @@ export class DatabaseEditorPane implements IDisposable {
           name.value = opt.value;
           name.setAttribute('aria-label', 'Option name');
           name.addEventListener('input', () => { options[i] = { ...options[i]!, value: name.value }; });
+          if (isStatus) {
+            // A status option belongs to a group: To-do, In progress or Complete. The button cycles it.
+            const groupBtn = el('button', 'canvas-db-options__group', STATUS_GROUPS.find((g) => g.id === opt.group)?.label ?? 'To-do');
+            groupBtn.title = 'Change group';
+            groupBtn.addEventListener('click', () => {
+              const at = STATUS_GROUPS.findIndex((g) => g.id === (opt.group ?? 'todo'));
+              options[i] = { ...options[i]!, group: STATUS_GROUPS[(at + 1) % STATUS_GROUPS.length]!.id };
+              renderList();
+            });
+            rowEl.appendChild(groupBtn);
+          }
           const del = el('button', 'canvas-db-options__del', '×');
           del.title = 'Remove option';
           del.setAttribute('aria-label', `Remove ${opt.value}`);
@@ -673,7 +696,7 @@ export class DatabaseEditorPane implements IDisposable {
       add.setAttribute('aria-label', 'New option');
       add.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && add.value.trim()) {
-          options.push({ value: add.value.trim(), color: PILL_COLORS[(options.length + 1) % PILL_COLORS.length], orig: undefined });
+          options.push({ value: add.value.trim(), color: PILL_COLORS[(options.length + 1) % PILL_COLORS.length], group: isStatus ? 'todo' : undefined, orig: undefined });
           add.value = '';
           renderList();
         }
@@ -684,7 +707,7 @@ export class DatabaseEditorPane implements IDisposable {
       save.addEventListener('click', () => {
         const renames: Record<string, string> = {};
         for (const o of options) if (o.orig !== undefined && o.orig !== o.value.trim()) renames[o.orig] = o.value.trim();
-        const next = options.map(({ value, color }) => ({ value: value.trim(), color }));
+        const next = options.map(({ value, color, group }) => (isStatus ? { value: value.trim(), color, group: group ?? 'todo' } : { value: value.trim(), color }));
         void this._deps.db.setOptions(this._databaseId, prop.id, next, renames)
           .then(() => this._closePopover())
           .catch((err) => { error.textContent = err instanceof Error ? err.message : String(err); });
@@ -699,18 +722,22 @@ export class DatabaseEditorPane implements IDisposable {
       name.placeholder = 'Property name';
       name.setAttribute('aria-label', 'Property name');
       pop.appendChild(name);
-      for (const { type, label } of PROPERTY_TYPES) {
+      const list = el('div', 'canvas-db-typelist');
+      let group: string | null = null;
+      for (const { type, label, group: g } of PROPERTY_TYPE_META) {
+        if (type === 'relation' || type === 'rollup' || type === 'formula') continue; // steps 5 and 6 add their dialogs
+        if (g !== group) { group = g; list.appendChild(el('div', 'canvas-db-popover__label', g === 'basic' ? 'Basic' : 'Advanced')); }
         const item = el('button', 'canvas-db-menuitem');
         item.appendChild(createTypeIconElement(type, 14));
         item.appendChild(el('span', '', label));
         item.addEventListener('click', () => {
           const propName = name.value.trim() || label;
           this._closePopover();
-          const config = type === 'select' || type === 'tags' ? { options: [] } : {};
-          void this._deps.db.addProperty(this._databaseId, propName, type, config);
+          void this._deps.db.addProperty(this._databaseId, propName, type, defaultConfigFor(type));
         });
-        pop.appendChild(item);
+        list.appendChild(item);
       }
+      pop.appendChild(list);
       setTimeout(() => name.focus(), 0);
     });
   }
@@ -737,7 +764,7 @@ export class DatabaseEditorPane implements IDisposable {
       });
       pop.appendChild(rename);
       if (view.type === 'board') {
-        for (const p of this._props.filter((p) => p.type === 'select' || p.type === 'tags')) {
+        for (const p of this._props.filter((p) => p.type === 'select' || p.type === 'tags' || p.type === 'status')) {
           pop.appendChild(this._menuItem(`Group by ${p.name}`, () => void this._deps.db.updateView(this._databaseId, view.id, { groupBy: p.id })));
         }
       }

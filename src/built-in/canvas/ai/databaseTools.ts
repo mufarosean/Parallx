@@ -17,9 +17,11 @@ import type { DatabaseDataService } from '../database/databaseDataService.js';
 import type { FilterOp, IFilterRule, ISortRule } from '../database/databaseTypes.js';
 import { TITLE_KEY } from '../database/databaseTypes.js';
 import { applyFilter, applySort } from '../database/databaseViewModel.js';
-import type { PropertyType } from '../properties/propertyTypes.js';
+import { isComputedType, type PropertyType } from '../properties/propertyTypes.js';
+import { PROPERTY_TYPE_META, defaultConfigFor } from '../properties/propertyTypeMeta.js';
+import { withDerivedValues } from '../database/rowCompute.js';
 
-const VALID_TYPES: PropertyType[] = ['text', 'number', 'checkbox', 'date', 'datetime', 'tags', 'select', 'url'];
+const VALID_TYPES: PropertyType[] = PROPERTY_TYPE_META.filter((m) => !isComputedType(m.type) && m.type !== 'relation').map((m) => m.type);
 const VALID_OPS: FilterOp[] = ['equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty', 'greater_than', 'less_than'];
 
 export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
@@ -37,7 +39,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
           parentId: { type: 'string', description: 'Optional UUID of an existing page to nest the database under.' },
           properties: {
             type: 'array',
-            description: 'Additional columns. Each: {name, type, options?}. Types: text, number, checkbox, date, datetime, tags, select, url. options (for select/tags): array of option names.',
+            description: 'Additional columns. Each: {name, type, options?}. Types: text, number, checkbox, date, datetime, tags, select, status, url, email, phone, files, unique_id. options (for select/tags): array of option names.',
             items: {
               type: 'object',
               required: ['name', 'type'],
@@ -68,7 +70,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
           const colors = ['blue', 'green', 'orange', 'purple', 'pink', 'yellow', 'red', 'brown', 'gray'];
           const config = (type === 'select' || type === 'tags') && Array.isArray(p.options)
             ? { options: (p.options as unknown[]).map((o, i) => ({ value: String(o), color: colors[i % colors.length] })) }
-            : {};
+            : defaultConfigFor(type);
           await db.addProperty(info.id, name, type, config);
           added.push(name);
         }
@@ -196,7 +198,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
             ? TITLE_KEY
             : (props.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? name);
 
-        let rows = await db.listRows(databaseId);
+        let rows = withDerivedValues(await db.listRows(databaseId), props);
         if (Array.isArray(args['filter'])) {
           const rules: IFilterRule[] = (args['filter'] as { property?: unknown; op?: unknown; value?: unknown }[])
             .filter((f) => f && typeof f.property === 'string' && VALID_OPS.includes(f.op as FilterOp))

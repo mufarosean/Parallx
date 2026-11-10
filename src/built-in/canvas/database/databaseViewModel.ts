@@ -64,7 +64,7 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule, type?: Propert
       default: return false;
     }
   }
-  if (type === 'number' && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' && rule.op !== 'contains') {
+  if ((type === 'number' || type === 'unique_id') && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' && rule.op !== 'contains') {
     const a = toNumber(v); const b = toNumber(rule.value);
     if (rule.op === 'not_equals') return a === null || b === null || a !== b;
     if (a === null || b === null) return false;
@@ -72,7 +72,7 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule, type?: Propert
     if (rule.op === 'greater_than') return a > b;
     if (rule.op === 'less_than') return a < b;
   }
-  if ((type === 'date' || type === 'datetime') && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' && rule.op !== 'contains') {
+  if ((type === 'date' || type === 'datetime' || type === 'created_time' || type === 'last_edited_time') && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' && rule.op !== 'contains') {
     const ruleDate = normalizeDateValue(rule.value);
     const precision = ruleDate ? ruleDate.length : 10;
     const a = dateKey(v, precision); const b = ruleDate;

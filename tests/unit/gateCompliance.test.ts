@@ -240,6 +240,10 @@ const GATE_RULES: Record<string, string[]> = {
   'database/cellRender.ts':                ['database/databaseTypes', 'database/cellValues'],  // a cell's value, read-only, for every type
   'database/databaseHeader.ts':            ['config/iconRegistry', 'menus/coverMenu', 'menus/canvasMenuRegistry'],  // cover, icon, title, description, the database menu
   'database/databaseMeta.ts':              ['database/databaseDataService'],  // description, lock and settings of a database
+  'database/rowCompute.ts':                ['database/databaseTypes', 'properties/propertyTypes'],  // computed values of a row (pure)
+  'database/uniqueIds.ts':                 ['database/databaseDataService', 'database/databaseTypes'],  // the ID property's numbers
+  'properties/propertyTypeMeta.ts':        ['properties/propertyTypes'],  // the one list of property types
+  'properties/propertyEditorsMore.ts':     ['properties/propertyTypes', 'database/cellRender', 'imageStore'],  // editors for the round-2 types (kit-built)
   'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 

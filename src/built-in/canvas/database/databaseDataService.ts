@@ -9,9 +9,8 @@
 //   - page CRUD is delegated to CanvasDataService (events, archival, revision
 //     discipline all reused, not duplicated).
 //
-// Self-healing: deleting the database page (any path) cascades cleanup of the
-// database tables via the page-change subscription — no orphaned schema rows
-// even if SQLite FK enforcement is off.
+// Self-healing: deleting the database page cascades cleanup of the database
+// tables via the page-change subscription (no orphans without FK enforcement).
 
 import { Disposable } from '../../../platform/lifecycle.js';
 import { Emitter, Event } from '../../../platform/events.js';
@@ -30,6 +29,7 @@ import type {
 import { EMPTY_FILTER } from './databaseTypes.js';
 import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
 import { coerceCellValue, missingOptions } from './cellValues.js';
+import { backfillUniqueIds, nextUniqueIds } from './uniqueIds.js';
 
 export interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
@@ -64,10 +64,6 @@ function rowToProperty(r: Record<string, unknown>): IDatabaseProperty {
   };
 }
 
-/** Default schema seeded into a new database. Colors are NAMED (Notion's
- *  palette: default/gray/brown/orange/yellow/green/blue/purple/pink/red) and
- *  resolved to theme-aware CSS by the views — matching Notion's status
- *  defaults: To-do gray, In progress blue, Complete green. */
 /** Databases the app keeps for itself, found by role (not by title). */
 export type WorkspaceDatabaseRole = 'tags' | 'page-properties' | 'migrated-properties';
 const WORKSPACE_DATABASE_TITLES: Record<WorkspaceDatabaseRole, string> = {
@@ -241,6 +237,7 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeStructure.fire(databaseId);
+    if (type === 'unique_id') await backfillUniqueIds(this, databaseId, id);
     return { id, databaseId, name, type, config, sortOrder };
   }
 
@@ -276,7 +273,7 @@ export class DatabaseDataService extends Disposable {
   async setOptions(
     databaseId: string,
     propertyId: string,
-    options: readonly { value: string; color: string }[],
+    options: readonly { value: string; color: string; group?: string }[],
     renames: Readonly<Record<string, string>> = {},
   ): Promise<void> {
     const names = options.map((o) => o.value.trim());
@@ -510,8 +507,9 @@ export class DatabaseDataService extends Disposable {
    * that is in the tree but not in the table.  One change event, after.
    */
   async addRow(databaseId: string, title?: string, values: Record<string, unknown> = {}): Promise<IDatabaseRow> {
-    // Values are checked before anything is written.
+    // Values are checked before anything is written; an ID column takes its next number.
     const cells: { ops: { type: 'run'; sql: string; params: unknown[] }[]; addedOptions: boolean; propertyId: string; value: unknown }[] = [];
+    values = { ...(await nextUniqueIds(this, databaseId, await this.listProperties(databaseId))), ...values };
     for (const [propertyId, value] of Object.entries(values)) {
       cells.push(await this._cellWrite(databaseId, '', propertyId, value));
     }

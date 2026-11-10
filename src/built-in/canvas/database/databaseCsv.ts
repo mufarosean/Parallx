@@ -79,9 +79,10 @@ export function parseCsv(text: string): string[][] {
 export function cellToCsvText(type: PropertyType, value: unknown): string {
   if (type === 'checkbox') return isChecked(value) ? 'true' : 'false';
   if (value === null || value === undefined) return '';
+  if (type === 'files') return Array.isArray(value) ? value.map((f) => (f && typeof f === 'object' ? String((f as { src?: string }).src ?? '') : String(f))).filter(Boolean).join(', ') : '';
   if (Array.isArray(value)) return value.map((v) => cellToCsvText('text', v)).filter((s) => s !== '').join(', ');
   if (type === 'number') { const n = toNumber(value); return n === null ? String(value) : String(n); }
-  if (type === 'date' || type === 'datetime') return normalizeDateValue(value) ?? String(value);
+  if (type === 'date' || type === 'datetime' || type === 'created_time' || type === 'last_edited_time') return normalizeDateValue(value) ?? String(value);
   if (typeof value === 'object') {
     const title = (value as { title?: unknown }).title;
     return typeof title === 'string' ? title : JSON.stringify(value);
@@ -182,7 +183,8 @@ export function planCsvImport(table: readonly (readonly string[])[], props: read
 /** A CSV cell as the value a property of `type` stores, or why it cannot be. */
 export function csvTextToValue(type: PropertyType, text: string): { ok: true; value: unknown } | { ok: false; reason: string } {
   if (type === 'tags') return coerceCellValue('tags', text.split(',').map((s) => s.trim()).filter(Boolean));
-  if (type === 'text' || type === 'url') return coerceCellValue(type, text);
+  if (type === 'text' || type === 'url' || type === 'email' || type === 'phone' || type === 'status') return coerceCellValue(type, text);
+  if (type === 'files') return coerceCellValue('files', text.split(',').map((s) => s.trim()).filter(Boolean));
   return coerceCellValue(type, text.trim());
 }
 

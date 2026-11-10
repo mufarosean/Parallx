@@ -82,7 +82,10 @@ describe('the header', () => {
     mount(d.id);
     await until(() => !!q('[data-px-id="database.icon"]'));
     expect(q('[data-px-id="database.menu"]')).not.toBeNull();
-    expect(q('.canvas-db-description--empty')).not.toBeNull();
+    // The description field appears when asked for, not before.
+    expect(q('.canvas-db-description')).toBeNull();
+    q('[data-px-id="database.addDescription"]')!.click();
+    await until(() => !!q('.canvas-db-description--empty'));
     expect(q('[data-px-id="database.addIcon"]')).not.toBeNull();
     expect(q('[data-px-id="database.addCover"]')).not.toBeNull();
     // The icon is set the way the picker sets it.
@@ -94,6 +97,8 @@ describe('the header', () => {
   it('a description typed in is saved on blur', async () => {
     const d = await dbs.createDatabase({ title: 'Books' });
     mount(d.id);
+    await until(() => !!q('[data-px-id="database.addDescription"]'));
+    q('[data-px-id="database.addDescription"]')!.click();
     await until(() => !!q('.canvas-db-description'));
     const desc = q('.canvas-db-description')!;
     desc.textContent = 'Everything read since 2020';

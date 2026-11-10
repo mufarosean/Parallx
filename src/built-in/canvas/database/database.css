@@ -23,11 +23,10 @@
 .canvas-db-header__menu { opacity: 0; margin-left: var(--px-space-1); }
 .canvas-db-identity:hover .canvas-db-header__menu, .canvas-db-identity:focus-within .canvas-db-header__menu, [data-input-modality="touch"] .canvas-db-identity .canvas-db-header__menu { opacity: 1; }
 .canvas-db-description { color: var(--px-text-secondary); font-size: var(--px-text-base); line-height: 20px; min-height: 20px; margin: 0 0 var(--px-space-2) 2px; outline: none; max-width: 720px; white-space: pre-wrap; }
-.canvas-db-description--empty { opacity: 0; }
 .canvas-db-description--empty:empty::before { content: attr(data-placeholder); color: var(--px-text-muted); }
-.canvas-db-identity:hover .canvas-db-description--empty, .canvas-db-identity:focus-within .canvas-db-description--empty, [data-input-modality="touch"] .canvas-db-identity .canvas-db-description--empty { opacity: 1; }
 .canvas-db-description[contenteditable="true"]:focus-visible { box-shadow: 0 0 0 2px var(--px-accent); border-radius: var(--px-radius-sm); }
-.canvas-db-affordances { display: flex; gap: var(--px-space-1); margin: 0 0 var(--px-space-2) -6px; opacity: 0; }
+.canvas-db-affordances { position: absolute; top: -26px; left: -6px; display: flex; gap: var(--px-space-1); opacity: 0; }
+.canvas-db-cover ~ .canvas-db-affordances { position: static; height: 24px; margin: -18px 0 2px -6px; }
 .canvas-db-identity:hover .canvas-db-affordances, .canvas-db-identity:focus-within .canvas-db-affordances, [data-input-modality="touch"] .canvas-db-identity .canvas-db-affordances { opacity: 1; }
 .canvas-db-affordances .px-btn { color: var(--px-text-muted); }
 /* Inside a page (Linked Database block): no page padding or own scroll, a
@@ -165,6 +164,17 @@ th.canvas-db-col--frozen { z-index: 4; }
 .canvas-db-file__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-db-relation { text-decoration: underline; text-decoration-color: var(--px-border-strong); text-underline-offset: 2px; }
 
+.canvas-db-typelist { display: flex; flex-direction: column; gap: 2px; max-height: min(620px, 72vh); overflow-y: auto; }
+.canvas-prop-readonly { color: var(--px-text-secondary); padding: 2px 4px; min-height: 20px; display: flex; gap: 4px; align-items: center; }
+.canvas-prop-readonly__empty, .canvas-prop-files__empty { color: var(--px-text-muted); }
+.canvas-prop-files { display: flex; flex-direction: column; gap: var(--px-space-1); min-width: 220px; }
+.canvas-prop-files__list { display: flex; flex-wrap: wrap; gap: 4px; }
+.canvas-prop-files__chip { display: inline-flex; align-items: center; gap: 2px; background: var(--px-bg-inset); border-radius: var(--px-radius-sm); padding: 1px 2px 1px 6px; max-width: 100%; }
+.canvas-prop-files__one { display: inline-flex; min-width: 0; }
+.canvas-prop-files__remove { padding: 0; min-width: 0; width: 18px; height: 18px; }
+.canvas-prop-files__actions { display: flex; align-items: center; gap: var(--px-space-1); }
+.canvas-prop-files__link { flex: 1; min-width: 120px; }
+
 /* ── Option pills (Notion's named palette, theme-tinted) ── */
 .canvas-db-pill {
   display: inline-block; padding: 1px 8px; border-radius: var(--px-radius-full);
@@ -240,6 +250,8 @@ th.canvas-db-col--frozen { z-index: 4; }
 .canvas-db-options__row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
 .canvas-db-options__row .canvas-db-pill { flex: 1; }
 .canvas-db-options__name { flex: 1; min-width: 0; margin: 0; }
+.canvas-db-options__group { flex: none; background: var(--px-bg-inset); border: 1px solid var(--px-border); color: var(--px-text-secondary); border-radius: var(--px-radius-sm); font-size: var(--px-text-xs); padding: 2px 6px; cursor: pointer; }
+.canvas-db-options__group:hover { color: var(--px-text); }
 .canvas-db-options__del {
   background: none; border: none; color: var(--px-text-secondary); cursor: pointer; font-size: var(--px-text-base);
 }

@@ -6,19 +6,11 @@
 import { createSurface, declareControl } from '../../../ui/kit.js';
 import { isSystemPropertyName, type IPropertyDefinition, type PropertyType } from './propertyTypes.js';
 import { createTypeIconElement } from './propertyEditors.js';
+import { PROPERTY_TYPE_META } from './propertyTypeMeta.js';
 import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 
-const ALL_TYPES: { value: PropertyType; label: string }[] = [
-  { value: 'text', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'checkbox', label: 'Checkbox' },
-  { value: 'date', label: 'Date' },
-  { value: 'datetime', label: 'Date & time' },
-  { value: 'tags', label: 'Tags' },
-  { value: 'select', label: 'Select' },
-  { value: 'url', label: 'URL' },
-];
+const ALL_TYPES: { value: PropertyType; label: string }[] = PROPERTY_TYPE_META.filter((m) => m.group === 'basic').map((m) => ({ value: m.type, label: m.label }));
 
 /**
  * Show the property picker dropdown anchored to a button.

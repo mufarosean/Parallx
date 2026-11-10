@@ -4,6 +4,8 @@
 // Each editor calls onChange(newValue) when the user modifies the value.
 
 import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
+import { propertyTypeMeta } from './propertyTypeMeta.js';
+import { createFilesEditor, createReadOnlyEditor } from './propertyEditorsMore.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { declareControl } from '../../../ui/kit.js';
@@ -12,19 +14,8 @@ import { isChecked } from '../database/cellValues.js';
 
 // ─── Type Icon Map ───────────────────────────────────────────────────────────
 
-const TYPE_ICONS: Record<string, string> = {
-  text: 'text',
-  number: 'hash',
-  checkbox: 'square-check',
-  date: 'calendar',
-  datetime: 'clock',
-  tags: 'tag',
-  select: 'list',
-  url: 'link',
-};
-
 export function getTypeIcon(type: string): string {
-  return TYPE_ICONS[type] ?? 'text';
+  return propertyTypeMeta(type).icon;
 }
 
 export function createTypeIconElement(type: string, size = 16): HTMLElement {
@@ -108,6 +99,10 @@ function _buildEditor(definition: IPropertyDefinition, value: unknown, onChange:
     case 'tags': return _createTagsEditor(value as string[] | null, definition, onChange, context);
     case 'select': return _createSelectEditor(value as string | null, definition, onChange);
     case 'url': return _createUrlEditor(value as string | null, onChange);
+    case 'status': return _createSelectEditor(value as string | null, definition, onChange);
+    case 'email': case 'phone': return _createTextEditor(value as string | null, onChange);
+    case 'files': return createFilesEditor(definition, value, onChange);
+    case 'created_time': case 'last_edited_time': case 'unique_id': case 'formula': case 'rollup': return createReadOnlyEditor(definition, value);
     default: return _createTextEditor(value as string | null, onChange);
   }
 }
