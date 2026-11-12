@@ -49,6 +49,34 @@ _models_loading = False
 _artifacts_path: str | None = None
 _artifacts_checked = False
 
+# One document at a time. Reading is background work: two at once would only
+# fight over the same processor cores, and the models are not built to be
+# shared between threads.
+import threading
+_reading_lock = threading.Lock()
+
+# The longest one document may take. A very long book on the processor needs
+# minutes; past this something is wrong with the file and it is given up.
+DOCUMENT_TIMEOUT_S = 25 * 60
+
+
+def _reader_threads() -> int:
+    """How many processor threads the reader may use: half of them, at most 8, so the computer stays free for its user."""
+    return max(2, min(8, (os.cpu_count() or 4) // 2))
+
+
+def _yield_to_the_user() -> None:
+    """Run below normal priority: whatever the user is doing comes first."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.nice(10)
+    except Exception as e:  # Not worth failing a start over.
+        logger.warning("Could not lower the reader's priority: %s", e)
+
 
 def _get_docling_version() -> str:
     """Return installed Docling version string."""
@@ -127,7 +155,11 @@ def _ensure_converter(ocr: bool = False, card: bool = False, formulas: bool = Fa
         from docling.datamodel.base_models import InputFormat
 
         opts = PdfPipelineOptions()
-        opts.accelerator_options = AcceleratorOptions(device=AcceleratorDevice.AUTO if card else AcceleratorDevice.CPU)
+        opts.accelerator_options = AcceleratorOptions(
+            device=AcceleratorDevice.AUTO if card else AcceleratorDevice.CPU,
+            num_threads=_reader_threads(),
+        )
+        opts.document_timeout = DOCUMENT_TIMEOUT_S
         artifacts = lay_out_models()
         if artifacts:
             opts.artifacts_path = artifacts
@@ -249,10 +281,9 @@ def _convert_document(file_path: str, ocr: bool = False, card: bool = False, for
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
 
-    converter = _ensure_converter(ocr=ocr, card=card, formulas=formulas)
-
-    # Convert
-    result = converter.convert(str(path))
+    with _reading_lock:
+        converter = _ensure_converter(ocr=ocr, card=card, formulas=formulas)
+        result = converter.convert(str(path))
     doc = result.document
 
     # Export to Markdown
@@ -415,6 +446,7 @@ def main():
     args = parser.parse_args()
 
     logger.info("Starting Parallx Docling Bridge on %s:%d", args.host, args.port)
+    _yield_to_the_user()
 
     # Write port to stdout for Electron to read (single line, then switch to stderr)
     print(f"PORT:{args.port}", flush=True)

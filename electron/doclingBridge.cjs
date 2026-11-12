@@ -38,8 +38,12 @@ const HEALTH_POLL_INTERVAL = 1000;
 /** Maximum time to wait for the service to become healthy (ms). */
 const HEALTH_TIMEOUT = 60_000;
 
-/** HTTP request timeout for conversion calls (ms). 5 min for large docs. */
-const CONVERT_TIMEOUT = 300_000;
+/**
+ * HTTP request timeout for one document (ms). The reader works on the
+ * processor, a second or so a page, and gives a document up itself after 25
+ * minutes; this waits a little longer than that.
+ */
+const CONVERT_TIMEOUT = 27 * 60_000;
 
 /** Time to wait for graceful shutdown before SIGKILL (ms). */
 const SHUTDOWN_GRACE_MS = 5000;
@@ -509,57 +513,12 @@ async function convertDocument(filePath, options = {}) {
 }
 
 // ─── Readings ───────────────────────────────────────────────────────────────
-//
-// A reading is where everything on a document's pages is: the lines of a
-// scanned page with their boxes, every block, every table's cells. The reader
-// returns it with the text. It is kept here, one file per document under
-// <app>/data/readings, and handed out by path for as long as the document's
-// size and modified time are the ones it was read at. The viewer's text layer
-// for a scan, the place a citation lights up, and a scan's page text all come
-// from it; the index only needs the Markdown, so the reading is not sent on.
+// Where everything on a document's pages is, kept per document (doclingReadings.cjs).
 
-function readingsDir() {
-  return path.join(_appRoot || path.join(__dirname, '..'), 'data', 'readings');
-}
-
-function readingFile(filePath) {
-  const key = require('crypto').createHash('sha256').update(path.resolve(String(filePath)).toLowerCase()).digest('hex').slice(0, 40);
-  return path.join(readingsDir(), `${key}.json`);
-}
-
-/** Store a conversion's reading and return the result without it. */
-async function keepReading(filePath, result) {
-  if (!result || typeof result !== 'object' || !('reading' in result)) return result;
-  const { reading, ...rest } = result;
-  if (reading && Array.isArray(reading.pages)) {
-    try {
-      const st = await fs.promises.stat(filePath);
-      await fs.promises.mkdir(readingsDir(), { recursive: true });
-      const file = readingFile(filePath);
-      await fs.promises.writeFile(`${file}.tmp`, JSON.stringify({ path: path.resolve(filePath), size: st.size, mtimeMs: Math.round(st.mtimeMs), reading }));
-      await fs.promises.rename(`${file}.tmp`, file);
-    } catch (err) {
-      console.warn('[DoclingBridge] The reading could not be kept for', filePath, err && err.message);
-    }
-  }
-  return rest;
-}
-
-/**
- * The reading kept for a document, or null when there is none or the
- * document has changed since it was read.
- * @param {string} filePath
- */
-async function getReading(filePath) {
-  try {
-    const kept = JSON.parse(await fs.promises.readFile(readingFile(filePath), 'utf8'));
-    const st = await fs.promises.stat(filePath);
-    if (kept.size !== st.size || kept.mtimeMs !== Math.round(st.mtimeMs)) return null;
-    return kept.reading || null;
-  } catch {
-    return null;
-  }
-}
+const readings = require('./doclingReadings.cjs');
+const readingsRoot = () => _appRoot || path.join(__dirname, '..');
+const keepReading = (filePath, result) => readings.keep(readingsRoot(), filePath, result);
+const getReading = (filePath) => readings.get(readingsRoot(), filePath);
 
 /**
  * Convert multiple documents in a batch.
@@ -572,13 +531,19 @@ async function convertBatch(files) {
     throw new Error(`Docling bridge not available (status: ${_status})`);
   }
 
-  const body = {
-    files: files.map((f) => ({ path: f.path, ocr: f.ocr ?? false, card: f.card === true, formulas: f.formulas === true })),
-  };
-
-  const result = await httpRequest('POST', '/convert/batch', body, CONVERT_TIMEOUT);
-  const results = result?.results ?? [];
-  return Promise.all(results.map((r, i) => (files[i] ? keepReading(files[i].path, r) : r)));
+  // One document per call, one after another: each gets its own time limit
+  // and its own reading, and one document that fails does not take the rest
+  // with it. (The reader takes one at a time anyway.)
+  const results = [];
+  for (const f of files) {
+    try {
+      results.push(await convertDocument(f.path, f));
+    } catch (err) {
+      const message = (err && err.message) || String(err);
+      results.push({ error: message, path: f.path, markdown: '', page_count: 0, tables_found: 0, elapsed_ms: 0, diagnostics: [`Error: ${message}`] });
+    }
+  }
+  return results;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
