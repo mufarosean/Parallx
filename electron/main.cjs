@@ -273,6 +273,8 @@ const _modelKeySecrets = { readSecret: _readSecretString, writeSecret: _writeSec
 setupAnthropicBridge(ipcMain, _modelKeySecrets);
 require('./openaiCompatibleBridge.cjs').setupOpenAICompatibleBridge(ipcMain, _modelKeySecrets, { isSealed: isWorkspaceSealed });
 doclingBridge.setAppRoot(APP_ROOT);
+// The reader's engine is a tool runtime; the runtime bridge loads on its first use.
+doclingBridge.setRuntimeApi(() => _optionalBridges.runtimes.load().api);
 
 const USER_EXTENSIONS_DIR = path.join(APP_ROOT, 'data', 'extensions');
 
@@ -2386,60 +2388,8 @@ ipcMain.handle('document:isRichDocument', (_event, ext) => {
   return isRichDocument(ext);
 });
 
-// ════════════════════════════════════════════════════════════════════════════════
-// Docling Bridge IPC Handlers
-// ════════════════════════════════════════════════════════════════════════════════
-//
-// Manages the Docling Python bridge for intelligent document extraction.
-// Falls back to legacy extractors (above) when Docling is unavailable.
-
-// ── docling:status ──
-ipcMain.handle('docling:status', () => {
-  return doclingBridge.getStatus();
-});
-
-// ── docling:start ──
-// Explicitly request the bridge to start (e.g. after workspace open).
-ipcMain.handle('docling:start', async () => {
-  try {
-    const started = await doclingBridge.startService();
-    return { ok: started, ...doclingBridge.getStatus() };
-  } catch (err) {
-    return { ok: false, error: err.message || String(err) };
-  }
-});
-
-// ── docling:convert ──
-// Convert a single rich document to structured Markdown via Docling.
-ipcMain.handle('docling:convert', async (_event, filePath, options) => {
-  try {
-    const result = await doclingBridge.convertDocument(filePath, options || {});
-    return { ok: true, ...result };
-  } catch (err) {
-    return { ok: false, error: err.message || String(err) };
-  }
-});
-
-// ── docling:convertBatch ──
-// Convert multiple documents in a single batch call.
-ipcMain.handle('docling:convertBatch', async (_event, files) => {
-  try {
-    const results = await doclingBridge.convertBatch(files || []);
-    return { ok: true, results };
-  } catch (err) {
-    return { ok: false, error: err.message || String(err), results: [] };
-  }
-});
-
-// ── docling:install ──
-// Install the Docling Python package via pip. Returns { ok, pythonPath, output, alreadyInstalled }.
-ipcMain.handle('docling:install', async () => {
-  try {
-    return await doclingBridge.installDocling();
-  } catch (err) {
-    return { ok: false, pythonPath: null, output: err.message || String(err), alreadyInstalled: false };
-  }
-});
+// The document reader's IPC (docling:*) is registered by its bridge.
+doclingBridge.registerIpc(ipcMain, { isAllowedReadPath: (p) => _isAllowedReadPath(p) });
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Database IPC Handlers (M6 Cap 1 — Task 1.4)

@@ -691,20 +691,20 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // ══════════════════════════════════════════════════════════════════════════
 
   docling: {
-    /** Get Docling bridge status. Returns { status, port, pythonPath, doclingInstalled }. */
-    status: () => ipcRenderer.invoke('docling:status'),
-
-    /** Start the Docling bridge service. Returns { ok, status, ... }. */
+    status: () => ipcRenderer.invoke('docling:status'), // { status, port, pythonPath, doclingInstalled, engine }
     start: () => ipcRenderer.invoke('docling:start'),
-
-    /** Convert a single document. Returns { ok, markdown, page_count, tables_found, ... } or { ok: false, error }. */
+    /** Convert one document: { ok, markdown, page_count, tables_found, ... } or { ok: false, error }. */
     convert: (filePath, options) => ipcRenderer.invoke('docling:convert', filePath, options),
-
-    /** Convert multiple documents. Returns { ok, results } or { ok: false, error }. */
+    /** Convert several documents: { ok, results } or { ok: false, error }. */
     convertBatch: (files) => ipcRenderer.invoke('docling:convertBatch', files),
-
-    /** Install Docling via pip. Returns { ok, pythonPath, output, alreadyInstalled }. */
+    /** Set the reader's engine up (progress on runtimes:progress, id 'docling'): { ok, output, alreadyInstalled }. */
     install: () => ipcRenderer.invoke('docling:install'),
+    /** Where everything on a document's pages is (pages, lines, blocks, tables), or null when it has not been read. */
+    reading: (filePath) => ipcRenderer.invoke('docling:reading', filePath),
+    /** The engine: { state: 'absent' | 'partial' | 'ready', installing, machine, downloadBytes, packageBytes, bytesOnDisk }. */
+    engineStatus: (withSize) => ipcRenderer.invoke('docling:engineStatus', withSize === true),
+    cancelInstall: () => ipcRenderer.invoke('docling:cancelInstall'), // a stopped set-up carries on from there next time
+    removeEngine: () => ipcRenderer.invoke('docling:removeEngine'),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

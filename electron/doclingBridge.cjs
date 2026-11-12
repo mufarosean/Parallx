@@ -82,6 +82,29 @@ let _shutdownRequested = false;
 /** @type {string | null} App root passed from main.cjs; used to pin TMPDIR. */
 let _appRoot = null;
 
+/**
+ * Where the reader runs. 'managed': the engine Parallx set up itself, in a
+ * tool runtime (electron/runtimeBridge.cjs, declared in doclingRuntime.cjs).
+ * 'system': a Docling someone installed into their own Python, as before.
+ * @type {'managed' | 'system' | null}
+ */
+let _engine = null;
+
+/** @type {(() => any) | null} The runtime bridge's main-process API, loaded on first use. */
+let _runtimeApi = null;
+
+/** The managed engine's declaration, or null before the app root is known. */
+function engineSpec() {
+  const root = _appRoot || path.join(__dirname, '..');
+  return require('./doclingRuntime.cjs').doclingRuntimeSpec(root);
+}
+
+/** The managed engine's Python and environment when it is set up; null otherwise. */
+async function managedLaunch() {
+  if (!_runtimeApi) return null;
+  try { return await _runtimeApi().launch(engineSpec()); } catch { return null; }
+}
+
 /** @type {number} */
 let _restartCount = 0;
 
@@ -135,6 +158,12 @@ async function detectPython() {
  * @returns {Promise<boolean>}
  */
 async function checkDoclingInstalled() {
+  if (await managedLaunch()) { _doclingInstalled = true; return true; }
+  return checkSystemDocling();
+}
+
+/** Is Docling importable from the system's own Python? */
+async function checkSystemDocling() {
   const python = await detectPython();
   if (!python) return false;
 
@@ -251,18 +280,25 @@ function _setStatus(status) {
 async function startService() {
   if (_process) return true; // Already running
 
-  const python = await detectPython();
-  if (!python) {
-    console.log('[DoclingBridge] Python 3.10+ not found');
-    _setStatus('unavailable');
-    return false;
+  // The engine Parallx set up comes first; a Docling in the system's own
+  // Python is used only when there is none.
+  const managed = await managedLaunch();
+  let python = managed ? managed.python : null;
+  if (!managed) {
+    python = await detectPython();
+    if (!python) {
+      console.log('[DoclingBridge] No document reader is set up and Python 3.10+ was not found');
+      _setStatus('unavailable');
+      return false;
+    }
+    if (!(await checkSystemDocling())) {
+      console.log('[DoclingBridge] No document reader is set up');
+      _setStatus('unavailable');
+      return false;
+    }
   }
-
-  if (!(await checkDoclingInstalled())) {
-    console.log('[DoclingBridge] Docling package not installed');
-    _setStatus('unavailable');
-    return false;
-  }
+  _engine = managed ? 'managed' : 'system';
+  _doclingInstalled = true;
 
   try {
     _setStatus('starting');
@@ -283,9 +319,13 @@ async function startService() {
     // Pin TMPDIR to APP_ROOT/data/tmp so Python's tempfile writes stay inside
     // the app tree and never touch a world-readable system temp dir.
     const appTmpDir = _appRoot ? path.join(_appRoot, 'data', 'tmp') : undefined;
-    const spawnEnv = appTmpDir
-      ? { ...process.env, TMPDIR: appTmpDir, TEMP: appTmpDir, TMP: appTmpDir }
-      : process.env;
+    // The managed engine gets the runtime's own rebuilt environment: its
+    // caches and temp files stay inside the runtime, and nothing is fetched.
+    const spawnEnv = managed
+      ? managed.env
+      : appTmpDir
+        ? { ...process.env, TMPDIR: appTmpDir, TEMP: appTmpDir, TMP: appTmpDir }
+        : process.env;
     _process = spawn(python, [serverModule, '--port', String(_port)], {
       cwd: bridgePath,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -461,7 +501,60 @@ async function convertDocument(filePath, options = {}) {
     throw new Error(`Docling conversion failed: ${result.detail}`);
   }
 
-  return result;
+  return keepReading(filePath, result);
+}
+
+// ─── Readings ───────────────────────────────────────────────────────────────
+//
+// A reading is where everything on a document's pages is: the lines of a
+// scanned page with their boxes, every block, every table's cells. The reader
+// returns it with the text. It is kept here, one file per document under
+// <app>/data/readings, and handed out by path for as long as the document's
+// size and modified time are the ones it was read at. The viewer's text layer
+// for a scan, the place a citation lights up, and a scan's page text all come
+// from it; the index only needs the Markdown, so the reading is not sent on.
+
+function readingsDir() {
+  return path.join(_appRoot || path.join(__dirname, '..'), 'data', 'readings');
+}
+
+function readingFile(filePath) {
+  const key = require('crypto').createHash('sha256').update(path.resolve(String(filePath)).toLowerCase()).digest('hex').slice(0, 40);
+  return path.join(readingsDir(), `${key}.json`);
+}
+
+/** Store a conversion's reading and return the result without it. */
+async function keepReading(filePath, result) {
+  if (!result || typeof result !== 'object' || !('reading' in result)) return result;
+  const { reading, ...rest } = result;
+  if (reading && Array.isArray(reading.pages)) {
+    try {
+      const st = await fs.promises.stat(filePath);
+      await fs.promises.mkdir(readingsDir(), { recursive: true });
+      const file = readingFile(filePath);
+      await fs.promises.writeFile(`${file}.tmp`, JSON.stringify({ path: path.resolve(filePath), size: st.size, mtimeMs: Math.round(st.mtimeMs), reading }));
+      await fs.promises.rename(`${file}.tmp`, file);
+    } catch (err) {
+      console.warn('[DoclingBridge] The reading could not be kept for', filePath, err && err.message);
+    }
+  }
+  return rest;
+}
+
+/**
+ * The reading kept for a document, or null when there is none or the
+ * document has changed since it was read.
+ * @param {string} filePath
+ */
+async function getReading(filePath) {
+  try {
+    const kept = JSON.parse(await fs.promises.readFile(readingFile(filePath), 'utf8'));
+    const st = await fs.promises.stat(filePath);
+    if (kept.size !== st.size || kept.mtimeMs !== Math.round(st.mtimeMs)) return null;
+    return kept.reading || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -480,7 +573,8 @@ async function convertBatch(files) {
   };
 
   const result = await httpRequest('POST', '/convert/batch', body, CONVERT_TIMEOUT);
-  return result?.results ?? [];
+  const results = result?.results ?? [];
+  return Promise.all(results.map((r, i) => (files[i] ? keepReading(files[i].path, r) : r)));
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -495,6 +589,7 @@ function getStatus() {
     port: _port,
     pythonPath: _pythonPath,
     doclingInstalled: _doclingInstalled,
+    engine: _engine,
   };
 }
 
@@ -515,57 +610,51 @@ function isAvailable() {
  * @returns {Promise<{ ok: boolean, pythonPath: string | null, output: string, alreadyInstalled: boolean }>}
  */
 async function installDocling() {
-  const python = await detectPython();
-  if (!python) {
-    return {
-      ok: false,
-      pythonPath: null,
-      output: 'Python 3.10+ not found. Please install Python 3.10 or later from https://www.python.org/downloads/',
-      alreadyInstalled: false,
-    };
+  if (await managedLaunch()) {
+    return { ok: true, pythonPath: null, output: 'The document reader is already set up.', alreadyInstalled: true };
   }
-
-  // Check if already installed
-  if (await checkDoclingInstalled()) {
-    return {
-      ok: true,
-      pythonPath: python,
-      output: 'Docling is already installed.',
-      alreadyInstalled: true,
-    };
+  if (!_runtimeApi) {
+    return { ok: false, pythonPath: null, output: 'The document reader can only be set up in the desktop app.', alreadyInstalled: false };
   }
+  // Set up in a tool runtime: its own Python, packages from the lock file by
+  // hash, the reader's models by hash. Progress goes out on runtimes:progress
+  // under the engine's id. A stopped or failed set-up carries on where it was.
+  const r = await _runtimeApi().install(engineSpec());
+  return {
+    ok: !!(r && r.ok),
+    pythonPath: null,
+    output: r && r.ok ? 'The document reader is set up.' : (r && r.error) || 'Setting up stopped.',
+    alreadyInstalled: false,
+    stopped: !!(r && r.stopped),
+  };
+}
 
-  // Run pip install, off the main thread: the first install downloads
-  // models for minutes, and the window must stay responsive meanwhile.
-  try {
-    const { stdout: output } = await run(
-      `${python} -m pip install docling`,
-      {
-        encoding: 'utf-8',
-        timeout: 300000, // 5 min — first install downloads models
-        windowsHide: true,
-        maxBuffer: 16 * 1024 * 1024,
-      },
-    );
+/** The managed engine: where it stands, what this computer has, how much it fetches. */
+async function engineStatus(withSize) {
+  if (!_runtimeApi) return { state: 'absent', installing: false, machine: { ok: false, problems: ['The document reader needs the desktop app.'] } };
+  const api = _runtimeApi();
+  const spec = engineSpec();
+  const [st, machine] = await Promise.all([api.status(spec, withSize === true), api.check(spec)]);
+  return { ...st, machine, engine: _engine, running: _status === 'available', packageBytes: require('./doclingRuntime.cjs').PACKAGE_BYTES };
+}
 
-    // Verify installation
-    const installed = await checkDoclingInstalled();
-    return {
-      ok: installed,
-      pythonPath: python,
-      output: installed
-        ? 'Docling installed successfully.'
-        : `pip install appeared to succeed but import verification failed.\n${output}`,
-      alreadyInstalled: false,
-    };
-  } catch (/** @type {any} */ err) {
-    return {
-      ok: false,
-      pythonPath: python,
-      output: `pip install docling failed:\n${err.stderr || err.stdout || err.message || String(err)}`,
-      alreadyInstalled: false,
-    };
-  }
+/** Stop a set-up in progress. */
+function cancelInstall() {
+  return _runtimeApi ? _runtimeApi().cancel(engineSpec().id) : false;
+}
+
+/** Remove the managed engine from this computer (the service is stopped first). */
+async function removeEngine() {
+  if (!_runtimeApi) return { ok: false, error: 'The document reader needs the desktop app.' };
+  if (_engine === 'managed') await stopService();
+  const r = await _runtimeApi().remove(engineSpec());
+  if (r && r.ok) { _engine = null; _doclingInstalled = false; }
+  return r;
+}
+
+/** Give the bridge the runtime bridge's main-process API (main.cjs, loaded on first use). */
+function setRuntimeApi(getApi) {
+  _runtimeApi = getApi;
 }
 
 /**
@@ -599,6 +688,90 @@ function setAppRoot(appRoot) {
   _appRoot = appRoot;
 }
 
+// ─── IPC ────────────────────────────────────────────────────────────────────
+//
+// Manages the Docling Python bridge for intelligent document extraction.
+// The renderer falls back to the legacy extractors when it is unavailable.
+
+/**
+ * @param {import('electron').IpcMain} ipcMain
+ * @param {{ isAllowedReadPath: (p: string) => boolean }} opts  the same boundary as every file read
+ */
+function registerIpc(ipcMain, opts) {
+  const allowed = opts.isAllowedReadPath;
+
+  // ── docling:status ──
+  ipcMain.handle('docling:status', () => {
+    return getStatus();
+  });
+
+  // ── docling:start ──
+  // Explicitly request the bridge to start (e.g. after workspace open).
+  ipcMain.handle('docling:start', async () => {
+    try {
+      const started = await startService();
+      return { ok: started, ...getStatus() };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
+
+  // ── docling:convert ──
+  // Convert a single rich document to structured Markdown via Docling.
+  ipcMain.handle('docling:convert', async (_event, filePath, options) => {
+    try {
+      const result = await convertDocument(filePath, options || {});
+      return { ok: true, ...result };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  });
+
+  // ── docling:convertBatch ──
+  // Convert multiple documents in a single batch call.
+  ipcMain.handle('docling:convertBatch', async (_event, files) => {
+    try {
+      const results = await convertBatch(files || []);
+      return { ok: true, results };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err), results: [] };
+    }
+  });
+
+  // ── docling:install ──
+  // Install the Docling Python package via pip. Returns { ok, pythonPath, output, alreadyInstalled }.
+  ipcMain.handle('docling:install', async () => {
+    try {
+      return await installDocling();
+    } catch (err) {
+      return { ok: false, pythonPath: null, output: err.message || String(err), alreadyInstalled: false };
+    }
+  });
+
+  // ── docling:reading ──
+  // Where everything on a document's pages is, as the reader last found it;
+  // null when it has not been read or has changed since. Paths go through the
+  // same boundary as every file read.
+  ipcMain.handle('docling:reading', async (_event, filePath) => {
+    try {
+      if (typeof filePath !== 'string' || !allowed(filePath)) return null;
+      return await getReading(filePath);
+    } catch { return null; }
+  });
+
+  // ── docling:engine ──
+  // The reader's own engine: where it stands, stop a set-up, remove it.
+  ipcMain.handle('docling:engineStatus', async (_event, withSize) => {
+    try { return await engineStatus(withSize === true); }
+    catch (err) { return { state: 'absent', installing: false, error: (err && err.message) || String(err) }; }
+  });
+  ipcMain.handle('docling:cancelInstall', () => cancelInstall());
+  ipcMain.handle('docling:removeEngine', async () => {
+    try { return await removeEngine(); }
+    catch (err) { return { ok: false, error: (err && err.message) || String(err) }; }
+  });
+}
+
 module.exports = {
   detectPython,
   checkDoclingInstalled,
@@ -607,8 +780,14 @@ module.exports = {
   stopServiceSync,
   convertDocument,
   convertBatch,
+  getReading,
   getStatus,
   isAvailable,
   installDocling,
+  engineStatus,
+  cancelInstall,
+  removeEngine,
+  setRuntimeApi,
+  registerIpc,
   setAppRoot,
 };

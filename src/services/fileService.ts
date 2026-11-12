@@ -30,6 +30,7 @@ import {
 } from '../platform/fileTypes.js';
 import type { IFileService } from './serviceTypes.js';
 import { FileLocator, type IFileLocateResult, type ILocatorSheet } from './fileLocator.js';
+import { fetchDocumentReading, isBlankPageText, mergePageTexts, readingPageTexts } from './documentReading.js';
 
 // ── Electron bridge shape ──────────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ export class FileService extends Disposable implements IFileService {
   private readonly _locator = new FileLocator({
     stat: (uri) => this.stat(uri),
     readText: async (uri) => (await this.readFile(uri)).content,
-    readPdfPages: async (uri) => (await this.readDocumentText(uri)).pageTexts ?? [],
+    readPdfPages: (uri) => this._pageTexts(uri),
     readDocumentText: async (uri) => (await this.readDocumentText(uri)).text,
     readSpreadsheet: (uri) => this._readSpreadsheet(uri),
   });
@@ -385,6 +386,20 @@ export class FileService extends Disposable implements IFileService {
       metadata: result.metadata,
       ...(Array.isArray(result.pageTexts) ? { pageTexts: result.pageTexts as string[] } : {}),
     };
+  }
+
+  /**
+   * Page text for the locator. A PDF's own text, with what the document
+   * reader found filled in on pages that have none (a scan); a picture of a
+   * page is one page of the reader's text.
+   */
+  private async _pageTexts(uri: URI): Promise<readonly string[]> {
+    const isPdf = /\.pdf$/i.test(uri.path);
+    const own = isPdf ? (await this.readDocumentText(uri)).pageTexts ?? [] : [];
+    if (isPdf && own.length > 0 && !own.some((t) => isBlankPageText(t))) return own;
+    const reading = await fetchDocumentReading(uri.fsPath);
+    if (!isPdf) return reading ? readingPageTexts(reading) : [];
+    return mergePageTexts(own, reading);
   }
 
   /** A PDF's text, one string per page (cached until the file changes); undefined for other files. */

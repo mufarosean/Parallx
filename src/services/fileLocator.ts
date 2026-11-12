@@ -1,7 +1,8 @@
 // fileLocator.ts — where in a file a quoted passage is.
 //
 // Each kind of file is addressed by the units its viewer shows: a PDF by
-// page (the viewer's page box, 1 = first page of the file), a text file by
+// page (the viewer's page box, 1 = first page of the file), a picture of a
+// page as one page (its text is what the document reader found), a text file by
 // line (the editor's gutter), a spreadsheet by sheet and cell (the
 // spreadsheet's own row numbers and column letters). Rich documents with no
 // such units (Word, EPUB) can only say whether the quote is there.
@@ -27,7 +28,11 @@ export interface ILocatorSheet {
 export interface IFileLocatorHost {
   stat(uri: URI): Promise<{ size: number; mtime: number }>;
   readText(uri: URI): Promise<string>;
-  /** PDF text, one string per page. */
+  /**
+   * A PDF's text, one string per page; a picture's as one page. A page with
+   * no text of its own (a scan) carries what the document reader found on it,
+   * or '' when it has not been read.
+   */
   readPdfPages(uri: URI): Promise<readonly string[]>;
   /** Extracted text of a rich document without page structure (Word, EPUB). */
   readDocumentText(uri: URI): Promise<string>;
@@ -64,6 +69,7 @@ export interface IFileLocateResult {
 }
 
 const PDF_EXTS = new Set(['.pdf']);
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.webp']);
 const SPREADSHEET_EXTS = new Set(['.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers']);
 const UNADDRESSED_EXTS = new Set(['.docx', '.epub']);
 
@@ -71,7 +77,7 @@ const UNADDRESSED_EXTS = new Set(['.docx', '.epub']);
 export function addressingForPath(path: string): FileAddressing {
   const dot = path.lastIndexOf('.');
   const ext = dot >= 0 ? path.slice(dot).toLowerCase() : '';
-  if (PDF_EXTS.has(ext)) return 'page';
+  if (PDF_EXTS.has(ext) || IMAGE_EXTS.has(ext)) return 'page';
   if (SPREADSHEET_EXTS.has(ext)) return 'cell';
   if (UNADDRESSED_EXTS.has(ext)) return 'none';
   return 'line';
@@ -92,7 +98,7 @@ export class FileLocator {
 
   constructor(private readonly _host: IFileLocatorHost) {}
 
-  /** A PDF's text, one string per page, or undefined for any other file. */
+  /** A PDF's text, one string per page (a picture's as one page), or undefined for any other file. */
   async readPdfPages(uri: URI): Promise<readonly string[] | undefined> {
     if (addressingForPath(uri.path) !== 'page') return undefined;
     const units = await this._units(uri);
@@ -185,6 +191,9 @@ export class FileLocator {
     }
 
     this._cache.delete(key);
+    // Pages with no text yet (a scan the reader has not reached) are asked
+    // for again next time, so its text is found as soon as it is read.
+    if (units.kind === 'page' && units.pages.every((p) => p.trim().length === 0)) return units;
     this._cache.set(key, { size: stat.size, mtime: stat.mtime, units });
     while (this._cache.size > CACHE_LIMIT) {
       const oldest = this._cache.keys().next().value;

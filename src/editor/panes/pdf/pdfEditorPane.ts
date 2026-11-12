@@ -21,7 +21,7 @@
 // The display and viewer layers are their own bundle (src/vendor/pdfjs.ts),
 // loaded by renderInput, so a boot with no PDF open never parses them.
 import type { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/web/pdf_viewer.mjs';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { applyReadingTextLayerFor, type PDFDocumentProxy } from './pdfReadingTextLayer.js';
 import { loadPdfjs } from '../../../vendor/lazy.js';
 
 type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
@@ -672,7 +672,7 @@ export class PdfEditorPane extends EditorPane {
         wasmUrl: PDFJS_WASM_URL,
         enableHWA: true,
       }).promise;
-
+      await applyReadingTextLayerFor(this._pdfDoc, this._currentInput?.uri.fsPath); // a scan's pages report the reader's lines as their text
       // Storage reads and the pagesinit listener BOTH come before
       // setDocument(): pdf.js dispatches 'pagesinit' on a synchronous
       // EventBus with no replay, so a listener registered after setDocument

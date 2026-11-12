@@ -38,7 +38,8 @@ const UV_BUILDS = {
   'win32-x64': { file: 'uv-x86_64-pc-windows-msvc.zip', sha256: '3b2661a463a5baea7f5076ea2b25ab71d77f36a6c0d809e5350651792f80a672', exe: 'uv.exe' },
   'linux-x64': { file: 'uv-x86_64-unknown-linux-gnu.tar.gz', sha256: 'eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220', exe: 'uv' },
 };
-const ALLOWED_FILE_HOSTS = new Set(['huggingface.co', 'github.com']);
+// modelscope.cn is where RapidOCR publishes the scan reader's models; like every file, each is kept only if its SHA-256 matches.
+const ALLOWED_FILE_HOSTS = new Set(['huggingface.co', 'github.com', 'www.modelscope.cn']);
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/;
@@ -403,8 +404,8 @@ function setupRuntimeBridge(ipcMain, opts) {
   }
 
   /** The runtime's Python, argv form, rebuilt environment; JSON lines on stdout become progress. */
-  function runScript(spec, script, args, runId, job) {
-    const d = dirs(spec.id);
+  /** What a process in the runtime sees: a rebuilt environment, every cache inside the runtime, nothing fetched. */
+  function processEnv(d) {
     const env = {};
     for (const k of ['SystemRoot', 'SYSTEMROOT', 'windir', 'ComSpec', 'PATHEXT', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'LOCALAPPDATA', 'APPDATA', 'HOME', 'LANG', 'CUDA_VISIBLE_DEVICES']) if (process.env[k] !== undefined) env[k] = process.env[k];
     env.PATH = [path.dirname(envPython(d)), process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32') : '/usr/bin:/bin'].join(path.delimiter);
@@ -417,6 +418,12 @@ function setupRuntimeBridge(ipcMain, opts) {
       CUDA_DEVICE_ORDER: 'PCI_BUS_ID',
     });
     fs.mkdirSync(d.tmp, { recursive: true });
+    return env;
+  }
+
+  function runScript(spec, script, args, runId, job) {
+    const d = dirs(spec.id);
+    const env = processEnv(d);
     let stall = null;
     let child = null;
     const arm = () => { if (stall) clearTimeout(stall); stall = setTimeout(() => killTree(child), RUN_STALL_MS); };
@@ -464,7 +471,31 @@ function setupRuntimeBridge(ipcMain, opts) {
     return { ok: true, stdout: r.stdout };
   });
 
-  return { base };
+  /**
+   * For the core's own engines (the document reader, electron/doclingBridge.cjs),
+   * which run a long-lived process in a runtime instead of one script: the
+   * same checks and the same install, called in the main process.
+   */
+  const api = {
+    check: async (raw) => { const c = specOf(raw); return c.error ? { ok: false, problems: [c.error] } : check(c.spec); },
+    status: async (raw, withSize) => { const c = specOf(raw); return c.error ? { state: 'absent', error: c.error } : status(c.spec, withSize === true); },
+    install: async (raw) => { const c = specOf(raw); return c.error ? { ok: false, error: c.error } : install(c.spec); },
+    cancel: (id) => { const job = installs.get(String(id)); if (!job) return false; job.cancelled = true; job.controller.abort(); killTree(job.child); return true; },
+    remove: async (raw) => {
+      const c = specOf(raw); if (c.error) return { ok: false, error: c.error };
+      if (installs.has(c.spec.id)) return { ok: false, error: 'It is being set up. Stop it first.' };
+      await fsp.rm(dirs(c.spec.id).root, { recursive: true, force: true });
+      return { ok: true };
+    },
+    /** Where a ready runtime's Python and files are, and the environment its processes get; null when it is not ready. */
+    launch: async (raw) => {
+      const c = specOf(raw); if (c.error || !(await isReady(c.spec))) return null;
+      const d = dirs(c.spec.id);
+      return { python: envPython(d), files: d.files, home: d.home, env: processEnv(d) };
+    },
+  };
+
+  return { base, api };
 }
 
 module.exports = { setupRuntimeBridge, _internals: { checkSpec, machineProblems, packagesKey, UV_BUILDS, UV_VERSION, ALLOWED_FILE_HOSTS } };

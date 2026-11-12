@@ -1,7 +1,8 @@
 # parallx_docling — FastAPI bridge for Docling document conversion
 #
 # Runs as a local HTTP service managed by Electron. Accepts file paths,
-# converts documents via Docling's ML pipeline, returns structured Markdown.
+# converts documents via Docling's ML pipeline, returns structured Markdown
+# and where everything on the page is (the reading).
 #
 # Endpoints:
 #   GET  /health         — service status + model readiness
@@ -38,10 +39,14 @@ logger = logging.getLogger("parallx_docling")
 # Docling is heavy (~1 GB models). We import lazily so the server can start
 # and respond to /health before models are loaded.
 
-_converter = None
+# One converter per way of reading: a born-digital file keeps its own text,
+# a scan or a photo of a page is read from its pixels.
+_converters: dict[bool, object] = {}
 _docling_version: str | None = None
 _models_ready = False
 _models_loading = False
+_artifacts_path: str | None = None
+_artifacts_checked = False
 
 
 def _get_docling_version() -> str:
@@ -56,53 +61,177 @@ def _get_docling_version() -> str:
     return _docling_version
 
 
+def lay_out_models() -> str | None:
+    """
+    In Parallx's own engine the models arrive as flat files, each checked
+    against its SHA-256 (PARALLX_RUNTIME_FILES, listed in models.json). Lay
+    them out at the paths Docling reads them from: hard links, so nothing is
+    stored twice. Returns the folder, or None when Docling fetches its own
+    models (a Docling in the user's own Python).
+    """
+    global _artifacts_path, _artifacts_checked
+    if _artifacts_checked:
+        return _artifacts_path
+    _artifacts_checked = True
+    files_dir = os.environ.get("PARALLX_RUNTIME_FILES")
+    manifest = Path(__file__).resolve().parent.parent / "models.json"
+    if not files_dir or not manifest.is_file():
+        return None
+    import json
+    target = Path(files_dir).parent / "home" / "docling-models"
+    for entry in json.loads(manifest.read_text(encoding="utf-8")).get("files", []):
+        src = Path(files_dir) / entry["name"]
+        dest = target / entry["path"]
+        if not src.is_file():
+            raise RuntimeError(f"A model file is missing: {entry['name']}. Set the document reader up again.")
+        if dest.is_file() and dest.stat().st_size == src.stat().st_size:
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            dest.unlink()
+        try:
+            os.link(src, dest)
+        except OSError:
+            import shutil
+            shutil.copyfile(src, dest)
+    _artifacts_path = str(target)
+    return _artifacts_path
+
+
 def _ensure_converter(ocr: bool = False):
     """
-    Lazily create the Docling DocumentConverter with appropriate options.
-    First call triggers model download if needed (can take minutes).
+    Lazily create the Docling DocumentConverter for one way of reading.
+    `ocr` reads every page from its pixels (a scan, a photo of a page).
     """
-    global _converter, _models_ready, _models_loading
+    global _models_ready, _models_loading
 
-    if _converter is not None:
-        return _converter
+    if ocr in _converters:
+        return _converters[ocr]
 
     if _models_loading:
         raise RuntimeError("Docling models are still loading. Please wait.")
 
     _models_loading = True
-    logger.info("Initializing Docling converter (this may download models on first run)...")
+    logger.info("Initializing Docling converter (ocr=%s)...", ocr)
 
     try:
-        from docling.document_converter import DocumentConverter, PdfFormatOption
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
+        from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
         from docling.datamodel.base_models import InputFormat
 
-        # Configure PDF pipeline with optional OCR
-        pdf_pipeline_options = PdfPipelineOptions()
-        pdf_pipeline_options.do_ocr = ocr
+        opts = PdfPipelineOptions()
+        artifacts = lay_out_models()
+        if artifacts:
+            opts.artifacts_path = artifacts
+        opts.do_ocr = ocr
+        if ocr:
+            from docling.datamodel.pipeline_options import RapidOcrOptions
+            opts.ocr_options = RapidOcrOptions(force_full_page_ocr=True)
+            # Keep each line the reader found, with its box: the viewer's text layer.
+            opts.generate_parsed_pages = True
+        opts.do_table_structure = True
+        opts.table_structure_options.mode = TableFormerMode.ACCURATE
+        # Formulas as LaTeX. Only where the model is on disk already: it is
+        # never fetched from here.
+        opts.do_formula_enrichment = bool(artifacts)
 
-        format_options = {
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_pipeline_options),
-        }
-
-        _converter = DocumentConverter(format_options=format_options)
+        converter = DocumentConverter(format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=opts),
+            InputFormat.IMAGE: ImageFormatOption(pipeline_options=opts),
+        })
+        _converters[ocr] = converter
         _models_ready = True
         logger.info("Docling converter ready (version %s)", _get_docling_version())
-        return _converter
+        return converter
 
     except Exception as e:
-        _models_loading = False
         logger.error("Failed to initialize Docling: %s", e)
         raise
     finally:
         _models_loading = False
 
 
+def _box(bbox, page_height: float) -> list[float]:
+    """A Docling box as [left, top, right, bottom] from the page's top-left corner, in page units."""
+    try:
+        b = bbox.to_top_left_origin(page_height=page_height)
+    except Exception:
+        b = bbox
+    return [round(float(b.l), 2), round(float(b.t), 2), round(float(b.r), 2), round(float(b.b), 2)]
+
+
+def build_reading(result, ocr: bool) -> dict:
+    """
+    Where everything on the page is: each page's size; for a page read from
+    its pixels, every line with its box; every block (heading, paragraph,
+    formula, table, picture) with its page and box; every table as a grid
+    of cells, each with its box. Boxes are [left, top, right, bottom] from
+    the page's top-left corner, in the page's own units.
+    """
+    doc = result.document
+    sizes: dict[int, tuple[float, float]] = {}
+    for no, page in (doc.pages or {}).items():
+        sizes[int(no)] = (float(page.size.width), float(page.size.height))
+
+    pages = []
+    for page in result.pages:
+        no = int(page.page_no) + 1
+        width, height = sizes.get(no, (0.0, 0.0))
+        lines = []
+        parsed = getattr(page, "parsed_page", None)
+        if ocr and parsed is not None:
+            for cell in parsed.textline_cells:
+                text = (cell.text or "").strip()
+                if not text:
+                    continue
+                lines.append({"text": text, "box": _box(cell.rect.to_bounding_box(), height)})
+        pages.append({"page": no, "width": round(width, 2), "height": round(height, 2), "lines": lines})
+
+    blocks = []
+    for item, _level in doc.iterate_items():
+        prov = getattr(item, "prov", None)
+        if not prov:
+            continue
+        first = prov[0]
+        _w, height = sizes.get(int(first.page_no), (0.0, 0.0))
+        label = str(getattr(item.label, "value", item.label))
+        block = {"label": label, "page": int(first.page_no), "box": _box(first.bbox, height)}
+        text = getattr(item, "text", None)
+        if isinstance(text, str) and text:
+            block["text"] = text
+        blocks.append(block)
+
+    tables = []
+    for table in doc.tables or []:
+        if not table.prov:
+            continue
+        first = table.prov[0]
+        _w, height = sizes.get(int(first.page_no), (0.0, 0.0))
+        cells = []
+        for cell in table.data.table_cells:
+            entry = {
+                "r": int(cell.start_row_offset_idx), "c": int(cell.start_col_offset_idx),
+                "rs": int(cell.row_span), "cs": int(cell.col_span), "text": cell.text or "",
+            }
+            if cell.bbox is not None:
+                entry["box"] = _box(cell.bbox, height)
+            if cell.column_header or cell.row_header:
+                entry["header"] = True
+            cells.append(entry)
+        tables.append({
+            "page": int(first.page_no), "box": _box(first.bbox, height),
+            "rows": int(table.data.num_rows), "cols": int(table.data.num_cols), "cells": cells,
+        })
+
+    return {"version": 1, "ocr": ocr, "pages": pages, "blocks": blocks, "tables": tables}
+
+
 def _convert_document(file_path: str, ocr: bool = False) -> dict:
     """
     Convert a single document to structured Markdown via Docling.
 
-    Returns dict with: markdown, page_count, tables_found, diagnostics.
+    Returns dict with: markdown, page_count, tables_found, diagnostics, and
+    `reading` (where everything on the page is; see build_reading).
     """
     start = time.monotonic()
     path = Path(file_path)
@@ -112,8 +241,6 @@ def _convert_document(file_path: str, ocr: bool = False) -> dict:
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
 
-    # Get or create converter — may need to recreate with different OCR setting
-    global _converter, _models_ready
     converter = _ensure_converter(ocr=ocr)
 
     # Convert
@@ -142,6 +269,13 @@ def _convert_document(file_path: str, ocr: bool = False) -> dict:
     except Exception:
         pass
 
+    reading = None
+    try:
+        reading = build_reading(result, ocr)
+    except Exception as e:  # The text is still good without the positions.
+        logger.warning("No positions for %s: %s", file_path, e)
+        diagnostics.append(f"No positions: {e}")
+
     elapsed_ms = round((time.monotonic() - start) * 1000)
     diagnostics.append(f"Converted in {elapsed_ms}ms")
 
@@ -154,6 +288,7 @@ def _convert_document(file_path: str, ocr: bool = False) -> dict:
         "tables_found": tables_found,
         "elapsed_ms": elapsed_ms,
         "diagnostics": diagnostics,
+        "reading": reading,
     }
 
 
@@ -161,7 +296,7 @@ def _convert_document(file_path: str, ocr: bool = False) -> dict:
 
 app = FastAPI(
     title="Parallx Docling Bridge",
-    version="0.1.0",
+    version="0.2.0",
     docs_url=None,   # No need for Swagger UI in embedded service
     redoc_url=None,
 )
@@ -171,7 +306,7 @@ app = FastAPI(
 
 class ConvertRequest(BaseModel):
     path: str = Field(..., description="Absolute file path to convert")
-    ocr: bool = Field(False, description="Enable OCR for scanned documents")
+    ocr: bool = Field(False, description="Read every page from its pixels (a scan, a photo of a page)")
 
 
 class ConvertResponse(BaseModel):
@@ -180,6 +315,7 @@ class ConvertResponse(BaseModel):
     tables_found: int = Field(0)
     elapsed_ms: int = Field(0)
     diagnostics: list[str] = Field(default_factory=list)
+    reading: Optional[dict] = Field(None, description="Where everything on the page is: pages, lines, blocks, tables")
 
 
 class BatchConvertRequest(BaseModel):

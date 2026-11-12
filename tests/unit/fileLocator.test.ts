@@ -104,3 +104,30 @@ describe('FileLocator', () => {
     expect(await loc.readPdfPages(URI.file('/ws/notes.txt'))).toBeUndefined();
   });
 });
+
+describe('scans and pictures of pages', () => {
+  it('addresses a picture of a page as one page', () => {
+    expect(addressingForPath('Scans/receipt.JPG')).toBe('page');
+    expect(addressingForPath('Scans/page.png')).toBe('page');
+  });
+
+  it('finds a quote in the text the document reader found on a picture', async () => {
+    const { h } = host({ readPdfPages: async () => ['Total due 1,250.00\nPaid in full'] });
+    const r = await new FileLocator(h).locate(URI.file('/w/Scans/receipt.jpg'), 'total due 1,250.00');
+    expect(r.addressing).toBe('page');
+    expect(r.spots).toEqual([{ page: 1, text: 'Total due 1,250.00' }]);
+  });
+
+  it('asks again for a scan that had no text yet, and keeps it once it has', async () => {
+    let read = false;
+    let asks = 0;
+    const { h } = host({ readPdfPages: async () => { asks++; return read ? ['The reader has now read this scan.'] : ['', '']; } });
+    const locator = new FileLocator(h);
+    const uri = URI.file('/w/Scans/scan.pdf');
+    expect((await locator.locate(uri, 'the reader has now read')).spots).toEqual([]);
+    read = true;
+    expect((await locator.locate(uri, 'the reader has now read')).spots).toHaveLength(1);
+    await locator.locate(uri, 'the reader has now read');
+    expect(asks).toBe(2);
+  });
+});
