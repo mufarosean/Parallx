@@ -382,8 +382,10 @@ text or JSON with boxes; MiniCPM-OCR 1.0 (1.3B) and Xiaomi-OCR-0 (0.8B)
 are the heavier tier for tables, formulas and charts.
 
 **What the user gets.** Any scan or photo of a page becomes searchable
-text with boxes that click back to the spot on the page; handwriting
-included. For him: scanned exam papers, the closing documents. For
+text with boxes that click back to the spot on the page. Handwriting is
+not a goal: it was never his ask (it came in with Indra's own claims),
+and he questioned it on 2026-11-12. Printed scans and photos of pages
+are the job. For him: scanned exam papers, the closing documents. For
 another person: receipts into Budget, medical letters, warranties.
 
 **Shape.** An extraction provider the indexing pipeline can prefer over
@@ -426,10 +428,8 @@ second reading pipeline. Keep Docling and choose the engine inside it,
 in two tiers:
 
 - *For everyone, no GPU:* PP-OCRv6 through RapidOCR. Apache 2.0, already
-  a Docling engine, Windows listed, a box per line, and the best
-  published handwriting number of any light engine. Indra is passed
-  over: its weights licence must be handed on to every user, its authors
-  have not tested Windows, and its handwriting is the weakest measured.
+  a Docling engine, Windows listed, and a box per line. Indra is passed over: its weights licence must be
+  handed on to every user and its authors have not tested Windows.
   To confirm first: that RapidOCR can load the v6 models.
 - *Optional, for a user with a GPU:* MiniCPM-OCR 1.0, for tables,
   formulas and hard pages. Apache 2.0, already a Docling preset, runs
@@ -439,9 +439,8 @@ in two tiers:
   search hit highlights the line on the page (the block, on the heavy
   tier).
 - *First step:* measure both tiers against today's Docling OCR on about
-  twenty of his own pages (a clean scan, a phone photo, handwriting, a
-  table, a formula page). The published numbers chose the candidates;
-  his pages decide. Expect handwriting to stay imperfect on any of them.
+  twenty of his own pages (a clean scan, a phone photo, a table, a formula page). The published
+  numbers chose the candidates; his pages decide.
 
 **The wider shortlist the research gave:**
 
@@ -516,29 +515,33 @@ page read that day; the two rankings read from their own data).**
 **Recommendation (Claude's, 2026-11-12; his yes owed, and the gate
 above still holds: this opens nothing).**
 
-- *Dictation and transcripts:* Parakeet-TDT-0.6b-v3. Small enough to sit
-  beside the chat model or run without a GPU, with punctuation and a
-  time for every word. It is push to talk, not words appearing as he
-  speaks; the same-size NVIDIA streaming model is added only if he wants
-  that.
-- *Reading aloud (pages, decks):* Kokoro-82M, off the GPU, so it never
-  competes with the chat model.
-- *Character voices in Creations:* VoxCPM2. A voice is made once from
-  the character's description, a short clip of it is kept, and every
-  later line is spoken from that clip, so the voice stays the same
-  (its authors say a described voice varies from run to run).
-- *Cloning* is of a designed voice or the user's own sample; several of
-  these models' terms forbid imitating a real person without consent.
+- *Scope, by his call (2026-11-12):* "I only care about AI chat for
+  voice, not Creations AI characters." Voice is talking to the AI chat
+  and hearing it answer. Character voices, voices made from a
+  description and cloning are out, and with them VoxCPM2, Ming and the
+  consent question. Dictating into a page and reading a page or a deck
+  aloud are not asked for either.
+- *Speaking to the chat:* Parakeet-TDT-0.6b-v3. Small enough to sit
+  beside the chat model or run without a GPU, with punctuation. It is
+  push to talk: he holds a key or the mic button, speaks, and the words
+  land in the chat box. Words appearing as he speaks, or a hands-free
+  conversation that knows when he has stopped, would add the same-size
+  NVIDIA streaming model and a voice detector; not asked yet.
+- *The chat answering aloud:* Kokoro-82M, off the GPU so it never
+  competes with the chat model, speaking the reply sentence by sentence
+  while it is still being written, with a way to stop it.
+- *How it stays modular:* the chat is core and Voice is an extension, so
+  the chat gains two generic contribution points (something that fills
+  the input, something that reads a reply) and Voice registers into
+  them. Turned off, the mic and the speaker button go.
 - *Passed over:* the three named models, for the reasons above; Whisper
-  (now behind Parakeet); every non-commercial voice.
-- *First step, when he reopens Voice:* his ear. One page read by Kokoro
-  and by Phonon; three of his characters voiced by VoxCPM2 and by
-  Ming-3.0-tts; and VoxCPM2's memory use measured beside his loaded
-  chat model before anything is built on it.
+  (now behind Parakeet); every voice-design and cloning model.
+- *First step, when he reopens Voice:* his ear. One chat answer read by
+  Kokoro and by Phonon, and his own speech through Parakeet into the
+  chat box.
 
-**Unknown.** Windows support for VoxCPM2 and Ming (their pages do not
-say); VRAM on his card for every candidate (almost no page states it);
-which runtime carries Parakeet and Kokoro inside the app.
+**Unknown.** Which runtime carries Parakeet and Kokoro inside the app;
+whether he wants push to talk only or a hands-free conversation.
 
 ### Predict From This Table
 
@@ -609,7 +612,8 @@ page read that day).**
   dragging an edge or picking a ratio, variations, the result on a new
   layer. Adobe's pages refused the fetch and are unread.
 
-**Recommendation (Claude's, 2026-11-12; his yes owed).** Three tools in
+**Recommendation (Claude's, 2026-11-12; his words on it the same day: "I think I am aligned." No go to build
+yet).** Three tools in
 one Generate step, each on Apache weights so the app can fetch them for
 anyone:
 
