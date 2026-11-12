@@ -6,6 +6,18 @@
   finished, then the next.
 - Assume every task builds on the latest version of the app. There is no
   parallel work to keep apart.
+- Parallx is his personal app, a tool for his own life. He does not sell it
+  or publish it. Decide for his build and his machine (Windows, an RTX 5090
+  with 32 GB, Python, Ollama, Docling, a Hugging Face login if a model needs
+  one). A licence that allows personal use is enough; Python is fine; "a user
+  with no GPU" or "a user who will not install X" is not a reason for
+  anything. The modular rule below still holds: it is how the app is built.
+- Go past the first answer (his standing directive, 2026-11-12). He expects
+  new ideas, not the easy, convenient or copied one. Question the premise of
+  the request and of your own answer; ask what his system (his models, his
+  data, the tools already in the app) makes possible that no product does;
+  check the idea against the app's code before recommending it; say what was
+  considered and set aside.
 - Work moves between Claude Code in the cloud and Claude Code in VS Code on
   the owner's machine. Whichever one picks up next must start from exactly
   where the last one stopped.
