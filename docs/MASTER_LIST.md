@@ -422,20 +422,45 @@ we are adding it for the potential situation, but do not expect that we
 will have this issue"); Read Anything is checked on pages Claude makes,
 and the reader is Claude's pick (MiniCPM-OCR 1.0 inside Docling).
 
-*Read Anything.*
-1. (Dropped by him: no test on his pages.)
-2. The structured document: Docling's bridge returns it, it is stored
-   once per file, the index keeps each block's place. Seen as: a scan
-   is found by search.
-3. The highlight: a search hit or a citation opens the scan with its
-   block lit. Mock-ups of the highlight in the PDF and image views.
+*Read Anything.* The record of what is built is `docs/READ_ANYTHING.md`.
+
+Shipped 2026-11-12 (in the code and its tests; checked in a hidden copy of
+the app):
+
+- The reader as an engine Parallx sets up itself (it was never installed
+  on his machine, so every PDF had been read as plain text). It is set
+  up on his machine now: about 8 GB under `data/runtimes/docling`.
+- Every rich document read with its structure; a scan read from its
+  pixels; where everything on the page is kept per document.
+- A scan's text reaches search, the chat's reading and the quote
+  locator; in the PDF view Find, selection and a citation's highlight
+  work on a scan.
+- The reader stays on the processor (no graphics memory), one document
+  at a time, at low priority. Pictures are never read in the background.
+
+Decided by Claude while building, for him to overrule:
+
+- Formulas are not turned into LaTeX in the background: about 4 seconds
+  a formula even on the card. It becomes a request on one document.
+- The reader in use is Docling's own, with PP-OCRv6 for scans. The
+  heavier vision reader (MiniCPM-OCR) is not wired: the standard one
+  read the test scans cleanly and gives a box for every line, which the
+  vision readers do not.
+- On his next launch the indexer reads every PDF in the open workspace
+  again, once, in the background on the processor.
+
+Left, in order:
+
+3. The highlight for a block (a table, a figure) and for a picture of a
+   page in the image view. Mock-ups first.
 4. The chat sees the page: the Read tool hands over the page image; a
    citation shows a small crop of where it came from.
-5. Open As Page: the scan beside the page it became; a table cell and
-   its place on the scan light each other. The largest surface;
-   mock-ups first.
-6. Settings and the indexing log: which reader, its state, Read Again
-   for one file.
+5. Open As Page: the scan beside the page it became. The largest
+   surface; mock-ups first. Formulas as LaTeX belong here, on request.
+6. A surface for the reader's state (set up, size, Remove, Read Again
+   for one file) in place of the command's notifications. Mock-ups
+   first.
+7. Reading a scan when it is opened, if it has not been read yet.
 
 *Generative edits.*
 1. The test: ten edits and three large fills on his photos, at 100%. He
