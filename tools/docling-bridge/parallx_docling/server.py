@@ -174,8 +174,8 @@ def build_reading(result, ocr: bool) -> dict:
         sizes[int(no)] = (float(page.size.width), float(page.size.height))
 
     pages = []
-    for page in result.pages:
-        no = int(page.page_no) + 1
+    # Pages in order are pages 1, 2, 3...: the numbers the document's own items carry.
+    for no, page in enumerate(result.pages, start=1):
         width, height = sizes.get(no, (0.0, 0.0))
         lines = []
         parsed = getattr(page, "parsed_page", None)

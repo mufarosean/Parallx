@@ -660,7 +660,7 @@ export class PdfEditorPane extends EditorPane {
         if (typeof pageNumber === 'number') this._highlightStore.renderPage(pageNumber);
       });
 
-      this._search?.attach(this._eventBus, pdf.FindState.NOT_FOUND);
+      this._search?.attach(this._eventBus, pdf.FindState.NOT_FOUND, pdf.FindState.PENDING);
 
       // ── Load document ──────────────────────────────────────────────
 

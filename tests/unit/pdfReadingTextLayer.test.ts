@@ -63,7 +63,11 @@ function fakeDoc(ownText: Record<number, string>) {
       if (!pages.has(n)) {
         pages.set(n, {
           getViewport: () => upright(600, 800),
-          getTextContent: async () => ({ items: ownText[n] ? [{ str: ownText[n] }] : [], styles: {}, own: true }),
+          // As pdf.js does it: getTextContent drains whatever streamTextContent is on the page.
+          async getTextContent(this: { streamTextContent(): ReadableStream<unknown> }) {
+            const chunks = await drain(this.streamTextContent()) as { items: unknown[]; own?: boolean }[];
+            return { items: chunks.flatMap((c) => c.items), styles: {}, own: chunks.every((c) => c.own === true) };
+          },
           streamTextContent: () => new ReadableStream({ start(c) { c.enqueue({ items: ownText[n] ? [{ str: ownText[n] }] : [], own: true }); c.close(); } }),
         });
       }

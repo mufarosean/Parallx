@@ -160,7 +160,9 @@ async function main() {
     check(/expected loss/i.test(found), `find highlights the phrase on the scan (${JSON.stringify(found)})`);
     await shot('scan-find.png');
 
-    check(errors.length === 0, `no errors in the window${errors.length ? `: ${errors.slice(0, 3).join(' || ')}` : ''}`);
+    // The hidden copy is kept off Ollama on purpose; indexing saying so is not a fault here.
+    const faults = errors.filter((e) => !/Cannot connect to Ollama|ERR_CONNECTION_REFUSED/.test(e));
+    check(faults.length === 0, `no errors in the window${faults.length ? `: ${faults.slice(0, 3).join(' || ')}` : ''}`);
   } finally {
     await app.close().catch(() => {});
     await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});

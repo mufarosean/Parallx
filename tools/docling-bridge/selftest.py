@@ -38,8 +38,10 @@ def main() -> int:
         out = server._convert_document(str(path), ocr=True)
 
     text = out["markdown"].lower()
-    lines = (out.get("reading") or {}).get("pages", [{}])[0].get("lines", [])
-    ok = "parallx" in text and "1,250" in text and len(lines) >= 2 and all(len(l["box"]) == 4 for l in lines)
+    first = (out.get("reading") or {}).get("pages", [{}])[0]
+    lines = first.get("lines", [])
+    placed = first.get("page") == 1 and first.get("width", 0) > 0 and first.get("height", 0) > 0
+    ok = "parallx" in text and "1,250" in text and placed and len(lines) >= 2 and all(len(l["box"]) == 4 for l in lines)
     print(json.dumps({"ok": ok, "lines": len(lines), "ms": out["elapsed_ms"]}))
     if not ok:
         print(f"The reader ran but did not read its test page: {out['markdown'][:200]!r}", file=sys.stderr)

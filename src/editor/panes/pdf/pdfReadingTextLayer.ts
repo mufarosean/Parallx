@@ -84,12 +84,21 @@ function patchPage(page: PatchablePage & { [PATCHED]?: boolean }, lines: IReadin
   const ownGet = page.getTextContent.bind(page);
   const ownStream = page.streamTextContent.bind(page);
 
-  // Asked once: does this page have text of its own?
+  // Asked once: does this page have text of its own? Read from the page's own
+  // stream: pdf.js builds getTextContent on streamTextContent, so asking
+  // through getTextContent would come back here and wait on itself.
   let blank: Promise<boolean> | null = null;
-  const isBlank = () => (blank ??= ownGet().then(
-    (content) => isBlankPageText(content.items.map((i) => i.str ?? '').join('')),
-    () => false,
-  ));
+  const ownText = async (): Promise<string> => {
+    let text = '';
+    const reader = ownStream({}).getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const item of (value as { items?: Array<{ str?: string }> })?.items ?? []) text += item.str ?? '';
+    }
+    return text;
+  };
+  const isBlank = () => (blank ??= ownText().then((text) => isBlankPageText(text), () => false));
   const fromReading = () => readingTextContent(lines, page.getViewport({ scale: 1 }));
 
   page.getTextContent = async (params?: unknown) => ((await isBlank()) ? fromReading() : ownGet(params));

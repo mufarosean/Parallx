@@ -4,6 +4,7 @@
 // next and close. Queries go to pdf.js's find controller through the
 // viewer's event bus; its count and not-found state come back the same way.
 
+import { PdfFindQueue } from './pdfFindQueue.js';
 import { declareControl } from '../../../ui/kit.js';
 import type { FindCount, FindOptions, IFindTarget } from '../../../ui/findTargets.js';
 import type { EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
@@ -29,6 +30,8 @@ export class PdfSearchBar {
   private _open = false;
   private _caseSensitive = false;
   private _wholeWord = false;
+  /** Finds go to pdf.js one at a time (pdfFindQueue.ts). */
+  private readonly _finds = new PdfFindQueue<Record<string, unknown>>((find) => this._host.eventBus()?.dispatch('find', find));
 
   constructor(
     private readonly _bar: HTMLElement,
@@ -135,7 +138,7 @@ export class PdfSearchBar {
     let query = '';
     let options: FindOptions = { caseSensitive: false, wholeWord: false, useRegex: false };
     const send = (type: string, findPrevious = false): void => {
-      this._host.eventBus()?.dispatch('find', { source: this._host.source, type, query, caseSensitive: options.caseSensitive, entireWord: options.wholeWord, highlightAll: true, findPrevious });
+      this._finds.request({ source: this._host.source, type, query, caseSensitive: options.caseSensitive, entireWord: options.wholeWord, highlightAll: true, findPrevious });
     };
     const clear = (): void => { this._host.eventBus()?.dispatch('findbarclose', { source: this._host.source }); };
     return {
@@ -156,13 +159,15 @@ export class PdfSearchBar {
   }
 
   /** A new document's event bus: show its match count and not-found state. */
-  attach(eventBus: EventBus, notFoundState: number): void {
+  attach(eventBus: EventBus, notFoundState: number, pendingState: number): void {
+    this._finds.reset();
     eventBus.on('updatefindmatchescount', (evt: { matchesCount: MatchesCount }) => {
       const { current, total } = evt.matchesCount;
       for (const l of this._countListeners) l({ current, total });
       this._count.textContent = total > 0 ? `${current} of ${total}` : '';
     });
     eventBus.on('updatefindcontrolstate', (evt: { state: number; matchesCount?: MatchesCount }) => {
+      if (evt.state !== pendingState) this._finds.settled();
       if (evt.state === notFoundState) {
         for (const l of this._countListeners) l({ current: 0, total: 0 });
         this._count.textContent = 'No matches';
@@ -180,10 +185,11 @@ export class PdfSearchBar {
   /** A new document: the bar counts as closed. */
   reset(): void {
     this._open = false;
+    this._finds.reset();
   }
 
   private _dispatch(type: string, findPrevious = false): void {
-    this._host.eventBus()?.dispatch('find', {
+    this._finds.request({
       source: this._host.source,
       type,
       query: this._input.value,
