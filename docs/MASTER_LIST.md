@@ -89,13 +89,15 @@ time for every chat however old (`chatSessionSidebar.ts`, the shared
   word; thinking counted apart from the answer if the engine reports
   it. A cloud model shows what its provider reports, or nothing.
 - *Dates on old chats:* today and yesterday stay relative ("2h ago",
-  "Yesterday"); anything older shows its date. Whether that rule
-  changes the shared clock for every list in the app or only the chat
-  list is his call.
+  "Yesterday"); anything older shows its date. The chat's list only.
 
-**Unknown.** Where the speed sits (under each answer, or in the token
-bar); whether the day a conversation moved to is marked between
-messages; the date format (12 Nov, or Nov 12).
+**Settled by him (2026-11-12).** Done after the extension work. Speed
+sits under each AI response. The date format "does not matter to me"
+(Claude's pick: Nov 12, with the year when it is not this year). The
+date rule is for the AI chat's list only; no other list changes.
+
+**Unknown.** Whether the day a conversation moved to is marked between
+messages.
 
 ### Enhance for short videos: bigger resolution
 
@@ -411,12 +413,17 @@ as mock-ups in the app's own tokens, kit and icons, light and dark, and
 he picks before it is built. A step is done when the keyboard and touch
 audits report 0 and he has seen it running.
 
-*Order proposed:* the chat's times and speed (small, core, above);
-Read Anything; Generative edits; Voice when he reopens it.
+*Order, by his call (2026-11-12):* "I would prioritize the extension
+work first then do the chat times and speed at the end."
+
+*His corrections the same day:* the test on twenty of his scanned pages
+was Claude's invention and is dropped ("We do not need to test that...
+we are adding it for the potential situation, but do not expect that we
+will have this issue"); Read Anything is checked on pages Claude makes,
+and the reader is Claude's pick (MiniCPM-OCR 1.0 inside Docling).
 
 *Read Anything.*
-1. The test: twenty of his scanned pages through both readers, side by
-   side. He picks the reader.
+1. (Dropped by him: no test on his pages.)
 2. The structured document: Docling's bridge returns it, it is stored
    once per file, the index keeps each block's place. Seen as: a scan
    is found by search.
