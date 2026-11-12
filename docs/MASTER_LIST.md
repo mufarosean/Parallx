@@ -62,6 +62,47 @@ extension; how much of the Exam 7 data model (recipes, roster, campaign)
 generalizes and how much is his alone and stays in his workspace; the
 migration of his existing banks and sessions.
 
+### Enhance for short videos: bigger resolution
+
+**His words (2026-11-12):** "Let's talk about the idea of enhancing
+videos." Asked what enhancing means and for what footage: "short videos,
+bigger resolution." Then: "add to master list."
+
+**What it is.** The Media Organizer's Enhance, which enlarges photos
+today, also enlarges a short video. Not noise removal, not rescue of old
+footage, not smoother motion (more frames a second needs another engine).
+
+**What the user gets.** An Enhance action on a video in the library; the
+result is a new, larger video beside the original, with the original's
+sound and frame rate, and the original untouched.
+
+**What exists today (verified in the code).** SeedVR2, the engine behind
+Enhance and the library's Upscale, is a video model that the app feeds
+one picture at a time (`engine/enhance.py` runs with `--batch_size 1`).
+The copy shipped in the extension already takes a video file, frames in
+groups (5, 9, 13...), an overlap between groups and work in chunks
+(`engine/seedvr2/inference_cli.py`). The runtime and the 8.5 GB model are
+the ones photos use, so nothing more is downloaded. A video's menu offers
+no edit or upscale (`item-menu.js`). ffmpeg is the machine's own; the
+extension does not ship one.
+
+**Shape (proposed by Claude, not agreed).** 2x only, with a ceiling on
+the output size (4K on the long side suggested) in place of cutting
+frames into pieces, since joins between pieces could move over time. A
+limit on length, with the time estimate shown before starting. Sound
+copied over untouched. Stop keeps the chunks already done, so a run
+resumes.
+
+**First step.** A measurement on his 5090, as `docs/ENHANCE.md` did for
+photos: a 10-second clip of his at 2x, at three group sizes, recording
+time, peak graphics memory and whether detail flickers between frames.
+
+**Unknown.** Speed (Claude's guess, not measured: hours per minute of
+footage at 1080p output); how large a frame fits in 32 GB with several
+frames at once; the length limit; what a machine without ffmpeg gets (a
+plain message, or a bundled ffmpeg of about 100 MB); what his clips are
+(their resolution now, their length).
+
 ## UI improvements
 
 How the app looks and moves: new surfaces, polish of existing ones, the
