@@ -423,7 +423,39 @@ licence files are read in full before anything ships).**
   OmniDocBench and near the bottom of Datalab's OmniParseBench), which
   is the reason to measure on his own pages.
 
-**Recommendation (Claude's, 2026-11-12; his yes owed).** Do not build a
+**Checked against the app (2026-11-12): the recommendation below was
+made from the research alone and does not fit; this replaces it where
+they differ. Claude's, his yes owed.**
+
+- *What the app has.* Docling is not part of the app for everyone: it
+  runs in the user's own Python after `pip install docling`
+  (`electron/doclingBridge.cjs`, the Install Docling command), and
+  without it extraction falls back to the legacy readers, which get
+  nothing from a scan. Its bridge switches OCR on or off and nothing
+  more. No page position is kept anywhere in the index today.
+- *So "inside Docling, for everyone" was wrong.* A person with only
+  pages and PDFs would have to install Python to read a scan.
+- *The fit:* run PP-OCRv6's small ONNX models in the app's own model
+  runner (`electron/modelBridge.cjs`: any extension, fetched once on a
+  click, kept only if the hash matches, off the graphics card when
+  idle). No Python, no Docling. Read Anything is an extension that
+  registers as a reader for images and scanned PDFs through a
+  contribution point on the indexing pipeline, which is still to be
+  built. Docling stays as it is for those who have it.
+- *The heavy tier is dropped for now.* MiniCPM-OCR through Ollama would
+  be called from Docling's Python, past the engine broker
+  (`modelEngineBroker.ts`: one loaded shape per engine, a chat turn
+  never waits), and could push his chat model off the card. It comes
+  back only if the light tier measurably fails on his pages, and then
+  through the core's one route.
+- *New work this needs:* the detect and recognise steps around the
+  models, written for the runner; a place for each line's box in the
+  index; the highlight in the PDF and image views.
+- *To confirm first:* that the PP-OCRv6 ONNX files run in
+  `onnxruntime-node` as shipped, and what PaddleOCR's own JavaScript
+  SDK offers.
+
+**Recommendation as first written (2026-11-12, superseded above).** Do not build a
 second reading pipeline. Keep Docling and choose the engine inside it,
 in two tiers:
 
@@ -534,6 +566,15 @@ above still holds: this opens nothing).**
   the chat gains two generic contribution points (something that fills
   the input, something that reads a reply) and Voice registers into
   them. Turned off, the mic and the speaker button go.
+- *Checked against the app (2026-11-12).* The chat's extension points
+  today are tools, drop handlers and answer forms
+  (`parallx.chat`); the two points above do not exist and are the first
+  build. Both models are small ONNX files, so they belong in the app's
+  own model runner (fetched on a click, by hash, no Python), not in a
+  new engine. Neither touches Ollama, so the engine broker and his chat
+  model are left alone. Kokoro has a JavaScript build (SillyTavern runs
+  it in the browser); how Parakeet's decoding runs in the runner is to
+  be checked before anything else.
 - *Passed over:* the three named models, for the reasons above; Whisper
   (now behind Parakeet); every voice-design and cloning model.
 - *First step, when he reopens Voice:* his ear. One chat answer read by
@@ -617,25 +658,36 @@ yet).** Three tools in
 one Generate step, each on Apache weights so the app can fetch them for
 anyone:
 
-- *Remove:* LaMa. No prompt, small, works on a crop at the photo's own
-  size. Built first: it proves the crop, the feathered lay-back into the
-  16-bit original and the new layer, which the other two reuse.
+- *Remove:* already in the editor (docs/IMAGE_EDITOR.md: LaMa, his
+  choice of 2026-09-28, run by the app's model runner, each removal kept
+  as a patch). The first write-up of this recommendation proposed
+  building it; that was a miss, nothing is to be built. The Generate
+  tools reuse its patches: a fill is a patch laid over the original.
 - *Fill, Expand and Edit:* Qwen-Image-Edit-2511, one model for all
   three. It is the best-ranked Apache editor and diffusers has a mask
   pipeline for the Qwen edit line. A mask is honoured by construction:
   only the masked, feathered part of the crop is laid back, so nothing
   outside it can change whatever the model does. A large fill that comes
   back soft is passed through Enhance, which is already there.
-- *Optional better model:* FLUX 3 Image Klein, offered as a download the
-  user accepts the licence for, only if his eyes say the gap over Qwen
-  is worth 26 GB and the licence terms.
+- *How it enters the app:* as a tool runtime, the way Enhance does
+  (`electron/runtimeBridge.cjs`): declared by the extension, set up once
+  on a click, every file fetched by its hash, the machine checked
+  first. It should share Enhance's PyTorch rather than install a second
+  copy (3.6 GB); whether one runtime can hold both is to be checked.
+- *The graphics card:* Enhance reads the free memory before a run and
+  says so when there is too little. A 20B editor needs most of a 32 GB
+  card, so with his chat model loaded it will not start. Generate needs
+  the same check, and one button that frees the chat model, or it will
+  feel broken.
+- *FLUX 3 Image Klein is dropped.* Its files are gated behind a
+  Hugging Face login, and the runtime fetches by hash with no login.
 - *Passed over:* Qwen-Image-2.1 (research only), H3-Image (size,
   territory), Fibo 2.0 (needs Gemini), FLUX.1 Fill (non-commercial, and
   the crop and lay-back does its job), Iris-3B (no claim over SeedVR2;
   Enhance stays as it is).
-- *First step:* Remove with LaMa on his photos. Then the same ten edits
-  on his photos through Qwen-Image-Edit-2511 and FLUX 3 Klein, for his
-  eyes.
+- *First step:* ten edits on his photos through Qwen-Image-Edit-2511,
+  run by hand outside the app, for his eyes, with its memory use and
+  seconds per edit measured. Nothing is built on it before that.
 
 **Unknown.** Whether the mask pipeline loads the 2511 weights; VRAM and
 seconds per edit for Qwen-Image-Edit-2511 at a quantised size; whether
