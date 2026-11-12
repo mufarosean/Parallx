@@ -40,8 +40,8 @@ import type { SessionGuard } from '../workspace/staleGuard.js';
 import type { Chunk } from './chunkingService.js';
 import type { EmbeddedChunk } from './vectorStoreService.js';
 import { hashText } from './chunkingService.js';
-import { DocumentClassifier } from './documentClassifier.js';
-import type { ClassificationResult } from './documentClassifier.js';
+import { DocumentClassifier, type ClassificationResult } from './documentClassifier.js';
+import { isReadOnRequestOnly, sourcesToRereadWithReader } from './readerPolicy.js';
 import type { SourceIndexMetadata } from './vectorStoreService.js';
 import { renderTranscriptForIndexing } from './transcriptFormat.js';
 import { EmbeddingWorkerClient } from './embeddingWorker.js';
@@ -964,14 +964,13 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       indexedAtMap.clear();
     }
 
-    // Partition files into mtime-skipped (unchanged) and candidates (need checking).
-    // This avoids firing 30K+ events in a tight synchronous loop which would
-    // starve the renderer event loop and freeze the UI.
+    // Partition files into mtime-skipped (unchanged) and candidates (need checking), so 30K+ events never fire in one tight loop.
+    const reread = sourcesToRereadWithReader(this._documentExtractionService?.isDoclingAvailable ? await this._vectorStore.getIndexedSources() : [], true); // read again though unchanged (readerPolicy.ts)
     const candidates: IndexableFile[] = [];
     let mtimeSkipped = 0;
 
     for (const file of files) {
-      const indexedAtMs = indexedAtMap.get(file.relativePath);
+      const indexedAtMs = reread.has(file.relativePath) ? undefined : indexedAtMap.get(file.relativePath);
       if (indexedAtMs !== undefined && file.mtime < indexedAtMs) {
         mtimeSkipped++;
       } else {
@@ -1076,6 +1075,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    *   If omitted, computed via _toRelativePath().
    */
   private async _indexSingleFile(absolutePath: string, relativePath?: string): Promise<boolean> {
+    if (isReadOnRequestOnly(absolutePath)) return false; // pictures are read when asked for, never in the background
     const relPath = relativePath ?? this.sourceIdFor(absolutePath);
     const uri = URI.file(absolutePath);
     const ext = getExtension(absolutePath);

@@ -482,7 +482,7 @@ async function stopService() {
  * Convert a document to structured Markdown via Docling.
  *
  * @param {string} filePath — Absolute path to the document
- * @param {{ ocr?: boolean }} [options]
+ * @param {{ ocr?: boolean, card?: boolean, formulas?: boolean }} [options]
  * @returns {Promise<DoclingConvertResult>}
  */
 async function convertDocument(filePath, options = {}) {
@@ -493,6 +493,10 @@ async function convertDocument(filePath, options = {}) {
   const body = {
     path: filePath,
     ocr: options.ocr ?? false,
+    // Off the graphics card and without formula decoding unless asked: reading in
+    // the background must never crowd a chat model on the card.
+    card: options.card === true,
+    formulas: options.formulas === true,
   };
 
   const result = await httpRequest('POST', '/convert', body, CONVERT_TIMEOUT);
@@ -569,7 +573,7 @@ async function convertBatch(files) {
   }
 
   const body = {
-    files: files.map((f) => ({ path: f.path, ocr: f.ocr ?? false })),
+    files: files.map((f) => ({ path: f.path, ocr: f.ocr ?? false, card: f.card === true, formulas: f.formulas === true })),
   };
 
   const result = await httpRequest('POST', '/convert/batch', body, CONVERT_TIMEOUT);

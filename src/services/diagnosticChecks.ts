@@ -177,7 +177,7 @@ const checkDocumentExtraction: IDiagnosticCheckProducer = async (deps) => {
   return {
     name: 'Document Extraction (Docling)',
     status: ok ? 'pass' : 'warn',
-    detail: ok ? 'Docling bridge available' : 'Docling not available. PDF extraction will be limited',
+    detail: ok ? 'The document reader is running' : 'The document reader is not set up (command: Set Up Document Reader). PDFs are read as plain text; scans are not read',
     timestamp: Date.now(),
     category: 'rag',
   };

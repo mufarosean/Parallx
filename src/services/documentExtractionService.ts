@@ -255,7 +255,7 @@ export class DocumentExtractionService extends Disposable implements IDocumentEx
     if (!this._fallbackWarningShown) {
       this._fallbackWarningShown = true;
       console.warn(
-        '[DocumentExtractionService] Using legacy extractors. Install Docling for better document quality: pip install docling',
+        '[DocumentExtractionService] Using the basic readers. Run the command Set Up Document Reader for tables, formulas, layout and scans',
       );
     }
 

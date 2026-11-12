@@ -1,8 +1,10 @@
-// doclingCommands.ts — Docling installation and diagnostics commands
+// doclingCommands.ts — setting up the document reader.
 //
-// Provides the `Parallx: Install Docling` command that
-// detects Python, installs the Docling package via pip, and verifies
-// the installation.
+// The reader (Docling, with its scan reader) runs in an engine Parallx sets
+// up itself: its own Python, its packages and its models, each checked
+// against a hash (electron/doclingRuntime.cjs). This command sets it up,
+// carries on a set-up that stopped, or starts the reader when it is already
+// there.
 
 import type { CommandDescriptor } from './commandTypes.js';
 import type { INotificationService } from '../services/serviceTypes.js';
@@ -10,122 +12,111 @@ import type { NotificationAction } from '../api/notificationService.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+interface DoclingEngineStatus {
+  state: 'absent' | 'partial' | 'ready';
+  installing: boolean;
+  downloadBytes?: number;
+  packageBytes?: number;
+  machine?: { ok: boolean; problems: string[] };
+}
+
 interface DoclingElectronApi {
-  status(): Promise<{
-    status: string;
-    port: number | null;
-    pythonPath: string | null;
-    doclingInstalled: boolean;
-  }>;
+  status(): Promise<{ status: string; doclingInstalled: boolean; engine?: 'managed' | 'system' | null }>;
   start(): Promise<{ ok: boolean }>;
-  install(): Promise<{
-    ok: boolean;
-    pythonPath: string | null;
-    output: string;
-    alreadyInstalled: boolean;
-  }>;
+  install(): Promise<{ ok: boolean; output: string; alreadyInstalled: boolean; stopped?: boolean }>;
+  engineStatus(withSize?: boolean): Promise<DoclingEngineStatus>;
 }
 
-function getDoclingApi(): DoclingElectronApi | undefined {
-  return (globalThis as any).parallxElectron?.docling as DoclingElectronApi | undefined;
+interface RuntimeProgress { id?: string; kind?: string; step?: string; label?: string }
+
+function electron(): { docling?: DoclingElectronApi; optionalBridges?: { on(channel: string, cb: (p: RuntimeProgress) => void): () => void } } | undefined {
+  return (globalThis as { parallxElectron?: ReturnType<typeof electron> }).parallxElectron;
 }
 
-// ─── Install Docling Command ─────────────────────────────────────────────────
+/** The engine's id in electron/doclingRuntime.cjs: its progress events carry it. */
+const ENGINE_ID = 'docling';
+
+const gb = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+
+/** What each stage of the set-up is called while it runs. */
+const STAGE_NOTES: Record<string, string> = {
+  python: 'Document reader: installing its Python.',
+  packages: 'Document reader: installing its packages. This is the longest part.',
+  files: 'Document reader: downloading its models.',
+  selftest: 'Document reader: checking that it reads a page.',
+};
+
+// ─── Set Up Document Reader ──────────────────────────────────────────────────
 
 export const installDocling: CommandDescriptor = {
   id: 'parallx.installDocling',
-  title: 'Install Docling',
+  title: 'Set Up Document Reader…',
   category: 'Parallx',
   handler: async (ctx) => {
     const notifications = ctx.getService<INotificationService>('INotificationService');
-    const api = getDoclingApi();
+    const api = electron()?.docling;
 
     if (!api) {
-      notifications?.warn(
-        'Docling installation requires the Electron desktop app.',
-      );
+      notifications?.warn('The document reader needs the desktop app.');
       return;
     }
 
-    // Step 1: Check current status
+    const start = async (): Promise<void> => {
+      const started = await api.start().catch(() => ({ ok: false }));
+      if (started.ok) notifications?.info('The document reader is running. PDFs, Word files and scans are read with their tables, formulas and layout.');
+      else notifications?.warn('The document reader is set up but did not start. Restart Parallx and try again.');
+    };
+
     const status = await api.status();
-
-    if (status.doclingInstalled && status.status === 'available') {
-      notifications?.info(
-        `Docling is already installed and running (Python: ${status.pythonPath}).`,
-      );
+    if (status.status === 'available') {
+      notifications?.info('The document reader is set up and running.');
       return;
     }
 
-    if (!status.pythonPath) {
-      notifications?.error(
-        'Python 3.10+ not found. Please install Python from https://www.python.org/downloads/ and restart Parallx.',
-      );
+    const engine = await api.engineStatus();
+    if (engine.installing) {
+      notifications?.info('The document reader is being set up. You can keep working.');
+      return;
+    }
+    if (engine.state === 'ready' || status.doclingInstalled) {
+      await start();
+      return;
+    }
+    if (engine.machine && !engine.machine.ok) {
+      notifications?.error(`The document reader cannot be set up on this computer. ${engine.machine.problems.join(' ')}`);
       return;
     }
 
-    // Step 2: Already installed but service not running
-    if (status.doclingInstalled) {
-      notifications?.info('Docling is installed. Starting the bridge service…');
-      try {
-        const startResult = await api.start();
-        if (startResult.ok) {
-          notifications?.info('Docling bridge service started successfully.');
-        } else {
-          notifications?.warn(
-            'Docling is installed but the bridge service failed to start. Check the Output panel for details.',
-          );
-        }
-      } catch {
-        notifications?.error('Failed to start Docling bridge service.');
-      }
-      return;
-    }
-
-    // Step 3: Not installed — confirm and install
-    const installAction: NotificationAction = { title: 'Install' };
-    const cancelAction: NotificationAction = { title: 'Cancel' };
+    const download = (engine.downloadBytes ?? 0) + (engine.packageBytes ?? 0);
+    const setUp: NotificationAction = { title: engine.state === 'partial' ? 'Carry On' : 'Set Up' };
+    const cancel: NotificationAction = { title: 'Cancel' };
     const proceed = await notifications?.info(
-      `Install Docling? This will run "pip install docling" using ${status.pythonPath}. This may take a few minutes.`,
-      installAction,
-      cancelAction,
+      engine.state === 'partial'
+        ? 'Setting up the document reader stopped part of the way. Carry on from where it stopped?'
+        : `Set up the document reader? It downloads about ${gb(download)} once and keeps it for every workspace. It reads PDFs, Word files and scans on this computer; nothing leaves it.`,
+      setUp,
+      cancel,
     );
+    if (!proceed || proceed.title !== setUp.title) return;
 
-    if (!proceed || proceed.title !== 'Install') return;
-
-    notifications?.info('Installing Docling… This may take a few minutes.');
+    notifications?.info('Setting up the document reader. You can keep working; it takes a few minutes.');
+    let lastStage = '';
+    const stop = electron()?.optionalBridges?.on('runtimes:progress', (p) => {
+      if (p.id !== ENGINE_ID || p.kind !== 'install' || !p.step || p.step === lastStage) return;
+      lastStage = p.step;
+      const note = STAGE_NOTES[p.step];
+      if (note) notifications?.info(note);
+    });
 
     try {
       const result = await api.install();
-
-      if (result.ok) {
-        if (result.alreadyInstalled) {
-          notifications?.info('Docling was already installed.');
-        } else {
-          notifications?.info('Docling installed successfully! Starting the bridge service…');
-        }
-
-        // Auto-start the service after install
-        try {
-          const startResult = await api.start();
-          if (startResult.ok) {
-            notifications?.info('Docling is ready. Rich document extraction is now active.');
-          } else {
-            notifications?.warn(
-              'Docling installed but the bridge service failed to start. Try restarting Parallx.',
-            );
-          }
-        } catch {
-          notifications?.warn(
-            'Docling installed but could not start the bridge service automatically.',
-          );
-        }
-      } else {
-        notifications?.error(`Docling installation failed: ${result.output}`);
-      }
+      if (result.ok) await start();
+      else if (result.stopped) notifications?.info('Setting up the document reader stopped. Run the command again to carry on from there.');
+      else notifications?.error(`The document reader could not be set up: ${result.output}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      notifications?.error(`Docling installation error: ${msg}`);
+      notifications?.error(`The document reader could not be set up: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      stop?.();
     }
   },
 };

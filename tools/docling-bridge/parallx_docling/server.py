@@ -40,8 +40,9 @@ logger = logging.getLogger("parallx_docling")
 # and respond to /health before models are loaded.
 
 # One converter per way of reading: a born-digital file keeps its own text,
-# a scan or a photo of a page is read from its pixels.
-_converters: dict[bool, object] = {}
+# a scan or a photo of a page is read from its pixels; on the processor or on
+# the graphics card; with or without formulas turned into LaTeX.
+_converters: dict[tuple[bool, bool, bool], object] = {}
 _docling_version: str | None = None
 _models_ready = False
 _models_loading = False
@@ -98,15 +99,20 @@ def lay_out_models() -> str | None:
     return _artifacts_path
 
 
-def _ensure_converter(ocr: bool = False):
+def _ensure_converter(ocr: bool = False, card: bool = False, formulas: bool = False):
     """
     Lazily create the Docling DocumentConverter for one way of reading.
     `ocr` reads every page from its pixels (a scan, a photo of a page).
+    `card` lets it use the graphics card; without it nothing touches the
+    card, so a chat model loaded there is never crowded. `formulas` turns
+    each formula into LaTeX with a small vision model: seconds per formula
+    even on the card, so it is asked for, never the default.
     """
     global _models_ready, _models_loading
 
-    if ocr in _converters:
-        return _converters[ocr]
+    key = (ocr, card, formulas)
+    if key in _converters:
+        return _converters[key]
 
     if _models_loading:
         raise RuntimeError("Docling models are still loading. Please wait.")
@@ -116,10 +122,12 @@ def _ensure_converter(ocr: bool = False):
 
     try:
         from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
+        from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
         from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
         from docling.datamodel.base_models import InputFormat
 
         opts = PdfPipelineOptions()
+        opts.accelerator_options = AcceleratorOptions(device=AcceleratorDevice.AUTO if card else AcceleratorDevice.CPU)
         artifacts = lay_out_models()
         if artifacts:
             opts.artifacts_path = artifacts
@@ -131,15 +139,15 @@ def _ensure_converter(ocr: bool = False):
             opts.generate_parsed_pages = True
         opts.do_table_structure = True
         opts.table_structure_options.mode = TableFormerMode.ACCURATE
-        # Formulas as LaTeX. Only where the model is on disk already: it is
-        # never fetched from here.
-        opts.do_formula_enrichment = bool(artifacts)
+        # Formulas as LaTeX, when asked for and only where the model is on
+        # disk already: it is never fetched from here.
+        opts.do_formula_enrichment = formulas and bool(artifacts)
 
         converter = DocumentConverter(format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=opts),
             InputFormat.IMAGE: ImageFormatOption(pipeline_options=opts),
         })
-        _converters[ocr] = converter
+        _converters[key] = converter
         _models_ready = True
         logger.info("Docling converter ready (version %s)", _get_docling_version())
         return converter
@@ -226,7 +234,7 @@ def build_reading(result, ocr: bool) -> dict:
     return {"version": 1, "ocr": ocr, "pages": pages, "blocks": blocks, "tables": tables}
 
 
-def _convert_document(file_path: str, ocr: bool = False) -> dict:
+def _convert_document(file_path: str, ocr: bool = False, card: bool = False, formulas: bool = False) -> dict:
     """
     Convert a single document to structured Markdown via Docling.
 
@@ -241,7 +249,7 @@ def _convert_document(file_path: str, ocr: bool = False) -> dict:
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
 
-    converter = _ensure_converter(ocr=ocr)
+    converter = _ensure_converter(ocr=ocr, card=card, formulas=formulas)
 
     # Convert
     result = converter.convert(str(path))
@@ -281,6 +289,9 @@ def _convert_document(file_path: str, ocr: bool = False) -> dict:
 
     if ocr:
         diagnostics.append("OCR enabled")
+    diagnostics.append("On the graphics card" if card else "On the processor")
+    if formulas:
+        diagnostics.append("Formulas as LaTeX")
 
     return {
         "markdown": markdown,
@@ -307,6 +318,8 @@ app = FastAPI(
 class ConvertRequest(BaseModel):
     path: str = Field(..., description="Absolute file path to convert")
     ocr: bool = Field(False, description="Read every page from its pixels (a scan, a photo of a page)")
+    card: bool = Field(False, description="Let the reader use the graphics card; off, nothing touches it")
+    formulas: bool = Field(False, description="Turn formulas into LaTeX (seconds per formula)")
 
 
 class ConvertResponse(BaseModel):
@@ -355,7 +368,7 @@ async def convert(req: ConvertRequest):
         # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            None, _convert_document, req.path, req.ocr
+            None, _convert_document, req.path, req.ocr, req.card, req.formulas
         )
         return ConvertResponse(**result)
     except FileNotFoundError as e:
@@ -373,7 +386,7 @@ async def convert_batch(req: BatchConvertRequest):
         try:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
-                None, _convert_document, file_req.path, file_req.ocr
+                None, _convert_document, file_req.path, file_req.ocr, file_req.card, file_req.formulas
             )
             results.append(ConvertResponse(**result))
         except Exception as e:

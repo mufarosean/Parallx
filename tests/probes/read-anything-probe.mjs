@@ -6,7 +6,7 @@
 // a quote is located on its page.
 //
 // It uses the reader's engine as installed on this machine (set it up first:
-// the command Install Docling). Without it the probe says so and stops.
+// the command Set Up Document Reader). Without it the probe says so and stops.
 // Usage: node tests/probes/read-anything-probe.mjs <outDir>
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -54,7 +54,7 @@ async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const runtimes = path.join(PROJECT_ROOT, 'data', 'runtimes');
   if (!fssync.existsSync(path.join(runtimes, 'docling', 'state.json'))) {
-    console.log('[probe] SKIP the document reader is not set up on this machine (run Install Docling first)');
+    console.log('[probe] SKIP the document reader is not set up on this machine (run Set Up Document Reader first)');
     process.exit(2);
   }
   const stamp = Date.now();
