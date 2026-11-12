@@ -806,6 +806,82 @@ anyone:
   run by hand outside the app, for his eyes, with its memory use and
   seconds per edit measured. Nothing is built on it before that.
 
+**Second pass (2026-11-12), for his build.** His words: the app is
+personal, never sold or published, so licence and login were never
+filters; and the answer is to go past the easy one. The engine above
+(Qwen-Image-Edit-2511) was chosen by licence and is replaced. Research
+read that day:
+
+- *The best engine his card runs today is Qwen-Image-2.1.* Quantised,
+  its generator is about 7.2 GB beside an 8B encoder; one write-up
+  measured about 5.5 seconds an edit on an RTX 5090, with 7 of 23 edits
+  needing a second try. It produces up to about 4 megapixels. Its
+  licence is "research or evaluation"; whether his own photos count is
+  his call. FLUX 3 Image Klein produces up to 4K and takes 25 to 26 GB
+  at 1 megapixel, Linux only so far. The model first recorded as
+  "MiniMax H3-Image" is Pruna's P-H3-Image; its builds that fit 32 GB
+  run in ComfyUI only.
+- *No editor gives back the untouched pixels.* Plain Qwen-Image-2.1
+  changes 12.8% of the pixels outside the edited object (a community
+  add-on brings that to 7.5%), and the round trip through the model
+  alone changes about 2%. Fidelity comes only from laying back the
+  patch, which the editor already does for Remove.
+- *The soft patch is everyone's problem, and nobody open has fixed it.*
+  Adobe moved to 2K in January 2026; its own users still write
+  "Resolution is too low" and name the mismatch of grain. Research
+  (Patch-Adapter, Agent Banana, PixPerfect) shows the cure: structure at
+  low resolution, the patch at full resolution, then a pass that fixes
+  colour, seam and texture. No open tool restores a generated patch
+  with an upscaler using the photo around it. No one has measured grain
+  matching.
+- *Checking and trying again pays; an elaborate agent does not.* The
+  same editor with planning and checking gained 89 points in one arena;
+  a NeurIPS 2026 study found a plain retry earns most of that. General
+  vision models judge edits poorly by one judge-maker's account; a
+  small open judge (EditScore, 4B) exists.
+- *No product keeps an edit as a recipe* that a newer model can
+  re-render, or re-finds the place to edit in each photo of a set.
+- *Painter's studies are not a job for a generator.* A notan or a
+  five-value study is arithmetic on the photo and redraws nothing; a
+  relight can be kept as a map of brightness changes (PIXLRelight).
+
+**Recommendation, second pass (Claude's; his yes owed).** A Generate
+step whose result holds up at 100% on a 60 megapixel raw, which no
+editor read does:
+
+- *Engine:* Qwen-Image-2.1, quantised, in the Enhance runtime's Python.
+  FLUX 3 Image Klein is the comparison, later, under WSL.
+- *The patch is made at the photo's own size:* the area around the mask
+  is cropped at native pixels and generated at up to 4 megapixels; a
+  larger area is then rebuilt by Enhance (SeedVR2, already installed)
+  with the surrounding photo in view; a last pass matches colour, seam
+  and grain to the photo. Only the masked patch is laid back.
+- *Every edit is checked, then tried again if it failed:* a measured
+  check that the patch lines up and its edge matches, and a judge of
+  whether it did what was asked (his chat model, or EditScore if his
+  model judges poorly), picking the best of a few tries.
+- *His chat model writes the long prompt* from his short instruction
+  and the photo, as the engines' own makers advise.
+- *An edit is kept as a recipe:* instruction, mask, seed, engine, crop.
+  It can be re-rendered when a better engine arrives, and applied to a
+  set of photos by re-finding the place in each, the way Remove From
+  Other Photos does.
+- *Set aside, with the reason:* Qwen-Image-Edit-2511 (lower ranked,
+  larger); P-H3-Image (ComfyUI only); patches kept in the raw's linear
+  light so they follow later exposure changes (no one has shown it, and
+  an 8-bit patch holds nothing above white; first to check is where the
+  editor applies patches relative to its exposure controls); painter's
+  studies (they belong in Atelier as plain image arithmetic, not here).
+- *First step, outside the app, on his photos:* ten edits through
+  Qwen-Image-2.1; then three large fills taken through Enhance and the
+  grain match, shown at 100% beside the plain result. That one
+  experiment says whether the native-size patch is real.
+
+**Unknown, second pass.** How Qwen-Image-2.1 takes a mask (its makers
+show the mask passed as a second picture; the proper mask code is an
+unmerged change to diffusers); its memory on a 5090 beside his chat
+model; whether SeedVR2 on a patch invents texture of its own.
+
 **Unknown.** Whether the mask pipeline loads the 2511 weights; VRAM and
 seconds per edit for Qwen-Image-Edit-2511 at a quantised size; whether
 an instruction editor extends a canvas well (Expand) or FLUX.1 Fill is
