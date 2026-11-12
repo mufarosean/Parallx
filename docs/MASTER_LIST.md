@@ -205,9 +205,8 @@ reach the site) and show him what was taken from them.
 
 **Unknown.** What "inspired" looks like on the page (a guess, not his:
 his own work shown well, visual and browsable, with the day's quote as
-the one static piece). Whether the Daily Brief below shows on Home as a
-card that opens the page, or stays apart. Which of the first version's
-parts survive.
+the one static piece). Which of the first version's parts survive. The
+Daily Brief below is not part of Home (his call, 2026-11-12).
 
 **Still true from the first version, if its stream is kept:** the
 extensions do not feed it yet (each needs its own source); a card's
@@ -215,6 +214,12 @@ line is the item's opening words, not a summary the model wrote; pages
 and files carry no tags.
 
 ### Daily Brief: a report a routine writes, in place of a dashboard
+
+**Settled (2026-11-12): separate from Home, and no app work.** His
+words: "Let's keep daily brief separate from home. We do not have to do
+work for it. It should be something I can set up as a routine." Nothing
+is queued here; the entry stays as the record of what the brief is. Home
+shows no brief card and no slot for it.
 
 **His words (2026-11-10, spelling corrected):** "I had a dashboard named
 home on my personal workspace, and it had the date time widget, and it
@@ -238,7 +243,7 @@ routine that runs after the day's other routines: the quote with a
 short explanation; headlines (ten local, ten national, five global),
 each summarised and linked to its article; whether there is unread
 email; a finance summary taken after a Budget sync. The quote is also
-kept in the database so a surface (Home) can show it.
+kept in the database, as it is today.
 
 **How it stays modular.** Each part belongs to the tool that owns the
 data (Budget's summary, the mail tool's unread count, web research for
