@@ -316,10 +316,43 @@ that day; what was not read is said).**
   to all of it, whose nodes are drawn by whoever uses it. The workflow
   editor is its only user today.
 
-**Status.** Research shown to him 2026-11-12 with a proposed bar; his
-yes on the bar is owed. No design, no build. Still open: what becomes
-of the existing dashboards and their widgets, and how a board differs
-from a canvas page that embeds blocks.
+**Proposed bar (2026-11-12). Claude's proposal, shown to him; he said
+"document to master list", which records it and agrees nothing.**
+
+- *The floor:* everything in the basics list above. Two of them are in
+  question for a one-person app: pen drawing and comments.
+- *Taken from the linking boards:* one item on many boards, with a list
+  on the item of the boards it is on and a jump to its place
+  (Heptabase); links that hold everywhere beside lines that belong to
+  one board (Scrintal); a card narrowed to one heading of a long item
+  (Obsidian); boards inside boards (Milanote, Heptabase); search within
+  one board and zoom to fit.
+- *What would make it Parallx's own.* In the products read, a card is a
+  note, a file or a web link; none of the pages read shows live items
+  from many tools on one board.
+  1. A card is the real thing: a page, a database view, a worksheet, a
+     painting plan, a workflow, a deck, a PDF at a highlight, a chat. It
+     opens in place and is never a copy.
+  2. Tools bring their own cards through a contribution point, while
+     they run. Turned off, a tool's cards stay in place as placeholders
+     and return when it is turned on. The board knows no tool.
+  3. The existing widgets (clock, notes, image, AI) become cards, so
+     today's dashboards move onto boards and nothing saved is lost.
+  4. A board is its own surface, not a kind of canvas page: a page reads
+     top to bottom, a board is free space. They share items, not layout.
+  5. The model works on the board: select cards and ask; the answer
+     lands as a new card that can be deleted.
+- *Built on:* the app's own `nodeCanvas`, not an outside engine. A
+  board's file shape kept close to JSON Canvas so boards can be
+  exported and imported.
+
+**Status.** No design, no build. Owed from him: whether the floor is
+right (pen drawing, comments); whether the five points describe the
+board he means; whether widget dashboards retire once boards exist.
+Owed from research: Miro, and how each product looks, from
+screenshots; whether lines stay attached to moved objects in the
+products read; how Atelier's plan boards are built
+(`ext/media-organizer/plan-shell.js`, not yet read).
 
 ### Text arrows elsewhere
 
