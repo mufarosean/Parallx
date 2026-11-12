@@ -62,6 +62,41 @@ extension; how much of the Exam 7 data model (recipes, roster, campaign)
 generalizes and how much is his alone and stays in his workspace; the
 migration of his existing banks and sessions.
 
+### AI chat: message times, model speed, dates on old chats
+
+**His words (2026-11-12, spelling corrected):** "currently AI chat does
+not track the times of messages back and forth, this is annoying. There
+also is no way for me to see how fast the model responds (tokens per
+second). These are improvements we need to make. Also on old chats
+instead of saying how far ago they were, after any day before
+yesterday, we really should just use the date." He called it "a needed
+update".
+
+**What exists today (verified in the code).** Every message already
+carries its time (`timestamp` in `chatTypes.ts`); the chat does not
+show it. Ollama already reports, with each answer, how many tokens it
+wrote and how long that took (`eval_count`, `eval_duration`, read in
+`ollamaProvider.ts`); nothing shows it. The chat list shows a relative
+time for every chat however old (`chatSessionSidebar.ts`, the shared
+`ui/relativeTime`).
+
+**Scope.**
+
+- *Times:* each message shows when it was sent, and an answer shows how
+  long it took. Quiet by default (small, beside the message's actions),
+  with the full date and time on hover and for a screen reader.
+- *Speed:* each answer shows tokens per second, with time to the first
+  word; thinking counted apart from the answer if the engine reports
+  it. A cloud model shows what its provider reports, or nothing.
+- *Dates on old chats:* today and yesterday stay relative ("2h ago",
+  "Yesterday"); anything older shows its date. Whether that rule
+  changes the shared clock for every list in the app or only the chat
+  list is his call.
+
+**Unknown.** Where the speed sits (under each answer, or in the token
+bar); whether the day a conversation moved to is marked between
+messages; the date format (12 Nov, or Nov 12).
+
 ### Enhance for short videos: bigger resolution
 
 **His words (2026-11-12):** "Let's talk about the idea of enhancing
@@ -367,6 +402,59 @@ forgotten.
 Completely new tools, each its own extension in `ext/`, on or off by the
 user. All four came from the Papers With Code read of 2026-11-09.
 Licences are not checked for any of them; that is the first step of each.
+
+### Build plan for the three (proposed 2026-11-12; his go owed on each)
+
+Each extension starts with a test on his own files outside the app, and
+nothing is built before he has seen the result. Each surface is drawn
+as mock-ups in the app's own tokens, kit and icons, light and dark, and
+he picks before it is built. A step is done when the keyboard and touch
+audits report 0 and he has seen it running.
+
+*Order proposed:* the chat's times and speed (small, core, above);
+Read Anything; Generative edits; Voice when he reopens it.
+
+*Read Anything.*
+1. The test: twenty of his scanned pages through both readers, side by
+   side. He picks the reader.
+2. The structured document: Docling's bridge returns it, it is stored
+   once per file, the index keeps each block's place. Seen as: a scan
+   is found by search.
+3. The highlight: a search hit or a citation opens the scan with its
+   block lit. Mock-ups of the highlight in the PDF and image views.
+4. The chat sees the page: the Read tool hands over the page image; a
+   citation shows a small crop of where it came from.
+5. Open As Page: the scan beside the page it became; a table cell and
+   its place on the scan light each other. The largest surface;
+   mock-ups first.
+6. Settings and the indexing log: which reader, its state, Read Again
+   for one file.
+
+*Generative edits.*
+1. The test: ten edits and three large fills on his photos, at 100%. He
+   decides whether the engine and the native-size patch are worth
+   building.
+2. The engine, set up from the editor like Enhance's, and the graphics
+   card shared: one button sets the chat model aside for an edit and
+   brings it back.
+3. A Generate tab beside Edit, Crop, Remove and Enhance: Fill, Expand,
+   Edit; one instruction box; the masks the editor already has; a strip
+   of tries to pick from; the finer controls (strength, edge, how much
+   of the surroundings the model sees) folded away. Mock-ups first.
+4. The native-size patch and the check, with the stages named while it
+   works (Writing Prompt, Generating, Rebuilding Detail, Matching
+   Grain, Checking).
+5. Recipes: the photo's generated edits as a list; Render Again, Apply
+   To Other Photos.
+6. Expand: drag an edge or pick a ratio.
+
+*Voice (gated).*
+1. The listening test on his card.
+2. The chat's two new openings (something that fills the input,
+   something that reads a reply).
+3. In the chat's input: a mic to hold, a sign that it is listening, a
+   sign that it is speaking with a way to stop. Mock-ups first.
+4. Conversation: it knows when he has finished and when he cuts in.
 
 ### Read Anything: a better local reader for scans and photos of pages
 
