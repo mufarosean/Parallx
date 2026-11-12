@@ -86,22 +86,59 @@ the ones photos use, so nothing more is downloaded. A video's menu offers
 no edit or upscale (`item-menu.js`). ffmpeg is the machine's own; the
 extension does not ship one.
 
-**Shape (proposed by Claude, not agreed).** 2x only, with a ceiling on
-the output size (4K on the long side suggested) in place of cutting
-frames into pieces, since joins between pieces could move over time. A
-limit on length, with the time estimate shown before starting. Sound
-copied over untouched. Stop keeps the chunks already done, so a run
-resumes.
+**Research (2026-11-12, at his request: "Research the latest enhancement
+techniques and find github repositories doing the same thing, I can't be
+the only one").** Read: the field's curated paper list, the READMEs of
+the main repositories, one independent benchmark on an RTX 5090. Claims
+are the authors' unless marked measured; Claude ran nothing.
+
+- The field: SeedVR2 (June 2025) is no longer the newest but is still the
+  quality reference; the copy in the extension (v2.5.24, December 2025)
+  is upstream's latest. The 2026 wave is one-step streaming models built
+  on video generators (Wan 2.1 and 2.2), with flat memory at any length.
+- Newer engines, all Apache-2.0 code: FlashVSR+ (October 2026; claims
+  whole-frame 4K in 24 GB; Linux only; input sides divisible by 128),
+  FastVR (Alibaba, September 2026; any scale; 1080p in about 12 GB; no
+  independent test found; Windows not confirmed), ReCaVSR and RelayVSR
+  (September 2026; Linux only, 4x only), SoL-Refiner (NVIDIA; made for
+  AI-generated drafts, not camera footage). His machine is Windows.
+- Measured by others on a 5090 (ai-upscaler-benchmark, June 2026):
+  SeedVR2 7B fp8 at 1080p output, groups of 5 frames, 0.35 frames a
+  second at about 25 GB: about 85 minutes per minute of 30 fps footage,
+  about 15 minutes for a 10-second clip. Groups of 9 at 1080p reach 31
+  GB and at 4K run out of memory. Decoding back to pixels took about 73
+  of 85 seconds: the slow part is the decode, not the model. The first
+  FlashVSR at 2x: 0.80 frames a second at 31 GB; 4x ran out of memory.
+- SeedVR2's model card warns it over-sharpens lightly degraded video,
+  which is the case of a clean clip made bigger.
+- Projects doing the same: VRGDG SeedVR2 TensorRT Studio (closest: a
+  local Windows app on SeedVR2, a faster decode, a short preview first,
+  a before/after wipe, resumable chunks; an 8-second clip to 2K in about
+  8 minutes on a 5090), SeedVR2-Lite (a desktop app, batch and resume,
+  newer compressed weights), TE-Speed-SeedVR2 (a streaming decode and
+  automatic chunking; a ComfyUI node, so technique only), LocalSR and
+  QualityScaler (older frame-by-frame models, sound and timing kept).
+
+**Shape (proposed by Claude, not agreed).** SeedVR2 for the first
+version: it is installed, runs on Windows, and nothing newer is
+independently shown to beat it. 2x, with a ceiling on the output size in
+place of cutting frames into pieces. Groups of 5 frames. A preview of a
+few seconds and a before/after comparison before the whole clip, then
+the clip in chunks that Stop keeps, so a run resumes. A limit on length,
+with the time estimate shown first. Sound copied over untouched. Effort
+on speed goes to the decode step.
 
 **First step.** A measurement on his 5090, as `docs/ENHANCE.md` did for
-photos: a 10-second clip of his at 2x, at three group sizes, recording
-time, peak graphics memory and whether detail flickers between frames.
+photos: a 10-second clip of his at 2x, recording time, peak graphics
+memory and whether detail flickers between frames; one clean clip among
+them, for the over-sharpening. FastVR on the same clips, if it runs on
+Windows.
 
-**Unknown.** Speed (Claude's guess, not measured: hours per minute of
-footage at 1080p output); how large a frame fits in 32 GB with several
-frames at once; the length limit; what a machine without ffmpeg gets (a
-plain message, or a bundled ffmpeg of about 100 MB); what his clips are
-(their resolution now, their length).
+**Unknown.** His own numbers (the ones above are another machine's); the
+ceiling on output size; the length limit; whether FastVR runs on Windows
+and how it compares; what a machine without ffmpeg gets (a plain
+message, or a bundled ffmpeg of about 100 MB); what his clips are (their
+resolution now, their length).
 
 ## UI improvements
 
