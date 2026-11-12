@@ -515,8 +515,71 @@ not a replacement until measured.
 inpaint region; one model route; results as a new layer or a new copy,
 never over the original.
 
-**Unknown.** Licences; VRAM at his image sizes; speed per edit; ComfyUI
-stays off the table (decided earlier, do not re-raise).
+**Research (2026-11-12, each model's own card, repository or licence
+page read that day).**
+
+- *Both named models exist, and neither is the pick.* Qwen-Image-2.1
+  (7B, 2026-09-20) is licensed "for research or evaluation purposes
+  only". Iris-3B is Apache 2.0, and nothing read claims it beats
+  SeedVR2.
+- *The best open editors are new and carry strings.* On the Artificial
+  Analysis editing table (read 2026-11-12, no date shown; cloud models
+  hold the top): MiniMax H3-Image 1138 (33B, and its licence excludes
+  the US, EU, UK and Korea), Bria Fibo 2.0 1085 (non-commercial, and its
+  prompts are written by a Gemini call, so not offline), Qwen-Image-2.1
+  1084 (research only), FLUX 3 Image Klein 1069 (free under $5M revenue,
+  gated, a clause on filtering or reviewing output; 26 GB stated at
+  FP8). The Apache ones: Qwen-Image-Edit-2511 996 (20B), FLUX.2 klein 4B
+  942 (about 13 GB).
+- *None of the new leaders has a released hard mask.* FLUX 3 Klein's
+  boxes "do not hard-constrain pixels". FLUX.1 Fill dev is the one
+  dedicated mask model (non-commercial, gated; its authors state "slight
+  colour shifts" outside the fill and lines at its edge).
+- *No model works at 24 to 60 megapixels.* Every local editor read
+  (Krita AI Diffusion, OpenFill for GIMP) crops a padded area around the
+  mask, generates near 1 to 2 megapixels, and lays only the masked part
+  back; OpenFill says large fills "come back softer".
+- *Removal without a prompt:* LaMa (Apache 2.0, holds to about 2K) is
+  what OpenFill and IOPaint ship; MI-GAN (MIT) has a ready ONNX file.
+- *Runtime without ComfyUI:* diffusers has a pipeline for each;
+  stable-diffusion.cpp (MIT, CUDA, Windows) lists nearly all of them and
+  SeedVR2, but says nothing on masks.
+- *Controls the open editors offer:* the operation (fill, remove,
+  expand, edit), an optional prompt, strength, feather and blend of the
+  mask edge, how much surrounding area the model sees, expand by
+  dragging an edge or picking a ratio, variations, the result on a new
+  layer. Adobe's pages refused the fetch and are unread.
+
+**Recommendation (Claude's, 2026-11-12; his yes owed).** Three tools in
+one Generate step, each on Apache weights so the app can fetch them for
+anyone:
+
+- *Remove:* LaMa. No prompt, small, works on a crop at the photo's own
+  size. Built first: it proves the crop, the feathered lay-back into the
+  16-bit original and the new layer, which the other two reuse.
+- *Fill, Expand and Edit:* Qwen-Image-Edit-2511, one model for all
+  three. It is the best-ranked Apache editor and diffusers has a mask
+  pipeline for the Qwen edit line. A mask is honoured by construction:
+  only the masked, feathered part of the crop is laid back, so nothing
+  outside it can change whatever the model does. A large fill that comes
+  back soft is passed through Enhance, which is already there.
+- *Optional better model:* FLUX 3 Image Klein, offered as a download the
+  user accepts the licence for, only if his eyes say the gap over Qwen
+  is worth 26 GB and the licence terms.
+- *Passed over:* Qwen-Image-2.1 (research only), H3-Image (size,
+  territory), Fibo 2.0 (needs Gemini), FLUX.1 Fill (non-commercial, and
+  the crop and lay-back does its job), Iris-3B (no claim over SeedVR2;
+  Enhance stays as it is).
+- *First step:* Remove with LaMa on his photos. Then the same ten edits
+  on his photos through Qwen-Image-Edit-2511 and FLUX 3 Klein, for his
+  eyes.
+
+**Unknown.** Whether the mask pipeline loads the 2511 weights; VRAM and
+seconds per edit for Qwen-Image-Edit-2511 at a quantised size; whether
+an instruction editor extends a canvas well (Expand) or FLUX.1 Fill is
+needed for that one job; which runtime (diffusers in the app's Python,
+or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
+(decided earlier, do not re-raise).
 
 ## Verification owed
 
