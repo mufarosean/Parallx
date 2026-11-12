@@ -581,6 +581,61 @@ above still holds: this opens nothing).**
   Kokoro and by Phonon, and his own speech through Parakeet into the
   chat box.
 
+**Second pass (2026-11-12), for his build.** His words: the app is
+personal, never sold or published, so decisions are made for his
+machine and any licence that allows personal use; and the answer is to
+go past the easy one. The recommendation above (push to talk, a plain
+reading voice) is the floor, not the aim. Research read that day:
+
+- *Nobody has turn-taking solved.* TurnBench (2026-08-27): "No system
+  is simultaneously fast, selective, and high-recall." Kyutai's semantic
+  detector catches 77% of turn ends and 90% of interruptions; Pipecat's
+  Smart Turn catches 75% of turn ends and 11% of interruptions.
+- *No local stack publishes its delay on a consumer card,* and the open
+  ones (Kyutai Unmute, LiveKit Agents, Pipecat) are Linux or WSL.
+- *The best-sounding voice that fits is Breeze TTS 2,* and it fits
+  badly. A user's figures on an RTX 4090: its fast path takes 17 to
+  18 GB; its small build takes 5.3 GB and runs at about real time on an
+  idle card; and "Sharing the GPU with another heavy job slows speech
+  down 3 to 5x." Beside a chat model that is writing, it would stutter.
+- *A list of his words helps recognition, if short.* Phrase boosting
+  raised key-phrase scores from 42.5 to 70.4 in its paper (not measured
+  on Parakeet v3); speech models given long lists get worse.
+- *A spoken answer is a different text.* Listeners preferred answers
+  written for the ear in 76.2% of comparisons (EMNLP 2024); OpenAI's
+  voice guide: one or two short sentences, numbers read out, a short
+  line before a tool runs.
+
+**Recommendation, second pass (Claude's; his yes owed; the gate holds).**
+A conversation with the chat in which only the voice touches the
+graphics card:
+
+- *Everything that listens runs on the processor:* Parakeet v3 (a
+  ten-second turn in about a third of a second, on Windows as it is), a
+  detector for "he has finished" and one for "he is interrupting". The
+  card stays the chat model's.
+- *It knows his words:* each turn the recogniser is handed a short list
+  taken from the page that is open and the conversation so far.
+- *It says a short answer and writes the full one:* the chat model
+  writes the cited answer for the screen and one or two sentences for
+  the ear, with marks for how to say them.
+- *The voice speaks in one burst.* The short spoken text is made into
+  sound in one go, when the chat model is not writing, then played. That
+  is what lets the best voice (Breeze TTS 2) be used at all on a shared
+  card; Kokoro on the processor is the voice when an answer should be
+  spoken as it is written.
+- *No headphones:* the microphone and the speech both run inside the
+  app's window, where Chromium's echo canceller can hear both.
+- *Push to talk always works,* because the detectors will be wrong
+  sometimes.
+- *First step, when he reopens Voice:* on his card, beside his loaded
+  chat model, measure the delay from the end of his sentence to the
+  first sound for each voice; then his ear on both.
+
+**Unknown, second pass.** Whether he has or wants WSL (Breeze and most
+voices are Linux only); the echo canceller with his speakers; whether
+his chat model writes good speaking marks; every delay on a 5090.
+
 **Unknown.** Which runtime carries Parakeet and Kokoro inside the app;
 whether he wants push to talk only or a hands-free conversation.
 
