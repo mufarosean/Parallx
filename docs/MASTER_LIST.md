@@ -391,8 +391,55 @@ the Docling OCR pipeline for images and scanned PDFs, plus the box data
 kept so a search hit can highlight the page. Measure against Docling's
 OCR on his own scans before deciding it replaces anything.
 
-**Unknown.** Licences; whether Indra's quality on his scans beats
-Docling's; the CPU time per page.
+**Research (2026-11-12, each model's own card, repository or licence
+page read that day; licence quotes were clipped by the reader, so the
+licence files are read in full before anything ships).**
+
+- *All three named models exist.* Indra OCR 1.1 (Datalab), MiniCPM-OCR
+  1.0 (OpenBMB), Xiaomi-OCR-0 (Xiaomi).
+- *Docling already wraps most of the field.* Its releases of 3 to 8
+  November added presets for Surya 2.5, MiniCPM-OCR 1.0, LightOnOCR-3,
+  Unlimited-OCR 2 and Nemotron 3.5 Parse, so the heavy candidates can be
+  measured inside the pipeline Parallx already runs.
+- *Boxes.* No model gives a box per word. A box per line comes only
+  from the classic engines (Indra, PP-OCR through RapidOCR, Surya's
+  detector); the small vision models give a box per block, or none of
+  their own. The open products read (Paperless-ngx, Recoll) write a
+  hidden text layer and let the PDF viewer highlight; none keeps its own
+  boxes.
+- *Handwriting is the weakest-evidenced claim.* Only two publish a
+  number: Indra 25.2% ("Handwritten pages read, but not well") and
+  PP-OCRv6 about 58 to 61%. The rest claim it or say nothing. The entry
+  above promised handwriting from Indra; its authors do not.
+- *Licences.* Indra's weights: free for "research, personal use, and
+  startups under $20M funding/revenue", not for a product that competes
+  with Datalab's, and the restrictions must be passed on to every
+  recipient. Surya ($5M) and Chandra ($2M) weights carry the same kind
+  of cap. MiniCPM-OCR, Xiaomi-OCR-0, LightOnOCR-3, PP-OCRv6 and RapidOCR
+  are Apache 2.0; dots.mocr and GLM-OCR are MIT.
+- *The two public rankings disagree* (PaddleOCR-VL-1.6 is fifth on
+  OmniDocBench and near the bottom of Datalab's OmniParseBench), which
+  is the reason to measure on his own pages.
+
+**Shortlist to measure against Docling's OCR on his scans:**
+
+1. Light, CPU: Indra OCR 1.1. 76 MB, 6.2 pages a second on 4 cores as
+   stated, Markdown with line and block boxes and reading order. Its
+   authors have not tested Windows. If the weights licence is not
+   acceptable, PP-OCRv6 through RapidOCR (Apache, already a Docling
+   engine) takes this seat.
+2. Heavy, permissive: MiniCPM-OCR 1.0. Apache 2.0, about 1.5 GB as an
+   official GGUF with its projector, runs through Ollama or llama.cpp,
+   1.2 pages a second on an RTX 5090 as stated, fourth on OmniDocBench.
+   Block boxes come from a separate Paddle layout step.
+3. Heavy, own boxes: dots.mocr. MIT, 3B, emits a box, a class and the
+   text for every block itself; best text score among the permissive
+   models on OmniParseBench.
+
+**Unknown.** Windows support for Indra, MiniCPM-OCR and dots.mocr (none
+of their pages say); VRAM for the small vision models; handwriting
+quality of anything but Indra and PP-OCRv6; whether Docling exposes
+word boxes from OCR; CPU time per page on an ordinary desktop.
 
 ### Voice, both ways, local (after the surfaces are polished)
 
