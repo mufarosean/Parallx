@@ -489,6 +489,68 @@ in two tiers:
    text for every block itself; best text score among the permissive
    models on OmniParseBench.
 
+**Second pass (2026-11-12), for his build.** His words: the app is
+personal, never sold or published, so "no Python" and licence filters
+were never his constraints; and he asked "Is read anything specifically
+for indexing?" It was, only because Claude wrote it that way. Research
+read that day:
+
+- *Docling already has the right container.* Its document model keeps,
+  for every item, the page and the box, and for every table cell its box
+  and its place in the grid. Parallx's bridge asks Docling for Markdown
+  and keeps none of that.
+- *Readers for his card.* MiniCPM-OCR 1.0: 1.2 pages a second on an RTX
+  5090 by its own card, a Docling preset since 8 November. MinerU2.5-Pro:
+  runs on Windows as it is, 8 GB, tables 93.4 and formulas 97.5 on
+  OmniDocBench. OXR-1.0 tops that table and needs 24 GB to start, so it
+  cannot sit beside his chat model. On a harder set (DocParsingBench)
+  every reader's tables fall to 75 to 80. None gives a box per word.
+- *Asking a model for coordinates fails.* Open models that write a box
+  for their evidence are right at most 8.1% of the time; having the
+  model quote, then finding the quote in the parser's blocks, reaches 26
+  to 47% (Aalto, July 2026, one run).
+- *Showing the model the page helps a little.* On hard questions,
+  answers from the page image beat answers from its text by 2.4 to 2.8
+  points (ViDoRe V3 paper).
+- *Searching page images is real, and dear.* The best open model that
+  would fit (EVIE-4.5B) needs about 9 GB loaded for every search, and in
+  the same paper a text search with a reranker scored above the best
+  image search.
+
+**Recommendation, second pass (Claude's; his yes owed).** Read a scan
+once, into a structured document with a region for every element; the
+index is one user of it among four.
+
+- *Keep what Docling knows.* The bridge returns the document model, not
+  only Markdown: text, tables as grids, formulas, figures, each with its
+  page and box. Stored once per file.
+- *A better reader inside Docling for scans:* MiniCPM-OCR 1.0, run in
+  Docling's own process and not through Ollama, so his chat model is
+  never unloaded for it. MinerU2.5-Pro is the one to compare it with on
+  his pages.
+- *Four users of the one result:* the index (text, with its boxes); the
+  chat's Read tool, which gets the page image as well as the text, since
+  his chat model can see and is already on the card; the viewer, where a
+  hit or a citation lights up its block on the scan; and Open As Page,
+  where a scanned table becomes a real table or worksheet and a formula
+  an equation, each still linked to its place on the scan so a misread
+  cell can be checked against the original.
+- *Citations by quote, never by coordinates:* the chat quotes, the quote
+  is found in the stored blocks, the block's box is what lights up. It
+  extends the verified citations the app already has.
+- *Set aside, with the reason:* searching page images (9 GB at every
+  search for a few points; revisit if his library turns figure-heavy);
+  model-written boxes (8%); OXR-1.0 (24 GB); a box per word (no reader
+  has one; the block is the unit).
+- *First step:* about twenty of his own scanned pages through Docling
+  with MiniCPM-OCR and through MinerU2.5-Pro: the tables, the formulas,
+  the boxes, the seconds per page, side by side for his eyes.
+
+**Unknown, second pass.** Whether a Docling preset fills the document
+model's boxes when a vision reader does the reading; how Docling runs
+MiniCPM-OCR without Ollama on Windows; whether his chat model reads a
+page image well.
+
 **Unknown.** Windows support for Indra, MiniCPM-OCR and dots.mocr (none
 of their pages say); VRAM for the small vision models; handwriting
 quality of anything but Indra and PP-OCRv6; whether Docling exposes
