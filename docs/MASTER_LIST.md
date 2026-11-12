@@ -478,8 +478,67 @@ be heard; transcripts of his own recordings linked to the moment.
 
 **Gate.** Polish first, by his call. Not started until he reopens it.
 
-**Unknown.** Licences; VRAM beside a loaded chat model; which TTS reads
-best in his ear (his real-model rule applies).
+**Research (2026-11-12, each model's own card, repository or licence
+page read that day; the two rankings read from their own data).**
+
+- *All three named models exist, and none is the pick.* Qwen3-ASR
+  (Apache 2.0) needs a second model for word timings, five minutes at a
+  time, and streams only through a Linux-style server. Qwen3-TTS (Apache
+  2.0) was measured by a user slower than real time on an RTX 5090 under
+  Windows in the official package (issue 89), has no streaming in that
+  package, and both issues were closed "not planned". Breeze TTS 2 is
+  BreezeBlue's, and its weights are "for research and non-commercial use
+  only".
+- *Listening.* On the Open ASR Leaderboard (data version 10-11-2026) the
+  0.6B Parakeet models now beat Whisper: parakeet-tdt-0.6b-v3 7.04,
+  whisper-large-v3 8.24, whisper-large-v3-turbo 8.75. Qwen3-ASR-1.7B is
+  6.15; the best open model with timings and speakers built in, NVIDIA
+  Nemotron 3.5 Transcribe (6.13), is 34B and will not share a card with
+  a chat model.
+- *Speaking.* The best-ranked open voices carry strings: Fish Audio
+  Drama 3 (35B, free under $500k revenue), Breeze TTS 2 (non-commercial).
+  Permissive ones: Kokoro-82M (Apache, runs without a GPU, fixed voices),
+  Phonon 31M (Apache, English, 64 MB), VoxCPM2 (Apache, 2B, a voice from
+  a written description, cloning, streaming, about 8 GB as stated),
+  Ming-3.0-tts (MIT, 0.5B, three weeks old, tested on data-centre cards
+  only), the MOSS-TTS family (Apache). Chatterbox was retired by its
+  maker in August 2026.
+- *Products.* Handy and Superwhisper both ship Parakeet for dictation:
+  one shortcut, hold or toggle, the text lands where the cursor is.
+  SillyTavern's character voices are a voice map: one voice per
+  character from a list, "Only narrate quotes", a play button on each
+  message. None of the documented flows makes a voice from a
+  description.
+- *Runtimes with no Python:* transcribe.cpp (MIT, JavaScript bindings,
+  many listening models) and sherpa-onnx (Apache, a Node addon,
+  listening and speaking).
+
+**Recommendation (Claude's, 2026-11-12; his yes owed, and the gate
+above still holds: this opens nothing).**
+
+- *Dictation and transcripts:* Parakeet-TDT-0.6b-v3. Small enough to sit
+  beside the chat model or run without a GPU, with punctuation and a
+  time for every word. It is push to talk, not words appearing as he
+  speaks; the same-size NVIDIA streaming model is added only if he wants
+  that.
+- *Reading aloud (pages, decks):* Kokoro-82M, off the GPU, so it never
+  competes with the chat model.
+- *Character voices in Creations:* VoxCPM2. A voice is made once from
+  the character's description, a short clip of it is kept, and every
+  later line is spoken from that clip, so the voice stays the same
+  (its authors say a described voice varies from run to run).
+- *Cloning* is of a designed voice or the user's own sample; several of
+  these models' terms forbid imitating a real person without consent.
+- *Passed over:* the three named models, for the reasons above; Whisper
+  (now behind Parakeet); every non-commercial voice.
+- *First step, when he reopens Voice:* his ear. One page read by Kokoro
+  and by Phonon; three of his characters voiced by VoxCPM2 and by
+  Ming-3.0-tts; and VoxCPM2's memory use measured beside his loaded
+  chat model before anything is built on it.
+
+**Unknown.** Windows support for VoxCPM2 and Ming (their pages do not
+say); VRAM on his card for every candidate (almost no page states it);
+which runtime carries Parakeet and Kokoro inside the app.
 
 ### Predict From This Table
 
