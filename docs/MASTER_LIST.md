@@ -421,7 +421,29 @@ licence files are read in full before anything ships).**
   OmniDocBench and near the bottom of Datalab's OmniParseBench), which
   is the reason to measure on his own pages.
 
-**Shortlist to measure against Docling's OCR on his scans:**
+**Recommendation (Claude's, 2026-11-12; his yes owed).** Do not build a
+second reading pipeline. Keep Docling and choose the engine inside it,
+in two tiers:
+
+- *For everyone, no GPU:* PP-OCRv6 through RapidOCR. Apache 2.0, already
+  a Docling engine, Windows listed, a box per line, and the best
+  published handwriting number of any light engine. Indra is passed
+  over: its weights licence must be handed on to every user, its authors
+  have not tested Windows, and its handwriting is the weakest measured.
+  To confirm first: that RapidOCR can load the v6 models.
+- *Optional, for a user with a GPU:* MiniCPM-OCR 1.0, for tables,
+  formulas and hard pages. Apache 2.0, already a Docling preset, runs
+  through Ollama, which the app already talks to. dots.mocr is the
+  fallback only if MiniCPM's block boxes prove too coarse.
+- *Click-back:* keep each line's box beside its text in the index, so a
+  search hit highlights the line on the page (the block, on the heavy
+  tier).
+- *First step:* measure both tiers against today's Docling OCR on about
+  twenty of his own pages (a clean scan, a phone photo, handwriting, a
+  table, a formula page). The published numbers chose the candidates;
+  his pages decide. Expect handwriting to stay imperfect on any of them.
+
+**The wider shortlist the research gave:**
 
 1. Light, CPU: Indra OCR 1.1. 76 MB, 6.2 pages a second on 4 cores as
    stated, Markdown with line and block boxes and reading order. Its
