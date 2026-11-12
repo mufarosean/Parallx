@@ -275,10 +275,51 @@ A working surface where pieces from different tools sit side by side
 and are linked: a painting plan, an AI workflow, a mind map, pages,
 files. Atelier's plan boards are the model, widened to every tool.
 
-**Status.** To be thought through thoroughly with him, after Home. No
-design, no build. Open from the start: what becomes of the existing
-dashboards and their widgets, and how this differs from a canvas page
-that embeds blocks.
+**His words (2026-11-12, spelling corrected):** "When it comes to
+dashboards, we should research online. I want something that is unique,
+robust, while doing all the basic things. Think of a whiteboard, an
+online whiteboard."
+
+**Research, first pass (2026-11-12, read from each vendor's own pages
+that day; what was not read is said).**
+
+- *The basics, as FigJam, Microsoft Whiteboard and Apple Freeform name
+  them:* sticky notes, text, shapes, connector lines (straight, elbow,
+  curved), pen and highlighter, images, files, links, tables, sections
+  that hold and move what is in them, lock, bring to front and send to
+  back, group, align and tidy up, pan and zoom, templates, comments.
+  Miro was not read (its help centre refused the fetch). Whether a line
+  stays attached when its object moves is not said in the pages read.
+- *Boards for linking work (Heptabase, Obsidian Canvas, Scrintal,
+  Milanote, Kinopio, AFFiNE):* Heptabase: "The same card can be placed
+  on multiple whiteboards at the same time", "Whiteboards do not own
+  cards", a card lists the boards it is on and jumps to its place there,
+  search within one board, sections, boards inside boards. Scrintal:
+  links between items are global, connector lines "only exist on the
+  specific board where they're created". Obsidian: a card can be
+  narrowed to one heading of a note; lines carry direction, labels and
+  colours; zoom to fit; boards are saved in the open JSON Canvas format.
+  AFFiNE: a page and its canvas are two views of the same blocks.
+  Milanote: boards nest like folders; a copy is the default and syncing
+  is opt-in, for notes only.
+- *Engines:* tldraw's licence permits "use only in development"; a
+  shipped app needs a paid key, or a discretionary hobby key that shows
+  a "made with tldraw" watermark. Excalidraw is MIT but a React drawing
+  tool; whether app content can live inside one of its elements was not
+  found. BlockSuite (AFFiNE's editor) is web components, MPL 2.0 by its
+  README, and calls itself early stage. JSON Canvas 1.0 (2024-03-11,
+  MIT) is a file format only: text, file, link and group nodes, edges
+  with sides, ends, colour and label. Logseq's page was too large to
+  read.
+- *In the app already:* `src/ui/nodeCanvas.ts`, one pan and zoom surface
+  with draggable nodes, labelled edges, selection and the keyboard's way
+  to all of it, whose nodes are drawn by whoever uses it. The workflow
+  editor is its only user today.
+
+**Status.** Research shown to him 2026-11-12 with a proposed bar; his
+yes on the bar is owed. No design, no build. Still open: what becomes
+of the existing dashboards and their widgets, and how a board differs
+from a canvas page that embeds blocks.
 
 ### Text arrows elsewhere
 
