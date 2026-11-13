@@ -496,15 +496,53 @@ problems; no graphics card used):
   own action.
 - The set-up card for the engine, in the tab.
 
-Owed, and each needs the graphics card:
+Run on his card on his word (2026-11-12, about 10 minutes of card time):
 
-- Setting the engine up from the tab on his machine (39 GB to fetch,
-  then its self-test). The model is already downloaded in
-  `data/generate-test/qwen21` from the test, but the app fetches its own
-  copy by hash.
-- The six test edits left, and his eyes on real results.
-- The set-aside button against his real chat model in Ollama (only the
-  call's shape is tested; no live Ollama in tests).
+- The engine is set up on his machine, from the tab, in 3.5 minutes. The
+  model and the packages the test had already downloaded were put where
+  a stopped download would be, so the app checked each file's SHA-256
+  and kept it instead of fetching 39 GB again. The set-up's test edit
+  passed on the card.
+- All seven test edits are done. The last two (a sunset sky on the hay
+  bales, a blue sky at the airport) went through the tab itself: brushed,
+  instructed, three tries each, one kept. Three tries took about 250 s:
+  about 55 s before the first step (loading the model and reading the
+  instruction), then 45 to 55 s generating and 13 to 26 s laying back
+  for each try. Peak 19.1 GB.
+- Setting the chat model aside works against his Ollama: the app's call
+  unloaded gemma4:31b and the card went from 9.7 GB in use to 2.1 GB.
+  The button that makes the call is checked with the stand-in engine.
+- Pictures for his eyes: `data/generate-test/out/` (before above, after
+  below, for every try) and `data/generate-test/out/in-the-app/`.
+
+Built on the way: a set-up whose last step, the test edit, finds the
+card in use no longer ends in an error. The tab says "One step left",
+shows how much of the card is free, and offers Set The Chat Model Aside
+And Finish. (His chat model is usually loaded when he would set this up.)
+
+What the real edits showed, each a proposal, none built:
+
+- A sky marked as a band is the wrong mark. In the blue-sky edit the top
+  of the rock, which lay inside the band, came back lit orange while the
+  rest of the rock stayed grey, and a line of haze shows where the band
+  ended and old sky went on below it. The Masks tab already finds a sky
+  (its Sky choice). Proposed: Change The Sky marks the sky by itself
+  with that selector, so only sky is replaced and every other pixel stays
+  the photo's own. Needs one run on the card to prove.
+- Four minutes for three tries is slow where it need not be. The engine
+  starts from nothing on every run (about 55 s) and laying a try back
+  takes 13 to 26 s on the processor. Proposed: keep the engine loaded
+  for a few minutes after a run, the way the document reader stays up,
+  released at once when the chat needs the card; and a faster lay-back.
+- The sky patch is made 2,048 pixels wide and stretched 4.2 times over
+  the 32 MP photo. That is item 5 below; a sky hides it, a detailed area
+  would not.
+- Ollama can list a model as loaded while Windows has moved most of it
+  off the card (seen: 9.7 GB in use with a 23 GB model listed). The tab
+  reads free memory on the card, not Ollama's list, and that is the
+  right measure.
+
+Owed: his verdict on the results.
 
 Left to build, in order:
 

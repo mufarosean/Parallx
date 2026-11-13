@@ -3,7 +3,9 @@
 // machine's own and whose generate.py writes plain coloured patches, so what
 // is checked is everything around the model: the tab and its three steps,
 // marking an area, the job that is written, progress, the tries, a try shown
-// on the photo, Keep storing a patch, and the photo changing.
+// on the photo, Keep storing a patch, and the photo changing. It starts one
+// step short of set up: the set-up's last step, a test edit, meets a card
+// that is in use, and the tab offers to set the chat model aside and finish.
 //
 // Usage: node tests/probes/generate-tab-probe.mjs <outDir>   (run from Bash)
 import { _electron as electron } from 'playwright';
@@ -79,7 +81,12 @@ async function main() {
   const engineDir = path.join(appRoot, 'ext', 'media-organizer', 'engine');
   await fs.writeFile(path.join(engineDir, 'generate.py'), STUB);
 
-  // A runtime that counts as set up: the machine's own Python, the model's files as empty stand-ins.
+  // A runtime with everything in place but its self-test: the machine's own Python, the model's files
+  // as empty stand-ins. The self-test is a stand-in too: it fails for want of graphics memory while
+  // the file `card-full` is there.
+  const cardFull = path.join(appRoot, 'card-full');
+  await fs.writeFile(cardFull, '');
+  await fs.writeFile(path.join(engineDir, 'selftest-generate.py'), `import os, sys\nif os.path.exists(${JSON.stringify(cardFull)}):\n    print('GENERATE-ERROR: Generate needs about 21 GB of free graphics memory; 9 GB is free. Set the chat model aside and try again.', file=sys.stderr)\n    sys.exit(2)\nprint('{"selftest":"ok"}')\n`);
   const rt = path.join(runtimes, 'qwen-image-generate');
   await fs.mkdir(path.join(rt, 'files'), { recursive: true });
   const venv = spawnSync('python', ['-m', 'venv', path.join(rt, 'env')], { encoding: 'utf8', windowsHide: true });
@@ -88,7 +95,10 @@ async function main() {
   const kept = {};
   for (const m of models) { await fs.writeFile(path.join(rt, 'files', m.name), ''); kept[m.name] = m.sha256; }
   const lock = readFileSync(path.join(engineDir, 'requirements-generate-win.lock'), 'utf8');
-  await fs.writeFile(path.join(rt, 'state.json'), JSON.stringify({ uv: 'stand-in', python: '3.13.16', packages: crypto.createHash('sha256').update(`3.13.16\n${lock}`).digest('hex'), files: kept, selftest: true }));
+  const uvVersion = /UV_VERSION = '([^']+)'/.exec(readFileSync(path.join(PROJECT_ROOT, 'electron', 'runtimeBridge.cjs'), 'utf8'))[1];
+  await fs.mkdir(path.join(rt, 'uv'), { recursive: true });
+  await fs.writeFile(path.join(rt, 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv'), '');
+  await fs.writeFile(path.join(rt, 'state.json'), JSON.stringify({ uv: uvVersion, python: '3.13.16', packages: crypto.createHash('sha256').update(`3.13.16\n${lock}`).digest('hex'), files: kept, selftest: false }));
 
   // The photos the library seed knows (tag-review-seed.cjs), fractal.jpg among them: photo 3.
   const BOXING = path.join(PROJECT_ROOT, 'data', 'dashboard-assets', 'aa21bc3e-d260-41ac-8bcf-ab5efe10d0cb.jpg');
@@ -124,8 +134,8 @@ async function main() {
   let failed = 0;
   const check = (ok, what) => { if (!ok) failed++; console.log(`[probe] ${ok ? 'PASS' : 'FAIL'} ${what}`); };
   const shot = async (name) => {
-    // A hidden window can hand back its last painted frame: ask for a fresh one first.
-    const b64 = await app.evaluate(async ({ BrowserWindow }) => { const wc = BrowserWindow.getAllWindows()[0].webContents; wc.invalidate(); await new Promise((r) => setTimeout(r, 250)); const img = await wc.capturePage(); return img.isEmpty() ? '' : img.toPNG().toString('base64'); });
+    // A hidden window can hand back its last painted frame: ask for a fresh one, and keep the second capture.
+    const b64 = await app.evaluate(async ({ BrowserWindow }) => { const wc = BrowserWindow.getAllWindows()[0].webContents; wc.invalidate(); await new Promise((r) => setTimeout(r, 250)); await wc.capturePage(); await new Promise((r) => setTimeout(r, 400)); const img = await wc.capturePage(); return img.isEmpty() ? '' : img.toPNG().toString('base64'); });
     if (b64) { await fs.writeFile(path.join(outDir, name), Buffer.from(b64, 'base64')); console.log(`[probe] screenshot -> ${path.join(outDir, name)}`); }
   };
   const texts = (sel) => page.evaluate((s) => [...document.querySelectorAll(s)].map((e) => e.textContent.trim()), sel);
@@ -150,9 +160,24 @@ async function main() {
     const tabs = await texts('.mo-edit-tab .mo-edit-tab-label');
     check(tabs.join('/') === 'Edit/Masks/Crop/Remove/Enhance/Generate', `six tabs, Generate last: ${tabs.join('/')}`);
 
-    // ── the tab: three steps ──
+    // ── set-up's last step meets a card in use ──
     await page.click(px('media-organizer.imageEditor.tool.generate'));
-    await page.waitForSelector('.mo-gen-step', { timeout: 15_000 });
+    await page.waitForSelector(px(`${ID}.setUp`), { timeout: 15_000 });
+    check((await texts(px(`${ID}.setUp`))).join('') === 'Carry On Setting Up', 'a set-up that stopped part of the way offers to carry on');
+    await page.click(px(`${ID}.setUp`));
+    await page.waitForSelector('.mo-edit-setup .mo-gen-card', { timeout: 60_000 });
+    const oneLeft = (await texts('.mo-edit-setup-title, .mo-edit-setup .mo-gen-card .mo-gen-dim')).join(' ');
+    check(/One step left/.test(oneLeft) && /9 GB of 32 GB is free/.test(oneLeft), `the test edit found the card in use, and the tab says so: ${oneLeft.slice(0, 90)}`);
+    check((await texts(px(`${ID}.aside`))).join('') === 'Set The Chat Model Aside And Finish' && (await page.locator(px(`${ID}.setUp`)).count()) === 0, 'with one button: Set The Chat Model Aside And Finish');
+    await page.mouse.move(700, 500); await page.waitForTimeout(600);
+    await shot('generate-0-one-step-left.png');
+    await fs.rm(cardFull); await card(30000);
+    await page.click(px(`${ID}.aside`));
+
+    // ── the tab: three steps ──
+    await page.waitForSelector('.mo-gen-step', { timeout: 60_000 });
+    check((await page.locator('.mo-gen-card').count()) === 0, 'and the set-up finishes once there is room');
+    await card(9200);
     const steps = await texts('.mo-gen-step-title');
     check(steps.join(' / ') === 'Mark the area / Say what to do there / Pick a result', `three steps: ${steps.join(' / ')}`);
     const go = page.locator(px(`${ID}.generate`));

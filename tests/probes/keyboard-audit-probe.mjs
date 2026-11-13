@@ -313,7 +313,7 @@ async function touchDead() {
       const s = e.closest('[data-px-surface]');
       const cls = typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/)[0] : '';
       const label = (e.getAttribute('aria-label') || e.getAttribute('title') || '').trim().slice(0, 30);
-      out.push({ n: n++, hover, sig: `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : cls}${label ? ` "${label}"` : ''}`,
+      out.push({ n: n++, hover, find: { tag: e.tagName.toLowerCase(), pxid: e.getAttribute('data-px-id') || '', cls: cls.slice(1), label: (e.getAttribute('aria-label') || e.getAttribute('title') || '').trim(), surface: s ? s.getAttribute('data-px-surface') : '' }, sig: `${s ? s.getAttribute('data-px-surface') : '(window)'} :: ${e.tagName.toLowerCase()}${e.getAttribute('data-px-id') ? '#' + e.getAttribute('data-px-id') : cls}${label ? ` "${label}"` : ''}`,
         x: r.left + r.width / 2, y: r.top + r.height / 2, drag, axis: /col|ew|^[ew]-/.test(cur) ? 'x' : /row|ns|^[ns]-/.test(cur) ? 'y' : 'xy', canvas: e.tagName === 'CANVAS' });
     }
     return out;
@@ -326,6 +326,22 @@ async function touchDead() {
       await page.mouse.move(c.hover.x, c.hover.y);
       await page.waitForTimeout(250);
       const at = await page.evaluate((n) => { const e = document.querySelector(`[data-touch-cand="${n}"]`); if (!e) return null; const r = e.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const top = document.elementFromPoint(x, y); return r.width >= 3 && r.height >= 3 && top && (top === e || e.contains(top)) ? { x, y } : null; }, c.n);
+      if (!at) continue;
+      c.x = at.x; c.y = at.y;
+    } else {
+      // An earlier drag on this screen can have moved it, or had it drawn again as a new element
+      // (a mask's handles are rebuilt on every draw): find it where it is now, not where it was listed.
+      const at = await page.evaluate(({ n, f }) => {
+        let e = document.querySelector(`[data-touch-cand="${n}"]`);
+        if (!e || !e.isConnected) {
+          const same = (x) => (x.getAttribute('aria-label') || x.getAttribute('title') || '').trim() === f.label && ((x.closest('[data-px-surface]') || { getAttribute: () => '' }).getAttribute('data-px-surface') || '') === f.surface;
+          const sel = f.pxid ? `${f.tag}[data-px-id="${CSS.escape(f.pxid)}"]` : f.cls ? `${f.tag}.${CSS.escape(f.cls)}` : f.tag;
+          e = Array.from(document.querySelectorAll(sel)).find((x) => same(x) && x.getClientRects().length) || null;
+        }
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return r.width >= 3 && r.height >= 3 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+      }, { n: c.n, f: c.find });
       if (!at) continue;
       c.x = at.x; c.y = at.y;
     }

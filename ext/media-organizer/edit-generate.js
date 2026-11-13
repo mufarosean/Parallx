@@ -166,7 +166,8 @@ export function moEditGenerate(ctx) {
   let stroke = null, keyPoint = null;
   const photoR = () => (G.brush / 2) / Math.max(1e-6, ctx.screenPerPhoto());
   const at = (e) => { const { w, h } = size(); const q = ctx.fromScreen(e.clientX, e.clientY); return [clamp(q.u, 0, 1) * w, clamp(q.v, 0, 1) * h]; };
-  const brushing = () => ctx.on() && G.way === 'brush' && !G.running;
+  const ready = () => !!G.engine && G.engine.state === 'ready' && !G.setUp; // nothing is marked on the photo before the engine is set up
+  const brushing = () => ctx.on() && ready() && G.way === 'brush' && !G.running;
   const press = ui.onDragPress(layer, (e) => {
     if (!brushing() || (e.button !== undefined && e.button !== 0)) return;
     e.preventDefault(); e.stopPropagation(); // the stage must not start a pan under the brush
@@ -228,13 +229,15 @@ export function moEditGenerate(ctx) {
   // ── the engine ──
   async function checkEngine() {
     G.engine = await moGenerateStatus().catch(() => ({ state: 'absent', installing: false, machine: { ok: false, problems: ['The engine could not be checked.'] } }));
-    if (ctx.on()) ctx.rerender();
+    if (ctx.on()) { ctx.rerender(); sync(); }
   }
   async function setUp() {
-    G.setUp = { label: 'Starting', fraction: 0, error: '' };
+    G.setUp = { label: 'Starting', fraction: 0, error: '' }; G.card = null;
     ctx.rerender();
     const r = await moGenerateSetUp((step) => { if (!G.setUp) return; G.setUp.label = step.label; G.setUp.fraction = step.fraction; G.setUp.bytes = step.total ? `${gb(step.received || 0)} of ${gb(step.total)}` : ''; if (ctx.on()) ctx.rerender(); });
     G.setUp = r.ok ? null : { error: r.error || 'Setting up stopped.' };
+    // The last step is a test edit on the card. When that is what failed and the card is full, the panel offers the way through.
+    if (!r.ok && /self-test/i.test(r.error || '') && !(await roomOnCard())) G.card.setUp = true; else G.card = null;
     await checkEngine();
   }
 
@@ -253,12 +256,12 @@ export function moEditGenerate(ctx) {
   /** His click: the local chat models leave the card, then the run starts. */
   async function setAsideAndGenerate() {
     if (!G.card || G.running) return;
-    const more = !!G.card.more;
+    const more = !!G.card.more, forSetUp = !!G.card.setUp;
     G.card.busy = true; ctx.rerender();
     try { if (api.lm && api.lm.releaseLocalModels) await api.lm.releaseLocalModels(); } catch { /* the check below says what is left */ }
     await new Promise((res) => setTimeout(res, 1500)); // the engine gives the memory back a moment after it answers
-    if (await roomOnCard()) { void generate(more, true); return; }
-    G.card.stuck = true; ctx.rerender();
+    if (await roomOnCard()) { if (forSetUp) void setUp(); else void generate(more, true); return; }
+    G.card.stuck = true; G.card.setUp = forSetUp; ctx.rerender();
   }
 
   async function generate(more, checked) {
@@ -334,6 +337,23 @@ export function moEditGenerate(ctx) {
     return head;
   };
 
+  /** The card is in use: what is on it, and the one button that makes room. */
+  function cardInUse(parent, label) {
+    const gbOf = (mib) => `${Math.round(mib / 1024)} GB`;
+    const used = Math.max(0, G.card.total - G.card.free);
+    const box = moEl('div', 'mo-gen-card', { role: 'group', 'aria-label': 'The graphics card is in use' });
+    box.appendChild(moEl('div', 'mo-gen-running', { textContent: 'The graphics card is in use' }));
+    box.appendChild(moEl('p', 'mo-gen-dim', { textContent: `Generate needs about ${gbOf(MO_GENERATE_NEEDS_MIB)} free. ${gbOf(G.card.free)} of ${gbOf(G.card.total)} is free.` }));
+    const meter = moEl('div', 'mo-gen-meter', { role: 'img', 'aria-label': `${gbOf(used)} of ${gbOf(G.card.total)} of graphics memory is in use` });
+    const fill = moEl('div', 'mo-gen-meter-fill'); fill.style.width = `${Math.round((used / Math.max(1, G.card.total)) * 100)}%`;
+    meter.appendChild(fill); box.appendChild(meter);
+    if (G.card.stuck) box.appendChild(moEl('p', 'mo-gen-error', { role: 'alert', textContent: 'The chat model is set aside, and there is still not enough free. Something else is using the graphics card.' }));
+    const aside = button(box, 'aside', label, 'sparkles', 'generateAside', [], { kind: 'primary' });
+    aside.classList.add('mo-gen-go'); aside.disabled = !!G.card.busy;
+    box.appendChild(moEl('p', 'mo-gen-dim', { textContent: 'The chat model comes back by itself on your next message. Nothing in the chat is lost.' }));
+    parent.appendChild(box);
+  }
+
   function engineCard(body) {
     const card = moEl('div', 'mo-edit-setup');
     const m = (G.engine && G.engine.machine) || { ok: false, problems: [] };
@@ -349,6 +369,10 @@ export function moEditGenerate(ctx) {
       card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Generate cannot run on this computer' }));
       for (const p of m.problems || []) card.appendChild(moEl('p', null, { textContent: p }));
       button(card, 'checkAgain', 'Check Again', 'refresh-cw', 'generateCheck');
+    } else if (G.card && G.card.setUp) {
+      card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'One step left' }),
+        moEl('p', null, { textContent: 'Everything is downloaded. The last step is a test edit, and it needs the graphics card.' }));
+      cardInUse(card, 'Set The Chat Model Aside And Finish');
     } else {
       card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Set up Generate' }),
         moEl('p', null, { textContent: 'It changes part of a photo from a written instruction, on this computer. Your photos never leave it.' }),
@@ -412,20 +436,7 @@ export function moEditGenerate(ctx) {
       button(row, 'stop', 'Stop', 'square', 'generateStop');
       two.appendChild(row);
     } else if (G.card) {
-      // The card is in use: what is on it, and the one button that makes room.
-      const gbOf = (mib) => `${Math.round(mib / 1024)} GB`;
-      const used = Math.max(0, G.card.total - G.card.free);
-      const box = moEl('div', 'mo-gen-card', { role: 'group', 'aria-label': 'The graphics card is in use' });
-      box.appendChild(moEl('div', 'mo-gen-running', { textContent: 'The graphics card is in use' }));
-      box.appendChild(moEl('p', 'mo-gen-dim', { textContent: `Generate needs about ${gbOf(MO_GENERATE_NEEDS_MIB)} free. ${gbOf(G.card.free)} of ${gbOf(G.card.total)} is free.` }));
-      const meter = moEl('div', 'mo-gen-meter', { role: 'img', 'aria-label': `${gbOf(used)} of ${gbOf(G.card.total)} of graphics memory is in use` });
-      const fill = moEl('div', 'mo-gen-meter-fill'); fill.style.width = `${Math.round((used / Math.max(1, G.card.total)) * 100)}%`;
-      meter.appendChild(fill); box.appendChild(meter);
-      if (G.card.stuck) box.appendChild(moEl('p', 'mo-gen-error', { role: 'alert', textContent: 'The chat model is set aside, and there is still not enough free. Something else is using the graphics card.' }));
-      const aside = button(box, 'aside', 'Set The Chat Model Aside And Generate', 'sparkles', 'generateAside', [], { kind: 'primary' });
-      aside.classList.add('mo-gen-go'); aside.disabled = !!G.card.busy;
-      box.appendChild(moEl('p', 'mo-gen-dim', { textContent: 'The chat model comes back by itself on your next message. Nothing in the chat is lost.' }));
-      two.appendChild(box);
+      cardInUse(two, 'Set The Chat Model Aside And Generate');
     } else {
       const go = button(two, 'generate', `Generate ${TRIES} Tries`, 'sparkles', 'generateGo', [], { kind: 'primary' });
       go.disabled = !marked();
