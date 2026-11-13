@@ -46,11 +46,20 @@ if (mode === 'seed') {
   const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
   const folder = insert(db, 'mo_folders', { path: photosDir });
   const photo = {};
+  const video = {};
   for (const s of spec) {
     const full = path.join(photosDir, s.basename);
     const buf = fs.readFileSync(full);
     const file = insert(db, 'mo_files', { folder_id: folder, basename: s.basename, size: buf.length });
     insert(db, 'mo_fingerprints', { file_id: file, type: 'md5', value: crypto.createHash('md5').update(buf).digest('hex') });
+    if (s.video) {
+      // A video in the library: { "video": true, "duration": 8, "frameRate": 24 } beside the name and size.
+      insert(db, 'mo_video_files', { file_id: file, duration: s.duration, width: s.width, height: s.height, codec: 'h264', frame_rate: s.frameRate });
+      const vid = insert(db, 'mo_videos', { title: s.basename.replace(/\.[^.]+$/, ''), duration: s.duration });
+      insert(db, 'mo_videos_files', { video_id: vid, file_id: file, is_primary: 1 });
+      video[s.basename] = vid;
+      continue;
+    }
     insert(db, 'mo_image_files', { file_id: file, width: s.width, height: s.height });
     const id = insert(db, 'mo_photos', { title: s.basename.replace(/\.[^.]+$/, '') });
     insert(db, 'mo_photos_files', { photo_id: id, file_id: file, is_primary: 1 });
@@ -76,7 +85,7 @@ if (mode === 'seed') {
   review.run(photo['fractal.jpg'], 'failed', '[]', 'The model did not reply with a tag list.', 'qwen3.8:27b');
   review.run(photo['bars.jpg'], 'queued', '[]', null, null);
   db.close();
-  console.log(JSON.stringify({ photo, tag }));
+  console.log(JSON.stringify({ photo, video, tag }));
 } else if (mode === 'verify') {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   const tagsOf = {};

@@ -322,3 +322,60 @@ export async function moEnhanceStop(runId) {
   const b = bridge();
   if (b && runId) await b.invoke('runtimes:cancel', runId).catch(() => {});
 }
+
+// ── Video and GIFs (engine/enhance_video.py) ──
+// The same engine and the same model. A clip goes through in chunks whose
+// frames are kept in a work folder, so a stopped run carries on from where it
+// stopped. ffmpeg is the machine's own: the caller names it.
+
+/** What a progress line from enhance_video.py means, as { label, fraction, done, total }. */
+export function moEnhanceVideoProgress(d) {
+  if (!d || typeof d !== 'object') return { label: 'Working', fraction: 0 };
+  if (d.stage === 'read' || d.stage === 'plan') return { label: 'Reading the video', fraction: 0.01 };
+  if (d.stage === 'prepare') return { label: 'Preparing the video', fraction: 0.02 };
+  if (d.stage === 'enlarge') {
+    const total = Math.max(1, d.total || 1), done = Math.min(total, d.done || 0);
+    const label = done >= total ? 'Enlarged' : done > (d.kept || 0) ? `Enlarging: frame ${done} of ${total}` : (d.kept ? `Carrying on from frame ${d.kept} of ${total}` : 'Loading the model');
+    return { label, fraction: 0.03 + 0.92 * (done / total), done, total };
+  }
+  if (d.stage === 'join') return { label: 'Writing the result', fraction: 0.96 };
+  if (d.stage === 'done') return { label: 'Done', fraction: 1 };
+  return { label: 'Working', fraction: 0 };
+}
+
+/** The arguments of one run. job: { input, output, scale, workDir, ffmpeg, ffprobe, start?, seconds? }. */
+export function moEnhanceVideoArgs(job, planOnly) {
+  const args = ['--input', job.input, '--output', job.output, '--scale', String(job.scale), '--work-dir', job.workDir, '--ffmpeg', job.ffmpeg, '--ffprobe', job.ffprobe];
+  if (job.start > 0) args.push('--start', String(job.start));
+  if (job.seconds > 0) args.push('--seconds', String(job.seconds));
+  if (planOnly) args.push('--plan-only');
+  return args;
+}
+
+async function videoRun(job, planOnly, onLine, opts = {}) {
+  const b = await readyBridge();
+  const runId = newRunId();
+  if (opts.onRunId) opts.onRunId(runId);
+  runListeners.set(runId, onLine);
+  try {
+    const r = await b.invoke('runtimes:run', moEnhanceSpec(), enginePath('enhance_video.py'), moEnhanceVideoArgs(job, planOnly), runId);
+    if (r && r.ok) return;
+    if (r && r.stopped) throw Object.assign(new Error('Stopped.'), { stopped: true });
+    throw new Error(failureOf(r));
+  } finally {
+    runListeners.delete(runId);
+  }
+}
+
+/** What a run would be, without starting it: { frames, fps, seconds, width, height, gif }. Throws the engine's own sentence when it cannot be done. */
+export async function moEnhanceVideoPlan(job) {
+  let plan = null;
+  await videoRun(job, true, (d) => { if (d.stage === 'plan') plan = d; });
+  if (!plan) throw new Error('The video could not be read.');
+  return plan;
+}
+
+/** Enhance a video or a GIF. onProgress({ label, fraction, done, total }). Throws an Error whose message is for the user; `stopped` when the user stopped it. */
+export async function moEnhanceVideoRun(job, onProgress, opts = {}) {
+  await videoRun(job, false, (d) => { if (onProgress) { try { onProgress(moEnhanceVideoProgress(d)); } catch { /* the caller closed */ } } }, opts);
+}

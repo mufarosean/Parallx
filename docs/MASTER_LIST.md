@@ -103,25 +103,33 @@ messages.
 
 **His words (2026-11-12):** "Let's talk about the idea of enhancing
 videos." Asked what enhancing means and for what footage: "short videos,
-bigger resolution." Then: "add to master list."
+bigger resolution." Then: "add to master list." Later the same day:
+"run video enhancement. you have my full permission to use gpu."
 
-**What it is.** The Media Organizer's Enhance, which enlarges photos
-today, also enlarges a short video. Not noise removal, not rescue of old
-footage, not smoother motion (more frames a second needs another engine).
+**Built (2026-11-12).** Enhance Video… and Enhance GIF… on one item in
+the library, at 2x, on the engine photos use: a dialog with what the
+clip becomes and about how long it takes, a three-second preview with
+the original beside it, the run with Stop, and a stopped run carried on
+from its kept frames. The result is a new file beside the original with
+its sound and the original's tags, albums, rating and details. How it
+works, what was measured on his card and what the measurements decided
+are in `docs/ENHANCE.md` (part 3).
 
-**What the user gets.** An Enhance action on a video in the library; the
-result is a new, larger video beside the original, with the original's
-sound and frame rate, and the original untouched.
+**Measured on his 5090.** Ten seconds of 720p became 2560 x 1440 in 10
+minutes 41 seconds; five seconds of 360p became 720p in about a minute
+and a half. It needs 21 to 24 GB of the card, so the chat model is set
+aside for a run (the dialog offers it). By eye the result is clearly
+sharper than the original; by the numbers it is sharper than real
+footage of that size, which is the model's known over-sharpening.
 
-**What exists today (verified in the code).** SeedVR2, the engine behind
-Enhance and the library's Upscale, is a video model that the app feeds
-one picture at a time (`engine/enhance.py` runs with `--batch_size 1`).
-The copy shipped in the extension already takes a video file, frames in
-groups (5, 9, 13...), an overlap between groups and work in chunks
-(`engine/seedvr2/inference_cli.py`). The runtime and the 8.5 GB model are
-the ones photos use, so nothing more is downloaded. A video's menu offers
-no edit or upscale (`item-menu.js`). ffmpeg is the machine's own; the
-extension does not ship one.
+**Owed.** A run from the dialog on one of his own clips (every run so
+far is on public test footage, and the dialog itself was checked with a
+stand-in for the model), and his verdict on the look.
+
+**Left, none agreed.** 4x. Several clips in one go. 1080p to 4K (not
+measured; the result's long side stops at 2,560 pixels today). Enhance
+from the clip editor. Newer engines (FastVR, FlashVSR+) if they come to
+Windows; the research is kept below.
 
 **Research (2026-11-12, at his request: "Research the latest enhancement
 techniques and find github repositories doing the same thing, I can't be
@@ -155,27 +163,6 @@ are the authors' unless marked measured; Claude ran nothing.
   newer compressed weights), TE-Speed-SeedVR2 (a streaming decode and
   automatic chunking; a ComfyUI node, so technique only), LocalSR and
   QualityScaler (older frame-by-frame models, sound and timing kept).
-
-**Shape (proposed by Claude, not agreed).** SeedVR2 for the first
-version: it is installed, runs on Windows, and nothing newer is
-independently shown to beat it. 2x, with a ceiling on the output size in
-place of cutting frames into pieces. Groups of 5 frames. A preview of a
-few seconds and a before/after comparison before the whole clip, then
-the clip in chunks that Stop keeps, so a run resumes. A limit on length,
-with the time estimate shown first. Sound copied over untouched. Effort
-on speed goes to the decode step.
-
-**First step.** A measurement on his 5090, as `docs/ENHANCE.md` did for
-photos: a 10-second clip of his at 2x, recording time, peak graphics
-memory and whether detail flickers between frames; one clean clip among
-them, for the over-sharpening. FastVR on the same clips, if it runs on
-Windows.
-
-**Unknown.** His own numbers (the ones above are another machine's); the
-ceiling on output size; the length limit; whether FastVR runs on Windows
-and how it compares; what a machine without ffmpeg gets (a plain
-message, or a bundled ffmpeg of about 100 MB); what his clips are (their
-resolution now, their length).
 
 ## UI improvements
 

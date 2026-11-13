@@ -56,6 +56,7 @@ import { showExtensionContextMenu, type ExtensionMenuAnchor, type IExtensionMenu
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { registerKeyboardResize, type IKeyboardResizable } from '../../ui/keyboardResize.js';
 import { onDragPress } from '../../ui/touchDrag.js';
+import { keepTabInside } from '../../ui/dom.js';
 
 /** What `api.ui` is: the object `createUiApi` builds, typed once here. */
 export type UiApi = ReturnType<typeof createUiApi>;
@@ -143,6 +144,7 @@ export function createUiApi() {
     declareControl: (element: HTMLElement, declaration: IKitInPlaceDeclaration) => kitDeclareControl(element, declaration),
     registerKeyboardResize: (element: HTMLElement, target: IKeyboardResizable) => registerKeyboardResize(element, target),
     onDragPress: (element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean; hold?: boolean; capture?: boolean; pointerEvents?: boolean }) => onDragPress(element, handler, opts),
+    keepTabInside: (within: HTMLElement, listenOn?: HTMLElement) => keepTabInside(within, listenOn),
     createToggle: (container: HTMLElement | null, options: IKitToggleOptions) => kitCreateToggle(container, options),
     createInput: (container: HTMLElement | null, options: IKitInputOptions) => kitCreateInput(container, options),
     createSelect: (container: HTMLElement | null, options: IKitSelectOptions) => kitCreateSelect(container, options),

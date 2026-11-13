@@ -931,6 +931,9 @@ const menu = api.ui.showContextMenu(btn, build(), { anchorPosition: 'above' }); 
 // Confirmations: the app's modal, never confirm().
 const ok = await api.window.showConfirmModal({ message: 'Delete this deck?', detail: 'Its 42 cards go too.', confirmLabel: 'Delete', danger: true });
 
+// A dialog you build yourself (role="dialog", aria-modal="true") keeps Tab inside it; dispose when it closes.
+const tabs = api.ui.keepTabInside(dialog, backdrop);
+
 // Removed with a way back (the row can be put back): the Undo toast, not a question first.
 api.ui.showUndoToast({ message: 'Deck removed', undo: () => restoreDeck(deck) });
 ```

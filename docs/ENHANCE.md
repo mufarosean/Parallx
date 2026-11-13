@@ -116,6 +116,96 @@ PyTorch index, Hugging Face), only during setup.
 - Removed: Real-ESRGAN, its setup dialog and script, the tile-size setting,
   the Photo / Art model choice.
 
+### 3. Video and GIFs (2026-11-12)
+
+His words: "short videos, bigger resolution", then "run video
+enhancement". The same engine and the same model: SeedVR2 is a video
+model, and for a clip it reads frames in groups, so fine detail holds
+from frame to frame where a picture-at-a-time enlargement shimmers.
+
+What the user gets: Enhance Video… or Enhance GIF… on one item in the
+library (its menu, and the viewer's bar). One dialog says what the clip
+becomes and about how long it takes, offers a three-second preview with
+the original beside it and a line between them that a slider moves, and
+runs the clip with its progress. The result is a new file beside the
+original (`name-2x.mp4`; a GIF stays a GIF) with the original's sound,
+tags, albums, rating and details. The original is never changed.
+
+How a clip goes through (`engine/enhance_video.py`):
+
+1. ffmpeg, the machine's own, makes a plain copy of the part asked for:
+   a steady frame rate, even sides, no sound, no loss. The engine then
+   reads one kind of file whatever the original was.
+2. SeedVR2 enlarges it in chunks of 80 frames, in groups of 9 that share
+   one frame with the next, and each frame is written as a PNG in a work
+   folder in the workspace. A stopped run keeps its whole chunks; Enhance
+   on the same unchanged clip carries on from there.
+3. ffmpeg joins the frames (H.264) with the original's sound, copied as
+   it is when an MP4 can carry it, re-encoded to AAC when not. The result
+   is written in the work folder and moved beside the original when
+   whole, so a stopped run leaves nothing there.
+
+Measured on his RTX 5090, 5 seconds (120 frames) of a street scene:
+
+| From, to | Groups | Time | Peak graphics memory |
+|---|---|---|---|
+| 360p to 720p | 5, nothing shared | 80 s | 17 GB |
+| 360p to 720p | 5, sharing 2 | 132 s | not read |
+| 360p to 720p | 9, sharing 1 | 84 s | 21 GB |
+| 720p to 1440p, in tiles | 5, nothing shared | 291 s | 16 GB |
+| 720p to 1440p, in tiles | 9, sharing 1 | 305 s | 24 GB |
+| 720p to 1440p, not in tiles | 5 | stopped: turning the frames back to pictures filled all 32 GB and one group had not finished in 80 s | 32 GB |
+
+Ten seconds of the 720p clip (Theora, Vorbis) through the real script:
+2560 x 1440, 240 frames, AAC sound, 10 minutes 41 seconds. About 0.6
+seconds for each frame of one megapixel, which is what the dialog's
+estimate uses.
+
+What the measurements decided:
+
+- Groups of 9 sharing 1 frame. With groups of 5 and nothing shared, fine
+  detail jumped at every group's edge (1.6 times the change inside a
+  group); sharing removed it. Groups of 9 sharing 1 cost no more time
+  than groups of 5 sharing nothing; groups of 5 sharing 2 cost 1.6 times.
+  The price is memory: 21 to 24 GB, so the chat model has to be off the
+  card. The dialog reads the card's free memory first and, short of it,
+  offers Set The Chat Model Aside (the core's `releaseLocalModels`).
+- Results above 1.3 megapixels a frame go through in tiles. Whole, a
+  1440p frame fills the card at the last step.
+- Chunks meet with a small jump too (1.6 times the usual change, the
+  same for a carried-on run as for an unbroken one), so they are long:
+  80 frames. That is what a stopped run can lose.
+- A result's long side is at most 2,560 pixels and a clip at most 3,600
+  frames. 1080p to 4K was not measured.
+
+Against the real thing (the 360p clip was made from the 720p one, so the
+720p frames are the truth): the enhanced frames are sharper than the
+real 720p (fine detail 10.2 against 8.7; plain stretching gives 8.0),
+and further from it pixel for pixel than plain stretching is (mean
+error 6.0 against 2.5 of 255). It draws detail that looks right; it
+does not recover what was there. By eye, faces, cloth and paving are
+clearly better than the stretched clip. The model's card warns that it
+over-sharpens clean footage, and the numbers agree.
+
+A stopped run's work folder (`.enhance-video-…` beside the thumbnails)
+is kept until the clip is finished or Start Over is chosen. A finished
+folder's state file is removed at once, its files are erased the user's
+way (Eraser works on after the dialog closes), and the next start
+removes the folder. A preview's folder goes when the dialog closes.
+
+Checks: `tests/unit/moEnhanceVideo.test.ts`;
+`tests/probes/enhance-video-probe.mjs` runs the real script in a hidden
+copy of the app with a stand-in for the model (the menu, the dialog,
+the keyboard, the preview, stop and carry on, the card in use, the
+result's size, frames and sound, the library, a GIF).
+
+The core gained `api.ui.keepTabInside` for extensions: a modal dialog an
+extension builds keeps Tab inside it, as the core's own do.
+
+Left: a real run from the dialog on one of his own clips, and his
+verdict; 4x; several clips in one go; the Enhance button in the clip
+editor.
+
 ## Platforms
 
 Windows and Linux with an NVIDIA card. SeedVR2 needs PyTorch with CUDA;

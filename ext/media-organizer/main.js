@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { moEditGenerate, moEditGenerateActivate } from './edit-generate.js'; import { moGenerateActivate } from './generate-engine.js'; import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
+import { moEditGenerate, moEditGenerateActivate } from './edit-generate.js'; import { moGenerateActivate } from './generate-engine.js'; import { moEnhanceVideoActivate, moEnhanceVideoFromLibrary, moEnhanceVideoSweep } from './enhance-video.js'; import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -13974,6 +13974,7 @@ function renderGridBrowser(container, api, input) {
       !isMulti && _artToolsEnabled && { group: 'edit', kinds: ['photo'], label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) },
       // Upscale (Section 38B): still photos only.
       { group: 'edit', kinds: ['photo'], label: 'Upscale…', handler: () => void moUpscaleItems(picked.filter((it) => moItemKind(it) === 'photo'), api, () => loadPage()) },
+      !isMulti && { group: 'edit', kinds: ['video', 'gif'], label: item.type === 'video' ? 'Enhance Video…' : 'Enhance GIF…', handler: () => void moEnhanceMotion(api, item, () => loadPage()) },
       photoIds.length > 1 && { group: 'edit', kinds: ['photo'], label: 'Remove Marks From Selected', handler: () => void moBulkFromSelection(api, photoIds) },
       { group: 'edit', kinds: ['gif'], label: isMulti ? 'Optimize GIFs…' : 'Optimize GIF…', handler: async () => {
         const gifs = [];
@@ -16389,8 +16390,8 @@ function openLightbox(items, startIndex, resolveFilePath) {
   // Add To Chat: the item on screen goes to the chat composer.
   const chatBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.addToChat', sceneLabel: 'Add to Chat', type: 'button', title: 'Attach this file to the chat composer', innerHTML: moIcon('message-square-plus', 14) + '<span>Add to Chat</span>' });
   chatBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it) void moAttachItemsToChat([it]); });
-  const upscaleBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.upscale', sceneLabel: 'Upscale', type: 'button', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.', innerHTML: moIcon('maximize-2', 14) + '<span>Upscale…</span>' });
-  upscaleBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it && _api) void moUpscaleItems([it], _api, null); });
+  const upscaleBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.upscale', sceneLabel: 'Upscale', type: 'button', title: 'Make this larger and sharper. The original is never changed.', innerHTML: moIcon('maximize-2', 14) + '<span>Upscale…</span>' });
+  upscaleBtn.addEventListener('click', () => { const it = items[currentIdx]; if (!it || !_api) return; if (moItemKind(it) === 'photo') void moUpscaleItems([it], _api, null); else void moEnhanceMotion(_api, it); });
   // Edit Clip (videos): the clip editor on this video, the marks as the trim.
   const editClipBtn = moEl('button', null, { sceneId: 'media-organizer.lightbox.editClip', sceneLabel: 'Edit Clip', type: 'button', title: 'Open in the clip editor; the marked range becomes the trim', innerHTML: moIcon('clapperboard', 14) + '<span>Edit Clip</span>' });
   editClipBtn.addEventListener('click', () => {
@@ -16523,7 +16524,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
     if (activePlayer) { activePlayer.dispose(); activePlayer = null; activePlayerPath = null; }
     if (mediaEl) { mediaEl.remove(); mediaEl = null; }
     content.classList.toggle('mo-lb-video', item.type === 'video');
-    upscaleBtn.style.display = item.type === 'video' ? 'none' : '';
+    upscaleBtn.lastChild.textContent = moItemKind(item) === 'photo' ? 'Upscale…' : 'Enhance…';
     editClipBtn.style.display = item.type === 'video' ? '' : 'none';
 
     // Reset zoom when changing items
@@ -27122,6 +27123,7 @@ async function moPurgeOrphanEnhance(api) {
     const sep = _isWindows ? '\\' : '/';
     const left = res.entries.filter((e) => e && e.type === 'directory' && /^\.enhance-[a-z0-9]+$/.test(e.name)).map((e) => base + sep + e.name);
     if (left.length) await moDisposeTemp(api, left);
+    await moEnhanceVideoSweep(base, sep, (dirs) => moDisposeTemp(api, dirs)); // finished video runs; a stopped one is kept
   } catch (err) { console.warn('[media-organizer] could not sweep Enhance work folders:', err && err.message); }
 }
 
@@ -27135,8 +27137,8 @@ function moUpscaleGuard(width, height, scale) {
 }
 
 /** Ingest a freshly written file exactly as a scan would (file row,
- *  fingerprints, metadata, photo entity, thumbnail). Returns the photo or null. */
-async function moIngestNewImage(fullPath) {
+ *  fingerprints, metadata, photo or video entity, thumbnail). Returns the photo (or the video) or null. */
+async function moIngestNewImage(fullPath, fileType = 'image') {
   const sep = fullPath.includes('\\') ? '\\' : '/';
   const dir = fullPath.slice(0, fullPath.lastIndexOf(sep));
   const name = fullPath.slice(fullPath.lastIndexOf(sep) + 1);
@@ -27147,7 +27149,7 @@ async function moIngestNewImage(fullPath) {
   let fps = null;
   let known = false; // the watcher got to it first
   for (let look = 1; look <= 9 && !fps && !known; look++) {
-    const ready = await moFileReady(fullPath, 'image', { written: true });
+    const ready = await moFileReady(fullPath, fileType, { written: true });
     if (ready.state === 'gone') return null;
     if (ready.state === 'known') known = true;
     else if (ready.state === 'ready') fps = ready.fps;
@@ -27157,9 +27159,9 @@ async function moIngestNewImage(fullPath) {
   const st = await window.parallxElectron.fs.stat(fullPath);
   if (!st || st.error) return null;
   const folder = await FolderQueries.findOrCreate(dir);
-  const result = await processFile({ path: fullPath, name, size: st.size, mtime: st.mtime, fileType: 'image', folderId: folder.id, fps });
+  const result = await processFile({ path: fullPath, name, size: st.size, mtime: st.mtime, fileType, folderId: folder.id, fps });
   if (!result || !result.fileId) return null;
-  return await PhotoQueries.findByFileId(result.fileId);
+  return await (fileType === 'video' ? VideoQueries : PhotoQueries).findByFileId(result.fileId);
 }
 
 /**
@@ -27204,6 +27206,10 @@ async function moUpscaleTargets(items) {
   }
   return { targets, skipped };
 }
+
+/** Enhance for a video or a GIF (enhance-video.js): its dialog on one library item. */
+const moEnhanceMotion = (api, item, refresh) => moEnhanceVideoFromLibrary(api, item, { db, tools: () => _toolPaths, workBase: () => getThumbDir(api), sep: _isWindows ? '\\' : '/', ingest: moIngestNewImage, transferPhoto: moTransferPhotoMetadata,
+  dispose: (paths) => moDisposeTemp(api, paths.filter(Boolean)), fileUrl: localFileToUrl, showSetUp: () => showUpscaleSetupDialog(api), refresh: () => { _notifySidebarRefresh(); try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no grid open */ } if (refresh) refresh(); } });
 
 /** The entry point every surface calls. */
 async function moUpscaleItems(items, api, onComplete) {
@@ -37853,7 +37859,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moPlanIsolateActivate(api), ...moEditMasksActivate(api), ...moEditGenerateActivate(api), ...moEnhanceActivate(api, _toolPath), ...moGenerateActivate(_toolPath), ...moBoardActivate(api), api.canvas.registerCoverSource(moCoverSource({ db, thumbnailPath: async (id) => { const r = await resolveThumbnail('photo', id, api); return (r && (r.path || r.sourcePath)) || null; }, resolvePath: (id) => moResolveItemPath({ type: 'photo', id }), displayCopy: (p) => moHeicDisplayCopy(p, api) })), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate,
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moPlanIsolateActivate(api), ...moEditMasksActivate(api), ...moEditGenerateActivate(api), ...moEnhanceActivate(api, _toolPath), ...moEnhanceVideoActivate(api), ...moGenerateActivate(_toolPath), ...moBoardActivate(api), api.canvas.registerCoverSource(moCoverSource({ db, thumbnailPath: async (id) => { const r = await resolveThumbnail('photo', id, api); return (r && (r.path || r.sourcePath)) || null; }, resolvePath: (id) => moResolveItemPath({ type: 'photo', id }), displayCopy: (p) => moHeicDisplayCopy(p, api) })), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate,
       // the plan as it stands: its export variation, or its working picture
       planPicture: async (planId) => { const data = await moPlanLoad(planId); if (!data) return null; const v = data.variants.find((x) => x.id === data.plan.variant_id); let r = v && v.recipe; if (!r) { try { r = moPlanRecipe(JSON.parse(data.plan.draft_json || '{}')); } catch { return null; } } return moBoardContext(moBoardDeps(api), planId).renderVariant(r, 420); },
       disposeFiles: (planId) => { const dir = moPlanDir(planId); if (dir) void moDisposeTemp(api, [dir]); } })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),

@@ -834,6 +834,14 @@ export namespace ui {
    */
   export function onDragPress(element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean; hold?: boolean; capture?: boolean; pointerEvents?: boolean }): IDisposable;
 
+  /**
+   * A modal dialog keeps Tab inside it: past its last control focus goes round
+   * to its first, and Shift+Tab from the first to the last. `listenOn` takes
+   * the key (the dialog, or the backdrop round it); `within` holds the stops.
+   * Dispose when the dialog closes.
+   */
+  export function keepTabInside(within: HTMLElement, listenOn?: HTMLElement): IDisposable;
+
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;
     readonly checked?: boolean;
