@@ -1964,6 +1964,14 @@ export namespace lm {
   export function getModels(): Promise<LanguageModelInfo[]>;
 
   /**
+   * Set the local models aside: each local engine releases what it holds in
+   * memory, so this tool can use the graphics card. Call it only on the
+   * user's own action (a button that says so). Resolves the ids released; a
+   * model comes back by itself on the next request to it.
+   */
+  export function releaseLocalModels(): Promise<readonly string[]>;
+
+  /**
    * The JSON a reply carries: the whole reply when it is JSON, else the
    * first object or array in it, past prose, code fences and a leaked
    * reasoning block; null when none parses. Use it instead of a greedy

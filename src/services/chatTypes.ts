@@ -1238,7 +1238,7 @@ export interface ILanguageModelProvider {
    * Runs on this machine: its calls share one engine (one GPU), so they go
    * through the broker's priority queue. Cloud providers leave this unset.
    */
-  readonly local?: boolean;
+  readonly local?: boolean; releaseLoaded?(): Promise<readonly string[]>; // releaseLoaded, a local engine: unload what it holds so another tool can use the card; the ids released
 }
 
 // ── ILanguageModelsService ──
@@ -1256,7 +1256,7 @@ export interface ILanguageModelsService extends IDisposable {
   /** Register a language model provider. */
   registerProvider(provider: ILanguageModelProvider): IDisposable;
   /** Get all registered providers. */
-  getProviders(): readonly ILanguageModelProvider[];
+  getProviders(): readonly ILanguageModelProvider[]; /** Set the local models aside, on the user's own action only (languageModelsService.ts): the ids released. */ releaseLocalModels(): Promise<readonly string[]>;
   /** Get all available models across all providers. */
   getModels(): Promise<readonly ILanguageModelInfo[]>;
   /**

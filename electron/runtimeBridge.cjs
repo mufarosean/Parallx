@@ -105,6 +105,11 @@ function packagesKey(spec, lockText) {
 
 /** Every NVIDIA card: { name, vramMiB, freeMiB, driver }. [] when there is none or no driver. */
 function nvidiaCards(run) {
+  // A probe names a file that says what the machine has, so what it checks does not depend on
+  // what the real card happens to be doing (test mode only).
+  if (process.env.PARALLX_TEST_MODE === '1' && process.env.PARALLX_TEST_GPU_CARDS_FILE) {
+    try { return Promise.resolve(JSON.parse(fs.readFileSync(process.env.PARALLX_TEST_GPU_CARDS_FILE, 'utf8'))); } catch { return Promise.resolve([]); }
+  }
   return new Promise((resolve) => {
     const exe = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'nvidia-smi.exe') : 'nvidia-smi';
     run(exe, ['--query-gpu=name,memory.total,memory.free,driver_version', '--format=csv,noheader,nounits'], { timeout: 10_000 }).then((r) => {

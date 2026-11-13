@@ -108,8 +108,13 @@ async function main() {
     if (r.status !== 0) throw new Error(`seed failed: ${r.stderr || r.stdout}`);
   }
 
+  // What the app is told the graphics card has: first a chat model on it, later room.
+  const cardsFile = path.join(appRoot, 'cards.json');
+  const card = (freeMiB) => fs.writeFile(cardsFile, JSON.stringify([{ name: 'Test Card', vramMiB: 32607, freeMiB, driver: '580.00' }]));
+  await card(9200);
   const env = launchEnv(appRoot);
   env.PARALLX_RUNTIMES_DIR = runtimes;
+  env.PARALLX_TEST_GPU_CARDS_FILE = cardsFile;
   const app = await electron.launch({ args: ['.', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--mute-audio'], cwd: PROJECT_ROOT, env });
   await app.context().route(/^https?:\/\/(localhost|127\.0\.0\.1):11434\//, (route) => route.abort('connectionrefused'));
   const page = await app.firstWindow();
@@ -119,7 +124,8 @@ async function main() {
   let failed = 0;
   const check = (ok, what) => { if (!ok) failed++; console.log(`[probe] ${ok ? 'PASS' : 'FAIL'} ${what}`); };
   const shot = async (name) => {
-    const b64 = await app.evaluate(async ({ BrowserWindow }) => { const img = await BrowserWindow.getAllWindows()[0].webContents.capturePage(); return img.isEmpty() ? '' : img.toPNG().toString('base64'); });
+    // A hidden window can hand back its last painted frame: ask for a fresh one first.
+    const b64 = await app.evaluate(async ({ BrowserWindow }) => { const wc = BrowserWindow.getAllWindows()[0].webContents; wc.invalidate(); await new Promise((r) => setTimeout(r, 250)); const img = await wc.capturePage(); return img.isEmpty() ? '' : img.toPNG().toString('base64'); });
     if (b64) { await fs.writeFile(path.join(outDir, name), Buffer.from(b64, 'base64')); console.log(`[probe] screenshot -> ${path.join(outDir, name)}`); }
   };
   const texts = (sel) => page.evaluate((s) => [...document.querySelectorAll(s)].map((e) => e.textContent.trim()), sel);
@@ -174,8 +180,23 @@ async function main() {
     await text.type('a small red tractor');
     await shot('generate-2-marked.png');
     const before = await stageSum();
+
+    // ── the card is in use: the numbers, and one button ──
     await go.click();
-    await page.waitForSelector('.mo-gen-running', { timeout: 10_000 });
+    await page.waitForSelector('.mo-gen-card', { timeout: 10_000 });
+    const inUse = (await texts('.mo-gen-card .mo-gen-dim')).join(' ');
+    check(/needs about 21 GB free\. 9 GB of 32 GB is free/.test(inUse), `with the card in use it says how much is free: ${inUse.slice(0, 80)}`);
+    check((await page.locator('.mo-gen-thumb').count()) === 0 && (await page.locator('.mo-gen-running').count()) === 1, 'and nothing is started');
+    await page.waitForTimeout(600);
+    await page.click(px(`${ID}.aside`));
+    await page.waitForSelector('.mo-gen-card .mo-gen-error', { timeout: 15_000 });
+    check(/still not enough free/.test((await texts('.mo-gen-card .mo-gen-error')).join('')), 'when setting the chat model aside frees too little, it says so');
+    await page.mouse.move(700, 500); await page.waitForTimeout(800);
+    await shot("generate-2b-card-in-use.png");
+    await card(30000);
+    await page.click(px(`${ID}.aside`));
+    await page.waitForSelector('.mo-gen-text + .mo-gen-starts ~ .mo-gen-running:not(.mo-gen-card *)', { timeout: 15_000 }).catch(() => {});
+    await page.waitForFunction(() => !document.querySelector('.mo-gen-card'), null, { timeout: 15_000 });
     const running = (await texts('.mo-gen-running')).join('');
     check(/Cutting out|Loading the model|Generating/.test(running), `it says what it is doing: ${running}`);
     check(await page.locator(px(`${ID}.stop`)).isVisible(), 'Stop is offered while it runs');

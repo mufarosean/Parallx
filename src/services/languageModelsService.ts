@@ -146,6 +146,22 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     return [...this._providers.values()];
   }
 
+  /**
+   * Set the local models aside: every local provider releases what it holds
+   * in memory, so a tool can use the graphics card. Asked for by the user (a
+   * tool that needs the card offers it); never done on the app's own
+   * initiative. A model comes back by itself on the next request to it.
+   */
+  async releaseLocalModels(): Promise<readonly string[]> {
+    const released: string[] = [];
+    for (const provider of this._providers.values()) {
+      if (!provider.local || !provider.releaseLoaded) continue;
+      // One provider that cannot answer (its engine is not running) holds nothing to release.
+      try { released.push(...await provider.releaseLoaded()); } catch { /* nothing held */ }
+    }
+    return released;
+  }
+
   // ── Model Enumeration ──
 
   async getModels(): Promise<readonly ILanguageModelInfo[]> {

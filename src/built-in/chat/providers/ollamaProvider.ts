@@ -215,6 +215,17 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     return this._loadedModels;
   }
 
+  /** Unload every model Ollama holds (keep_alive 0 is its own way to say so); the ids released. */
+  async releaseLoaded(): Promise<readonly string[]> {
+    const ps = await this._fetchJson<{ models?: { name: string }[] }>(`${this._baseUrl}/api/ps`, { method: 'GET' }, 5_000);
+    const names = (ps.models ?? []).map((m) => m.name).filter(Boolean);
+    for (const model of names) {
+      await this._fetchJson<unknown>(`${this._baseUrl}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, keep_alive: 0 }) }, 30_000);
+    }
+    this._loadedModels = []; this._placements = []; this._onDidChangePlacement.fire();
+    return names;
+  }
+
   // ── Context length cache for active model (Cap 9.5) ──
 
   private _contextLengthCache = new Map<string, number>();

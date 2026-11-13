@@ -36,6 +36,12 @@ export class LanguageModelBridge {
     return this._service.getModels();
   }
 
+  /** Set the local models aside so the tool can use the graphics card; the ids released. */
+  async releaseLocalModels(): Promise<readonly string[]> {
+    this._throwIfDisposed();
+    return this._service.releaseLocalModels();
+  }
+
   /**
    * Get detailed info for one model — most importantly its real context
    * length, which `getModels()` reports as 0 until probed. Extensions that
@@ -118,6 +124,7 @@ export class LanguageModelBridge {
 export function createLmApi(bridge: LanguageModelBridge) {
   return Object.freeze({
     getModels: () => bridge.getModels(),
+    releaseLocalModels: () => bridge.releaseLocalModels(),
     getModelInfo: (modelId: string) => bridge.getModelInfo(modelId),
     getActiveModel: () => bridge.getActiveModel(),
     sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>, signal?: AbortSignal) =>

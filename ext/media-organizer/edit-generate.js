@@ -20,6 +20,14 @@ import { moGenerateDownloadBytes, moGenerateRun, moGenerateSetUp, moGenerateStat
 /** The model's limits (engine/generate.py holds the same numbers). */
 const MAX_SIDE = 2048, MAX_PIXELS = 4_000_000, MIN_SIDE = 1024;
 const TRIES = 3;
+/** Free graphics memory a run needs, in MiB (engine/generate.py refuses below 21 GB). */
+export const MO_GENERATE_NEEDS_MIB = 21 * 1024;
+
+/** The card with the most memory, as { free, total } in MiB, from the engine's check; null when there is none. */
+export function moGenCardRoom(machine) {
+  const card = ((machine && machine.cards) || []).slice().sort((a, b) => b.vramMiB - a.vramMiB)[0];
+  return card ? { free: card.freeMiB, total: card.vramMiB, name: card.name } : null;
+}
 /** Ready-made starts for the instruction: [label, text]. */
 export const MO_GENERATE_STARTS = [
   ['Remove It', 'Remove what is marked. Leave only what surrounds it, continued naturally.', 'eraser'],
@@ -29,7 +37,7 @@ export const MO_GENERATE_STARTS = [
 ];
 
 // Every button runs a declared command, sent to the editor it belongs to (the first argument).
-const ACTIONS = ['generateWay', 'generateClear', 'generateStart', 'generateGo', 'generateMore', 'generateKeep', 'generatePick', 'generateStop', 'generateSetUp', 'generateStopSetUp', 'generateCheck'];
+const ACTIONS = ['generateWay', 'generateClear', 'generateStart', 'generateGo', 'generateMore', 'generateKeep', 'generatePick', 'generateStop', 'generateSetUp', 'generateStopSetUp', 'generateCheck', 'generateAside'];
 const open = new Map();
 let seq = 0;
 
@@ -88,7 +96,7 @@ export function moEditGenerate(ctx) {
   const { api } = ctx;
   const ui = api.ui;
   const id = (s) => `${ctx.idStem}.${s}`;
-  const G = { way: 'brush', strokes: [], subject: null, brush: 120, text: '', running: null, error: '', tries: [], pick: 0, seed: 42, engine: null, setUp: null, note: '' };
+  const G = { way: 'brush', strokes: [], subject: null, brush: 120, text: '', running: null, error: '', tries: [], pick: 0, seed: 42, engine: null, setUp: null, note: '', card: null };
   const me = `generate-${++seq}`;
   const disposers = [];
   const sep = () => ((ctx.workDir() || '').includes('\\') ? '\\' : '/');
@@ -235,11 +243,30 @@ export function moEditGenerate(ctx) {
     G.tries = []; G.pick = 0;
   }
 
-  async function generate(more) {
+  /** Is there room on the card? When there is not, G.card says how much there is, for the panel to show. */
+  async function roomOnCard() {
+    const st = await moGenerateStatus().catch(() => null);
+    const room = moGenCardRoom(st && st.machine);
+    G.card = room && room.free < MO_GENERATE_NEEDS_MIB ? Object.assign(room, { more: G.card ? G.card.more : false }) : null;
+    return !G.card;
+  }
+  /** His click: the local chat models leave the card, then the run starts. */
+  async function setAsideAndGenerate() {
+    if (!G.card || G.running) return;
+    const more = !!G.card.more;
+    G.card.busy = true; ctx.rerender();
+    try { if (api.lm && api.lm.releaseLocalModels) await api.lm.releaseLocalModels(); } catch { /* the check below says what is left */ }
+    await new Promise((res) => setTimeout(res, 1500)); // the engine gives the memory back a moment after it answers
+    if (await roomOnCard()) { void generate(more, true); return; }
+    G.card.stuck = true; ctx.rerender();
+  }
+
+  async function generate(more, checked) {
     const box = markBox();
     const dir = ctx.workDir();
     if (!box || G.running) return;
     if (!dir) { G.error = 'Generate needs an open workspace to keep its patches in.'; ctx.rerender(); return; }
+    if (!checked) { G.card = null; if (!(await roomOnCard())) { G.card.more = !!more; G.error = ''; ctx.rerender(); return; } }
     if (!more) { dropTries(); G.seed = 42; }
     G.error = ''; G.running = { label: 'Cutting out the area', fraction: 0, runId: null };
     ctx.rerender(); sync();
@@ -293,6 +320,7 @@ export function moEditGenerate(ctx) {
     else if (name === 'generateSetUp') void setUp();
     else if (name === 'generateStopSetUp') void moGenerateStopSetUp();
     else if (name === 'generateCheck') void checkEngine();
+    else if (name === 'generateAside') void setAsideAndGenerate();
   }
   open.set(me, { act });
   disposers.push(() => open.delete(me));
@@ -383,6 +411,21 @@ export function moEditGenerate(ctx) {
       row.appendChild(moEl('span', 'mo-gen-dim', { textContent: 'You can keep editing this photo.' }));
       button(row, 'stop', 'Stop', 'square', 'generateStop');
       two.appendChild(row);
+    } else if (G.card) {
+      // The card is in use: what is on it, and the one button that makes room.
+      const gbOf = (mib) => `${Math.round(mib / 1024)} GB`;
+      const used = Math.max(0, G.card.total - G.card.free);
+      const box = moEl('div', 'mo-gen-card', { role: 'group', 'aria-label': 'The graphics card is in use' });
+      box.appendChild(moEl('div', 'mo-gen-running', { textContent: 'The graphics card is in use' }));
+      box.appendChild(moEl('p', 'mo-gen-dim', { textContent: `Generate needs about ${gbOf(MO_GENERATE_NEEDS_MIB)} free. ${gbOf(G.card.free)} of ${gbOf(G.card.total)} is free.` }));
+      const meter = moEl('div', 'mo-gen-meter', { role: 'img', 'aria-label': `${gbOf(used)} of ${gbOf(G.card.total)} of graphics memory is in use` });
+      const fill = moEl('div', 'mo-gen-meter-fill'); fill.style.width = `${Math.round((used / Math.max(1, G.card.total)) * 100)}%`;
+      meter.appendChild(fill); box.appendChild(meter);
+      if (G.card.stuck) box.appendChild(moEl('p', 'mo-gen-error', { role: 'alert', textContent: 'The chat model is set aside, and there is still not enough free. Something else is using the graphics card.' }));
+      const aside = button(box, 'aside', 'Set The Chat Model Aside And Generate', 'sparkles', 'generateAside', [], { kind: 'primary' });
+      aside.classList.add('mo-gen-go'); aside.disabled = !!G.card.busy;
+      box.appendChild(moEl('p', 'mo-gen-dim', { textContent: 'The chat model comes back by itself on your next message. Nothing in the chat is lost.' }));
+      two.appendChild(box);
     } else {
       const go = button(two, 'generate', `Generate ${TRIES} Tries`, 'sparkles', 'generateGo', [], { kind: 'primary' });
       go.disabled = !marked();
@@ -419,7 +462,7 @@ export function moEditGenerate(ctx) {
     panel,
     sync,
     /** A new photo: nothing is marked, nothing is waiting to be picked. */
-    reset: () => { clearMark(); G.text = ''; G.error = ''; G.note = ''; G.way = 'brush'; keyPoint = null; sync(); },
+    reset: () => { clearMark(); G.text = ''; G.error = ''; G.note = ''; G.way = 'brush'; G.card = null; keyPoint = null; sync(); },
     dispose: () => { dropTries(); for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } } },
   };
 }

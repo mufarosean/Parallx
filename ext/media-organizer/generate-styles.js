@@ -34,6 +34,9 @@ export const MO_GENERATE_CSS = `
 .mo-gen-text:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .mo-gen-starts { display: flex; flex-wrap: wrap; gap: var(--px-space-1); }
 .px-btn.mo-gen-go { width: 100%; justify-content: center; }
+.mo-gen-card { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.mo-gen-meter { height: 6px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; }
+.mo-gen-meter-fill { height: 100%; background: var(--px-warning); }
 .mo-gen-tries { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--px-space-2); }
 .px-btn.mo-gen-thumb { position: relative; height: 72px; padding: 0; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); overflow: hidden; }
 .px-btn.mo-gen-thumb > :not(img) { display: none; } /* the picture is the button's face; its name is still read out */
