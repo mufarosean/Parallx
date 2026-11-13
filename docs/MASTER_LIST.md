@@ -479,14 +479,47 @@ Done 2026-11-12:
   (with ready-made starts), pick a result. The states board (working,
   card in use, not set up) goes with it.
 
-Left, in order:
+Built since his pick (2026-11-12), checked in a hidden copy of the app
+with a stand-in engine (`tests/probes/generate-tab-probe.mjs`, 0
+problems; no graphics card used):
 
-3. The Generate tab, built to B, with the app's tokens and kit.
-4. The card shared: one button sets the chat model aside for an edit.
+- The Generate tab, to layout B: mark the area (Brush Over It, Select
+  Subject, Whole Picture), say what to do there (an instruction box and
+  four ready-made starts), pick a result (three tries as pictures, the
+  chosen one laid on the photo, More Tries, Keep). A kept result is
+  stored as a patch the way Remove stores one, so undo, the history,
+  hiding and saving work on it already.
+- The card shared: before a run the tab reads the card's free memory;
+  with too little it shows the numbers and one button, Set The Chat
+  Model Aside And Generate. Behind it the core has a new call for any
+  tool, `parallx.lm.releaseLocalModels()`, only ever run on the user's
+  own action.
+- The set-up card for the engine, in the tab.
+
+Owed, and each needs the graphics card:
+
+- Setting the engine up from the tab on his machine (39 GB to fetch,
+  then its self-test). The model is already downloaded in
+  `data/generate-test/qwen21` from the test, but the app fetches its own
+  copy by hash.
+- The six test edits left, and his eyes on real results.
+- The set-aside button against his real chat model in Ollama (only the
+  call's shape is tested; no live Ollama in tests).
+
+Left to build, in order:
+
 5. The native-size patch for large fills (Enhance on the patch, grain
    matched) and the check with another try. Needs the card to prove.
 6. Recipes: the photo's generated edits as a list; Render Again, Apply
    To Other Photos.
+7. Beyond The Edges (extending the canvas). It is in layout B and is
+   not in the tab yet: the editor has no notion of a picture larger
+   than the photo, so it is its own piece of work.
+
+Found on the way: `tests/probes/image-editor-probe.mjs` fails 34 checks
+because it was written for the editor before the Masks tab (it expects
+four tools and older control names). The editor itself was not the
+cause in any check read. Bringing that probe up to date is owed.
 
 *Voice (gated).*
 1. The listening test on his card.
