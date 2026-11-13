@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 // @ts-expect-error — JS module with no types
-import { MO_GENERATE_STARTS, moGenCutOut, moGenPatchBox, moGenStrokesBox } from '../../ext/media-organizer/edit-generate.js';
+import { MO_GENERATE_STARTS, moGenCutOut, moGenPatchBox, moGenStrokesBox, moGenVerdict } from '../../ext/media-organizer/edit-generate.js';
 
 const engine = (name: string) => readFileSync(resolve(__dirname, '..', '..', 'ext', 'media-organizer', 'engine', name), 'utf8');
 
@@ -36,6 +36,13 @@ describe('the engine script', () => {
     expect(py).toMatch(/reader\.generate\(/);
     // A failure to write it out is not a failure of the edit: the words go as they were written.
     expect(py).toMatch(/'prompt_by': 'engine' if written else 'instruction'/);
+  });
+
+  it('checks every try: the reader is shown the area before and as it will be, and the best try is named', () => {
+    expect(py).toMatch(/verdict = judge\(pipe, small, gp\.laid\(small, answer, mark_small\), mark_small, asked or instruction\)/);
+    expect(py).toMatch(/'best': best/);
+    // A try that could not be checked is still a try.
+    expect(py).toMatch(/an edit that could not be checked is still an edit/);
   });
 
   it('sets no limit on the model beyond a guard against a reply that never ends', () => {
@@ -95,6 +102,22 @@ describe('where the patch lands', () => {
   it('is the try\'s box moved to the cut-out\'s place, at the photo\'s own pixels', () => {
     expect(moGenPatchBox([0, 0, 1584, 1104], { x: 5030, y: 1560, w: 1584, h: 1104 })).toEqual({ x: 5030, y: 1560, w: 1584, h: 1104 });
     expect(moGenPatchBox([945, 545, 2056, 1456], { x: 1000, y: 2000, w: 3072, h: 2048 })).toEqual({ x: 1945, y: 2545, w: 1111, h: 911 });
+  });
+});
+
+describe('what the check said', () => {
+  it('says a good try is good', () => {
+    expect(moGenVerdict({ done: true, fits: true, clean: true, why: 'nothing', good: true })).toBe('Checked by the model: done, fits the photo, clean.');
+  });
+
+  it('names what failed, and why', () => {
+    expect(moGenVerdict({ done: true, fits: false, clean: true, why: 'A hard edge shows on the left.', good: false })).toBe('Checked by the model: does not fit the photo. A hard edge shows on the left.');
+    expect(moGenVerdict({ done: false, fits: false, clean: false, why: 'The boat is still there.', good: false })).toBe('Checked by the model: not done as asked, does not fit the photo, not clean. The boat is still there.');
+  });
+
+  it('says so when the check gave no answer, and nothing when there was no check', () => {
+    expect(moGenVerdict({ done: null, fits: null, clean: null, why: '', good: false })).toBe('The model\'s check gave no clear answer.');
+    expect(moGenVerdict(null)).toBe('');
   });
 });
 

@@ -81,6 +81,15 @@ export function moGenPatchBox(tryBox, cut) {
   return { x: cut.x + tryBox[0], y: cut.y + tryBox[1], w: tryBox[2] - tryBox[0], h: tryBox[3] - tryBox[1] };
 }
 
+/** What the check of a try said ({ done, fits, clean, why, good }), as a sentence for under the tries. */
+export function moGenVerdict(j) {
+  if (!j) return '';
+  if (j.good) return 'Checked by the model: done, fits the photo, clean.';
+  const failed = [j.done === false ? 'not done as asked' : '', j.fits === false ? 'does not fit the photo' : '', j.clean === false ? 'not clean' : ''].filter(Boolean);
+  const why = j.why && !/^nothing\.?$/i.test(j.why) ? ` ${j.why}` : '';
+  return failed.length ? `Checked by the model: ${failed.join(', ')}.${why}` : `The model's check gave no clear answer.${why}`;
+}
+
 const gb = (bytes) => `${Math.round(bytes / 1024 ** 3)} GB`;
 const canvasPng = async (cv) => new Uint8Array(await (await new Promise((res) => cv.toBlob(res, 'image/png'))).arrayBuffer());
 
@@ -299,18 +308,19 @@ export function moEditGenerate(ctx) {
       // More tries of the same mark and words go to the model with the instruction it was given the first time.
       const again = more && told && told.by === 'engine' && told.from === G.text.trim() ? told.prompt : '';
       const instruction = again || G.text.trim() || MO_GENERATE_STARTS[0][1];
-      await ctx.writeBytes(p('job.json'), new TextEncoder().encode(JSON.stringify({ input: p('in.png'), mask: p('mask.png'), instruction, output: p('out'), steps: 40, seed: G.seed, tries: TRIES, cut_out: false, write_prompt: !again })));
+      await ctx.writeBytes(p('job.json'), new TextEncoder().encode(JSON.stringify({ input: p('in.png'), mask: p('mask.png'), instruction, output: p('out'), steps: 40, seed: G.seed, tries: TRIES, cut_out: false, write_prompt: !again, asked: again ? G.text.trim() : undefined })));
       const result = await moGenerateRun(p('job.json'), (step) => { if (!G.running) return; G.running.label = step.label; G.running.fraction = step.fraction; if (G.running.bar) { G.running.bar(step); } else if (ctx.on()) ctx.rerender(); }, { onRunId: (runId) => { if (G.running) G.running.runId = runId; } });
       for (const t of result.tries) {
         const file = `${p('out')}${sep()}${t.file}`;
         const bytes = await ctx.readBytes(t.small ? `${p('out')}${sep()}${t.small}` : file);
         const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-        G.tries.push({ file, full: null, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })), box: moGenPatchBox(t.box, cut), pw: bmp.width, ph: bmp.height, seed: t.seed, seconds: t.seconds });
+        G.tries.push({ file, full: null, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })), box: moGenPatchBox(t.box, cut), pw: bmp.width, ph: bmp.height, seed: t.seed, seconds: t.seconds, judged: t.judged || null });
         bmp.close();
       }
       G.told = again ? told : { prompt: result.prompt || '', by: result.promptBy || 'instruction', note: result.note || '', from: G.text.trim() };
       G.seed += TRIES;
-      G.pick = Math.max(0, G.tries.length - result.tries.length);
+      // The try to look at first is the one the model's own check found best.
+      G.pick = Math.max(0, G.tries.length - result.tries.length) + Math.min(result.tries.length - 1, Math.max(0, result.best || 0));
       void readFull(G.tries[G.pick]);
     } catch (err) {
       if (!(err && err.stopped)) G.error = (err && err.message) || String(err);
@@ -482,6 +492,9 @@ export function moEditGenerate(ctx) {
       more.disabled = !!G.running;
       button(row, 'keep', 'Keep', 'check', 'generateKeep', [], { kind: 'primary' });
       three.appendChild(row);
+      // What the model's check said of the try being looked at: it is shown the area before and after, whole.
+      const judged = G.tries[G.pick] && G.tries[G.pick].judged;
+      if (judged) three.appendChild(moEl('p', 'mo-gen-dim', { textContent: moGenVerdict(judged) }));
       // What the model was given: his words written out by the engine, which is shown where the mark is.
       if (G.told && G.told.by === 'engine' && G.told.prompt) three.appendChild(moEl('p', 'mo-gen-dim', { textContent: `Written out for the model: ${G.told.prompt}` }));
       else if (G.told && G.told.note) three.appendChild(moEl('p', 'mo-gen-dim', { textContent: 'Your words went to the model as you wrote them; the engine could not write them out.' }));

@@ -31,6 +31,11 @@ whole and never taken back whole. What is done instead, in order:
    between that and the photo is what the answer is owed. What is written is
    a patch to lay over the original, not a picture. The arithmetic is in
    generate_patch.py.
+5. Every try is checked. The reader is shown the area before (the mark's
+   edge drawn on it) and as it will be, whole, and says whether what was
+   asked was done, whether it fits the rest of the picture, and whether it
+   is clean, with a sentence on the worst problem. The try it finds best is
+   the one to look at first.
 
 JOB.json:
     input         the picture (PNG, JPEG, TIFF)
@@ -44,11 +49,14 @@ JOB.json:
                   on (the editor cuts it out itself), so all of it is used
     write_prompt  optional, true. false: the instruction goes to the model
                   as it was written
+    check         optional, true. false: no try is checked
+    asked         optional: what the person asked for, when `instruction` is
+                  an instruction already written out (More Tries)
 
 Written to `output`: for each try, try-N.png (RGBA, at the picture's own
 pixels, cropped to where it is not empty) and try-N-small.png (the same,
 small, to look at); and result.json with the instruction the model was given
-and, for each try, its box in `input`, its seconds, how close the held part
+and, for each try, its box in `input`, what the check said, its seconds, how close the held part
 stayed to the photo as the coder returns it (dB, higher is closer) and the
 share of the mark that shows something new.
 
@@ -261,11 +269,13 @@ def out_of_memory(err):
     return isinstance(err, getattr(torch, 'OutOfMemoryError', ())) or 'out of memory' in str(err).lower()
 
 
-def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write=True, origin=(0, 0)):
+def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write=True, origin=(0, 0), check=True, asked=None):
     """
     Make `tries` patches for the area `cut` (a picture) and its `mark` (white is
     what may change, the same size). Returns what result.json holds, less the
     memory. `origin` is where `cut` sits in the picture the boxes are given in.
+    `asked` is what the person asked for, when `instruction` is no longer their
+    own words (More Tries hands back the written-out instruction).
     """
     import torch
     cut, mark = cut.convert('RGB'), mark.convert('L')
@@ -341,14 +351,28 @@ def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write
         look = patch.copy()
         look.thumbnail((768, 768), Image.LANCZOS)
         look.save(os.path.join(output, small_name))
-        done.append({'file': name, 'small': small_name,
+        verdict = None
+        if check:   # the reader looks at the whole area as it will be, and says if the edit is good
+            say(stage='check', **{'try': n}, of=tries)
+            try:
+                verdict = judge(pipe, small, gp.laid(small, answer, mark_small), mark_small, asked or instruction)
+            except Problem:
+                raise
+            except Exception as e:  # an edit that could not be checked is still an edit
+                if out_of_memory(e):
+                    raise
+                note = note or (str(e).strip().splitlines() or [type(e).__name__])[-1][:300]
+        done.append({'file': name, 'small': small_name, 'judged': verdict,
                      'box': [box[0] + origin[0], box[1] + origin[1], box[2] + origin[0], box[3] + origin[1]],
                      'seed': seed + n - 1, 'seconds': round(time.time() - started, 1),
                      'held_db': round(gp.held_db(seen, answer, free), 1), 'new_share': round(new_share, 3),
                      'model_size': [width, height]})
         say(stage='tried', **{'try': n}, of=tries, file=name)
         n += 1
-    return {'prompt': prompt, 'prompt_by': 'engine' if written else 'instruction', 'note': note,
+    # The try to look at first: the one the check found best (done counts most), the earliest of equals.
+    score = lambda t: -1 if not t['judged'] else 4 * (t['judged']['done'] is True) + 2 * (t['judged']['fits'] is True) + (t['judged']['clean'] is True)
+    best = max(range(len(done)), key=lambda i: (score(done[i]), -i)) if done else 0
+    return {'prompt': prompt, 'prompt_by': 'engine' if written else 'instruction', 'note': note, 'best': best,
             'model_size': [width, height], 'steps': steps, 'tries': done}
 
 
@@ -395,7 +419,8 @@ def run(job):
     pipe.enable_model_cpu_offload()
     torch.cuda.reset_peak_memory_stats()
     result = edit(pipe, cut, mark, job['instruction'], job['output'], steps=steps, seed=seed, tries=tries,
-                  write=job.get('write_prompt', True) is not False, origin=box[:2])
+                  write=job.get('write_prompt', True) is not False, origin=box[:2],
+                  check=job.get('check', True) is not False, asked=job.get('asked') or None)
     result['peak_gb'] = round(torch.cuda.max_memory_allocated() / 2 ** 30, 1)
     with open(os.path.join(job['output'], 'result.json'), 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=1)

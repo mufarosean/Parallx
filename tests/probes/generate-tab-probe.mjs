@@ -49,11 +49,11 @@ for n, colour in enumerate([(230, 40, 40), (40, 200, 60), (50, 90, 235)][:job.ge
         print(json.dumps({'stage': 'generate', 'try': n, 'of': job.get('tries', 1), 'step': step, 'steps': 40}), flush=True)
         time.sleep(0.25)
     open(os.path.join(job['output'], 'try-%d.png' % n), 'wb').write(png(colour))
-    tries.append({'file': 'try-%d.png' % n, 'box': [0, 0, w, h], 'seed': job.get('seed', 42) + n - 1, 'seconds': 0.8, 'held_db': 40.0})
+    tries.append({'file': 'try-%d.png' % n, 'judged': {'done': True, 'fits': n == 2, 'clean': True, 'why': 'nothing' if n == 2 else 'A hard edge shows on the left.', 'good': n == 2}, 'box': [0, 0, w, h], 'seed': job.get('seed', 42) + n - 1, 'seconds': 0.8, 'held_db': 40.0})
     print(json.dumps({'stage': 'tried', 'try': n, 'of': job.get('tries', 1), 'file': 'try-%d.png' % n}), flush=True)
 written = 'Remove the thing in the middle of the picture and continue what is behind it.'
 asked = job.get('write_prompt', True)
-result = {'prompt': written if asked else job['instruction'], 'prompt_by': 'engine' if asked else 'instruction', 'note': '', 'model_size': [w, h], 'steps': 40, 'tries': tries, 'peak_gb': 0}
+result = {'best': 1 if len(tries) > 1 else 0, 'prompt': written if asked else job['instruction'], 'prompt_by': 'engine' if asked else 'instruction', 'note': '', 'model_size': [w, h], 'steps': 40, 'tries': tries, 'peak_gb': 0}
 json.dump(result, open(os.path.join(job['output'], 'result.json'), 'w'))
 print(json.dumps(dict(stage='done', **result)), flush=True)
 `;
@@ -252,9 +252,16 @@ async function main() {
     check(told.length === 1 && /Remove the thing in the middle/.test(told[0]), `what the model was given is shown under the tries (${(told[0] || 'nothing').slice(0, 70)})`);
     const shownTry = await page.evaluate(() => { const i = document.querySelector('.mo-gen-try'); const r = i.getBoundingClientRect(); return { hidden: i.classList.contains('mo-hidden'), w: Math.round(r.width), h: Math.round(r.height) }; });
     check(!shownTry.hidden && shownTry.w > 100 && shownTry.h > 80, `the first try is shown on the photo (${shownTry.w} x ${shownTry.h})`);
+    check((await page.locator(px(`${ID}.try.2`)).getAttribute('aria-pressed')) === 'true', 'the try the model\'s check found best is the one shown first');
+    const verdict = (await texts('.mo-gen-step .mo-gen-dim')).filter((t) => t.startsWith('Checked by the model'));
+    check(verdict.join('') === 'Checked by the model: done, fits the photo, clean.', `and what the check said of it is shown (${verdict.join('') || 'nothing'})`);
+    await page.click(px(`${ID}.try.1`));
+    await page.waitForTimeout(400);
+    check((await page.locator(px(`${ID}.try.1`)).getAttribute('aria-pressed')) === 'true', 'choosing a try marks it');
+    const other = (await texts('.mo-gen-step .mo-gen-dim')).filter((t) => t.startsWith('Checked by the model'));
+    check(/does not fit the photo\. A hard edge shows on the left\./.test(other.join('')), `a try the check faulted says what it faulted (${other.join('').slice(0, 80)})`);
     await page.click(px(`${ID}.try.2`));
     await page.waitForTimeout(400);
-    check((await page.locator(px(`${ID}.try.2`)).getAttribute('aria-pressed')) === 'true', 'choosing a try marks it');
     await shot('generate-3-tries.png');
 
     // ── keep: a patch, and the photo changes ──

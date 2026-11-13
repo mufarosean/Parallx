@@ -246,6 +246,7 @@ def part_two():
     x0, y0, x1, y1 = t['box']
     check('the patch is where the mark is, in the picture it was cut from', patch.mode == 'RGBA' and patch.size == (x1 - x0, y1 - y0) and 1000 + 200 <= x0 <= 1000 + 260 and 2000 + 140 <= y0 <= 2000 + 200 and 1000 + 400 <= x1 <= 1000 + 460 and 2000 + 320 <= y1 <= 2000 + 380, f'{t["box"]}')
     check('each try starts from its own seed', [x['seed'] for x in result['tries']] == [7, 8])
+    check('each try was put to the reader to be checked, and one is named best', all(set(x['judged']) == {'done', 'fits', 'clean', 'why', 'good'} for x in result['tries']) and result['best'] in (0, 1) and [s['stage'] for s in said].count('check') == 2, json.dumps(result['tries'][0]['judged'])[:90])
     check('the reader wrote the instruction out (random weights, so not words)', result['prompt_by'] == 'engine' and result['prompt'] != 'Remove what is marked.', json.dumps(result['prompt'])[:60] + ' ' + json.dumps(result['note']))
     check('progress is said for the instruction, every step and every try', [s['stage'] for s in said].count('generate') == 12 and said[0]['stage'] == 'prompt' and [s['stage'] for s in said].count('tried') == 2)
 

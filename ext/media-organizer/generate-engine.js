@@ -101,6 +101,7 @@ export function moGenerateProgress(d) {
     const label = of > 1 ? `Generating ${d.try} of ${of}` : 'Generating';
     return { label, fraction: 0.05 + 0.93 * ((Math.max(1, d.try || 1) - 1 + within) / of) };
   }
+  if (d.stage === 'check') return { label: 'Checking it', fraction: 0.05 + 0.93 * ((d.try || 1) / Math.max(1, d.of || 1)) };
   if (d.stage === 'try' || d.stage === 'tried') return { label: 'Laying it back', fraction: 0.05 + 0.93 * ((d.try || 1) / Math.max(1, d.of || 1)) };
   if (d.stage === 'done') return { label: 'Done', fraction: 1 };
   return { label: 'Working', fraction: 0 };
@@ -109,8 +110,8 @@ export function moGenerateProgress(d) {
 /**
  * Run one job (a JSON file the caller wrote: input, mask, instruction,
  * output, steps, seed, tries). onProgress({ label, fraction }). Resolves the
- * script's result ({ tries: [{ file, small, box, seed, seconds }], prompt,
- * promptBy, note, peakGb, modelSize }); throws an Error whose message is for
+ * script's result ({ tries: [{ file, small, box, seed, seconds, judged }],
+ * best, prompt, promptBy, note, peakGb, modelSize }); throws an Error whose message is for
  * the user.
  */
 export async function moGenerateRun(jobPath, onProgress, opts = {}) {
@@ -132,7 +133,7 @@ export async function moGenerateRun(jobPath, onProgress, opts = {}) {
       throw new Error(m ? m[1].trim() : (r && r.code === 'NOT_READY') ? 'Generate is not set up yet.' : 'Generate stopped before it finished.');
     }
     if (!result) throw new Error('Generate finished without a result.');
-    return { tries: result.tries, prompt: result.prompt || '', promptBy: result.prompt_by || 'instruction', note: result.note || '', peakGb: result.peak_gb, modelSize: result.model_size };
+    return { tries: result.tries, best: result.best || 0, prompt: result.prompt || '', promptBy: result.prompt_by || 'instruction', note: result.note || '', peakGb: result.peak_gb, modelSize: result.model_size };
   } finally {
     runListeners.delete(runId);
   }

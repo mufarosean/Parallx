@@ -220,6 +220,13 @@ def make_patch(cut, seen, answer, mark, mark_small):
     return Image.fromarray(out, 'RGBA'), box, new_share
 
 
+def laid(small, answer, mark_small):
+    """The area as it will look with the answer laid on it, at the model's size: what a check of the edit is shown."""
+    a = patch_alpha(mark_small)[..., None]
+    before, new = np.asarray(small.convert('RGB'), dtype=np.float32), np.asarray(answer.convert('RGB').resize(small.size), dtype=np.float32)
+    return Image.fromarray(np.clip(new * a + before * (1 - a) + 0.5, 0, 255).astype(np.uint8), 'RGB')
+
+
 def held_db(small, answer, free):
     """
     How close the answer is to the photo where the model was holding it still
