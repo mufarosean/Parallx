@@ -28,7 +28,7 @@ beforeEach(() => {
   (globalThis as { window?: unknown }).window = {
     parallxElectron: { optionalBridges: { invoke, on: (_c: string, cb: Listener) => { listener = cb; return () => { listener = null; }; } } },
   };
-  active = moGenerateActivate(extDir, models);
+  active = moGenerateActivate(extDir)[0];
 });
 afterEach(() => {
   active?.dispose();
@@ -36,6 +36,10 @@ afterEach(() => {
 });
 
 describe('Generate\'s runtime', () => {
+  it('fetches exactly the files the script lays out', () => {
+    expect(moGenerateSpec().files).toEqual(models.map((m) => ({ name: m.name, url: m.url, bytes: m.bytes, sha256: m.sha256 })));
+  });
+
   it('declares an engine the runtime bridge accepts', () => {
     const spec = moGenerateSpec();
     expect(spec.files).toHaveLength(models.length);

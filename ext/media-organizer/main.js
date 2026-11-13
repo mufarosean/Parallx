@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
+import { moEditGenerate, moEditGenerateActivate } from './edit-generate.js'; import { moGenerateActivate } from './generate-engine.js'; import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -35476,8 +35476,8 @@ function moEditActive() {
 
 // ── The editor ─────────────────────────────────────────────────────────────
 
-const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['masks', 'blend', 'Masks'], ['crop', 'crop', 'Crop And Rotate'], ['remove', 'eraser', 'Remove'], ['enhance', 'wand-sparkles', 'Enhance']];
-const MO_EDIT_TAB_LABEL = { edit: 'Edit', masks: 'Masks', crop: 'Crop', remove: 'Remove', enhance: 'Enhance' };
+const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['masks', 'blend', 'Masks'], ['crop', 'crop', 'Crop And Rotate'], ['remove', 'eraser', 'Remove'], ['enhance', 'wand-sparkles', 'Enhance'], ['generate', 'sparkles', 'Generate']];
+const MO_EDIT_TAB_LABEL = { edit: 'Edit', masks: 'Masks', crop: 'Crop', remove: 'Remove', enhance: 'Enhance', generate: 'Generate' };
 const MO_EDIT_FILM_SPAN = 30;   // photos shown either side of the open one
 
 // The Image Editor's panel parts, for the editor and for a painting plan's Photo step (plan-photo.js):
@@ -36249,7 +36249,7 @@ function renderImageEditor(container, api) {
     dial.classList.toggle('mo-hidden', !crop);
     if (!state.original && !crop) { const tint = masks.tint(engine); p.masks = moMaskPasses(engine, state.recipe.masks, p.look, state.bitmap.width, state.bitmap.height, tint); if (tint) p.tint = tint; }
     engine.draw(p, cs.w, cs.h);
-    masks.sync();
+    masks.sync(); generate.sync();
     const mb = state.bytes ? state.bytes.byteLength / 1048576 : 0;
     sizeEl.textContent = `${geo.outW} \u00d7 ${geo.outH}` + (mb ? ` \u00b7 ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB` : '') + (state.sourceObj && state.sourceObj.deep ? ' \u00b7 16-bit' : '');
     sizeEl.title = state.sourceObj && state.sourceObj.deep ? 'Editing at full depth: every control works on the photo\u2019s own levels' : '';
@@ -36519,11 +36519,27 @@ function renderImageEditor(container, api) {
   const panelEdit = () => kit.panelEdit(panelBody);
   // Masks (edit-masks.js): their handles and brush sit over the stage; a mask is in the source picture's uv.
   disposers.push(moMaskOnImages(() => requestRender()));
-  const masks = moEditMasks({ api, root, kit, host: stage, recipe: () => state.recipe, requestRender: () => requestRender(), on: () => state.tool === 'masks' && !!state.bitmap, select: moMaskSelect(() => state.bitmap),
+  const onPhoto = { api, root, kit, host: stage, recipe: () => state.recipe, requestRender: () => requestRender(), on: () => state.tool === 'masks' && !!state.bitmap, select: moMaskSelect(() => state.bitmap),
     afterChange: (rec) => { if (rec) afterChange(true); else { renderPanel(); requestRender(); } }, photoSize: () => ({ w: state.bitmap.width, h: state.bitmap.height }), idStem: 'media-organizer.imageEditor.masks',
     toScreen: (u, v) => { const cs = canvasSize(), geo = geometry(), vw = state.session.view, o = moAffineApply(moAffineInvert(geo.m), u, v), c = moAffineApply(moAffineInvert(moEditViewMap(geo.outW, geo.outH, cs.w, cs.h, vw.zoom, vw.cx, vw.cy)), o[0], o[1]); return { x: (c[0] * cs.w) / cs.dpr, y: (c[1] * cs.h) / cs.dpr }; },
     fromScreen: (x, y) => { const r = stage.getBoundingClientRect(), q = sourceAt(x - r.left, y - r.top); return { u: q[0] / state.bitmap.width, v: q[1] / state.bitmap.height }; },
-    screenPerPhoto: () => state.session.view.zoom / canvasSize().dpr });
+    screenPerPhoto: () => state.session.view.zoom / canvasSize().dpr };
+  const masks = moEditMasks(onPhoto);
+  // Generate (edit-generate.js): a kept result is stored as a patch, the way a removal is.
+  const generate = moEditGenerate({ api, host: stage, idStem: 'media-organizer.imageEditor.generate', on: () => state.tool === 'generate' && !!state.bitmap, photoSize: onPhoto.photoSize, toScreen: onPhoto.toScreen, fromScreen: onPhoto.fromScreen, screenPerPhoto: onPhoto.screenPerPhoto, select: onPhoto.select,
+    picture: () => state.work || state.bitmap, workDir: () => moEditDir(state.photoId), writeBytes: moEditWriteBytes, readBytes: moEditReadBytes, rerender: () => { if (state.tool === 'generate') renderPanel(); },
+    keep: async (bytes, box) => {
+      const file = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.png`, path = moEditPatchPath(state.photoId, file);
+      if (!path) throw new Error('Generate needs an open workspace to keep its patches in.');
+      await moEditWriteBytes(path, bytes);
+      const patch = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      let work = state.work;
+      if (!(work instanceof HTMLCanvasElement)) { work = moEl('canvas'); work.width = state.bitmap.width; work.height = state.bitmap.height; work.getContext('2d').drawImage(state.bitmap, 0, 0); }
+      work.getContext('2d').drawImage(patch, box.x, box.y, box.w, box.h); patch.close();
+      state.recipe.removals = state.recipe.removals.concat([{ file, x: box.x, y: box.y, w: box.w, h: box.h }]);
+      state.work = work; state.workKey = JSON.stringify(state.recipe.removals); state.sourceObj = null;
+      afterChange(true);
+    } });
   // The panel is rebuilt from the recipe; where it was scrolled to and the slider that had the focus are kept.
   function renderPanel() {
     const top = panelBody.scrollTop;
@@ -36535,6 +36551,7 @@ function renderImageEditor(container, api) {
     if (!state.recipe) return;
     if (state.tool === 'crop') panelCrop();
     else if (state.tool === 'masks') masks.panel(panelBody, panelDisposers);
+    else if (state.tool === 'generate') generate.panel(panelBody);
     else if (state.tool === 'remove') panelRemove();
     else if (state.tool === 'enhance') panelEnhance();
     else panelEdit();
@@ -37290,7 +37307,7 @@ function renderImageEditor(container, api) {
   }
   // ── opening a photo ──
   async function loadPhoto(photoId) {
-    const seq = ++loadSeq;
+    const seq = ++loadSeq; generate.reset();
     await discardKept();   // another photo: the last one's enlarged preview goes
     await flushSave();
     const id = Number(photoId);
@@ -37406,7 +37423,7 @@ function renderImageEditor(container, api) {
       if (raf) cancelAnimationFrame(raf);
       if (resizeObs) resizeObs.disconnect();
       for (const d of panelDisposers.splice(0).concat(disposers.splice(0))) { try { d(); } catch { /* gone */ } }
-      masks.dispose();
+      masks.dispose(); generate.dispose();
       if (engine) engine.dispose();
       if (state.bitmap) { try { state.bitmap.close(); } catch { /* gone */ } }
       container.innerHTML = '';
@@ -37836,7 +37853,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
     api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moPlanIsolateActivate(api), ...moEditMasksActivate(api), ...moEnhanceActivate(api, _toolPath), ...moBoardActivate(api), api.canvas.registerCoverSource(moCoverSource({ db, thumbnailPath: async (id) => { const r = await resolveThumbnail('photo', id, api); return (r && (r.path || r.sourcePath)) || null; }, resolvePath: (id) => moResolveItemPath({ type: 'photo', id }), displayCopy: (p) => moHeicDisplayCopy(p, api) })), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate,
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }), api.commands.registerCommand('media-organizer.planPainting', (photoId) => { if (photoId != null && moArtGate(api, () => moPlanCreate(api, photoId))) return moPlanCreate(api, photoId); }), ...moPlanColoursActivate(api), ...moPlanVariationsActivate(api), ...moPlanStudyActivate(api), ...moPlanShellActivate(api), ...moPlanComposeActivate(api), ...moPlanPhotoActivate(api), ...moPlanIsolateActivate(api), ...moEditMasksActivate(api), ...moEditGenerateActivate(api), ...moEnhanceActivate(api, _toolPath), ...moGenerateActivate(_toolPath), ...moBoardActivate(api), api.canvas.registerCoverSource(moCoverSource({ db, thumbnailPath: async (id) => { const r = await resolveThumbnail('photo', id, api); return (r && (r.path || r.sourcePath)) || null; }, resolvePath: (id) => moResolveItemPath({ type: 'photo', id }), displayCopy: (p) => moHeicDisplayCopy(p, api) })), api.commands.registerCommand('media-organizer.copyTags', (keys) => moTagsCommand(api, 'copy', keys)), api.commands.registerCommand('media-organizer.pasteTags', (keys) => moTagsCommand(api, 'paste', keys)), ...moPlansListActivate(api, Object.assign(moBoardDeps(api), { createPlan: (id) => moPlanCreate(api, id), date: moPracticeDate,
       // the plan as it stands: its export variation, or its working picture
       planPicture: async (planId) => { const data = await moPlanLoad(planId); if (!data) return null; const v = data.variants.find((x) => x.id === data.plan.variant_id); let r = v && v.recipe; if (!r) { try { r = moPlanRecipe(JSON.parse(data.plan.draft_json || '{}')); } catch { return null; } } return moBoardContext(moBoardDeps(api), planId).renderVariant(r, 420); },
       disposeFiles: (planId) => { const dir = moPlanDir(planId); if (dir) void moDisposeTemp(api, [dir]); } })), api.commands.registerCommand('media-organizer.openBoard', (planId) => { if (planId != null && moArtGate(api)) moOpenBoard(api, planId); }),
