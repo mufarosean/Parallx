@@ -8,45 +8,79 @@ generate-models.json. The model is Qwen-Image-2.1.
 
 No model works at a camera photo's size, and none returns the pixels it was
 not asked to change exactly as they were. So the picture is never handed over
-whole and never taken back whole: the area around the mask is cut out at the
-photo's own pixels, the model edits that piece, and only the masked part of
-its answer, feathered at the edge and matched in colour to what surrounds it,
-is kept. What is written is a patch to lay over the original, not a picture.
+whole and never taken back whole. What is done instead, in order:
+
+1. The area around the mark is cut out at the photo's own pixels and shown to
+   the model at a size it works at. It reads the photo and paints its answer
+   at one and the same size: its sense of where things are is a grid counted
+   from the middle, so two sizes would put the answer out of step with the
+   photo.
+2. The model is told where. It never sees the mark, so "remove what is
+   marked" means nothing to it. The model's own reader of pictures and words
+   (an 8B vision model, loaded anyway) is shown the area with the mark's edge
+   drawn on it and writes the instruction out: what is there, where, what to
+   do with it.
+3. Outside the mark the picture is held still while the model works. After
+   every step, everything but the marked tiles is put back to the photo, as
+   noisy as that step expects. The model fills the mark knowing exactly what
+   borders it, and what it returns lines up with the photo by construction.
+4. Only the mark comes back: all of the answer inside it, fading out over the
+   tile beside it, with the photo's own fine detail put back wherever the
+   answer still shows the photo. What is written is a patch to lay over the
+   original, not a picture. The arithmetic is in generate_patch.py.
 
 JOB.json:
-    input        the picture, at its full size (PNG, JPEG, TIFF)
-    mask         a picture of the same size; white is what may change
-    instruction  what to do there, in words
-    output       a folder; made if missing
-    steps        optional, 40
-    seed         optional, 42
-    tries        optional, 1: that many answers, each from its own seed
+    input         the picture (PNG, JPEG, TIFF)
+    mask          a picture of the same size; white is what may change
+    instruction   what to do there, in words
+    output        a folder; made if missing
+    steps         optional, 40
+    seed          optional, 42
+    tries         optional, 1: that many answers, each from its own seed
+    cut_out       optional, true. false: `input` is already the area to work
+                  on (the editor cuts it out itself), so all of it is used
+    write_prompt  optional, true. false: the instruction goes to the model
+                  as it was written
 
-Written to `output`: try-1.png ... (RGBA, the size of the cut-out, transparent
-outside the mask) and result.json with the cut-out's place in the picture and,
-for each try, its seconds and how far the model's raw answer drifted outside
-the mask (dB, higher is closer).
+Written to `output`: for each try, try-N.png (RGBA, at the picture's own
+pixels, cropped to where it is not empty) and try-N-small.png (the same,
+small, to look at); and result.json with the instruction the model was given
+and, for each try, its box in `input`, its seconds, how close the held part
+stayed to the photo (dB, higher is closer) and the share of the mark that
+shows something new.
 
 Progress: one JSON object per line on stdout. A failure: one plain sentence on
 stderr after "GENERATE-ERROR: ", and exit code 2.
 """
 
 import argparse
+import gc
 import json
 import os
 import sys
 import time
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import generate_patch as gp  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
-HERE = os.path.dirname(os.path.abspath(__file__))
 
-MAX_SIDE = 2048          # the model's largest side
-MAX_PIXELS = 4_000_000   # and its largest area
-MIN_SIDE = 1024          # a small cut-out is enlarged to this before the model sees it
 NEEDS_FREE_GB = 21       # measured peak on an RTX 5090: 19.1 GB at 1584 x 1104
+WRITER_GUARD = 400       # the written instruction is three sentences; this only stops a reply that never ends
+
+WRITER = (
+    'You write the instruction for a model that edits photographs. You are shown part of a photo. '
+    'A magenta line with a white edge is drawn round the area that may change; the line is not in the photo. '
+    'You are told what the person wants done there. Write the instruction for the editing model: '
+    'name what is inside the line and say where it is in the picture (left, right, top, bottom, middle, beside or behind what); '
+    'say exactly what to do with it; and say how the result must fit what surrounds it (the light, the colours, the texture, the perspective). '
+    'Everything outside the line stays as it is. Never mention the line, the marking or magenta. '
+    'Answer with the instruction alone, in one to three sentences, in English.'
+)
 
 
 def say(**kw):
@@ -82,54 +116,164 @@ def model_folder():
     return target
 
 
-def cut_out_box(mask_box, size):
-    """The area the model sees: the mask and as much again around it, inside the picture."""
-    x0, y0, x1, y1 = mask_box
-    w, h = x1 - x0, y1 - y0
-    px, py = max(256, w), max(256, h)
-    if w >= size[0] * 0.9:   # a band across the picture (a sky): what borders it is enough
-        px, py = 0, max(256, int(h * 0.35))
-    if h >= size[1] * 0.9:
-        px, py = max(256, int(w * 0.35)), 0
-    return (max(0, x0 - px), max(0, y0 - py), min(size[0], x1 + px), min(size[1], y1 + py))
-
-
-def model_size(w, h):
-    """The size the model works at for a cut-out of w x h: within its limits, sides in 16s."""
-    s = min(1.0, MAX_SIDE / max(w, h), (MAX_PIXELS / (w * h)) ** 0.5)
-    if max(w, h) * s < MIN_SIDE:
-        s = MIN_SIDE / max(w, h)
-    return max(256, int(round(w * s / 16)) * 16), max(256, int(round(h * s / 16)) * 16)
-
-
-def feather_of(mask_box):
-    return max(8, int(min(mask_box[2] - mask_box[0], mask_box[3] - mask_box[1]) * 0.04))
-
-
-def drift_db(a, b, where):
-    """How close the model's answer is to the original where it should not have changed (PSNR)."""
-    d = (a.astype(np.float32) - b.astype(np.float32))[where]
-    mse = float((d ** 2).mean()) if d.size else 0.0
-    return 99.0 if mse == 0 else float(10 * np.log10(255 ** 2 / mse))
-
-
-def make_patch(cut, answer, mask, feather):
+class Hold:
     """
-    The patch for one answer: the answer where the mask is, feathered, its colour
-    brought to the photo's in the band just outside the mask. Returns (RGBA
-    picture, drift in dB).
+    Holds the picture still outside the mark while the model works.
+
+    The model paints its answer from noise, a step at a time. After each step
+    every tile it is not free to change is put back to the photo, with the
+    noise that step still expects (the same noise the answer started from).
+    At the last step that noise is none, so those tiles are the photo.
+
+    The pipeline hands its steps the picture in progress but not the photo it
+    read, so the photo and the starting noise are taken as it prepares them.
     """
-    back = answer.convert('RGB').resize(cut.size, Image.LANCZOS)
-    a, b = np.asarray(cut), np.asarray(back)
-    grown = np.asarray(mask.filter(ImageFilter.MaxFilter(2 * feather + 1)))
-    outside = grown == 0
-    ring = (np.asarray(mask.filter(ImageFilter.MaxFilter(6 * feather + 1))) > 0) & outside
-    fixed = b.astype(np.float32)
-    if int(ring.sum()) > 500:
-        for c in range(3):
-            fixed[..., c] += float(a[..., c][ring].mean()) - float(b[..., c][ring].mean())
-    rgba = np.dstack([np.clip(fixed, 0, 255).astype(np.uint8), np.asarray(mask.filter(ImageFilter.GaussianBlur(feather)))])
-    return Image.fromarray(rgba, 'RGBA'), drift_db(a, b, outside)
+
+    def __init__(self, pipe, free):
+        import torch
+        self.pipe = pipe
+        self.free = torch.from_numpy(np.ascontiguousarray(free).reshape(1, -1, 1))
+        self.photo = self.noise = None
+
+    def __enter__(self):
+        prepare = self.pipe.prepare_latents
+        self.was = vars(self.pipe).get('prepare_latents')
+
+        def taking(*args, **kwargs):
+            latents, photo = prepare(*args, **kwargs)
+            self.noise, self.photo = latents.clone(), photo
+            return latents, photo
+
+        self.pipe.prepare_latents = taking
+        return self
+
+    def __exit__(self, *_exc):
+        if self.was is not None:
+            self.pipe.prepare_latents = self.was
+        else:
+            vars(self.pipe).pop('prepare_latents', None)
+
+    def after(self, step, latents):
+        import torch
+        if self.photo is None or self.photo.shape != latents.shape or self.free.shape[1] != latents.shape[1]:
+            raise Problem('The model did not read the picture at the size it was working at, so the area outside the mark could not be held still. Nothing was changed.')
+        sigma = self.pipe.scheduler.sigmas[step + 1].to(latents.device, latents.dtype)
+        known = (1 - sigma) * self.photo.to(latents.dtype) + sigma * self.noise
+        return torch.where(self.free.to(latents.device), latents, known)
+
+
+def write_prompt(pipe, small, mark_small, instruction):
+    """The instruction written out for the model by its own reader, which is shown where the mark is."""
+    import torch
+    reader, processor = pipe.text_encoder, pipe.processor
+    messages = [
+        {'role': 'system', 'content': [{'type': 'text', 'text': WRITER}]},
+        {'role': 'user', 'content': [{'type': 'image', 'image': gp.outlined(small, mark_small)},
+                                     {'type': 'text', 'text': 'What the person wants done there: ' + instruction}]},
+    ]
+    inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors='pt')
+    hook = getattr(reader, '_hf_hook', None)
+    if hook is not None and hasattr(hook, 'pre_forward'):   # the reader waits off the card until it is called for
+        hook.pre_forward(reader)
+    inputs = inputs.to(reader.device)
+    with torch.no_grad():
+        out = reader.generate(**inputs, max_new_tokens=WRITER_GUARD, do_sample=False)
+    text = processor.batch_decode(out[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
+    text = ' '.join(text.split()).strip('"\u201c\u201d ')
+    if len(text) < 12:
+        raise ValueError('The reader wrote nothing.')
+    return text
+
+
+def out_of_memory(err):
+    import torch
+    return isinstance(err, getattr(torch, 'OutOfMemoryError', ())) or 'out of memory' in str(err).lower()
+
+
+def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write=True, origin=(0, 0)):
+    """
+    Make `tries` patches for the area `cut` (a picture) and its `mark` (white is
+    what may change, the same size). Returns what result.json holds, less the
+    memory. `origin` is where `cut` sits in the picture the boxes are given in.
+    """
+    import torch
+    cut, mark = cut.convert('RGB'), mark.convert('L')
+    os.makedirs(output, exist_ok=True)
+    device = pipe._execution_device
+    instruction = instruction.strip()
+    prompt, written, note = instruction, False, ''
+    shrink, done, n = 1.0, [], 1
+    width = height = 0
+    while n <= tries:
+        width, height = gp.model_size(*cut.size, shrink)
+        small = cut.resize((width, height), Image.LANCZOS)
+        mark_small = np.asarray(mark.resize((width, height), Image.BILINEAR)) >= 64
+        free = gp.free_tiles(mark_small)
+        everything = bool(free.all())
+        if write and not written and not everything and n == 1 and shrink == 1.0:
+            say(stage='prompt')
+            try:
+                prompt, written = write_prompt(pipe, small, mark_small, instruction), True
+            except Problem:
+                raise
+            except Exception as e:  # the edit goes on with the instruction as it was written
+                if out_of_memory(e):
+                    raise
+                note = (str(e).strip().splitlines() or [type(e).__name__])[-1][:300]
+        resolution = (width * height) ** 0.5
+        if gp.reads_at(width, height, resolution) != (width, height):
+            raise Problem('The size the model reads the picture at could not be matched to the size it works at.')
+
+        hold = None if everything else Hold(pipe, free)
+
+        def on_step(_pipe, step, _timestep, kwargs, n=n, hold=hold):
+            if hold is not None:
+                kwargs['latents'] = hold.after(step, kwargs['latents'])
+            say(stage='generate', **{'try': n}, of=tries, step=step + 1, steps=steps)
+            return kwargs
+
+        started = time.time()
+        try:
+            call = dict(prompt=prompt, image=small, height=height, width=width, output_resolution=resolution,
+                        num_inference_steps=steps, callback_on_step_end=on_step,
+                        generator=torch.Generator(device).manual_seed(seed + n - 1))
+            if hold is None:
+                answer = pipe(**call).images[0]
+            else:
+                with hold:
+                    answer = pipe(**call).images[0]
+        except Exception as e:
+            if not out_of_memory(e):
+                raise
+            # A smaller picture of the same area: the photo's own detail comes back when the patch is made.
+            shrink *= 0.8
+            if shrink < 0.5:
+                raise Problem('The graphics card ran out of memory. Set the chat model aside, or mark a smaller area.')
+            del e
+            if hasattr(pipe, 'maybe_free_model_hooks'):
+                pipe.maybe_free_model_hooks()
+            gc.collect()
+            torch.cuda.empty_cache()
+            say(stage='smaller')
+            continue
+        say(stage='try', **{'try': n}, of=tries)
+        patch, box, new_share = gp.make_patch(cut, small, answer, mark, mark_small)
+        if patch is None:
+            raise Problem('Nothing is marked to change.')
+        name, small_name = f'try-{n}.png', f'try-{n}-small.png'
+        patch.save(os.path.join(output, name), compress_level=1)
+        look = patch.copy()
+        look.thumbnail((768, 768), Image.LANCZOS)
+        look.save(os.path.join(output, small_name))
+        done.append({'file': name, 'small': small_name,
+                     'box': [box[0] + origin[0], box[1] + origin[1], box[2] + origin[0], box[3] + origin[1]],
+                     'seed': seed + n - 1, 'seconds': round(time.time() - started, 1),
+                     'held_db': round(gp.held_db(small, answer, free), 1), 'new_share': round(new_share, 3),
+                     'model_size': [width, height]})
+        say(stage='tried', **{'try': n}, of=tries, file=name)
+        n += 1
+    return {'prompt': prompt, 'prompt_by': 'engine' if written else 'instruction', 'note': note,
+            'model_size': [width, height], 'steps': steps, 'tries': done}
 
 
 def read_job(path):
@@ -147,23 +291,20 @@ def read_job(path):
 def run(job):
     try:
         picture = Image.open(job['input']).convert('RGB')
-        mask_full = Image.open(job['mask']).convert('L')
+        mark_full = Image.open(job['mask']).convert('L')
     except OSError:
         raise Problem('The picture or its mask could not be opened.')
-    if mask_full.size != picture.size:
+    if mark_full.size != picture.size:
         raise Problem('The mask is not the size of the picture.')
-    mask_box = mask_full.point(lambda v: 255 if v >= 128 else 0).getbbox()
-    if not mask_box:
+    mark_full = mark_full.point(lambda v: 255 if v >= 128 else 0)
+    mark_box = mark_full.getbbox()
+    if not mark_box:
         raise Problem('Nothing is marked to change.')
-    box = cut_out_box(mask_box, picture.size)
-    cut = picture.crop(box)
-    mask = mask_full.crop(box).point(lambda v: 255 if v >= 128 else 0)
-    width, height = model_size(*cut.size)
-    feather = feather_of(mask_box)
+    box = gp.cut_out_box(mark_box, picture.size) if job.get('cut_out', True) else (0, 0) + picture.size
+    cut, mark = picture.crop(box), mark_full.crop(box)
     steps = int(job.get('steps') or 40)
     seed = int(job.get('seed') or 42)
     tries = max(1, min(8, int(job.get('tries') or 1)))
-    os.makedirs(job['output'], exist_ok=True)
 
     import torch
     if not torch.cuda.is_available():
@@ -176,24 +317,10 @@ def run(job):
     from diffusers import QwenImage21Pipeline
     pipe = QwenImage21Pipeline.from_pretrained(model_folder(), torch_dtype=torch.bfloat16)
     pipe.enable_model_cpu_offload()
-    small = cut.resize((width, height), Image.LANCZOS)
-    done = []
-    for n in range(1, tries + 1):
-        def on_step(_pipe, step, _timestep, kwargs, n=n):
-            say(stage='generate', **{'try': n}, of=tries, step=step + 1, steps=steps)
-            return kwargs
-        torch.cuda.reset_peak_memory_stats()
-        started = time.time()
-        answer = pipe(prompt=job['instruction'].strip(), image=small, height=height, width=width,
-                      num_inference_steps=steps, callback_on_step_end=on_step,
-                      generator=torch.Generator('cuda').manual_seed(seed + n - 1)).images[0]
-        patch, drift = make_patch(cut, answer, mask, feather)
-        name = f'try-{n}.png'
-        patch.save(os.path.join(job['output'], name))
-        done.append({'file': name, 'seed': seed + n - 1, 'seconds': round(time.time() - started, 1), 'drift_db': round(drift, 1)})
-        say(stage='try', **{'try': n}, of=tries, file=name)
-    result = {'box': list(box), 'model_size': [width, height], 'steps': steps, 'tries': done,
-              'peak_gb': round(torch.cuda.max_memory_allocated() / 2 ** 30, 1)}
+    torch.cuda.reset_peak_memory_stats()
+    result = edit(pipe, cut, mark, job['instruction'], job['output'], steps=steps, seed=seed, tries=tries,
+                  write=job.get('write_prompt', True) is not False, origin=box[:2])
+    result['peak_gb'] = round(torch.cuda.max_memory_allocated() / 2 ** 30, 1)
     with open(os.path.join(job['output'], 'result.json'), 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=1)
     say(stage='done', **result)

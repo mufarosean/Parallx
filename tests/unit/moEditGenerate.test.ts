@@ -1,49 +1,74 @@
 // moEditGenerate.test.ts — the Generate tab's arithmetic (ext/media-organizer/
-// edit-generate.js): the size the model works at, the area it is shown, the
-// box round a brushed mark, and where the script's patch lands in the photo.
-// engine/generate.py holds the same limits; the two must agree.
+// edit-generate.js): the area it cuts out for the engine, the box round a
+// brushed mark, and where a try's patch lands in the photo; and what
+// engine/generate.py must go on doing with what it is handed, since no test
+// here can run the model (tests/probes/generate-engine-check.py runs the
+// script's own arithmetic and the real pipeline code on a stand-in model).
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 // @ts-expect-error — JS module with no types
-import { MO_GENERATE_STARTS, moGenCutOut, moGenModelSize, moGenPatchBox, moGenStrokesBox } from '../../ext/media-organizer/edit-generate.js';
+import { MO_GENERATE_STARTS, moGenCutOut, moGenPatchBox, moGenStrokesBox } from '../../ext/media-organizer/edit-generate.js';
 
-describe('the size the model works at', () => {
-  it('keeps a cut-out that fits at its own size, in 16s', () => {
-    expect(moGenModelSize(1590, 1110)).toEqual({ w: 1584, h: 1104 });
+const engine = (name: string) => readFileSync(resolve(__dirname, '..', '..', 'ext', 'media-organizer', 'engine', name), 'utf8');
+
+describe('the engine script', () => {
+  const py = engine('generate.py');
+  const patch = engine('generate_patch.py');
+
+  it('has the model read the photo at the size it paints its answer at', () => {
+    // The model places things on a grid counted from the middle; two sizes put the answer out of step with the photo.
+    expect(py).toMatch(/resolution = \(width \* height\) \*\* 0\.5/);
+    expect(py).toMatch(/pipe\(\*\*call\)/);
+    expect(py).toMatch(/image=small, height=height, width=width, output_resolution=resolution/);
+    expect(py).toMatch(/gp\.reads_at\(width, height, resolution\) != \(width, height\)/);
   });
 
-  it('scales a large one down to the model\'s limits', () => {
-    for (const [w, h] of [[8687, 2416], [4000, 4000], [12590, 4732]]) {
-      const s = moGenModelSize(w, h);
-      expect(s.w % 16).toBe(0);
-      expect(s.h % 16).toBe(0);
-      expect(Math.max(s.w, s.h)).toBeLessThanOrEqual(2048);
-      expect(s.w * s.h).toBeLessThanOrEqual(4_100_000);
-    }
-    expect(moGenModelSize(8687, 2416)).toEqual({ w: 2048, h: 576 });
+  it('holds the picture outside the mark at every step', () => {
+    expect(py).toMatch(/kwargs\['latents'\] = hold\.after\(step, kwargs\['latents'\]\)/);
+    expect(py).toMatch(/known = \(1 - sigma\) \* self\.photo\.to\(latents\.dtype\) \+ sigma \* self\.noise/);
+    expect(py).toMatch(/torch\.where\(self\.free\.to\(latents\.device\), latents, known\)/);
   });
 
-  it('enlarges a small one so the model has something to work on', () => {
-    expect(moGenModelSize(300, 200)).toEqual({ w: 1024, h: 688 });
+  it('tells the model where: the instruction is written out by a reader that is shown the mark', () => {
+    expect(py).toMatch(/gp\.outlined\(small, mark_small\)/);
+    expect(py).toMatch(/reader\.generate\(/);
+    // A failure to write it out is not a failure of the edit: the words go as they were written.
+    expect(py).toMatch(/'prompt_by': 'engine' if written else 'instruction'/);
   });
 
-  it('uses the limits the script uses', () => {
-    const py = readFileSync(resolve(__dirname, '..', '..', 'ext', 'media-organizer', 'engine', 'generate.py'), 'utf8');
-    expect(py).toMatch(/^MAX_SIDE = 2048\b/m);
-    expect(py).toMatch(/^MAX_PIXELS = 4_000_000\b/m);
-    expect(py).toMatch(/^MIN_SIDE = 1024\b/m);
+  it('sets no limit on the model beyond a guard against a reply that never ends', () => {
+    expect(py.match(/max_new_tokens/g)).toHaveLength(1);
+    expect(py).toMatch(/max_new_tokens=WRITER_GUARD/);
+    expect(py).not.toMatch(/max_length|max_tokens\b/);
+  });
+
+  it('keeps the limits the check script runs against', () => {
+    expect(patch).toMatch(/^MAX_SIDE = 2048\b/m);
+    expect(patch).toMatch(/^MAX_PIXELS = 2_000_000\b/m);
+    expect(patch).toMatch(/^MIN_SIDE = 1024\b/m);
+  });
+
+  it('cuts the area out by the rule the tab uses', () => {
+    expect(patch).toMatch(/px, py = max\(256, w \/\/ 2\), max\(256, h \/\/ 2\)/);
+    expect(patch).toMatch(/px, py = 0, max\(256, int\(h \* 0\.35\)\)/);
+    expect(patch).toMatch(/px, py = max\(256, int\(w \* 0\.35\)\), 0/);
   });
 });
 
 describe('the area the model is shown', () => {
-  it('is the mark and as much again around it', () => {
-    expect(moGenCutOut({ x: 5560, y: 1930, w: 530, h: 370 }, 8687, 3647)).toEqual({ x: 5030, y: 1560, w: 1590, h: 1110 });
+  it('is the mark and half as much again on each side', () => {
+    expect(moGenCutOut({ x: 1000, y: 1000, w: 600, h: 400 }, 8000, 6000)).toEqual({ x: 700, y: 744, w: 1200, h: 912 });
+    expect(moGenCutOut({ x: 3000, y: 2000, w: 2000, h: 1500 }, 8687, 5800)).toEqual({ x: 2000, y: 1250, w: 4000, h: 3000 });
+  });
+
+  it('is never less than 256 pixels round a small mark', () => {
+    expect(moGenCutOut({ x: 5560, y: 1930, w: 100, h: 80 }, 8687, 3647)).toEqual({ x: 5304, y: 1674, w: 612, h: 592 });
   });
 
   it('stops at the photo\'s edges', () => {
-    expect(moGenCutOut({ x: 10, y: 20, w: 300, h: 300 }, 1000, 800)).toEqual({ x: 0, y: 0, w: 610, h: 620 });
+    expect(moGenCutOut({ x: 10, y: 20, w: 300, h: 300 }, 1000, 800)).toEqual({ x: 0, y: 0, w: 566, h: 576 });
   });
 
   it('gives a band across the photo (a sky) only what borders it', () => {
@@ -67,20 +92,9 @@ describe('a brushed mark', () => {
 });
 
 describe('where the patch lands', () => {
-  it('is the script\'s box moved to the cut-out\'s place when the piece was sent at its own size', () => {
-    expect(moGenPatchBox([0, 0, 1584, 1104], { x: 5030, y: 1560, w: 1584, h: 1104 }, { w: 1584, h: 1104 })).toEqual({ x: 5030, y: 1560, w: 1584, h: 1104 });
-  });
-
-  it('is scaled back up when the piece was sent smaller', () => {
-    const box = moGenPatchBox([0, 0, 2048, 576], { x: 0, y: 0, w: 8687, h: 2416 }, { w: 2048, h: 576 });
-    expect(box.x).toBe(0);
-    expect(box.y).toBe(0);
-    expect(box.w).toBe(8687);
-    expect(box.h).toBe(2416);
-  });
-
-  it('follows a box the script cut inside the piece', () => {
-    expect(moGenPatchBox([100, 50, 900, 650], { x: 1000, y: 2000, w: 2048, h: 1408 }, { w: 1024, h: 704 })).toEqual({ x: 1200, y: 2100, w: 1600, h: 1200 });
+  it('is the try\'s box moved to the cut-out\'s place, at the photo\'s own pixels', () => {
+    expect(moGenPatchBox([0, 0, 1584, 1104], { x: 5030, y: 1560, w: 1584, h: 1104 })).toEqual({ x: 5030, y: 1560, w: 1584, h: 1104 });
+    expect(moGenPatchBox([945, 545, 2056, 1456], { x: 1000, y: 2000, w: 3072, h: 2048 })).toEqual({ x: 1945, y: 2545, w: 1111, h: 911 });
   });
 });
 

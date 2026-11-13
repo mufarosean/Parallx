@@ -49,9 +49,11 @@ for n, colour in enumerate([(230, 40, 40), (40, 200, 60), (50, 90, 235)][:job.ge
         print(json.dumps({'stage': 'generate', 'try': n, 'of': job.get('tries', 1), 'step': step, 'steps': 40}), flush=True)
         time.sleep(0.25)
     open(os.path.join(job['output'], 'try-%d.png' % n), 'wb').write(png(colour))
-    tries.append({'file': 'try-%d.png' % n, 'seed': job.get('seed', 42) + n - 1, 'seconds': 0.8, 'drift_db': 30.0})
-    print(json.dumps({'stage': 'try', 'try': n, 'of': job.get('tries', 1), 'file': 'try-%d.png' % n}), flush=True)
-result = {'box': [0, 0, w, h], 'model_size': [w, h], 'steps': 40, 'tries': tries, 'peak_gb': 0}
+    tries.append({'file': 'try-%d.png' % n, 'box': [0, 0, w, h], 'seed': job.get('seed', 42) + n - 1, 'seconds': 0.8, 'held_db': 40.0})
+    print(json.dumps({'stage': 'tried', 'try': n, 'of': job.get('tries', 1), 'file': 'try-%d.png' % n}), flush=True)
+written = 'Remove the thing in the middle of the picture and continue what is behind it.'
+asked = job.get('write_prompt', True)
+result = {'prompt': written if asked else job['instruction'], 'prompt_by': 'engine' if asked else 'instruction', 'note': '', 'model_size': [w, h], 'steps': 40, 'tries': tries, 'peak_gb': 0}
 json.dump(result, open(os.path.join(job['output'], 'result.json'), 'w'))
 print(json.dumps(dict(stage='done', **result)), flush=True)
 `;

@@ -529,12 +529,68 @@ What the real edits showed, each a proposal, none built:
   reads free memory on the card, not Ollama's list, and that is the
   right measure.
 
-Owed: his verdict on the results.
+His verdict on the results (2026-11-13), in his words: "I have seen very
+poor results in my tests." Then, on the causes found: "build and fix all".
+
+Rebuilt 2026-11-13 (the engine's script and the tab; no model or package
+changed, so nothing is set up again). What was wrong, and what replaced
+it:
+
+- *The model never saw the mark.* The mask was used only to cut the patch
+  out afterwards, so "Remove what is marked" meant nothing to it. Now the
+  engine's own reader (the 8B vision model that is loaded anyway, and
+  that can write: its weights include the part that does) is shown the
+  area with the mark's edge drawn on it and writes the instruction out:
+  what is there, where, what to do with it. No second model on the card.
+  The tab shows what it wrote, under the tries. If it cannot, the words
+  go as they were written and the tab says so.
+- *The photo was read at one size and the answer painted at another.*
+  The pipeline read the photo at about 1 megapixel whatever size the
+  answer was asked for, and the model places things on a grid counted
+  from the middle, so the answer was out of step with the photo (the
+  21.5 dB "drift" of the first test). Now both are one size.
+- *Nothing held the rest of the picture.* Now, after every step,
+  everything outside the marked tiles is put back to the photo, as noisy
+  as that step expects (what diffusers' own inpainting does for the Qwen
+  edit models, done here for 2.1). The answer lines up by construction.
+- *The patch's edge kept half of what was there.* Now the patch is all
+  answer everywhere inside the mark and fades over the 16 pixels beside
+  it, where the model was free to join its work to the photo.
+- *A patch was the model's size, stretched.* Now a patch is made at the
+  photo's own pixels, and wherever the answer still shows the photo (a
+  change of light or colour, a part of the mark left alone, a flat sky
+  that stayed flat) the photo's own fine detail and grain are put back
+  over it. The Whole Picture no longer comes back soft. Something new is
+  still only as sharp as the model draws it: that part of item 5 stays.
+- Smaller: the area is cut out once, not twice; it is the mark and half
+  as much again each side (was as much again), so the marked thing is
+  most of what the model looks at; laying a try back no longer takes 13
+  to 26 s; a run that does not fit the card tries a smaller size by
+  itself; More Tries reuses the written instruction.
+- The model now works at up to 2 megapixels (was 4): it reads the photo
+  at the answer's size, so the two together are its load, and the
+  photo's detail no longer depends on the answer's size.
+
+Checked without the card (`tests/probes/generate-engine-check.py`, 0
+problems): the patch arithmetic on pictures made for it (an unchanged
+answer gives back the photo at 41.6 dB where the answer enlarged gives
+33.6; a darkened one keeps its detail; something new gets none of the
+old detail; a recoloured sky keeps its grain; strips join); and the
+script's own edit run through the real pipeline code on the tiny random
+model diffusers tests it with: the photo is read at the answer's size,
+every tile outside the mark ends as the photo's own exactly, the reader
+writes, the patch lands where the mark is.
+
+Owed, on his card: the same edits again (the hay bale, the two skies)
+and his verdict; what the reader writes for his instructions, which no
+check here can judge; the time and peak memory at the new sizes.
 
 Left to build, in order:
 
-5. The native-size patch for large fills (Enhance on the patch, grain
-   matched) and the check with another try. Needs the card to prove.
+5. Something new in a large fill at the photo's own sharpness (Enhance
+   on the patch) and the check with another try. Needs the card to
+   prove. (Done 2026-11-13: the patch at the photo's own pixels, and the
+   photo's detail and grain wherever the answer still shows the photo.)
 6. Recipes: the photo's generated edits as a list; Render Again, Apply
    To Other Photos.
 7. Beyond The Edges (extending the canvas). It is in layout B and is

@@ -1,8 +1,9 @@
 """Generate's self-test: the last step of setting up its runtime.
 
 Checks the graphics card is usable from PyTorch, then makes one small edit
-the whole way (model files laid out, model loaded, a patch written), so a
-set-up is called ready only when Generate has really worked on this machine.
+the whole way (model files laid out, model loaded, the instruction written
+out, the picture held outside the mark, a patch written), so a set-up is
+called ready only when Generate has really worked on this machine.
 """
 
 import json
@@ -39,17 +40,22 @@ def main():
         print(said.splitlines()[-1] if said else 'GENERATE-ERROR: The test edit failed.', file=sys.stderr)
         sys.exit(2)
     try:
-        patch = Image.open(os.path.join(work, 'out', 'try-1.png'))
         with open(os.path.join(work, 'out', 'result.json'), encoding='utf-8') as f:
             result = json.load(f)
-    except (OSError, ValueError):
+        made = result['tries'][0]
+        patch = Image.open(os.path.join(work, 'out', made['file']))
+        Image.open(os.path.join(work, 'out', made['small'])).load()
+    except (OSError, ValueError, KeyError, IndexError):
         print('GENERATE-ERROR: The test edit wrote no patch.', file=sys.stderr)
         sys.exit(2)
-    box = result.get('box') or [0, 0, 0, 0]
-    if patch.mode != 'RGBA' or patch.size != (box[2] - box[0], box[3] - box[1]):
+    box = made.get('box') or [0, 0, 0, 0]
+    # The patch is the marked square and its edge, at the picture's own pixels, and nothing like the whole picture.
+    covers = box[0] <= 192 and box[1] <= 192 and box[2] >= 320 and box[3] >= 320
+    if patch.mode != 'RGBA' or patch.size != (box[2] - box[0], box[3] - box[1]) or not covers or patch.size[0] > 320 or patch.size[1] > 320:
         print('GENERATE-ERROR: The test patch came out the wrong shape.', file=sys.stderr)
         sys.exit(2)
-    print('{"selftest":"ok","gpu":"%s","peak_gb":%s}' % (torch.cuda.get_device_name(0).replace('"', ''), result.get('peak_gb', 0)))
+    print(json.dumps({'selftest': 'ok', 'gpu': torch.cuda.get_device_name(0), 'peak_gb': result.get('peak_gb', 0),
+                      'held_db': made.get('held_db'), 'prompt_by': result.get('prompt_by'), 'prompt': result.get('prompt'), 'note': result.get('note')}))
 
 
 if __name__ == '__main__':

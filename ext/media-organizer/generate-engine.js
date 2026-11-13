@@ -6,7 +6,8 @@
 // This file declares the runtime (Python, the package list, the model's 24
 // files with their sizes and SHA-256, in generate-models.js), sets it up, and
 // runs engine/generate.py on one job. What Generate is, and why an edit is
-// a patch cut out at the photo's own size and laid back, is in that script.
+// a patch cut out at the photo's own size and laid back, is in that script
+// (its arithmetic is in engine/generate_patch.py).
 //
 // The model takes about 19 GB of graphics memory while it works and does not
 // share the card with a loaded chat model; the script says so in words when
@@ -92,13 +93,15 @@ export async function moGenerateStatus() {
 export function moGenerateProgress(d) {
   if (!d || typeof d !== 'object') return { label: 'Working', fraction: 0 };
   if (d.stage === 'load') return { label: 'Loading the model', fraction: 0.03 };
+  if (d.stage === 'prompt') return { label: 'Writing the instruction out', fraction: 0.04 };
+  if (d.stage === 'smaller') return { label: 'Trying a smaller size', fraction: 0.05 };
   if (d.stage === 'generate') {
     const of = Math.max(1, d.of || 1);
     const within = Math.min(1, (d.step || 0) / Math.max(1, d.steps || 1));
     const label = of > 1 ? `Generating ${d.try} of ${of}` : 'Generating';
     return { label, fraction: 0.05 + 0.93 * ((Math.max(1, d.try || 1) - 1 + within) / of) };
   }
-  if (d.stage === 'try') return { label: 'Laying it back', fraction: 0.05 + 0.93 * ((d.try || 1) / Math.max(1, d.of || 1)) };
+  if (d.stage === 'try' || d.stage === 'tried') return { label: 'Laying it back', fraction: 0.05 + 0.93 * ((d.try || 1) / Math.max(1, d.of || 1)) };
   if (d.stage === 'done') return { label: 'Done', fraction: 1 };
   return { label: 'Working', fraction: 0 };
 }
@@ -106,8 +109,9 @@ export function moGenerateProgress(d) {
 /**
  * Run one job (a JSON file the caller wrote: input, mask, instruction,
  * output, steps, seed, tries). onProgress({ label, fraction }). Resolves the
- * script's result ({ box, tries, peak_gb }); throws an Error whose message is
- * for the user.
+ * script's result ({ tries: [{ file, small, box, seed, seconds }], prompt,
+ * promptBy, note, peakGb, modelSize }); throws an Error whose message is for
+ * the user.
  */
 export async function moGenerateRun(jobPath, onProgress, opts = {}) {
   const b = bridge();
@@ -128,7 +132,7 @@ export async function moGenerateRun(jobPath, onProgress, opts = {}) {
       throw new Error(m ? m[1].trim() : (r && r.code === 'NOT_READY') ? 'Generate is not set up yet.' : 'Generate stopped before it finished.');
     }
     if (!result) throw new Error('Generate finished without a result.');
-    return { box: result.box, tries: result.tries, peakGb: result.peak_gb, modelSize: result.model_size };
+    return { tries: result.tries, prompt: result.prompt || '', promptBy: result.prompt_by || 'instruction', note: result.note || '', peakGb: result.peak_gb, modelSize: result.model_size };
   } finally {
     runListeners.delete(runId);
   }

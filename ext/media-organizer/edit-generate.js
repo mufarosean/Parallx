@@ -6,19 +6,24 @@
 // subject, or the whole picture), say what to do there, pick a result.
 //
 // The photo itself is never handed to the model and never taken back from it.
-// The area around the mark is cut out, at the photo's own pixels where the
-// model's size allows and scaled down where it does not; the model edits that
-// piece; only the marked part of its answer comes back, as a patch. A kept
-// patch is stored the way Remove stores its patches, so undo, the history,
-// hiding it and saving all work on it as they do on a removal.
+// The area around the mark is cut out at the photo's own pixels and handed to
+// the engine with the mark; the engine shows the model a smaller picture of
+// it, holds everything outside the mark still while the model works, and
+// gives back only the marked part, as a patch at the photo's own pixels (how,
+// and why, is in engine/generate.py). A kept patch is stored the way Remove
+// stores its patches, so undo, the history, hiding it and saving all work on
+// it as they do on a removal.
+//
+// A patch at the photo's own pixels can be large (the whole picture is one
+// patch the size of the photo), so each try is shown from a small copy the
+// engine writes beside it, and the full one is read only for the try being
+// looked at and for Keep.
 
 import { moEl } from './dom.js';
 import { moPointKeys } from './keys.js';
 import { moSelectState, moSelector } from './edit-select.js';
 import { moGenerateDownloadBytes, moGenerateRun, moGenerateSetUp, moGenerateStatus, moGenerateStop, moGenerateStopSetUp } from './generate-engine.js';
 
-/** The model's limits (engine/generate.py holds the same numbers). */
-const MAX_SIDE = 2048, MAX_PIXELS = 4_000_000, MIN_SIDE = 1024;
 const TRIES = 3;
 /** Free graphics memory a run needs, in MiB (engine/generate.py refuses below 21 GB). */
 export const MO_GENERATE_NEEDS_MIB = 21 * 1024;
@@ -49,16 +54,13 @@ export function moEditGenerateActivate(api) {
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const grey = (v) => `rgb(${[v, v, v].join(', ')})`; // a mask's pixels are data, built from numbers: white is what may change
 
-/** The size the model works at for a cut-out of w x h: within its limits, sides in 16s. */
-export function moGenModelSize(w, h) {
-  let s = Math.min(1, MAX_SIDE / Math.max(w, h), Math.sqrt(MAX_PIXELS / (w * h)));
-  if (Math.max(w, h) * s < MIN_SIDE) s = MIN_SIDE / Math.max(w, h);
-  return { w: Math.max(256, Math.round((w * s) / 16) * 16), h: Math.max(256, Math.round((h * s) / 16) * 16) };
-}
-
-/** The area the model sees for a mark's box: the mark and as much again around it, inside the photo. */
+/**
+ * The area the model sees for a mark's box: the mark and half as much again on each side, inside the photo
+ * (engine/generate_patch.py has the same rule, for a picture it is handed whole). Close enough in that the
+ * marked thing is most of what the model looks at, far enough out that it sees what it must join to.
+ */
 export function moGenCutOut(box, W, H) {
-  let px = Math.max(256, box.w), py = Math.max(256, box.h);
+  let px = Math.max(256, Math.floor(box.w / 2)), py = Math.max(256, Math.floor(box.h / 2));
   if (box.w >= W * 0.9) { px = 0; py = Math.max(256, Math.floor(box.h * 0.35)); }
   if (box.h >= H * 0.9) { px = Math.max(256, Math.floor(box.w * 0.35)); py = 0; }
   const x0 = Math.max(0, box.x - px), y0 = Math.max(0, box.y - py), x1 = Math.min(W, box.x + box.w + px), y1 = Math.min(H, box.y + box.h + py);
@@ -74,10 +76,9 @@ export function moGenStrokesBox(strokes, W, H) {
   return x1 - x0 >= 2 && y1 - y0 >= 2 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 }
 
-/** Where the script's box (in the piece it was sent) sits in the photo, the piece having been cut at `cut` and sent at `sent` size. */
-export function moGenPatchBox(resultBox, cut, sent) {
-  const kx = cut.w / sent.w, ky = cut.h / sent.h;
-  return { x: Math.round(cut.x + resultBox[0] * kx), y: Math.round(cut.y + resultBox[1] * ky), w: Math.round((resultBox[2] - resultBox[0]) * kx), h: Math.round((resultBox[3] - resultBox[1]) * ky) };
+/** Where a try's box ([x0, y0, x1, y1] in the piece that was cut out at `cut`) sits in the photo. */
+export function moGenPatchBox(tryBox, cut) {
+  return { x: cut.x + tryBox[0], y: cut.y + tryBox[1], w: tryBox[2] - tryBox[0], h: tryBox[3] - tryBox[1] };
 }
 
 const gb = (bytes) => `${Math.round(bytes / 1024 ** 3)} GB`;
@@ -96,7 +97,7 @@ export function moEditGenerate(ctx) {
   const { api } = ctx;
   const ui = api.ui;
   const id = (s) => `${ctx.idStem}.${s}`;
-  const G = { way: 'brush', strokes: [], subject: null, brush: 120, text: '', running: null, error: '', tries: [], pick: 0, seed: 42, engine: null, setUp: null, note: '', card: null };
+  const G = { way: 'brush', strokes: [], subject: null, brush: 120, text: '', running: null, error: '', tries: [], pick: 0, seed: 42, told: null, engine: null, setUp: null, note: '', card: null };
   const me = `generate-${++seq}`;
   const disposers = [];
   const sep = () => ((ctx.workDir() || '').includes('\\') ? '\\' : '/');
@@ -109,12 +110,12 @@ export function moEditGenerate(ctx) {
     if (G.way === 'subject') return G.subject ? G.subject.box : null;
     return moGenStrokesBox(G.strokes, w, h);
   }
-  /** The mark as a canvas the size of `cut`, scaled to `sent`: white where the model may change the picture. */
-  function markCanvas(cut, sent) {
-    const cv = moEl('canvas'); cv.width = sent.w; cv.height = sent.h;
+  /** The mark as a canvas the size of `cut`: white where the model may change the picture. */
+  function markCanvas(cut) {
+    const cv = moEl('canvas'); cv.width = cut.w; cv.height = cut.h;
     const g = cv.getContext('2d');
-    g.fillStyle = grey(0); g.fillRect(0, 0, sent.w, sent.h);
-    g.scale(sent.w / cut.w, sent.h / cut.h); g.translate(-cut.x, -cut.y);
+    g.fillStyle = grey(0); g.fillRect(0, 0, cut.w, cut.h);
+    g.translate(-cut.x, -cut.y);
     g.fillStyle = grey(255); g.strokeStyle = grey(255); g.lineCap = 'round'; g.lineJoin = 'round';
     if (G.way === 'whole') g.fillRect(cut.x, cut.y, cut.w, cut.h);
     else if (G.way === 'subject' && G.subject) g.drawImage(G.subject.canvas, 0, 0, size().w, size().h);
@@ -221,7 +222,8 @@ export function moEditGenerate(ctx) {
     shown.classList.toggle('mo-hidden', !t);
     if (t) {
       const o = scr(t.box.x, t.box.y), px = scr(t.box.x + t.box.w, t.box.y), py = scr(t.box.x, t.box.y + t.box.h);
-      if (shown.src !== t.url) shown.src = t.url;
+      const src = t.full ? t.full.url : t.url; // the small copy until the full one is read
+      if (shown.src !== src) shown.src = src;
       Object.assign(shown.style, { width: `${t.pw}px`, height: `${t.ph}px`, transform: `matrix(${(px.x - o.x) / t.pw}, ${(px.y - o.y) / t.pw}, ${(py.x - o.x) / t.ph}, ${(py.y - o.y) / t.ph}, ${o.x}, ${o.y})` });
     }
   }
@@ -242,8 +244,19 @@ export function moEditGenerate(ctx) {
   }
 
   function dropTries() {
-    for (const t of G.tries) URL.revokeObjectURL(t.url);
-    G.tries = []; G.pick = 0;
+    for (const t of G.tries) { URL.revokeObjectURL(t.url); if (t.full) URL.revokeObjectURL(t.full.url); }
+    G.tries = []; G.pick = 0; G.told = null;
+  }
+  /** The try being looked at, at the photo's own pixels: read when it is picked, and the one before it let go. */
+  async function readFull(t) {
+    for (const o of G.tries) if (o !== t && o.full) { URL.revokeObjectURL(o.full.url); o.full = null; }
+    if (!t || t.full || t.reading) return;
+    t.reading = true;
+    try {
+      const bytes = await ctx.readBytes(t.file);
+      if (G.tries[G.pick] === t) { t.full = { bytes, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })) }; sync(); }
+    } catch { /* the small copy stays on the photo; Keep reads the file again and says so if it cannot */ }
+    t.reading = false;
   }
 
   /** Is there room on the card? When there is not, G.card says how much there is, for the panel to show. */
@@ -271,29 +284,34 @@ export function moEditGenerate(ctx) {
     if (!dir) { G.error = 'Generate needs an open workspace to keep its patches in.'; ctx.rerender(); return; }
     if (!checked) { G.card = null; if (!(await roomOnCard())) { G.card.more = !!more; G.error = ''; ctx.rerender(); return; } }
     if (!more) { dropTries(); G.seed = 42; }
+    const told = G.told;
     G.error = ''; G.running = { label: 'Cutting out the area', fraction: 0, runId: null };
     ctx.rerender(); sync();
     try {
       const { w, h } = size();
       const cut = moGenCutOut(box, w, h);
-      const sent = moGenModelSize(cut.w, cut.h);
-      const piece = moEl('canvas'); piece.width = sent.w; piece.height = sent.h;
-      const g = piece.getContext('2d'); g.imageSmoothingQuality = 'high';
-      g.drawImage(ctx.picture(), cut.x, cut.y, cut.w, cut.h, 0, 0, sent.w, sent.h);
+      const piece = moEl('canvas'); piece.width = cut.w; piece.height = cut.h;
+      piece.getContext('2d').drawImage(ctx.picture(), cut.x, cut.y, cut.w, cut.h, 0, 0, cut.w, cut.h);
       const job = `${dir}${sep()}generate-${Date.now().toString(36)}`;
       const p = (name) => `${job}${sep()}${name}`;
       await ctx.writeBytes(p('in.png'), await canvasPng(piece));
-      await ctx.writeBytes(p('mask.png'), await canvasPng(markCanvas(cut, sent)));
-      await ctx.writeBytes(p('job.json'), new TextEncoder().encode(JSON.stringify({ input: p('in.png'), mask: p('mask.png'), instruction: G.text.trim() || MO_GENERATE_STARTS[0][1], output: p('out'), steps: 40, seed: G.seed, tries: TRIES })));
+      await ctx.writeBytes(p('mask.png'), await canvasPng(markCanvas(cut)));
+      // More tries of the same mark and words go to the model with the instruction it was given the first time.
+      const again = more && told && told.by === 'engine' && told.from === G.text.trim() ? told.prompt : '';
+      const instruction = again || G.text.trim() || MO_GENERATE_STARTS[0][1];
+      await ctx.writeBytes(p('job.json'), new TextEncoder().encode(JSON.stringify({ input: p('in.png'), mask: p('mask.png'), instruction, output: p('out'), steps: 40, seed: G.seed, tries: TRIES, cut_out: false, write_prompt: !again })));
       const result = await moGenerateRun(p('job.json'), (step) => { if (!G.running) return; G.running.label = step.label; G.running.fraction = step.fraction; if (G.running.bar) { G.running.bar(step); } else if (ctx.on()) ctx.rerender(); }, { onRunId: (runId) => { if (G.running) G.running.runId = runId; } });
       for (const t of result.tries) {
-        const bytes = await ctx.readBytes(`${p('out')}${sep()}${t.file}`);
+        const file = `${p('out')}${sep()}${t.file}`;
+        const bytes = await ctx.readBytes(t.small ? `${p('out')}${sep()}${t.small}` : file);
         const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-        G.tries.push({ bytes, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })), box: moGenPatchBox(result.box, cut, sent), pw: bmp.width, ph: bmp.height, seed: t.seed, seconds: t.seconds });
+        G.tries.push({ file, full: null, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })), box: moGenPatchBox(t.box, cut), pw: bmp.width, ph: bmp.height, seed: t.seed, seconds: t.seconds });
         bmp.close();
       }
+      G.told = again ? told : { prompt: result.prompt || '', by: result.promptBy || 'instruction', note: result.note || '', from: G.text.trim() };
       G.seed += TRIES;
       G.pick = Math.max(0, G.tries.length - result.tries.length);
+      void readFull(G.tries[G.pick]);
     } catch (err) {
       if (!(err && err.stopped)) G.error = (err && err.message) || String(err);
     }
@@ -304,7 +322,7 @@ export function moEditGenerate(ctx) {
   async function keep() {
     const t = G.tries[G.pick];
     if (!t) return;
-    try { await ctx.keep(t.bytes, t.box, { instruction: G.text.trim(), seed: t.seed }); } catch (err) { G.error = `It could not be kept: ${(err && err.message) || err}`; ctx.rerender(); return; }
+    try { await ctx.keep(t.full ? t.full.bytes : await ctx.readBytes(t.file), t.box, { instruction: G.text.trim(), seed: t.seed }); } catch (err) { G.error = `It could not be kept: ${(err && err.message) || err}`; ctx.rerender(); return; }
     clearMark(); G.text = ''; G.way = 'brush';
     ctx.rerender(); sync();
   }
@@ -318,7 +336,7 @@ export function moEditGenerate(ctx) {
     else if (name === 'generateGo') void generate(false);
     else if (name === 'generateMore') void generate(true);
     else if (name === 'generateKeep') void keep();
-    else if (name === 'generatePick') { if (!G.tries[arg]) return; G.pick = arg; ctx.rerender(); sync(); }
+    else if (name === 'generatePick') { if (!G.tries[arg]) return; G.pick = arg; ctx.rerender(); sync(); void readFull(G.tries[arg]); }
     else if (name === 'generateStop') void moGenerateStop(G.running && G.running.runId);
     else if (name === 'generateSetUp') void setUp();
     else if (name === 'generateStopSetUp') void moGenerateStopSetUp();
@@ -464,6 +482,9 @@ export function moEditGenerate(ctx) {
       more.disabled = !!G.running;
       button(row, 'keep', 'Keep', 'check', 'generateKeep', [], { kind: 'primary' });
       three.appendChild(row);
+      // What the model was given: his words written out by the engine, which is shown where the mark is.
+      if (G.told && G.told.by === 'engine' && G.told.prompt) three.appendChild(moEl('p', 'mo-gen-dim', { textContent: `Written out for the model: ${G.told.prompt}` }));
+      else if (G.told && G.told.note) three.appendChild(moEl('p', 'mo-gen-dim', { textContent: 'Your words went to the model as you wrote them; the engine could not write them out.' }));
     }
     three.appendChild(moEl('p', 'mo-gen-dim', { textContent: 'The original is never changed. A kept result is a patch you can undo, hide or delete.' }));
     body.appendChild(three);
