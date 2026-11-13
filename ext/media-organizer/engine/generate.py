@@ -81,7 +81,8 @@ WRITER = (
     'You are told what the person wants done there. Write the instruction for the editing model: '
     'name what is inside the line and say where it is in the picture (left, right, top, bottom, middle, beside or behind what); '
     'say exactly what to do with it; and say how the result must fit what surrounds it (the light, the colours, the texture, the perspective). '
-    'Everything outside the line stays as it is. Never mention the line, the marking or magenta. '
+    'Everything outside the line stays as it is. The editing model is not shown the line, so say where by what is in '
+    'the picture and never by the line: no "outlined area", "marked area", "oval", "circle", "selection" or "magenta". '
     'Answer with the instruction alone, in one to three sentences, in English.'
 )
 
