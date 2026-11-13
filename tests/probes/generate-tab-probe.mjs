@@ -82,6 +82,16 @@ async function main() {
   }
   const engineDir = path.join(appRoot, 'ext', 'media-organizer', 'engine');
   await fs.writeFile(path.join(engineDir, 'generate.py'), STUB);
+  {
+    // The copy's declaration is the stand-in's: its model files are empty, so it asks for no disk; and where the
+    // probe runs on another system than Windows (a cloud checkout), it is declared for that one.
+    const enginePath = path.join(appRoot, 'ext', 'media-organizer', 'generate-engine.js');
+    const declared = readFileSync(enginePath, 'utf8');
+    let here = declared.replace('diskBytes: 45 * 1024 ** 3', 'diskBytes: 1024 ** 2');
+    if (process.platform !== 'win32') here = here.replace("locks: { win32: enginePath('requirements-generate-win.lock') }", `locks: { ${process.platform}: enginePath('requirements-generate-win.lock') }`).replace("platforms: ['win32-x64']", `platforms: ['${process.platform}-${process.arch}']`);
+    if (here === declared || (process.platform !== 'win32' && here.includes("platforms: ['win32-x64']"))) throw new Error('the engine\'s declaration is not where the probe expects it');
+    await fs.writeFile(enginePath, here);
+  }
 
   // A runtime with everything in place but its self-test: the machine's own Python, the model's files
   // as empty stand-ins. The self-test is a stand-in too: it fails for want of graphics memory while
@@ -236,6 +246,10 @@ async function main() {
     const jobDir = (await fs.readdir(path.join(workspace, '.parallx'), { recursive: true })).filter((f) => /generate-[a-z0-9]+[\\/]job\.json$/.test(f))[0];
     const job = jobDir ? JSON.parse(await fs.readFile(path.join(workspace, '.parallx', jobDir), 'utf8')) : null;
     check(!!job && job.instruction === 'Replace what is marked with a small red tractor' && job.tries === 3 && existsSync(job.input) && existsSync(job.mask), `the job names the piece, the mask and the instruction (${job ? job.instruction : 'no job'})`);
+    const pieceSize = job ? (() => { const head = readFileSync(job.input).subarray(16, 24); return { w: head.readUInt32BE(0), h: head.readUInt32BE(4) }; })() : { w: 0, h: 0 };
+    check(!!job && job.cut_out === false && job.write_prompt === true && pieceSize.w >= 512 && pieceSize.w <= 1800 && pieceSize.h >= 512 && pieceSize.h < 1200, `the piece is cut out once, at the photo's own pixels, and the engine is asked to write the instruction out (${pieceSize.w} x ${pieceSize.h})`);
+    const told = (await texts('.mo-gen-step .mo-gen-dim')).filter((t) => t.startsWith('Written out for the model:'));
+    check(told.length === 1 && /Remove the thing in the middle/.test(told[0]), `what the model was given is shown under the tries (${(told[0] || 'nothing').slice(0, 70)})`);
     const shownTry = await page.evaluate(() => { const i = document.querySelector('.mo-gen-try'); const r = i.getBoundingClientRect(); return { hidden: i.classList.contains('mo-hidden'), w: Math.round(r.width), h: Math.round(r.height) }; });
     check(!shownTry.hidden && shownTry.w > 100 && shownTry.h > 80, `the first try is shown on the photo (${shownTry.w} x ${shownTry.h})`);
     await page.click(px(`${ID}.try.2`));
