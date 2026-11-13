@@ -581,9 +581,47 @@ model diffusers tests it with: the photo is read at the answer's size,
 every tile outside the mark ends as the photo's own exactly, the reader
 writes, the patch lands where the mark is.
 
-Owed, on his card: the same edits again (the hay bale, the two skies)
-and his verdict; what the reader writes for his instructions, which no
-check here can judge; the time and peak memory at the new sizes.
+His words on that (2026-11-13): "I need evidence on real images." What
+could be had without his card, and what could not:
+
+- *The whole model cannot run in the cloud* (33 GB, a graphics card), and
+  the cloud session could not reach his computer (no folder shared with
+  it). So no edit by the model has been made with the rebuilt engine yet.
+- *The model's real picture coder can* (its VAE, 1.3 GB, the same file by
+  SHA-256). Real photographs were run through it on the processor, in
+  tiles, which his card does not need.
+  - A 24 megapixel photo of a cat, the Whole Picture, a change of light
+    (the coder's own second pass standing in for the model's answer, the
+    colour grade done by arithmetic). Against the photo graded at full
+    size: the old lay-back (the answer stretched) 29.7 dB; the patch
+    giving back only what the model's size loses 31.0; the patch as it is
+    now 36.2. At 100% the eye and the fur are close to the photo's own.
+  - That run is why the patch changed the same day: the coder alone
+    loses detail (a round trip is 28 to 32 dB on a detailed photo), so
+    the patch is now made against the photo as the coder returns it
+    (`seen_by` in the script), and gives back all the photo has that
+    that picture has not.
+  - How far a change inside the mark reaches outside it through the real
+    decoder (a 2,201 x 1,541 area of a lake, a boat marked, other water's
+    numbers put in its place): against the coder's picture, 22.8 dB in
+    the first tile out, 35.9 in the second, 47 and more beyond. The one
+    tile the model is given to join in is the tile that reach falls in.
+  - How alike "the same thing" and "something else" look to the patch's
+    measure, on those pictures: the same content scores above 0.8 on 99%
+    of a picture, an unrelated photo below 0.42 on 99%. The measure's two
+    thresholds (0.5, 0.8) are set from that.
+- *What only his card can show:* what the model paints inside the mark,
+  whether its join shows, and what the reader writes. For that there is
+  `tests/probes/generate-real-edits.py WORKSPACE`: it finds the jobs
+  Generate left in his workspace (each of his own tries: the piece, the
+  mark, his words, the patch that came back), runs the engine as it is
+  now on the same piece, mark, words and seed, and writes a sheet a
+  case, then beside now, whole and at 100% at the mark's edge
+  (`data/generate-test/evidence/index.html`). About a minute a try, the
+  model loaded once; the chat model set aside first.
+
+Owed, on his card: that run and his verdict; what the reader writes for
+his instructions; the time and peak memory at the new sizes.
 
 Left to build, in order:
 

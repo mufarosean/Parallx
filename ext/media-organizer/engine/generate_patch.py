@@ -23,7 +23,7 @@ MIN_SIDE = 1024          # a small cut-out is enlarged to this before the model 
 GRID = 32                # the model's sizes come in 32s
 TILE = 16                # one tile of the model's own picture, in pixels of `small`
 STRIP = 1024             # rows of the photo worked on at a time, so a 60 megapixel area stays within memory
-KEPT_FROM, KEPT_FULL = 0.35, 0.75   # how alike the answer and the photo must be, there, for none and for all of the detail to come back
+KEPT_FROM, KEPT_FULL = 0.5, 0.8   # how alike the answer and the photo must be, there, for none and for all of the detail to come back (measured on real photos through the real coder: the same content is above 0.8 on 99% of a picture, unrelated content below 0.42)
 
 
 def cut_out_box(mark_box, size):
