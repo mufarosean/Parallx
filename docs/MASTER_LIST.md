@@ -463,22 +463,30 @@ Left, in order:
 7. Reading a scan when it is opened, if it has not been read yet.
 
 *Generative edits.*
-1. The test: ten edits and three large fills on his photos, at 100%. He
-   decides whether the engine and the native-size patch are worth
-   building.
-2. The engine, set up from the editor like Enhance's, and the graphics
-   card shared: one button sets the chat model aside for an edit and
-   brings it back.
-3. A Generate tab beside Edit, Crop, Remove and Enhance: Fill, Expand,
-   Edit; one instruction box; the masks the editor already has; a strip
-   of tries to pick from; the finer controls (strength, edge, how much
-   of the surroundings the model sees) folded away. Mock-ups first.
-4. The native-size patch and the check, with the stages named while it
-   works (Writing Prompt, Generating, Rebuilding Detail, Matching
-   Grain, Checking).
-5. Recipes: the photo's generated edits as a list; Render Again, Apply
+
+Done 2026-11-12:
+
+- The engine is Qwen-Image-2.1, packaged as a tool runtime in the Media
+  Organizer (`generate-engine.js`, `engine/generate.py`): packages and
+  its 24 model files (33 GB) pinned by hash, a self-test. Nothing in the
+  editor calls it yet.
+- One test edit, on a 32 megapixel public photo: a hay bale removed with
+  no visible seam, 77 seconds at 40 steps, 19 GB at peak. Six more test
+  edits are owed; they need the card.
+- The layout of the tab: three mock-ups shown; his pick, in his words:
+  "I pick B". B is three numbered steps: mark the area (Brush Over It,
+  Select Subject, Beyond The Edges, Whole Picture), say what to do there
+  (with ready-made starts), pick a result. The states board (working,
+  card in use, not set up) goes with it.
+
+Left, in order:
+
+3. The Generate tab, built to B, with the app's tokens and kit.
+4. The card shared: one button sets the chat model aside for an edit.
+5. The native-size patch for large fills (Enhance on the patch, grain
+   matched) and the check with another try. Needs the card to prove.
+6. Recipes: the photo's generated edits as a list; Render Again, Apply
    To Other Photos.
-6. Expand: drag an edge or pick a ratio.
 
 *Voice (gated).*
 1. The listening test on his card.
