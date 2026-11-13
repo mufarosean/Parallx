@@ -43,6 +43,10 @@ VAE = 'ema_vae_fp16.safetensors'
 # group's edge (1.6 times the change inside a group); groups of 9 sharing 1 frame showed none, at the same speed.
 GROUP = 9            # frames the model enlarges together (its 4n+1 rule)
 CONTEXT = 1          # frames a group shares with the next, and a chunk reads again from the one before
+# A GIF, or any clip under this many frames a second, goes one frame at a time. Its frames are far apart in time,
+# and enlarged as a group the things that move between them came out torn (measured on a 10 frames a second GIF:
+# walkers' faces garbled in groups of 9, clean one at a time).
+SMOOTH_FPS = 20
 CHUNK = 80           # frames per chunk (ten groups): what a stopped run can lose at most. Chunks meet with a
                      # small jump in fine detail (measured: 1.6 times the usual change), so they are few.
 MAX_OUT_SIDE = 2560  # the longest side of a result; a larger one is refused in words
@@ -107,6 +111,11 @@ def probe(ffprobe, path):
             'gif': 'gif' in (info.get('format', {}).get('format_name') or '')}
 
 
+def grouping(info):
+    """(frames enlarged together, frames shared with the next group) for this clip."""
+    return (GROUP, CONTEXT) if info['fps'] >= SMOOTH_FPS and not info['gif'] else (1, 0)
+
+
 def plan(info, scale, start, seconds):
     """The part asked for and the size of the result, or a Problem saying why not."""
     length = info['seconds'] or 0.0
@@ -124,9 +133,9 @@ def plan(info, scale, start, seconds):
     return {'start': start, 'seconds': span, 'frames': frames, 'in': [w, h], 'out': [w * scale, h * scale]}
 
 
-def settings_key(path, scale, p):
+def settings_key(path, scale, p, group, context):
     st = os.stat(path)
-    text = json.dumps([os.path.abspath(path), st.st_size, int(st.st_mtime), scale, round(p['start'], 3), p['frames'], GROUP, CHUNK, CONTEXT, DIT])
+    text = json.dumps([os.path.abspath(path), st.st_size, int(st.st_mtime), scale, round(p['start'], 3), p['frames'], group, CHUNK, context, DIT])
     return hashlib.sha256(text.encode('utf-8')).hexdigest()[:24]
 
 
@@ -143,11 +152,11 @@ def frames_done(folder):
     return n
 
 
-def enlarge(files, clip, short_out, skip, into, on_line, tiled):
+def enlarge(files, clip, short_out, skip, into, on_line, tiled, group, context):
     """SeedVR2 on `clip` from frame `skip` on; its PNG frames land under `into`."""
     cmd = [sys.executable, CLI, clip, '--output', into, '--output_format', 'png', '--dit_model', DIT, '--model_dir', files,
-           '--resolution', str(short_out), '--batch_size', str(GROUP), '--uniform_batch_size', '--chunk_size', str(CHUNK),
-           '--temporal_overlap', str(CONTEXT), '--seed', '42', '--color_correction', 'lab', '--cache_dit', '--cache_vae']
+           '--resolution', str(short_out), '--batch_size', str(group), '--uniform_batch_size', '--chunk_size', str(CHUNK),
+           '--temporal_overlap', str(context), '--seed', '42', '--color_correction', 'lab', '--cache_dit', '--cache_vae']
     if tiled:
         # A large frame is turned to and from the model's own form in tiles, or that step alone fills a 32 GB card.
         cmd += ['--vae_encode_tiled', '--vae_decode_tiled']
@@ -228,7 +237,8 @@ def work(a):
 
     # The work folder is this clip's, at these settings; anything else in it is from another run.
     os.makedirs(a.work_dir, exist_ok=True)
-    key = settings_key(a.input, a.scale, p)
+    group, context = grouping(info)
+    key = settings_key(a.input, a.scale, p, group, context)
     state_path = os.path.join(a.work_dir, 'state.json')
     frames = os.path.join(a.work_dir, 'frames')
     clip = os.path.join(a.work_dir, 'in.mp4')
@@ -265,7 +275,7 @@ def work(a):
     total = p['frames']
     say(stage='enlarge', done=done, total=total, kept=done)
     if done < total:
-        skip = max(0, done - CONTEXT)
+        skip = max(0, done - context)
         made = os.path.join(a.work_dir, 'made')
         shutil.rmtree(made, ignore_errors=True)
         os.makedirs(made)
@@ -293,7 +303,7 @@ def work(a):
             say(stage='enlarge', done=int(max(done, min(total, at))), total=total, kept=done)
 
         short_out = min(p['out'])
-        code, said = enlarge(files, clip, short_out, skip, made, on_line, p['out'][0] * p['out'][1] > TILES_ABOVE)
+        code, said = enlarge(files, clip, short_out, skip, made, on_line, p['out'][0] * p['out'][1] > TILES_ABOVE, group, context)
         if code == 0:
             collect(made, frames, done, done - skip)
         else:

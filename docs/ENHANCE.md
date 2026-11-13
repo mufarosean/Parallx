@@ -137,7 +137,8 @@ How a clip goes through (`engine/enhance_video.py`):
    a steady frame rate, even sides, no sound, no loss. The engine then
    reads one kind of file whatever the original was.
 2. SeedVR2 enlarges it in chunks of 80 frames, in groups of 9 that share
-   one frame with the next, and each frame is written as a PNG in a work
+   one frame with the next (one frame at a time for a GIF or a clip
+   under 20 frames a second), and each frame is written as a PNG in a work
    folder in the workspace. A stopped run keeps its whole chunks; Enhance
    on the same unchanged clip carries on from there.
 3. ffmpeg joins the frames (H.264) with the original's sound, copied as
@@ -170,6 +171,11 @@ What the measurements decided:
   The price is memory: 21 to 24 GB, so the chat model has to be off the
   card. The dialog reads the card's free memory first and, short of it,
   offers Set The Chat Model Aside (the core's `releaseLocalModels`).
+- A GIF, and any clip under 20 frames a second, goes one frame at a
+  time. A 10 frames a second GIF of people walking came out of groups
+  of 9 with the walkers' faces torn; one frame at a time they are
+  clean. Its frames are too far apart in time to be enlarged together.
+  Whether one frame at a time shimmers at that rate was not measured.
 - Results above 1.3 megapixels a frame go through in tiles. Whole, a
   1440p frame fills the card at the last step.
 - Chunks meet with a small jump too (1.6 times the usual change, the
