@@ -117,6 +117,13 @@ def part_one():
     check('  and it is counted as nothing new', new < 0.1, f'{new:.2f} of the mark')
     check('the patch is cropped to the mark and its edge', box[0] >= 930 and box[1] >= 530 and box[2] <= 2070 and box[3] <= 1470, str(box))
 
+    # 1b. made against the photo as the coder returns it, the same answer gives back the photo itself
+    patch, box, new = gp.make_patch(cut, returned, returned, mark, mark_s)
+    p = np.asarray(patch)
+    inside = p[..., 3] == 255
+    exact = psnr(p[..., :3][inside], np.asarray(cut.crop(box))[inside])
+    check('made against what the coder returns, an unchanged answer is the photo itself', exact > 50, f'{exact:.1f} dB against the photo')
+
     # 2. the model darkened the light and changed nothing else: detail still comes back, darker
     darker = Image.fromarray((np.asarray(returned, dtype=np.float32) * 0.6).astype(np.uint8), 'RGB')
     patch, box, new = gp.make_patch(cut, small, darker, mark, mark_s)
@@ -262,6 +269,13 @@ def part_two():
     check('inside it the model painted', moved > 0.01, f'mean change {moved:.2f}')
     check('the tiles are in the order the picture is', last.shape[1] == free.size and free.shape == (mh // 16, mw // 16))
     check('the pipeline is left as it was found', pipe.prepare_latents is watching)
+    with hold:
+        pipe(output_type='latent', generator=torch.Generator('cpu').manual_seed(7), **call)
+    seen = generate.seen_by(pipe, hold, mw, mh)
+    with torch.no_grad():
+        px = pipe.image_processor.preprocess(small.convert('RGBA'), width=mw, height=mh).unsqueeze(2)
+        through = pipe.image_processor.postprocess(vae.decode(vae.encode(px).latent_dist.mode(), return_dict=False)[0][:, :, 0])[0].convert('RGB')
+    check('the photo as the coder returns it is the photo coded and decoded, nothing else', seen.size == (mw, mh) and psnr(seen, through) > 60, f'{psnr(seen, through):.1f} dB')
 
     # The whole picture: nothing to hold, no instruction to write out.
     said.clear()

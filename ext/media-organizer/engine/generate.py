@@ -25,9 +25,12 @@ whole and never taken back whole. What is done instead, in order:
    noisy as that step expects. The model fills the mark knowing exactly what
    borders it, and what it returns lines up with the photo by construction.
 4. Only the mark comes back: all of the answer inside it, fading out over the
-   tile beside it, with the photo's own fine detail put back wherever the
-   answer still shows the photo. What is written is a patch to lay over the
-   original, not a picture. The arithmetic is in generate_patch.py.
+   tile beside it. Wherever the answer still shows the photo, everything the
+   photo has that the model's own coder loses is put back: the photo is
+   turned into the model's numbers and straight back, and the difference
+   between that and the photo is what the answer is owed. What is written is
+   a patch to lay over the original, not a picture. The arithmetic is in
+   generate_patch.py.
 
 JOB.json:
     input         the picture (PNG, JPEG, TIFF)
@@ -46,8 +49,8 @@ Written to `output`: for each try, try-N.png (RGBA, at the picture's own
 pixels, cropped to where it is not empty) and try-N-small.png (the same,
 small, to look at); and result.json with the instruction the model was given
 and, for each try, its box in `input`, its seconds, how close the held part
-stayed to the photo (dB, higher is closer) and the share of the mark that
-shows something new.
+stayed to the photo as the coder returns it (dB, higher is closer) and the
+share of the mark that shows something new.
 
 Progress: one JSON object per line on stdout. A failure: one plain sentence on
 stderr after "GENERATE-ERROR: ", and exit code 2.
@@ -127,11 +130,14 @@ class Hold:
 
     The pipeline hands its steps the picture in progress but not the photo it
     read, so the photo and the starting noise are taken as it prepares them.
+    With every tile free (the whole picture) nothing is held; the photo is
+    still taken, for `seen`.
     """
 
     def __init__(self, pipe, free):
         import torch
         self.pipe = pipe
+        self.everything = bool(free.all())
         self.free = torch.from_numpy(np.ascontiguousarray(free).reshape(1, -1, 1))
         self.photo = self.noise = None
 
@@ -155,11 +161,34 @@ class Hold:
 
     def after(self, step, latents):
         import torch
+        if self.everything:
+            return latents
         if self.photo is None or self.photo.shape != latents.shape or self.free.shape[1] != latents.shape[1]:
             raise Problem('The model did not read the picture at the size it was working at, so the area outside the mark could not be held still. Nothing was changed.')
         sigma = self.pipe.scheduler.sigmas[step + 1].to(latents.device, latents.dtype)
         known = (1 - sigma) * self.photo.to(latents.dtype) + sigma * self.noise
         return torch.where(self.free.to(latents.device), latents, known)
+
+
+def seen_by(pipe, hold, width, height):
+    """
+    The photo as the model's coder returns it when nothing is changed: what it
+    read, turned straight back into a picture. The patch is made against this,
+    so what the coder loses is not taken for something the model changed, and
+    is given back with the rest of the photo's detail.
+    """
+    import torch
+    with torch.no_grad():
+        vae = pipe.vae
+        latents = pipe._unpack_latents(hold.photo, height, width, pipe.vae_scale_factor).to(vae.dtype)
+        shape = (1, vae.config.z_dim, 1, 1, 1)
+        mean = torch.tensor(vae.config.latents_mean).view(shape).to(latents.device, latents.dtype)
+        std = torch.tensor(vae.config.latents_std).view(shape).to(latents.device, latents.dtype)
+        picture = vae.decode(latents * std + mean, return_dict=False)[0][:, :, 0]
+        seen = pipe.image_processor.postprocess(picture, output_type='pil')[0].convert('RGB')
+    if hasattr(pipe, 'maybe_free_model_hooks'):
+        pipe.maybe_free_model_hooks()
+    return seen
 
 
 def write_prompt(pipe, small, mark_small, instruction):
@@ -204,6 +233,7 @@ def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write
     prompt, written, note = instruction, False, ''
     shrink, done, n = 1.0, [], 1
     width = height = 0
+    seen, seen_size = None, None
     while n <= tries:
         width, height = gp.model_size(*cut.size, shrink)
         small = cut.resize((width, height), Image.LANCZOS)
@@ -224,11 +254,10 @@ def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write
         if gp.reads_at(width, height, resolution) != (width, height):
             raise Problem('The size the model reads the picture at could not be matched to the size it works at.')
 
-        hold = None if everything else Hold(pipe, free)
+        hold = Hold(pipe, free)
 
         def on_step(_pipe, step, _timestep, kwargs, n=n, hold=hold):
-            if hold is not None:
-                kwargs['latents'] = hold.after(step, kwargs['latents'])
+            kwargs['latents'] = hold.after(step, kwargs['latents'])
             say(stage='generate', **{'try': n}, of=tries, step=step + 1, steps=steps)
             return kwargs
 
@@ -237,11 +266,16 @@ def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write
             call = dict(prompt=prompt, image=small, height=height, width=width, output_resolution=resolution,
                         num_inference_steps=steps, callback_on_step_end=on_step,
                         generator=torch.Generator(device).manual_seed(seed + n - 1))
-            if hold is None:
+            with hold:
                 answer = pipe(**call).images[0]
-            else:
-                with hold:
-                    answer = pipe(**call).images[0]
+            if seen_size != (width, height):
+                try:
+                    seen, seen_size = seen_by(pipe, hold, width, height), (width, height)
+                except Exception as e:  # the patch is then made against what the model was shown: softer, still right
+                    if out_of_memory(e):
+                        raise
+                    seen, seen_size = small, (width, height)
+                    note = note or (str(e).strip().splitlines() or [type(e).__name__])[-1][:300]
         except Exception as e:
             if not out_of_memory(e):
                 raise
@@ -257,7 +291,7 @@ def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write
             say(stage='smaller')
             continue
         say(stage='try', **{'try': n}, of=tries)
-        patch, box, new_share = gp.make_patch(cut, small, answer, mark, mark_small)
+        patch, box, new_share = gp.make_patch(cut, seen, answer, mark, mark_small)
         if patch is None:
             raise Problem('Nothing is marked to change.')
         name, small_name = f'try-{n}.png', f'try-{n}-small.png'
@@ -268,7 +302,7 @@ def edit(pipe, cut, mark, instruction, output, steps=40, seed=42, tries=1, write
         done.append({'file': name, 'small': small_name,
                      'box': [box[0] + origin[0], box[1] + origin[1], box[2] + origin[0], box[3] + origin[1]],
                      'seed': seed + n - 1, 'seconds': round(time.time() - started, 1),
-                     'held_db': round(gp.held_db(small, answer, free), 1), 'new_share': round(new_share, 3),
+                     'held_db': round(gp.held_db(seen, answer, free), 1), 'new_share': round(new_share, 3),
                      'model_size': [width, height]})
         say(stage='tried', **{'try': n}, of=tries, file=name)
         n += 1

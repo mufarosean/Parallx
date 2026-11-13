@@ -6,6 +6,7 @@ all of it can be checked on any machine: tests/probes/generate-engine-check.py.
 The words used:
     cut     the area of the photo being worked on, at the photo's own pixels
     small   that area at the size the model works at (what it is shown)
+    seen    `small` as the model's own coder returns it when nothing is changed
     answer  the model's picture, the size of `small`
     mark    white where the photo may change (a picture the size of `cut`)
     tile    one 16 x 16 square of `small`: the unit the model works in
@@ -22,6 +23,7 @@ MIN_SIDE = 1024          # a small cut-out is enlarged to this before the model 
 GRID = 32                # the model's sizes come in 32s
 TILE = 16                # one tile of the model's own picture, in pixels of `small`
 STRIP = 1024             # rows of the photo worked on at a time, so a 60 megapixel area stays within memory
+KEPT_FROM, KEPT_FULL = 0.35, 0.75   # how alike the answer and the photo must be, there, for none and for all of the detail to come back
 
 
 def cut_out_box(mark_box, size):
@@ -115,24 +117,24 @@ def _lum(rgb):
     return rgb[..., 0] * 0.299 + rgb[..., 1] * 0.587 + rgb[..., 2] * 0.114
 
 
-def kept_and_gain(small, answer):
+def kept_and_gain(seen, answer):
     """
     Where the answer still shows what the photo showed, and how much brighter
-    or darker it made it. Two maps the size of `small`:
+    or darker it made it. Two maps the size of the answer:
 
         kept  1 where the shapes are the photo's own (the same edges and
               texture, whatever was done to light or colour, and flat areas
               that stayed flat), 0 where something else is there now
         gain  the answer's brightness over the photo's, there
 
-    The photo's detail finer than the model can draw is given back where
-    `kept` says so, scaled by `gain`, and nowhere else.
+    `seen` is the photo as the model's own coder returns it when nothing is
+    changed, so what the two share is compared like with like.
     """
-    a, s = _lum(np.asarray(answer, dtype=np.float32)), _lum(np.asarray(small, dtype=np.float32))
+    a, s = _lum(np.asarray(answer, dtype=np.float32)), _lum(np.asarray(seen, dtype=np.float32))
     band_a, band_s = blur(a, 1) - blur(a, 4), blur(s, 1) - blur(s, 4)
     va, vs = blur(band_a * band_a, 6), blur(band_s * band_s, 6)
     same = blur(band_a * band_s, 6) / np.sqrt(va * vs + 1e-6)
-    kept = np.clip((same - 0.35) / 0.4, 0, 1)
+    kept = np.clip((same - KEPT_FROM) / (KEPT_FULL - KEPT_FROM), 0, 1)
     kept = kept * kept * (3 - 2 * kept)
     quiet = np.clip(1 - np.maximum(va, vs) / 4.0, 0, 1)   # both flat: nothing to compare, and only grain to give back
     kept = np.maximum(kept, quiet)
@@ -168,21 +170,25 @@ def _up3(planes, size, region):
     return np.dstack([_up(p, size, region) for p in planes])
 
 
-def make_patch(cut, small, answer, mark, mark_small):
+def make_patch(cut, seen, answer, mark, mark_small):
     """
     The patch for one answer, at the photo's own pixels.
 
+    `seen` is the area as the model's coder returns it untouched (the size of
+    the answer); the area as it was shown to the model will do, less well.
     Inside the mark the patch is the answer. Where the answer still shows the
     photo (a change of light or colour, or a part of the mark the model left
-    alone) the photo's own fine detail is put back on top of it, so a patch
-    laid over a 32 megapixel photo is not a soft square in a sharp picture.
-    Past the mark it fades out over what the model was holding still.
+    alone) the patch is the answer plus everything the photo has that `seen`
+    has not: the detail finer than the model draws, and the detail its coder
+    loses. So an answer that changed nothing gives back the photo itself, and
+    a patch laid over a 32 megapixel photo is not a soft square in a sharp
+    picture. Past the mark it fades out over what the model was holding still.
 
     Returns (RGBA picture cropped to where it is not empty, its box in `cut`,
     the share of the mark that shows something new).
     """
     W, H = cut.size
-    small, answer = small.convert('RGB'), answer.convert('RGB')
+    small, answer = seen.convert('RGB'), answer.convert('RGB')
     if answer.size != small.size:
         answer = answer.resize(small.size, Image.LANCZOS)
     kept, gain = kept_and_gain(small, answer)
