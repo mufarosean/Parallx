@@ -86,6 +86,21 @@ WRITER = (
 )
 
 
+JUDGE = (
+    'You check the work of a model that edits photographs. Picture 1 is part of a photo before the edit; {where} '
+    'Picture 2 is the same part of the photo after the edit. You are told what the person asked for. '
+    'Look at Picture 2 as a whole, compare it with Picture 1, and answer three questions.\n'
+    'DONE: was what the person asked for carried out, there?\n'
+    'FITS: does what changed fit the rest of the picture: the same light, colours, sharpness and perspective, '
+    'no visible outline or patch where the area was, nothing doubled or cut off?\n'
+    'CLEAN: is what changed free of things that should not be there: smears, garbled shapes, pieces left over of what was to go?\n'
+    'Answer in exactly this form and nothing else:\n'
+    'DONE: yes or no\nFITS: yes or no\nCLEAN: yes or no\nWHY: one short sentence naming the worst problem, or "nothing" if there is none.'
+)
+JUDGE_MARKED = 'a magenta line with a white edge is drawn round the area that was allowed to change (the line is not in the photo).'
+JUDGE_WHOLE = 'all of it was allowed to change.'
+
+
 def say(**kw):
     print(json.dumps(kw), flush=True)
 
@@ -193,12 +208,20 @@ def seen_by(pipe, hold, width, height):
 
 def write_prompt(pipe, small, mark_small, instruction):
     """The instruction written out for the model by its own reader, which is shown where the mark is."""
+    text = ask_reader(pipe, WRITER, [gp.outlined(small, mark_small)], 'What the person wants done there: ' + instruction)
+    text = ' '.join(text.split()).strip('"\u201c\u201d ')
+    if len(text) < 12:
+        raise ValueError('The reader wrote nothing.')
+    return text
+
+
+def ask_reader(pipe, system, pictures, text):
+    """One question to the model's reader of pictures and words; its answer as plain text."""
     import torch
     reader, processor = pipe.text_encoder, pipe.processor
     messages = [
-        {'role': 'system', 'content': [{'type': 'text', 'text': WRITER}]},
-        {'role': 'user', 'content': [{'type': 'image', 'image': gp.outlined(small, mark_small)},
-                                     {'type': 'text', 'text': 'What the person wants done there: ' + instruction}]},
+        {'role': 'system', 'content': [{'type': 'text', 'text': system}]},
+        {'role': 'user', 'content': [{'type': 'image', 'image': p} for p in pictures] + [{'type': 'text', 'text': text}]},
     ]
     inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors='pt')
     hook = getattr(reader, '_hf_hook', None)
@@ -207,11 +230,29 @@ def write_prompt(pipe, small, mark_small, instruction):
     inputs = inputs.to(reader.device)
     with torch.no_grad():
         out = reader.generate(**inputs, max_new_tokens=WRITER_GUARD, do_sample=False)
-    text = processor.batch_decode(out[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
-    text = ' '.join(text.split()).strip('"\u201c\u201d ')
-    if len(text) < 12:
-        raise ValueError('The reader wrote nothing.')
-    return text
+    return processor.batch_decode(out[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
+
+
+def judge(pipe, before, after, mark_small, instruction):
+    """
+    The reader looks at the area before (the mark's edge drawn on it) and after,
+    as a whole, and says whether the edit was done, fits and is clean.
+    Returns { done, fits, clean (True, False, or None when it did not say), why, good }.
+    """
+    import re
+    whole = bool(np.asarray(mark_small).all())
+    first = before if whole else gp.outlined(before, mark_small)
+    k = min(1.0, 1024 / max(after.size))
+    second = after.convert('RGB').resize((max(1, round(after.size[0] * k)), max(1, round(after.size[1] * k))), Image.LANCZOS)
+    text = ask_reader(pipe, JUDGE.format(where=JUDGE_WHOLE if whole else JUDGE_MARKED), [first, second], 'What the person asked for: ' + instruction.strip())
+    said = {}
+    for key in ('done', 'fits', 'clean'):
+        m = re.search(key + r'\s*:\s*\**\s*(yes|no)', text, re.I)
+        said[key] = None if not m else m.group(1).lower() == 'yes'
+    m = re.search(r'why\s*:\s*(.+)', text, re.I)
+    said['why'] = ' '.join(m.group(1).split())[:300] if m else ' '.join(text.split())[:300]
+    said['good'] = all(said[key] is True for key in ('done', 'fits', 'clean'))
+    return said
 
 
 def out_of_memory(err):
