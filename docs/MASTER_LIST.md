@@ -476,6 +476,34 @@ Left, in order:
    for one file) in place of the command's notifications. Mock-ups
    first.
 
+Mock-ups drawn 2026-11-13 for the four parts that have a surface, in the
+app's own colours, dark and light:
+https://claude.ai/artifact/V3TycU5FwkyxBXoLaTjPyM. His pick is owed on
+each; nothing is built on them. The options, with Claude's pick marked
+on the page (a proposal, not an agreement):
+
+- Item 3, how a cited table or figure lights up: 3A a wash over the
+  block, 3B a frame with its name (Claude's pick; a line of text keeps
+  today's wash), 3C a spotlight.
+- Item 4, where a citation shows the piece of the page it came from: 4A
+  on the citation itself, on hover, focus or press (Claude's pick), 4B a
+  row of sources under every cited answer.
+- Item 5, Open As Page: 5A the scan and the page side by side, linked
+  (Claude's pick), 5B the page alone with the scan on demand, 5C a walk
+  through the unsure parts first. The products that do this (ABBYY
+  FineReader's verification, Mathpix, Acrobat's text correction) were
+  not read before drawing; that reading is owed before 5 is built.
+- Item 6, where the reader's state lives: 6A in Settings, 6B in the PDF
+  view's panel, 6C the reader in Settings and the document's own reading
+  in the PDF view's panel (Claude's pick).
+
+Item 4's other half, the Read tool handing the page's picture to a model
+that can see, is not built yet, by Claude's call: its whole worth is
+what his chat model makes of a page picture, and it changes what every
+read of a PDF sends to that model. It starts with one run on his model
+(a scanned page with a table and a formula, read as text and read with
+its picture), which needs his word that the card is free.
+
 Shipped 2026-11-13, on his go ("read anything"), from that list:
 
 - Item 7, reading a scan when it is opened. A scanned PDF the reader had
