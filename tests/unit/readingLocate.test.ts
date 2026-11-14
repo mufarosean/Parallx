@@ -2,7 +2,7 @@
 // reader's reading: in a table, on a figure's caption, or on the lines of a
 // page read from its pixels.
 import { describe, expect, it } from 'vitest';
-import { locateCitedBlock, locateQuoteLines } from '../../src/services/readingLocate';
+import { listReadingFindings, locateCitedBlock, locateQuoteLines } from '../../src/services/readingLocate';
 import type { IDocumentReading, IReadingPage } from '../../src/services/documentReading';
 
 const cells = (rows: string[][]) => rows.flatMap((row, r) => row.map((text, c) => ({ r, c, rs: 1, cs: 1, text })));
@@ -131,5 +131,39 @@ describe('a cited table\'s heading rows', () => {
     expect(locateCitedBlock(boxed([...ROWS, ['132', '1.03', '1.01']], () => true), 1, '120 1.05 1.02')?.headBottom).toBe(260);
     expect(locateCitedBlock(READING, 1, '120 1.05 1.02')).not.toHaveProperty('headBottom');
     expect(locateCitedBlock(READING, 1, '120 1.05 1.02')).not.toHaveProperty('rowEdges');
+  });
+});
+
+describe('listReadingFindings', () => {
+  it('lists the tables and the captioned figures, in page order and down each page, each with the words that find it', () => {
+    expect(listReadingFindings(READING)).toEqual([
+      { kind: 'table', page: 1, label: 'Table 3: Selected development factors', quote: 'Table 3: Selected development factors' },
+      { kind: 'figure', page: 1, label: 'Figure 2. Paid development by age', quote: 'Figure 2. Paid development by age' },
+      { kind: 'table', page: 2, label: 'Table', quote: 'Year Reserve' }, // no caption: its first row finds it
+    ]);
+  });
+
+  it('every listed thing is found again on its page by its words', () => {
+    for (const f of listReadingFindings(READING)) expect(locateCitedBlock(READING, f.page, f.quote)?.kind).toBe(f.kind);
+  });
+
+  it('leaves out a picture with no caption: a stamp or a logo is not a figure', () => {
+    const stamped: IDocumentReading = { ...READING, blocks: [...READING.blocks, { label: 'picture', page: 2, box: [400, 700, 520, 780] }] };
+    expect(listReadingFindings(stamped).filter((f) => f.kind === 'figure')).toHaveLength(1);
+  });
+
+  it('gives a caption to the one block nearest it', () => {
+    // A caption 4 under a table and 60 over a picture: it is the table's.
+    const reading: IDocumentReading = {
+      version: 1, ocr: true, pages: [{ page: 1, width: 600, height: 800, lines: [] }],
+      blocks: [{ label: 'caption', page: 1, box: [60, 324, 400, 340], text: 'Table 4: Tail factors' }, { label: 'picture', page: 1, box: [60, 400, 540, 600] }],
+      tables: [{ page: 1, box: [60, 200, 540, 320], rows: 1, cols: 2, cells: cells([['Age', 'Tail']]) }],
+    };
+    expect(listReadingFindings(reading)).toEqual([{ kind: 'table', page: 1, label: 'Table 4: Tail factors', quote: 'Table 4: Tail factors' }]);
+  });
+
+  it('is empty for no reading, and for a reading with nothing found', () => {
+    expect(listReadingFindings(null)).toEqual([]);
+    expect(listReadingFindings({ version: 1, ocr: false, pages: [{ page: 1, width: 600, height: 800, lines: [] }], blocks: [], tables: [] })).toEqual([]);
   });
 });

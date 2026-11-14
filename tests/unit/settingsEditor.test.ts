@@ -486,3 +486,38 @@ describe('SettingsEditor — a field saving on blur', () => {
     expect((document.activeElement as HTMLElement).getAttribute('aria-label') ?? document.activeElement!.textContent).toBe(name);
   });
 });
+
+describe('SettingsEditor — closing Settings tears the open panel down', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  // A panel's listeners lived on after Settings closed, until the next time it
+  // opened: a panel could not tell whether it was on screen.
+  it('disposes the panel when Settings closes, and draws it again when it is shown again', async () => {
+    const registry = new SettingsRegistryService(createMockStorage(), createMockStorage());
+    await registry.initialize();
+    registry.register({ key: 'workspace.thing', type: 'boolean', default: false, scope: 'workspace', description: 'A workspace thing', category: 'General' });
+    let alive = 0;
+    const reg = settingsPanelRegistry.register({
+      id: 'document-reader', label: 'Document Reader', order: 72,
+      render(host: HTMLElement) { alive++; const m = document.createElement('div'); m.className = 'reader-body'; host.appendChild(m); return { dispose: () => { alive--; m.remove(); } }; },
+    });
+    const editor = new SettingsEditor(document.body, registry, undefined, 'document-reader');
+    try {
+      editor.show();
+      expect(alive).toBe(1);
+      expect(document.body.querySelector('.reader-body')).not.toBeNull();
+      // The reader's panel sits with the general ones, not among the extensions.
+      const nav = Array.from(document.body.querySelectorAll('.settings-editor__nav-item')).map((b) => b.textContent);
+      expect(nav.slice(0, 2)).toEqual(['General', 'Document Reader']);
+      editor.hide();
+      expect(alive).toBe(0);
+      editor.show();
+      expect(alive).toBe(1);
+      expect(document.body.querySelector('.reader-body')).not.toBeNull();
+    } finally {
+      reg.dispose();
+      editor.dispose();
+    }
+    expect(alive).toBe(0);
+  });
+});

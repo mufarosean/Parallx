@@ -34,6 +34,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { PROJECT_ROOT, launchApp, cmd, cmdNoWait, setToolEnabled, openFile, tinyPdf, sceneOf, flatten } from './scene.mjs';
 import { seedBeforeLaunch, seedAfterLaunch, miniAppSource } from './audit-seed.mjs';
+import { createRequire } from 'node:module';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-keyboard-audit'));
 const only = process.argv.slice(3);
@@ -41,10 +42,10 @@ const only = process.argv.slice(3);
 const SCREENS = [
   ['boot'], ['start'], ['welcome.openWelcome'], ['home.open'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
   ['dashboard.open'], ['agents.show'], ['agents.showRoutines'], ['tools.showInstalled'], ['chat.show'], ['workflows.new'],
-  ['settings.open'], ['settings.open', 'ai'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
+  ['settings.open'], ['settings.open', 'ai'], ['settings.open', 'document-reader'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],
   ['workbench.view.show', 'view.indexingLog'], ['workbench.view.show', 'view.diagnostics'],
-  ['pdf'], ['worksheet.openScratch'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
+  ['pdf'], ['pdf.reading'], ['worksheet.openScratch'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
@@ -221,6 +222,12 @@ await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.strin
 try { await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction'); } catch { /* ok */ }
 await fs.writeFile(path.join(ws, 'alpha.md'), '# Alpha\n\nA note.\n');
 await fs.writeFile(path.join(ws, 'reading.pdf'), tinyPdf());
+// What the document reader would have kept for it, so the PDF view's Reading side has facts and a found table to show.
+await createRequire(import.meta.url)('../../electron/doclingReadings.cjs').keep(appRoot, path.join(ws, 'reading.pdf'), { reading: {
+  version: 1, ocr: false, pages: [{ page: 1, width: 612, height: 792, lines: [] }],
+  blocks: [{ label: 'caption', page: 1, box: [72, 60, 300, 76], text: 'Table 1: A greeting' }],
+  tables: [{ page: 1, box: [72, 80, 300, 140], rows: 1, cols: 1, cells: [{ r: 0, c: 0, rs: 1, cs: 1, text: 'Hello from Parallx' }] }],
+} });
 const seedPre = await seedBeforeLaunch(ws);
 const { app, page } = await launchApp(appRoot);
 if (!process.env.KB_SKIP_THIRD) await page.evaluate(() => { window.__kbAuditThird = true; }); // the spreadsheet engine is held to the same checks (KB_SKIP_THIRD=1 to set it aside)
@@ -499,7 +506,7 @@ async function auditScreen(label) {
 // file and message dialogs are stubbed to cancel at once (nothing could
 // close one in a hidden window).
 const popupTried = new Set();
-const DESTRUCTIVE = /print|delete|remove|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
+const DESTRUCTIVE = /print|delete|remove|set up|setting up|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
 const POPUP_ROOTS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-px-surface="contextMenu"], [data-px-surface="quickAccess"], .ui-dropdown__list';
 async function stubNativeDialogs() {
   await app.evaluate(({ shell }) => { shell.openExternal = async () => {}; shell.openPath = async () => ''; shell.showItemInFolder = () => {}; }).catch(() => {}); // a hidden run opens nothing on the desktop
@@ -667,6 +674,16 @@ async function open(first, args) {
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   if (first === 'pdf') return openFile(page, 'reading.pdf');
+  // The PDF view's panel on its Reading side: how the document was read, and what was found.
+  if (first === 'pdf.reading') {
+    await openFile(page, 'reading.pdf');
+    await page.waitForTimeout(800);
+    const pane = page.locator('.pdf-editor-pane:visible').first();
+    if (!(await pane.locator('.pdf-side-panel:visible').count())) await pane.locator('button[aria-label="Outline, Pages And Reading"]').click().catch(() => {});
+    await pane.locator('.pdf-side-panel-header .ui-segmented-control__segment', { hasText: 'Reading' }).click().catch(() => {});
+    await pane.locator('.pdf-reading table').waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    return;
+  }
   if (first === 'boot') return;
   // Start: the empty editor, every tab closed.
   if (first === 'start') { for (let i = 0; i < 12 && await page.evaluate(() => !!document.querySelector('.editor-watermark.hidden')); i++) { await cmd(page, 'workbench.action.closeActiveEditor'); await page.waitForTimeout(200); } return; }

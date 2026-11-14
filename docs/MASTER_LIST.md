@@ -561,9 +561,46 @@ the place), and only a finger's card has a button; the card is 540 by 420
 pixels at most; an answer written before this has no words on its links,
 so no card.
 
-Left of Read Anything now: 6C (the reader's state), then 5A (Open As
-Page, after the three products are read), and item 4's other half, which
-waits on his word that the card is free.
+Shipped 2026-11-14, his pick 6C, the reader's state in two places:
+
+- In Settings, a Document Reader panel: whether the reader is set up,
+  what it takes on disk (7.5 GB on his machine), that it runs on the
+  processor, and the buttons for the state it is in (Set Up, Carry On
+  Setting Up, Stop, Start, Remove…). A set-up shows its step, a bar and
+  the bytes there, and carries on with Settings closed.
+- In the PDF view, a third side of the panel, Reading: when this
+  document was read, how (from its own text or from its pixels), its
+  pages and tables, and Read Again. A document not read yet offers Read
+  Now.
+
+Checked hidden (`tests/probes/read-anything-probe.mjs` with the real
+reader, `tests/probes/document-reader-probe.mjs` with a stand-in for the
+engine so nothing is downloaded: 0 problems each). Remove was run only
+against the stand-in; on his real reader it was opened and cancelled.
+
+Decided by Claude for 6C, for him to overrule:
+
+- Set Up Document Reader… now opens Settings on that panel and starts
+  nothing itself. The notifications it used to speak through are gone,
+  but for one: how a set-up ended, when Settings was closed.
+- Beyond the mock-up: the Reading side lists the tables and captioned
+  figures the reader found, each a link that goes to its page and frames
+  it. A picture with no caption is left out.
+- Read Again reads the document the way it was read before. There is no
+  choice to read a PDF from its pixels when its own text is bad: every
+  other part of the app prefers a PDF's own text, so that choice would
+  have to be honoured by the chat's reading, the view and the index
+  together. Not built; his call whether it is wanted.
+- Read Again replaces the kept reading. The search index keeps its own
+  copy of the text and follows its own rules.
+- The panel button in the PDF toolbar is named Outline, Pages And
+  Reading. Document Reader sits with General in Settings' list.
+- Fixed on the way: a Settings panel was torn down only the next time
+  Settings opened, not when it closed.
+
+Left of Read Anything now: 5A (Open As Page, after the three products
+are read), and item 4's other half, which waits on his word that the
+card is free.
 
 *Generative edits.*
 

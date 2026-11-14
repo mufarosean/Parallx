@@ -21,7 +21,8 @@
 // The display and viewer layers are their own bundle (src/vendor/pdfjs.ts),
 // loaded by renderInput, so a boot with no PDF open never parses them.
 import type { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/web/pdf_viewer.mjs';
-import { openScanReading, type PDFDocumentProxy } from './pdfScanReading.js';
+import { openScanReading, looksLikeScan, showReadingOnOpenDocument, type IScanReadingHost, type PDFDocumentProxy } from './pdfScanReading.js';
+import { PdfReadingPanel } from './pdfReadingPanel.js';
 import { PdfLinkReveal } from './pdfLinkReveal.js';
 import { loadPdfjs } from '../../../vendor/lazy.js';
 
@@ -50,7 +51,7 @@ import { showOverflowMenu, showZoomPresets } from './pdfToolbarMenus.js';
 import { applyViewState, parseViewState, readViewState, type PdfViewState } from './pdfViewState.js';
 import { installPdfDebugHook, removePdfDebugHook } from './pdfDebugHook.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
-import { declareControl } from '../../../ui/kit.js';
+import { createBlock, declareControl } from '../../../ui/kit.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
 import { pageSource } from './pdfPassagePrompt.js';
@@ -94,7 +95,8 @@ export class PdfEditorPane extends EditorPane {
   // Side panel (Outline | Pages). _outlineVisible / _thumbnailVisible say
   // which side is showing while the panel is open.
   private _panelOpen = false;
-  private _panelSide: 'outline' | 'pages' = 'outline';
+  private _panelSide: 'outline' | 'pages' | 'reading' = 'outline';
+  private _readingView!: HTMLElement; private _reading: PdfReadingPanel | null = null; // the Reading side (pdfReadingPanel.ts)
   private _panelSwitch!: SegmentedControl;
   private _outlineView!: HTMLElement;
   private _outlineEmpty!: HTMLElement;
@@ -256,12 +258,12 @@ export class PdfEditorPane extends EditorPane {
     panelHeader.classList.add('pdf-side-panel-header');
     this._outlineSidebar.appendChild(panelHeader);
     this._panelSwitch = this._register(new SegmentedControl(panelHeader, {
-      segments: [{ value: 'outline', label: 'Outline' }, { value: 'pages', label: 'Pages' }],
+      segments: [{ value: 'outline', label: 'Outline' }, { value: 'pages', label: 'Pages' }, { value: 'reading', label: 'Reading' }],
       selected: this._panelSide, ariaLabel: 'Show',
     }));
     this._register(declareControl(this._panelSwitch.element, { id: 'pdf.panelSide', label: 'Show', kind: 'segmented', state: () => ({ kind: 'value', value: this._panelSwitch.value }) }));
     this._register(this._panelSwitch.onDidChange((v) => {
-      this._setPanelSide(v === 'pages' ? 'pages' : 'outline', true);
+      this._setPanelSide(v === 'pages' || v === 'reading' ? v : 'outline', true);
     }));
 
     this._outlineView = $('div');
@@ -300,6 +302,13 @@ export class PdfEditorPane extends EditorPane {
       pageLabel: (pageNum) => this._pageLabels?.[pageNum - 1],
       goToPage: (pageNum) => { if (this._pdfViewer) this._pdfViewer.currentPageNumber = pageNum; },
     });
+
+    // Reading: how the document reader read this document, and what it found on it.
+    this._readingView = createBlock(this._outlineSidebar, 'div', { className: 'pdf-side-panel-view' });
+    this._reading = this._register(new PdfReadingPanel(this._readingView, {
+      fsPath: () => this._currentInput?.uri.fsPath, isScan: async () => !!this._pdfDoc && looksLikeScan(this._pdfDoc),
+      readingArrived: async (reading) => { if (this._pdfDoc) await showReadingOnOpenDocument(this._pdfDoc, reading, this._scanHost()); },
+    }));
 
     // Resize edge for the panel (hidden with it)
     this._outlineSash = $('div');
@@ -437,6 +446,17 @@ export class PdfEditorPane extends EditorPane {
     });
   }
 
+  /** What a reading that arrives needs of the view: where its status line goes, and the pages to give their text. */
+  private _scanHost(): IScanReadingHost {
+    return { element: this._viewerContainer?.parentElement, document: () => this._pdfDoc, viewer: () => this._pdfViewer, find: () => this._findController };
+  }
+
+  /** Have the document reader read the open document now, on the Reading side (the command pdf.readAgain). */
+  readWithReader(): Promise<void> {
+    this._setPanelSide('reading');
+    return this._reading?.readAgain() ?? Promise.resolve();
+  }
+
   // ── Outline sidebar ──────────────────────────────────────────────────
 
   /** Open or close the side panel, on whichever side it last showed. */
@@ -446,7 +466,7 @@ export class PdfEditorPane extends EditorPane {
   }
 
   /** Show one side of the panel (opening it); `remember` keeps the choice. */
-  private _setPanelSide(side: 'outline' | 'pages', remember = false): void {
+  private _setPanelSide(side: 'outline' | 'pages' | 'reading', remember = false): void {
     this._panelSide = side;
     this._panelSwitch.value = side;
     if (remember) this._globalStorage?.set('parallx.pdfPanelSide', side); // fire-and-forget
@@ -459,6 +479,7 @@ export class PdfEditorPane extends EditorPane {
     this._outlineVisible = open && this._panelSide === 'outline';
     this._thumbnailVisible = open && this._panelSide === 'pages';
     this._toolbarView?.setPanelOpen(open);
+    this._reading?.setShowing(open && this._panelSide === 'reading');
     if (!open) {
       hide(this._outlineSidebar);
       hide(this._outlineSash);
@@ -468,6 +489,7 @@ export class PdfEditorPane extends EditorPane {
     show(this._outlineSash);
     this._outlineView.style.display = this._outlineVisible ? '' : 'none';
     this._thumbnailSidebar.style.display = this._thumbnailVisible ? '' : 'none';
+    this._readingView.style.display = this._panelSide === 'reading' ? '' : 'none';
     const hasOutline = !!this._outline?.hasItems;
     this._outlineTree.style.display = hasOutline ? '' : 'none';
     this._outlineEmpty.style.display = hasOutline ? 'none' : '';
@@ -649,7 +671,7 @@ export class PdfEditorPane extends EditorPane {
         enableHWA: true,
       }).promise;
       // A scan's pages report the reader's lines as their text; a scan not read yet is read now.
-      this._scanReading = await openScanReading(this._pdfDoc, this._currentInput?.uri.fsPath, { element: this._viewerContainer?.parentElement, document: () => this._pdfDoc, viewer: () => this._pdfViewer, find: () => this._findController });
+      this._scanReading = await openScanReading(this._pdfDoc, this._currentInput?.uri.fsPath, this._scanHost());
       // Storage reads and the pagesinit listener BOTH come before
       // setDocument(): pdf.js dispatches 'pagesinit' on a synchronous
       // EventBus with no replay, so a listener registered after setDocument
@@ -735,8 +757,9 @@ export class PdfEditorPane extends EditorPane {
       // with no outline opens on its pages.
       const storedSide = await this._globalStorage?.get('parallx.pdfPanelSide');
       this._outline?.render(outline);
-      this._panelSide = outline?.length && storedSide !== 'pages' ? 'outline' : 'pages';
+      this._panelSide = storedSide === 'reading' ? 'reading' : outline?.length && storedSide !== 'pages' ? 'outline' : 'pages';
       this._panelSwitch.value = this._panelSide;
+      this._reading?.documentChanged();
       if (this._panelOpen) this._applyPanel();
 
       // ── Build thumbnails ───────────────────────────────────────────

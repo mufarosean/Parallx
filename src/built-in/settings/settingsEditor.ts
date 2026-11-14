@@ -74,7 +74,7 @@ interface INavGroup {
 // case here to show up somewhere sensible.
 
 const NAV_GROUP_DEFS: readonly { id: string; label: string; members: readonly string[] }[] = [
-  { id: 'general',    label: 'General',            members: ['schema:General', 'schema:Workspace', 'schema:Security', 'panel:app-permissions'] },
+  { id: 'general',    label: 'General',            members: ['schema:General', 'schema:Workspace', 'schema:Security', 'panel:app-permissions', 'panel:document-reader'] },
   { id: 'appearance', label: 'Appearance',         members: ['panel:appearance'] },
   { id: 'canvas',     label: 'Canvas',             members: ['schema:Canvas'] },
   {
@@ -172,6 +172,7 @@ export class SettingsEditor extends Disposable {
   private _pendingDeepLink: string | null = null;
   /** Cleanup for the mounted custom panel, if any. */
   private _activePanelDisposable: IDisposable | null = null;
+  private _contentStale = false; // closed with a panel on show: the panel was torn down, so a later show draws it again
 
   constructor(
     parent: HTMLElement,
@@ -194,6 +195,8 @@ export class SettingsEditor extends Disposable {
       contentClass: 'settings-editor-overlay', label: 'Settings',
       centered: true,
     }));
+    // A panel is torn down when Settings closes, not only when another is chosen: what it listens to goes with it.
+    this._register(this._overlay.onDidClose(() => { this._contentStale = this._activePanelDisposable !== null; this._disposeActivePanel(); }));
 
     this._root = $('div.settings-editor');
     this._register(createSurface(this._root, { id: 'settings', owner: 'settings', label: 'Settings' }));
@@ -286,6 +289,7 @@ export class SettingsEditor extends Disposable {
   }
 
   show(): void {
+    if (this._contentStale) { this._contentStale = false; this._renderContent(); }
     this._overlay.show();
   }
 

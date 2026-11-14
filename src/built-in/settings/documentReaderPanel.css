@@ -1,0 +1,43 @@
+/* documentReaderPanel.css — the document reader in Settings
+   (documentReaderPanel.ts). Tokens only. */
+.reader-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-3);
+  max-width: 72ch;
+}
+
+/* Name and value, side by side: the names in one quiet column. */
+.reader-settings__facts { border-collapse: collapse; font-size: var(--px-text-base); }
+.reader-settings__facts th,
+.reader-settings__facts td { padding: 0 0 var(--px-space-2); text-align: left; vertical-align: top; font-weight: 400; }
+.reader-settings__facts th { padding-right: var(--px-space-4); color: var(--px-text-muted); white-space: nowrap; }
+.reader-settings__facts td { color: var(--px-text); }
+
+.reader-settings__note {
+  margin: 0;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
+  line-height: 1.5;
+}
+.reader-settings__note:empty { display: none; }
+.reader-settings__note--quiet { color: var(--px-text-muted); }
+.reader-settings__note--error { color: var(--px-danger); }
+
+.reader-settings__progress {
+  height: 6px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-inset);
+  overflow: hidden;
+}
+.reader-settings__progress-fill {
+  height: 100%;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+  transition: width var(--px-dur-base) var(--px-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-settings__progress-fill { transition: none; }
+}
+
+.reader-settings__actions { display: flex; flex-wrap: wrap; gap: var(--px-space-2); }

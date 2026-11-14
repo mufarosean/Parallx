@@ -63,6 +63,8 @@ export interface IDocumentReading {
   readonly pages: readonly IReadingPage[];
   readonly blocks: readonly IReadingBlock[];
   readonly tables: readonly IReadingTable[];
+  /** When the reader read it (milliseconds); set by the store that keeps readings. */
+  readonly readAt?: number;
 }
 
 /** Letters and digits in a string: what tells a page with text from a blank one. */
@@ -156,7 +158,7 @@ export function parseReading(raw: unknown): IDocumentReading | null {
     }
     tables.push({ page: Number(m.page), box: m.box, rows: Number(m.rows) || 0, cols: Number(m.cols) || 0, cells });
   }
-  return { version: Number(r.version) || 1, ocr: r.ocr === true, pages, blocks, tables };
+  return { version: Number(r.version) || 1, ocr: r.ocr === true, pages, blocks, tables, ...(Number(r.readAt) > 0 ? { readAt: Number(r.readAt) } : {}) };
 }
 
 /** The reading kept for a file, or null: none yet, the file changed since, or no desktop bridge. */

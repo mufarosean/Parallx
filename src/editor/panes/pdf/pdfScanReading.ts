@@ -22,6 +22,7 @@ import { createBlock } from '../../../ui/kit.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type { PDFFindController, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { fetchDocumentReading, isBlankPageText, type IDocumentReading } from '../../../services/documentReading.js';
+import { documentReaderEngine } from '../../../services/documentReaderEngine.js';
 import { applyReadingTextLayer, type PDFDocumentProxy } from './pdfReadingTextLayer.js';
 import './pdfScanReading.css';
 
@@ -141,12 +142,14 @@ export async function openScanReading(doc: PDFDocumentProxy, fsPath: string | un
     try {
       if (!(await readerReady(bridge, gone)) || gone() || !(await looksLikeScan(doc)) || gone()) return;
       say('Reading this scan so its text can be found and selected…');
-      const result = await bridge.convert(fsPath, { ocr: true });
-      const reading = result?.ok ? await fetchDocumentReading(fsPath) : null;
+      // Through the one place the app asks the reader for a document, so the Reading side knows it is under way.
+      // The reader was waited for above; nothing is started for a scan that is only being opened.
+      const result = await documentReaderEngine.read(fsPath, true, false);
+      const reading = result.ok ? await fetchDocumentReading(fsPath) : null;
       say('');
       if (gone()) return;
       if (reading) await showReadingOnOpenDocument(doc, reading, host);
-      else if (result && !result.ok) console.warn('[PdfScanReading] The reader could not read', fsPath, result.error ?? '');
+      else if (!result.ok) console.warn('[PdfScanReading] The reader could not read', fsPath, result.error ?? '');
     } catch (err) {
       if (!stopped) say('');
       console.warn('[PdfScanReading] Reading on open stopped:', err);

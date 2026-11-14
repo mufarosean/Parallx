@@ -12,6 +12,7 @@ import { SettingsEditor } from './settingsEditor.js';
 import { KeyboardShortcutsPanel } from './keyboardShortcutsPanel.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { createPythonSettingsPanel } from './pythonSettingsPanel.js';
+import { createDocumentReaderPanel, registerDocumentReaderCommands } from './documentReaderPanel.js';
 import { registerSettingsQuickOpen, revealSettingRow } from './settingsQuickOpen.js';
 // ─── Local API type ──────────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@ interface ParallxApi {
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
+  };
+  window: {
+    showInformationMessage(message: string): Promise<unknown>;
+    showErrorMessage(message: string): Promise<unknown>;
   };
 }
 
@@ -245,6 +250,21 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       settingsPanelRegistry.register(createPythonSettingsPanel(pythonService)),
     );
   }
+
+  // ── Document Reader panel inside the Settings hub ──────────────
+  // The reader as a thing on this computer: whether it is set up, what it
+  // takes on disk, setting it up and removing it. Its buttons run these
+  // commands; nothing is asked of the reader until the panel is shown.
+  context.subscriptions.push(
+    settingsPanelRegistry.register(createDocumentReaderPanel()),
+    ...registerDocumentReaderCommands(api.commands, {
+      confirmRemove: async (detail) => {
+        const { showConfirmModal } = await import('../../api/notificationService.js');
+        return showConfirmModal(document.body, { message: 'Remove the document reader?', detail, confirmLabel: 'Remove', danger: true });
+      },
+      notify: (kind, text) => { void (kind === 'error' ? api.window.showErrorMessage(text) : api.window.showInformationMessage(text)); },
+    }),
+  );
 }
 
 export function deactivate(): void {

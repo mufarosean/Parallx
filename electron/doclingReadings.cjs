@@ -28,7 +28,7 @@ async function keep(appRoot, filePath, result) {
       const st = await fs.promises.stat(filePath);
       await fs.promises.mkdir(dirOf(appRoot), { recursive: true });
       const file = fileOf(appRoot, filePath);
-      await fs.promises.writeFile(`${file}.tmp`, JSON.stringify({ path: path.resolve(filePath), size: st.size, mtimeMs: Math.round(st.mtimeMs), reading }));
+      await fs.promises.writeFile(`${file}.tmp`, JSON.stringify({ path: path.resolve(filePath), size: st.size, mtimeMs: Math.round(st.mtimeMs), readAt: Date.now(), reading }));
       await fs.promises.rename(`${file}.tmp`, file);
     } catch (err) {
       console.warn('[DoclingReadings] The reading could not be kept for', filePath, err && err.message);
@@ -38,15 +38,19 @@ async function keep(appRoot, filePath, result) {
 }
 
 /**
- * The reading kept for a document, or null when there is none or the
- * document has changed since it was read.
+ * The reading kept for a document, with when it was read (`readAt`,
+ * milliseconds), or null when there is none or the document has changed
+ * since it was read.
  */
 async function get(appRoot, filePath) {
   try {
-    const kept = JSON.parse(await fs.promises.readFile(fileOf(appRoot, filePath), 'utf8'));
+    const file = fileOf(appRoot, filePath);
+    const kept = JSON.parse(await fs.promises.readFile(file, 'utf8'));
     const st = await fs.promises.stat(filePath);
-    if (kept.size !== st.size || kept.mtimeMs !== Math.round(st.mtimeMs)) return null;
-    return kept.reading || null;
+    if (kept.size !== st.size || kept.mtimeMs !== Math.round(st.mtimeMs) || !kept.reading) return null;
+    // A reading kept before the time was written down: its file was written when it was read.
+    const readAt = Number(kept.readAt) > 0 ? Number(kept.readAt) : Math.round((await fs.promises.stat(file)).mtimeMs);
+    return { ...kept.reading, readAt };
   } catch {
     return null;
   }

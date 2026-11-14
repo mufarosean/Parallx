@@ -17,7 +17,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import os from 'node:os';
-import { PROJECT_ROOT, launchApp, openFile, cmd } from './scene.mjs';
+import { PROJECT_ROOT, launchApp, openFile, cmd, tinyPdf } from './scene.mjs';
 import { PAGE_W, PAGE_H, TABLE, PROSE_Y, drawPage, drawTablePage, scanPdf } from './scan-pages.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-read-anything'));
@@ -113,6 +113,8 @@ async function main() {
     const photoJpg = path.join(workspace, 'Scans', 'photo.jpg');
     await fs.writeFile(tablePdf, scanPdf(tableJpeg, PAGE_W, PAGE_H));
     await fs.writeFile(photoJpg, tableJpeg);
+    // A PDF with text of its own that the reader is never handed (step 11).
+    await fs.writeFile(path.join(workspace, 'hello.pdf'), tinyPdf('The selected tail factor is 1.05.'));
 
     // 2. The reader reads it, as indexing would for a scan.
     const started = await page.evaluate(() => window.parallxElectron.docling.start());
@@ -280,6 +282,88 @@ async function main() {
     await page.locator('.image-editor-pane:visible .image-scroll-container').first().click({ position: { x: 30, y: 30 } }).catch(() => {});
     await page.waitForTimeout(300);
     check(await page.evaluate(() => !document.querySelector('.image-editor-pane .image-quote-wash')), 'the next press in the view takes the wash away');
+
+    // 11. The PDF view's Reading side: how this document was read, what was found, Read Again.
+    await follow(`parallx://explorer/file?path=${encodeURIComponent('Scans/table.pdf')}&page=1`);
+    await page.waitForTimeout(1_500);
+    const pane = page.locator('.pdf-editor-pane:visible').first();
+    await pane.locator('button[aria-label="Outline, Pages And Reading"]').click();
+    await page.waitForTimeout(400);
+    await pane.locator('.pdf-side-panel-header .ui-segmented-control__segment', { hasText: 'Reading' }).click();
+    await pane.locator('.pdf-reading table').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    const side = () => page.evaluate(() => {
+      const p = [...document.querySelectorAll('.pdf-editor-pane')].find((x) => x.getClientRects().length);
+      const r = p?.querySelector('.pdf-reading');
+      return {
+        facts: Object.fromEntries([...(r?.querySelectorAll('th') ?? [])].map((th) => [th.textContent, th.nextElementSibling?.textContent])),
+        buttons: [...(r?.querySelectorAll('button') ?? [])].map((b) => b.textContent),
+        findings: [...(r?.querySelectorAll('.pdf-reading__finding') ?? [])].map((li) => `${li.querySelector('a')?.textContent} | ${li.querySelector('.pdf-reading__page')?.textContent}`),
+        notes: [...(r?.querySelectorAll('.pdf-reading__note') ?? [])].map((n) => n.textContent),
+        busy: r?.querySelector('[role="status"]')?.textContent ?? '',
+      };
+    });
+    const read = await side();
+    console.log(`[probe] the Reading side: ${JSON.stringify(read)}`);
+    check(read.facts.How === 'From its pixels' && read.facts.Pages === '1' && read.facts.Tables === '1' && !!read.facts.Read, `the Reading side says how this document was read (${JSON.stringify(read.facts)})`);
+    check(read.buttons.length === 1 && read.buttons[0] === 'Read Again', `it offers Read Again (${JSON.stringify(read.buttons)})`);
+    check(read.findings.length === 1 && /^Table 3: Selected development factors \| Page 1$/.test(read.findings[0]), `it lists the table the reader found, with its page (${JSON.stringify(read.findings)})`);
+    await shot('reading-side.png');
+    // A found table is a link to its place: the table framed.
+    await pane.locator('.pdf-reading__finding a').first().click();
+    await page.waitForFunction(() => [...document.querySelectorAll('.pdf-editor-pane')].some((p) => p.getClientRects().length && p.querySelector('.pdf-cited-block')), null, { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    const fromList = await visiblePane('.pdf-editor-pane');
+    check(!!fromList.frame && fromList.name === 'Table 3', `pressing it frames the table on its page ("${fromList.name}")`);
+    await shot('reading-side-table.png');
+    // Read Again: it says so meanwhile, then the facts come back and the page keeps its text.
+    const saidReading = page.waitForFunction(() => [...document.querySelectorAll('.pdf-reading [role="status"]')].some((n) => n.getClientRects().length && /Reading this document/.test(n.textContent ?? '')), null, { timeout: 20_000 }).then(() => true, () => false);
+    await pane.locator('.pdf-reading button', { hasText: 'Read Again' }).click();
+    check(await saidReading, 'Read Again says the document is being read');
+    await pane.locator('.pdf-reading button', { hasText: 'Read Again' }).waitFor({ state: 'visible', timeout: 120_000 }).catch(() => {});
+    await page.waitForTimeout(1_200);
+    const again = await side();
+    const layerAfter = await page.evaluate(() => { const p = [...document.querySelectorAll('.pdf-editor-pane')].find((x) => x.getClientRects().length); return [...(p?.querySelectorAll('.textLayer span') ?? [])].map((s) => s.textContent).join(' '); });
+    check(again.facts.How === 'From its pixels' && /now|minute/.test(again.facts.Read ?? ''), `when it is done the side says it was read just now (${JSON.stringify(again.facts)})`);
+    check(/Bondy method/i.test(layerAfter), 'and the page keeps its text');
+    // A PDF with text of its own that the reader never read: Read Now, from its own text.
+    await openFile(page, 'hello.pdf');
+    await page.waitForTimeout(1_500);
+    // Each PDF has its own panel, closed until asked for; it opens on the side last chosen, which is Reading now.
+    await page.locator('.pdf-editor-pane:visible button[aria-label="Outline, Pages And Reading"]').first().click();
+    await page.waitForTimeout(600);
+    check(await page.evaluate(() => { const p = [...document.querySelectorAll('.pdf-editor-pane')].find((x) => x.getClientRects().length); return !!p?.querySelector('.pdf-reading')?.getClientRects().length; }), 'the panel of another PDF opens on the side last chosen: Reading');
+    await page.locator('.pdf-editor-pane:visible .pdf-reading button', { hasText: 'Read Now' }).waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    const unreadSide = await side();
+    check(unreadSide.buttons[0] === 'Read Now' && unreadSide.notes.some((n) => /has not read this document yet/.test(n)), `a document the reader has not read offers Read Now (${JSON.stringify(unreadSide)})`);
+    await page.locator('.pdf-editor-pane:visible .pdf-reading button', { hasText: 'Read Now' }).click();
+    await page.locator('.pdf-editor-pane:visible .pdf-reading button', { hasText: 'Read Again' }).waitFor({ state: 'visible', timeout: 120_000 }).catch(() => {});
+    const nowRead = await side();
+    check(nowRead.facts.How === 'From its own text' && nowRead.facts.Pages === '1', `pressing it reads a PDF that has text from its own text (${JSON.stringify(nowRead.facts)})`);
+
+    // 12. The reader itself, in Settings: where it stands and what it takes. (Remove is opened and cancelled, never confirmed.)
+    await cmd(page, 'parallx.installDocling');
+    await page.locator('.reader-settings table').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    await page.waitForFunction(() => /GB on this computer/.test(document.querySelector('.reader-settings')?.textContent ?? ''), null, { timeout: 60_000 }).catch(() => {});
+    const settings = await page.evaluate(() => {
+      const r = document.querySelector('.reader-settings');
+      return { facts: Object.fromEntries([...(r?.querySelectorAll('th') ?? [])].map((th) => [th.textContent, th.nextElementSibling?.textContent])), buttons: [...(r?.querySelectorAll('button') ?? [])].map((b) => b.textContent), heading: [...document.querySelectorAll('h1, h2, h3')].map((h) => h.textContent).filter((t) => /Document Reader/.test(t ?? '')) };
+    });
+    console.log(`[probe] the reader in Settings: ${JSON.stringify(settings)}`);
+    check(settings.heading.length > 0, 'Set Up Document Reader… opens Settings on the Document Reader panel');
+    check(settings.facts.State === 'Set up and running' && /^\d+\.\d GB on this computer$/.test(settings.facts.Size ?? '') && /processor/.test(settings.facts['Runs on'] ?? ''), `it says the reader is set up, what it takes on disk, and where it runs (${JSON.stringify(settings.facts)})`);
+    check(settings.buttons.length === 1 && settings.buttons[0] === 'Remove…', `it offers Remove… and nothing else (${JSON.stringify(settings.buttons)})`);
+    await shot('reader-settings.png');
+    await page.locator('.reader-settings button', { hasText: 'Remove…' }).click();
+    await page.locator('.parallx-modal-box').waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    const asked = await page.evaluate(() => document.querySelector('.parallx-modal-box')?.textContent ?? '');
+    check(/Remove the document reader\?/.test(asked) && /What it has already read is kept/.test(asked), `Remove… asks first, and says what removing means (${JSON.stringify(asked.slice(0, 200))})`);
+    await shot('reader-settings-remove.png');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    const still = await page.evaluate(async () => ({ modal: !!document.querySelector('.parallx-modal-box'), engine: (await window.parallxElectron.docling.engineStatus()).state, status: (await window.parallxElectron.docling.status()).status }));
+    check(!still.modal && still.engine === 'ready' && still.status === 'available', `Escape answers no: the reader is still set up and running (${JSON.stringify(still)})`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
 
     // The hidden copy is kept off Ollama on purpose; indexing saying so is not a fault here.
     const faults = errors.filter((e) => !/Cannot connect to Ollama|ERR_CONNECTION_REFUSED/.test(e));

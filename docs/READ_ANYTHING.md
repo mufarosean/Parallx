@@ -29,9 +29,10 @@ Enhance's (`electron/runtimeBridge.cjs`, `docs/ENHANCE.md`):
   (`tools/docling-bridge/models.json`, written by `make_models_manifest.py`);
 - a self-test at the end of set-up that reads a page it draws itself.
 
-Set-up is the command **Set Up Document Reader…**. It downloads about 7 GB once
-and keeps about 8 GB on disk, for every workspace. A Docling installed in the
-machine's own Python is still used when there is no engine.
+Set-up is in Settings, on the Document Reader panel (the command **Set Up
+Document Reader…** opens it). It downloads about 7 GB once and keeps about
+7.5 GB on disk, for every workspace. A Docling installed in the machine's own
+Python is still used when there is no engine.
 
 To upgrade Docling: change the lock, run Docling's own model download into a
 folder, run `make_models_manifest.py` on it, and check the revisions in that
@@ -169,12 +170,48 @@ of the page the sentence rests on with the words washed
 - A screen reader is told the words at once ("Table 3. It rests on: …") as the
   link's description. The picture is for the eye.
 
+## Where the reader's state lives
+
+Two places, each where it would be looked for.
+
+**The reader itself, in Settings** (Settings, Document Reader;
+`built-in/settings/documentReaderPanel.ts`). Whether it is set up, what it
+takes on disk, where it runs, and one or two buttons for the state it is in:
+Set Up, Carry On Setting Up, Stop, Start, Remove…, Check Again. A set-up shows
+its step, a bar and the bytes in the panel, and carries on when Settings is
+closed; it then says in one notice how it ended. Remove… asks first; what the
+reader has already read is kept. The command **Set Up Document Reader…** opens
+this panel and starts nothing.
+
+**One document's reading, in the PDF view** (the side panel's third side,
+Reading, beside Outline and Pages; `editor/panes/pdf/pdfReadingPanel.ts`):
+
+- when it was read, how (from its own text, or from its pixels), its pages,
+  tables, captioned figures and formulas;
+- Read Again, which reads it the way it was read before. A document never read
+  shows Read Now: from its pixels when it is a scan, from its own text
+  otherwise. While a reading is under way, whoever asked for it, the side says
+  so in one line. The command is **Read This Document Again**;
+- the tables and captioned figures the reader found, each a link to its place:
+  the page, the block framed. A picture with no caption is left out (on a scan
+  the reader marks stamps and logos as pictures too);
+- with no reader set up, what that means and the way to Settings.
+
+Read Again replaces the reading the main process keeps. The index keeps its own
+copy of a document's text and follows its own rules.
+
+Both ask the same module, `services/documentReaderEngine.ts`: the one place
+the app asks where the engine stands, changes it, and has it read a document.
+Nothing in it runs until one of the two is shown. A reading it starts is known
+by path, so a scan being read as it opens and the Reading side do not start two.
+
 ## Checks
 
 - Unit: `documentReading`, `pdfReadingTextLayer`, `pdfScanReading`,
   `doclingRuntime`, `doclingReadings`, `readerPolicy`, `fileLocator`,
   `pdfFindQueue`, `openclawCitationCheck`, `readingLocate`, `pdfLinkReveal`,
-  `imageQuoteReveal`, `pagePicture`, `chatCitationPeek`.
+  `imageQuoteReveal`, `pagePicture`, `chatCitationPeek`, `documentReaderEngine`,
+  `documentReaderPanel`, `pdfReadingPanel`, `doclingCommands`.
 - In a hidden copy of the app: `tests/probes/read-anything-probe.mjs` makes a
   scan, has it read, opens it, and checks the text layer sits on the printed
   lines, Find highlights a phrase and a quote is located on its page. Then it
@@ -182,9 +219,18 @@ of the page the sentence rests on with the words washed
   read, its text arrives on the open page, its last page has its text when
   scrolled to, and the reading is kept. Then a link to a row of a scanned
   table: the table framed and named, the frame following zoom and going at a
-  press; and a link to a line on a photo of a page: the line washed. It needs
-  the engine set up on the machine. Run it from Bash, not from a PowerShell
-  pipeline.
+  press; and a link to a line on a photo of a page: the line washed. Then the
+  PDF view's Reading side (its facts, a found table as a link that frames it,
+  Read Again, Read Now on a PDF with text of its own) and the reader in
+  Settings (its state and size; Remove… is opened and cancelled, never
+  confirmed). It needs the engine set up on the machine. Run it from Bash, not
+  from a PowerShell pipeline.
+- The reader in Settings through every state, hidden:
+  `tests/probes/document-reader-probe.mjs`. In that hidden copy only, the main
+  process's answers about the engine are replaced by a stand-in, so nothing is
+  downloaded and no engine is touched: not set up, setting up with its
+  progress, stopped, carried on with Settings closed (the notice), set up,
+  removed after a yes, and the Reading side with no reader.
 - From a question to the place, hidden: `tests/probes/chat-citation-probe.mjs`.
   A stand-in answers in the chat model's place, in Ollama's wire format: it
   calls the app's own Read tool on a scanned page and answers citing the

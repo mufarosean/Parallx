@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createRequire } from 'node:module';
-import { mkdtempSync, writeFileSync, rmSync, readdirSync, utimesSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readdirSync, readFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -25,14 +25,33 @@ describe('kept readings', () => {
   it('keeps the reading and hands the rest of the result on without it', async () => {
     const rest = await readings.keep(appRoot, doc, { markdown: '# text', page_count: 1, reading });
     expect(rest).toEqual({ markdown: '# text', page_count: 1 });
-    expect(await readings.get(appRoot, doc)).toEqual(reading);
+    expect(await readings.get(appRoot, doc)).toMatchObject(reading);
     expect(readdirSync(join(appRoot, 'data', 'readings')).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
 
   it('finds the reading whatever the case or form of the path', async () => {
     await readings.keep(appRoot, doc, { markdown: '', reading });
-    expect(await readings.get(appRoot, process.platform === 'win32' ? doc.toUpperCase() : doc)).toEqual(reading);
-    expect(await readings.get(appRoot, join(appRoot, '.', 'scan.pdf'))).toEqual(reading);
+    expect(await readings.get(appRoot, process.platform === 'win32' ? doc.toUpperCase() : doc)).toMatchObject(reading);
+    expect(await readings.get(appRoot, join(appRoot, '.', 'scan.pdf'))).toMatchObject(reading);
+  });
+
+  it('says when the document was read', async () => {
+    const before = Date.now();
+    await readings.keep(appRoot, doc, { markdown: '', reading });
+    const kept = await readings.get(appRoot, doc);
+    expect(kept.readAt).toBeGreaterThanOrEqual(before);
+    expect(kept.readAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('dates a reading kept before the time was written down by when its file was written', async () => {
+    await readings.keep(appRoot, doc, { markdown: '', reading });
+    const dir = join(appRoot, 'data', 'readings');
+    const file = join(dir, readdirSync(dir)[0]);
+    const { readAt: _dropped, ...old } = JSON.parse(readFileSync(file, 'utf8'));
+    writeFileSync(file, JSON.stringify(old));
+    const written = new Date(2026, 10, 12, 21, 14, 0);
+    utimesSync(file, written, written);
+    expect((await readings.get(appRoot, doc)).readAt).toBe(written.getTime());
   });
 
   it('gives nothing once the document has changed', async () => {

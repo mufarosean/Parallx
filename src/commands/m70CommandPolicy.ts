@@ -30,8 +30,10 @@ export const M70_EXCLUDED_COMMANDS: ReadonlySet<string> = new Set([
   'aiSettings.manageCron',
   'chat.selectModel',
   'chat.switchMode',
-  // Installs
+  // Installs, and removing what was installed
   'parallx.installDocling',
+  'documentReader.setUp',
+  'documentReader.remove',
   // Workspace lifecycle
   'workspace.resetConfig',
   'workspace.importConfig',

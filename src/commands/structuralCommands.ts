@@ -51,7 +51,7 @@ import {
   focusFirstEditorGroup, focusSecondEditorGroup, focusThirdEditorGroup,
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
-import { installDocling } from './doclingCommands.js';
+import { installDocling, readDocumentAgain } from './doclingCommands.js';
 import { questionsGetRegistry } from './questionCommands.js';
 import { copyDiagnostics } from './diagnosticsCommands.js';
 import { openRecentItem } from './startCommands.js';
@@ -410,8 +410,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   openSettings,
   openKeybindings,
   selectColorTheme,
-  // Docling
+  // The document reader
   installDocling,
+  readDocumentAgain,
   // Help
   copyDiagnostics,
   // AI: the model-call ledger

@@ -118,6 +118,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `markdown.showPreviewToSide` | Markdown: Open Preview to the Side | core | Markdown | Ctrl+K V |  |
 | `parallx.installDocling` | Set Up Document Reader… | core | Parallx |  |  |
 | `part.resize` | Resize Part | core | Layout |  |  |
+| `pdf.readAgain` | Read This Document Again | core | PDF |  | activeEditor == 'parallx.editor.pdf' |
 | `questions.getRegistry` | Get Question Providers | core | Questions |  |  |
 | `view.moveToPanel` | Move View to Panel | core | View |  |  |
 | `view.moveToSidebar` | Move View to Sidebar | core | View |  |  |

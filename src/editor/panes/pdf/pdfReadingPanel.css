@@ -1,0 +1,48 @@
+/* pdfReadingPanel.css — the Reading side of the PDF view's panel: how the
+   document reader read this document, and what it found (pdfReadingPanel.ts). */
+.pdf-reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-3);
+  padding: var(--px-space-3);
+  font-size: var(--px-text-sm);
+  color: var(--px-text);
+}
+
+/* Name and value, side by side: the names in one quiet column. */
+.pdf-reading__facts { border-collapse: collapse; width: 100%; }
+.pdf-reading__facts th,
+.pdf-reading__facts td { padding: 0 0 var(--px-space-1); text-align: left; vertical-align: top; font-weight: 400; }
+.pdf-reading__facts th { width: 1%; padding-right: var(--px-space-3); color: var(--px-text-muted); white-space: nowrap; }
+.pdf-reading__facts td { overflow-wrap: anywhere; }
+
+.pdf-reading__note { margin: 0; color: var(--px-text-secondary); line-height: 1.45; }
+.pdf-reading__error { color: var(--px-danger); }
+
+/* The same small ring the view shows while a document loads. */
+.pdf-reading__busy { display: flex; align-items: center; gap: var(--px-space-2); }
+.pdf-reading__busy::before {
+  content: '';
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--px-text-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: pdf-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdf-reading__busy::before { animation: none; }
+}
+
+.pdf-reading__actions { display: flex; flex-wrap: wrap; gap: var(--px-space-2); }
+
+.pdf-reading__findings { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.pdf-reading__finding {
+  display: flex;
+  align-items: baseline;
+  gap: var(--px-space-2);
+  padding: var(--px-space-1) 0;
+}
+.pdf-reading__finding a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdf-reading__page { flex: none; color: var(--px-text-muted); font-size: var(--px-text-xs); }

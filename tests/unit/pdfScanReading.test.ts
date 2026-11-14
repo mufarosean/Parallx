@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { looksLikeScan, openScanReading, samplePages, type IScanReadingHost } from '../../src/editor/panes/pdf/pdfScanReading';
 import type { PDFDocumentProxy } from '../../src/editor/panes/pdf/pdfReadingTextLayer';
+import { documentReaderEngine } from '../../src/services/documentReaderEngine';
 
 const READING = { version: 1, ocr: true, pages: [{ page: 1, width: 1200, height: 1600, lines: [{ text: 'The ultimate loss', box: [100, 200, 700, 240] }] }, { page: 2, width: 1200, height: 1600, lines: [{ text: 'is the sum', box: [100, 200, 500, 240] }] }], blocks: [], tables: [] };
 
@@ -44,7 +45,7 @@ function fakeHost(doc: PDFDocumentProxy | null, drawn: number[] = [3, 0]) {
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); };
 const firstLine = async (doc: PDFDocumentProxy, n: number) => ((await (await doc.getPage(n)).getTextContent()).items[0] as { str?: string } | undefined)?.str;
 
-afterEach(() => { vi.useRealTimers(); delete (globalThis as { parallxElectron?: unknown }).parallxElectron; document.body.innerHTML = ''; });
+afterEach(() => { vi.useRealTimers(); documentReaderEngine.reset(); delete (globalThis as { parallxElectron?: unknown }).parallxElectron; document.body.innerHTML = ''; });
 
 describe('telling a scan from a document with text', () => {
   it('looks at up to six pages, spread over the document', () => {

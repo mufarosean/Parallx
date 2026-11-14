@@ -199,3 +199,58 @@ export function locateQuoteLines(page: IReadingPage | null | undefined, quote: s
   }
   return out;
 }
+
+/** A table or figure the reader found, as the PDF view's Reading side lists it. */
+export interface IReadingFinding {
+  readonly kind: 'table' | 'figure';
+  readonly page: number;
+  /** What it is called on the page: its caption, or the plain word for it. */
+  readonly label: string;
+  /** Words that find it on its page (locateCitedBlock): its caption, or a table's first row. '' when it has neither. */
+  readonly quote: string;
+}
+
+const oneLine = (text: string | undefined): string => (text ?? '').replace(/\s+/g, ' ').trim();
+
+/**
+ * The tables and the captioned figures of a reading, in page order and down
+ * each page. A picture with no caption is left out: on a scan the reader
+ * marks stamps, logos and smudges as pictures too. A caption goes to the one
+ * block nearest it.
+ */
+export function listReadingFindings(reading: IDocumentReading | null | undefined): IReadingFinding[] {
+  if (!reading) return [];
+  const heights = new Map(reading.pages.map((p) => [p.page, p.height]));
+  type Owner = { kind: 'table' | 'figure'; page: number; box: ReadingBox; table?: IReadingTable; caption?: IReadingBlock; distance?: number };
+  const owners: Owner[] = [
+    ...reading.tables.map((t): Owner => ({ kind: 'table', page: t.page, box: t.box, table: t })),
+    ...reading.blocks.filter((b) => b.label === 'picture' || b.label === 'chart').map((b): Owner => ({ kind: 'figure', page: b.page, box: b.box })),
+  ];
+  for (const caption of reading.blocks) {
+    if (caption.label !== 'caption' || !oneLine(caption.text)) continue;
+    const reach = (heights.get(caption.page) ?? 0) * CAPTION_REACH;
+    let nearest: { owner: Owner; distance: number } | undefined;
+    for (const owner of owners) {
+      if (owner.page !== caption.page || !overlapsAcross(owner.box, caption.box)) continue;
+      const distance = gap(owner.box, caption.box);
+      if (distance <= reach && (!nearest || distance < nearest.distance)) nearest = { owner, distance };
+    }
+    // One caption to a block: the nearer of two wins.
+    if (nearest && (nearest.owner.distance === undefined || nearest.distance < nearest.owner.distance)) {
+      nearest.owner.caption = caption;
+      nearest.owner.distance = nearest.distance;
+    }
+  }
+  const firstRow = (table: IReadingTable): string => {
+    const cells = table.cells.filter((c) => oneLine(c.text));
+    const top = Math.min(...cells.map((c) => c.r));
+    return oneLine(cells.filter((c) => c.r === top).sort((a, b) => a.c - b.c).map((c) => c.text).join(' '));
+  };
+  return owners
+    .filter((o) => o.kind === 'table' || o.caption)
+    .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
+    .map((o) => {
+      const caption = oneLine(o.caption?.text);
+      return { kind: o.kind, page: o.page, label: caption || (o.kind === 'table' ? 'Table' : 'Figure'), quote: caption || (o.table ? firstRow(o.table) : '') };
+    });
+}

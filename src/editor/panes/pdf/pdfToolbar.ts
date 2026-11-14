@@ -140,7 +140,7 @@ export class PdfToolbar {
     const searchBtn = pdfButton(ICON.search, 'Find (Ctrl+F)', 'pdf.find');
     searchBtn.addEventListener('click', () => _host.toggleFind());
 
-    this._panelBtn = pdfButton(ICON.panelLeft, 'Outline And Pages', 'pdf.panel', () => this._panelBtn?.classList.contains('active') ?? false);
+    this._panelBtn = pdfButton(ICON.panelLeft, 'Outline, Pages And Reading', 'pdf.panel', () => this._panelBtn?.classList.contains('active') ?? false);
     this._panelBtn.setAttribute('aria-pressed', 'false');
     this._panelBtn.addEventListener('click', () => _host.togglePanel());
 

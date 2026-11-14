@@ -259,3 +259,18 @@ presses. The audit gained a screen with a citation focused and its card
 showing (`seed:chat.citation`). keyboard-audit-probe.mjs on the chat
 screens: 0 on every count (keyboard, names, focus, contrast in both
 themes, touch, popups).
+
+2026-11-14, with the reader's state (Settings, Document Reader; the PDF
+view's Reading side): every button on both is a kit button that runs a
+command, with an icon and a name. The facts are a table of names and
+values with a label. A set-up's bar is a progress bar with its value, and
+its step is read as it changes; while it runs the parts are updated in
+place, so Stop stays the same button under the focus, and when the
+buttons change (Set Up to Stop, Stop to Carry On Setting Up) the focus is
+put on the new first button instead of being dropped. Remove… asks in the
+app's modal dialog (Escape means no, the focus comes back to Remove…). On
+the Reading side a found table or figure is a link, reached by Tab and
+followed by Enter; a reading under way is a status line. The audit gained
+two screens (`settings.open document-reader`, `pdf.reading`) and no
+longer presses a button named Set Up on any screen, so it can never start
+a download. keyboard-audit-probe.mjs on those screens: 0 on every count.
