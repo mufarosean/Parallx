@@ -190,3 +190,27 @@ describe('where on the page a citation rests', () => {
     expect(withoutQuote('parallx://canvas/page?id=abc&quote=x')).toBe('parallx://canvas/page?id=abc&quote=x');
   });
 });
+
+describe('a citation of a picture of a page', () => {
+  const PHOTO = ['Chapter 7: Reserving', 'Development is slow in the early years.', 'The selected tail factor is 1.05, from the inverse power curve.'].join('\n');
+  // A picture is read as one block; its link finds it by its opening words.
+  const photo = () => citeSource(SID, { key: 'photo', location: 'Scans/page.jpg', title: 'page.jpg', uri: 'parallx://explorer/file?path=Scans%2Fpage.jpg&quote=Chapter+7%3A+Reserving+Development+is+slow', text: PHOTO, document: true });
+
+  it('carries the line the sentence rests on, in place of the picture\'s opening words', () => {
+    const label = photo();
+    const md = `Clark selects a tail factor of 1.05 [${label}].`;
+    expect(renderCitedAnswer(md, checkCitations(md, ctx()), ctx())).toBe(
+      'Clark selects a tail factor of 1.05 ([page.jpg](parallx://explorer/file?path=Scans%2Fpage.jpg&quote=The+selected+tail+factor+is+1.05%2C+from+the+inverse+power+curve.)).',
+    );
+  });
+
+  it('its link copied from an earlier answer is still its link; a Word file\'s link keeps its quote as its address', () => {
+    photo();
+    const word = 'parallx://explorer/file?path=notes.docx&quote=The+opening+words+of+a+block';
+    citeSource(SID, { key: 'word', location: 'notes.docx', title: 'notes.docx', uri: word, text: 'The opening words of a block. The selected tail factor is 1.05.', document: true });
+    const copied = 'See [page.jpg](parallx://explorer/file?path=Scans%2Fpage.jpg&quote=The+selected+tail+factor+is+1.05) and [notes](parallx://explorer/file?path=notes.docx&quote=some+other+words+entirely).';
+    expect(checkCitations(copied, ctx()).problems).toEqual([{ kind: 'unchecked-link', uri: 'parallx://explorer/file?path=notes.docx&quote=some+other+words+entirely', text: 'notes' }]);
+    const md = 'The tail factor is 1.05 [S2].';
+    expect(renderCitedAnswer(md, checkCitations(md, ctx()), ctx())).toContain(`(${word})`);
+  });
+});

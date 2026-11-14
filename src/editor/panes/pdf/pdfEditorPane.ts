@@ -22,6 +22,7 @@
 // loaded by renderInput, so a boot with no PDF open never parses them.
 import type { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { openScanReading, type PDFDocumentProxy } from './pdfScanReading.js';
+import { PdfLinkReveal } from './pdfLinkReveal.js';
 import { loadPdfjs } from '../../../vendor/lazy.js';
 
 type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
@@ -123,6 +124,12 @@ export class PdfEditorPane extends EditorPane {
   private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentInput: PdfEditorInput | null = null;
   private readonly _selectionOverlay = new PdfSelectionOverlay(() => this._viewerContainer ?? null);
+  /** A link's page and quote applied to the document: the find that washes the quote, the frame round a cited table. */
+  private readonly _linkReveal = new PdfLinkReveal({
+    viewer: () => this._pdfViewer, pageCount: () => this._pdfDoc?.numPages ?? 0, find: (query) => this._search?.findQuote(query),
+    fsPath: () => this._currentInput?.uri.fsPath, showPage: (page) => this._toolbarView?.setPage(page),
+    pageView: (page) => this._getPageView(page), viewerContainer: () => this._viewerContainer ?? null,
+  });
   private _globalStorage: IStorage | undefined;
 
   // ── Reading modes ────────────────────────────────────────────────────
@@ -383,37 +390,7 @@ export class PdfEditorPane extends EditorPane {
     if (!this._pagesInited) return;
     const ownPath = this._currentInput?.uri.fsPath;
     const target = ownPath ? takeFileReveal(ownPath) : undefined;
-    if (target) this._applyLinkReveal(target.page, target.quote);
-  }
-
-  /**
-   * M66 Iter B — Apply a `parallx://` link's `?page=` / `?quote=` anchors to
-   * the live viewer. Page goes first (it's authoritative); quote is then
-   * dispatched as a find request so pdf.js highlights matching text.
-   * Both are clamped/no-op on invalid input — the link contract never wants
-   * to crash the editor.
-   */
-  private _applyLinkReveal(page: number | undefined, quote: string | undefined): void {
-    if (!this._pdfViewer) return;
-    if (typeof page === 'number' && page > 0 && page <= (this._pdfDoc?.numPages ?? 0)) {
-      this._pdfViewer.currentPageNumber = page;
-      this._toolbarView?.setPage(page);
-    }
-    if (typeof quote === 'string' && quote.length > 0 && this._eventBus) {
-      // Normalize whitespace so URI-encoded quotes still match the text
-      // layer. pdf.js's find controller treats `\s+` as a single space
-      // internally, so passing collapsed text is friendlier.
-      const normalized = quote.replace(/\s+/g, ' ').trim();
-      this._eventBus.dispatch('find', {
-        source: this,
-        type: 'find',
-        query: normalized,
-        caseSensitive: false,
-        entireWord: false,
-        highlightAll: true,
-        findPrevious: false,
-      });
-    }
+    if (target) this._linkReveal.apply(target.page, target.quote);
   }
 
   private _getPageView(pageNumber: number): any | null {
@@ -658,7 +635,7 @@ export class PdfEditorPane extends EditorPane {
       this._eventBus.on('textlayerrendered', (evt: any) => {
         this._selectionOverlay.schedule();
         const pageNumber = evt?.pageNumber;
-        if (typeof pageNumber === 'number') this._highlightStore.renderPage(pageNumber);
+        if (typeof pageNumber === 'number') { this._highlightStore.renderPage(pageNumber); this._linkReveal.renderPage(pageNumber); }
       });
 
       this._search?.attach(this._eventBus, pdf.FindState.NOT_FOUND, pdf.FindState.PENDING);
@@ -721,7 +698,7 @@ export class PdfEditorPane extends EditorPane {
         if (this._shownSinceLoad) {
           const linkPath = this._currentInput?.uri.fsPath;
           const linkTarget = linkPath ? takeFileReveal(linkPath) : undefined;
-          if (linkTarget) this._applyLinkReveal(linkTarget.page, linkTarget.quote);
+          if (linkTarget) this._linkReveal.apply(linkTarget.page, linkTarget.quote);
         }
       });
 
@@ -960,6 +937,7 @@ export class PdfEditorPane extends EditorPane {
     this._pdfViewer?.cleanup();
     this._scanReading?.dispose();
     this._scanReading = null;
+    this._linkReveal.clear();
     this._pdfViewer = null;
     this._linkService = null;
     this._findController = null;

@@ -131,6 +131,16 @@ export class PdfSearchBar {
   }
 
   /**
+   * Find and wash a link's quote without opening the bar. It goes through the
+   * same queue as a typed find: sent straight to pdf.js while another find was
+   * still pending, it made pdf.js log "There can only be one pending page"
+   * and wash nothing.
+   */
+  findQuote(query: string): void {
+    this._finds.request({ source: this._host.source, type: 'find', query, caseSensitive: false, entireWord: false, highlightAll: true, findPrevious: false });
+  }
+
+  /**
    * The document as Find's target (Ctrl+F, workbench/findSurface.ts): the
    * viewer finds and counts across every page, the surface shows the count.
    */

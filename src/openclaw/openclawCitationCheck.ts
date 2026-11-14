@@ -27,6 +27,7 @@
 
 import type { ISourceHandle } from '../services/sourceHandles.js';
 import { quoteSkeleton } from '../services/quoteLocator.js';
+import { isPicturePath } from '../services/readerPolicy.js';
 
 export interface ICitationContext {
   /** The session's handle with this id, if it issued one. */
@@ -235,22 +236,31 @@ export function supportingPassage(claim: string, blockText: string): string | un
 
 const FILE_LINK = 'parallx://explorer/file';
 
-/** A PDF page's link with the quote it should light up. Any other link, or one that has a quote, is returned as it is. */
+/**
+ * Is this file link's quote a place on a page (a PDF page, a picture of a
+ * page), rather than what finds a block of a text (a Word or EPUB file's
+ * link finds its block by the block's opening words)?
+ */
+function placedOnAPage(params: URLSearchParams): boolean {
+  return params.has('page') || isPicturePath(params.get('path') ?? '');
+}
+
+/** A PDF page's or a page picture's link with the quote it should light up. Any other link is returned as it is. */
 function withQuote(uri: string, quote: string | undefined): string {
   const at = uri.indexOf('?');
   if (!quote || at < 0 || !uri.startsWith(FILE_LINK)) return uri;
   const params = new URLSearchParams(uri.slice(at + 1));
-  if (!params.has('page') || params.has('quote')) return uri;
+  if (!placedOnAPage(params)) return uri;
   params.set('quote', quote);
   return `${uri.slice(0, at)}?${params.toString()}`;
 }
 
-/** A file link without its quote: the link its source label stands for. */
+/** A page's link without its quote: the link its source label stands for, wherever on the page it points. */
 export function withoutQuote(uri: string): string {
   const at = uri.indexOf('?');
   if (at < 0 || !uri.startsWith(FILE_LINK)) return uri;
   const params = new URLSearchParams(uri.slice(at + 1));
-  if (!params.has('quote')) return uri;
+  if (!params.has('quote') || !placedOnAPage(params)) return uri;
   params.delete('quote');
   return `${uri.slice(0, at)}?${params.toString()}`;
 }
@@ -304,12 +314,13 @@ export function checkCitations(markdown: string, ctx: ICitationContext): ICitati
   }
 
   const handleUris = new Set(ctx.sessionHandles.map((h) => h.uri));
+  const pageUris = new Set(ctx.sessionHandles.map((h) => withoutQuote(h.uri)));
   for (const m of masked.matchAll(PARALLX_LINK_RE)) {
     const start = m.index ?? 0;
     const uri = markdown.slice(start, start + m[0].length).match(/\((parallx:\/\/[^)\s]+)/)?.[1] ?? m[2];
     const text = markdown.slice(start + 1, start + 1 + m[1].length);
     // A label's link carries a quote once it is shown (renderCitedAnswer); copied from an earlier answer it is still that label's link.
-    const ok = ctx.isLinkMinted(uri) || handleUris.has(uri) || handleUris.has(withoutQuote(uri));
+    const ok = ctx.isLinkMinted(uri) || handleUris.has(uri) || pageUris.has(withoutQuote(uri));
     if (!ok) problems.push({ kind: 'unchecked-link', uri, text });
     links.push({ start, end: start + m[0].length, text, uri, ...(ok ? {} : { problem: 'this link was not checked' }) });
   }

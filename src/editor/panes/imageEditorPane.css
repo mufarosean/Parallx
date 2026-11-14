@@ -50,3 +50,18 @@
   text-align: center;
   flex-shrink: 0;
 }
+
+/* A link's quote on a picture of a page (imageQuoteReveal.ts): a layer laid
+   over the picture's own box, zoomed with it, holding one wash a line, in the colour a found quote has in a PDF. */
+.image-wrapper { position: relative; }
+.image-quote-layer {
+  position: absolute;
+  pointer-events: none;
+  transition: transform var(--px-dur-fast) var(--px-ease);
+}
+.image-quote-wash {
+  position: absolute;
+  background: rgba(var(--px-yellow-rgb), 0.45);
+  box-shadow: 0 0 0 3px rgba(var(--px-yellow-rgb), 0.45);
+  border-radius: var(--px-radius-xs);
+}

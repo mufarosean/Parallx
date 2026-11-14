@@ -5,7 +5,10 @@
 // built from them and sits on the printed lines; find highlights a phrase;
 // a quote is located on its page. Then a second scan, which nobody has read,
 // is opened: the view says it is being read, and its text arrives on the
-// page already on screen (find works, the reading is kept).
+// page already on screen (find works, the reading is kept). Then a link whose
+// quote sits in a table: the table is framed with its name, the frame comes
+// back after a zoom and goes at the next press. Last, the same page as a
+// picture: a link's quote is washed on the photo.
 //
 // It uses the reader's engine as installed on this machine (set it up first:
 // the command Set Up Document Reader). Without it the probe says so and stops.
@@ -14,7 +17,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import os from 'node:os';
-import { PROJECT_ROOT, launchApp, openFile } from './scene.mjs';
+import { PROJECT_ROOT, launchApp, openFile, cmd } from './scene.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-read-anything'));
 const LINES = [
@@ -40,6 +43,30 @@ const drawPage = ({ LINES, PAGE_W, PAGE_H }) => {
   g.fillStyle = '#111';
   for (const l of LINES) { g.font = `${l.size}px Georgia, serif`; g.fillText(l.text, 180, l.y); }
   return c.toDataURL('image/jpeg', 0.82).split(',')[1];
+};
+
+/** The page with a table on it: where the table and the line under it are printed, in the picture's pixels. */
+const TABLE = { x: 180, y: 520, w: 900, h: 210, rows: [['Age', 'Paid', 'Incurred'], ['108', '1.08', '1.04'], ['120', '1.05', '1.02']] };
+const PROSE_Y = 860;
+
+/** In the page: a picture of a page with a captioned, ruled table and a line of text under it, as a JPEG in base64. */
+const drawTablePage = ({ TABLE, PROSE_Y, PAGE_W, PAGE_H }) => {
+  const c = document.createElement('canvas');
+  c.width = PAGE_W; c.height = PAGE_H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, PAGE_W, PAGE_H);
+  g.fillStyle = '#111'; g.strokeStyle = '#111'; g.lineWidth = 2;
+  g.font = '60px Georgia, serif'; g.fillText('Appendix C', 180, 240);
+  g.font = '40px Georgia, serif'; g.fillText('Factors are selected from the triangle below.', 180, 360);
+  g.font = '36px Georgia, serif'; g.fillText('Table 3: Selected development factors', 180, 490);
+  const rowH = TABLE.h / TABLE.rows.length, colW = TABLE.w / TABLE.rows[0].length;
+  TABLE.rows.forEach((row, r) => row.forEach((text, col) => {
+    g.strokeRect(TABLE.x + col * colW, TABLE.y + r * rowH, colW, rowH);
+    g.font = `${r === 0 ? 'bold ' : ''}36px Georgia, serif`;
+    g.fillText(text, TABLE.x + col * colW + 24, TABLE.y + r * rowH + rowH * 0.66);
+  }));
+  g.font = '40px Georgia, serif'; g.fillText('The Bondy method repeats the last selected factor.', 180, PROSE_Y);
+  return c.toDataURL('image/jpeg', 0.86).split(',')[1];
 };
 
 /** In the page: the text layer of the PDF on screen (the tab showing, not one kept behind it), each line with its place. */
@@ -127,8 +154,11 @@ async function main() {
   let failed = 0;
   const check = (ok, what) => { if (!ok) failed++; console.log(`[probe] ${ok ? 'PASS' : 'FAIL'} ${what}`); };
   const shot = async (name) => {
+    // A hidden window can hand back its last painted frame: ask for a fresh one, and keep the second capture.
     const b64 = await app.evaluate(async ({ BrowserWindow }) => {
-      const img = await BrowserWindow.getAllWindows()[0].webContents.capturePage();
+      const wc = BrowserWindow.getAllWindows()[0].webContents;
+      wc.invalidate(); await new Promise((r) => setTimeout(r, 250)); await wc.capturePage(); await new Promise((r) => setTimeout(r, 400));
+      const img = await wc.capturePage();
       return img.isEmpty() ? '' : img.toPNG().toString('base64');
     });
     if (b64) { await fs.writeFile(path.join(outDir, name), Buffer.from(b64, 'base64')); console.log(`[probe] screenshot -> ${path.join(outDir, name)}`); }
@@ -145,6 +175,12 @@ async function main() {
     const unreadJpegs = [];
     for (const lines of unreadPages) unreadJpegs.push(Buffer.from(await page.evaluate(drawPage, { LINES: lines, PAGE_W, PAGE_H }), 'base64'));
     await fs.writeFile(unread, scanPdf(unreadJpegs, PAGE_W, PAGE_H));
+    // A page with a table (steps 9 and 10): as a scanned PDF, and the same picture as a JPEG file.
+    const tableJpeg = Buffer.from(await page.evaluate(drawTablePage, { TABLE, PROSE_Y, PAGE_W, PAGE_H }), 'base64');
+    const tablePdf = path.join(workspace, 'Scans', 'table.pdf');
+    const photoJpg = path.join(workspace, 'Scans', 'photo.jpg');
+    await fs.writeFile(tablePdf, scanPdf(tableJpeg, PAGE_W, PAGE_H));
+    await fs.writeFile(photoJpg, tableJpeg);
 
     // 2. The reader reads it, as indexing would for a scan.
     const started = await page.evaluate(() => window.parallxElectron.docling.start());
@@ -245,6 +281,73 @@ async function main() {
     const keptLines = (keptNow?.pages ?? []).map((p) => p.lines?.length ?? 0);
     check(keptLines.length === 4 && keptLines[0] >= UNREAD.length && keptLines.every((n) => n >= 1), `its reading is kept (lines a page: ${JSON.stringify(keptLines)}), so it is not read again`);
     await shot('unread-read.png');
+    await page.keyboard.press('Escape'); // Find closed, as a person would leave it: open, its own search takes over the document's highlights
+
+    // 9. A link whose quote sits in a table: the table is framed, with its name.
+    const tConverted = await page.evaluate((p) => window.parallxElectron.docling.convert(p, { ocr: true }), tablePdf);
+    const tReading = await page.evaluate((p) => window.parallxElectron.docling.reading(p), tablePdf);
+    const tTable = tReading?.tables?.[0];
+    console.log(`[probe] the table page as the reader found it: tables=${tReading?.tables?.length ?? 0} cells=${JSON.stringify((tTable?.cells ?? []).map((c) => c.text))} box=${JSON.stringify((tTable?.box ?? []).map((n) => Math.round(n)))} blocks=${JSON.stringify((tReading?.blocks ?? []).map((b) => `${b.label}:${(b.text ?? '').slice(0, 30)}`))} page=${tReading?.pages?.[0]?.width}x${tReading?.pages?.[0]?.height}`);
+    check(tConverted.ok === true && !!tTable && tTable.cells.some((c) => /1\.05/.test(c.text)), 'the reader finds the table on a scanned page, with its cells');
+    const follow = (uri) => cmd(page, 'canvas.openAppLink', uri);
+    const visiblePane = (sel) => page.evaluate((sel) => {
+      const pane = [...document.querySelectorAll(sel)].find((p) => p.getClientRects().length);
+      const frame = pane?.querySelector('.pdf-cited-block');
+      const sheet = pane?.querySelector('.pdfViewer .page');
+      const r = (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+      return { frame: frame ? r(frame) : null, name: frame?.querySelector('.pdf-cited-block__name')?.textContent ?? '', label: frame?.getAttribute('aria-label') ?? '', page: sheet ? r(sheet) : null, washed: [...(pane?.querySelectorAll('.textLayer .highlight') ?? [])].map((h) => h.textContent).join(' ') };
+    }, sel);
+    await follow(`parallx://explorer/file?path=${encodeURIComponent('Scans/table.pdf')}&page=1&quote=${encodeURIComponent('120 1.05 1.02')}`);
+    await page.waitForFunction(() => [...document.querySelectorAll('.pdf-editor-pane')].some((p) => p.getClientRects().length && p.querySelector('.pdf-cited-block')), null, { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1_500);
+    const framed = await visiblePane('.pdf-editor-pane');
+    check(!!framed.frame, `following a link to a table's row frames the table (${JSON.stringify(framed.name)}, read as "${framed.label}")`);
+    if (framed.frame && framed.page) {
+      // The table was drawn at x 180..1080, y 520..730 of a 1654 x 2339 picture, its caption on the line above (about y 458..500): the frame takes both.
+      const k = framed.page.w / PAGE_W;
+      const top = 458;
+      const want = { x: framed.page.x + TABLE.x * k, y: framed.page.y + top * k, w: TABLE.w * k, h: (TABLE.y + TABLE.h - top) * k };
+      const off = Math.max(Math.abs(framed.frame.x - want.x), Math.abs(framed.frame.y - want.y), Math.abs(framed.frame.x + framed.frame.w - want.x - want.w), Math.abs(framed.frame.y + framed.frame.h - want.y - want.h));
+      check(off < 30 * k + 6, `the frame sits on the table and its caption as printed (worst edge ${off.toFixed(1)} px off at ${Math.round(k * 100)}%)`);
+    }
+    check(/^Table 3$/.test(framed.name), `the frame carries the table's own name from its caption ("${framed.name}")`);
+    await shot('table-framed.png');
+    // A zoom draws the page again: the frame comes back with it.
+    await page.keyboard.press('Control+=');
+    await page.waitForTimeout(1_500);
+    check(!!(await visiblePane('.pdf-editor-pane')).frame, 'the frame is still there after a zoom');
+    await page.locator('.pdf-editor-pane:visible .pdf-viewer-container').first().click({ position: { x: 40, y: 200 } }).catch(() => {});
+    await page.waitForTimeout(400);
+    check(!(await visiblePane('.pdf-editor-pane')).frame, 'the next press in the view takes the frame away');
+    // A link to ordinary text on the same page: washed as text, no frame.
+    await follow(`parallx://explorer/file?path=${encodeURIComponent('Scans/table.pdf')}&page=1&quote=${encodeURIComponent('The Bondy method repeats the last selected factor')}`);
+    await page.waitForTimeout(2_500);
+    const prose = await visiblePane('.pdf-editor-pane');
+    check(!prose.frame && /Bondy method/i.test(prose.washed), `a quote in ordinary text is washed, with no frame (${JSON.stringify(prose.washed.slice(0, 60))})`);
+
+    // 10. The same page as a picture: a link's quote is washed on the photo.
+    const pConverted = await page.evaluate((p) => window.parallxElectron.docling.convert(p, { ocr: true }), photoJpg);
+    check(pConverted.ok === true && /Bondy method/i.test(pConverted.markdown || ''), 'the reader reads a picture of a page');
+    await follow(`parallx://explorer/file?path=${encodeURIComponent('Scans/photo.jpg')}&quote=${encodeURIComponent('The Bondy method repeats the last selected factor')}`);
+    await page.waitForFunction(() => !!document.querySelector('.image-editor-pane .image-quote-wash'), null, { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    const photo = await page.evaluate(() => {
+      const pane = [...document.querySelectorAll('.image-editor-pane')].find((p) => p.getClientRects().length);
+      const img = pane?.querySelector('img.image-preview');
+      const r = (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+      return { img: img ? r(img) : null, washes: [...(pane?.querySelectorAll('.image-quote-wash') ?? [])].map(r) };
+    });
+    check(photo.washes.length >= 1, `the quote's line is washed on the picture (${photo.washes.length} line)`);
+    if (photo.img && photo.washes[0]) {
+      const k = photo.img.w / PAGE_W;
+      const wantMid = photo.img.y + (PROSE_Y - 40 * 0.3) * k;
+      const mid = photo.washes[0].y + photo.washes[0].h / 2;
+      check(Math.abs(mid - wantMid) < 8 && Math.abs(photo.washes[0].x - (photo.img.x + 180 * k)) < 10, `the wash sits on the printed line (off by ${Math.abs(mid - wantMid).toFixed(1)} px up or down)`);
+    }
+    await shot('photo-quote.png');
+    await page.locator('.image-editor-pane:visible .image-scroll-container').first().click({ position: { x: 30, y: 30 } }).catch(() => {});
+    await page.waitForTimeout(300);
+    check(await page.evaluate(() => !document.querySelector('.image-editor-pane .image-quote-wash')), 'the next press in the view takes the wash away');
 
     // The hidden copy is kept off Ollama on purpose; indexing saying so is not a fault here.
     const faults = errors.filter((e) => !/Cannot connect to Ollama|ERR_CONNECTION_REFUSED/.test(e));

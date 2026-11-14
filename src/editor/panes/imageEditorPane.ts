@@ -14,6 +14,7 @@ import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { ImageEditorInput } from './imageEditorInput.js';
 import { $,  hide, show } from '../../ui/dom.js';
+import { ImageQuoteReveal } from './imageQuoteReveal.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -47,6 +48,10 @@ export class ImageEditorPane extends EditorPane {
   private _errorMessage!: HTMLElement;
 
   private _zoom = 1;
+  /** The file on screen, for a link's quote (undefined for a pasted image). */
+  private _fsPath: string | undefined;
+  /** A link's quote, washed on a picture of a page. */
+  private readonly _quoteReveal = new ImageQuoteReveal({ image: () => this._image, wrapper: () => this._imageWrapper, scroller: () => this._scrollContainer });
 
   constructor() {
     super(PANE_ID);
@@ -98,6 +103,7 @@ export class ImageEditorPane extends EditorPane {
       show(this._image);
       hide(this._errorMessage);
       this._updateInfoBar();
+      void this._quoteReveal.apply(this._fsPath); // a link that opened this picture: its quote lights up
     });
 
     // Error handler
@@ -119,11 +125,13 @@ export class ImageEditorPane extends EditorPane {
     }
 
     this._zoom = 1;
+    this._quoteReveal.clear();
     hide(this._image);
     hide(this._errorMessage);
     this._infoBar.textContent = 'Loading…';
 
     const uri = input.uri;
+    this._fsPath = input.dataUrl || uri.scheme === ImageEditorInput.DATA_SCHEME ? undefined : uri.fsPath;
 
     // In-memory image (a pasted chat attachment): nothing to read.
     if (input.dataUrl) {
@@ -174,7 +182,14 @@ export class ImageEditorPane extends EditorPane {
     }
   }
 
+  /** A link followed to a picture that is already open arrives here. */
+  protected override onDidShow(): void {
+    if (this._image?.complete && this._image.naturalWidth) void this._quoteReveal.apply(this._fsPath);
+  }
+
   protected override clearPaneContent(_previous: IEditorInput | undefined): void {
+    this._quoteReveal.clear();
+    this._fsPath = undefined;
     this._image.src = '';
     this._infoBar.textContent = '';
     this._zoom = 1;
@@ -193,6 +208,7 @@ export class ImageEditorPane extends EditorPane {
   private _applyZoom(): void {
     this._image.style.transform = `scale(${this._zoom})`;
     this._image.style.transformOrigin = 'center center';
+    this._quoteReveal.layout();
     this._updateInfoBar();
   }
 
