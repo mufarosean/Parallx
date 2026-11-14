@@ -475,7 +475,26 @@ Left, in order:
 6. A surface for the reader's state (set up, size, Remove, Read Again
    for one file) in place of the command's notifications. Mock-ups
    first.
-7. Reading a scan when it is opened, if it has not been read yet.
+
+Shipped 2026-11-13, on his go ("read anything"), from that list:
+
+- Item 7, reading a scan when it is opened. A scanned PDF the reader had
+  not read yet opened as pictures: nothing to find or select. Now the PDF
+  view looks at up to six of its pages, and when most have no text of
+  their own it asks the reader for the document, shows one quiet line at
+  the bottom of the view while it waits, and gives the pages already on
+  screen their text when the reading arrives. The document is not loaded
+  again and the place in it is kept. Checked with the real reader on his
+  machine, hidden (`tests/probes/read-anything-probe.mjs`, 0 problems):
+  a four-page scan nobody had read had its text about 4 seconds after it
+  was opened, with the reader already running; the first document after
+  the reader starts takes 16 to 20 seconds, most of it the reader loading.
+
+Decided by Claude for item 7, for him to overrule: a document the reader
+has read before is never read again on opening, whatever it found; with
+no reader set up, nothing is started and nothing is said; a picture of a
+page is still not read when it is opened (a photo library would be read
+photo by photo), only when it is quoted or handed to the chat.
 
 *Generative edits.*
 

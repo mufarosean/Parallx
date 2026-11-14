@@ -21,7 +21,7 @@
 // The display and viewer layers are their own bundle (src/vendor/pdfjs.ts),
 // loaded by renderInput, so a boot with no PDF open never parses them.
 import type { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/web/pdf_viewer.mjs';
-import { applyReadingTextLayerFor, type PDFDocumentProxy } from './pdfReadingTextLayer.js';
+import { openScanReading, type PDFDocumentProxy } from './pdfScanReading.js';
 import { loadPdfjs } from '../../../vendor/lazy.js';
 
 type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
@@ -114,6 +114,7 @@ export class PdfEditorPane extends EditorPane {
   private _findController: PDFFindController | null = null;
   private _pdfViewer: PDFViewer | null = null;
   private _pdfDoc: PDFDocumentProxy | null = null;
+  private _scanReading: { dispose(): void } | null = null; // a scan being read now that it is open (pdfScanReading.ts)
   /** The loaded pdf.js, from the first renderInput on. */
   private _pdf: PdfVendor | null = null;
 
@@ -672,7 +673,8 @@ export class PdfEditorPane extends EditorPane {
         wasmUrl: PDFJS_WASM_URL,
         enableHWA: true,
       }).promise;
-      await applyReadingTextLayerFor(this._pdfDoc, this._currentInput?.uri.fsPath); // a scan's pages report the reader's lines as their text
+      // A scan's pages report the reader's lines as their text; a scan not read yet is read now.
+      this._scanReading = await openScanReading(this._pdfDoc, this._currentInput?.uri.fsPath, { element: this._viewerContainer?.parentElement, document: () => this._pdfDoc, viewer: () => this._pdfViewer, find: () => this._findController });
       // Storage reads and the pagesinit listener BOTH come before
       // setDocument(): pdf.js dispatches 'pagesinit' on a synchronous
       // EventBus with no replay, so a listener registered after setDocument
@@ -777,9 +779,7 @@ export class PdfEditorPane extends EditorPane {
 
   private _setScaleValue(value: string): void {
     this._scaleValue = value;
-    if (this._pdfViewer) {
-      this._pdfViewer.currentScaleValue = value;
-    }
+    if (this._pdfViewer) this._pdfViewer.currentScaleValue = value;
     // B5.2: Persist user scale preference
     this._globalStorage?.set('parallx.pdfScaleValue', value);  // fire-and-forget
   }
@@ -957,9 +957,9 @@ export class PdfEditorPane extends EditorPane {
     // The document is destroyed once they settle, or after a few seconds when
     // they never started.
     const pagesSettled = this._pdfViewer?.pagesPromise ?? null;
-    if (this._pdfViewer) {
-      this._pdfViewer.cleanup();
-    }
+    this._pdfViewer?.cleanup();
+    this._scanReading?.dispose();
+    this._scanReading = null;
     this._pdfViewer = null;
     this._linkService = null;
     this._findController = null;

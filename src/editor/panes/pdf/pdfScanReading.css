@@ -1,0 +1,38 @@
+/* pdfScanReading.css — the quiet line a scan shows while the reader reads it
+   (pdfScanReading.ts). It sits over the bottom left of the pages and takes no
+   clicks; .pdf-viewer-wrapper is its positioning context. */
+.pdf-scan-status {
+  position: absolute;
+  left: var(--px-space-3);
+  bottom: var(--px-space-3);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  max-width: calc(100% - 2 * var(--px-space-3));
+  box-sizing: border-box;
+  padding: var(--px-space-1) var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-elevated);
+  box-shadow: var(--px-shadow-md);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-sm);
+  pointer-events: none;
+}
+
+/* The same small ring the view shows while a document loads. */
+.pdf-scan-status::before {
+  content: '';
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--px-text-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: pdf-spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-scan-status::before { animation: none; }
+}

@@ -94,13 +94,38 @@ The indexer reads each document as its turn comes and writes to the index a few
 at a time, so the first pass over a large library can be stopped and carries on
 near where it was.
 
+## A scan opened before it was read
+
+A scanned PDF the reader has not read yet (the indexer has not reached it, or
+it is not in the index) is read when it is opened (`pdfScanReading.ts`):
+
+- The view looks at up to six pages, spread over the document. When most have
+  no text of their own, it is a scan, and the reader is asked for it.
+- One quiet line at the bottom of the view says so while it waits.
+- When the reading arrives, the pages already on screen get their text: pdf.js
+  hands out one object per page, so the pages it holds are patched, a page that
+  was drawn is drawn again, and Find forgets the empty text it had gathered. The
+  document is not loaded again and the place in it is kept.
+- A document the reader has read before is never read again here, whatever it
+  found. With no reader set up, nothing is started. A view that has moved on to
+  another document is left alone when a late reading arrives.
+- The reader still takes one document at a time, the indexer's included, on the
+  processor. Measured (2026-11-13): four scanned pages in about 4 seconds with
+  the reader running; 16 to 20 seconds for the first document after it starts.
+- A picture of a page is not read when it is opened. It is read when it is
+  quoted or handed to the chat, as before.
+
 ## Checks
 
-- Unit: `documentReading`, `pdfReadingTextLayer`, `doclingRuntime`,
-  `doclingReadings`, `readerPolicy`, `fileLocator`, `pdfFindQueue`.
+- Unit: `documentReading`, `pdfReadingTextLayer`, `pdfScanReading`,
+  `doclingRuntime`, `doclingReadings`, `readerPolicy`, `fileLocator`,
+  `pdfFindQueue`.
 - In a hidden copy of the app: `tests/probes/read-anything-probe.mjs` makes a
   scan, has it read, opens it, and checks the text layer sits on the printed
-  lines, Find highlights a phrase and a quote is located on its page. It needs
+  lines, Find highlights a phrase and a quote is located on its page. Then it
+  opens a second scan nobody has read and checks the view says it is being
+  read, its text arrives on the open page, its last page has its text when
+  scrolled to, and the reading is kept. It needs
   the engine set up on the machine. Run it from Bash, not from a PowerShell
   pipeline.
 
