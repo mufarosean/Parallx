@@ -506,7 +506,7 @@ async function auditScreen(label) {
 // file and message dialogs are stubbed to cancel at once (nothing could
 // close one in a hidden window).
 const popupTried = new Set();
-const DESTRUCTIVE = /print|delete|remove|set up|setting up|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
+const DESTRUCTIVE = /print|delete|remove|set up|setting up|open as page|clear|reset|empty|erase|discard|uninstall|disconnect|sign out|log out|quit|close window|^close$|minimi|maximi|restore|run|send|stop|start|record|apply|save|sync|refresh|rescan|scan|generate|upscale|optimize|merge|move to trash|restart|reload|install|update|approve|reject|accept|done|confirm|submit|turn on|turn off|enable|disable|play|pause|undo|redo|duplicate/i;
 const POPUP_ROOTS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-px-surface="contextMenu"], [data-px-surface="quickAccess"], .ui-dropdown__list';
 async function stubNativeDialogs() {
   await app.evaluate(({ shell }) => { shell.openExternal = async () => {}; shell.openPath = async () => ''; shell.showItemInFolder = () => {}; }).catch(() => {}); // a hidden run opens nothing on the desktop
@@ -670,9 +670,25 @@ async function auditLight() {
   await mode('dark');
 }
 
+// A dialog that Escape did not close before the next screen: it would be audited in place of every screen after it.
+const stuckDialogs = [];
 async function open(first, args) {
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
+  const stuck = await page.evaluate(() => {
+    const dialog = [...document.querySelectorAll('[aria-modal="true"]')].filter((e) => e.getClientRects().length && !e.classList.contains('parallx-notification')).pop();
+    if (!dialog) return null;
+    const where = document.activeElement && dialog.contains(document.activeElement) ? 'the focus inside it' : `the focus outside it, on ${document.activeElement?.tagName.toLowerCase() ?? 'nothing'}`;
+    // Closed here so the screens after it are the ones audited: from inside, where the dialog hears Escape.
+    (dialog.querySelector('button, input, [tabindex]') ?? dialog).focus();
+    return `${dialog.getAttribute('aria-label') || (dialog.textContent ?? '').trim().slice(0, 40)}: still open after Escape, with ${where}`;
+  });
+  if (stuck) {
+    stuckDialogs.push(`${stuck} (before ${[first, ...args].join(' ')})`);
+    console.log(`[stuck] ${stuck} (before ${[first, ...args].join(' ')})`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+  }
   if (first === 'pdf') return openFile(page, 'reading.pdf');
   // The PDF view's panel on its Reading side: how the document was read, and what was found.
   if (first === 'pdf.reading') {
@@ -852,5 +868,6 @@ const srProblem = (d) => !d.screenReader || (DIALOGS.find((x) => x.name === d.na
 const dialogProblems = dialogs.filter((d) => d.problem || !d.opened || !d.escapeCloses || !d.focusReturned || (!d.focusMovedIn && !d.reachableByTab) || d.tabStaysInside === false || srProblem(d));
 console.log(`\n# dialogs (${dialogs.length} checked, ${dialogProblems.length} with a problem)\n  ${dialogProblems.map((d) => JSON.stringify(d)).join('\n  ')}`);
 console.log(`\n[screens] ${report.length}`);
-console.log(`[totals] ${JSON.stringify(totals)} traps=${traps.length} incomplete=${incomplete.length}`);
+console.log(`\n# stuck dialogs (${stuckDialogs.length})\n  ${stuckDialogs.join('\n  ')}`);
+console.log(`[totals] ${JSON.stringify(totals)} traps=${traps.length} incomplete=${incomplete.length} stuckDialogs=${stuckDialogs.length}`);
 await fs.writeFile(path.join(outDir, 'keyboard-audit.json'), JSON.stringify(report, null, 2));

@@ -376,3 +376,36 @@ export function keepTabInside(within: HTMLElement, listenOn: HTMLElement = withi
     }
   });
 }
+
+
+/**
+ * The dialog that has the window: the last one open that stands in front of
+ * everything else (Settings, a confirm, an input box). A notice with buttons
+ * in the corner calls itself a dialog too, but the window behind it is still
+ * in use, so it is not one of these. Null when none is open.
+ */
+export function modalOnTop(doc: Document = document): HTMLElement | null {
+  const open = Array.from(doc.querySelectorAll<HTMLElement>('[aria-modal="true"]'))
+    .filter((m) => m.isConnected && !m.classList.contains('parallx-notification') && !m.closest('[hidden], [inert]'));
+  return open.length > 0 ? open[open.length - 1] : null;
+}
+
+/**
+ * Keep the keyboard's focus in the dialog that has the window: when it is
+ * somewhere behind it, it goes to the dialog's first control (the dialog
+ * itself when it has none). True when a dialog is open, so the caller leaves
+ * the focus there.
+ */
+export function keepFocusInModal(doc: Document = document): boolean {
+  const dialog = modalOnTop(doc);
+  if (!dialog) return false;
+  if (!dialog.contains(doc.activeElement)) {
+    // In the order they stand in the dialog, whatever order the selector's parts are listed in.
+    const first = Array.from(dialog.querySelectorAll<HTMLElement>(TABBABLE))
+      .filter((el) => el.tabIndex >= 0 && !el.closest('[hidden], [inert]'))
+      .sort((x, y) => (x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))[0];
+    if (!first && !dialog.hasAttribute('tabindex')) dialog.tabIndex = -1;
+    (first ?? dialog).focus();
+  }
+  return true;
+}

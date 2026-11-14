@@ -6,6 +6,7 @@ import type { CommandDescriptor } from './commandTypes.js';
 import { PartId } from '../services/serviceTypes.js';
 import { wb } from './structuralCommandTypes.js';
 import type { WorkbenchLike } from './structuralCommandTypes.js';
+import { keepFocusInModal } from '../ui/dom.js';
 
 // ─── Focus Commands (Cap 8) ──────────────────────────────────────────────────
 
@@ -59,6 +60,9 @@ export const focusNextPart: CommandDescriptor = {
   aiInvocable: true,
   aiDescription: 'Move keyboard focus to the next workbench part.',
   handler(ctx) {
+    // With a dialog open, the window's areas are behind it: the focus stays in the dialog.
+    // (It used to go behind Settings, and Escape then no longer closed it.)
+    if (keepFocusInModal()) return;
     const w = wb(ctx);
     const current = getCurrentlyFocusedPart(w) ?? PartId.Editor;
     const target = findVisibleNeighbour(w, current, true);
@@ -74,6 +78,7 @@ export const focusPreviousPart: CommandDescriptor = {
   aiInvocable: true,
   aiDescription: 'Move keyboard focus to the previous workbench part.',
   handler(ctx) {
+    if (keepFocusInModal()) return;
     const w = wb(ctx);
     const current = getCurrentlyFocusedPart(w) ?? PartId.Editor;
     const target = findVisibleNeighbour(w, current, false);
