@@ -84,7 +84,8 @@ describe('citation check in the turn', () => {
     expect(note.content).toContain('[S2] does: cite it instead.');
     // The draft was taken off the screen before the rewrite streamed.
     expect(res.replaceMarkdownTail).toHaveBeenCalledWith('The selected tail factor is 1.05 [S1].', '');
-    expect(result.markdown).toBe('The selected tail factor is 1.05 ([Clark.pdf, page 13](parallx://explorer/file?path=Clark.pdf&page=13)).');
+    // The link goes to the page and carries the line the sentence rests on.
+    expect(result.markdown).toBe('The selected tail factor is 1.05 ([Clark.pdf, page 13](parallx://explorer/file?path=Clark.pdf&page=13&quote=The+selected+tail+factor+is+1.05%2C+from+the+inverse+power+curve.)).');
   });
 
   it('marks a citation that is still wrong as Unverified after the one correction', async () => {

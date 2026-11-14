@@ -10,6 +10,8 @@ import {
   buildCitationCorrection,
   checkCitations,
   renderCitedAnswer,
+  supportingPassage,
+  withoutQuote,
   type ICitationContext,
 } from '../../src/openclaw/openclawCitationCheck';
 import {
@@ -64,8 +66,9 @@ describe('checkCitations', () => {
     const md = 'Clark selects a tail factor of 1.05 [S2].';
     const report = checkCitations(md, ctx());
     expect(report.problems).toEqual([]);
+    // The link goes to the page and carries the line the sentence rests on.
     expect(renderCitedAnswer(md, report, ctx())).toBe(
-      'Clark selects a tail factor of 1.05 ([Clark.pdf, page 13](parallx://explorer/file?path=Clark.pdf&page=13)).',
+      'Clark selects a tail factor of 1.05 ([Clark.pdf, page 13](parallx://explorer/file?path=Clark.pdf&page=13&quote=The+selected+tail+factor+is+1.05%2C+from+the+inverse+power+curve.)).',
     );
   });
 
@@ -128,5 +131,62 @@ describe('checkCitations', () => {
     const mark = sourceHandleMark(SID);
     page(5, 'Clark fits a loglogistic growth curve.');
     expect(checkCitations('I could not find that in the guide.', ctx(mark)).problems).toEqual([]);
+  });
+});
+
+describe('where on the page a citation rests', () => {
+  const PAGE = [
+    'Chapter 7: Reserving',
+    'Development is slow in the early years and the tail is long.',
+    'Age  Paid  Incurred',
+    '108  1.08  1.04',
+    '120  1.05  1.02',
+    'The Bondy method repeats the last selected factor.',
+  ].join('\n');
+
+  it('is the line that carries the sentence\'s figure, not the first line of the page', () => {
+    expect(supportingPassage('The paid factor at 120 months is 1.05', PAGE)).toBe('120 1.05 1.02');
+    expect(supportingPassage('The Bondy method repeats the last factor that was selected', PAGE)).toBe('The Bondy method repeats the last selected factor.');
+  });
+
+  it('takes a sentence broken over two lines as one passage, and one line when one says it all', () => {
+    const broken = 'The selected tail factor\nis 1.05, from the inverse power curve.\nNothing else here.';
+    expect(supportingPassage('The selected tail factor is 1.05', broken)).toBe('The selected tail factor is 1.05, from the inverse power curve.');
+    expect(supportingPassage('The tail factor is 1.05', 'The tail factor is 1.05.\nA second line about something else entirely.')).toBe('The tail factor is 1.05.');
+  });
+
+  it('reads a paragraph on one long line a sentence at a time, and keeps a passage short', () => {
+    const paragraph = `${'Background on the method and its history fills this sentence with many words. '.repeat(4)}The selected tail factor is 1.05, from the inverse power curve. ${'More background follows here. '.repeat(6)}`;
+    expect(supportingPassage('Clark selects a tail of 1.05', paragraph)).toBe('The selected tail factor is 1.05, from the inverse power curve.');
+    const long = `The tail factor of 1.05 ${'was chosen after weighing a long list of considerations and '.repeat(6)}more.`;
+    const cut = supportingPassage('The tail factor is 1.05', long)!;
+    expect(cut.length).toBeLessThanOrEqual(160);
+    expect(cut).toContain('1.05');
+  });
+
+  it('gives nothing when no line stands out: the link then goes to the page', () => {
+    expect(supportingPassage('Reserves', PAGE)).toBeUndefined();                       // too little to place
+    expect(supportingPassage('The loss ratio is 0.65', PAGE)).toBeUndefined();         // the figure is nowhere on the page
+    expect(supportingPassage('Clark prefers stochastic simulation approaches', PAGE)).toBeUndefined();
+    expect(supportingPassage('It is 1.05', 'x 1.05')).toBeUndefined();                 // too short to find again
+  });
+
+  it('a shown citation carries its line as the link\'s quote; a failed one and a non-PDF link do not', () => {
+    page(13, PAGE);
+    const lines = citeSource(SID, { key: 'notes', location: 'notes.md · lines 1 to 9', title: 'notes.md', uri: 'parallx://explorer/file?path=notes.md&line=1', text: PAGE, document: true });
+    const md = `The paid factor at 120 months is 1.05 [S1]. The Bondy method repeats the last factor [${lines}]. The expected loss ratio for the latest accident year is 0.65 [S1].`;
+    const shown = renderCitedAnswer(md, checkCitations(md, ctx()), ctx());
+    expect(shown).toContain('(parallx://explorer/file?path=Clark.pdf&page=13&quote=120+1.05+1.02)');
+    expect(shown).toContain('(parallx://explorer/file?path=notes.md&line=1)');           // a text file's link already goes to its line
+    expect(shown).toContain('[Clark.pdf, page 13 · Unverified](parallx://explorer/file?path=Clark.pdf&page=13 "Unverified');
+  });
+
+  it('a label\'s link copied from an earlier answer, quote and all, is still that label\'s link', () => {
+    page(13, PAGE);
+    const md = 'As before, see [Clark.pdf, page 13](parallx://explorer/file?path=Clark.pdf&page=13&quote=120+1.05+1.02) and [made up](parallx://explorer/file?path=Clark.pdf&page=14&quote=120+1.05+1.02).';
+    const report = checkCitations(md, ctx());
+    expect(report.problems).toEqual([{ kind: 'unchecked-link', uri: 'parallx://explorer/file?path=Clark.pdf&page=14&quote=120+1.05+1.02', text: 'made up' }]);
+    expect(withoutQuote('parallx://explorer/file?path=Clark.pdf&page=13&quote=120+1.05+1.02')).toBe('parallx://explorer/file?path=Clark.pdf&page=13');
+    expect(withoutQuote('parallx://canvas/page?id=abc&quote=x')).toBe('parallx://canvas/page?id=abc&quote=x');
   });
 });

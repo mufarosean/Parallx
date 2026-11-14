@@ -16,13 +16,17 @@
  * Problems go back to the model once, as a note it answers by rewriting
  * (openclawAttempt.ts); the app never rewrites the answer's words. Then the
  * labels become links, and a citation that still fails is shown as
- * Unverified, so a wrong link never looks like a good one.
+ * Unverified, so a wrong link never looks like a good one. A citation of a
+ * PDF page that checks out also carries, as its link's quote, the line of the
+ * page the sentence rests on (supportingPassage): the viewer lights up the
+ * place, and the chat can show a piece of the page.
  *
  * Pure functions, no model calls: instant, and the same for a local model
  * as for a cloud one.
  */
 
 import type { ISourceHandle } from '../services/sourceHandles.js';
+import { quoteSkeleton } from '../services/quoteLocator.js';
 
 export interface ICitationContext {
   /** The session's handle with this id, if it issued one. */
@@ -167,6 +171,90 @@ function supports(s: ISupport): boolean {
   return s.words < 4 || s.overlap >= 0.25;
 }
 
+// ── Where in the block a claim rests ──
+
+/** A citation's quote is a line or two of its source, never more than this. */
+const MAX_PASSAGE_CHARS = 160;
+/** Letters and digits a passage must have to say where: fewer than the quote locator asks of a quote someone wrote, since this one is looked for on one page only. */
+const MIN_PASSAGE_SKELETON = 6;
+/** A line longer than this is a paragraph: it is looked at a sentence at a time. */
+const LONG_LINE_CHARS = 200;
+
+/** `text` cut to MAX_PASSAGE_CHARS at word ends, keeping the part round its first word or number from `wanted`. */
+function passageWindow(text: string, wanted: readonly string[]): string {
+  if (text.length <= MAX_PASSAGE_CHARS) return text;
+  const lower = text.toLowerCase();
+  const first = wanted.map((w) => lower.indexOf(w.toLowerCase())).filter((i) => i >= 0).sort((a, b) => a - b)[0] ?? 0;
+  let start = Math.max(0, Math.min(first - 40, text.length - MAX_PASSAGE_CHARS));
+  if (start > 0) { const space = text.indexOf(' ', start); start = space >= 0 && space < start + 30 ? space + 1 : start; }
+  let cut = text.slice(start, start + MAX_PASSAGE_CHARS);
+  if (start + MAX_PASSAGE_CHARS < text.length) { const space = cut.lastIndexOf(' '); if (space > MAX_PASSAGE_CHARS * 0.6) cut = cut.slice(0, space); }
+  return cut.trim();
+}
+
+/**
+ * The words of a block a claim rests on: the line (or the line and the next,
+ * for a sentence broken over two) that carries the claim's numbers and most
+ * of its words. A citation's link takes them as its quote, so the place on
+ * the page lights up, not only the page. Undefined when no line stands out:
+ * the link then goes to the page, as it did.
+ */
+export function supportingPassage(claim: string, blockText: string): string | undefined {
+  const numbers = numbersOf(claim);
+  const words = wordsOf(claim);
+  if (numbers.length === 0 && words.length < 2) return undefined;
+  const lines = blockText.split(/\n+/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l.length > 0)
+    .flatMap((l) => (l.length <= LONG_LINE_CHARS ? [l] : l.split(/(?<=[.!?;:])\s+(?=\S)/)));
+  let best: { text: string; score: number } | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    for (const span of [1, 2]) {
+      if (i + span > lines.length) break;
+      const text = lines.slice(i, i + span).join(' ');
+      const lineNumbers = numbersOf(text).map((n) => parseFloat(n.replace('%', ''))).filter(Number.isFinite);
+      const hits = numbers.filter((n) => numberIn(n, lineNumbers)).length;
+      const lineWords = new Set(wordsOf(text));
+      const shared = words.filter((w) => lineWords.has(w)).length;
+      // With numbers in the claim, the line must carry one of them (and a word of it, unless it carries them all);
+      // without, a good share of the claim's words.
+      const stands = numbers.length > 0
+        ? hits > 0 && (shared > 0 || hits === numbers.length)
+        : shared >= Math.max(2, Math.ceil(words.length * 0.4));
+      if (!stands) continue;
+      // A second line must earn its place with a figure or two more words: one line that says as much wins.
+      const score = hits * 3 + shared - (span - 1) * 1.5;
+      if (!best || score > best.score) best = { text, score };
+    }
+  }
+  if (!best) return undefined;
+  const passage = passageWindow(best.text, [...numbers, ...words]);
+  // A table's row is short ("120 1.05 1.02") and still says where; a scrap of two or three characters does not.
+  return quoteSkeleton(passage).length >= MIN_PASSAGE_SKELETON ? passage : undefined;
+}
+
+const FILE_LINK = 'parallx://explorer/file';
+
+/** A PDF page's link with the quote it should light up. Any other link, or one that has a quote, is returned as it is. */
+function withQuote(uri: string, quote: string | undefined): string {
+  const at = uri.indexOf('?');
+  if (!quote || at < 0 || !uri.startsWith(FILE_LINK)) return uri;
+  const params = new URLSearchParams(uri.slice(at + 1));
+  if (!params.has('page') || params.has('quote')) return uri;
+  params.set('quote', quote);
+  return `${uri.slice(0, at)}?${params.toString()}`;
+}
+
+/** A file link without its quote: the link its source label stands for. */
+export function withoutQuote(uri: string): string {
+  const at = uri.indexOf('?');
+  if (at < 0 || !uri.startsWith(FILE_LINK)) return uri;
+  const params = new URLSearchParams(uri.slice(at + 1));
+  if (!params.has('quote')) return uri;
+  params.delete('quote');
+  return `${uri.slice(0, at)}?${params.toString()}`;
+}
+
 /** The read block that backs a claim better than the ones cited, if one clearly does. */
 function betterSource(claim: string, cited: readonly string[], ctx: ICitationContext): string | undefined {
   let best: { id: string; score: number } | undefined;
@@ -220,7 +308,8 @@ export function checkCitations(markdown: string, ctx: ICitationContext): ICitati
     const start = m.index ?? 0;
     const uri = markdown.slice(start, start + m[0].length).match(/\((parallx:\/\/[^)\s]+)/)?.[1] ?? m[2];
     const text = markdown.slice(start + 1, start + 1 + m[1].length);
-    const ok = ctx.isLinkMinted(uri) || handleUris.has(uri);
+    // A label's link carries a quote once it is shown (renderCitedAnswer); copied from an earlier answer it is still that label's link.
+    const ok = ctx.isLinkMinted(uri) || handleUris.has(uri) || handleUris.has(withoutQuote(uri));
     if (!ok) problems.push({ kind: 'unchecked-link', uri, text });
     links.push({ start, end: start + m[0].length, text, uri, ...(ok ? {} : { problem: 'this link was not checked' }) });
   }
@@ -291,9 +380,10 @@ export function renderCitedAnswer(markdown: string, report: ICitationReport, ctx
     const parts = c.labels.map(({ id, problem }) => {
       const h = ctx.lookup(id);
       if (!h) return `${id} · Unverified`;
+      // A citation that checks out goes to the words it rests on, not only to their page.
       return problem
         ? `[${linkText(`${h.title} · Unverified`)}](${h.uri} "${titleAttr(`Unverified: ${problem}`)}")`
-        : `[${linkText(h.title)}](${h.uri})`;
+        : `[${linkText(h.title)}](${withQuote(h.uri, supportingPassage(c.claim, h.text))})`;
     });
     // "is 1.05 [S3]." reads "is 1.05 (Clark.pdf, page 13)."
     edits.push({ start: c.start, end: c.end, text: `(${parts.join('; ')})` });

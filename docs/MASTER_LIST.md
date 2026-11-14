@@ -478,9 +478,9 @@ Left, in order:
 
 Mock-ups drawn 2026-11-13 for the four parts that have a surface, in the
 app's own colours, dark and light:
-https://claude.ai/artifact/V3TycU5FwkyxBXoLaTjPyM. His pick is owed on
-each; nothing is built on them. The options, with Claude's pick marked
-on the page (a proposal, not an agreement):
+https://claude.ai/artifact/V3TycU5FwkyxBXoLaTjPyM. The options, with
+Claude's pick marked on the page. His words on them the same day (2026-11-13):
+"I trust your picks." So the picks are his: 3B, 4A, 5A, 6C.
 
 - Item 3, how a cited table or figure lights up: 3A a wash over the
   block, 3B a frame with its name (Claude's pick; a line of text keeps
