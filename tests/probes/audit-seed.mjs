@@ -8,8 +8,9 @@
 // After launch: a canvas page with every common block (a table, columns, a
 // callout, lists, a math block) and a cover; a concept map; a database;
 // planner events (timed and all-day, today); dashboard widgets; a mini-app's
-// answered permissions (Settings › App Permissions). Each seeded place
-// becomes an audit screen (`seed:<name>`).
+// answered permissions (Settings › App Permissions); a chat with one finished
+// exchange, so a sent message's time and an answer's line of time and speed
+// are on screen. Each seeded place becomes an audit screen (`seed:<name>`).
 //
 // Nothing here calls a model, and the audit's launch refuses the chat
 // model's port.
@@ -158,6 +159,35 @@ export async function seedAfterLaunch(page, pre) {
   // to revoke.
   log('app permissions', await seedAppPermissions(page));
 
+  // A chat with one finished exchange, as the app holds one after an answer:
+  // the times and the engine's figures the line under the answer is made of.
+  log('chat', await page.evaluate(() => {
+    const svc = window.__parallx_workbench__._services.get({ id: 'IChatService' });
+    const s = svc.createSession();
+    const now = Date.now();
+    s.title = 'Seeded chat';
+    s.messages.push({
+      request: { text: 'How fast do you write?', requestId: 'seed-chat-r1', attempt: 0, timestamp: now - 20_300 },
+      response: {
+        parts: [{ kind: 'thinking', content: 'A short answer will do.', isCollapsed: true, startTime: now - 18_900, endTime: now - 6_600 }, { kind: 'markdown', content: 'About sixty-two tokens a second.' }],
+        isComplete: true, modelId: 'standin:latest', timestamp: now - 20_300,
+        timing: { firstWordAt: now - 18_900, completedAt: now, calls: 2, writtenTokens: 282, timedTokens: 282, writingMs: 4536, readTokens: 21_400, readingMs: 6100, loadingMs: 38_200 },
+      },
+    });
+    svc._onDidChangeSession?.fire?.(s.id);
+    return s.id;
+  }));
+  // The chat list is a popout behind the Chat History button.
+  const seededChat = (then) => async () => {
+    await run(page, 'chat.show');
+    await page.waitForTimeout(600);
+    if (!(await page.evaluate(() => !!document.querySelector('.parallx-chat-session-sidebar--visible')))) await page.locator('.parallx-chat-title-action--history').first().click().catch(() => {});
+    await page.waitForTimeout(600);
+    await page.locator('.parallx-chat-session-sidebar-item-info', { hasText: 'Seeded chat' }).first().click().catch(() => {});
+    await page.waitForTimeout(800);
+    if (then) await then();
+  };
+
   // Painting Plans: the art tools on and one plan on the seeded photo.
   await page.evaluate(async () => { await window.__parallx_workbench__._services.get({ id: 'IConfigurationService' }).getConfiguration('mediaOrganizer').update('enableArtTools', true); });
   await page.waitForTimeout(1_000);
@@ -181,6 +211,9 @@ export async function seedAfterLaunch(page, pre) {
   const PLAN_TOOLS = ['Compose', 'Photo', 'Values', 'Colour', 'Transfer'];
 
   return {
+    'seed:chat': seededChat(),
+    // the answer's line opened: where the time went
+    'seed:chat.timing': seededChat(async () => { await page.locator('button.parallx-chat-meta').last().click().catch(() => {}); await page.waitForTimeout(400); }),
     'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
     'seed:plan.board': async () => { await run(page, 'media-organizer.openBoard', 1); },
     ...Object.fromEntries(PLAN_TOOLS.map((t) => [`seed:plan.${t}`, planTool(t)])),

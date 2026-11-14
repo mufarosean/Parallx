@@ -48,7 +48,7 @@ const SCREENS = [
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
-  ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:imageEditor'], ['seed:imageEditor.generate'], ['seed:imageEditor.masks'], ['seed:imageEditor.masks.subject'], ['seed:plan.masks'], ['seed:plan.masks.words'], ['seed:clipEditor'],
+  ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:imageEditor'], ['seed:imageEditor.generate'], ['seed:imageEditor.masks'], ['seed:imageEditor.masks.subject'], ['seed:plan.masks'], ['seed:plan.masks.words'], ['seed:clipEditor'], ['seed:chat'], ['seed:chat.timing'],
   // Painting Plans (behind the art tools setting, which the seed turns on).
   ['seed:plans'], ...['Compose', 'Photo', 'Values', 'Colour', 'Transfer', 'beforeAfter', 'notes', 'myPaints', 'board'].map((t) => [`seed:plan.${t}`]),
 ];

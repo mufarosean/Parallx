@@ -31,6 +31,7 @@ const EXEMPT_FILES = new Set([
   'widgets/chatView.css',           // Stylesheet
   'widgets/chatTokenStatusBar.css', // Stylesheet
   'rendering/chatCitationMarks.css', // Stylesheet
+  'rendering/chatMessageMeta.css',   // Stylesheet
   'rendering/extensionReview.css',   // Stylesheet
   'rendering/appConnections.css',    // Stylesheet
   'skills/build-mini-app.md',        // Skill text, imported ?raw
@@ -81,6 +82,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'archivedRunViewer.ts':           ['rendering/'],  // M91 — read-only archived-run transcript viewer
   'rendering/chatDiffViewer.ts':    [],
   'rendering/chatListRenderer.ts':  ['chatIcons', 'rendering/'],
+  'rendering/chatMessageMeta.ts':   [],  // the time under a message; an answer's line of time and speed
   'rendering/chatMindMap.ts':       [],  // M102 — pure parse/layout/render, imports nothing
   'rendering/chatTaskCards.ts':     [],
   'rendering/answerFormBlocks.ts':  ['rendering/', 'skills/'],  // chat's page blocks + step command for ui/answerForms

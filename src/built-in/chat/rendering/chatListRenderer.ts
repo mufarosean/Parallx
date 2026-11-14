@@ -32,6 +32,7 @@ import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
 import { runKitCommand } from '../../../ui/kit.js';
+import { appendAnswerMeta, appendMessageTime, keepMessageTimesCurrent } from './chatMessageMeta.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts
 export type { OpenAttachmentHandler } from '../chatTypes.js';
@@ -287,6 +288,7 @@ export class ChatListRenderer extends Disposable {
   /** Attach right-click context menu to the message list container. */
   attachContextMenu(container: HTMLElement): void {
     this._register({ dispose: () => this._dismissContextMenu() });
+    this._register(keepMessageTimesCurrent(container)); // a time reads "Yesterday" once the day has turned
 
     container.addEventListener('contextmenu', (e) => {
       const target = e.target as HTMLElement;
@@ -498,11 +500,11 @@ export class ChatListRenderer extends Disposable {
       foldToolRuns(body);
 
       // Add message actions bar now that streaming is complete
-      this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
+      this._addMessageActions(lastPair.assistantEl, body, latestRequest, response, true);
     }
 
     if (!requestInProgress && response.isComplete && !lastPair.assistantEl.querySelector('.parallx-chat-message-actions')) {
-      this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
+      this._addMessageActions(lastPair.assistantEl, body, latestRequest, response, true);
     }
 
     lastPair.assistantEl.dataset.requestId = latestRequest.requestId;
@@ -767,6 +769,7 @@ export class ChatListRenderer extends Disposable {
       }
       root.appendChild(ribbon);
     }
+    appendMessageTime(root, request.timestamp);
 
     return root;
   }
@@ -812,7 +815,7 @@ export class ChatListRenderer extends Disposable {
 
     // Message actions bar (copy) — only shown on completed responses
     if (parts.length > 0 && response.isComplete) {
-      this._addMessageActions(root, body, request, isLatest);
+      this._addMessageActions(root, body, request, response, isLatest);
     }
 
     root.dataset.requestId = request.requestId;
@@ -820,8 +823,8 @@ export class ChatListRenderer extends Disposable {
     return root;
   }
 
-  /** Add copy button actions bar to an assistant message. */
-  private _addMessageActions(root: HTMLElement, body: HTMLElement, request: IChatUserMessage, canRegenerate: boolean): void {
+  /** Add the actions bar to an assistant message: regenerate, copy, and its line of time and speed. */
+  private _addMessageActions(root: HTMLElement, body: HTMLElement, request: IChatUserMessage, response: IChatAssistantResponse, canRegenerate: boolean): void {
     if (root.querySelector('.parallx-chat-message-actions')) { return; }
 
     const actions = $('div.parallx-chat-message-actions');
@@ -853,6 +856,7 @@ export class ChatListRenderer extends Disposable {
       });
     });
     actions.appendChild(copyBtn);
+    appendAnswerMeta(actions, request, response);
 
     root.appendChild(actions);
   }
@@ -860,9 +864,5 @@ export class ChatListRenderer extends Disposable {
   /** Create the "working" indicator — a breathing agent presence (Living System). */
   private _createTypingIndicator(): HTMLElement {
     return createAgentPresence('Thinking');
-  }
-
-  override dispose(): void {
-    super.dispose();
   }
 }

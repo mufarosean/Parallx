@@ -27,7 +27,7 @@ import type { ChatWidget } from './widgets/chatWidget.js';
 import { AUTONOMY_ACTIVITY_WIDGET } from './widgets/autonomyActivityWidget.js';
 import { backgroundTurnsInFlight, createBackgroundPromptRunner } from './utilities/backgroundPromptRunner.js';
 import { wireEngineBrokerPresence } from './utilities/engineBrokerPresence.js';
-import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js'; import { registerMemoryCommands, registerOffRecordCommand } from './utilities/memoryCommands.js'; import { registerChatTitleNamer } from '../../services/chatTitle.js';
+import { chatContextPick, chatContextSize } from './utilities/chatContextDefault.js'; import { registerMemoryCommands, registerOffRecordCommand } from './utilities/memoryCommands.js'; import { registerChatTitleNamer } from '../../services/chatTitle.js'; import { registerAnswerTimingCommand } from './rendering/chatMessageMeta.js';
 import { registerSkillDraftCommands } from './utilities/skillDraftCommands.js';
 
 import {
@@ -622,7 +622,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const workspaceMemoryService = api.services.has(IWorkspaceMemoryService)
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
     : undefined;
-  context.subscriptions.push(...registerMemoryCommands(api.commands, workspaceMemoryService, (uri) => { void api.editors.openFileEditor(uri); }), registerOffRecordCommand(api.commands, chatService), ...registerSkillDraftCommands(api.commands, fileService, () => workspaceService?.folders?.[0]?.uri, (uri) => { void api.editors.openFileEditor(uri); })); // lessons, Do Not Remember This, skill drafts
+  context.subscriptions.push(...registerMemoryCommands(api.commands, workspaceMemoryService, (uri) => { void api.editors.openFileEditor(uri); }), registerOffRecordCommand(api.commands, chatService), registerAnswerTimingCommand(api.commands), ...registerSkillDraftCommands(api.commands, fileService, () => workspaceService?.folders?.[0]?.uri, (uri) => { void api.editors.openFileEditor(uri); })); // lessons, Do Not Remember This, an answer's time and speed, skill drafts
   if (chatService.onDidCompleteRequest && chatService.setSessionTitle) context.subscriptions.push(registerChatTitleNamer({ // the model names each chat after its first answer
     onDidCompleteRequest: chatService.onDidCompleteRequest, getSession: (id) => chatService.getSession(id), setSessionTitle: (id, t) => chatService.setSessionTitle!(id, t),
     sendChatRequestForModel: (m, msgs, o, sig) => languageModelsService.sendChatRequestForModel(m, msgs, o, sig), enabled: () => api.workspace.getConfiguration('chat').get<boolean>('nameWithModel', true) !== false }));

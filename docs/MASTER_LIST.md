@@ -70,34 +70,62 @@ also is no way for me to see how fast the model responds (tokens per
 second). These are improvements we need to make. Also on old chats
 instead of saying how far ago they were, after any day before
 yesterday, we really should just use the date." He called it "a needed
-update".
+update". His go (2026-11-13): "start with AI chat times and speed."
 
-**What exists today (verified in the code).** Every message already
-carries its time (`timestamp` in `chatTypes.ts`); the chat does not
-show it. Ollama already reports, with each answer, how many tokens it
-wrote and how long that took (`eval_count`, `eval_duration`, read in
-`ollamaProvider.ts`); nothing shows it. The chat list shows a relative
-time for every chat however old (`chatSessionSidebar.ts`, the shared
-`ui/relativeTime`).
+**Shipped 2026-11-13** (in the code and its tests; checked in a hidden
+copy of the app, `tests/probes/chat-times-probe.mjs`, 0 problems):
 
-**Scope.**
+- *Times.* Every message he sends shows its time under it. Today it is
+  the time alone ("9:14 PM"); then "Yesterday, 9:14 PM"; then "Nov 11,
+  9:14 PM"; another year adds the year. The whole date and time, to the
+  second, is on hover. The stamps on screen are rewritten when the day
+  turns.
+- *Speed, under each answer.* Beside Regenerate and Copy, one small line:
+  when the answer was finished, how long it took from the moment he sent
+  the message, and tokens a second ("9:14 PM · 20 s · 62.2 tokens/s").
+  The line is a button. Opened, it lists where the time went: when the
+  first word came, the whole answer, the speed and what it is made of
+  (tokens written and the time writing them, reasoning included), the
+  prompt the engine read and how long that took, a model that had to be
+  loaded first (when that took a second or more), the time spent
+  reasoning, the model, and the number of model calls when tools were
+  used.
+- *Where the numbers come from.* Speed is the engine's own figure: Ollama
+  reports, at the end of every call, the tokens it wrote and the time it
+  spent writing them, and the answer keeps the sum over its calls. The
+  times are the app's clock. An engine that reports no writing time (a
+  cloud model, another server) shows the times and no speed; none is
+  worked out from the app's clock.
+- *Kept.* An answer's timing is saved with it (a new `timing_json` on
+  `chat_messages`; a database from before is upgraded in place), so the
+  line is there after a restart. Answers from before this was built show
+  their time alone: nothing more was ever recorded for them.
+- *Dates on old chats.* The chat list says how long ago through yesterday
+  ("now", "5m ago", "14h ago", "yesterday") and the date for any chat
+  older ("Nov 10", "Nov 13, 2025"). The chat's list only, as he settled.
 
-- *Times:* each message shows when it was sent, and an answer shows how
-  long it took. Quiet by default (small, beside the message's actions),
-  with the full date and time on hover and for a screen reader.
-- *Speed:* each answer shows tokens per second, with time to the first
-  word; thinking counted apart from the answer if the engine reports
-  it. A cloud model shows what its provider reports, or nothing.
-- *Dates on old chats:* today and yesterday stay relative ("2h ago",
-  "Yesterday"); anything older shows its date. The chat's list only.
+**Decided by Claude while building, for him to overrule:**
 
-**Settled by him (2026-11-12).** Done after the extension work. Speed
-sits under each AI response. The date format "does not matter to me"
-(Claude's pick: Nov 12, with the year when it is not this year). The
-date rule is for the AI chat's list only; no other list changes.
+- No line is drawn between messages where the day changes. Each stamp
+  carries its own day instead. (This was the entry's one unknown.)
+- The time on an answer is when it finished, not when it started.
+- "First word" is the first thing the model itself writes, reasoning
+  included. The app's own status lines ("Searching the workspace") do not
+  count.
+- The date format is "Nov 12", with the year when it is not this year
+  (he said the format does not matter to him).
 
-**Unknown.** Whether the day a conversation moved to is marked between
-messages.
+**Found on the way, and fixed.** The "Thought for 12s" row above an
+answer could be opened by the mouse only. It is a button now: in the Tab
+order, Enter or Space opens and closes it, and a screen reader hears
+whether it is open. The keyboard audit never met it because no audited
+chat had an answer; the audit now has a chat with one
+(`seed:chat`, `seed:chat.timing`).
+
+**Owed.** His verdict in the app. One real answer through his own model:
+every check so far used a stand-in that replies in Ollama's format (the
+field names are from Ollama's API reference), so what his Ollama reports
+for his models has not been seen in the line yet.
 
 ### Enhance for short videos: bigger resolution
 

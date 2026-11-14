@@ -22,6 +22,7 @@ import type {
   IChatAttachment,
 } from './chatTypes.js';
 import { ChatMode } from './chatTypes.js';
+import { parseTiming, serializeTiming } from './chatResponseTiming.js';
 
 // ── Database interface (subset of IDatabaseService) ──
 
@@ -59,8 +60,8 @@ export interface IChatPersistenceDatabase {
 const CHAT_SESSION_SCHEME = 'parallx-chat-session';
 
 /**
- * Whether a database's chat_messages has the token columns (ensureChatTables
- * learns it). Unknown counts as yes: every database is created or upgraded
+ * Whether a database's chat_messages has the answer columns: the token counts
+ * and the timing (ensureChatTables learns it). Unknown counts as yes: every database is created or upgraded
  * with them before its first save.
  */
 const _tokenColumns = new WeakMap<IChatPersistenceDatabase, boolean>();
@@ -138,13 +139,15 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
     console.warn('[ChatPersistence] workspace_id migration check failed:', e);
   }
 
-  // The model's reported prompt and answer sizes, kept with each answer: the
-  // chat's context meter reads them back after a restart. Its own try, so a
+  // The model's reported prompt and answer sizes, kept with each answer (the
+  // chat's context meter reads them back after a restart), and the answer's
+  // timing for the line under it (chatResponseTiming.ts). Its own try, so a
   // failure above cannot skip it; saves name these columns only once they exist.
   try {
     const mc = await db.all<{ name: string }>(`PRAGMA table_info(chat_messages)`);
     if (!mc.some((c) => c.name === 'prompt_tokens')) await db.run(`ALTER TABLE chat_messages ADD COLUMN prompt_tokens INTEGER`);
     if (!mc.some((c) => c.name === 'completion_tokens')) await db.run(`ALTER TABLE chat_messages ADD COLUMN completion_tokens INTEGER`);
+    if (!mc.some((c) => c.name === 'timing_json')) await db.run(`ALTER TABLE chat_messages ADD COLUMN timing_json TEXT`);
     _tokenColumns.set(db, true);
   } catch (e) {
     _tokenColumns.set(db, false);
@@ -204,13 +207,13 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
 
 const MESSAGE_INSERT_SQL = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-const MESSAGE_INSERT_WITH_TOKENS_SQL = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order, prompt_tokens, completion_tokens)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const MESSAGE_INSERT_WITH_TOKENS_SQL = `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order, prompt_tokens, completion_tokens, timing_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** Build the ordered user/assistant INSERT ops for a session's messages. */
 function _buildMessageInsertOps(session: IChatSession, db?: IChatPersistenceDatabase): IChatPersistenceTxnOp[] {
   const ops: IChatPersistenceTxnOp[] = [];
-  // The answer's reported sizes ride along once the columns exist (ensureChatTables).
+  // The answer's reported sizes and its timing ride along once the columns exist (ensureChatTables).
   const withTokens = !db || _tokenColumns.get(db) !== false;
   const sql = withTokens ? MESSAGE_INSERT_WITH_TOKENS_SQL : MESSAGE_INSERT_SQL;
   for (let i = 0; i < session.messages.length; i++) {
@@ -219,14 +222,14 @@ function _buildMessageInsertOps(session: IChatSession, db?: IChatPersistenceData
       type: 'run', sql,
       params: [session.id, 'user', pair.request.text,
         JSON.stringify(_serializeUserMessageMetadata(pair.request)), '', 1,
-        pair.request.timestamp, i * 2, ...(withTokens ? [null, null] : [])],
+        pair.request.timestamp, i * 2, ...(withTokens ? [null, null, null] : [])],
     });
     ops.push({
       type: 'run', sql,
       params: [session.id, 'assistant', _extractTextContent(pair.response.parts),
         JSON.stringify(pair.response.parts), pair.response.modelId,
         pair.response.isComplete ? 1 : 0, pair.response.timestamp, i * 2 + 1,
-        ...(withTokens ? [pair.response.promptTokens ?? null, pair.response.completionTokens ?? null] : [])],
+        ...(withTokens ? [pair.response.promptTokens ?? null, pair.response.completionTokens ?? null, serializeTiming(pair.response.timing)] : [])],
     });
   }
   return ops;
@@ -372,6 +375,8 @@ interface IPersistedMessageRow {
   /** The model's reported sizes for an answer; absent on rows saved before they were kept. */
   prompt_tokens?: number | null;
   completion_tokens?: number | null;
+  /** The answer's timing as JSON (chatResponseTiming.ts); absent on rows saved before it was kept. */
+  timing_json?: string | null;
 }
 
 /** Rebuild request/response pairs from ordered chat_messages rows. */
@@ -403,6 +408,7 @@ function _reconstructPairs(messageRows: readonly IPersistedMessageRow[]): IChatR
       }
 
       const reported = typeof msg.prompt_tokens === 'number' && msg.prompt_tokens > 0;
+      const timing = parseTiming(msg.timing_json);
       const response: IChatAssistantResponse = {
         parts,
         isComplete: msg.is_complete === 1,
@@ -410,6 +416,7 @@ function _reconstructPairs(messageRows: readonly IPersistedMessageRow[]): IChatR
         timestamp: msg.timestamp,
         // What the model reported for this answer: the context meter's base after a restart.
         ...(reported ? { promptTokens: msg.prompt_tokens as number, completionTokens: typeof msg.completion_tokens === 'number' ? msg.completion_tokens : 0 } : {}),
+        ...(timing ? { timing } : {}),
       };
 
       messages.push({

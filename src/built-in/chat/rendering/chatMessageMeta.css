@@ -1,0 +1,62 @@
+/* chatMessageMeta.css — the quiet line under a chat message (chatMessageMeta.ts). */
+
+/* The time under a message the user sent: small, at the bubble's right edge. */
+.parallx-chat-message-time {
+  margin-right: var(--px-space-1);
+  font-size: var(--px-text-xs);
+  line-height: 1;
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* An answer's row of actions also holds its line of time and speed, and under
+   them the details the line opens. */
+.parallx-chat-message-actions.parallx-chat-message-footer {
+  flex-wrap: wrap;
+  row-gap: var(--px-space-1);
+}
+
+.parallx-chat-meta.px-btn {
+  padding: 0 var(--px-space-2) 0 var(--px-space-1);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.parallx-chat-meta.px-btn:hover:not(:disabled),
+.parallx-chat-meta.px-btn[aria-expanded="true"] { color: var(--px-text-secondary); }
+.parallx-chat-meta.px-btn .svg-icon svg {
+  width: 12px;
+  height: 12px;
+  transition: transform var(--px-dur-fast) var(--px-ease);
+}
+.parallx-chat-meta.px-btn[aria-expanded="true"] .svg-icon svg { transform: rotate(90deg); }
+
+/* Where the time went: names and values, one rule down the left, no card. */
+.parallx-chat-meta-details {
+  flex: 0 0 100%;
+  box-sizing: border-box;
+  margin: 0 0 var(--px-space-1) var(--px-space-2);
+  padding: var(--px-space-1) var(--px-space-3);
+  border-left: 1px solid var(--px-divider);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-secondary);
+}
+.parallx-chat-meta-details[hidden] { display: none; }
+.parallx-chat-meta-details table { border-collapse: collapse; }
+.parallx-chat-meta-details th {
+  padding: 2px var(--px-space-4) 2px 0;
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+  vertical-align: top;
+  color: var(--px-text-muted);
+}
+.parallx-chat-meta-details td {
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-meta.px-btn .svg-icon svg { transition: none; }
+}

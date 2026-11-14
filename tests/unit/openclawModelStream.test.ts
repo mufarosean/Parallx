@@ -31,3 +31,24 @@ describe('executeModelStream', () => {
     expect(thinkingOnly.warning).not.toHaveBeenCalled();
   });
 });
+
+describe('executeModelStream and the speed of an answer', () => {
+  it('hands the response the figures the engine reported for the call, once, from its final chunk', async () => {
+    const calls: unknown[] = [];
+    const r = { ...response(), reportModelCall: (c: unknown) => calls.push(c) } as unknown as IChatResponseStream;
+    await executeModelStream(send([
+      { content: 'Fifty', done: false },
+      { content: ' two.', done: true, doneReason: 'stop', promptEvalCount: 26, promptEvalDuration: 342546000, evalCount: 282, evalDuration: 4535599000, loadDuration: 1334875 },
+    ]), [], {}, r, token);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ promptEvalCount: 26, promptEvalDuration: 342546000, evalCount: 282, evalDuration: 4535599000, loadDuration: 1334875 });
+  });
+
+  it('reports nothing for a call that never finished, and works with a response that takes no report', async () => {
+    const calls: unknown[] = [];
+    const r = { ...response(), reportModelCall: (c: unknown) => calls.push(c) } as unknown as IChatResponseStream;
+    await executeModelStream(send([{ content: 'Cut', done: false }]), [], {}, r, token);
+    expect(calls).toEqual([]);
+    await expect(executeModelStream(send([{ content: 'Done.', done: true, evalCount: 3 }]), [], {}, response(), token)).resolves.toMatchObject({ completionTokens: 3 });
+  });
+});

@@ -111,3 +111,53 @@ describe('reported token counts (the context meter\'s base) across a restart', (
     } finally { sqlite.close(); }
   });
 });
+
+describe('an answer\'s time and speed across a restart', () => {
+  const TIMING = { firstWordAt: 1788880001400, completedAt: 1788880020300, calls: 2, writtenTokens: 1040, timedTokens: 1040, writingMs: 16730, readTokens: 21400, readingMs: 6100, loadingMs: 38200 };
+  const timedSession = (): IChatSession => {
+    const session = answeredSession();
+    session.messages[0].response.timing = { ...TIMING };
+    return session;
+  };
+
+  it('keeps an answer\'s timing through a save and a reload', async () => {
+    const { sqlite, db } = realDb();
+    try {
+      await ensureChatTables(db);
+      await saveSession(db, timedSession(), 'fixture-workspace');
+      const [restored] = await loadSessions(db, 'fixture-workspace');
+      expect(restored.messages[0].response.timing).toEqual(TIMING);
+      expect(restored.messages[0].request.timestamp).toBe(1788880000000);
+      // The request's row carries none.
+      expect({ ...(sqlite.prepare("SELECT timing_json FROM chat_messages WHERE role = 'user'").get() as object) }).toEqual({ timing_json: null });
+    } finally { sqlite.close(); }
+  });
+
+  it('upgrades a table that has the counts and no timing; answers from before load without one', async () => {
+    const { sqlite, db } = realDb();
+    try {
+      // chat_messages as it was until now: the token columns, no timing.
+      sqlite.exec("CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', parts_json TEXT NOT NULL DEFAULT '[]', model_id TEXT NOT NULL DEFAULT '', is_complete INTEGER NOT NULL DEFAULT 0, timestamp INTEGER NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, prompt_tokens INTEGER, completion_tokens INTEGER)");
+      await ensureChatTables(db);
+      const cols = (sqlite.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[]).map((c) => c.name);
+      expect(cols).toContain('timing_json');
+      await saveSession(db, timedSession(), 'fixture-workspace');
+      expect((await loadSessions(db, 'fixture-workspace'))[0].messages[0].response.timing).toEqual(TIMING);
+      // As an answer saved before timing was kept: it loads, with its counts, and no timing.
+      sqlite.prepare('UPDATE chat_messages SET timing_json = NULL').run();
+      const [older] = await loadSessions(db, 'fixture-workspace');
+      expect(older.messages[0].response.timing).toBeUndefined();
+      expect(older.messages[0].response.promptTokens).toBe(31_000);
+    } finally { sqlite.close(); }
+  });
+
+  it('an answer with no timing saves as none', async () => {
+    const { sqlite, db } = realDb();
+    try {
+      await ensureChatTables(db);
+      await saveSession(db, answeredSession(), 'fixture-workspace');
+      expect({ ...(sqlite.prepare("SELECT timing_json FROM chat_messages WHERE role = 'assistant'").get() as object) }).toEqual({ timing_json: null });
+      expect((await loadSessions(db, 'fixture-workspace'))[0].messages[0].response.timing).toBeUndefined();
+    } finally { sqlite.close(); }
+  });
+});

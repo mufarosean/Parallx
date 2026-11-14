@@ -3,11 +3,14 @@
 // The canvas ribbon ("Edited 14h ago") and the chat session list ("22h ago",
 // "yesterday") each kept their own formatter with different thresholds and
 // different words. One reads a stamp, the other a caption; they should still
-// speak the same language. Two styles, one clock:
+// speak the same language. Three styles, one clock:
 //
 //   long   "just now" · "5 minutes ago" · "14 hours ago" · "yesterday"
 //          "3 days ago" · "Aug 20" · "Aug 20, 2025"
 //   short  "now" · "5m ago" · "14h ago" · "yesterday" · "3d ago" · "Aug 20"
+//   recent "now" · "5m ago" · "14h ago" · "yesterday" · "Aug 20" · "Aug 20, 2025"
+//          (a list of things with a date of their own, like chats: past
+//          yesterday the date says more than "3d ago")
 //
 // Days are the user's days: "yesterday" turns over at midnight in the app
 // Time Zone (the one every stamp in the app is written in), not the machine's.
@@ -17,7 +20,7 @@
 import { parseStoredTime } from '../platform/storedTime.js';
 import { appDateString, startOfAppDay } from '../platform/localTime.js';
 
-export type RelativeTimeStyle = 'long' | 'short';
+export type RelativeTimeStyle = 'long' | 'short' | 'recent';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -40,7 +43,8 @@ function calendarDate(thenMs: number, nowMs: number): string {
  * @param when  A timestamp in ms, an ISO string, a database timestamp
  *              ('YYYY-MM-DD HH:MM:SS', UTC), or a Date.
  * @param style 'long' for stamps read on their own; 'short' for captions in
- *              narrow rows. Default 'long'.
+ *              narrow rows; 'recent' is short through yesterday and the
+ *              date after it. Default 'long'.
  * @param now   Injectable clock for tests.
  */
 export function formatRelativeTime(
@@ -51,7 +55,7 @@ export function formatRelativeTime(
   const thenMs = parseStoredTime(when);
   if (!Number.isFinite(thenMs)) return '';
   const diff = Math.max(0, now - thenMs);
-  const short = style === 'short';
+  const short = style !== 'long';
 
   if (diff < MINUTE) return short ? 'now' : 'just now';
   if (diff < HOUR) {
@@ -68,6 +72,7 @@ export function formatRelativeTime(
   const days = Math.round((startOfAppDay(now) - startOfAppDay(thenMs)) / DAY);
 
   if (days <= 1) return 'yesterday';
+  if (style === 'recent') return calendarDate(thenMs, now);
   if (days < 7) return short ? `${days}d ago` : plural(days, 'day');
   if (days < 30) {
     const w = Math.floor(days / 7);

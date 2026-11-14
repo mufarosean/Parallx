@@ -55,8 +55,8 @@ const GROUP_ORDER: readonly DateGroup[] = [
 // ── Relative time formatting ──
 
 function _formatRelativeTime(timestamp: number): string {
-  // The shared clock (ui/relativeTime), short style for narrow rows.
-  return formatRelativeTime(timestamp, 'short');
+  // The shared clock (ui/relativeTime): how long ago through yesterday, the date for any chat older.
+  return formatRelativeTime(timestamp, 'recent');
 }
 
 // ── Smart session display title ──

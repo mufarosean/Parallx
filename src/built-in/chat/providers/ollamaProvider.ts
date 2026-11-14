@@ -106,7 +106,10 @@ interface OllamaChatChunk {
   prompt_eval_count?: number;
   /** Number of tokens generated (present on final chunk). */
   eval_count?: number;
+  /** Nanoseconds spent writing them, reading the prompt, and loading the model (final chunk). */
   eval_duration?: number;
+  prompt_eval_duration?: number;
+  load_duration?: number;
   /** Why it stopped (final chunk): 'stop', 'length', 'load'... */
   done_reason?: string;
   /** Mid-stream failure (runner crash, OOM). Terminal — no more chunks follow. */
@@ -789,6 +792,8 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       promptEvalCount: chunk.prompt_eval_count,
       evalCount: chunk.eval_count,
       evalDuration: chunk.eval_duration,
+      promptEvalDuration: chunk.prompt_eval_duration,
+      loadDuration: chunk.load_duration,
       ...(chunk.done && chunk.done_reason ? { doneReason: chunk.done_reason } : {}),
     };
 

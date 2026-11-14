@@ -150,7 +150,7 @@ describe('OllamaProvider', () => {
       const chunks = [
         JSON.stringify({ model: 'test', message: { role: 'assistant', content: 'Hello' }, done: false }),
         JSON.stringify({ model: 'test', message: { role: 'assistant', content: ' world' }, done: false }),
-        JSON.stringify({ model: 'test', message: { role: 'assistant', content: '' }, done: true, eval_count: 10, eval_duration: 1000000 }),
+        JSON.stringify({ model: 'test', message: { role: 'assistant', content: '' }, done: true, eval_count: 10, eval_duration: 1000000, prompt_eval_count: 26, prompt_eval_duration: 342546000, load_duration: 1334875 }),
       ];
 
       vi.stubGlobal('fetch', createMockFetch(new Map([
@@ -163,14 +163,17 @@ describe('OllamaProvider', () => {
       const freshProvider = new OllamaProvider();
       const messages = [{ role: 'user' as const, content: 'Hi' }];
       const received: string[] = [];
+      let last: Record<string, unknown> = {};
 
       for await (const chunk of freshProvider.sendChatRequest('test', messages)) {
         received.push(chunk.content);
-        if (chunk.done) break;
+        if (chunk.done) { last = chunk as unknown as Record<string, unknown>; break; }
       }
 
       expect(received).toContain('Hello');
       expect(received).toContain(' world');
+      // The final chunk carries what the engine reported of the call: an answer's speed is made of it.
+      expect(last).toMatchObject({ evalCount: 10, evalDuration: 1000000, promptEvalCount: 26, promptEvalDuration: 342546000, loadDuration: 1334875 });
       freshProvider.dispose();
     });
 

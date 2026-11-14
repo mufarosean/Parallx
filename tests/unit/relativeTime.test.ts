@@ -91,3 +91,16 @@ describe('formatRelativeTime — short', () => {
     expect(formatRelativeTime(ago(8 * DAY), 'short', NOW)).toBe('1w ago');
   });
 });
+
+describe('formatRelativeTime — recent', () => {
+  it('is short through yesterday, then the date: a chat older than yesterday shows when it was', () => {
+    expect(formatRelativeTime(ago(20_000), 'recent', NOW)).toBe('now');
+    expect(formatRelativeTime(ago(5 * MIN), 'recent', NOW)).toBe('5m ago');
+    expect(formatRelativeTime(ago(14 * HOUR), 'recent', NOW)).toBe('14h ago');
+    expect(formatRelativeTime(ago(26 * HOUR), 'recent', NOW)).toBe('yesterday');
+    expect(formatRelativeTime(ago(47 * HOUR), 'recent', NOW)).toBe('Sep 1');
+    expect(formatRelativeTime(ago(3 * DAY), 'recent', NOW)).toBe('Aug 31');
+    expect(formatRelativeTime(ago(20 * DAY), 'recent', NOW)).toBe('Aug 14');
+    expect(formatRelativeTime(new Date(2025, 10, 12, 9, 0).getTime(), 'recent', NOW)).toBe('Nov 12, 2025');
+  });
+});

@@ -1041,11 +1041,12 @@ function _renderProgress(part: IChatProgressContent): HTMLElement {
 
 function _renderThinking(part: IChatThinkingContent): HTMLElement {
   const root = $('div.parallx-chat-thinking');
-  root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
   const sourceEntries = part.provenance ?? [];
 
   // ── Toggle header ──
   const toggle = $('div.parallx-chat-thinking-toggle');
+  const showCollapsed = (): void => { root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed); toggle.setAttribute('aria-expanded', String(!part.isCollapsed)); };
+  showCollapsed();
 
   function _rebuildToggle(): void {
     toggle.textContent = '';
@@ -1095,13 +1096,12 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   // is replaced on every stream tick, and a click (mousedown+mouseup on the same
   // node) is lost if a tick swaps the node mid-gesture. mousedown fires before
   // any replacement, so the user can always expand/collapse — even mid-stream.
-  toggle.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    part.isCollapsed = !part.isCollapsed;
-    root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
-    _rebuildToggle();
-  });
+  // The keyboard opens it too: a button in the Tab order, Enter or Space.
+  const flip = (): void => { part.isCollapsed = !part.isCollapsed; showCollapsed(); _rebuildToggle(); };
+  toggle.addEventListener('mousedown', (e) => { if (e.button === 0) { e.preventDefault(); flip(); } });
+  toggle.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+  toggle.tabIndex = 0;
+  toggle.setAttribute('role', 'button');
   root.appendChild(toggle);
 
   // ── Content area (hidden when collapsed) ──
@@ -1180,7 +1180,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     // First content arriving after an empty render needs the text div → rebuild.
     if (part.content && !textEl) return false;
     if (textEl) textEl.textContent = part.content;
-    root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
+    showCollapsed();
     const isDone = part.endTime != null;
     if (isDone !== renderedDone) {
       renderedDone = isDone;

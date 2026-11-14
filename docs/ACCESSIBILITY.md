@@ -231,3 +231,15 @@ gallery's rows and group headers, which a keyboard could not reach as an
 editor tab, are buttons now; Home's items are buttons and its title-bar
 icon is a named button. keyboard-audit-probe.mjs on the changed screens
 (boot, Home, Explorer, Find, Tools and Extensions): 0 on every count.
+
+2026-11-13, with the chat's message times and answer speed: the line
+under an answer (time, how long, tokens a second) is a kit button that
+runs a command, says in words what it shows, and opens a table of names
+and values; the time under a sent message is read as it is written. The
+"Thought for 12s" row above an answer was a mouse-only div: it is a
+button in the Tab order now, Enter or Space opens it and it says whether
+it is open. The audit had never met it, because no audited chat had an
+answer in it; it gained two screens, a chat with one finished exchange
+(`seed:chat`) and the same with the answer's line opened
+(`seed:chat.timing`). keyboard-audit-probe.mjs on those screens: 0 on
+every count (keyboard, names, focus, contrast, touch, popups).

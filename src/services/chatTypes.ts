@@ -22,6 +22,7 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import type { URI } from '../platform/uri.js';
 import type { IStorage } from '../platform/storage.js';
+import type { IChatResponseTiming, IModelCallTiming } from './chatResponseTiming.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. Provider & Message Types (Task 0.1)
@@ -127,9 +128,10 @@ export interface IChatRequestOptions {
 /**
  * A single streaming response chunk from the language model.
  *
- * Maps 1:1 to Ollama's streaming JSON objects from POST /api/chat.
+ * Maps 1:1 to Ollama's streaming JSON objects from POST /api/chat. The final
+ * chunk carries the engine's token counts and durations (IModelCallTiming).
  */
-export interface IChatResponseChunk {
+export interface IChatResponseChunk extends IModelCallTiming {
   /** Incremental text content. */
   readonly content: string;
   /** Incremental thinking/reasoning content. */
@@ -138,12 +140,6 @@ export interface IChatResponseChunk {
   readonly toolCalls?: readonly IToolCall[];
   /** Whether this is the final chunk. */
   readonly done: boolean;
-  /** Number of tokens in the prompt (present on final chunk from Ollama). */
-  readonly promptEvalCount?: number;
-  /** Number of tokens generated (present on final chunk from Ollama). */
-  readonly evalCount?: number;
-  /** Evaluation duration in nanoseconds (present on final chunk). */
-  readonly evalDuration?: number;
   /**
    * Why generation stopped (final chunk): 'stop' (finished, or a stop
    * sequence), 'length' (ran out of room: the token limit or the context
@@ -447,6 +443,8 @@ export interface IChatAssistantResponse {
   promptTokens?: number;
   /** Actual completion tokens reported by Ollama (set after response completes). */
   completionTokens?: number;
+  /** When its first word came, when it was finished, and what the engine reported of its speed. */
+  timing?: IChatResponseTiming;
 }
 
 // ── Context Pills ──
@@ -913,6 +911,8 @@ export interface IChatResponseStream {
   throwIfDone(): void;
   /** Report actual token usage from the LLM response (Ollama eval counts). */
   reportTokenUsage(promptTokens: number, completionTokens: number): void;
+  /** Report what the engine said of one finished model call: the answer's speed is made of these. */
+  reportModelCall?(call: IModelCallTiming): void;
   /** Attach a citation map to all existing Markdown parts so the renderer can resolve [N] markers. */
   setCitations(citations: Array<{ index: number; uri: string; label: string }>): void;
   /** Return the concatenated text of all Markdown parts in the response. */

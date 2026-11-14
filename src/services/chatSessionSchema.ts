@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   timestamp   INTEGER NOT NULL,
   sort_order  INTEGER NOT NULL DEFAULT 0,
   prompt_tokens     INTEGER,
-  completion_tokens INTEGER
+  completion_tokens INTEGER,
+  timing_json       TEXT
 )`;
 
 export const CREATE_MESSAGES_INDEX = `

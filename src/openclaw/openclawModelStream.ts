@@ -79,6 +79,8 @@ export async function executeModelStream(
         completionTokens = chunk.evalCount;
       }
       if (chunk.doneReason) doneReason = chunk.doneReason;
+      // The final chunk carries the engine's own figures for this call: the answer's speed is made of them.
+      if (chunk.done) response.reportModelCall?.(chunk);
     }
   } catch (error) {
     if (markdown) {

@@ -179,6 +179,7 @@ export async function runOpenclawReadOnlyTurn(
           if (typeof chunk.evalCount === 'number') {
             completionTokens = chunk.evalCount;
           }
+          if (chunk.done) response.reportModelCall?.(chunk); // the engine's figures for this call (chatResponseTiming.ts)
         }
         // D4: Fire after-model-call hook (reuses snapshot from before-hook)
         if (options.messageObserver?.onAfterModelCall && hookMessages) {

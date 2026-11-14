@@ -194,3 +194,86 @@ describe('ChatListRenderer streaming DOM stability', () => {
     expect(el2.classList.contains('parallx-chat-tool-node--complete')).toBe(true);
   });
 });
+
+describe('ChatListRenderer message times and answer speed', () => {
+  it('shows each sent message its time, and each finished answer its line of time and speed', () => {
+    const renderer = new ChatListRenderer();
+    const container = document.createElement('div');
+    const asked = Date.now() - 60_000;
+    const pair = createPair('req-1', 'A question', 'An answer');
+    (pair.request as { timestamp: number }).timestamp = asked;
+    pair.response.timing = { firstWordAt: asked + 1400, completedAt: asked + 20300, calls: 1, writtenTokens: 1040, timedTokens: 1040, writingMs: 16730 };
+    const old = createPair('req-0', 'An older question', 'An older answer'); // kept before timing was
+
+    renderer.renderMessages(container, [old, pair], false);
+
+    const times = [...container.querySelectorAll('.parallx-chat-message--user .parallx-chat-message-time')];
+    expect(times).toHaveLength(2);
+    expect(times[1].getAttribute('title')).toBeTruthy();
+    const lines = [...container.querySelectorAll('.parallx-chat-message--assistant .parallx-chat-message-actions button.parallx-chat-meta')];
+    expect(lines).toHaveLength(2);
+    expect(lines[1].textContent).toContain('20 s');
+    expect(lines[1].textContent).toContain('62.2 tokens/s');
+    expect(lines[0].textContent).not.toContain('tokens/s');
+    expect(lines[1].getAttribute('aria-expanded')).toBe('false');
+    renderer.dispose();
+  });
+
+  it('adds the line only once the answer is finished', () => {
+    const renderer = new ChatListRenderer();
+    const container = document.createElement('div');
+    const pair = createPair('req-1', 'A question', 'An ans');
+    pair.response.isComplete = false;
+
+    renderer.renderMessages(container, [pair], true);
+    expect(container.querySelector('button.parallx-chat-meta')).toBeNull();
+    expect(container.querySelector('.parallx-chat-message-time')).not.toBeNull();
+
+    (pair.response.parts[0] as { content: string }).content = 'An answer';
+    pair.response.isComplete = true;
+    pair.response.timing = { completedAt: Date.now(), calls: 1, writtenTokens: 12, timedTokens: 12, writingMs: 400 };
+    renderer.renderMessages(container, [pair], false);
+    const lines = container.querySelectorAll('button.parallx-chat-meta');
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent).toContain('30.0 tokens/s');
+    renderer.dispose();
+  });
+});
+
+describe('ChatListRenderer reasoning row from the keyboard', () => {
+  it('is a button in the Tab order that Enter and Space open and close, and says which it is', () => {
+    const renderer = new ChatListRenderer();
+    const container = document.createElement('div');
+    const pair = createPair('req-1', 'A question', 'An answer');
+    const thinking: IChatThinkingContent = { kind: ChatContentPartKind.Thinking, content: 'Weighing it.', isCollapsed: true, startTime: 1000, endTime: 13_000 };
+    (pair.response.parts as IChatContentPart[]).unshift(thinking);
+
+    renderer.renderMessages(container, [pair], false);
+    const toggle = container.querySelector('.parallx-chat-thinking-toggle') as HTMLElement;
+    const block = toggle.closest('.parallx-chat-thinking') as HTMLElement;
+    expect(toggle.getAttribute('role')).toBe('button');
+    expect(toggle.tabIndex).toBe(0);
+    expect(toggle.textContent).toContain('Thought for 12s');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    toggle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    expect(thinking.isCollapsed).toBe(false);
+    expect(block.classList.contains('parallx-chat-thinking--collapsed')).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    toggle.dispatchEvent(space);
+    expect(space.defaultPrevented).toBe(true); // Space does not scroll the chat
+    expect(thinking.isCollapsed).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    toggle.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(thinking.isCollapsed).toBe(true);
+
+    // The mouse still opens it on the press.
+    toggle.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true, cancelable: true }));
+    expect(thinking.isCollapsed).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    renderer.dispose();
+  });
+});

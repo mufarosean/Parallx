@@ -1369,9 +1369,8 @@
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 
-.parallx-chat-thinking-toggle:hover {
-  color: var(--px-text, var(--vscode-foreground, #cccccc));
-}
+.parallx-chat-thinking-toggle:hover, .parallx-chat-thinking-toggle:focus-visible { color: var(--px-text, var(--vscode-foreground, #cccccc)); }
+.parallx-chat-thinking-toggle:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); }
 
 .parallx-chat-thinking-arrow {
   display: inline-flex;
