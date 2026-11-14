@@ -26,6 +26,14 @@ export interface ICitedBlock {
   /** The reading page's size: what the box is measured against. */
   readonly pageWidth: number;
   readonly pageHeight: number;
+  /**
+   * For a table whose cells have boxes: where its rows part (the middle of
+   * the gap between one row and the next, down the page), and which of those
+   * is the end of its heading rows. A table too tall to show whole is shown
+   * as its heading and the rows the quote is in, cut between rows.
+   */
+  readonly rowEdges?: readonly number[];
+  readonly headBottom?: number;
 }
 
 /** A quote's tokens: its words and numbers, lower case, without the punctuation round them. */
@@ -71,6 +79,53 @@ function nameIn(caption: string | undefined): string | undefined {
   return `${word} ${m[2]}`;
 }
 
+/** A table's heading is its first row and the rows under it whose every cell is a heading; never more rows than this. */
+const MAX_HEADING_ROWS = 3;
+
+/** How many of a table's leading rows are its heading. */
+function headingRows(table: IReadingTable): number {
+  let count = 0, seen = 0;
+  for (let r = 0; r < table.rows && seen < MAX_HEADING_ROWS; r++) {
+    const row = table.cells.filter((c) => c.r === r && c.text.trim().length > 0);
+    if (row.length === 0) continue;
+    // The first row with anything in it is a heading whatever the reader marked. After it, a row is one only
+    // when every cell is marked: the reader marks a row's own label too, so one marked cell does not make it one.
+    if (seen > 0 && !row.every((c) => c.header)) break;
+    seen++;
+    count = r + 1;
+  }
+  return count;
+}
+
+/**
+ * Where a table's rows part, by its cells' boxes: the middle of the gap
+ * between each row and the next, and the one that ends the heading rows.
+ * Nothing when the cells carry no boxes.
+ */
+function rowsOf(table: IReadingTable): { rowEdges?: number[]; headBottom?: number } {
+  const tops: number[] = [], bottoms: number[] = [];
+  for (const c of table.cells) {
+    // A cell that spans rows says nothing about where one row ends.
+    if (!c.box || c.rs !== 1) continue;
+    tops[c.r] = Math.min(tops[c.r] ?? c.box[1], c.box[1]);
+    bottoms[c.r] = Math.max(bottoms[c.r] ?? c.box[3], c.box[3]);
+  }
+  const heading = headingRows(table);
+  const rowEdges: number[] = [];
+  let headBottom: number | undefined;
+  let above: number | undefined;
+  for (let r = 0; r < tops.length; r++) {
+    if (tops[r] === undefined) continue;
+    if (above !== undefined) {
+      const edge = (bottoms[above] + tops[r]) / 2;
+      rowEdges.push(edge);
+      if (above < heading && r >= heading) headBottom = edge;
+    }
+    above = r;
+  }
+  return rowEdges.length === 0 ? {} : { rowEdges, ...(headBottom === undefined ? {} : { headBottom }) };
+}
+
 /** The caption that goes with a box: the nearest one above or below it, within reach and over the same part of the page. */
 function captionFor(box: ReadingBox, captions: readonly IReadingBlock[], pageHeight: number): IReadingBlock | undefined {
   let best: { block: IReadingBlock; distance: number } | undefined;
@@ -104,7 +159,7 @@ export function locateCitedBlock(reading: IDocumentReading | null | undefined, p
   if (table) {
     // Its caption is part of it: framed together, the name sits clear of the caption instead of on it.
     const caption = captionFor(table.table.box, captions, sheet.height);
-    return { kind: 'table', box: caption ? union(table.table.box, caption.box) : table.table.box, name: nameIn(caption?.text) ?? 'Table', ...sized };
+    return { kind: 'table', box: caption ? union(table.table.box, caption.box) : table.table.box, name: nameIn(caption?.text) ?? 'Table', ...sized, ...rowsOf(table.table) };
   }
 
   // A caption's own words: the figure (or table) it belongs to, with the caption.

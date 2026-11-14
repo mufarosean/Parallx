@@ -1,0 +1,55 @@
+/* chatCitationPeek.css — the card a citation shows: the file, the page, and
+   the piece of the page the sentence rests on (chatCitationPeek.ts). */
+.parallx-cite-peek {
+  position: fixed;
+  z-index: var(--px-z-popup);
+  box-sizing: border-box;
+  /* A set width, so it is placed whole inside the window before its picture
+     arrives; the picture then gives the card its own width. */
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+  box-shadow: var(--px-shadow-lg);
+  color: var(--px-text);
+  font-size: var(--px-text-sm);
+  /* With a mouse or the keyboard the card only describes: the link opens the place. */
+  pointer-events: none;
+}
+
+/* A finger's card carries the way in, so it takes presses. */
+.parallx-cite-peek:has(.parallx-cite-peek__open) { pointer-events: auto; }
+
+.parallx-cite-peek__where {
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parallx-cite-peek__body p { margin: 0; }
+.parallx-cite-peek__wait { color: var(--px-text-muted); }
+.parallx-cite-peek__quote { color: var(--px-text-secondary); line-height: 1.45; }
+
+.parallx-cite-peek__piece {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--px-radius-sm);
+}
+
+/* Between a table's heading and the rows the quote is in: rows were left out here. */
+.parallx-cite-peek__skip {
+  height: 0;
+  margin: var(--px-space-1) 0;
+  border-top: 2px dotted var(--px-text-muted);
+}
+
+.parallx-cite-peek__open { align-self: flex-start; font-weight: 600; }

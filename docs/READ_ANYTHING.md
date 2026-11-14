@@ -115,19 +115,85 @@ it is not in the index) is read when it is opened (`pdfScanReading.ts`):
 - A picture of a page is not read when it is opened. It is read when it is
   quoted or handed to the chat, as before.
 
+## A citation's place on the page
+
+A citation in an answer is a link to a file and a page. Three things make it a
+place that can be checked:
+
+- **The link carries the words the sentence rests on.** When a citation checks
+  out, the citation check (`openclawCitationCheck.ts`, `supportingPassage`)
+  picks, from the block the model was shown, the line or pair of lines that
+  best supports the sentence (its numbers count most) and writes it on the link
+  as `quote`. A PDF block is a whole page, so before this a citation could only
+  open its page.
+- **The PDF view goes to those words** (`pdfLinkReveal.ts`): the page, and the
+  words washed by pdf.js's own find. When the words sit in a table, or are a
+  figure's caption, the table or figure gets a frame with its name ("Table 3"),
+  its caption inside the frame; a line of ordinary text keeps the wash alone.
+  The frame goes at the next press in the view.
+- **A photo of a page lights up too** (`imageQuoteReveal.ts`): the lines the
+  reader found the words on are washed over the picture, and follow its zoom.
+
+Where things are comes from the reading, never from a model
+(`readingLocate.ts`): the table that holds the quote (whole, or four fifths of
+its words and numbers), the caption whose words were quoted, the lines of a
+page read from its pixels. On a page with text of its own the place is the
+text pdf.js reports.
+
+### The card on a citation
+
+Pointing at a citation, moving to it with the keyboard, or pressing it with a
+finger shows a card (`chatCitationPeek.ts`): the file, the page, and the piece
+of the page the sentence rests on with the words washed
+(`services/pagePicture.ts`). A citation is judged without leaving the chat.
+
+- The piece is the quote's lines with a little of the page round them, or the
+  whole table or figure when the quote sits in one.
+- It is sized to be read: a line of the page is shown about as tall as a line
+  of the chat, as far as the room allows (540 by 420 pixels at most, less in a
+  small window). The card takes the width of its piece.
+- A table too tall for the room is shown as its heading rows and the rows the
+  quote is in, with a dotted line where rows were left out. The cuts fall
+  between rows: the reading has each cell's box and which cells are headings.
+  A figure is shown whole, smaller.
+- Only the piece is drawn (pdf.js draws the page moved so the piece fills the
+  canvas), at twice the size it is shown. A document opened for a piece is kept
+  45 seconds; a made piece is kept for the session (40 at most).
+- Nothing is made until a card is asked for. A quote that cannot be found on
+  the page gives the words in the card in place of a picture. A link whose file
+  is gone has no card, and neither has a link with no quote (an answer written
+  before this).
+- With a mouse or the keyboard the link still opens the place and the card only
+  describes. A finger's first press shows the card with Open At This Place on
+  it; a second press on the link goes straight there.
+- A screen reader is told the words at once ("Table 3. It rests on: …") as the
+  link's description. The picture is for the eye.
+
 ## Checks
 
 - Unit: `documentReading`, `pdfReadingTextLayer`, `pdfScanReading`,
   `doclingRuntime`, `doclingReadings`, `readerPolicy`, `fileLocator`,
-  `pdfFindQueue`.
+  `pdfFindQueue`, `openclawCitationCheck`, `readingLocate`, `pdfLinkReveal`,
+  `imageQuoteReveal`, `pagePicture`, `chatCitationPeek`.
 - In a hidden copy of the app: `tests/probes/read-anything-probe.mjs` makes a
   scan, has it read, opens it, and checks the text layer sits on the printed
   lines, Find highlights a phrase and a quote is located on its page. Then it
   opens a second scan nobody has read and checks the view says it is being
   read, its text arrives on the open page, its last page has its text when
-  scrolled to, and the reading is kept. It needs
+  scrolled to, and the reading is kept. Then a link to a row of a scanned
+  table: the table framed and named, the frame following zoom and going at a
+  press; and a link to a line on a photo of a page: the line washed. It needs
   the engine set up on the machine. Run it from Bash, not from a PowerShell
   pipeline.
+- From a question to the place, hidden: `tests/probes/chat-citation-probe.mjs`.
+  A stand-in answers in the chat model's place, in Ollama's wire format: it
+  calls the app's own Read tool on a scanned page and answers citing the
+  source label. The rest is the app's real path: the label becomes a link with
+  its quote; the card shows the piece (for a scanned table, for a PDF with
+  text of its own the reader never saw, and for a table that fills its page:
+  heading and quoted rows); the keyboard shows it and Escape takes it away; a
+  finger's press shows it with the way in; following the link opens the page
+  with the table framed. Same needs as the probe above.
 
 ## Found on the way
 

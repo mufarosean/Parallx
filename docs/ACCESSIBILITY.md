@@ -243,3 +243,19 @@ answer in it; it gained two screens, a chat with one finished exchange
 (`seed:chat`) and the same with the answer's line opened
 (`seed:chat.timing`). keyboard-audit-probe.mjs on those screens: 0 on
 every count (keyboard, names, focus, contrast, touch, popups).
+
+2026-11-14, with the card on a citation and the frame round a cited
+table: the card shows on hover, on keyboard focus and on a finger's first
+press. A finger has no hover, so its card carries the way in (Open At
+This Place) and a second press on the link goes straight there. The card
+is the link's description (`role="tooltip"`, `aria-describedby`): a
+screen reader hears the file, the page and the quoted words at once, and
+the table's name when the piece arrives; the wait line and the mark where
+rows were left out are kept from it. Escape, a press elsewhere, a scroll
+or leaving the link takes the card away, and it listens on the document
+only while it is open. In the PDF view the frame round a cited table is a
+named note ("Table 3, the place this link points at") that takes no
+presses. The audit gained a screen with a citation focused and its card
+showing (`seed:chat.citation`). keyboard-audit-probe.mjs on the chat
+screens: 0 on every count (keyboard, names, focus, contrast in both
+themes, touch, popups).

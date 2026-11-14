@@ -464,7 +464,8 @@ Decided by Claude while building, for him to overrule:
 - On his next launch the indexer reads every PDF in the open workspace
   again, once, in the background on the processor.
 
-Left, in order:
+Left, in order (as it stood on 2026-11-12; what has shipped since is
+below, and what is left now is at the end of this part):
 
 3. The highlight for a block (a table, a figure) and for a picture of a
    page in the image view. Mock-ups first.
@@ -523,6 +524,46 @@ has read before is never read again on opening, whatever it found; with
 no reader set up, nothing is started and nothing is said; a picture of a
 page is still not read when it is opened (a photo library would be read
 photo by photo), only when it is quoted or handed to the chat.
+
+Shipped 2026-11-13 and 2026-11-14, his picks 3B and 4A:
+
+- A citation carries the words it rests on. A PDF citation could only
+  open its page. Now the link holds the line (or two) of that page that
+  best supports the sentence, numbers first, and the PDF view opens at
+  those words, washed.
+- 3B, the frame. When those words sit in a table, or are a figure's
+  caption, the table or figure is framed with its name ("Table 3"), its
+  caption inside the frame. A line of ordinary text keeps the wash alone.
+  A photo of a page lights up the same way in the image view.
+- 4A, the card. Pointing at a citation, reaching it with the keyboard, or
+  pressing it with a finger shows a card on the citation: the file, the
+  page, and the piece of the page with the words washed, at a size to
+  read. A table too tall for the card is shown as its heading rows and
+  the rows the quote is in, cut between rows. A finger's card carries
+  Open At This Place. A screen reader is told the quoted words.
+- Where things are comes from the reader's reading (tables, cells,
+  captions, lines) or from the page's own text. No model is asked for a
+  place.
+
+Checked hidden, with the real reader on his machine and a stand-in in the
+chat model's place (`tests/probes/chat-citation-probe.mjs` and
+`tests/probes/read-anything-probe.mjs`, 0 problems each): from a question
+typed in the chat, through the app's own Read tool and citation check, to
+the card and the framed table. Not checked: what his real chat model
+writes. A citation exists only when the model cites a source label, and
+the words on the link are picked from the page it was shown, so they are
+only as good as the sentence they support.
+
+Decided by Claude for 3B and 4A, for him to overrule: a table's caption
+is framed with it; the frame goes at the next press in the PDF view; with
+a mouse or the keyboard the card only describes (the link itself opens
+the place), and only a finger's card has a button; the card is 540 by 420
+pixels at most; an answer written before this has no words on its links,
+so no card.
+
+Left of Read Anything now: 6C (the reader's state), then 5A (Open As
+Page, after the three products are read), and item 4's other half, which
+waits on his word that the card is free.
 
 *Generative edits.*
 

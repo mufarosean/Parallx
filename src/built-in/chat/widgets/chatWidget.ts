@@ -263,9 +263,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._listRenderer.setRegenerateHandler((request) => {
       void this._handleRegenerate(request);
     });
-    // Task 4.9: Wire cancel handler from widget into list renderer
-    this._listRenderer.setCancelHandler(() => this._handleStop());
-
     // Right-click context menu (Copy / Copy All) on chat messages
     this._listRenderer.attachContextMenu(this._messageListContainer);
 

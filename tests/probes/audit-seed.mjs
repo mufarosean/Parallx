@@ -169,7 +169,8 @@ export async function seedAfterLaunch(page, pre) {
     s.messages.push({
       request: { text: 'How fast do you write?', requestId: 'seed-chat-r1', attempt: 0, timestamp: now - 20_300 },
       response: {
-        parts: [{ kind: 'thinking', content: 'A short answer will do.', isCollapsed: true, startTime: now - 18_900, endTime: now - 6_600 }, { kind: 'markdown', content: 'About sixty-two tokens a second.' }],
+        // The answer cites the workspace's PDF, so a citation and its card are on screen too.
+        parts: [{ kind: 'thinking', content: 'A short answer will do.', isCollapsed: true, startTime: now - 18_900, endTime: now - 6_600 }, { kind: 'markdown', content: 'About sixty-two tokens a second ([reading.pdf, page 1](parallx://explorer/file?path=reading.pdf&page=1&quote=Hello+from+Parallx)).' }],
         isComplete: true, modelId: 'standin:latest', timestamp: now - 20_300,
         timing: { firstWordAt: now - 18_900, completedAt: now, calls: 2, writtenTokens: 282, timedTokens: 282, writingMs: 4536, readTokens: 21_400, readingMs: 6100, loadingMs: 38_200 },
       },
@@ -214,6 +215,8 @@ export async function seedAfterLaunch(page, pre) {
     'seed:chat': seededChat(),
     // the answer's line opened: where the time went
     'seed:chat.timing': seededChat(async () => { await page.locator('button.parallx-chat-meta').last().click().catch(() => {}); await page.waitForTimeout(400); }),
+    // the citation with the keyboard's focus on it: its card showing
+    'seed:chat.citation': seededChat(async () => { await page.keyboard.press('Tab'); await page.evaluate(() => document.querySelector('.parallx-chat-message--assistant a[href*="quote="]')?.focus()); await page.waitForSelector('.parallx-cite-peek img', { timeout: 20_000 }).catch(() => {}); }),
     'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
     'seed:plan.board': async () => { await run(page, 'media-organizer.openBoard', 1); },
     ...Object.fromEntries(PLAN_TOOLS.map((t) => [`seed:plan.${t}`, planTool(t)])),

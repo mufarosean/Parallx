@@ -33,6 +33,7 @@ import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTyp
 import { ContextMenu } from '../../../ui/contextMenu.js';
 import { runKitCommand } from '../../../ui/kit.js';
 import { appendAnswerMeta, appendMessageTime, keepMessageTimesCurrent } from './chatMessageMeta.js';
+import { attachCitationPeek } from './chatCitationPeek.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts
 export type { OpenAttachmentHandler } from '../chatTypes.js';
@@ -280,15 +281,11 @@ export class ChatListRenderer extends Disposable {
     this._onRegenerateMessage = handler;
   }
 
-  /** Set callback for cancelling the in-progress request (Task 4.9). */
-  setCancelHandler(_handler: () => void): void {
-    // Cancel is now handled by the input part's stop button; kept for API compat.
-  }
-
   /** Attach right-click context menu to the message list container. */
   attachContextMenu(container: HTMLElement): void {
     this._register({ dispose: () => this._dismissContextMenu() });
     this._register(keepMessageTimesCurrent(container)); // a time reads "Yesterday" once the day has turned
+    this._register(attachCitationPeek(container)); // a citation shows the piece of the page it rests on
 
     container.addEventListener('contextmenu', (e) => {
       const target = e.target as HTMLElement;

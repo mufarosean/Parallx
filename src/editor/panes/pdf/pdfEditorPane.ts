@@ -59,9 +59,7 @@ import { PdfSearchBar } from './pdfSearchBar.js';
 import type { IFindTarget } from '../../../ui/findTargets.js';
 
 const PANE_ID = 'pdf-editor-pane';
-const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
-const PDFJS_STANDARD_FONT_URL = './dist/renderer/pdfjs/standard_fonts/';
-const PDFJS_WASM_URL = './dist/renderer/pdfjs/wasm/';
+import { PDFJS_CMAP_URL, PDFJS_STANDARD_FONT_URL, PDFJS_WASM_URL } from '../../../services/pagePicture.js';
 
 // TextLayerMode is not exported from pdf_viewer.mjs
 const TEXT_LAYER_ENABLE = 1;

@@ -11,7 +11,7 @@
 
 import { readToolIntent } from '../../services/toolIntent.js';
 import { buildApprovalNode } from './rendering/chatApproval.js';
-import { setChatLinkChecker } from './rendering/chatContentParts.js';
+import { setChatLinkChecker } from './rendering/chatContentParts.js'; import { setCitationPeekRoot } from './rendering/chatCitationPeek.js';
 import { appDateString, appDateTimeString } from '../../services/localTime.js';
 import type { EditApplyEventDetail, IBuiltInToolFileWriter, IBuiltInToolFileSystem } from './chatTypes.js';
 import { commandPrefix } from '../../services/commandRules.js';
@@ -2056,8 +2056,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
     // chat marks citation links whose target is gone (file moved or
     // never there), checked by each link's own kind.
-    setChatLinkChecker((uri) => api.links.verify(uri));
-    context.subscriptions.push({ dispose: () => setChatLinkChecker(undefined) });
+    setChatLinkChecker((uri) => api.links.verify(uri)); setCitationPeekRoot(() => workspaceService?.folders[0]?.uri.fsPath); // where a citation's card finds its file
+    context.subscriptions.push({ dispose: () => { setChatLinkChecker(undefined); setCitationPeekRoot(undefined); } });
 
     // M66 §4a — `link_create` chat tool. Registered separately so it can
     // close over the `api.links` snapshot without threading it through the

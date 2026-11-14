@@ -92,3 +92,44 @@ describe('locateQuoteLines', () => {
     expect(locateQuoteLines(undefined, 'Total reserve')).toEqual([]);
   });
 });
+
+describe('a cited table\'s heading rows', () => {
+  /** A table of `rows` whose cells have boxes: 100 wide, 20 tall, from (60, 200). `heads` says which cells the reader marked as headings. */
+  const boxed = (rows: string[][], heads: (r: number, c: number) => boolean): IDocumentReading => ({
+    version: 1, ocr: true,
+    pages: [{ page: 1, width: 600, height: 800, lines: [] }],
+    blocks: [],
+    tables: [{
+      page: 1, box: [60, 200, 60 + 100 * rows[0].length, 200 + 20 * rows.length], rows: rows.length, cols: rows[0].length,
+      cells: rows.flatMap((row, r) => row.map((text, c) => ({ r, c, rs: 1, cs: 1, text, box: [60 + 100 * c, 200 + 20 * r, 160 + 100 * c, 220 + 20 * r] as const, ...(heads(r, c) ? { header: true } : {}) }))),
+    }],
+  });
+  const ROWS = [['Age', 'Paid', 'Incurred'], ['(months)', '(factor)', '(factor)'], ['108', '1.08', '1.04'], ['120', '1.05', '1.02']];
+
+  it('end where the rows the reader marked as headings end', () => {
+    expect(locateCitedBlock(boxed(ROWS, (r) => r < 2), 1, '120 1.05 1.02')?.headBottom).toBe(240);
+  });
+
+  it('come with where every row parts from the next, so a cut can fall between rows', () => {
+    expect(locateCitedBlock(boxed(ROWS, (r) => r < 2), 1, '120 1.05 1.02')?.rowEdges).toEqual([220, 240, 260]);
+    // Boxes with a gap between rows: the middle of the gap.
+    const gapped = boxed(ROWS, (r) => r < 1);
+    const cells = gapped.tables[0].cells.map((c) => ({ ...c, box: [c.box![0], c.box![1] + 2, c.box![2], c.box![3] - 4] as const }));
+    expect(locateCitedBlock({ ...gapped, tables: [{ ...gapped.tables[0], cells }] }, 1, '120 1.05 1.02')).toMatchObject({ rowEdges: [219, 239, 259], headBottom: 219 });
+  });
+
+  it('are the first row when the reader marked none', () => {
+    expect(locateCitedBlock(boxed(ROWS, () => false), 1, '120 1.05 1.02')?.headBottom).toBe(220);
+  });
+
+  it('do not take in a row for its own label being marked', () => {
+    // The first column holds each row's label: marked in every row, a heading row in none but the first.
+    expect(locateCitedBlock(boxed(ROWS, (r, c) => r === 0 || c === 0), 1, '120 1.05 1.02')?.headBottom).toBe(220);
+  });
+
+  it('are never more than three rows, and are left out when the cells have no boxes', () => {
+    expect(locateCitedBlock(boxed([...ROWS, ['132', '1.03', '1.01']], () => true), 1, '120 1.05 1.02')?.headBottom).toBe(260);
+    expect(locateCitedBlock(READING, 1, '120 1.05 1.02')).not.toHaveProperty('headBottom');
+    expect(locateCitedBlock(READING, 1, '120 1.05 1.02')).not.toHaveProperty('rowEdges');
+  });
+});
