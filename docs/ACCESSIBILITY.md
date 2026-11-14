@@ -274,3 +274,27 @@ followed by Enter; a reading under way is a status line. The audit gained
 two screens (`settings.open document-reader`, `pdf.reading`) and no
 longer presses a button named Set Up on any screen, so it can never start
 a download. keyboard-audit-probe.mjs on those screens: 0 on every count.
+
+2026-11-14, with Open As Page (a scan and the page made from it, kept in
+step): Open As Page is a kit button that runs a command, on the PDF
+view's Reading side, and a command in the palette. Checking the page
+against the scan needs no pointer: as the caret moves through the page by
+the keyboard, block by block and cell by cell, the scan frames where each
+came from. The frame on the scan is a named note ("Where this part of the
+page came from"). The press on the scan that marks a block on the page is
+a pointer's shortcut for the same link, and works for a finger as for a
+mouse; the mark it draws is for the eye and is kept from a screen reader.
+Nothing is revealed on hover, and there is no drag.
+
+2026-11-14, F6 with a dialog open: with Settings (or any dialog that has
+the window) open, F6 moved the keyboard's focus to the areas behind it,
+and Escape, which the dialog hears from inside, then no longer closed it.
+F6 and Shift+F6 now keep the focus in the dialog; when it has somehow
+gone behind, they bring it back to the dialog's first control. The audit
+had not seen this: after its own F6 pass on a Settings screen, Settings
+stayed open, and the screens that followed (a new page, the terminal, the
+activity log, the output) were measured through it. It now reports a
+dialog that Escape did not close before the next screen ("stuck
+dialogs"), and closes it so the next screens are the ones audited. The
+touch probe's planner check dragged an event one day to the right, which
+has no day to go to on the last day of a week; it goes a day back then.

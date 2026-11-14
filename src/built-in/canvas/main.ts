@@ -38,7 +38,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js'; import { registerDatabaseCommands } from './database/databaseCommands.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
-import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { registerPageEditSignals } from './pageEditSignals.js'; import { registerPageRecents } from './pageRecents.js'; import { IRecentsService, type IRecentsServiceShape } from '../../services/recentsService.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { URI } from '../../platform/uri.js'; import { showUndoToast } from '../../ui/kit.js';
+import { pageMoveTargets } from './pageMoveTargets.js'; import { registerPageBundleCommands } from './export/pageBundle.js'; import { electronImageStoreHost, setImageStoreHost } from './imageStore.js'; import { registerPageEditSignals } from './pageEditSignals.js'; import { registerPageRecents } from './pageRecents.js'; import { IRecentsService, type IRecentsServiceShape } from '../../services/recentsService.js'; import { storePicturesAsFiles } from './imageMigration.js'; import { registerScanPages } from './scanPage.js'; import { URI } from '../../platform/uri.js'; import { showUndoToast } from '../../ui/kit.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerCanvasPageSources } from './pageSources.js';
 import { registerTrashCommands } from './canvasTrashPanel.js'; import { registerDatabaseCsvCommands } from './database/databaseCsvActions.js';
@@ -355,7 +355,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }).catch((err) => console.warn('[Canvas] Single-home reconciliation failed:', err));
 
   // 2a. What other tools and Quick Open see of the pages (no bodies).
-  registerCanvasPageSources(api, context.subscriptions, _dataService, openPageInEditor);
+  registerCanvasPageSources(api, context.subscriptions, _dataService, openPageInEditor); registerScanPages(api, context, _dataService, () => _editorProvider, openPageInEditor); // Open As Page: a document the reader read, as a page beside it
   // Publish the FULL data service too, so the dashboard's notes widget can host
   // a real canvas page (create/get/save + live reload) via the shared editor view.
   api.services.registerInstance(ICanvasDataService, _dataService);

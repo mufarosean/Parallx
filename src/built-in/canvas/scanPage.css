@@ -1,0 +1,15 @@
+/* scanPage.css — the mark on a block of a page made from a document, when the
+   document's view points at it (scanPage.ts). The same thin frame the
+   document's view draws round the place a block came from, so the two sides
+   light up alike. It sits over the block in the page's scrolling element and
+   takes no presses. */
+.canvas-scan-mark {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  pointer-events: none;
+  outline: 2px solid var(--px-accent);
+  outline-offset: 4px;
+  border-radius: var(--px-radius-xs);
+  background: var(--px-accent-soft);
+}

@@ -305,7 +305,7 @@ async function main() {
     const read = await side();
     console.log(`[probe] the Reading side: ${JSON.stringify(read)}`);
     check(read.facts.How === 'From its pixels' && read.facts.Pages === '1' && read.facts.Tables === '1' && !!read.facts.Read, `the Reading side says how this document was read (${JSON.stringify(read.facts)})`);
-    check(read.buttons.length === 1 && read.buttons[0] === 'Read Again', `it offers Read Again (${JSON.stringify(read.buttons)})`);
+    check(JSON.stringify(read.buttons) === JSON.stringify(['Read Again', 'Open As Page']), `it offers Read Again and Open As Page (${JSON.stringify(read.buttons)})`);
     check(read.findings.length === 1 && /^Table 3: Selected development factors \| Page 1$/.test(read.findings[0]), `it lists the table the reader found, with its page (${JSON.stringify(read.findings)})`);
     await shot('reading-side.png');
     // A found table is a link to its place: the table framed.

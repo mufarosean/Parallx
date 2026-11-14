@@ -125,11 +125,11 @@ export class PdfEditorPane extends EditorPane {
   private _currentInput: PdfEditorInput | null = null;
   private readonly _selectionOverlay = new PdfSelectionOverlay(() => this._viewerContainer ?? null);
   /** A link's page and quote applied to the document: the find that washes the quote, the frame round a cited table. */
-  private readonly _linkReveal = new PdfLinkReveal({
+  private readonly _linkReveal = this._register(new PdfLinkReveal({
     viewer: () => this._pdfViewer, pageCount: () => this._pdfDoc?.numPages ?? 0, find: (query) => this._search?.findQuote(query),
     fsPath: () => this._currentInput?.uri.fsPath, showPage: (page) => this._toolbarView?.setPage(page),
     pageView: (page) => this._getPageView(page), viewerContainer: () => this._viewerContainer ?? null,
-  });
+  }));
   private _globalStorage: IStorage | undefined;
 
   // ── Reading modes ────────────────────────────────────────────────────

@@ -13,6 +13,13 @@ the record of what exists and why it is built the way it is.
   pixels. Its text is found by search and by the chat, a quote is located on
   its page, and in the PDF view Find, selection and a citation's highlight work
   on it as on any PDF.
+- **A citation is a place.** A citation in an answer carries the words it rests
+  on. Following it frames the table or figure those words sit in, and resting
+  on it shows that piece of the page in a card.
+- **The reader's state has a place.** The reader itself is in Settings; how one
+  document was read, and Read Again, are in the PDF view's panel.
+- **A scan can become a page.** Open As Page makes a page of the app from what
+  the reader read and opens it beside the scan, the two kept in step.
 - **Nothing leaves the computer**, and nothing is fetched after set-up.
 
 ## The reader's engine
@@ -205,13 +212,85 @@ the app asks where the engine stands, changes it, and has it read a document.
 Nothing in it runs until one of the two is shown. A reading it starts is known
 by path, so a scan being read as it opens and the Reading side do not start two.
 
+## Open As Page
+
+A document the reader has read can be made into a page of the app. The PDF
+view's Reading side has **Open As Page** (the command is Canvas: Open As
+Page). The page opens in the group beside the document.
+
+What the page is made of, block by block in the reader's order
+(`built-in/canvas/scanPageDoc.ts`):
+
+- a title or a section heading is a heading; text, captions and footnotes are
+  paragraphs; list items that follow one another are one list; code is a code
+  block;
+- a table is a real table, with its heading cells and its spans. A place the
+  reader left empty gets an empty cell; when two cells claim one place the
+  first keeps it and takes in the other's words, so nothing read is lost;
+- a figure is a picture cut from the document. A formula is a picture too:
+  the reader turns formulas into LaTeX only when asked, and that is not
+  offered yet;
+- running heads and feet are left out;
+- the first line names the file and links to it.
+
+It is an ordinary page: edited, searched and linked like any other. A document
+is made into a page once; asking again opens the page it became.
+
+### The two kept in step
+
+Every block made remembers where it came from: the document's page and its box
+there. Each cell of a table remembers its own cell. The record is one small
+file a page, in the workspace (`.parallx/page-sources/<page id>.json`), naming
+the document by its path within the workspace, so it moves with the folder.
+Nothing about it is in the page's own content.
+
+While such a page is open, the two sides speak through
+`services/scanPageLinks.ts` (the canvas's half is `built-in/canvas/scanPage.ts`,
+the PDF view's is `editor/panes/pdf/pdfScanPageLink.ts`):
+
+- the caret goes into a block, or a block is pressed: the document's view
+  frames where it came from, and goes there only when the place is out of
+  sight;
+- a press on the document (not a selection): the block made from that spot is
+  marked on the page for a moment, and framed on the document;
+- either side scrolls: the other brings what was made from the same height to
+  the same height (a quarter of the way down the view). A scroll made to follow
+  is not sent back, so the two come to rest.
+
+The mark on the page is drawn over the block, in the element that scrolls: the
+page editor redraws a block whose own element is changed. Each side listens on
+its own view only while such a page is open.
+
+### What the products do
+
+Read from their own pages on 2026-11-14:
+
+- **ABBYY FineReader 16**, the OCR Editor (help.abbyy.com, user guide,
+  "Checking recognized text" and "OCR Editor interface"): Text, Image and Zoom
+  panes; a click on a word in the Text pane highlights its area in the Image
+  pane, and the Zoom pane shows the line enlarged; low-confidence characters
+  are highlighted, with next and previous; a Verification dialog offers
+  Replace, Skip and Add to Dictionary.
+- **Mathpix Snip** (mathpix.com, docs and its post of 2022-07-08): Editor and
+  Preview panels; a reader mode that "syncs your reading position automatically
+  with the original PDF". No checking of the result against the scan is
+  described.
+- **Adobe Acrobat**: its help page refused to be fetched. Not verified, and not
+  relied on.
+
+Against that: Parallx links both ways, block by block and cell by cell, and the
+two scroll together. It does not mark unsure characters (the reading carries
+no confidence for a character or a line), has no walk through them, and no
+enlarged strip of the line being checked.
+
 ## Checks
 
 - Unit: `documentReading`, `pdfReadingTextLayer`, `pdfScanReading`,
   `doclingRuntime`, `doclingReadings`, `readerPolicy`, `fileLocator`,
   `pdfFindQueue`, `openclawCitationCheck`, `readingLocate`, `pdfLinkReveal`,
   `imageQuoteReveal`, `pagePicture`, `chatCitationPeek`, `documentReaderEngine`,
-  `documentReaderPanel`, `pdfReadingPanel`, `doclingCommands`.
+  `documentReaderPanel`, `pdfReadingPanel`, `doclingCommands`, `scanPageDoc`,
+  `scanPage`, `scanPageLinks`, `pdfScanPageLink`.
 - In a hidden copy of the app: `tests/probes/read-anything-probe.mjs` makes a
   scan, has it read, opens it, and checks the text layer sits on the printed
   lines, Find highlights a phrase and a quote is located on its page. Then it
@@ -231,6 +310,14 @@ by path, so a scan being read as it opens and the Reading side do not start two.
   downloaded and no engine is touched: not set up, setting up with its
   progress, stopped, carried on with Settings closed (the notice), set up,
   removed after a yes, and the Reading side with no reader.
+- Open As Page, hidden: `tests/probes/open-as-page-probe.mjs`. A four-page
+  scan read by the real reader is made into a page from the Reading side. It
+  checks the page (its first line, the order of its blocks, a real table), the
+  record kept in the workspace, a press in a cell framing that very cell on
+  the scan, a press on the scan marking its block on the page without touching
+  the page's content, each side following the other's scroll and coming to
+  rest, and that asking again opens the same page. Same needs as the probes
+  above.
 - From a question to the place, hidden: `tests/probes/chat-citation-probe.mjs`.
   A stand-in answers in the chat model's place, in Ollama's wire format: it
   calls the app's own Read tool on a scanned page and answers citing the

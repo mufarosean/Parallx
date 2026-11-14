@@ -12,6 +12,9 @@
 // - A reading in flight, whoever asked for it (this side, or the view reading
 //   a scan as it opens), shows as one line and takes the button away.
 // - With no reader set up, it says so and offers the way to Settings.
+// - A document that has been read offers Open As Page: the canvas makes a
+//   page of the app from the reading and opens it beside the document
+//   (built-in/canvas/scanPage.ts), the two then keeping in step.
 //
 // A found table or figure is an ordinary link to a place in the file
 // (parallx://explorer/file, its page and the words that find it), so it goes
@@ -24,6 +27,7 @@ import { formatRelativeTime } from '../../../ui/relativeTime.js';
 import { fetchDocumentReading, type IDocumentReading } from '../../../services/documentReading.js';
 import { documentReaderEngine, type ReaderPhase } from '../../../services/documentReaderEngine.js';
 import { listReadingFindings, type IReadingFinding } from '../../../services/readingLocate.js';
+import { scanPageLinks } from '../../../services/scanPageLinks.js';
 import './pdfReadingPanel.css';
 
 export interface IPdfReadingPanelHost {
@@ -38,6 +42,8 @@ export interface IPdfReadingPanelHost {
 /** The command that reads the document in the pane that has the focus (commands/doclingCommands.ts). */
 export const READ_AGAIN_COMMAND = 'pdf.readAgain';
 const SET_UP_COMMAND = 'parallx.installDocling';
+/** The canvas's command that makes a page of a document and opens it beside it (built-in/canvas/scanPage.ts). */
+export const OPEN_AS_PAGE_COMMAND = 'canvas.openFileAsPage';
 
 /** A reader in one of these phases can be asked to read. */
 const CAN_READ: ReadonlySet<ReaderPhase> = new Set(['ready', 'starting', 'running']);
@@ -65,7 +71,7 @@ export function readingFacts(reading: IDocumentReading, findings: readonly IRead
 
 export class PdfReadingPanel implements IDisposable {
   private readonly _root: HTMLElement;
-  private readonly _listening: IDisposable;
+  private readonly _listening: IDisposable[];
   /** Counts refreshes, so an answer for an earlier document is dropped. */
   private _turn = 0;
   private _error: string | null = null;
@@ -73,9 +79,13 @@ export class PdfReadingPanel implements IDisposable {
 
   constructor(container: HTMLElement, private readonly _host: IPdfReadingPanelHost) {
     this._root = createBlock(container, 'div', { className: 'pdf-reading' });
-    this._listening = documentReaderEngine.onDidChangeReading((fsPath) => {
-      if (this._showing && fsPath.toLowerCase() === this._host.fsPath()?.toLowerCase()) void this.refresh();
-    });
+    this._listening = [
+      documentReaderEngine.onDidChangeReading((fsPath) => {
+        if (this._showing && fsPath.toLowerCase() === this._host.fsPath()?.toLowerCase()) void this.refresh();
+      }),
+      // A page started or stopped being made from a document: the side says so.
+      scanPageLinks.onDidChange(() => { if (this._showing) void this.refresh(); }),
+    ];
   }
 
   /** The side is shown, or hidden: nothing is asked for a side nobody is looking at. */
@@ -106,8 +116,10 @@ export class PdfReadingPanel implements IDisposable {
     const note = (text: string, kind = '', attrs?: Record<string, string>): void => {
       createBlock(root, 'p', { className: `pdf-reading__note${kind ? ` pdf-reading__${kind}` : ''}`, text, ...(attrs ? { attrs } : {}) });
     };
-    const button = (id: string, label: string, icon: string, command: string): void => {
-      createButton(createBlock(root, 'div', { className: 'pdf-reading__actions' }), { id, label, icon, size: 'sm', command });
+    let actions: HTMLElement | null = null;
+    const button = (id: string, label: string, icon: string, command: string, more?: { args: readonly unknown[]; title: string }): void => {
+      actions ??= createBlock(root, 'div', { className: 'pdf-reading__actions' });
+      createButton(actions, { id, label, icon, size: 'sm', command, ...more });
     };
     const findings = listReadingFindings(reading);
 
@@ -137,6 +149,12 @@ export class PdfReadingPanel implements IDisposable {
         note('The document reader is not set up. A PDF is read as plain text, and a scan is not read at all.');
         button('pdf.reading.setUp', 'Set Up Document Reader…', 'download', SET_UP_COMMAND);
       }
+    }
+
+    // The document as a page of the app, beside it: made from what was read.
+    if (reading) {
+      if (scanPageLinks.isMaking(fsPath)) note('Making a page of this document…', 'busy', { role: 'status', 'aria-live': 'polite' });
+      else button('pdf.reading.openAsPage', 'Open As Page', 'file-text', OPEN_AS_PAGE_COMMAND, { args: [fsPath], title: 'Make a page of this document and open it beside it' });
     }
 
     // What it found: each a link to its place.
@@ -173,7 +191,7 @@ export class PdfReadingPanel implements IDisposable {
 
   dispose(): void {
     this._turn++;
-    this._listening.dispose();
+    for (const l of this._listening) l.dispose();
     this._root.remove();
   }
 }

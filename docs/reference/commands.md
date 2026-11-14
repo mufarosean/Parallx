@@ -66,6 +66,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `canvas.manageTemplates` | Canvas: Manage Templates | canvas |  |  |  |
 | `canvas.newDatabase` | Canvas: New Database | canvas |  |  |  |
 | `canvas.newPage` | Canvas: New Page | canvas |  |  |  |
+| `canvas.openFileAsPage` | Canvas: Open As Page | canvas |  |  |  |
 | `canvas.renamePage` | Canvas: Rename Page | canvas |  |  |  |
 | `canvas.restorePage` | Canvas: Restore Page from Trash | canvas |  |  |  |
 | `canvas.saveAsTemplate` | Canvas: Save Page As Template | canvas |  |  |  |

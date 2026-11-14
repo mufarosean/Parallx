@@ -340,6 +340,57 @@ async function pieceOfPicture(fsPath: string, quote: string, limits: IPieceLimit
   return { parts, what: block?.kind ?? 'lines', ...(block ? { name: block.name } : {}) };
 }
 
+/** A region cut out of a page is never drawn wider than this many pixels, nor at more than this many times the page's own size. */
+const REGION_PIXELS = 1400;
+const MAX_REGION_SCALE = 3;
+
+/**
+ * A region of a document's page as a picture (a JPEG data: URL): a figure or
+ * a formula, as it is printed. `box` is [left, top, right, bottom] in the
+ * reading's units, measured against `pageSize`. Null when the file is
+ * neither a PDF nor a picture, or cannot be drawn.
+ */
+export async function pictureOfRegion(fsPath: string, pageNumber: number, box: ReadingBox, pageSize: readonly [number, number]): Promise<string | null> {
+  try {
+    if (!(pageSize[0] > 0) || !(pageSize[1] > 0)) return null;
+    if (/\.pdf$/i.test(fsPath)) {
+      const doc = await pdfDocument(fsPath);
+      if (!doc || pageNumber < 1 || pageNumber > doc.numPages) return null;
+      const page = await doc.getPage(pageNumber);
+      const view = page.getViewport({ scale: 1 });
+      const region = pieceRegion(view, [], rectOf(box, view.width / pageSize[0], view.height / pageSize[1]));
+      if (!region || region.w <= 0 || region.h <= 0) return null;
+      const k = Math.min(MAX_REGION_SCALE, REGION_PIXELS / region.w);
+      const canvas = canvasOf(region.w * k, region.h * k);
+      const g = canvas.getContext('2d');
+      if (!g) return null;
+      await page.render({ canvasContext: g, canvas, viewport: page.getViewport({ scale: k }), transform: [1, 0, 0, 1, -region.x * k, -region.y * k] }).promise;
+      return canvas.toDataURL('image/jpeg', 0.9);
+    }
+    if (!isPicturePath(fsPath)) return null;
+    const file = await fileBytes(fsPath);
+    if (!file) return null;
+    const image = new Image();
+    const mime = /\.png$/i.test(fsPath) ? 'image/png' : /\.webp$/i.test(fsPath) ? 'image/webp' : /\.gif$/i.test(fsPath) ? 'image/gif' : 'image/jpeg';
+    image.src = `data:${mime};base64,${file.base64}`;
+    await image.decode();
+    const region = pieceRegion({ width: image.naturalWidth, height: image.naturalHeight }, [], rectOf(box, image.naturalWidth / pageSize[0], image.naturalHeight / pageSize[1]));
+    if (!region || region.w <= 0 || region.h <= 0) return null;
+    const k = Math.min(1, REGION_PIXELS / region.w);
+    const canvas = canvasOf(region.w * k, region.h * k);
+    const g = canvas.getContext('2d');
+    if (!g) return null;
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(image, region.x, region.y, region.w, region.h, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.9);
+  } catch (err) {
+    console.warn('[PagePicture] A region could not be cut from', fsPath, err);
+    return null;
+  }
+}
+
 const _pieces = new Map<string, Promise<IPagePiece | null>>();
 
 /**

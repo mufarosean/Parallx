@@ -598,9 +598,56 @@ Decided by Claude for 6C, for him to overrule:
 - Fixed on the way: a Settings panel was torn down only the next time
   Settings opened, not when it closed.
 
-Left of Read Anything now: 5A (Open As Page, after the three products
-are read), and item 4's other half, which waits on his word that the
-card is free.
+Shipped 2026-11-14, his pick 5A, Open As Page:
+
+- The PDF view's Reading side has Open As Page. It makes a page of the
+  app from what the reader read and opens it beside the scan: headings,
+  paragraphs and lists, a scanned table as a real table, figures and
+  formulas as pictures cut from the scan. The page is an ordinary page.
+- The two are linked. The caret in a block (or a press on it) frames
+  where it came from on the scan; in a table, the very cell. A press on
+  the scan marks the block made from that spot on the page. Either side
+  scrolls and the other follows.
+- A scan is made into a page once: asking again opens that page.
+
+Checked hidden with the real reader on his machine
+(`tests/probes/open-as-page-probe.mjs`, 0 problems), on a four-page scan
+Claude drew. On that scan the reader read the bold heading "Paid" as
+"pad": the kind of slip the side-by-side view is for. Not seen on one of
+his own scans.
+
+The products, read 2026-11-14 from their own pages before building
+(the reading that was owed): ABBYY FineReader 16 has Text, Image and
+Zoom panes, a click on a word in the text highlights its area on the
+image, low-confidence characters are highlighted with next and previous,
+and a Verification dialog offers Replace, Skip and Add to Dictionary.
+Mathpix Snip keeps the reading position of its converted view in step
+with the original PDF. Adobe's help page refused to be fetched: Acrobat
+is not verified and was not relied on. Against that, Parallx links both
+ways, block by block and cell by cell, and scrolls together. It does not
+mark unsure characters and has no walk through them: the reading the
+app keeps carries no confidence for a character or a line.
+
+Decided by Claude for 5A, for him to overrule:
+
+- The scan and the page are two tabs in two groups side by side, each
+  the real view with all its tools, not one tab holding both as drawn.
+  On a narrow window they stay side by side; they do not stack by
+  themselves.
+- Where each block came from is kept in a small file beside the
+  workspace's other files (`.parallx/page-sources`), not in the page.
+- A formula is a picture cut from the scan. Turning formulas into LaTeX
+  on request (part of item 5 as first written) is not built: on the
+  processor it is slow, and on the card it needs his word.
+- Running heads and feet are left out of the page. The page opens with
+  one line naming the file.
+- The two always scroll together while both are open. There is no switch
+  to stop it.
+- Open As Page is offered for PDFs, from the Reading side. A photo of a
+  page has no such button yet (the image view has no Reading side).
+
+Left of Read Anything now: formulas as LaTeX on request, and item 4's
+other half; each waits on his word about the card.
 
 *Generative edits.*
 

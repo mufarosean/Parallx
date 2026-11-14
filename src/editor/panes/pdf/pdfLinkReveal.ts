@@ -9,13 +9,20 @@
 // reading), the block gets a thin frame with its name on it ("Table 3").
 // The frame stays until the next press in the view.
 //
+// The same frame, with no name on it, shows where a block of a page made
+// from this document came from (Open As Page; pdfScanPageLink.ts keeps the
+// view and that page in step).
+//
 // pdf.js empties a page's element whenever it draws the page again (a zoom,
 // a scroll back into view), so the frame is drawn again from renderPage.
 
 import { createBlock } from '../../../ui/kit.js';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 import type { PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { fetchDocumentReading } from '../../../services/documentReading.js';
-import { locateCitedBlock, type ICitedBlock } from '../../../services/readingLocate.js';
+import { locateCitedBlock } from '../../../services/readingLocate.js';
+import type { IScanSpot } from '../../../services/scanPageLinks.js';
+import { PdfScanPageLink } from './pdfScanPageLink.js';
 import './pdfLinkReveal.css';
 
 export interface IPdfLinkRevealHost {
@@ -35,13 +42,28 @@ export interface IPdfLinkRevealHost {
 
 const FRAME = 'pdf-cited-block';
 
-export class PdfLinkReveal {
-  private _cited: ICitedBlock | null = null;
+/** What is framed: a box on a page, measured against that page's size. */
+interface IFramed {
+  readonly page: number;
+  readonly box: readonly [number, number, number, number];
+  readonly pageWidth: number;
+  readonly pageHeight: number;
+  /** Written on the frame's tag; no tag when empty. */
+  readonly name: string;
+  /** What a screen reader is told it is. */
+  readonly label: string;
+}
+
+export class PdfLinkReveal implements IDisposable {
+  private _framed: IFramed | null = null;
   /** Counts reveals, so a reading that arrives for an earlier one is dropped. */
   private _turn = 0;
   private _stopWatching: (() => void) | null = null;
+  private readonly _pageLink: PdfScanPageLink;
 
-  constructor(private readonly _host: IPdfLinkRevealHost) {}
+  constructor(private readonly _host: IPdfLinkRevealHost) {
+    this._pageLink = new PdfScanPageLink(_host, (spot) => this.showSpot(spot));
+  }
 
   /**
    * Apply a link's `page` and `quote`. Both are optional and both are
@@ -70,11 +92,29 @@ export class PdfLinkReveal {
     if (!fsPath) return;
     const cited = locateCitedBlock(await fetchDocumentReading(fsPath), page, quote);
     if (turn !== this._turn || !cited || this._host.fsPath() !== fsPath) return;
-    this._cited = cited;
-    this.renderPage(cited.page);
-    this._host.pageView(cited.page)?.div?.querySelector(`.${FRAME}`)?.scrollIntoView({ block: 'center' });
-    // It stays until the next press anywhere in the view.
+    this._show({ page: cited.page, box: cited.box, pageWidth: cited.pageWidth, pageHeight: cited.pageHeight, name: cited.name, label: `${cited.name}, the place this link points at` }, true);
+  }
+
+  /**
+   * Frame a place on the document that a block of the page made from it came
+   * from. The view goes there only when the place is not already in sight, so
+   * moving through a page line by line does not make the document jump.
+   */
+  showSpot(spot: IScanSpot): void {
+    this.clear();
+    this._show({ page: spot.page, box: spot.box, pageWidth: spot.pageWidth, pageHeight: spot.pageHeight, name: '', label: 'Where this part of the page came from' }, false);
+  }
+
+  /** Draw the frame, bring it into view (`always`, or only when it is out of sight), and take it away at the next press in the view. */
+  private _show(framed: IFramed, always: boolean): void {
+    this._framed = framed;
+    this.renderPage(framed.page);
     const container = this._host.viewerContainer();
+    const frame = this._host.pageView(framed.page)?.div?.querySelector(`.${FRAME}`);
+    if (frame && container) {
+      const f = frame.getBoundingClientRect(), c = container.getBoundingClientRect();
+      if (always || f.top < c.top || f.bottom > c.bottom) frame.scrollIntoView({ block: 'center' });
+    }
     if (container) {
       const onPress = (): void => this.clear();
       container.addEventListener('pointerdown', onPress, { capture: true, once: true });
@@ -84,21 +124,23 @@ export class PdfLinkReveal {
 
   /** Draw the frame on `pageNumber` again, when that is the page it is on (pdf.js has just drawn the page). */
   renderPage(pageNumber: number): void {
-    const cited = this._cited;
-    if (!cited || cited.page !== pageNumber) return;
+    // A page was drawn: the view may now be showing a document a page was made from.
+    this._pageLink.sync();
+    const framed = this._framed;
+    if (!framed || framed.page !== pageNumber) return;
     const pageEl = this._host.pageView(pageNumber)?.div;
     if (!pageEl) return;
     pageEl.querySelector(`.${FRAME}`)?.remove();
     // The reading measured the page as it is shown upright; a page the reader has turned is left without a frame.
     if (((this._host.viewer()?.pagesRotation ?? 0) % 360) !== 0) return;
-    const [left, top, right, bottom] = cited.box;
-    const frame = createBlock(pageEl, 'div', { className: FRAME, attrs: { role: 'note', 'aria-label': `${cited.name}, the place this link points at` } });
+    const [left, top, right, bottom] = framed.box;
+    const frame = createBlock(pageEl, 'div', { className: FRAME, attrs: { role: 'note', 'aria-label': framed.label } });
     const pct = (v: number, of: number): string => `${Math.max(0, Math.min(100, (v / of) * 100))}%`;
-    frame.style.left = pct(left, cited.pageWidth);
-    frame.style.top = pct(top, cited.pageHeight);
-    frame.style.width = pct(right - left, cited.pageWidth);
-    frame.style.height = pct(bottom - top, cited.pageHeight);
-    createBlock(frame, 'span', { className: `${FRAME}__name`, text: cited.name });
+    frame.style.left = pct(left, framed.pageWidth);
+    frame.style.top = pct(top, framed.pageHeight);
+    frame.style.width = pct(right - left, framed.pageWidth);
+    frame.style.height = pct(bottom - top, framed.pageHeight);
+    if (framed.name) createBlock(frame, 'span', { className: `${FRAME}__name`, text: framed.name });
   }
 
   /** Take the frame away: a press in the view, another link, another document. */
@@ -106,8 +148,13 @@ export class PdfLinkReveal {
     this._turn++;
     this._stopWatching?.();
     this._stopWatching = null;
-    const cited = this._cited;
-    this._cited = null;
-    if (cited) this._host.pageView(cited.page)?.div?.querySelector(`.${FRAME}`)?.remove();
+    const framed = this._framed;
+    this._framed = null;
+    if (framed) this._host.pageView(framed.page)?.div?.querySelector(`.${FRAME}`)?.remove();
+  }
+
+  dispose(): void {
+    this.clear();
+    this._pageLink.dispose();
   }
 }

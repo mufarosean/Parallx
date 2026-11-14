@@ -66,6 +66,7 @@ const EXEMPT_FILES = new Set([
   'manifest.ts',                   // The tool's manifest: declarative data, no gate interaction
   'main.ts',                       // Activation entry point
   'canvas.css',                    // Stylesheet
+  'scanPage.css',                  // Stylesheet: the mark on a block of a page made from a document
   'database/databaseTypes.ts',     // Database type definitions (M8)
   'database/databaseDataService.ts', // Database data layer (M8)
   'database/database.css',         // Database stylesheet (M8 Phase 2)
@@ -127,6 +128,9 @@ const GATE_RULES: Record<string, string[]> = {
   'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks', 'canvasSidebarKeyboardMove', 'canvasTrashPanel'],
   'canvasTrashPanel.ts':                   ['config/blockRegistry', 'contentSchema', 'canvasTypes'],  // the sidebar's Trash, split out of canvasSidebar
   'canvasVersionDiff.ts':                  [],  // what a saved version changed: pure, no canvas imports
+  // Open As Page: a reading as page JSON (pure), and the making and linking of such a page.
+  'scanPageDoc.ts':                        ['markdownImport'],
+  'scanPage.ts':                           ['scanPageDoc', 'imageStore', 'markdownImport', 'contentSchema'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.

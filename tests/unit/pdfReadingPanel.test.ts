@@ -2,8 +2,9 @@
 // pdfReadingPanel.test.ts — the Reading side of the PDF view's panel: how the
 // document reader read the open document, what it found, and Read Again.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PdfReadingPanel, findingHref, readingFacts, READ_AGAIN_COMMAND } from '../../src/editor/panes/pdf/pdfReadingPanel';
+import { PdfReadingPanel, findingHref, readingFacts, OPEN_AS_PAGE_COMMAND, READ_AGAIN_COMMAND } from '../../src/editor/panes/pdf/pdfReadingPanel';
 import { documentReaderEngine } from '../../src/services/documentReaderEngine';
+import { scanPageLinks } from '../../src/services/scanPageLinks';
 import { installKitCommands } from '../../src/ui/kitCommands';
 import type { IDocumentReading } from '../../src/services/documentReading';
 
@@ -39,7 +40,7 @@ function setup(o: { fsPath?: string; scan?: boolean } = {}) {
   const host = { fsPath: () => state.fsPath, isScan: vi.fn(async () => o.scan ?? false), readingArrived: vi.fn() };
   const panel = new PdfReadingPanel(container, host);
   const text = () => (container.textContent ?? '').replace(/\s+/g, ' ');
-  return { container, panel, host, state, text, button: () => container.querySelector('button'), facts: () => Array.from(container.querySelectorAll('th')).map((th) => [th.textContent, th.nextElementSibling?.textContent]) };
+  return { container, panel, host, state, text, button: () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent !== 'Open As Page') ?? null, pageButton: () => Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Open As Page') ?? null, facts: () => Array.from(container.querySelectorAll('th')).map((th) => [th.textContent, th.nextElementSibling?.textContent]) };
 }
 
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); };
@@ -213,5 +214,40 @@ describe('Read Again', () => {
     finish({ ok: true });
     await done;
     expect(s.host.readingArrived).not.toHaveBeenCalled();
+  });
+});
+
+describe('Open As Page', () => {
+  it('is offered for a document that has been read, and runs the canvas command with the file', async () => {
+    const run = vi.fn(async () => undefined);
+    installKitCommands({ executeCommand: run });
+    fakeReader({ kept: READING });
+    const s = setup();
+    s.panel.setShowing(true);
+    await settle();
+    s.pageButton()!.click();
+    expect(run).toHaveBeenCalledWith(OPEN_AS_PAGE_COMMAND, 'D:/Work/Scans/exam.pdf');
+  });
+
+  it('is not offered for a document the reader has not read: there is nothing to make a page from', async () => {
+    fakeReader();
+    const s = setup();
+    s.panel.setShowing(true);
+    await settle();
+    expect(s.pageButton()).toBeNull();
+  });
+
+  it('says so while the page is being made, in place of the button', async () => {
+    fakeReader({ kept: READING });
+    const s = setup();
+    s.panel.setShowing(true);
+    await settle();
+    scanPageLinks.setMaking('D:\\Work\\Scans\\exam.pdf', true);
+    await settle();
+    expect(s.pageButton()).toBeNull();
+    expect(Array.from(s.container.querySelectorAll('[role="status"]')).map((n) => n.textContent)).toEqual(['Making a page of this document…']);
+    scanPageLinks.setMaking('D:/Work/Scans/exam.pdf', false);
+    await settle();
+    expect(s.pageButton()).not.toBeNull();
   });
 });
