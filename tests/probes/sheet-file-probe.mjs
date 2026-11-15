@@ -73,8 +73,8 @@ try {
   check('the file opens in a tab under its name', (await tabNames()).some((t) => /Budget 2026/.test(t)), await tabNames());
   const free = { ...(await meta()), executors: (await host('probeState')).executors };
   check('the sheet starts at 1,000 rows by 52 columns', free.rows === 1000 && free.columns === 52, free);
-  // The engine today has no function outside the exam's list, so the counts are equal; fewer would mean one was taken away.
-  check('the sheet has every function the engine has', free.executors >= exam.executors && free.executors > 400, { free: free.executors, exam: exam.executors });
+  // A sheet file has every function; a practice sheet has fewer (the exam's list takes about two dozen away).
+  check('the sheet has every function the engine has, and more than a practice sheet', free.executors > exam.executors && free.executors > 500, { free: free.executors, exam: exam.executors });
   check('the file on disk is a sheet file', /"format":"parallx-sheet"/.test(await fileText(filePath)), (await fileText(filePath)).slice(0, 80));
 
   // Work in it with real keys.

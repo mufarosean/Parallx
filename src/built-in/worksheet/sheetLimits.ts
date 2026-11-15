@@ -18,6 +18,13 @@ export const EXAM_LIMITS: SheetLimits = { functions: ATHENA_FUNCTIONS, rows: ATH
 /** The engine computes +, -, *, /, comparisons and ranges through executors of its own, registered beside the functions (its FUNCTION_NAMES_META, which the package does not export): never removed. */
 const ENGINE_OPERATORS: ReadonlySet<string> = new Set(['COMPARE', 'DIVIDED', 'MINUS', 'MULTIPLY', 'PLUS', 'UNION', 'CUBE']);
 
+/**
+ * Names the exam's own comparison workbook misspells, and what the function
+ * is really called. The list is generated from that workbook as written, so
+ * without this a function the exam has would be taken away for a typo.
+ */
+const MISSPELLED_IN_SOURCE: readonly (readonly [string, string])[] = [['BAHTEXT', 'BAHTTEXT']];
+
 const saidFor = new WeakSet<Univer>();
 
 /**
@@ -30,6 +37,7 @@ export function applyFunctionSet(univer: Univer, functions: readonly string[]): 
   try {
     const fnService = univer.__getInjector().get(IFunctionService);
     const allowed = new Set(functions.map((name) => name.toUpperCase()));
+    for (const [listed, real] of MISSPELLED_IN_SOURCE) if (allowed.has(listed)) allowed.add(real);
     // What computes (the executors) and what the catalog lists (the descriptions) are two lists, and
     // some functions are only in the first: reading the catalog alone left those computing.
     const known = new Set<string>();

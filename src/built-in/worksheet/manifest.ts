@@ -19,6 +19,8 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
     // In the Tools menu while Worksheets runs.
     menus: {
       'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }],
+      // The palette offers the export only while there is a sheet file to export.
+      commandPalette: [{ command: 'worksheet.exportSheet', when: SHEET_ON_SCREEN_WHEN }],
       // Its sidebar's More Actions menu.
       'viewContainer/title': [
         { command: 'worksheet.newSheet', title: 'New Sheet…', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },

@@ -22,6 +22,8 @@ export interface ParallxApiLike {
     }): Promise<void>;
     registerFileEditor?(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): { dispose(): void };
     openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    closeEditor?(editorId: string): Promise<boolean>;
+    readonly openEditors?: readonly { id: string; description: string }[];
   };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): { dispose(): void };
@@ -37,7 +39,7 @@ export interface ParallxApiLike {
   context?: { createContextKey?<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { set(value: T): void } };
   canvas?: { registerBlock(registration: import('../../api/bridges/canvasBlocksBridge.js').CanvasBlockRegistration): { dispose(): void } };
   window?: {
-    showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean>;
+    showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
     showWarningMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showInformationMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage?(message: string): Promise<unknown>;

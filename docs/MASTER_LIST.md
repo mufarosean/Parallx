@@ -152,8 +152,9 @@ this text is as corrected by that review.
   what it takes from the kit is the notice shown while a file opens or
   is refused. Everything worked with on the sheet (ribbon, formula bar,
   sheet tabs, zoom) is still the engine's own.
-- A `.sheet` file opens as a live sheet from the Explorer, Quick Open and
-  File > Open. It starts at 1,000 rows by 52 columns and grows as the
+- A `.sheet` file opens as a live sheet from the Explorer and Quick Open
+  (both seen in the app) and from File > Open (run as its command with a
+  path; the file dialog itself was seen by nobody). It starts at 1,000 rows by 52 columns and grows as the
   selection nears its end, so an arrow never wraps. Scrolling alone does
   not grow it: the wheel stops at the last row until the selection goes
   there. It follows the app's light or dark.
@@ -181,30 +182,46 @@ this text is as corrected by that review.
 A correction to what he was told twice. First he was told a sheet was
 held to "only the exam's functions"; then, on 2026-11-15, that the list
 "removes nothing" because all 511 of the engine's functions are on it.
-Both were wrong, and the claim checker found it: 25 of the engine's 511
-functions are not on the exam's list, and they computed on the practice
-sheet anyway, because the list was applied before the engine had
-registered its functions and so found nothing to remove. That was so
-before this piece too. Fixed in the review: the list is applied as the
-engine starts. A practice sheet now answers #NAME? to ARRAYTOTEXT,
-ARRAY_CONSTRAIN, AVERAGE.WEIGHTED, BAHTTEXT, CELL, EPOCHTODATE, FLATTEN,
-FORECAST.LINEAR, IMCOTH, IMLOG, IMTANH, ISBETWEEN, ISDATE, ISEMAIL, ISURL,
-MARGINOFERROR, NUMBERSTRING, NUMBERVALUE, REGEXEXTRACT, REGEXMATCH,
-REGEXREPLACE, ROUNDBANK, TO_DATE and VALUETOTEXT, as the exam's tool
-would. LET is the one left: it is not on the list and still computes,
-because the engine reads it in its parser and not as a function. A sheet
-of one's own has all of them. **This changes his practice sheet, which
-was promised untouched: his to overrule.** Not checked: whether those
-names still show in the function list of the fx button.
+Both were wrong, and the claim checker found it: 31 of the engine's 511
+function names are not on the exam's list, and they computed on the
+practice sheet anyway. The list was applied before the engine had
+registered its functions, so it found nothing to remove (shown by
+running: reading more of the engine at that same early moment still
+removed nothing; applying the list as the engine starts removed them).
+The same code ran at the same point before this piece, so it was so
+before it too (read, not run on the older commit).
+
+Fixed in the review. Of the 31: 6 are the engine's own operators (plus,
+minus, times, divide, compare, cube) and stay; LET stays, because the
+engine reads it in its parser and not as a function, so it still
+computes; BAHTTEXT stays (below); the other 23 now answer #NAME? on a
+practice sheet:
+ARRAYTOTEXT, ARRAY_CONSTRAIN, AVERAGE.WEIGHTED, CELL, EPOCHTODATE,
+FLATTEN, FORECAST.LINEAR, IMCOTH, IMLOG, IMTANH, ISBETWEEN, ISDATE,
+ISEMAIL, ISURL, MARGINOFERROR, NUMBERSTRING, NUMBERVALUE, REGEXEXTRACT,
+REGEXMATCH, REGEXREPLACE, ROUNDBANK, TO_DATE and VALUETOTEXT.
+Pearson's comparison workbook marks 20 of those as not
+in the exam's tool; EPOCHTODATE, NUMBERSTRING and ROUNDBANK are not in
+that workbook at all, so their going is an inference. BAHTTEXT is kept
+because the workbook lists it for the exam under a misspelling
+("BAHTEXT") and the first fix took it away for the typo; the second
+claim check caught that. A sheet of one's own has all of them.
+
+**This changes his practice sheet, which was promised untouched: his to
+overrule.** One pane serves a problem, a quiz and the Scratch Sheet, so
+all three change. Nobody checked whether a problem or a solution in his
+bank uses one of the 23 names: his bank is not in the repository
+(nothing that is in it uses them). Not checked: whether those names
+still show in the function list of the fx button.
 
 The audits (2026-11-15). Touch drags: all ok on the second run. The
 first run failed, and the probe itself was then changed (its planner
-check measured the chip as its own cell, so it dragged left and fell off
-the calendar on the first day of a week; that day was a Sunday), so the
-pass is a pass of the changed probe. Keyboard, on the Worksheets screens
+check took the wrapper around a day's chips for the day's cell, so it
+dragged left and fell off the calendar on the first day of a week; that
+day was a Sunday), so the pass is a pass of the changed probe. Keyboard, on the Worksheets screens
 with a sheet file added: 0 everywhere but one kind, a control of the
-engine's ribbon that Tab did not reach ("More" in one run, "Panel" in
-the next). It was on the new sheet in both of the builder's runs and on
+engine's ribbon that Tab did not reach ("More" in one run, "Panel" and
+"More" in the next). It was on the new sheet in both of the builder's runs and on
 the Scratch Sheet in one; the reviewer's own run found 0 on both. It
 moves as the ribbon folds its overflow away. No run on the commit before
 the piece was made, so "the engine's, not this piece's" is a reading of
@@ -213,12 +230,17 @@ the code, not a measurement. The toolbar of 2B replaces that ribbon.
 **Reviewed 2026-11-15 by agents that did not build it** (the
 `review-piece` workflow's first run with real agents: correctness,
 modularity, accessibility, a claim checker, then a skeptic on each
-finding). 26 findings; the skeptic refuted 1 and called 2 minor. The
-run hit the plan's 5-hour limit before its real-app verifier, its
-skeptic for the claims, its fixer and its recheck had finished, so
-Claude made the fixes, each with a failing test first where a unit test
-can reach, and ran the verifier's unfinished probe
-(`tests/probes/sheet-file-verify-probe.mjs`) itself.
+finding). 26 findings: 11 on correctness, 3 on accessibility, 12 on what
+was claimed, none on modularity. A skeptic ruled on the first 14,
+refuted 1 and called 2 minor; the 12 about claims were never challenged,
+because the run hit the plan's 5-hour limit before its skeptic for the
+claims, its real-app verifier, its fixer and its recheck had finished.
+So Claude made the fixes (with a failing test first where a unit test
+can reach), and ran the verifier's unfinished probe
+(`tests/probes/sheet-file-verify-probe.mjs`) itself: 99 checks, 0
+problems on the fixed build, after three edits to it that the commit
+names. None of the reviewers above saw the fixes; what did is set out
+under "The fixes, checked" below.
 
 Found by the review and fixed:
 
@@ -233,8 +255,9 @@ Found by the review and fixed:
   sheet's tab stayed open and its next edit brought the file back. Now
   the Explorer closes a deleted file's tab and reopens a renamed or
   moved file under its new name (any file editor with no unsaved
-  changes, not only sheets), and a sheet never writes to a file that is
-  gone: it says so and offers Save a Copy.
+  changes, not only sheets). A sheet whose file was taken away by
+  something else is not written back by its autosave: a dialog that
+  waits says so and offers Save a Copy, and the tab closes either way.
 - The same sheet shown twice (Split Editor) was two engines each writing
   its whole sheet over the other's: the second save erased the first
   pane's entry. Now one pane holds a file; the other says where it is
@@ -254,15 +277,17 @@ Found by the review and fixed:
   opening tools.
 - Export Sheet to Excel sat in the sidebar menu always, and answered
   "Open a sheet first" even with a practice sheet on screen. It is in
-  the menu only while a sheet file is on screen.
+  the menu and in the command palette only while a sheet file is on
+  screen.
 - A file tab of a tool's editor was described as "Tool editor:
   worksheet"; it is described by its path, as every file tab is.
 - The builder's probe compared paths in a way that fails on Windows with
   the app right. Fixed in the probe.
 - In the harness, not the app (the stop hook, `tests/unit/stopHook.test.ts`):
   a check weakened, put back and weakened again was not named the second
-  time; a failing test kept sending Claude back because the runner's
-  timings never repeat; a change of more than 40 files could never pass.
+  time; a failing test sent Claude back again and again, ending only
+  when the runner happened to print the same timing twice; a change of
+  more than 40 files could never pass.
 
 Found and left, reported here:
 
@@ -271,9 +296,10 @@ Found and left, reported here:
   is just as silent: it is how file editors fail in the app today. One
   fix for all of them is its own piece.
 - A sheet file's tab has the same icon as the Worksheets home tab.
-- Where Export saves: the system asks. The command's description said
-  "in the Downloads folder"; corrected. The dialog itself cannot be seen
-  in a hidden run.
+- Where Export saves: assumed to be asked by the system (that is what
+  the app's shell does with a download nothing claims). The command's
+  description said "in the Downloads folder"; corrected to that. Nobody
+  has seen the dialog: a hidden run cannot show it.
 - From the modularity reviewer, who found no breach of the first
   principle: a tool claims its file type when it starts, so a tool that
   starts only when first used could not claim one until something else
@@ -304,10 +330,12 @@ Decided by Claude for this piece, for him to overrule:
   (the tab goes on showing its own version; an untouched tab leaves the
   other program's version alone, an edited one saves over it); a text
   file with unsaved changes renamed in the Explorer keeps its old tab;
-  an edit made in the second and a half before its file is renamed or
-  deleted can still bring the old file back (the save on closing a tab
-  is sent at once and asks nothing, so that turning the tool off cannot
-  drop it); growing by scrolling; the search index and the chat reading
+  an edit made in the seconds before its file is renamed or deleted, and
+  followed at once by leaving the tab or closing the window, can still
+  bring the old file back (those two saves are sent at once and ask
+  nothing: asking first dropped the entry when the tool was turned off
+  right after it, which the verifier's probe caught; whether the file is
+  still there is looked at every six seconds); growing by scrolling; the search index and the chat reading
   a sheet's cells; an icon of its own; Edit As Sheet on an .xlsx.
 
 **A miss on the first draft of the page, corrected the same day.** Choice

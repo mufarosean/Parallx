@@ -18,6 +18,9 @@ import { appIsDark, decimalsListeners, getDisplayDecimals, loadUniverModule, sta
 /** How often a sheet with changes is written. */
 const FILE_AUTOSAVE_MS = 1500;
 
+/** How many autosave beats between looks at whether the file is still there (about every six seconds). */
+const GONE_CHECK_BEATS = 4;
+
 /** Writes still on their way to disk, by file: a tab reopened at once waits for its own last save. */
 const writesInFlight = new Map<string, Promise<void>>();
 
@@ -96,15 +99,33 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
     pendingView = null;
   };
 
-  /** The file is no longer where it was (renamed, moved or deleted by something else): this tab stops saving, and says so once. */
-  const fileIsGone = (snap: unknown): void => {
+  /**
+   * The file is no longer where it was (renamed, moved or deleted by
+   * something else). This tab cannot save to it, so it does not stay open
+   * as a sheet that silently keeps nothing: the person is asked, in a
+   * dialog that waits, whether to keep what is on screen as a copy, and the
+   * tab is closed either way.
+   */
+  const fileIsGone = (): void => {
     if (gone) return;
     gone = true;
     if (timer) clearInterval(timer);
     void (async () => {
-      const copy = { title: 'Save a Copy' };
-      const picked = await state.api?.window?.showWarningMessage?.(`"${title}" is no longer where it was: it was renamed, moved or deleted. This tab cannot save to it.`, copy, { title: 'Discard Changes' });
-      if (picked?.title === copy.title) await saveSheetCopy(filePath, serializeSheetFile(snap as Parameters<typeof serializeSheetFile>[0]));
+      const api = state.api;
+      const keep = await api?.window?.showConfirmModal?.({
+        message: `"${title}" is no longer where it was`,
+        detail: 'Its file was renamed, moved or deleted, so this tab cannot save to it. Keep what is on screen as a copy beside where it was, or close the tab without it.',
+        confirmLabel: 'Save a Copy',
+        cancelLabel: 'Close Without Saving',
+      });
+      if (keep) {
+        // What is on screen now, not what it was when the file was found gone.
+        host?.commitEdit();
+        const snap = host?.getSnapshot();
+        if (snap) await saveSheetCopy(filePath, serializeSheetFile(snap));
+      }
+      const mine = api?.editors.openEditors?.find((e) => fileKey(e.description) === key);
+      if (mine) await api?.editors.closeEditor?.(mine.id).catch(() => false);
     })();
   };
 
@@ -130,7 +151,7 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
       ? (earlier ? earlier.then(send) : send())
       : (earlier ?? Promise.resolve()).then(async () => {
         // Never bring back a file that was renamed or deleted: the edit would land in a file nobody asked for.
-        if (!(await sheetFileExists(filePath))) { fileIsGone(snap); return; }
+        if (!(await sheetFileExists(filePath))) { fileIsGone(); return; }
         await send();
       }))
       .catch((err) => {
@@ -211,7 +232,13 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
       lastSaved = await settledSnapshot();
       if (disposed) return;
       fileReady = true;
-      timer = setInterval(() => { void save(false); }, FILE_AUTOSAVE_MS);
+      let beat = 0;
+      timer = setInterval(() => {
+        void save(false);
+        // Every few beats, with nothing to save: is the file still there? So a tab left or closed
+        // long after another program took its file away does not write it back.
+        if (++beat % GONE_CHECK_BEATS === 0 && !dirty && !gone) void sheetFileExists(filePath).then((there) => { if (!there && !disposed) fileIsGone(); });
+      }, FILE_AUTOSAVE_MS);
     } catch (err) {
       say(`"${title}" could not be opened`, err instanceof Error ? err.message : String(err));
       readyResolve();
