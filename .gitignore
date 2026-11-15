@@ -2,7 +2,15 @@ node_modules/
 dist/
 data/
 .parallx/
-.claude/
+# Claude Code: the shared parts are tracked (agents, skills, workflows, hooks,
+# settings.json, memory); everything else under .claude/ is this machine's own.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/workflows/
+!.claude/hooks/
+!.claude/settings.json
+!.claude/memory/
 
 # Build artifacts
 *.js
@@ -10,6 +18,7 @@ data/
 *.js.map
 *.d.ts.map
 !ext/**/*.js
+!.claude/workflows/*.js
 !tools/samples/**/*.js
 # Hand-authored typings, not tsc output. parallx.d.ts is the public extension API
 # contract (this project's vscode.d.ts) and has to be version-controlled — the

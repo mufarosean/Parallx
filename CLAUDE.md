@@ -22,6 +22,37 @@
   the owner's machine. Whichever one picks up next must start from exactly
   where the last one stopped.
 
+## Redundancy checks the work, not the owner
+
+His words (2026-11-15): "my preferred way to work is to have redundancies so
+you check. Even things like style, you don't need to use yours or mine, there
+is research. We have to move fast and I don't have time to check every
+feature until I use it." So a piece is done when something other than its
+builder has tried to break it, and a look rests on what was read, not on
+taste. `.claude/` holds how:
+
+- Reviewers, in `.claude/agents/`: `correctness-reviewer`,
+  `modularity-reviewer`, `access-reviewer`, `app-verifier` (drives the real
+  app hidden), `claim-checker` (what was said against the code; "new" against
+  what the app already has), `bar-researcher`, and `skeptic`, who tries to
+  refute every finding before it is acted on. They read the diff, never the
+  builder's account of it.
+- Workflows, in `.claude/workflows/`, run when he says "use a workflow" or
+  "ultracode": `review-piece` (review, challenge, fix, recheck),
+  `read-the-bar` (sources read and each reading checked against its page),
+  `understand` (several parts of the app read at once into one map).
+- Skills, in `.claude/skills/`: `ship-piece` (the order for finishing a
+  piece), `run-hidden` (the app with no window, and how to write a probe),
+  `research-bar`, `mockups` (with a starter page in the app's tokens),
+  `nightly-check` (every check on `dev`, reporting only what broke).
+- A stop hook (`.claude/hooks/stop-check.mjs`): when app code changed, the
+  typecheck, the ratchets and the tests for the changed files run before
+  Claude may stop. It does not replace `npx vitest run` and `npm run build`.
+- Cloud sessions: the "Parallx" environment installs and builds at start.
+  Its network is limited to what the install needs; web reading for the bar
+  wants a session on the Default environment, or that one set to full
+  access in Settings.
+
 ## Git rules that follow from that
 
 - One working branch holds the latest version: `dev`
