@@ -602,6 +602,40 @@ screenshots; whether lines stay attached to moved objects in the
 products read; how Atelier's plan boards are built
 (`ext/media-organizer/plan-shell.js`, not yet read).
 
+### Where tools look unlike each other, measured
+
+**Measured 2026-11-15** by `tests/probes/visual-consistency-probe.mjs` on a
+seeded workspace: 23 screens, each held to
+`.claude/skills/visual-bar/criteria.md` (WCAG 2.2, the app's own tokens,
+the kit's rules). It came from his words that day ("a lot of conjoined
+systems that are still not where they need to be visually") and his rule
+that style comes from research, not taste. Not raised with him item by
+item; nothing here is agreed.
+
+- *What is already even.* No text off the two fonts, no label in capitals,
+  no cut-off text, no view with two primary buttons, one title size (22 px,
+  600) on 14 of 15 screens that have a title. The token and kit ratchets
+  did that.
+- *Eight front pages do not use the kit's page header:* Home, Dashboard,
+  Tools and Extensions, Workspace Graph, Flashcards, Concept Lab,
+  Creations, Study. Each draws its own, or has none. Worksheets, Planner
+  and Budget use the kit's.
+- *Rows under the target size.* The Explorer's rows and its Open Editors
+  rows are 22 px high and stacked, so each sits inside the 24 px the next
+  one should own (WCAG 2.2, 2.5.8). The tab strip's scroll arrows are 20
+  px wide. Ten in the window's frame; none found inside a tool.
+- *Off the scales, a handful:* the Welcome title (28 px, weight 300); the
+  dashboard timer's face (52 px) and two radii of its widget (8 and 2 px);
+  a 3 px badge in the Media Organizer; Home's search field (40 px high);
+  fields of 29 and 30 px in Worksheets Settings and in Settings.
+
+What the numbers cannot see, and where the unlikeness he means most
+likely is: spacing, alignment, hierarchy, and whether a list row or a
+toolbar has one form across tools. That is the `visual-evaluator` agent's
+part (screenshots against the same criteria, each finding checked by a
+skeptic); it has not been run. The seeded workspace is nearly empty, so
+full screens (a real bank, a real library) are not measured either.
+
 ### Text arrows elsewhere
 
 Found while replacing the explorer's: the same dated text glyphs (▾ ▸ ▼

@@ -1,22 +1,36 @@
 ---
 name: ship-piece
-description: The order of work for finishing one piece of Parallx so it can be trusted without the owner checking it: checks, independent review, proof in the real app, the record, the push. Use when a piece of app code is built and before saying it is done.
+description: The order of work for one piece of Parallx, from the request to the push, so it can be trusted without the owner checking it. Use at the start of a piece of app code and again before saying it is done.
 ---
-# Shipping a piece
+# One piece, start to finish
 
-The owner does not check each feature; he finds out when he uses it. So a piece is done only when something other than its builder has tried to break it.
+The owner does not check each feature; he finds out when he uses it. So a piece is done only when something other than its builder has tried to break it, and the test of it was fixed before the builder began.
 
-## Order
+What this order rests on (read 2026-11-15): models asked to pass a check they cannot honestly pass change the check about half the time, mostly by editing the tests, and almost never when the tests are out of their hands (ImpossibleBench); about half of agent changes that pass their tests would not be merged by a maintainer (METR); a reviewer asked to find problems always finds some, so fixing every finding adds layers (Anthropic's own guidance); a model judging work in the session that made it is a worse judge (arXiv 2603.04582).
 
-1. **Checks.** `npm run typecheck`, `npx vitest run`, `npm run build`. All pass; there are no known failures. A stop hook runs the typecheck and the ratchets on changed code, but the full suite is yours to run.
-2. **Proof in the real app.** A probe in `tests/probes/` that does what a person does and reads the result back (the `run-hidden` skill). Include the hard cases: empty, twice, another tab, closed and opened, tool off.
-3. **The audits, after any UI work.** `keyboard-audit-probe.mjs` and `touch-drag-probe.mjs`; both report 0.
-4. **Independent review.** The reviewers in `.claude/agents/` read the diff without your account of it: `correctness-reviewer`, `modularity-reviewer`, `access-reviewer`, and `app-verifier` for the real app. Every finding goes to `skeptic` before it is acted on. When the owner has asked for a workflow (or ultracode is on), run the saved `review-piece` workflow, which does all of this in one go; otherwise spawn the reviewers that fit the change.
-5. **Fix what survived**, then run step 1 again and the probe again.
-6. **The claims.** Before the summary or the master list entry is written, `claim-checker` reads it against the code. "New" is checked against what the app already has. Seen on the real app, seen with a stand-in, read in code and assumed are four different things; say which.
-7. **The record.** The piece's entry in `docs/MASTER_LIST.md`: what shipped, how it was checked, what was decided for him to overrule, what is not done, what only his machine can show.
-8. **The push.** Commit to `dev`, `git pull` first, push. No side branches.
+## Before building
+
+1. **Check the app for what exists.** Search `ext/`, `src/built-in/` and `docs/` for what already does this, under other names too.
+2. **The acceptance probe, first.** `tests/probes/<piece>-acceptance.mjs`, written from the request by the `app-verifier` agent (or the `acceptance-first` workflow when he has asked for a workflow), not by whoever builds. Its header says `@acceptance`. Every check for the new behaviour fails on the app as it is. The builder does not edit this file; if a check is wrong, the verifier changes it and the reason goes in the reply.
+
+## Building
+
+3. Build to the probe and the house rules. One piece only.
+
+## Before saying it is done
+
+4. **Checks.** `npm run typecheck`, `npx vitest run`, `npm run build`. All pass. The stop hook runs the typecheck and the ratchets on changed code, but the full suite is yours to run.
+5. **The acceptance probe passes**, unedited. A new unit test is seen to fail on the code as it was.
+6. **The audits, after any UI work.** `keyboard-audit-probe.mjs`, `touch-drag-probe.mjs` (both report 0) and `visual-consistency-probe.mjs` (no new finding on the screens the piece touches).
+7. **Independent review.** `correctness-reviewer`, `modularity-reviewer`, `access-reviewer` and `app-verifier` read the diff without your account of it; `skeptic` then tries to refute each finding. With a workflow asked for, `review-piece` does all of it. Fix only what the skeptic reproduced and says matters. Report the rest; do not act on it.
+8. **Nothing weakened.** No assertion removed, test skipped, ratchet baseline raised, error silenced or acceptance probe edited to get a pass. The stop hook names each one to the owner; if one is right to change, say which and why.
+9. **The claims.** `claim-checker` reads the summary and the master list entry against the code. Seen on the real app, seen with a stand-in, read in code and assumed are four different things; say which.
+10. **The record and the push.** The piece's entry in `docs/MASTER_LIST.md` (what shipped, how it was checked, what was decided for him to overrule, what only his machine can show). `git pull`, commit to `dev`, push.
+
+## Then stop
+
+One piece to a session. The next piece starts in a new session from the master list: a long session's context is compacted, and the model is at its weakest right after.
 
 ## What to say at the end
 
-What is built, what was checked and by what, what failed and was fixed, what was not run and why. No "done" for anything only the builder looked at.
+What is built; what checked it and what that found; what was fixed; what was reported and left; any check that was changed and why; what was not run and why.

@@ -11,4 +11,9 @@ For each finding:
 3. Where it can be run, run it: write the smallest test or script that would show the failure and see whether it does.
 4. Is it already covered by a test, a ratchet or a rule that makes it moot?
 
-Return for each finding: `confirmed` (you reproduced it or traced a real path to it), `plausible` (the path exists, you could not run it), or `refuted` (with the line or the run that refutes it). One or two sentences of evidence each. Do not add findings of your own.
+Return for each finding:
+- a verdict: `confirmed` only when you reproduced it by running something (a test, a script, the app); `plausible` when the path exists and you could not run it; `refuted` with the line or the run that refutes it.
+- whether it matters: yes when a person would meet it in ordinary use, lose work to it, or be shut out by it; no for an exotic corner or a matter of taste.
+- one or two sentences of evidence.
+
+A reviewer asked to find problems always finds some, and measured reviewers are wrong more often than right. Only what you confirm and say matters will be fixed, so be exact. Do not add findings of your own.

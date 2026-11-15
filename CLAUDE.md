@@ -29,29 +29,32 @@ you check. Even things like style, you don't need to use yours or mine, there
 is research. We have to move fast and I don't have time to check every
 feature until I use it." So a piece is done when something other than its
 builder has tried to break it, and a look rests on what was read, not on
-taste. `.claude/` holds how:
+taste. `.claude/` holds how; the order for one piece is its `ship-piece`
+skill. In short:
 
-- Reviewers, in `.claude/agents/`: `correctness-reviewer`,
-  `modularity-reviewer`, `access-reviewer`, `app-verifier` (drives the real
-  app hidden), `claim-checker` (what was said against the code; "new" against
-  what the app already has), `bar-researcher`, and `skeptic`, who tries to
-  refute every finding before it is acted on. They read the diff, never the
-  builder's account of it.
-- Workflows, in `.claude/workflows/`, run when he says "use a workflow" or
-  "ultracode": `review-piece` (review, challenge, fix, recheck),
-  `read-the-bar` (sources read and each reading checked against its page),
-  `understand` (several parts of the app read at once into one map).
-- Skills, in `.claude/skills/`: `ship-piece` (the order for finishing a
-  piece), `run-hidden` (the app with no window, and how to write a probe),
-  `research-bar`, `mockups` (with a starter page in the app's tokens),
-  `nightly-check` (every check on `dev`, reporting only what broke).
-- A stop hook (`.claude/hooks/stop-check.mjs`): when app code changed, the
-  typecheck, the ratchets and the tests for the changed files run before
-  Claude may stop. It does not replace `npx vitest run` and `npm run build`.
-- Cloud sessions: the "Parallx" environment installs and builds at start.
-  Its network is limited to what the install needs; web reading for the bar
-  wants a session on the Default environment, or that one set to full
-  access in Settings.
+- The test comes first and is not the builder's. An acceptance probe
+  (`tests/probes/<piece>-acceptance.mjs`, header `@acceptance`) is written
+  from the request before the build, fails on the app as it is, and the
+  builder does not edit it.
+- Review is by agents that did not see the build (`.claude/agents/`), and
+  `skeptic` tries to refute each finding. Only what was reproduced and
+  matters is fixed; the rest is reported and left.
+- A check is never weakened to get a pass: no assertion removed, test
+  skipped, ratchet baseline raised, error silenced, acceptance probe edited.
+  The stop hook (`.claude/hooks/stop-check.mjs`) runs the typecheck, the
+  ratchets and the tests for changed files before Claude may stop, and names
+  every weakened check to him. That list is what he reads.
+- A look is measured, not judged: `tests/probes/visual-consistency-probe.mjs`
+  against `.claude/skills/visual-bar/criteria.md`.
+- Code copied between files can only fall (`duplicationRatchet`); the
+  `consolidate` skill is the pass that brings two of a thing to one.
+- One piece to a session. The next starts new, from the master list.
+- Workflows (`.claude/workflows/`: `acceptance-first`, `review-piece`,
+  `read-the-bar`, `understand`) run only when he says "use a workflow" or
+  "ultracode". Without that, spawn the agents that fit.
+- Cloud: the "Parallx" environment installs and builds at start; its network
+  is limited to what the install needs, so reading the web for a bar wants
+  the Default environment.
 
 ## Git rules that follow from that
 
