@@ -378,7 +378,7 @@ try {
     const g6b = await group(0);
     await page.keyboard.press('Control+s'); await wait(2500);
     const g6c = await group(0);
-    console.log(`       typed into the shown tab (${JSON.stringify(g6b?.active)}, unsaved ${JSON.stringify(g6b?.dirty)}) and Ctrl+S: files ${JSON.stringify((await ls()).filter((n) => n.startsWith('plain')))}; plain.txt holds ${JSON.stringify(await fileText(at('plain.txt')))}; plain2.txt holds ${JSON.stringify(await fileText(at('plain2.txt')))}; unsaved after ${JSON.stringify(g6c?.dirty)}; said ${JSON.stringify(await messages())}`);
+    console.log(`       typed into the shown tab (${JSON.stringify(g6b?.active)}, which then reads ${JSON.stringify(g6b?.text)}, unsaved ${JSON.stringify(g6b?.dirty)}) and Ctrl+S: files ${JSON.stringify((await ls()).filter((n) => n.startsWith('plain')))}; plain.txt holds ${JSON.stringify(await fileText(at('plain.txt')))}; plain2.txt holds ${JSON.stringify(await fileText(at('plain2.txt')))}; unsaved after ${JSON.stringify(g6c?.dirty)}; said ${JSON.stringify(await messages())}`);
     check('typed into and saved (Ctrl+S): plain2.txt holds it and plain.txt does not exist', /added after rename/.test(await fileText(at('plain2.txt'))) && !(await exists(at('plain.txt'))), { plain: await fileText(at('plain.txt')), plain2: await fileText(at('plain2.txt')) });
     for (const t of ['plain2.txt', 'plain.txt']) if ((await allTabs()).includes(t)) { await clickTab(t); await run('workbench.action.closeActiveEditor'); await wait(400); }
     // The same for a text file inside a folder, and for a PDF (a viewer, never unsaved).
@@ -451,24 +451,41 @@ try {
     check('a text file with no unsaved changes, deleted in the Explorer: its tab closes', res5.step === 'done' && !(await exists(at('gone.txt'))) && !(await allTabs()).includes('gone.txt'), { res5: res5.step, tabs: g5?.tabs, shown: g5?.active, text: (g5?.text ?? '').slice(0, 30), there: await exists(at('gone.txt')) });
     if ((await allTabs()).includes('gone.txt')) { await clickTab('gone.txt'); await run('workbench.action.closeActiveEditor'); await wait(400); }
 
-    // Keys: a row clicked in the Explorer, then F2 and Delete. A text file first (what the Explorer does), then an open sheet.
-    await fs.writeFile(at('keys.txt'), 'keys\n'); await wait(2000);
+    // Keys: a row clicked in the Explorer, then F2 or Delete. A text file that is open and shown first (what the Explorer does), then a sheet.
+    await fs.writeFile(at('keys.txt'), 'keys words\n'); await wait(2000);
+    await run('file.openFile', at('keys.txt')); await wait(1200);
+    await clickEl('textarea.text-editor-textarea'); await wait(300);
     await clickNode('keys.txt'); await wait(1200); await page.keyboard.press('F2'); await wait(600);
     const textF2 = await page.evaluate(() => !!document.querySelector('.tree-inline-input'));
-    await page.keyboard.press('Escape'); await wait(300);
+    await page.keyboard.press('Escape'); await wait(400);
+    await clickNode('keys.txt'); await wait(1200); await page.keyboard.press('Delete'); await wait(600);
+    const textDel = await waitPrompt(/delete/i, 1500);
+    if (textDel) await clickPromptButton('Cancel');
+    const textKept = (await group(0))?.text;
+    check('control, a text file open and shown: its row clicked in the Explorer, F2 gives the name box, Delete gives the delete dialog, the text is untouched', textF2 && !!textDel && /keys words/.test(textKept ?? ''), { textF2, textDel, textKept });
+    await reset();
     const fileK = await newSheet('Keys');
-    await enter(0, 0, 'keep'); await wait(2600);
+    await enter(0, 0, 'keep'); await wait(3200);
     await clickCell(0, 0);
     await clickNode('Keys.sheet'); await wait(1200); await page.keyboard.press('F2'); await wait(700);
-    const sheetF2 = { nameBox: await page.evaluate(() => !!document.querySelector('.tree-inline-input')), cellBeingEdited: (await hostCall('probeState').catch(() => null))?.editorVisible ?? null, focus: await page.evaluate(() => `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`) };
-    await page.keyboard.press('Escape'); await wait(400);
+    const sheetF2 = { nameBox: await page.evaluate(() => !!document.querySelector('.tree-inline-input')), cellBeingEdited: (await hostCall('probeState').catch(() => null))?.editorVisible ?? null };
+    await shot('keys-f2-on-sheet');
+    await page.keyboard.press('Escape'); await wait(500);
+    check('an open sheet: its row clicked in the Explorer, then F2: the name box appears (as it does for a text file)', sheetF2.nameBox === true, sheetF2);
     await clickCell(0, 0); await clickNode('Keys.sheet'); await wait(1200); await page.keyboard.press('Delete'); await wait(1200);
     const asked = await waitPrompt(/delete/i, 1500);
     const a1 = await cell(0, 0);
     if (asked) await clickPromptButton('Cancel');
-    await wait(2600);
-    note(`a row clicked in the Explorer, then keys: on a text file F2 gives the name box: ${textF2}; on an open sheet F2 gives ${JSON.stringify(sheetF2)}; Delete gives the delete dialog: ${!!asked}, and cell A1 (which held "keep" and was the selected cell) then reads ${JSON.stringify(a1)}; the file holds "keep": ${/keep/.test(await fileText(fileK))}`);
-    check('a .sheet row clicked in the Explorer, then Delete: the sheet\'s selected cell is not what gets deleted', a1 === 'keep' && /keep/.test(await fileText(fileK)), { a1, askedToDelete: !!asked, textFileF2GivesNameBox: textF2, sheetF2 });
+    await wait(3000);
+    const keptInFile = /keep/.test(await fileText(fileK));
+    check('an open sheet: its row clicked in the Explorer, then Delete: the delete dialog appears', !!asked, { askedToDelete: !!asked });
+    check('and the sheet\'s selected cell is not what gets deleted (A1 held "keep")', a1 === 'keep' && keptInFile, { a1, fileStillHoldsKeep: keptInFile });
+    // The same on a sheet that was not open: the click opens it.
+    await reset();
+    await clickNode('Keys.sheet'); await sheetUp('Keys.sheet').catch(() => {}); await page.keyboard.press('F2'); await wait(700);
+    const closedF2 = { nameBox: await page.evaluate(() => !!document.querySelector('.tree-inline-input')), cellBeingEdited: (await hostCall('probeState').catch(() => null))?.editorVisible ?? null };
+    await page.keyboard.press('Escape'); await wait(500);
+    note(`a sheet that was not open, its row clicked in the Explorer (it opens), then F2: ${JSON.stringify(closedF2)}`);
     await reset();
 
     // A folder holding an open sheet, deleted.
@@ -503,7 +520,13 @@ try {
     check('a further entry is saved there, and the old place stays empty', /m1/.test(moved) && /m2/.test(moved) && !(await exists(file)), { moved: moved.slice(-160), top: await ls() });
     check('there is one Mover.sheet tab, not two', (await allTabs()).filter((t) => t === 'Mover.sheet').length === 1, await allTabs());
 
+    // A file that is not open, dragged onto a folder: is the page error below the Explorer's own, or the open sheet's?
+    await fs.writeFile(at('loose.txt'), 'loose\n'); await wait(2500);
+    { const f = await waitNode('loose.txt'); const t = await waitNode('Sub2'); const n = errors.length;
+      if (f && t) { await page.mouse.move(f.x, f.y); await page.mouse.down(); await wait(150); for (let i = 1; i <= 8; i++) { await page.mouse.move(f.x + ((t.x - f.x) * i) / 8, f.y + ((t.y - f.y) * i) / 8); await wait(60); } await page.mouse.move(t.x + 2, t.y + 1); await wait(200); await page.mouse.up(); await wait(2500); }
+      note(`a file that is not open, dragged onto a folder: moved ${await exists(at('Sub2', 'loose.txt'))}, page errors ${errors.length - n}, Explorer rows ${JSON.stringify(await explorerRows())}`); }
     // Dragged with the mouse onto another folder.
+    const errorsBeforeDrag = errors.length;
     const from = await waitNode('Sub/Mover.sheet'); const to = await waitNode('Sub2');
     let dragged = false;
     if (from && to) {
@@ -520,6 +543,8 @@ try {
       await enter(2, 0, 'm3').catch(() => {}); await wait(3000);
       check('and saves there: the new place holds the third entry, the place before it is gone', /m3/.test(await fileText(at('Sub2', 'Mover.sheet'))) && !(await exists(at('Sub', 'Mover.sheet'))), { sub: await ls(at('Sub')), sub2: await ls(at('Sub2')) });
       await shot('move-drag');
+      check('dragging the open sheet onto a folder raises no page error', errors.length === errorsBeforeDrag, errors.slice(errorsBeforeDrag));
+      note(`after the drag the Explorer rows are ${JSON.stringify(await explorerRows())}`);
     }
     // The folder that holds the open sheet is renamed.
     const holder = dragged ? 'Sub2' : 'Sub';
@@ -1081,20 +1106,28 @@ try {
     const box = () => page.evaluate(() => { const i = document.querySelector('.tree-inline-input'); return !!i && i.isConnected && i.getClientRects().length > 0; });
     await fs.writeFile(at('other.txt'), 'other\n'); await wait(2500);
     const file = await newSheet('Saver'); await enter(0, 0, 'x'); await wait(3200);
-    // Control: the menu left open 2.6 s with nothing written, then Rename.
-    await clickNode('other.txt', { button: 'right' }); await wait(2600); await pickMenuRow('Rename'); await wait(800);
+    // Control: the menu left open 3.5 s with nothing written, then Rename.
+    await clickNode('other.txt', { button: 'right' }); await wait(3500); await pickMenuRow('Rename'); await wait(800);
     const control = await box();
     await page.keyboard.press('Escape'); await wait(600);
-    check('control: the Explorer\'s menu opened on a file, left open 2.6 seconds with nothing saved meanwhile, then Rename: the name box appears', control, control);
+    check('control: the Explorer\'s menu opened on a file, left open 3.5 seconds with nothing saved meanwhile, then Rename: the name box appears', control, control);
     // An entry in the sheet, the menu opened at once, Rename chosen after the sheet has saved itself.
-    await enter(1, 0, 'y');
-    await clickNode('other.txt', { button: 'right' });
-    const saved = await untilFile(file, /"y"/, 5000); await wait(500);
-    await pickMenuRow('Rename'); await wait(800);
-    const during = await box();
-    await shot('menu-while-saving');
-    await page.keyboard.press('Escape'); await wait(600);
-    check('an entry typed in a sheet, the Explorer\'s menu opened on another file at once, Rename chosen after the sheet saved itself: the name box appears', saved >= 0 && during, { sheetSavedAfterMs: saved, nameBox: during });
+    const results = [];
+    for (const [i, after] of [300, 1500].entries()) {
+      await enter(1 + i, 0, `y${i}`);
+      const t0 = Date.now();
+      await clickNode('other.txt', { button: 'right' });
+      const saved = await untilFile(file, new RegExp(`"y${i}"`), 5000); await wait(after);
+      const open = Date.now() - t0;
+      await pickMenuRow('Rename'); await wait(800);
+      const got = await box();
+      if (!got) await shot('menu-while-saving');
+      await page.keyboard.press('Escape'); await wait(1500);
+      results.push({ renameChosenMsAfterTheSave: after, menuOpenForMs: open, sheetSavedMsAfterRightClick: saved, nameBox: got });
+      if (!got) break;
+    }
+    console.log(`       ${JSON.stringify(results)}`);
+    check('an entry typed in a sheet, the Explorer\'s menu opened on another file at once, Rename chosen after the sheet saved itself: the name box appears', results.every((r) => r.nameBox), results);
     await fs.writeFile(at('made-after.txt'), 'after\n'); await wait(3000);
     const made = await runSafe('worksheet.newSheet', 'Made After'); await wait(4000);
     const rows = await explorerRows();
