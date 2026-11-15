@@ -59,6 +59,49 @@ interface ToolEditorProviderEntry {
 
 const _toolEditorProviders = new Map<string, ToolEditorProviderEntry>();
 
+// ─── Tool File Editors (module-global) ───────────────────────────────────────
+//
+// A running tool may claim file extensions for one of its editor types
+// (`editors.registerFileEditor`): a file with that extension then opens in
+// the tool's editor instead of a core reader, from the Explorer, Quick Open,
+// a link or `openFileEditor`. The core names no tool and no extension: the
+// claim exists only while the tool runs, and with the tool off the file
+// falls back to whatever the core would have opened it in.
+
+interface ToolFileEditorEntry {
+  readonly toolId: string;
+  readonly typeId: string;
+  readonly iconHtml: string | undefined;
+}
+
+const _toolFileEditors = new Map<string, ToolFileEditorEntry>();
+
+/** The prefix of a file-backed tool editor's `instanceId`; the file's path follows it. */
+export const FILE_INSTANCE_PREFIX = 'file:';
+
+function normalizeFileExtension(extension: string): string {
+  const ext = extension.trim().toLowerCase();
+  return ext.startsWith('.') ? ext : `.${ext}`;
+}
+
+/**
+ * The tool editor for a file, when a running tool has claimed its extension;
+ * undefined otherwise. The input's `instanceId` is `file:` followed by the
+ * file's path, which is what the tool's pane reads to know its file.
+ */
+export function resolveToolFileEditor(uri: URI): IEditorInput | undefined {
+  const fsPath = uri.fsPath;
+  const base = fsPath.split(/[/\\]/).pop() ?? fsPath;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0) return undefined;
+  const claim = _toolFileEditors.get(base.slice(dot).toLowerCase());
+  if (!claim) return undefined;
+  const entry = _toolEditorProviders.get(claim.typeId);
+  if (!entry || entry.toolId !== claim.toolId) return undefined;
+  const instanceId = `${FILE_INSTANCE_PREFIX}${fsPath}`;
+  return new ToolEditorInput(claim.typeId, base, undefined, claim.iconHtml, entry.provider, `${claim.toolId}:${claim.typeId}:${instanceId}`, claim.toolId, instanceId);
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /**
@@ -191,6 +234,37 @@ export class EditorsBridge {
   }
 
   /**
+   * Claim file extensions for one of this tool's editor types. While the
+   * tool runs, a file with one of them opens in that editor; the pane's
+   * input carries `instanceId` = `file:` + the file's path.
+   */
+  registerFileEditor(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): IDisposable {
+    this._throwIfDisposed();
+    if (!this._providers.has(typeId)) {
+      throw new Error(`[EditorsBridge] registerFileEditor: tool "${this._toolId}" has no editor provider for type "${typeId}". Register the provider first.`);
+    }
+    const entry: ToolFileEditorEntry = { toolId: this._toolId, typeId, iconHtml: options.iconHtml };
+    const claimed: string[] = [];
+    for (const raw of options.extensions) {
+      const ext = normalizeFileExtension(raw);
+      if (ext === '.' || ext === '.*') continue;
+      const current = _toolFileEditors.get(ext);
+      if (current && current.toolId !== this._toolId) {
+        console.warn(`[EditorsBridge] "${ext}" files already open in tool "${current.toolId}"; "${this._toolId}" does not take them.`);
+        continue;
+      }
+      _toolFileEditors.set(ext, entry);
+      claimed.push(ext);
+    }
+    const disposable = toDisposable(() => {
+      for (const ext of claimed) if (_toolFileEditors.get(ext) === entry) _toolFileEditors.delete(ext);
+    });
+    this._registrations.push(disposable);
+    this._subscriptions.push(disposable);
+    return disposable;
+  }
+
+  /**
    * Open an editor in the active editor group.
    */
   async openEditor(options: OpenEditorOptions): Promise<void> {
@@ -234,6 +308,21 @@ export class EditorsBridge {
     } else {
       console.warn(`[EditorsBridge] No editor service available — cannot open editor "${options.title}"`);
     }
+  }
+
+  /** The `parallx.editors` namespace this bridge backs, as a tool receives it. */
+  api() {
+    const bridge = this;
+    return Object.freeze({
+      registerEditorProvider: (typeId: string, provider: ToolEditorProvider) => bridge.registerEditorProvider(typeId, provider),
+      registerFileEditor: (typeId: string, options: { extensions: readonly string[]; iconHtml?: string }) => bridge.registerFileEditor(typeId, options),
+      openEditor: (options: OpenEditorOptions) => bridge.openEditor(options),
+      closeEditor: (editorId: string) => bridge.closeEditor(editorId),
+      focusEditor: (editorId: string) => bridge.focusEditor(editorId),
+      openFileEditor: (uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget; side?: boolean }) => bridge.openFileEditor(uri, options),
+      get openEditors() { return bridge.getOpenEditors(); },
+      onDidChangeOpenEditors: (listener: () => void) => bridge.onDidChangeOpenEditors(listener),
+    });
   }
 
   /**

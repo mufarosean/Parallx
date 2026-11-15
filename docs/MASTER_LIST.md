@@ -125,6 +125,88 @@ the ability to do". Answered the same day; the answer in short:
   program beside Worksheets, and switch only when his own data opens in
   it and he says so.
 
+**His words after the answer (2026-11-15):** "for practice exams, keep it
+on the sheet. we need to generalize, a lot of what is currently built for
+worksheets was tailored to CAS exam studying and it works. Your
+distinction is that we need a generic starting point, I agree. Something
+unlimited, cutting edge, but while still having the ability to go into
+study mode."
+
+- *Settled by that:* in a practice exam the question stays on the sheet
+  (5C as drawn; the panel of 5B is not for practice exams).
+- *How Claude reads the rest, his to correct:* the sheet is the starting
+  point, generic and without limits, and study is a mode gone into from
+  it. That leans away from 4i's separate tool, toward one tool whose
+  study side is entered. Nothing has been moved on that reading; the
+  first piece built is the same under either.
+
+**Built 2026-11-15, the first piece: a sheet of one's own, kept as a
+file** (in the code and its tests; checked hidden on the real engine,
+`tests/probes/sheet-file-probe.mjs`, 0 problems). His study panes are
+untouched: a problem, a quiz and the Scratch Sheet are held to the
+exam's limits exactly as before.
+
+- New Sheet… (the Tools menu, Worksheets' sidebar menu, Add on its home,
+  the command `worksheet.newSheet`, which the chat may call) asks a name,
+  makes `Name.sheet` in the workspace folder and opens it. The pane is
+  its own small file (`panes/sheetFilePane.ts`), made from the kit.
+- A `.sheet` file opens as a live sheet from the Explorer, Quick Open and
+  File > Open. It starts at 1,000 rows by 52 columns and grows as the
+  selection nears its end, so an arrow never wraps and there is no edge.
+  It follows the app's light or dark.
+- It saves itself: a change is in the file about a second and a half
+  later, and on leaving the tab. Closed and opened again, it is as it
+  was. Merely opening it writes nothing.
+- A file that is not a sheet is refused in words and left as it is.
+- The engine host now takes its limits as an option (`SheetLimits` in
+  `worksheetConstants.ts`: the function list, the grid, whether it
+  grows). Given none, it is the exam tool's sheet, as it always was. This
+  is the seam study mode will use: limits a set carries, not code.
+- A new contribution point in the core, `api.editors.registerFileEditor`:
+  a running tool claims file extensions for one of its editors. The core
+  names no tool; with Worksheets off a `.sheet` opens as text.
+- Changed on the way: File > Open File made a text editor for whatever
+  was picked (read in its code, not seen on screen). It now asks for the
+  editor of the file's type first, and takes a path so a routine or a
+  probe can call it.
+
+Found while building, and a correction to what he was told: the exam's
+function list removes nothing today. The engine has 511 functions and
+all of them are on the list (WEBSERVICE, REGEXTEST, STOCKHISTORY and the
+like are missing from the engine itself). So "only the exam's functions"
+was true of the code and made no difference on the sheet; a sheet of
+one's own has the same 511.
+
+The audits after it (2026-11-15). Touch drags: all ok, after a fix to
+the probe itself: its planner check measured the chip as its own cell,
+so it always dragged left and fell off the calendar on the first day of
+a week (it failed today, a Sunday; the app was right). Keyboard, on the
+Worksheets screens with a sheet file added to them: 0 everywhere but one
+kind, a control of the engine's ribbon that Tab did not reach ("More" in
+one run, "Panel" in the next, on the Scratch Sheet as on the new sheet).
+It moves from run to run as the ribbon folds its overflow away, and it
+is the engine's toolbar, not this piece; the toolbar of 2B replaces that
+ribbon. Owed until then, not fixed.
+
+Decided by Claude for this piece, for him to overrule:
+
+- The file is the engine's saved workbook in a small JSON envelope
+  (`format: parallx-sheet`), on one line. It is not an Excel file; Export
+  Sheet to Excel (a command, in Worksheets' sidebar menu and the palette)
+  makes a copy, values and formulas only.
+- The sheet has no bar of its own above the engine: the tab carries its
+  name.
+- A new sheet goes in the workspace's first folder. Choosing the folder
+  (New Sheet on a folder in the Explorer) is not built.
+- The sheet still wears the engine's ribbon; the toolbar of 2B is the
+  next piece. The keys that do nothing and the formula bar are not fixed
+  yet either.
+- Not handled yet: the file changed by something else while it is open
+  (the next save here wins); a sheet renamed in the Explorer while open
+  (the tab keeps the old path); the search index and the chat reading a
+  sheet's cells; an icon of its own in the Explorer; Edit As Sheet on an
+  .xlsx.
+
 **A miss on the first draft of the page, corrected the same day.** Choice
 4 was drawn as a new tool called Study. Study exists (`ext/study`, built
 2026-10: questions written from a PDF or a bank, mastery per concept; it

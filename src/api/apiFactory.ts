@@ -206,6 +206,7 @@ export interface ParallxApiObject {
   };
   readonly editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable | { dispose(): void; saveViewState?(): unknown; restoreViewState?(state: unknown): void } }): IDisposable;
+    registerFileEditor(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     focusEditor(editorId: string): Promise<boolean>;
@@ -797,15 +798,7 @@ export function createToolApi(
       },
     }),
 
-    editors: Object.freeze({
-      registerEditorProvider: (typeId, provider) => editorsBridge.registerEditorProvider(typeId, provider),
-      openEditor: (options) => editorsBridge.openEditor(options),
-      closeEditor: (editorId: string) => editorsBridge.closeEditor(editorId),
-      focusEditor: (editorId: string) => editorsBridge.focusEditor(editorId),
-      openFileEditor: (uri, options) => editorsBridge.openFileEditor(uri, options),
-      get openEditors() { return editorsBridge.getOpenEditors(); },
-      onDidChangeOpenEditors: (listener: () => void) => editorsBridge.onDidChangeOpenEditors(listener),
-    }),
+    editors: editorsBridge.api(),
 
     links: Object.freeze({
       register: (contract: LinkContractInput) => linksBridge.register(contract),

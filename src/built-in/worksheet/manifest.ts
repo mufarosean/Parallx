@@ -17,9 +17,11 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
   contributes: {
     // In the Tools menu while Worksheets runs.
     menus: {
-      'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }],
+      'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }, { command: 'worksheet.newSheet', title: 'New Sheet…' }],
       // Its sidebar's More Actions menu.
       'viewContainer/title': [
+        { command: 'worksheet.newSheet', title: 'New Sheet…', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },
+        { command: 'worksheet.exportSheet', title: 'Export Sheet to Excel', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },
         { command: 'worksheet.practice', title: 'Start Practice Session', group: '1_practice', when: "activeViewContainer == 'worksheet-container'" },
         { command: 'worksheet.generate', title: 'Generate Items', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
         { command: 'worksheet.bank', title: 'Open Problem Bank', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
@@ -32,6 +34,10 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Open the practice items browser.' },
       { id: 'worksheet.openScratch', title: 'Worksheets: Open Scratch Sheet',
         aiInvocable: true, aiDescription: 'Open a blank exam-faithful practice sheet.' },
+      { id: 'worksheet.newSheet', title: 'Worksheets: New Sheet…',
+        aiInvocable: true, aiDescription: 'Make a new spreadsheet file (.sheet) in the workspace and open it: every function, no size limit, saved as you work. Arguments: an optional name.' },
+      { id: 'worksheet.exportSheet', title: 'Worksheets: Export Sheet to Excel',
+        aiInvocable: false, aiDescription: 'Save a copy of the open sheet file as .xlsx, values and formulas, in the Downloads folder.' },
       { id: 'worksheet.generate', title: 'Worksheets: Generate Items',
         aiInvocable: true, aiDescription: 'Generate practice items from study material.' },
       { id: 'worksheet.generateFromFile', title: 'Worksheets: Generate Items From a File…',

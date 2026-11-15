@@ -1223,6 +1223,16 @@ export namespace editors {
   export function registerEditorProvider(typeId: string, provider: EditorProvider): IDisposable;
 
   /**
+   * Claim file extensions for one of this tool's editor types (registered
+   * first with `registerEditorProvider`). While the tool runs, a file with
+   * one of them opens in that editor from the Explorer, Quick Open, a link
+   * or `openFileEditor`. The pane's input carries `instanceId` = `file:`
+   * followed by the file's path. With the tool off, the file opens as the
+   * app would open it without the tool.
+   */
+  export function registerFileEditor(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): IDisposable;
+
+  /**
    * Open an editor in the active editor group.
    */
   export function openEditor(options: OpenEditorOptions): Promise<void>;

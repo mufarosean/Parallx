@@ -307,10 +307,12 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `worksheet.addTag` | Worksheets: Add Tag to Problem | worksheet |  |  |  |
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |
 | `worksheet.dashboard` | Worksheets: Open Dashboard | worksheet |  |  |  |
+| `worksheet.exportSheet` | Worksheets: Export Sheet to Excel | worksheet |  |  |  |
 | `worksheet.generate` | Worksheets: Generate Items | worksheet |  |  |  |
 | `worksheet.generateFromFile` | Worksheets: Generate Items From a File… | worksheet |  |  |  |
 | `worksheet.importExcel` | Worksheets: Import from Excel | worksheet |  |  |  |
 | `worksheet.importPlan` | Worksheets: Import Plan… | worksheet |  |  |  |
+| `worksheet.newSheet` | Worksheets: New Sheet… | worksheet |  |  |  |
 | `worksheet.open` | Worksheets: Open Practice Items | worksheet |  |  |  |
 | `worksheet.openQuiz` | Worksheets: Open Quiz | worksheet |  |  |  |
 | `worksheet.openScratch` | Worksheets: Open Scratch Sheet | worksheet |  |  |  |

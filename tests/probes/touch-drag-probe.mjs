@@ -114,8 +114,9 @@ try {
   await page.evaluate(() => Array.from(document.querySelectorAll('[data-px-id="planner.tab.calendar"]')).find((x) => x.getClientRects().length)?.click());
   await page.waitForTimeout(1_200);
   const e0 = await events();
-  const chip = await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.planner-month__chip')).find((x) => x.getClientRects().length && x.textContent.includes('Seeded meeting')); if (!c) return null; const cellEl = c.closest('[class*="planner-month__cell"]') || c.parentElement; const r = c.getBoundingClientRect(), cell = cellEl.getBoundingClientRect(); const grid = cellEl.parentElement.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, cellW: cell.width, lastOfWeek: cell.right + cell.width / 2 > grid.right }; });
+  const chip = await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.planner-month__chip')).find((x) => x.getClientRects().length && x.textContent.includes('Seeded meeting')); if (!c) return null; const cellEl = c.closest('.planner-month__cell') || c.parentElement; const r = c.getBoundingClientRect(), cell = cellEl.getBoundingClientRect(); const grid = cellEl.parentElement.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, cellW: cell.width, lastOfWeek: cell.right + cell.width / 2 > grid.right }; });
   // The meeting is seeded today. On the last day of a week there is no day to its right: it goes a day back then, so the check does not depend on the day it runs.
+  // (The cell was once found by a class the chip itself carries, so the chip was measured as its own cell, every day looked like the last of its week, and the drag left fell off the calendar on the first.)
   const day = chip?.lastOfWeek ? -1 : 1;
   if (chip) await finger(chip, day * chip.cellW, 0, { hold: 500 });
   const e1 = await events();

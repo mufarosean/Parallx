@@ -1,6 +1,8 @@
 // Worksheets: what a pane does to move around. Open a tab, start a quiz,
 // open a past one, import a plan, hand the plan pane its actions.
 
+import { URI } from '../../platform/uri.js';
+import { serializeSheetFile, uniqueSheetFileName } from './sheetFile.js';
 import type { IKitAction } from '../../ui/kit.js';
 import { showExtensionContextMenu, type IExtensionMenuItem } from '../../ui/contextMenu.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
@@ -51,6 +53,56 @@ const TAB_ICONS: Record<string, string> = {
 function tabIconHtml(instanceId: string): string {
   const id = TAB_ICONS[instanceId] ?? (instanceId.startsWith('item:') ? 'file-spreadsheet' : 'table');
   try { return state.api?.icons?.createIconHtml?.(id, 14) || WS_ICON_SVG; } catch { return WS_ICON_SVG; }
+}
+
+// ── A sheet of one's own: a `.sheet` file in the workspace (sheetFile.ts) ────
+
+/** The tab icon of a sheet file. */
+export function sheetFileIconHtml(): string { return tabIconHtml('sheet-file'); }
+
+const fileUriOf = (filePath: string): string => URI.file(filePath).toString();
+
+export async function readSheetText(filePath: string): Promise<string> {
+  const fs = state.api?.workspace?.fs;
+  if (!fs) throw new Error('No workspace folder is open.');
+  return (await fs.readFile(fileUriOf(filePath))).content ?? '';
+}
+
+export async function writeSheetText(filePath: string, text: string): Promise<void> {
+  const fs = state.api?.workspace?.fs;
+  if (!fs) throw new Error('No workspace folder is open.');
+  await fs.writeFile(fileUriOf(filePath), text);
+}
+
+/**
+ * Make a new sheet file and open it. The name is asked for unless one is
+ * given; the file goes in the given folder, else the workspace's first
+ * folder. Returns the file's path, or undefined when nothing was made.
+ */
+export async function newSheet(name?: unknown, folder?: unknown): Promise<string | undefined> {
+  const api = state.api;
+  const fs = api?.workspace?.fs;
+  const folderUri = typeof folder === 'string' && folder ? folder : api?.workspace?.workspaceFolders?.[0]?.uri;
+  if (!api || !fs || !folderUri) {
+    void api?.window?.showInformationMessage?.('Open a folder first: a sheet is a file in the workspace.');
+    return undefined;
+  }
+  let wanted = typeof name === 'string' ? name : undefined;
+  if (wanted === undefined) {
+    wanted = await api.window?.showInputBox?.({ prompt: 'Name the sheet', value: 'Untitled', placeholder: 'Budget 2026' });
+    if (wanted === undefined) return undefined;
+  }
+  const parent = /^[a-z][a-z0-9+.-]*:\/\//i.test(folderUri) ? URI.parse(folderUri) : URI.file(folderUri);
+  const taken = (await fs.readdir(parent.toString()).catch(() => [] as { name: string }[])).map((entry) => entry.name);
+  const target = parent.joinPath(uniqueSheetFileName(wanted, taken));
+  try {
+    await fs.writeFile(target.toString(), serializeSheetFile(null));
+  } catch (err) {
+    void api.window?.showErrorMessage?.(`The sheet could not be made: ${(err as Error).message}`);
+    return undefined;
+  }
+  await api.editors.openFileEditor?.(target.fsPath);
+  return target.fsPath;
 }
 
 export async function openWorksheet(instanceId: string, title: string): Promise<void> {

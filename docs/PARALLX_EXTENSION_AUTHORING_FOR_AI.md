@@ -317,6 +317,8 @@ api.views.setBadge(containerId, { count: 3 })   // or { dot: true } or undefined
 ```js
 api.editors.registerEditorProvider(typeId, { createEditorPane(container, input) { /* return IDisposable */ } })
 api.editors.openEditor({ typeId, title, icon?, instanceId? })   // → Promise<void>
+api.editors.registerFileEditor(typeId, { extensions, iconHtml? }) // while your tool runs, files with these extensions open in your editor;
+                                                                 // the pane's input.instanceId is 'file:' + the file's path
 api.editors.closeEditor(editorId)                                // → Promise<boolean>
 api.editors.openFileEditor(uri, { pinned?, reveal?, side? })     // open a file in its editor
 // reveal: { page?, quote? } (PDF), { line?, endLine? } (text), { sheet?, cell? } (spreadsheet, A1 cell);

@@ -30,14 +30,14 @@ import { DeviceInputEventType, IRenderManagerService, type IRender } from '@univ
 import { writeSnapshotXlsx } from './xlsxExport.js';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
-import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
 import { roundForDisplay } from './displayNumbers.js';
 import { restoreAbsoluteMarkers } from './formulaRefs.js';
 import { applyFormulaEngineGuards } from './formulaEngineGuards.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
-import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
+import { ATHENA_ROWS, ATHENA_COLUMNS, type SheetLimits } from './worksheetConstants.js';
+import { EXAM_LIMITS, applyFunctionSet, installSheetGrowth } from './sheetLimits.js';
 import { ensureUniverEditorExits, installSheetAccess } from './univerKeyboard.js';
 export { ATHENA_ROWS, ATHENA_COLUMNS };
 
@@ -62,6 +62,12 @@ export interface IWorksheetHostOptions {
    * keep full precision, and a number format set on a cell always wins.
    */
   readonly displayDecimals?: number | null;
+  /**
+   * What the sheet is held to. Absent, it is the exam tool's sheet: its
+   * function list and its 150 by 40 grid, as every practice sheet has been.
+   * A sheet of one's own passes FREE_SHEET_LIMITS.
+   */
+  readonly limits?: SheetLimits;
   /**
    * Called when a formula in this sheet evaluates to an error value, with a
    * one-line diagnosis (formula, error, engine health). The pane records it
@@ -191,8 +197,8 @@ export interface IWorksheetHost {
 
 let _hostCounter = 0;
 
-/** A blank Athena-bounded workbook: one sheet, 150×40, no extras. */
-export function blankWorkbookData(): Partial<IWorkbookData> {
+/** A blank workbook: one sheet of the given size (the exam tool's 150×40 by default), no extras. */
+export function blankWorkbookData(limits: SheetLimits = EXAM_LIMITS): Partial<IWorkbookData> {
   const unitId = `worksheet-${Date.now()}-${_hostCounter++}`;
   return {
     id: unitId,
@@ -202,38 +208,11 @@ export function blankWorkbookData(): Partial<IWorkbookData> {
       sheet1: {
         id: 'sheet1',
         name: 'Sheet1',
-        rowCount: ATHENA_ROWS,
-        columnCount: ATHENA_COLUMNS,
+        rowCount: limits.rows,
+        columnCount: limits.columns,
       },
     },
   };
-}
-
-/**
- * Athena fidelity: unregister every function the Pearson exam
- * driver does not support, so using one yields the same #NAME? the real
- * exam would — and it disappears from the fx catalog and autocomplete.
- * The allowlist is generated from Pearson's own comparison workbook.
- */
-function applyAthenaFunctionSet(univer: Univer): void {
-  try {
-    const injector = univer.__getInjector();
-    const fnService = injector.get(IFunctionService);
-    const allowed = new Set(ATHENA_FUNCTIONS);
-    const toRemove: string[] = [];
-    for (const name of fnService.getDescriptions().keys()) {
-      if (!allowed.has(String(name).toUpperCase())) toRemove.push(String(name));
-    }
-    if (toRemove.length) {
-      fnService.unregisterExecutors(...toRemove);
-      fnService.unregisterDescriptions(...toRemove);
-      console.log(`[WorksheetHost] Athena function set applied — ${toRemove.length} non-exam functions removed, ${allowed.size} allowed`);
-    }
-  } catch (err) {
-    // Filtering is fidelity, not safety — a Univer internals change must
-    // degrade to "extra functions available", never to a broken sheet.
-    console.warn('[WorksheetHost] Athena function filtering skipped:', err);
-  }
 }
 
 /** Body-level portal for Univer's popups/dropdowns. Editor panes clip
@@ -331,7 +310,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     }
   };
 
-  applyAthenaFunctionSet(univer);
+  const limits = opts.limits ?? EXAM_LIMITS;
+  if (limits.functions) applyFunctionSet(univer, limits.functions);
   // Every mount gets its own engine unit id. The engine caches parsed
   // formulas at module level, keyed by unit id + formula text, shared by
   // every live instance in the window, and each cached node stays bound to
@@ -343,7 +323,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // #NAME?, again on each Enter of the same text, until the app restarted
   // (Mufaro, 2026-09-17). Snapshots leave with the stored id put back, so
   // items, attempts and drawings never see the mount id.
-  const stored = opts.snapshot ?? blankWorkbookData();
+  const stored = opts.snapshot ?? blankWorkbookData(limits);
   const storedId = stored.id ?? 'worksheet';
   const mountId = `${storedId}~m${(_mountSeq++).toString(36)}${Date.now().toString(36)}`;
   univerAPI.createWorkbook(withUnitId(stored, storedId, mountId));
@@ -562,6 +542,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   } catch (err) {
     console.warn('[Worksheet] Tab-run memory guard not attached:', err);
   }
+  if (limits.grows) engineRegistrations.push(installSheetGrowth(univer, univerAPI, () => disposed));
   // Dollar signs survive a reference drag (Mufaro, 2026-09-14; reproduced
   // by a probe). Dragging or resizing a highlighted reference box makes the
   // formula editor rewrite every reference from the drawn boxes, which carry

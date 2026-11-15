@@ -34,7 +34,9 @@ import { registerWorksheetChatTools } from './worksheetChat.js';
 import { practiceBlock } from './worksheetPracticeBlock.js';
 import { worksheetQuestionProvider } from './questionProvider.js';
 import { registerQuestionProvider } from '../../services/questionProviders.js';
-import { BACK_TO_HOME, importPlanFromPath, openBuilder, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
+import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
+import { createSheetFilePane, exportOpenSheetFile } from './panes/sheetFilePane.js';
+import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilder, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
 import { createBankPane, readPendingRecipes } from './panes/bankPane.js';
 import { createExcelImportPane } from './panes/excelImportPane.js';
 import { createGeneratePane } from './panes/generatePane.js';
@@ -130,9 +132,22 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
             get studyFlashcards() { return studyFlashcards(); },
           });
         }
+        const sheetFile = sheetFilePathOf(instanceId);
+        if (sheetFile) return createSheetFilePane(container, sheetFile);
         return createSheetPane(container, instanceId);
       },
     }),
+  );
+
+  // A `.sheet` file in the workspace opens as a sheet of one's own, while this tool runs.
+  if (api.editors.registerFileEditor) {
+    context.subscriptions.push(api.editors.registerFileEditor('worksheet', { extensions: [SHEET_FILE_EXTENSION], iconHtml: sheetFileIconHtml() }));
+  }
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.newSheet', (name?: unknown, folder?: unknown) => newSheet(name, folder)),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.exportSheet', () => exportOpenSheetFile()),
   );
 
   context.subscriptions.push(

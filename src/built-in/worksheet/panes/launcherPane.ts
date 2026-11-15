@@ -12,7 +12,7 @@ import { isCampaignProblem } from '../campaign.js';
 import { syncRewards } from '../rewardsSync.js';
 import { computeInsights } from '../progressInsights.js';
 import { gradeLabel, whenCap } from '../labels.js';
-import { openBuilder, openPastQuiz, openWorksheet, showMenu, startQuizWith, studyFlashcards } from '../actions.js';
+import { newSheet, openBuilder, openPastQuiz, openWorksheet, showMenu, startQuizWith, studyFlashcards } from '../actions.js';
 import { discussNotesInChat } from '../chatReview.js';
 import { el } from '../widgets.js';
 
@@ -77,6 +77,7 @@ export function createLauncherPane(container: HTMLElement) {
         { label: 'Import Workbook…', icon: 'folder-input', onSelect: () => void openWorksheet('excel-import', 'Import Workbook') },
         { label: 'Generate Items…', icon: 'sparkles', onSelect: () => void openWorksheet('create', 'Generate Items') },
         { separator: true },
+        { label: 'New Sheet…', icon: 'table', onSelect: () => void newSheet() },
         { label: 'Open Scratch Sheet', icon: 'table-2', onSelect: () => void openWorksheet('scratch', 'Scratch Sheet') },
       ]));
     }

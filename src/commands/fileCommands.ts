@@ -6,6 +6,7 @@ import type { CommandDescriptor } from './commandTypes.js';
 import type { IEditorService } from '../services/serviceTypes.js';
 import { URI } from '../platform/uri.js';
 import { electronBridge, ensureUriWithinWorkspaceOrPrompt } from './structuralCommandTypes.js';
+import { resolveFileEditorInput } from '../api/bridges/editorsBridge.js';
 
 // ─── File Commands (M4 Cap 2.2) ──────────────────────────────────────────────
 
@@ -14,14 +15,16 @@ export const fileOpenFile: CommandDescriptor = {
   title: 'Open File…',
   category: 'File',
   keybinding: 'Ctrl+O',
-  handler: async (ctx) => {
+  handler: async (ctx, ...args: unknown[]) => {
+    // A path given (a routine, a probe, another command) skips the dialog.
+    const given = typeof args[0] === 'string' && args[0] ? [args[0]] : null;
     const bridge = electronBridge();
-    if (!bridge) {
+    if (!given && !bridge) {
       console.warn('[Command] file.openFile — no Electron bridge');
       return;
     }
 
-    const result = await bridge.dialog.openFile({ title: 'Open File' });
+    const result = given ?? await bridge!.dialog.openFile({ title: 'Open File' });
     if (!result || result.length === 0) return;
 
     const editorService = ctx.getService<IEditorService>('IEditorService');
@@ -43,6 +46,15 @@ export const fileOpenFile: CommandDescriptor = {
       );
       if (!allowed) {
         console.warn('[Command] file.openFile — skipped outside-workspace file "%s"', filePath);
+        continue;
+      }
+
+      // The editor registered for the file's type (a PDF in the PDF viewer,
+      // a file a running tool has claimed in that tool's editor); plain text
+      // is only the fallback.
+      const resolved = await resolveFileEditorInput(uri.toString()).catch(() => undefined);
+      if (resolved) {
+        await editorService.openEditor(resolved, { pinned: true });
         continue;
       }
 

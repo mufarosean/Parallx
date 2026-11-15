@@ -20,6 +20,8 @@ export interface ParallxApiLike {
     openEditor(options: {
       typeId: string; title: string; iconHtml?: string; instanceId?: string;
     }): Promise<void>;
+    registerFileEditor?(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): { dispose(): void };
+    openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): { dispose(): void };
@@ -46,6 +48,13 @@ export interface ParallxApiLike {
       get<T>(key: string, defaultValue?: T): T | undefined;
       update(key: string, value: unknown): Promise<void>;
     };
+    readonly workspaceFolders?: readonly { uri: string; name: string }[] | undefined;
+    readonly fs?: {
+      readFile(uri: string): Promise<{ content: string }>;
+      writeFile(uri: string, content: string): Promise<void>;
+      readdir(uri: string): Promise<{ name: string }[]>;
+      exists(uri: string): Promise<boolean>;
+    } | undefined;
   };
   chat?: {
     registerTool(name: string, tool: {
@@ -239,7 +248,7 @@ export const AUTOSAVE_MS = 5000;
 // ── Univer bundle loader ────────────────────────────────────────────────────
 
 type UniverHostModule = {
-  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean; displayDecimals?: number | null; onFormulaError?: (summary: string, detail: string) => void; onEngineFault?: (summary: string, detail: string) => void }): IWorksheetHost;
+  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean; displayDecimals?: number | null; onFormulaError?: (summary: string, detail: string) => void; onEngineFault?: (summary: string, detail: string) => void; limits?: import('./worksheetConstants.js').SheetLimits }): IWorksheetHost;
 };
 
 let _univerModule: Promise<UniverHostModule> | null = null;
