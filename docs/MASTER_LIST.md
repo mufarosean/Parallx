@@ -25,8 +25,87 @@ I built for it, I built specifically for studying for exam 7. we need to
 generalize, improve it quite a bit, etc."
 
 **Status (2026-11-10):** agreed, it will be done. His words: "Worksheets
-full redesign we will do, but we will not start with it today." Not
-started; the bar research below still comes first.
+full redesign we will do, but we will not start with it today." Started
+2026-11-15: tested, bars read, mock-ups drawn; nothing built.
+
+**His go (2026-11-15):** "let's run worksheets redesign, need several
+mockups. need you to test cell interaction logic? etc". The same day, on
+the rest of this list: "I feel like the majority of these are not needed
+rn." Which entries that parks was proposed to him and is not settled.
+
+**Tested 2026-11-15, on the real sheet in a hidden copy of the app**
+(`tests/probes/sheet-cells-probe.mjs`: the mouse on the grid, keys through
+the window, the system clipboard, a finger; after each act it reads the
+engine and sets what happened beside what Excel does). 121 things tried:
+85 the same as Excel, 13 differ, 16 missing, 7 notes.
+
+- *There is no general spreadsheet to keep.* The only free sheet is the
+  Scratch Sheet, kept in memory: closed and opened again it came back
+  empty. A sheet starts at 150 rows by 40 columns and grows only when a
+  row is inserted. An .xlsx in the workspace opens in the core's read-only
+  grid; Import Workbook only makes problems. The Direction below ("the
+  spreadsheet stays a general tool") describes something to be built.
+- *Keys that do nothing:* Home, Ctrl+Home, Ctrl+End, Page Up, Page Down,
+  Shift+Space, Ctrl+Space, F5, Ctrl+Shift+Plus, Ctrl+1, Ctrl+Shift+% $ !.
+  The engine's shortcut table (`@univerjs/sheets-ui` 0.25) has no entry
+  for Home, End, the Page keys, Space or F5.
+- *Differs:* an arrow at the edge wraps (Up from A1 lands on AN150);
+  typing in the formula bar is lost (four ways tried in the hidden app,
+  focus stays in the cell's editor; one try by hand is owed); `=A1+` is
+  accepted and shows #VALUE!; a formula that reads itself shows 1 with no
+  warning; Ctrl+F opens the app's Find, which finds nothing on a sheet;
+  Ctrl+Enter with two areas selected fills the active cell only; no
+  completion from the words in a column; a finger dragged up selects
+  cells and the sheet does not scroll (a simulated finger).
+- *An error in the page:* Shift+Tab and Shift+Enter on a cell that is not
+  being edited move as they should and throw "Command handler should not
+  return a promise" each time (`univerHost.ts`, the reverse move).
+- *Not there:* sort, filter, find and replace, conditional formatting,
+  dropdown lists, tables, notes, links, charts. The engine's parts for all
+  but charts are in `node_modules/@univerjs` already and not switched on.
+  Freeze is in the right-click menu only. The ribbon's Data tab holds one
+  control.
+- *Already right:* entering (numbers, 5%, $1,234.50, dates, '007, Tab
+  runs, F2, Alt+Enter), formulas (pointing by mouse and by arrows, F4, the
+  function list, spills, other sheets, XLOOKUP, LET, LAMBDA, FILTER),
+  copy and paste in and out of other programs, the fill handle, undo.
+
+**Bars read 2026-11-15** (each vendor's own pages that day, through a
+reader that summarises; what failed is said). Excel's and Google Sheets'
+help for cell behaviour; Notion, Obsidian Bases, Craft, Anytype, Coda's
+grids-and-tables guide, Grist, Quadratic, Rows for a sheet in a notes
+app; Anki, RemNote, UWorld, Blueprint, Brilliant for the study half. Not
+read: Coda's and Airtable's help centres (404), AMBOSS and Khan Academy
+(403), AFFiNE's database page (404). What was taken: Coda keeps free
+grids and typed tables as two objects in one doc; RemNote offers a
+catch-up period "instead of quietly rearranging" where Blueprint's
+Rebalance cannot be undone; UWorld builds a session from pools (unused,
+incorrect, marked).
+
+**Mock-ups drawn 2026-11-15**, in the app's tokens and icons, dark and
+light: https://claude.ai/artifact/4bCbPziBWCPbjYb7JZjFkP. Five choices,
+his picks owed on each; Claude's pick marked on the page:
+
+- 1, where a sheet lives: 1A a file in the workspace, with Edit As Sheet
+  on an .xlsx (Claude's pick), 1B a kind of page, 1C Sheets' own list.
+- 2, what sits around the grid: 2A the engine's ribbon in the app's
+  colours, 2B one toolbar built from the kit (Claude's pick), 2C a bar
+  that appears on a selection (kept for touch).
+- 3, a sheet in a page: 3A a live range (Claude's pick), 3B a card, 3C
+  a cell's value inside a sentence (after 3A).
+- 4, what Study opens on: 4A today (Claude's pick), 4B the items, 4C the
+  plan.
+- 5, working an item: 5A a study bar over the sheet, 5B the question
+  beside the sheet (Claude's pick), 5C the exam surface for a timed
+  session, where the exam's limits are rules a set carries.
+
+**Proposed by Claude with the mock-ups, none agreed:** the study half
+becomes its own tool, Study, whose items take their answer surface from
+another tool (a sheet from Sheets, cards from Flashcards, written
+answers of its own); the exam's limits (grid size, function list, white
+sheet) leave the code and become rules on a set; a sheet keeps its own
+file and exports to .xlsx, since the exporter carries values and
+formulas only.
 
 **What exists today (verified from the file list).** `src/built-in/worksheet`
 is two things grown together. One is a spreadsheet tool: the Univer host
