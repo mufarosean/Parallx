@@ -1,7 +1,7 @@
 export const meta = {
   name: 'review-piece',
   description: 'Independent review of the current change: reviewers who did not write it, every finding challenged, then fixed and rechecked',
-  whenToUse: 'After a piece of Parallx is built and before it is pushed. args (all optional): { base: git ref to diff from (default origin/dev), says: what the piece is said to do, acceptance: path of the acceptance probe written before the build, claims: the summary or master list text to check against the code, ui: false to skip the UI reviewer, app: false to skip the real-app run, fix: false to report without fixing }',
+  whenToUse: 'After a piece of Parallx is built and before it is pushed. args (all optional): { base: git ref to diff from (default origin/dev), to: git ref to diff to when the piece is an earlier commit (default the working tree), says: what the piece is said to do, acceptance: path of the acceptance probe written before the build, claims: the summary or master list text to check against the code, ui: false to skip the UI reviewer, app: false to skip the real-app run, fix: false to report without fixing }',
   phases: [
     { title: 'Review', detail: 'one reviewer per concern, each reading the diff alone' },
     { title: 'Challenge', detail: 'a skeptic tries to refute each reviewer\'s findings' },
@@ -12,6 +12,7 @@ export const meta = {
 
 const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
 const base = typeof a.base === 'string' && a.base ? a.base : 'origin/dev'
+const to = typeof a.to === 'string' && a.to ? a.to : ''
 const says = typeof a.says === 'string' ? a.says : ''
 const claims = typeof a.claims === 'string' ? a.claims : ''
 const acceptance = typeof a.acceptance === 'string' ? a.acceptance : ''
@@ -74,7 +75,9 @@ const RECHECK = {
   required: ['checks', 'stillThere', 'introduced'],
 }
 
-const change = `The change under review is \`git diff ${base}..HEAD\` plus any uncommitted work (\`git status --short\`, \`git diff\`). Get it yourself. You are not given its author's account of it on purpose.`
+const change = to
+  ? `The change under review is \`git diff ${base}..${to}\`. Get it yourself. Commits made after ${to} are other work: read the files as they stand now (HEAD) to judge the change, but report only on what that diff brought in. You are not given its author's account of it on purpose.`
+  : `The change under review is \`git diff ${base}..HEAD\` plus any uncommitted work (\`git status --short\`, \`git diff\`). Get it yourself. You are not given its author's account of it on purpose.`
 const brief = (file) => `You are one reviewer of a change to Parallx. Your brief is the file \`.claude/agents/${file}.md\`: read it first and work exactly as it says. Do not edit or create files under src/ or ext/. `
 
 const REVIEWERS = [
