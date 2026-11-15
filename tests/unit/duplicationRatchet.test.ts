@@ -20,6 +20,12 @@ import { measureDuplication, substance, WINDOW } from './fixtures/duplication.js
 
 const ROOT = resolve(__dirname, '..', '..');
 const BASELINE = resolve(__dirname, 'duplication-baseline.json');
+/**
+ * A count may wander by a few lines with no copying: a rename that carries a
+ * run of lines over the length that makes it count. A real copy brings at
+ * least a whole window.
+ */
+const SLACK = 3;
 
 describe('duplication (ratchet)', () => {
   const now = measureDuplication(ROOT);
@@ -41,15 +47,21 @@ describe('duplication (ratchet)', () => {
     const base: Record<string, number> = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
     const partners = (file: string): string => Object.keys(now.pairs).filter((p) => p.split(' | ').includes(file)).map((p) => p.split(' | ').find((f) => f !== file)).slice(0, 3).join(', ');
     const rises: string[] = [];
+    // A file in the baseline that is no longer on disk was moved or renamed: its lines may arrive under the new name.
+    let moved = Object.entries(base).filter(([file]) => !existsSync(resolve(ROOT, file))).reduce((sum, [, n]) => sum + n, 0);
     for (const [file, n] of Object.entries(now.files)) {
       const was = base[file];
-      if (was === undefined) rises.push(`${file}: new, with ${n} lines that also stand in ${partners(file)}`);
-      else if (n > was) rises.push(`${file}: ${was} -> ${n} (shared with ${partners(file)})`);
+      if (was === undefined) {
+        if (n <= moved) { moved -= n; continue; }
+        rises.push(`${file}: new, with ${n} lines that also stand in ${partners(file)}`);
+      } else if (n > was + SLACK) rises.push(`${file}: ${was} -> ${n} (shared with ${partners(file)})`);
     }
     expect(rises, `Code was copied between files (${WINDOW} lines of substance in a row). Put it in one place both import instead.`).toEqual([]);
   });
 
   it('reads a file as its lines of substance', () => {
     expect(substance(`import { a } from './a.js';\n\n// a note\nconst x = 1; /* aside */\n  });\n}\nexport function go(): void {\n  run(  x,   2 );\n}\n`)).toEqual(['const x = 1;', 'export function go(): void {', 'run( x, 2 );']);
+    // A list of names over several lines is an import, not code.
+    expect(substance(`import {\n  alpha,\n  beta,\n  type Gamma,\n} from './x.js';\nexport type {\n  Delta,\n} from './y.js';\nexport const kept = 1;\n`)).toEqual(['export const kept = 1;']);
   });
 });

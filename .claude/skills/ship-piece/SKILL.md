@@ -11,7 +11,7 @@ What this order rests on (read 2026-11-15): models asked to pass a check they ca
 ## Before building
 
 1. **Check the app for what exists.** Search `ext/`, `src/built-in/` and `docs/` for what already does this, under other names too.
-2. **The acceptance probe, first.** `tests/probes/<piece>-acceptance.mjs`, written from the request by the `app-verifier` agent (or the `acceptance-first` workflow when he has asked for a workflow), not by whoever builds. Its header says `@acceptance`. Every check for the new behaviour fails on the app as it is. The builder does not edit this file; if a check is wrong, the verifier changes it and the reason goes in the reply.
+2. **The acceptance probe, first.** `tests/probes/<piece>-acceptance.mjs`, written from the request by the `app-verifier` agent (or the `acceptance-first` workflow when he has asked for a workflow), not by whoever builds. Its header says `@acceptance`. Every check for the new behaviour fails on the app as it is. It is committed alone before the build starts, so a later edit shows in its history. The builder does not edit this file; if a check is wrong, the verifier changes it and the reason goes in the reply.
 
 ## Building
 

@@ -41,11 +41,15 @@ function hash(text: string, seed: number): number {
 /** The lines of a file that carry meaning, in order. */
 export function substance(text: string): string[] {
   const out: string[] = [];
+  /** Inside an import or re-export list that runs over several lines. */
+  let inList = false;
   for (const raw of withoutComments(text).split('\n')) {
     const line = raw.trim().replace(/\s+/g, ' ');
+    if (inList) { if (/\}\s*(from\b|;|$)/.test(line)) inList = false; continue; }
     if (line.length < 3) continue;
     if (/^[\])}>;,(){[]+$/.test(line)) continue;
-    if (/^(import |export \* from |export \{[^}]*\} from )/.test(line)) continue;
+    if (/^(import|export)\s+(type\s+)?\{[^}]*$/.test(line)) { inList = true; continue; }
+    if (/^(import |export \* from |export (type )?\{[^}]*\} from )/.test(line)) continue;
     out.push(line);
   }
   return out;

@@ -1,6 +1,6 @@
 {
   "The window frame": {
-    "smallTarget": 10,
+    "smallTarget": 11,
     "offScaleType": 1,
     "offFont": 0,
     "offRadius": 0,
@@ -9,7 +9,7 @@
     "clipped": 0,
     "twoPrimaries": 0,
     "noHeader": 0,
-    "titleSize": 1
+    "titleSize": 0
   },
   "Welcome": {
     "smallTarget": 0,
@@ -42,7 +42,7 @@
     "offRadius": 0,
     "offHeight": 0,
     "uppercase": 0,
-    "clipped": 0,
+    "clipped": 2,
     "twoPrimaries": 0,
     "noHeader": 0,
     "titleSize": 0
@@ -174,7 +174,7 @@
     "offRadius": 0,
     "offHeight": 0,
     "uppercase": 0,
-    "clipped": 0,
+    "clipped": 2,
     "twoPrimaries": 0,
     "noHeader": 1,
     "titleSize": 0
@@ -253,7 +253,7 @@
   },
   "Creations": {
     "smallTarget": 0,
-    "offScaleType": 0,
+    "offScaleType": 1,
     "offFont": 0,
     "offRadius": 1,
     "offHeight": 0,

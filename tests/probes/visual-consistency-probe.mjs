@@ -123,7 +123,8 @@ function measure(where) {
     const text = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 28);
     return `${el.tagName.toLowerCase()}${id ? `#${id}` : cls ? `.${cls}` : ''}${text ? ` "${text}"` : ''}`;
   };
-  const near = (a, list) => list.includes(Math.round(a * 100) / 100) || list.some((x) => Math.abs(x - a) <= 0.51);
+  // A layout box may land half a pixel off; text sizes are set, not laid out, so they get less room.
+  const near = (a, list, slack = 0.51) => list.some((x) => Math.abs(x - a) <= slack);
 
   const out = { smallTarget: [], offScaleType: [], offFont: [], offRadius: [], offHeight: [], uppercase: [], clipped: [], twoPrimaries: [], title: null, header: false, counted: { text: 0, controls: 0 } };
   const CONTROL = 'button, a[href], input:not([type="hidden"]), select, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="switch"], [role="radio"], [role="option"], [role="link"], [tabindex="0"]';
@@ -142,12 +143,13 @@ function measure(where) {
       if (ownText) {
         out.counted.text++;
         const size = parseFloat(s.fontSize);
-        if (!near(size, scale)) add(seen.type, `${Math.round(size * 10) / 10}px`, el);
+        if (!near(size, scale, 0.26)) add(seen.type, `${Math.round(size * 10) / 10}px`, el);
         const fam = firstFamily(s.fontFamily);
         if (fam !== uiFont && fam !== monoFont) add(seen.font, fam, el);
         if (s.textTransform === 'uppercase' && el.textContent.trim().length > 1) out.uppercase.push(name(el));
         if (el.scrollWidth > el.clientWidth + 1 && (s.overflowX === 'hidden' || s.overflowX === 'clip') && s.whiteSpace.includes('nowrap')) {
-          const whole = el.getAttribute('title') || el.closest('[title]')?.getAttribute('title') || el.closest('[aria-label]')?.getAttribute('aria-label');
+          // The whole text, from the element or the control it is in. A part of the window names itself too; that is not this text.
+          let whole = ''; for (let n = el, i = 0; n && i < 4 && !whole && !n.hasAttribute('data-part-id'); n = n.parentElement, i++) whole = n.getAttribute('title') || n.getAttribute('aria-label') || '';
           if (s.textOverflow !== 'ellipsis') out.clipped.push(`${name(el)}: cut off with no ellipsis`);
           else if (!whole) out.clipped.push(`${name(el)}: ellipsed, and nothing gives the whole text`);
         }
@@ -170,14 +172,17 @@ function measure(where) {
       }
     }
   }
-  // Targets: under 24 px in either direction, and another target inside the 24 px circle it should own.
+  // Targets (WCAG 2.2, 2.5.8): under 24 px in either direction, and the 24 px circle centred on it
+  // meets another target, or the same circle of another undersized one.
+  const small = (r) => r.width < 24 || r.height < 24;
   for (const c of controls) {
-    if (c.r.width >= 24 && c.r.height >= 24) continue;
+    if (!small(c.r)) continue;
     const cx = c.r.left + c.r.width / 2; const cy = c.r.top + c.r.height / 2;
     const crowded = controls.some((o) => {
       if (o === c || o.el.contains(c.el) || c.el.contains(o.el)) return false;
       const dx = Math.max(o.r.left - cx, 0, cx - o.r.right); const dy = Math.max(o.r.top - cy, 0, cy - o.r.bottom);
-      return Math.hypot(dx, dy) < 12;
+      if (Math.hypot(dx, dy) < 12) return true;
+      return small(o.r) && Math.hypot(o.r.left + o.r.width / 2 - cx, o.r.top + o.r.height / 2 - cy) < 24;
     });
     if (crowded) out.smallTarget.push(`${name(c.el)}: ${Math.round(c.r.width)} by ${Math.round(c.r.height)}`);
   }
@@ -185,16 +190,18 @@ function measure(where) {
   for (const [k, v] of seen.font) out.offFont.push(`${k} (${v.n} places, e.g. ${v.eg})`);
   for (const [k, v] of seen.radius) out.offRadius.push(`${k} (${v.n} places, e.g. ${v.eg})`);
   for (const [k, v] of seen.height) out.offHeight.push(`${k} (${v.n} controls, e.g. ${v.eg})`);
-  // One primary action to a view.
-  const primaries = Array.from(area.querySelectorAll('.px-btn--primary, .ui-button--primary')).filter((b) => !b.closest(SKIP) && onScreen(b));
-  if (primaries.length > 1) out.twoPrimaries.push(`${primaries.length} primary buttons: ${primaries.slice(0, 4).map(name).join(', ')}`);
-  // The page's title, and whether it is the kit's header.
-  const header = Array.from(area.querySelectorAll('.px-page-header')).find((h) => onScreen(h));
-  out.header = !!header;
-  const h1 = (header && header.querySelector('.px-page-header__title')) || Array.from(area.querySelectorAll('h1')).find((h) => !h.closest(SKIP) && onScreen(h));
-  if (h1) { const s = getComputedStyle(h1); out.title = `${Math.round(parseFloat(s.fontSize) * 10) / 10}px / ${s.fontWeight}`; }
+  // The window's frame has no view of its own: titles, headers and primary actions belong to the screens.
+  if (where !== 'chrome') {
+    // One primary action to a view.
+    const primaries = Array.from(area.querySelectorAll('.px-btn--primary, .ui-button--primary')).filter((b) => !b.closest(SKIP) && onScreen(b));
+    if (primaries.length > 1) out.twoPrimaries.push(`${primaries.length} primary buttons: ${primaries.slice(0, 4).map(name).join(', ')}`);
+    // The page's title, and whether it is the kit's header.
+    const header = Array.from(area.querySelectorAll('.px-page-header')).find((h) => onScreen(h));
+    out.header = !!header;
+    const h1 = (header && header.querySelector('.px-page-header__title')) || Array.from(area.querySelectorAll('h1')).find((h) => !h.closest(SKIP) && onScreen(h));
+    if (h1) { const s = getComputedStyle(h1); out.title = `${Math.round(parseFloat(s.fontSize) * 10) / 10}px / ${s.fontWeight}`; }
+  }
   out.scale = scale; out.radii = radii; out.heights = heights; out.fonts = [uiFont, monoFont];
-  for (const k of ['smallTarget', 'uppercase', 'clipped']) out[k] = [...new Set(out[k])];
   return out;
 }
 
@@ -269,8 +276,13 @@ await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ at: new D
 
 // Against the record: what rose since the baseline was taken.
 let rises = [];
+const notOpened = report.filter((r) => r.notOpened);
+// A screen that did not open was not measured: that is a finding, and its record is kept as it was.
+for (const r of notOpened) rises.push(`${r.screen}: did not open (${r.notOpened}), so it was not measured`);
 if (update) {
-  const base = existsSync(BASELINE) && only.length ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
+  const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
+  // Title sizes are judged across all screens: a run over some of them leaves that count as it was.
+  if (only.length) for (const [screen, now] of Object.entries(counts)) now.titleSize = base[screen]?.titleSize ?? now.titleSize;
   await fs.writeFile(BASELINE, JSON.stringify({ ...base, ...counts }, null, 2) + '\n');
   console.log(`\n[baseline] written for ${Object.keys(counts).length} screens`);
 } else if (existsSync(BASELINE)) {
@@ -278,13 +290,12 @@ if (update) {
   for (const [screen, now] of Object.entries(counts)) {
     const was = base[screen];
     if (!was) { const any = KINDS.filter((k) => now[k]); if (any.length) rises.push(`${screen}: a new screen, with ${any.map((k) => `${k}=${now[k]}`).join(' ')}`); continue; }
-    for (const k of KINDS) if ((now[k] ?? 0) > (was[k] ?? 0)) rises.push(`${screen}: ${k} ${was[k] ?? 0} -> ${now[k]}`);
+    for (const k of KINDS) { if (k === 'titleSize' && only.length) continue; if ((now[k] ?? 0) > (was[k] ?? 0)) rises.push(`${screen}: ${k} ${was[k] ?? 0} -> ${now[k]}`); }
   }
   console.log(`\n[against the baseline] ${rises.length ? `${rises.length} rose:\n${rises.map((r) => `  ${r}`).join('\n')}` : 'nothing rose'}`);
 } else {
   console.log('\n[baseline] none yet: run with --update to record these counts');
 }
-const notOpened = report.filter((r) => r.notOpened);
 if (notOpened.length) console.log(`\n[not opened] ${notOpened.map((r) => `${r.screen} (${r.notOpened})`).join('; ')}`);
 if (errors.length) console.log(`\n[page errors] ${errors.length}\n${errors.slice(0, 5).map((e) => `  ${e}`).join('\n')}`);
 console.log(`\n[out] ${outDir}`);

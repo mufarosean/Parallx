@@ -6,7 +6,7 @@ Each line is something that can be checked on a screenshot or measured in the pa
 
 | Criterion | Number | Source |
 |---|---|---|
-| A control is at least 24 by 24 CSS px, or no other control lies within the 24 px circle centred on it | 24 px | WCAG 2.2, 2.5.8 Target Size (Minimum), AA: https://www.w3.org/TR/WCAG22/ |
+| A control is at least 24 by 24 CSS px, or the 24 px circle centred on it meets no other control and no such circle of another undersized control | 24 px | WCAG 2.2, 2.5.8 Target Size (Minimum), AA: https://www.w3.org/TR/WCAG22/ |
 | Text is on the type scale | 10, 11, 12, 13, 15, 18, 22 px | The app's tokens, `src/theme/px-tokens.css` |
 | Text is in the UI font or the mono font | two families | The app's tokens |
 | A corner is one of the app's radii, or a full pill | 1, 4, 6, 10, 14 px | The app's tokens |

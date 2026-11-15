@@ -121,16 +121,19 @@ log(`${all.length} findings, ${standing.length} standing after the challenge, ${
 
 // A reviewer asked to find problems always finds some, and fixing every one adds layers nobody needed.
 // Only what was reproduced and matters is fixed; the rest is reported and left alone.
-const toFix = standing.filter((f) => f.verdict === 'confirmed' && f.matters)
-const unproven = standing.filter((f) => f.verdict !== 'confirmed')
-const minor = standing.filter((f) => f.verdict === 'confirmed' && !f.matters)
+// Two reviewers bring their own proof: the app verifier ran what it reports, and a false claim is shown by the
+// code it points to, not by a run. Their findings stand unless the skeptic refuted them.
+const proven = (f) => f.verdict === 'confirmed' || f.reviewer === 'app' || f.reviewer === 'claims'
+const toFix = standing.filter((f) => proven(f) && f.matters)
+const unproven = standing.filter((f) => !proven(f))
+const minor = standing.filter((f) => proven(f) && !f.matters)
 log(`${toFix.length} reproduced and worth fixing, ${unproven.length} unproven (reported, not fixed), ${minor.length} minor (reported, not fixed)`)
 const report = { base, reviewers: done.map((r) => ({ reviewer: r.reviewer, checked: r.checked, findings: r.findings.length })), notCovered: missing, toFix, unproven, minor, refuted }
 if (!toFix.length || a.fix === false) return report
 
 phase('Fix')
 const fixes = await agent(
-  `Fix these findings in the Parallx working tree. They came from independent reviewers and each was reproduced by a skeptic.\n${JSON.stringify(toFix, null, 1)}\n\nFor each: the smallest change that removes the defect, in keeping with CLAUDE.md's rules (the kit, tokens, contribution points; no file over its size budget grows). No new abstraction, option or layer that the defect does not require. Where a unit test could have caught it, add or extend one under tests/unit, and see it fail on the code as it was before your fix. Never edit an acceptance probe (a file whose header says @acceptance), loosen a test, or raise a ratchet baseline to make something pass. Do not commit and do not push. Return what you fixed (with the files) and what you did not, with the reason.`,
+  `Fix these findings in the Parallx working tree. They came from independent reviewers; each was reproduced by a skeptic, or was seen by the reviewer running the real app, or is a claim the code contradicts (fix a wrong claim by correcting the text, not the code, unless the code is what is wrong).\n${JSON.stringify(toFix, null, 1)}\n\nFor each: the smallest change that removes the defect, in keeping with CLAUDE.md's rules (the kit, tokens, contribution points; no file over its size budget grows). No new abstraction, option or layer that the defect does not require. Where a unit test could have caught it, add or extend one under tests/unit, and see it fail on the code as it was before your fix. Never edit an acceptance probe (a file whose header says @acceptance), loosen a test, or raise a ratchet baseline to make something pass. Do not commit and do not push. Return what you fixed (with the files) and what you did not, with the reason.`,
   { label: 'fix', phase: 'Fix', schema: FIXES })
 
 phase('Recheck')

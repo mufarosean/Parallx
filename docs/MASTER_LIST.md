@@ -613,9 +613,12 @@ that style comes from research, not taste. Not raised with him item by
 item; nothing here is agreed.
 
 - *What is already even.* No text off the two fonts, no label in capitals,
-  no cut-off text, no view with two primary buttons, one title size (22 px,
-  600) on 14 of 15 screens that have a title. The token and kit ratchets
-  did that.
+  no view with two primary buttons, one title size (22 px, 600) on every
+  screen with a title but Welcome. The token and kit ratchets did that.
+- *Four labels cut off with nothing that gives the whole text:* two on the
+  Worksheets home (its cards' second lines) and two in Tools and
+  Extensions. Found only after an independent review showed the probe's
+  first version could never report this.
 - *Eight front pages do not use the kit's page header:* Home, Dashboard,
   Tools and Extensions, Workspace Graph, Flashcards, Concept Lab,
   Creations, Study. Each draws its own, or has none. Worksheets, Planner
@@ -623,7 +626,7 @@ item; nothing here is agreed.
 - *Rows under the target size.* The Explorer's rows and its Open Editors
   rows are 22 px high and stacked, so each sits inside the 24 px the next
   one should own (WCAG 2.2, 2.5.8). The tab strip's scroll arrows are 20
-  px wide. Ten in the window's frame; none found inside a tool.
+  px wide. Eleven in the window's frame; none found inside a tool.
 - *Off the scales, a handful:* the Welcome title (28 px, weight 300); the
   dashboard timer's face (52 px) and two radii of its widget (8 and 2 px);
   a 3 px badge in the Media Organizer; Home's search field (40 px high);
