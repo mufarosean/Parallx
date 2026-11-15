@@ -28,3 +28,8 @@ export const GROW_MARGIN_ROWS = 50;
 export const GROW_STEP_ROWS = 1000;
 export const GROW_MARGIN_COLUMNS = 8;
 export const GROW_STEP_COLUMNS = 26;
+
+/** The context key that is true while a sheet file is live on screen, as the tool names it. */
+export const SHEET_ON_SCREEN_KEY = 'sheetFileOnScreen';
+/** The same key as a menu entry's `when` reads it: the app puts the tool's id before a tool's key. */
+export const SHEET_ON_SCREEN_WHEN = `parallx.worksheet.${SHEET_ON_SCREEN_KEY}`;

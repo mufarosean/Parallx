@@ -30,6 +30,7 @@ import type { IFileLocateResult } from '../../services/fileLocator.js';
 import type { IFileRevealTarget } from '../../editor/fileReveal.js';
 import { checkFileLink, findLinkedFile, revealTargetOf, type IFileLinkHost } from './fileLink.js';
 import { createOpenEditorsView } from './openEditorsView.js';
+import { closeEditorsOf, reopenEditorsOf } from './openFilesFollow.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -1026,6 +1027,7 @@ async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> 
     try {
       const result = mode === 'cut' ? await electronFs.rename(sourcePath, destPath) : await electronFs.copy(sourcePath, destPath);
       if (result?.error) throw new Error(result.error.message || (mode === 'cut' ? 'Move failed' : 'Copy failed'));
+      if (mode === 'cut') await reopenEditorsOf(_api.editors, sourcePath, destPath, true);
     } catch (err) {
       _api.window.showErrorMessage(`Failed to paste "${item.name}": ${err}`);
     }
@@ -1128,6 +1130,7 @@ function setupDropTarget(el: HTMLElement, node: TreeNode): void {
     try {
       const result = await electronFs.rename(sourcePath, destPath);
       if (result?.error) throw new Error(result.error.message || 'Move failed');
+      await reopenEditorsOf(_api.editors, sourcePath, destPath, true);
 
       // Reload both source parent and target folder
       const sourceParent = _dragSourceNode.parent;
@@ -1456,6 +1459,7 @@ function startInlineRename(node: TreeNode): void {
         const newUri = joinUri(parentUri, newName);
         try {
           await fsRename(node.uri, newUri);
+          await reopenEditorsOf(_api.editors, uriToFsPath(node.uri), uriToFsPath(newUri), node.type === FILE_TYPE_DIRECTORY);
           node.name = newName;
           node.uri = newUri;
           renderTree();
@@ -1588,13 +1592,7 @@ async function confirmDelete(nodes: TreeNode[]): Promise<void> {
   for (const node of nodes) {
     try {
       await fsDelete(node.uri);
-      // Close any open editors for the deleted file (or files under a deleted folder)
-      const normalised = uriToFsPath(node.uri).replace(/\\/g, '/').toLowerCase();
-      for (const editor of _api.editors.openEditors) {
-        const editorPath = editor.description.replace(/\\/g, '/').toLowerCase();
-        const isMatch = editorPath === normalised || (node.type === FILE_TYPE_DIRECTORY && editorPath.startsWith(normalised + '/'));
-        if (isMatch) _api.editors.closeEditor(editor.id).catch(() => {});
-      }
+      closeEditorsOf(_api.editors, uriToFsPath(node.uri), node.type === FILE_TYPE_DIRECTORY);
       if (node.parent) node.parent.children = node.parent.children.filter(c => c !== node);
     } catch (err) {
       _api.window.showErrorMessage(`Failed to delete "${node.name}": ${err}`);

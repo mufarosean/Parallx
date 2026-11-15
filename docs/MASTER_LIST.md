@@ -141,59 +141,158 @@ study mode."
   first piece built is the same under either.
 
 **Built 2026-11-15, the first piece: a sheet of one's own, kept as a
-file** (in the code and its tests; checked hidden on the real engine,
-`tests/probes/sheet-file-probe.mjs`, 0 problems). His study panes are
-untouched: a problem, a quiz and the Scratch Sheet are held to the
-exam's limits exactly as before.
+file.** Reviewed the same day by agents that did not build it (below);
+this text is as corrected by that review.
 
-- New Sheet… (the Tools menu, Worksheets' sidebar menu, Add on its home,
-  the command `worksheet.newSheet`, which the chat may call) asks a name,
-  makes `Name.sheet` in the workspace folder and opens it. The pane is
-  its own small file (`panes/sheetFilePane.ts`), made from the kit.
+- New Sheet… (Worksheets' sidebar menu, Add on its home, the command
+  `worksheet.newSheet`) asks a name, makes `Name.sheet` in the workspace
+  folder and opens it. The chat can run the command only when workbench
+  control is switched on in the AI settings, and it ships off; that route
+  was not run. The pane is its own small file (`panes/sheetFilePane.ts`);
+  what it takes from the kit is the notice shown while a file opens or
+  is refused. Everything worked with on the sheet (ribbon, formula bar,
+  sheet tabs, zoom) is still the engine's own.
 - A `.sheet` file opens as a live sheet from the Explorer, Quick Open and
   File > Open. It starts at 1,000 rows by 52 columns and grows as the
-  selection nears its end, so an arrow never wraps and there is no edge.
-  It follows the app's light or dark.
+  selection nears its end, so an arrow never wraps. Scrolling alone does
+  not grow it: the wheel stops at the last row until the selection goes
+  there. It follows the app's light or dark.
 - It saves itself: a change is in the file about a second and a half
-  later, and on leaving the tab. Closed and opened again, it is as it
-  was. Merely opening it writes nothing.
-- A file that is not a sheet is refused in words and left as it is.
-- The engine host now takes its limits as an option (`SheetLimits` in
+  later, on leaving the tab, and when the window closes. What is still
+  being typed in a cell is kept when the tab is left. Closed and opened
+  again, it is as it was. Merely opening it writes nothing.
+- A file that is not a sheet, or whose workbook is damaged, is refused in
+  words and left as it is.
+- The engine host takes its limits as an option (`SheetLimits` in
   `worksheetConstants.ts`: the function list, the grid, whether it
-  grows). Given none, it is the exam tool's sheet, as it always was. This
-  is the seam study mode will use: limits a set carries, not code.
-- A new contribution point in the core, `api.editors.registerFileEditor`:
-  a running tool claims file extensions for one of its editors. The core
-  names no tool; with Worksheets off a `.sheet` opens as text.
+  grows). Given none, it is the exam tool's sheet. This is the seam study
+  mode will use: limits a set carries, not code.
+- A contribution point in the core, `api.editors.registerFileEditor`: a
+  running tool claims file extensions for one of its editors. The claim
+  is an entry in the core's one registry of file types
+  (`EditorResolverService`), above the core's own readers; the first
+  build kept a second list beside that registry, and the review caught
+  it. The core names no tool; with Worksheets off a `.sheet` opens as
+  text.
 - Changed on the way: File > Open File made a text editor for whatever
-  was picked (read in its code, not seen on screen). It now asks for the
-  editor of the file's type first, and takes a path so a routine or a
-  probe can call it.
+  was picked. It now asks for the editor of the file's type first, and
+  takes a path so a routine or a probe can call it.
 
-Found while building, and a correction to what he was told: the exam's
-function list removes nothing today. The engine has 511 functions and
-all of them are on the list (WEBSERVICE, REGEXTEST, STOCKHISTORY and the
-like are missing from the engine itself). So "only the exam's functions"
-was true of the code and made no difference on the sheet; a sheet of
-one's own has the same 511.
+A correction to what he was told twice. First he was told a sheet was
+held to "only the exam's functions"; then, on 2026-11-15, that the list
+"removes nothing" because all 511 of the engine's functions are on it.
+Both were wrong, and the claim checker found it: 25 of the engine's 511
+functions are not on the exam's list, and they computed on the practice
+sheet anyway, because the list was applied before the engine had
+registered its functions and so found nothing to remove. That was so
+before this piece too. Fixed in the review: the list is applied as the
+engine starts. A practice sheet now answers #NAME? to ARRAYTOTEXT,
+ARRAY_CONSTRAIN, AVERAGE.WEIGHTED, BAHTTEXT, CELL, EPOCHTODATE, FLATTEN,
+FORECAST.LINEAR, IMCOTH, IMLOG, IMTANH, ISBETWEEN, ISDATE, ISEMAIL, ISURL,
+MARGINOFERROR, NUMBERSTRING, NUMBERVALUE, REGEXEXTRACT, REGEXMATCH,
+REGEXREPLACE, ROUNDBANK, TO_DATE and VALUETOTEXT, as the exam's tool
+would. LET is the one left: it is not on the list and still computes,
+because the engine reads it in its parser and not as a function. A sheet
+of one's own has all of them. **This changes his practice sheet, which
+was promised untouched: his to overrule.** Not checked: whether those
+names still show in the function list of the fx button.
 
-The audits after it (2026-11-15). Touch drags: all ok, after a fix to
-the probe itself: its planner check measured the chip as its own cell,
-so it always dragged left and fell off the calendar on the first day of
-a week (it failed today, a Sunday; the app was right). Keyboard, on the
-Worksheets screens with a sheet file added to them: 0 everywhere but one
-kind, a control of the engine's ribbon that Tab did not reach ("More" in
-one run, "Panel" in the next, on the Scratch Sheet as on the new sheet).
-It moves from run to run as the ribbon folds its overflow away, and it
-is the engine's toolbar, not this piece; the toolbar of 2B replaces that
-ribbon. Owed until then, not fixed.
+The audits (2026-11-15). Touch drags: all ok on the second run. The
+first run failed, and the probe itself was then changed (its planner
+check measured the chip as its own cell, so it dragged left and fell off
+the calendar on the first day of a week; that day was a Sunday), so the
+pass is a pass of the changed probe. Keyboard, on the Worksheets screens
+with a sheet file added: 0 everywhere but one kind, a control of the
+engine's ribbon that Tab did not reach ("More" in one run, "Panel" in
+the next). It was on the new sheet in both of the builder's runs and on
+the Scratch Sheet in one; the reviewer's own run found 0 on both. It
+moves as the ribbon folds its overflow away. No run on the commit before
+the piece was made, so "the engine's, not this piece's" is a reading of
+the code, not a measurement. The toolbar of 2B replaces that ribbon.
+
+**Reviewed 2026-11-15 by agents that did not build it** (the
+`review-piece` workflow's first run with real agents: correctness,
+modularity, accessibility, a claim checker, then a skeptic on each
+finding). 26 findings; the skeptic refuted 1 and called 2 minor. The
+run hit the plan's 5-hour limit before its real-app verifier, its
+skeptic for the claims, its fixer and its recheck had finished, so
+Claude made the fixes, each with a failing test first where a unit test
+can reach, and ran the verifier's unfinished probe
+(`tests/probes/sheet-file-verify-probe.mjs`) itself.
+
+Found by the review and fixed:
+
+- A sheet named with a letter outside plain English could not be made
+  ("Café": URI malformed) or was made under another name ("Budget —
+  2026" became "Budget  14 2026.sheet"), and File > Open File opened the
+  wrong path for such a name. The cause was in the core's URI text form,
+  which wrote a character's code where its UTF-8 bytes belong; fixed
+  there, for every file type (`tests/unit/uriNonAscii.test.ts`).
+- A sheet renamed in the Explorer kept its tab under the old name, and
+  its next save brought the old file back with the edit in it; a deleted
+  sheet's tab stayed open and its next edit brought the file back. Now
+  the Explorer closes a deleted file's tab and reopens a renamed or
+  moved file under its new name (any file editor with no unsaved
+  changes, not only sheets), and a sheet never writes to a file that is
+  gone: it says so and offers Save a Copy.
+- The same sheet shown twice (Split Editor) was two engines each writing
+  its whole sheet over the other's: the second save erased the first
+  pane's entry. Now one pane holds a file; the other says where it is
+  and takes over when the first closes.
+- Undo did nothing the first time after the grid grew (it undid the
+  growing). Growing is no longer in the undo history.
+- An entry made in the last second and a half before the window closed
+  was lost. The window closing now writes at once.
+- An entry still being typed when the tab was left was dropped (found by
+  the verifier's probe). It is kept. The practice sheet still drops it;
+  not changed, it is not this piece.
+- A file in the sheet format whose workbook lists a sheet it does not
+  hold was mounted broken, with a stream of engine errors (the
+  verifier's probe counted 102). It is refused.
+- The Welcome page read "Open New Sheet…": it lists the Tools menu as
+  tools to open. New Sheet… is out of the Tools menu, which is for
+  opening tools.
+- Export Sheet to Excel sat in the sidebar menu always, and answered
+  "Open a sheet first" even with a practice sheet on screen. It is in
+  the menu only while a sheet file is on screen.
+- A file tab of a tool's editor was described as "Tool editor:
+  worksheet"; it is described by its path, as every file tab is.
+- The builder's probe compared paths in a way that fails on Windows with
+  the app right. Fixed in the probe.
+- In the harness, not the app (the stop hook, `tests/unit/stopHook.test.ts`):
+  a check weakened, put back and weakened again was not named the second
+  time; a failing test kept sending Claude back because the runner's
+  timings never repeat; a change of more than 40 files could never pass.
+
+Found and left, reported here:
+
+- A file that cannot be opened says so only in the pane, with no
+  announcement for a screen reader. The skeptic's control, a broken PDF,
+  is just as silent: it is how file editors fail in the app today. One
+  fix for all of them is its own piece.
+- A sheet file's tab has the same icon as the Worksheets home tab.
+- Where Export saves: the system asks. The command's description said
+  "in the Downloads folder"; corrected. The dialog itself cannot be seen
+  in a hidden run.
+- From the modularity reviewer, who found no breach of the first
+  principle: a tool claims its file type when it starts, so a tool that
+  starts only when first used could not claim one until something else
+  woke it (Worksheets starts with the app, so it is covered);
+  `docs/Parallx_Tool_SDK.md` and the chat's build-extension skill list
+  the editors API without the new call; if Worksheets is turned off in
+  the few milliseconds a save is on its way, the last write can fail
+  without a word.
+- Refuted by the skeptic: an entry made in the first moments after a
+  sheet appears being lost. 17 timed entries were all saved; it happens
+  only before anything is drawn.
 
 Decided by Claude for this piece, for him to overrule:
 
 - The file is the engine's saved workbook in a small JSON envelope
   (`format: parallx-sheet`), on one line. It is not an Excel file; Export
-  Sheet to Excel (a command, in Worksheets' sidebar menu and the palette)
-  makes a copy, values and formulas only.
+  Sheet to Excel (a command, in Worksheets' sidebar menu while a sheet
+  file is on screen, and the palette) makes a copy, values and formulas
+  only.
 - The sheet has no bar of its own above the engine: the tab carries its
   name.
 - A new sheet goes in the workspace's first folder. Choosing the folder
@@ -202,10 +301,14 @@ Decided by Claude for this piece, for him to overrule:
   next piece. The keys that do nothing and the formula bar are not fixed
   yet either.
 - Not handled yet: the file changed by something else while it is open
-  (the next save here wins); a sheet renamed in the Explorer while open
-  (the tab keeps the old path); the search index and the chat reading a
-  sheet's cells; an icon of its own in the Explorer; Edit As Sheet on an
-  .xlsx.
+  (the tab goes on showing its own version; an untouched tab leaves the
+  other program's version alone, an edited one saves over it); a text
+  file with unsaved changes renamed in the Explorer keeps its old tab;
+  an edit made in the second and a half before its file is renamed or
+  deleted can still bring the old file back (the save on closing a tab
+  is sent at once and asks nothing, so that turning the tool off cannot
+  drop it); growing by scrolling; the search index and the chat reading
+  a sheet's cells; an icon of its own; Edit As Sheet on an .xlsx.
 
 **A miss on the first draft of the page, corrected the same day.** Choice
 4 was drawn as a new tool called Study. Study exists (`ext/study`, built

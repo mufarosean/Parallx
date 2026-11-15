@@ -383,6 +383,9 @@ class ToolEditorPane extends EditorPane {
   }
 }
 
+/** The pane every tool-provided editor is shown in. */
+export function createToolEditorPane(): EditorPane { return new ToolEditorPane(); }
+
 // ─── Editor Pane Factory Registry ────────────────────────────────────────────
 
 /**

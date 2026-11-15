@@ -34,6 +34,7 @@ export interface ParallxApiLike {
     has(id: { readonly id: string }): boolean;
   };
   icons?: { createIconHtml?(id: string, size?: number): string };
+  context?: { createContextKey?<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { set(value: T): void } };
   canvas?: { registerBlock(registration: import('../../api/bridges/canvasBlocksBridge.js').CanvasBlockRegistration): { dispose(): void } };
   window?: {
     showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean>;

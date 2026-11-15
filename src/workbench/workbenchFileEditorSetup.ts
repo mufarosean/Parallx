@@ -62,7 +62,7 @@ import { ExcelEditorPane } from '../editor/panes/excelEditorPane.js';
 // Editor resolver + pane factory
 import { EditorResolverService, EditorResolverPriority } from '../services/editorResolverService.js';
 import { registerEditorPaneFactory } from '../editor/editorPane.js';
-import { resolveToolFileEditor, setFileEditorResolver } from '../api/bridges/editorsBridge.js';
+import { setFileEditorRegistry, setFileEditorResolver } from '../api/bridges/editorsBridge.js';
 
 
 // ─── Dependencies ────────────────────────────────────────────────────────────
@@ -101,6 +101,9 @@ function _initFileEditorResolver(
   // 1. EditorResolverService
   const resolver = new EditorResolverService();
   disposables.add(resolver);
+  // Running tools enter the file types they claim here (editors.registerFileEditor).
+  setFileEditorRegistry(resolver);
+  disposables.add({ dispose: () => setFileEditorRegistry(undefined) });
 
   const textFileModelManager = services.get(ITextFileModelManager);
   const fileService = services.get(IFileService);
@@ -298,12 +301,10 @@ function _initFileEditorResolver(
     const existingInput = findOpenEditorInput(editorPart, uri);
     if (existingInput) return existingInput;
 
-    // A running tool that has claimed this file type opens it (editors.registerFileEditor).
-    const toolInput = resolveToolFileEditor(uri);
-    if (toolInput) return toolInput;
-
-    const resolution = resolver.resolve(uri);
-    if (resolution) return resolution.input;
+    // The one registry of file types: a running tool's claim
+    // (editors.registerFileEditor), then the core's readers, then text.
+    const resolved = resolver.resolveInput(uri);
+    if (resolved) return resolved;
 
     return FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri));
   });
@@ -401,8 +402,7 @@ function _initQuickAccessFilePicker(
         const uri = URI.parse(uriString);
         const existing = findOpenEditorInput(editorPart, uri);
         const input = existing ??
-          resolveToolFileEditor(uri) ??
-          resolver.resolve(uri)?.input ??
+          resolver.resolveInput(uri) ??
           FileEditorInput.create(uri, textFileModelManager, fileService, undefined);
         if (editorService) {
           await editorService.openEditor(input, { pinned: true });

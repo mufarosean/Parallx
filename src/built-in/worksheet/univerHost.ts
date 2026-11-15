@@ -37,7 +37,7 @@ import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
 import { ATHENA_ROWS, ATHENA_COLUMNS, type SheetLimits } from './worksheetConstants.js';
-import { EXAM_LIMITS, applyFunctionSet, installSheetGrowth } from './sheetLimits.js';
+import { EXAM_LIMITS, holdToFunctions, installSheetGrowth } from './sheetLimits.js';
 import { ensureUniverEditorExits, installSheetAccess } from './univerKeyboard.js';
 export { ATHENA_ROWS, ATHENA_COLUMNS };
 
@@ -128,6 +128,8 @@ function withUnitId<T extends Partial<IWorkbookData>>(data: T, from: string, to:
 export interface IWorksheetHost {
   /** Serializable full-workbook state (cells, formats, formulas). */
   getSnapshot(): IWorkbookData | null;
+  /** Keep what is being typed in a cell (as clicking elsewhere would); false when no cell is being edited. */
+  commitEdit(): boolean;
   /** Flip the engine chrome between light and dark at runtime. */
   setDarkMode(dark: boolean): void;
   /** Change how many decimals unformatted numbers paint, and repaint. */
@@ -311,7 +313,6 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   };
 
   const limits = opts.limits ?? EXAM_LIMITS;
-  if (limits.functions) applyFunctionSet(univer, limits.functions);
   // Every mount gets its own engine unit id. The engine caches parsed
   // formulas at module level, keyed by unit id + formula text, shared by
   // every live instance in the window, and each cached node stays bound to
@@ -363,25 +364,24 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // own shortcuts already move the selection left and up. The commit goes
   // through the engine's end-of-edit operation with an arrow keycode, the
   // same path its editor takes, so formulas and formats settle as usual.
+  /** End the edit in the open cell editor, keeping what was typed; a keycode says where the selection goes after. False when no cell is being edited. */
+  const endEdit = (keycode?: KeyCode): boolean => {
+    const injector = univer.__getInjector();
+    const bridge = injector.get(IEditorBridgeService);
+    // The cell editor is open (not merely the sheet focused).
+    if (bridge.isVisible().visible !== true) return false;
+    const unitId = univerAPI.getActiveWorkbook()?.getId();
+    if (!unitId) return false;
+    bridge.disableForceKeepVisible();
+    const how = keycode === undefined ? { eventType: DeviceInputEventType.PointerDown } : { eventType: DeviceInputEventType.Keyboard, keycode };
+    injector.get(ICommandService).syncExecuteCommand(SetCellEditVisibleOperation.id, { visible: false, ...how, unitId });
+    return true;
+  };
   const onEditKeydown = (e: KeyboardEvent): void => {
     if (disposed || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key !== 'Tab' && e.key !== 'Enter') return;
     try {
-      const injector = univer.__getInjector();
-      const bridge = injector.get(IEditorBridgeService);
-      // The cell editor is open (not merely the sheet focused).
-      if (bridge.isVisible().visible !== true) return;
-      const unitId = univerAPI.getActiveWorkbook()?.getId();
-      if (!unitId) return;
-      e.preventDefault();
-      e.stopPropagation();
-      bridge.disableForceKeepVisible();
-      injector.get(ICommandService).syncExecuteCommand(SetCellEditVisibleOperation.id, {
-        visible: false,
-        eventType: DeviceInputEventType.Keyboard,
-        keycode: e.key === 'Tab' ? KeyCode.ARROW_LEFT : KeyCode.ARROW_UP,
-        unitId,
-      });
+      if (endEdit(e.key === 'Tab' ? KeyCode.ARROW_LEFT : KeyCode.ARROW_UP)) { e.preventDefault(); e.stopPropagation(); }
     } catch (err) {
       console.warn('[Worksheet] Shift+Tab/Enter commit failed:', err);
     }
@@ -394,6 +394,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // (probe, 2026-09-08). The shortcut service runs the highest-priority match
   // for a binding, so a plain move steps in front of it.
   const engineRegistrations: { dispose(): void }[] = [];
+  if (limits.functions) engineRegistrations.push(holdToFunctions(univer, limits.functions));
 
   // A formula that points at another cell (=B7) came back wearing that
   // cell's number format: the engine tags each result with the referenced
@@ -950,6 +951,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   };
   return {
     getSnapshot,
+    commitEdit: () => { try { return !disposed && endEdit(); } catch { return false; } },
     setCellText,
     setColumnsHidden,
     getActiveCell,

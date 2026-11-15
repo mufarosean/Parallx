@@ -6,14 +6,19 @@
 
 import type { Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
-import { ICommandService } from '@univerjs/core';
+import { ICommandService, LifecycleService, LifecycleStages } from '@univerjs/core';
 import { IFunctionService } from '@univerjs/engine-formula';
-import { SetSelectionsOperation } from '@univerjs/sheets';
+import { SetSelectionsOperation, SetWorksheetColumnCountMutation, SetWorksheetRowCountMutation } from '@univerjs/sheets';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
 import { ATHENA_ROWS, ATHENA_COLUMNS, GROW_MARGIN_COLUMNS, GROW_MARGIN_ROWS, GROW_STEP_COLUMNS, GROW_STEP_ROWS, type SheetLimits } from './worksheetConstants.js';
 
 /** The exam tool's sheet: what a host is held to when it is given no limits. */
 export const EXAM_LIMITS: SheetLimits = { functions: ATHENA_FUNCTIONS, rows: ATHENA_ROWS, columns: ATHENA_COLUMNS };
+
+/** The engine computes +, -, *, /, comparisons and ranges through executors of its own, registered beside the functions (its FUNCTION_NAMES_META, which the package does not export): never removed. */
+const ENGINE_OPERATORS: ReadonlySet<string> = new Set(['COMPARE', 'DIVIDED', 'MINUS', 'MULTIPLY', 'PLUS', 'UNION', 'CUBE']);
+
+const saidFor = new WeakSet<Univer>();
 
 /**
  * Hold the engine to a function list: every function not on it is
@@ -25,19 +30,47 @@ export function applyFunctionSet(univer: Univer, functions: readonly string[]): 
   try {
     const fnService = univer.__getInjector().get(IFunctionService);
     const allowed = new Set(functions.map((name) => name.toUpperCase()));
-    const toRemove: string[] = [];
-    for (const name of fnService.getDescriptions().keys()) {
-      if (!allowed.has(String(name).toUpperCase())) toRemove.push(String(name));
-    }
+    // What computes (the executors) and what the catalog lists (the descriptions) are two lists, and
+    // some functions are only in the first: reading the catalog alone left those computing.
+    const known = new Set<string>();
+    for (const name of fnService.getExecutors().keys()) known.add(String(name));
+    for (const name of fnService.getDescriptions().keys()) known.add(String(name));
+    const toRemove = [...known].filter((name) => !allowed.has(name.toUpperCase()) && !ENGINE_OPERATORS.has(name.toUpperCase()));
     if (toRemove.length) {
       fnService.unregisterExecutors(...toRemove);
       fnService.unregisterDescriptions(...toRemove);
-      console.log(`[WorksheetHost] function set applied: ${toRemove.length} functions removed, ${allowed.size} allowed`);
+      // Said once per engine: the list is applied at each stage of the engine's start.
+      if (!saidFor.has(univer)) console.log(`[WorksheetHost] function set applied: ${toRemove.length} of ${known.size} functions removed (${toRemove.sort().join(', ')})`);
+      saidFor.add(univer);
     }
   } catch (err) {
     // Filtering is fidelity, not safety: an engine internals change must
     // degrade to "extra functions available", never to a broken sheet.
     console.warn('[WorksheetHost] function filtering skipped:', err);
+  }
+}
+
+/**
+ * Hold a live engine to a function list from now on. The engine registers
+ * its functions as it starts (what computes when the first workbook is
+ * made, the catalog as it renders), so the list is applied now and again at
+ * each stage of the start, until the engine is steady. Applied only once,
+ * before the workbook existed, it found nothing to remove and held nothing.
+ */
+export function holdToFunctions(univer: Univer, functions: readonly string[]): { dispose(): void } {
+  applyFunctionSet(univer, functions);
+  try {
+    let sub: { unsubscribe(): void } | undefined;
+    let steady = false;
+    sub = univer.__getInjector().get(LifecycleService).lifecycle$.subscribe((stage) => {
+      applyFunctionSet(univer, functions);
+      if (stage >= LifecycleStages.Steady) { steady = true; sub?.unsubscribe(); }
+    });
+    if (steady) sub.unsubscribe();
+    return { dispose: () => sub?.unsubscribe() };
+  } catch (err) {
+    console.warn('[WorksheetHost] the function list is not held through the start:', err);
+    return { dispose: () => {} };
   }
 }
 
@@ -48,16 +81,20 @@ export function applyFunctionSet(univer: Univer, functions: readonly string[]): 
  */
 export function installSheetGrowth(univer: Univer, univerAPI: FUniver, isDisposed: () => boolean): { dispose(): void } {
   try {
-    return univer.__getInjector().get(ICommandService).onCommandExecuted((c) => {
+    const commands = univer.__getInjector().get(ICommandService);
+    return commands.onCommandExecuted((c) => {
       if (c.id !== SetSelectionsOperation.id || isDisposed()) return;
       try {
-        const sheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+        const workbook = univerAPI.getActiveWorkbook();
+        const sheet = workbook?.getActiveSheet();
         const cell = sheet?.getSelection()?.getCurrentCell();
-        if (!sheet || !cell) return;
+        if (!workbook || !sheet || !cell) return;
+        const where = { unitId: workbook.getId(), subUnitId: sheet.getSheetId() };
         const rows = sheet.getMaxRows();
         const columns = sheet.getMaxColumns();
-        if (cell.actualRow >= rows - GROW_MARGIN_ROWS) sheet.setRowCount(rows + GROW_STEP_ROWS);
-        if (cell.actualColumn >= columns - GROW_MARGIN_COLUMNS) sheet.setColumnCount(columns + GROW_STEP_COLUMNS);
+        // The engine's own change, not its command: growing is not something a person did, so Undo does not step through it.
+        if (cell.actualRow >= rows - GROW_MARGIN_ROWS) commands.syncExecuteCommand(SetWorksheetRowCountMutation.id, { ...where, rowCount: rows + GROW_STEP_ROWS });
+        if (cell.actualColumn >= columns - GROW_MARGIN_COLUMNS) commands.syncExecuteCommand(SetWorksheetColumnCountMutation.id, { ...where, columnCount: columns + GROW_STEP_COLUMNS });
       } catch (err) { console.warn('[Worksheet] the sheet did not grow:', err); }
     });
   } catch (err) {

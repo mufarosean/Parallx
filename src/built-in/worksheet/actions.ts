@@ -2,7 +2,7 @@
 // open a past one, import a plan, hand the plan pane its actions.
 
 import { URI } from '../../platform/uri.js';
-import { serializeSheetFile, uniqueSheetFileName } from './sheetFile.js';
+import { serializeSheetFile, sheetTitle, uniqueSheetFileName } from './sheetFile.js';
 import type { IKitAction } from '../../ui/kit.js';
 import { showExtensionContextMenu, type IExtensionMenuItem } from '../../ui/contextMenu.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
@@ -72,6 +72,27 @@ export async function writeSheetText(filePath: string, text: string): Promise<vo
   const fs = state.api?.workspace?.fs;
   if (!fs) throw new Error('No workspace folder is open.');
   await fs.writeFile(fileUriOf(filePath), text);
+}
+
+/** Whether the sheet's file is still where the tab was opened from. On any doubt it is: a save is not held back by a failed question. */
+export async function sheetFileExists(filePath: string): Promise<boolean> {
+  try { return (await state.api?.workspace?.fs?.exists(fileUriOf(filePath))) !== false; } catch { return true; }
+}
+
+/** Write a sheet's text to a new file beside where it was, and open it: the way out when its own file is gone. */
+export async function saveSheetCopy(filePath: string, text: string): Promise<void> {
+  const api = state.api;
+  const fs = api?.workspace?.fs;
+  if (!api || !fs) return;
+  try {
+    const folder = URI.file(filePath).dirname ?? URI.file(filePath);
+    const taken = (await fs.readdir(folder.toString()).catch(() => [] as { name: string }[])).map((entry) => entry.name);
+    const target = folder.joinPath(uniqueSheetFileName(sheetTitle(filePath), taken));
+    await fs.writeFile(target.toString(), text);
+    await api.editors.openFileEditor?.(target.fsPath);
+  } catch (err) {
+    void api.window?.showErrorMessage?.(`The copy could not be saved: ${(err as Error).message}`);
+  }
 }
 
 /**

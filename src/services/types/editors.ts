@@ -34,6 +34,9 @@ export interface IEditorResolverService extends IDisposable {
    */
   resolve(uri: import('../../platform/uri.js').URI): EditorResolution | undefined;
 
+  /** The input a URI opens in, without making a pane. */
+  resolveInput(uri: import('../../platform/uri.js').URI): import('../../editor/editorInput.js').IEditorInput | undefined;
+
   /**
    * Find the registration that would handle a given URI, without creating instances.
    */

@@ -319,6 +319,9 @@ api.editors.registerEditorProvider(typeId, { createEditorPane(container, input) 
 api.editors.openEditor({ typeId, title, icon?, instanceId? })   // → Promise<void>
 api.editors.registerFileEditor(typeId, { extensions, iconHtml? }) // while your tool runs, files with these extensions open in your editor;
                                                                  // the pane's input.instanceId is 'file:' + the file's path
+                                                                 // (the Explorer closes the tab when the file is deleted and reopens it
+                                                                 // under the new name after a rename or a move; never write a file back
+                                                                 // that is no longer there)
 api.editors.closeEditor(editorId)                                // → Promise<boolean>
 api.editors.openFileEditor(uri, { pinned?, reveal?, side? })     // open a file in its editor
 // reveal: { page?, quote? } (PDF), { line?, endLine? } (text), { sheet?, cell? } (spreadsheet, A1 cell);

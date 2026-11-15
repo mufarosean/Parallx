@@ -3,6 +3,7 @@
 // at registration.
 
 import type { IToolManifest } from '../../tools/toolManifest.js';
+import { SHEET_ON_SCREEN_WHEN } from './worksheetConstants.js';
 
 export const WORKSHEET_MANIFEST: IToolManifest = {
   manifestVersion: 1,
@@ -17,11 +18,12 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
   contributes: {
     // In the Tools menu while Worksheets runs.
     menus: {
-      'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }, { command: 'worksheet.newSheet', title: 'New Sheet…' }],
+      'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }],
       // Its sidebar's More Actions menu.
       'viewContainer/title': [
         { command: 'worksheet.newSheet', title: 'New Sheet…', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },
-        { command: 'worksheet.exportSheet', title: 'Export Sheet to Excel', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },
+        // Only while a sheet file is on screen (the key is the pane's): never an entry that answers "open one first".
+        { command: 'worksheet.exportSheet', title: 'Export Sheet to Excel', group: '0_sheet', when: `activeViewContainer == 'worksheet-container' && ${SHEET_ON_SCREEN_WHEN}` },
         { command: 'worksheet.practice', title: 'Start Practice Session', group: '1_practice', when: "activeViewContainer == 'worksheet-container'" },
         { command: 'worksheet.generate', title: 'Generate Items', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
         { command: 'worksheet.bank', title: 'Open Problem Bank', group: '2_items', when: "activeViewContainer == 'worksheet-container'" },
@@ -37,7 +39,7 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
       { id: 'worksheet.newSheet', title: 'Worksheets: New Sheet…',
         aiInvocable: true, aiDescription: 'Make a new spreadsheet file (.sheet) in the workspace and open it: every function, no size limit, saved as you work. Arguments: an optional name.' },
       { id: 'worksheet.exportSheet', title: 'Worksheets: Export Sheet to Excel',
-        aiInvocable: false, aiDescription: 'Save a copy of the open sheet file as .xlsx, values and formulas, in the Downloads folder.' },
+        aiInvocable: false, aiDescription: 'Save a copy of the sheet file on screen as .xlsx, values and formulas. The system asks where to save it.' },
       { id: 'worksheet.generate', title: 'Worksheets: Generate Items',
         aiInvocable: true, aiDescription: 'Generate practice items from study material.' },
       { id: 'worksheet.generateFromFile', title: 'Worksheets: Generate Items From a File…',

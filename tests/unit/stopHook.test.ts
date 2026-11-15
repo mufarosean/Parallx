@@ -252,6 +252,49 @@ describe('the stop hook: a weakened check is named', () => {
     expect(stop().code).toBe(2);
   });
 
+  it('a check put back and then weakened again is named again (review of 2026-11-15, second pass)', () => {
+    dropAssertion();
+    expect(stop().code).toBe(2);
+    write('tests/unit/a.test.ts', TEST);
+    expect(stop().code).toBe(0);
+    dropAssertion();
+    const again = stop();
+    expect(again.code).toBe(2);
+    expect(again.blocked).toMatch(/1 assertion removed/);
+    expect(stop({ stop_hook_active: true }).told).toMatch(/1 assertion removed/);
+  });
+
+  it('a failing test whose reported time differs from run to run still lets the second stop end, and tells the owner', () => {
+    // The real runner prints each failing test with how long it took; that number is never the same twice.
+    write('node_modules/vitest/vitest.mjs', "console.error('FAIL tests/unit/a.test.ts');\nconsole.error(' × adds ' + process.hrtime.bigint() + 'ms');\nprocess.exit(1);\n");
+    write('src/x.ts', read('src/x.ts') + 'export const z = 3;\n');
+    expect(stop().code).toBe(2);
+    for (let i = 0; i < 3; i++) {
+      const next = stop({ stop_hook_active: true });
+      expect(next.code).toBe(0);
+      expect(next.told).toMatch(/still failing/);
+    }
+  });
+
+  it('a change of more than 40 files runs the whole suite and can pass, and stays passed', () => {
+    for (let i = 0; i < 41; i++) write(`src/many/f${i}.ts`, `export const v${i} = ${i};\n`);
+    const first = stop();
+    expect(first).toEqual({ code: 0, told: '', blocked: '' });
+    failChecks(true); // a second run would fail if the checks ran again
+    expect(stop().code).toBe(0);
+    failChecks(false);
+    commit('many');
+    expect(stop().code).toBe(0);
+  });
+
+  it('a change of more than 40 files with a failing suite is sent back', () => {
+    for (let i = 0; i < 41; i++) write(`src/many/f${i}.ts`, `export const v${i} = ${i};\n`);
+    failChecks(true);
+    const r = stop();
+    expect(r.code).toBe(2);
+    expect(r.blocked).toMatch(/The unit tests/);
+  });
+
   it('keeps its record inside .git, out of the working tree', () => {
     dropAssertion();
     stop();

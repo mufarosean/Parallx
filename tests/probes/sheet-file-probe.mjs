@@ -30,6 +30,8 @@ delete env.ELECTRON_RUN_AS_NODE;
 const problems = [];
 const errors = [];
 const check = (name, ok, got) => { console.log(`${ok ? '  ok ' : ' FAIL'} ${name}${ok ? '' : `: ${JSON.stringify(got)}`}`); if (!ok) problems.push(name); };
+// The app writes a path with forward slashes on every system; node joins with the system's own (a backslash on Windows).
+const samePath = (a, b) => a.replace(/\\/g, '/') === b.replace(/\\/g, '/');
 
 let app; let page;
 async function launch() {
@@ -64,7 +66,7 @@ try {
 
   // New Sheet, named: a file in the workspace, opened as a sheet.
   const filePath = await run('worksheet.newSheet', 'Budget 2026');
-  check('New Sheet returns the path of a .sheet file in the workspace', typeof filePath === 'string' && filePath === path.join(workspace, 'Budget 2026.sheet'), filePath);
+  check('New Sheet returns the path of a .sheet file in the workspace', typeof filePath === 'string' && samePath(filePath, path.join(workspace, 'Budget 2026.sheet')), filePath);
   await page.waitForFunction(() => document.querySelector('.ws-pane__sheet')?.__wsHost?.getSnapshot()?.sheets && [...document.querySelectorAll('[role="tab"], .editor-tab')].some((t) => /Budget 2026/.test(t.textContent ?? '')), null, { timeout: 30000 }).catch(() => {});
   await sheetUp();
   const tabNames = () => page.evaluate(() => [...document.querySelectorAll('[role="tab"], .editor-tab')].map((t) => (t.textContent ?? '').trim()).filter((t) => /Budget/.test(t)));
@@ -112,7 +114,7 @@ try {
 
   // A second sheet with the same name gets its own file.
   const second = await run('worksheet.newSheet', 'Budget 2026'); await sheetUp();
-  check('a second sheet of the same name gets its own file', second === path.join(workspace, 'Budget 2026 2.sheet'), second);
+  check('a second sheet of the same name gets its own file', typeof second === 'string' && samePath(second, path.join(workspace, 'Budget 2026 2.sheet')), second);
   await wait(800);
 
   // Closed and opened again.

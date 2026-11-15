@@ -41,6 +41,11 @@ export function parseSheetFile(text: string): ParsedSheetFile {
   if (typeof workbook !== 'object' || !Array.isArray(workbook.sheetOrder) || !workbook.sheets || typeof workbook.sheets !== 'object') {
     return { workbook: null, error: 'Its workbook is damaged.' };
   }
+  // Every sheet the workbook lists must be there: the engine mounts a workbook with a missing sheet, broken.
+  const sheets = workbook.sheets as Record<string, unknown>;
+  if (!workbook.sheetOrder.length || workbook.sheetOrder.some((id) => !sheets[id] || typeof sheets[id] !== 'object')) {
+    return { workbook: null, error: 'Its workbook is damaged.' };
+  }
   return { workbook };
 }
 

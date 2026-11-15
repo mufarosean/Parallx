@@ -28,6 +28,14 @@ describe('the sheet file', () => {
     expect(parseSheetFile(JSON.stringify({ format: SHEET_FILE_FORMAT, version: 1, workbook: { sheets: 3 } })).error).toMatch(/damaged/);
   });
 
+  it('refuses a workbook that lists a sheet it does not hold, or holds none (the engine would mount it broken)', () => {
+    const file = (wb: unknown): string => JSON.stringify({ format: SHEET_FILE_FORMAT, version: 1, workbook: wb });
+    expect(parseSheetFile(file({ id: 'w', sheetOrder: ['s1', 'ghost'], sheets: { s1: { id: 's1', name: 'Sheet1', cellData: {} } } })).error).toMatch(/damaged/);
+    expect(parseSheetFile(file({ id: 'w', sheetOrder: [], sheets: {} })).error).toMatch(/damaged/);
+    expect(parseSheetFile(file({ id: 'w', sheetOrder: ['s1'], sheets: { s1: null } })).error).toMatch(/damaged/);
+    expect(parseSheetFile(file({ id: 'w', sheetOrder: ['s1'], sheets: { s1: { id: 's1', name: 'Sheet1', cellData: {} } } })).error).toBeUndefined();
+  });
+
   it('knows a file pane from the others, and names it', () => {
     expect(sheetFilePathOf('file:/work/Budget 2026.sheet')).toBe('/work/Budget 2026.sheet');
     expect(sheetFilePathOf('file:C:\\work\\Budget.sheet')).toBe('C:\\work\\Budget.sheet');

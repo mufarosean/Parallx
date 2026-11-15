@@ -100,6 +100,19 @@ export class EditorResolverService extends Disposable implements IEditorResolver
   }
 
   /**
+   * The input a URI opens in, and nothing else: no pane is made. A
+   * registration that cannot make its input is passed over for the next.
+   */
+  resolveInput(uri: URI): IEditorInput | undefined {
+    const ext = this._getExtension(uri);
+    for (const reg of this._registrations) {
+      if (!this._matches(reg, ext)) continue;
+      try { return reg.createInput(uri); } catch (err) { console.warn(`[EditorResolver] "${reg.id}" could not open ${uri.basename}:`, err); }
+    }
+    return undefined;
+  }
+
+  /**
    * Find the registration that would handle a given URI, without creating instances.
    */
   findRegistration(uri: URI): EditorResolverRegistration | undefined {
@@ -129,7 +142,8 @@ export class EditorResolverService extends Disposable implements IEditorResolver
   private _getExtension(uri: URI): string {
     const name = uri.basename;
     const dotIdx = name.lastIndexOf('.');
-    return dotIdx >= 0 ? name.substring(dotIdx).toLowerCase() : '';
+    // A name that only starts with a dot (.gitignore) has no extension.
+    return dotIdx > 0 ? name.substring(dotIdx).toLowerCase() : '';
   }
 
   private _matches(reg: EditorResolverRegistration, ext: string): boolean {

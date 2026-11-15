@@ -1,11 +1,22 @@
 // editorsBridgeFileEditor.test.ts — a running tool claims a file type
 // (editors.registerFileEditor): a file with that extension resolves to the
 // tool's editor, carrying its path; with the claim gone, it resolves to
-// nothing and the core opens the file as it always would.
+// nothing and the core opens the file as it always would. The claim is an
+// entry in the core's one registry of file types (EditorResolverService),
+// not a second list beside it.
 
-import { describe, expect, it } from 'vitest';
-import { EditorsBridge, FILE_INSTANCE_PREFIX, resolveToolFileEditor, ToolEditorInput } from '../../src/api/bridges/editorsBridge';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EditorsBridge, FILE_INSTANCE_PREFIX, setFileEditorRegistry, ToolEditorInput } from '../../src/api/bridges/editorsBridge';
+import { EditorResolverPriority, EditorResolverService } from '../../src/services/editorResolverService';
+import type { IEditorInput } from '../../src/editor/editorInput';
 import { URI } from '../../src/platform/uri';
+
+/** The core's registry of file types, as the workbench makes it. */
+let registry: EditorResolverService;
+beforeEach(() => { registry = new EditorResolverService(); setFileEditorRegistry(registry); });
+afterEach(() => { setFileEditorRegistry(undefined); registry.dispose(); });
+/** What a file opens in, asked of the core's registry alone. */
+const resolveToolFileEditor = (uri: URI): IEditorInput | undefined => registry.resolveInput(uri);
 
 const provider = { createEditorPane: () => ({ dispose() {} }) };
 let n = 0;
@@ -68,5 +79,53 @@ describe('a tool claims a file type', () => {
     expect(resolveToolFileEditor(URI.file('/a/readme.md'))).toBeUndefined();
     claim.dispose();
     for (const d of second.subscriptions) d.dispose();
+  });
+
+  it('is an entry in the core\'s one registry, there while the tool runs and gone after', () => {
+    const t = tool();
+    expect(registry.getRegistrations()).toHaveLength(0);
+    const claim = t.bridge.registerFileEditor(t.typeId, { extensions: ['.ledger'] });
+    expect(registry.getRegistrations().map((r) => r.extensions)).toEqual([['.ledger']]);
+    expect(registry.findRegistration(URI.file('/a/x.ledger'))?.id).toBe(`${t.id}:${t.typeId}`);
+    claim.dispose();
+    expect(registry.getRegistrations()).toHaveLength(0);
+  });
+
+  it('comes before a core reader of the same type, and leaves every other file to the core', () => {
+    const core = { id: 'core.text' } as unknown as IEditorInput;
+    const reader = { id: 'core.reader' } as unknown as IEditorInput;
+    registry.registerEditor({ id: 'text', name: 'Text', extensions: ['.*'], priority: EditorResolverPriority.Builtin, createInput: () => core, createPane: () => { throw new Error('no pane is made to resolve an input'); } });
+    registry.registerEditor({ id: 'reader', name: 'Reader', extensions: ['.ledger'], priority: EditorResolverPriority.Default, createInput: () => reader, createPane: () => { throw new Error('no pane is made to resolve an input'); } });
+    const t = tool();
+    expect(registry.resolveInput(URI.file('/a/x.ledger'))).toBe(reader);
+    const claim = t.bridge.registerFileEditor(t.typeId, { extensions: ['.ledger'] });
+    expect(registry.resolveInput(URI.file('/a/x.ledger'))).toBeInstanceOf(ToolEditorInput);
+    expect(registry.resolveInput(URI.file('/a/x.md'))).toBe(core);
+    claim.dispose();
+    expect(registry.resolveInput(URI.file('/a/x.ledger'))).toBe(reader);
+  });
+
+  it('a claim made before the registry exists is entered when it does, and follows a new one', () => {
+    setFileEditorRegistry(undefined);
+    const t = tool();
+    const claim = t.bridge.registerFileEditor(t.typeId, { extensions: ['.early'] });
+    expect(registry.resolveInput(URI.file('/a/x.early'))).toBeUndefined();
+    setFileEditorRegistry(registry);
+    expect(registry.resolveInput(URI.file('/a/x.early'))).toBeInstanceOf(ToolEditorInput);
+    const next = new EditorResolverService();
+    setFileEditorRegistry(next);
+    expect(registry.resolveInput(URI.file('/a/x.early'))).toBeUndefined();
+    expect(next.resolveInput(URI.file('/a/x.early'))).toBeInstanceOf(ToolEditorInput);
+    claim.dispose();
+    expect(next.resolveInput(URI.file('/a/x.early'))).toBeUndefined();
+    next.dispose();
+  });
+
+  it('describes its tab by the file\'s path, as every file editor does, so the Explorer can find it', () => {
+    const t = tool();
+    const claim = t.bridge.registerFileEditor(t.typeId, { extensions: ['.ledger'] });
+    const uri = URI.file('/work/Finances/Budget 2026.ledger');
+    expect(registry.resolveInput(uri)?.description).toBe(uri.fsPath);
+    claim.dispose();
   });
 });

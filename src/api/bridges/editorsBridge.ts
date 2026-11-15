@@ -15,6 +15,8 @@ import {
 } from '../../editor/editorInputDeserializer.js';
 import { requestFileReveal, hasRevealTarget, type IFileRevealTarget } from '../../editor/fileReveal.js';
 import { URI } from '../../platform/uri.js';
+import { createToolEditorPane } from '../../editor/editorPane.js';
+import { EditorResolverPriority, type EditorResolverRegistration } from '../../services/editorResolverService.js';
 
 // ─── File Editor Resolver ────────────────────────────────────────────────────
 
@@ -59,22 +61,39 @@ interface ToolEditorProviderEntry {
 
 const _toolEditorProviders = new Map<string, ToolEditorProviderEntry>();
 
-// ─── Tool File Editors (module-global) ───────────────────────────────────────
+// ─── Tool File Editors ───────────────────────────────────────────────────────
 //
 // A running tool may claim file extensions for one of its editor types
 // (`editors.registerFileEditor`): a file with that extension then opens in
 // the tool's editor instead of a core reader, from the Explorer, Quick Open,
-// a link or `openFileEditor`. The core names no tool and no extension: the
-// claim exists only while the tool runs, and with the tool off the file
-// falls back to whatever the core would have opened it in.
+// a link or `openFileEditor`. The claim is an entry in the core's one
+// registry of file types (EditorResolverService), above the core's readers.
+// The core names no tool and no extension: the entry exists only while the
+// tool runs, and with the tool off the file opens in whatever the core
+// would have opened it in.
 
-interface ToolFileEditorEntry {
+/** The core's registry of file types, as far as a claim needs it. */
+export interface FileEditorRegistry { registerEditor(registration: EditorResolverRegistration): IDisposable }
+
+interface ToolFileClaim {
   readonly toolId: string;
-  readonly typeId: string;
-  readonly iconHtml: string | undefined;
+  readonly registration: EditorResolverRegistration;
+  /** The claim's entry in the registry; undefined until there is one. */
+  entry: IDisposable | undefined;
 }
 
-const _toolFileEditors = new Map<string, ToolFileEditorEntry>();
+/** The claims of running tools: what is entered again when the registry is made anew. */
+const _toolFileClaims: ToolFileClaim[] = [];
+let _fileEditorRegistry: FileEditorRegistry | undefined;
+
+/** Give the bridge the core's registry of file types (the workbench does, when it makes it). */
+export function setFileEditorRegistry(registry: FileEditorRegistry | undefined): void {
+  _fileEditorRegistry = registry;
+  for (const claim of _toolFileClaims) {
+    claim.entry?.dispose();
+    claim.entry = registry?.registerEditor(claim.registration);
+  }
+}
 
 /** The prefix of a file-backed tool editor's `instanceId`; the file's path follows it. */
 export const FILE_INSTANCE_PREFIX = 'file:';
@@ -85,21 +104,16 @@ function normalizeFileExtension(extension: string): string {
 }
 
 /**
- * The tool editor for a file, when a running tool has claimed its extension;
- * undefined otherwise. The input's `instanceId` is `file:` followed by the
- * file's path, which is what the tool's pane reads to know its file.
+ * The tool editor for a file a tool has claimed. The input's `instanceId` is
+ * `file:` followed by the file's path, which is what the tool's pane reads
+ * to know its file.
  */
-export function resolveToolFileEditor(uri: URI): IEditorInput | undefined {
+function toolFileEditorInput(toolId: string, typeId: string, iconHtml: string | undefined, uri: URI): IEditorInput {
+  const entry = _toolEditorProviders.get(typeId);
+  if (!entry || entry.toolId !== toolId) throw new Error(`tool "${toolId}" no longer provides the editor "${typeId}"`);
   const fsPath = uri.fsPath;
-  const base = fsPath.split(/[/\\]/).pop() ?? fsPath;
-  const dot = base.lastIndexOf('.');
-  if (dot <= 0) return undefined;
-  const claim = _toolFileEditors.get(base.slice(dot).toLowerCase());
-  if (!claim) return undefined;
-  const entry = _toolEditorProviders.get(claim.typeId);
-  if (!entry || entry.toolId !== claim.toolId) return undefined;
   const instanceId = `${FILE_INSTANCE_PREFIX}${fsPath}`;
-  return new ToolEditorInput(claim.typeId, base, undefined, claim.iconHtml, entry.provider, `${claim.toolId}:${claim.typeId}:${instanceId}`, claim.toolId, instanceId);
+  return new ToolEditorInput(typeId, uri.basename, undefined, iconHtml, entry.provider, `${toolId}:${typeId}:${instanceId}`, toolId, instanceId);
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -243,21 +257,41 @@ export class EditorsBridge {
     if (!this._providers.has(typeId)) {
       throw new Error(`[EditorsBridge] registerFileEditor: tool "${this._toolId}" has no editor provider for type "${typeId}". Register the provider first.`);
     }
-    const entry: ToolFileEditorEntry = { toolId: this._toolId, typeId, iconHtml: options.iconHtml };
-    const claimed: string[] = [];
+    const toolId = this._toolId;
+    const extensions: string[] = [];
     for (const raw of options.extensions) {
       const ext = normalizeFileExtension(raw);
-      if (ext === '.' || ext === '.*') continue;
-      const current = _toolFileEditors.get(ext);
-      if (current && current.toolId !== this._toolId) {
-        console.warn(`[EditorsBridge] "${ext}" files already open in tool "${current.toolId}"; "${this._toolId}" does not take them.`);
+      if (ext === '.' || ext === '.*' || extensions.includes(ext)) continue;
+      const holder = _toolFileClaims.find((c) => c.toolId !== toolId && c.registration.extensions.includes(ext));
+      if (holder) {
+        console.warn(`[EditorsBridge] "${ext}" files already open in tool "${holder.toolId}"; "${toolId}" does not take them.`);
         continue;
       }
-      _toolFileEditors.set(ext, entry);
-      claimed.push(ext);
+      extensions.push(ext);
+    }
+    const iconHtml = options.iconHtml;
+    const claim: ToolFileClaim = {
+      toolId,
+      registration: {
+        id: `${toolId}:${typeId}`,
+        name: typeId,
+        extensions,
+        // Above the core's readers: a running tool that claims a type opens it.
+        priority: EditorResolverPriority.Option,
+        createInput: (uri) => toolFileEditorInput(toolId, typeId, iconHtml, uri),
+        createPane: () => createToolEditorPane(),
+      },
+      entry: undefined,
+    };
+    if (extensions.length) {
+      _toolFileClaims.push(claim);
+      claim.entry = _fileEditorRegistry?.registerEditor(claim.registration);
     }
     const disposable = toDisposable(() => {
-      for (const ext of claimed) if (_toolFileEditors.get(ext) === entry) _toolFileEditors.delete(ext);
+      const at = _toolFileClaims.indexOf(claim);
+      if (at >= 0) _toolFileClaims.splice(at, 1);
+      claim.entry?.dispose();
+      claim.entry = undefined;
     });
     this._registrations.push(disposable);
     this._subscriptions.push(disposable);
@@ -546,7 +580,10 @@ export class ToolEditorInput extends EditorInput {
     this._name = name;
     this.fireLabelChange();
   }
-  get description(): string { return `Tool editor: ${this.typeId}`; }
+  /** A file-backed editor is described by its file's path, as every file editor is (the Explorer finds an open file's tab by it). */
+  get description(): string {
+    return this.instanceId?.startsWith(FILE_INSTANCE_PREFIX) ? this.instanceId.slice(FILE_INSTANCE_PREFIX.length) : `Tool editor: ${this.typeId}`;
+  }
 
   get iconHtml(): string | undefined { return this._iconHtml; }
 

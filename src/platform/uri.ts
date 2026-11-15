@@ -77,7 +77,7 @@ export class URI {
   static parse(value: string): URI {
     // Quick path for file:// URIs (common case)
     if (value.startsWith('file:///')) {
-      return new URI('file', _EMPTY, decodeURIComponent(value.slice(7)), _EMPTY, _EMPTY);
+      return new URI('file', _EMPTY, decodeURIPath(value.slice(7)), _EMPTY, _EMPTY);
     }
     if (value.startsWith('file://')) {
       // file://authority/path
@@ -86,7 +86,7 @@ export class URI {
       if (slashIdx === -1) {
         return new URI('file', rest, '/', _EMPTY, _EMPTY);
       }
-      return new URI('file', rest.slice(0, slashIdx), decodeURIComponent(rest.slice(slashIdx)), _EMPTY, _EMPTY);
+      return new URI('file', rest.slice(0, slashIdx), decodeURIPath(rest.slice(slashIdx)), _EMPTY, _EMPTY);
     }
 
     // Generic URI parser
@@ -98,7 +98,7 @@ export class URI {
     return new URI(
       match[1],
       match[2] ?? _EMPTY,
-      decodeURIComponent(match[3] ?? _EMPTY),
+      decodeURIPath(match[3] ?? _EMPTY),
       match[4] ?? _EMPTY,
       match[5] ?? _EMPTY,
     );
@@ -249,8 +249,24 @@ export class URI {
  * Encode a URI path, preserving `/` and `:` but encoding other special chars.
  */
 function encodeURIPath(path: string): string {
-  return path.replace(/[^a-zA-Z0-9/:.@_~!$&'()*+,;=-]/g, (ch) => {
-    return '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
+  // By character, as its UTF-8 bytes: a letter's code is not its encoding
+  // (an en dash written as %2013 reads back as a space and "13").
+  return path.replace(/[^a-zA-Z0-9/:.@_~!$&'()*+,;=-]/gu, (ch) => {
+    try { return encodeURIComponent(ch); } catch { return '%EF%BF%BD'; }
+  });
+}
+
+/**
+ * Decode a URI path. A string that is not valid UTF-8 escapes (one written
+ * before the encoder was corrected, or holding a stray `%`) is decoded
+ * piece by piece instead of refused.
+ */
+function decodeURIPath(text: string): string {
+  try { return decodeURIComponent(text); } catch { /* piece by piece below */ }
+  return text.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => {
+    try { return decodeURIComponent(run); } catch {
+      return run.replace(/%([0-9a-fA-F]{2})/g, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    }
   });
 }
 

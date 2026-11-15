@@ -192,7 +192,9 @@ for (const [file, text] of newHere) {
 }
 for (const f of Object.keys(state.seen)) if (!newHere.has(f)) delete state.seen[f];
 
-const reported = new Set(Array.isArray(state.reported) ? state.reported : []);
+// Named already, and still weakened. One that was put back is forgotten, so weakening it again is named again.
+const reported = new Set((Array.isArray(state.reported) ? state.reported : []).filter((w) => weakened.includes(w)));
+state.reported = [...reported];
 const fresh = weakened.filter((w) => !reported.has(w));
 // Owed to the owner: only what is still weakened. A check that was put back is no longer his concern.
 state.owed = (state.owed ?? []).filter((w) => weakened.includes(w));
@@ -222,12 +224,14 @@ if (source.length) {
   // The unit tests that import what changed (and the changed tests themselves).
   const related = source.filter((f) => /^(src|ext|tests\/unit)\//.test(f) && fs.existsSync(path.join(root, f)));
   if (related.length && related.length <= 40) run('Unit tests for the changed files', [vitest, 'related', '--run', '--passWithNoTests', ...related]);
-  else if (related.length > 40) failures.push('More than 40 files changed: the hook did not pick tests. Run `npx vitest run` yourself before stopping.');
+  // Too many to pick from: the whole suite, so the tree can still pass and be remembered.
+  else if (related.length > 40) run('The unit tests (all of them: more than 40 files changed)', [vitest, 'run']);
 }
 
 if (failures.length) {
   const report = `Checks failed on the code changed in this session (${plural(changed.length, 'file')}). Fix the cause, whoever caused it; do not skip or loosen a test.\n\n${failures.join('\n\n')}`;
-  const failureHash = sha(report);
+  // What failed on which tree. Not the report's text: a runner prints each failing test's time, never the same twice.
+  const failureHash = sha(`${fingerprint}\n${failures.map((f) => f.split('\n')[0]).join('\n')}`);
   // Already sent back once and nothing moved: let the turn end, and tell the person instead of looping.
   if (input.stop_hook_active && state.lastFailure === failureHash) {
     nameThem();
