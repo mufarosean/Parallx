@@ -15,7 +15,7 @@ import {
 } from '../../editor/editorInputDeserializer.js';
 import { requestFileReveal, hasRevealTarget, type IFileRevealTarget } from '../../editor/fileReveal.js';
 import { URI } from '../../platform/uri.js';
-import { createToolEditorPane } from '../../editor/editorPane.js';
+import { createToolEditorPane, whenClosedPanesSettle } from '../../editor/editorPane.js';
 import { EditorResolverPriority, type EditorResolverRegistration } from '../../services/editorResolverService.js';
 
 // ─── File Editor Resolver ────────────────────────────────────────────────────
@@ -414,11 +414,14 @@ export class EditorsBridge {
     for (const descriptor of openEditors) {
       if (descriptor.id === editorId) {
         // Create a minimal input-like object so EditorService can match by id
-        return this._editorService.closeEditor(
+        const closed = await this._editorService.closeEditor(
           { id: editorId } as any,
           descriptor.groupId,
           true,
         );
+        // The closed pane's last save, if it had one: done before the caller goes on.
+        await whenClosedPanesSettle();
+        return closed;
       }
     }
     return false;

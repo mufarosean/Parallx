@@ -30,7 +30,7 @@ import type { IFileLocateResult } from '../../services/fileLocator.js';
 import type { IFileRevealTarget } from '../../editor/fileReveal.js';
 import { checkFileLink, findLinkedFile, revealTargetOf, type IFileLinkHost } from './fileLink.js';
 import { createOpenEditorsView } from './openEditorsView.js';
-import { closeEditorsOf, reopenEditorsOf } from './openFilesFollow.js';
+import { orThrow, withOpenFilesFollowing } from './openFilesFollow.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -892,6 +892,9 @@ async function fsDelete(uri: string): Promise<void> {
   }
 }
 
+/** What following open files needs: the editors, and the workspace folders a text file's tab is described from. */
+const openFiles = () => ({ editors: _api.editors, roots: _roots.map((r) => uriToFsPath(r.uri)) });
+
 async function fsRename(oldUri: string, newUri: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
@@ -1025,9 +1028,8 @@ async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> 
     const destName = mode === 'copy' ? await getUniqueDestName(destFolder, item.name, electronFs) : item.name;
     const destPath = destFolder + '/' + destName;
     try {
-      const result = mode === 'cut' ? await electronFs.rename(sourcePath, destPath) : await electronFs.copy(sourcePath, destPath);
-      if (result?.error) throw new Error(result.error.message || (mode === 'cut' ? 'Move failed' : 'Copy failed'));
-      if (mode === 'cut') await reopenEditorsOf(_api.editors, sourcePath, destPath, true);
+      const result = mode === 'cut' ? await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => orThrow(electronFs.rename(sourcePath, destPath), 'Move failed')) : await electronFs.copy(sourcePath, destPath);
+      if (result?.error) throw new Error(result.error.message || 'Copy failed');
     } catch (err) {
       _api.window.showErrorMessage(`Failed to paste "${item.name}": ${err}`);
     }
@@ -1128,9 +1130,7 @@ function setupDropTarget(el: HTMLElement, node: TreeNode): void {
     const destPath = uriToFsPath(targetFolder.uri) + '/' + _dragSourceNode.name;
 
     try {
-      const result = await electronFs.rename(sourcePath, destPath);
-      if (result?.error) throw new Error(result.error.message || 'Move failed');
-      await reopenEditorsOf(_api.editors, sourcePath, destPath, true);
+      await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => orThrow(electronFs.rename(sourcePath, destPath), 'Move failed'));
 
       // Reload both source parent and target folder
       const sourceParent = _dragSourceNode.parent;
@@ -1458,8 +1458,7 @@ function startInlineRename(node: TreeNode): void {
       if (parentUri) {
         const newUri = joinUri(parentUri, newName);
         try {
-          await fsRename(node.uri, newUri);
-          await reopenEditorsOf(_api.editors, uriToFsPath(node.uri), uriToFsPath(newUri), node.type === FILE_TYPE_DIRECTORY);
+          await withOpenFilesFollowing(openFiles(), uriToFsPath(node.uri), uriToFsPath(newUri), () => fsRename(node.uri, newUri));
           node.name = newName;
           node.uri = newUri;
           renderTree();
@@ -1591,8 +1590,7 @@ async function confirmDelete(nodes: TreeNode[]): Promise<void> {
   if (result?.title !== 'Move to Trash') return;
   for (const node of nodes) {
     try {
-      await fsDelete(node.uri);
-      closeEditorsOf(_api.editors, uriToFsPath(node.uri), node.type === FILE_TYPE_DIRECTORY);
+      await withOpenFilesFollowing(openFiles(), uriToFsPath(node.uri), null, () => fsDelete(node.uri));
       if (node.parent) node.parent.children = node.parent.children.filter(c => c !== node);
     } catch (err) {
       _api.window.showErrorMessage(`Failed to delete "${node.name}": ${err}`);

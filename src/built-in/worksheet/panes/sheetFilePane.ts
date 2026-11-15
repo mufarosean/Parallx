@@ -26,11 +26,17 @@ const writesInFlight = new Map<string, Promise<void>>();
 
 /** The live sheet of each file on screen, the one last opened last. */
 const liveSheets: { host: IWorksheetHost; filePath: string }[] = [];
-/** True while a sheet file is live on screen: what a menu entry that needs one asks (its `when`). */
-let sheetOnScreenKey: { set(value: boolean): void } | null | undefined;
+/**
+ * True while a sheet file is live on screen: what a menu entry that needs
+ * one asks (its `when`). The key belongs to the running tool, so it is made
+ * again when the tool has been turned off and on (the old one is dead).
+ */
+let sheetOnScreenKey: { of: unknown; key: { set(value: boolean): void } | null } | null = null;
 function noteLiveSheets(): void {
-  if (sheetOnScreenKey === undefined) sheetOnScreenKey = state.api?.context?.createContextKey?.(SHEET_ON_SCREEN_KEY, false) ?? null;
-  sheetOnScreenKey?.set(liveSheets.length > 0);
+  const api = state.api;
+  if (!api) return;
+  if (sheetOnScreenKey?.of !== api) sheetOnScreenKey = { of: api, key: api.context?.createContextKey?.(SHEET_ON_SCREEN_KEY, false) ?? null };
+  sheetOnScreenKey.key?.set(liveSheets.length > 0);
 }
 
 /** Export the sheet file on screen to .xlsx; false when none is open or it is empty. */
@@ -56,15 +62,30 @@ const fileKey = (filePath: string): string => filePath.replace(/\\/g, '/').toLow
 
 // The window closing does not wait for a timer: every sheet with a change
 // writes it while the page can still send (as the canvas does for pages).
+// In the capture phase: the workbench's own listener for this event shuts the
+// tools down, and after that nothing can be written.
 const unloadFlushes = new Set<() => void>();
 const flushForUnload = (): void => { for (const flush of unloadFlushes) flush(); };
 function onUnload(flush: () => void): () => void {
-  if (!unloadFlushes.size) window.addEventListener('beforeunload', flushForUnload);
+  if (!unloadFlushes.size) window.addEventListener('beforeunload', flushForUnload, true);
   unloadFlushes.add(flush);
   return () => {
     unloadFlushes.delete(flush);
-    if (!unloadFlushes.size) window.removeEventListener('beforeunload', flushForUnload);
+    if (!unloadFlushes.size) window.removeEventListener('beforeunload', flushForUnload, true);
   };
+}
+
+/** The save of each live pane, entry being typed included. */
+const liveSaves = new Set<() => Promise<void>>();
+
+/**
+ * Every sheet file's work, on disk: each live pane saves, and every write on
+ * its way is waited for. The tool does this before it is turned off or the
+ * app closes, while it can still write.
+ */
+export async function settleSheetFiles(): Promise<void> {
+  await Promise.all([...liveSaves].map((save) => save().catch(() => undefined)));
+  await Promise.all([...writesInFlight.values()]);
 }
 
 export function createSheetFilePane(container: HTMLElement, filePath: string) {
@@ -106,7 +127,7 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
    * dialog that waits, whether to keep what is on screen as a copy, and the
    * tab is closed either way.
    */
-  const fileIsGone = (): void => {
+  const fileIsGone = (lastSnap: unknown): void => {
     if (gone) return;
     gone = true;
     if (timer) clearInterval(timer);
@@ -118,42 +139,38 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
         confirmLabel: 'Save a Copy',
         cancelLabel: 'Close Without Saving',
       });
-      if (keep) {
-        // What is on screen now, not what it was when the file was found gone.
-        host?.commitEdit();
-        const snap = host?.getSnapshot();
-        if (snap) await saveSheetCopy(filePath, serializeSheetFile(snap));
-      }
+      // What is on screen now, not what it was when the file was found gone (the pane may be closed by now: then that).
+      if (keep) host?.commitEdit();
+      const snap = (keep ? host?.getSnapshot() : null) ?? lastSnap;
+      // This tab first: the copy may take the very name the file had, and would otherwise be shown in the tab that is going.
       const mine = api?.editors.openEditors?.find((e) => fileKey(e.description) === key);
       if (mine) await api?.editors.closeEditor?.(mine.id).catch(() => false);
+      if (keep && snap) await saveSheetCopy(filePath, serializeSheetFile(snap as Parameters<typeof serializeSheetFile>[0]));
     })();
   };
 
   /**
    * Write the sheet when it differs from what the file holds. The timer
-   * passes false and skips a clean sheet. `last` is the save of a pane being
-   * torn down: it is sent at once, because the tool may be turned off the
-   * next moment and nothing can be asked or written after that.
+   * passes false and skips a clean sheet. `commit` first keeps what is being
+   * typed in a cell, as clicking elsewhere would: only where the pane is
+   * going (a save that runs while the person types must not end the entry).
+   * Every save asks first whether the file is still there, and never brings
+   * back one that was renamed or deleted.
    */
-  const save = async (force = true, last = false): Promise<void> => {
+  const save = async (force = true, commit = false): Promise<void> => {
     if (!fileReady || gone || (!force && !dirty)) return;
     dirty = false;
-    // What is being typed in a cell is part of the sheet: leaving does not drop it.
-    if (force) host?.commitEdit();
+    if (commit) host?.commitEdit();
     const snap = host?.getSnapshot();
     if (!snap) return;
     const json = JSON.stringify(snap);
     if (json === lastSaved) return;
     lastSaved = json;
-    const earlier = writesInFlight.get(filePath);
-    const send = (): Promise<void> => writeSheetText(filePath, serializeSheetFile(snap));
-    const write = (last
-      ? (earlier ? earlier.then(send) : send())
-      : (earlier ?? Promise.resolve()).then(async () => {
-        // Never bring back a file that was renamed or deleted: the edit would land in a file nobody asked for.
-        if (!(await sheetFileExists(filePath))) { fileIsGone(); return; }
-        await send();
-      }))
+    const write = (writesInFlight.get(filePath) ?? Promise.resolve())
+      .then(async () => {
+        if (!(await sheetFileExists(filePath))) { fileIsGone(snap); return; }
+        await writeSheetText(filePath, serializeSheetFile(snap));
+      })
       .catch((err) => {
         // The next change saves again; until then the file is behind the screen.
         lastSaved = '';
@@ -164,6 +181,7 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
     await write;
     if (writesInFlight.get(filePath) === write) writesInFlight.delete(filePath);
   };
+  const saveAll = (): Promise<void> => save(true, true);
 
   /** The window is closing: send the change now, without the questions a normal save asks first. */
   const flushNow = (): void => {
@@ -227,6 +245,7 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
       liveSheets.push({ host, filePath });
       noteLiveSheets();
       stopUnloadFlush = onUnload(flushNow);
+      liveSaves.add(saveAll);
       void host.whenRendered().then(() => { readyResolve(); applyPendingView(); });
       changedSub = host.onChanged(() => { dirty = true; });
       lastSaved = await settledSnapshot();
@@ -237,7 +256,7 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
         void save(false);
         // Every few beats, with nothing to save: is the file still there? So a tab left or closed
         // long after another program took its file away does not write it back.
-        if (++beat % GONE_CHECK_BEATS === 0 && !dirty && !gone) void sheetFileExists(filePath).then((there) => { if (!there && !disposed) fileIsGone(); });
+        if (++beat % GONE_CHECK_BEATS === 0 && !dirty && !gone) void sheetFileExists(filePath).then((there) => { if (!there && !disposed) fileIsGone(host?.getSnapshot() ?? null); });
       }, FILE_AUTOSAVE_MS);
     } catch (err) {
       say(`"${title}" could not be opened`, err instanceof Error ? err.message : String(err));
@@ -270,8 +289,8 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
     retainOnHide: false,
     ready,
     saveViewState: () => {
-      // Leaving the tab tears the pane down next: this is its last save.
-      void save(true, true);
+      // Called whenever the workbench saves its state, not only on leaving: an entry being typed is left alone.
+      void save();
       return { view: host?.getViewState() ?? null };
     },
     restoreViewState: (saved: unknown) => {
@@ -283,10 +302,12 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
     dispose: () => {
       readyResolve();
       if (timer) clearInterval(timer);
-      // Capture before teardown, so closing the tab cannot drop work.
-      void save(true, true);
+      // Capture before teardown, so closing the tab cannot drop work. The write itself outlives
+      // the teardown: it is returned, so whoever closed the tab can wait for it.
+      const lastSave = saveAll();
       disposed = true;
       stopUnloadFlush?.();
+      liveSaves.delete(saveAll);
       const at = liveSheets.findIndex((entry) => entry.host === host);
       if (at >= 0) liveSheets.splice(at, 1);
       noteLiveSheets();
@@ -305,6 +326,7 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
       host = null;
       notice?.remove();
       container.classList.remove('ws-pane', 'ws-pane__sheet');
+      return lastSave;
     },
   };
 }

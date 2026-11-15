@@ -35,7 +35,7 @@ import { practiceBlock } from './worksheetPracticeBlock.js';
 import { worksheetQuestionProvider } from './questionProvider.js';
 import { registerQuestionProvider } from '../../services/questionProviders.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
-import { createSheetFilePane, exportOpenSheetFile } from './panes/sheetFilePane.js';
+import { createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
 import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilder, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
 import { createBankPane, readPendingRecipes } from './panes/bankPane.js';
 import { createExcelImportPane } from './panes/excelImportPane.js';
@@ -255,7 +255,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   registerWorksheetChatTools(api, context.subscriptions);
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
+  // Sheet files first, while the tool can still write: each live sheet saves, and every write on its way lands.
+  await settleSheetFiles().catch(() => undefined);
   state.api = null;
   scratchCache.clear();
 }

@@ -159,9 +159,10 @@ this text is as corrected by that review.
   not grow it: the wheel stops at the last row until the selection goes
   there. It follows the app's light or dark.
 - It saves itself: a change is in the file about a second and a half
-  later, on leaving the tab, and when the window closes. What is still
-  being typed in a cell is kept when the tab is left. Closed and opened
-  again, it is as it was. Merely opening it writes nothing.
+  later, on leaving the tab, when Worksheets is turned off, and when the
+  app closes. What is still being typed in a cell is kept when the tab
+  is left or closed. Closed and opened again, it is as it was. Merely
+  opening it writes nothing.
 - A file that is not a sheet, or whose workbook is damaged, is refused in
   words and left as it is.
 - The engine host takes its limits as an option (`SheetLimits` in
@@ -209,7 +210,11 @@ claim check caught that. A sheet of one's own has all of them.
 
 **This changes his practice sheet, which was promised untouched: his to
 overrule.** One pane serves a problem, a quiz and the Scratch Sheet, so
-all three change. Nobody checked whether a problem or a solution in his
+all three change. A problem already saved with one of the 23 in a
+formula keeps the formula's text, shows #NAME? when it is next opened,
+and stores that at its next save. NUMBERVALUE, CELL and FORECAST.LINEAR
+are real Excel functions a worked solution brought in from Excel could
+use. Nobody checked whether a problem or a solution in his
 bank uses one of the 23 names: his bank is not in the repository
 (nothing that is in it uses them). Not checked: whether those names
 still show in the function list of the fx button.
@@ -253,11 +258,13 @@ Found by the review and fixed:
 - A sheet renamed in the Explorer kept its tab under the old name, and
   its next save brought the old file back with the edit in it; a deleted
   sheet's tab stayed open and its next edit brought the file back. Now
-  the Explorer closes a deleted file's tab and reopens a renamed or
-  moved file under its new name (any file editor with no unsaved
-  changes, not only sheets). A sheet whose file was taken away by
-  something else is not written back by its autosave: a dialog that
-  waits says so and offers Save a Copy, and the tab closes either way.
+  the Explorer closes a file's tabs before it deletes, renames or moves
+  it, waits for each one's last save, and after a rename or a move opens
+  them again under the new name (every kind of file tab; a tab with
+  unsaved changes is left alone by a rename). A sheet whose file was
+  taken away by something else is never written back: every save asks
+  first whether the file is still there, and a dialog that waits offers
+  Save a Copy, the tab closing either way.
 - The same sheet shown twice (Split Editor) was two engines each writing
   its whole sheet over the other's: the second save erased the first
   pane's entry. Now one pane holds a file; the other says where it is
@@ -265,7 +272,9 @@ Found by the review and fixed:
 - Undo did nothing the first time after the grid grew (it undid the
   growing). Growing is no longer in the undo history.
 - An entry made in the last second and a half before the window closed
-  was lost. The window closing now writes at once.
+  was lost. Closing the app now waits for every sheet file to be
+  written (the tool settles its files before it is shut down), and a
+  reload writes at once.
 - An entry still being typed when the tab was left was dropped (found by
   the verifier's probe). It is kept. The practice sheet still drops it;
   not changed, it is not this piece.
@@ -288,6 +297,45 @@ Found by the review and fixed:
   time; a failing test sent Claude back again and again, ending only
   when the runner happened to print the same timing twice; a change of
   more than 40 files could never pass.
+
+**The fixes, checked** (2026-11-15, by three more agents that did not
+write them: a correctness reviewer on the fix commit, a claim checker on
+this text, an app verifier). The first fix commit was itself wrong in
+five places, each reproduced in the built app by the reviewer, and in
+three more found by the claim checker; all eight are fixed in the
+commits that followed, and what is said above is as it stands after
+them.
+
+- A sheet renamed or deleted in the Explorer with an entry still being
+  typed came back under its old name, holding the entry the renamed
+  file lacked: the tab was closed after the rename, and its last save
+  went to the old path. The Explorer now closes first and waits.
+- Saving on leaving a tab also ran on every save of the workbench's
+  state (Ctrl+B, dragging a divider, another tab opening), and ended the
+  entry being typed: "Groc", Ctrl+B, "eries" left "eries". An entry is
+  now ended only when its pane is going.
+- After Worksheets was turned off and on, Export Sheet to Excel never
+  came back to the menu until a restart.
+- The write on window close was placed where the tools had already been
+  shut down, and wrote nothing; closing by the X still saved, but
+  through another route. It now runs before the shutdown, and closing
+  the app waits for the files.
+- A text file in the workspace did not follow its rename (its tab is
+  described by its path from the workspace folder, and the first fix
+  compared whole paths; its test used whole paths, so it passed).
+- The "file is gone" notice was a toast that left after five seconds,
+  and the tab stayed open keeping nothing; Save a Copy saved an old
+  snapshot. Now a dialog that waits, and the copy is what is on screen.
+- BAHTTEXT was taken off the practice sheet for a misspelling in
+  Pearson's workbook (above).
+- Export was still offered in the command palette when it could not
+  work.
+
+Found by them and left: a reopened tab comes back as the last tab of the
+active group, not where it was, and loses its scroll place; the chat's
+"attach the open file" now offers an open sheet and would send its raw
+JSON (the chat reading a sheet's cells is not built); redo after the
+grid grew was not run; nothing was run on Windows.
 
 Found and left, reported here:
 
@@ -330,12 +378,9 @@ Decided by Claude for this piece, for him to overrule:
   (the tab goes on showing its own version; an untouched tab leaves the
   other program's version alone, an edited one saves over it); a text
   file with unsaved changes renamed in the Explorer keeps its old tab;
-  an edit made in the seconds before its file is renamed or deleted, and
-  followed at once by leaving the tab or closing the window, can still
-  bring the old file back (those two saves are sent at once and ask
-  nothing: asking first dropped the entry when the tool was turned off
-  right after it, which the verifier's probe caught; whether the file is
-  still there is looked at every six seconds); growing by scrolling; the search index and the chat reading
+  a reload of the window (View > Reload) in the second and a half after
+  an edit writes at once without asking whether the file is still
+  there; growing by scrolling; the search index and the chat reading
   a sheet's cells; an icon of its own; Edit As Sheet on an .xlsx.
 
 **A miss on the first draft of the page, corrected the same day.** Choice

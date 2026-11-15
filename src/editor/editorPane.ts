@@ -280,7 +280,8 @@ export class PlaceholderEditorPane extends EditorPane {
  * cursor offset, expanded-tree node ids).
  */
 export interface IEditorPaneViewStateProvider {
-  dispose(): void;
+  /** Tear the pane down. It may return a promise for work that outlives the teardown (a last save); see whenClosedPanesSettle. */
+  dispose(): void | Promise<void>;
   saveViewState?(): unknown;
   restoreViewState?(state: unknown): void;
   /**
@@ -372,7 +373,7 @@ class ToolEditorPane extends EditorPane {
 
   private _disposeProviderContent(): void {
     if (this._providerHandle) {
-      this._providerHandle.dispose();
+      noteClosingWork(this._providerHandle.dispose() as unknown);
       this._providerHandle = undefined;
     }
   }
@@ -381,6 +382,21 @@ class ToolEditorPane extends EditorPane {
     this._disposeProviderContent();
     super.dispose();
   }
+}
+
+// A tool's pane may have something left to finish when it is torn down (its
+// last save). Its `dispose` may return a promise for that; whoever needs
+// the work done before going on (closing a file's tab before the file is
+// renamed) waits here.
+const _closingWork = new Set<Promise<unknown>>();
+function noteClosingWork(work: unknown): void {
+  if (!work || typeof (work as PromiseLike<unknown>).then !== 'function') return;
+  const settled: Promise<unknown> = Promise.resolve(work).catch(() => undefined).then(() => _closingWork.delete(settled));
+  _closingWork.add(settled);
+}
+/** Resolves when every pane torn down so far has finished what it still had to do. */
+export function whenClosedPanesSettle(): Promise<void> {
+  return Promise.all([..._closingWork]).then(() => undefined);
 }
 
 /** The pane every tool-provided editor is shown in. */
