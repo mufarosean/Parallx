@@ -102,6 +102,29 @@ his picks owed on each; Claude's pick marked on the page:
   beside the sheet (Claude's pick), 5C the exam surface for a timed
   session, where the exam's limits are rules a set carries.
 
+**His picks (2026-11-15):** "I trust your picks." So the picks are his:
+1A, 2B with 2C's bar for touch, 3A then 3C, 4i and 4A, 5B with 5C for
+timed sessions. Then: "I am a little confused though, what am I losing
+the ability to do". Answered the same day; the answer in short:
+
+- Nothing is meant to go. What changes for him: the exam's limits (white
+  sheet, 150 by 40, the exam's function list) stop being true of every
+  sheet and hold only where a set carries them; the question moves from
+  merged cells on the sheet to a panel beside it; the engine's ribbon
+  goes, and what the one toolbar does not show (font and size, rotation,
+  strikethrough, format painter, protection, vertical alignment, images,
+  the function browser, Text to Number) sits under More; Bank, Dashboard,
+  Quizzes and Campaign become views of one tab, so two of them side by
+  side needs an Open In Its Own Tab; a sheet's own file opens in Excel
+  only through Export, which carries values and formulas, not styling.
+- What could be lost by careless building, and is not to be: his bank,
+  attempts, quizzes, campaign, roster, study time and rewards when they
+  move to another tool's tables; the `worksheet.*` commands his plans and
+  the chat call; his daily study tool while the campaign runs.
+- Proposed with the answer, his word owed: build Sheets and the new
+  program beside Worksheets, and switch only when his own data opens in
+  it and he says so.
+
 **A miss on the first draft of the page, corrected the same day.** Choice
 4 was drawn as a new tool called Study. Study exists (`ext/study`, built
 2026-10: questions written from a PDF or a bank, mastery per concept; it
