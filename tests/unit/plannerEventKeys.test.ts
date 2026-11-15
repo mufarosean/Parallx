@@ -10,7 +10,12 @@ import { PlannerEventBars } from '../../src/built-in/planner/plannerEventBars';
 const HOUR = 3_600_000;
 
 describe('event bars from the keyboard', () => {
-  it('Enter edits; Alt+arrows move; Alt+Shift+arrows move the end; extra fields ride along', () => {
+  it('Enter edits; Alt+arrows move; Alt+Shift+arrows move the end; extra fields ride along', async () => {
+    // A move puts the focus back on the bar a moment after it is saved. The
+    // clock is the test's, so that moment comes before the test ends and
+    // never after the page is gone (on a busy machine it did, and the run
+    // reported "document is not defined").
+    vi.useFakeTimers();
     const openEventPopover = vi.fn();
     const bars = new PlannerEventBars({ eventPopover: { openEventPopover } } as never);
     const commit = vi.spyOn(bars, 'commitEventMove').mockResolvedValue(undefined);
@@ -29,5 +34,9 @@ describe('event bars from the keyboard', () => {
     key('ArrowDown'); // no Alt: the arrows stay the calendar's
     expect(commit).toHaveBeenCalledTimes(2);
     expect(bar.dataset.eventId).toBe('e1');
+    bar.blur();
+    await vi.runAllTimersAsync();
+    expect(document.activeElement).toBe(bar);
+    vi.useRealTimers();
   });
 });

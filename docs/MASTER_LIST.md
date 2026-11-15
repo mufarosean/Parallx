@@ -93,19 +93,31 @@ his picks owed on each; Claude's pick marked on the page:
   that appears on a selection (kept for touch).
 - 3, a sheet in a page: 3A a live range (Claude's pick), 3B a card, 3C
   a cell's value inside a sentence (after 3A).
-- 4, what Study opens on: 4A today (Claude's pick), 4B the items, 4C the
-  plan.
+- 4, where the problem program goes and what it opens on. Where: 4i a
+  tool of its own for worked problems, "Practice" in the drawings, the
+  name his (Claude's pick), 4ii into the Study extension, 4iii a part of
+  Sheets. What it opens on: 4A today (Claude's pick), 4B the items, 4C
+  the plan.
 - 5, working an item: 5A a study bar over the sheet, 5B the question
   beside the sheet (Claude's pick), 5C the exam surface for a timed
   session, where the exam's limits are rules a set carries.
 
-**Proposed by Claude with the mock-ups, none agreed:** the study half
-becomes its own tool, Study, whose items take their answer surface from
-another tool (a sheet from Sheets, cards from Flashcards, written
-answers of its own); the exam's limits (grid size, function list, white
-sheet) leave the code and become rules on a set; a sheet keeps its own
-file and exports to .xlsx, since the exporter carries values and
-formulas only.
+**A miss on the first draft of the page, corrected the same day.** Choice
+4 was drawn as a new tool called Study. Study exists (`ext/study`, built
+2026-10: questions written from a PDF or a bank, mastery per concept; it
+already practises this bank's essay problems through the question-provider
+seam). Its brief left the sheet problems in Worksheets "where the sheet is
+the point", and his bar for it was no mock exams and no point scoring.
+That is why Claude's pick is 4i: timers, ratings and rewards stay out of
+Study. Not read before that pick: Study's code beyond its manifest, brief
+and sidebar sections; the campaign's and the roster's code.
+
+**Proposed by Claude with the mock-ups, none agreed:** in 4A the day's
+line from Flashcards and from Study comes through the Planner's day-load
+seam, which both already feed; the exam's limits (grid size, function
+list, white sheet) leave the code and become rules on a set; a sheet
+keeps its own file and exports to .xlsx, since the exporter carries
+values and formulas only.
 
 **What exists today (verified from the file list).** `src/built-in/worksheet`
 is two things grown together. One is a spreadsheet tool: the Univer host
