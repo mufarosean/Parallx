@@ -3509,13 +3509,15 @@ function stIsModelLoop(err) {
 
 /**
  * One chat call, collected to a string. `json` asks the backend for JSON
- * output. `maxTokens` caps the answer, so a model that loops ends at the cap
- * instead of filling its whole context; an answer the backend ends for
- * looping comes back as what was written, which callers read as unusable.
- * `token` (Stop) aborts the request mid-answer. `onStream` hears the
- * answer's length so far: { chars, thinking }.
+ * output. No call caps its answer or its thinking: a cap counts the thinking
+ * too, and a thinking model then answers nothing or a cut-off line (the house
+ * rule; the only limits are one the user set and the core's own guard
+ * against a runaway). An answer the backend ends for looping comes back as
+ * what was written, which callers read as unusable. `token` (Stop) aborts
+ * the request mid-answer. `onStream` hears the answer's length so far:
+ * { chars, thinking }.
  */
-async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numCtx = 0, json = true, onChunk = null, maxTokens = 0, token = null, onStream = null } = {}) {
+async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numCtx = 0, json = true, onChunk = null, token = null, onStream = null } = {}) {
   if (!_api.lm || typeof _api.lm.sendChatRequest !== 'function') {
     throw new Error('No model backend is available. Start the model backend and try again.');
   }
@@ -3523,7 +3525,6 @@ async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numC
   const think = !!cfg('aiThinking', true);
   const options = { temperature, think };
   if (numCtx > 0) options.numCtx = numCtx;
-  if (maxTokens > 0) options.maxTokens = maxTokens + (think ? ST_THINK_TOKENS : 0);
   if (json) options.format = 'json';
   let output = '';
   let thinking = 0;
@@ -3905,7 +3906,7 @@ async function stBuildConceptMap(material, section, {
     let output;
     try {
       output = await stChat(model, ST_CONCEPT_SYSTEM, user, {
-        temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: true, maxTokens: ST_MAP_OUTPUT_TOKENS * 2, token,
+        temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: true, token,
         onStream: (s) => report(i, chunks.length, s),
       });
     } catch (err) {
@@ -4018,7 +4019,7 @@ async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = 
     stAnswerText(q),
   ].join('\n');
   const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, maxTokens: ST_SMALL_OUTPUT_TOKENS * 2 });
+  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
   const raw = stJsonObjectFrom(output);
   // An unreadable verdict is not evidence for the question: treat it as unsettled.
   if (!raw) return { settles: false, reason: 'The check gave no verdict.' };
@@ -4040,7 +4041,7 @@ async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
       String(d.option || ''),
     ].join('\n');
     const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, maxTokens: ST_SMALL_OUTPUT_TOKENS * 2 });
+    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
     const raw = stJsonObjectFrom(output);
     if (!raw) return { defensible: true, optionIndex: d.optionIndex, reason: 'The check gave no verdict.' };
     if (raw.defensible === true || raw.defensible === 'true') {
@@ -4690,7 +4691,7 @@ async function stGenerateQuestions(material, {
       let output;
       try {
         output = await stChat(model, ST_QUESTION_SYSTEM, user, {
-          temperature: ST_TEMP_GENERATE, numCtx: plan1.numCtx, json: true, maxTokens: outputTokens * 2, token,
+          temperature: ST_TEMP_GENERATE, numCtx: plan1.numCtx, json: true, token,
           onStream: (s) => report('generate', { concept: group[0].concept.title, writing: s }),
         });
       } catch (err) {
@@ -4928,7 +4929,7 @@ async function stExplain(question, { chosen = null, typed = '', modelId = '', nu
     page ? `The source page:\n${page}` : '',
   ].filter(Boolean).join('\n\n');
   const plan = await stPlanFor(model, material, user.length, ST_EXPLAIN_OUTPUT_TOKENS, numCtx);
-  const text = await stChat(model, ST_EXPLAIN_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: false, onChunk, maxTokens: ST_EXPLAIN_OUTPUT_TOKENS * 2 });
+  const text = await stChat(model, ST_EXPLAIN_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: false, onChunk });
   const out = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   if (!out) throw new Error('The model gave no explanation. Try again.');
   return out;

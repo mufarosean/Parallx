@@ -1206,7 +1206,7 @@ describe('Study end to end', () => {
     hold.release();
     await waitFor(() => q(h, ".st-card"), "the first card");
     expect(q(h, ".st-error")).toBeNull();
-    for (const c of env.lmCalls.filter((x: AnyRec) => ["map", "questions", "support", "distractor"].includes(x.kind))) expect(c.maxTokens).toBeGreaterThan(0);
+    for (const c of env.lmCalls.filter((x: AnyRec) => ["map", "questions", "support", "distractor"].includes(x.kind))) expect(c.maxTokens).toBeUndefined(); // no call caps its answer or its thinking (the house rule)
   });
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1697,7 +1697,7 @@ describe('Study end to end', () => {
     expect(ask?.user).toContain(`Right answer:\n${cur.answer}`);
     expect(ask?.user).toContain('Marking points:\n- ');
     expect(ask?.user).not.toContain('Quotation from the source');
-    expect(ask?.maxTokens).toBeGreaterThan(0);
+    expect(ask?.maxTokens).toBeUndefined(); // no call caps its answer or its thinking (the house rule)
     btn(h, 'Show Source')!.click();
     await waitFor(() => env.calls.openFileEditor.length === 1, 'the question file');
     const line = QUESTIONS_MD.split('\n').findIndex((l) => l === `Q: ${cur.stem}`) + 1;

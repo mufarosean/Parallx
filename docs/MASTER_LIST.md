@@ -575,10 +575,24 @@ Why it could not be used, most likely first:
   the chapter as mapped with no concepts, for good: "No questions could
   be made", and no further call is ever made for it. The only way back
   is to remove the material. (Seen in the app.)
-- Every call thinks (`study.aiThinking` ships on; its spec said off) and
-  carries a token cap that counts the thinking, the cap the house rule
-  forbids because a thinking model then answers cut-off JSON, which
-  feeds the two above. (Read in the code; the effect needs his model.)
+- Every call carried a token cap that counts the thinking, the cap the
+  house rule forbids because a thinking model then answers cut-off JSON,
+  which feeds the two above. (Read in the code; the effect needs his
+  model.) **Removed 2026-11-16**, on his word: "why do we cap the
+  thinking? We shouldn't. I have said this again and again and again.
+  Why does an extension put a thinking restraint on the model. Why are
+  we rebuilding the harness there?" Why it was there: Study was built on
+  2026-10-07, before Act broke on the same mistake and the rule was
+  written; nobody went back over what was already built, and the rule
+  was a sentence that nothing checked. Now a test checks it
+  (`tests/unit/modelCapCompliance.test.ts`): no extension and no
+  built-in tool may set a token cap or a thinking budget, except to pass
+  on a limit the user set. Study was the only one that did. Still there,
+  and part of the rework: Study keeps its own call to the model
+  (`stChat`), with its own context size chosen call by call, its own
+  temperatures and its own thinking switch. That is the harness built a
+  second time; it should ask the core for a model answer and leave the
+  rest to the core.
 - The context size asked for changes on about half the calls, and a
   change makes Ollama load the model again. (Counted in the app; the
   cost needs his model.)
