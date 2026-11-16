@@ -107,7 +107,7 @@ function installProbeModel() {
       const kind = system.startsWith('You read a passage') ? 'concepts' : system.startsWith('You write questions') ? 'questions'
         : system.startsWith('You check whether a quotation') ? 'support' : system.startsWith('You check one option') ? 'distractor'
         : system.startsWith('You mark') ? 'grade' : system.startsWith('You explain') ? 'explain' : system.startsWith('You reduce') ? 'rubric' : 'other';
-      calls.push({ kind, numCtx: options?.numCtx, format: options?.format });
+      calls.push({ kind, numCtx: options?.numCtx, format: options?.format, maxTokens: options?.maxTokens });
       let out = '{}';
       if (kind === 'concepts') {
         const material = user.split('--- MATERIAL ---')[1] || '';
@@ -250,7 +250,10 @@ async function main() {
     const calls = await page.evaluate(() => (window.__probeCalls || []).reduce((m, c) => { m[c.kind] = (m[c.kind] || 0) + 1; return m; }, {}));
     console.log('[probe] model calls', JSON.stringify(calls));
     check('generation ran every check', calls.concepts > 0 && calls.questions > 0 && calls.support > 0 && calls.distractor > 0, calls);
-    check('every model call carried an explicit context window', await page.evaluate(() => (window.__probeCalls || []).every((c) => c.numCtx > 0)));
+    // Was "every model call carried an explicit context window". Changed 2026-11-16: the owner's rule is that a tool
+    // does not size or cap the model itself, and a size that changes call by call reloads the model. Now: no call
+    // carries a cap, and every call asks for the same size (none, when Auto leaves it to the core).
+    check('no model call carried a token cap, and every call asked for the same context size', await page.evaluate(() => { const calls = window.__probeCalls || []; return calls.length > 0 && calls.every((c) => !(c.maxTokens > 0)) && new Set(calls.map((c) => c.numCtx ?? 0)).size === 1; }));
     check('session shows a card', !!(await text(page, '.st-card__q')), await text(page, '.st-card__q'));
     check('session tab title is readable', !/_/.test((await text(page, '.st-sess-tb__scope')) || '_'), await text(page, '.st-sess-tb__scope'));
     await shot(page, 'session-card');
