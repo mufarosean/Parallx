@@ -1597,7 +1597,7 @@ async function stScopeUnits(scope) {
 async function stScopeConcepts(scope, ensured = null) {
   const kind = scope && scope.kind;
   const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
-  if (kind === 'bank') return [];
+  if (stFixedScope(scope)) return [];
   if (kind === 'weak') {
     const weak = await stWeakConcepts({ limit: 400 });
     const mids = new Set(materialIds);
@@ -1631,8 +1631,8 @@ function stPseudoConcept(id = 0) {
  * a concept gets its own first (stEnsureBankConcepts).
  */
 async function stScopePool(scope, { materialize = false, ensured = null } = {}) {
-  if (scope && scope.kind === 'bank') {
-    const all = await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+  if (stFixedScope(scope)) {
+    const all = await stFixedScopeQuestions(scope);
     const questions = all.filter(stQuestionAnswerable);
     if (materialize) await stEnsureBankConcepts(questions);
     const ids = [...new Set(questions.map((q) => q.conceptId).filter((id) => id > 0))];
@@ -1672,7 +1672,7 @@ async function stScopeStats(scope) {
  * lacking: the draw that then repeats says so itself.)
  */
 async function stScopeCanGrow(scope) {
-  if (!scope || scope.kind === 'bank') return false;
+  if (!scope || stFixedScope(scope)) return false;
   if (scope.kind !== 'weak') {
     for (const { material, units } of await stScopeUnits(scope)) {
       const known = await stListConcepts({ materialIds: [material.id] });
@@ -1704,7 +1704,7 @@ async function stRefreshWillRepeat(session, { drewRepeats = false } = {}) {
   const pool = await stScopePool(scope);
   const unseen = pool.questions.filter((q) => !asked.has(q.id)).length;
   if (unseen >= size) return false;
-  if (drewRepeats || scope.kind === 'bank') return true;
+  if (drewRepeats || stFixedScope(scope)) return true;
   return !(await stScopeCanGrow(scope));
 }
 
@@ -1775,7 +1775,7 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const base = await stScopeStats(scope);
   result.available = base.available;
   result.unanswerable = base.unanswerable;
-  if (scope.kind === 'bank') return result;
+  if (stFixedScope(scope)) return result;
   const target = untilSize && Number(size) > 0 ? Number(size) : 0;
   if (target && result.available >= target) return result;
 
@@ -2002,10 +2002,10 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const items = await stListSessionItems(session.id);
   const exclude = new Set(items.map((i) => i.questionId));
   const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
-  const materialize = scope.kind === 'bank';
+  const materialize = stFixedScope(scope);
   let pool = await stScopePool(scope, { materialize });
   let candidates = pool.questions.filter((q) => !exclude.has(q.id));
-  if (candidates.length < size && scope.kind !== 'bank') {
+  if (candidates.length < size && !stFixedScope(scope)) {
     const ensured = await stEnsureBank(scope, {
       size: size + exclude.size, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true, sessionId: session.id,
     });

@@ -73,6 +73,7 @@ export async function activate(api, context) {
   );
 
   registerCommands(owned);
+  registerSessionCommands(owned);
   registerSelectionAction(owned, 0, token);
   registerQuestionProviders(owned, 0, token);
   registerRatingListener(owned, token);
@@ -97,6 +98,7 @@ export async function deactivate() {
   stCancelRuns();
   stClearRetryTimers();
   _stGrades.clear();
+  _stSessionActions.clear();
   bus.clear();
   if (typeof document !== 'undefined' && document.getElementById) {
     const style = document.getElementById('study-styles');

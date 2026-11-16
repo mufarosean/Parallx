@@ -2236,7 +2236,7 @@ function stRowToQuestion(row) {
     checks: stParseJson(row.checks_json, {}),
     difficulty: row.difficulty || '',
     hidden: !!row.hidden,
-    edited: !!row.edited,
+    edited: !!row.edited, marked: !!row.marked,
     runId: row.run_id || 0,
     model: row.model || '',
     createdAt: row.created_at || 0,
@@ -2271,7 +2271,7 @@ function stRowToSessionItem(row) {
     formatUsed: row.format_used || '',
     status: row.status || 'pending',
     chosen: row.chosen || '',
-    typed: row.typed || '',
+    typed: row.typed || '', draft: row.draft || '',
     verdict: stParseJson(row.verdict_json, null),
     retried: !!row.retried,
     answeredAt: row.answered_at || 0,
@@ -3351,6 +3351,76 @@ async function stWeakConcepts({ limit = 50 } = {}) {
   });
   list.sort((a, b) => (rank[a.state] - rank[b.state]) || (a.mastery - b.mastery) || (a.lastAnsweredAt - b.lastAnsweredAt));
   return list.slice(0, Math.max(1, Number(limit) || 50));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 25: WHAT HE KEEPS — marks, drafts, his own verdict, the Marked set
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The data a session screen writes beside the answer itself (migration
+// study_002): a question marked to come back to (st_questions.marked), the
+// answer he had half typed on an item (st_session_items.draft), and the
+// verdict he gave when he overruled the grader (the st_answers row of that
+// answer is corrected, so the record says what he decided). The Marked set
+// is a scope of its own kind, 'marked': fixed like a bank (nothing is
+// written for it), drawn from the questions marked when it is drawn.
+
+/** Mark or unmark a question to come back to. */
+async function stSetMarked(questionId, on) {
+  await db.run('UPDATE st_questions SET marked = ? WHERE id = ?', [on ? 1 : 0, Number(questionId) || 0]);
+  _emitDataChanged();
+}
+
+/** The questions marked to come back to and not hidden, oldest first. */
+async function stListMarkedQuestions() {
+  const rows = await db.all('SELECT * FROM st_questions WHERE marked = 1 AND hidden = 0 ORDER BY id');
+  return rows.map(stRowToQuestion);
+}
+
+/** The half-typed answer on an item. Quiet: nothing else repaints for it. */
+async function stSaveDraft(itemId, text) {
+  await db.run('UPDATE st_session_items SET draft = ? WHERE id = ?', [String(text || ''), Number(itemId) || 0]);
+}
+
+/** His verdict on an answer already logged: the st_answers row says right or wrong as he decided. */
+async function stSetAnswerVerdict(answerId, { correct, rating }) {
+  if (!answerId) return;
+  await db.run('UPDATE st_answers SET correct = ?, rating = ? WHERE id = ?', [correct ? 1 : 0, Number(rating) || 0, answerId]);
+  _emitDataChanged();
+}
+
+/** Has he answered anything yet, anywhere? */
+async function stHasAnswers() {
+  const row = await db.get('SELECT (SELECT COUNT(*) FROM st_answers) + (SELECT COUNT(*) FROM st_concepts WHERE answers > 0) AS n');
+  return Number(row && row.n) > 0;
+}
+
+/** What Study Weak Spots says when there is nothing weak: with no history, that nothing is answered yet. */
+async function stNoWeakSpotsText() {
+  return (await stHasAnswers())
+    ? 'No weak spots yet: every concept you have answered is clean.'
+    : 'Nothing answered yet: answer some questions first, and the concepts you miss show up here.';
+}
+
+/** A scope nothing is written for: a question bank, or the Marked set. */
+function stFixedScope(scope) {
+  return !!scope && (scope.kind === 'bank' || scope.kind === 'marked');
+}
+
+/** Every question a fixed scope holds, hidden ones included (the caller filters). */
+async function stFixedScopeQuestions(scope) {
+  if (scope.kind === 'marked') return stListMarkedQuestions();
+  return stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+}
+
+/** Study the marked questions as a set: one Practice session over exactly those. */
+async function stStudyMarked() {
+  const marked = await stListMarkedQuestions();
+  if (!marked.length) {
+    await _api.window.showInformationMessage('Nothing is marked yet: mark a question on its card to come back to it.');
+    return null;
+  }
+  return stStartOrSay({ scope: { kind: 'marked', materialIds: [], label: 'Marked questions' }, mode: 'practice', ...stSessionPrefs(null) });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4952,7 +5022,7 @@ async function stScopeUnits(scope) {
 async function stScopeConcepts(scope, ensured = null) {
   const kind = scope && scope.kind;
   const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
-  if (kind === 'bank') return [];
+  if (stFixedScope(scope)) return [];
   if (kind === 'weak') {
     const weak = await stWeakConcepts({ limit: 400 });
     const mids = new Set(materialIds);
@@ -4986,8 +5056,8 @@ function stPseudoConcept(id = 0) {
  * a concept gets its own first (stEnsureBankConcepts).
  */
 async function stScopePool(scope, { materialize = false, ensured = null } = {}) {
-  if (scope && scope.kind === 'bank') {
-    const all = await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+  if (stFixedScope(scope)) {
+    const all = await stFixedScopeQuestions(scope);
     const questions = all.filter(stQuestionAnswerable);
     if (materialize) await stEnsureBankConcepts(questions);
     const ids = [...new Set(questions.map((q) => q.conceptId).filter((id) => id > 0))];
@@ -5027,7 +5097,7 @@ async function stScopeStats(scope) {
  * lacking: the draw that then repeats says so itself.)
  */
 async function stScopeCanGrow(scope) {
-  if (!scope || scope.kind === 'bank') return false;
+  if (!scope || stFixedScope(scope)) return false;
   if (scope.kind !== 'weak') {
     for (const { material, units } of await stScopeUnits(scope)) {
       const known = await stListConcepts({ materialIds: [material.id] });
@@ -5059,7 +5129,7 @@ async function stRefreshWillRepeat(session, { drewRepeats = false } = {}) {
   const pool = await stScopePool(scope);
   const unseen = pool.questions.filter((q) => !asked.has(q.id)).length;
   if (unseen >= size) return false;
-  if (drewRepeats || scope.kind === 'bank') return true;
+  if (drewRepeats || stFixedScope(scope)) return true;
   return !(await stScopeCanGrow(scope));
 }
 
@@ -5130,7 +5200,7 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const base = await stScopeStats(scope);
   result.available = base.available;
   result.unanswerable = base.unanswerable;
-  if (scope.kind === 'bank') return result;
+  if (stFixedScope(scope)) return result;
   const target = untilSize && Number(size) > 0 ? Number(size) : 0;
   if (target && result.available >= target) return result;
 
@@ -5357,10 +5427,10 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const items = await stListSessionItems(session.id);
   const exclude = new Set(items.map((i) => i.questionId));
   const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
-  const materialize = scope.kind === 'bank';
+  const materialize = stFixedScope(scope);
   let pool = await stScopePool(scope, { materialize });
   let candidates = pool.questions.filter((q) => !exclude.has(q.id));
-  if (candidates.length < size && scope.kind !== 'bank') {
+  if (candidates.length < size && !stFixedScope(scope)) {
     const ensured = await stEnsureBank(scope, {
       size: size + exclude.size, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true, sessionId: session.id,
     });
@@ -5758,7 +5828,7 @@ async function stFillSession(session, { token = null, onProgress = null, onFed =
   const heldBefore = before.filter((i) => (Number(i.draw) || 0) === draw).length;
   const start = await stScopePool(scope);
   const told = (held) => { if (onFed) { try { onFed(held); } catch { /* listener error is not ours */ } } };
-  if (scope.kind === 'bank' || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
+  if (stFixedScope(scope) || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
     const drawn = await stNextDraw(session, { token, onProgress });
     told(drawn.length);
     return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0 };
@@ -5876,8 +5946,11 @@ function injectStyles() {
   style.id = 'study-styles';
   style.textContent = `
 /* ── Pane root ──────────────────────────────────────────────────────────── */
-.st-root { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--px-window); color: var(--px-text); font-size: var(--px-text-base); outline: none; }
-.st-root:focus-visible { box-shadow: inset 0 0 0 1px var(--px-accent); }
+/* One reading measure for everything a session reads (the card, its answer box, the verdict, the quote,
+   Learn, the results): about 70 characters of its text, so the eye never travels 100 and more. */
+.st-root { --st-measure: 34rem; position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--px-window); color: var(--px-text); font-size: var(--px-text-base); outline: none; }
+.st-root:focus-visible { box-shadow: inset 0 0 0 var(--px-focus-width) var(--px-accent); }
+.st-qwrap[hidden], .st-ctl[hidden], .st-card[hidden], .st-fb[hidden] { display: none; }
 .st-root .svg-icon { display: inline-flex; }
 .st-error { margin: var(--px-space-8) auto; max-width: 70ch; padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text-secondary); display: grid; gap: var(--px-space-3); }
 .st-error__t { font-weight: 600; color: var(--px-text); }
@@ -5900,7 +5973,7 @@ function injectStyles() {
 .st-strand i.ans { background: var(--px-text-faint); }
 .st-strand i.just { transform: scaleY(1.9); }
 .st-sess-main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-5) var(--px-space-6) var(--px-space-6); overflow-y: auto; }
-.st-qwrap { width: 100%; max-width: 760px; position: relative; }
+.st-qwrap { width: 100%; max-width: var(--st-measure); position: relative; }
 
 /* ── Eyebrow ────────────────────────────────────────────────────────────── */
 .st-eyebrow { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-muted); margin-bottom: var(--px-space-2); min-height: var(--px-control-h-sm); }
@@ -5908,7 +5981,8 @@ function injectStyles() {
 .st-eyebrow__dot { width: 3px; height: 3px; border-radius: var(--px-radius-full); background: var(--px-text-faint); flex: none; }
 .st-eyebrow__src { color: var(--px-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .st-eyebrow__acts { margin-left: auto; display: inline-flex; align-items: center; gap: var(--px-space-1); }
-.st-eyebrow__acts .px-btn { color: var(--px-text-faint); }
+.st-eyebrow__acts .px-btn { color: var(--px-text-muted); }
+.st-eyebrow__acts .px-btn.st-mark--on { color: var(--px-accent-text); }
 
 /* ── The card: the Flashcards stock, white paper and dark ink in every
    theme (the --px-stock-* tokens are the same in light and dark). ───────── */
@@ -5920,8 +5994,10 @@ function injectStyles() {
    UI chrome. It matches KaTeX's serif math, so a formula in a stem reads as
    one sentence instead of sans colliding with serif math. The one deliberate
    font-family in the extension; the keycaps and hints inherit the UI face. */
-.st-card__q, .st-opt__text, .st-ta__field, .st-ta__line, .st-ta__num, .st-quote__text, .st-full__text, .st-learn__pt, .st-review__stem, .st-review__ans { font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, 'Times New Roman', serif; }
-.st-card__q { font-size: var(--px-text-xl); font-weight: 700; line-height: 1.35; margin: 0 0 var(--px-space-4); }
+.st-card__q, .st-opt__text, .st-ta__field, .st-ta__line, .st-ta__num, .st-past__typed, .st-quote__text, .st-full__text, .st-learn__pt, .st-review__stem, .st-review__ans { font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, 'Times New Roman', serif; }
+.st-card__q { font-size: var(--px-text-xl); font-weight: 700; line-height: var(--px-leading-tight); margin: 0 0 var(--px-space-4); transition: font-size var(--px-dur-base) var(--px-ease); }
+/* Answered: the question steps back so the verdict under the card is the first thing read. */
+.st-card--answered .st-card__q { font-size: var(--px-text-lg); font-weight: 600; }
 .st-card__q .px-markdown p { margin: 0; }
 .st-card .px-markdown code { background: var(--px-stock-well); color: var(--px-stock-ink); }
 .st-card .px-markdown pre { background: var(--px-stock-well); border-color: var(--px-stock-edge); color: var(--px-stock-ink); }
@@ -5929,42 +6005,47 @@ function injectStyles() {
 /* Options: rows on the card with a keycap at the left, divided by the card's
    own hairline. No radio circles: the keycap is the letter and the key. */
 .st-opts { margin: 0 calc(var(--px-space-6) * -1); border-top: 1px solid var(--px-stock-line); }
-.st-opt { display: flex; align-items: flex-start; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-6); border-bottom: 1px solid var(--px-stock-line); font-size: var(--px-text-md); line-height: 1.45; cursor: pointer; position: relative; transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease); }
+.st-opt { display: flex; align-items: flex-start; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-6); border-bottom: 1px solid var(--px-stock-line); font-size: var(--px-text-md); line-height: var(--px-leading-base); cursor: pointer; position: relative; transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease); }
 .st-opt:last-child { border-bottom: 0; }
 .st-opt:hover { background: var(--px-stock-well); }
 .st-opt:active { transform: var(--px-press); }
 .st-opt__text { flex: 1; min-width: 0; }
 .st-opt__text .px-markdown p { margin: 0; }
-.st-opt__key { flex: none; width: 20px; height: 20px; margin-top: 1px; border: 1px solid var(--px-stock-line); border-radius: var(--px-radius-sm); font-size: var(--px-text-xs); font-weight: 500; line-height: 18px; text-align: center; color: var(--px-stock-ink-faint); transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease); }
+.st-opt__key { flex: none; width: 20px; height: 20px; margin-top: 1px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--px-stock-edge); border-radius: var(--px-radius-sm); font-size: var(--px-text-xs); font-weight: 500; color: var(--px-stock-ink-soft); transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease); }
 .st-opt__mark { flex: none; width: 16px; height: 16px; margin: 3px 0 0 auto; opacity: 0; transform: scale(.6); transition: opacity var(--px-dur-fast) var(--px-ease), transform var(--px-dur-base) var(--px-ease-spring); }
 .st-opts--done .st-opt { cursor: default; }
 .st-opts--done .st-opt:hover { background: transparent; }
-.st-opt--right { background: rgba(var(--px-green-rgb), .09); }
+.st-opt--right { background: color-mix(in srgb, var(--px-success) 15%, transparent); }
 .st-opt--right .st-opt__key { background: var(--px-success); border-color: var(--px-success); color: var(--px-stock); }
 .st-opt--right .st-opt__mark { opacity: 1; transform: none; color: var(--px-success); }
-.st-opt--wrong { background: rgba(var(--px-red-rgb), .08); }
+.st-opt--wrong { background: var(--px-danger-soft); }
 .st-opt--wrong .st-opt__key { background: var(--px-danger); border-color: var(--px-danger); color: var(--px-stock); }
 .st-opt--wrong .st-opt__mark { opacity: 1; transform: none; color: var(--px-danger); }
-.st-opts--done .st-opt:not(.st-opt--right):not(.st-opt--wrong) { color: var(--px-stock-ink-faint); }
-.st-opts--done .st-opt:not(.st-opt--right):not(.st-opt--wrong) .st-opt__key { color: var(--px-stock-ink-faint); border-color: var(--px-stock-line); }
+.st-opts--done .st-opt:not(.st-opt--right):not(.st-opt--wrong) { color: var(--px-stock-ink-soft); }
+.st-opts--done .st-opt:not(.st-opt--right):not(.st-opt--wrong) .st-opt__key { color: var(--px-stock-ink-soft); border-color: var(--px-stock-line); }
 /* Typed answer: a well on the card. */
 .st-ta { margin: 0 calc(var(--px-space-6) * -1) calc(var(--px-space-2) * -1); border-top: 1px solid var(--px-stock-line); padding: var(--px-space-4) var(--px-space-6) var(--px-space-5); }
 .st-ta__field, .st-ta__line, .st-ta__num { width: 100%; border: 1px solid var(--px-stock-line); border-radius: var(--px-radius-sm); padding: var(--px-space-2) var(--px-space-3); font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-stock-ink); background: var(--px-stock-well); outline: none; box-sizing: border-box; transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease); }
 .st-ta__field { min-height: 96px; resize: none; field-sizing: content; max-height: var(--px-textarea-max-h); }
 .st-ta__field--essay { min-height: 130px; }
-.st-ta__line { height: 40px; }
-.st-ta__num { width: 180px; height: 40px; font-variant-numeric: tabular-nums; }
-.st-ta__field:focus, .st-ta__line:focus, .st-ta__num:focus { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); background: var(--px-stock); }
-.st-ta__field[disabled], .st-ta__line[disabled], .st-ta__num[disabled] { color: var(--px-stock-ink-soft); }
+.st-ta__line { height: var(--px-control-h-lg); }
+.st-ta__num { width: 180px; height: var(--px-control-h-lg); font-variant-numeric: tabular-nums; }
+.st-ta__field::placeholder, .st-ta__line::placeholder, .st-ta__num::placeholder { color: var(--px-stock-ink-soft); opacity: 1; }
+.st-ta__field:focus, .st-ta__line:focus, .st-ta__num:focus { border-color: var(--px-accent); box-shadow: var(--px-ring-accent); background: var(--px-stock); }
+/* His answer once it is in: read only, still legible (never the browser's grey for a disabled field). */
+.st-ta__field[readonly], .st-ta__line[readonly], .st-ta__num[readonly], .st-ta__field[disabled], .st-ta__line[disabled], .st-ta__num[disabled] { color: var(--px-stock-ink-soft); -webkit-text-fill-color: var(--px-stock-ink-soft); opacity: 1; }
+.st-past__typed { font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-stock-ink); white-space: pre-wrap; margin-top: var(--px-space-1); }
 .st-ta__row { display: flex; align-items: center; gap: var(--px-space-2); }
 .st-ta__units { color: var(--px-stock-ink-soft); font-size: var(--px-text-md); }
-.st-ta__hint { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-stock-ink-faint); }
+.st-ta__hint { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-stock-ink-soft); }
 
 /* ── Feedback under the card ────────────────────────────────────────────── */
-.st-fb { margin-top: var(--px-space-4); display: grid; grid-template-columns: 1fr auto; gap: var(--px-space-3) var(--px-space-4); align-items: start; opacity: 0; transform: translateY(6px); transition: opacity var(--px-dur-base) var(--px-ease-out), transform var(--px-dur-base) var(--px-ease-out); pointer-events: none; }
+.st-fb { margin-top: var(--px-space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--px-space-3); align-items: start; opacity: 0; transform: translateY(6px); transition: opacity var(--px-dur-base) var(--px-ease-out), transform var(--px-dur-base) var(--px-ease-out); pointer-events: none; }
 .st-fb--show { opacity: 1; transform: none; pointer-events: auto; }
-.st-fb__verdict { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-base); font-weight: 600; min-height: var(--px-control-h-sm); }
-.st-fb__dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); background: var(--px-text-faint); flex: none; }
+/* The verdict leads: the largest, heaviest line once he has answered; then the reason, the quote, the explanation. */
+.st-fb__verdict { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--px-space-2); font-size: var(--px-text-xl); font-weight: 700; line-height: var(--px-leading-tight); min-height: var(--px-control-h-sm); }
+.st-fb__verdict .st-fb__dot { align-self: center; }
+.st-fb__dot { width: 10px; height: 10px; border-radius: var(--px-radius-full); background: var(--px-text-faint); flex: none; }
 .st-fb--ok .st-fb__verdict { color: var(--px-success); }
 .st-fb--ok .st-fb__dot { background: var(--px-success); }
 .st-fb--no .st-fb__verdict { color: var(--px-danger); }
@@ -5973,42 +6054,51 @@ function injectStyles() {
 .st-fb__grade b { font-weight: 600; color: var(--px-warning); }
 .st-fb--ok .st-fb__grade b { color: var(--px-success); }
 .st-fb--no .st-fb__grade b { color: var(--px-danger); }
-.st-fb__why { grid-column: 1 / -1; font-size: var(--px-text-base); color: var(--px-text-secondary); line-height: var(--px-leading-base); margin-top: calc(var(--px-space-1) * -1); max-width: 70ch; }
+.st-fb__why { grid-column: 1 / -1; font-size: var(--px-text-md); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
 .st-fb__why b, .st-fb__why strong { color: var(--px-text); font-weight: 600; }
 .st-fb__why .px-markdown p { margin: 0; }
-/* The text actions on the verdict line: words, not buttons. */
-.st-fb__acts { grid-column: 2; grid-row: 1; display: flex; gap: var(--px-space-4); align-items: center; justify-self: end; }
-.st-fb__acts .px-btn { height: auto; padding: 0; border: 0; background: none; color: var(--px-text-muted); font-weight: 500; }
+/* The actions under the verdict: small ghost buttons, each led by its icon. */
+.st-fb__acts { display: flex; margin-top: calc(var(--px-space-2) * -1); flex-wrap: wrap; gap: var(--px-space-1) var(--px-space-3); align-items: center; }
+.st-fb__acts .px-btn { height: var(--px-control-h-sm); padding: 0 var(--px-space-1); margin-left: calc(var(--px-space-1) * -1); color: var(--px-text-muted); font-weight: 500; }
 .st-fb__acts .px-btn:hover:not(:disabled) { color: var(--px-text); background: none; }
-.st-fb__acts .px-btn .svg-icon { display: none; }
 /* The anchor quote with the warning-coloured left rule and the page link. */
-.st-quote { grid-column: 1 / -1; display: flex; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-left: 2px solid var(--px-warning); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); font-size: var(--px-text-base); line-height: var(--px-leading-base); color: var(--px-text-secondary); max-width: 70ch; }
+.st-quote { grid-column: 1 / -1; display: flex; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-left: 2px solid var(--px-warning); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text-secondary); }
 .st-quote__text { flex: 1; min-width: 0; }
-.st-quote__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; align-self: flex-start; margin-top: 2px; cursor: pointer; background: none; border: 0; padding: 0; font-weight: 500; }
+.st-quote__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; align-self: flex-start; min-height: var(--px-control-h-sm); cursor: pointer; background: none; border: 0; padding: 0; font-weight: 500; }
 .st-quote__pg:hover { text-decoration: underline; }
 /* Rubric points land one after another: 50 ms apart, --st-i set per row. */
-.st-rub { grid-column: 1 / -1; display: grid; gap: var(--px-space-2); margin-top: calc(var(--px-space-1) * -1); }
-.st-rub__pt { display: flex; align-items: flex-start; gap: var(--px-space-2); font-size: var(--px-text-base); line-height: 1.45; color: var(--px-text-secondary); opacity: 0; transform: translateX(-4px); animation: st-pt-in var(--px-dur-base) var(--px-ease-out) forwards; animation-delay: calc(var(--st-i, 0) * 50ms); }
+.st-rub { grid-column: 1 / -1; display: grid; gap: var(--px-space-2); }
+.st-rub__pt { display: flex; align-items: flex-start; gap: var(--px-space-2); font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text-secondary); opacity: 0; transform: translateX(-4px); animation: st-pt-in var(--px-dur-base) var(--px-ease-out) forwards; animation-delay: calc(var(--st-i, 0) * 50ms); }
 @keyframes st-pt-in { to { opacity: 1; transform: none; } }
 .st-rub__g { flex: none; width: 18px; height: 18px; border-radius: var(--px-radius-sm); display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
 .st-rub__g .svg-icon svg { width: 12px; height: 12px; }
-.st-rub__pt--hit .st-rub__g { background: rgba(var(--px-green-rgb), .18); color: var(--px-success); }
-.st-rub__pt--partial .st-rub__g { background: rgba(var(--px-yellow-rgb), .18); color: var(--px-warning); }
-.st-rub__pt--miss .st-rub__g { background: rgba(var(--px-red-rgb), .18); color: var(--px-danger); }
+.st-rub__pt--hit .st-rub__g { background: color-mix(in srgb, var(--px-success) 15%, transparent); color: var(--px-success); }
+.st-rub__pt--partial .st-rub__g { background: var(--px-warning-soft); color: var(--px-warning); }
+.st-rub__pt--miss .st-rub__g { background: var(--px-danger-soft); color: var(--px-danger); }
 .st-rub__pt--miss { color: var(--px-text); }
 .st-rub__req { font-size: var(--px-text-2xs); color: var(--px-text-faint); margin-left: var(--px-space-1); }
 /* The full answer stays folded; the explanation streams into a block. */
-.st-full { grid-column: 1 / -1; margin-top: 2px; }
-.st-full summary { font-size: var(--px-text-sm); color: var(--px-text-muted); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: var(--px-space-1); }
+.st-full { grid-column: 1 / -1; }
+.st-full summary { font-size: var(--px-text-sm); color: var(--px-text-muted); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: var(--px-space-1); min-height: var(--px-control-h-sm); }
 .st-full summary::-webkit-details-marker { display: none; }
-.st-full__text, .st-explain { margin: var(--px-space-2) 0 0; font-size: var(--px-text-base); line-height: 1.55; color: var(--px-text-secondary); max-width: 70ch; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
+.st-full__text, .st-explain { margin: var(--px-space-2) 0 0; font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text-secondary); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
 .st-explain { grid-column: 1 / -1; margin-top: 0; white-space: pre-wrap; }
 .st-explain .px-markdown { white-space: normal; }
 .st-explain--busy { color: var(--px-text-muted); }
 
 /* ── Controls row ───────────────────────────────────────────────────────── */
-.st-ctl { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; max-width: 760px; margin-top: var(--px-space-5); }
-.st-k { margin-left: var(--px-space-1); opacity: .55; font-size: var(--px-text-xs); font-weight: 400; }
+/* The action row stays where it is from question to question: under the card's scrolling area, one measure wide. */
+.st-foot { flex: none; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-3) var(--px-space-6); border-top: 1px solid var(--px-divider); background: var(--px-bg); }
+.st-ctl { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; max-width: var(--st-measure); }
+.st-ctl__where { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.st-k { margin-left: var(--px-space-1); font-size: var(--px-text-xs); font-weight: 400; }
+/* Editing a question: its wording and answer in two fields where the card was. */
+.st-edit { display: grid; gap: var(--px-space-2); padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
+.st-edit__lab { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.st-edit__field { width: 100%; box-sizing: border-box; min-height: calc(var(--px-control-h-lg) * 2); max-height: var(--px-textarea-max-h); resize: vertical; field-sizing: content; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); color: var(--px-text); font: inherit; font-size: var(--px-text-md); line-height: var(--px-leading-base); outline: none; }
+.st-edit__field:focus { border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
+.st-edit__hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.st-edit__acts { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 
 /* ── Setup sheet: scrim and sheet over the pane ─────────────────────────── */
 .st-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--px-bg) 55%, transparent); animation: st-fade var(--px-dur-base) var(--px-ease-out); }
@@ -6017,7 +6107,7 @@ function injectStyles() {
 @keyframes st-rise { from { opacity: 0; transform: translate(-50%, -50%) translateY(10px) scale(.985); } to { opacity: 1; transform: translate(-50%, -50%); } }
 .st-sheet__hd { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-4) var(--px-space-5) 0; }
 .st-sheet__title { margin: 0; font-size: var(--px-text-md); font-weight: 600; }
-.st-sheet__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-sheet__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-sheet__bd { padding: var(--px-space-4) var(--px-space-5) var(--px-space-5); display: grid; gap: var(--px-space-4); }
 .st-row { display: flex; align-items: center; gap: var(--px-space-3); flex-wrap: wrap; }
 .st-row__lab { width: 64px; flex: none; font-size: var(--px-text-sm); color: var(--px-text-muted); }
@@ -6045,7 +6135,7 @@ function injectStyles() {
 .st-cov-w { background: var(--px-accent); }
 .st-pages { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .st-input { height: var(--px-control-h); width: 72px; padding: 0 var(--px-space-2); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; outline: none; }
-.st-input:focus { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); }
+.st-input:focus { border-color: var(--px-accent); box-shadow: var(--px-ring-accent); }
 .st-selection { padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-left: 2px solid var(--px-accent); border-radius: var(--px-radius-md); background: var(--px-bg-inset); font-size: var(--px-text-sm); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
 .st-sheet__ft { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-5) var(--px-space-4); border-top: 1px solid var(--px-divider); }
 .st-sheet__mdl { min-width: 0; max-width: 100%; color: var(--px-text-secondary); }
@@ -6056,14 +6146,14 @@ function injectStyles() {
 /* ── Generation screen ──────────────────────────────────────────────────── */
 .st-gen { width: 560px; max-width: calc(100% - var(--px-space-8)); margin: calc(var(--px-space-8) + var(--px-space-6)) auto 0; }
 .st-gen__t { font-size: var(--px-text-md); font-weight: 600; }
-.st-gen__s { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; }
+.st-gen__s { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-1); }
 .st-gen__now { font-size: var(--px-text-sm); color: var(--px-text); margin-top: var(--px-space-2); min-height: 1.4em; }
 .st-gen__bar { height: 4px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; margin: var(--px-space-4) 0 var(--px-space-4); }
 .st-gen__bar .st-gen__fill { display: block; height: 100%; width: 0; background: var(--px-accent); border-radius: var(--px-radius-full); transition: width var(--px-dur-slow) var(--px-ease); }
 .st-genline { display: flex; gap: var(--px-space-5); font-size: var(--px-text-base); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .st-genline strong { color: var(--px-text); font-weight: 600; }
 .st-checks { margin-top: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); overflow: hidden; }
-.st-ck { display: flex; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-space-3); font-size: var(--px-text-sm); border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
+.st-ck { display: flex; align-items: center; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-space-3); font-size: var(--px-text-sm); border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
 .st-ck:first-child { border-top: 0; }
 .st-ck__d { width: 7px; height: 7px; border-radius: var(--px-radius-full); background: var(--px-success); flex: none; }
 .st-ck__d--run { background: var(--px-accent); animation: st-pulse calc(var(--px-dur-slow) * 5) var(--px-ease) infinite; }
@@ -6073,7 +6163,7 @@ function injectStyles() {
 .st-gen__acts { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-4); justify-content: flex-end; }
 .st-gen__hint { margin-right: auto; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 /* The making, beside the questions: one line under the session toolbar. */
-.st-making { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; padding: var(--px-space-1) var(--px-space-4); border-bottom: 1px solid var(--px-divider); background: var(--px-bg); font-size: var(--px-text-sm); color: var(--px-text-muted); flex: none; }
+.st-making { display: flex; align-items: center; gap: var(--px-space-3); min-height: var(--px-control-h-lg); padding: var(--px-space-1) var(--px-space-4); border-bottom: 1px solid var(--px-divider); background: var(--px-bg); font-size: var(--px-text-sm); color: var(--px-text-muted); flex: none; }
 .st-making[hidden], .st-making [hidden] { display: none; }
 .st-making__now { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-making__n { color: var(--px-text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -6085,17 +6175,17 @@ function injectStyles() {
 .st-sheet__notice .px-btn--ghost { margin-top: var(--px-space-2); }
 
 /* ── Results ────────────────────────────────────────────────────────────── */
-.st-res { width: 100%; max-width: 760px; margin: 0 auto; animation: st-card-in var(--px-dur-slow) var(--px-ease-out); }
+.st-res { width: 100%; max-width: var(--st-measure); margin: 0 auto; animation: st-card-in var(--px-dur-slow) var(--px-ease-out); }
 .st-res__top { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--px-space-4); padding: var(--px-space-6) 0 var(--px-space-5); border-bottom: 1px solid var(--px-divider); flex-wrap: wrap; }
 /* The one hero number, derived from the top step of the ladder. */
-.st-res__big { font-size: calc(var(--px-text-xl) * 1.8); font-weight: 600; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.st-res__big { font-size: var(--px-text-xl); font-weight: 600; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .st-res__big small { font-size: var(--px-text-lg); color: var(--px-text-muted); font-weight: 500; margin-left: var(--px-space-1); }
 .st-res__under { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-2); }
 .st-res__under b { color: var(--px-text); font-weight: 600; }
 .st-res__acts { display: flex; gap: var(--px-space-2); flex-wrap: wrap; justify-content: flex-end; }
 .st-res__acts .st-faint { margin-left: var(--px-space-1); }
-.st-cov { display: flex; gap: 2px; height: 6px; margin: var(--px-space-5) 0 var(--px-space-2); }
-.st-cov i { flex: 1; border-radius: 2px; background: var(--px-surface-active); }
+.st-cov { display: flex; gap: var(--px-space-1); height: 6px; margin: var(--px-space-5) 0 var(--px-space-2); }
+.st-cov i { flex: 1; border-radius: var(--px-radius-xs); background: var(--px-surface-active); }
 .st-cov i.c { background: var(--px-success); }
 .st-cov i.w { background: var(--px-danger); }
 .st-cov i.n { background: var(--px-surface-active); }
@@ -6108,7 +6198,7 @@ function injectStyles() {
 .st-mrow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-base); }
 .st-mrow:first-of-type { border-top: 0; }
 .st-mrow__c { font-weight: 500; min-width: 0; }
-.st-mrow__c small { display: block; font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; font-weight: 400; }
+.st-mrow__c small { display: block; font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-1); font-weight: 400; }
 .st-mrow__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; font-weight: 500; }
 .st-mrow__pg:hover { text-decoration: underline; }
 .st-mrow__st { display: inline-flex; align-items: center; gap: var(--px-space-1); font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
@@ -6118,10 +6208,10 @@ function injectStyles() {
 .st-res__lhs { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 
 /* ── Review ─────────────────────────────────────────────────────────────── */
-.st-review { width: 100%; max-width: 760px; margin: 0 auto; display: grid; gap: var(--px-space-3); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
+.st-review { width: 100%; max-width: var(--st-measure); margin: 0 auto; display: grid; gap: var(--px-space-3); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
 .st-review__item { padding: var(--px-space-3) 0 var(--px-space-4); border-top: 1px solid var(--px-divider); display: grid; gap: var(--px-space-2); }
 .st-review__item:first-child { border-top: 0; }
-.st-review__stem { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); line-height: 1.4; }
+.st-review__stem { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); line-height: var(--px-leading-tight); }
 .st-review__stem .px-markdown p { margin: 0; }
 .st-review__ans { font-size: var(--px-text-base); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
 .st-review__ans .px-markdown { display: inline; }
@@ -6140,10 +6230,10 @@ function injectStyles() {
 .st-marking { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-4); }
 
 /* ── Learn ──────────────────────────────────────────────────────────────── */
-.st-learn { width: 100%; max-width: 720px; margin: 0 auto; padding-top: var(--px-space-2); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
-.st-learn__h { font-size: var(--px-text-xl); font-weight: 600; line-height: 1.3; margin: var(--px-space-2) 0 var(--px-space-1); }
+.st-learn { width: 100%; max-width: var(--st-measure); margin: 0 auto; padding-top: var(--px-space-2); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
+.st-learn__h { font-size: var(--px-text-xl); font-weight: 600; line-height: var(--px-leading-tight); margin: var(--px-space-2) 0 var(--px-space-1); }
 .st-learn__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-bottom: var(--px-space-5); }
-.st-learn__pt { display: grid; grid-template-columns: 1fr auto; gap: var(--px-space-4); padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-base); line-height: 1.55; color: var(--px-text-secondary); }
+.st-learn__pt { display: grid; grid-template-columns: 1fr auto; gap: var(--px-space-4); padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-text-secondary); }
 .st-learn__pt b { color: var(--px-text); font-weight: 600; }
 .st-learn__pt:hover { color: var(--px-text); }
 .st-learn__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; align-self: start; margin-top: var(--px-space-1); cursor: pointer; background: none; border: 0; padding: 0; font-weight: 500; }
@@ -6160,8 +6250,8 @@ function injectStyles() {
 .st-sb__secl .px-section-label { display: inline-flex; align-items: center; gap: var(--px-space-1); min-width: 0; }
 .st-sb__secl--fold .px-section-label { cursor: pointer; color: var(--px-text-faint); }
 .st-sb__secl--fold .px-section-label:hover { color: var(--px-text-secondary); }
-.st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: 2px; font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
-.st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
+.st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: var(--px-space-1); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
 .st-sb__it:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__it--on { background: var(--px-surface-selected); color: var(--px-text); }
 .st-sb__it .svg-icon { color: var(--px-text-muted); display: inline-flex; }
@@ -6179,6 +6269,9 @@ function injectStyles() {
 .st-sb__bar b { color: var(--px-text); font-weight: 600; }
 .st-sb__bar small { display: block; font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; }
 .st-sb__live { width: 6px; height: 6px; border-radius: var(--px-radius-full); background: var(--px-accent); animation: st-pulse calc(var(--px-dur-slow) * 6) var(--px-ease) infinite; justify-self: center; }
+/* Review rows (Weak Spots, Marked): kit buttons laid out as the rows around them. */
+.st-sb__sec--review .st-sb__nav { display: flex; width: 100%; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); border-radius: 0; color: var(--px-text-secondary); font-weight: 400; }
+.st-sb__nav .px-btn__label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 
@@ -6584,6 +6677,7 @@ function createSidebarView(container) {
     const itemsBySession = new Map();
     for (const s of [...open, ...done]) itemsBySession.set(s.id, (await stListSessionItems(s.id)) || []);
     const banks = (await stListBanks()) || [];
+    const marked = (await stListMarkedQuestions()) || [];
     if (state.disposed) return;
 
     body.innerHTML = '';
@@ -6632,6 +6726,17 @@ function createSidebarView(container) {
       if (!state.selecting) for (const s of p.sections) matSec.appendChild(chapterRow(p.m, s, p.concepts, now));
     }
     body.appendChild(matSec);
+
+    // Review: what to come back to, across every material.
+    const revSec = _api.ui.createBlock(body, 'div', { className: 'st-sb__sec st-sb__sec--review' });
+    sectionLabel(revSec, 'Review', null);
+    _api.ui.createButton(revSec, { id: 'study.side.weakSpots', label: 'Weak Spots', icon: 'target', kind: 'ghost', size: 'sm',
+      title: 'Study Weak Spots: one session over the weakest concepts across every material.', command: 'study.weakSpots' }).classList.add('st-sb__nav');
+    const markedBtn = _api.ui.createButton(revSec, { id: 'study.side.marked', label: 'Marked', icon: 'bookmark', kind: 'ghost', size: 'sm',
+      title: 'Study Marked Questions: the questions you marked to come back to, as one session.', command: 'study.studyMarked' });
+    markedBtn.classList.add('st-sb__nav');
+    markedBtn.setAttribute('aria-label', `Marked, ${marked.length} ${marked.length === 1 ? 'question' : 'questions'}`);
+    _api.ui.createBlock(markedBtn, 'span', { className: 'st-sb__r', text: String(marked.length) });
 
     // Sessions.
     if (open.length || done.length) {
@@ -6910,7 +7015,7 @@ async function renderGenerating(host, route, ctx) {
 
   const gen = stBlock(host, 'div', 'st-gen');
   // A bank is never written to: the screen only bridges the draw.
-  const isBank = scope.kind === 'bank';
+  const isBank = stFixedScope(scope);
   stBlock(gen, 'div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`);
   const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
   const sub = stBlock(gen, 'div', 'st-gen__s');
@@ -7091,6 +7196,263 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 58: WHAT THE PANE READS — rows, scopes, counts and Test marking
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The editor pane's helpers that draw nothing: reading a row whichever shape
+// it comes in, the questions and concepts a session needs, the sheet's
+// counts, and the background marking of a Test. Moved out of 60-pane.js so
+// the screens stay in one file a person can read.
+
+/** A field by its camelCase name, falling back to the snake_case column, so
+ *  the screens read a row whichever shape 20-data.js hands over. */
+function stProp(obj, key, fallback) {
+  if (!obj) return fallback;
+  if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+  const snake = key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+  return obj[snake] !== undefined && obj[snake] !== null ? obj[snake] : fallback;
+}
+
+/** The session's StScope, parsed when it is still JSON. */
+function stSessionScope(session) {
+  const raw = stProp(session, 'scope', null) ?? stProp(session, 'scopeJson', null);
+  if (raw && typeof raw === 'object') return raw;
+  try { return JSON.parse(raw || '{}'); } catch { return {}; }
+}
+
+/** The concepts a scope covers, from the concept list of its materials. */
+function stConceptsInScope(concepts, scope) {
+  const list = concepts || [];
+  if (!scope) return list;
+  if (scope.kind === 'chapter' && Array.isArray(scope.sectionIds) && scope.sectionIds.length) {
+    // As stConceptsForSections: filed under the chapter, or on its pages (a
+    // parent chapter so includes its subsections' concepts).
+    const mids = Array.isArray(scope.materialIds) ? scope.materialIds : [];
+    const from = Number(scope.pageFrom) || 0, to = Number(scope.pageTo) || from;
+    return list.filter((c) => scope.sectionIds.includes(c.sectionId)
+      || (from && c.page >= from && c.page <= to && (!mids.length || mids.includes(c.materialId))));
+  }
+  if ((scope.kind === 'pages' || scope.kind === 'selection') && scope.pageFrom) {
+    const to = scope.pageTo || scope.pageFrom;
+    return list.filter((c) => c.page >= scope.pageFrom && c.page <= to);
+  }
+  if (Array.isArray(scope.materialIds) && scope.materialIds.length) return list.filter((c) => scope.materialIds.includes(c.materialId));
+  return list;
+}
+
+/** The questions a set of session items point at, by id. stListQuestions
+ *  filters by material, so the scope's materials come first and the whole
+ *  table only when an item's question is still missing (a bank question
+ *  not yet mapped to a material). */
+async function stQuestionMap(scope, ids) {
+  const wanted = new Set(ids);
+  const map = new Map();
+  const add = (list) => { for (const q of list || []) if (wanted.has(q.id)) map.set(q.id, q); };
+  const materialIds = scope && Array.isArray(scope.materialIds) && scope.materialIds.length ? scope.materialIds : undefined;
+  add(await stListQuestions({ materialIds, includeHidden: true }));
+  if (map.size < wanted.size && materialIds) add(await stListQuestions({ includeHidden: true }));
+  return map;
+}
+
+/** The concepts a session's screens need: the scope's materials' concepts
+ *  plus every concept its questions point at that lies outside them (a
+ *  bank's concepts live under a hidden material stListMaterials leaves out). */
+async function stSessionConcepts(materialIds, questions) {
+  const list = materialIds && materialIds.length ? ((await stListConcepts({ materialIds })) || []) : [];
+  const have = new Set(list.map((c) => c.id));
+  const missing = [...new Set([...(questions ? questions.values() : [])].map((q) => Number(q && q.conceptId) || 0))].filter((id) => id > 0 && !have.has(id));
+  if (missing.length) list.push(...(((await stListConcepts({ ids: missing })) || []).filter((c) => !have.has(c.id))));
+  return list;
+}
+
+function stFmtK(n) {
+  const v = Number(n) || 0;
+  if (!v) return '';
+  return v >= 1024 ? `${Math.round(v / 1024)}K` : String(v);
+}
+
+/** An error's message as text. */
+function stErrText(err) {
+  return String(err && err.message ? err.message : (err || 'Unknown error'));
+}
+
+/** Text as a sentence: a period added only when it has no closing mark. */
+function stSentence(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  return /[.!?…:]$/.test(t) ? t : `${t}.`;
+}
+
+/** True once an item has an answer in, marked or not (Test's 'answered'). */
+function stItemAnswered(item) {
+  const s = item && item.status;
+  return s === 'right' || s === 'wrong' || s === 'answered';
+}
+
+/** A multiple-choice question answered as typed (Test): the right option is
+ *  the reference answer and, without a rubric, the one point to hit. A copy
+ *  with id 0, so grading never writes a derived rubric back onto it. */
+function stTestQuestion(q) {
+  if (!q || q.format !== 'mc') return q;
+  const options = Array.isArray(q.options) ? q.options : [];
+  const answer = String(options[Number(q.answer)] !== undefined ? options[Number(q.answer)] : (q.answer ?? ''));
+  const rubric = Array.isArray(q.rubric) && q.rubric.length ? q.rubric : [{ text: answer, required: true }];
+  return { ...q, id: 0, format: 'short', answer, rubric };
+}
+
+/** Grade a typed answer. stGradeTyped grades numeric, cloze and formula
+ *  answers mechanically and the rest against the rubric; it returns the
+ *  rubric it marked against, which is the one the points are drawn from. */
+async function stGradeTypedResult(q, text, { modelId = '', numCtx = 0 } = {}) {
+  const g = await stGradeTyped(stTestQuestion(q), text, { modelId, numCtx });
+  const rubric = Array.isArray(g && g.rubric) && g.rubric.length ? g.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+  const rating = g && g.rating != null ? Number(g.rating) : AGAIN;
+  const verdict = g && g.verdict ? g.verdict : null;
+  const label = (g && g.label) || (verdict ? stVerdictLabel(verdict, rubric) : (rating >= GOOD ? 'Correct' : 'Not quite'));
+  return { rating, verdict, label, rubric };
+}
+
+/** The verdict as stored on the item: the points plus the rubric they were
+ *  marked against, the label and the rating, so review shows it as marked. */
+function stStoredVerdict(result) {
+  if (!result || !result.verdict) return null;
+  return { ...result.verdict, rubric: result.rubric, label: result.label, rating: result.rating };
+}
+
+// Test marking runs in the background, one answer at a time (a local model
+// grades better without a queue of parallel calls). Per session: the chain
+// and the promise of every item still being marked, so the results screen
+// can wait for exactly those. Module state, so a pane rebuild loses nothing.
+const _stGrades = new Map(); // sessionId → { chain, pending: Map<itemId, Promise> }
+
+function stGradeStateFor(sessionId) {
+  let g = _stGrades.get(sessionId);
+  if (!g) { g = { chain: Promise.resolve(), pending: new Map() }; _stGrades.set(sessionId, g); }
+  return g;
+}
+
+/** The marking promises still open for a session. */
+function stPendingGrades(sessionId) {
+  const g = _stGrades.get(sessionId);
+  return g ? [...g.pending.values()] : [];
+}
+
+/** Queue one Test answer for marking; returns its promise (never rejects). */
+function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {}) {
+  const g = stGradeStateFor(sessionId);
+  if (g.pending.has(item.id)) return g.pending.get(item.id);
+  const token = stActivation();
+  const job = g.chain
+    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token }))
+    .catch((err) => { if (stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] marking failed:', err); });
+  g.chain = job;
+  g.pending.set(item.id, job);
+  void job.then(() => {
+    g.pending.delete(item.id);
+    if (!g.pending.size && _stGrades.get(sessionId) === g) _stGrades.delete(sessionId);
+  });
+  return job;
+}
+
+/** Mark one recorded Test answer and write it back as Practice would have. */
+async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token = stActivation() }) {
+  // Each wait may end with Study turned off (or off and on again): then the
+  // answer stays as recorded and the next results screen marks it.
+  const live = () => stIsCurrent(token);
+  if (!live()) return;
+  const typed = String(item.typed || '');
+  let result;
+  try {
+    result = await stGradeTypedResult(q, typed, { modelId, numCtx });
+  } catch (err) {
+    if (!live()) return;
+    // Not counted either way: skipped, with the reason kept for review.
+    await stAnswerItem(item.id, { status: 'skipped', verdict: { note: `Could not mark this answer: ${stSentence(stErrText(err))}`, ungraded: true } }, stNow());
+    item.status = 'skipped';
+    bus.emit('session', { sessionId, itemId: item.id, status: 'skipped' });
+    return;
+  }
+  if (!live()) return;
+  const ok = result.rating >= GOOD;
+  const status = ok ? 'right' : 'wrong';
+  const now = stNow();
+  const fmt = item.formatUsed || 'short';
+  await stAnswerItem(item.id, { status, verdict: stStoredVerdict(result) }, now);
+  if (!live()) return;
+  await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId, formatUsed: fmt, correct: ok ? 1 : 0, rating: result.rating, retried: 0 }, now);
+  const concept = Number(q.conceptId) > 0 ? await stGetConcept(q.conceptId) : null;
+  if (!live()) return;
+  if (concept) await stUpdateConcept(stApplyAnswer(concept, { correct: ok, rating: result.rating, formatUsed: fmt, retried: 0 }, now));
+  item.status = status;
+  bus.emit('session', { sessionId, itemId: item.id, status });
+}
+
+/** Results of a Test: queue every recorded answer not yet marked and not in
+ *  the queue (the app closed mid-marking). Returns the open promises. */
+function stEnsureTestGrades(sessionId, items, questions, opts) {
+  const g = _stGrades.get(sessionId);
+  for (const it of items || []) {
+    if (it.status !== 'answered') continue;
+    if (g && g.pending.has(it.id)) continue;
+    const q = questions.get(it.questionId);
+    if (q) stQueueTestGrade(sessionId, it, q, opts);
+  }
+  return stPendingGrades(sessionId);
+}
+
+/** Usable questions in a scope: the pipeline's count when it is there, else
+ *  the scope's materials' questions filtered by the scope (the same rule as
+ *  stSessionNeedsGeneration, so the sheet and the start agree). */
+async function stCountScopeQuestions(scope) {
+  try {
+    if (typeof stScopeQuestionCount === 'function') return Number(await stScopeQuestionCount(scope)) || 0;
+  } catch { /* fall through */ }
+  try {
+    if (scope && scope.kind === 'bank') return ((await stListQuestions({ bankIds: scope.bankIds || [] })) || []).filter((q) => !q.hidden).length;
+    const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
+    const [questions, concepts] = await Promise.all([
+      stListQuestions({ materialIds }),
+      materialIds.length ? stListConcepts({ materialIds }) : Promise.resolve([]),
+    ]);
+    return stQuestionsInScope(questions || [], concepts || [], scope, stNow(), Number(cfg('staleDays', 14)) || 14).length;
+  } catch { return 0; }
+}
+
+/** What the sheet's one count line says: concepts, how many clean, and the questions in the bank or still to make. */
+function stSetupCountText({ mode, concepts, clean, questions, size }) {
+  const prefix = concepts ? `${concepts} ${concepts === 1 ? 'concept' : 'concepts'}, ${clean} clean` : '';
+  if (mode === 'learn') return prefix || 'No concepts yet; Learn maps them first.';
+  const join = (rest) => (prefix ? `${prefix} · ${rest}` : rest);
+  if (questions >= size) return join(`${questions} questions in the bank`);
+  if (questions > 0) return join(`${questions} questions in the bank, ${size - questions} more will be made first`);
+  return prefix ? `${prefix} · no questions yet, ${size} will be made first` : `No questions yet, ${size} will be made first.`;
+}
+
+/** Where a bank's questions came from, in a few words. */
+function stBankOriginText(bank, questions) {
+  if (bank && bank.kind === 'report') return "examiner's report";
+  if (bank && bank.kind === 'provider') return 'from another tool';
+  const counts = new Map();
+  for (const q of questions || []) counts.set(q.origin, (counts.get(q.origin) || 0) + 1);
+  let top = '', n = -1;
+  for (const [k, v] of counts) if (v > n) { top = k; n = v; }
+  if (top === 'exam') return bank && bank.exam ? `${bank.exam}${bank.sitting ? ` ${bank.sitting}` : ''}` : 'past exams';
+  if (top === 'rising-fellow') return 'Rising Fellow';
+  return 'imported';
+}
+
+/** The models api.lm offers and the chat's active one. */
+async function stSheetModels() {
+  let models = [];
+  let activeModel = '';
+  if (_api.lm) {
+    try { models = (await _api.lm.getModels()) || []; } catch { models = []; }
+    try { activeModel = typeof _api.lm.getActiveModel === 'function' ? (_api.lm.getActiveModel() || '') : ''; } catch { activeModel = ''; }
+  }
+  return { models, activeModel };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 60: EDITOR PANE — setup, generation, session, results, review, learn
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -7183,73 +7545,6 @@ function stOpenSetup(partial) {
 
 // ── Small helpers shared by the screens ─────────────────────────────────────
 
-/** A field by its camelCase name, falling back to the snake_case column, so
- *  the screens read a row whichever shape 20-data.js hands over. */
-function stProp(obj, key, fallback) {
-  if (!obj) return fallback;
-  if (obj[key] !== undefined && obj[key] !== null) return obj[key];
-  const snake = key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
-  return obj[snake] !== undefined && obj[snake] !== null ? obj[snake] : fallback;
-}
-
-/** The session's StScope, parsed when it is still JSON. */
-function stSessionScope(session) {
-  const raw = stProp(session, 'scope', null) ?? stProp(session, 'scopeJson', null);
-  if (raw && typeof raw === 'object') return raw;
-  try { return JSON.parse(raw || '{}'); } catch { return {}; }
-}
-
-/** The concepts a scope covers, from the concept list of its materials. */
-function stConceptsInScope(concepts, scope) {
-  const list = concepts || [];
-  if (!scope) return list;
-  if (scope.kind === 'chapter' && Array.isArray(scope.sectionIds) && scope.sectionIds.length) {
-    // As stConceptsForSections: filed under the chapter, or on its pages (a
-    // parent chapter so includes its subsections' concepts).
-    const mids = Array.isArray(scope.materialIds) ? scope.materialIds : [];
-    const from = Number(scope.pageFrom) || 0, to = Number(scope.pageTo) || from;
-    return list.filter((c) => scope.sectionIds.includes(c.sectionId)
-      || (from && c.page >= from && c.page <= to && (!mids.length || mids.includes(c.materialId))));
-  }
-  if ((scope.kind === 'pages' || scope.kind === 'selection') && scope.pageFrom) {
-    const to = scope.pageTo || scope.pageFrom;
-    return list.filter((c) => c.page >= scope.pageFrom && c.page <= to);
-  }
-  if (Array.isArray(scope.materialIds) && scope.materialIds.length) return list.filter((c) => scope.materialIds.includes(c.materialId));
-  return list;
-}
-
-/** The questions a set of session items point at, by id. stListQuestions
- *  filters by material, so the scope's materials come first and the whole
- *  table only when an item's question is still missing (a bank question
- *  not yet mapped to a material). */
-async function stQuestionMap(scope, ids) {
-  const wanted = new Set(ids);
-  const map = new Map();
-  const add = (list) => { for (const q of list || []) if (wanted.has(q.id)) map.set(q.id, q); };
-  const materialIds = scope && Array.isArray(scope.materialIds) && scope.materialIds.length ? scope.materialIds : undefined;
-  add(await stListQuestions({ materialIds, includeHidden: true }));
-  if (map.size < wanted.size && materialIds) add(await stListQuestions({ includeHidden: true }));
-  return map;
-}
-
-/** The concepts a session's screens need: the scope's materials' concepts
- *  plus every concept its questions point at that lies outside them (a
- *  bank's concepts live under a hidden material stListMaterials leaves out). */
-async function stSessionConcepts(materialIds, questions) {
-  const list = materialIds && materialIds.length ? ((await stListConcepts({ materialIds })) || []) : [];
-  const have = new Set(list.map((c) => c.id));
-  const missing = [...new Set([...(questions ? questions.values() : [])].map((q) => Number(q && q.conceptId) || 0))].filter((id) => id > 0 && !have.has(id));
-  if (missing.length) list.push(...(((await stListConcepts({ ids: missing })) || []).filter((c) => !have.has(c.id))));
-  return list;
-}
-
-function stFmtK(n) {
-  const v = Number(n) || 0;
-  if (!v) return '';
-  return v >= 1024 ? `${Math.round(v / 1024)}K` : String(v);
-}
-
 /** Markdown (and LaTeX) through the kit; a text node when the kit is absent. */
 function stMd(text) {
   const s = String(text ?? '');
@@ -7257,18 +7552,6 @@ function stMd(text) {
     if (_api.ui && typeof _api.ui.renderMarkdown === 'function') return _api.ui.renderMarkdown(s);
   } catch { /* fall through */ }
   return document.createTextNode(s);
-}
-
-/** An error's message as text. */
-function stErrText(err) {
-  return String(err && err.message ? err.message : (err || 'Unknown error'));
-}
-
-/** Text as a sentence: a period added only when it has no closing mark. */
-function stSentence(text) {
-  const t = String(text || '').trim();
-  if (!t) return '';
-  return /[.!?…:]$/.test(t) ? t : `${t}.`;
 }
 
 function stSetLabel(btn, text) {
@@ -7386,142 +7669,38 @@ function stBuildScope(st, materials, sections, route) {
 
 // ── Answers and marking shared by the session, results and review ──────────
 
-/** True once an item has an answer in, marked or not (Test's 'answered'). */
-function stItemAnswered(item) {
-  const s = item && item.status;
-  return s === 'right' || s === 'wrong' || s === 'answered';
+/** A registry icon in a span: one of the two elements the kit has no call for. */
+function stIconEl(parent, className, id, size) {
+  const span = stBlock(parent, 'span', className || null);
+  span.innerHTML = icon(id, size);
+  return span;
+}
+
+/** A multi-line text field, declared to the scene: the other element the kit has no call for. */
+function stTextArea(parent, className, value, id, label) {
+  const field = el('textarea', className);
+  field.value = String(value ?? '');
+  stDeclare(field, id, label);
+  field.setAttribute('aria-label', label);
+  if (parent) parent.appendChild(field);
+  return field;
 }
 
 /** The rubric points, hit / partial / miss, landing one after another. */
 function stRubricEl(rubric, points) {
-  const rub = el('div', 'st-rub');
+  const rub = stBlock(null, 'div', 'st-rub');
   // "required" tells points apart; on a rubric where every point is, it would only repeat.
   const mixed = (rubric || []).some((p) => p && p.required) && (rubric || []).some((p) => !(p && p.required));
   (rubric || []).forEach((p, i) => {
     const status = (points && points[i] && points[i].status) || 'miss';
-    const pt = el('div', `st-rub__pt st-rub__pt--${status}`);
+    const pt = stBlock(rub, 'div', `st-rub__pt st-rub__pt--${status}`);
     pt.style.setProperty('--st-i', String(i));
-    const glyph = el('span', 'st-rub__g');
-    glyph.innerHTML = icon(status === 'hit' ? 'check' : status === 'partial' ? 'minus' : 'x', 12);
-    pt.appendChild(glyph);
-    const body = el('span', 'st-rub__text');
+    stIconEl(pt, 'st-rub__g', status === 'hit' ? 'check' : status === 'partial' ? 'minus' : 'x', 12);
+    const body = stBlock(pt, 'span', 'st-rub__text');
     body.appendChild(stMd(p && p.text));
-    if (mixed && p && p.required) body.appendChild(el('span', 'st-rub__req', 'required'));
-    pt.appendChild(body);
-    rub.appendChild(pt);
+    if (mixed && p && p.required) stBlock(body, 'span', 'st-rub__req', 'required');
   });
   return rub;
-}
-
-/** A multiple-choice question answered as typed (Test): the right option is
- *  the reference answer and, without a rubric, the one point to hit. A copy
- *  with id 0, so grading never writes a derived rubric back onto it. */
-function stTestQuestion(q) {
-  if (!q || q.format !== 'mc') return q;
-  const options = Array.isArray(q.options) ? q.options : [];
-  const answer = String(options[Number(q.answer)] !== undefined ? options[Number(q.answer)] : (q.answer ?? ''));
-  const rubric = Array.isArray(q.rubric) && q.rubric.length ? q.rubric : [{ text: answer, required: true }];
-  return { ...q, id: 0, format: 'short', answer, rubric };
-}
-
-/** Grade a typed answer. stGradeTyped grades numeric, cloze and formula
- *  answers mechanically and the rest against the rubric; it returns the
- *  rubric it marked against, which is the one the points are drawn from. */
-async function stGradeTypedResult(q, text, { modelId = '', numCtx = 0 } = {}) {
-  const g = await stGradeTyped(stTestQuestion(q), text, { modelId, numCtx });
-  const rubric = Array.isArray(g && g.rubric) && g.rubric.length ? g.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
-  const rating = g && g.rating != null ? Number(g.rating) : AGAIN;
-  const verdict = g && g.verdict ? g.verdict : null;
-  const label = (g && g.label) || (verdict ? stVerdictLabel(verdict, rubric) : (rating >= GOOD ? 'Correct' : 'Not quite'));
-  return { rating, verdict, label, rubric };
-}
-
-/** The verdict as stored on the item: the points plus the rubric they were
- *  marked against, the label and the rating, so review shows it as marked. */
-function stStoredVerdict(result) {
-  if (!result || !result.verdict) return null;
-  return { ...result.verdict, rubric: result.rubric, label: result.label, rating: result.rating };
-}
-
-// Test marking runs in the background, one answer at a time (a local model
-// grades better without a queue of parallel calls). Per session: the chain
-// and the promise of every item still being marked, so the results screen
-// can wait for exactly those. Module state, so a pane rebuild loses nothing.
-const _stGrades = new Map(); // sessionId → { chain, pending: Map<itemId, Promise> }
-
-function stGradeStateFor(sessionId) {
-  let g = _stGrades.get(sessionId);
-  if (!g) { g = { chain: Promise.resolve(), pending: new Map() }; _stGrades.set(sessionId, g); }
-  return g;
-}
-
-/** The marking promises still open for a session. */
-function stPendingGrades(sessionId) {
-  const g = _stGrades.get(sessionId);
-  return g ? [...g.pending.values()] : [];
-}
-
-/** Queue one Test answer for marking; returns its promise (never rejects). */
-function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {}) {
-  const g = stGradeStateFor(sessionId);
-  if (g.pending.has(item.id)) return g.pending.get(item.id);
-  const token = stActivation();
-  const job = g.chain
-    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token }))
-    .catch((err) => { if (stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] marking failed:', err); });
-  g.chain = job;
-  g.pending.set(item.id, job);
-  void job.then(() => {
-    g.pending.delete(item.id);
-    if (!g.pending.size && _stGrades.get(sessionId) === g) _stGrades.delete(sessionId);
-  });
-  return job;
-}
-
-/** Mark one recorded Test answer and write it back as Practice would have. */
-async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token = stActivation() }) {
-  // Each wait may end with Study turned off (or off and on again): then the
-  // answer stays as recorded and the next results screen marks it.
-  const live = () => stIsCurrent(token);
-  if (!live()) return;
-  const typed = String(item.typed || '');
-  let result;
-  try {
-    result = await stGradeTypedResult(q, typed, { modelId, numCtx });
-  } catch (err) {
-    if (!live()) return;
-    // Not counted either way: skipped, with the reason kept for review.
-    await stAnswerItem(item.id, { status: 'skipped', verdict: { note: `Could not mark this answer: ${stSentence(stErrText(err))}`, ungraded: true } }, stNow());
-    item.status = 'skipped';
-    bus.emit('session', { sessionId, itemId: item.id, status: 'skipped' });
-    return;
-  }
-  if (!live()) return;
-  const ok = result.rating >= GOOD;
-  const status = ok ? 'right' : 'wrong';
-  const now = stNow();
-  const fmt = item.formatUsed || 'short';
-  await stAnswerItem(item.id, { status, verdict: stStoredVerdict(result) }, now);
-  if (!live()) return;
-  await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId, formatUsed: fmt, correct: ok ? 1 : 0, rating: result.rating, retried: 0 }, now);
-  const concept = Number(q.conceptId) > 0 ? await stGetConcept(q.conceptId) : null;
-  if (!live()) return;
-  if (concept) await stUpdateConcept(stApplyAnswer(concept, { correct: ok, rating: result.rating, formatUsed: fmt, retried: 0 }, now));
-  item.status = status;
-  bus.emit('session', { sessionId, itemId: item.id, status });
-}
-
-/** Results of a Test: queue every recorded answer not yet marked and not in
- *  the queue (the app closed mid-marking). Returns the open promises. */
-function stEnsureTestGrades(sessionId, items, questions, opts) {
-  const g = _stGrades.get(sessionId);
-  for (const it of items || []) {
-    if (it.status !== 'answered') continue;
-    if (g && g.pending.has(it.id)) continue;
-    const q = questions.get(it.questionId);
-    if (q) stQueueTestGrade(sessionId, it, q, opts);
-  }
-  return stPendingGrades(sessionId);
 }
 
 /** One answered item in the review layout: the stem, the answer given, the
@@ -7702,58 +7881,6 @@ function createEditorPane(container, input) {
 
 // ── Setup sheet ─────────────────────────────────────────────────────────────
 
-/** Usable questions in a scope: the pipeline's count when it is there, else
- *  the scope's materials' questions filtered by the scope (the same rule as
- *  stSessionNeedsGeneration, so the sheet and the start agree). */
-async function stCountScopeQuestions(scope) {
-  try {
-    if (typeof stScopeQuestionCount === 'function') return Number(await stScopeQuestionCount(scope)) || 0;
-  } catch { /* fall through */ }
-  try {
-    if (scope && scope.kind === 'bank') return ((await stListQuestions({ bankIds: scope.bankIds || [] })) || []).filter((q) => !q.hidden).length;
-    const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
-    const [questions, concepts] = await Promise.all([
-      stListQuestions({ materialIds }),
-      materialIds.length ? stListConcepts({ materialIds }) : Promise.resolve([]),
-    ]);
-    return stQuestionsInScope(questions || [], concepts || [], scope, stNow(), Number(cfg('staleDays', 14)) || 14).length;
-  } catch { return 0; }
-}
-
-/** What the sheet's one count line says (mockup §2, second pass). */
-function stSetupCountText({ mode, concepts, clean, questions, size }) {
-  const prefix = concepts ? `${concepts} ${concepts === 1 ? 'concept' : 'concepts'}, ${clean} clean` : '';
-  if (mode === 'learn') return prefix || 'No concepts yet; Learn maps them first.';
-  const join = (rest) => (prefix ? `${prefix} · ${rest}` : rest);
-  if (questions >= size) return join(`${questions} questions in the bank`);
-  if (questions > 0) return join(`${questions} questions in the bank, ${size - questions} more will be made first`);
-  return prefix ? `${prefix} · no questions yet, ${size} will be made first` : `No questions yet, ${size} will be made first.`;
-}
-
-/** Where a bank's questions came from, in a few words. */
-function stBankOriginText(bank, questions) {
-  if (bank && bank.kind === 'report') return "examiner's report";
-  if (bank && bank.kind === 'provider') return 'from another tool';
-  const counts = new Map();
-  for (const q of questions || []) counts.set(q.origin, (counts.get(q.origin) || 0) + 1);
-  let top = '', n = -1;
-  for (const [k, v] of counts) if (v > n) { top = k; n = v; }
-  if (top === 'exam') return bank && bank.exam ? `${bank.exam}${bank.sitting ? ` ${bank.sitting}` : ''}` : 'past exams';
-  if (top === 'rising-fellow') return 'Rising Fellow';
-  return 'imported';
-}
-
-/** The models api.lm offers and the chat's active one. */
-async function stSheetModels() {
-  let models = [];
-  let activeModel = '';
-  if (_api.lm) {
-    try { models = (await _api.lm.getModels()) || []; } catch { models = []; }
-    try { activeModel = typeof _api.lm.getActiveModel === 'function' ? (_api.lm.getActiveModel() || '') : ''; } catch { activeModel = ''; }
-  }
-  return { models, activeModel };
-}
-
 /** The scrim, the sheet and its header; returns the body to fill. */
 function stSheetFrame(host, ctx, subtitle) {
   host.appendChild(el('div', 'st-scrim'));
@@ -7770,8 +7897,13 @@ function stSheetFrame(host, ctx, subtitle) {
   hd.appendChild(titles);
   _api.ui.createIconButton(hd, { id: 'study.sheet.close', icon: 'x', title: 'Cancel', size: 'sm', onClick: () => void ctx.closeTab() });
   sheet.appendChild(hd);
-  const bd = el('div', 'st-sheet__bd');
-  sheet.appendChild(bd);
+  const bd = stBlock(sheet, 'div', 'st-sheet__bd');
+  // A dialog: it takes the focus when it opens, and Esc closes it (a menu open over it closes first, on its own).
+  sheet.tabIndex = -1;
+  const onKey = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); void ctx.closeTab(); } };
+  host.addEventListener('keydown', onKey);
+  ctx.add({ dispose: () => host.removeEventListener('keydown', onKey) });
+  setTimeout(() => { if (!ctx.disposed() && sheet.isConnected && !sheet.contains(document.activeElement)) sheet.focus(); }, 0);
   return { sheet, bd };
 }
 
@@ -8198,12 +8330,16 @@ async function renderSession(host, route, ctx) {
     meta: `${ST_MODE_LABELS[session.mode] || session.mode} · ${ST_ANSWER_LABELS[answerFormat] || answerFormat}`,
     strand: true, closeTitle: 'End Session', onClose: () => endSession(),
   });
-  const main = el('div', 'st-sess-main');
-  sess.appendChild(main);
-  const qwrap = el('div', 'st-qwrap');
-  main.appendChild(qwrap);
-  const ctl = el('div', 'st-ctl');
-  main.appendChild(ctl);
+  const main = stBlock(sess, 'div', 'st-sess-main');
+  const qwrap = stBlock(main, 'div', 'st-qwrap');
+  // An answered question he went back to (Previous) shows here, the live card kept as it was.
+  const pastWrap = stBlock(main, 'div', 'st-qwrap st-past');
+  // The action row stays in one place from question to question, under the scrolling card.
+  const foot = stBlock(sess, 'div', 'st-foot');
+  const ctl = stBlock(foot, 'div', 'st-ctl');
+  const pastCtl = stBlock(foot, 'div', 'st-ctl');
+  pastWrap.hidden = true;
+  pastCtl.hidden = true;
 
   // ── Timing: seconds while the pane is visible, stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
@@ -8254,6 +8390,38 @@ async function renderSession(host, route, ctx) {
   // cards until Esc closes it.
   const source = { open: false, uri: '' };
 
+  // ── Looking back: what he answered, in the order he answered it ──
+  const history = drawItems.filter((i) => stItemAnswered(i)).sort((a, b) => ((a.answeredAt || 0) - (b.answeredAt || 0)) || ((a.ord || 0) - (b.ord || 0)));
+  const past = { at: -1 };
+  // The last answered item before the one on screen (the card on screen is not "before" itself).
+  const lastPast = () => history.length - 1 - (current && current.answered && history[history.length - 1] === current.item ? 1 : 0);
+  function showPast(k) {
+    const item = history[k];
+    const q = item && questions.get(item.questionId);
+    if (!q) return;
+    past.at = k;
+    pastWrap.replaceChildren();
+    pastCtl.replaceChildren();
+    stPastView(pastWrap, { item, q, concept: concepts.get(q.conceptId) || null, isTest, onSource: () => void stShowSource(q) });
+    stPastControls(pastCtl, { sessionId: session.id, canBack: k > 0, where: `${k + 1} of ${history.length} answered` });
+    qwrap.hidden = true; ctl.hidden = true; pastWrap.hidden = false; pastCtl.hidden = false;
+    ctx.root.focus();
+  }
+  function previous() {
+    if (past.at > 0) showPast(past.at - 1);
+    else if (past.at < 0 && lastPast() >= 0) { if (current && current.saver) current.saver.flush(); showPast(lastPast()); }
+  }
+  function forward() {
+    if (past.at < 0) return;
+    if (past.at < lastPast()) { showPast(past.at + 1); return; }
+    past.at = -1;
+    pastWrap.replaceChildren(); pastCtl.replaceChildren();
+    pastWrap.hidden = true; pastCtl.hidden = true; qwrap.hidden = false; ctl.hidden = false;
+    if (current && current.typedField && !current.answered) current.typedField.focus(); else ctx.root.focus();
+  }
+  const previousButton = () => _api.ui.createButton(ctl, { id: 'study.previousQuestion', label: 'Previous', icon: 'chevron-left', kind: 'ghost',
+    disabled: lastPast() < 0, title: 'Previous (←). The question before, as you answered it; nothing there changes the record.', command: 'study.previousQuestion', args: [session.id] });
+
   // ── Questions that arrive while he answers ──
   // The run puts each question into the session as it is stored and orders
   // the ones still waiting. The pane takes them in without touching the card
@@ -8290,6 +8458,7 @@ async function renderSession(host, route, ctx) {
     paintStrand(0);
     qwrap.replaceChildren();
     ctl.replaceChildren();
+    if (history.length) previousButton();
     _api.ui.createEmptyState(qwrap, {
       headline: making.failed() ? 'No more questions were made.' : 'The next question is being written…',
       hint: 'Every question that is ready has been answered.',
@@ -8312,11 +8481,11 @@ async function renderSession(host, route, ctx) {
     if (fmt === 'mc' && !(Array.isArray(q.options) && q.options.length)) fmt = 'short';
     // Test is Type: a multiple-choice question is answered as a short typed answer.
     if (isTest && fmt === 'mc') fmt = 'short';
-    const cur = { item, q, concept, fmt, answered: false, retried: false, retryBtn: null, chosen: null, explaining: false, busy: false, ungraded: false, typedField: null };
+    const cur = { item, q, concept, fmt, answered: false, retried: false, retryBtn: null, chosen: null, explaining: false, explained: false, busy: false, ungraded: false, typedField: null, editing: false };
     current = cur;
     paintStrand(item.id);
-    qwrap.innerHTML = '';
-    ctl.innerHTML = '';
+    qwrap.replaceChildren();
+    ctl.replaceChildren();
 
     // Eyebrow: the concept; a bank question's origin and what it is graded
     // against; for a session over several materials, the material first.
@@ -8331,11 +8500,13 @@ async function renderSession(host, route, ctx) {
       const origin = stRubricOriginText(q);
       if (origin) { eyebrow.appendChild(el('span', 'st-eyebrow__dot')); eyebrow.appendChild(el('span', 'st-eyebrow__src', origin)); }
     } else {
-      eyebrow.appendChild(el('span', 'st-eyebrow__cpt', concept ? concept.title : (q.originLabel || 'Question')));
+      // The concept's name would give the answer away: it shows once he has answered.
+      cur.cptEl = stBlock(eyebrow, 'span', 'st-eyebrow__cpt', `Question ${drawItems.indexOf(item) + 1}`);
     }
-    const eyeActs = el('span', 'st-eyebrow__acts');
+    const eyeActs = stBlock(eyebrow, 'span', 'st-eyebrow__acts');
+    cur.mark = stMarkToggle(eyeActs, q, { sessionId: session.id });
+    _api.ui.createIconButton(eyeActs, { id: 'study.editQuestion', icon: 'pencil', title: 'Edit Question…', size: 'sm', command: 'study.editQuestion', args: [session.id] });
     _api.ui.createIconButton(eyeActs, { id: 'study.session.hide', icon: 'thumbs-down', title: 'Hide This Question…', size: 'sm', onClick: () => void hideQuestion() });
-    eyebrow.appendChild(eyeActs);
     qwrap.appendChild(eyebrow);
 
     const card = el('div', 'st-card');
@@ -8351,7 +8522,8 @@ async function renderSession(host, route, ctx) {
     qwrap.appendChild(fb);
     cur.fb = fb;
 
-    ctl.appendChild(el('span', 'st-sp'));
+    cur.prevBtn = previousButton();
+    stBlock(ctl, 'span', 'st-sp');
     cur.skipBtn = _api.ui.createButton(ctl, { id: 'study.session.skip',
       label: 'Skip', kind: 'ghost', title: 'Skip (K). Moves this question to the end of the session.',
       disabled: queue.length - index <= 1,
@@ -8425,11 +8597,14 @@ async function renderSession(host, route, ctx) {
       field.placeholder = 'The missing term'; stDeclare(field, 'study.session.answer', 'Answer');
       ta.appendChild(field);
     } else {
-      field = el('textarea', `st-ta__field${fmt === 'essay' ? ' st-ta__field--essay' : ''}`);
-      field.placeholder = 'Write it out before it shows.'; stDeclare(field, 'study.session.answer', 'Answer');
-      ta.appendChild(field);
+      field = stTextArea(ta, `st-ta__field${fmt === 'essay' ? ' st-ta__field--essay' : ''}`, '', 'study.session.answer', 'Answer');
+      field.placeholder = 'Write it out before it shows.';
     }
     field.setAttribute('aria-label', 'Your answer');
+    // What he had typed here before the tab or the app closed; kept as he types.
+    field.value = cur.item.draft || '';
+    cur.saver = stDraftSaver(cur.item);
+    field.addEventListener('input', () => cur.saver.set(field.value));
     const hint = el('div', 'st-ta__hint');
     hint.appendChild(el('span', '', typedHint(q, fmt)));
     const enterWord = isTest ? 'Enter for the next question' : 'Enter to check';
@@ -8452,63 +8627,60 @@ async function renderSession(host, route, ctx) {
     fb.classList.add('st-fb--show');
   }
 
-  function feedbackActs(cur, { retry: withRetry }) {
-    const acts = el('div', 'st-fb__acts');
+  function feedbackActs(cur, { retry: withRetry, overrule = '', regrade = false }) {
+    const acts = stBlock(null, 'div', 'st-fb__acts');
+    if (regrade) cur.regradeBtn = _api.ui.createButton(acts, { id: 'study.gradeAgain', label: 'Grade Again', icon: 'refresh-cw', kind: 'ghost', title: 'Grade Again (G). Your answer is marked again as it stands.', command: 'study.gradeAgain', args: [session.id] });
     if (withRetry) {
-      cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
+      cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', icon: 'rotate-ccw', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
     }
-    _api.ui.createButton(acts, { id: 'study.session.source', label: stSourceLabel(cur.q), kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
-    _api.ui.createButton(acts, { id: 'study.session.explain', label: 'Explain', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
+    // His verdict over the grader's, on a typed answer: the record and the concept follow it.
+    const markAs = overrule === 'right' ? 'study.markAnswerRight' : 'study.markAnswerWrong';
+    if (overrule) _api.ui.createButton(acts, { id: markAs, label: overrule === 'right' ? 'Mark as Right' : 'Mark as Wrong', icon: overrule === 'right' ? 'check' : 'x', kind: 'ghost',
+      title: overrule === 'right' ? 'The grader said wrong; count this answer as right.' : 'The grader said right; count this answer as wrong.', command: markAs, args: [session.id] });
+    _api.ui.createButton(acts, { id: 'study.session.source', label: stSourceLabel(cur.q), icon: 'file-text', kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
+    _api.ui.createButton(acts, { id: 'study.session.explain', label: 'Explain', icon: 'message-square', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
     return acts;
+  }
+
+  /** The verdict line: first on the card once he has answered; the concept's name shows now too. */
+  function verdictLine(cur, fb, okClass, word, grade) {
+    fb.replaceChildren();
+    fb.className = `st-fb${okClass}`;
+    if (cur.cptEl && cur.concept) cur.cptEl.textContent = cur.concept.title;
+    cur.card.classList.add('st-card--answered');
+    const verdict = stBlock(fb, 'div', 'st-fb__verdict');
+    stBlock(verdict, 'span', 'st-fb__dot');
+    stBlock(verdict, 'span', 'st-fb__text', word);
+    if (grade) {
+      const g = stBlock(verdict, 'span', 'st-fb__grade', '· counts as ');
+      stBlock(g, 'strong', '', grade);
+    }
   }
 
   function renderChoiceFeedback(cur, ok, retried) {
     const fb = cur.fb;
-    fb.innerHTML = '';
-    fb.className = `st-fb ${ok ? 'st-fb--ok' : 'st-fb--no'}`;
-    const verdict = el('div', 'st-fb__verdict');
-    verdict.appendChild(el('span', 'st-fb__dot'));
-    verdict.appendChild(el('span', 'st-fb__text', ok ? 'Correct' : 'Not quite'));
-    if (retried) {
-      const g = el('span', 'st-fb__grade');
-      g.appendChild(document.createTextNode('· counts as '));
-      g.appendChild(el('b', '', stRatingWord(AGAIN)));
-      verdict.appendChild(g);
-    }
-    fb.appendChild(verdict);
+    verdictLine(cur, fb, ok ? ' st-fb--ok' : ' st-fb--no', ok ? 'Correct' : 'Not quite', retried ? stRatingWord(AGAIN) : '');
     fb.appendChild(feedbackActs(cur, { retry: !ok && !retried && !isTest }));
-    if (!ok && cur.q.explanation) {
-      const why = el('div', 'st-fb__why');
-      why.appendChild(stMd(cur.q.explanation));
-      fb.appendChild(why);
-    }
+    if (!ok && cur.q.explanation) stBlock(fb, 'div', 'st-fb__why').appendChild(stMd(cur.q.explanation));
     stAppendQuote(fb, cur.q, cur.q.sourceQuote, cur.q.sourcePage, () => void showSource());
     showFeedback(fb);
   }
+
+  /** The answer a typed card is marked against: an mc question's right option, else its answer. */
+  const fullAnswerOf = (q) => (q.format === 'mc' ? stTestQuestion(q).answer : String(q.answer ?? ''));
 
   function renderTypedFeedback(cur, result) {
     const q = cur.q;
     const rubric = Array.isArray(result.rubric) ? result.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
     const ok = result.rating >= GOOD;
     const fb = cur.fb;
-    fb.innerHTML = '';
-    fb.className = `st-fb ${ok ? 'st-fb--ok' : 'st-fb--no'}`;
-    const verdict = el('div', 'st-fb__verdict');
-    verdict.appendChild(el('span', 'st-fb__dot'));
-    verdict.appendChild(el('span', 'st-fb__text', result.label));
-    const g = el('span', 'st-fb__grade');
-    g.appendChild(document.createTextNode('· counts as '));
-    g.appendChild(el('b', '', stRatingWord(result.rating)));
-    verdict.appendChild(g);
-    fb.appendChild(verdict);
-    fb.appendChild(feedbackActs(cur, { retry: false }));
+    verdictLine(cur, fb, ok ? ' st-fb--ok' : ' st-fb--no', result.label, stRatingWord(result.rating));
+    fb.appendChild(feedbackActs(cur, { retry: false, overrule: isTest ? '' : ok ? 'wrong' : 'right' }));
     const points = result.verdict && Array.isArray(result.verdict.points) ? result.verdict.points : [];
     if (result.verdict && rubric.length) fb.appendChild(stRubricEl(rubric, points));
     // The note stays only when it adds to the points (nothing said twice).
     if (result.verdict && result.verdict.note && !stNoteRestatesPoint(result.verdict.note, rubric, points)) {
-      const why = el('div', 'st-fb__why');
-      why.appendChild(stMd(result.verdict.note));
-      fb.appendChild(why);
+      stBlock(fb, 'div', 'st-fb__why').appendChild(stMd(result.verdict.note));
     }
     // The anchor is the line for the missed point when the rubric carries
     // quotes; else the question's own quote.
@@ -8516,15 +8688,14 @@ async function renderSession(host, route, ctx) {
     const missIdx = rubric.findIndex((p, i) => p && p.quote && ((points[i] && points[i].status) || 'miss') !== 'hit');
     if (missIdx >= 0) { quote = rubric[missIdx].quote; page = rubric[missIdx].page || page; }
     stAppendQuote(fb, q, quote, page, () => void showSource());
-    if (q.answer !== undefined && q.answer !== null && String(q.answer) !== '') {
+    const full = fullAnswerOf(q);
+    if (full !== '') {
       const d = el('details', 'st-full');
       const s = el('summary', '');
-      s.innerHTML = icon('chevron-right', 12);
+      stIconEl(s, '', 'chevron-right', 12);
       s.appendChild(document.createTextNode('Full answer'));
       d.appendChild(s);
-      const t = el('div', 'st-full__text');
-      t.appendChild(stMd(String(q.answer)));
-      d.appendChild(t);
+      stBlock(d, 'div', 'st-full__text').appendChild(stMd(full));
       fb.appendChild(d);
     }
     showFeedback(fb);
@@ -8532,17 +8703,10 @@ async function renderSession(host, route, ctx) {
 
   function renderGradeError(cur, err) {
     const fb = cur.fb;
-    fb.innerHTML = '';
-    fb.className = 'st-fb';
-    const verdict = el('div', 'st-fb__verdict');
-    verdict.appendChild(el('span', 'st-fb__dot'));
-    verdict.appendChild(el('span', 'st-fb__text', 'Could not grade this answer'));
-    fb.appendChild(verdict);
-    fb.appendChild(feedbackActs(cur, { retry: false }));
-    fb.appendChild(el('div', 'st-fb__why', `${stSentence(stErrText(err))} The answer is not counted; Next moves on.`));
-    const t = el('div', 'st-full__text');
-    t.appendChild(stMd(String(cur.q.answer || '')));
-    fb.appendChild(t);
+    verdictLine(cur, fb, '', 'Could not grade this answer', '');
+    fb.appendChild(feedbackActs(cur, { retry: false, regrade: true }));
+    stBlock(fb, 'div', 'st-fb__why', `${stSentence(stErrText(err))} Your answer is kept: Grade Again marks it, Next moves on without counting it.`);
+    stBlock(fb, 'div', 'st-full__text').appendChild(stMd(fullAnswerOf(cur.q)));
     stAppendQuote(fb, cur.q, cur.q.sourceQuote, cur.q.sourcePage, () => void showSource());
     showFeedback(fb);
   }
@@ -8552,7 +8716,9 @@ async function renderSession(host, route, ctx) {
     const now = stNow();
     const q = cur.q, fmt = cur.fmt;
     await stAnswerItem(cur.item.id, { status, chosen, typed, verdict, retried, formatUsed: fmt }, now);
-    await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId: session.id, formatUsed: fmt, correct: correct ? 1 : 0, rating, retried }, now);
+    cur.answerId = await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId: session.id, formatUsed: fmt, correct: correct ? 1 : 0, rating, retried }, now);
+    // Where the concept stood before this answer counted: an overrule starts from here.
+    cur.conceptBefore = cur.concept;
     if (cur.concept) {
       const nextConcept = stApplyAnswer(cur.concept, { correct, rating, formatUsed: fmt, retried }, now);
       await stUpdateConcept(nextConcept);
@@ -8560,6 +8726,7 @@ async function renderSession(host, route, ctx) {
       cur.concept = nextConcept;
     }
     Object.assign(cur.item, { status, chosen, typed, verdict, retried, formatUsed: fmt, answeredAt: now });
+    if (!history.includes(cur.item)) history.push(cur.item);
     await stUpdateSession(session.id, { position: Math.max(0, drawItems.indexOf(cur.item)), seconds });
     bus.emit('session', { sessionId: session.id, itemId: cur.item.id, status });
   }
@@ -8621,7 +8788,7 @@ async function renderSession(host, route, ctx) {
    *  time, in the background) and move on. The results screen waits for it. */
   async function recordTest(cur, text) {
     cur.busy = true;
-    cur.typedField.disabled = true;
+    cur.typedField.readOnly = true;
     cur.nextBtn.disabled = true;
     cur.answered = true;
     cur.typed = text;
@@ -8629,6 +8796,7 @@ async function renderSession(host, route, ctx) {
     try {
       await stAnswerItem(cur.item.id, { status: 'answered', chosen: '', typed: text, verdict: null, retried: 0, formatUsed: cur.fmt }, now);
       Object.assign(cur.item, { status: 'answered', typed: text, formatUsed: cur.fmt, answeredAt: now });
+      if (!history.includes(cur.item)) history.push(cur.item);
       await stUpdateSession(session.id, { position: Math.max(0, drawItems.indexOf(cur.item)), seconds });
       bus.emit('session', { sessionId: session.id, itemId: cur.item.id, status: 'answered' });
       stQueueTestGrade(session.id, cur.item, cur.q, { modelId, numCtx });
@@ -8645,7 +8813,8 @@ async function renderSession(host, route, ctx) {
     if (!text) { cur.typedField.focus(); return; }
     if (isTest) { await recordTest(cur, text); return; }
     cur.busy = true;
-    cur.typedField.disabled = true;
+    // Read only, not disabled: his answer stays legible (and selectable) while it is marked.
+    cur.typedField.readOnly = true;
     cur.nextBtn.disabled = true;
     stSetLabel(cur.nextBtn, 'Checking…');
     let result;
@@ -8664,6 +8833,7 @@ async function renderSession(host, route, ctx) {
       return;
     }
     const ok = result.rating >= GOOD;
+    cur.result = result;
     pulseSeg(cur.item.id, ok ? 'ok' : 'no');
     renderTypedFeedback(cur, result);
     try {
@@ -8674,6 +8844,63 @@ async function renderSession(host, route, ctx) {
     cur.nextBtn.disabled = false;
     cur.skipBtn.disabled = true;
     ctx.root.focus();
+  }
+
+  /** Grading failed: his answer is still in the box; mark it again as it stands. */
+  function gradeAgain() {
+    const cur = current;
+    if (!cur || !cur.ungraded || cur.busy) return;
+    cur.ungraded = false;
+    cur.answered = false;
+    cur.fb.classList.remove('st-fb--show');
+    void check();
+  }
+
+  /** His verdict over the grader's (a typed answer only): the item, the answer row and the concept follow. */
+  async function overruleAnswer(to) {
+    const cur = current;
+    if (!cur || !cur.answered || cur.busy || cur.fmt === 'mc' || isTest || !cur.result) return;
+    cur.busy = true;
+    try {
+      const r = await stOverruleAnswer({ sessionId: session.id, item: cur.item, answerId: cur.answerId, before: cur.conceptBefore, fmt: cur.fmt, to, verdict: stStoredVerdict(cur.result) });
+      if (r.concept) { concepts.set(r.concept.id, r.concept); cur.concept = r.concept; }
+      cur.result = { ...cur.result, rating: r.rating, label: r.stored.label };
+      if (current !== cur || ctx.disposed()) return;
+      renderTypedFeedback(cur, cur.result);
+      pulseSeg(cur.item.id, to === 'right' ? 'ok' : 'no');
+    } finally { cur.busy = false; }
+    ctx.root.focus();
+  }
+
+  /** His wording and his answer for the question, kept in the bank; the card shows them at once. */
+  function editQuestion(step) {
+    const cur = current;
+    if (cur && cur.editing && cur.editForm) { if (step === 'save') cur.editForm.submit(); else if (step === 'cancel') cur.editForm.cancel(); return; }
+    if (!cur || cur.busy || cur.editing || step) return;
+    cur.editing = true;
+    if (cur.saver) cur.saver.flush();
+    cur.card.hidden = true;
+    cur.fb.hidden = true;
+    const close = (q2) => {
+      cur.editForm.element.remove();
+      cur.editForm = null;
+      cur.editing = false;
+      if (current !== cur || ctx.disposed()) return;
+      if (q2 && !cur.answered) { renderItem(); return; }
+      if (q2) {
+        cur.card.querySelector('.st-card__q').replaceChildren(stMd(q2.stem));
+        cur.card.querySelectorAll('.st-opt__text').forEach((t, i) => t.replaceChildren(stMd((q2.options || [])[i] ?? '')));
+      }
+      cur.card.hidden = false;
+      cur.fb.hidden = false;
+      if (cur.typedField && !cur.answered) cur.typedField.focus(); else ctx.root.focus();
+    };
+    cur.editForm = stEditForm(qwrap, cur.q, { sessionId: session.id, before: cur.card, onCancel: () => close(null), onSave: async (patch) => {
+      const q2 = await stSaveQuestionEdit(cur.q, patch);
+      questions.set(q2.id, q2);
+      cur.q = q2;
+      close(q2);
+    } });
   }
 
   // ── Source, Explain, Hide, Skip, Next ──
@@ -8697,11 +8924,13 @@ async function renderSession(host, route, ctx) {
 
   async function explain() {
     const cur = current;
-    if (!cur || !cur.answered || cur.explaining) return;
+    // Asked once per card; Enter after it moves on (the pane takes the focus back from the button).
+    if (!cur || !cur.answered || cur.explaining || cur.explained) return;
     cur.explaining = true;
+    ctx.root.focus();
     let block = cur.fb.querySelector('.st-explain');
     if (!block) {
-      block = el('div', 'st-explain');
+      block = stBlock(null, 'div', 'st-explain');
       const quote = cur.fb.querySelector('.st-quote');
       if (quote && quote.nextSibling) cur.fb.insertBefore(block, quote.nextSibling); else cur.fb.appendChild(block);
     }
@@ -8717,8 +8946,8 @@ async function renderSession(host, route, ctx) {
       });
       if (current !== cur) return;
       block.classList.remove('st-explain--busy');
-      block.innerHTML = '';
-      block.appendChild(stMd(String(full || text || 'Nothing to add: the anchor says it.')));
+      block.replaceChildren(stMd(String(full || text || 'Nothing to add: the anchor says it.')));
+      cur.explained = true;
     } catch (err) {
       block.classList.remove('st-explain--busy');
       block.textContent = `Could not explain: ${stSentence(stErrText(err))}`;
@@ -8758,6 +8987,7 @@ async function renderSession(host, route, ctx) {
   }
 
   function leave(cur) {
+    if (cur.saver) cur.saver.flush();
     cur.fb.classList.remove('st-fb--show');
     cur.card.classList.add('st-card--leaving');
     return stAfterAnimation(cur.card, 220);
@@ -8803,9 +9033,19 @@ async function renderSession(host, route, ctx) {
   // ── Keys, scoped to the focusable pane root ──
   const onKey = (e) => {
     const cur = current;
+    const t = e.target;
+    const onControl = !!(t && typeof t.closest === 'function' && t.closest('button, summary, a'));
+    // Looking back: Enter or → goes forward, ← further back, Esc back to the question he was on.
+    if (past.at >= 0) {
+      if (e.key === 'Escape') { e.preventDefault(); past.at = lastPast(); forward(); return; }
+      if ((e.key === 'Enter' || e.key === ' ') && onControl) return;
+      if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); forward(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); previous(); }
+      return;
+    }
     // Waiting for the next question: Esc still asks to end.
     if (!cur) { if (waiting && e.key === 'Escape') { e.preventDefault(); void endSession(); } return; }
-    const t = e.target;
+    if (cur.editing) return; // the form takes its own keys
     const inField = (typeof HTMLInputElement !== 'undefined' && t instanceof HTMLInputElement) || (typeof HTMLTextAreaElement !== 'undefined' && t instanceof HTMLTextAreaElement);
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -8816,8 +9056,9 @@ async function renderSession(host, route, ctx) {
       return;
     }
     if (inField) return;
-    if ((e.key === 'Enter' || e.key === ' ') && t && typeof t.closest === 'function' && t.closest('button, summary, a')) return;
+    if ((e.key === 'Enter' || e.key === ' ') && onControl) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); previous(); return; }
     if (cur.fmt === 'mc' && /^[1-5]$/.test(e.key)) { e.preventDefault(); void choose(Number(e.key) - 1); return; }
     if (e.key === 'Enter') { e.preventDefault(); if (cur.fmt !== 'mc' && !cur.answered) void check(); else void next(); return; }
     const k = String(e.key).toLowerCase();
@@ -8825,9 +9066,17 @@ async function renderSession(host, route, ctx) {
     if (k === 'r') { if (cur.retryBtn) { e.preventDefault(); retry(); } return; }
     if (k === 'e') { if (cur.answered) { e.preventDefault(); void explain(); } return; }
     if (k === 'k') { if (!cur.answered) { e.preventDefault(); void skip(); } return; }
+    if (k === 'm') { e.preventDefault(); void cur.mark.toggle(); return; }
+    if (k === 'g') { if (cur.ungraded) { e.preventDefault(); gradeAgain(); } return; }
   };
   ctx.root.addEventListener('keydown', onKey);
-  ctx.add({ dispose: () => ctx.root.removeEventListener('keydown', onKey) });
+  ctx.add({ dispose: () => { ctx.root.removeEventListener('keydown', onKey); if (current && current.saver) current.saver.flush(); } });
+  // What the session's commands (Previous Question, Mark Question…, Edit Question…) do on this screen.
+  ctx.add(stOfferSessionActions(session.id, ctx.root, {
+    previous, edit: editQuestion, gradeAgain, overrule: (to) => void overruleAnswer(to),
+    next: () => { if (past.at >= 0) forward(); else if (current && current.fmt !== 'mc' && !current.answered) void check(); else void next(); },
+    mark: () => { if (current && current.mark) void current.mark.toggle(); },
+  }));
 
   const making = stMakingStrip(sess, session, ctx, { before: main, size: Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20, onFed: absorb });
   renderItem();
@@ -9157,6 +9406,250 @@ async function renderLearn(host, route, ctx) {
     onClick: () => void stOpenSetup({ materialIds: [material.id], sectionId: section ? section.id : undefined }),
   });
   learn.appendChild(ft);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 65: THE SESSION, HIS TO CORRECT — looking back, marks, edits, his verdict, drafts
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// What renderSession (60-pane.js) draws beside the live card:
+//   - stPastView: an answered question as it was (his answer, the verdict,
+//     the quote), read only: nothing on it writes to the record.
+//   - stMarkToggle: the mark to come back to a question (kept in the
+//     database, so a restart keeps it; the sidebar's Marked studies them).
+//   - stEditForm / stSaveQuestionEdit: his wording and his answer for a
+//     question, kept in the bank.
+//   - stOverruleAnswer: his verdict over the grader's on a typed answer; the
+//     item, the answer row and the concept follow it, the concept from where
+//     it stood before this answer counted.
+//   - stDraftSaver: the half-typed answer, written to the item as he types.
+// Everything here is drawn with the kit (createBlock, kit buttons); the two
+// elements the kit has no call for (a multi-line field, an icon) come from
+// stTextArea and stIconEl in 60-pane.js. Each control runs a command
+// (Previous Question, Mark Question…, Edit Question…, Mark Answer as Right…),
+// so it is in the palette and the keybindings too: the command reaches the
+// session screen it names (its id), or the one he used last.
+
+// ── The session screen's commands ───────────────────────────────────────────
+
+/** Open session screens by session id: what each one's commands do. */
+const _stSessionActions = new Map();
+let _stLastSessionId = 0;
+
+/** A session screen offers its actions to the commands; dispose takes them back. */
+function stOfferSessionActions(sessionId, root, actions) {
+  const entry = { root, actions };
+  _stSessionActions.set(sessionId, entry);
+  _stLastSessionId = sessionId;
+  const mine = () => { _stLastSessionId = sessionId; };
+  root.addEventListener('focusin', mine);
+  return { dispose: () => { root.removeEventListener('focusin', mine); if (_stSessionActions.get(sessionId) === entry) _stSessionActions.delete(sessionId); } };
+}
+
+/** Run one session-screen action: on the session named, else on the one he used last that is still on screen. */
+function stSessionAction(name, sessionId, ...args) {
+  const id = Number(sessionId) || _stLastSessionId;
+  const entry = _stSessionActions.get(id);
+  if (!entry || !entry.root.isConnected || typeof entry.actions[name] !== 'function') return false;
+  entry.actions[name](...args);
+  return true;
+}
+
+function registerSessionCommands(context) {
+  const cmds = [
+    ['study.studyMarked', () => stStudyMarked()],
+    ['study.previousQuestion', (id) => stSessionAction('previous', id)],
+    ['study.nextQuestion', (id) => stSessionAction('next', id)],
+    ['study.markQuestion', (id) => stSessionAction('mark', id)],
+    ['study.editQuestion', (id, step) => stSessionAction('edit', id, step)],
+    ['study.markAnswerRight', (id) => stSessionAction('overrule', id, 'right')],
+    ['study.markAnswerWrong', (id) => stSessionAction('overrule', id, 'wrong')],
+    ['study.gradeAgain', (id) => stSessionAction('gradeAgain', id)],
+  ];
+  for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
+}
+
+/** An answered item as it was, into `host`: the eyebrow, the card with his answer, the verdict below. */
+function stPastView(host, { item, q, concept, isTest, onSource }) {
+  const fmt = item.formatUsed || q.format;
+  const eyebrow = stBlock(host, 'div', 'st-eyebrow');
+  stBlock(eyebrow, 'span', 'st-eyebrow__cpt', q.origin && q.origin !== 'generated' && q.originLabel ? q.originLabel : (concept ? concept.title : 'Question'));
+  stBlock(eyebrow, 'span', 'st-eyebrow__dot');
+  stBlock(eyebrow, 'span', 'st-eyebrow__src', 'Answered earlier · nothing here changes the record');
+  const card = stBlock(host, 'div', 'st-card st-card--answered st-card--past');
+  card.dataset.format = fmt;
+  stBlock(card, 'div', 'st-card__q').appendChild(stMd(q.stem));
+  const options = Array.isArray(q.options) ? q.options : [];
+  const chosen = item.chosen !== '' && item.chosen != null ? Number(item.chosen) : -1;
+  if (fmt === 'mc') {
+    const opts = stBlock(card, 'div', 'st-opts st-opts--done', null);
+    const right = Number(q.answer);
+    options.forEach((text, i) => {
+      const cls = i === right ? ' st-opt--right' : i === chosen ? ' st-opt--wrong' : '';
+      const row = stBlock(opts, 'div', `st-opt${cls}`);
+      stBlock(row, 'span', 'st-opt__key', String(i + 1));
+      stBlock(row, 'span', 'st-opt__text').appendChild(stMd(text));
+      if (cls) stIconEl(row, 'st-opt__mark', i === right ? 'check' : 'x', 16);
+    });
+  } else {
+    const ta = stBlock(card, 'div', 'st-ta');
+    stBlock(ta, 'div', 'st-ta__hint', 'Your answer');
+    stBlock(ta, 'div', 'st-past__typed', item.typed || 'Nothing written down.');
+  }
+  const v = item.verdict && typeof item.verdict === 'object' ? item.verdict : null;
+  const ok = item.status === 'right';
+  const marked = item.status === 'right' || item.status === 'wrong';
+  const fb = stBlock(host, 'div', `st-fb st-fb--show${isTest || !marked ? '' : ok ? ' st-fb--ok' : ' st-fb--no'}`);
+  const verdict = stBlock(fb, 'div', 'st-fb__verdict');
+  stBlock(verdict, 'span', 'st-fb__dot');
+  const word = isTest ? 'Answered; marked at the end' : !marked ? 'Not counted' : fmt === 'mc' ? (ok ? 'Correct' : 'Not quite') : (v && v.label) || (ok ? 'Correct' : 'Not quite');
+  stBlock(verdict, 'span', 'st-fb__text', word);
+  if (item.retried && fmt === 'mc') stBlock(verdict, 'span', 'st-fb__grade', '· retried, counts as Again');
+  if (!isTest && fmt !== 'mc' && v && Array.isArray(v.points)) {
+    const rubric = Array.isArray(v.rubric) && v.rubric.length ? v.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+    if (rubric.length) fb.appendChild(stRubricEl(rubric, v.points));
+  }
+  if (!isTest && fmt === 'mc' && !ok && q.explanation) stBlock(fb, 'div', 'st-fb__why').appendChild(stMd(q.explanation));
+  if (!isTest) stAppendQuote(fb, q, q.sourceQuote, q.sourcePage, onSource);
+  return { card, fb };
+}
+
+/** The controls while looking back: Previous and Next in the action row, and where he is. Their ids
+ *  are their own: the live row's Previous is still in the page, hidden, while these show. */
+function stPastControls(row, { sessionId, canBack, where }) {
+  _api.ui.createButton(row, { id: 'study.past.previous', label: 'Previous', icon: 'chevron-left', kind: 'ghost', disabled: !canBack, title: 'Previous (←). The question before this one.', command: 'study.previousQuestion', args: [sessionId] });
+  stBlock(row, 'span', 'st-ctl__where', where);
+  stBlock(row, 'span', 'st-sp');
+  const next = _api.ui.createButton(row, { id: 'study.past.next', label: 'Next', icon: 'chevron-right', kind: 'primary', title: 'Next (Enter). Back toward the question you were on.', command: 'study.nextQuestion', args: [sessionId] });
+  stBlock(next, 'span', 'st-k', '↵');
+  return next;
+}
+
+/** The mark on a question to come back to it: a toggle in the eyebrow, kept in the database. */
+function stMarkToggle(parent, q, { sessionId, onChange } = {}) {
+  const btn = _api.ui.createIconButton(parent, { id: 'study.markQuestion', icon: q.marked ? 'bookmark-check' : 'bookmark', title: 'Mark to Come Back To (M)', size: 'sm', command: 'study.markQuestion', args: [sessionId] });
+  const paint = () => {
+    btn.setAttribute('aria-pressed', q.marked ? 'true' : 'false');
+    btn.classList.toggle('st-mark--on', !!q.marked);
+    btn.replaceChildren();
+    stIconEl(btn, '', q.marked ? 'bookmark-check' : 'bookmark', 14);
+  };
+  let busy = false;
+  async function toggle() {
+    if (busy) return;
+    busy = true;
+    try {
+      await stSetMarked(q.id, !q.marked);
+      q.marked = !q.marked;
+      paint();
+      if (onChange) onChange(q.marked);
+    } finally { busy = false; }
+  }
+  paint();
+  return { element: btn, toggle };
+}
+
+/** The question's wording and answer as he edits them: two fields, Save and Cancel. Ctrl+Enter saves, Esc cancels. */
+function stEditForm(host, q, { sessionId, before = null, onSave, onCancel }) {
+  const form = stBlock(null, 'div', 'st-edit', null);
+  form.setAttribute('role', 'group');
+  form.setAttribute('aria-label', 'Edit this question');
+  const mc = q.format === 'mc';
+  const answerNow = mc ? String((Array.isArray(q.options) ? q.options[Number(q.answer)] : '') || '') : String(q.answer || '');
+  stBlock(form, 'div', 'st-edit__lab', 'Question');
+  const stem = stTextArea(form, 'st-edit__field', q.stem, 'study.edit.stem', 'Question wording');
+  stBlock(form, 'div', 'st-edit__lab', mc ? 'Right option' : 'Answer');
+  const answer = stTextArea(form, 'st-edit__field', answerNow, 'study.edit.answer', mc ? 'Right option' : 'Answer');
+  stBlock(form, 'div', 'st-edit__hint', mc ? 'The other options stay as they are.' : 'Typed answers are marked against this answer from now on.');
+  const acts = stBlock(form, 'div', 'st-edit__acts');
+  stBlock(acts, 'span', 'st-sp');
+  _api.ui.createButton(acts, { id: 'study.edit.cancel', label: 'Cancel', kind: 'ghost', title: 'Cancel (Esc)', command: 'study.editQuestion', args: [sessionId, 'cancel'] });
+  const save = _api.ui.createButton(acts, { id: 'study.edit.save', label: 'Save', kind: 'primary', title: 'Save (Ctrl+Enter)', command: 'study.editQuestion', args: [sessionId, 'save'] });
+  let saving = false;
+  async function submit() {
+    if (saving) return;
+    const s = String(stem.value || '').trim();
+    const a = String(answer.value || '').trim();
+    if (!s) { stem.focus(); return; }
+    if (!a) { answer.focus(); return; }
+    saving = true;
+    save.disabled = true;
+    try { await onSave({ stem: s, answer: a }); } finally { saving = false; save.disabled = false; }
+  }
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); void submit(); }
+  });
+  host.insertBefore(form, before);
+  queueMicrotask(() => stem.focus());
+  return { element: form, submit: () => void submit(), cancel: () => onCancel() };
+}
+
+/**
+ * His edit of a question, kept in the bank: the wording, and the answer (an
+ * mc question's right option). A changed answer of a typed question drops a
+ * rubric made from the old answer or the source, so the next grading draws
+ * its points from his answer; an examiner's report keeps its rubric.
+ */
+async function stSaveQuestionEdit(q, { stem, answer }) {
+  const next = { ...q, stem: String(stem), edited: true };
+  if (q.format === 'mc') {
+    const options = (Array.isArray(q.options) ? q.options : []).slice();
+    options[Number(q.answer)] = String(answer);
+    next.options = options;
+  } else if (String(answer) !== String(q.answer || '')) {
+    next.answer = String(answer);
+    if (q.rubricOrigin !== 'report') { next.rubric = []; next.rubricOrigin = ''; }
+  }
+  await stUpdateQuestion(next);
+  if (typeof _stTypedRubrics !== 'undefined') _stTypedRubrics.delete(q.id);
+  return next;
+}
+
+/**
+ * His verdict over the grader's on a typed answer. The item, the answer's
+ * row and the concept follow it: the concept is `before` (as it stood before
+ * this answer counted) with his verdict applied, so overruling to right takes
+ * the miss back off. Returns the concept as it now is, or null.
+ */
+async function stOverruleAnswer({ sessionId, item, answerId, before, fmt, to, verdict }) {
+  const ok = to === 'right';
+  const rating = ok ? GOOD : AGAIN;
+  const now = stNow();
+  const stored = { ...(verdict || {}), overruled: to, label: ok ? 'Right, as you marked it' : 'Wrong, as you marked it', rating };
+  await stAnswerItem(item.id, { status: ok ? 'right' : 'wrong', verdict: stored }, now);
+  await stSetAnswerVerdict(answerId, { correct: ok, rating });
+  let concept = null;
+  if (before) {
+    concept = stApplyAnswer(before, { correct: ok, rating, formatUsed: fmt, retried: 0 }, now);
+    await stUpdateConcept(concept);
+  }
+  Object.assign(item, { status: ok ? 'right' : 'wrong', verdict: stored });
+  bus.emit('session', { sessionId, itemId: item.id, status: item.status });
+  return { concept, stored, rating };
+}
+
+/** The half-typed answer on an item, written a moment after he stops typing, and at once on flush. */
+function stDraftSaver(item) {
+  let timer = 0;
+  let pending = null;
+  const write = () => {
+    clearTimeout(timer);
+    timer = 0;
+    if (pending === null) return;
+    const text = pending;
+    pending = null;
+    stSaveDraft(item.id, text).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] draft not saved:', err); });
+  };
+  return {
+    set(text) {
+      item.draft = String(text || '');
+      pending = item.draft;
+      clearTimeout(timer);
+      timer = setTimeout(write, 300);
+    },
+    flush: write,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -9519,7 +10012,7 @@ async function stSessionNeedsGeneration(session) {
   // A bank is never generated into, but its short and essay questions get a
   // rubric from their answer when first drawn: that model work goes through
   // the generating screen too, never invisibly.
-  if (scope.kind === 'bank') {
+  if (stFixedScope(scope)) {
     if (typeof stScopeStats !== 'function') return false;
     const stats = await stScopeStats(scope);
     return (Number(stats && stats.needsRubric) || 0) > 0;
@@ -9931,7 +10424,7 @@ async function stCmdWeakSpots() {
   // Nothing weak or stale yet: no empty session, and no "nothing passed the
   // checks", which would be untrue.
   if (!(await stScopeConcepts(scope)).length) {
-    await _api.window.showInformationMessage('No weak spots yet: every concept you have answered is clean.');
+    await _api.window.showInformationMessage(await stNoWeakSpotsText());
     return null;
   }
   return stStartOrSay({
@@ -10440,6 +10933,7 @@ export async function activate(api, context) {
   );
 
   registerCommands(owned);
+  registerSessionCommands(owned);
   registerSelectionAction(owned, 0, token);
   registerQuestionProviders(owned, 0, token);
   registerRatingListener(owned, token);
@@ -10464,6 +10958,7 @@ export async function deactivate() {
   stCancelRuns();
   stClearRetryTimers();
   _stGrades.clear();
+  _stSessionActions.clear();
   bus.clear();
   if (typeof document !== 'undefined' && document.getElementById) {
     const style = document.getElementById('study-styles');

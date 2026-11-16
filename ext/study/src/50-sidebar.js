@@ -359,6 +359,7 @@ function createSidebarView(container) {
     const itemsBySession = new Map();
     for (const s of [...open, ...done]) itemsBySession.set(s.id, (await stListSessionItems(s.id)) || []);
     const banks = (await stListBanks()) || [];
+    const marked = (await stListMarkedQuestions()) || [];
     if (state.disposed) return;
 
     body.innerHTML = '';
@@ -407,6 +408,17 @@ function createSidebarView(container) {
       if (!state.selecting) for (const s of p.sections) matSec.appendChild(chapterRow(p.m, s, p.concepts, now));
     }
     body.appendChild(matSec);
+
+    // Review: what to come back to, across every material.
+    const revSec = _api.ui.createBlock(body, 'div', { className: 'st-sb__sec st-sb__sec--review' });
+    sectionLabel(revSec, 'Review', null);
+    _api.ui.createButton(revSec, { id: 'study.side.weakSpots', label: 'Weak Spots', icon: 'target', kind: 'ghost', size: 'sm',
+      title: 'Study Weak Spots: one session over the weakest concepts across every material.', command: 'study.weakSpots' }).classList.add('st-sb__nav');
+    const markedBtn = _api.ui.createButton(revSec, { id: 'study.side.marked', label: 'Marked', icon: 'bookmark', kind: 'ghost', size: 'sm',
+      title: 'Study Marked Questions: the questions you marked to come back to, as one session.', command: 'study.studyMarked' });
+    markedBtn.classList.add('st-sb__nav');
+    markedBtn.setAttribute('aria-label', `Marked, ${marked.length} ${marked.length === 1 ? 'question' : 'questions'}`);
+    _api.ui.createBlock(markedBtn, 'span', { className: 'st-sb__r', text: String(marked.length) });
 
     // Sessions.
     if (open.length || done.length) {

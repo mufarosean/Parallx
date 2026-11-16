@@ -358,7 +358,7 @@ async function stSessionNeedsGeneration(session) {
   // A bank is never generated into, but its short and essay questions get a
   // rubric from their answer when first drawn: that model work goes through
   // the generating screen too, never invisibly.
-  if (scope.kind === 'bank') {
+  if (stFixedScope(scope)) {
     if (typeof stScopeStats !== 'function') return false;
     const stats = await stScopeStats(scope);
     return (Number(stats && stats.needsRubric) || 0) > 0;
@@ -770,7 +770,7 @@ async function stCmdWeakSpots() {
   // Nothing weak or stale yet: no empty session, and no "nothing passed the
   // checks", which would be untrue.
   if (!(await stScopeConcepts(scope)).length) {
-    await _api.window.showInformationMessage('No weak spots yet: every concept you have answered is clean.');
+    await _api.window.showInformationMessage(await stNoWeakSpotsText());
     return null;
   }
   return stStartOrSay({

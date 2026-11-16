@@ -363,7 +363,7 @@ async function stFillSession(session, { token = null, onProgress = null, onFed =
   const heldBefore = before.filter((i) => (Number(i.draw) || 0) === draw).length;
   const start = await stScopePool(scope);
   const told = (held) => { if (onFed) { try { onFed(held); } catch { /* listener error is not ours */ } } };
-  if (scope.kind === 'bank' || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
+  if (stFixedScope(scope) || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
     const drawn = await stNextDraw(session, { token, onProgress });
     told(drawn.length);
     return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0 };

@@ -902,7 +902,7 @@ describe('Study end to end', () => {
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(10); // the eight, and Stop Making Questions and Make Questions Again
+    expect(MANIFEST_COMMANDS.length).toBe(18); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, and the session screen's seven (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again)
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.
@@ -1402,7 +1402,9 @@ describe('Study end to end', () => {
     expect(card.dataset.format).toBe('mc');
     const first = currentQuestion(h);
     const concept = pre.find((c) => c.id === first.concept_id)!;
-    expect(text(q(h, '.st-eyebrow__cpt'))).toBe(concept.title);
+    // Before he answers, the eyebrow does not name the concept (it would give the answer away).
+    expect(text(q(h, '.st-eyebrow__cpt'))).toBe('Question 1');
+    expect(text(q(h, '.st-root'))).not.toContain(concept.title);
     expect(q<HTMLButtonElement>(h, 'button[title^="Hide This Question"]')!.title).toBe('Hide This Question…');
     expect(qa(h, '.st-opt .st-opt__key').map(text)).toEqual(['1', '2', '3', '4']);
     expect(qa(h, '.st-opt .st-opt__text').map(text)).toEqual(JSON.parse(first.options_json));
@@ -1420,6 +1422,8 @@ describe('Study end to end', () => {
     const fb = q(h, '.st-fb')!;
     expect(fb.classList.contains('st-fb--no')).toBe(true);
     expect(text(q(fb, '.st-fb__text'))).toBe('Not quite');
+    // Answered: now the eyebrow names the concept.
+    expect(text(q(h, '.st-eyebrow__cpt'))).toBe(concept.title);
     expect(text(q(fb, '.st-fb__why'))).toBe(first.explanation);
     expect(text(q(fb, '.st-quote__text'))).toBe(`“${first.source_quote}”`);
     expect(text(q(fb, '.st-quote__pg'))).toBe(`p. ${first.source_page} ↗`);
@@ -1864,7 +1868,9 @@ describe('Study end to end', () => {
     // Its rubric, reduced from the answer, is all required: no point says so.
     expect(qa(h, '.st-rub__pt').length).toBeGreaterThan(0);
     expect(qa(h, '.st-rub__req').length).toBe(0);
-    expect(qa(h, '.st-fb__acts button').map(text)).toEqual(['Show Source', 'Explain']);
+    // A typed answer offers his verdict over the grader's: the one the grader did not give.
+    const gradedRight = q(h, '.st-fb')!.classList.contains('st-fb--ok');
+    expect(qa(h, '.st-fb__acts button').map(text)).toEqual([gradedRight ? 'Mark as Wrong' : 'Mark as Right', 'Show Source', 'Explain']);
     // Explain works without a quotation: it gets the model answer and the
     // marking points instead, and is never told the quote is missing.
     btn(h, 'Explain')!.click();
@@ -2065,7 +2071,9 @@ describe('Study end to end', () => {
     // What the card shows.
     expect(text(q(h, '.st-sess-tb__scope'))).toBe(`${label} · Practice · Mixed`);
     expect(qa(h, '.st-strand i').length).toBe(2);
-    expect(text(q(h, '.st-eyebrow__cpt'))).toBe(CONCEPTS[3].title);
+    // The card is on the selection's concept, not named until he answers.
+    expect(currentQuestion(h).concept_id).toBe(concepts[0].id);
+    expect(text(q(h, '.st-eyebrow__cpt'))).toBe('Question 1');
     await answerDraw(h);
     await waitFor(() => q(h, '.st-res'), 'results');
     expect(text(q(h, '.st-res__big small'))).toBe('of 2');
@@ -2107,15 +2115,22 @@ describe('Study end to end', () => {
     await exec('study.weakSpots');
     expect(env.calls.info.at(-1)).toBe('Add a material first.');
 
-    // A chapter's bank, the session ended unanswered: nothing is weak yet.
+    // A chapter's bank, the session ended unanswered: nothing is answered
+    // yet, and it says so (not that everything is clean).
     const s0 = await startChapterSession();
     env.confirm = true;
     key(s0.h, 'Escape');
     await waitFor(() => q(s0.h, '.st-res'), 'results');
     const opened = env.calls.openEditor.length;
     await exec('study.weakSpots');
-    expect(env.calls.info.at(-1)).toBe('No weak spots yet: every concept you have answered is clean.');
+    expect(env.calls.info.at(-1)).toBe('Nothing answered yet: answer some questions first, and the concepts you miss show up here.');
+    expect(env.calls.info.at(-1)).not.toMatch(/clean/);
     expect(one('SELECT COUNT(*) AS n FROM st_sessions').n).toBe(1);
+    expect(env.calls.openEditor.length).toBe(opened);
+    // Answered, and nothing answered is weak: then it says everything answered is clean.
+    env.db.raw().prepare('UPDATE st_concepts SET mastery = 0.95, answers = 1, misses = 0, right_choose_at = ?, right_type_at = ?, last_answered_at = ? WHERE title = ?').run(Date.now(), Date.now(), Date.now(), CH3_TITLES[2]);
+    await exec('study.weakSpots');
+    expect(env.calls.info.at(-1)).toBe('No weak spots yet: every concept you have answered is clean.');
     expect(env.calls.openEditor.length).toBe(opened);
 
     // Mastery as answers leave it: two weak at different depths, one clean,
@@ -2166,8 +2181,9 @@ describe('Study end to end', () => {
     expect(drawn).toEqual([...order, ...order]);
     expect(drawn).not.toContain(id(CH3_TITLES[2]));
 
-    // What it says: the scope once, the mode once.
-    expect(text(q(h, '.st-eyebrow__cpt'))).toBe(CH3_TITLES[1]);
+    // What it says: the scope once, the mode once; the weakest concept first, not named until he answers.
+    expect(currentQuestion(h).concept_id).toBe(id(CH3_TITLES[1]));
+    expect(text(q(h, '.st-eyebrow__cpt'))).toBe('Question 1');
     expect(text(q(h, '.st-sess-tb__scope'))).toBe('All materials · Weak Spots · Mixed');
     expect(env.calls.openEditor.at(-1)).toMatchObject({ instanceId: tab, title: 'Study · All materials' });
     const row = await waitFor(() => qa(sb, '.st-sb__it--session').find((r) => r.dataset.sessionId === String(sessionId)), 'its sidebar row');

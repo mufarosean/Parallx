@@ -234,7 +234,7 @@ async function renderGenerating(host, route, ctx) {
 
   const gen = stBlock(host, 'div', 'st-gen');
   // A bank is never written to: the screen only bridges the draw.
-  const isBank = scope.kind === 'bank';
+  const isBank = stFixedScope(scope);
   stBlock(gen, 'div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`);
   const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
   const sub = stBlock(gen, 'div', 'st-gen__s');

@@ -292,13 +292,21 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workspace.importConfig` | Workspace: Import Configuration | settings |  |  |  |
 | `workspace.resetConfig` | Workspace: Reset Configuration | settings |  |  |  |
 | `study.addMaterial` | Add Material… | study | Study |  |  |
+| `study.editQuestion` | Edit Question… | study | Study |  |  |
+| `study.gradeAgain` | Grade Answer Again | study | Study |  |  |
 | `study.importQuestions` | Import Questions… | study | Study |  |  |
 | `study.importReport` | Import Examiner's Report… | study | Study |  |  |
 | `study.makeAgain` | Make Questions Again | study | Study |  |  |
+| `study.markAnswerRight` | Mark Answer as Right | study | Study |  |  |
+| `study.markAnswerWrong` | Mark Answer as Wrong | study | Study |  |  |
+| `study.markQuestion` | Mark Question to Come Back To | study | Study |  |  |
+| `study.nextQuestion` | Next Question | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
+| `study.previousQuestion` | Previous Question | study | Study |  |  |
 | `study.quizSelection` | Quiz This Selection | study | Study |  |  |
 | `study.stopMaking` | Stop Making Questions | study | Study |  |  |
 | `study.studyDocument` | Study This Document… | study | Study |  |  |
+| `study.studyMarked` | Study Marked Questions | study | Study |  |  |
 | `study.studyTogether` | Study Materials Together… | study | Study |  |  |
 | `study.weakSpots` | Study Weak Spots | study | Study |  |  |
 | `terminal.clear` | Terminal: Clear | terminal |  |  |  |
