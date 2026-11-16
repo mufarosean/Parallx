@@ -8892,12 +8892,15 @@ async function renderSession(host, route, ctx) {
     if (!cur || cur.busy || cur.editing || step) return;
     cur.editing = true;
     if (cur.saver) cur.saver.flush();
+    // The form is the one thing to act on while it is open: the card and the action row step aside.
     cur.card.hidden = true;
     cur.fb.hidden = true;
+    ctl.hidden = true;
     const close = (q2) => {
       cur.editForm.element.remove();
       cur.editForm = null;
       cur.editing = false;
+      ctl.hidden = past.at >= 0;
       if (current !== cur || ctx.disposed()) return;
       if (q2 && !cur.answered) { renderItem(); return; }
       if (q2) {
