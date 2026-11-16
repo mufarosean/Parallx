@@ -1881,10 +1881,11 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     // 1. Map the unit when it has not been mapped. A map the model never
     // answered readably leaves the unit unmapped: this run goes on without
     // it, and the next start asks again.
+    if (unit.unreadable) { finish(unit); return; }
     if (!unit.mapped) {
       const readable = await stMapUnit(unit, scope, { modelId: model, numCtx, token, onProgress: innerFor(unit), sessionId });
       if (cancelled()) return;
-      if (!readable) { result.unreadable += 1; finish(unit); return; }
+      if (!readable) { result.unreadable += 1; unit.unreadable = true; finish(unit); return; }
       unit.mapped = true;
     }
     // 2. One generation call for the unit's concepts.

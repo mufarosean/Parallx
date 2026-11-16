@@ -888,6 +888,7 @@ const STUDY_NAMES = [
   'stLogAnswer', 'stListAnswers', 'stListBanks', 'stImportQuestionFile', 'stImportExaminerReport', 'stSyncProviders',
   'stEnsureBank', 'stNextDraw', 'stGenerateQuestions', 'stGradeTyped', 'stScopeQuestionCount', 'stScopeStats', 'stScopeConcepts',
   'stRunNumericCheck', 'stNumericSolutionSafe', 'stNumericScript', 'ST_NUMERIC_WRAPPER',
+  'stListFrom', 'stInterleaveConcepts', 'stUnitMapped', 'stFillSession', 'stPlanFor', 'stRequireModel', 'stIsNoModel', 'stStartSession', 'stMarkSectionMapped',
 ];
 
 type Study = Record<string, any>;
@@ -972,7 +973,7 @@ function paperPages(titles: string[], { headings = true } = {}) {
 function harness(opts: { conf?: Record<string, unknown>; sql?: DatabaseSync; pdfs?: Record<string, any>; files?: Record<string, string>; model?: (s: string, u: string) => string } = {}) {
   const S = loadStudy();
   const sql = opts.sql || (() => { const d = new DatabaseSync(':memory:'); d.exec('PRAGMA foreign_keys = ON'); d.exec(MIGRATION); return d; })();
-  const calls: { system: string; user: string }[] = [];
+  const calls: { system: string; user: string; options?: Record<string, unknown> }[] = [];
   const conf = { checkNumeric: false, ...(opts.conf || {}) };
   const model = opts.model || scriptedModel;
   const fsLog: { writes: string[]; deletes: string[]; written: Record<string, string> } = { writes: [], deletes: [], written: {} };
@@ -993,10 +994,10 @@ function harness(opts: { conf?: Record<string, unknown>; sql?: DatabaseSync; pdf
       getActiveModel: async () => 'fake-model',
       getModels: async () => [{ id: 'fake-model' }],
       getModelInfo: async () => ({ contextLength: 32768 }),
-      sendChatRequest: (_m: string, messages: { role: string; content: string }[]) => {
+      sendChatRequest: (_m: string, messages: { role: string; content: string }[], options?: Record<string, unknown>) => {
         const system = messages[0].content;
         const user = messages[1].content;
-        calls.push({ system, user });
+        calls.push({ system, user, options: { ...(options || {}) } });
         const out = model(system, user);
         return (async function* () { yield { content: out }; })();
       },
@@ -1536,3 +1537,239 @@ describe('the repeat line says exactly what is left', () => {
     expect(t.stRepeatLineText(4)).toBe('Only 4 questions here are still unasked; Refresh adds repeats, missed first.');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// A session that fills as its questions are made (35-making.js)
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('a reply that must hold a list', () => {
+  const S = loadStudy();
+  it('reads the list in an object, a bare list, and the readable part of one cut off', () => {
+    expect(S.stListFrom('{"concepts": [{"title": "a"}]}')).toEqual([{ title: 'a' }]);
+    expect(S.stListFrom('```json\n[{"title": "a"}, {"title": "b"}]\n```')).toEqual([{ title: 'a' }, { title: 'b' }]);
+    expect(S.stListFrom('{"questions": [{"stem": "one"}, {"stem": "tw')).toEqual([{ stem: 'one' }]);
+    // The model says there is nothing: that is an answer, and an empty one.
+    expect(S.stListFrom('{"concepts": []}')).toEqual([]);
+  });
+  it('says null for prose, for JSON cut off before anything could be read, for an object with no list, and for nothing', () => {
+    expect(S.stListFrom('Sure! Here are the things you asked for. First, the Cape Cod method is a reserving method.')).toBeNull();
+    expect(S.stListFrom('{"concepts":[{"title":"Idea 7a: cape cod met')).toBeNull();
+    expect(S.stListFrom('{"error": "I cannot do that"}')).toBeNull();
+    expect(S.stListFrom('')).toBeNull();
+  });
+});
+
+describe('stInterleaveConcepts: the order of questions that join a draw under way', () => {
+  const S = loadStudy();
+  const concept = (id: number, extra: Record<string, unknown> = {}) => ({ id, materialId: 1, mastery: 0, answers: 0, misses: 0, lastAnsweredAt: 0, rightChooseAt: 0, rightTypeAt: 0, ...extra });
+  const question = (id: number, conceptId: number, format = 'mc', materialId = 1) => ({ id, conceptId, format, materialId });
+  const pairs = (order: { conceptId: number }[]) => order.filter((q, i) => i > 0 && q.conceptId === order[i - 1].conceptId).length;
+
+  it('as they arrive from the making (one concept at a time), no two in a row share a concept', () => {
+    // Four concepts, each with a choice and a typed question, written concept by concept, twice over.
+    const qs: any[] = [];
+    let id = 1;
+    for (let round = 0; round < 2; round++) for (const c of [1, 2, 3, 4]) { qs.push(question(id++, c, 'mc')); qs.push(question(id++, c, 'short')); }
+    const order = S.stInterleaveConcepts(qs, { concepts: [1, 2, 3, 4].map((c) => concept(c)) });
+    expect(order).toHaveLength(16);
+    expect(new Set(order.map((q: any) => q.id)).size).toBe(16);
+    expect(pairs(order)).toBe(0);
+    // One question a concept each round, in the same order every round.
+    expect(order.map((q: any) => q.conceptId)).toEqual([1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]);
+    // A concept new to him gives its choice question first (Mixed).
+    expect(order.slice(0, 4).every((q: any) => q.format === 'mc')).toBe(true);
+  });
+
+  it('a concept with more questions than the others is spread out, not left to the end', () => {
+    // 4 + 4 + 4 + 6: rounds alone would end on concept 4 twice.
+    const qs: any[] = [];
+    let id = 1;
+    for (const [c, n] of [[1, 4], [2, 4], [3, 4], [4, 6]]) for (let k = 0; k < n; k++) qs.push(question(id++, c, k % 2 ? 'short' : 'mc'));
+    const order = S.stInterleaveConcepts(qs, { concepts: [1, 2, 3, 4].map((c) => concept(c)) });
+    expect(order).toHaveLength(18);
+    expect(pairs(order)).toBe(0);
+    // Half of everything on one concept can still alternate; more than half cannot, and then the pairs are as few as can be.
+    const half = [question(1, 1), question(2, 1), question(3, 1), question(4, 2), question(5, 3)];
+    expect(S.stInterleaveConcepts(half, { concepts: [1, 2, 3].map((c) => concept(c)) }).map((q: any) => q.conceptId)).toEqual([1, 2, 1, 3, 1]);
+    const most = [question(1, 1), question(2, 1), question(3, 1), question(4, 2)];
+    expect(pairs(S.stInterleaveConcepts(most, { concepts: [1, 2].map((c) => concept(c)) }))).toBe(1);
+  });
+
+  it('the question on screen counts: what follows is not on its concept, and its concept has had its turn', () => {
+    const qs = [question(2, 1, 'short'), question(3, 2), question(4, 2, 'short')];
+    const order = S.stInterleaveConcepts(qs, { placed: [question(1, 1)], concepts: [concept(1), concept(2)] });
+    expect(order.map((q: any) => q.id)).toEqual([3, 2, 4]);
+  });
+
+  it('keeps the draw\'s order of need: the weakest concept first, then the weak, then the stale', () => {
+    const now = 100 * DAY;
+    const weakest = concept(1, { mastery: 0.1, answers: 3, misses: 1, lastAnsweredAt: now - 60_000 });
+    const weak = concept(2, { mastery: 0.4, answers: 2, misses: 1, lastAnsweredAt: now - 60_000 });
+    const stale = concept(3, { mastery: 0.9, answers: 4, lastAnsweredAt: now - 30 * DAY });
+    const qs = [question(1, 3), question(2, 3, 'short'), question(3, 2), question(4, 2, 'short'), question(5, 1), question(6, 1, 'short')];
+    const order = S.stInterleaveConcepts(qs, { concepts: [stale, weak, weakest], now, staleDays: 14 });
+    expect(order.map((q: any) => q.conceptId)).toEqual([1, 2, 3, 1, 2, 3]);
+  });
+
+  it('with several materials, no two in a row share a material while another has a turn', () => {
+    const qs = [question(1, 1, 'mc', 1), question(2, 2, 'mc', 1), question(3, 3, 'mc', 2), question(4, 4, 'mc', 2)];
+    const order = S.stInterleaveConcepts(qs, { concepts: [concept(1), concept(2), concept(3, { materialId: 2 }), concept(4, { materialId: 2 })] });
+    expect(order.map((q: any) => q.materialId)).toEqual([1, 2, 1, 2]);
+    expect(S.stInterleaveConcepts([], {})).toEqual([]);
+  });
+});
+
+describe('stFillSession: the session holds each question the moment it is ready', () => {
+  const scopeOf = (m: any) => ({ kind: 'document', materialIds: [m.id], label: 'Clark' });
+
+  it('a question joins the session after its own checks, long before the set is full, and the order never puts one concept twice in a row', async () => {
+    const h = harness({ conf: { sessionSize: 8, questionsPerConcept: 2 }, pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const session = await h.S.stCreateSession({ name: 'Clark', scope: scopeOf(m), mode: 'practice', answerFormat: 'mixed', size: 8 });
+    const fed: { held: number; calls: number }[] = [];
+    const res = await h.S.stFillSession(session, { onFed: (held: number) => fed.push({ held, calls: h.calls.length }) });
+    // The first one: the map, the writing call, one support check, three distractor checks. Nothing waited for a second question.
+    expect(fed[0]).toEqual({ held: 1, calls: 6 });
+    expect(fed.map((f) => f.held)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(res.held).toBe(8);
+    const items = await h.S.stListSessionItems(session.id);
+    expect(items).toHaveLength(8);
+    expect(items.map((i: any) => i.ord)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(new Set(items.map((i: any) => i.questionId)).size).toBe(8);
+    const byId = new Map((await h.S.stListQuestions({ materialIds: [m.id] })).map((q: any) => [q.id, q]));
+    const conceptsInOrder = items.map((i: any) => (byId.get(i.questionId) as any).conceptId);
+    expect(new Set(conceptsInOrder).size).toBeGreaterThan(1);
+    for (let i = 1; i < conceptsInOrder.length; i++) expect(conceptsInOrder[i]).not.toBe(conceptsInOrder[i - 1]);
+  });
+
+  it('Stop keeps what is in the session and asks the model for nothing more', async () => {
+    const h = harness({ conf: { sessionSize: 8 }, pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const session = await h.S.stCreateSession({ name: 'Clark', scope: scopeOf(m), mode: 'practice', answerFormat: 'mixed', size: 8 });
+    const token = { cancelled: false };
+    let callsAtStop = 0;
+    const res = await h.S.stFillSession(session, { token, onFed: (held: number) => { if (held === 2) { token.cancelled = true; callsAtStop = h.calls.length; } } });
+    expect(res.held).toBe(2);
+    expect(await h.S.stListSessionItems(session.id)).toHaveLength(2);
+    expect((await h.S.stListQuestions({ materialIds: [m.id] })).length).toBe(2);
+    expect(h.calls.length).toBe(callsAtStop);
+  });
+
+  it('with enough questions in the bank already, the draw is made at once and the model is not asked', async () => {
+    const h = harness({ conf: { sessionSize: 4 }, pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    await h.S.stEnsureBank(scopeOf(m), { size: 8, untilSize: true });
+    const before = h.calls.length;
+    const session = await h.S.stCreateSession({ name: 'Clark', scope: scopeOf(m), mode: 'practice', answerFormat: 'mixed', size: 4 });
+    const fed: number[] = [];
+    const res = await h.S.stFillSession(session, { onFed: (held: number) => fed.push(held) });
+    expect(res.held).toBe(4);
+    expect(fed).toEqual([4]);
+    expect(h.calls.length).toBe(before);
+  });
+});
+
+describe('a garbled reply never closes a chapter', () => {
+  const PROSE = 'Sure! Here are the things you asked for. First, the Cape Cod method is a reserving method.';
+  const isMap = (system: string) => system.startsWith('You read a passage');
+  const chapterScope = (m: any, s: any) => ({ kind: 'chapter', materialIds: [m.id], sectionIds: [s.id], pageFrom: s.pageFrom, pageTo: s.pageTo, label: s.title });
+
+  it('prose where the concept map was asked is asked again, and the section is mapped by the reply that could be read', async () => {
+    let bad = 1;
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } }, model: (s, u) => (isMap(s) && bad-- > 0 ? PROSE : scriptedModel(s, u)) });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const section = (await h.S.stListSections(m.id))[0];
+    const res = await h.S.stEnsureBank(chapterScope(m, section), { size: 2, untilSize: true });
+    expect(h.calls.slice(0, 2).every((c) => isMap(c.system))).toBe(true);
+    expect(h.calls[1].user).toBe(h.calls[0].user);
+    expect(res.unreadable).toBe(0);
+    expect(res.available).toBeGreaterThanOrEqual(2);
+    expect((await h.S.stListSections(m.id))[0].mappedAt).toBeGreaterThan(0);
+  });
+
+  it('a map never answered readably is given up after three asks, the section stays unmapped, and the next start makes its questions', async () => {
+    let broken = true;
+    const cut = (s: string, u: string) => scriptedModel(s, u).slice(0, 30);
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } }, model: (s, u) => (broken ? cut(s, u) : scriptedModel(s, u)) });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const section = (await h.S.stListSections(m.id))[0];
+    const scope = chapterScope(m, section);
+    const first = await h.S.stEnsureBank(scope, { size: 2, untilSize: true });
+    expect(h.calls).toHaveLength(3);
+    expect(h.calls.every((c) => isMap(c.system))).toBe(true);
+    expect(first).toMatchObject({ unreadable: 1, available: 0 });
+    expect((await h.S.stListSections(m.id))[0].mappedAt).toBe(0);
+    expect(await h.S.stListConcepts({ materialIds: [m.id] })).toHaveLength(0);
+    broken = false;
+    const second = await h.S.stEnsureBank(scope, { size: 2, untilSize: true });
+    expect(second.unreadable).toBe(0);
+    expect(second.available).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a section stamped as mapped with no concepts on its pages (the old dead state) is not mapped: it is asked again', async () => {
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const section = (await h.S.stListSections(m.id))[0];
+    await h.S.stMarkSectionMapped(section.id, 1_700_000_000_000);
+    const dead = (await h.S.stListSections(m.id))[0];
+    const unit = { section: dead, ranges: [[dead.pageFrom, dead.pageTo]], partial: false };
+    expect(h.S.stUnitMapped(unit, {}, [])).toBe(false);
+    expect(h.S.stUnitMapped(unit, {}, [{ id: 1, page: dead.pageFrom }])).toBe(true);
+    expect(h.S.stUnitMapped({ ...unit, section: { ...dead, mappedAt: 0 } }, {}, [{ id: 1, page: dead.pageFrom }])).toBe(false);
+    const res = await h.S.stEnsureBank(chapterScope(m, dead), { size: 2, untilSize: true });
+    expect(h.count('You read a passage')).toBe(1);
+    expect(res.available).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('one context size for a whole run', () => {
+  const sizesOf = (h: any) => [...new Set(h.calls.map((c: any) => (c.options && c.options.numCtx !== undefined ? c.options.numCtx : 'none')))];
+
+  it('with none set, no call names a size (the core decides), and no call carries a cap', async () => {
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    await h.S.stEnsureBank({ kind: 'document', materialIds: [m.id], label: 'Clark' }, { size: 6, untilSize: true });
+    expect(h.calls.length).toBeGreaterThan(10);
+    expect(new Set(h.calls.map((c) => c.system.slice(0, 14))).size).toBeGreaterThanOrEqual(4);
+    expect(sizesOf(h)).toEqual(['none']);
+    for (const c of h.calls) for (const k of Object.keys(c.options || {})) expect(k).not.toMatch(/max_?tokens|num_?predict|budget/i);
+    expect(await h.S.stPlanFor('fake-model', m, 0)).toEqual({ numCtx: 0, maxChars: 24000 });
+  });
+
+  it('a size the user set is the size of every call, whatever each prompt\'s length, and the grade and the rubric keep it', async () => {
+    const h = harness({ conf: { generationContext: 16384 }, pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    await h.S.stEnsureBank({ kind: 'document', materialIds: [m.id], label: 'Clark' }, { size: 6, untilSize: true });
+    const short = (await h.S.stListQuestions({ materialIds: [m.id] })).find((q: any) => q.format === 'short');
+    await h.S.stGradeTyped(short, 'An answer. '.repeat(900), {});
+    expect(h.calls.some((c) => c.system.startsWith('You mark'))).toBe(true);
+    expect(sizesOf(h)).toEqual([16384]);
+    expect((await h.S.stPlanFor('fake-model', m, 0)).numCtx).toBe(16384);
+    // The sheet's choice comes before Settings, and never past what the model holds.
+    expect((await h.S.stPlanFor('fake-model', m, 8192)).numCtx).toBe(8192);
+    expect((await h.S.stPlanFor('fake-model', m, 65536)).numCtx).toBe(32768);
+    // "None, decided for this run" stays none even with a size in Settings.
+    expect((await h.S.stPlanFor('fake-model', m, -1)).numCtx).toBe(0);
+  });
+});
+
+describe('no model', () => {
+  it('a start that needs the model and finds none says so before anything is created', async () => {
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    h.api.lm.getModels = async () => [];
+    h.api.lm.getActiveModel = async () => undefined;
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const scope = { kind: 'document', materialIds: [m.id], label: 'Clark' };
+    let err: any = null;
+    try { await h.S.stStartSession({ scope, mode: 'practice', answerFormat: 'mixed', model: '', numCtx: 0 }); } catch (e) { err = e; }
+    expect(h.S.stIsNoModel(err)).toBe(true);
+    expect(String(err.message)).toMatch(/^No model is available\./);
+    expect(h.sql.prepare('SELECT COUNT(*) AS n FROM st_sessions').get()).toEqual({ n: 0 });
+    expect(h.calls).toHaveLength(0);
+    // A model the backend does not list is no model either.
+    h.api.lm.getModels = async () => [{ id: 'fake-model' }];
+    await expect(h.S.stRequireModel('gone-model', scope)).rejects.toThrow(/No model named gone-model is available/);
+    expect(await h.S.stRequireModel('', scope)).toBe('fake-model');
+  });
+});
+

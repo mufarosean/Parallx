@@ -1711,7 +1711,8 @@ async function renderSession(host, route, ctx) {
   // ── Keys, scoped to the focusable pane root ──
   const onKey = (e) => {
     const cur = current;
-    if (!cur) return;
+    // Waiting for the next question: Esc still asks to end.
+    if (!cur) { if (waiting && e.key === 'Escape') { e.preventDefault(); void endSession(); } return; }
     const t = e.target;
     const inField = (typeof HTMLInputElement !== 'undefined' && t instanceof HTMLInputElement) || (typeof HTMLTextAreaElement !== 'undefined' && t instanceof HTMLTextAreaElement);
     if (e.key === 'Escape') {
