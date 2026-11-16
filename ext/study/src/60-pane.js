@@ -1001,6 +1001,7 @@ async function renderSession(host, route, ctx) {
   function showWaiting() {
     current = null;
     waiting = true;
+    stSetOnScreen(session.id, 0);
     paintStrand(0);
     qwrap.replaceChildren();
     ctl.replaceChildren();
@@ -1027,6 +1028,7 @@ async function renderSession(host, route, ctx) {
     if (fmt === 'mc' && !(Array.isArray(q.options) && q.options.length)) fmt = 'short';
     // Test is Type: a multiple-choice question is answered as a short typed answer.
     if (isTest && fmt === 'mc') fmt = 'short';
+    stSetOnScreen(session.id, item.id);
     const cur = { item, q, concept, fmt, answered: false, retried: false, retryBtn: null, chosen: null, explaining: false, explained: false, busy: false, ungraded: false, typedField: null, editing: false };
     current = cur;
     paintStrand(item.id);
@@ -1616,7 +1618,7 @@ async function renderSession(host, route, ctx) {
     if (k === 'g') { if (cur.ungraded) { e.preventDefault(); gradeAgain(); } return; }
   };
   ctx.root.addEventListener('keydown', onKey);
-  ctx.add({ dispose: () => { ctx.root.removeEventListener('keydown', onKey); if (current && current.saver) current.saver.flush(); } });
+  ctx.add({ dispose: () => { ctx.root.removeEventListener('keydown', onKey); if (current && current.saver) current.saver.flush(); stSetOnScreen(session.id, 0); } });
   // What the session's commands (Previous Question, Mark Question…, Edit Question…) do on this screen.
   ctx.add(stOfferSessionActions(session.id, ctx.root, {
     previous, edit: editQuestion, gradeAgain, overrule: (to) => void overruleAnswer(to),

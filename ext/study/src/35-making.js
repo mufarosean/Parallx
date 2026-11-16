@@ -297,13 +297,23 @@ function stInterleaveConcepts(questions, { placed = [], concepts = [], answerFor
   return out;
 }
 
+/** The item each session screen shows now, by session id: the pane says so (stSetOnScreen). */
+const _stOnScreen = new Map();
+
+/** The session screen shows this item now (0: none), so what joins the draw is ordered from it. */
+function stSetOnScreen(sessionId, itemId) {
+  if (itemId) _stOnScreen.set(Number(sessionId), Number(itemId)); else _stOnScreen.delete(Number(sessionId));
+}
+
 /**
  * Put the questions that are ready into the session's current draw, and
  * order what is still waiting. New questions (usable, in scope, not yet in
  * the session) are added until the draw holds `size`. What is answered and
- * the first unanswered item (the one on screen) stay where they are; the
- * rest follow in stInterleaveConcepts order. Returns { held, added }: how
- * many the draw holds now and how many this call added.
+ * the item on screen stay where they are; the rest follow in
+ * stInterleaveConcepts order, counted from the item on screen. That is the
+ * one the pane names (he may have skipped an earlier one, or answered one a
+ * moment before this read), else the first unanswered. Returns { held,
+ * added }: how many the draw holds now and how many this call added.
  */
 async function stFeedSession(session, { size, draw }) {
   const items = await stListSessionItems(session.id);
@@ -325,8 +335,9 @@ async function stFeedSession(session, { size, draw }) {
     added = await stAddSessionItems(session.id, draw, add.map((q) => q.id), formats);
   }
   const isPending = (i) => !i.status || i.status === 'pending';
-  const head = mine.find(isPending) || null;
-  const fixed = mine.filter((i) => !isPending(i) || i === head);
+  const shown = _stOnScreen.get(Number(session.id));
+  const head = mine.find((i) => i.id === shown && isPending(i)) || mine.find(isPending) || null;
+  const fixed = mine.filter((i) => !isPending(i)).concat(head ? [head] : []);
   const waiting = mine.filter((i) => isPending(i) && i !== head).concat(added);
   if (added.length && waiting.length > 1) {
     // An item whose question left the pool (hidden since) goes last, as it was.

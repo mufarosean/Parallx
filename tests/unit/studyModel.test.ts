@@ -889,6 +889,7 @@ const STUDY_NAMES = [
   'stEnsureBank', 'stNextDraw', 'stGenerateQuestions', 'stGradeTyped', 'stScopeQuestionCount', 'stScopeStats', 'stScopeConcepts',
   'stRunNumericCheck', 'stNumericSolutionSafe', 'stNumericScript', 'ST_NUMERIC_WRAPPER',
   'stListFrom', 'stInterleaveConcepts', 'stUnitMapped', 'stFillSession', 'stPlanFor', 'stRequireModel', 'stIsNoModel', 'stStartSession', 'stMarkSectionMapped',
+  'stFeedSession', 'stSetOnScreen',
 ];
 
 type Study = Record<string, any>;
@@ -1653,6 +1654,34 @@ describe('stFillSession: the session holds each question the moment it is ready'
     expect(await h.S.stListSessionItems(session.id)).toHaveLength(2);
     expect((await h.S.stListQuestions({ materialIds: [m.id] })).length).toBe(2);
     expect(h.calls.length).toBe(callsAtStop);
+  });
+
+  it('what joins the draw is ordered from the question on screen, also when he skipped an earlier one', async () => {
+    const h = harness({ conf: { sessionSize: 6, questionsPerConcept: 2 }, pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    await h.S.stEnsureBank(scopeOf(m), { size: 24, untilSize: true });
+    const all = await h.S.stListQuestions({ materialIds: [m.id] });
+    const has = (c: number, f: string) => all.some((q: any) => q.conceptId === c && q.format === f);
+    // A and B: the first two concepts in the order of need (all are new); B has a choice and a typed question.
+    const ranked = (await h.S.stListConcepts({ materialIds: [m.id] })).map((c: any) => c.id).filter((c: number) => has(c, 'mc') && has(c, 'short'));
+    const [aId, bId] = ranked;
+    const a1 = all.find((q: any) => q.conceptId === aId);
+    const b1 = all.find((q: any) => q.conceptId === bId && q.format === 'short');
+    const b2 = all.find((q: any) => q.conceptId === bId && q.format === 'mc');
+    const session = await h.S.stCreateSession({ name: 'Clark', scope: scopeOf(m), mode: 'practice', answerFormat: 'mixed', size: 6 });
+    const [itemA, itemB] = await h.S.stAddSessionItems(session.id, 0, [a1.id, b1.id, b2.id], ['mc', 'short', 'mc']);
+    // He skipped A's question: B's typed one is on screen, and A's is still the first unanswered in the draw's order.
+    h.S.stSetOnScreen(session.id, itemB.id);
+    try {
+      await h.S.stFeedSession({ ...session, scope: scopeOf(m) }, { size: 6, draw: 0 });
+    } finally { h.S.stSetOnScreen(session.id, 0); }
+    const byId = new Map(all.map((q: any) => [q.id, q]));
+    const items = (await h.S.stListSessionItems(session.id)).sort((x: any, y: any) => x.ord - y.ord);
+    expect(items).toHaveLength(6);
+    // The pane shows B's, then what is still waiting in the draw's order (A's, skipped, last): never B's other question next.
+    const after = items.filter((i: any) => i.id !== itemA.id && i.id !== itemB.id).map((i: any) => (byId.get(i.questionId) as any).conceptId);
+    expect(after[0]).not.toBe(bId);
+    for (let i = 1; i < after.length; i++) expect(after[i]).not.toBe(after[i - 1]);
   });
 
   it('with enough questions in the bank already, the draw is made at once and the model is not asked', async () => {
