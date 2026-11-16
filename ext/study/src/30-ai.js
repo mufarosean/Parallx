@@ -154,13 +154,11 @@ function stIsModelLoop(err) {
 
 /**
  * One chat call, collected to a string. `json` asks the backend for JSON
- * output. No call caps its answer or its thinking: a cap counts the thinking
- * too, and a thinking model then answers nothing or a cut-off line (the house
- * rule; the only limits are one the user set and the core's own guard
- * against a runaway). An answer the backend ends for looping comes back as
- * what was written, which callers read as unusable. `token` (Stop) aborts
- * the request mid-answer. `onStream` hears the answer's length so far:
- * { chars, thinking }.
+ * output. No call caps its answer or its thinking (the house rule: a cap
+ * counts the thinking, and a thinking model then answers a cut-off line).
+ * An answer the backend ends for looping comes back as what was written,
+ * which callers read as unusable. `token` (Stop) aborts the request
+ * mid-answer. `onStream` hears the answer's length so far: { chars, thinking }.
  */
 async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numCtx = 0, json = true, onChunk = null, token = null, onStream = null } = {}) {
   if (!_api.lm || typeof _api.lm.sendChatRequest !== 'function') {
