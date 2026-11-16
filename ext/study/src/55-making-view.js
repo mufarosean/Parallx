@@ -331,7 +331,7 @@ async function renderGenerating(host, route, ctx) {
           : stopped ? 'What was kept stays in the bank.'
           : isBank ? 'A question needs an answer or a rubric to be marked.'
           : unreadable ? `It was asked ${ST_LIST_ASKS} times and never answered with the list it was asked for. Try again, or try another model on the sheet.`
-          : 'Nothing passed the checks. Try another model on the sheet, or a smaller scope.',
+          : `${stUnreadText(run.result && run.result.unread)} Nothing passed the checks. Try another model on the sheet, or a smaller scope.`.trim(),
         stopped,
         retry: !!run.error || !isBank,
         start: { scope, mode: session.mode, answerFormat: stProp(session, 'answerFormat', 'mixed'), model: stProp(session, 'model', ''), numCtx: Number(stProp(session, 'numCtx', 0)) || 0 },
@@ -368,7 +368,8 @@ async function renderGenerating(host, route, ctx) {
  * The making, shown in the session while he answers: what is happening, how
  * many questions are ready of how many are planned, the time elapsed, Stop.
  * Hidden when nothing is being made. A making that failed stays, with its
- * reason and Try Again. `onFed()` is called whenever the session holds more
+ * reason and Try Again; one that ended with pages the model could not read
+ * stays, saying which (stUnreadText). `onFed()` is called whenever the session holds more
  * questions than before, and when the making ends. Returns { live(), failed() }.
  */
 function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
@@ -378,6 +379,8 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
   // The count is the part read out as it changes; the words beside it change too often for that.
   const count = _api.ui.createBlock(strip, 'span', { className: 'st-making__n', attrs: { role: 'status' } });
   const time = stBlock(strip, 'span', 'st-making__t');
+  // Read out when it appears: pages of the material the model could not read.
+  const note = _api.ui.createBlock(strip, 'span', { className: 'st-making__now', attrs: { role: 'status' } });
   const stopBtn = _api.ui.createButton(strip, { id: 'study.making.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', size: 'sm', title: 'Stop writing questions. The ones that are ready stay in this session.', command: 'study.stopMaking', args: [session.id] });
   const againBtn = _api.ui.createButton(strip, { id: 'study.making.more', label: 'Try Again', icon: 'refresh-cw', kind: 'ghost', size: 'sm', title: 'Go on writing questions for this session.', command: 'study.makeAgain', args: [session.id] });
   host.insertBefore(strip, before);
@@ -388,9 +391,12 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
   const paint = () => {
     if (ctx.disposed() || !run) return;
     const failed = run.done && !!run.error;
-    strip.hidden = run.done && !failed;
+    // Pages the model could not read are said once the making ends (asked again next start, or left out).
+    const unread = run.done && !failed ? stUnreadText(run.result && run.result.unread) : '';
+    strip.hidden = run.done && !failed && !unread;
     strip.classList.toggle('st-making--failed', failed);
-    now.textContent = failed ? `No more questions could be made: ${stSentence(stErrText(run.error))}` : stRunNowText(run.progress, run, { names: false });
+    now.textContent = failed ? `No more questions could be made: ${stSentence(stErrText(run.error))}` : unread ? '' : stRunNowText(run.progress, run, { names: false });
+    if (note.textContent !== unread) note.textContent = unread;
     const text = `${Math.min(size, run.held)} of ${size} ready`;
     if (count.textContent !== text) count.textContent = text;
     time.textContent = `${stElapsedText((run.endedAt || Date.now()) - run.startedAt)} elapsed`;

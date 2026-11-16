@@ -3436,21 +3436,22 @@ async function stReadTextMaterial(fsPath) {
   return { pageTexts: parts, text, pageCount: parts.length, outline, title: first ? first.title : '' };
 }
 
-/** stMaterialText for a notes file (20-data.js asks here for kind 'text'). */
+/** stMaterialText for a notes file (20-data.js asks here for kind 'text'). A file whose hash changed is brought up to date first (24-text-edits.js). */
 async function stTextMaterialText(material) {
   const r = await stReadTextMaterial(stFsPathOf(material.uri));
+  if (material.id && stHashText(r.text) !== material.contentHash) await stTextEdited(material.id, r);
   return { pageTexts: r.pageTexts, text: r.text, pageCount: r.pageCount };
 }
 
-/** Ingest a notes file: its parts, its headings as chapters, the material. Returns the material. */
+/** Ingest a notes file: its parts, its headings as chapters, the material. An edited one keeps what did not change (stTextEdited). Returns the material. */
 async function stIngestTextFile(fsPath) {
   const path = stFsPathOf(fsPath);
   const r = await stReadTextMaterial(path);
   // No headings: one chapter, the whole file (a PDF's fallback names pages, which a notes file has none of).
-  const outlined = stSectionsFromOutline(r.outline, r.pageCount);
-  const sections = stNormalizeSections(outlined.length ? outlined : [{ title: 'Whole file', pageFrom: 1, pageTo: r.pageCount }], r.pageCount);
+  const sections = stTextSections(r);
   const uri = stUriOf(path);
-  const prior = await db.get("SELECT label FROM st_materials WHERE kind = 'text' AND uri = ?", [uri]);
+  const prior = await db.get("SELECT id, label, content_hash FROM st_materials WHERE kind = 'text' AND uri = ?", [uri]);
+  if (prior && prior.content_hash !== stHashText(r.text)) await stTextEdited(prior.id, r);
   const material = await stUpsertMaterial({
     kind: 'text',
     uri,
@@ -3472,6 +3473,149 @@ async function stIngestDocument(fsPath) {
 /** The workspace's PDFs and notes files in one quick pick; the chosen fsPath, or null. */
 async function stPickWorkspaceDocument() {
   return stPickWorkspaceFile(ST_DOCUMENT_EXTS, 'Study which document? (PDF, Markdown or text)');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 24: AN EDITED NOTES FILE — what did not change keeps its map
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Notes are the files he edits. A notes file whose text no longer has the
+// hash Study stored (he added it again, or it changed while the app was
+// closed, or since the last start) is brought up to date in one step,
+// stTextEdited, before anything reads its parts:
+//
+//   - Its parts are cut again. A part whose text is unchanged (the hash
+//     36-map-pages.js recorded when it was read) keeps its record under its
+//     new number, so it is not read again.
+//   - Its sections are its headings again. A section keeps its row (and so
+//     its id, which a chapter scope names) when its title is still there,
+//     and keeps its mapped_at only when every page it owns is unchanged.
+//   - Each concept and question moves with its passage: placed again by its
+//     quote, else by its unchanged part; one whose passage is gone has no
+//     page (page 0), so it stays in the document's questions but in no
+//     chapter. A concept is filed under the section that owns its new page.
+
+/** A notes file's sections, as ingest stores them: its headings, else the whole file. */
+function stTextSections(r) {
+  const outlined = stSectionsFromOutline(r.outline, r.pageCount);
+  return stNormalizeSections(outlined.length ? outlined : [{ title: 'Whole file', pageFrom: 1, pageTo: r.pageCount }], r.pageCount);
+}
+
+/** One update of a notes material at a time: two readers after a restart must not both rebuild it. */
+const _stTextEditChain = new Map();
+
+/** The pages each section owns (stPagePartition), by index into `sections`. Pure. */
+function stOwnedPages(sections, pageCount) {
+  const owned = sections.map(() => []);
+  for (const r of stPagePartition(sections, pageCount)) for (let p = r.pageFrom; p <= r.pageTo; p++) owned[r.index].push(p);
+  return owned;
+}
+
+/**
+ * Bring a notes material up to date with its file's text `r` (from
+ * stReadTextMaterial). Nothing happens when the stored hash already matches.
+ * Returns the material as stored now, or null when it is gone.
+ */
+async function stTextEdited(materialId, r) {
+  const id = Number(materialId);
+  const prior = _stTextEditChain.get(id) || Promise.resolve();
+  const next = prior.catch(() => {}).then(() => stApplyTextEdit(id, r));
+  _stTextEditChain.set(id, next);
+  try { return await next; } finally { if (_stTextEditChain.get(id) === next) _stTextEditChain.delete(id); }
+}
+
+async function stApplyTextEdit(id, r) {
+  const row = await db.get('SELECT * FROM st_materials WHERE id = ?', [id]);
+  if (!row) return null;
+  const material = stRowToMaterial(row);
+  const hash = stHashText(r.text);
+  if (material.contentHash === hash) return material;
+  const parts = r.pageTexts;
+
+  // Old pages whose text is unchanged, and the new page that holds it.
+  const record = await stPagesRecord(id);
+  const freeByHash = new Map();
+  parts.forEach((t, i) => {
+    const h = stHashText(String(t || ''));
+    if (!freeByHash.has(h)) freeByHash.set(h, []);
+    freeByHash.get(h).push(i + 1);
+  });
+  const moved = new Map();
+  for (const p of Object.keys(record).map(Number).sort((a, b) => a - b)) {
+    const free = (record[p] && freeByHash.get(record[p].h)) || [];
+    if (!free.length) continue;
+    // The nearest copy, when a part's text stands twice.
+    free.sort((a, b) => Math.abs(a - p) - Math.abs(b - p) || a - b);
+    moved.set(p, free.shift());
+  }
+
+  // Sections: matched by title in order; mapped_at kept only when every page it owns moved unchanged.
+  const oldSections = await stSectionsWithLevels(material);
+  const oldOwned = stOwnedPages(oldSections, material.pageCount);
+  const next = stTextSections(r);
+  const newOwned = stOwnedPages(next, r.pageCount);
+  const pool = oldSections.map((s, i) => ({ s, owned: oldOwned[i] }));
+  const ops = [];
+  next.forEach((s, i) => {
+    const k = pool.findIndex((o) => o.s.title === s.title);
+    const old = k >= 0 ? pool.splice(k, 1)[0] : null;
+    const now = newOwned[i];
+    const same = !!old && old.owned.length === now.length && old.owned.every((p, j) => record[p] && record[p].s === 'read' && moved.get(p) === now[j]);
+    const mappedAt = same ? old.s.mappedAt || 0 : 0;
+    ops.push(old
+      ? { sql: 'UPDATE st_sections SET title = ?, page_from = ?, page_to = ?, ord = ?, mapped_at = ? WHERE id = ?', params: [s.title, s.pageFrom, s.pageTo, i, mappedAt, old.s.id] }
+      : { sql: 'INSERT INTO st_sections (material_id, title, page_from, page_to, ord, mapped_at) VALUES (?, ?, ?, ?, ?, ?)', params: [id, s.title, s.pageFrom, s.pageTo, i, 0] });
+  });
+  for (const gone of pool) ops.push({ sql: 'DELETE FROM st_sections WHERE id = ?', params: [gone.s.id] });
+  ops.push({ sql: 'UPDATE st_materials SET page_count = ?, content_hash = ?, outline_json = ? WHERE id = ?', params: [r.pageCount, hash, JSON.stringify(next), id] });
+  await db.runAll(ops);
+  await stUpdatePages(id, (rec) => {
+    const kept = {};
+    for (const [p, q] of moved) kept[q] = record[p];
+    for (const k of Object.keys(rec)) delete rec[k];
+    Object.assign(rec, kept);
+  });
+
+  // Concepts and questions move with their passages.
+  const sections = await stListSections(id);
+  const owner = new Map();
+  stOwnedPages(sections.map((s, i) => ({ ...s, level: Number(next[i] && next[i].level) || 0 })), r.pageCount)
+    .forEach((pages, i) => { for (const p of pages) owner.set(p, sections[i].id); });
+  const questions = await stListQuestions({ materialIds: [id], includeHidden: true });
+  const quoteOf = new Map();
+  for (const q of questions) if (q.sourceQuote && !quoteOf.has(q.conceptId)) quoteOf.set(q.conceptId, q.sourceQuote);
+  const place = (quote, page) => (quote ? stFindAnchorPage(quote, parts, moved.get(page) || page) : 0) || moved.get(page) || 0;
+  const updates = [];
+  for (const c of await stListConcepts({ materialIds: [id] })) {
+    const page = place(c.anchorQuote || quoteOf.get(c.id) || '', c.page);
+    const sectionId = owner.get(page) || 0;
+    if (page !== c.page || sectionId !== c.sectionId) updates.push({ sql: 'UPDATE st_concepts SET page = ?, section_id = ? WHERE id = ?', params: [page, sectionId, c.id] });
+  }
+  for (const q of questions) {
+    const page = place(q.sourceQuote || '', q.sourcePage);
+    if (page !== q.sourcePage) updates.push({ sql: 'UPDATE st_questions SET source_page = ? WHERE id = ?', params: [page, q.id] });
+  }
+  if (updates.length) await db.runAll(updates);
+  const updated = await stGetMaterial(id);
+  stTextCachePut(stTextCacheKey(updated), { pageTexts: parts, text: r.text, pageCount: r.pageCount });
+  _emitDataChanged();
+  return updated;
+}
+
+/**
+ * Before a making: every notes file in the scope is read and, when its text
+ * changed since Study stored it, brought up to date (stTextEdited). A file
+ * that cannot be read now is left as it was; the making says so if it must.
+ */
+async function stNoticeEditedNotes(scope) {
+  const ids = new Set(Array.isArray(scope && scope.materialIds) ? scope.materialIds.map(Number) : []);
+  for (const id of ids) {
+    const material = await stGetMaterial(id);
+    if (!material || material.kind !== 'text') continue;
+    let r;
+    try { r = await stReadTextMaterial(stFsPathOf(material.uri)); } catch { continue; }
+    if (stHashText(r.text) !== material.contentHash) await stTextEdited(id, r);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5221,7 +5365,7 @@ async function stScopeCanGrow(scope) {
   if (!scope || stFixedScope(scope)) return false;
   if (scope.kind !== 'weak') {
     for (const { material, units } of await stScopeUnits(scope)) {
-      const known = await stListConcepts({ materialIds: [material.id] });
+      const known = await stMapKnown(material);
       if (units.some((u) => !stUnitMapped(u, scope, known))) return true;
     }
   }
@@ -5382,7 +5526,7 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     for (const { material, units } of await stScopeUnits(scope)) {
       if (!units.length) continue;
       const ordered = stSpreadOrder(units.length).map((i) => units[i]);
-      const known = await stListConcepts({ materialIds: [material.id] });
+      const known = await stMapKnown(material);
       for (const u of ordered) u.mapped = stUnitMapped(u, scope, known);
       queues.push({ material, cursor: 0, units: ordered });
     }
@@ -5593,9 +5737,10 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
 //
 //   - stAskList asks again when a reply holds no list at all (prose where
 //     JSON was asked, or JSON cut off before anything could be read).
-//   - stBuildConceptMap marks a section mapped only when every part of it
-//     was read; stUnitMapped counts a unit as mapped only when its pages
-//     hold concepts, so a section stamped "mapped" with none is asked again.
+//   - stBuildConceptMap reads only the pages not read before and marks a
+//     section mapped once every page of it is read (36-map-pages.js);
+//     stUnitMapped asks a section the old code stamped "mapped" with no
+//     concepts again.
 //   - stFillSession puts each question into the session the moment it is
 //     stored (stEnsureBank's onKept), ordered so no two in a row share a
 //     concept (stInterleaveConcepts), while the rest are still being made.
@@ -5644,8 +5789,10 @@ async function stAskList(modelId, system, user, options) {
  * against the material's existing concepts and each other; new ones are
  * inserted. Returns the unit's concepts (the existing matches plus the new
  * rows) with `unreadable`, the number of chunks no reply could be read for.
- * The section is marked mapped only when every chunk was read, so one bad
- * reply never closes a chapter.
+ * Only pages not read before are asked about, and each page is recorded as
+ * read or unreadable (36-map-pages.js); the section is marked mapped once
+ * every page of it is read or left out, so one bad reply never closes a
+ * chapter and a page read once is not read again.
  *
  * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
  * owns under stPagePartition, so a chapter and its subsections never map a
@@ -5679,7 +5826,12 @@ async function stBuildConceptMap(material, section, {
   const sized = await stPlanFor(model, material, numCtx);
 
   // The chunks: page ranges of the section, or the selection as one chunk.
+  // Pages already read (or left out as unreadable) are not read again; a
+  // page in no chunk is blank, and counts as read.
   let chunks = [];
+  let wanted = [];
+  const pagesRead = [];
+  const pagesUnread = [];
   if (selectionText) {
     const page = Number(selectionPage) || 0;
     chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
@@ -5687,9 +5839,14 @@ async function stBuildConceptMap(material, section, {
     const pageCount = text.pageTexts.length;
     const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
     const maxChars = Math.min(ST_MAP_CHUNK_CHARS, sized.maxChars);
-    for (const [rf, rt] of list) {
+    const clamped = list.map(([rf, rt]) => {
       const from = Math.max(1, Number(rf) || 1);
-      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
+      return [from, Math.max(from, Math.min(pageCount || from, Number(rt) || from))];
+    });
+    wanted = stPagesIn(clamped);
+    const already = stPagesDone(await stPagesRecord(material.id));
+    const todo = stPageRuns(wanted.filter((p) => !already.has(p)));
+    for (const [from, to] of todo) {
       const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
         const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
         return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
@@ -5700,9 +5857,12 @@ async function stBuildConceptMap(material, section, {
       }
       chunks.push(...pieces);
     }
+    const inChunks = new Set(stPagesIn(chunks.map((c) => [c.pageFrom, c.pageTo])));
+    pagesRead.push(...stPagesIn(todo).filter((p) => !inChunks.has(p)));
   }
   if (!chunks.length) {
-    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
+    // Nothing left to read (every page read before, or a blank or image-only stretch): mapped.
+    if (!selectionText) await stNotePages(material.id, { read: pagesRead }, text.pageTexts);
     if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
     return Object.assign([], { unreadable: 0 });
   }
@@ -5711,6 +5871,7 @@ async function stBuildConceptMap(material, section, {
   const matched = []; // existing concepts the chunk named again
   const pool = [...existing];
   let unreadable = 0;
+  let failure = null;
   report(0, chunks.length);
   for (let i = 0; i < chunks.length; i++) {
     if (cancelled()) break;
@@ -5732,10 +5893,12 @@ async function stBuildConceptMap(material, section, {
         onStream: (s) => report(i, chunks.length, s),
       });
     } catch (err) {
-      if (stIsStopped(err)) break;
-      throw err;
+      // A backend error ends the map, after what was read so far is kept.
+      if (!stIsStopped(err)) failure = err;
+      break;
     }
-    if (!asked.list) unreadable += 1;
+    const chunkPages = stPagesIn([[chunk.pageFrom, chunk.pageTo]]);
+    if (!asked.list) { unreadable += 1; pagesUnread.push(...chunkPages); } else pagesRead.push(...chunkPages);
     for (const raw of asked.list || []) {
       if (!raw || typeof raw !== 'object') continue;
       const rawTitle = String(raw.title || '').trim();
@@ -5784,18 +5947,32 @@ async function stBuildConceptMap(material, section, {
     for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
     inserted.push(...rows);
   }
-  if (section && section.id && markMapped && !unreadable && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+  let complete = !unreadable;
+  if (!selectionText) {
+    await stNotePages(material.id, { read: pagesRead, unread: pagesUnread }, text.pageTexts);
+    const settled = stPagesDone(await stPagesRecord(material.id));
+    complete = wanted.every((p) => settled.has(p));
+  }
+  if (failure) throw failure;
+  if (section && section.id && markMapped && complete && !cancelled()) await stMarkSectionMapped(section.id, stNow());
   return Object.assign([...matched, ...inserted], { unreadable });
 }
 
 /**
- * Is a unit mapped? Only when its pages hold concepts (`known`: the
- * material's concepts). A section stamped as mapped with none on its pages
- * is not: that is what a reply nobody could read left behind before, and it
- * is asked again. A selection is mapped once its concept ids are known.
+ * Is a unit mapped? When every page it covers is read, or left out as
+ * unreadable (`known.pagesDone`, stMapKnown), whatever was found there. A
+ * unit none of whose pages has a record was mapped by the old code, which
+ * counted it only when its pages hold concepts (`known`: the material's
+ * concepts): a section stamped mapped with none is what a reply nobody could
+ * read left behind, and it is asked again. A selection is mapped once its
+ * concept ids are known.
  */
 function stUnitMapped(unit, scope, known) {
   if (unit.selection) return stSelectionConceptIds(scope).length > 0;
+  const done = known && known.pagesDone;
+  const pages = stPagesIn(unit.ranges);
+  if (done && pages.length && pages.every((p) => done.has(p))) return true;
+  if (known && known.pagesSeen && pages.some((p) => known.pagesSeen.has(p))) return false;
   if (!unit.partial && !(unit.section.mappedAt > 0)) return false;
   return (known || []).some((c) => stInRanges(c.page, unit.ranges));
 }
@@ -5824,7 +6001,9 @@ async function stMapUnit(unit, scope, { modelId, numCtx, token, onProgress, sess
       modelId, numCtx, token, onProgress, quiet: true, ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
     });
   }
-  return !(concepts.unreadable > 0 && !concepts.length);
+  if (!(concepts.unreadable > 0 && !concepts.length)) return true;
+  // Nothing readable this time: still a unit to write for when earlier reads filed concepts on its pages.
+  return !unit.selection && (await stListConcepts({ materialIds: [unit.material.id] })).some((c) => stInRanges(c.page, unit.ranges));
 }
 
 // ── The order of a session that fills as it goes ────────────────────────────
@@ -5949,12 +6128,15 @@ async function stFeedSession(session, { size, draw }) {
  * writing ends short of `size` the draw is filled with questions this
  * session asked before (stRepeatFill), as stNextDraw does. `onFed(held)`
  * hears every change to what the draw holds. Stop (the token) keeps what is
- * in the session. Returns { held, unreadable, unanswerable }.
+ * in the session. Returns { held, unreadable, unanswerable, unread }:
+ * `unread` lists the pages in scope the model could not read (stScopeUnread).
  */
 async function stFillSession(session, { token = null, onProgress = null, onFed = null } = {}) {
   const scope = session.scope || {};
   const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
   const draw = Number(session.refreshes) || 0;
+  // A notes file edited since Study last read it is brought up to date before anything is drawn from it.
+  await stNoticeEditedNotes(scope);
   const before = await stListSessionItems(session.id);
   const asked = new Set(before.map((i) => i.questionId));
   const heldBefore = before.filter((i) => (Number(i.draw) || 0) === draw).length;
@@ -5963,12 +6145,14 @@ async function stFillSession(session, { token = null, onProgress = null, onFed =
   if (stFixedScope(scope) || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
     const drawn = await stNextDraw(session, { token, onProgress });
     told(drawn.length);
-    return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0 };
+    return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0, unread: [] };
   }
   // One feed at a time: a question stored while another is being placed waits its turn.
+  // After Stop nothing more is read or placed: what the last feed held is the session.
   let chain = Promise.resolve({ held: heldBefore, added: 0 });
   const feed = () => {
-    chain = chain.then(() => stFeedSession(session, { size, draw })).then((r) => { if (r.added) told(r.held); return r; });
+    if (token && token.cancelled) return chain;
+    chain = chain.then((prior) => (token && token.cancelled ? { ...prior, added: 0 } : stFeedSession(session, { size, draw }))).then((r) => { if (r.added) told(r.held); return r; });
     return chain;
   };
   let fed = await feed();
@@ -5994,7 +6178,9 @@ async function stFillSession(session, { token = null, onProgress = null, onFed =
       told(fed.held);
     }
   }
-  return { held: fed.held, unreadable: Number(ensured.unreadable) || 0, unanswerable: Number(ensured.unanswerable) || 0 };
+  // Pages the model could not read are said, whether they are asked again or left out.
+  const unread = token && token.cancelled ? [] : await stScopeUnread(scope);
+  return { held: fed.held, unreadable: Number(ensured.unreadable) || 0, unanswerable: Number(ensured.unanswerable) || 0, unread };
 }
 
 // ── No model ────────────────────────────────────────────────────────────────
@@ -6052,6 +6238,138 @@ async function stStartOrSay(args) {
     if (picked && picked.title === 'Open AI Settings') await _api.commands.executeCommand(settings);
     return null;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 36: PAGES READ — what the concept map has read, kept per page
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A section is mapped when the model has read every page it owns, whatever
+// it found there: a preface answered readably with no concepts, a summary
+// whose concepts were all filed already, a page whose quotes sit on another
+// page. That is recorded, per page, in st_materials.map_pages_json
+// (study_003): { "<page>": { s: 'read' | 'unread', n, h } }. So a page read
+// once is never read again (a long chapter cut into parts does not re-read
+// the parts it has; the same quote is not filed twice), and a part the model
+// never answers readably is asked again on the next start and then, after
+// ST_MAP_GIVE_UP starts, left out and said so (stUnreadText). `h` is the
+// page text's hash when it was read, so an edited notes file keeps what did
+// not change (24-text-edits.js).
+//
+// A section the old code stamped mapped with no record of its pages is
+// judged as it was (concepts on its pages), so the dead state that left
+// (mapped, with no concepts) is still asked again.
+
+/** Starts on which a page's map may come back unreadable before the page is left out. */
+const ST_MAP_GIVE_UP = 2;
+
+/** One read-modify-write of a material's pages at a time (two makings can share a material). */
+const _stPagesChain = new Map();
+
+/** The material's page record: { [page]: { s, n, h } }. */
+async function stPagesRecord(materialId) {
+  const row = await db.get('SELECT map_pages_json AS j FROM st_materials WHERE id = ?', [materialId]);
+  const rec = stParseJson(row && row.j, {});
+  return rec && typeof rec === 'object' && !Array.isArray(rec) ? rec : {};
+}
+
+/** Write the page record: `change(record)` edits it in place. Serialized per material. */
+async function stUpdatePages(materialId, change) {
+  const id = Number(materialId);
+  const prior = _stPagesChain.get(id) || Promise.resolve();
+  const next = prior.catch(() => {}).then(async () => {
+    const rec = await stPagesRecord(id);
+    change(rec);
+    await db.run('UPDATE st_materials SET map_pages_json = ? WHERE id = ?', [JSON.stringify(rec), id]);
+  });
+  _stPagesChain.set(id, next);
+  try { await next; } finally { if (_stPagesChain.get(id) === next) _stPagesChain.delete(id); }
+}
+
+/** Is this record entry a page that needs no more asking: read, or left out as unreadable? */
+function stPageSettled(entry) {
+  return !!entry && (entry.s === 'read' || (entry.s === 'unread' && (Number(entry.n) || 0) >= ST_MAP_GIVE_UP));
+}
+
+/** The pages of a record that need no more asking. Pure. */
+function stPagesDone(record) {
+  const out = new Set();
+  for (const [p, e] of Object.entries(record || {})) if (stPageSettled(e)) out.add(Number(p));
+  return out;
+}
+
+/** Each page of [[from, to], ...], in order. Pure. */
+function stPagesIn(ranges) {
+  const out = [];
+  for (const [a, b] of Array.isArray(ranges) ? ranges : []) for (let p = Number(a) || 0; p <= (Number(b) || 0); p++) if (p >= 1) out.push(p);
+  return out;
+}
+
+/** Pages as [[from, to], ...] runs, sorted. Pure. */
+function stPageRuns(pages) {
+  const sorted = [...new Set((pages || []).map(Number).filter((p) => p >= 1))].sort((a, b) => a - b);
+  const runs = [];
+  for (const p of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && p === last[1] + 1) last[1] = p; else runs.push([p, p]);
+  }
+  return runs;
+}
+
+/** The material's concepts as stUnitMapped reads them, carrying the pages that need no more asking. */
+async function stMapKnown(material) {
+  const known = await stListConcepts({ materialIds: [material.id] });
+  const record = await stPagesRecord(material.id);
+  known.pagesDone = stPagesDone(record);
+  known.pagesSeen = new Set(Object.keys(record).map(Number));
+  return known;
+}
+
+/**
+ * After one map of a section's pages: `read` pages (answered readably, or
+ * blank) are recorded with their text's hash; `unread` pages count one more
+ * start on which no reply could be read.
+ */
+async function stNotePages(materialId, { read = [], unread = [] } = {}, pageTexts = []) {
+  if (!read.length && !unread.length) return;
+  await stUpdatePages(materialId, (rec) => {
+    for (const p of read) rec[p] = { s: 'read', h: stHashText(String(pageTexts[p - 1] || '')) };
+    for (const p of unread) {
+      const e = rec[p];
+      if (e && e.s === 'read') continue;
+      rec[p] = { s: 'unread', n: (e && e.s === 'unread' ? Number(e.n) || 0 : 0) + 1, h: stHashText(String(pageTexts[p - 1] || '')) };
+    }
+  });
+}
+
+/**
+ * The pages in a scope the model could not read: [{ materialId, label,
+ * ranges, givenUp }], one per material and state (asked again next start,
+ * or left out). Selections have no pages to record.
+ */
+async function stScopeUnread(scope) {
+  const out = [];
+  if (!scope || stFixedScope(scope) || scope.kind === 'weak' || scope.kind === 'selection') return out;
+  for (const { material, units } of await stScopeUnits(scope)) {
+    const rec = await stPagesRecord(material.id);
+    const pages = stPagesIn(units.flatMap((u) => u.ranges || [])).filter((p) => rec[p] && rec[p].s === 'unread');
+    for (const givenUp of [false, true]) {
+      const these = pages.filter((p) => stPageSettled(rec[p]) === givenUp);
+      if (these.length) out.push({ materialId: material.id, label: material.label, ranges: stPageRuns(these), givenUp });
+    }
+  }
+  return out;
+}
+
+/** What he is told about pages the model could not read, or ''. Pure. */
+function stUnreadText(unread) {
+  const list = Array.isArray(unread) ? unread : [];
+  const words = (ranges) => {
+    const n = stPagesIn(ranges).length;
+    const parts = ranges.map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`));
+    return `${n === 1 ? 'page' : 'pages'} ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]}`;
+  };
+  return list.map((u) => `The model could not read ${words(u.ranges)} of ${u.label}; ${u.givenUp ? 'no questions come from there (it was left out after two starts).' : 'it is asked again on the next start.'}`).join(' ');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -7244,7 +7562,7 @@ async function renderGenerating(host, route, ctx) {
           : stopped ? 'What was kept stays in the bank.'
           : isBank ? 'A question needs an answer or a rubric to be marked.'
           : unreadable ? `It was asked ${ST_LIST_ASKS} times and never answered with the list it was asked for. Try again, or try another model on the sheet.`
-          : 'Nothing passed the checks. Try another model on the sheet, or a smaller scope.',
+          : `${stUnreadText(run.result && run.result.unread)} Nothing passed the checks. Try another model on the sheet, or a smaller scope.`.trim(),
         stopped,
         retry: !!run.error || !isBank,
         start: { scope, mode: session.mode, answerFormat: stProp(session, 'answerFormat', 'mixed'), model: stProp(session, 'model', ''), numCtx: Number(stProp(session, 'numCtx', 0)) || 0 },
@@ -7281,7 +7599,8 @@ async function renderGenerating(host, route, ctx) {
  * The making, shown in the session while he answers: what is happening, how
  * many questions are ready of how many are planned, the time elapsed, Stop.
  * Hidden when nothing is being made. A making that failed stays, with its
- * reason and Try Again. `onFed()` is called whenever the session holds more
+ * reason and Try Again; one that ended with pages the model could not read
+ * stays, saying which (stUnreadText). `onFed()` is called whenever the session holds more
  * questions than before, and when the making ends. Returns { live(), failed() }.
  */
 function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
@@ -7291,6 +7610,8 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
   // The count is the part read out as it changes; the words beside it change too often for that.
   const count = _api.ui.createBlock(strip, 'span', { className: 'st-making__n', attrs: { role: 'status' } });
   const time = stBlock(strip, 'span', 'st-making__t');
+  // Read out when it appears: pages of the material the model could not read.
+  const note = _api.ui.createBlock(strip, 'span', { className: 'st-making__now', attrs: { role: 'status' } });
   const stopBtn = _api.ui.createButton(strip, { id: 'study.making.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', size: 'sm', title: 'Stop writing questions. The ones that are ready stay in this session.', command: 'study.stopMaking', args: [session.id] });
   const againBtn = _api.ui.createButton(strip, { id: 'study.making.more', label: 'Try Again', icon: 'refresh-cw', kind: 'ghost', size: 'sm', title: 'Go on writing questions for this session.', command: 'study.makeAgain', args: [session.id] });
   host.insertBefore(strip, before);
@@ -7301,9 +7622,12 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
   const paint = () => {
     if (ctx.disposed() || !run) return;
     const failed = run.done && !!run.error;
-    strip.hidden = run.done && !failed;
+    // Pages the model could not read are said once the making ends (asked again next start, or left out).
+    const unread = run.done && !failed ? stUnreadText(run.result && run.result.unread) : '';
+    strip.hidden = run.done && !failed && !unread;
     strip.classList.toggle('st-making--failed', failed);
-    now.textContent = failed ? `No more questions could be made: ${stSentence(stErrText(run.error))}` : stRunNowText(run.progress, run, { names: false });
+    now.textContent = failed ? `No more questions could be made: ${stSentence(stErrText(run.error))}` : unread ? '' : stRunNowText(run.progress, run, { names: false });
+    if (note.textContent !== unread) note.textContent = unread;
     const text = `${Math.min(size, run.held)} of ${size} ready`;
     if (count.textContent !== text) count.textContent = text;
     time.textContent = `${stElapsedText((run.endedAt || Date.now()) - run.startedAt)} elapsed`;

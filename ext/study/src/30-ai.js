@@ -1675,7 +1675,7 @@ async function stScopeCanGrow(scope) {
   if (!scope || stFixedScope(scope)) return false;
   if (scope.kind !== 'weak') {
     for (const { material, units } of await stScopeUnits(scope)) {
-      const known = await stListConcepts({ materialIds: [material.id] });
+      const known = await stMapKnown(material);
       if (units.some((u) => !stUnitMapped(u, scope, known))) return true;
     }
   }
@@ -1836,7 +1836,7 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     for (const { material, units } of await stScopeUnits(scope)) {
       if (!units.length) continue;
       const ordered = stSpreadOrder(units.length).map((i) => units[i]);
-      const known = await stListConcepts({ materialIds: [material.id] });
+      const known = await stMapKnown(material);
       for (const u of ordered) u.mapped = stUnitMapped(u, scope, known);
       queues.push({ material, cursor: 0, units: ordered });
     }

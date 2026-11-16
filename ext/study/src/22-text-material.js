@@ -82,21 +82,22 @@ async function stReadTextMaterial(fsPath) {
   return { pageTexts: parts, text, pageCount: parts.length, outline, title: first ? first.title : '' };
 }
 
-/** stMaterialText for a notes file (20-data.js asks here for kind 'text'). */
+/** stMaterialText for a notes file (20-data.js asks here for kind 'text'). A file whose hash changed is brought up to date first (24-text-edits.js). */
 async function stTextMaterialText(material) {
   const r = await stReadTextMaterial(stFsPathOf(material.uri));
+  if (material.id && stHashText(r.text) !== material.contentHash) await stTextEdited(material.id, r);
   return { pageTexts: r.pageTexts, text: r.text, pageCount: r.pageCount };
 }
 
-/** Ingest a notes file: its parts, its headings as chapters, the material. Returns the material. */
+/** Ingest a notes file: its parts, its headings as chapters, the material. An edited one keeps what did not change (stTextEdited). Returns the material. */
 async function stIngestTextFile(fsPath) {
   const path = stFsPathOf(fsPath);
   const r = await stReadTextMaterial(path);
   // No headings: one chapter, the whole file (a PDF's fallback names pages, which a notes file has none of).
-  const outlined = stSectionsFromOutline(r.outline, r.pageCount);
-  const sections = stNormalizeSections(outlined.length ? outlined : [{ title: 'Whole file', pageFrom: 1, pageTo: r.pageCount }], r.pageCount);
+  const sections = stTextSections(r);
   const uri = stUriOf(path);
-  const prior = await db.get("SELECT label FROM st_materials WHERE kind = 'text' AND uri = ?", [uri]);
+  const prior = await db.get("SELECT id, label, content_hash FROM st_materials WHERE kind = 'text' AND uri = ?", [uri]);
+  if (prior && prior.content_hash !== stHashText(r.text)) await stTextEdited(prior.id, r);
   const material = await stUpsertMaterial({
     kind: 'text',
     uri,

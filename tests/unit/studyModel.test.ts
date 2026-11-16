@@ -12,7 +12,7 @@
 // question validation.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -900,7 +900,9 @@ function loadStudy(): Study {
   return new Function(`'use strict';\n${src}\nreturn { ${STUDY_NAMES.join(', ')} };`)() as Study;
 }
 
-const MIGRATION = readFileSync(join(__dirname, '../../ext/study/db/migrations/study_001_initial.sql'), 'utf8');
+/** Every migration, in order, as the app runs them. */
+const MIGRATIONS_DIR = join(__dirname, '../../ext/study/db/migrations');
+const MIGRATION = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort().map((f) => readFileSync(join(MIGRATIONS_DIR, f), 'utf8')).join('\n');
 
 function sqliteBridge(sql: DatabaseSync) {
   const wrap = (fn: () => object) => { try { return { error: null, ...fn() }; } catch (e: any) { return { error: { message: e.message } }; } };

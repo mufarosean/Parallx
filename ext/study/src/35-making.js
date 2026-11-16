@@ -7,9 +7,10 @@
 //
 //   - stAskList asks again when a reply holds no list at all (prose where
 //     JSON was asked, or JSON cut off before anything could be read).
-//   - stBuildConceptMap marks a section mapped only when every part of it
-//     was read; stUnitMapped counts a unit as mapped only when its pages
-//     hold concepts, so a section stamped "mapped" with none is asked again.
+//   - stBuildConceptMap reads only the pages not read before and marks a
+//     section mapped once every page of it is read (36-map-pages.js);
+//     stUnitMapped asks a section the old code stamped "mapped" with no
+//     concepts again.
 //   - stFillSession puts each question into the session the moment it is
 //     stored (stEnsureBank's onKept), ordered so no two in a row share a
 //     concept (stInterleaveConcepts), while the rest are still being made.
@@ -58,8 +59,10 @@ async function stAskList(modelId, system, user, options) {
  * against the material's existing concepts and each other; new ones are
  * inserted. Returns the unit's concepts (the existing matches plus the new
  * rows) with `unreadable`, the number of chunks no reply could be read for.
- * The section is marked mapped only when every chunk was read, so one bad
- * reply never closes a chapter.
+ * Only pages not read before are asked about, and each page is recorded as
+ * read or unreadable (36-map-pages.js); the section is marked mapped once
+ * every page of it is read or left out, so one bad reply never closes a
+ * chapter and a page read once is not read again.
  *
  * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
  * owns under stPagePartition, so a chapter and its subsections never map a
@@ -93,7 +96,12 @@ async function stBuildConceptMap(material, section, {
   const sized = await stPlanFor(model, material, numCtx);
 
   // The chunks: page ranges of the section, or the selection as one chunk.
+  // Pages already read (or left out as unreadable) are not read again; a
+  // page in no chunk is blank, and counts as read.
   let chunks = [];
+  let wanted = [];
+  const pagesRead = [];
+  const pagesUnread = [];
   if (selectionText) {
     const page = Number(selectionPage) || 0;
     chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
@@ -101,9 +109,14 @@ async function stBuildConceptMap(material, section, {
     const pageCount = text.pageTexts.length;
     const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
     const maxChars = Math.min(ST_MAP_CHUNK_CHARS, sized.maxChars);
-    for (const [rf, rt] of list) {
+    const clamped = list.map(([rf, rt]) => {
       const from = Math.max(1, Number(rf) || 1);
-      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
+      return [from, Math.max(from, Math.min(pageCount || from, Number(rt) || from))];
+    });
+    wanted = stPagesIn(clamped);
+    const already = stPagesDone(await stPagesRecord(material.id));
+    const todo = stPageRuns(wanted.filter((p) => !already.has(p)));
+    for (const [from, to] of todo) {
       const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
         const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
         return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
@@ -114,9 +127,12 @@ async function stBuildConceptMap(material, section, {
       }
       chunks.push(...pieces);
     }
+    const inChunks = new Set(stPagesIn(chunks.map((c) => [c.pageFrom, c.pageTo])));
+    pagesRead.push(...stPagesIn(todo).filter((p) => !inChunks.has(p)));
   }
   if (!chunks.length) {
-    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
+    // Nothing left to read (every page read before, or a blank or image-only stretch): mapped.
+    if (!selectionText) await stNotePages(material.id, { read: pagesRead }, text.pageTexts);
     if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
     return Object.assign([], { unreadable: 0 });
   }
@@ -125,6 +141,7 @@ async function stBuildConceptMap(material, section, {
   const matched = []; // existing concepts the chunk named again
   const pool = [...existing];
   let unreadable = 0;
+  let failure = null;
   report(0, chunks.length);
   for (let i = 0; i < chunks.length; i++) {
     if (cancelled()) break;
@@ -146,10 +163,12 @@ async function stBuildConceptMap(material, section, {
         onStream: (s) => report(i, chunks.length, s),
       });
     } catch (err) {
-      if (stIsStopped(err)) break;
-      throw err;
+      // A backend error ends the map, after what was read so far is kept.
+      if (!stIsStopped(err)) failure = err;
+      break;
     }
-    if (!asked.list) unreadable += 1;
+    const chunkPages = stPagesIn([[chunk.pageFrom, chunk.pageTo]]);
+    if (!asked.list) { unreadable += 1; pagesUnread.push(...chunkPages); } else pagesRead.push(...chunkPages);
     for (const raw of asked.list || []) {
       if (!raw || typeof raw !== 'object') continue;
       const rawTitle = String(raw.title || '').trim();
@@ -198,18 +217,32 @@ async function stBuildConceptMap(material, section, {
     for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
     inserted.push(...rows);
   }
-  if (section && section.id && markMapped && !unreadable && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+  let complete = !unreadable;
+  if (!selectionText) {
+    await stNotePages(material.id, { read: pagesRead, unread: pagesUnread }, text.pageTexts);
+    const settled = stPagesDone(await stPagesRecord(material.id));
+    complete = wanted.every((p) => settled.has(p));
+  }
+  if (failure) throw failure;
+  if (section && section.id && markMapped && complete && !cancelled()) await stMarkSectionMapped(section.id, stNow());
   return Object.assign([...matched, ...inserted], { unreadable });
 }
 
 /**
- * Is a unit mapped? Only when its pages hold concepts (`known`: the
- * material's concepts). A section stamped as mapped with none on its pages
- * is not: that is what a reply nobody could read left behind before, and it
- * is asked again. A selection is mapped once its concept ids are known.
+ * Is a unit mapped? When every page it covers is read, or left out as
+ * unreadable (`known.pagesDone`, stMapKnown), whatever was found there. A
+ * unit none of whose pages has a record was mapped by the old code, which
+ * counted it only when its pages hold concepts (`known`: the material's
+ * concepts): a section stamped mapped with none is what a reply nobody could
+ * read left behind, and it is asked again. A selection is mapped once its
+ * concept ids are known.
  */
 function stUnitMapped(unit, scope, known) {
   if (unit.selection) return stSelectionConceptIds(scope).length > 0;
+  const done = known && known.pagesDone;
+  const pages = stPagesIn(unit.ranges);
+  if (done && pages.length && pages.every((p) => done.has(p))) return true;
+  if (known && known.pagesSeen && pages.some((p) => known.pagesSeen.has(p))) return false;
   if (!unit.partial && !(unit.section.mappedAt > 0)) return false;
   return (known || []).some((c) => stInRanges(c.page, unit.ranges));
 }
@@ -238,7 +271,9 @@ async function stMapUnit(unit, scope, { modelId, numCtx, token, onProgress, sess
       modelId, numCtx, token, onProgress, quiet: true, ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
     });
   }
-  return !(concepts.unreadable > 0 && !concepts.length);
+  if (!(concepts.unreadable > 0 && !concepts.length)) return true;
+  // Nothing readable this time: still a unit to write for when earlier reads filed concepts on its pages.
+  return !unit.selection && (await stListConcepts({ materialIds: [unit.material.id] })).some((c) => stInRanges(c.page, unit.ranges));
 }
 
 // ── The order of a session that fills as it goes ────────────────────────────
@@ -363,12 +398,15 @@ async function stFeedSession(session, { size, draw }) {
  * writing ends short of `size` the draw is filled with questions this
  * session asked before (stRepeatFill), as stNextDraw does. `onFed(held)`
  * hears every change to what the draw holds. Stop (the token) keeps what is
- * in the session. Returns { held, unreadable, unanswerable }.
+ * in the session. Returns { held, unreadable, unanswerable, unread }:
+ * `unread` lists the pages in scope the model could not read (stScopeUnread).
  */
 async function stFillSession(session, { token = null, onProgress = null, onFed = null } = {}) {
   const scope = session.scope || {};
   const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
   const draw = Number(session.refreshes) || 0;
+  // A notes file edited since Study last read it is brought up to date before anything is drawn from it.
+  await stNoticeEditedNotes(scope);
   const before = await stListSessionItems(session.id);
   const asked = new Set(before.map((i) => i.questionId));
   const heldBefore = before.filter((i) => (Number(i.draw) || 0) === draw).length;
@@ -377,12 +415,14 @@ async function stFillSession(session, { token = null, onProgress = null, onFed =
   if (stFixedScope(scope) || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
     const drawn = await stNextDraw(session, { token, onProgress });
     told(drawn.length);
-    return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0 };
+    return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0, unread: [] };
   }
   // One feed at a time: a question stored while another is being placed waits its turn.
+  // After Stop nothing more is read or placed: what the last feed held is the session.
   let chain = Promise.resolve({ held: heldBefore, added: 0 });
   const feed = () => {
-    chain = chain.then(() => stFeedSession(session, { size, draw })).then((r) => { if (r.added) told(r.held); return r; });
+    if (token && token.cancelled) return chain;
+    chain = chain.then((prior) => (token && token.cancelled ? { ...prior, added: 0 } : stFeedSession(session, { size, draw }))).then((r) => { if (r.added) told(r.held); return r; });
     return chain;
   };
   let fed = await feed();
@@ -408,7 +448,9 @@ async function stFillSession(session, { token = null, onProgress = null, onFed =
       told(fed.held);
     }
   }
-  return { held: fed.held, unreadable: Number(ensured.unreadable) || 0, unanswerable: Number(ensured.unanswerable) || 0 };
+  // Pages the model could not read are said, whether they are asked again or left out.
+  const unread = token && token.cancelled ? [] : await stScopeUnread(scope);
+  return { held: fed.held, unreadable: Number(ensured.unreadable) || 0, unanswerable: Number(ensured.unanswerable) || 0, unread };
 }
 
 // ── No model ────────────────────────────────────────────────────────────────
