@@ -554,6 +554,74 @@ sources on request. So the rework may be less "fix the quiz" and more
 right and wrong, and the chat as the tutor that reads all three. Not
 checked against Study's code yet.
 
+**Assessed 2026-11-16** by an agent that used it in the built app as a
+newcomer and read its code. No model runs in the cloud, so the app ran
+against a scripted one: what is marked "his model" below is read or
+counted, not timed on his machine. Study's own probe passed (0 failures),
+which is the point: every flow works, and it is still unusable.
+
+Why it could not be used, most likely first:
+
+- Nothing can be answered until all 20 questions exist, and making them
+  is about 60 model calls one at a time when nothing is dropped, 108
+  when checks drop some (one call to map the chapter, one per concept to
+  write, one support check per question, three distractor checks per
+  multiple-choice question). At 10 seconds a call that is 10 to 18
+  minutes before the first question; at 40 seconds, 40 to 72 minutes.
+  The first question exists after 6 or 7 calls and is not shown. Stop at
+  "6 of 20 ready" says "Stopped before any question was ready". (Seen in
+  the app; the minutes need his model.)
+- One unreadable answer from the model on the chapter's first call marks
+  the chapter as mapped with no concepts, for good: "No questions could
+  be made", and no further call is ever made for it. The only way back
+  is to remove the material. (Seen in the app.)
+- Every call thinks (`study.aiThinking` ships on; its spec said off) and
+  carries a token cap that counts the thinking, the cap the house rule
+  forbids because a thinking model then answers cut-off JSON, which
+  feeds the two above. (Read in the code; the effect needs his model.)
+- The context size asked for changes on about half the calls, and a
+  change makes Ollama load the model again. (Counted in the app; the
+  cost needs his model.)
+- It is a quiz machine and not a notebook: no asking the sources a
+  question, no talking to the AI inside a session (Explain is one shot),
+  no summary, guide or notes of his own.
+- Sources are PDFs already in the workspace, or canvas pages. A .md,
+  .txt or .docx is never offered; there is no drop and no file dialog.
+- He cannot correct it: no editing a question, no overruling the grader,
+  no Previous, no mark to return to. A failed grade discards the answer.
+- The chat sees only concept titles and counts, not the question, his
+  answer or the model answer. History is in Study's own database file;
+  his 296-question canvas database cannot feed it.
+- A 20-question session on a short chapter asks the same few concepts
+  three ways, with the concept's name printed above each question.
+- Smaller: Enter after Explain runs Explain again; each failed start
+  leaves an empty session and a tab; Escape does not close the setup
+  sheet; a half-typed answer is lost when the tab closes.
+
+Worth keeping: the quote found on its page and Show Source beside the
+question; marking an essay point by point; mastery per concept and the
+weak-spot draw; import of past-exam questions and the examiner's report;
+resuming at the same question after a restart; turning off and on
+cleanly.
+
+Not assessed: the quality of the questions and the fairness of the
+grading with his models, real timings, the numeric check, Windows.
+
+**Proposed by Claude, nothing agreed.** Two things are wrong and they
+are separate. One is mechanical (the wait, the chapter that dies, the
+cap, the reloads) and is why it "does not work". The other is the shape
+(a closed quiz machine) and is why, even working, it is not what he
+meant. What he built in its place has no wait because its questions were
+made beforehand and checked once. So: making questions and studying them
+come apart. A bank is built from the sources in the background, or
+overnight on his machine, and shown as it grows; a session draws from
+what is ready and starts at once. Then the notebook: any file dropped
+in, the chat as the tutor inside a session and able to read the
+question, his answer and the model answer, his own questions living in
+it, and every question his to edit or overrule. First piece proposed: a
+first question within a minute, and nothing that can kill a chapter;
+without that, nothing else can be judged on his machine.
+
 ### AI chat: message times, model speed, dates on old chats
 
 **His words (2026-11-12, spelling corrected):** "currently AI chat does
