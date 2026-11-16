@@ -70,11 +70,13 @@ export function showEditorMoreActions(commands: ICommandRunner, request: IEditor
   const t = request.target();
   const actions = t ? getEditorTitleActions(t) : [];
   if (!t || !actions.length) return null;
-  const r = (request.anchor ?? document.querySelector<HTMLElement>('.editor-group--active') ?? document.body).getBoundingClientRect();
+  // Above the button (it sits in a status line at the pane's foot); from the
+  // palette with no button on screen, near the top of the active editor.
+  const group = (document.querySelector<HTMLElement>('.editor-group--active') ?? document.body).getBoundingClientRect();
   const menu = ContextMenu.show({
     // The contributing tool's name goes in the muted right-hand slot, as the PDF pane's menu does.
     items: actions.map((a) => ({ id: a.commandId, label: a.label, keybinding: a.toolName })),
-    anchor: r,
+    anchor: request.anchor ? request.anchor.getBoundingClientRect() : { x: group.left + group.width / 2, y: group.top + 40 },
     anchorPosition: 'above',
     label: 'More Actions',
   });
