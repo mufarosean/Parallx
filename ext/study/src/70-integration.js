@@ -82,20 +82,20 @@ function stSectionForPage(sections, page) {
   return null;
 }
 
-/** The active open editor showing a PDF, else the only open PDF, else null. */
+/** The active open editor showing a PDF or a notes file, else the only one open, else null. */
 function stPdfOfOpenEditors(editors) {
   const list = Array.isArray(editors) ? editors : [];
-  const isPdf = (e) => /\.pdf$/i.test(String(e?.description || '')) || /\.pdf$/i.test(String(e?.name || ''));
+  const isPdf = (e) => /\.(pdf|md|markdown|txt)$/i.test(String(e?.description || '')) || /\.(pdf|md|markdown|txt)$/i.test(String(e?.name || ''));
   const pdfs = list.filter(isPdf);
   const active = pdfs.find((e) => e.isActive);
   if (active) return active;
   return pdfs.length === 1 ? pdfs[0] : null;
 }
 
-/** The fsPath a PDF editor descriptor carries (its description is the fsPath). */
+/** The fsPath a PDF or notes editor descriptor carries (its description is the fsPath, or the path in the workspace). */
 function stPathOfEditor(editor) {
   const d = String(editor?.description || '');
-  if (/\.pdf$/i.test(d)) return stFsPathOf(d);
+  if (/\.(pdf|md|markdown|txt)$/i.test(d)) return stPathArg(d);
   return stFsPathOf(String(editor?.name || ''));
 }
 
@@ -709,7 +709,7 @@ async function stCmdOpen(arg) {
   return stOpenPane({ view: 'setup', materialIds: [] });
 }
 
-/** `arg` is the PDF pane's `{ uri, fsPath, page }`, a path string, or nothing (the palette). */
+/** `arg` is an editor's More Actions `{ uri, fsPath, page? }` (a PDF, or a notes file), a path string, or nothing (the palette). */
 async function stCmdStudyDocument(arg) {
   let fsPath = '';
   let page = 0;
@@ -722,9 +722,9 @@ async function stCmdStudyDocument(arg) {
     const editor = stPdfOfOpenEditors(_api.editors?.openEditors);
     if (editor) fsPath = stPathOfEditor(editor);
   }
-  if (!fsPath) fsPath = (await stPickWorkspacePdf()) || '';
+  if (!fsPath) fsPath = (await stPickWorkspaceDocument()) || '';
   if (!fsPath) return null;
-  const material = await stIngestPdf(fsPath);
+  const material = await stIngestDocument(fsPath);
   const sections = await stListSections(material.id);
   const section = stSectionForPage(sections, page);
   await stOpenSetup({ materialIds: [material.id], sectionId: section ? section.id : undefined });
@@ -781,9 +781,9 @@ async function stCmdWeakSpots() {
 }
 
 async function stCmdAddMaterial(arg) {
-  const fsPath = stPathArg(arg) || await stPickWorkspacePdf();
+  const fsPath = stPathArg(arg) || await stPickWorkspaceDocument();
   if (!fsPath) return null;
-  const material = await stIngestPdf(fsPath);
+  const material = await stIngestDocument(fsPath);
   await stOpenSetup({ materialIds: [material.id] });
   return material;
 }
@@ -1033,7 +1033,7 @@ function registerChatTools(context) {
 
   context.subscriptions.push(_api.chat.registerTool('study_session', {
     description:
-      'Start a Study session on a material the user has already added to Study (a PDF or a canvas page), '
+      'Start a Study session on a material the user has already added to Study (a PDF, a notes file or a canvas page), '
       + 'optionally over a page range. Opens the session in an editor tab; when the material has too few '
       + 'questions yet, the generation screen opens first. Local models only, nothing leaves the computer.',
     parameters: {
@@ -1085,8 +1085,8 @@ function registerChatTools(context) {
 
   context.subscriptions.push(_api.chat.registerTool('study_weak_spots', {
     description:
-      'List the concepts the user keeps getting wrong in Study, across every material, weakest first, '
-      + 'with each one\'s mastery, misses and material. Read-only.',
+      'List the concepts the user keeps getting wrong in Study, across every material, weakest first, with each one\'s mastery, '
+      + 'misses and material; for each, the last question answered wrong: the question, the answer given, the right or model answer and the source quote. Read-only.',
     parameters: {
       type: 'object',
       properties: {
@@ -1112,7 +1112,8 @@ function registerChatTools(context) {
           stConceptState(c, now, { staleDays }),
           `parallx://study/concept/${c.id}`,
         ].filter(Boolean).join(' · '));
-        return { content: `${concepts.length} weakest ${concepts.length === 1 ? 'concept' : 'concepts'}:\n${lines.join('\n')}` };
+        const work = await stWeakSpotMissText(concepts);
+        return { content: `${concepts.length} weakest ${concepts.length === 1 ? 'concept' : 'concepts'}:\n${lines.join('\n')}${work ? `\n${work}` : ''}` };
       } catch (err) {
         return { content: `Could not list weak spots: ${err?.message || err}`, isError: true };
       }
@@ -1121,8 +1122,8 @@ function registerChatTools(context) {
 
   context.subscriptions.push(_api.chat.registerTool('study_results', {
     description:
-      'The summary of one Study session (right, wrong, skipped, and the concepts missed), by session id or '
-      + 'the most recent session when none is given. Read-only.',
+      'One Study session (right, wrong, skipped, the concepts missed, and each question answered wrong with the answer given, the right or '
+      + 'model answer and the source quote), by session id or the most recent session when none is given. Read-only.',
     parameters: {
       type: 'object',
       properties: {
@@ -1139,8 +1140,7 @@ function registerChatTools(context) {
         const { scope, items, concepts, questions, summary } = await stSessionContext(session);
         const byId = new Map(concepts.map((c) => [Number(c.id), c]));
         const questionById = new Map(questions.map((q) => [Number(q.id), q]));
-        const missedTitles = [];
-        const seen = new Set();
+        const missedTitles = [], seen = new Set();
         for (const m of summary.missedConcepts || []) {
           const c = byId.get(Number(m.conceptId) || Number(questionById.get(Number(m.questionId))?.conceptId));
           if (!c || seen.has(c.id)) continue;
@@ -1148,13 +1148,13 @@ function registerChatTools(context) {
           const status = stMissedStatusText(m);
           missedTitles.push(`- ${c.title}${status === 'weak' ? '' : ` (${status})`} · parallx://study/concept/${c.id}`);
         }
-        const state = Number(session.finishedAt) > 0 ? 'finished' : 'open';
+        const state = Number(session.finishedAt) > 0 ? 'finished' : 'open', work = await stResultsMissText(items, questions, concepts);
         return { content: [
           `Session #${session.id} "${session.name}" · ${session.mode} · ${scope.label || ''} · ${state}`,
           `Right ${summary.right || 0} · wrong ${summary.wrong || 0} · skipped ${summary.skipped || 0} · answered ${summary.answered || 0} of ${items.length}`,
           missedTitles.length ? `Missed concepts:\n${missedTitles.join('\n')}` : 'No concepts missed.',
-          `parallx://study/session/${session.id}`,
-        ].join('\n') };
+          work, `parallx://study/session/${session.id}`,
+        ].filter(Boolean).join('\n') };
       } catch (err) {
         return { content: `Could not read the results: ${err?.message || err}`, isError: true };
       }

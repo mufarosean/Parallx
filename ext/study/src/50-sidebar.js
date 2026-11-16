@@ -27,7 +27,7 @@ function stOff(handle) {
 
 /** The icon for a material row, by kind. */
 function stMaterialIcon(kind) {
-  if (kind === 'pdf') return 'file-text';
+  if (kind === 'pdf' || kind === 'text') return 'file-text';
   if (kind === 'canvas') return 'notebook-text';
   return 'database';
 }
@@ -74,12 +74,12 @@ function stFlattenPageTree(nodes, path = [], out = []) {
   return out;
 }
 
-/** Add PDF…: the workspace pick, ingest, then the setup sheet. Shared by the
- *  Materials row's + menu and the empty state. */
+/** Add Document…: the workspace pick (PDFs and notes files), ingest, then the
+ *  setup sheet. Shared by the Materials row's + menu and the empty state. */
 async function stAddPdfFlow() {
-  const fsPath = await stPickWorkspacePdf();
+  const fsPath = await stPickWorkspaceDocument();
   if (!fsPath) return;
-  const material = await stIngestPdf(fsPath);
+  const material = await stIngestDocument(fsPath);
   _emitDataChanged();
   if (material) await stOpenSetup({ materialIds: [material.id] });
 }
@@ -139,7 +139,7 @@ function createSidebarView(container) {
       icon: 'plus', title: 'Add Material', size: 'sm',
       onClick: () => {
         _api.ui.showContextMenu(addBtn, [
-          { label: 'Add PDF…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
+          { label: 'Add Document…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
           { label: 'Add Canvas Page…', icon: 'notebook-text', onSelect: () => void stAddCanvasPageFlow() },
         ], { anchorPosition: 'below' });
       },
@@ -351,7 +351,7 @@ function createSidebarView(container) {
     const perMaterial = [];
     for (const m of materials) {
       const concepts = (await stListConcepts({ materialIds: [m.id] })) || [];
-      const sections = m.kind === 'pdf' && state.expandedId === m.id ? ((await stListSections(m.id)) || []) : [];
+      const sections = stHasSections(m) && state.expandedId === m.id ? ((await stListSections(m.id)) || []) : [];
       perMaterial.push({ m, concepts, cov: stCoverageOf(concepts, now), sections });
     }
     const open = (await stListSessions({ open: true })) || [];

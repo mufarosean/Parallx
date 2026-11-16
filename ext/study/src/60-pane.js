@@ -577,13 +577,13 @@ async function renderSetup(host, route, ctx) {
     _api.ui.createEmptyState(host, {
       icon: 'px-study',
       headline: 'Nothing to study yet.',
-      hint: 'Open a PDF and choose Study This Document, or add one here.',
-      action: { id: 'study.addPdf', label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
+      hint: 'Open a PDF or a notes file and choose Study This Document…, or add one here.',
+      action: { id: 'study.addPdf', label: 'Add Document…', onClick: () => void stAddPdfFlow() },
     });
     return;
   }
   const primary = materials[0];
-  const sections = primary.kind === 'pdf' ? ((await stListSections(primary.id)) || []) : [];
+  const sections = stHasSections(primary) ? ((await stListSections(primary.id)) || []) : [];
   const concepts = (await stListConcepts({ materialIds: materials.map((m) => m.id) })) || [];
   const { models, activeModel } = await stSheetModels();
   const size = Number(cfg('sessionSize', 20)) || 20;
@@ -1178,15 +1178,14 @@ async function renderSession(host, route, ctx) {
   function feedbackActs(cur, { retry: withRetry, overrule = '', regrade = false }) {
     const acts = stBlock(null, 'div', 'st-fb__acts');
     if (regrade) cur.regradeBtn = _api.ui.createButton(acts, { id: 'study.gradeAgain', label: 'Grade Again', icon: 'refresh-cw', kind: 'ghost', title: 'Grade Again (G). Your answer is marked again as it stands.', command: 'study.gradeAgain', args: [session.id] });
-    if (withRetry) {
-      cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', icon: 'rotate-ccw', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
-    }
+    if (withRetry) cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', icon: 'rotate-ccw', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
     // His verdict over the grader's, on a typed answer: the record and the concept follow it.
     const markAs = overrule === 'right' ? 'study.markAnswerRight' : 'study.markAnswerWrong';
     if (overrule) _api.ui.createButton(acts, { id: markAs, label: overrule === 'right' ? 'Mark as Right' : 'Mark as Wrong', icon: overrule === 'right' ? 'check' : 'x', kind: 'ghost',
       title: overrule === 'right' ? 'The grader said wrong; count this answer as right.' : 'The grader said right; count this answer as wrong.', command: markAs, args: [session.id] });
     _api.ui.createButton(acts, { id: 'study.session.source', label: stSourceLabel(cur.q), icon: 'file-text', kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
     _api.ui.createButton(acts, { id: 'study.session.explain', label: 'Explain', icon: 'message-square', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
+    if (!regrade) _api.ui.createButton(acts, { id: 'study.discussInChat', label: 'Discuss in Chat', icon: 'messages-square', kind: 'ghost', title: 'Discuss in Chat (D). Opens the chat with the question, your answer, the right answer and the source.', command: 'study.discussInChat', args: [session.id] });
     return acts;
   }
 
@@ -1606,8 +1605,7 @@ async function renderSession(host, route, ctx) {
       void endSession();
       return;
     }
-    if (inField) return;
-    if ((e.key === 'Enter' || e.key === ' ') && onControl) return;
+    if (inField || ((e.key === 'Enter' || e.key === ' ') && onControl)) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); previous(); return; }
     if (cur.fmt === 'mc' && /^[1-5]$/.test(e.key)) { e.preventDefault(); void choose(Number(e.key) - 1); return; }
@@ -1619,6 +1617,7 @@ async function renderSession(host, route, ctx) {
     if (k === 'k') { if (!cur.answered) { e.preventDefault(); void skip(); } return; }
     if (k === 'm') { e.preventDefault(); void cur.mark.toggle(); return; }
     if (k === 'g') { if (cur.ungraded) { e.preventDefault(); gradeAgain(); } return; }
+    if (k === 'd') { if (cur.answered && !cur.ungraded) { e.preventDefault(); void stDiscussInChat(cur.q, stItemAsShown(cur)); } return; }
   };
   ctx.root.addEventListener('keydown', onKey);
   ctx.add({ dispose: () => { ctx.root.removeEventListener('keydown', onKey); if (current && current.saver) current.saver.flush(); stSetOnScreen(session.id, 0); } });
@@ -1627,6 +1626,7 @@ async function renderSession(host, route, ctx) {
     previous, edit: editQuestion, gradeAgain, overrule: (to) => void overruleAnswer(to),
     next: () => { if (past.at >= 0) forward(); else if (current && current.fmt !== 'mc' && !current.answered) void check(); else void next(); },
     mark: () => { if (current && current.mark) void current.mark.toggle(); },
+    discuss: () => { if (past.at < 0 && current && current.answered && !current.ungraded) void stDiscussInChat(current.q, stItemAsShown(current)); },
   }));
 
   const making = stMakingStrip(sess, session, ctx, { before: main, size: Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20, onFed: absorb });
@@ -1902,7 +1902,7 @@ async function renderReview(host, route, ctx) {
 async function renderLearn(host, route, ctx) {
   const material = await stGetMaterial(route.materialId);
   if (!material) throw new Error('This material no longer exists.');
-  const sections = material.kind === 'pdf' ? ((await stListSections(material.id)) || []) : [];
+  const sections = stHasSections(material) ? ((await stListSections(material.id)) || []) : [];
   const section = route.sectionId ? sections.find((s) => s.id === route.sectionId) || null : null;
   // A chapter's concepts by its page range, so a parent chapter includes its subsections'.
   const concepts = ((section

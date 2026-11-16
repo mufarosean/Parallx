@@ -846,7 +846,8 @@ async function stReadCanvasPage(pageId) {
 
 /**
  * The material's text: { pageTexts, text, pageCount }. PDFs through the
- * extractor, canvas pages through the canvas command, banks empty. Cached in
+ * extractor, canvas pages through the canvas command, notes files in parts
+ * (22-text-material.js), banks empty. Cached in
  * memory per material id and content hash.
  */
 async function stMaterialText(material) {
@@ -861,9 +862,7 @@ async function stMaterialText(material) {
   } else if (material.kind === 'canvas') {
     const page = await stReadCanvasPage(material.uri);
     value = { pageTexts: [page.text], text: page.text, pageCount: 1 };
-  } else {
-    value = { pageTexts: [], text: '', pageCount: 0 };
-  }
+  } else value = material.kind === 'text' ? await stTextMaterialText(material) : { pageTexts: [], text: '', pageCount: 0 };
   stTextCachePut(key, value);
   return value;
 }

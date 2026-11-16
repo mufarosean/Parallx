@@ -902,7 +902,7 @@ describe('Study end to end', () => {
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(18); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, and the session screen's seven (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again)
+    expect(MANIFEST_COMMANDS.length).toBe(19); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, and the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat)
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.
@@ -1427,7 +1427,7 @@ describe('Study end to end', () => {
     expect(text(q(fb, '.st-fb__why'))).toBe(first.explanation);
     expect(text(q(fb, '.st-quote__text'))).toBe(`“${first.source_quote}”`);
     expect(text(q(fb, '.st-quote__pg'))).toBe(`p. ${first.source_page} ↗`);
-    expect(qa(fb, '.st-fb__acts button').map(text)).toEqual(['Retry', 'Show Source', 'Explain']);
+    expect(qa(fb, '.st-fb__acts button').map(text)).toEqual(['Retry', 'Show Source', 'Explain', 'Discuss in Chat']);
     expect(qa(h, '.st-strand i')[0].className).toContain('no');
     await waitFor(() => !btn(h, 'Next')!.disabled, 'Next enabled');
     const item0 = one('SELECT * FROM st_session_items WHERE session_id = ? ORDER BY ord LIMIT 1', sessionId);
@@ -1454,7 +1454,7 @@ describe('Study end to end', () => {
     key(h, String(right + 1));
     await waitFor(() => text(q(h, '.st-fb__text')) === 'Correct', 'the retried answer');
     expect(text(q(h, '.st-fb__grade'))).toBe('· counts as Again');
-    expect(qa(h, '.st-fb__acts button').map(text)).toEqual(['Show Source', 'Explain']);
+    expect(qa(h, '.st-fb__acts button').map(text)).toEqual(['Show Source', 'Explain', 'Discuss in Chat']);
     expect(qa(h, '.st-strand i')[0].className).toContain('no');
     await waitFor(() => one('SELECT COUNT(*) AS n FROM st_answers').n === 2, 'the retry row');
     expect(one('SELECT * FROM st_session_items WHERE id = ?', item0.id)).toMatchObject({ status: 'wrong', chosen: String(right), retried: 1 });
@@ -1687,11 +1687,11 @@ describe('Study end to end', () => {
     expect(text(q(subs[2], '.st-sb__r'))).toMatch(/^\d+ \/ 4$/);
     expect(text(q(subs[0], '.st-sb__r'))).toBe('no bank');
 
-    // A second material through Add Material: the quick pick lists the workspace PDFs.
+    // A second material through Add Material: the quick pick lists the workspace PDFs and notes files.
     env.pick = (items) => items.find((i) => i.label === 'Hurlimann_2009.pdf');
     await exec('study.addMaterial');
     const pick = env.calls.quickPicks.at(-1);
-    expect(pick.items.map((i: AnyRec) => i.label).sort()).toEqual(['Clark_2003_Mack_1994.pdf', 'Exam7_Fall2019_Report.pdf', 'Hurlimann_2009.pdf']);
+    expect(pick.items.map((i: AnyRec) => i.label).sort()).toEqual(['Clark_2003_Mack_1994.pdf', 'Exam7_Fall2019_Report.pdf', 'Hurlimann_2009.pdf', 'questions.md']);
     const m2 = one('SELECT * FROM st_materials WHERE uri = ?', 'file:///ws/readings/Hurlimann_2009.pdf');
     expect(m2).toMatchObject({ kind: 'pdf', page_count: 4 });
     // Headings, with "(continued)" folded into its chapter (bug 5).
@@ -1870,7 +1870,7 @@ describe('Study end to end', () => {
     expect(qa(h, '.st-rub__req').length).toBe(0);
     // A typed answer offers his verdict over the grader's: the one the grader did not give.
     const gradedRight = q(h, '.st-fb')!.classList.contains('st-fb--ok');
-    expect(qa(h, '.st-fb__acts button').map(text)).toEqual([gradedRight ? 'Mark as Wrong' : 'Mark as Right', 'Show Source', 'Explain']);
+    expect(qa(h, '.st-fb__acts button').map(text)).toEqual([gradedRight ? 'Mark as Wrong' : 'Mark as Right', 'Show Source', 'Explain', 'Discuss in Chat']);
     // Explain works without a quotation: it gets the model answer and the
     // marking points instead, and is never told the quote is missing.
     btn(h, 'Explain')!.click();

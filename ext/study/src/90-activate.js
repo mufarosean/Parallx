@@ -162,6 +162,23 @@ export const __testables = {
   stPlanFor,
   stElapsedText,
   stLiveRun,
+  // 22-text-material: notes files as material
+  stTextParts,
+  stIsTextPath,
+  stHasSections,
+  stIngestTextFile,
+  stIngestDocument,
+  ST_DOCUMENT_EXTS,
+  // 72-his-work: his misses for the chat tools, and Discuss in Chat
+  stHisAnswer,
+  stRightAnswerOf,
+  stMissOf,
+  stMissLines,
+  stDiscussPrompt,
+  stItemAsShown,
+  stDiscussInChat,
+  stResultsMissText,
+  stWeakSpotMissText,
   // 00-header
   el,
   icon,

@@ -55,6 +55,7 @@ function registerSessionCommands(context) {
     ['study.markAnswerRight', (id) => stSessionAction('overrule', id, 'right')],
     ['study.markAnswerWrong', (id) => stSessionAction('overrule', id, 'wrong')],
     ['study.gradeAgain', (id) => stSessionAction('gradeAgain', id)],
+    ['study.discussInChat', (id) => stSessionAction('discuss', id)],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
 }

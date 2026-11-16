@@ -293,6 +293,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workspace.importConfig` | Workspace: Import Configuration | settings |  |  |  |
 | `workspace.resetConfig` | Workspace: Reset Configuration | settings |  |  |  |
 | `study.addMaterial` | Add Material… | study | Study |  |  |
+| `study.discussInChat` | Discuss in Chat | study | Study |  |  |
 | `study.editQuestion` | Edit Question… | study | Study |  |  |
 | `study.gradeAgain` | Grade Answer Again | study | Study |  |  |
 | `study.importQuestions` | Import Questions… | study | Study |  |  |

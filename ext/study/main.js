@@ -2937,7 +2937,8 @@ async function stReadCanvasPage(pageId) {
 
 /**
  * The material's text: { pageTexts, text, pageCount }. PDFs through the
- * extractor, canvas pages through the canvas command, banks empty. Cached in
+ * extractor, canvas pages through the canvas command, notes files in parts
+ * (22-text-material.js), banks empty. Cached in
  * memory per material id and content hash.
  */
 async function stMaterialText(material) {
@@ -2952,9 +2953,7 @@ async function stMaterialText(material) {
   } else if (material.kind === 'canvas') {
     const page = await stReadCanvasPage(material.uri);
     value = { pageTexts: [page.text], text: page.text, pageCount: 1 };
-  } else {
-    value = { pageTexts: [], text: '', pageCount: 0 };
-  }
+  } else value = material.kind === 'text' ? await stTextMaterialText(material) : { pageTexts: [], text: '', pageCount: 0 };
   stTextCachePut(key, value);
   return value;
 }
@@ -3351,6 +3350,128 @@ async function stWeakConcepts({ limit = 50 } = {}) {
   });
   list.sort((a, b) => (rank[a.state] - rank[b.state]) || (a.mastery - b.mastery) || (a.lastAnsweredAt - b.lastAnsweredAt));
   return list.slice(0, Math.max(1, Number(limit) || 50));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 22: NOTES FILES AS MATERIAL (.md, .markdown, .txt)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A notes file in the workspace is studied as a PDF is: the same concept map,
+// questions, checks and Show Source. It has no pages, so it is cut into parts
+// that play their role: a part starts at each Markdown heading and holds at
+// most about ST_TEXT_PART_CHARS characters, cut where a paragraph ends. The
+// prompts tag the parts [Page N] as they tag a PDF's pages, the anchor check
+// finds a quote on its part, and Show Source opens the file in its own editor
+// at the quote (the core text and code editors find a revealed quote and
+// scroll to it). The headings are the chapters, nested as a PDF outline is.
+// The file is read through api.workspace.fs each time its text is needed
+// (cached in memory by content hash, like a PDF's extraction).
+
+/** File kinds studied as notes. */
+const ST_TEXT_EXTS = ['.md', '.markdown', '.txt'];
+/** Every file kind Add Material… and Study This Document… offer. */
+const ST_DOCUMENT_EXTS = ['.pdf', ...ST_TEXT_EXTS];
+/** About a printed page of prose: enough for a concept or two, small enough to quote from. */
+const ST_TEXT_PART_CHARS = 3000;
+/** Shorter than this is not worth a session (a PDF's floor is 200 characters of text). */
+const ST_TEXT_MIN_CHARS = 120;
+
+function stIsTextPath(p) {
+  const s = String(p || '').toLowerCase();
+  return ST_TEXT_EXTS.some((e) => s.endsWith(e));
+}
+
+/** Does the material have chapters to choose from (a PDF's outline, a notes file's headings)? */
+function stHasSections(material) {
+  return !!material && (material.kind === 'pdf' || material.kind === 'text');
+}
+
+/**
+ * A notes file cut into parts: { parts, outline }. A Markdown heading (outside
+ * a fenced code block) starts a part and is an outline entry { title, page,
+ * level } (level 0 for the top heading level used); a part longer than the
+ * limit ends at the next blank line, or at a line once it is twice the limit.
+ */
+function stTextParts(text, markdown) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  const parts = [];
+  const heads = [];
+  let cur = [];
+  let size = 0;
+  let fenced = false;
+  const flush = () => {
+    const body = cur.join('\n').replace(/^\n+|\s+$/g, '');
+    if (body.trim()) parts.push(body);
+    cur = [];
+    size = 0;
+  };
+  for (const line of lines) {
+    if (markdown && /^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    const head = markdown && !fenced ? /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line) : null;
+    if (head && head[2]) {
+      flush();
+      heads.push({ title: head[2], page: parts.length + 1, depth: head[1].length });
+    } else if (size > ST_TEXT_PART_CHARS && (!line.trim() || size > 2 * ST_TEXT_PART_CHARS)) {
+      flush();
+    }
+    cur.push(line);
+    size += line.length + 1;
+  }
+  flush();
+  const top = heads.length ? Math.min(...heads.map((h) => h.depth)) : 1;
+  const outline = heads.filter((h) => h.page <= parts.length).map((h) => ({ title: h.title, page: h.page, level: h.depth - top }));
+  return { parts, outline };
+}
+
+/** A notes file's text as Study reads every material's: { pageTexts, text, pageCount, outline, title }. */
+async function stReadTextMaterial(fsPath) {
+  const raw = await stReadWorkspaceFile(fsPath);
+  const text = String(raw || '').trim();
+  if (text.length < ST_TEXT_MIN_CHARS) {
+    throw new Error(text.length === 0 ? 'That file is empty.' : `That file holds only ${text.length} characters of text, too little to study.`);
+  }
+  const markdown = /\.(md|markdown)$/i.test(String(fsPath));
+  const { parts, outline } = stTextParts(text, markdown);
+  const first = outline.find((o) => o.level === 0);
+  return { pageTexts: parts, text, pageCount: parts.length, outline, title: first ? first.title : '' };
+}
+
+/** stMaterialText for a notes file (20-data.js asks here for kind 'text'). */
+async function stTextMaterialText(material) {
+  const r = await stReadTextMaterial(stFsPathOf(material.uri));
+  return { pageTexts: r.pageTexts, text: r.text, pageCount: r.pageCount };
+}
+
+/** Ingest a notes file: its parts, its headings as chapters, the material. Returns the material. */
+async function stIngestTextFile(fsPath) {
+  const path = stFsPathOf(fsPath);
+  const r = await stReadTextMaterial(path);
+  // No headings: one chapter, the whole file (a PDF's fallback names pages, which a notes file has none of).
+  const outlined = stSectionsFromOutline(r.outline, r.pageCount);
+  const sections = stNormalizeSections(outlined.length ? outlined : [{ title: 'Whole file', pageFrom: 1, pageTo: r.pageCount }], r.pageCount);
+  const uri = stUriOf(path);
+  const prior = await db.get("SELECT label FROM st_materials WHERE kind = 'text' AND uri = ?", [uri]);
+  const material = await stUpsertMaterial({
+    kind: 'text',
+    uri,
+    label: prior && prior.label ? prior.label : stMaterialLabelFor(stFileNameOf(path), r.title),
+    pageCount: r.pageCount,
+    contentHash: stHashText(r.text),
+    outline: sections,
+  });
+  await stEnsureSections(material.id, sections);
+  stTextCachePut(stTextCacheKey(material), { pageTexts: r.pageTexts, text: r.text, pageCount: r.pageCount });
+  return material;
+}
+
+/** Ingest a PDF or a notes file, by its extension. */
+async function stIngestDocument(fsPath) {
+  return stIsTextPath(fsPath) ? stIngestTextFile(fsPath) : stIngestPdf(fsPath);
+}
+
+/** The workspace's PDFs and notes files in one quick pick; the chosen fsPath, or null. */
+async function stPickWorkspaceDocument() {
+  return stPickWorkspaceFile(ST_DOCUMENT_EXTS, 'Study which document? (PDF, Markdown or text)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -6356,7 +6477,7 @@ function stOff(handle) {
 
 /** The icon for a material row, by kind. */
 function stMaterialIcon(kind) {
-  if (kind === 'pdf') return 'file-text';
+  if (kind === 'pdf' || kind === 'text') return 'file-text';
   if (kind === 'canvas') return 'notebook-text';
   return 'database';
 }
@@ -6403,12 +6524,12 @@ function stFlattenPageTree(nodes, path = [], out = []) {
   return out;
 }
 
-/** Add PDF…: the workspace pick, ingest, then the setup sheet. Shared by the
- *  Materials row's + menu and the empty state. */
+/** Add Document…: the workspace pick (PDFs and notes files), ingest, then the
+ *  setup sheet. Shared by the Materials row's + menu and the empty state. */
 async function stAddPdfFlow() {
-  const fsPath = await stPickWorkspacePdf();
+  const fsPath = await stPickWorkspaceDocument();
   if (!fsPath) return;
-  const material = await stIngestPdf(fsPath);
+  const material = await stIngestDocument(fsPath);
   _emitDataChanged();
   if (material) await stOpenSetup({ materialIds: [material.id] });
 }
@@ -6468,7 +6589,7 @@ function createSidebarView(container) {
       icon: 'plus', title: 'Add Material', size: 'sm',
       onClick: () => {
         _api.ui.showContextMenu(addBtn, [
-          { label: 'Add PDF…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
+          { label: 'Add Document…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
           { label: 'Add Canvas Page…', icon: 'notebook-text', onSelect: () => void stAddCanvasPageFlow() },
         ], { anchorPosition: 'below' });
       },
@@ -6680,7 +6801,7 @@ function createSidebarView(container) {
     const perMaterial = [];
     for (const m of materials) {
       const concepts = (await stListConcepts({ materialIds: [m.id] })) || [];
-      const sections = m.kind === 'pdf' && state.expandedId === m.id ? ((await stListSections(m.id)) || []) : [];
+      const sections = stHasSections(m) && state.expandedId === m.id ? ((await stListSections(m.id)) || []) : [];
       perMaterial.push({ m, concepts, cov: stCoverageOf(concepts, now), sections });
     }
     const open = (await stListSessions({ open: true })) || [];
@@ -8042,13 +8163,13 @@ async function renderSetup(host, route, ctx) {
     _api.ui.createEmptyState(host, {
       icon: 'px-study',
       headline: 'Nothing to study yet.',
-      hint: 'Open a PDF and choose Study This Document, or add one here.',
-      action: { id: 'study.addPdf', label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
+      hint: 'Open a PDF or a notes file and choose Study This Document…, or add one here.',
+      action: { id: 'study.addPdf', label: 'Add Document…', onClick: () => void stAddPdfFlow() },
     });
     return;
   }
   const primary = materials[0];
-  const sections = primary.kind === 'pdf' ? ((await stListSections(primary.id)) || []) : [];
+  const sections = stHasSections(primary) ? ((await stListSections(primary.id)) || []) : [];
   const concepts = (await stListConcepts({ materialIds: materials.map((m) => m.id) })) || [];
   const { models, activeModel } = await stSheetModels();
   const size = Number(cfg('sessionSize', 20)) || 20;
@@ -8643,15 +8764,14 @@ async function renderSession(host, route, ctx) {
   function feedbackActs(cur, { retry: withRetry, overrule = '', regrade = false }) {
     const acts = stBlock(null, 'div', 'st-fb__acts');
     if (regrade) cur.regradeBtn = _api.ui.createButton(acts, { id: 'study.gradeAgain', label: 'Grade Again', icon: 'refresh-cw', kind: 'ghost', title: 'Grade Again (G). Your answer is marked again as it stands.', command: 'study.gradeAgain', args: [session.id] });
-    if (withRetry) {
-      cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', icon: 'rotate-ccw', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
-    }
+    if (withRetry) cur.retryBtn = _api.ui.createButton(acts, { id: 'study.session.retry', label: 'Retry', icon: 'rotate-ccw', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
     // His verdict over the grader's, on a typed answer: the record and the concept follow it.
     const markAs = overrule === 'right' ? 'study.markAnswerRight' : 'study.markAnswerWrong';
     if (overrule) _api.ui.createButton(acts, { id: markAs, label: overrule === 'right' ? 'Mark as Right' : 'Mark as Wrong', icon: overrule === 'right' ? 'check' : 'x', kind: 'ghost',
       title: overrule === 'right' ? 'The grader said wrong; count this answer as right.' : 'The grader said right; count this answer as wrong.', command: markAs, args: [session.id] });
     _api.ui.createButton(acts, { id: 'study.session.source', label: stSourceLabel(cur.q), icon: 'file-text', kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
     _api.ui.createButton(acts, { id: 'study.session.explain', label: 'Explain', icon: 'message-square', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
+    if (!regrade) _api.ui.createButton(acts, { id: 'study.discussInChat', label: 'Discuss in Chat', icon: 'messages-square', kind: 'ghost', title: 'Discuss in Chat (D). Opens the chat with the question, your answer, the right answer and the source.', command: 'study.discussInChat', args: [session.id] });
     return acts;
   }
 
@@ -9071,8 +9191,7 @@ async function renderSession(host, route, ctx) {
       void endSession();
       return;
     }
-    if (inField) return;
-    if ((e.key === 'Enter' || e.key === ' ') && onControl) return;
+    if (inField || ((e.key === 'Enter' || e.key === ' ') && onControl)) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); previous(); return; }
     if (cur.fmt === 'mc' && /^[1-5]$/.test(e.key)) { e.preventDefault(); void choose(Number(e.key) - 1); return; }
@@ -9084,6 +9203,7 @@ async function renderSession(host, route, ctx) {
     if (k === 'k') { if (!cur.answered) { e.preventDefault(); void skip(); } return; }
     if (k === 'm') { e.preventDefault(); void cur.mark.toggle(); return; }
     if (k === 'g') { if (cur.ungraded) { e.preventDefault(); gradeAgain(); } return; }
+    if (k === 'd') { if (cur.answered && !cur.ungraded) { e.preventDefault(); void stDiscussInChat(cur.q, stItemAsShown(cur)); } return; }
   };
   ctx.root.addEventListener('keydown', onKey);
   ctx.add({ dispose: () => { ctx.root.removeEventListener('keydown', onKey); if (current && current.saver) current.saver.flush(); stSetOnScreen(session.id, 0); } });
@@ -9092,6 +9212,7 @@ async function renderSession(host, route, ctx) {
     previous, edit: editQuestion, gradeAgain, overrule: (to) => void overruleAnswer(to),
     next: () => { if (past.at >= 0) forward(); else if (current && current.fmt !== 'mc' && !current.answered) void check(); else void next(); },
     mark: () => { if (current && current.mark) void current.mark.toggle(); },
+    discuss: () => { if (past.at < 0 && current && current.answered && !current.ungraded) void stDiscussInChat(current.q, stItemAsShown(current)); },
   }));
 
   const making = stMakingStrip(sess, session, ctx, { before: main, size: Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20, onFed: absorb });
@@ -9367,7 +9488,7 @@ async function renderReview(host, route, ctx) {
 async function renderLearn(host, route, ctx) {
   const material = await stGetMaterial(route.materialId);
   if (!material) throw new Error('This material no longer exists.');
-  const sections = material.kind === 'pdf' ? ((await stListSections(material.id)) || []) : [];
+  const sections = stHasSections(material) ? ((await stListSections(material.id)) || []) : [];
   const section = route.sectionId ? sections.find((s) => s.id === route.sectionId) || null : null;
   // A chapter's concepts by its page range, so a parent chapter includes its subsections'.
   const concepts = ((section
@@ -9481,6 +9602,7 @@ function registerSessionCommands(context) {
     ['study.markAnswerRight', (id) => stSessionAction('overrule', id, 'right')],
     ['study.markAnswerWrong', (id) => stSessionAction('overrule', id, 'wrong')],
     ['study.gradeAgain', (id) => stSessionAction('gradeAgain', id)],
+    ['study.discussInChat', (id) => stSessionAction('discuss', id)],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
 }
@@ -9752,20 +9874,20 @@ function stSectionForPage(sections, page) {
   return null;
 }
 
-/** The active open editor showing a PDF, else the only open PDF, else null. */
+/** The active open editor showing a PDF or a notes file, else the only one open, else null. */
 function stPdfOfOpenEditors(editors) {
   const list = Array.isArray(editors) ? editors : [];
-  const isPdf = (e) => /\.pdf$/i.test(String(e?.description || '')) || /\.pdf$/i.test(String(e?.name || ''));
+  const isPdf = (e) => /\.(pdf|md|markdown|txt)$/i.test(String(e?.description || '')) || /\.(pdf|md|markdown|txt)$/i.test(String(e?.name || ''));
   const pdfs = list.filter(isPdf);
   const active = pdfs.find((e) => e.isActive);
   if (active) return active;
   return pdfs.length === 1 ? pdfs[0] : null;
 }
 
-/** The fsPath a PDF editor descriptor carries (its description is the fsPath). */
+/** The fsPath a PDF or notes editor descriptor carries (its description is the fsPath, or the path in the workspace). */
 function stPathOfEditor(editor) {
   const d = String(editor?.description || '');
-  if (/\.pdf$/i.test(d)) return stFsPathOf(d);
+  if (/\.(pdf|md|markdown|txt)$/i.test(d)) return stPathArg(d);
   return stFsPathOf(String(editor?.name || ''));
 }
 
@@ -10379,7 +10501,7 @@ async function stCmdOpen(arg) {
   return stOpenPane({ view: 'setup', materialIds: [] });
 }
 
-/** `arg` is the PDF pane's `{ uri, fsPath, page }`, a path string, or nothing (the palette). */
+/** `arg` is an editor's More Actions `{ uri, fsPath, page? }` (a PDF, or a notes file), a path string, or nothing (the palette). */
 async function stCmdStudyDocument(arg) {
   let fsPath = '';
   let page = 0;
@@ -10392,9 +10514,9 @@ async function stCmdStudyDocument(arg) {
     const editor = stPdfOfOpenEditors(_api.editors?.openEditors);
     if (editor) fsPath = stPathOfEditor(editor);
   }
-  if (!fsPath) fsPath = (await stPickWorkspacePdf()) || '';
+  if (!fsPath) fsPath = (await stPickWorkspaceDocument()) || '';
   if (!fsPath) return null;
-  const material = await stIngestPdf(fsPath);
+  const material = await stIngestDocument(fsPath);
   const sections = await stListSections(material.id);
   const section = stSectionForPage(sections, page);
   await stOpenSetup({ materialIds: [material.id], sectionId: section ? section.id : undefined });
@@ -10451,9 +10573,9 @@ async function stCmdWeakSpots() {
 }
 
 async function stCmdAddMaterial(arg) {
-  const fsPath = stPathArg(arg) || await stPickWorkspacePdf();
+  const fsPath = stPathArg(arg) || await stPickWorkspaceDocument();
   if (!fsPath) return null;
-  const material = await stIngestPdf(fsPath);
+  const material = await stIngestDocument(fsPath);
   await stOpenSetup({ materialIds: [material.id] });
   return material;
 }
@@ -10703,7 +10825,7 @@ function registerChatTools(context) {
 
   context.subscriptions.push(_api.chat.registerTool('study_session', {
     description:
-      'Start a Study session on a material the user has already added to Study (a PDF or a canvas page), '
+      'Start a Study session on a material the user has already added to Study (a PDF, a notes file or a canvas page), '
       + 'optionally over a page range. Opens the session in an editor tab; when the material has too few '
       + 'questions yet, the generation screen opens first. Local models only, nothing leaves the computer.',
     parameters: {
@@ -10755,8 +10877,8 @@ function registerChatTools(context) {
 
   context.subscriptions.push(_api.chat.registerTool('study_weak_spots', {
     description:
-      'List the concepts the user keeps getting wrong in Study, across every material, weakest first, '
-      + 'with each one\'s mastery, misses and material. Read-only.',
+      'List the concepts the user keeps getting wrong in Study, across every material, weakest first, with each one\'s mastery, '
+      + 'misses and material; for each, the last question answered wrong: the question, the answer given, the right or model answer and the source quote. Read-only.',
     parameters: {
       type: 'object',
       properties: {
@@ -10782,7 +10904,8 @@ function registerChatTools(context) {
           stConceptState(c, now, { staleDays }),
           `parallx://study/concept/${c.id}`,
         ].filter(Boolean).join(' · '));
-        return { content: `${concepts.length} weakest ${concepts.length === 1 ? 'concept' : 'concepts'}:\n${lines.join('\n')}` };
+        const work = await stWeakSpotMissText(concepts);
+        return { content: `${concepts.length} weakest ${concepts.length === 1 ? 'concept' : 'concepts'}:\n${lines.join('\n')}${work ? `\n${work}` : ''}` };
       } catch (err) {
         return { content: `Could not list weak spots: ${err?.message || err}`, isError: true };
       }
@@ -10791,8 +10914,8 @@ function registerChatTools(context) {
 
   context.subscriptions.push(_api.chat.registerTool('study_results', {
     description:
-      'The summary of one Study session (right, wrong, skipped, and the concepts missed), by session id or '
-      + 'the most recent session when none is given. Read-only.',
+      'One Study session (right, wrong, skipped, the concepts missed, and each question answered wrong with the answer given, the right or '
+      + 'model answer and the source quote), by session id or the most recent session when none is given. Read-only.',
     parameters: {
       type: 'object',
       properties: {
@@ -10809,8 +10932,7 @@ function registerChatTools(context) {
         const { scope, items, concepts, questions, summary } = await stSessionContext(session);
         const byId = new Map(concepts.map((c) => [Number(c.id), c]));
         const questionById = new Map(questions.map((q) => [Number(q.id), q]));
-        const missedTitles = [];
-        const seen = new Set();
+        const missedTitles = [], seen = new Set();
         for (const m of summary.missedConcepts || []) {
           const c = byId.get(Number(m.conceptId) || Number(questionById.get(Number(m.questionId))?.conceptId));
           if (!c || seen.has(c.id)) continue;
@@ -10818,13 +10940,13 @@ function registerChatTools(context) {
           const status = stMissedStatusText(m);
           missedTitles.push(`- ${c.title}${status === 'weak' ? '' : ` (${status})`} · parallx://study/concept/${c.id}`);
         }
-        const state = Number(session.finishedAt) > 0 ? 'finished' : 'open';
+        const state = Number(session.finishedAt) > 0 ? 'finished' : 'open', work = await stResultsMissText(items, questions, concepts);
         return { content: [
           `Session #${session.id} "${session.name}" · ${session.mode} · ${scope.label || ''} · ${state}`,
           `Right ${summary.right || 0} · wrong ${summary.wrong || 0} · skipped ${summary.skipped || 0} · answered ${summary.answered || 0} of ${items.length}`,
           missedTitles.length ? `Missed concepts:\n${missedTitles.join('\n')}` : 'No concepts missed.',
-          `parallx://study/session/${session.id}`,
-        ].join('\n') };
+          work, `parallx://study/session/${session.id}`,
+        ].filter(Boolean).join('\n') };
       } catch (err) {
         return { content: `Could not read the results: ${err?.message || err}`, isError: true };
       }
@@ -10872,6 +10994,191 @@ function registerPlannerDayLoads(context, attempt = 0, token = stActivation()) {
     .catch(() => {
       if (attempt < 5 && stIsCurrent(token)) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1, token), 2000, token);
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 72: HIS WORK, FOR THE CHAT — what he got wrong, as he answered it
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A miss is worth discussing only with the work on the table: the question,
+// what he answered, the right (or model) answer and the passage it rests on.
+// One record of that (stMissOf) feeds the two chat tools that report results
+// (study_results, study_weak_spots in 70-integration.js) and Discuss in Chat
+// on an answered question, which opens the app's chat with the record staged
+// for him to send or add to. The chat is reached through its own generic
+// commands (chat.show, chat.addFileAttachment, chat.stagePrompt), the ones
+// any tool calls; nothing here is drawn.
+
+/** The longest any one part of a record is in a tool's output: a chat model reads it. */
+const ST_WORK_CHARS = 600;
+/** Misses written out in full per tool call; the rest are counted. */
+const ST_WORK_MAX = 10;
+
+/** What he answered on an item: the option he chose, or what he typed. */
+function stHisAnswer(item, q) {
+  const fmt = (item && item.formatUsed) || (q && q.format);
+  if (fmt === 'mc') {
+    const options = Array.isArray(q && q.options) ? q.options : [];
+    const i = Number(item && item.chosen);
+    return item && item.chosen !== '' && item.chosen != null && options[i] !== undefined ? String(options[i]) : '';
+  }
+  return String((item && item.typed) || '');
+}
+
+/** The answer the question is marked against: an mc question's right option, else its answer. */
+function stRightAnswerOf(q) {
+  if (!q) return '';
+  if (q.format === 'mc') {
+    const options = Array.isArray(q.options) ? q.options : [];
+    const v = options[Number(q.answer)];
+    return v !== undefined ? String(v) : String(q.answer ?? '');
+  }
+  return String(q.answer ?? '');
+}
+
+/** One miss as a record: { question, answer, right, typed, quote, where, missed, note }. */
+function stMissOf(q, item, { material = null, concept = null } = {}) {
+  const fmt = (item && item.formatUsed) || q.format;
+  const v = item && item.verdict && typeof item.verdict === 'object' ? item.verdict : null;
+  const rubric = v && Array.isArray(v.rubric) && v.rubric.length ? v.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+  const points = v && Array.isArray(v.points) ? v.points : [];
+  const missed = fmt !== 'mc' && v ? rubric.filter((p, i) => p && p.text && ((points[i] && points[i].status) || 'miss') !== 'hit').map((p) => String(p.text)) : [];
+  const page = Number(q.sourcePage) || 0;
+  const label = (material && material.label) || q.originLabel || '';
+  return {
+    question: String(q.stem || ''),
+    answer: stHisAnswer(item, q),
+    right: stRightAnswerOf(q),
+    typed: fmt !== 'mc',
+    quote: String(q.sourceQuote || ''),
+    where: [label, page && material && material.kind === 'pdf' ? `p. ${page}` : ''].filter(Boolean).join(', '),
+    concept: concept ? String(concept.title || '') : '',
+    missed,
+    note: v && v.note ? String(v.note) : '',
+  };
+}
+
+/** A miss as a few lines a chat model reads (each part clipped to ST_WORK_CHARS). */
+function stMissLines(m, n) {
+  const cut = (t) => stTruncate(String(t || '').replace(/\s+/g, ' ').trim(), ST_WORK_CHARS);
+  const lines = [`${n}. Question: ${cut(m.question)}`];
+  lines.push(`   Answered: ${m.answer ? cut(m.answer) : '(nothing)'}`);
+  lines.push(`   ${m.typed ? 'Model answer' : 'Right answer'}: ${cut(m.right) || '(none stored)'}`);
+  if (m.missed.length) lines.push(`   Points missed: ${cut(m.missed.join('; '))}`);
+  if (m.quote) lines.push(`   Source${m.where ? ` (${m.where})` : ''}: "${cut(m.quote)}"`);
+  return lines;
+}
+
+/** The materials by id, for the source label on each record. */
+async function stMaterialsById() {
+  return new Map(((await stListMaterials()) || []).map((m) => [Number(m.id), m]));
+}
+
+/** study_results' block for a session: its wrong answers, newest first, up to ST_WORK_MAX in full. */
+async function stResultsMissText(items, questions, concepts) {
+  const qs = new Map((questions || []).map((q) => [Number(q.id), q]));
+  const cs = new Map((concepts || []).map((c) => [Number(c.id), c]));
+  const wrong = (items || []).filter((i) => i.status === 'wrong' && qs.has(Number(i.questionId)))
+    .sort((a, b) => (Number(b.answeredAt) || 0) - (Number(a.answeredAt) || 0));
+  if (!wrong.length) return '';
+  const materials = await stMaterialsById();
+  const lines = [`Answered wrong (${wrong.length}${wrong.length > ST_WORK_MAX ? `, the latest ${ST_WORK_MAX} shown` : ''}):`];
+  wrong.slice(0, ST_WORK_MAX).forEach((item, i) => {
+    const q = qs.get(Number(item.questionId));
+    lines.push(...stMissLines(stMissOf(q, item, { material: materials.get(Number(q.materialId)), concept: cs.get(Number(q.conceptId)) }), i + 1));
+  });
+  return lines.join('\n');
+}
+
+/** study_weak_spots' block: for each of the first ST_WORK_MAX concepts, the last question he got wrong on it. */
+async function stWeakSpotMissText(concepts) {
+  const ids = (concepts || []).slice(0, ST_WORK_MAX).map((c) => Number(c.id)).filter((n) => n > 0);
+  if (!ids.length) return '';
+  const rows = await db.all(
+    `SELECT i.*, q.concept_id AS q_concept FROM st_session_items i JOIN st_questions q ON q.id = i.question_id
+      WHERE i.status = 'wrong' AND q.concept_id IN (${stPlaceholders(ids)}) ORDER BY i.answered_at DESC, i.id DESC`, ids);
+  const lastByConcept = new Map();
+  for (const r of rows) if (!lastByConcept.has(Number(r.q_concept))) lastByConcept.set(Number(r.q_concept), stRowToSessionItem(r));
+  if (!lastByConcept.size) return '';
+  const materials = await stMaterialsById();
+  const lines = ['The last question answered wrong on each:'];
+  let n = 0;
+  for (const c of concepts.slice(0, ST_WORK_MAX)) {
+    const item = lastByConcept.get(Number(c.id));
+    const q = item ? await stGetQuestion(Number(item.questionId)) : null;
+    if (!q) continue;
+    n += 1;
+    lines.push(...stMissLines({ ...stMissOf(q, item, { material: materials.get(Number(q.materialId)), concept: c }) }, n).map((l, i) => (i === 0 ? `${l} [${c.title}]` : l)));
+  }
+  return n ? lines.join('\n') : '';
+}
+
+// ── Discuss in Chat ─────────────────────────────────────────────────────────
+
+/** True while the chat's staging command exists. */
+async function stChatAvailable() {
+  try {
+    const cmds = await _api.commands.getCommands();
+    return Array.isArray(cmds) && cmds.includes('chat.stagePrompt');
+  } catch { return false; }
+}
+
+/** The prompt staged in the chat for an answered question: his work, then what to do with it. */
+function stDiscussPrompt(m, { right }) {
+  const lines = [
+    right ? 'I answered this Study question right, but I want to be sure I understand it.' : 'I got this Study question wrong. Help me see where my thinking went off, then check that I have it.',
+    '',
+    `Question: ${m.question}`,
+    `My answer: ${m.answer || '(nothing)'}`,
+    `${m.typed ? 'Model answer' : 'Right answer'}: ${m.right || '(none stored)'}`,
+  ];
+  if (m.missed.length) lines.push(`Points I missed: ${m.missed.join('; ')}`);
+  if (m.note) lines.push(`Grader's note: ${m.note}`);
+  if (m.quote) lines.push(`Source${m.where ? ` (${m.where})` : ''}: "${m.quote}"`);
+  lines.push(
+    '',
+    right
+      ? 'Ask me to explain it in my own words first, then tell me what I left out.'
+      : 'Start from my answer: name the misunderstanding it shows before you give the right one.',
+    'Read the source passage and what is around it, and pull in anything else in my workspace that helps.',
+    'You can see my other misses with study_weak_spots and study_results; tie this one to them if they share a cause.',
+    'End with one question that checks I have it now.',
+  );
+  return lines.join('\n');
+}
+
+/** The item as the card shows it now: what was chosen or typed and the verdict, even before the record has landed. */
+function stItemAsShown(cur) {
+  const it = { ...(cur.item || {}) };
+  if (!it.formatUsed) it.formatUsed = cur.fmt;
+  if (cur.chosen != null) it.chosen = String(cur.chosen);
+  if (cur.typedField && cur.typedField.value) it.typed = cur.typedField.value;
+  if (cur.result) it.verdict = stStoredVerdict(cur.result);
+  if (it.status !== 'right' && it.status !== 'wrong') {
+    const right = it.formatUsed === 'mc' ? cur.chosen != null && Number(cur.chosen) === Number(cur.q.answer) : !!cur.result && Number(cur.result.rating) >= GOOD;
+    it.status = right ? 'right' : 'wrong';
+  }
+  return it;
+}
+
+/** Open the chat with an answered question's record staged, and its source file attached when there is one. */
+async function stDiscussInChat(q, item) {
+  if (!q || !item) return false;
+  if (!(await stChatAvailable())) {
+    await _api.window.showInformationMessage('The chat is not available.');
+    return false;
+  }
+  const material = Number(q.materialId) > 0 ? await stGetMaterial(Number(q.materialId)).catch(() => null) : null;
+  const m = stMissOf(q, item, { material });
+  await _api.commands.executeCommand('chat.show');
+  const uri = String(q.sourceUri || (material && material.uri) || '');
+  if (uri && /^(file:|[a-zA-Z]:[\\/]|\/)/.test(uri)) {
+    try {
+      await _api.commands.executeCommand('chat.addFileAttachment', { name: (material && material.label) || stFileNameOf(stFsPathOf(uri)) || 'Source', fullPath: stFsPathOf(uri) });
+    } catch { /* the prompt still names the source and quotes it */ }
+  }
+  await _api.commands.executeCommand('chat.stagePrompt', { text: stDiscussPrompt(m, { right: item.status === 'right' }) });
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -11038,6 +11345,23 @@ export const __testables = {
   stPlanFor,
   stElapsedText,
   stLiveRun,
+  // 22-text-material: notes files as material
+  stTextParts,
+  stIsTextPath,
+  stHasSections,
+  stIngestTextFile,
+  stIngestDocument,
+  ST_DOCUMENT_EXTS,
+  // 72-his-work: his misses for the chat tools, and Discuss in Chat
+  stHisAnswer,
+  stRightAnswerOf,
+  stMissOf,
+  stMissLines,
+  stDiscussPrompt,
+  stItemAsShown,
+  stDiscussInChat,
+  stResultsMissText,
+  stWeakSpotMissText,
   // 00-header
   el,
   icon,

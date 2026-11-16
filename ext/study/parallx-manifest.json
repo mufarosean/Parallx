@@ -24,6 +24,7 @@
       { "id": "study.markAnswerRight", "title": "Mark Answer as Right", "category": "Study" },
       { "id": "study.markAnswerWrong", "title": "Mark Answer as Wrong", "category": "Study" },
       { "id": "study.gradeAgain", "title": "Grade Answer Again", "category": "Study" },
+      { "id": "study.discussInChat", "title": "Discuss in Chat", "category": "Study" },
       { "id": "study.addMaterial", "title": "Add Material…", "category": "Study" },
       { "id": "study.importQuestions", "title": "Import Questions…", "category": "Study" },
       { "id": "study.importReport", "title": "Import Examiner's Report…", "category": "Study" },
@@ -34,7 +35,10 @@
     "views": [{ "id": "study.materials", "name": "Materials", "defaultContainerId": "study-container" }],
     "editors": [{ "typeId": "study", "displayName": "Study" }],
     "menus": {
-      "editor/title": [{ "command": "study.studyDocument", "when": "activeEditor == 'parallx.editor.pdf'" }],
+      "editor/title": [
+        { "command": "study.studyDocument", "when": "activeEditor == 'parallx.editor.pdf'" },
+        { "command": "study.studyDocument", "when": "activeEditor == 'parallx.editor.file' && (resourceExtname == '.md' || resourceExtname == '.markdown' || resourceExtname == '.txt')" }
+      ],
       "viewContainer/title": [
         { "command": "study.addMaterial", "title": "Add Material…", "group": "1_actions", "when": "activeViewContainer == 'study-container'" },
         { "command": "study.importQuestions", "title": "Import Questions…", "group": "1_actions", "when": "activeViewContainer == 'study-container'" },
