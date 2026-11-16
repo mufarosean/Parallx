@@ -95,7 +95,9 @@ const showMoreActions: CommandDescriptor = {
     const commands = ctx.getService<ICommandRunner>('ICommandService');
     const given = arg as Partial<IEditorMoreActionsRequest> | undefined;
     const request = given && typeof given.target === 'function' ? given as IEditorMoreActionsRequest : activeRequest(ctx.getService<IActiveEditorSource>('IEditorService'));
-    if (commands && request) showEditorMoreActions(commands, request);
+    const shown = commands && request ? showEditorMoreActions(commands, request) : null;
+    // From the palette with nothing to list: say so, rather than doing nothing.
+    if (!shown) void ctx.getService<{ info(message: string): unknown }>('INotificationService')?.info('No tool has an action for this editor.');
   },
 };
 
