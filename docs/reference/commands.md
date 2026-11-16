@@ -294,8 +294,10 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.addMaterial` | Add Material… | study | Study |  |  |
 | `study.importQuestions` | Import Questions… | study | Study |  |  |
 | `study.importReport` | Import Examiner's Report… | study | Study |  |  |
+| `study.makeAgain` | Make Questions Again | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
 | `study.quizSelection` | Quiz This Selection | study | Study |  |  |
+| `study.stopMaking` | Stop Making Questions | study | Study |  |  |
 | `study.studyDocument` | Study This Document… | study | Study |  |  |
 | `study.studyTogether` | Study Materials Together… | study | Study |  |  |
 | `study.weakSpots` | Study Weak Spots | study | Study |  |  |

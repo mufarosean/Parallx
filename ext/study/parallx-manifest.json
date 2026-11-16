@@ -18,7 +18,9 @@
       { "id": "study.weakSpots", "title": "Study Weak Spots", "category": "Study" },
       { "id": "study.addMaterial", "title": "Add Material…", "category": "Study" },
       { "id": "study.importQuestions", "title": "Import Questions…", "category": "Study" },
-      { "id": "study.importReport", "title": "Import Examiner's Report…", "category": "Study" }
+      { "id": "study.importReport", "title": "Import Examiner's Report…", "category": "Study" },
+      { "id": "study.stopMaking", "title": "Stop Making Questions", "category": "Study" },
+      { "id": "study.makeAgain", "title": "Make Questions Again", "category": "Study" }
     ],
     "viewContainers": [{ "id": "study-container", "title": "Study", "icon": "px-study", "location": "sidebar" }],
     "views": [{ "id": "study.materials", "name": "Materials", "defaultContainerId": "study-container" }],
@@ -38,7 +40,7 @@
       "study.answerFormat":       { "type": "string",  "default": "mixed", "description": "Default answer format for a new session: choose, type, or mixed. Mixed starts on choices and moves a concept to typing once it has been answered right." },
       "study.syllabus":           { "type": "string",  "default": "", "editPresentation": "multilineText", "rows": 8, "description": "What your exam expects: paste the syllabus or learning objectives. Concepts and questions are aimed at it. Empty: questions follow the material alone." },
       "study.aiModel":            { "type": "string",  "default": "", "description": "Model id used to write and grade questions. Leave empty to use the chat's active model." },
-      "study.generationContext":  { "type": "number",  "default": 0,  "description": "Context window (tokens) for generation and grading. 0 = auto: sized per run from the scope's length and the model's limit. A fixed value caps VRAM on a smaller machine." },
+      "study.generationContext":  { "type": "number",  "default": 0,  "description": "Context window (tokens) for generation and grading. 0 = auto: Study names no size and the app uses the one the model is loaded at, so the model is never loaded again between calls. A fixed value is sent on every call." },
       "study.aiThinking":         { "type": "boolean", "default": true, "description": "Let reasoning models think before writing or grading. Better questions and fairer grading, at the cost of slower runs. Turn it off only on a machine where generation is too slow." },
       "study.checkAnchor":        { "type": "boolean", "default": true, "description": "Drop a question whose quote is not on its page." },
       "study.checkSupport":       { "type": "boolean", "default": true, "description": "Drop a question whose quote, read with its page, does not settle its answer." },

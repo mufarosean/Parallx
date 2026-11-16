@@ -60,7 +60,7 @@ The settings tools declare in their manifests, with the tool that owns each. Set
 | `study.checkNumeric` | boolean | true | study | Study | Keep a numeric question only when its solution, run in Python, agrees with the stated answer. Needs the workspace Python environment. |
 | `study.checkSupport` | boolean | true | study | Study | Drop a question whose quote, read with its page, does not settle its answer. |
 | `study.choices` | number | 4 | study | Study | Options per multiple-choice question: 4 or 5. |
-| `study.generationContext` | number | 0 | study | Study | Context window (tokens) for generation and grading. 0 = auto: sized per run from the scope's length and the model's limit. A fixed value caps VRAM on a smaller machine. |
+| `study.generationContext` | number | 0 | study | Study | Context window (tokens) for generation and grading. 0 = auto: Study names no size and the app uses the one the model is loaded at, so the model is never loaded again between calls. A fixed value is sent on every call. |
 | `study.numericTolerance` | number | 0.005 | study | Study | Relative tolerance for a numeric answer to count as right (0.005 = half a percent). |
 | `study.questionsPerConcept` | number | 2 | study | Study | How many questions of each format a concept needs before generation considers it covered. |
 | `study.sessionSize` | number | 20 | study | Study | Questions per session. Refresh draws the next set from the same scope. |

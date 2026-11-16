@@ -205,9 +205,9 @@ function injectStyles() {
 .st-gen__s { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; }
 .st-gen__now { font-size: var(--px-text-sm); color: var(--px-text); margin-top: var(--px-space-2); min-height: 1.4em; }
 .st-gen__bar { height: 4px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; margin: var(--px-space-4) 0 var(--px-space-4); }
-.st-gen__bar i { display: block; height: 100%; width: 0; background: var(--px-accent); border-radius: var(--px-radius-full); transition: width var(--px-dur-slow) var(--px-ease); }
+.st-gen__bar .st-gen__fill { display: block; height: 100%; width: 0; background: var(--px-accent); border-radius: var(--px-radius-full); transition: width var(--px-dur-slow) var(--px-ease); }
 .st-genline { display: flex; gap: var(--px-space-5); font-size: var(--px-text-base); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.st-genline b { color: var(--px-text); font-weight: 600; }
+.st-genline strong { color: var(--px-text); font-weight: 600; }
 .st-checks { margin-top: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); overflow: hidden; }
 .st-ck { display: flex; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-space-3); font-size: var(--px-text-sm); border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
 .st-ck:first-child { border-top: 0; }
@@ -216,7 +216,19 @@ function injectStyles() {
 .st-ck__d--idle { background: var(--px-border-strong); }
 .st-ck__n { margin-left: auto; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 @keyframes st-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-.st-gen__acts { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-4); justify-content: flex-end; }
+.st-gen__acts { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-4); justify-content: flex-end; }
+.st-gen__hint { margin-right: auto; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+/* The making, beside the questions: one line under the session toolbar. */
+.st-making { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; padding: var(--px-space-1) var(--px-space-4); border-bottom: 1px solid var(--px-divider); background: var(--px-bg); font-size: var(--px-text-sm); color: var(--px-text-muted); flex: none; }
+.st-making[hidden], .st-making [hidden] { display: none; }
+.st-making__now { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-making__n { color: var(--px-text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-making__t { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-making--failed .st-making__now { color: var(--px-text); white-space: normal; }
+.st-ended { margin-top: var(--px-space-8); }
+.st-ended .px-btn--ghost { margin-top: var(--px-space-2); }
+.st-sheet__notice { padding: var(--px-space-3) var(--px-space-5); border-top: 1px solid var(--px-divider); }
+.st-sheet__notice .px-btn--ghost { margin-top: var(--px-space-2); }
 
 /* ── Results ────────────────────────────────────────────────────────────── */
 .st-res { width: 100%; max-width: 760px; margin: 0 auto; animation: st-card-in var(--px-dur-slow) var(--px-ease-out); }

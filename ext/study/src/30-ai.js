@@ -6,12 +6,13 @@
 // rubric derivation, numeric execution through the Python bridge, and the
 // two orchestrators the pane calls (stEnsureBank, stNextDraw).
 //
-// Every model call picks a model (stPickModel), plans its context window
-// (stContextPlan from 10-model.js with the material's setting), sends
-// { temperature, numCtx, think, format: 'json' when JSON is wanted }, streams
-// through stStreamWithStall and parses with the 10-model.js extractors. No
-// raw model text ever reaches the user: a failure is a thrown Error with a
-// plain sentence, or a { error } result.
+// Every model call picks a model (stPickModel) and sends { temperature,
+// think, format: 'json' when JSON is wanted }, and a context size only when
+// the user set one (stPlanFor), streams through stStreamWithStall and parses
+// with the 10-model.js extractors. No raw model text ever reaches the user:
+// a failure is a thrown Error with a plain sentence, or a { error } result.
+// The concept map, the asking-again of an unreadable reply and the filling
+// of a session as questions arrive are in 35-making.js.
 //
 // Patterns copied from ext/flashcards/main.js SECTION 5: fcPickModel,
 // fcModelContextLength, fcStreamWithStall (same timeouts), the generation
@@ -34,14 +35,9 @@ const ST_SUPPORT_PAGE_CHARS = 6000;
 /** The syllabus a prompt carries, at most (characters). */
 const ST_SYLLABUS_CHARS = 6000;
 
-/** Output reserves, in tokens, for the context plan. */
+/** Room kept for a reply when a prompt is sized, in tokens. */
 const ST_MAP_OUTPUT_TOKENS = 2400;
-const ST_QUESTION_OUTPUT_BASE = 400;
-const ST_QUESTION_OUTPUT_PER = 320;
-const ST_SMALL_OUTPUT_TOKENS = 700;
-/** An explanation: a few short paragraphs, a worked calculation at most. */
-const ST_EXPLAIN_OUTPUT_TOKENS = 1200;
-/** Thinking a model may do before it answers, in tokens, when thinking is on. */
+/** Thinking a model may do before it answers, in tokens, when thinking is on: room kept for it, never a limit sent. */
 const ST_THINK_TOKENS = 8192;
 /** How often, at most, a streaming answer reports its length (ms). */
 const ST_STREAM_REPORT_MS = 400;
@@ -104,13 +100,20 @@ function stContextSettingFor(material, numCtx) {
   return Number(numCtx) || Number(material && material.contextSetting) || Number(cfg('generationContext', 0)) || 0;
 }
 
-/** Plan one call's window. */
-async function stPlanFor(modelId, material, chars, outputTokens, numCtx) {
-  const modelCtx = await stModelContextLength(modelId);
-  // A model that reasons spends output tokens on that first, inside the same
-  // window: without room for it, the answer's JSON is cut off.
-  const reasoning = cfg('aiThinking', true) ? ST_THINK_TOKENS : 0;
-  return stContextPlan({ chars, outputTokens: outputTokens + reasoning, modelCtx, setting: stContextSettingFor(material, numCtx) });
+/**
+ * The plan for every call of a run: the context size to name and the room a
+ * prompt's material may take. A size is named only when the user set one
+ * (the sheet, the material or Settings), and it is then the same on every
+ * call. With none set no call names a size: the core decides (the size the
+ * model is loaded at, so nothing is loaded again), and a prompt's material
+ * is kept to ST_MAP_CHUNK_CHARS. A negative `numCtx` is "none, already
+ * decided for this run" (stEnsureBank), whatever Settings say by now.
+ */
+async function stPlanFor(modelId, material, numCtx) {
+  const setting = Math.max(0, stContextSettingFor(material, numCtx));
+  const reserve = ST_MAP_OUTPUT_TOKENS + (cfg('aiThinking', true) ? ST_THINK_TOKENS : 0);
+  const plan = stContextPlan({ chars: ST_MAP_CHUNK_CHARS, outputTokens: reserve, modelCtx: await stModelContextLength(modelId), setting });
+  return { numCtx: setting > 0 ? plan.numCtx : 0, maxChars: setting > 0 ? plan.maxChars : Math.min(ST_MAP_CHUNK_CHARS, plan.maxChars) };
 }
 
 /**
@@ -203,22 +206,13 @@ async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numC
     if (poll) clearInterval(poll);
     controller.abort(); // a stalled answer stops on the backend too; no-op once finished
   }
+  if (token && token.cancelled) throw stStoppedError(); // an aborted stream may end without an error
   return output;
 }
 
-/** The first array inside the model's JSON object, else a bare array; [] when nothing parses. */
+/** The first array inside the model's JSON object, else a bare array; [] when nothing parses (stListFrom tells the two apart). */
 function stJsonArrayFrom(text) {
-  const obj = stExtractJsonObject(text);
-  if (obj && typeof obj === 'object') {
-    for (const key of Object.keys(obj)) {
-      if (Array.isArray(obj[key])) return obj[key];
-    }
-  }
-  let res = null;
-  try { res = stExtractJsonArray(text, (parsed) => parsed); } catch { res = null; }
-  if (Array.isArray(res)) return res;
-  if (res && Array.isArray(res.items)) return res.items;
-  return [];
+  return stListFrom(text) || [];
 }
 
 function stJsonObjectFrom(text) {
@@ -458,156 +452,7 @@ function stFindSimilarConcept(title, concepts) {
   return null;
 }
 
-// ── Concept map ─────────────────────────────────────────────────────────────
-
-/**
- * Build the concept map for a section (or for a selection, given as the only
- * chunk). Per chunk the model lists concepts with a page and a verbatim
- * quote; the quote is located with stFindAnchorPage; titles are deduplicated
- * against the material's existing concepts and each other; new ones are
- * inserted and the section marked mapped. Returns the unit's concepts:
- * the existing matches plus the new rows.
- *
- * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
- * owns under stPagePartition, so a chapter and its subsections never map a
- * page twice); `ownerOf(page)` files each concept under the section that
- * owns its page; `markMapped` false leaves the section unmarked (a range
- * clipped to a Pages scope is not the whole section). `quiet` reports only
- * through onProgress, for a caller that rewrites the progress (stEnsureBank).
- */
-async function stBuildConceptMap(material, section, {
-  modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0,
-  ranges = null, ownerOf = null, markMapped = true, quiet = false,
-} = {}) {
-  const cancelled = () => !!(token && token.cancelled);
-  const model = modelId || await stPickModel(material);
-  if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
-  const text = await stMaterialText(material);
-  const existing = await stListConcepts({ materialIds: [material.id] });
-  // Headings a concept's title or quote may start with (page text opens
-  // with its heading, and a model copies it): every section and outline title.
-  const sectionTitles = new Map((await stListSections(material.id)).map((x) => [x.id, String(x.title || '')]));
-  const headings = [...new Set([
-    section && section.title ? String(section.title) : '',
-    ...sectionTitles.values(),
-    ...(Array.isArray(material.outline) ? material.outline.map((o) => String((o && o.title) || '')) : []),
-  ].filter(Boolean))];
-  const report = (done, total, writing = null) => {
-    const p = { phase: 'map', done, total, part: Math.min(total, done + 1), parts: total, writing, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
-    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
-  };
-
-  // The chunks: page ranges of the section, or the selection as one chunk.
-  let chunks = [];
-  if (selectionText) {
-    const page = Number(selectionPage) || 0;
-    chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
-  } else {
-    const pageCount = text.pageTexts.length;
-    const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
-    const cap = await stPlanFor(model, material, ST_MAP_CHUNK_CHARS, ST_MAP_OUTPUT_TOKENS, numCtx);
-    const maxChars = Math.min(ST_MAP_CHUNK_CHARS, cap.maxChars);
-    for (const [rf, rt] of list) {
-      const from = Math.max(1, Number(rf) || 1);
-      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
-      const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
-        const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
-        return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
-      }).filter((c) => c.text.trim());
-      if (!pieces.length) {
-        const block = stPageBlock(text.pageTexts, from, to, maxChars);
-        if (block.material.trim()) pieces.push({ pageFrom: from, pageTo: to, text: block.material });
-      }
-      chunks.push(...pieces);
-    }
-  }
-  if (!chunks.length) {
-    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
-    if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
-    return [];
-  }
-
-  const found = [];   // new concepts to insert: { title, summary, page, anchorQuote, flags }
-  const matched = []; // existing concepts the chunk named again
-  const pool = [...existing];
-  report(0, chunks.length);
-  for (let i = 0; i < chunks.length; i++) {
-    if (cancelled()) break;
-    const chunk = chunks[i];
-    const plan = await stPlanFor(model, material, chunk.text.length, ST_MAP_OUTPUT_TOKENS, numCtx);
-    const user = [
-      selectionText
-        ? 'The material below is a passage the student selected. List the concepts it teaches.'
-        : `The material below is pages ${chunk.pageFrom} to ${chunk.pageTo}${section && section.title ? ` of "${section.title}"` : ''}. List the concepts it teaches.`,
-      'Every "page" must be a [Page N] marker that appears in the material.',
-      ...stExamContext(material),
-      '',
-      '--- MATERIAL ---',
-      chunk.text,
-    ].join('\n');
-    let output;
-    try {
-      output = await stChat(model, ST_CONCEPT_SYSTEM, user, {
-        temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: true, token,
-        onStream: (s) => report(i, chunks.length, s),
-      });
-    } catch (err) {
-      if (stIsStopped(err)) break;
-      throw err;
-    }
-    const raws = stJsonArrayFrom(output);
-    for (const raw of raws) {
-      if (!raw || typeof raw !== 'object') continue;
-      const rawTitle = String(raw.title || '').trim();
-      if (!rawTitle) continue;
-      // A leading copy of a heading comes off the title and the quote before
-      // the anchor check; a title that is only its section's title is no concept.
-      const ownTitle = section && section.title ? stSkeleton(section.title) : '';
-      if (ownTitle && stSkeleton(rawTitle) === ownTitle) continue;
-      const title = stStripLeadingHeading(rawTitle, headings) || rawTitle;
-      const summary = String(raw.summary || '').trim();
-      const quote = stStripLeadingHeading(String(raw.quote || '').trim(), headings);
-      let page = Number(raw.page) || 0;
-      if (selectionText) {
-        page = Number(selectionPage) || 0;
-      } else {
-        const hint = page >= chunk.pageFrom && page <= chunk.pageTo ? page : chunk.pageFrom;
-        const located = quote ? stFindAnchorPage(quote, text.pageTexts, hint) : 0;
-        page = located || hint;
-      }
-      const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
-      const owner = typeof ownerOf === 'function' && !selectionText ? sectionTitles.get(Number(ownerOf(page)) || 0) : '';
-      if (owner && stSkeleton(rawTitle) === stSkeleton(owner)) continue;
-      const prior = stFindSimilarConcept(title, pool);
-      if (prior) {
-        if (prior.id && !matched.includes(prior)) matched.push(prior);
-        if (prior.id && !_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
-        continue;
-      }
-      found.push({ title, summary, page, anchorQuote, flags: raw });
-      pool.push({ id: 0, title });
-    }
-    report(i + 1, chunks.length);
-  }
-
-  // Each new concept goes under the section that owns its page.
-  const baseSection = section ? section.id : 0;
-  const bySection = new Map();
-  for (const f of found) {
-    const sid = typeof ownerOf === 'function' && !selectionText ? (Number(ownerOf(f.page)) || baseSection) : baseSection;
-    if (!bySection.has(sid)) bySection.set(sid, []);
-    bySection.get(sid).push(f);
-  }
-  const inserted = [];
-  for (const [sid, list] of bySection) {
-    const rows = await stInsertConcepts(material.id, sid, list.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })));
-    for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
-    inserted.push(...rows);
-  }
-  if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
-  return [...matched, ...inserted];
-}
+// ── Anchors ─────────────────────────────────────────────────────────────────
 
 /** The page a quote is on: the hinted page when the quote is there, else the located one, else 0. */
 function stAnchorPageFor(quote, pageTexts, hintPage) {
@@ -648,7 +493,7 @@ function stExamContext(material) {
 }
 
 /** Shown the quote, its page, the stem and the answer: does the source settle it? */
-async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = {}) {
+async function stCheckSupport(modelId, q, { material, numCtx, pageText = '', token = null } = {}) {
   const page = String(pageText || '').trim().slice(0, ST_SUPPORT_PAGE_CHARS);
   const user = [
     'Quotation:',
@@ -661,8 +506,8 @@ async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = 
     'Proposed answer:',
     stAnswerText(q),
   ].join('\n');
-  const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
+  const plan = await stPlanFor(modelId, material, numCtx);
+  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, token });
   const raw = stJsonObjectFrom(output);
   // An unreadable verdict is not evidence for the question: treat it as unsettled.
   if (!raw) return { settles: false, reason: 'The check gave no verdict.' };
@@ -670,8 +515,9 @@ async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = 
 }
 
 /** Each wrong option alone with the stem: could it be defended as correct? */
-async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
+async function stCheckDistractors(modelId, q, { material, numCtx, token = null } = {}) {
   const prompts = stDistractorPrompts(q) || [];
+  const plan = await stPlanFor(modelId, material, numCtx);
   for (const d of prompts) {
     const user = [
       'Question:',
@@ -683,8 +529,7 @@ async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
       'Option to check:',
       String(d.option || ''),
     ].join('\n');
-    const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
+    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, token });
     const raw = stJsonObjectFrom(output);
     if (!raw) return { defensible: true, optionIndex: d.optionIndex, reason: 'The check gave no verdict.' };
     if (raw.defensible === true || raw.defensible === 'true') {
@@ -1227,13 +1072,15 @@ function stConceptForRaw(raw, group) {
  * calls (stEnsureBank visits units round-robin, one call each); `more` says
  * calls were left. `attempted` lists the concepts a call was made for,
  * `attemptedPairs` the "<conceptId>:<format>" pairs those calls asked for;
- * a pair in `skipPairs` (a Set of the same keys) is not asked at all.
+ * a pair in `skipPairs` (a Set of the same keys) is not asked at all. Each
+ * question is stored the moment it passes its checks and `onKept(question)`
+ * hears of it, so a session can show it while the rest are made.
  * Returns { kept, written, dropped, runId, needed, status, attempted, attemptedPairs, more }.
  */
 async function stGenerateQuestions(material, {
   sectionId = 0, conceptIds = null, formats = null, perConcept = 0, choices = 0, modelId = '', numCtx = 0,
   token = null, onProgress = null, pythonAvailable = null, stopWhen = null,
-  maxGroups = 0, maxConceptsPerCall = 0, quiet = false, skipPairs = null,
+  maxGroups = 0, maxConceptsPerCall = 0, quiet = false, skipPairs = null, onKept = null,
 } = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const wanted = Array.isArray(conceptIds) ? new Set(conceptIds.map(Number)) : null;
@@ -1275,8 +1122,8 @@ async function stGenerateQuestions(material, {
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
   const text = await stMaterialText(material);
   const groups = stGroupPlan(plan, Number(maxConceptsPerCall) || 0);
-  const setting = stContextSettingFor(material, numCtx);
-  const runId = await stStartRun({ materialId: material.id, sectionId, model, numCtx: setting });
+  const sized = await stPlanFor(model, material, numCtx);
+  const runId = await stStartRun({ materialId: material.id, sectionId, model, numCtx: sized.numCtx });
   const dropped = { anchor: 0, support: 0, distractor: 0, numeric: python ? 0 : null, parse: 0 };
   const kept = [];
   let written = 0;
@@ -1308,12 +1155,7 @@ async function stGenerateQuestions(material, {
       const focus = group[0].concept.page || 1;
       const pageFrom = Math.max(1, focus - ST_QUESTION_PAGES_AROUND);
       const pageTo = Math.min(Math.max(1, text.pageTexts.length), focus + ST_QUESTION_PAGES_AROUND);
-      const askTotal = group.reduce((n, slot) => n + Object.values(slot.need).reduce((m, v) => m + stAskCount(v), 0), 0);
-      const outputTokens = ST_QUESTION_OUTPUT_BASE + ST_QUESTION_OUTPUT_PER * askTotal;
-      let rawChars = 0;
-      for (let p = pageFrom; p <= pageTo; p++) rawChars += String(text.pageTexts[p - 1] || '').length;
-      const plan1 = await stPlanFor(model, material, rawChars, outputTokens, numCtx);
-      const block = stPageBlock(text.pageTexts, pageFrom, pageTo, plan1.maxChars, focus);
+      const block = stPageBlock(text.pageTexts, pageFrom, pageTo, sized.maxChars, focus);
       const conceptLines = group.map((slot) => {
         const asks = Object.entries(slot.need).map(([f, n]) => `${stAskCount(n)} ${f}`).join(', ');
         const c = slot.concept;
@@ -1331,21 +1173,16 @@ async function stGenerateQuestions(material, {
         block.material,
       ].join('\n');
       report('generate', { concept: group[0].concept.title });
-      let output;
-      try {
-        output = await stChat(model, ST_QUESTION_SYSTEM, user, {
-          temperature: ST_TEMP_GENERATE, numCtx: plan1.numCtx, json: true, token,
-          onStream: (s) => report('generate', { concept: group[0].concept.title, writing: s }),
-        });
-      } catch (err) {
-        if (cancelled() || stIsStopped(err)) { status = 'stopped'; break; }
-        throw err;
-      }
+      // A reply that cannot be read is asked again before it counts as unusable.
+      const asked = await stAskList(model, ST_QUESTION_SYSTEM, user, {
+        temperature: ST_TEMP_GENERATE, numCtx: sized.numCtx, json: true, token,
+        onStream: (s) => report('generate', { concept: group[0].concept.title, writing: s }),
+      });
       for (const slot of group) {
         attempted.push(slot.concept.id);
         for (const f of Object.keys(slot.need)) attemptedPairs.push(`${slot.concept.id}:${f}`);
       }
-      const raws = stJsonArrayFrom(output);
+      const raws = asked.list || [];
       if (!raws.length) {
         dropped.parse += 1;
         conceptsDone += group.length;
@@ -1353,7 +1190,6 @@ async function stGenerateQuestions(material, {
         continue;
       }
       written += raws.length;
-      const groupKept = [];
       for (const raw of raws) {
         if (cancelled()) { status = 'stopped'; break; }
         if (!raw || typeof raw !== 'object') { dropped.parse += 1; continue; }
@@ -1382,14 +1218,14 @@ async function stGenerateQuestions(material, {
         // 2. Support: the quote alone settles the answer (model).
         if (checkSupport) {
           report('check:support', { concept: concept.title });
-          const r = await stCheckSupport(model, q, { material, numCtx, pageText: text.pageTexts[sourcePage - 1] });
+          const r = await stCheckSupport(model, q, { material, numCtx, pageText: text.pageTexts[sourcePage - 1], token });
           if (!r.settles) { dropped.support += 1; continue; }
           checks.support = true;
         }
         // 3. Distractors: no wrong option is defensible (model, mc only).
         if (format === 'mc' && checkDistractors) {
           report('check:distractor', { concept: concept.title });
-          const r = await stCheckDistractors(model, q, { material, numCtx });
+          const r = await stCheckDistractors(model, q, { material, numCtx, token });
           if (r.defensible) { dropped.distractor += 1; continue; }
           checks.distractor = true;
         }
@@ -1419,20 +1255,23 @@ async function stGenerateQuestions(material, {
           }
         }
         slot.need[format] -= 1;
-        groupKept.push(stFinalizeQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric }));
-      }
-      if (groupKept.length) {
-        const inserted = await stInsertQuestions(groupKept);
-        kept.push(...inserted);
+        const stored = await stInsertQuestions([stFinalizeQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric })]);
+        kept.push(...stored);
+        report('generate', { concept: concept.title });
+        if (onKept && stored.length) await onKept(stored[0]);
       }
       conceptsDone += group.length;
       report('generate');
     }
   } catch (err) {
-    const error = stPlainError(err);
-    await stFinishRun(runId, { status: 'failed', written, kept: kept.length, dropped, error });
-    report('failed', { error });
-    throw new Error(error);
+    // Stop reaches a call mid-answer: what was kept stays, and the run ends as stopped.
+    if (!cancelled() && !stIsStopped(err)) {
+      const error = stPlainError(err);
+      await stFinishRun(runId, { status: 'failed', written, kept: kept.length, dropped, error });
+      report('failed', { error });
+      throw new Error(error);
+    }
+    status = 'stopped';
   }
   await stFinishRun(runId, { status, written, kept: kept.length, dropped });
   report(status === 'stopped' ? 'stopped' : 'done');
@@ -1530,7 +1369,7 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     '',
     `Student's answer:\n${typed}`,
   ].filter((line) => line !== '').join('\n');
-  const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS + 40 * rubric.length, numCtx);
+  const plan = await stPlanFor(model, null, numCtx);
   const output = await stChat(model, ST_GRADE_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
   const raw = stJsonObjectFrom(output);
   if (!raw) throw new Error('The model could not grade this answer. Try again, or open the full answer to compare.');
@@ -1571,7 +1410,7 @@ async function stExplain(question, { chosen = null, typed = '', modelId = '', nu
     question.sourceQuote ? `Quotation from the source${question.sourcePage ? ` (page ${question.sourcePage})` : ''}:\n${question.sourceQuote}` : '',
     page ? `The source page:\n${page}` : '',
   ].filter(Boolean).join('\n\n');
-  const plan = await stPlanFor(model, material, user.length, ST_EXPLAIN_OUTPUT_TOKENS, numCtx);
+  const plan = await stPlanFor(model, material, numCtx);
   const text = await stChat(model, ST_EXPLAIN_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: false, onChunk });
   const out = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   if (!out) throw new Error('The model gave no explanation. Try again.');
@@ -1592,7 +1431,7 @@ async function stRubricFromAnswer(question, { modelId = '', numCtx = 0 } = {}) {
     question.sourceQuote ? `\nSource quotation:\n${question.sourceQuote}` : '',
   ].filter((l) => l !== '').join('\n');
   try {
-    const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
+    const plan = await stPlanFor(model, null, numCtx);
     const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true });
     const raw = stJsonObjectFrom(output);
     return stNormalizeRubric(raw && (raw.rubric || raw.points));
@@ -1636,7 +1475,7 @@ async function stRubricFromReport(entry, { modelId = '', numCtx = 0 } = {}) {
     errors ? `\nCommon errors the examiners noted:\n${errors}` : '',
   ].filter((l) => l !== '').join('\n');
   try {
-    const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
+    const plan = await stPlanFor(model, null, numCtx);
     const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true });
     const raw = stJsonObjectFrom(output);
     const rubric = stNormalizeRubric(raw && (raw.rubric || raw.points));
@@ -1836,13 +1675,8 @@ async function stScopeCanGrow(scope) {
   if (!scope || scope.kind === 'bank') return false;
   if (scope.kind !== 'weak') {
     for (const { material, units } of await stScopeUnits(scope)) {
-      for (const u of units) {
-        if (u.selection) { if (!stSelectionConceptIds(scope).length) return true; continue; }
-        if (u.section.mappedAt > 0) continue;
-        if (!u.partial) return true;
-        const known = await stListConcepts({ materialIds: [material.id] });
-        if (!known.some((c) => stInRanges(c.page, u.ranges))) return true;
-      }
+      const known = await stListConcepts({ materialIds: [material.id] });
+      if (units.some((u) => !stUnitMapped(u, scope, known))) return true;
     }
   }
   const concepts = await stScopeConcepts(scope);
@@ -1929,12 +1763,14 @@ function stAddDropped(a, b) {
  *
  * A selection's concept ids are written into the session's scope
  * (scope.conceptIds) when `sessionId` is given, so a restart draws from
- * them without mapping again. Returns { kept, concepts, available,
- * unanswerable, numericUnavailable }.
+ * them without mapping again. `onKept(question)` hears each question as it
+ * is stored. Returns { kept, concepts, available, unanswerable,
+ * numericUnavailable, unreadable }: `unreadable` counts the units whose
+ * concept map the model never answered readably (they stay unmapped).
  */
-async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false, sessionId = null } = {}) {
+async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false, sessionId = null, onKept = null } = {}) {
   const cancelled = () => !!(token && token.cancelled);
-  const result = { kept: 0, concepts: [], available: 0, unanswerable: 0, numericUnavailable: false };
+  const result = { kept: 0, concepts: [], available: 0, unanswerable: 0, numericUnavailable: false, unreadable: 0 };
   if (!scope) return result;
   const base = await stScopeStats(scope);
   result.available = base.available;
@@ -2000,15 +1836,8 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     for (const { material, units } of await stScopeUnits(scope)) {
       if (!units.length) continue;
       const ordered = stSpreadOrder(units.length).map((i) => units[i]);
-      for (const u of ordered) {
-        if (u.selection) u.mapped = stSelectionConceptIds(scope).length > 0;
-        else if (u.section.mappedAt > 0) u.mapped = true;
-        else if (u.partial) {
-          // A clipped unit counts as mapped once its pages have concepts.
-          const known = await stListConcepts({ materialIds: [material.id] });
-          u.mapped = known.some((c) => stInRanges(c.page, u.ranges));
-        } else u.mapped = false;
-      }
+      const known = await stListConcepts({ materialIds: [material.id] });
+      for (const u of ordered) u.mapped = stUnitMapped(u, scope, known);
       queues.push({ material, cursor: 0, units: ordered });
     }
   }
@@ -2018,8 +1847,15 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const modelFor = async (material) => {
     if (!models.has(material.id)) models.set(material.id, modelId || await stPickModel(material));
     const m = models.get(material.id);
-    if (!m) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
+    if (!m) throw stNoModelError();
     return m;
+  };
+  // The context size is settled once per material for the whole run: the
+  // user's setting, else none (-1: every call leaves the size to the core).
+  const sizes = new Map();
+  const sizeFor = (material) => {
+    if (!sizes.has(material.id)) sizes.set(material.id, stContextSettingFor(material, numCtx) || -1);
+    return sizes.get(material.id);
   };
   const attempts = new Map();
   // (concept, format) pairs: consecutive calls that kept nothing for the
@@ -2041,27 +1877,14 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const visit = async (unit) => {
     const material = unit.material;
     const model = await modelFor(material);
-    // 1. Map the unit when it has not been mapped.
+    const numCtx = sizeFor(material);
+    // 1. Map the unit when it has not been mapped. A map the model never
+    // answered readably leaves the unit unmapped: this run goes on without
+    // it, and the next start asks again.
     if (!unit.mapped) {
-      if (unit.selection) {
-        const concepts = await stBuildConceptMap(material, null, {
-          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
-          selectionText: unit.selectionText, selectionPage: unit.selectionPage,
-        });
-        const ids = concepts.map((c) => c.id).filter((id) => id > 0);
-        _stSelectionConcepts.set(stSelectionKey(scope), ids);
-        scope.conceptIds = ids;
-        if (sessionId != null && ids.length) {
-          const s = await stGetSession(sessionId);
-          if (s) await stUpdateSession(sessionId, { scope: { ...(s.scope || {}), conceptIds: ids } });
-        }
-      } else {
-        await stBuildConceptMap(material, unit.section, {
-          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
-          ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
-        });
-      }
+      const readable = await stMapUnit(unit, scope, { modelId: model, numCtx, token, onProgress: innerFor(unit), sessionId });
       if (cancelled()) return;
+      if (!readable) { result.unreadable += 1; finish(unit); return; }
       unit.mapped = true;
     }
     // 2. One generation call for the unit's concepts.
@@ -2080,7 +1903,7 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       sectionId: unit.section ? unit.section.id : 0,
       conceptIds: eligible.map((c) => c.id),
       perConcept: sweepPer, choices, modelId: model, numCtx, token, onProgress: innerFor(unit), pythonAvailable,
-      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true, skipPairs,
+      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true, skipPairs, onKept,
     });
     run.written += Number(gen.written) || 0;
     run.kept += gen.kept.length;

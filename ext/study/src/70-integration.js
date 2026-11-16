@@ -373,13 +373,12 @@ async function stSessionNeedsGeneration(session) {
   return ready.length < size;
 }
 
-/**
- * Create the session and open its pane: the generation screen when the scope
- * is short of questions (it calls stNextDraw when ready), else the first draw
- * and the session view.
- */
+/** Create the session and open its pane: the making screen when the scope is short of questions (the session opens on
+ *  the first one ready), else the first draw. With model work ahead and no model: stNoModelError, and nothing is created. */
 async function stStartSession({ scope, mode, answerFormat, model, numCtx }) {
   const size = Number(cfg('sessionSize', 20)) || 20;
+  const needs = await stSessionNeedsGeneration({ scope, size });
+  if (needs) await stRequireModel(model, scope);
   const created = await stCreateSession({
     name: String(scope?.label || mode || 'Study'),
     scope,
@@ -396,10 +395,8 @@ async function stStartSession({ scope, mode, answerFormat, model, numCtx }) {
     try { await stTouchMaterial(Number(id), now); } catch { /* a bank scope has no material */ }
   }
   let view = 'generating';
-  if (!(await stSessionNeedsGeneration(session))) {
-    // The bank is full enough, so the draw makes nothing. Should the pipeline
-    // start writing anyway, the run stops at once and the generating screen
-    // takes over: generation is never invisible.
+  if (!needs) {
+    // The bank is full enough. Should the pipeline write anyway, the run stops and the making screen takes over.
     const token = { cancelled: false };
     let wrote = false;
     const onProgress = () => { if (!wrote) { wrote = true; token.cancelled = true; } };
@@ -672,7 +669,7 @@ async function stQuizSelection(payload) {
   // The same scope the sheet's Selection builds (stBuildScope): named by the
   // material's label and the page, and bounded to that page, so the results
   // count the passage's concepts and not the whole document's.
-  return stStartSession({
+  return stStartOrSay({
     scope: {
       kind: 'selection', materialIds: [material.id], selectionText: text, selectionPage: page,
       pageFrom: page, pageTo: page, label: `${stTruncate(material.label || 'Selection', 32)} · ${page ? `p. ${page}` : 'selection'}`,
@@ -703,7 +700,8 @@ function registerSelectionAction(context, attempt = 0, token = stActivation()) {
 
 // ─── Commands ───────────────────────────────────────────────────────────────
 
-async function stCmdOpen() {
+async function stCmdOpen(arg) {
+  if (arg && typeof arg === 'object') return stOpenSetup(arg); // the sheet on a given scope: { materialIds, sectionId } or { bankIds }
   const picked = stPicked();
   if (picked.length) return stOpenSetup({ materialIds: picked });
   const materials = await stListMaterials();
@@ -775,7 +773,7 @@ async function stCmdWeakSpots() {
     await _api.window.showInformationMessage('No weak spots yet: every concept you have answered is clean.');
     return null;
   }
-  return stStartSession({
+  return stStartOrSay({
     scope,
     mode: 'weak',
     ...stSessionPrefs(null),
@@ -816,7 +814,9 @@ async function stCmdImportReport(arg) {
 
 function registerCommands(context) {
   const cmds = [
-    ['study.open', () => stCmdOpen()],
+    ['study.open', (arg) => stCmdOpen(arg)],
+    ['study.stopMaking', (sessionId) => stStopRun(sessionId)],
+    ['study.makeAgain', (sessionId) => stMakeAgain(sessionId)],
     ['study.studyDocument', (arg) => stCmdStudyDocument(arg)],
     // From the palette there is no selection; the selection action passes the payload.
     ['study.quizSelection', async (payload) => {

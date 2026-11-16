@@ -348,7 +348,12 @@ interface Env {
   hold: { kind: string; reached: boolean; release: () => void; promise: Promise<void> } | null;
   /** Question writing opens each reply with one question that fails validation. */
   unusable: boolean;
-  loopOnce: boolean;
+  /** How many of the next question-writing replies the backend ends for repeating themselves. */
+  loops: number;
+  /** How many of the next replies of a kind come back as prose where JSON was asked: { map: 1 }. */
+  prose: Record<string, number>;
+  /** The backend lists no model (it is not running). */
+  noModels: boolean;
   /** The provider's next list() waits for this, once. */
   listGate: Promise<void> | null;
   listCalls: number;
@@ -465,13 +470,14 @@ function makeEnv(): Env {
     lmCalls.push({ kind, modelId, numCtx: options.numCtx, format: options.format, think: options.think, temperature: options.temperature, maxTokens: options.maxTokens, user });
     const hold = env.hold;
     if (hold && hold.kind === kind && !hold.reached) { hold.reached = true; await hold.promise; }
-    if (kind === "questions" && env.loopOnce) {
+    if (kind === "questions" && env.loops > 0) {
       // The backend ends an answer that keeps repeating itself.
-      env.loopOnce = false;
+      env.loops -= 1;
       yield { content: "{\"questions\": [{\"stem\": \"the the the" };
       throw new Error("Ollama stream error: prediction aborted, token repeat limit reached");
     }
-    const reply = answer(kind, user);
+    let reply = answer(kind, user);
+    if ((env.prose[kind] || 0) > 0) { env.prose[kind] -= 1; reply = 'Sure! Here is what you asked for. First, the chain ladder is a reserving method.'; }
     const cut = Math.max(1, Math.floor(reply.length / 2));
     yield { content: reply.slice(0, cut) };
     yield { content: reply.slice(cut) };
@@ -534,8 +540,8 @@ function makeEnv(): Env {
     env: { toolPath: STUDY_DIR },
     database: db,
     lm: {
-      getModels: async () => [{ id: 'qwen3:14b', displayName: 'qwen3:14b', contextLength: 40960 }, { id: 'llama3:8b', displayName: 'llama3:8b', contextLength: 8192 }],
-      getActiveModel: () => 'qwen3:14b',
+      getModels: async () => (env.noModels ? [] : [{ id: 'qwen3:14b', displayName: 'qwen3:14b', contextLength: 40960 }, { id: 'llama3:8b', displayName: 'llama3:8b', contextLength: 8192 }]),
+      getActiveModel: () => (env.noModels ? undefined : 'qwen3:14b'),
       getModelInfo: async (id: string) => ({ id, displayName: id, family: 'qwen3', parameterSize: '14B', quantization: 'Q4', contextLength: id === 'llama3:8b' ? 8192 : 40960, capabilities: [] }),
       sendChatRequest: (modelId: string, messages: AnyRec[], options: AnyRec) => chat(modelId, messages, options),
     },
@@ -576,6 +582,7 @@ function makeEnv(): Env {
         calls.executeCommand.push({ id, args });
         const h = commandHandlers.get(id);
         if (h) return h(...args);
+        if (id === 'ai-settings.open') { calls.aiSettings = (calls.aiSettings || 0) + 1; return undefined; }
         switch (id) {
           case 'questions.getRegistry': return registry;
           case 'chat.getSelectionActionDispatcher': return dispatcher;
@@ -589,7 +596,7 @@ function makeEnv(): Env {
         throw new Error(`command '${id}' not found`);
       },
       async getCommands() {
-        return [...commandHandlers.keys(), 'questions.getRegistry', 'chat.getSelectionActionDispatcher', 'planner.getRegistry', 'canvas.getPageMarkdown', ...(env.flashcardsOn ? ['flashcards.addCards'] : [])];
+        return [...commandHandlers.keys(), 'ai-settings.open', 'questions.getRegistry', 'chat.getSelectionActionDispatcher', 'planner.getRegistry', 'canvas.getPageMarkdown', ...(env.flashcardsOn ? ['flashcards.addCards'] : [])];
       },
     },
     editors,
@@ -622,6 +629,7 @@ function makeEnv(): Env {
       createIconHtml: (id: string, size = 16) => { const svg = getIcon(id); return svg ? `<span class="svg-icon">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</span>` : ''; },
     },
     ui: {
+      createBlock: kit.createBlock,
       createButton: kit.createButton,
       createIconButton: kit.createIconButton,
       createSectionLabel: kit.createSectionLabel,
@@ -641,6 +649,9 @@ function makeEnv(): Env {
       showInputBox: async () => undefined,
     },
   };
+
+  // The kit's command buttons run through the command service, as in the app.
+  kit.installKitCommands({ executeCommand: (id: string, ...args: unknown[]) => api.commands.executeCommand(id, ...args) });
 
   (globalThis as AnyRec).parallxElectron = {
     document: {
@@ -662,7 +673,7 @@ function makeEnv(): Env {
 
   Object.assign(env, {
     api, context: { subscriptions: [] as AnyRec[] }, db, calls, lmCalls, settings, editors, views, commandHandlers,
-    tools, widgets, links, selectionHandlers, flashcardsOn: true, pick: (items: AnyRec[]) => items[0], confirm: true, hold: null, unusable: false, loopOnce: false,
+    tools, widgets, links, selectionHandlers, flashcardsOn: true, pick: (items: AnyRec[]) => items[0], confirm: true, hold: null, unusable: false, loops: 0, prose: {}, noModels: false,
     listGate: null, listCalls: 0,
     fireProviders: () => { for (const fn of [...providerListeners]) fn(); },
     providerListenerCount: () => providerListeners.size,
@@ -770,14 +781,20 @@ async function openChapterSetup() {
   return h;
 }
 
-/** From an open setup sheet: Start, through generation if needed, to the first card. */
+/** The making of a session's questions is over (the session opens on the first one; the rest arrive while it is open). */
+const madeAll = (sessionId: number) => waitFor(() => !T.stLiveRun(sessionId), 'the making to end');
+
+/** From an open setup sheet: Start, to the first card, and on to the end of the making (the whole draw is in the session). */
 async function startFromSetup(setup: HTMLElement) {
   const before = latestSessionTab();
   (btn(setup, 'Make Questions and Start') || btn(setup, 'Start'))!.click();
   const tab = await waitFor(() => { const t = latestSessionTab(); return t && t !== before ? t : null; }, 'a session tab');
   const h = paneHost(tab)!;
   await waitFor(() => q(h, '.st-card'), 'the first card');
-  return { h, sessionId: Number(tab.slice('session-'.length)) };
+  const sessionId = Number(tab.slice('session-'.length));
+  await madeAll(sessionId);
+  await settle();
+  return { h, sessionId };
 }
 
 async function startChapterSession() {
@@ -885,7 +902,7 @@ describe('Study end to end', () => {
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(8);
+    expect(MANIFEST_COMMANDS.length).toBe(10); // the eight, and Stop Making Questions and Make Questions Again
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.
@@ -936,7 +953,7 @@ describe('Study end to end', () => {
     // On again: the same database, nothing duplicated.
     env.context = { subscriptions: [] };
     await activate(env.api, env.context);
-    await waitFor(() => env.commandHandlers.size === 8 && env.selectionHandlers.length === 1, 'the second activation');
+    await waitFor(() => env.commandHandlers.size === MANIFEST_COMMANDS.length && env.selectionHandlers.length === 1, 'the second activation');
     await settle(10);
     expect(one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'provider'").n).toBe(2);
     expect(one("SELECT COUNT(*) AS n FROM st_banks WHERE kind = 'provider'").n).toBe(1);
@@ -1043,7 +1060,7 @@ describe('Study end to end', () => {
   // 3. Setup, generation, the first card
   // ═════════════════════════════════════════════════════════════════════════
 
-  it('3. setup renders; Start generates through the four checks into the bank, and the session opens on a card', async () => {
+  it('3. setup renders; Start generates through the four checks into the bank; the session opens on the first question ready and the rest arrive while it is open', async () => {
     await boot();
     const setup = await openChapterSetup();
     const ch3 = one('SELECT id FROM st_sections WHERE title = ?', CH3).id;
@@ -1087,16 +1104,43 @@ describe('Study end to end', () => {
     expect(text(q(h, '.st-gen__t'))).toBe(`Making questions for ${label1()} · ${CH3}`);
     expect(qa(h, '.st-ck').map((c) => text(qa(c, 'span')[1]))).toEqual(['Anchor is on the page', 'Anchor settles the answer', 'No wrong option is defensible', 'Numeric answers execute']);
     expect(q(h, '.st-ck[data-check="parse"]'), 'no unusable output yet: no fifth row').toBeNull();
-    expect(btn(h, 'Start With 6 Ready')!.disabled).toBe(true);
+    // Nothing waits for a full set any more: no "Start With 6 Ready", the screen says the session opens on the first question.
+    expect(btn(h, 'Start With 6 Ready')).toBeNull();
+    expect(text(q(h, '.st-gen__hint'))).toBe('The session opens on the first question as soon as it is ready.');
+    expect(qa(h, '.st-genline > span').map(text).slice(0, 3)).toEqual(['0 kept', '0 dropped', '0 of 6 ready']);
+    expect(text(qa(h, '.st-genline > span')[3])).toMatch(/^\d+:\d\d elapsed$/);
     expect(btn(h, 'Stop')!.disabled).toBe(false);
     const session = one('SELECT * FROM st_sessions WHERE id = ?', sessionId);
     expect(session).toMatchObject({ mode: 'practice', answer_format: 'mixed', size: 6, finished_at: 0 });
     expect(JSON.parse(session.scope_json)).toMatchObject({ kind: 'chapter', materialIds: [1], sectionIds: [ch3] });
+    // The first questions are written and checked; the next writing call is held.
     hold.release();
+    const hold2 = holdLm('questions');
 
-    // The session screen: a card and a strand of six.
+    // The session opens on the first question, with the others still to come:
+    // the strip says how many are ready of how many are planned, and has Stop.
     await waitFor(() => q(h, '.st-card'), 'the first card');
-    expect(qa(h, '.st-strand i').length).toBe(6);
+    await waitFor(() => hold2.reached, 'the second question-writing call');
+    await settle();
+    const early = one('SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?', sessionId).n;
+    expect(early).toBeGreaterThanOrEqual(1);
+    expect(early).toBeLessThan(6);
+    expect(T.stLiveRun(sessionId)).not.toBeNull();
+    const strip = q(h, '.st-making')!;
+    expect(strip.hidden).toBe(false);
+    expect(text(q(strip, '.st-making__n'))).toBe(`${early} of 6 ready`);
+    expect(q(strip, '.st-making__n')!.getAttribute('role')).toBe('status');
+    expect(text(q(strip, '.st-making__t'))).toMatch(/^\d+:\d\d elapsed$/);
+    expect(btn(strip, 'Stop')!.disabled).toBe(false);
+    expect(qa(h, '.st-strand i').length).toBe(early);
+    const firstStem = text(q(h, '.st-card__q'));
+    hold2.release();
+
+    // The rest arrive without touching the card on screen: a strand of six, the strip gone.
+    await madeAll(sessionId);
+    await waitFor(() => qa(h, '.st-strand i').length === 6, 'a strand of six');
+    expect(text(q(h, '.st-card__q'))).toBe(firstStem);
+    expect(q(h, '.st-making')!.hidden).toBe(true);
     expect(qa(h, '.st-strand i')[0].className).toBe('cur');
     expect(text(q(h, '.st-sess-tb__scope'))).toBe(`${label1()} · ${CH3} · Practice · Mixed`);
 
@@ -1144,8 +1188,9 @@ describe('Study end to end', () => {
     expect(dropped.every((d) => d.numeric === null)).toBe(true);
     expect(runs.reduce((n, r) => n + r.kept, 0)).toBe(generated.length);
 
-    // Every model call: JSON where a reply is parsed, a planned window, and
-    // the model reasons first (on for every feature, 2026-10-11).
+    // Every model call: JSON where a reply is parsed, no context size named
+    // (Auto: the core decides, so the model is never loaded again between
+    // calls), and the model reasons first (on for every feature, 2026-10-11).
     const kinds = env.lmCalls.map((c) => c.kind);
     expect(kinds[0]).toBe('map');
     expect(kinds.filter((k) => k === 'map').length).toBe(1);
@@ -1154,8 +1199,8 @@ describe('Study end to end', () => {
     expect(kinds).toContain('distractor');
     for (const c of env.lmCalls) {
       expect(c.format).toBe('json');
-      expect(c.numCtx).toBeGreaterThanOrEqual(8192);
-      expect(c.numCtx).toBeLessThanOrEqual(40960);
+      expect(c.numCtx).toBeUndefined();
+      expect(c.maxTokens).toBeUndefined();
       expect(c.think).toBe(true);
     }
     expect(env.lmCalls.filter((c) => c.kind === 'questions').every((c) => c.temperature === 0.3)).toBe(true);
@@ -1191,9 +1236,9 @@ describe('Study end to end', () => {
     await waitFor(() => q(h, '.st-card'), 'the first card');
   });
 
-  it("3c. a model answer that loops counts as unusable and the run goes on; every call is capped; the screen says what it is doing", async () => {
+  it("3c. a model answer that loops is asked again; one that loops every time counts as unusable and the run goes on; no call is capped; the screen says what it is doing", async () => {
     await boot();
-    env.loopOnce = true;
+    env.loops = 3; // every ask of the first writing call (stAskList asks three times)
     const setup = await openChapterSetup();
     const hold = holdLm("support");
     btn(setup, "Make Questions and Start")!.click();
@@ -1207,6 +1252,137 @@ describe('Study end to end', () => {
     await waitFor(() => q(h, ".st-card"), "the first card");
     expect(q(h, ".st-error")).toBeNull();
     for (const c of env.lmCalls.filter((x: AnyRec) => ["map", "questions", "support", "distractor"].includes(x.kind))) expect(c.maxTokens).toBeUndefined(); // no call caps its answer or its thinking (the house rule)
+    // The looping reply was asked again, word for word, before it counted.
+    const written = env.lmCalls.filter((x: AnyRec) => x.kind === "questions");
+    expect(written.length).toBeGreaterThan(3);
+    expect(written.slice(0, 3).map((x: AnyRec) => x.user)).toEqual([written[0].user, written[0].user, written[0].user]);
+    expect(env.lmCalls.slice(1, 4).map((x: AnyRec) => x.kind)).toEqual(["questions", "questions", "questions"]);
+  });
+
+  it("3d. a reply that cannot be read is asked again and nothing is lost: prose for the concept map, a looping answer for the questions", async () => {
+    await boot();
+    env.prose = { map: 1 };
+    env.loops = 1;
+    const { h, sessionId } = await startChapterSession();
+    const ch3 = one("SELECT id FROM st_sections WHERE title = ?", CH3).id;
+    const kinds = env.lmCalls.map((c) => c.kind);
+    expect(kinds.slice(0, 2)).toEqual(["map", "map"]);
+    expect(kinds.filter((k) => k === "map").length).toBe(2);
+    expect(one("SELECT COUNT(*) AS n FROM st_concepts").n).toBe(4);
+    expect(one("SELECT mapped_at FROM st_sections WHERE id = ?", ch3).mapped_at).toBeGreaterThan(0);
+    const written = env.lmCalls.filter((x: AnyRec) => x.kind === "questions");
+    expect(written[1].user).toBe(written[0].user);
+    expect(all("SELECT dropped_json FROM st_runs").every((r) => JSON.parse(r.dropped_json).parse === 0)).toBe(true);
+    expect(one("SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?", sessionId).n).toBe(6);
+    expect(q(h, ".st-card")).not.toBeNull();
+  });
+
+  it("3e. a concept map the model never answers readably leaves the chapter open: the tab says so, no empty session is kept, and Try Again makes the questions", async () => {
+    await boot();
+    env.prose = { map: 3 };
+    const sb = mountSidebar();
+    const setup = await openChapterSetup();
+    const ch3 = one("SELECT id FROM st_sections WHERE title = ?", CH3).id;
+    btn(setup, "Make Questions and Start")!.click();
+    const tab = await waitFor(() => latestSessionTab(), "the session tab");
+    const h = paneHost(tab)!;
+    const box = await waitFor(() => q(h, ".st-ended"), "what happened");
+    expect(box.getAttribute("role")).toBe("alert");
+    expect(text(q(box, ".px-empty__headline"))).toBe("The model's replies could not be read.");
+    expect(env.lmCalls.map((c) => c.kind)).toEqual(["map", "map", "map"]);
+    // Nothing is stamped as mapped, and nothing empty is left behind.
+    expect(one("SELECT mapped_at FROM st_sections WHERE id = ?", ch3).mapped_at).toBe(0);
+    expect(one("SELECT COUNT(*) AS n FROM st_concepts").n).toBe(0);
+    await waitFor(() => one("SELECT COUNT(*) AS n FROM st_sessions").n === 0, "the empty session removed");
+    await waitFor(() => qa(sb, ".st-sb__it--session").length === 0, "no session row");
+    expect(qa(box, "button").map(text)).toEqual(["Try Again", "Open Setup…"]);
+    // The model is well again: Try Again starts over in a tab of its own and this one closes.
+    btn(box, "Try Again")!.click();
+    const tab2 = await waitFor(() => { const t = latestSessionTab(); return t && t !== tab ? t : null; }, "the new session tab");
+    await waitFor(() => q(paneHost(tab2), ".st-card"), "the first card");
+    await waitFor(() => !env.editors.open.has(tab), "the old tab closed");
+    expect(one("SELECT COUNT(*) AS n FROM st_sessions").n).toBe(1);
+    expect(one("SELECT mapped_at FROM st_sections WHERE id = ?", ch3).mapped_at).toBeGreaterThan(0);
+    await madeAll(Number(tab2.slice("session-".length)));
+  });
+
+  it("3f. a chapter stamped as mapped with no concepts (what one unreadable reply used to leave) is mapped again on the next start", async () => {
+    await boot();
+    const setup = await openChapterSetup();
+    const ch3 = one("SELECT id FROM st_sections WHERE title = ?", CH3).id;
+    env.db.raw().prepare("UPDATE st_sections SET mapped_at = ? WHERE id = ?").run(Date.now() - 86_400_000, ch3);
+    expect(one("SELECT COUNT(*) AS n FROM st_concepts").n).toBe(0);
+    const { sessionId } = await startFromSetup(setup);
+    expect(env.lmCalls[0].kind).toBe("map");
+    expect(one("SELECT COUNT(*) AS n FROM st_concepts").n).toBe(4);
+    expect(one("SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?", sessionId).n).toBe(6);
+  });
+
+  it("3g. Stop while questions are being written keeps what is ready: the session goes on with those, and nothing more is asked of the model", async () => {
+    await boot();
+    const setup = await openChapterSetup();
+    const hold = holdLm("questions");
+    btn(setup, "Make Questions and Start")!.click();
+    const tab = await waitFor(() => latestSessionTab(), "the session tab");
+    const sessionId = Number(tab.slice("session-".length));
+    const h = paneHost(tab)!;
+    await waitFor(() => hold.reached, "the first question call");
+    hold.release();
+    const hold2 = holdLm("questions");
+    await waitFor(() => q(h, ".st-card"), "the first card");
+    await waitFor(() => hold2.reached, "the second question-writing call");
+    await settle();
+    const ready = one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'generated'").n;
+    expect(ready).toBeGreaterThanOrEqual(1);
+    btn(q(h, ".st-making"), "Stop")!.click();
+    const callsAtStop = env.lmCalls.length;
+    hold2.release();
+    await madeAll(sessionId);
+    await settle();
+    expect(env.lmCalls.length).toBe(callsAtStop);
+    expect(q(h, ".st-making")!.hidden).toBe(true);
+    expect(text(h)).not.toMatch(/before any question was ready|No questions could be made/);
+    // Exactly the questions that were ready are in the session, and he studies them to the results.
+    expect(one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'generated'").n).toBe(ready);
+    expect(one("SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?", sessionId).n).toBe(ready);
+    expect(qa(h, ".st-strand i").length).toBe(ready);
+    await answerDraw(h);
+    await waitFor(() => q(h, ".st-res"), "results");
+    expect(text(q(h, ".st-res__big small"))).toBe(`of ${ready}`);
+    expect(all("SELECT status FROM st_session_items WHERE session_id = ?", sessionId).every((i) => i.status !== "pending")).toBe(true);
+  });
+
+  it("3h. with no model: the sheet says so with Try Again and Open AI Settings, and no session, tab or row is left however often he tries", async () => {
+    await boot();
+    env.noModels = true;
+    const sb = mountSidebar();
+    const setup = await openChapterSetup();
+    for (let k = 0; k < 3; k++) {
+      (k === 0 ? btn(setup, "Make Questions and Start")! : btn(q(setup, ".st-sheet__notice"), "Try Again")!).click();
+      await waitFor(() => q(setup, ".st-sheet__notice") && !btn(setup, "Make Questions and Start")!.disabled, "the notice");
+      await settle();
+      expect(qa(setup, ".st-sheet__notice").length).toBe(1);
+      const notice = q(setup, ".st-sheet__notice")!;
+      expect(notice.getAttribute("role")).toBe("alert");
+      expect(text(q(notice, ".px-empty__headline"))).toBe("No model is available.");
+      expect(qa(notice, "button").map(text)).toEqual(["Try Again", "Open AI Settings"]);
+      expect(one("SELECT COUNT(*) AS n FROM st_sessions").n).toBe(0);
+      expect(latestSessionTab()).toBeNull();
+      expect(qa(sb, ".st-sb__it--session").length).toBe(0);
+      expect(paneHost("setup")).not.toBeNull();
+    }
+    expect(env.lmCalls.length).toBe(0);
+    expect(env.calls.errors).toEqual([]);
+    btn(q(setup, ".st-sheet__notice"), "Open AI Settings")!.click();
+    await waitFor(() => env.calls.aiSettings === 1, "the AI settings opened");
+    // The backend is up: Try Again starts the session from the sheet as it stands.
+    env.noModels = false;
+    btn(q(setup, ".st-sheet__notice"), "Try Again")!.click();
+    const tab = await waitFor(() => latestSessionTab(), "the session tab");
+    await waitFor(() => q(paneHost(tab), ".st-card"), "the first card");
+    expect(paneHost("setup")).toBeNull();
+    expect(one("SELECT COUNT(*) AS n FROM st_sessions").n).toBe(1);
+    await madeAll(Number(tab.slice("session-".length)));
   });
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1383,10 +1559,12 @@ describe('Study end to end', () => {
     const cls = (s: string) => (s === 'clean' ? 'c just' : s === 'weak' ? 'w' : 'n');
     expect(qa(h, '.st-cov i').map((i) => i.className)).toEqual(cov.states.map(cls));
     expect(text(q(h, '.st-missed .px-section-label'))).toBe('Missed this session');
+    // One row per missed concept, in the order they were first missed.
     const rows = qa(h, '.st-mrow');
-    expect(rows.length).toBe(missed.length);
+    const missedConcepts = [...new Set(missed.map((m) => m.concept_id))];
+    expect(rows.length).toBe(missedConcepts.length);
     const titleOf = (id: number) => scopeConcepts.find((c: AnyRec) => c.id === id)!.title;
-    expect(rows.map((r) => text(q(r, '.st-mrow__c'))).every((t, i) => t.startsWith(titleOf(missed[i].concept_id)))).toBe(true);
+    expect(rows.map((r) => text(q(r, '.st-mrow__c'))).every((t, i) => t.startsWith(titleOf(missedConcepts[i])))).toBe(true);
     expect(text(q(h, '.st-res__lhs'))).toBe('Refresh draws the next 6, weak concepts first.');
     expect(btn(h, 'Review Answers')).not.toBeNull();
 
@@ -1394,9 +1572,8 @@ describe('Study end to end', () => {
     const send = btn(h, 'Send Missed to Flashcards')!;
     expect(send).not.toBeNull();
     expect(text(q(send, '.px-btn__label'))).toBe('Send Missed to Flashcards');
-    expect(text(q(send, '.st-faint'))).toBe(`· ${missed.length}`);
+    expect(text(q(send, '.st-faint'))).toBe(`· ${missedConcepts.length}`);
     send.click();
-    const missedConcepts = [...new Set(missed.map((m) => m.concept_id))];
     await waitFor(() => env.calls.addCards.length === 1, 'flashcards.addCards');
     const payload = env.calls.addCards[0];
     expect(payload.deckName).toBe(`Study: ${label1()}`);
@@ -1971,7 +2148,9 @@ describe('Study end to end', () => {
     widget.dispose();
     const sessionId = Number(tab.slice('session-'.length));
     const h = paneHost(tab)!;
+    // The session opens at once on what the bank holds; the stale concept's questions are written meanwhile.
     await waitFor(() => q(h, '.st-card'), 'the first card');
+    await madeAll(sessionId);
 
     const session = one('SELECT * FROM st_sessions WHERE id = ?', sessionId);
     expect(session).toMatchObject({ mode: 'weak', answer_format: 'mixed', finished_at: 0, name: 'All materials' });
@@ -2125,7 +2304,7 @@ describe('Study end to end', () => {
     // On again: the session is still open in the sidebar, where it stood.
     env.context = { subscriptions: [] };
     await activate(env.api, env.context);
-    await waitFor(() => env.commandHandlers.size === 8 && env.editors.providers.size === 1 && env.views.size === 1, 'the second activation');
+    await waitFor(() => env.commandHandlers.size === MANIFEST_COMMANDS.length && env.editors.providers.size === 1 && env.views.size === 1, 'the second activation');
     const sb = mountSidebar();
     const row = await waitFor(() => qa(sb, '.st-sb__it--session').find((r) => r.dataset.sessionId === String(sessionId)), 'the open session row');
     expect(q(row, '.st-sb__live')).not.toBeNull();
@@ -2155,7 +2334,7 @@ describe('Study end to end', () => {
   // 15. Model and context window
   // ═════════════════════════════════════════════════════════════════════════
 
-  it('15. the model line on the sheet: model and context are remembered per material and every call of the run carries them; Auto sizes each call', async () => {
+  it('15. the model line on the sheet: model and context are remembered per material and every call of the run carries them; with Auto no call names a size', async () => {
     await boot();
     const setup = await openChapterSetup();
     const mdl = (host: HTMLElement) => q<HTMLButtonElement>(host, '.st-sheet__mdl')!;
@@ -2222,7 +2401,9 @@ describe('Study end to end', () => {
     expect(one('SELECT model, num_ctx, answer_format FROM st_sessions WHERE id = ?', s2.sessionId)).toEqual({ model: '', num_ctx: 0, answer_format: 'type' });
     expect(material()).toEqual({ model: '', context_setting: 0, answer_format: 'type' });
 
-    // The first answer is long, the rest short: Auto gives each call the window its own prompt needs.
+    // The first answer is long, the rest short: with Auto no call names a
+    // context size, whatever its prompt's length. The core decides (the size
+    // the model is loaded at), so the model is never loaded again between calls.
     const filler = ' Mack derives the standard error of the reserve from the process risk and the parameter risk.'.repeat(320);
     let typed = 0;
     for (let guard = 0; guard < 12; guard++) {
@@ -2244,16 +2425,8 @@ describe('Study end to end', () => {
     const grades = run2.filter((c) => c.kind === 'grade');
     expect(grades.length).toBe(6);
     expect(grades[0].user.length).toBeGreaterThan(30000);
-    expect(grades[0].numCtx).toBeGreaterThan(8192);
-    expect(grades[0].numCtx).toBeLessThanOrEqual(40960);
-    expect(grades[0].numCtx % 2048).toBe(0);
-    // The short grades share one small window: the prompt, the answer and
-    // room for the model to reason first, smaller than the long grade's.
-    const small = grades[1].numCtx;
-    expect(small).toBeGreaterThan(8192);
-    expect(small).toBeLessThan(grades[0].numCtx);
-    for (const g of grades.slice(1)) expect(g.numCtx).toBe(small);
-    for (const c of run2) { expect(c.numCtx).toBeGreaterThanOrEqual(8192); expect(c.numCtx).toBeLessThanOrEqual(40960); }
+    expect(grades[1].user.length).toBeLessThan(3000);
+    for (const c of run2) expect([c.kind, c.numCtx, c.maxTokens]).toEqual([c.kind, undefined, undefined]);
   });
 
   it('16. with a model and a context fixed in Settings, the sheet names them as the default and the run uses them', async () => {

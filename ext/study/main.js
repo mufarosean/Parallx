@@ -3361,12 +3361,13 @@ async function stWeakConcepts({ limit = 50 } = {}) {
 // rubric derivation, numeric execution through the Python bridge, and the
 // two orchestrators the pane calls (stEnsureBank, stNextDraw).
 //
-// Every model call picks a model (stPickModel), plans its context window
-// (stContextPlan from 10-model.js with the material's setting), sends
-// { temperature, numCtx, think, format: 'json' when JSON is wanted }, streams
-// through stStreamWithStall and parses with the 10-model.js extractors. No
-// raw model text ever reaches the user: a failure is a thrown Error with a
-// plain sentence, or a { error } result.
+// Every model call picks a model (stPickModel) and sends { temperature,
+// think, format: 'json' when JSON is wanted }, and a context size only when
+// the user set one (stPlanFor), streams through stStreamWithStall and parses
+// with the 10-model.js extractors. No raw model text ever reaches the user:
+// a failure is a thrown Error with a plain sentence, or a { error } result.
+// The concept map, the asking-again of an unreadable reply and the filling
+// of a session as questions arrive are in 35-making.js.
 //
 // Patterns copied from ext/flashcards/main.js SECTION 5: fcPickModel,
 // fcModelContextLength, fcStreamWithStall (same timeouts), the generation
@@ -3389,14 +3390,9 @@ const ST_SUPPORT_PAGE_CHARS = 6000;
 /** The syllabus a prompt carries, at most (characters). */
 const ST_SYLLABUS_CHARS = 6000;
 
-/** Output reserves, in tokens, for the context plan. */
+/** Room kept for a reply when a prompt is sized, in tokens. */
 const ST_MAP_OUTPUT_TOKENS = 2400;
-const ST_QUESTION_OUTPUT_BASE = 400;
-const ST_QUESTION_OUTPUT_PER = 320;
-const ST_SMALL_OUTPUT_TOKENS = 700;
-/** An explanation: a few short paragraphs, a worked calculation at most. */
-const ST_EXPLAIN_OUTPUT_TOKENS = 1200;
-/** Thinking a model may do before it answers, in tokens, when thinking is on. */
+/** Thinking a model may do before it answers, in tokens, when thinking is on: room kept for it, never a limit sent. */
 const ST_THINK_TOKENS = 8192;
 /** How often, at most, a streaming answer reports its length (ms). */
 const ST_STREAM_REPORT_MS = 400;
@@ -3459,13 +3455,20 @@ function stContextSettingFor(material, numCtx) {
   return Number(numCtx) || Number(material && material.contextSetting) || Number(cfg('generationContext', 0)) || 0;
 }
 
-/** Plan one call's window. */
-async function stPlanFor(modelId, material, chars, outputTokens, numCtx) {
-  const modelCtx = await stModelContextLength(modelId);
-  // A model that reasons spends output tokens on that first, inside the same
-  // window: without room for it, the answer's JSON is cut off.
-  const reasoning = cfg('aiThinking', true) ? ST_THINK_TOKENS : 0;
-  return stContextPlan({ chars, outputTokens: outputTokens + reasoning, modelCtx, setting: stContextSettingFor(material, numCtx) });
+/**
+ * The plan for every call of a run: the context size to name and the room a
+ * prompt's material may take. A size is named only when the user set one
+ * (the sheet, the material or Settings), and it is then the same on every
+ * call. With none set no call names a size: the core decides (the size the
+ * model is loaded at, so nothing is loaded again), and a prompt's material
+ * is kept to ST_MAP_CHUNK_CHARS. A negative `numCtx` is "none, already
+ * decided for this run" (stEnsureBank), whatever Settings say by now.
+ */
+async function stPlanFor(modelId, material, numCtx) {
+  const setting = Math.max(0, stContextSettingFor(material, numCtx));
+  const reserve = ST_MAP_OUTPUT_TOKENS + (cfg('aiThinking', true) ? ST_THINK_TOKENS : 0);
+  const plan = stContextPlan({ chars: ST_MAP_CHUNK_CHARS, outputTokens: reserve, modelCtx: await stModelContextLength(modelId), setting });
+  return { numCtx: setting > 0 ? plan.numCtx : 0, maxChars: setting > 0 ? plan.maxChars : Math.min(ST_MAP_CHUNK_CHARS, plan.maxChars) };
 }
 
 /**
@@ -3558,22 +3561,13 @@ async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numC
     if (poll) clearInterval(poll);
     controller.abort(); // a stalled answer stops on the backend too; no-op once finished
   }
+  if (token && token.cancelled) throw stStoppedError(); // an aborted stream may end without an error
   return output;
 }
 
-/** The first array inside the model's JSON object, else a bare array; [] when nothing parses. */
+/** The first array inside the model's JSON object, else a bare array; [] when nothing parses (stListFrom tells the two apart). */
 function stJsonArrayFrom(text) {
-  const obj = stExtractJsonObject(text);
-  if (obj && typeof obj === 'object') {
-    for (const key of Object.keys(obj)) {
-      if (Array.isArray(obj[key])) return obj[key];
-    }
-  }
-  let res = null;
-  try { res = stExtractJsonArray(text, (parsed) => parsed); } catch { res = null; }
-  if (Array.isArray(res)) return res;
-  if (res && Array.isArray(res.items)) return res.items;
-  return [];
+  return stListFrom(text) || [];
 }
 
 function stJsonObjectFrom(text) {
@@ -3813,156 +3807,7 @@ function stFindSimilarConcept(title, concepts) {
   return null;
 }
 
-// ── Concept map ─────────────────────────────────────────────────────────────
-
-/**
- * Build the concept map for a section (or for a selection, given as the only
- * chunk). Per chunk the model lists concepts with a page and a verbatim
- * quote; the quote is located with stFindAnchorPage; titles are deduplicated
- * against the material's existing concepts and each other; new ones are
- * inserted and the section marked mapped. Returns the unit's concepts:
- * the existing matches plus the new rows.
- *
- * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
- * owns under stPagePartition, so a chapter and its subsections never map a
- * page twice); `ownerOf(page)` files each concept under the section that
- * owns its page; `markMapped` false leaves the section unmarked (a range
- * clipped to a Pages scope is not the whole section). `quiet` reports only
- * through onProgress, for a caller that rewrites the progress (stEnsureBank).
- */
-async function stBuildConceptMap(material, section, {
-  modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0,
-  ranges = null, ownerOf = null, markMapped = true, quiet = false,
-} = {}) {
-  const cancelled = () => !!(token && token.cancelled);
-  const model = modelId || await stPickModel(material);
-  if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
-  const text = await stMaterialText(material);
-  const existing = await stListConcepts({ materialIds: [material.id] });
-  // Headings a concept's title or quote may start with (page text opens
-  // with its heading, and a model copies it): every section and outline title.
-  const sectionTitles = new Map((await stListSections(material.id)).map((x) => [x.id, String(x.title || '')]));
-  const headings = [...new Set([
-    section && section.title ? String(section.title) : '',
-    ...sectionTitles.values(),
-    ...(Array.isArray(material.outline) ? material.outline.map((o) => String((o && o.title) || '')) : []),
-  ].filter(Boolean))];
-  const report = (done, total, writing = null) => {
-    const p = { phase: 'map', done, total, part: Math.min(total, done + 1), parts: total, writing, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
-    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
-  };
-
-  // The chunks: page ranges of the section, or the selection as one chunk.
-  let chunks = [];
-  if (selectionText) {
-    const page = Number(selectionPage) || 0;
-    chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
-  } else {
-    const pageCount = text.pageTexts.length;
-    const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
-    const cap = await stPlanFor(model, material, ST_MAP_CHUNK_CHARS, ST_MAP_OUTPUT_TOKENS, numCtx);
-    const maxChars = Math.min(ST_MAP_CHUNK_CHARS, cap.maxChars);
-    for (const [rf, rt] of list) {
-      const from = Math.max(1, Number(rf) || 1);
-      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
-      const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
-        const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
-        return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
-      }).filter((c) => c.text.trim());
-      if (!pieces.length) {
-        const block = stPageBlock(text.pageTexts, from, to, maxChars);
-        if (block.material.trim()) pieces.push({ pageFrom: from, pageTo: to, text: block.material });
-      }
-      chunks.push(...pieces);
-    }
-  }
-  if (!chunks.length) {
-    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
-    if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
-    return [];
-  }
-
-  const found = [];   // new concepts to insert: { title, summary, page, anchorQuote, flags }
-  const matched = []; // existing concepts the chunk named again
-  const pool = [...existing];
-  report(0, chunks.length);
-  for (let i = 0; i < chunks.length; i++) {
-    if (cancelled()) break;
-    const chunk = chunks[i];
-    const plan = await stPlanFor(model, material, chunk.text.length, ST_MAP_OUTPUT_TOKENS, numCtx);
-    const user = [
-      selectionText
-        ? 'The material below is a passage the student selected. List the concepts it teaches.'
-        : `The material below is pages ${chunk.pageFrom} to ${chunk.pageTo}${section && section.title ? ` of "${section.title}"` : ''}. List the concepts it teaches.`,
-      'Every "page" must be a [Page N] marker that appears in the material.',
-      ...stExamContext(material),
-      '',
-      '--- MATERIAL ---',
-      chunk.text,
-    ].join('\n');
-    let output;
-    try {
-      output = await stChat(model, ST_CONCEPT_SYSTEM, user, {
-        temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: true, token,
-        onStream: (s) => report(i, chunks.length, s),
-      });
-    } catch (err) {
-      if (stIsStopped(err)) break;
-      throw err;
-    }
-    const raws = stJsonArrayFrom(output);
-    for (const raw of raws) {
-      if (!raw || typeof raw !== 'object') continue;
-      const rawTitle = String(raw.title || '').trim();
-      if (!rawTitle) continue;
-      // A leading copy of a heading comes off the title and the quote before
-      // the anchor check; a title that is only its section's title is no concept.
-      const ownTitle = section && section.title ? stSkeleton(section.title) : '';
-      if (ownTitle && stSkeleton(rawTitle) === ownTitle) continue;
-      const title = stStripLeadingHeading(rawTitle, headings) || rawTitle;
-      const summary = String(raw.summary || '').trim();
-      const quote = stStripLeadingHeading(String(raw.quote || '').trim(), headings);
-      let page = Number(raw.page) || 0;
-      if (selectionText) {
-        page = Number(selectionPage) || 0;
-      } else {
-        const hint = page >= chunk.pageFrom && page <= chunk.pageTo ? page : chunk.pageFrom;
-        const located = quote ? stFindAnchorPage(quote, text.pageTexts, hint) : 0;
-        page = located || hint;
-      }
-      const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
-      const owner = typeof ownerOf === 'function' && !selectionText ? sectionTitles.get(Number(ownerOf(page)) || 0) : '';
-      if (owner && stSkeleton(rawTitle) === stSkeleton(owner)) continue;
-      const prior = stFindSimilarConcept(title, pool);
-      if (prior) {
-        if (prior.id && !matched.includes(prior)) matched.push(prior);
-        if (prior.id && !_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
-        continue;
-      }
-      found.push({ title, summary, page, anchorQuote, flags: raw });
-      pool.push({ id: 0, title });
-    }
-    report(i + 1, chunks.length);
-  }
-
-  // Each new concept goes under the section that owns its page.
-  const baseSection = section ? section.id : 0;
-  const bySection = new Map();
-  for (const f of found) {
-    const sid = typeof ownerOf === 'function' && !selectionText ? (Number(ownerOf(f.page)) || baseSection) : baseSection;
-    if (!bySection.has(sid)) bySection.set(sid, []);
-    bySection.get(sid).push(f);
-  }
-  const inserted = [];
-  for (const [sid, list] of bySection) {
-    const rows = await stInsertConcepts(material.id, sid, list.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })));
-    for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
-    inserted.push(...rows);
-  }
-  if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
-  return [...matched, ...inserted];
-}
+// ── Anchors ─────────────────────────────────────────────────────────────────
 
 /** The page a quote is on: the hinted page when the quote is there, else the located one, else 0. */
 function stAnchorPageFor(quote, pageTexts, hintPage) {
@@ -4003,7 +3848,7 @@ function stExamContext(material) {
 }
 
 /** Shown the quote, its page, the stem and the answer: does the source settle it? */
-async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = {}) {
+async function stCheckSupport(modelId, q, { material, numCtx, pageText = '', token = null } = {}) {
   const page = String(pageText || '').trim().slice(0, ST_SUPPORT_PAGE_CHARS);
   const user = [
     'Quotation:',
@@ -4016,8 +3861,8 @@ async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = 
     'Proposed answer:',
     stAnswerText(q),
   ].join('\n');
-  const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
+  const plan = await stPlanFor(modelId, material, numCtx);
+  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, token });
   const raw = stJsonObjectFrom(output);
   // An unreadable verdict is not evidence for the question: treat it as unsettled.
   if (!raw) return { settles: false, reason: 'The check gave no verdict.' };
@@ -4025,8 +3870,9 @@ async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = 
 }
 
 /** Each wrong option alone with the stem: could it be defended as correct? */
-async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
+async function stCheckDistractors(modelId, q, { material, numCtx, token = null } = {}) {
   const prompts = stDistractorPrompts(q) || [];
+  const plan = await stPlanFor(modelId, material, numCtx);
   for (const d of prompts) {
     const user = [
       'Question:',
@@ -4038,8 +3884,7 @@ async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
       'Option to check:',
       String(d.option || ''),
     ].join('\n');
-    const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
+    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, token });
     const raw = stJsonObjectFrom(output);
     if (!raw) return { defensible: true, optionIndex: d.optionIndex, reason: 'The check gave no verdict.' };
     if (raw.defensible === true || raw.defensible === 'true') {
@@ -4582,13 +4427,15 @@ function stConceptForRaw(raw, group) {
  * calls (stEnsureBank visits units round-robin, one call each); `more` says
  * calls were left. `attempted` lists the concepts a call was made for,
  * `attemptedPairs` the "<conceptId>:<format>" pairs those calls asked for;
- * a pair in `skipPairs` (a Set of the same keys) is not asked at all.
+ * a pair in `skipPairs` (a Set of the same keys) is not asked at all. Each
+ * question is stored the moment it passes its checks and `onKept(question)`
+ * hears of it, so a session can show it while the rest are made.
  * Returns { kept, written, dropped, runId, needed, status, attempted, attemptedPairs, more }.
  */
 async function stGenerateQuestions(material, {
   sectionId = 0, conceptIds = null, formats = null, perConcept = 0, choices = 0, modelId = '', numCtx = 0,
   token = null, onProgress = null, pythonAvailable = null, stopWhen = null,
-  maxGroups = 0, maxConceptsPerCall = 0, quiet = false, skipPairs = null,
+  maxGroups = 0, maxConceptsPerCall = 0, quiet = false, skipPairs = null, onKept = null,
 } = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const wanted = Array.isArray(conceptIds) ? new Set(conceptIds.map(Number)) : null;
@@ -4630,8 +4477,8 @@ async function stGenerateQuestions(material, {
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
   const text = await stMaterialText(material);
   const groups = stGroupPlan(plan, Number(maxConceptsPerCall) || 0);
-  const setting = stContextSettingFor(material, numCtx);
-  const runId = await stStartRun({ materialId: material.id, sectionId, model, numCtx: setting });
+  const sized = await stPlanFor(model, material, numCtx);
+  const runId = await stStartRun({ materialId: material.id, sectionId, model, numCtx: sized.numCtx });
   const dropped = { anchor: 0, support: 0, distractor: 0, numeric: python ? 0 : null, parse: 0 };
   const kept = [];
   let written = 0;
@@ -4663,12 +4510,7 @@ async function stGenerateQuestions(material, {
       const focus = group[0].concept.page || 1;
       const pageFrom = Math.max(1, focus - ST_QUESTION_PAGES_AROUND);
       const pageTo = Math.min(Math.max(1, text.pageTexts.length), focus + ST_QUESTION_PAGES_AROUND);
-      const askTotal = group.reduce((n, slot) => n + Object.values(slot.need).reduce((m, v) => m + stAskCount(v), 0), 0);
-      const outputTokens = ST_QUESTION_OUTPUT_BASE + ST_QUESTION_OUTPUT_PER * askTotal;
-      let rawChars = 0;
-      for (let p = pageFrom; p <= pageTo; p++) rawChars += String(text.pageTexts[p - 1] || '').length;
-      const plan1 = await stPlanFor(model, material, rawChars, outputTokens, numCtx);
-      const block = stPageBlock(text.pageTexts, pageFrom, pageTo, plan1.maxChars, focus);
+      const block = stPageBlock(text.pageTexts, pageFrom, pageTo, sized.maxChars, focus);
       const conceptLines = group.map((slot) => {
         const asks = Object.entries(slot.need).map(([f, n]) => `${stAskCount(n)} ${f}`).join(', ');
         const c = slot.concept;
@@ -4686,21 +4528,16 @@ async function stGenerateQuestions(material, {
         block.material,
       ].join('\n');
       report('generate', { concept: group[0].concept.title });
-      let output;
-      try {
-        output = await stChat(model, ST_QUESTION_SYSTEM, user, {
-          temperature: ST_TEMP_GENERATE, numCtx: plan1.numCtx, json: true, token,
-          onStream: (s) => report('generate', { concept: group[0].concept.title, writing: s }),
-        });
-      } catch (err) {
-        if (cancelled() || stIsStopped(err)) { status = 'stopped'; break; }
-        throw err;
-      }
+      // A reply that cannot be read is asked again before it counts as unusable.
+      const asked = await stAskList(model, ST_QUESTION_SYSTEM, user, {
+        temperature: ST_TEMP_GENERATE, numCtx: sized.numCtx, json: true, token,
+        onStream: (s) => report('generate', { concept: group[0].concept.title, writing: s }),
+      });
       for (const slot of group) {
         attempted.push(slot.concept.id);
         for (const f of Object.keys(slot.need)) attemptedPairs.push(`${slot.concept.id}:${f}`);
       }
-      const raws = stJsonArrayFrom(output);
+      const raws = asked.list || [];
       if (!raws.length) {
         dropped.parse += 1;
         conceptsDone += group.length;
@@ -4708,7 +4545,6 @@ async function stGenerateQuestions(material, {
         continue;
       }
       written += raws.length;
-      const groupKept = [];
       for (const raw of raws) {
         if (cancelled()) { status = 'stopped'; break; }
         if (!raw || typeof raw !== 'object') { dropped.parse += 1; continue; }
@@ -4737,14 +4573,14 @@ async function stGenerateQuestions(material, {
         // 2. Support: the quote alone settles the answer (model).
         if (checkSupport) {
           report('check:support', { concept: concept.title });
-          const r = await stCheckSupport(model, q, { material, numCtx, pageText: text.pageTexts[sourcePage - 1] });
+          const r = await stCheckSupport(model, q, { material, numCtx, pageText: text.pageTexts[sourcePage - 1], token });
           if (!r.settles) { dropped.support += 1; continue; }
           checks.support = true;
         }
         // 3. Distractors: no wrong option is defensible (model, mc only).
         if (format === 'mc' && checkDistractors) {
           report('check:distractor', { concept: concept.title });
-          const r = await stCheckDistractors(model, q, { material, numCtx });
+          const r = await stCheckDistractors(model, q, { material, numCtx, token });
           if (r.defensible) { dropped.distractor += 1; continue; }
           checks.distractor = true;
         }
@@ -4774,20 +4610,23 @@ async function stGenerateQuestions(material, {
           }
         }
         slot.need[format] -= 1;
-        groupKept.push(stFinalizeQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric }));
-      }
-      if (groupKept.length) {
-        const inserted = await stInsertQuestions(groupKept);
-        kept.push(...inserted);
+        const stored = await stInsertQuestions([stFinalizeQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric })]);
+        kept.push(...stored);
+        report('generate', { concept: concept.title });
+        if (onKept && stored.length) await onKept(stored[0]);
       }
       conceptsDone += group.length;
       report('generate');
     }
   } catch (err) {
-    const error = stPlainError(err);
-    await stFinishRun(runId, { status: 'failed', written, kept: kept.length, dropped, error });
-    report('failed', { error });
-    throw new Error(error);
+    // Stop reaches a call mid-answer: what was kept stays, and the run ends as stopped.
+    if (!cancelled() && !stIsStopped(err)) {
+      const error = stPlainError(err);
+      await stFinishRun(runId, { status: 'failed', written, kept: kept.length, dropped, error });
+      report('failed', { error });
+      throw new Error(error);
+    }
+    status = 'stopped';
   }
   await stFinishRun(runId, { status, written, kept: kept.length, dropped });
   report(status === 'stopped' ? 'stopped' : 'done');
@@ -4885,7 +4724,7 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     '',
     `Student's answer:\n${typed}`,
   ].filter((line) => line !== '').join('\n');
-  const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS + 40 * rubric.length, numCtx);
+  const plan = await stPlanFor(model, null, numCtx);
   const output = await stChat(model, ST_GRADE_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
   const raw = stJsonObjectFrom(output);
   if (!raw) throw new Error('The model could not grade this answer. Try again, or open the full answer to compare.');
@@ -4926,7 +4765,7 @@ async function stExplain(question, { chosen = null, typed = '', modelId = '', nu
     question.sourceQuote ? `Quotation from the source${question.sourcePage ? ` (page ${question.sourcePage})` : ''}:\n${question.sourceQuote}` : '',
     page ? `The source page:\n${page}` : '',
   ].filter(Boolean).join('\n\n');
-  const plan = await stPlanFor(model, material, user.length, ST_EXPLAIN_OUTPUT_TOKENS, numCtx);
+  const plan = await stPlanFor(model, material, numCtx);
   const text = await stChat(model, ST_EXPLAIN_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: false, onChunk });
   const out = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   if (!out) throw new Error('The model gave no explanation. Try again.');
@@ -4947,7 +4786,7 @@ async function stRubricFromAnswer(question, { modelId = '', numCtx = 0 } = {}) {
     question.sourceQuote ? `\nSource quotation:\n${question.sourceQuote}` : '',
   ].filter((l) => l !== '').join('\n');
   try {
-    const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
+    const plan = await stPlanFor(model, null, numCtx);
     const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true });
     const raw = stJsonObjectFrom(output);
     return stNormalizeRubric(raw && (raw.rubric || raw.points));
@@ -4991,7 +4830,7 @@ async function stRubricFromReport(entry, { modelId = '', numCtx = 0 } = {}) {
     errors ? `\nCommon errors the examiners noted:\n${errors}` : '',
   ].filter((l) => l !== '').join('\n');
   try {
-    const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
+    const plan = await stPlanFor(model, null, numCtx);
     const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true });
     const raw = stJsonObjectFrom(output);
     const rubric = stNormalizeRubric(raw && (raw.rubric || raw.points));
@@ -5191,13 +5030,8 @@ async function stScopeCanGrow(scope) {
   if (!scope || scope.kind === 'bank') return false;
   if (scope.kind !== 'weak') {
     for (const { material, units } of await stScopeUnits(scope)) {
-      for (const u of units) {
-        if (u.selection) { if (!stSelectionConceptIds(scope).length) return true; continue; }
-        if (u.section.mappedAt > 0) continue;
-        if (!u.partial) return true;
-        const known = await stListConcepts({ materialIds: [material.id] });
-        if (!known.some((c) => stInRanges(c.page, u.ranges))) return true;
-      }
+      const known = await stListConcepts({ materialIds: [material.id] });
+      if (units.some((u) => !stUnitMapped(u, scope, known))) return true;
     }
   }
   const concepts = await stScopeConcepts(scope);
@@ -5284,12 +5118,14 @@ function stAddDropped(a, b) {
  *
  * A selection's concept ids are written into the session's scope
  * (scope.conceptIds) when `sessionId` is given, so a restart draws from
- * them without mapping again. Returns { kept, concepts, available,
- * unanswerable, numericUnavailable }.
+ * them without mapping again. `onKept(question)` hears each question as it
+ * is stored. Returns { kept, concepts, available, unanswerable,
+ * numericUnavailable, unreadable }: `unreadable` counts the units whose
+ * concept map the model never answered readably (they stay unmapped).
  */
-async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false, sessionId = null } = {}) {
+async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false, sessionId = null, onKept = null } = {}) {
   const cancelled = () => !!(token && token.cancelled);
-  const result = { kept: 0, concepts: [], available: 0, unanswerable: 0, numericUnavailable: false };
+  const result = { kept: 0, concepts: [], available: 0, unanswerable: 0, numericUnavailable: false, unreadable: 0 };
   if (!scope) return result;
   const base = await stScopeStats(scope);
   result.available = base.available;
@@ -5355,15 +5191,8 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     for (const { material, units } of await stScopeUnits(scope)) {
       if (!units.length) continue;
       const ordered = stSpreadOrder(units.length).map((i) => units[i]);
-      for (const u of ordered) {
-        if (u.selection) u.mapped = stSelectionConceptIds(scope).length > 0;
-        else if (u.section.mappedAt > 0) u.mapped = true;
-        else if (u.partial) {
-          // A clipped unit counts as mapped once its pages have concepts.
-          const known = await stListConcepts({ materialIds: [material.id] });
-          u.mapped = known.some((c) => stInRanges(c.page, u.ranges));
-        } else u.mapped = false;
-      }
+      const known = await stListConcepts({ materialIds: [material.id] });
+      for (const u of ordered) u.mapped = stUnitMapped(u, scope, known);
       queues.push({ material, cursor: 0, units: ordered });
     }
   }
@@ -5373,8 +5202,15 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const modelFor = async (material) => {
     if (!models.has(material.id)) models.set(material.id, modelId || await stPickModel(material));
     const m = models.get(material.id);
-    if (!m) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
+    if (!m) throw stNoModelError();
     return m;
+  };
+  // The context size is settled once per material for the whole run: the
+  // user's setting, else none (-1: every call leaves the size to the core).
+  const sizes = new Map();
+  const sizeFor = (material) => {
+    if (!sizes.has(material.id)) sizes.set(material.id, stContextSettingFor(material, numCtx) || -1);
+    return sizes.get(material.id);
   };
   const attempts = new Map();
   // (concept, format) pairs: consecutive calls that kept nothing for the
@@ -5396,27 +5232,14 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const visit = async (unit) => {
     const material = unit.material;
     const model = await modelFor(material);
-    // 1. Map the unit when it has not been mapped.
+    const numCtx = sizeFor(material);
+    // 1. Map the unit when it has not been mapped. A map the model never
+    // answered readably leaves the unit unmapped: this run goes on without
+    // it, and the next start asks again.
     if (!unit.mapped) {
-      if (unit.selection) {
-        const concepts = await stBuildConceptMap(material, null, {
-          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
-          selectionText: unit.selectionText, selectionPage: unit.selectionPage,
-        });
-        const ids = concepts.map((c) => c.id).filter((id) => id > 0);
-        _stSelectionConcepts.set(stSelectionKey(scope), ids);
-        scope.conceptIds = ids;
-        if (sessionId != null && ids.length) {
-          const s = await stGetSession(sessionId);
-          if (s) await stUpdateSession(sessionId, { scope: { ...(s.scope || {}), conceptIds: ids } });
-        }
-      } else {
-        await stBuildConceptMap(material, unit.section, {
-          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
-          ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
-        });
-      }
+      const readable = await stMapUnit(unit, scope, { modelId: model, numCtx, token, onProgress: innerFor(unit), sessionId });
       if (cancelled()) return;
+      if (!readable) { result.unreadable += 1; finish(unit); return; }
       unit.mapped = true;
     }
     // 2. One generation call for the unit's concepts.
@@ -5435,7 +5258,7 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       sectionId: unit.section ? unit.section.id : 0,
       conceptIds: eligible.map((c) => c.id),
       perConcept: sweepPer, choices, modelId: model, numCtx, token, onProgress: innerFor(unit), pythonAvailable,
-      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true, skipPairs,
+      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true, skipPairs, onKept,
     });
     run.written += Number(gen.written) || 0;
     run.kept += gen.kept.length;
@@ -5567,6 +5390,465 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
   return Object.assign(draw, { unanswerable: pool.unanswerable, repeats });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 35: MAKING — a reply asked again, the concept map, a session filled as questions arrive
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// What stands between "Start" and the first question, and what keeps a
+// chapter alive when the model answers badly:
+//
+//   - stAskList asks again when a reply holds no list at all (prose where
+//     JSON was asked, or JSON cut off before anything could be read).
+//   - stBuildConceptMap marks a section mapped only when every part of it
+//     was read; stUnitMapped counts a unit as mapped only when its pages
+//     hold concepts, so a section stamped "mapped" with none is asked again.
+//   - stFillSession puts each question into the session the moment it is
+//     stored (stEnsureBank's onKept), ordered so no two in a row share a
+//     concept (stInterleaveConcepts), while the rest are still being made.
+//   - stRequireModel says there is no model before a session is created.
+
+// ── A reply that must hold a list ───────────────────────────────────────────
+
+/** Times one prompt is asked, at most, before its reply is given up as unreadable. */
+const ST_LIST_ASKS = 3;
+
+/**
+ * The list in a model reply: the first array inside its JSON object, else a
+ * bare array (the readable part of one that was cut off counts). null when
+ * the reply holds no list: prose, an object with no array, nothing.
+ */
+function stListFrom(text) {
+  const obj = stExtractJsonObject(text);
+  if (obj && typeof obj === 'object') {
+    for (const key of Object.keys(obj)) if (Array.isArray(obj[key])) return obj[key];
+  }
+  let res = null;
+  try { res = stExtractJsonArray(text); } catch { res = null; }
+  return res && Array.isArray(res.items) && res.items.length ? res.items : null;
+}
+
+/**
+ * One chat call whose reply must hold a list (the concept map, the
+ * questions). A reply with none is asked again, ST_LIST_ASKS times in all:
+ * the calls that write are not deterministic, so a second answer differs.
+ * Returns { list, asks }; `list` is null when no reply could be read. Stop
+ * and backend errors pass through.
+ */
+async function stAskList(modelId, system, user, options) {
+  for (let asks = 1; ; asks++) {
+    const list = stListFrom(await stChat(modelId, system, user, options));
+    if (list || asks >= ST_LIST_ASKS) return { list, asks };
+  }
+}
+
+// ── Concept map ─────────────────────────────────────────────────────────────
+
+/**
+ * Build the concept map for a section (or for a selection, given as the only
+ * chunk). Per chunk the model lists concepts with a page and a verbatim
+ * quote; the quote is located with stFindAnchorPage; titles are deduplicated
+ * against the material's existing concepts and each other; new ones are
+ * inserted. Returns the unit's concepts (the existing matches plus the new
+ * rows) with `unreadable`, the number of chunks no reply could be read for.
+ * The section is marked mapped only when every chunk was read, so one bad
+ * reply never closes a chapter.
+ *
+ * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
+ * owns under stPagePartition, so a chapter and its subsections never map a
+ * page twice); `ownerOf(page)` files each concept under the section that
+ * owns its page; `markMapped` false leaves the section unmarked (a range
+ * clipped to a Pages scope is not the whole section). `quiet` reports only
+ * through onProgress, for a caller that rewrites the progress (stEnsureBank).
+ */
+async function stBuildConceptMap(material, section, {
+  modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0,
+  ranges = null, ownerOf = null, markMapped = true, quiet = false,
+} = {}) {
+  const cancelled = () => !!(token && token.cancelled);
+  const model = modelId || await stPickModel(material);
+  if (!model) throw stNoModelError();
+  const text = await stMaterialText(material);
+  const existing = await stListConcepts({ materialIds: [material.id] });
+  // Headings a concept's title or quote may start with (page text opens
+  // with its heading, and a model copies it): every section and outline title.
+  const sectionTitles = new Map((await stListSections(material.id)).map((x) => [x.id, String(x.title || '')]));
+  const headings = [...new Set([
+    section && section.title ? String(section.title) : '',
+    ...sectionTitles.values(),
+    ...(Array.isArray(material.outline) ? material.outline.map((o) => String((o && o.title) || '')) : []),
+  ].filter(Boolean))];
+  const report = (done, total, writing = null) => {
+    const p = { phase: 'map', done, total, part: Math.min(total, done + 1), parts: total, writing, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
+    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
+    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
+  };
+  const sized = await stPlanFor(model, material, numCtx);
+
+  // The chunks: page ranges of the section, or the selection as one chunk.
+  let chunks = [];
+  if (selectionText) {
+    const page = Number(selectionPage) || 0;
+    chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
+  } else {
+    const pageCount = text.pageTexts.length;
+    const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
+    const maxChars = Math.min(ST_MAP_CHUNK_CHARS, sized.maxChars);
+    for (const [rf, rt] of list) {
+      const from = Math.max(1, Number(rf) || 1);
+      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
+      const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
+        const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
+        return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
+      }).filter((c) => c.text.trim());
+      if (!pieces.length) {
+        const block = stPageBlock(text.pageTexts, from, to, maxChars);
+        if (block.material.trim()) pieces.push({ pageFrom: from, pageTo: to, text: block.material });
+      }
+      chunks.push(...pieces);
+    }
+  }
+  if (!chunks.length) {
+    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
+    if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+    return Object.assign([], { unreadable: 0 });
+  }
+
+  const found = [];   // new concepts to insert: { title, summary, page, anchorQuote, flags }
+  const matched = []; // existing concepts the chunk named again
+  const pool = [...existing];
+  let unreadable = 0;
+  report(0, chunks.length);
+  for (let i = 0; i < chunks.length; i++) {
+    if (cancelled()) break;
+    const chunk = chunks[i];
+    const user = [
+      selectionText
+        ? 'The material below is a passage the student selected. List the concepts it teaches.'
+        : `The material below is pages ${chunk.pageFrom} to ${chunk.pageTo}${section && section.title ? ` of "${section.title}"` : ''}. List the concepts it teaches.`,
+      'Every "page" must be a [Page N] marker that appears in the material.',
+      ...stExamContext(material),
+      '',
+      '--- MATERIAL ---',
+      chunk.text,
+    ].join('\n');
+    let asked;
+    try {
+      asked = await stAskList(model, ST_CONCEPT_SYSTEM, user, {
+        temperature: ST_TEMP_GENERATE, numCtx: sized.numCtx, json: true, token,
+        onStream: (s) => report(i, chunks.length, s),
+      });
+    } catch (err) {
+      if (stIsStopped(err)) break;
+      throw err;
+    }
+    if (!asked.list) unreadable += 1;
+    for (const raw of asked.list || []) {
+      if (!raw || typeof raw !== 'object') continue;
+      const rawTitle = String(raw.title || '').trim();
+      if (!rawTitle) continue;
+      // A leading copy of a heading comes off the title and the quote before
+      // the anchor check; a title that is only its section's title is no concept.
+      const ownTitle = section && section.title ? stSkeleton(section.title) : '';
+      if (ownTitle && stSkeleton(rawTitle) === ownTitle) continue;
+      const title = stStripLeadingHeading(rawTitle, headings) || rawTitle;
+      const summary = String(raw.summary || '').trim();
+      const quote = stStripLeadingHeading(String(raw.quote || '').trim(), headings);
+      let page = Number(raw.page) || 0;
+      if (selectionText) {
+        page = Number(selectionPage) || 0;
+      } else {
+        const hint = page >= chunk.pageFrom && page <= chunk.pageTo ? page : chunk.pageFrom;
+        const located = quote ? stFindAnchorPage(quote, text.pageTexts, hint) : 0;
+        page = located || hint;
+      }
+      const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
+      const owner = typeof ownerOf === 'function' && !selectionText ? sectionTitles.get(Number(ownerOf(page)) || 0) : '';
+      if (owner && stSkeleton(rawTitle) === stSkeleton(owner)) continue;
+      const prior = stFindSimilarConcept(title, pool);
+      if (prior) {
+        if (prior.id && !matched.includes(prior)) matched.push(prior);
+        if (prior.id && !_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
+        continue;
+      }
+      found.push({ title, summary, page, anchorQuote, flags: raw });
+      pool.push({ id: 0, title });
+    }
+    report(i + 1, chunks.length);
+  }
+
+  // Each new concept goes under the section that owns its page.
+  const baseSection = section ? section.id : 0;
+  const bySection = new Map();
+  for (const f of found) {
+    const sid = typeof ownerOf === 'function' && !selectionText ? (Number(ownerOf(f.page)) || baseSection) : baseSection;
+    if (!bySection.has(sid)) bySection.set(sid, []);
+    bySection.get(sid).push(f);
+  }
+  const inserted = [];
+  for (const [sid, list] of bySection) {
+    const rows = await stInsertConcepts(material.id, sid, list.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })));
+    for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
+    inserted.push(...rows);
+  }
+  if (section && section.id && markMapped && !unreadable && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+  return Object.assign([...matched, ...inserted], { unreadable });
+}
+
+/**
+ * Is a unit mapped? Only when its pages hold concepts (`known`: the
+ * material's concepts). A section stamped as mapped with none on its pages
+ * is not: that is what a reply nobody could read left behind before, and it
+ * is asked again. A selection is mapped once its concept ids are known.
+ */
+function stUnitMapped(unit, scope, known) {
+  if (unit.selection) return stSelectionConceptIds(scope).length > 0;
+  if (!unit.partial && !(unit.section.mappedAt > 0)) return false;
+  return (known || []).some((c) => stInRanges(c.page, unit.ranges));
+}
+
+/**
+ * Map one unit of a scope (stEnsureBank's first step for it). A selection's
+ * concept ids go into the scope, and into the session's stored scope when
+ * `sessionId` is given. Returns false when the model gave no readable
+ * answer and nothing was found: the unit stays unmapped.
+ */
+async function stMapUnit(unit, scope, { modelId, numCtx, token, onProgress, sessionId = null } = {}) {
+  let concepts;
+  if (unit.selection) {
+    concepts = await stBuildConceptMap(unit.material, null, {
+      modelId, numCtx, token, onProgress, quiet: true, selectionText: unit.selectionText, selectionPage: unit.selectionPage,
+    });
+    const ids = concepts.map((c) => c.id).filter((id) => id > 0);
+    _stSelectionConcepts.set(stSelectionKey(scope), ids);
+    scope.conceptIds = ids;
+    if (sessionId != null && ids.length) {
+      const s = await stGetSession(sessionId);
+      if (s) await stUpdateSession(sessionId, { scope: { ...(s.scope || {}), conceptIds: ids } });
+    }
+  } else {
+    concepts = await stBuildConceptMap(unit.material, unit.section, {
+      modelId, numCtx, token, onProgress, quiet: true, ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
+    });
+  }
+  return !(concepts.unreadable > 0 && !concepts.length);
+}
+
+// ── The order of a session that fills as it goes ────────────────────────────
+
+/**
+ * The order for questions joining a draw that is already under way. Pure.
+ * It is stDrawSession's order, kept up as questions arrive: concepts in
+ * order of need (stOrderConcepts: unasked, weak from the weakest, stale,
+ * clean), each giving one question a round, counting what `placed` (the
+ * draw's questions already answered or on screen, in order) has given;
+ * within a round a material is not repeated while another has a turn; a
+ * concept gives the class of question it should be asked in first
+ * (stPreferredClass). And no two in a row share a concept while that can be
+ * avoided: a concept holding more than half of what is left goes next, or
+ * two of its questions would meet at the end.
+ */
+function stInterleaveConcepts(questions, { placed = [], concepts = [], answerFormat = 'mixed', now = 0, staleDays = 14 } = {}) {
+  const list = (Array.isArray(questions) ? questions : []).filter(Boolean);
+  const byId = new Map((concepts || []).map((c) => [c.id, c]));
+  const seen = [...new Set(list.map((q) => q.conceptId))];
+  // A concept the caller did not list comes after the listed ones, as it arrived.
+  const ranked = stOrderConcepts(seen.filter((id) => byId.has(id)).map((id) => byId.get(id)), now, { staleDays })
+    .map((c) => c.id).concat(seen.filter((id) => !byId.has(id)));
+  const rank = new Map(ranked.map((id, i) => [id, i]));
+  const queues = new Map();
+  for (const id of ranked) {
+    const own = list.filter((q) => q.conceptId === id);
+    const want = byId.has(id) ? stPreferredClass(byId.get(id), answerFormat) : '';
+    queues.set(id, own.filter((q) => stFormatClass(q.format) === want).concat(own.filter((q) => stFormatClass(q.format) !== want)));
+  }
+  const before = (Array.isArray(placed) ? placed : []).filter(Boolean);
+  const given = new Map();
+  for (const q of before) given.set(q.conceptId, (given.get(q.conceptId) || 0) + 1);
+  const last = before.length ? before[before.length - 1] : null;
+  let lastConcept = last ? last.conceptId : null;
+  let lastMaterial = last ? (last.materialId ?? 0) : null;
+  const key = (id) => [given.get(id) || 0, (queues.get(id)[0].materialId ?? 0) === lastMaterial ? 1 : 0, rank.get(id)];
+  const out = [];
+  for (let left = list.length; left > 0; left--) {
+    const live = ranked.filter((id) => queues.get(id).length);
+    const others = live.filter((id) => id !== lastConcept);
+    let pick = others.find((id) => 2 * queues.get(id).length > left);
+    if (pick === undefined) {
+      for (const id of (others.length ? others : live)) {
+        if (pick === undefined) { pick = id; continue; }
+        const a = key(id), b = key(pick);
+        if (a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] < b[2])))) pick = id;
+      }
+    }
+    const q = queues.get(pick).shift();
+    out.push(q);
+    given.set(pick, (given.get(pick) || 0) + 1);
+    lastConcept = pick;
+    lastMaterial = q.materialId ?? 0;
+  }
+  return out;
+}
+
+/**
+ * Put the questions that are ready into the session's current draw, and
+ * order what is still waiting. New questions (usable, in scope, not yet in
+ * the session) are added until the draw holds `size`. What is answered and
+ * the first unanswered item (the one on screen) stay where they are; the
+ * rest follow in stInterleaveConcepts order. Returns { held, added }: how
+ * many the draw holds now and how many this call added.
+ */
+async function stFeedSession(session, { size, draw }) {
+  const items = await stListSessionItems(session.id);
+  const mine = items.filter((i) => (Number(i.draw) || 0) === draw).sort((a, b) => (a.ord || 0) - (b.ord || 0) || a.id - b.id);
+  const inSession = new Set(items.map((i) => i.questionId));
+  const pool = await stScopePool(session.scope || {});
+  const conceptById = new Map(pool.concepts.map((c) => [c.id, c]));
+  const byId = new Map(pool.questions.map((q) => [q.id, q]));
+  const order = (questions, placed) => stInterleaveConcepts(questions, {
+    placed: placed.map((i) => byId.get(i.questionId)), concepts: pool.concepts,
+    answerFormat: session.answerFormat, now: stNow(), staleDays: Number(cfg('staleDays', 14)) || 14,
+  });
+  const fresh = pool.questions.filter((q) => !inSession.has(q.id) && conceptById.has(q.conceptId));
+  const room = Math.max(0, size - mine.length);
+  const add = room && fresh.length ? order(fresh, mine).slice(0, room) : [];
+  let added = [];
+  if (add.length) {
+    const formats = add.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
+    added = await stAddSessionItems(session.id, draw, add.map((q) => q.id), formats);
+  }
+  const isPending = (i) => !i.status || i.status === 'pending';
+  const head = mine.find(isPending) || null;
+  const fixed = mine.filter((i) => !isPending(i) || i === head);
+  const waiting = mine.filter((i) => isPending(i) && i !== head).concat(added);
+  if (added.length && waiting.length > 1) {
+    // An item whose question left the pool (hidden since) goes last, as it was.
+    const itemOf = new Map(waiting.map((i) => [i.questionId, i]));
+    const known = waiting.filter((i) => byId.has(i.questionId));
+    const ordered = order(known.map((i) => byId.get(i.questionId)), fixed).map((q) => itemOf.get(q.id)).concat(waiting.filter((i) => !byId.has(i.questionId)));
+    const ords = waiting.map((i) => i.ord).sort((a, b) => a - b);
+    const moves = ordered.map((item, k) => ({ item, ord: ords[k] })).filter((x) => x.item.ord !== x.ord);
+    if (moves.length) {
+      await db.runAll(moves.map((x) => ({ sql: 'UPDATE st_session_items SET ord = ? WHERE id = ?', params: [x.ord, x.item.id] })));
+      _emitDataChanged();
+    }
+  }
+  return { held: mine.length + added.length, added: added.length };
+}
+
+/**
+ * A session's draw, shown as it is made. When the scope already holds a
+ * draw's worth of unasked questions, or is a bank (nothing is written for
+ * one), this is stNextDraw: one draw, weak concepts first. Otherwise what is
+ * ready goes into the session at once (stFeedSession), stEnsureBank writes
+ * the rest and each question joins the session as it is stored, and when
+ * writing ends short of `size` the draw is filled with questions this
+ * session asked before (stRepeatFill), as stNextDraw does. `onFed(held)`
+ * hears every change to what the draw holds. Stop (the token) keeps what is
+ * in the session. Returns { held, unreadable, unanswerable }.
+ */
+async function stFillSession(session, { token = null, onProgress = null, onFed = null } = {}) {
+  const scope = session.scope || {};
+  const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
+  const draw = Number(session.refreshes) || 0;
+  const before = await stListSessionItems(session.id);
+  const asked = new Set(before.map((i) => i.questionId));
+  const heldBefore = before.filter((i) => (Number(i.draw) || 0) === draw).length;
+  const start = await stScopePool(scope);
+  const told = (held) => { if (onFed) { try { onFed(held); } catch { /* listener error is not ours */ } } };
+  if (scope.kind === 'bank' || (!heldBefore && start.questions.filter((q) => !asked.has(q.id)).length >= size)) {
+    const drawn = await stNextDraw(session, { token, onProgress });
+    told(drawn.length);
+    return { held: drawn.length, unreadable: 0, unanswerable: Number(drawn.unanswerable) || 0 };
+  }
+  // One feed at a time: a question stored while another is being placed waits its turn.
+  let chain = Promise.resolve({ held: heldBefore, added: 0 });
+  const feed = () => {
+    chain = chain.then(() => stFeedSession(session, { size, draw })).then((r) => { if (r.added) told(r.held); return r; });
+    return chain;
+  };
+  let fed = await feed();
+  let ensured = { unreadable: 0, unanswerable: start.unanswerable };
+  if (fed.held < size && !(token && token.cancelled)) {
+    ensured = await stEnsureBank(scope, {
+      size: size + asked.size - heldBefore, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true, sessionId: session.id,
+      onKept: () => feed(),
+    });
+    fed = await feed();
+  }
+  // Writing ended short and was not stopped: the rest are questions asked before.
+  if (fed.held < size && !(token && token.cancelled)) {
+    const items = await stListSessionItems(session.id);
+    const mine = new Set(items.filter((i) => (Number(i.draw) || 0) === draw).map((i) => i.questionId));
+    const pool = await stScopePool(scope);
+    const conceptById = new Map(pool.concepts.map((c) => [c.id, c]));
+    const again = stRepeatFill({ items: items.filter((i) => (Number(i.draw) || 0) !== draw), questions: pool.questions.filter((q) => conceptById.has(q.conceptId)), exclude: mine, limit: size - fed.held });
+    if (again.length) {
+      const formats = again.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
+      await stAddSessionItems(session.id, draw, again.map((q) => q.id), formats);
+      fed = { held: fed.held + again.length, added: again.length };
+      told(fed.held);
+    }
+  }
+  return { held: fed.held, unreadable: Number(ensured.unreadable) || 0, unanswerable: Number(ensured.unanswerable) || 0 };
+}
+
+// ── No model ────────────────────────────────────────────────────────────────
+
+/** The error for "there is no model to ask": callers show it with a way on (Try Again, AI Settings). */
+function stNoModelError(message) {
+  const err = new Error(message || 'No model is available. Start the model backend, or choose a model in AI Settings.');
+  err.stNoModel = true;
+  return err;
+}
+
+function stIsNoModel(err) {
+  return !!(err && err.stNoModel);
+}
+
+/**
+ * The model a making would use, checked against what the backend lists now.
+ * Throws stNoModelError when there is none, before anything is created, so
+ * a start without a model leaves no session and no tab behind.
+ */
+async function stRequireModel(preferred, scope) {
+  const firstMaterial = scope && Array.isArray(scope.materialIds) && scope.materialIds.length ? scope.materialIds[0] : null;
+  let material = null;
+  try { material = firstMaterial != null ? await stGetMaterial(firstMaterial) : null; } catch { material = null; }
+  let listed = [];
+  try { listed = (_api.lm && typeof _api.lm.getModels === 'function' ? await _api.lm.getModels() : []) || []; } catch { listed = []; }
+  const id = String(preferred || '').trim() || (listed.length ? await stPickModel(material) : null);
+  if (!id || !listed.length) throw stNoModelError();
+  if (!listed.some((m) => m && m.id === id)) throw stNoModelError(`No model named ${id} is available. Choose another model, or start it in the model backend.`);
+  return id;
+}
+
+/** The command that opens the app's model settings, or '' when the app has none to offer. */
+async function stModelSettingsCommand() {
+  try {
+    const all = (await _api.commands.getCommands()) || [];
+    return all.includes('ai-settings.open') ? 'ai-settings.open' : '';
+  } catch { return ''; }
+}
+
+/**
+ * Start a session from a command (no sheet to show a message on). With no
+ * model, an error message with Try Again and, when the app offers it, Open
+ * AI Settings; nothing is created. Returns the session, or null.
+ */
+async function stStartOrSay(args) {
+  try {
+    return await stStartSession(args);
+  } catch (err) {
+    if (!stIsNoModel(err)) throw err;
+    const settings = await stModelSettingsCommand();
+    const actions = [{ title: 'Try Again' }].concat(settings ? [{ title: 'Open AI Settings' }] : []);
+    const picked = await _api.window.showErrorMessage(stPlainError(err), ...actions);
+    if (picked && picked.title === 'Try Again') return stStartOrSay(args);
+    if (picked && picked.title === 'Open AI Settings') await _api.commands.executeCommand(settings);
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5776,9 +6058,9 @@ function injectStyles() {
 .st-gen__s { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; }
 .st-gen__now { font-size: var(--px-text-sm); color: var(--px-text); margin-top: var(--px-space-2); min-height: 1.4em; }
 .st-gen__bar { height: 4px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; margin: var(--px-space-4) 0 var(--px-space-4); }
-.st-gen__bar i { display: block; height: 100%; width: 0; background: var(--px-accent); border-radius: var(--px-radius-full); transition: width var(--px-dur-slow) var(--px-ease); }
+.st-gen__bar .st-gen__fill { display: block; height: 100%; width: 0; background: var(--px-accent); border-radius: var(--px-radius-full); transition: width var(--px-dur-slow) var(--px-ease); }
 .st-genline { display: flex; gap: var(--px-space-5); font-size: var(--px-text-base); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.st-genline b { color: var(--px-text); font-weight: 600; }
+.st-genline strong { color: var(--px-text); font-weight: 600; }
 .st-checks { margin-top: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); overflow: hidden; }
 .st-ck { display: flex; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-space-3); font-size: var(--px-text-sm); border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
 .st-ck:first-child { border-top: 0; }
@@ -5787,7 +6069,19 @@ function injectStyles() {
 .st-ck__d--idle { background: var(--px-border-strong); }
 .st-ck__n { margin-left: auto; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 @keyframes st-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-.st-gen__acts { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-4); justify-content: flex-end; }
+.st-gen__acts { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-4); justify-content: flex-end; }
+.st-gen__hint { margin-right: auto; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+/* The making, beside the questions: one line under the session toolbar. */
+.st-making { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; padding: var(--px-space-1) var(--px-space-4); border-bottom: 1px solid var(--px-divider); background: var(--px-bg); font-size: var(--px-text-sm); color: var(--px-text-muted); flex: none; }
+.st-making[hidden], .st-making [hidden] { display: none; }
+.st-making__now { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-making__n { color: var(--px-text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-making__t { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-making--failed .st-making__now { color: var(--px-text); white-space: normal; }
+.st-ended { margin-top: var(--px-space-8); }
+.st-ended .px-btn--ghost { margin-top: var(--px-space-2); }
+.st-sheet__notice { padding: var(--px-space-3) var(--px-space-5); border-top: 1px solid var(--px-divider); }
+.st-sheet__notice .px-btn--ghost { margin-top: var(--px-space-2); }
 
 /* ── Results ────────────────────────────────────────────────────────────── */
 .st-res { width: 100%; max-width: 760px; margin: 0 auto; animation: st-card-in var(--px-dur-slow) var(--px-ease-out); }
@@ -6380,6 +6674,422 @@ function createSidebarView(container) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 55: MAKING, ON SCREEN — the run, the screen before the first question, the strip beside it after
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A session's questions are made by one run (stRunFor), which outlives the
+// pane (the workbench rebuilds a pane on every tab switch). Until the first
+// question is ready the tab shows renderGenerating: what is happening, how
+// many are made, the time elapsed, Stop. From the first question on the tab
+// is the session itself and the same run shows as a strip under its toolbar
+// (stMakingStrip) while he answers. A making that ends with nothing leaves
+// no session behind: the tab says what happened and how to go on.
+//
+// Everything here is drawn with the kit: layout and text through
+// api.ui.createBlock (stBlock), buttons that run a command (study.stopMaking,
+// study.makeAgain, study.open), so each is in the scene and the palette.
+
+/** A layout or text element from the kit (api.ui.createBlock). */
+function stBlock(parent, tag, className, text) {
+  return _api.ui.createBlock(parent, tag, { className, ...(text != null ? { text } : {}) });
+}
+
+// ── In-flight runs, kept across pane rebuilds ───────────────────────────────
+
+const _stRuns = new Map();
+
+/** What a making that ended with nothing said, by session id: the session is gone, the tab still shows it. */
+const _stEnded = new Map();
+
+/** Elapsed time as he reads it: 0:07, 12:05, 1:02:03. Pure. */
+function stElapsedText(ms) {
+  const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  const two = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m)}:${two(s)}` : `${m}:${two(s)}`;
+}
+
+/** What a run is doing right now, in words, from its last progress payload. `names` false leaves the concept out (the session screen: a concept is not named before its question is answered). */
+function stRunNowText(p, run, { names = true } = {}) {
+  if (run.token.cancelled && !run.done) return 'Stopping…';
+  if (run.done) return '';
+  const phase = String(p.phase || '');
+  const concept = names && p.concept ? `"${p.concept}"` : '';
+  const w = p.writing && typeof p.writing === 'object' ? p.writing : null;
+  // Streaming: nothing yet means the model is still loading or reading.
+  const stream = !w ? ''
+    : w.chars > 0 ? `, about ${Math.max(1, Math.round(w.chars / 6))} words so far`
+    : w.thinking > 0 ? ', thinking'
+    : ', waiting for the model';
+  if (phase === 'map') {
+    const part = Number(p.parts) > 1 ? `, part ${p.part} of ${p.parts}` : '';
+    return `Finding the concepts in the material${part}${stream}`;
+  }
+  if (phase === 'generate') return w ? `Writing questions${concept ? ` on ${concept}` : ''}${stream}` : 'Preparing the next questions';
+  if (phase.startsWith('check:')) {
+    const what = { anchor: 'Finding the quote in the material', support: 'Checking the quote supports the answer', distractor: 'Checking the wrong options', numeric: 'Running the calculation' }[phase.slice(6)] || 'Checking a question';
+    return `${what}${concept ? ` for ${concept}` : ''}`;
+  }
+  if (phase === 'rubric') return 'Writing marking guides';
+  return 'Starting';
+}
+
+/** The session's run, started when there is none. `held` is how many questions its draw holds so far. */
+function stRunFor(session) {
+  let run = _stRuns.get(session.id);
+  if (run) return run;
+  const token = { cancelled: false };
+  // The activation this run belongs to: once Study goes off (or off and on
+  // again) its progress and its end are nobody's, and it reports neither.
+  const activation = stActivation();
+  run = {
+    token,
+    progress: { phase: '', done: 0, total: 0, written: 0, kept: 0, available: null, dropped: {} },
+    listeners: new Set(),
+    done: false, result: null, error: null, promise: null,
+    held: 0, startedAt: Date.now(), endedAt: 0,
+  };
+  const notify = () => {
+    if (activation !== stActivation()) return;
+    for (const fn of [...run.listeners]) { try { fn(); } catch { /* noop */ } }
+  };
+  const onProgress = (p) => {
+    if (activation !== stActivation()) { token.cancelled = true; return; }
+    if (p && typeof p === 'object') {
+      const dropped = p.dropped && typeof p.dropped === 'object' ? { ...run.progress.dropped, ...p.dropped } : run.progress.dropped;
+      Object.assign(run.progress, p, { dropped });
+    }
+    notify();
+  };
+  run.onProgress = onProgress;
+  run.notify = notify;
+  run.promise = Promise.resolve()
+    .then(() => stFillSession(session, { token, onProgress, onFed: (held) => { run.held = held; notify(); } }))
+    .then((r) => { run.result = r || null; }, (err) => {
+      // Study went off under the run: it stopped, it did not fail.
+      if (activation !== stActivation() || stIsStopped(err)) { token.cancelled = true; return; }
+      run.error = err;
+    })
+    .then(() => {
+      run.done = true;
+      run.endedAt = Date.now();
+      if (_stRuns.get(session.id) === run) _stRuns.delete(session.id);
+      notify();
+    });
+  _stRuns.set(session.id, run);
+  return run;
+}
+
+/** The session's run while it is still making, else null. */
+function stLiveRun(sessionId) {
+  const run = _stRuns.get(sessionId);
+  return run && !run.done ? run : null;
+}
+
+/** Stop a session's making (Stop, End Session): what is in the session stays. With no id, every making. */
+function stStopRun(sessionId) {
+  for (const [id, run] of _stRuns) {
+    if (sessionId != null && Number(sessionId) !== Number(id)) continue;
+    run.token.cancelled = true;
+    run.notify();
+  }
+}
+
+/**
+ * Make a session's questions again (Try Again). A session that is there
+ * goes on from what it holds, in its own tab; one whose making ended with
+ * nothing (it was removed) starts over with the same choices, and its tab
+ * closes. With no id: the making that ended with nothing most recently.
+ */
+async function stMakeAgain(sessionId) {
+  const id = sessionId != null ? Number(sessionId) : [..._stEnded.keys()].pop();
+  const session = id != null ? await stGetSession(id) : null;
+  if (session) {
+    _stEnded.delete(session.id);
+    stRunFor(session);
+    bus.emit('making', { sessionId: session.id });
+    return session;
+  }
+  const ended = id != null ? _stEnded.get(id) : null;
+  if (!ended) {
+    await _api.window.showInformationMessage('No session is waiting for questions.');
+    return null;
+  }
+  const started = await stStartOrSay(ended.start);
+  if (started) { _stEnded.delete(id); await stCloseGoneSessionTabs(); }
+  return started;
+}
+
+/** Stop every in-flight draw (deactivate): their tokens are cancelled, so the
+ *  pipeline stops at its next check and nothing keeps writing. */
+function stCancelRuns() {
+  for (const run of _stRuns.values()) { try { run.token.cancelled = true; } catch { /* noop */ } }
+  _stRuns.clear();
+  _stEnded.clear();
+}
+
+/** Close every session tab whose session no longer exists (deleted from the
+ *  sidebar, or with its material or bank), stopping its draw first: a tab
+ *  left open would keep answering into rows that are gone. */
+async function stCloseGoneSessionTabs() {
+  const editors = Array.isArray(_api && _api.editors && _api.editors.openEditors) ? _api.editors.openEditors : [];
+  for (const e of editors) {
+    const m = /:study:session-(\d+)$/.exec(String((e && e.id) || ''));
+    if (!m) continue;
+    const id = Number(m[1]);
+    if (await stGetSession(id)) continue;
+    const run = _stRuns.get(id);
+    if (run) { run.token.cancelled = true; _stRuns.delete(id); }
+    _stEnded.delete(id);
+    try { await _api.editors.closeEditor(e.id); } catch { /* already closed */ }
+  }
+}
+
+/** Call `paint` on every change of the run, and once a second while it is live (the elapsed time). */
+function stWatchRun(run, ctx, paint) {
+  const listener = () => paint();
+  run.listeners.add(listener);
+  const tick = setInterval(() => { if (run.done || ctx.disposed()) clearInterval(tick); else paint(); }, 1000);
+  const off = { dispose: () => { run.listeners.delete(listener); clearInterval(tick); } };
+  ctx.add(off);
+  return off;
+}
+
+// ── A making that ended with nothing ────────────────────────────────────────
+
+/**
+ * What a making that ended with nothing shows, from what was remembered of
+ * it (the session itself is gone): what happened, Try Again (the same
+ * choices, in a tab of its own; this one closes) and Open Setup…. Read out
+ * when it appears (role="alert"). False when nothing is remembered.
+ */
+function stRenderEnded(host, sessionId) {
+  const ended = _stEnded.get(sessionId);
+  if (!ended) return false;
+  host.replaceChildren();
+  const again = { id: 'study.making.again', label: ended.stopped ? 'Start Again' : 'Try Again', icon: 'refresh-cw', title: 'Make the questions again, with the same choices.', command: 'study.makeAgain', args: [sessionId] };
+  const setupLabel = ended.setup.bankIds ? 'Study This Bank…' : 'Open Setup…';
+  const setupTitle = 'Choose the scope, the mode and the model again.';
+  const setup = { id: 'study.making.setup', label: setupLabel, icon: 'px-study', title: setupTitle, command: 'study.open', args: [ended.setup] };
+  const box = _api.ui.createEmptyState(host, { icon: ended.setup.bankIds ? 'database' : 'px-study', headline: ended.headline, hint: ended.hint, action: ended.retry ? again : setup });
+  box.classList.add('st-ended');
+  box.setAttribute('role', 'alert');
+  if (ended.retry) _api.ui.createButton(box, { id: 'study.making.setup', label: setupLabel, icon: 'px-study', kind: 'ghost', title: setupTitle, command: 'study.open', args: [ended.setup] });
+  return true;
+}
+
+// ── The screen before the first question ────────────────────────────────────
+
+const ST_CHECK_ROWS = [
+  { key: 'anchor', label: 'Anchor is on the page', setting: 'checkAnchor' },
+  { key: 'support', label: 'Anchor settles the answer', setting: 'checkSupport' },
+  { key: 'distractor', label: 'No wrong option is defensible', setting: 'checkDistractors' },
+  { key: 'numeric', label: 'Numeric answers execute', setting: 'checkNumeric' },
+];
+
+async function renderGenerating(host, route, ctx) {
+  const session = await stGetSession(route.sessionId);
+  if (!session) {
+    // A making that ended with nothing: its message; a tab restored for a session that is gone closes.
+    if (!stRenderEnded(host, route.sessionId)) await ctx.closeTab();
+    return;
+  }
+  const scope = stSessionScope(session);
+  const items = (await stListSessionItems(session.id)) || [];
+  if (items.some((i) => i.status === 'pending')) {
+    ctx.setRoute({ view: 'session', sessionId: session.id });
+    return;
+  }
+  const materialIds = Array.isArray(scope.materialIds) ? scope.materialIds : [];
+  const primary = materialIds.length ? await stGetMaterial(materialIds[0]) : null;
+  const concepts = stConceptsInScope((await stListConcepts({ materialIds })) || [], scope);
+  const size = Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20;
+  let modelId = stProp(session, 'model', '');
+  if (!modelId) { try { modelId = (await stPickModel(primary)) || ''; } catch { modelId = ''; } }
+
+  const gen = stBlock(host, 'div', 'st-gen');
+  // A bank is never written to: the screen only bridges the draw.
+  const isBank = scope.kind === 'bank';
+  stBlock(gen, 'div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`);
+  const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
+  const sub = stBlock(gen, 'div', 'st-gen__s');
+  const now = isBank ? stBlock(null, 'div', 'st-gen__now') : stBlock(gen, 'div', 'st-gen__now');
+  const fill = stBlock(stBlock(gen, 'div', 'st-gen__bar'), 'span', 'st-gen__fill');
+  const line = stBlock(gen, 'div', 'st-genline');
+  const checks = stBlock(isBank ? null : gen, 'div', 'st-checks');
+  const checkRow = (key, label) => {
+    const ck = stBlock(null, 'div', 'st-ck');
+    ck.dataset.check = key;
+    const dot = stBlock(ck, 'span', 'st-ck__d st-ck__d--idle');
+    stBlock(ck, 'span', '', label);
+    return { ck, dot, n: stBlock(ck, 'span', 'st-ck__n', '') };
+  };
+  const rows = new Map();
+  for (const def of ST_CHECK_ROWS) {
+    const row = checkRow(def.key, def.label);
+    checks.appendChild(row.ck);
+    rows.set(def.key, { dot: row.dot, n: row.n, on: cfg(def.setting, true) !== false });
+  }
+  // Model output that could not be read as a question (unparseable or
+  // invalid): not a check, so no running dot, and a row only once it counts.
+  const unusable = checkRow('parse', 'Unusable model output');
+  const acts = stBlock(gen, 'div', 'st-gen__acts');
+  stBlock(acts, 'span', 'st-gen__hint', isBank ? '' : 'The session opens on the first question as soon as it is ready.');
+  const stopBtn = _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', command: 'study.stopMaking', args: [session.id] });
+
+  const run = stRunFor(session);
+  let settling = false;
+  const paint = () => {
+    if (ctx.disposed() || settling) return;
+    const p = run.progress;
+    const ready = Math.min(size, run.held);
+    sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
+    // Before the first question there is no count to draw: the bar follows the run's own steps.
+    const total = Number(p.total) || 0;
+    fill.style.width = `${total ? Math.min(100, Math.round(((Number(p.done) || 0) / total) * 100)) : 0}%`;
+    now.textContent = stRunNowText(p, run);
+    const dropped = p.dropped || {};
+    const droppedTotal = Object.values(dropped).reduce((a, b) => a + (Number(b) || 0), 0);
+    line.replaceChildren();
+    const part = (b, rest) => { const s = stBlock(line, 'span', ''); stBlock(s, 'strong', '', b); s.appendChild(document.createTextNode(` ${rest}`)); };
+    part(String(Number(p.kept) || 0), 'kept');
+    part(String(droppedTotal), 'dropped');
+    if (!isBank) part(`${ready} of ${size}`, 'ready');
+    part(stElapsedText((run.endedAt || Date.now()) - run.startedAt), 'elapsed');
+    // 30-ai reports phases 'map', 'generate', 'check:<key>', 'done',
+    // 'stopped', 'failed'; dropped.numeric is null when Python is missing.
+    const order = ST_CHECK_ROWS.map((d) => d.key);
+    const idx = order.indexOf(String(p.phase || '').replace(/^check:/, ''));
+    order.forEach((key, i) => {
+      const r = rows.get(key);
+      const unavailable = key === 'numeric' && dropped.numeric === null;
+      const count = Number(dropped[key]) || 0;
+      r.n.textContent = !r.on ? 'off' : unavailable ? 'needs Python' : `${count} dropped`;
+      let cls = 'st-ck__d';
+      if (!r.on || unavailable) cls += ' st-ck__d--idle';
+      else if (idx >= 0 ? i === idx : false) cls += ' st-ck__d--run';
+      else if (idx >= 0 ? i > idx : count === 0 && !run.done) cls += ' st-ck__d--idle';
+      r.dot.className = cls;
+    });
+    const parsed = Number(dropped.parse) || 0;
+    if (parsed > 0) {
+      unusable.n.textContent = `${parsed} dropped`;
+      if (!unusable.ck.parentNode) checks.appendChild(unusable.ck);
+    } else if (unusable.ck.parentNode) unusable.ck.remove();
+    stopBtn.disabled = run.done || run.token.cancelled;
+    if (run.held > 0 || run.done) void settle();
+  };
+
+  // The first question is in the session, or the run is over: the session, or what happened.
+  const settle = async () => {
+    if (settling || ctx.disposed()) return;
+    settling = true;
+    try {
+      const after = (await stListSessionItems(session.id)) || [];
+      if (ctx.disposed()) return;
+      if (after.some((i) => i.status === 'pending')) {
+        _emitDataChanged();
+        ctx.setRoute({ view: 'session', sessionId: session.id });
+        return;
+      }
+      if (!run.done) { settling = false; return; }
+      const stopped = !!run.token.cancelled;
+      const noModel = stIsNoModel(run.error);
+      const unreadable = Number(run.result && run.result.unreadable) || 0;
+      const ended = {
+        headline: run.error ? (noModel ? 'No model is available.' : 'Could not make questions.')
+          : stopped ? 'Stopped before any question was ready.'
+          : isBank ? 'This bank has no question to draw.'
+          : unreadable ? 'The model\'s replies could not be read.'
+          : 'No questions could be made.',
+        hint: run.error ? (noModel ? 'Start the model backend, or choose a model in AI Settings, then try again.' : stSentence(stErrText(run.error)))
+          : stopped ? 'What was kept stays in the bank.'
+          : isBank ? 'A question needs an answer or a rubric to be marked.'
+          : unreadable ? `It was asked ${ST_LIST_ASKS} times and never answered with the list it was asked for. Try again, or try another model on the sheet.`
+          : 'Nothing passed the checks. Try another model on the sheet, or a smaller scope.',
+        stopped,
+        retry: !!run.error || !isBank,
+        start: { scope, mode: session.mode, answerFormat: stProp(session, 'answerFormat', 'mixed'), model: stProp(session, 'model', ''), numCtx: Number(stProp(session, 'numCtx', 0)) || 0 },
+        setup: isBank ? { bankIds: scope.bankIds || [] } : { materialIds, sectionId: scope.sectionIds && scope.sectionIds[0] },
+      };
+      // A session that never held a question is not kept: no empty row in the sidebar, nothing to reopen.
+      _stEnded.set(session.id, ended);
+      if (!after.length) await stDeleteSession(session.id);
+      if (ctx.disposed()) return;
+      stRenderEnded(host, session.id);
+    } catch (err) {
+      if (ctx.disposed() || stIsStopped(err)) return;
+      host.replaceChildren();
+      _api.ui.createEmptyState(host, { icon: 'px-study', headline: 'Could not make questions.', hint: stSentence(stErrText(err)) });
+    }
+  };
+
+  stWatchRun(run, ctx, paint);
+  // Try Again on a session that is still there starts a new run: the screen starts over with it.
+  const offMaking = bus.on('making', (d) => { if (d && Number(d.sessionId) === Number(session.id) && run.done) ctx.rerender(); });
+  ctx.add({ dispose: () => stOff(offMaking) });
+  const offRun = bus.on('run', (d) => {
+    // Only this session's run: another tab's generation says nothing here.
+    if (!d || typeof d !== 'object' || d.sessionId == null || Number(d.sessionId) !== Number(session.id)) return;
+    run.onProgress(d);
+  });
+  ctx.add({ dispose: () => stOff(offRun) });
+  paint();
+}
+
+// ── The strip beside the questions ──────────────────────────────────────────
+
+/**
+ * The making, shown in the session while he answers: what is happening, how
+ * many questions are ready of how many are planned, the time elapsed, Stop.
+ * Hidden when nothing is being made. A making that failed stays, with its
+ * reason and Try Again. `onFed()` is called whenever the session holds more
+ * questions than before, and when the making ends. Returns { live(), failed() }.
+ */
+function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
+  const strip = stBlock(null, 'div', 'st-making');
+  strip.hidden = true;
+  const now = stBlock(strip, 'span', 'st-making__now');
+  // The count is the part read out as it changes; the words beside it change too often for that.
+  const count = _api.ui.createBlock(strip, 'span', { className: 'st-making__n', attrs: { role: 'status' } });
+  const time = stBlock(strip, 'span', 'st-making__t');
+  const stopBtn = _api.ui.createButton(strip, { id: 'study.making.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', size: 'sm', title: 'Stop writing questions. The ones that are ready stay in this session.', command: 'study.stopMaking', args: [session.id] });
+  const againBtn = _api.ui.createButton(strip, { id: 'study.making.more', label: 'Try Again', icon: 'refresh-cw', kind: 'ghost', size: 'sm', title: 'Go on writing questions for this session.', command: 'study.makeAgain', args: [session.id] });
+  host.insertBefore(strip, before);
+
+  let run = null;
+  let watch = null;
+  let seen = 0;
+  const paint = () => {
+    if (ctx.disposed() || !run) return;
+    const failed = run.done && !!run.error;
+    strip.hidden = run.done && !failed;
+    strip.classList.toggle('st-making--failed', failed);
+    now.textContent = failed ? `No more questions could be made: ${stSentence(stErrText(run.error))}` : stRunNowText(run.progress, run, { names: false });
+    const text = `${Math.min(size, run.held)} of ${size} ready`;
+    if (count.textContent !== text) count.textContent = text;
+    time.textContent = `${stElapsedText((run.endedAt || Date.now()) - run.startedAt)} elapsed`;
+    stopBtn.hidden = run.done;
+    stopBtn.disabled = run.token.cancelled;
+    againBtn.hidden = !failed;
+    if (run.held !== seen || run.done) { seen = run.held; onFed(); }
+  };
+  const attach = (next) => {
+    if (!next || next === run) return;
+    if (watch) watch.dispose();
+    run = next;
+    seen = run.held;
+    watch = stWatchRun(run, ctx, paint);
+    paint();
+  };
+  attach(stLiveRun(session.id));
+  // Try Again started a new run for this session: the strip follows it.
+  const offMaking = bus.on('making', (d) => { if (d && Number(d.sessionId) === Number(session.id)) attach(stLiveRun(session.id)); });
+  ctx.add({ dispose: () => stOff(offMaking) });
+  return { live: () => !!run && !run.done, failed: () => !!run && run.done && !!run.error };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 60: EDITOR PANE — setup, generation, session, results, review, learn
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -6390,7 +7100,8 @@ function createSidebarView(container) {
 // it as the pending route, focuses the tab when it exists (the live pane
 // takes it from the 'parallx.study.route' document event) or opens the tab
 // (the new pane takes it at construction). Session state is in the database
-// after every answer, so a closed tab reopens where it was.
+// after every answer, so a closed tab reopens where it was. The making of
+// questions (the run, its screen, its strip in the session) is 55-making-view.js.
 
 let _stPendingRoute = null; // consumed by the editor pane on first render
 
@@ -6670,101 +7381,6 @@ function stBuildScope(st, materials, sections, route) {
     return { kind: 'materials', materialIds: materials.map((m) => m.id), label: materials.map((m) => stTruncate(m.label, 20)).join(' + ') };
   }
   return { kind: 'document', materialIds: [primary.id], label: primary.label };
-}
-
-// ── In-flight draws, kept across pane rebuilds ──────────────────────────────
-// The workbench rebuilds a pane on every tab switch; a generation run must
-// not die with it. One run per session, owned here, released when it settles.
-const _stRuns = new Map();
-
-/** What a run is doing right now, in words, from its last progress payload. */
-function stRunNowText(p, run) {
-  if (run.token.cancelled && !run.done) return 'Stopping…';
-  if (run.done) return '';
-  const phase = String(p.phase || '');
-  const concept = p.concept ? `"${p.concept}"` : '';
-  const w = p.writing && typeof p.writing === 'object' ? p.writing : null;
-  // Streaming: nothing yet means the model is still loading or reading.
-  const stream = !w ? ''
-    : w.chars > 0 ? `, about ${Math.max(1, Math.round(w.chars / 6))} words so far`
-    : w.thinking > 0 ? ', thinking'
-    : ', waiting for the model';
-  if (phase === 'map') {
-    const part = Number(p.parts) > 1 ? `, part ${p.part} of ${p.parts}` : '';
-    return `Finding the concepts in the material${part}${stream}`;
-  }
-  if (phase === 'generate') return w ? `Writing questions${concept ? ` on ${concept}` : ''}${stream}` : 'Preparing the next questions';
-  if (phase.startsWith('check:')) {
-    const what = { anchor: 'Finding the quote in the material', support: 'Checking the quote supports the answer', distractor: 'Checking the wrong options', numeric: 'Running the calculation' }[phase.slice(6)] || 'Checking a question';
-    return `${what}${concept ? ` for ${concept}` : ''}`;
-  }
-  if (phase === 'rubric') return 'Writing marking guides';
-  return 'Starting';
-}
-
-function stRunFor(session) {
-  let run = _stRuns.get(session.id);
-  if (run) return run;
-  const token = { cancelled: false };
-  // The activation this run belongs to: once Study goes off (or off and on
-  // again) its progress and its end are nobody's, and it reports neither.
-  const activation = stActivation();
-  run = {
-    token,
-    progress: { phase: '', done: 0, total: 0, written: 0, kept: 0, available: null, dropped: {} },
-    listeners: new Set(),
-    done: false, result: null, error: null, promise: null,
-  };
-  const notify = () => {
-    if (activation !== stActivation()) return;
-    for (const fn of run.listeners) { try { fn(); } catch { /* noop */ } }
-  };
-  const onProgress = (p) => {
-    if (activation !== stActivation()) { token.cancelled = true; return; }
-    if (p && typeof p === 'object') {
-      const dropped = p.dropped && typeof p.dropped === 'object' ? { ...run.progress.dropped, ...p.dropped } : run.progress.dropped;
-      Object.assign(run.progress, p, { dropped });
-    }
-    notify();
-  };
-  run.onProgress = onProgress;
-  run.promise = Promise.resolve()
-    .then(() => stNextDraw(session, { token, onProgress }))
-    .then((qs) => { run.result = Array.isArray(qs) ? qs : []; }, (err) => {
-      // Study went off under the run: it stopped, it did not fail.
-      if (activation !== stActivation() || stIsStopped(err)) { token.cancelled = true; return; }
-      run.error = err;
-    })
-    .then(() => {
-      run.done = true;
-      if (_stRuns.get(session.id) === run) _stRuns.delete(session.id);
-      notify();
-    });
-  _stRuns.set(session.id, run);
-  return run;
-}
-
-/** Stop every in-flight draw (deactivate): their tokens are cancelled, so the
- *  pipeline stops at its next check and nothing keeps writing. */
-function stCancelRuns() {
-  for (const run of _stRuns.values()) { try { run.token.cancelled = true; } catch { /* noop */ } }
-  _stRuns.clear();
-}
-
-/** Close every session tab whose session no longer exists (deleted from the
- *  sidebar, or with its material or bank), stopping its draw first: a tab
- *  left open would keep answering into rows that are gone. */
-async function stCloseGoneSessionTabs() {
-  const editors = Array.isArray(_api && _api.editors && _api.editors.openEditors) ? _api.editors.openEditors : [];
-  for (const e of editors) {
-    const m = /:study:session-(\d+)$/.exec(String((e && e.id) || ''));
-    if (!m) continue;
-    const id = Number(m[1]);
-    if (await stGetSession(id)) continue;
-    const run = _stRuns.get(id);
-    if (run) { run.token.cancelled = true; _stRuns.delete(id); }
-    try { await _api.editors.closeEditor(e.id); } catch { /* already closed */ }
-  }
 }
 
 // ── Answers and marking shared by the session, results and review ──────────
@@ -7270,6 +7886,8 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
 }
 
 async function renderSetup(host, route, ctx) {
+  // He is choosing again: the tab of a making that ended with nothing (its session is gone) closes.
+  void stCloseGoneSessionTabs();
   if (Array.isArray(route.bankIds) && route.bankIds.length) { await renderBankSetup(host, route, ctx); return; }
   const now = stNow();
   const all = (await stListMaterials()) || [];
@@ -7453,7 +8071,7 @@ async function renderSetup(host, route, ctx) {
     } catch (err) {
       st.starting = false;
       startBtn.disabled = false;
-      try { await _api.window.showErrorMessage(`Could not start: ${stErrText(err)}`); } catch { /* noop */ }
+      await stSheetStartFailed(sheet, err, () => start());
     }
   }
 
@@ -7516,210 +8134,49 @@ async function renderBankSetup(host, route, ctx) {
     } catch (err) {
       st.starting = false;
       startBtn.disabled = false;
-      try { await _api.window.showErrorMessage(`Could not start: ${stErrText(err)}`); } catch { /* noop */ }
+      await stSheetStartFailed(sheet, err, () => start());
     }
   }
 }
 
-// ── Generation screen ───────────────────────────────────────────────────────
-
-const ST_CHECK_ROWS = [
-  { key: 'anchor', label: 'Anchor is on the page', setting: 'checkAnchor' },
-  { key: 'support', label: 'Anchor settles the answer', setting: 'checkSupport' },
-  { key: 'distractor', label: 'No wrong option is defensible', setting: 'checkDistractors' },
-  { key: 'numeric', label: 'Numeric answers execute', setting: 'checkNumeric' },
-];
-
-async function renderGenerating(host, route, ctx) {
-  const session = await stGetSession(route.sessionId);
-  if (!session) throw new Error('This session no longer exists.');
-  const scope = stSessionScope(session);
-  const items = (await stListSessionItems(session.id)) || [];
-  if (items.some((i) => i.status === 'pending')) {
-    ctx.setRoute({ view: 'session', sessionId: session.id });
+/**
+ * The sheet's Start failed. With no model: a notice on the sheet, above its
+ * footer, with the ways on (Try Again starts again from the sheet as it
+ * stands; Open AI Settings when the app offers it). Anything else: the
+ * error message, as before.
+ */
+async function stSheetStartFailed(sheet, err, retry) {
+  const old = sheet.querySelector('.st-sheet__notice');
+  if (old) old.remove();
+  if (!stIsNoModel(err)) {
+    try { await _api.window.showErrorMessage(`Could not start: ${stErrText(err)}`); } catch { /* noop */ }
     return;
   }
-  const materialIds = Array.isArray(scope.materialIds) ? scope.materialIds : [];
-  const primary = materialIds.length ? await stGetMaterial(materialIds[0]) : null;
-  const concepts = stConceptsInScope((await stListConcepts({ materialIds })) || [], scope);
-  const size = Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20;
-  let modelId = stProp(session, 'model', '');
-  if (!modelId) { try { modelId = (await stPickModel(primary)) || ''; } catch { modelId = ''; } }
-
-  const gen = el('div', 'st-gen');
-  // A bank is never written to: the screen only bridges the draw.
-  const isBank = scope.kind === 'bank';
-  gen.appendChild(el('div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`));
-  const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
-  const sub = el('div', 'st-gen__s');
-  gen.appendChild(sub);
-  const now = el('div', 'st-gen__now');
-  if (!isBank) gen.appendChild(now);
-  const bar = el('div', 'st-gen__bar');
-  const fill = el('i', '');
-  bar.appendChild(fill);
-  gen.appendChild(bar);
-  const line = el('div', 'st-genline');
-  gen.appendChild(line);
-  const checks = el('div', 'st-checks');
-  const rows = new Map();
-  for (const def of ST_CHECK_ROWS) {
-    const ck = el('div', 'st-ck');
-    ck.dataset.check = def.key;
-    const dot = el('span', 'st-ck__d st-ck__d--idle');
-    ck.appendChild(dot);
-    ck.appendChild(el('span', '', def.label));
-    const n = el('span', 'st-ck__n', '');
-    ck.appendChild(n);
-    checks.appendChild(ck);
-    rows.set(def.key, { dot, n, on: cfg(def.setting, true) !== false });
-  }
-  // Model output that could not be read as a question (unparseable or
-  // invalid): not a check, so no running dot, and a row only once it counts.
-  const unusable = el('div', 'st-ck');
-  unusable.dataset.check = 'parse';
-  unusable.appendChild(el('span', 'st-ck__d st-ck__d--idle'));
-  unusable.appendChild(el('span', '', 'Unusable model output'));
-  const unusableN = el('span', 'st-ck__n', '');
-  unusable.appendChild(unusableN);
-  if (!isBank) gen.appendChild(checks);
-  const acts = el('div', 'st-gen__acts');
-  const stopBtn = _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', onClick: () => void stop() });
-  const startBtn = _api.ui.createButton(acts, { id: 'study.generating.start', label: `Start With ${size} Ready`, kind: 'primary', disabled: true, onClick: () => void startEarly() });
-  gen.appendChild(acts);
-  host.appendChild(gen);
-
-  const run = stRunFor(session);
-  // Questions the session already holds (a Refresh): the new draw excludes them.
-  const held = items.length;
-  const paint = () => {
-    if (ctx.disposed()) return;
-    const p = run.progress;
-    // Filling a session (stNextDraw runs untilSize): progress is usable
-    // questions in scope beyond the ones this session already drew, of the
-    // session size. Before the first count arrives, the run's own done/total.
-    const avail = p.available == null ? NaN : Number(p.available);
-    const filling = Number.isFinite(avail);
-    const ready = filling ? Math.min(size, Math.max(0, avail - held)) : 0;
-    const done = filling ? ready : Number(p.done) || 0;
-    const t = filling ? size : Number(p.total) || 0;
-    sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
-    fill.style.width = `${t ? Math.min(100, Math.round((done / t) * 100)) : 0}%`;
-    now.textContent = stRunNowText(p, run);
-    const dropped = p.dropped || {};
-    const droppedTotal = Object.values(dropped).reduce((a, b) => a + (Number(b) || 0), 0);
-    line.innerHTML = '';
-    const part = (b, rest) => { const s = el('span', ''); s.appendChild(el('b', '', b)); s.appendChild(document.createTextNode(` ${rest}`)); line.appendChild(s); };
-    part(String(Number(p.kept) || 0), 'kept');
-    part(String(droppedTotal), 'dropped');
-    if (filling) part(`${ready} of ${size}`, 'ready');
-    // 30-ai reports phases 'map', 'generate', 'check:<key>', 'done',
-    // 'stopped', 'failed'; dropped.numeric is null when Python is missing.
-    const order = ST_CHECK_ROWS.map((d) => d.key);
-    const idx = order.indexOf(String(p.phase || '').replace(/^check:/, ''));
-    order.forEach((key, i) => {
-      const r = rows.get(key);
-      const unavailable = key === 'numeric' && dropped.numeric === null;
-      const count = Number(dropped[key]) || 0;
-      r.n.textContent = !r.on ? 'off' : unavailable ? 'needs Python' : `${count} dropped`;
-      let cls = 'st-ck__d';
-      if (!r.on || unavailable) cls += ' st-ck__d--idle';
-      else if (idx >= 0 ? i === idx : false) cls += ' st-ck__d--run';
-      else if (idx >= 0 ? i > idx : count === 0 && !run.done) cls += ' st-ck__d--idle';
-      r.dot.className = cls;
-    });
-    const parsed = Number(dropped.parse) || 0;
-    if (parsed > 0) {
-      unusableN.textContent = `${parsed} dropped`;
-      if (!unusable.parentNode) checks.appendChild(unusable);
-    } else if (unusable.parentNode) unusable.remove();
-    // Start With N Ready: enough usable questions in the whole scope, beyond
-    // the ones this session already drew, for a full draw now.
-    const full = filling && ready >= size;
-    startBtn.disabled = run.done || run.token.cancelled || !full;
-    startBtn.title = full ? 'Start now; writing goes on for the rest.' : `Offered once ${size} questions are ready.`;
-    stopBtn.disabled = run.done || run.token.cancelled;
-  };
-
-  let restarting = false; // Start With N Ready: the cancelled run hands over to a fresh draw
-  const settle = async () => {
-    if (ctx.disposed()) return;
-    const after = (await stListSessionItems(session.id)) || [];
-    if (ctx.disposed()) return;
-    if (after.some((i) => i.status === 'pending')) {
-      _emitDataChanged();
-      ctx.setRoute({ view: 'session', sessionId: session.id });
-      return;
-    }
-    if (restarting) return;
-    if (run.error) throw run.error;
-    host.innerHTML = '';
-    const stopped = !!run.token.cancelled;
-    if (isBank && !stopped) {
-      _api.ui.createEmptyState(host, {
-        icon: 'database',
-        headline: 'This bank has no question to draw.',
-        hint: 'A question needs an answer or a rubric to be marked.',
-        action: { label: 'Study This Bank…', onClick: () => void stOpenSetup({ bankIds: scope.bankIds || [] }) },
-      });
-      return;
-    }
-    _api.ui.createEmptyState(host, {
-      icon: 'px-study',
-      headline: stopped ? 'Stopped before any question was ready.' : 'No questions could be made.',
-      hint: stopped ? 'What was kept stays in the bank. Open the sheet to try again.' : 'Nothing passed the checks. Try another model on the sheet, or a smaller scope.',
-      action: { label: 'Open Setup…', onClick: () => void stOpenSetup({ materialIds, sectionId: scope.sectionIds && scope.sectionIds[0] }) },
-    });
-  };
-
-  const onDone = () => { void settle().catch((err) => { if (ctx.disposed() || stIsStopped(err)) return; host.innerHTML = ''; const box = el('div', 'st-error'); box.appendChild(el('div', 'st-error__t', 'Could not make questions.')); box.appendChild(el('div', '', String(err && err.message ? err.message : err))); host.appendChild(box); }); };
-  const listener = () => { paint(); if (run.done) onDone(); };
-  run.listeners.add(listener);
-  const offRun = bus.on('run', (d) => {
-    // Only this session's run: another tab's generation says nothing here.
-    if (!d || typeof d !== 'object' || d.sessionId == null || Number(d.sessionId) !== Number(session.id)) return;
-    run.onProgress(d);
-  });
-  ctx.add({ dispose: () => { run.listeners.delete(listener); stOff(offRun); } });
-
-  async function stop() {
-    run.token.cancelled = true;
-    paint();
-  }
-  async function startEarly() {
-    restarting = true;
-    run.token.cancelled = true;
-    stSetLabel(startBtn, 'Starting…');
-    startBtn.disabled = true;
-    stopBtn.disabled = true;
-    await run.promise;
-    if (ctx.disposed()) return;
-    const after = (await stListSessionItems(session.id)) || [];
-    if (after.some((i) => i.status === 'pending')) { restarting = false; onDone(); return; }
-    // The bank now holds enough; a fresh draw needs no generation.
-    const again = stRunFor(session);
-    const finish = () => { if (!again.done) return; restarting = false; run.error = again.error; onDone(); };
-    again.listeners.add(finish);
-    finish();
-  }
-
-  paint();
-  if (run.done) onDone();
+  const [headline, ...rest] = stSentence(stErrText(err)).split(/(?<=\.)\s+/);
+  const settings = await stModelSettingsCommand();
+  const notice = _api.ui.createEmptyState(null, { headline, hint: rest.join(' '), action: { id: 'study.noModel.retry', label: 'Try Again', icon: 'refresh-cw', title: 'Look for the model again and start.', onClick: () => void retry() } });
+  notice.classList.add('st-sheet__notice');
+  notice.setAttribute('role', 'alert');
+  if (settings) _api.ui.createButton(notice, { id: 'study.noModel.settings', label: 'Open AI Settings', icon: 'settings', kind: 'ghost', title: 'Where the model and its backend are chosen.', command: settings });
+  sheet.insertBefore(notice, sheet.querySelector('.st-sheet__ft'));
 }
 
 // ── Session screen ──────────────────────────────────────────────────────────
 
 async function renderSession(host, route, ctx) {
   const session = await stGetSession(route.sessionId);
-  if (!session) throw new Error('This session no longer exists.');
+  // Gone: a making that ended with nothing says so; a tab restored for a session that no longer exists closes.
+  if (!session) { if (!stRenderEnded(host, route.sessionId)) await ctx.closeTab(); return; }
   if (stProp(session, 'finishedAt', 0)) { ctx.setRoute({ view: 'results', sessionId: session.id }); return; }
   const scope = stSessionScope(session);
   const allItems = (await stListSessionItems(session.id)) || [];
   if (!allItems.length) { ctx.setRoute({ view: 'generating', sessionId: session.id }); return; }
   const draw = allItems.reduce((m, i) => Math.max(m, Number(i.draw) || 0), 0);
   const drawItems = allItems.filter((i) => (Number(i.draw) || 0) === draw).sort((a, b) => (a.ord || 0) - (b.ord || 0));
-  const queue = drawItems.filter((i) => i.status === 'pending' || !i.status);
-  if (!queue.length) { ctx.setRoute({ view: 'results', sessionId: session.id }); return; }
+  const isPending = (i) => i.status === 'pending' || !i.status;
+  const queue = drawItems.filter(isPending);
+  // Every question so far is answered: the results, unless more are being written.
+  if (!queue.length && !stLiveRun(session.id)) { ctx.setRoute({ view: 'results', sessionId: session.id }); return; }
   const materialIds = Array.isArray(scope.materialIds) ? scope.materialIds : [];
   const questions = await stQuestionMap(scope, drawItems.map((i) => i.questionId));
   const conceptList = await stSessionConcepts(materialIds, questions);
@@ -7796,10 +8253,55 @@ async function renderSession(host, route, ctx) {
   // cards until Esc closes it.
   const source = { open: false, uri: '' };
 
+  // ── Questions that arrive while he answers ──
+  // The run puts each question into the session as it is stored and orders
+  // the ones still waiting. The pane takes them in without touching the card
+  // on screen: what he has passed stays, what he skipped stays last.
+  let waiting = false;
+  const skipped = new Set();
+  let absorbing = Promise.resolve();
+  const absorb = () => { absorbing = absorbing.then(absorbNow).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] new questions not shown:', err); }); };
+  async function absorbNow() {
+    const rows = ((await stListSessionItems(session.id)) || []).filter((i) => (Number(i.draw) || 0) === draw).sort((a, b) => (a.ord || 0) - (b.ord || 0));
+    if (ctx.disposed()) return;
+    const known = new Map(drawItems.map((i) => [i.id, i]));
+    const merged = rows.map((i) => known.get(i.id) || i);
+    const added = merged.filter((i) => !known.has(i.id));
+    if (added.length) {
+      const more = await stQuestionMap(scope, added.map((i) => i.questionId));
+      for (const [id, q] of more) questions.set(id, q);
+      for (const c of await stSessionConcepts(materialIds, more)) if (!concepts.has(c.id)) concepts.set(c.id, c);
+      if (ctx.disposed()) return;
+    }
+    drawItems.splice(0, drawItems.length, ...merged);
+    const head = queue.slice(0, Math.min(index + 1, queue.length));
+    const rest = merged.filter((i) => isPending(i) && !head.includes(i));
+    queue.splice(0, queue.length, ...head, ...rest.filter((i) => !skipped.has(i.id)), ...rest.filter((i) => skipped.has(i.id)));
+    if (waiting) { renderItem(); return; }
+    paintStrand(current ? current.item.id : 0);
+    if (current && !current.answered) current.skipBtn.disabled = queue.length - index <= 1;
+  }
+
+  /** Every question that is ready has been answered, and more are being written (or the writing failed). */
+  function showWaiting() {
+    current = null;
+    waiting = true;
+    paintStrand(0);
+    qwrap.replaceChildren();
+    ctl.replaceChildren();
+    _api.ui.createEmptyState(qwrap, {
+      headline: making.failed() ? 'No more questions were made.' : 'The next question is being written…',
+      hint: 'Every question that is ready has been answered.',
+      action: { id: 'study.session.results', label: 'See Results', icon: 'chart-column', title: 'End here and see the results. Refresh there makes more questions.', onClick: () => void finishDraw() },
+    });
+    ctx.root.focus();
+  }
+
   function renderItem() {
     if (ctx.disposed()) return;
     while (index < queue.length && !questions.get(queue[index].questionId)) index++;
-    if (index >= queue.length) { void finishDraw(); return; }
+    if (index >= queue.length) { if (making.live() || making.failed()) showWaiting(); else void finishDraw(); return; }
+    waiting = false;
     const item = queue[index];
     const q = questions.get(item.questionId);
     const concept = concepts.get(q.conceptId) || null;
@@ -8246,6 +8748,7 @@ async function renderSession(host, route, ctx) {
     if (!cur || cur.answered || cur.busy) return;
     if (queue.length - index <= 1) return;
     cur.busy = true;
+    skipped.add(cur.item.id);
     queue.splice(index, 1);
     queue.push(cur.item);
     await leave(cur);
@@ -8276,6 +8779,7 @@ async function renderSession(host, route, ctx) {
 
   async function finishDraw() {
     current = null;
+    stStopRun(session.id);
     await stUpdateSession(session.id, { position: drawItems.length, finishedAt: stNow(), seconds });
     _emitDataChanged();
     ctx.setRoute({ view: 'results', sessionId: session.id });
@@ -8289,6 +8793,7 @@ async function renderSession(host, route, ctx) {
       confirmLabel: 'End Session',
     });
     if (!ok || ctx.disposed()) return;
+    stStopRun(session.id);
     await stUpdateSession(session.id, { finishedAt: stNow(), seconds });
     _emitDataChanged();
     ctx.setRoute({ view: 'results', sessionId: session.id });
@@ -8322,7 +8827,9 @@ async function renderSession(host, route, ctx) {
   ctx.root.addEventListener('keydown', onKey);
   ctx.add({ dispose: () => ctx.root.removeEventListener('keydown', onKey) });
 
+  const making = stMakingStrip(sess, session, ctx, { before: main, size: Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20, onFed: absorb });
   renderItem();
+  if (making.live()) absorb(); // what arrived while this screen was being built
 }
 
 /** The small line under a missed concept when the verdict carried no note:
@@ -9025,13 +9532,12 @@ async function stSessionNeedsGeneration(session) {
   return ready.length < size;
 }
 
-/**
- * Create the session and open its pane: the generation screen when the scope
- * is short of questions (it calls stNextDraw when ready), else the first draw
- * and the session view.
- */
+/** Create the session and open its pane: the making screen when the scope is short of questions (the session opens on
+ *  the first one ready), else the first draw. With model work ahead and no model: stNoModelError, and nothing is created. */
 async function stStartSession({ scope, mode, answerFormat, model, numCtx }) {
   const size = Number(cfg('sessionSize', 20)) || 20;
+  const needs = await stSessionNeedsGeneration({ scope, size });
+  if (needs) await stRequireModel(model, scope);
   const created = await stCreateSession({
     name: String(scope?.label || mode || 'Study'),
     scope,
@@ -9048,10 +9554,8 @@ async function stStartSession({ scope, mode, answerFormat, model, numCtx }) {
     try { await stTouchMaterial(Number(id), now); } catch { /* a bank scope has no material */ }
   }
   let view = 'generating';
-  if (!(await stSessionNeedsGeneration(session))) {
-    // The bank is full enough, so the draw makes nothing. Should the pipeline
-    // start writing anyway, the run stops at once and the generating screen
-    // takes over: generation is never invisible.
+  if (!needs) {
+    // The bank is full enough. Should the pipeline write anyway, the run stops and the making screen takes over.
     const token = { cancelled: false };
     let wrote = false;
     const onProgress = () => { if (!wrote) { wrote = true; token.cancelled = true; } };
@@ -9324,7 +9828,7 @@ async function stQuizSelection(payload) {
   // The same scope the sheet's Selection builds (stBuildScope): named by the
   // material's label and the page, and bounded to that page, so the results
   // count the passage's concepts and not the whole document's.
-  return stStartSession({
+  return stStartOrSay({
     scope: {
       kind: 'selection', materialIds: [material.id], selectionText: text, selectionPage: page,
       pageFrom: page, pageTo: page, label: `${stTruncate(material.label || 'Selection', 32)} · ${page ? `p. ${page}` : 'selection'}`,
@@ -9355,7 +9859,8 @@ function registerSelectionAction(context, attempt = 0, token = stActivation()) {
 
 // ─── Commands ───────────────────────────────────────────────────────────────
 
-async function stCmdOpen() {
+async function stCmdOpen(arg) {
+  if (arg && typeof arg === 'object') return stOpenSetup(arg); // the sheet on a given scope: { materialIds, sectionId } or { bankIds }
   const picked = stPicked();
   if (picked.length) return stOpenSetup({ materialIds: picked });
   const materials = await stListMaterials();
@@ -9427,7 +9932,7 @@ async function stCmdWeakSpots() {
     await _api.window.showInformationMessage('No weak spots yet: every concept you have answered is clean.');
     return null;
   }
-  return stStartSession({
+  return stStartOrSay({
     scope,
     mode: 'weak',
     ...stSessionPrefs(null),
@@ -9468,7 +9973,9 @@ async function stCmdImportReport(arg) {
 
 function registerCommands(context) {
   const cmds = [
-    ['study.open', () => stCmdOpen()],
+    ['study.open', (arg) => stCmdOpen(arg)],
+    ['study.stopMaking', (sessionId) => stStopRun(sessionId)],
+    ['study.makeAgain', (sessionId) => stMakeAgain(sessionId)],
     ['study.studyDocument', (arg) => stCmdStudyDocument(arg)],
     // From the palette there is no selection; the selection action passes the payload.
     ['study.quizSelection', async (payload) => {
@@ -10005,6 +10512,19 @@ export const __testables = {
   stErrText,
   stSentence,
   stRunFor,
+  // 35-making, 55-making-view: a session filled as questions arrive
+  stListFrom,
+  stAskList,
+  stUnitMapped,
+  stInterleaveConcepts,
+  stFeedSession,
+  stFillSession,
+  stRequireModel,
+  stIsNoModel,
+  stStartOrSay,
+  stPlanFor,
+  stElapsedText,
+  stLiveRun,
   // 00-header
   el,
   icon,
