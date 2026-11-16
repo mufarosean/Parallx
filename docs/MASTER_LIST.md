@@ -636,6 +636,72 @@ it, and every question his to edit or overrule. First piece proposed: a
 first question within a minute, and nothing that can kill a chapter;
 without that, nothing else can be judged on his machine.
 
+**Built 2026-11-16: Study made usable** (his ask: "can you run full
+assessment and fixes, including ui and functionality"). An acceptance
+probe was written first by an agent that did not build
+(`tests/probes/study-usable-acceptance.mjs`, 59 checks, 52 failing on the
+app as it was); four builders made it pass without editing it; Claude ran
+it on the final code: 59 of 59, 0 page errors. Whole unit suite: 9,444
+pass. All checked against a scripted model only: nothing here has run
+against his models.
+
+- Getting to a first question: the session opens on its first question
+  (after about 6 model calls, not 60) and fills while he answers, with
+  "N of M ready" and the time; Stop keeps what is ready; a garbled reply
+  is asked again and no chapter can die; Auto leaves the context size to
+  the core, so the model is not reloaded between calls; no model gives a
+  message with Try Again and Open AI Settings, and no stray session.
+- In a session: Enter after Explain moves on; Previous; mark to come
+  back to, kept, with a Marked set in the sidebar; Mark as Right / Mark
+  as Wrong over the grader, the concept following his verdict; Edit
+  Question…; a failed grade keeps the answer, with Grade Again; a
+  half-typed answer survives closing; Escape closes setup; the concept's
+  name hidden until answered; no two questions in a row on one concept;
+  Weak Spots in the sidebar.
+- The card: every text at 4.5:1 or more (hints and his graded answer
+  were 2.8:1, now 8.9:1); one reading measure of about 70 characters;
+  after answering, the verdict is the largest thing; Next stays in one
+  place; raw values in Study's styles replaced by tokens.
+- Sources: `.md`, `.markdown` and `.txt` are material (headings become
+  chapters); Study This Document… on them; Show Source scrolls to the
+  passage (a core fix: the text editor now scrolls to a revealed
+  passage, for every tool).
+- The chat: `study_results` and `study_weak_spots` give the question, his
+  answer, the right answer, the points missed and the quote; Discuss in
+  Chat (key D) stages all of it in the chat with the source attached,
+  for him to send.
+- Core, generic: text and code editors show tools' `editor/title`
+  entries (a More Actions button in their status line, only when some
+  tool has one); `when` clauses can read the pane's own file.
+
+Reviewed after the build by agents that did not write it. Modularity:
+no breach; the authoring guide was not updated for the new editor
+actions (fixed), and Show Editor Actions did nothing silently (fixed).
+Correctness: six defects, five reproduced and fixed with a failing test
+first: a genuinely empty chapter asked again on every start; one
+unreadable chunk making a long chapter re-read in full with duplicate
+concepts; an edited notes file moving concepts into the wrong chapters;
+a restart mid-making leaving a short session with no way on (now Make
+the Rest); feeding after Stop. One (Stop not sticking after a Refresh)
+did not reproduce and was not changed.
+
+Decided by Claude, for him to overrule: More Actions on text files sits
+in the status line, since those editors have no toolbar; Discuss in
+Chat stages the message and waits for him to send it; Auto lets the
+core pick the context size (it may choose up to 65,536 for his model).
+
+Left: the Study home page has no kit page header; the results screen's
+bar and list disagree in their counts and its dividers vanish in light
+mode; Discuss in Chat is not on the Previous view; Quiz This Selection
+does not work in text editors; a page left out after two unreadable
+starts is retried only when edited. Not done and not agreed: the
+notebook shape (a bank built in the background or overnight, summaries,
+guides, his own notes), for mock-ups and his pick.
+
+**First thing on his machine:** open Study on a real chapter with his
+model and see how long the first question takes, whether the questions
+are good, and whether grading is fair. None of that can be judged here.
+
 ### AI chat: message times, model speed, dates on old chats
 
 **His words (2026-11-12, spelling corrected):** "currently AI chat does
