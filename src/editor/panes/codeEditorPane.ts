@@ -22,7 +22,8 @@ import { UntitledEditorInput } from './untitledEditorInput.js';
 import { getLanguageForFileName } from '../../services/languageDetection.js';
 import { $ } from '../../ui/dom.js';
 import type { IPythonEnvService } from '../../services/pythonEnvService.js';
-import { takeFileReveal } from '../fileReveal.js';
+import { takeFileReveal, revealLinesIn } from '../fileReveal.js';
+import { mountEditorMoreActions, editorTitleTargetOf, type IEditorMoreActions } from '../editorMoreActions.js';
 
 /** Files above this size skip the fancy surface — CM6 is fast but not free. */
 const LARGE_FILE_THRESHOLD = 2_000_000;
@@ -45,6 +46,8 @@ export class CodeEditorPane extends EditorPane {
   private _messageItem!: HTMLElement;
   private _formatBtn!: HTMLButtonElement;
   private _runBtn!: HTMLButtonElement;
+  /** Tools' entries for this file (editor/title), at the right of the status line. */
+  private _moreActions: IEditorMoreActions | undefined;
 
   private _editor: CodeEditor | undefined;
   private readonly _inputListeners = new DisposableStore();
@@ -104,6 +107,7 @@ export class CodeEditorPane extends EditorPane {
     this._messageItem = $('span');
     this._messageItem.className = 'code-editor-status-message';
     this._statusBar.append(this._positionItem, this._eolItem, this._languageItem, this._messageItem);
+    this._moreActions = this._register(mountEditorMoreActions(this._statusBar, () => (this.input instanceof FileEditorInput ? editorTitleTargetOf(this.input.typeId, this.input.uri) : undefined)));
     container.appendChild(this._statusBar);
   }
 
@@ -297,12 +301,13 @@ export class CodeEditorPane extends EditorPane {
     this._editor?.focus();
   }
 
-  /** Shown and laid out: select a citation link's lines, if one is pending. */
+  /** Shown and laid out: the tools' More Actions for this file; a citation link's lines or quote, if one is pending. */
   protected override onDidShow(): void {
     const input = this.input;
+    this._moreActions?.refresh();
     if (!(input instanceof FileEditorInput) || !this._editor) return;
-    const target = takeFileReveal(input.uri.fsPath);
-    if (target?.line) this._editor.revealLines(target.line, target.endLine ?? target.line);
+    const lines = revealLinesIn(this._editor.value, takeFileReveal(input.uri.fsPath));
+    if (lines) this._editor.revealLines(lines.first, lines.last);
   }
 
   protected override savePaneViewState(): EditorPaneViewState {

@@ -97,6 +97,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `edit.undo` | Undo | core | Edit | Ctrl+Z |  |
 | `editor.addSelectionToChat` | Add Selection to Chat | core | AI |  |  |
 | `editor.changeEncoding` | Change File Encoding | core | Editor |  |  |
+| `editor.showMoreActions` | Show Editor Actions | core | Editor |  |  |
 | `editor.toggleWordWrap` | Toggle Word Wrap | core | View | Alt+Z |  |
 | `file.newTextFile` | New Text File | core | File | Ctrl+N |  |
 | `file.openFile` | Open File… | core | File | Ctrl+O |  |

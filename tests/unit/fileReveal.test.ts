@@ -11,6 +11,7 @@ import {
   takeFileReveal,
   fileRevealKey,
   hasRevealTarget,
+  revealLinesIn,
   _clearFileRevealsForTest,
 } from '../../src/editor/fileReveal';
 
@@ -44,5 +45,30 @@ describe('file reveal requests', () => {
     requestFileReveal('/ws/a.txt', {}, 0);
     expect(takeFileReveal('/ws/a.txt', 0)).toBeUndefined();
     expect(hasRevealTarget({ cell: 'B206' })).toBe(true);
+  });
+});
+
+// A text or code pane shows a reveal by its lines: the ones it names, else the
+// ones its quote sits on (Study's Show Source and a chat citation send a quote).
+describe('the lines a text pane reveals', () => {
+  const text = ['# Notes', '', 'Margin note 1.', 'The Bornhuetter-Ferguson method adds the expected', 'unreported loss to the actual reported loss.', 'Last line.'].join('\n');
+
+  it('takes the line range when one is named, over any quote', () => {
+    expect(revealLinesIn(text, { line: 2, endLine: 3, quote: 'Last line.' })).toEqual({ first: 2, last: 3 });
+    expect(revealLinesIn(text, { line: 5 })).toEqual({ first: 5, last: 5 });
+  });
+
+  it('finds a quote across line breaks, spacing and case', () => {
+    expect(revealLinesIn(text, { quote: 'the bornhuetter-ferguson method adds the expected unreported   loss to the actual reported loss.' })).toEqual({ first: 4, last: 5 });
+  });
+
+  it('falls back to the quote\'s first eight words when the whole is not there', () => {
+    expect(revealLinesIn(text, { quote: 'The Bornhuetter-Ferguson method adds the expected unreported loss, as the model put it' })).toEqual({ first: 4, last: 5 });
+  });
+
+  it('places nothing for a quote that is not in the file, a page alone, or no target', () => {
+    expect(revealLinesIn(text, { quote: 'Benktander credibility weights' })).toBeUndefined();
+    expect(revealLinesIn(text, { page: 3 })).toBeUndefined();
+    expect(revealLinesIn(text, undefined)).toBeUndefined();
   });
 });

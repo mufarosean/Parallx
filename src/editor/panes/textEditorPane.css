@@ -208,3 +208,7 @@
   font-size: var(--px-text-md);
   font-style: italic;
 }
+
+/* Tools' More Actions for this file (editor/title), at the right of the status line. */
+.text-editor-status .editor-more-actions { margin-left: auto; }
+.text-editor-status .editor-more-actions[hidden] { display: none; }

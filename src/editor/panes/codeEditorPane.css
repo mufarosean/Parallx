@@ -86,3 +86,7 @@
   max-width: 60%;
 }
 .code-editor-status-message--error { color: var(--px-danger); }
+
+/* Tools' More Actions for this file (editor/title), at the right of the status line. */
+.code-editor-status .editor-more-actions { margin-left: auto; }
+.code-editor-status .editor-more-actions[hidden] { display: none; }

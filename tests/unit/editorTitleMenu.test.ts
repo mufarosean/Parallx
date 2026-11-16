@@ -8,7 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { MenuContributionProcessor, getEditorTitleActions } from '../../src/contributions/menuContribution';
+import { MenuContributionProcessor, getEditorTitleActions, onDidChangeEditorTitleActions, type IEditorTitleTarget } from '../../src/contributions/menuContribution';
+import { Emitter } from '../../src/platform/events';
 import { ContextKeyService } from '../../src/context/contextKey';
 import type { IToolDescription, IToolManifest } from '../../src/tools/toolManifest';
 
@@ -100,5 +101,78 @@ describe('editor More Actions (editor/title)', () => {
     const src = readdirSync(resolve(root, 'src/editor/panes/pdf')).filter((f) => f.endsWith('.ts')).map((f) => readFileSync(resolve(root, 'src/editor/panes/pdf', f), 'utf8')).join('\n');
     expect(src).not.toMatch(/parallx-community\.study|['"`]study\.[a-zA-Z]+|Study This Document|flashcards\./);
     expect(src).toMatch(/getEditorTitleActions\(\)/);
+  });
+
+  // The text and code panes ask for their own file: a pane in a group that
+  // is not the active one still lists its own entries (and no other's).
+  const NOTES_MANIFEST = {
+    id: 'parallx-community.notes',
+    name: 'Notes Tool',
+    version: '1.0.0',
+    main: 'main.js',
+    contributes: {
+      commands: [{ command: 'notes.study', title: 'Study These Notes…' }],
+      menus: {
+        'editor/title': [
+          { command: 'notes.study', when: "activeEditor == 'parallx.editor.file' && (resourceExtname == '.md' || resourceExtname == '.txt')" },
+        ],
+      },
+    },
+  } as unknown as IToolManifest;
+  const file = (path: string): IEditorTitleTarget => ({
+    typeId: 'parallx.editor.file', uri: `file://${path}`, fsPath: path,
+    extname: path.slice(path.lastIndexOf('.')).toLowerCase(), filename: path.split('/').pop()!, scheme: 'file',
+  });
+
+  it('a pane\'s own file decides, over the active editor', () => {
+    const registered = { getCommand: (id: string) => (id === 'notes.study' ? { id, title: 'Study These Notes…' } : undefined) };
+    const menus = new MenuContributionProcessor(registered as never);
+    const keys = new ContextKeyService();
+    keys.createKey<string | undefined>('activeEditor', 'parallx.editor.pdf');
+    keys.createKey<string>('resourceExtname', '.pdf');
+    menus.setContextKeyService(keys);
+    menus.processContributions(desc(NOTES_MANIFEST));
+    // The active editor is a PDF: nothing for it.
+    expect(getEditorTitleActions()).toEqual([]);
+    // A text pane showing notes.md, or exam.txt, lists the entry; one showing a .py does not.
+    expect(getEditorTitleActions(file('/ws/notes.md')).map((a) => a.commandId)).toEqual(['notes.study']);
+    expect(getEditorTitleActions(file('/ws/exam.txt')).map((a) => a.toolName)).toEqual(['Notes Tool']);
+    expect(getEditorTitleActions(file('/ws/run.py'))).toEqual([]);
+    expect(getEditorTitleActions({ ...file('/ws/notes.md'), typeId: 'parallx.editor.markdownPreview' })).toEqual([]);
+  });
+
+  it('tells a pane when its entries may have changed: a tool on or off, or a command it names registered', () => {
+    let registered = false;
+    const onReg = new Emitter<{ commandId: string }>();
+    const commands = {
+      getCommand: (id: string) => (registered && id === 'notes.study' ? { id, title: 'Study These Notes…' } : undefined),
+      onDidRegisterCommand: onReg.event,
+    };
+    const menus = new MenuContributionProcessor(commands as never);
+    menus.setContextKeyService(new ContextKeyService());
+    let fired = 0;
+    const sub = onDidChangeEditorTitleActions(() => { fired++; });
+    menus.processContributions(desc(NOTES_MANIFEST));
+    expect(fired).toBe(1);
+    // Listed only once its command is registered, which a tool may do after its menus are read.
+    expect(getEditorTitleActions(file('/ws/notes.md'))).toEqual([]);
+    registered = true;
+    onReg.fire({ commandId: 'other.command' });
+    expect(fired).toBe(1);
+    onReg.fire({ commandId: 'notes.study' });
+    expect(fired).toBe(2);
+    expect(getEditorTitleActions(file('/ws/notes.md'))).toHaveLength(1);
+    menus.removeContributions(NOTES_MANIFEST.id);
+    expect(fired).toBe(3);
+    sub.dispose();
+    menus.dispose();
+  });
+
+  it('the text and code panes name no tool, and list editor/title through the shared button', () => {
+    const read = (f: string) => readFileSync(resolve(root, f), 'utf8');
+    const panes = ['src/editor/panes/textEditorPane.ts', 'src/editor/panes/codeEditorPane.ts', 'src/editor/editorMoreActions.ts'].map(read).join('\n');
+    expect(panes).not.toMatch(/parallx-community\.|['"`]study\.[a-zA-Z]+|Study This Document|flashcards\./);
+    for (const f of ['src/editor/panes/textEditorPane.ts', 'src/editor/panes/codeEditorPane.ts']) expect(read(f)).toMatch(/mountEditorMoreActions\(/);
+    expect(read('src/editor/editorMoreActions.ts')).toMatch(/getEditorTitleActions\(t\)/);
   });
 });

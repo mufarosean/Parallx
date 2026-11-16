@@ -21,6 +21,7 @@ import type { IFindService } from '../services/findService.js';
 import { wb } from './structuralCommandTypes.js';
 import { ALL_LAYOUT_COMMANDS } from './layoutCommands.js';
 import { ALL_TEXT_SIZE_COMMANDS } from './textSizeCommands.js';
+import { ALL_EDITOR_MORE_ACTIONS_COMMANDS } from '../editor/editorMoreActions.js';
 
 
 //  Import for aggregation 
@@ -337,6 +338,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // Editor
   toggleWordWrap,
   changeEncoding,
+  ...ALL_EDITOR_MORE_ACTIONS_COMMANDS,
   splitEditor,
   splitEditorOrthogonal,
   moveEditorToNextGroup,

@@ -245,11 +245,12 @@ export class ContextKeyService extends Disposable {
   }
 
   /**
-   * Check if a command's when-clause is satisfied.
+   * Check if a command's when-clause is satisfied, with `overrides` read
+   * in place of the keys they name.
    * Aggregates context from ALL scopes so tool-scoped keys are visible
    * during global evaluation (e.g. command enablement, menu visibility).
    */
-  contextMatchesRules(whenClause: string | undefined): boolean {
+  contextMatchesRules(whenClause: string | undefined, overrides?: Readonly<Record<string, ContextKeyValue>>): boolean {
     if (!whenClause) return true;
     // Aggregate own keys from every scope so tool-scoped context keys
     // (set in child scopes like `tool:<id>`) are visible for evaluation.
@@ -259,7 +260,8 @@ export class ContextKeyService extends Disposable {
         aggregated.set(key, scope.get(key));
       }
     }
-    const lookup: ContextKeyLookup = (key: string) => aggregated.get(key);
+    // `overrides` stand in for keys of the workbench's own (a pane asking for its own editor and file).
+    const lookup: ContextKeyLookup = (key: string) => (overrides && Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : aggregated.get(key));
     return testWhenClause(whenClause, lookup);
   }
 

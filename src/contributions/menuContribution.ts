@@ -8,7 +8,7 @@ import './menuContribution.css';
 //   - view/title: adds action buttons to view title bars
 //   - view/context: adds items to view right-click context menus
 //   - menubar/tools, viewContainer/title: the Tools menu, the sidebar header's More Actions
-//   - editor/title: an editor pane's More Actions (when: activeEditor == '<typeId>')
+//   - editor/title: an editor pane's More Actions (when: activeEditor == '<typeId>'; resourceExtname too)
 //
 // Menu items are conditional on when clauses and sorted by group + order.
 
@@ -24,7 +24,8 @@ import type { IContextMenuItem } from '../ui/contextMenu.js';
 // ─── Minimal shape to avoid circular imports ─────────────────────────────────
 
 interface IContextKeyServiceLike {
-  contextMatchesRules(whenClause: string | undefined): boolean;
+  /** `overrides` are keys read in place of the workbench's own (an editor pane's typeId and file). */
+  contextMatchesRules(whenClause: string | undefined, overrides?: Readonly<Record<string, string>>): boolean;
 }
 
 // ─── Supported Menu Locations ────────────────────────────────────────────────
@@ -50,17 +51,43 @@ export interface IEditorTitleAction {
   readonly toolName: string;
 }
 
+/**
+ * The editor a pane asks for: its `when` clauses are read with
+ * `activeEditor` set to this typeId and the `resource*` keys to this file,
+ * so a pane in a group that is not the active one lists its own entries.
+ */
+export interface IEditorTitleTarget {
+  readonly typeId: string;
+  /** The file's URI as a string, and its path; both are passed to the command. */
+  readonly uri: string;
+  readonly fsPath: string;
+  /** Lower-case extension with its dot ('.md'), the file name, and the URI scheme. */
+  readonly extname: string;
+  readonly filename: string;
+  readonly scheme: string;
+}
+
+/** The context keys a target stands in for. */
+export function editorTitleContext(target: IEditorTitleTarget): Record<string, string> {
+  return { activeEditor: target.typeId, resourceExtname: target.extname, resourceFilename: target.filename, resourceScheme: target.scheme };
+}
+
 let _current: MenuContributionProcessor | undefined;
 
 /**
- * The `editor/title` entries for the active editor, for a pane's More
- * Actions menu. A pane lists these with no reference to the processor; a
- * tool turned off takes its entries with it, so no pane offers something
- * nothing will answer.
+ * The `editor/title` entries for the active editor, or for `target`, for a
+ * pane's More Actions menu. A pane lists these with no reference to the
+ * processor; a tool turned off takes its entries with it, so no pane offers
+ * something nothing will answer.
  */
-export function getEditorTitleActions(): readonly IEditorTitleAction[] {
+export function getEditorTitleActions(target?: IEditorTitleTarget): readonly IEditorTitleAction[] {
   if (!_current) return [];
-  return _current.getEditorTitleActions();
+  return _current.getEditorTitleActions(target);
+}
+
+/** Fires when what getEditorTitleActions returns may have changed: a tool's entries came or went, or their commands did. */
+export function onDidChangeEditorTitleActions(listener: () => void): IDisposable {
+  return _current ? _current.onDidChangeEditorTitle(listener) : toDisposable(() => { /* no processor */ });
 }
 
 // ─── MenuContributionProcessor ───────────────────────────────────────────────
@@ -105,11 +132,21 @@ export class MenuContributionProcessor extends Disposable implements IContributi
   /** Fires when the items for a menu location change. */
   readonly onDidChangeMenu: Event<MenuLocationId> = this._onDidChangeMenu.event;
 
+  private readonly _onDidChangeEditorTitle = this._register(new Emitter<void>());
+  /** Fires when the `editor/title` items, or the commands they name, change. */
+  readonly onDidChangeEditorTitle: Event<void> = this._onDidChangeEditorTitle.event;
+
   constructor(
     private readonly _commandService: CommandService,
   ) {
     super();
     _current = this;
+    this._register(this.onDidChangeMenu((loc) => { if (loc === 'editor/title') this._onDidChangeEditorTitle.fire(); }));
+    // An entry is listed only once its command is registered, which a tool may do after its menus are read.
+    const named = (id: string) => (this._menuItems.get('editor/title') ?? []).some((i) => i.commandId === id);
+    const commands = _commandService as Partial<Pick<CommandService, 'onDidRegisterCommand' | 'onDidUnregisterCommand'>>;
+    if (commands.onDidRegisterCommand) this._register(commands.onDidRegisterCommand((e) => { if (named(e.commandId)) this._onDidChangeEditorTitle.fire(); }));
+    if (commands.onDidUnregisterCommand) this._register(commands.onDidUnregisterCommand((e) => { if (named(e.commandId)) this._onDidChangeEditorTitle.fire(); }));
 
     // Initialize menu location buckets
     for (const loc of SUPPORTED_MENU_LOCATIONS) {
@@ -368,14 +405,16 @@ export class MenuContributionProcessor extends Disposable implements IContributi
   // ── Editor Title (an editor pane's More Actions) ──
 
   /**
-   * An editor pane's More Actions items for the active editor: the
-   * `editor/title` items whose when clause holds (they name their editor
-   * with `activeEditor == '<typeId>'`), sorted by group.
+   * An editor pane's More Actions items for the active editor, or for
+   * `target`: the `editor/title` items whose when clause holds (they name
+   * their editor with `activeEditor == '<typeId>'`, and may name the file's
+   * `resourceExtname`), sorted by group.
    */
-  getEditorTitleItems(): readonly IContributedMenuItem[] {
+  getEditorTitleItems(target?: IEditorTitleTarget): readonly IContributedMenuItem[] {
     const items = this._menuItems.get('editor/title') ?? [];
+    const overrides = target ? editorTitleContext(target) : undefined;
     return items
-      .filter((item) => !item.when || !this._contextKeyService || this._contextKeyService.contextMatchesRules(item.when))
+      .filter((item) => !item.when || !this._contextKeyService || this._contextKeyService.contextMatchesRules(item.when, overrides))
       .map((item, i) => ({ item, i }))
       .sort((a, b) => (a.item.group ?? '').localeCompare(b.item.group ?? '') || (a.item.order ?? 0) - (b.item.order ?? 0) || a.i - b.i)
       .map(({ item }) => item);
@@ -386,9 +425,9 @@ export class MenuContributionProcessor extends Disposable implements IContributi
    * the command's registered title) and the contributing tool's display
    * name. An item whose command is not registered is left out.
    */
-  getEditorTitleActions(): readonly IEditorTitleAction[] {
+  getEditorTitleActions(target?: IEditorTitleTarget): readonly IEditorTitleAction[] {
     const actions: IEditorTitleAction[] = [];
-    for (const item of this.getEditorTitleItems()) {
+    for (const item of this.getEditorTitleItems(target)) {
       const cmd = this._commandService.getCommand(item.commandId);
       if (!cmd) continue;
       actions.push({

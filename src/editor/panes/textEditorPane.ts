@@ -23,7 +23,9 @@ import { ContextMenu } from '../../ui/contextMenu.js';
 import { $,  hide, show } from '../../ui/dom.js';
 import { getLanguageForFileName } from '../../services/languageDetection.js';
 import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
-import { takeFileReveal } from '../fileReveal.js';
+import { takeFileReveal, revealLinesIn } from '../fileReveal.js';
+import { scrollTextareaToOffset } from '../../ui/textareaScroll.js';
+import { mountEditorMoreActions, editorTitleTargetOf, type IEditorMoreActions } from '../editorMoreActions.js';
 import { textareaFindTarget, type IFindTarget } from '../../ui/findTargets.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -54,6 +56,7 @@ export class TextEditorPane extends EditorPane {
   private _suppressModelUpdate = false;
   private _findWidget: FindReplaceWidget | undefined;
   private _activeContextMenu: ReturnType<typeof ContextMenu.show> | null = null;
+  private _moreActions: IEditorMoreActions | undefined;
 
   // Minimap
   private _minimapContainer!: HTMLElement;
@@ -192,6 +195,7 @@ export class TextEditorPane extends EditorPane {
     this._statusBar.appendChild(this._encodingItem);
     this._statusBar.appendChild(this._eolItem);
     this._statusBar.appendChild(this._languageItem);
+    this._moreActions = this._register(mountEditorMoreActions(this._statusBar, () => (this.input instanceof FileEditorInput ? editorTitleTargetOf(this.input.typeId, this.input.uri) : undefined)));
     container.appendChild(this._statusBar);
 
     // Find & Replace widget (overlay — positioned absolute inside .editor-pane)
@@ -289,17 +293,19 @@ export class TextEditorPane extends EditorPane {
     this._renderMinimap();
   }
 
-  /** Shown and laid out: select a citation link's lines, if one is pending. */
+  /** Shown and laid out: the tools' More Actions for this file; a citation link's lines or quote, if one is pending. */
   protected override onDidShow(): void {
     const input = this.input;
+    this._moreActions?.refresh();
     if (!(input instanceof FileEditorInput)) return;
-    const target = takeFileReveal(input.uri.fsPath);
-    if (target?.line) this.revealLines(target.line, target.endLine ?? target.line);
+    const lines = revealLinesIn(this._textarea.value, takeFileReveal(input.uri.fsPath));
+    if (lines) this.revealLines(lines.first, lines.last);
   }
 
   /**
-   * Select lines `first`..`last` (1-based) and scroll the first into view.
-   * Out-of-range lines leave the editor as it is.
+   * Select lines `first`..`last` (1-based) and scroll the first a third of
+   * the way down, measured as laid out (wrapped or not). Out-of-range lines
+   * leave the editor as it is.
    */
   revealLines(first: number, last: number = first): void {
     if (!this._textarea) return;
@@ -310,17 +316,10 @@ export class TextEditorPane extends EditorPane {
     for (let i = 0; i < first - 1; i++) start += lines[i].length + 1;
     let stop = start;
     for (let i = first - 1; i < end; i++) stop += lines[i].length + (i < end - 1 ? 1 : 0);
-    // Caret at the start, so focusing scrolls to the first cited line.
+    // Caret at the start. Setting it scrolls nothing, so the scroll is set too.
     this._textarea.setSelectionRange(start, stop, 'backward');
-    if (this._wordWrap) {
-      // Wrapped lines have no fixed height: let the browser scroll the caret in.
-      this._textarea.blur();
-      this._textarea.focus();
-    } else {
-      this._textarea.focus({ preventScroll: true });
-      const lineHeight = parseFloat(getComputedStyle(this._textarea).lineHeight) || 20;
-      this._textarea.scrollTop = Math.max(0, (first - 1) * lineHeight - this._textarea.clientHeight / 3);
-    }
+    this._textarea.focus({ preventScroll: true });
+    scrollTextareaToOffset(this._textarea, start);
     this._updateCursorPosition();
     this._syncGutterScroll();
     this._renderMinimap();

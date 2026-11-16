@@ -69,3 +69,29 @@ export function takeFileReveal(fsPath: string, now: number = Date.now()): IFileR
 export function _clearFileRevealsForTest(): void {
   _pending.clear();
 }
+
+/** At most this many words of a quote are matched: enough to place it, short enough to stay cheap. */
+const QUOTE_WORDS = 40;
+
+/**
+ * The 1-based lines a text pane shows for `target` in `text`: its line range
+ * when it names one, else the lines its quote sits on. A quote is matched by
+ * its words (letters and digits), with anything else between them and case
+ * ignored, so a passage that wraps or was copied with other line breaks or
+ * quote marks is still found; when the whole quote is not there, its first
+ * eight words are tried. Undefined when neither places anything.
+ */
+export function revealLinesIn(text: string, target: IFileRevealTarget | undefined): { first: number; last: number } | undefined {
+  if (!target) return undefined;
+  if (typeof target.line === 'number' && target.line > 0) return { first: target.line, last: target.endLine ?? target.line };
+  // Letters and digits only: punctuation, quote marks and spacing may differ between a quote and its file.
+  const words = String(target.quote ?? '').split(/[^\p{L}\p{N}]+/u).filter(Boolean).slice(0, QUOTE_WORDS);
+  const lineOf = (index: number): number => text.slice(0, index).split('\n').length;
+  for (const n of [words.length, Math.min(8, words.length)]) {
+    if (n < 2) continue;
+    const re = new RegExp(words.slice(0, n).join('[^\\p{L}\\p{N}]+'), 'iu');
+    const m = re.exec(text);
+    if (m) return { first: lineOf(m.index), last: lineOf(m.index + m[0].length) };
+  }
+  return undefined;
+}
