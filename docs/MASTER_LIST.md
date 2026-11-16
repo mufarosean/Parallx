@@ -208,8 +208,9 @@ because the workbook lists it for the exam under a misspelling
 ("BAHTEXT") and the first fix took it away for the typo; the second
 claim check caught that. A sheet of one's own has all of them.
 
-**This changes his practice sheet, which was promised untouched: his to
-overrule.** One pane serves a problem, a quiz and the Scratch Sheet, so
+**His answer (2026-11-16): keep it. "okay that's fine; I don't use any
+of those."** It was put to him as a change to his practice sheet, which
+had been promised untouched. One pane serves a problem, a quiz and the Scratch Sheet, so
 all three change. A problem already saved with one of the 23 in a
 formula keeps the formula's text, shows #NAME? when it is next opened,
 and stores that at its next save. NUMBERVALUE, CELL and FORECAST.LINEAR
@@ -301,6 +302,25 @@ Found by the review and fixed:
   time; a failing test sent Claude back again and again, ending only
   when the runner happened to print the same timing twice; a change of
   more than 40 files could never pass.
+
+**Open when the session stopped (2026-11-16), to be looked at first.** He
+stopped the last checks to save tokens. On the newest build (`d84aede`)
+the reviewer's probe (`tests/probes/sheet-file-verify-probe.mjs`) showed
+10 failures. Two are its old side-by-side check, since rewritten and not
+run again. Eight come from one thing: after Tab then Enter the selection
+did not go back to the column the run began in, so later entries landed
+one cell over. The same keys, run alone, work, and a second test run was
+using the machine at that moment, so load is the likely cause; that is
+not confirmed. Run that probe alone before anything else. Also not run
+on the newest build: the keyboard and touch audits. The unit suite ran
+on it and its result was not read. The three newest fixes (one live
+sheet at a time, the keyboard left in the Explorer, no question when a
+file is gone) were run in the app by Claude only (42 checks, 0
+problems), not by anyone who did not write them. The verifier's own
+probe (`tests/probes/sheet-file-fixes-probe.mjs`) is as it left it,
+written for the first fix commit: some of what it expects no longer
+describes the app, and the stop hook names one check in it that cannot
+fail.
 
 **The fixes, checked** (2026-11-15, by three more agents that did not
 write them: a correctness reviewer on the fix commit, a claim checker on
