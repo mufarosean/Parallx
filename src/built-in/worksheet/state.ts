@@ -252,7 +252,12 @@ export const AUTOSAVE_MS = 5000;
 
 type UniverHostModule = {
   createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean; displayDecimals?: number | null; onFormulaError?: (summary: string, detail: string) => void; onEngineFault?: (summary: string, detail: string) => void; limits?: import('./worksheetConstants.js').SheetLimits }): IWorksheetHost;
+  /** How many engines are live in this window (the engine is built for one), and a call when that changes. */
+  liveEngines: { readonly count: number; onChange(listener: () => void): { dispose(): void } };
 };
+
+/** Sheet files that are to take the keyboard when they open (one just made), by path: any other keeps the keyboard where it was. */
+export const sheetsToFocus = new Set<string>();
 
 let _univerModule: Promise<UniverHostModule> | null = null;
 

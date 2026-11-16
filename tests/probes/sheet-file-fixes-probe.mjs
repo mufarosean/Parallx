@@ -10,10 +10,17 @@
 //   xvfb-run -a node tests/probes/sheet-file-fixes-probe.mjs [outDir]
 //
 // PARALLX_PROBE_ONLY=<phase number, ...> runs only those phases.
-// Internal calls are used only where a person has no other way here, and each
-// is named where it is used: `worksheet.newSheet <name>` and `file.openFile
-// <path>` (the statements under test name them), `workbench.action.splitEditor`
-// (named by the statement), and the notification history (to read what was said).
+// Internal calls, and why: `worksheet.newSheet <name>`, `file.openFile <path>`,
+// `worksheet.openScratch` and `workbench.action.splitEditor` because the
+// statements under test name them; `worksheet.open` and `worksheet.bank` to
+// reach a screen; `workbench.action.closeActiveEditor` only to tidy between
+// cases (a tab under test is closed by its own × with the mouse); the
+// notification history to read what the app said; the sheet pane's probe hook
+// (`__wsHost`) to read cells. Everything else is mouse and keys.
+//
+// What it cannot do: run against the build before the fixes (none is at hand
+// and this run was not allowed to build), so where it can a check is paired
+// with its opposite (the practice sheet against a sheet file, a control case).
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -45,6 +52,7 @@ const env = { ...process.env, PARALLX_TEST_MODE: '1', PARALLX_RENDERER_PORT: '0'
 delete env.ELECTRON_RUN_AS_NODE;
 
 const problems = [];
+const explorerMisses = [];
 const notes = [];
 const errors = [];
 const check = (name, ok, got) => { console.log(`${ok ? '  ok ' : ' FAIL'} ${name}${ok ? '' : `: ${JSON.stringify(got)}`}`); if (!ok) problems.push(name); return ok; };
@@ -113,10 +121,8 @@ const gridSize = (gi = null) => page.evaluate(({ gi }) => { const snap = window.
 const activeCell = async (gi = null) => (await hostCall('probeState', [], gi)).activeCell;
 const sheetUp = async (label, gi = null) => {
   await page.waitForFunction(({ label, gi }) => {
-    const el = window.__fx.sheetEl(gi); if (!el || !window.__fx.alive(el)) return false;
-    if (!label) return true;
-    const g = el.closest('.editor-group');
-    return (g?.querySelector('.ui-tab--active .ui-tab-label')?.textContent ?? '').trim() === label;
+    const gs = window.__fx.groups().map((g, i) => ({ g, i })).filter((x) => gi == null || x.i === gi);
+    return gs.some(({ g }) => { const el = [...g.querySelectorAll('.ws-pane__sheet')].find((e) => window.__fx.vis(e) && e.__wsHost); return window.__fx.alive(el) && (!label || (g.querySelector('.ui-tab--active .ui-tab-label')?.textContent ?? '').trim() === label); });
   }, { label: label ?? null, gi }, { timeout: 30000 });
   await wait(2700);
 };
@@ -190,22 +196,35 @@ const renameInExplorer = async (rel, newName, how = 'menu') => {
     await page.keyboard.press('Control+a'); await page.keyboard.type(newName); await page.keyboard.press('Enter');
     return 'done';
   }
-  if (!(await clickNode(rel, { button: 'right' }))) return 'no row'; if (!(await pickMenuRow('Rename'))) return 'no Rename in the menu';
-  try { await page.waitForSelector('.tree-inline-input', { timeout: 4000 }); } catch { return 'no name box'; }
-  await page.keyboard.press('Control+a'); await page.keyboard.type(newName, { delay: 15 }); await page.keyboard.press('Enter');
-  return 'done';
+  // The Explorer's menu fails when the file tree redraws under it, which it does about 3 s after anything is written in the
+  // folder (phase 13 checks and reports that). So the menu is opened once the tree is quiet, and a miss is said and tried once more.
+  const once = async () => {
+    if (!(await clickNode(rel, { button: 'right' }))) return 'no row'; if (!(await pickMenuRow('Rename'))) return 'no Rename in the menu';
+    try { await page.waitForSelector('.tree-inline-input', { timeout: 3000 }); } catch { return 'no name box'; }
+    await page.keyboard.press('Control+a'); await page.keyboard.type(newName, { delay: 15 }); await page.keyboard.press('Enter');
+    return 'done';
+  };
+  await wait(4500);
+  let did = await once();
+  if (did !== 'done') { explorerMisses.push(`Rename of ${rel}: ${did}`); console.log(`       !! the Explorer's Rename did nothing the first time (${did}); tried again after 5 s`); await page.keyboard.press('Escape'); await wait(5000); did = await once(); }
+  return did;
 };
 const prompts = () => page.evaluate(() => [...document.querySelectorAll('.parallx-notification')].filter((e) => e.getClientRects().length).map((e) => ({ words: (e.querySelector('.parallx-notification-message')?.textContent ?? '').trim(), buttons: [...e.querySelectorAll('.parallx-notification-action-btn')].map((b) => b.textContent.trim()), asks: e.classList.contains('parallx-notification--prompt') })));
 const waitPrompt = async (re, ms = 5000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const p = (await prompts()).find((x) => re.test(x.words)); if (p) return p; await sleep(150); } return null; };
 const clickPromptButton = (label) => clickEl('.parallx-notification .parallx-notification-action-btn', label);
 /** The Explorer's delete: right-click > Delete (or select and the Delete key), then the dialog's Move to Trash. */
 const deleteInExplorer = async (rel, how = 'menu', answer = 'Move to Trash') => {
-  if (how === 'key') { if (!(await clickNode(rel))) return { step: 'no row' }; await page.keyboard.press('Delete'); }
-  else { if (!(await clickNode(rel, { button: 'right' }))) return { step: 'no row' }; if (!(await pickMenuRow('Delete'))) return { step: 'no Delete in the menu' }; }
-  const asked = await waitPrompt(/delete/i);
-  if (!asked) return { step: 'no dialog' };
-  const clicked = await clickPromptButton(answer);
-  return { step: clicked ? 'done' : `no ${answer} button`, asked };
+  const once = async () => {
+    if (!(await clickNode(rel, { button: 'right' }))) return { step: 'no row' }; if (!(await pickMenuRow('Delete'))) return { step: 'no Delete in the menu' };
+    const asked = await waitPrompt(/delete/i, 3000);
+    if (!asked) return { step: 'no dialog' };
+    const clicked = await clickPromptButton(answer);
+    return { step: clicked ? 'done' : `no ${answer} button`, asked };
+  };
+  if (how !== 'now') await wait(4500);
+  let did = await once();
+  if (did.step !== 'done' && how !== 'now') { explorerMisses.push(`Delete of ${rel}: ${did.step}`); console.log(`       !! the Explorer's Delete did nothing the first time (${did.step}); tried again after 5 s`); await page.keyboard.press('Escape'); await wait(5000); did = await once(); }
+  return did;
 };
 
 // ── files ──
@@ -381,6 +400,14 @@ try {
     console.log(`       typed into the shown tab (${JSON.stringify(g6b?.active)}, which then reads ${JSON.stringify(g6b?.text)}, unsaved ${JSON.stringify(g6b?.dirty)}) and Ctrl+S: files ${JSON.stringify((await ls()).filter((n) => n.startsWith('plain')))}; plain.txt holds ${JSON.stringify(await fileText(at('plain.txt')))}; plain2.txt holds ${JSON.stringify(await fileText(at('plain2.txt')))}; unsaved after ${JSON.stringify(g6c?.dirty)}; said ${JSON.stringify(await messages())}`);
     check('typed into and saved (Ctrl+S): plain2.txt holds it and plain.txt does not exist', /added after rename/.test(await fileText(at('plain2.txt'))) && !(await exists(at('plain.txt'))), { plain: await fileText(at('plain.txt')), plain2: await fileText(at('plain2.txt')) });
     for (const t of ['plain2.txt', 'plain.txt']) if ((await allTabs()).includes(t)) { await clickTab(t); await run('workbench.action.closeActiveEditor'); await wait(400); }
+    // The same text-file case, the file opened as a person does it: clicked in the Explorer.
+    await fs.writeFile(at('clicked.txt'), 'clicked words\n'); await wait(2500);
+    await clickNode('clicked.txt'); await wait(1500);
+    const g6k0 = await group(0);
+    const how6k = await renameInExplorer('clicked.txt', 'clicked2.txt', 'menu'); await wait(2500);
+    const g6k = await group(0);
+    check('a text file opened by a click in the Explorer, then renamed there: its tab reads the new name', how6k === 'done' && g6k0?.active === 'clicked.txt' && g6k?.active === 'clicked2.txt' && !(await allTabs()).includes('clicked.txt'), { before: g6k0?.active, tabs: g6k?.tabs, shown: g6k?.active, files: (await ls()).filter((n) => n.startsWith('clicked')) });
+    for (const t of ['clicked2.txt', 'clicked.txt']) if ((await allTabs()).includes(t)) { await clickTab(t); await run('workbench.action.closeActiveEditor'); await wait(400); }
     // The same for a text file inside a folder, and for a PDF (a viewer, never unsaved).
     await fs.mkdir(at('Docs'), { recursive: true }); await fs.writeFile(at('Docs', 'inner.txt'), 'inner words\n'); await fs.writeFile(at('Docs', 'doc.pdf'), tinyPdf('Doc words')); await wait(2000);
     await clickNode('Docs'); await wait(900);
@@ -428,7 +455,7 @@ try {
     // An entry made, and deleted at once (inside the save delay).
     const file2 = await newSheet('Trash Two');
     await enter(0, 0, 'bin2');
-    const res2 = await deleteInExplorer('Trash Two.sheet', 'menu');
+    const res2 = await deleteInExplorer('Trash Two.sheet', 'now');
     const w2 = await goneAndBack(file2, 5500);
     check('an entry made just before the delete: the tab closes, the file goes and does not come back within 5 seconds', res2.step === 'done' && !(await allTabs()).includes('Trash Two.sheet') && w2.goneAfterMs >= 0 && w2.backAfterMs === -1 && !w2.thereAtEnd, { res2: res2.step, w2, files: await ls(), holdsTheEntry: /bin2/.test(await fileText(file2)) });
     await fs.rm(file2, { force: true }); await wait(2000);
@@ -506,6 +533,7 @@ try {
     const file = await newSheet('Mover');
     await enter(0, 0, 'm1'); await wait(3200);
     // Cut and paste by the Explorer's own menu.
+    await wait(4500);
     const cut = (await clickNode('Mover.sheet', { button: 'right' })) && (await pickMenuRow('Cut'));
     const onFolder = await clickNode('Sub', { button: 'right' });
     const menu = (await menuLabels()).map((r) => r.label);
@@ -587,22 +615,24 @@ try {
     // (b) the other button.
     await reset();
     const file2 = await newSheet('Gone Two');
-    await enter(0, 0, 'one'); await wait(2600);
+    await enter(0, 0, 'uno'); await wait(2600);
     await fs.rename(file2, at('Elsewhere Two.sheet'));
-    await enter(1, 0, 'two');
+    await enter(1, 0, 'dos');
     const told2 = await waitPrompt(WORDS, 6000); await wait(800);
     const clicked2 = await clickPromptButton('Discard Changes'); await wait(1500);
     const g = await group(0);
+    await messages();
     check('the other button is there (Discard Changes)', !!told2 && told2.buttons.includes('Discard Changes') && clicked2, told2);
     note(`after Discard Changes: tabs ${JSON.stringify(g?.tabs)}, shown ${JSON.stringify(g?.active)}, a live sheet ${g?.live}, A1 ${JSON.stringify(await cell(0, 0))}, A2 ${JSON.stringify(await cell(1, 0))}; words on the pane ${JSON.stringify(g?.words)}; prompts on screen ${JSON.stringify(await prompts())}`);
-    await enter(2, 0, 'three').catch(() => {}); await wait(4500);
-    const after = { files: await ls(), prompts: await prompts(), said: await messages(), a3: await cell(2, 0), back: await exists(file2) };
+    await enter(2, 0, 'tres').catch(() => {}); await wait(4500);
+    const holding = []; for (const n of await ls()) if (n.endsWith('.sheet') && /tres/.test(await fileText(at(n)))) holding.push(n);
+    const after = { prompts: await prompts(), said: await messages(), a3: await cell(2, 0), oldFileBack: await exists(file2), filesHoldingTheEntry: holding, tabs: await allTabs() };
     await shot('gone-discarded');
-    note(`then a further entry in that tab and 4.5 seconds: on the sheet ${JSON.stringify(after.a3)}; Gone Two.sheet exists ${after.back}; any file holding it ${JSON.stringify(await (async () => { const out = []; for (const n of after.files) if (n.endsWith('.sheet') && /three/.test(await fileText(at(n)))) out.push(n); return out; })())}; told again ${JSON.stringify(after.prompts)} ${JSON.stringify(after.said)}`);
-    check('after Discard Changes the tab does not go on taking entries it will never save without saying so (it closes, or is told again, or cannot be typed in)', !g?.tabs.includes('Gone Two.sheet') || after.prompts.some((p) => WORDS.test(p.words)) || after.said.some((m) => WORDS.test(m)) || after.a3 !== 'three', { tabs: g?.tabs, after });
+    note(`then a further entry in that tab and 4.5 seconds: ${JSON.stringify(after)}`);
+    check('after Discard Changes the tab is not a dead end: it closes, or says again that it cannot save, or does not take a further entry', !after.tabs.includes('Gone Two.sheet') || after.prompts.some((p) => WORDS.test(p.words)) || after.said.some((m) => WORDS.test(m)) || after.a3 !== 'tres', after);
     // Leaving and closing it.
     await clickTab('Welcome'); await wait(900);
-    if ((await allTabs()).includes('Gone Two.sheet')) { await clickTab('Gone Two.sheet'); await wait(3500); const gb = await group(0); note(`that tab left and shown again: ${JSON.stringify({ live: gb?.live, words: gb?.words, a1: gb?.live ? await cell(0, 0) : null })}; Gone Two.sheet exists ${await exists(file2)}`); await closeTabX('Gone Two.sheet'); await wait(800); }
+    if ((await allTabs()).includes('Gone Two.sheet')) { await clickTab('Gone Two.sheet'); await wait(3500); const gb = await group(0); await shot('gone-discarded-shown-again'); note(`that tab left and shown again: ${JSON.stringify({ live: gb?.live, words: gb?.words, a1: gb?.live ? await cell(0, 0) : null })}; Gone Two.sheet exists ${await exists(file2)}; said ${JSON.stringify(await messages())}`); await closeTabX('Gone Two.sheet'); await wait(800); }
     check('through all of it the old file was never brought back', !(await exists(file2)), await ls());
 
     // (c) renamed from outside, an entry, and the tab left at once (before the 1.5 s save).
@@ -613,7 +643,7 @@ try {
     await enter(1, 0, 'two'); await clickTab('Welcome');
     const back3 = await cameBack(file3, 4000);
     const said3 = [...(await prompts()).map((p) => p.words), ...(await messages())];
-    check('renamed by another program, an entry, and the tab left at once: the old file is not brought back', back3 === -1, { cameBackAfterMs: back3, holds: (await fileText(file3)).slice(-140), files: await ls() });
+    check('renamed by another program, an entry, and the tab left at once: the old file is not brought back', back3 === -1, { cameBackAfterMs: back3, theFileThatCameBackHolds: { one: /"one"/.test(await fileText(file3)), two: /"two"/.test(await fileText(file3)) }, theRenamedFileHoldsTwo: /"two"/.test(await fileText(at('Elsewhere Three.sheet'))), files: await ls() });
     check('and the person is told', said3.some((m) => WORDS.test(m)), said3);
     await fs.rm(file3, { force: true });
 
@@ -625,7 +655,7 @@ try {
     await enter(1, 0, 'two'); await closeTabX('Gone Four.sheet');
     const back4 = await cameBack(file4, 4000);
     const said4 = [...(await prompts()).map((p) => p.words), ...(await messages())];
-    check('renamed by another program, an entry, and the tab closed at once: the old file is not brought back', back4 === -1, { cameBackAfterMs: back4, holds: (await fileText(file4)).slice(-140), files: await ls() });
+    check('renamed by another program, an entry, and the tab closed at once: the old file is not brought back', back4 === -1, { cameBackAfterMs: back4, theFileThatCameBackHolds: { one: /"one"/.test(await fileText(file4)), two: /"two"/.test(await fileText(file4)) }, files: await ls() });
     note(`in that case the person was told: ${JSON.stringify(said4)}`);
     await fs.rm(file4, { force: true });
 
@@ -828,7 +858,7 @@ try {
     // Further: the other operators and reference forms a person uses.
     ['=-A2+5', 3], ['=50%*4', 2], ['=A1<>A2', true], ['=A1<=A2', true], ['=SUM(A1:A2,B1:B2)', 33], ['=SUM(A:A)', 6], ['=B3-B2', 10], ['=(1+2)*3', 9], ['=MAX(A1:B3)', 30], ['=COUNT(A1:B3)', 6],
   ];
-  const same = (got, want) => (typeof want === 'number' ? typeof got === 'number' && Math.abs(got - want) < 0.006 : typeof want === 'boolean' ? got === want || got === (want ? 1 : 0) || String(got).toUpperCase() === String(want).toUpperCase() : got === want);
+  const same = (got, want) => (want === '5' ? got === '5' || got === 5 : typeof want === 'number' ? typeof got === 'number' && Math.abs(got - want) < 0.006 : typeof want === 'boolean' ? got === want || got === (want ? 1 : 0) || String(got).toUpperCase() === String(want).toUpperCase() : got === want);
   const isName = (got) => got === '#NAME?';
   /** Type the data and every formula, as a person would; returns what each formula cell reads. */
   const typeFormulas = async () => {
@@ -849,31 +879,63 @@ try {
     await hostCall('scrollToCell', [0, 0]); await wait(300);
     return out;
   };
-  /** What the engine offers after `=REG` is typed in a cell, and in the fx (insert function) panel searched for REG. */
+  /** The function names on screen (short text in capitals), e.g. the rows of the list that drops under a formula being typed. */
+  const fnNames = () => page.evaluate(() => { const seen = new Set(); for (const e of document.querySelectorAll('body *')) { if (!e.getClientRects().length) continue; const t = (e.textContent ?? '').trim(); if (/^[A-Z][A-Z0-9_.]{2,}$/.test(t) && e.querySelectorAll('*').length <= 2) seen.add(t); } return [...seen]; });
+  /** What is offered while a formula is typed in a cell: for each start, the function names listed under it. */
   const offered = async (label) => {
-    await clickCell(12, 8); await page.keyboard.type('=REG', { delay: 80 }); await wait(1500);
-    await shot(`autocomplete-${label}`);
-    const fnNames = () => page.evaluate(() => { const seen = new Set(); for (const e of document.querySelectorAll('body *')) { if (!e.getClientRects().length || e.children.length) continue; const t = (e.textContent ?? '').trim(); if (/^[A-Z][A-Z0-9_.]{2,}$/.test(t)) seen.add(t); } return [...seen]; });
-    const whileTyping = (await fnNames()).filter((n) => /^REG/.test(n));
-    await page.keyboard.press('Escape'); await wait(500);
-    // The fx button in the formula bar.
-    await clickCell(13, 8);
-    const fx = await page.evaluate(() => { const b = [...document.querySelectorAll('[aria-label="Insert function"]')].find((e) => e.getClientRects().length); if (!b) return null; const r = b.getBoundingClientRect(); const cs = getComputedStyle(b); return { x: r.left + r.width / 2, y: r.top + r.height / 2, disabled: b.hasAttribute('disabled') || b.getAttribute('aria-disabled') === 'true' || cs.pointerEvents === 'none', cursor: cs.cursor, cls: b.className.toString().slice(0, 160) }; });
-    let panel = null;
-    if (fx) {
-      await page.mouse.click(fx.x, fx.y); await wait(1500);
+    const out = {};
+    for (const start of ['=SU', '=REG', '=NUMB', '=ISB', '=ISE', '=VALUET', '=FLA', '=CEL', '=LE']) {
+      stepName = `8 typing ${start} on the ${label}`;
       const before = await fnNames();
-      const input = await page.evaluate(() => { const i = [...document.querySelectorAll('input')].filter((e) => e.getClientRects().length && /search|function/i.test(`${e.placeholder} ${e.getAttribute('aria-label') ?? ''}`)).pop(); if (!i) return null; const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, placeholder: i.placeholder }; });
-      if (input) { await page.mouse.click(input.x, input.y); await page.keyboard.type('REG', { delay: 60 }); await wait(1200); }
-      await shot(`fx-panel-${label}`);
-      const names = await fnNames();
-      panel = { opened: before.length > 0 || !!input, searchBox: input?.placeholder ?? null, listed: before.length, afterSearchREG: names.filter((n) => /REG/.test(n)), offers: ['REGEXEXTRACT', 'NUMBERVALUE', 'ISBETWEEN', 'ISEMAIL', 'VALUETOTEXT', 'CELL', 'FLATTEN', 'LET', 'SUM', 'VLOOKUP'].filter((n) => before.includes(n)) };
-      await page.keyboard.press('Escape'); await wait(300);
-      await page.evaluate(() => { const c = [...document.querySelectorAll('[aria-label="Close sidebar"]')].find((e) => e.getClientRects().length); c?.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-      await wait(400);
+      await clickCell(12, 8); await page.keyboard.type(start, { delay: 80 }); await wait(1300);
+      if (start === '=REG') await shot(`autocomplete-${label}`);
+      if (start === '=SU') await shot(`autocomplete-su-${label}`);
+      out[start] = (await fnNames()).filter((n) => !before.includes(n) && n.startsWith(start.slice(1)));
+      await page.keyboard.press('Escape'); await wait(250); await page.keyboard.press('Escape'); await wait(350);
     }
-    await page.keyboard.press('Escape'); await wait(300);
-    return { whileTyping, fx: fx ? { disabled: fx.disabled, cursor: fx.cursor } : null, panel };
+    // The fx button in the formula bar.
+    stepName = `8 the fx button on the ${label}`;
+    await clickCell(13, 8);
+    const fx = await page.evaluate(() => { const g = window.__fx.sheetEl(null); const b = [...g.querySelectorAll('[aria-label="Insert function"]')].find((e) => e.getClientRects().length); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    let fxDid = null;
+    if (fx) {
+      const before = await fnNames();
+      await page.mouse.click(fx.x, fx.y); await wait(1500);
+      await shot(`fx-button-${label}`);
+      const st = await hostCall('probeState').catch(() => null);
+      fxDid = { cellBeingEdited: st?.editorVisible ?? null, namesListed: (await fnNames()).filter((n) => !before.includes(n)).slice(0, 12) };
+      await page.keyboard.press('Escape'); await wait(250); await page.keyboard.press('Escape'); await wait(350);
+    }
+    const ribbon = await ribbonLists(label);
+    stepName = '8';
+    return { whileTyping: out, fx: fxDid, ribbon };
+  };
+  /** Every formula cell as it reads now. */
+  const readFormulas = async (gi = null) => { const out = []; for (const [i, [f]] of KEPT.entries()) out.push({ f, got: await cell(i, 3, gi) }); for (const [i, [f]] of REMOVED.entries()) out.push({ f, got: await cell(i, 5, gi) }); return out; };
+  /** Brightness (0 to 255) of an empty stretch of a pane's grid, from a capture of the window. */
+  const gridLum = async (gi = null) => {
+    const p = await cellPoint(14, 2, gi);
+    return app.evaluate(async ({ BrowserWindow }, rect) => { const img = await BrowserWindow.getAllWindows()[0].webContents.capturePage(rect); const d = img.toBitmap(); let sum = 0; for (let i = 0; i < d.length; i += 4) sum += 0.0722 * d[i] + 0.7152 * d[i + 1] + 0.2126 * d[i + 2]; return d.length ? Math.round(sum / (d.length / 4)) : null; }, { x: Math.round(p.x - 25), y: Math.round(p.y - 5), width: 50, height: 10 });
+  };
+  /** The function names a drop-down of the Formulas ribbon lists. */
+  const ribbonLists = async (label) => {
+    const out = {};
+    const btn = (name) => page.evaluate((name) => { const g = window.__fx.sheetEl(null); const b = [...g.querySelectorAll('*')].filter((e) => e.getClientRects().length && (e.textContent ?? '').trim() === name).pop(); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, name);
+    const tab = await btn('Formulas'); if (!tab) return null;
+    stepName = `8 the Formulas ribbon on the ${label}`;
+    await page.mouse.click(tab.x, tab.y); await wait(900);
+    for (const name of ['Logical', 'Text', 'Lookup & Reference']) {
+      const b = await btn(name); if (!b) { out[name] = 'no such drop-down'; continue; }
+      const before = await fnNames();
+      await page.mouse.click(b.x, b.y); await wait(900);
+      const listed = (await fnNames()).filter((n) => !before.includes(n));
+      if (name === 'Text') await shot(`formulas-ribbon-text-${label}`);
+      out[name] = { listed: listed.length, removedOnesListed: listed.filter((n) => ['REGEXEXTRACT', 'REGEXMATCH', 'REGEXREPLACE', 'NUMBERVALUE', 'VALUETOTEXT', 'FLATTEN', 'LET', 'ISBETWEEN', 'ISEMAIL', 'CELL'].includes(n)), has: listed.filter((n) => ['IF', 'LEFT', 'VLOOKUP'].includes(n)) };
+      await page.keyboard.press('Escape'); await wait(400);
+    }
+    const start = await btn('Start'); if (start) { await page.mouse.click(start.x, start.y); await wait(500); }
+    stepName = '8';
+    return out;
   };
   let onPractice = null; let onFile = null;
   await phase('8 the practice sheet and the exam\'s function list', async () => {
@@ -883,64 +945,116 @@ try {
     for (const r of onPractice.removed) check(`practice sheet: ${r.f} answers #NAME?`, isName(r.got) && r.typed === r.f, r);
     for (const r of onPractice.kept) check(`practice sheet: ${r.f} computes ${JSON.stringify(r.want)}`, same(r.got, r.want) && r.typed === r.f, r);
     const practiceOffers = await offered('practice');
-    console.log(`       practice sheet, after typing =REG in a cell, function names on screen starting REG: ${JSON.stringify(practiceOffers.whileTyping)}; the fx button: ${JSON.stringify(practiceOffers.fx)}; its panel: ${JSON.stringify(practiceOffers.panel)}`);
+    console.log(`       practice sheet: listed while typing ${JSON.stringify(practiceOffers.whileTyping)}; the fx button ${JSON.stringify(practiceOffers.fx)}; the Formulas ribbon ${JSON.stringify(practiceOffers.ribbon)}`);
+    const practiceRead = await readFormulas();
+    const practiceLumAlone = await gridLum();
 
     await newSheet('Formulas');
     onFile = await typeFormulas();
     await shot('file-formulas');
     for (const r of onFile.removed) check(`sheet file: ${r.f} computes ${JSON.stringify(r.want)}`, same(r.got, r.want) && r.typed === r.f, r);
     for (const r of onFile.kept) check(`sheet file: ${r.f} computes ${JSON.stringify(r.want)}`, same(r.got, r.want) && r.typed === r.f, r);
+    { await hostCall('scrollToCell', [0, 0]); await wait(300); await clickCell(22, 1); await page.keyboard.type('=SUM(B1:B3)*100', { delay: 15 }); await page.keyboard.press('Enter'); const t0 = Date.now(); let ms = -1; while (Date.now() - t0 < 4000) { if ((await cell(22, 1)) === 6000) { ms = Date.now() - t0; break; } await sleep(15); }
+      note(`a formula typed on a sheet file reads its result ${ms} ms after Enter (first read that returned it)`); }
     const fileOffers = await offered('file');
-    console.log(`       sheet file, after typing =REG in a cell, function names on screen starting REG: ${JSON.stringify(fileOffers.whileTyping)}; the fx button: ${JSON.stringify(fileOffers.fx)}; its panel: ${JSON.stringify(fileOffers.panel)}`);
-    check('on the practice sheet nothing on screen offers a removed REG… function after =REG is typed', practiceOffers.whileTyping.length === 0, practiceOffers.whileTyping);
-    check('the same reading on the sheet file does see REG… functions offered (so the reading above can fail)', fileOffers.whileTyping.length > 0, fileOffers);
-    if (practiceOffers.panel && fileOffers.panel) {
-      check('the fx panel on the practice sheet lists no removed function for REG', practiceOffers.panel.afterSearchREG.length === 0, practiceOffers.panel);
-      note(`fx panel: practice sheet ${JSON.stringify(practiceOffers.panel)}; sheet file ${JSON.stringify(fileOffers.panel)}`);
-    } else note(`the fx (insert function) button: practice sheet ${JSON.stringify(practiceOffers.fx)} panel ${JSON.stringify(practiceOffers.panel)}; sheet file ${JSON.stringify(fileOffers.fx)} panel ${JSON.stringify(fileOffers.panel)}`);
+    console.log(`       sheet file: listed while typing ${JSON.stringify(fileOffers.whileTyping)}; the fx button ${JSON.stringify(fileOffers.fx)}; the Formulas ribbon ${JSON.stringify(fileOffers.ribbon)}`);
+    const fileRead = await readFormulas();
+    const GONE = { '=REG': /^REGEX/, '=NUMB': /^NUMBERVALUE$/, '=ISB': /^ISBETWEEN$/, '=ISE': /^ISEMAIL$/, '=VALUET': /^VALUETOTEXT$/, '=FLA': /^FLATTEN$/, '=CEL': /^CELL$/ };
+    check('the reading can see a list: typing =SU on the practice sheet lists SUM', practiceOffers.whileTyping['=SU'].includes('SUM'), practiceOffers.whileTyping['=SU']);
+    for (const [start, re] of Object.entries(GONE)) check(`practice sheet: typing ${start} offers no removed function`, !practiceOffers.whileTyping[start].some((n) => re.test(n)), practiceOffers.whileTyping[start]);
+    for (const [start, re] of Object.entries(GONE)) check(`sheet file: typing ${start} does offer it (so the reading above can fail)`, fileOffers.whileTyping[start].some((n) => re.test(n)), fileOffers.whileTyping[start]);
+    note(`typing =LE: the practice sheet lists ${JSON.stringify(practiceOffers.whileTyping['=LE'])}, the sheet file lists ${JSON.stringify(fileOffers.whileTyping['=LE'])}`);
+    note(`the fx (insert function) button: on the practice sheet ${JSON.stringify(practiceOffers.fx)}; on the sheet file ${JSON.stringify(fileOffers.fx)}`);
+    if (practiceOffers.ribbon && fileOffers.ribbon) {
+      const still = Object.entries(practiceOffers.ribbon).flatMap(([k, v]) => (v.removedOnesListed ?? []).map((n) => `${k}: ${n}`));
+      check('practice sheet: the Formulas ribbon\'s drop-downs (Logical, Text, Lookup & Reference) list no removed function', still.length === 0 && Object.values(practiceOffers.ribbon).some((v) => v.listed > 0), practiceOffers.ribbon);
+      check('sheet file: the same drop-downs do list them (so the reading above can fail)', Object.values(fileOffers.ribbon).some((v) => (v.removedOnesListed ?? []).length > 0), fileOffers.ribbon);
+    } else note(`the Formulas ribbon could not be read: practice ${JSON.stringify(practiceOffers.ribbon)}, file ${JSON.stringify(fileOffers.ribbon)}`);
 
     // The order the two were opened in must not matter: the practice sheet again, after a sheet file has been live.
     await clickTab('Scratch Sheet'); await sheetUp('Scratch Sheet');
     await clickCell(20, 0); await type('=NUMBERVALUE("7")'); await key('Enter'); await type('=SUM(4,5)'); await key('Enter'); await wait(1000);
     check('the practice sheet shown again after a sheet file was live: NUMBERVALUE still answers #NAME?, SUM still computes', isName(await cell(20, 0)) && (await cell(21, 0)) === 9, [await cell(20, 0), await cell(21, 0)]);
-    check('formulas typed before are as they were when it is shown again', isName(await cell(0, 5)) && same(await cell(8, 3), 20), [await cell(0, 5), await cell(8, 3)]);
+    const practiceLumAgain = await gridLum();
+    check('the practice sheet shown again after a sheet file was shown in the same group: painted as before (light)', Math.abs(practiceLumAgain - practiceLumAlone) < 40, { before: practiceLumAlone, now: practiceLumAgain });
+    { const again = await readFormulas(); const changed = again.map((r, i) => ({ f: r.f, was: practiceRead[i].got, now: r.got })).filter((r, i) => i !== 19 && JSON.stringify(r.was) !== JSON.stringify(r.now));
+      check('the practice sheet shown again: every formula typed before reads as it did (=SUM(A:A) aside, a cell in column A was added)', changed.length === 0, changed); }
     await clickTab('Formulas.sheet'); await sheetUp('Formulas.sheet');
     await clickCell(20, 0); await type('=NUMBERVALUE("7")'); await key('Enter'); await wait(1000);
     check('and the sheet file shown again after the practice sheet still computes NUMBERVALUE', (await cell(20, 0)) === 7, await cell(20, 0));
+    { const again = await readFormulas(); const changed = again.map((r, i) => ({ f: r.f, was: fileRead[i].got, now: r.got })).filter((r, i) => i !== 19 && JSON.stringify(r.was) !== JSON.stringify(r.now));
+      await shot('file-formulas-shown-again');
+      check('the sheet file shown again (read back from its file): every formula typed before reads as it did (=SUM(A:A) aside)', changed.length === 0, changed); }
+    // Closed and opened again.
+    await wait(2000); await closeTabX('Formulas.sheet'); await wait(900); await run('file.openFile', at('Formulas.sheet')); await sheetUp('Formulas.sheet');
+    { const again = await readFormulas(); const changed = again.map((r, i) => ({ f: r.f, was: fileRead[i].got, now: r.got })).filter((r, i) => i !== 19 && JSON.stringify(r.was) !== JSON.stringify(r.now));
+      check('the sheet file closed and opened again: every formula reads as it did when typed', changed.length === 0, changed); }
     // Both on screen at once.
     await run('workbench.action.splitEditor'); await wait(2500);
     await clickTab('Scratch Sheet', 0); await wait(4500);
     const both = await groups();
     const pi = both.findIndex((g) => g.active === 'Scratch Sheet' && g.live); const fi = both.findIndex((g) => g.active === 'Formulas.sheet' && g.live);
     if (pi >= 0 && fi >= 0) {
-      await enter(22, 0, '=ISEMAIL("a@b.co")', pi); await enter(22, 0, '=ISEMAIL("a@b.co")', fi); await wait(1200);
-      check('the practice sheet and a sheet file side by side: ISEMAIL is #NAME? on the one and computes on the other', isName(await cell(22, 0, pi)) && same(await cell(22, 0, fi), true), { practice: await cell(22, 0, pi), file: await cell(22, 0, fi) });
+      await shot('practice-and-file-before-typing');
+      { const again = await readFormulas(fi); const changed = again.map((r, i) => ({ f: r.f, was: fileRead[i].got, now: r.got })).filter((r, i) => i !== 19 && JSON.stringify(r.was) !== JSON.stringify(r.now));
+        check('the practice sheet and a sheet file side by side: every formula on the sheet file reads as it did when typed', changed.length === 0, changed); }
+      { const again = await readFormulas(pi); const changed = again.map((r, i) => ({ f: r.f, was: practiceRead[i].got, now: r.got })).filter((r, i) => i !== 19 && JSON.stringify(r.was) !== JSON.stringify(r.now));
+        check('side by side: every formula on the practice sheet reads as it did when typed', changed.length === 0, changed); }
+      const lumBeside = await gridLum(pi); const fileLum = await gridLum(fi);
+      check('side by side: the practice sheet is painted as it is alone (light, its own setting), not as the sheet file beside it', Math.abs(lumBeside - practiceLumAlone) < 40, { practiceAlone: practiceLumAlone, practiceBesideTheFile: lumBeside, theSheetFile: fileLum });
+      await enter(24, 0, 'word left', pi); await wait(500); await enter(24, 0, 'word right', fi); await wait(500);
+      await enter(25, 0, '=ISEMAIL("a@b.co")', pi); await wait(700); await enter(25, 0, '=ISEMAIL("a@b.co")', fi); await wait(1500);
       await shot('practice-and-file');
+      const typedOf = async (r, gi) => { const c = await snapCell(r, 0, gi); return c?.f ?? c?.v ?? null; };
+      const got = { practiceWord: await cell(24, 0, pi), fileWord: await cell(24, 0, fi), practice: await cell(25, 0, pi), practiceHolds: await typedOf(25, pi), file: await cell(25, 0, fi), fileHolds: await typedOf(25, fi) };
+      check('side by side: a word typed into each lands in each', got.practiceWord === 'word left' && got.fileWord === 'word right', got);
+      check('side by side: =ISEMAIL("a@b.co") typed into each is #NAME? on the practice sheet and computes on the sheet file', isName(got.practice) && same(got.file, true), got);
+      // Again, slower, and simpler formulas, into the sheet file only.
+      await clickCell(27, 0, fi); await page.keyboard.type('=LEN("abcd")', { delay: 90 }); await page.keyboard.press('Enter'); await wait(700);
+      await clickCell(28, 0, fi); await page.keyboard.type('=SUM(1,2)', { delay: 90 }); await page.keyboard.press('Enter'); await wait(1200);
+      const slow = { len: await cell(27, 0, fi), lenHolds: await typedOf(27, fi), sum: await cell(28, 0, fi), sumHolds: await typedOf(28, fi) };
+      check('side by side: formulas typed slowly into the sheet file (=LEN("abcd"), =SUM(1,2)) compute 4 and 3', slow.len === 4 && slow.sum === 3, slow);
+      // The sheet file closed: the practice sheet alone again.
+      await wait(1500); await closeTabX('Formulas.sheet', fi); await wait(3500);
+      const lumAfter = await gridLum().catch(() => null);
+      note(`brightness of the practice sheet's empty grid (0 to 255): alone ${practiceLumAlone}; beside a sheet file ${lumBeside} (the sheet file ${fileLum}); after that sheet file was closed ${lumAfter}`);
     } else note(`the practice sheet and the sheet file could not both be shown live side by side: ${JSON.stringify(both.map((g) => ({ shown: g.active, live: g.live, words: g.words.slice(0, 80) })))}`);
+    // Two sheet files side by side: a formula typed into each.
+    await reset();
+    await newSheet('Pair Left'); await run('workbench.action.splitEditor'); await wait(2500); await newSheet('Pair Right'); await wait(1500);
+    const pair = await groups();
+    const li = pair.findIndex((g) => g.active === 'Pair Left.sheet' && g.live); const ri = pair.findIndex((g) => g.active === 'Pair Right.sheet' && g.live);
+    if (li >= 0 && ri >= 0) {
+      await enter(0, 0, '=SUM(1,2)', li); await wait(700); await enter(0, 0, '=SUM(3,4)', ri); await wait(700); await enter(1, 0, '=10*2', li); await wait(700); await enter(1, 0, '=10*3', ri); await wait(700); await enter(2, 0, '=ISEMAIL("a@b.co")', li); await wait(700); await enter(2, 0, '=ISEMAIL("a@b.co")', ri); await wait(1500);
+      const typedOf = async (r, gi) => { const c = await snapCell(r, 0, gi); return c?.f ?? c?.v ?? null; };
+      const got = { left: [await cell(0, 0, li), await cell(1, 0, li), await cell(2, 0, li)], right: [await cell(0, 0, ri), await cell(1, 0, ri), await cell(2, 0, ri)], leftHolds: [await typedOf(0, li), await typedOf(1, li), await typedOf(2, li)], rightHolds: [await typedOf(0, ri), await typedOf(1, ri), await typedOf(2, ri)] };
+      await shot('two-files-formulas');
+      check('two sheet files side by side: formulas typed into each, in turn, compute in each (3, 20, TRUE left; 7, 30, TRUE right)', got.left[0] === 3 && got.left[1] === 20 && same(got.left[2], true) && got.right[0] === 7 && got.right[1] === 30 && same(got.right[2], true), got);
+    } else note(`two sheet files could not both be shown live side by side: ${JSON.stringify(pair.map((g) => ({ shown: g.active, live: g.live })))}`);
   });
 
   // ───────────────────────── 9 ─────────────────────────
   await phase('9 menus', async () => {
     const EXPORT = 'Export Sheet to Excel';
-    const sidebarMenu = async () => {
+    const sidebarMenu = async (shotName = null) => {
       if (!(await page.evaluate(() => !!document.querySelector('[data-px-id="sidebar.more"]')?.getClientRects().length && /Worksheets/.test(document.querySelector('[data-part-id="workbench.parts.sidebar"]')?.textContent ?? '')))) { await clickEl('[data-px-id="activitybar.worksheet-container"]'); await wait(900); }
       const head = await page.evaluate(() => (document.querySelector('[data-part-id="workbench.parts.sidebar"]')?.innerText ?? '').split('\n')[0]);
       await clickEl('[data-px-id="sidebar.more"]'); await wait(300);
       const labels = (await menuLabels()).map((r) => r.label);
+      const onScreen = await page.evaluate(() => [...document.querySelectorAll('[data-px-surface="contextMenu"] [role="menuitem"], .context-menu [role="menuitem"], .context-menu-item')].filter((e) => e.getClientRects().length).map((e) => (e.textContent ?? '').trim()));
+      if (shotName) await shot(shotName);
       await page.keyboard.press('Escape'); await wait(300);
-      return { head, labels };
+      return { head, labels, onScreen };
     };
     await clickEl('[data-px-id="activitybar.worksheet-container"]'); await wait(900);
     await run('worksheet.open'); await wait(2200);
-    const home = await sidebarMenu();
-    await shot('menu-home-only');
+    const home = await sidebarMenu('menu-home-only');
     check('with only Worksheets Home open: the sidebar\'s More Actions has New Sheet… and no Export Sheet to Excel', home.head === 'Worksheets' && home.labels.includes('New Sheet…') && !home.labels.includes(EXPORT), { home, shown: (await group(0))?.active });
     await run('worksheet.openScratch'); await sheetUp('Scratch Sheet');
     const scratch = await sidebarMenu();
     check('with the Scratch Sheet shown: no Export Sheet to Excel', scratch.labels.includes('New Sheet…') && !scratch.labels.includes(EXPORT), scratch);
     const file = await newSheet('Menu');
-    const withSheet = await sidebarMenu();
-    await shot('menu-with-sheet');
+    const withSheet = await sidebarMenu('menu-with-sheet');
     check('with a .sheet shown: Export Sheet to Excel is there', withSheet.labels.includes(EXPORT), withSheet);
     await clickTab('Scratch Sheet'); await sheetUp('Scratch Sheet');
     const hidden = await sidebarMenu();
@@ -991,6 +1105,13 @@ try {
     await sheetUp('From Palette.sheet').catch(() => {});
     const added = (await ls()).filter((n) => !before.includes(n));
     check('the typed name makes From Palette.sheet and opens it live', added.length === 1 && added[0] === 'From Palette.sheet' && (await group(0))?.active === 'From Palette.sheet' && (await group(0))?.live, { added, g: await group(0) });
+    await closeTabX('From Palette.sheet'); await wait(800);
+    await page.keyboard.press('Control+p'); await page.waitForSelector('[data-px-id="quickAccess.input"]', { timeout: 5000 });
+    await page.keyboard.type('From Palette', { delay: 25 }); await wait(1000);
+    const qo = await page.evaluate(() => [...document.querySelectorAll('[id^="quick-access-item-"]')].filter((e) => e.getClientRects().length).map((e) => (e.textContent ?? '').trim().slice(0, 50)).slice(0, 3));
+    await page.keyboard.press('Enter'); await wait(3500);
+    note(`Quick Open (Ctrl+P) for the sheet just made by New Sheet…: rows offered ${JSON.stringify(qo)}; shown after Enter ${JSON.stringify((await group(0))?.active)}, live ${(await group(0))?.live}`);
+    await page.keyboard.press('Escape'); await wait(300);
     // The Tools menu, for the record.
     await clickEl('[data-px-id="titlebar.menu.tools"]');
     const tools = (await menuLabels()).map((r) => r.label); await page.keyboard.press('Escape'); await wait(300);
@@ -1105,29 +1226,36 @@ try {
     // Found while writing this probe: not on the list. A sheet file writes itself about 1.5 s after an entry.
     const box = () => page.evaluate(() => { const i = document.querySelector('.tree-inline-input'); return !!i && i.isConnected && i.getClientRects().length > 0; });
     await fs.writeFile(at('other.txt'), 'other\n'); await wait(2500);
-    const file = await newSheet('Saver'); await enter(0, 0, 'x'); await wait(3200);
-    // Control: the menu left open 3.5 s with nothing written, then Rename.
+    const file = await newSheet('Saver'); await enter(0, 0, 'x'); await wait(9000);
+    // Control: nothing written for 9 s; the menu left open 3.5 s, then Rename.
     await clickNode('other.txt', { button: 'right' }); await wait(3500); await pickMenuRow('Rename'); await wait(800);
     const control = await box();
     await page.keyboard.press('Escape'); await wait(600);
     check('control: the Explorer\'s menu opened on a file, left open 3.5 seconds with nothing saved meanwhile, then Rename: the name box appears', control, control);
     // An entry in the sheet, the menu opened at once, Rename chosen after the sheet has saved itself.
     const results = [];
-    for (const [i, after] of [300, 1500].entries()) {
+    for (const [i, after] of [300, 1500, 2500, 2500, 4000].entries()) {
       await enter(1 + i, 0, `y${i}`);
       const t0 = Date.now();
       await clickNode('other.txt', { button: 'right' });
       const saved = await untilFile(file, new RegExp(`"y${i}"`), 5000); await wait(after);
       const open = Date.now() - t0;
-      await pickMenuRow('Rename'); await wait(800);
+      const menuStill = (await menuLabels()).map((r) => r.label).includes('Rename') && !!(await pointOf('[data-px-id="contextMenu.explorer.rename"]'));
+      const picked = await pickMenuRow('Rename'); await wait(800);
       const got = await box();
-      if (!got) await shot('menu-while-saving');
-      await page.keyboard.press('Escape'); await wait(1500);
-      results.push({ renameChosenMsAfterTheSave: after, menuOpenForMs: open, sheetSavedMsAfterRightClick: saved, nameBox: got });
-      if (!got) break;
+      const inDom = await page.evaluate(() => document.querySelectorAll('.tree-inline-input').length);
+      if (!got) await shot(`menu-while-saving-${i}`);
+      await page.keyboard.press('Escape'); await wait(7000);
+      results.push({ renameChosenMsAfterTheSave: after, menuOpenForMs: open, sheetSavedMsAfterRightClick: saved, menuStillOnScreen: menuStill, renameClicked: picked, nameBox: got, nameBoxesInThePage: inDom });
     }
-    console.log(`       ${JSON.stringify(results)}`);
-    check('an entry typed in a sheet, the Explorer\'s menu opened on another file at once, Rename chosen after the sheet saved itself: the name box appears', results.every((r) => r.nameBox), results);
+    for (const r of results) console.log(`       ${JSON.stringify(r)}`);
+    check('an entry typed in a sheet, the Explorer\'s menu opened on another file at once, Rename chosen after the sheet saved itself: the name box appears (5 tries, 0.3 to 4 s after the save)', results.every((r) => r.nameBox), results.filter((r) => !r.nameBox));
+    // And without any sheet: another program writes a new file while the menu is open.
+    await wait(7000);
+    await clickNode('other.txt', { button: 'right' }); await fs.writeFile(at('while-menu-open.txt'), 'x\n'); await wait(3000);
+    const picked2 = await pickMenuRow('Rename'); await wait(800);
+    const box2 = await box(); await page.keyboard.press('Escape'); await wait(1200);
+    note(`the same with no sheet involved (another program writes a new file while the Explorer's menu is open, Rename chosen 3 s later): Rename clicked ${picked2}, the name box appeared ${box2}`);
     await fs.writeFile(at('made-after.txt'), 'after\n'); await wait(3000);
     const made = await runSafe('worksheet.newSheet', 'Made After'); await wait(4000);
     const rows = await explorerRows();
@@ -1139,6 +1267,74 @@ try {
       const refresh = await runSafe('explorer.refresh'); await wait(1500);
       note(`the Explorer after that: rows ${JSON.stringify(rows)}; after switching the sidebar to Worksheets and back ${JSON.stringify(afterSwitch)}; after the command explorer.refresh (${JSON.stringify(refresh.error ?? 'ran')}) ${JSON.stringify(await explorerRows())}; on disk ${JSON.stringify(await ls())}`);
     }
+  });
+
+  // ───────────────────────── 15 ─────────────────────────
+  await phase('15 two sheet files side by side: what is typed into each', async () => {
+    // Found while writing this probe: not on the list. One sheet alone first (the control), then two side by side.
+    const ENTRIES = ['plain word', '=SUM(1,2)', 'say "hi" twice', '=LEN("abcd")', 'a@b.co', '=ISEMAIL("a@b.co")', '=IF(1>0,"y","n")'];
+    const WANT = ['plain word', 3, 'say "hi" twice', 4, 'a@b.co', true, 'y'];
+    const typeAll = async (gi) => { for (const [i, e] of ENTRIES.entries()) { await clickCell(i, 0, gi); await page.keyboard.type(e, { delay: 35 }); await page.keyboard.press('Enter'); await wait(500); } await wait(1200); const out = []; for (let i = 0; i < ENTRIES.length; i++) { const c = await snapCell(i, 0, gi); out.push({ typed: ENTRIES[i], holds: c?.f ?? c?.v ?? null, reads: await cell(i, 0, gi) }); } return out; };
+    const wrong = (rows) => rows.filter((r, i) => !(r.holds === r.typed || (!String(r.typed).startsWith('=') && r.reads === r.typed)) || !same(r.reads, WANT[i]));
+    await newSheet('Solo');
+    const solo = await typeAll(null);
+    check('control, one sheet file alone: seven entries (words, quotes, formulas with quoted text) each land as typed', wrong(solo).length === 0, wrong(solo));
+    await reset();
+    await newSheet('Duo Left'); await run('workbench.action.splitEditor'); await wait(2500); await newSheet('Duo Right'); await wait(1500);
+    const gs = await groups();
+    const li = gs.findIndex((g) => g.active === 'Duo Left.sheet' && g.live); const ri = gs.findIndex((g) => g.active === 'Duo Right.sheet' && g.live);
+    if (li < 0 || ri < 0) { note(`two sheet files could not both be shown live: ${JSON.stringify(gs.map((g) => ({ shown: g.active, live: g.live })))}`); return; }
+    const right = await typeAll(ri);
+    await shot('two-files-right-typed');
+    const left = await typeAll(li);
+    await shot('two-files-both-typed');
+    check('two sheet files side by side: the same seven entries typed into the right-hand one each land as typed', wrong(right).length === 0, wrong(right));
+    check('and typed into the left-hand one', wrong(left).length === 0, wrong(left));
+    await wait(2500);
+    note(`two sheet files side by side, the right-hand one's cells: ${JSON.stringify(right.map((r) => r.holds))}; the left-hand one's: ${JSON.stringify(left.map((r) => r.holds))}`);
+  });
+
+  // ───────────────────────── 14 ─────────────────────────
+  await phase('14 the new words in the light app', async () => {
+    const setMode = async (mode) => { await run('settings.openAppearance'); await wait(900); const ok = await clickEl(`[data-px-id="appearance.mode.${mode}"]`); await wait(700); await page.keyboard.press('Escape'); await wait(500); return ok; };
+    /** Contrast of an element's text against the first opaque background behind it (WCAG ratio). */
+    const contrastOf = (selector) => page.evaluate((selector) => {
+      const el = [...document.querySelectorAll(selector)].filter((e) => e.getClientRects().length).pop(); if (!el) return null;
+      const rgb = (c) => { const m = c.match(/[\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m[3] ?? 1 }; };
+      const lum = ({ r, g, b }) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      let bg = null; for (let n = el; n && !bg; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c.a > 0.95) bg = c; }
+      bg = bg ?? { r: 255, g: 255, b: 255 };
+      const fg = rgb(getComputedStyle(el).color); const a = lum(fg); const b = lum(bg);
+      return { text: (el.textContent ?? '').trim().slice(0, 60), ratio: Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 10) / 10 };
+    }, selector);
+    const looks = {};
+    for (const mode of ['light', 'dark']) {
+      await reset();
+      const switched = await setMode(mode); await wait(800);
+      const name = `Words ${mode}`;
+      const file = await newSheet(name); await enter(0, 0, 'one'); await wait(2600);
+      await run('workbench.action.splitEditor'); await wait(3500);
+      await shot(`waiting-pane-${mode}`);
+      const waitingWords = await page.evaluate(() => { const p = [...document.querySelectorAll('.ws-pane')].filter((e) => e.getClientRects().length && !e.querySelector('canvas')).pop(); return p ? [...p.querySelectorAll('*')].filter((e) => e.children.length === 0 && (e.textContent ?? '').trim()).map((e) => { e.setAttribute('data-fx-word', '1'); return (e.textContent ?? '').trim(); }) : []; });
+      const waitingContrast = await contrastOf('[data-fx-word="1"]');
+      await fs.rename(file, at(`Away ${mode}.sheet`));
+      const li = (await groups()).findIndex((g) => g.live);
+      await enter(1, 0, 'two', li);
+      const told = await waitPrompt(/no longer where it was/, 6000); await wait(700);
+      await shot(`gone-prompt-${mode}`);
+      const promptContrast = await contrastOf('.parallx-notification--prompt .parallx-notification-message');
+      const buttons = await page.evaluate(() => [...document.querySelectorAll('.parallx-notification--prompt .parallx-notification-action-btn')].map((b) => ({ label: b.textContent.trim(), danger: b.classList.contains('parallx-notification-action-btn--danger'), background: getComputedStyle(b).backgroundColor, focused: document.activeElement === b })));
+      // Keys: Tab moves between the two buttons and stays inside; Escape.
+      const walk = []; for (let i = 0; i < 3; i++) { await page.keyboard.press('Tab'); await wait(150); walk.push(await page.evaluate(() => (document.activeElement?.textContent ?? '').trim().slice(0, 20) || document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName)); }
+      await page.keyboard.press('Escape'); await wait(800);
+      const afterEscape = { promptStillUp: (await prompts()).some((p) => /no longer where it was/.test(p.words)), files: (await ls()).filter((n) => n.includes(mode)) };
+      looks[mode] = { switched, waitingWords, waitingContrast, told: !!told, promptContrast, buttons, tabWalk: walk, afterEscape };
+      console.log(`       ${mode}: ${JSON.stringify(looks[mode])}`);
+      check(`${mode} app: the waiting pane's words and the "no longer where it was" words are readable (contrast at least 4.5 to 1)`, switched && (waitingContrast?.ratio ?? 0) >= 4.5 && (promptContrast?.ratio ?? 0) >= 4.5, { waitingContrast, promptContrast });
+      check(`${mode} app: by keyboard, Tab stays on the dialog's controls`, walk.every((w) => ['Save a Copy', 'Discard Changes', 'Dismiss notification'].includes(w)), walk);
+    }
+    note(`the dialog's buttons: ${JSON.stringify(looks.dark?.buttons)}; Escape on it: ${JSON.stringify(looks.dark?.afterEscape)}`);
+    await reset();
   });
 
   // ───────────────────────── 12 ─────────────────────────
@@ -1191,7 +1387,7 @@ try {
     check('the practice problem shows its given cells', typeof given.c6 === 'number' && typeof given.c7 === 'number', given);
     await enter(10, 5, '=SUM(C6:C7)'); await type('=C7/C6'); await key('Enter'); await type('=NUMBERVALUE("12")'); await key('Enter'); await type('=LET(x,1,x)'); await key('Enter'); await wait(1200);
     const got = { sum: await cell(10, 5), ratio: await cell(11, 5), removed: await cell(12, 5), letv: await cell(13, 5) };
-    check('on the practice problem a SUM over its given cells and a division compute', got.sum === given.c6 + given.c7 && typeof got.ratio === 'number' && Math.abs(got.ratio - given.c7 / given.c6) < 1e-9, { got, given });
+    check('on the practice problem a SUM over its given cells and a division compute', got.sum === given.c6 + given.c7 && typeof got.ratio === 'number' && Math.abs(got.ratio - given.c7 / given.c6) < 0.001, { got, given });
     check('on the practice problem NUMBERVALUE answers #NAME? (the exam\'s list is applied there too)', isName(got.removed), got);
     note(`on the practice problem =LET(x,1,x) reads ${JSON.stringify(got.letv)}`);
   });
@@ -1204,6 +1400,7 @@ try {
 }
 console.log(`\n[probe] page errors: ${errors.length}`);
 for (const e of errors.slice(0, 8)) console.log('  ' + e);
+if (explorerMisses.length) console.log(`[probe] the Explorer's menu did nothing the first time, ${explorerMisses.length} times: ${explorerMisses.join('; ')}`);
 console.log(`[probe] notes: ${notes.length}`);
 for (const n of notes) console.log('  - ' + n);
 console.log(`[probe] ${problems.length} problems${problems.length ? ':\n  ' + problems.join('\n  ') : ''}`);

@@ -306,6 +306,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `welcome.openWelcome` | Welcome: Show Welcome Page | welcome |  |  |  |
 | `worksheet.addTag` | Worksheets: Add Tag to Problem | worksheet |  |  |  |
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |
+| `worksheet.bringSheetForward` | Worksheets: Work on This Sheet | worksheet |  |  |  |
 | `worksheet.dashboard` | Worksheets: Open Dashboard | worksheet |  |  |  |
 | `worksheet.exportSheet` | Worksheets: Export Sheet to Excel | worksheet |  |  |  |
 | `worksheet.generate` | Worksheets: Generate Items | worksheet |  |  |  |

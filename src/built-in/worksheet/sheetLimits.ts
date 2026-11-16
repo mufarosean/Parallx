@@ -110,3 +110,23 @@ export function installSheetGrowth(univer: Univer, univerAPI: FUniver, isDispose
     return { dispose: () => {} };
   }
 }
+
+/**
+ * How many engines are live in this window, and a call when that changes.
+ * The engine is built for one live instance: two at once share its formula
+ * editor and its module-level caches, and what is typed into one can land
+ * garbled in the other. A sheet file's pane reads this to wait its turn.
+ */
+export const liveEngines = {
+  count: 0,
+  listeners: new Set<() => void>(),
+  set(count: number): void {
+    if (count === this.count) return;
+    this.count = count;
+    for (const listener of [...this.listeners]) { try { listener(); } catch (err) { console.warn('[WorksheetHost] a live-engine listener failed:', err); } }
+  },
+  onChange(listener: () => void): { dispose(): void } {
+    this.listeners.add(listener);
+    return { dispose: () => { this.listeners.delete(listener); } };
+  },
+};

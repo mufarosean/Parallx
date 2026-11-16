@@ -10,7 +10,7 @@ import { notifyWorksheetViewsChanged, getQuizSession, savePlanJson, clearPlan } 
 import type { PlanActions } from './panes/planPane.js';
 import { parsePlan } from './plan.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
-import { practiceListeners, reviewListeners, beginPractice, state } from './state.js';
+import { practiceListeners, reviewListeners, beginPractice, sheetsToFocus, state } from './state.js';
 import { WS_ICON_SVG } from './widgets.js';
 
 /** A past quiz reopened: the same player over the same problems, with the
@@ -79,19 +79,23 @@ export async function sheetFileExists(filePath: string): Promise<boolean> {
   try { return (await state.api?.workspace?.fs?.exists(fileUriOf(filePath))) !== false; } catch { return true; }
 }
 
-/** Write a sheet's text to a new file beside where it was, and open it: the way out when its own file is gone. */
-export async function saveSheetCopy(filePath: string, text: string): Promise<void> {
+/** Write a sheet's text to a new file beside where it was, then open it (after `beforeOpening`, when given): where the work goes when its own file is gone. Returns the copy's file name. */
+export async function saveSheetCopy(filePath: string, text: string, beforeOpening?: () => Promise<void>): Promise<string | undefined> {
   const api = state.api;
   const fs = api?.workspace?.fs;
-  if (!api || !fs) return;
+  if (!api || !fs) return undefined;
   try {
     const folder = URI.file(filePath).dirname ?? URI.file(filePath);
     const taken = (await fs.readdir(folder.toString()).catch(() => [] as { name: string }[])).map((entry) => entry.name);
     const target = folder.joinPath(uniqueSheetFileName(sheetTitle(filePath), taken));
     await fs.writeFile(target.toString(), text);
+    // The copy is on disk before anything is closed or opened.
+    await beforeOpening?.();
     await api.editors.openFileEditor?.(target.fsPath);
+    return target.basename;
   } catch (err) {
     void api.window?.showErrorMessage?.(`The copy could not be saved: ${(err as Error).message}`);
+    return undefined;
   }
 }
 
@@ -122,6 +126,8 @@ export async function newSheet(name?: unknown, folder?: unknown): Promise<string
     void api.window?.showErrorMessage?.(`The sheet could not be made: ${(err as Error).message}`);
     return undefined;
   }
+  // A sheet just made is made to be typed into: it takes the keyboard when it opens.
+  sheetsToFocus.add(target.fsPath);
   await api.editors.openFileEditor?.(target.fsPath);
   return target.fsPath;
 }

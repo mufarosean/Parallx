@@ -537,27 +537,39 @@ try {
     await closeTab('Two Tabs.sheet');
   });
 
-  await phase('X two sheet files side by side', async () => {
+  // Rewritten by the builder after this probe's writer found, with a later probe, that two live sheets side by side
+  // garble each other's formulas. The check here was "both are live sheets"; the design is now one live sheet at a
+  // time, so it checks that: one is live, the other waits and says so, its button swaps them, and each file keeps
+  // its own entries.
+  await phase('X two sheet files side by side: one is live at a time', async () => {
     await closeSheetTabs();
     const left = await makeSheet('Side Left'); await sheetUp('Side Left.sheet');
     await clickCell(0, 0); await type('left one'); await key('Enter'); await wait(2200);
     await run('workbench.action.splitEditor'); await wait(2500);
     const right = await makeSheet('Side Right'); await wait(4500);
-    const panes = () => page.evaluate(() => [...document.querySelectorAll('.ws-pane__sheet')].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); const h = e.__wsHost; let a1 = null; let alive = false; try { a1 = h?.probeReadValue(0, 0) ?? null; alive = !!h?.getSnapshot(); } catch { /* engine gone */ } return { x: Math.round(b.left), w: Math.round(b.width), host: !!h, alive, a1, canvas: !!e.querySelector('canvas'), words: e.querySelector('canvas') ? '' : (e.textContent ?? '').slice(0, 80) }; }));
+    const panes = () => page.evaluate(() => [...document.querySelectorAll('.ws-pane')].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); const h = e.__wsHost; let a1 = null; let alive = false; try { a1 = h?.probeReadValue(0, 0) ?? null; alive = !!h?.getSnapshot(); } catch { /* engine gone */ } const btn = [...e.querySelectorAll('button')].find((k) => /Work on This Sheet/.test(k.textContent ?? '')); const bb = btn?.getBoundingClientRect(); return { x: Math.round(b.left), w: Math.round(b.width), host: !!h, alive, a1, canvas: !!e.querySelector('canvas'), words: e.querySelector('canvas') ? '' : (e.textContent ?? '').slice(0, 120), button: bb ? { x: bb.left + bb.width / 2, y: bb.top + bb.height / 2 } : null }; }));
+    /** Type a word into the third row of the one live sheet. */
+    const typeIntoLive = async (word) => { const p = await page.evaluate(() => { const e = [...document.querySelectorAll('.ws-pane__sheet')].find((k) => k.getClientRects().length && k.__wsHost); const cv = [...e.querySelectorAll('canvas')].find((k) => k.id.startsWith('univer-sheet-main-canvas')); const b = cv.getBoundingClientRect(); return { x: b.left + 46 + 44, y: b.top + 20 + 24 * 2 + 12 }; }); await page.mouse.click(p.x, p.y); await wait(300); await page.keyboard.type(word, { delay: 20 }); await page.keyboard.press('Enter'); await wait(400); };
     const seen = await panes();
     await shot('side-by-side');
     console.log(`       panes on screen: ${JSON.stringify(seen)}; groups' active tabs: ${JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.ui-tab--active .ui-tab-label')].map((e) => e.textContent.trim())))}`);
-    check('two sheet files shown side by side are both live sheets', seen.length === 2 && seen.every((p) => p.host && p.alive && p.canvas), seen);
-    // Type into each by its place on screen.
-    for (const [i, word] of ['typed left', 'typed right'].entries()) {
-      const p = seen[i]; if (!p) continue;
-      await page.mouse.click(p.x + 46 + 44, [...await page.evaluate(() => [...document.querySelectorAll('.ws-pane__sheet')].filter((e) => e.getClientRects().length).map((e) => { const cv = [...e.querySelectorAll('canvas')].find((k) => k.id.startsWith('univer-sheet-main-canvas')); return cv ? cv.getBoundingClientRect().top + 20 + 24 * 2 + 12 : e.getBoundingClientRect().top + 150; }))][i]);
-      await wait(300); await page.keyboard.type(word, { delay: 20 }); await page.keyboard.press('Enter'); await wait(400);
-    }
+    const live = seen.filter((p) => p.host && p.alive && p.canvas); const waits = seen.filter((p) => !p.host);
+    check('of two sheet files shown side by side, one is a live sheet and the other waits, saying so, with a button', seen.length === 2 && live.length === 1 && waits.length === 1 && /Another sheet is being worked on/.test(waits[0].words) && !!waits[0].button, seen);
+    const firstLiveX = live[0]?.x;
+    await typeIntoLive('typed first');
+    await wait(2500);
+    if (waits[0]?.button) { await page.mouse.click(waits[0].button.x, waits[0].button.y); await wait(5000); }
+    const swapped = await panes();
+    const live2 = swapped.filter((p) => p.host && p.alive && p.canvas);
+    check('Work on This Sheet swaps them: the other pane is now the live one and the first waits', swapped.length === 2 && live2.length === 1 && live2[0].x !== firstLiveX && swapped.some((p) => !p.host && /Another sheet is being worked on/.test(p.words)), swapped);
+    await typeIntoLive('typed second');
     await wait(3000);
     const l = await fileText(left); const r = await fileText(right);
-    check('each file holds what was typed into its own side, and nothing of the other', /left one/.test(l) && /typed left/.test(l) && !/typed right/.test(l) && /typed right/.test(r) && !/typed left/.test(r) && !/left one/.test(r), { left: l.slice(-220), right: r.slice(-220), panes: await panes() });
+    const firstIsRight = firstLiveX > 500;
+    const [a, b] = firstIsRight ? [r, l] : [l, r];
+    check('each file holds what was typed into it while it was the live one, and nothing of the other', /left one/.test(l) && !/left one/.test(r) && /typed first/.test(a) && !/typed second/.test(a) && /typed second/.test(b) && !/typed first/.test(b), { left: l.slice(-220), right: r.slice(-220), panes: await panes() });
     await shot('side-by-side-typed');
+    await oneGroup();
     for (const t of ['Side Right.sheet', 'Side Left.sheet']) await closeTab(t);
   });
 

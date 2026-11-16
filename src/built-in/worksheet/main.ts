@@ -35,7 +35,7 @@ import { practiceBlock } from './worksheetPracticeBlock.js';
 import { worksheetQuestionProvider } from './questionProvider.js';
 import { registerQuestionProvider } from '../../services/questionProviders.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
-import { createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
+import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
 import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilder, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
 import { createBankPane, readPendingRecipes } from './panes/bankPane.js';
 import { createExcelImportPane } from './panes/excelImportPane.js';
@@ -148,6 +148,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.exportSheet', () => exportOpenSheetFile()),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.bringSheetForward', (paneId?: unknown) => bringSheetForward(paneId)),
   );
 
   context.subscriptions.push(

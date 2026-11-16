@@ -37,7 +37,8 @@ import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
 import { ATHENA_ROWS, ATHENA_COLUMNS, type SheetLimits } from './worksheetConstants.js';
-import { EXAM_LIMITS, holdToFunctions, installSheetGrowth } from './sheetLimits.js';
+import { EXAM_LIMITS, holdToFunctions, installSheetGrowth, liveEngines } from './sheetLimits.js';
+export { liveEngines };
 import { ensureUniverEditorExits, installSheetAccess } from './univerKeyboard.js';
 export { ATHENA_ROWS, ATHENA_COLUMNS };
 
@@ -432,7 +433,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // outside the app). Every calculation result is scanned for error values;
   // each one is reported once per cell with the formula text and the state
   // of the engine at that moment.
-  _hostsAlive++;
+  liveEngines.set(++_hostsAlive);
   const mountedAt = Date.now();
   const reportedErrors = new Set<string>();
   const ERROR_VALUE = /^#(NAME\?|VALUE!|REF!|DIV\/0!|N\/A|NUM!|NULL!|SPILL!|CALC!)$/;
@@ -988,7 +989,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       disposed = true;
       renderedResolve();
       opts.container.removeAttribute('data-px-owns-zoom');
-      _hostsAlive = Math.max(0, _hostsAlive - 1);
+      liveEngines.set(_hostsAlive = Math.max(0, _hostsAlive - 1));
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);
       opts.container.removeEventListener('keydown', onEditKeydown, true);

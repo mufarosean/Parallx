@@ -262,13 +262,17 @@ Found by the review and fixed:
   it, waits for each one's last save, and after a rename or a move opens
   them again under the new name (every kind of file tab; a tab with
   unsaved changes is left alone by a rename). A sheet whose file was
-  taken away by something else is never written back: every save asks
-  first whether the file is still there, and a dialog that waits offers
-  Save a Copy, the tab closing either way.
+  taken away by something outside the app is never written back: every
+  save asks first whether the file is still there. Work the file does
+  not hold is kept as a copy beside where it was, which opens in the
+  tab's place; with nothing unsaved the tab closes. Either way it is
+  said. Nothing is asked: the first version asked in a dialog, and a
+  dialog that appears while a person types is answered by their next
+  key or click (in the builder's own run a stray click closed the tab
+  without saving).
 - The same sheet shown twice (Split Editor) was two engines each writing
   its whole sheet over the other's: the second save erased the first
-  pane's entry. Now one pane holds a file; the other says where it is
-  and takes over when the first closes.
+  pane's entry. Now one sheet is live at a time (below).
 - Undo did nothing the first time after the grid grew (it undid the
   growing). Growing is no longer in the undo history.
 - An entry made in the last second and a half before the window closed
@@ -325,11 +329,45 @@ them.
   compared whole paths; its test used whole paths, so it passed).
 - The "file is gone" notice was a toast that left after five seconds,
   and the tab stayed open keeping nothing; Save a Copy saved an old
-  snapshot. Now a dialog that waits, and the copy is what is on screen.
+  snapshot. Now nothing is asked and nothing is lost (above).
 - BAHTTEXT was taken off the practice sheet for a misspelling in
   Pearson's workbook (above).
 - Export was still offered in the command palette when it could not
   work.
+
+The app verifier was cut off by the 5-hour limit a second time, before
+it could report. It left a full run of its own probe on the first fix
+commit (`tests/probes/sheet-file-fixes-probe.mjs`, 232 checks passed, 28
+failed). Most of the 28 are the ones above. Three were new, and are
+fixed:
+
+- Two sheets side by side garbled each other's formulas: `=ISEMAIL(…)`
+  typed into the right one was stored as `)`, and `=LET(x,1,x)` on a
+  sheet file turned to #VALUE! with a practice sheet beside it. The
+  engine is built for one live instance in a window, and its formula
+  editor and caches are shared. So one sheet is live at a time where a
+  sheet file is concerned: a second sheet file (or the same file in
+  another group) waits and says so, with a Work on This Sheet button
+  that saves the live one and swaps them; a sheet file gives way when a
+  practice sheet opens beside it and comes back when that one is closed
+  or left. **A limit for him to know: two sheets cannot both be typed
+  into side by side.** Two practice sheets side by side are as they
+  were before; that pane was not changed.
+- A click on a sheet's row in the Explorer put the keyboard in the
+  sheet, so F2 edited a cell and Delete emptied the selected cell
+  instead of deleting the file. The keyboard now stays where it was
+  when a sheet is opened from outside the editor area; a sheet just
+  made by New Sheet… takes it, so typing goes straight in.
+- Dragging a file onto a folder in the Explorer threw an error after
+  the move (the drag's end cleared what the code went on to read). This
+  was so for any file, open or not, and before this piece.
+
+Seen by it and left: on a practice sheet the Formulas ribbon's lists
+still offer LET, NUMBERVALUE, REGEXEXTRACT, REGEXMATCH, REGEXREPLACE and
+VALUETOTEXT, which then answer #NAME? (typing `=LE` no longer suggests
+LET); a sheet just made is not in Quick Open's list at once; the
+Explorer's menu, left open about three seconds, does nothing when Rename
+is then chosen (with no sheet involved, so not this piece).
 
 Found by them and left: a reopened tab comes back as the last tab of the
 active group, not where it was, and loses its scroll place; the chat's

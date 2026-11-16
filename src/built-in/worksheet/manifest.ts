@@ -20,7 +20,7 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
     menus: {
       'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }],
       // The palette offers the export only while there is a sheet file to export.
-      commandPalette: [{ command: 'worksheet.exportSheet', when: SHEET_ON_SCREEN_WHEN }],
+      commandPalette: [{ command: 'worksheet.exportSheet', when: SHEET_ON_SCREEN_WHEN }, { command: 'worksheet.bringSheetForward', when: 'false' }],
       // Its sidebar's More Actions menu.
       'viewContainer/title': [
         { command: 'worksheet.newSheet', title: 'New Sheet…', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },
@@ -40,6 +40,8 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Open a blank exam-faithful practice sheet.' },
       { id: 'worksheet.newSheet', title: 'Worksheets: New Sheet…',
         aiInvocable: true, aiDescription: 'Make a new spreadsheet file (.sheet) in the workspace and open it: every function, no size limit, saved as you work. Arguments: an optional name.' },
+      { id: 'worksheet.bringSheetForward', title: 'Worksheets: Work on This Sheet',
+        aiInvocable: false, aiDescription: 'The button on a sheet file that is waiting for another sheet: the other saves and waits, and this one becomes the live sheet. Not run by hand.' },
       { id: 'worksheet.exportSheet', title: 'Worksheets: Export Sheet to Excel',
         aiInvocable: false, aiDescription: 'Save a copy of the sheet file on screen as .xlsx, values and formulas. The system asks where to save it.' },
       { id: 'worksheet.generate', title: 'Worksheets: Generate Items',

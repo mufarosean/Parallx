@@ -1113,27 +1113,28 @@ function setupDropTarget(el: HTMLElement, node: TreeNode): void {
     e.preventDefault();
     clearDropHighlight();
 
-    if (!_dragSourceNode) return;
+    const source = _dragSourceNode; // the drag's end clears it while this waits
+    if (!source) return;
 
     const targetFolder = node.type === FILE_TYPE_DIRECTORY ? node : node.parent;
     if (!targetFolder) return;
 
     // Validate
-    if (_dragSourceNode.uri === targetFolder.uri) return;
-    if (isDescendant(targetFolder, _dragSourceNode)) return;
-    if (_dragSourceNode.parent?.uri === targetFolder.uri) return;
+    if (source.uri === targetFolder.uri) return;
+    if (isDescendant(targetFolder, source)) return;
+    if (source.parent?.uri === targetFolder.uri) return;
 
     const electronFs = (globalThis as any).parallxElectron?.fs;
     if (!electronFs) return;
 
-    const sourcePath = uriToFsPath(_dragSourceNode.uri);
-    const destPath = uriToFsPath(targetFolder.uri) + '/' + _dragSourceNode.name;
+    const sourcePath = uriToFsPath(source.uri);
+    const destPath = uriToFsPath(targetFolder.uri) + '/' + source.name;
 
     try {
       await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => orThrow(electronFs.rename(sourcePath, destPath), 'Move failed'));
 
       // Reload both source parent and target folder
-      const sourceParent = _dragSourceNode.parent;
+      const sourceParent = source.parent;
       if (sourceParent) {
         sourceParent.loaded = false;
         sourceParent.children = [];
@@ -1150,7 +1151,7 @@ function setupDropTarget(el: HTMLElement, node: TreeNode): void {
 
       scheduleRender();
     } catch (err) {
-      _api.window.showErrorMessage(`Failed to move "${_dragSourceNode.name}": ${err}`);
+      _api.window.showErrorMessage(`Failed to move "${source.name}": ${err}`);
     }
 
     _dragSourceNode = null;
