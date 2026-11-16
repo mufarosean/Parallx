@@ -492,6 +492,68 @@ extension; how much of the Exam 7 data model (recipes, roster, campaign)
 generalizes and how much is his alone and stays in his workspace; the
 migration of his existing banks and sessions.
 
+### Study: rework it into what it was meant to be
+
+**His words, 2026-11-16:** "I want us to focus on the study extension."
+"The vision for it was that a person could drop files on any topic and
+be able to generate content and study and learn a topic. Think of google
+notebooks, but better. Except, it is currently unusable, my attempts at
+using it when studying for exam 7 showed big issues." Earlier the same
+session: "study is another thing that we need to rework."
+
+**What the record holds** (found 2026-11-16 by reading his cloud session
+of 2026-10-12, which quotes his local session of 2026-10-10; that local
+session itself cannot be reached from the cloud, and his message in it is
+cut off mid-sentence in the quote):
+
+- 2026-10-10, three days after Study was built: "We built the study
+  extention, but I think that was a watse of time, it does not work. what
+  we do instead is build a canvas database of conceptual questions where
+  we track which part of the syllabus the relate to, the apper, and we
+  also track the number of times I attempt the conceptual quetsion, and
+  the number of times, I go t it corretc, and when reuslt last time. This
+  would allow me to discuss actively with Ai as I get things wrong, and
+  the Ai can thinka nd know hwo to help me best, using tools to pullr
+  eosurces and all. This is teh vision I had for study. Study was
+  suppsoed to" (cut off there).
+- What he used in its place, and still does: a canvas database, "Exam 7
+  Conceptual Questions" (296 questions, 90 flagged as his confusion
+  points, each with a model answer or a source), and a chat skill,
+  `/concept-quiz`, that asks, grades against the model answer, records
+  attempts, correct and last result on the row, and talks it through
+  when he is wrong. Built 2026-10-10 to 12. The note left with it said
+  not to touch Study without his say, and that his verdict on the quiz
+  was owed.
+- From his sessions of 2026-10-22 to 27 (`IMPROVEMENTS_2026-10-29`, item
+  7): mark a question to come back to; Previous without undoing; a list
+  of study notes he can tell the AI to add to, for making cards later;
+  quiz answers that are lists.
+- Related and unbuilt: the Lesson Builder brief (material turned into
+  lessons), which he called "what I actually need" on 2026-09-05.
+
+**Not in the record:** what exactly went wrong when he used Study for
+Exam 7. "It does not work" and "big issues" are all there is; the
+specifics were either in the cut-off message or said nowhere. To be
+asked, not guessed.
+
+**What exists** (`ext/study`, about 10,000 lines, built 2026-10-07 to the
+brief in `docs/STUDY_MODES_BRIEF.md` and `docs/STUDY_BUILD_SPEC.md`): it
+writes multiple-choice, typed and essay questions from a PDF or his own
+bank, anchors each to its page, checks each before keeping it, grades
+answers against the text, keeps mastery per concept and draws weak
+spots. Its own pane, its own sidebar, its own route to the model.
+
+**Claude's reading, for him to correct, nothing agreed:** what he built
+to replace Study is the opposite shape. Study is a machine that writes
+questions and scores answers in a pane of its own; what worked for him
+is his material, a record of what he knows, and a conversation with the
+AI over both. That is also what Google's NotebookLM is at its core:
+sources in, a grounded conversation, and study forms made from the
+sources on request. So the rework may be less "fix the quiz" and more
+"Study is the notebook": the files, what was made from them, what he got
+right and wrong, and the chat as the tutor that reads all three. Not
+checked against Study's code yet.
+
 ### AI chat: message times, model speed, dates on old chats
 
 **His words (2026-11-12, spelling corrected):** "currently AI chat does
