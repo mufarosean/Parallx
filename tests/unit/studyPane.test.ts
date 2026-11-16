@@ -1352,6 +1352,52 @@ describe('Study end to end', () => {
     expect(all("SELECT status FROM st_session_items WHERE session_id = ?", sessionId).every((i) => i.status !== "pending")).toBe(true);
   });
 
+  it("3i. a restart while questions are being written: the session says it is short and offers to make the rest, and Make the Rest fills it", async () => {
+    await boot();
+    const setup = await openChapterSetup();
+    const hold = holdLm("questions");
+    btn(setup, "Make Questions and Start")!.click();
+    const tab = await waitFor(() => latestSessionTab(), "the session tab");
+    const sessionId = Number(tab.slice("session-".length));
+    await waitFor(() => hold.reached, "the first question call");
+    hold.release();
+    const hold2 = holdLm("questions");
+    await waitFor(() => q(paneHost(tab), ".st-card"), "the first card");
+    await waitFor(() => hold2.reached, "the second question-writing call");
+    await settle();
+    const ready = one("SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?", sessionId).n;
+    expect(ready).toBeGreaterThanOrEqual(1);
+    expect(ready).toBeLessThan(6);
+    // The app closes mid-making and opens again.
+    await shutdown();
+    hold2.release();
+    env.hold = null;
+    await settle(20);
+    await boot();
+    await env.editors.openEditor({ typeId: "study", instanceId: tab, title: "Study" });
+    const h = await waitFor(() => paneHost(tab), "the session tab again");
+    await waitFor(() => q(h, ".st-card"), "a card after the restart");
+    await settle(20);
+    expect(T.stLiveRun(sessionId)).toBeNull();
+    const strip = q(h, ".st-making")!;
+    expect(strip.hidden).toBe(false);
+    expect(text(strip)).toContain(`${ready} of 6 ready`);
+    expect(text(strip)).toMatch(/did not finish/i);
+    const more = btn(strip, "Make the Rest")!;
+    expect(more).not.toBeNull();
+    expect(more.hidden).toBe(false);
+    const callsBefore = env.lmCalls.length;
+    more.click();
+    await waitFor(() => env.lmCalls.length > callsBefore, "the making again");
+    await madeAll(sessionId);
+    await settle();
+    expect(one("SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?", sessionId).n).toBe(6);
+    expect(q(h, ".st-making")!.hidden).toBe(true);
+    await answerDraw(h);
+    await waitFor(() => q(h, ".st-res"), "results");
+    expect(text(q(h, ".st-res__big small"))).toBe("of 6");
+  });
+
   it("3h. with no model: the sheet says so with Try Again and Open AI Settings, and no session, tab or row is left however often he tries", async () => {
     await boot();
     env.noModels = true;
@@ -1648,6 +1694,53 @@ describe('Study end to end', () => {
     btn(h, 'Send Missed to Flashcards')!.click();
     await waitFor(() => env.calls.addCards.length === 2, 'the second send');
     expect(env.calls.addCards[1].cards.map((c: AnyRec) => c.tags[1]).sort()).toEqual(missed1.map((id) => `study:c:${id}`).sort());
+  });
+
+  it('5c. Stop on a Refresh before its first question sticks: a rebuilt tab or a restart starts no making; it opens on the results', async () => {
+    // Review finding 3 (read only): renderGenerating starts a run for a
+    // session holding no pending item, so a pane rebuilt on the generating
+    // route after Stop would make questions he did not ask for. A rebuilt
+    // session tab opens on its session route, which goes to the results
+    // whichever way the restored route lands, so this guards what holds.
+    await boot();
+    const { h, sessionId } = await startChapterSession();
+    await answerDraw(h);
+    await waitFor(() => q(h, '.st-res'), 'results');
+    // Every question not yet asked is put away, so the Refresh must write new ones.
+    env.db.raw().prepare('UPDATE st_questions SET hidden = 1 WHERE id NOT IN (SELECT question_id FROM st_session_items WHERE session_id = ?)').run(sessionId);
+    const hold = holdLm('questions');
+    btn(h, 'Refresh')!.click();
+    await waitFor(() => hold.reached, 'the Refresh writing questions');
+    expect(q(h, '.st-card')).toBeNull();
+    btn(h, 'Stop')!.click();
+    hold.release();
+    await waitFor(() => /Stopped before any question was ready/.test(text(h)), 'the stopped message');
+    env.hold = null;
+    const calls = env.lmCalls.length;
+    const tab = `session-${sessionId}`;
+    // The workbench rebuilds an evicted pane from its saved view state (the generating route),
+    // restoring it before the first render settles or after.
+    const saved = env.editors.open.get(tab).pane.saveViewState();
+    expect(saved.route).toEqual({ view: 'generating', sessionId });
+    for (const late of [false, true]) {
+      const e = env.editors.open.get(tab);
+      e.pane.dispose();
+      e.pane = env.editors.providers.get('study')!.createEditorPane(e.host, { id: e.id, instanceId: tab, title: e.title });
+      if (late) await settle(40);
+      e.pane.restoreViewState(saved);
+      await waitFor(() => q(e.host, '.st-res'), 'the results');
+      await settle(40);
+      expect(T.stLiveRun(sessionId)).toBeNull();
+      expect(env.lmCalls.length).toBe(calls);
+    }
+    // A restart: the tab comes back on its session route.
+    await shutdown();
+    await boot();
+    await env.editors.openEditor({ typeId: 'study', instanceId: tab, title: 'Study' });
+    await waitFor(() => q(paneHost(tab), '.st-res'), 'the results after a restart');
+    await settle(40);
+    expect(T.stLiveRun(sessionId)).toBeNull();
+    expect(env.lmCalls.length).toBe(calls);
   });
 
   it('5b. without flashcards.addCards there is no Send Missed; Refresh stays', async () => {

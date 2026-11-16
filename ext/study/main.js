@@ -7257,6 +7257,9 @@ const _stRuns = new Map();
 /** What a making that ended with nothing said, by session id: the session is gone, the tab still shows it. */
 const _stEnded = new Map();
 
+/** Sessions whose making ended in this app run (Stop, an error, or all it could make): a short draw is not news. */
+const _stMadeHere = new Set();
+
 /** Elapsed time as he reads it: 0:07, 12:05, 1:02:03. Pure. */
 function stElapsedText(ms) {
   const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
@@ -7329,6 +7332,7 @@ function stRunFor(session) {
     .then(() => {
       run.done = true;
       run.endedAt = Date.now();
+      if (activation === stActivation()) _stMadeHere.add(Number(session.id));
       if (_stRuns.get(session.id) === run) _stRuns.delete(session.id);
       notify();
     });
@@ -7382,6 +7386,7 @@ function stCancelRuns() {
   for (const run of _stRuns.values()) { try { run.token.cancelled = true; } catch { /* noop */ } }
   _stRuns.clear();
   _stEnded.clear();
+  _stMadeHere.clear();
 }
 
 /** Close every session tab whose session no longer exists (deleted from the
@@ -7600,7 +7605,8 @@ async function renderGenerating(host, route, ctx) {
  * many questions are ready of how many are planned, the time elapsed, Stop.
  * Hidden when nothing is being made. A making that failed stays, with its
  * reason and Try Again; one that ended with pages the model could not read
- * stays, saying which (stUnreadText). `onFed()` is called whenever the session holds more
+ * stays, saying which (stUnreadText); a draw left short by a restart says so,
+ * with Make the Rest. `onFed()` is called whenever the session holds more
  * questions than before, and when the making ends. Returns { live(), failed() }.
  */
 function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
@@ -7614,13 +7620,28 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
   const note = _api.ui.createBlock(strip, 'span', { className: 'st-making__now', attrs: { role: 'status' } });
   const stopBtn = _api.ui.createButton(strip, { id: 'study.making.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', size: 'sm', title: 'Stop writing questions. The ones that are ready stay in this session.', command: 'study.stopMaking', args: [session.id] });
   const againBtn = _api.ui.createButton(strip, { id: 'study.making.more', label: 'Try Again', icon: 'refresh-cw', kind: 'ghost', size: 'sm', title: 'Go on writing questions for this session.', command: 'study.makeAgain', args: [session.id] });
+  const restBtn = _api.ui.createButton(strip, { id: 'study.making.rest', label: 'Make the Rest', icon: 'refresh-cw', kind: 'ghost', size: 'sm', title: 'Write the questions this session is still short of.', command: 'study.makeAgain', args: [session.id] });
+  restBtn.hidden = true;
   host.insertBefore(strip, before);
 
   let run = null;
   let watch = null;
   let seen = 0;
+  // The draw is short and nothing is making it (the app closed mid-making): { held }.
+  let short = null;
   const paint = () => {
-    if (ctx.disposed() || !run) return;
+    if (ctx.disposed()) return;
+    restBtn.hidden = !!run || !short;
+    if (!run) {
+      strip.hidden = !short;
+      if (!short) return;
+      now.textContent = 'The making of this session did not finish.';
+      count.textContent = `${short.held} of ${size} ready`;
+      time.textContent = '';
+      stopBtn.hidden = true;
+      againBtn.hidden = true;
+      return;
+    }
     const failed = run.done && !!run.error;
     // Pages the model could not read are said once the making ends (asked again next start, or left out).
     const unread = run.done && !failed ? stUnreadText(run.result && run.result.unread) : '';
@@ -7645,10 +7666,21 @@ function stMakingStrip(host, session, ctx, { before = null, size, onFed }) {
     paint();
   };
   attach(stLiveRun(session.id));
-  // Try Again started a new run for this session: the strip follows it.
+  // Try Again or Make the Rest started a new run for this session: the strip follows it.
   const offMaking = bus.on('making', (d) => { if (d && Number(d.sessionId) === Number(session.id)) attach(stLiveRun(session.id)); });
   ctx.add({ dispose: () => stOff(offMaking) });
-  return { live: () => !!run && !run.done, failed: () => !!run && run.done && !!run.error };
+  // No making, and none ended in this app run (Stop, or one that made all it could): a
+  // draw short of its size was cut off by a restart. It says so and offers the rest.
+  if (!run && !_stMadeHere.has(Number(session.id)) && !stProp(session, 'finishedAt', 0) && !stFixedScope(stSessionScope(session))) {
+    void (async () => {
+      const draw = Number(stProp(session, 'refreshes', 0)) || 0;
+      const held = ((await stListSessionItems(session.id)) || []).filter((i) => (Number(i.draw) || 0) === draw).length;
+      if (ctx.disposed() || run || held >= size) return;
+      short = { held };
+      paint();
+    })().catch(() => { /* the strip stays hidden */ });
+  }
+  return { live: () => !!run && !run.done, failed: () => (!!run && run.done && !!run.error) || (!run && !!short) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
