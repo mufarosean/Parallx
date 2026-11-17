@@ -1,0 +1,135 @@
+Date,Day,Week,Phase,Type,Work,Floor personal,Floor total,Standard personal,Standard total,Stretch personal,Stretch total
+2026-12-07,Mon,A,Read only,Workday,0,2,2,3,3,4,4
+2026-12-08,Tue,A,Read only,Workday,0,2,2,3,3,4,4
+2026-12-09,Wed,A,Read only,Workday,0,2,2,3,3,4,4
+2026-12-10,Thu,A,Read only,Workday,0,2,2,3,3,4,4
+2026-12-11,Fri,A,Read only,Rest (Friday),0,0,0,0,0,0,0
+2026-12-12,Sat,A,Read only,Weekend,0,3,3,4,4,5,5
+2026-12-13,Sun,A,Read only,Weekend,0,3,3,4,4,5,5
+2026-12-14,Mon,B,Read only,Workday,0,2,2,3,3,4,4
+2026-12-15,Tue,B,Read only,Workday,0,2,2,3,3,4,4
+2026-12-16,Wed,B,Read only,Workday,0,2,2,3,3,4,4
+2026-12-17,Thu,B,Read only,Workday,0,2,2,3,3,4,4
+2026-12-18,Fri,B,Read only,Rest (Friday),0,0,0,0,0,0,0
+2026-12-19,Sat,B,Read only,Weekend,0,3,3,4,4,5,5
+2026-12-20,Sun,B,Read only,Weekend,0,3,3,4,4,5,5
+2026-12-21,Mon,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-22,Tue,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-23,Wed,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-24,Thu,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-25,Fri,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-26,Sat,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-27,Sun,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-28,Mon,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-29,Tue,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-30,Wed,-,Holidays,Holiday,0,0,0,0,0,0,0
+2026-12-31,Thu,-,Holidays,Holiday,0,0,0,0,0,0,0
+2027-01-01,Fri,-,Holidays,Holiday,0,0,0,0,0,0,0
+2027-01-02,Sat,-,Holidays,Holiday,0,0,0,0,0,0,0
+2027-01-03,Sun,-,Holidays,Holiday,0,0,0,0,0,0,0
+2027-01-04,Mon,1,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-05,Tue,1,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-06,Wed,1,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-07,Thu,1,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-08,Fri,1,Read and notes,Rest (Friday),0,0,0,0,0,0,0
+2027-01-09,Sat,1,Read and notes,Weekend,0,3,3,4,4,5,5
+2027-01-10,Sun,1,Read and notes,Weekend,0,3,3,4,4,5,5
+2027-01-11,Mon,2,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-12,Tue,2,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-13,Wed,2,Read and notes,Workday,0,2,2,3,3,4,4
+2027-01-14,Thu,2,Read and notes,Workday,2,2,4,3,5,4,6
+2027-01-15,Fri,2,Read and notes,Rest (Friday),0,0,0,0,0,0,0
+2027-01-16,Sat,2,Read and notes,Weekend,0,3,3,4,4,5,5
+2027-01-17,Sun,2,Read and notes,Weekend,0,3,3,4,4,5,5
+2027-01-18,Mon,3,Read and notes,Workday,2,2,4,3,5,4,6
+2027-01-19,Tue,3,Read and notes,Workday,2,2,4,3,5,4,6
+2027-01-20,Wed,3,Read and notes,Workday,2,2,4,3,5,4,6
+2027-01-21,Thu,3,Read and notes,Catch-up,2,2,4,3,5,4,6
+2027-01-22,Fri,3,Read and notes,Rest,0,0,0,0,0,0,0
+2027-01-23,Sat,3,Read and notes,Rest,0,0,0,0,0,0,0
+2027-01-24,Sun,3,Read and notes,Rest,0,0,0,0,0,0,0
+2027-01-25,Mon,4,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-01-26,Tue,4,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-01-27,Wed,4,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-01-28,Thu,4,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-01-29,Fri,4,"Read, problems, recipes",Rest (Friday),0,0,0,0,0,0,0
+2027-01-30,Sat,4,"Read, problems, recipes",Weekend,0,3,3,4,4,5,5
+2027-01-31,Sun,4,"Read, problems, recipes",Weekend,0,3,3,4,4,5,5
+2027-02-01,Mon,5,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-02,Tue,5,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-03,Wed,5,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-04,Thu,5,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-05,Fri,5,"Read, problems, recipes",Rest (Friday),0,0,0,0,0,0,0
+2027-02-06,Sat,5,"Read, problems, recipes",Weekend,0,3,3,4,4,5,5
+2027-02-07,Sun,5,"Read, problems, recipes",Weekend,0,3,3,4,4,5,5
+2027-02-08,Mon,6,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-09,Tue,6,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-10,Wed,6,"Read, problems, recipes",Workday,2,2,4,3,5,4,6
+2027-02-11,Thu,6,"Read, problems, recipes",Catch-up,2,2,4,3,5,4,6
+2027-02-12,Fri,6,"Read, problems, recipes",Rest,0,0,0,0,0,0,0
+2027-02-13,Sat,6,"Read, problems, recipes",Rest,0,0,0,0,0,0,0
+2027-02-14,Sun,6,"Read, problems, recipes",Rest,0,0,0,0,0,0,0
+2027-02-15,Mon,7,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-16,Tue,7,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-17,Wed,7,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-18,Thu,7,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-19,Fri,7,"Every problem, mixed",Rest (Friday),0,0,0,0,0,0,0
+2027-02-20,Sat,7,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-02-21,Sun,7,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-02-22,Mon,8,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-23,Tue,8,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-24,Wed,8,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-25,Thu,8,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-02-26,Fri,8,"Every problem, mixed",Rest (Friday),0,0,0,0,0,0,0
+2027-02-27,Sat,8,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-02-28,Sun,8,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-03-01,Mon,9,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-02,Tue,9,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-03,Wed,9,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-04,Thu,9,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-05,Fri,9,"Every problem, mixed",Rest (Friday),0,0,0,0,0,0,0
+2027-03-06,Sat,9,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-03-07,Sun,9,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-03-08,Mon,10,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-09,Tue,10,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-10,Wed,10,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-11,Thu,10,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-12,Fri,10,"Every problem, mixed",Rest (Friday),0,0,0,0,0,0,0
+2027-03-13,Sat,10,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-03-14,Sun,10,"Every problem, mixed",Weekend,0,3,3,4,4,5,5
+2027-03-15,Mon,11,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-16,Tue,11,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-17,Wed,11,"Every problem, mixed",Workday,2,3,5,4,6,4,6
+2027-03-18,Thu,11,"Every problem, mixed",Catch-up,2,3,5,4,6,4,6
+2027-03-19,Fri,11,"Every problem, mixed",Rest,0,0,0,0,0,0,0
+2027-03-20,Sat,11,"Every problem, mixed",Rest,0,0,0,0,0,0,0
+2027-03-21,Sun,11,"Every problem, mixed",Rest,0,0,0,0,0,0,0
+2027-03-22,Mon,12,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-03-23,Tue,12,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-03-24,Wed,12,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-03-25,Thu,12,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-03-26,Fri,12,Hard ones + source review,Rest (Friday),0,0,0,0,0,0,0
+2027-03-27,Sat,12,Hard ones + source review,Weekend,0,3,3,4,4,5,5
+2027-03-28,Sun,12,Hard ones + source review,Weekend,0,3,3,4,4,5,5
+2027-03-29,Mon,13,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-03-30,Tue,13,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-03-31,Wed,13,Hard ones + source review,Workday,2,3,5,4,6,4,6
+2027-04-01,Thu,13,Hard ones + source review,Catch-up,2,3,5,4,6,4,6
+2027-04-02,Fri,13,Hard ones + source review,Rest (Friday),0,0,0,0,0,0,0
+2027-04-03,Sat,13,Hard ones + source review,Rest,0,0,0,0,0,0,0
+2027-04-04,Sun,13,Hard ones + source review,Weekend,0,3,3,4,4,5,5
+2027-04-05,Mon,14,Practice exams + mixed quizzes,Half day,4,3,7,4,8,6,10
+2027-04-06,Tue,14,Practice exams + mixed quizzes,Half day,4,3,7,4,8,6,10
+2027-04-07,Wed,14,Practice exams + mixed quizzes,Half day,4,3,7,4,8,6,10
+2027-04-08,Thu,14,Practice exams + mixed quizzes,Half day,4,3,7,4,8,6,10
+2027-04-09,Fri,14,Practice exams + mixed quizzes,Half day,4,0,4,0,4,2,6
+2027-04-10,Sat,14,Practice exams + mixed quizzes,Weekend,0,3,3,4,4,5,5
+2027-04-11,Sun,14,Practice exams + mixed quizzes,Weekend,0,3,3,4,4,5,5
+2027-04-12,Mon,15,Practice exams + mixed quizzes,Off work,4,2,6,4,8,4,8
+2027-04-13,Tue,15,Practice exams + mixed quizzes,Off work,4,2,6,4,8,4,8
+2027-04-14,Wed,15,Practice exams + mixed quizzes,Off work,4,2,6,4,8,4,8
+2027-04-15,Thu,15,Practice exams + mixed quizzes,Off work,4,2,6,4,8,4,8
+2027-04-16,Fri,15,Practice exams + mixed quizzes,Off work,4,2,6,4,8,4,8
+2027-04-17,Sat,15,Practice exams + mixed quizzes,Off work,0,6,6,8,8,8,8
+2027-04-18,Sun,15,Practice exams + mixed quizzes,Off work,0,4,4,4,4,8,8
+2027-04-19,Mon,-,Light review (not counted),Day before exam,0,0,0,0,0,0,0
