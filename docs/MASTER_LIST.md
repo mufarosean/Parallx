@@ -925,24 +925,40 @@ The plan also carries reserve days, 2 a month say: a missed day spends a
 reserve instead of breaking anything, and unspent reserves pay XP at the
 end of the month.
 
-An illustration only, on his rules with guesses marked: 20 weeks;
-Monday to Thursday 5:30 to 7:30 personal, 7:30 to 9:30 work, an evening
-hour (two in weeks 13 to 18, the ramp); Saturday and Sunday 3 hours
-each (a guess); Friday rest. Week 19 on half days: 4 work hours a day
-and the morning and evening around them. Week 20 off: 6 hours a day
-for 6 days (a guess), 20 of them work and the rest PTO.
+**Worked out with him, 2026-11-17 (his spring 2027 plan, the first real
+run of the arithmetic).** The sheet and the script that makes it are on
+`exam7-campaign` in `campaign/spring-2027/` (every day, three plans,
+running totals). What he settled in the discussion:
 
-- The last two weeks take 40 of the 130 work hours, so 90 are left for
-  weeks 1 to 18. Those weeks have 72 working mornings; at 2 hours each
-  that is 144. The 90 pay for 45 of them. The plan has to say where they
-  go (from the start, or kept for weeks 8 to 18 when the hours rise, or
-  1.25 hours a day throughout), which is the choice he now makes by hand
-  in a day of planning.
-- If every block is kept: 216 personal in weeks 1 to 12, 132 in the
-  ramp, 90 work, 46 in week 19, 36 in week 20; about 520.
-- The forecast's floor then comes from the blocks he really keeps, once
-  two weeks are recorded, and the first screen says, before the campaign
-  starts and again each Monday, what it takes to stay above 400.
+- The exam: the 2027 CAS window for Exams 5 to 9 is April 13 to 20; he
+  sat on April 21 in 2026, the last day of that window, so the plan takes
+  Tuesday April 20. Start December 7 if results are out, else January 4;
+  Christmas week and New Year's week are off.
+- Hours goal: "not 400, a more conservative estimate, closer to 500."
+- His week: Monday to Thursday 5:30 to 7:30 personal and 7:30 to 9:30
+  work; an evening hour, two in the last 8 weeks; Saturday and Sunday 4
+  hours each; Friday off, for work study too.
+- Work study: 130 hours; 2 a day Monday to Thursday, starting only when
+  that can run unbroken to the final two weeks ("acceleration and
+  momentum"), which is Thursday January 14; then 4 a day Monday to Friday
+  for the last two weeks (20 a week), the first of them on half days with
+  PTO, the last fully off at 8 hours a day.
+- Phases, as passes over the whole syllabus: read only; read and notes;
+  read with that chapter's problems and recipes; every problem mixed; the
+  hard ones, with source review "somewhere in the middle toward the end";
+  practice exams and mixed quizzes. Fixed day lists early, dynamic
+  (quotas over what is left) from the middle to the end.
+- Slack, his words: "a plan with no built-in contingencies is built to
+  fail." Rest weekends between phases (Friday to Sunday: January 22,
+  February 12, March 19), a rest Saturday April 3, a catch-up Thursday at
+  the end of each phase, and a range of hours.
+- The three plans differ only in personal hours; work study is the same
+  in all. Floor 385 (mornings, 3-hour weekends, evenings only from the
+  ramp), standard 486, stretch 557 (2-hour evenings, 5-hour weekends).
+  Over 97 study days of 134.
+- How he wants to see a plan: every day from start to end with its exact
+  hours, and a summary of hours per day by number of days. Weeks alone
+  hide too much.
 
 *Honest time, without a timer to forget.* One ledger of study time for
 the campaign. Every tool already leaves evidence (pages in the PDF pane,
@@ -1038,17 +1054,20 @@ overnight build. The surfaces
 (setup, Today, the band, the map) get the bar read and mock-ups for his
 pick before any is built.
 
-**Owed from him before piece 1:** whether he studies on Saturday and
-Sunday, and how long; whether Friday is rest for work study too, and
-whether the 2-hour rule lets the 90 hours before the last two weeks be
-spread thinner or kept for later; whether his employer needs a log of
-work hours; how many hours a day the week off holds; yes or no on moving
-Worksheets' campaign and rewards into the harness; whether time is
-rebuilt and confirmed, or timed with a start and stop, or both. Settled
-on 2026-11-17: 130 work hours a sitting, 2 a day as a rule, 4 a day and
-20 a week at most in the last two weeks, PTO for the rest of those
-weeks, the week before the exam off and the one before on half days,
-more hours and evenings in the last 6 to 8 weeks.
+**Settled in the same discussion:** videos are not used; hours per paper
+from the guide's length and Rising Fellow's guidance, corrected by his own
+pace; what drove him in the fall was the count of questions attempted and
+the bars by paper in green, yellow and red, not the XP; XP is "valuable"
+and needs its own discussion; chat credit can be a skill that reads the
+day's chats and awards it; progress goes back and forth with the claude.ai
+artifact he uses at the library (an export and an import, with time);
+Worksheets' campaign moves into the harness ("that was then, this is
+now"); notes in a canvas database; no log of work hours needed.
+
+**Still open:** closing the 14 hours between the standard and 500 (a
+start on November 30, or 5-hour weekends); whether the week off runs
+through Monday April 19; the phase lengths once the guides are sized;
+XP; how the bars by paper generalize.
 
 ### AI chat: message times, model speed, dates on old chats
 
