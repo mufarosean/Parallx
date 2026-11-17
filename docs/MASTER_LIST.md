@@ -702,6 +702,297 @@ guides, his own notes), for mock-ups and his pick.
 model and see how long the first question takes, whether the questions
 are good, and whether grading is fair. None of that can be judged here.
 
+#### The study harness: a campaign that runs the other tools
+
+**His words (2026-11-17, spelling corrected, shortened):** "I want us to
+formalize the study extension into something substantive." Coaching
+Actuaries "first gathered all the content", and "you could set an exam
+date, set a start date, choose the days you want for the learn phase,
+practice phase, choose the days you study and the ones you don't, and it
+would help you come up with a plan. Since Exam 5 I have had to use other
+vendors and have not had this. I believe Parallx can be that." With Rising
+Fellow he would download the guides, summaries, the master problem
+workbook and the cookbook and load them in, "then use what we already
+have, with the study extension as a harness for the study campaign."
+
+- How he studies: "The objective is to see the content as many times as
+  possible." His spring sitting failed because he read files and forgot
+  them, so with 6 or 7 weeks left he relearned everything and never
+  learned "the mechanics of solving problems and pattern recognition in
+  problem types". The fall sitting paired conceptual quizzes with the
+  practice-problem campaign and "felt a lot calmer". Making Friday a rest
+  day was "exactly what I needed"; plans that span weekends with no rest
+  ended in reshuffling.
+- What he used: Planner for what to study each day, canvas pages for
+  notes, Flashcards for cards of sections, Worksheets for problems, the
+  PDF editor to read, chat when stuck; flashcards and the conceptual quiz
+  ported to a claude.ai artifact to do on the fly. "It is not inventing
+  new notes surfaces or pdf surfaces." Think of the campaign dashboards,
+  gamifying, tracking.
+- Hours: 130 hours of work study time; a full day each sitting spent
+  building the plan, counting work and personal hours toward 400 to 500;
+  "very bad at tracking how much of that time I actually use". Mornings
+  5:30 to 7:30 personal, 7:30 to 9:30 work; an evening hour budgeted
+  (flashcards, conceptual questions, discussions) that he rarely keeps
+  until the last 6 weeks. "Some days I study more, some less, so we need
+  margin of error. Best case, worst case."
+- Plans and rewards: a bare minimum plan that still reaches 400 hours, a
+  standard plan above it, an ambitious one. "It isn't just about time. We
+  have to somehow incentivize studying more. Going above and beyond.
+  Currently all my studying has been motivated through will power and
+  panic." "A legitimate XP structure, even for the chat discussions."
+  Maybe only the standard plan is shown, with review items and questions
+  suggested for extra XP, and extra work done unprompted rewarded too.
+- Generic: "if I decided to learn more about GLMs (not tied to any exam),
+  I would set my start date, end date, how many hours, what days, the
+  location of sources and guides, the location of notes (maybe a
+  database of notes). We generate a study plan. It automatically creates
+  planner tasks, populates a dashboard." The practice problems may be
+  the one part that stays exam-shaped. "Before we build anything we plan,
+  design."
+
+**What was read for it (2026-11-17).** The app, by an agent: Worksheets'
+study program, Planner, Flashcards, Study, the dashboard, chat, canvas
+databases, the PDF pane, the Exam 7 handoff. The vendors and the
+research, by two agents. This session's network is the Parallx
+environment's, so no vendor page, paper or product blog could be opened:
+everything about them below is from search excerpts of the URLs named in
+this session, and the bar is to be read again from the Default
+environment before a surface is drawn.
+
+- *Coaching Actuaries:* the planner (now CheckPoints) takes the exam
+  date, study days and rest days and works backward; each lesson carries
+  points for its time and its weight (50,000 per course); a daily goal;
+  "recalculates instantly" on a missed day, a rest day studied or a goal
+  beaten; Learn Pacing shows days left until the practice phase. It plans
+  points, not hours, and records no time. Earned Level (0 to 10) moves
+  only on scores of its generated practice exams. No badges or streaks.
+  No Exam 7 course.
+- *Rising Fellow (Exam 7):* video lessons, a guide per topic, summaries
+  by paper, the Cookbook (75+ recipes), 500+ problems, past CAS problems
+  in Excel, ProblemTrack (a macro workbook that builds quizzes and tracks
+  self-graded scores by paper), 450+ cards, 3 practice exams. Everything
+  is organised by syllabus paper. No planner: a free hours tracker (20
+  weeks, 300+ hours, logged in quarter hours against a plan) and phase
+  advice (review and practice from 6 weeks out, a first full exam 4
+  weeks out). TIA redistributes missed tasks over study days;
+  BattleActs gives hours per article.
+- *Hours:* the CAS's own surveys say candidates report 250 to 345; "100
+  hours per exam hour" is a rule of thumb in a CAS newsletter, not a CAS
+  rule (about 400 for Exam 7).
+- *Learning science:* retrieval beats rereading and learners do not feel
+  it (Dunlosky 2013; Karpicke 2009); interleaving problem types took a
+  4-month classroom trial from 38% to 61% (Rohrer 2020), the direct cure
+  for "pattern recognition in problem types"; successive relearning (a
+  correct recall in each of 3 to 4 spaced sessions) for concepts, with a
+  smaller effect on procedures; worked example, then completion problem,
+  then unaided problem, fading.
+- *Motivation:* points and levels raise quantity, not mastery (Mekler
+  2017); a badge and leaderboard course lowered exam scores (Hanus & Fox
+  2015); effects fade after about 4 weeks; reward inputs that are
+  learning (Fryer), not time; a broken streak lowers what follows
+  (Silverman & Barasch 2023); range goals keep people going (Scott &
+  Nowlis 2013); 2 skip days in a 7-day goal beat both a 5-day and a
+  strict 7-day goal (Sharif & Shu 2017); a planned weekly lapse kept
+  self-control (Coelho do Vale 2016), which is his Friday; fresh starts
+  at week and month landmarks (Dai, Milkman & Riis 2014); positive
+  feedback on competence raises intrinsic motivation where rewards lower
+  it (Deci 1999); people underestimate how long work takes, even in
+  their worst case (Buehler 1994).
+
+**What exists (verified in the code 2026-11-17).** Most of a harness is
+already built, in the wrong place and shaped to Exam 7:
+
+- Worksheets holds a campaign (problems in N days, rest weekdays, pace,
+  a daily draw spread across papers), an imported day-by-day plan (the
+  Campaign tab: blocks of quizzes, exams and other tools' commands,
+  done when the activity journal shows a line), the roster, XP (10 a
+  problem, 300 a level, ten titles), 17 milestones, Cash Out at a dollar
+  rate, and an idle-aware study clock (`studyClock.ts`) that counts
+  only time on Worksheets' own screens. No hours are planned or summed
+  anywhere; block times only order the day.
+- Planner: tasks other tools create (`planner.getRegistry` then
+  `data.createTask`), and the day-load badges Flashcards and Study feed.
+- Flashcards: FSRS-6 per card, a review log with time taken, the
+  `parallx:card-rated` event, `flashcards.addCards` and `studyTag`, a
+  journal line when a session ends.
+- Study: concepts with mastery, the question bank, sessions (a timer
+  that is not idle-aware), `study_results` and `study_weak_spots` for the
+  chat, the question-provider registry it reads, a weak-spots widget.
+  It writes nothing to the journal.
+- Missing: a way for an extension to read the activity journal; one
+  ledger of study time across tools; a plan or campaign seam other tools
+  register into; any word from chat about which topic a conversation
+  was on; a typed canvas-database API for extensions (today only chat
+  tools behind a permission prompt); any event from the PDF pane about
+  pages read.
+
+**Proposed by Claude, nothing agreed.**
+
+*The premise questioned.* Coaching Actuaries' shape, a Learn phase and
+then a Practice phase, is the shape of his spring sitting: read
+everything, then try problems with the reading forgotten. So the harness
+keeps his ask (a start, an exam date, a learn stretch, a practice
+stretch, study days and rest days) but a phase changes the mix of a day,
+never what is allowed in it. From day one every unit he opens is
+reopened on a schedule, and problems of the units already seen are
+worked mixed together. The plan is counted in exposures of each unit as
+well as in hours, because "see the content as many times as possible"
+is the goal and hours are its budget.
+
+*What a campaign is* (the same nouns for Exam 7 and for GLMs):
+
+- A goal: an exam on a date, or a topic with an end date. Hours wanted.
+- Units: the syllabus, one per paper or chapter, each with a weight. For
+  an exam the weight can come from his own data: the bank keeps points
+  and a paper per problem (`ws_items.points`, `paper`), so the points
+  past sittings put on each paper can be summed.
+  Units are read from the sources folder (a file or a heading each) or a
+  pasted syllabus, and he edits the list.
+- Where things are: the sources folder (guides, summaries, cookbook,
+  workbook), the notes (a parent page or a canvas database), and for each
+  unit the name each tool knows it by (a card tag, a Worksheets paper, a
+  Study material, the PDFs). That one map is what lets the harness
+  count work done in any tool against a unit.
+- A week: blocks per weekday with a start, an end, a kind (deep work or
+  light review) and an account (personal or work). His would be 5:30 to
+  7:30 personal, 7:30 to 9:30 work, one evening hour light, Friday rest.
+  Dates off (holidays, PTO) on top.
+- Accounts: the work account has a budget (130 hours) and a window; the
+  plan spends it first in its window and shows what is left.
+- Stretches: learn and practice dates, and a taper, as he sets them.
+
+*The plan is arithmetic, not a model's guess.* Code works it out and the
+AI explains it. Capacity is summed from the week and the dates; units are
+placed in reading order with their first exposure, then their returns at
+growing gaps, and the mixed problem sets drawn from every unit seen so
+far; each block becomes a Planner task on its day, with its time. A
+missed day is never quietly spread over the rest (Coaching Actuaries and
+TIA do that; RemNote offers a catch-up instead). On Monday, the fresh
+start, the harness shows the week as it now stands and offers two or
+three ways to absorb what slipped, and he picks.
+
+*Three plans as one band.* He sees the target plan. Behind it the
+harness keeps a floor and a stretch, drawn as lines on one hours chart
+(where he is, the floor that still makes 400, the target, the stretch),
+so "best case, worst case" is always visible without three plans to
+read. The worst case is not a guess after the first two weeks: it is his
+own record of which blocks he keeps (mornings, evenings, weekends
+separately), so the forecast says, for example, "at the pace of your
+worst two weeks you finish at 371; one Saturday block a week makes 400".
+The plan also carries reserve days, 2 a month say: a missed day spends a
+reserve instead of breaking anything, and unspent reserves pay XP at the
+end of the month.
+
+An illustration only (the weekend hours and keep rates are guesses for
+him to replace): 20 weeks, Monday to Thursday 2 personal + 2 work + 1
+evening, 3 hours on Saturday and on Sunday, Friday rest. That is 26
+hours a week. At 8 work hours a week the 130 run out in week 17, after
+which weekdays are 3 hours: 130 work + 360 personal = 490 if every block
+is kept. If he keeps 90% of mornings, 30% of evenings and half the
+weekends, it is 130 work + 11.4 personal a week, about 358, short of
+400. The plan's first screen would say that, and what closes the gap
+(at that pace, starting four weeks sooner reaches 404), before the
+campaign starts rather than in week 14.
+
+*Honest time, without a timer to forget.* One ledger of study time for
+the campaign. Every tool already leaves evidence (pages in the PDF pane,
+reviews, problem sheets, quizzes, chat turns); the harness rebuilds the
+session from it, with the idle cut-off Worksheets' clock already uses,
+and asks once: "5:34 to 7:41, 2 h 07, mostly Clark and Mack. Log it as
+personal?" The 7:30 to 9:30 window is filled from the work account
+until its 130 are spent. A start-and-stop timer stays for those who want
+it. Reading time is logged as time; it simply earns little XP (below).
+
+*XP for the work that makes memory, not for minutes.*
+
+- Earned by retrieval and production: a card reviewed, a conceptual
+  question answered, a problem worked and rated, a practice exam sat, a
+  note written in his words for a unit, and an explanation given in chat
+  that the tutor checks (he explains the concept back; the tutor marks
+  it through a chat tool the harness registers, with the unit). Reading
+  earns its XP when it is closed by a check on the same unit the same
+  day.
+- Worth more when it matters more: going back to a unit that has faded
+  pays more than redoing one he saw yesterday (the fade is the unit's
+  memory, below), so XP pulls him toward spacing instead of comfort.
+  Work beyond the day's target pays half again as much. Repeats of the
+  same easy thing pay less each time, so nothing can be farmed.
+- Kept weekly, not daily: the count is "weeks kept" (the floor met), and
+  rest days and spent reserves never break it. A broken daily streak is
+  the thing the research says makes people stop.
+- Quests are the "extra XP" he described: each day, two or three things
+  the harness picks from his own data (Mack has faded, 12 days; 3 Clark
+  problems you rated Hard; explain Mack's three
+  assumptions). Done unprompted, the same work earns the same.
+- Stretches change the quests so the game does not go stale after a
+  month (the research saw effects fade at about four weeks).
+- Cash Out (dollars to himself per XP, already in Worksheets) stays, as
+  his real reward.
+- XP never claims readiness. Beside it, separately: the syllabus memory
+  and his scores on problems he has not seen, mixed.
+
+*The syllabus memory: what no vendor shows.* One map of every unit and
+how well he holds it now, from what the tools already record: the
+retrievability of the unit's cards (FSRS), his conceptual answers
+(Study's mastery and his concept database), his problem ratings by paper.
+It fades day by day where he has not been. This is the answer to "I was
+reading and forgetting it the next day": he sees the forgetting before
+week 14 and the plan's returns aim at it. It feeds the quests and the
+XP for going back.
+
+*His machine, overnight.* The night before a unit's first exposure, his
+own model builds what the morning needs from the sources: the unit's
+conceptual questions in Study's bank (the background bank already
+proposed above) and cards from the summary in Flashcards, each marked
+for him to keep or drop. The morning starts on material, not on a wait.
+
+*Built along the first principle.* The harness lives in Study and names
+no tool. Tools register into a new core contribution point (study
+activity providers, built like the question-provider registry): what
+kinds of work they offer for a unit, what was done, by when, for how
+long. Flashcards, Worksheets, Study's own quizzes, the PDF pane and chat
+register; turn Worksheets off and the plan simply has no problem blocks,
+which is the GLM case. Planner tasks go through the Planner's registry;
+the Today card, the hours band, the week and the syllabus map are
+dashboard widgets Study registers. For the notes database, the missing
+typed canvas-database API is built in the core, not reached through chat
+tools.
+
+*What this does to Worksheets' pick 4.* On 2026-11-15 he took Claude's
+pick 4i, which kept timers, ratings and rewards out of Study. This
+request makes Study the harness, so the proposal now is: the campaign,
+the day plan, the roster, XP, milestones, Cash Out and the study clock
+move from Worksheets into the harness, made generic; Worksheets keeps the
+bank, attempts, practice sessions and the exam surface, and becomes an
+activity provider. His data and the `worksheet.*` commands keep working
+throughout, as that entry requires. His word owed.
+
+*Considered and set aside:* three separate plans shown side by side
+(one band says the same with less to read); a daily streak; XP for
+minutes or pages; badges and leaderboards as the motor (a solo learner,
+and the one field trial went the wrong way); re-spreading missed work
+silently; a readiness number presented as a pass chance (Coaching
+Actuaries' and UWorld's are unverified); having a model write the plan;
+new surfaces for notes, reading or cards.
+
+*Pieces, one to a session, in this order:* (1) the campaign setup and
+the plan as arithmetic: units, week, accounts, the band, Planner tasks,
+tested on his own numbers; (2) the activity seam and the ledger of time,
+with the providers in Flashcards, Worksheets, Study, the PDF pane and
+chat; (3) the dashboard widgets; (4) XP, quests and the syllabus memory;
+(5) the move of Worksheets' campaign, plan, roster and rewards into the
+harness, his data carried over; (6) the overnight build. The surfaces
+(setup, Today, the band, the map) get the bar read and mock-ups for his
+pick before any is built.
+
+**Owed from him before piece 1:** whether he studies on Saturday and
+Sunday, and how long; the work study rules (130 per sitting? only 7:30
+to 9:30 on working days? does his employer need a log?); whether Friday
+is rest for work study too; yes or no on moving Worksheets' campaign and
+rewards into the harness; whether time is rebuilt and confirmed, or
+timed with a start and stop, or both.
+
 ### AI chat: message times, model speed, dates on old chats
 
 **His words (2026-11-12, spelling corrected):** "currently AI chat does
