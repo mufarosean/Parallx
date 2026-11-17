@@ -750,6 +750,16 @@ have, with the study extension as a harness for the study campaign."
   planner tasks, populates a dashboard." The practice problems may be
   the one part that stays exam-shaped. "Before we build anything we plan,
   design."
+- Added the same day: "It is likely that I take the week before my exam
+  fully off. Generally we are allowed to use the paid study time to get 4
+  hours of study per day in the two weeks leading up to our exam. We can
+  use a max of 20 hours a week. I will usually pair this with PTO for
+  the secondary 20 hours, so my final week I am off from work and the
+  week prior to that I am on half days. This has helped me a ton. I
+  generally aim for two hours each day otherwise for the work study
+  time. I also increase my hours in the last 6 to 8 weeks, including
+  more studying in the evening. I want us to do a similar thing to the
+  question campaign we did as well."
 
 **What was read for it (2026-11-17).** The app, by an agent: Worksheets'
 study program, Planner, Flashcards, Study, the dashboard, chat, canvas
@@ -807,12 +817,17 @@ already built, in the wrong place and shaped to Exam 7:
   a daily draw spread across papers), an imported day-by-day plan (the
   Campaign tab: blocks of quizzes, exams and other tools' commands,
   done when the activity journal shows a line), the roster, XP (10 a
-  problem, 300 a level, ten titles), 17 milestones, Cash Out at a dollar
-  rate, and an idle-aware study clock (`studyClock.ts`) that counts
-  only time on Worksheets' own screens. No hours are planned or summed
-  anywhere; block times only order the day.
-- Planner: tasks other tools create (`planner.getRegistry` then
-  `data.createTask`), and the day-load badges Flashcards and Study feed.
+  problem with bonuses for an Easy rating and a full day, XP on each plan
+  block, 300 a level, ten titles), 17 milestones (three of them for daily
+  streaks), Cash Out at dollars per 100 XP, and an idle-aware study clock
+  (`studyClock.ts`) that counts only time on Worksheets' own screens and
+  is summed by day and by paper on its dashboard. Flashcards sums review
+  time (capped at 60 s an answer) and Study keeps seconds per session.
+  Nothing sums time across tools and nothing plans hours: a plan block's
+  times only order the day.
+- Planner: a route for other tools to make tasks (`planner.getRegistry`
+  then `data.createTask`), used by none yet; the day-load badges
+  Flashcards and Study feed.
 - Flashcards: FSRS-6 per card, a review log with time taken, the
   `parallx:card-rated` event, `flashcards.addCards` and `studyTag`, a
   journal line when a session ends.
@@ -820,12 +835,15 @@ already built, in the wrong place and shaped to Exam 7:
   that is not idle-aware), `study_results` and `study_weak_spots` for the
   chat, the question-provider registry it reads, a weak-spots widget.
   It writes nothing to the journal.
-- Missing: a way for an extension to read the activity journal; one
-  ledger of study time across tools; a plan or campaign seam other tools
-  register into; any word from chat about which topic a conversation
-  was on; a typed canvas-database API for extensions (today only chat
-  tools behind a permission prompt); any event from the PDF pane about
-  pages read.
+- Missing: a named API for an extension to read the activity journal
+  (it can reach the journal's `query` today only as a raw core service,
+  `api.services.get`, which no extension does); one ledger of study time
+  across tools; a plan or campaign seam other tools register into; any
+  word from chat about which topic a conversation was on; a typed
+  canvas-database API for extensions (today the raw canvas data service,
+  or chat tools behind a permission prompt); any event from the PDF pane
+  about pages read (the journal records only a PDF opened, viewed and
+  closed).
 
 **Proposed by Claude, nothing agreed.**
 
@@ -857,10 +875,17 @@ is the goal and hours are its budget.
 - A week: blocks per weekday with a start, an end, a kind (deep work or
   light review) and an account (personal or work). His would be 5:30 to
   7:30 personal, 7:30 to 9:30 work, one evening hour light, Friday rest.
-  Dates off (holidays, PTO) on top.
-- Accounts: the work account has a budget (130 hours) and a window; the
-  plan spends it first in its window and shows what is left.
-- Stretches: learn and practice dates, and a taper, as he sets them.
+  Dates off (holidays) on top.
+- Stretches, each with its own week: learn and practice as he sets them,
+  then the ramp (his last 6 to 8 weeks, more evening study), then the
+  half-day week, then the week off before the exam. A stretch can add
+  blocks, lengthen them, or turn a work day into a study day.
+- Accounts, each with rules. Work study, for him: 130 hours a sitting,
+  2 hours a day as a rule, up to 4 a day in the last two weeks, never
+  more than 20 in a week. PTO: days he takes off work, which turn the
+  work day into study time (the second 20 hours of each of the last two
+  weeks). The plan books the accounts under their rules and shows what
+  is left of each.
 
 *The plan is arithmetic, not a model's guess.* Code works it out and the
 AI explains it. Capacity is summed from the week and the dates; units are
@@ -871,6 +896,22 @@ missed day is never quietly spread over the rest (Coaching Actuaries and
 TIA do that; RemNote offers a catch-up instead). On Monday, the fresh
 start, the harness shows the week as it now stands and offers two or
 three ways to absorb what slipped, and he picks.
+
+*Sweeps: the question campaign, made general.* What worked in the fall
+was the Worksheets campaign: every workbook problem in N days, a quota a
+day (what is left over the study days left, the last day asking only for
+what remains), each problem counted once, the day's draw spread across
+papers, ahead or behind shown. A sweep is that shape over any set: all
+problems, all conceptual questions, every card of a tag, every unit's
+summary. It draws only from units already opened in the plan, so in the
+learn stretch it grows as the reading does, and its draw is mixed across
+units by design (interleaving). Sweeps follow one another: a first sweep
+of every problem, a second of those rated Medium or Hard, the roster for
+what is still starred; a second and third sweep of the conceptual
+questions. "See the content as many times as possible" then has a
+number: the sweeps finished over each set, and the plan says how many
+fit before the exam. Sweep work fills the plan's blocks; it is not a
+second plan beside it.
 
 *Three plans as one band.* He sees the target plan. Behind it the
 harness keeps a floor and a stretch, drawn as lines on one hours chart
@@ -884,24 +925,33 @@ The plan also carries reserve days, 2 a month say: a missed day spends a
 reserve instead of breaking anything, and unspent reserves pay XP at the
 end of the month.
 
-An illustration only (the weekend hours and keep rates are guesses for
-him to replace): 20 weeks, Monday to Thursday 2 personal + 2 work + 1
-evening, 3 hours on Saturday and on Sunday, Friday rest. That is 26
-hours a week. At 8 work hours a week the 130 run out in week 17, after
-which weekdays are 3 hours: 130 work + 360 personal = 490 if every block
-is kept. If he keeps 90% of mornings, 30% of evenings and half the
-weekends, it is 130 work + 11.4 personal a week, about 358, short of
-400. The plan's first screen would say that, and what closes the gap
-(at that pace, starting four weeks sooner reaches 404), before the
-campaign starts rather than in week 14.
+An illustration only, on his rules with guesses marked: 20 weeks;
+Monday to Thursday 5:30 to 7:30 personal, 7:30 to 9:30 work, an evening
+hour (two in weeks 13 to 18, the ramp); Saturday and Sunday 3 hours
+each (a guess); Friday rest. Week 19 on half days: 4 work hours a day
+and the morning and evening around them. Week 20 off: 6 hours a day
+for 6 days (a guess), 20 of them work and the rest PTO.
+
+- The last two weeks take 40 of the 130 work hours, so 90 are left for
+  weeks 1 to 18. Those weeks have 72 working mornings; at 2 hours each
+  that is 144. The 90 pay for 45 of them. The plan has to say where they
+  go (from the start, or kept for weeks 8 to 18 when the hours rise, or
+  1.25 hours a day throughout), which is the choice he now makes by hand
+  in a day of planning.
+- If every block is kept: 216 personal in weeks 1 to 12, 132 in the
+  ramp, 90 work, 46 in week 19, 36 in week 20; about 520.
+- The forecast's floor then comes from the blocks he really keeps, once
+  two weeks are recorded, and the first screen says, before the campaign
+  starts and again each Monday, what it takes to stay above 400.
 
 *Honest time, without a timer to forget.* One ledger of study time for
 the campaign. Every tool already leaves evidence (pages in the PDF pane,
 reviews, problem sheets, quizzes, chat turns); the harness rebuilds the
 session from it, with the idle cut-off Worksheets' clock already uses,
 and asks once: "5:34 to 7:41, 2 h 07, mostly Clark and Mack. Log it as
-personal?" The 7:30 to 9:30 window is filled from the work account
-until its 130 are spent. A start-and-stop timer stays for those who want
+personal?" Time in the work window is booked to the work account under
+its rules (2 a day, 4 in the last two weeks, 20 a week) until its 130
+are spent, and a week's work hours can be listed for a timesheet. A start-and-stop timer stays for those who want
 it. Reading time is logged as time; it simply earns little XP (below).
 
 *XP for the work that makes memory, not for minutes.*
@@ -927,8 +977,9 @@ it. Reading time is logged as time; it simply earns little XP (below).
   assumptions). Done unprompted, the same work earns the same.
 - Stretches change the quests so the game does not go stale after a
   month (the research saw effects fade at about four weeks).
-- Cash Out (dollars to himself per XP, already in Worksheets) stays, as
-  his real reward.
+- Cash Out (dollars to himself per 100 XP, already in Worksheets) stays,
+  as his real reward. Worksheets' three daily-streak milestones would
+  become weekly ones in the move.
 - XP never claims readiness. Beside it, separately: the syllabus memory
   and his scores on problems he has not seen, mixed.
 
@@ -982,16 +1033,22 @@ tested on his own numbers; (2) the activity seam and the ledger of time,
 with the providers in Flashcards, Worksheets, Study, the PDF pane and
 chat; (3) the dashboard widgets; (4) XP, quests and the syllabus memory;
 (5) the move of Worksheets' campaign, plan, roster and rewards into the
-harness, his data carried over; (6) the overnight build. The surfaces
+harness, his data carried over, with sweeps over any set; (6) the
+overnight build. The surfaces
 (setup, Today, the band, the map) get the bar read and mock-ups for his
 pick before any is built.
 
 **Owed from him before piece 1:** whether he studies on Saturday and
-Sunday, and how long; the work study rules (130 per sitting? only 7:30
-to 9:30 on working days? does his employer need a log?); whether Friday
-is rest for work study too; yes or no on moving Worksheets' campaign and
-rewards into the harness; whether time is rebuilt and confirmed, or
-timed with a start and stop, or both.
+Sunday, and how long; whether Friday is rest for work study too, and
+whether the 2-hour rule lets the 90 hours before the last two weeks be
+spread thinner or kept for later; whether his employer needs a log of
+work hours; how many hours a day the week off holds; yes or no on moving
+Worksheets' campaign and rewards into the harness; whether time is
+rebuilt and confirmed, or timed with a start and stop, or both. Settled
+on 2026-11-17: 130 work hours a sitting, 2 a day as a rule, 4 a day and
+20 a week at most in the last two weeks, PTO for the rest of those
+weeks, the week before the exam off and the one before on half days,
+more hours and evenings in the last 6 to 8 weeks.
 
 ### AI chat: message times, model speed, dates on old chats
 
