@@ -518,6 +518,33 @@ context.subscriptions.push(registry.register({
 
 `kind` is `essay`, `short`, `quant`, `mc` or `other`; `rubric` is `[{ text, required }]`. A consumer lists providers with `registry.list()`, re-reads on `registry.onDidChange`, and shows `displayName` as the question's origin. The command may be missing on an older host: retry a few times, then give up quietly. Study consumes this seam; Worksheets (`worksheets.problems`) and Flashcards (`flashcards.essay-practice`) provide into it.
 
+### 4.11c Progress providers (a core seam, through a command)
+
+A tool whose items are worked and rated (problems, cards, drills) says how
+far along they are; any tool that shows progress draws it. Neither names the
+other. Every progress provider counts in the same four states, best first:
+`good`, `middling`, `poor`, and the rest (not worked yet), so a reader draws
+one bar for any of them (`api.ui.createStackedBar`, §6.3). The registry is
+the core's and is reached through one command:
+
+```js
+const registry = await api.commands.executeCommand('progress.getRegistry');
+// { register(provider) → IDisposable, list() → providers, onDidChange(listener) → IDisposable }
+context.subscriptions.push(registry.register({
+  id: 'myExt.drills',                // '<tool>.<store>', unique
+  displayName: 'Drills',             // the kind of item, plural, as a heading
+  toolId: 'my-publisher.my-ext',
+  words: { good: 'Crisp', middling: 'Shaky', poor: 'Blank', rest: 'Untried' },   // your own words for the four states
+  async groups() {                   // every group (a paper, a tag, a deck) with its counts now
+    return [{ group: 'mack', label: 'Mack', total: 9, good: 4, middling: 2, poor: 1 }];   // the rest is total minus the three
+  },
+  onDidChange(listener) { … return { dispose() { … } }; },   // call listener() when any count may have changed
+  async open(group, state) { … return true; },   // show that group's items in that state ('good' | 'middling' | 'poor' | 'rest'); optional
+}));
+```
+
+`group` is your own key (it comes back in `open`); `label` is the name a person reads. A reader matches a group to its own things by name, so name groups as the person names them. Counts are whole numbers; a reader clamps what does not add up. Leave `open` out when you have nowhere to show the items: a reader then draws the bar without buttons. A reader lists providers with `registry.list()`, reads `groups()` again on the provider's `onDidChange`, and re-lists on `registry.onDidChange` (a tool turned off takes its provider with it, at once). The command may be missing on an older host: retry a few times, then give up quietly. Study's Progress consumes this seam; Worksheets (`worksheets.problems`) and Flashcards (`flashcards.cards`) provide into it.
+
 ### 4.12 `api.context`
 
 ```js

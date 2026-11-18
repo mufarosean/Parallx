@@ -54,6 +54,7 @@ import {
 } from './focusCommands.js';
 import { installDocling, readDocumentAgain } from './doclingCommands.js';
 import { questionsGetRegistry } from './questionCommands.js';
+import { progressGetRegistry } from './progressCommands.js';
 import { copyDiagnostics } from './diagnosticsCommands.js';
 import { openRecentItem } from './startCommands.js';
 import { showModelCalls, clearModelCalls, closeModelCalls } from './modelCallsCommands.js';
@@ -425,6 +426,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   addSelectionToChat,
   // The question-provider registry, for extensions
   questionsGetRegistry,
+  // The progress-provider registry, for extensions
+  progressGetRegistry,
 ];
 
 /**

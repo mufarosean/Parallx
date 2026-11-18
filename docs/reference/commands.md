@@ -121,6 +121,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `parallx.installDocling` | Set Up Document Reader… | core | Parallx |  |  |
 | `part.resize` | Resize Part | core | Layout |  |  |
 | `pdf.readAgain` | Read This Document Again | core | PDF |  | activeEditor == 'parallx.editor.pdf' |
+| `progress.getRegistry` | Get Progress Providers | core | Progress |  |  |
 | `questions.getRegistry` | Get Question Providers | core | Questions |  |  |
 | `view.moveToPanel` | Move View to Panel | core | View |  |  |
 | `view.moveToSidebar` | Move View to Sidebar | core | View |  |  |
