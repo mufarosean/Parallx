@@ -62,6 +62,7 @@ The settings tools declare in their manifests, with the tool that owns each. Set
 | `study.choices` | number | 4 | study | Study | Options per multiple-choice question: 4 or 5. |
 | `study.generationContext` | number | 0 | study | Study | Context window (tokens) for generation and grading. 0 = auto: Study names no size and the app uses the one the model is loaded at, so the model is never loaded again between calls. A fixed value is sent on every call. |
 | `study.numericTolerance` | number | 0.005 | study | Study | Relative tolerance for a numeric answer to count as right (0.005 = half a percent). |
+| `study.progressSort` | order \\| weakest | "order" | study | Study | The order of the units in a subject's Progress: order (the Units order) or weakest (the lowest share of green first). The switch on the Progress tab sets it. |
 | `study.questionsPerConcept` | number | 2 | study | Study | How many questions of each format a concept needs before generation considers it covered. |
 | `study.sessionSize` | number | 20 | study | Study | Questions per session. Refresh draws the next set from the same scope. |
 | `study.staleDays` | number | 14 | study | Study | Days without an answer before a clean concept counts as stale. |

@@ -28,6 +28,8 @@ function stSubjectColumns(unitsDb) {
     units: [
       { name: 'Order', type: 'number' },
       { name: 'Weight', type: 'number' },
+      // His: other names a unit goes by in other tools, for Progress (14-progress-model.js). Study reads it and never writes it.
+      { name: 'Also Called', type: 'text' },
       kept('Questions', 'number'), kept('Answered', 'number'), kept('Right Last Time', 'number'), kept('Last Worked', 'date'),
     ],
     questions: [

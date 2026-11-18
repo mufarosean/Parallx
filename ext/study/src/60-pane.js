@@ -25,6 +25,7 @@ function stRouteInstanceId(route) {
   if (!route) return 'setup';
   if (route.view === 'setup') return 'setup';
   if (route.view === 'newSubject') return 'new-subject';
+  if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -39,6 +40,8 @@ function stRouteFromInstanceId(instanceId) {
   m = /^learn-(\d+)-(\d+)$/.exec(id);
   if (m) return { view: 'learn', materialId: Number(m[1]), sectionId: Number(m[2]) };
   if (id === 'new-subject') return { view: 'newSubject' };
+  m = /^progress-(\d+)$/.exec(id);
+  if (m) return { view: 'progress', subjectId: Number(m[1]) };
   return { view: 'setup', materialIds: [] };
 }
 
@@ -46,6 +49,10 @@ async function stRouteTitle(route) {
   try {
     if (route.view === 'setup') return 'Study';
     if (route.view === 'newSubject') return 'New Subject';
+    if (route.view === 'progress') {
+      const st = _stSubjects.get(Number(route.subjectId));
+      return st ? `${st.subject.name} Progress` : 'Progress';
+    }
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
       let title = material ? material.label : 'Learn';
@@ -89,7 +96,7 @@ function stOpenSetup(partial) {
   stNoteSheetOpener();
   const route = { view: 'setup', materialIds: Array.isArray(p.materialIds) ? p.materialIds.slice() : [] };
   if (Array.isArray(p.bankIds) && p.bankIds.length) route.bankIds = p.bankIds.slice();
-  for (const k of ['unit', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
+  for (const k of ['unit', 'result', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
   return stOpenPane(route);
 }
 
@@ -362,6 +369,7 @@ function createEditorPane(container, input) {
         try {
           if (route.view === 'setup') await renderSetup(root, route, ctx);
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
+          else if (route.view === 'progress') await renderProgress(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);
@@ -789,6 +797,8 @@ async function renderBankSetup(host, route, ctx) {
   const scope = { kind: 'bank', bankIds: banks.map((b) => b.id), materialIds: [], label: banks.map((b) => b.name).join(' + ') };
   // One unit of a subject: its bank, narrowed.
   if (route.unit && banks.length === 1) { scope.unit = String(route.unit); scope.label = `${banks[0].name} · ${scope.unit}`; }
+  // And to one last result (from a bar of Progress): the same scope, filtered.
+  if (ST_PROGRESS_STATES.includes(route.result) && banks.length === 1 && stIsSubjectBank(banks[0])) { scope.result = route.result; scope.label = `${scope.label} · ${ST_PROGRESS_WORDS[route.result]}`; }
   const ofSubject = banks.length === 1 && stIsSubjectBank(banks[0]);
   const questions = ((await stFixedScopeQuestions(scope)) || []).filter((q) => !q.hidden);
   const count = await stCountScopeQuestions(scope);

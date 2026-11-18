@@ -904,7 +904,7 @@ describe('Study end to end', () => {
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(22); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), and a subject's three (New Subject…, Study a Subject…, Subject Actions…)
+    expect(MANIFEST_COMMANDS.length).toBe(23); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), and a subject's four (New Subject…, Study a Subject…, Subject Actions…, Open Progress…)
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.

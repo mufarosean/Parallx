@@ -27,6 +27,7 @@ async function stOpenSubjectDatabase(databaseId) {
 /** A subject's actions: its More Actions menu, its context menu, and the Subject Actions… command. */
 function stSubjectMenuItems(s) {
   return [
+    { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenPane({ view: 'progress', subjectId: s.id }) },
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
     { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
@@ -63,12 +64,12 @@ async function stPickSubject(arg, placeholder) {
   return pick ? all.find((s) => s.id === pick.id) || null : null;
 }
 
-/** Study a Subject…: the setup sheet on the subject, or on one of its units. */
-async function stCmdStudySubject(arg, unit) {
+/** Study a Subject…: the setup sheet on the subject, or on one of its units, or on that unit's questions in one state (`result`, from a bar of Progress). */
+async function stCmdStudySubject(arg, unit, result) {
   const s = await stPickSubject(arg, 'Study which subject?');
   if (!s) return null;
   const named = unit ? s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
-  return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}) });
+  return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}), ...(named && ST_PROGRESS_STATES.includes(result) ? { result } : {}) });
 }
 
 /** Subject Actions…: the menu at the subject's row when it is on screen, else a pick. */
@@ -132,7 +133,8 @@ async function stCmdNewSubject(arg) {
 function registerSubjectCommands(context) {
   const cmds = [
     ['study.newSubject', (arg) => stCmdNewSubject(arg)],
-    ['study.studySubject', (subject, unit) => stCmdStudySubject(subject, unit)],
+    ['study.studySubject', (subject, unit, result) => stCmdStudySubject(subject, unit, result)],
+    ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));

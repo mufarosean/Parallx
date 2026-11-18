@@ -99,11 +99,19 @@ function stSubjectScope(subject, unit = '') {
   return scope;
 }
 
-/** A fixed scope's questions narrowed to its unit, when it names one. */
+/**
+ * A fixed scope's questions narrowed to its unit, when it names one, and to
+ * one last result, when it names that too (`scope.result`, one of the four
+ * progress states: a session started from a bar of Progress). The result is
+ * read from the subject's rows as they are now.
+ */
 function stScopeUnitFilter(scope, questions) {
   const unit = scope && scope.unit ? String(scope.unit) : '';
-  if (!unit) return questions;
-  return (questions || []).filter((q) => stSubjectSameName(stQuestionMeta(q).paper, unit));
+  const ofUnit = unit ? (questions || []).filter((q) => stSubjectSameName(stQuestionMeta(q).paper, unit)) : questions;
+  const result = scope && scope.result ? String(scope.result) : '';
+  if (!result) return ofUnit;
+  const st = stSubjectOfScope(scope);
+  return st ? stProgressFilterByResult(ofUnit, st.rows, st.names, result) : [];
 }
 
 /**

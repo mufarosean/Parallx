@@ -22,7 +22,7 @@
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: var(--px-radius-xs);
+  border-radius: var(--px-radius-sm);
   box-sizing: border-box;
   font: inherit;
 }

@@ -9,7 +9,8 @@
 // Integration points (everything the host offers, used once each):
 //   - api.database          per-extension SQLite (st_* tables)
 //   - api.lm                concept maps, question writing, checks, grading
-//   - api.commands          canvas.getPageMarkdown, questions.getRegistry,
+//   - api.commands          canvas.getPageMarkdown, canvas.openPage,
+//                           questions.getRegistry, progress.getRegistry,
 //                           flashcards.addCards (only while it exists)
 //   - api.editors           the study pane, openFileEditor for Show Source
 //   - api.chat              the selection action, chat tools

@@ -306,6 +306,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.newSubject` | New Subject… | study | Study |  |  |
 | `study.nextQuestion` | Next Question | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
+| `study.openProgress` | Open Progress… | study | Study |  |  |
 | `study.previousQuestion` | Previous Question | study | Study |  |  |
 | `study.quizSelection` | Quiz This Selection | study | Study |  |  |
 | `study.stopMaking` | Stop Making Questions | study | Study |  |  |

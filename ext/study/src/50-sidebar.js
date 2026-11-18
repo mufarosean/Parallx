@@ -313,12 +313,20 @@ function createSidebarView(container) {
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
     if (s.folded) return;
+    // Each unit's thin bar is over every kind of work together (its questions, and what the tools that report progress have for it), with that "N of M".
+    const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
     for (const u of s.units) {
-      const unit = _api.ui.createButton(host, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
+      const all = progress ? (progress.rows.find((r) => r.rowId === u.rowId) || {}).all : null;
+      const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
+      const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
         title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
       if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
-      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: countText(u.answered, u.total) });
+      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: all ? stProgressCountText(all) : countText(u.answered, u.total) });
+      if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
+      // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
+      line.classList.add('st-sb__unit--bar');
+      _api.ui.createStackedBar(line, { size: 'sm', label: stProgressBarName(u.name, '', all, ST_PROGRESS_WORDS), parts: stProgressParts(u.name, 'All work', all, ST_PROGRESS_WORDS) });
     }
     if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
   };
@@ -404,6 +412,8 @@ function createSidebarView(container) {
     // A subject's bank is shown under Subjects, with its units.
     const banks = ((await stListBanks()) || []).filter((b) => !stIsSubjectBank(b));
     const subjects = stSubjectsShown();
+    // The units' bars take in the tools that report progress: they are read once there is a subject to show them on.
+    if (subjects.length) stProgressWant();
     const marked = (await stListMarkedQuestions()) || [];
     if (state.disposed) return;
 
@@ -501,6 +511,7 @@ function createSidebarView(container) {
 
   const offData = onDataChanged(() => void paint());
   const offSession = bus.on('session', () => void paint());
+  const offProgress = bus.on('progress', () => void paint());
   const offRoute = bus.on('route', (route) => {
     // The New Subject sheet changes nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
     if (!route || route.view === 'newSubject') return;
@@ -515,7 +526,7 @@ function createSidebarView(container) {
   return {
     dispose() {
       state.disposed = true;
-      stOff(offData); stOff(offSession); stOff(offRoute);
+      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute);
       root.remove();
     },
   };

@@ -225,7 +225,7 @@ function stQuestionsInScope(questions, concepts, scope, now, staleDays = 14) {
   const to = Number(s.pageTo) || 0;
   return (questions || []).filter((q) => {
     if (q.hidden) return false;
-    if (s.kind === 'bank') return (bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0) && (!s.unit || stScopeUnitFilter(s, [q]).length > 0);
+    if (s.kind === 'bank') return (bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0) && ((!s.unit && !s.result) || stScopeUnitFilter(s, [q]).length > 0);
     if (materialIds.size && !materialIds.has(Number(q.materialId))) return false;
     const concept = conceptById.get(Number(q.conceptId));
     if (sectionIds && !(concept && sectionIds.has(Number(concept.sectionId)))) return false;

@@ -78,6 +78,7 @@ export async function activate(api, context) {
   registerQuestionProviders(owned, 0, token);
   registerSubjectCommands(owned);
   registerSubjects(owned, token);
+  registerProgress(owned, 0, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -116,6 +117,7 @@ export async function deactivate() {
   _picked = [];
   _stSeenProviders.clear();
   stSubjectsReset();
+  stProgressReset();
   _stSubjectSheet = null;
   _stSubjectOpener = null;
   _dbBridge = null;
@@ -245,6 +247,12 @@ export const __testables = {
   stSubjectColumns, stSubjectRoleColumn, stSubjectGuessMapping, stSubjectResultCell, stSubjectMeansRight, stSubjectResultOfItem,
   stSubjectUnitNames, stSubjectCounts, stSubjectUnitChanges, stSubjectItems, stSubjectUnitsFromListing,
   stSubjectLocalDate, stSubjectLocalDateTime, stSubjectMinutes, stSubjectLogValues,
+  // 14-progress-model: Progress, the pure part
+  ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
+  stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
+  stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressUnmatchedText, stProgressFilterByResult,
+  // 28-progress, 63-progress-view: the providers as they are now, and the tab
+  registerProgress, stProgressReset, stProgressWant, stProgressProviders, stProgressOfSubject, stProgressOpenItems, stCmdOpenProgress,
   // 27-subjects, 62-subject-view: the record in canvas databases
   stListSubjects, stSubjectsShown, stCreateSubject, stRemoveSubject, stSubjectSyncNow, stSubjectReconcile, stSubjectScope, stScopeUnitFilter, registerSubjects, stSubjectsReset,
   // 70-integration: state and pure helpers

@@ -11,7 +11,8 @@
 // Integration points (everything the host offers, used once each):
 //   - api.database          per-extension SQLite (st_* tables)
 //   - api.lm                concept maps, question writing, checks, grading
-//   - api.commands          canvas.getPageMarkdown, questions.getRegistry,
+//   - api.commands          canvas.getPageMarkdown, canvas.openPage,
+//                           questions.getRegistry, progress.getRegistry,
 //                           flashcards.addCards (only while it exists)
 //   - api.editors           the study pane, openFileEditor for Show Source
 //   - api.chat              the selection action, chat tools
@@ -2119,6 +2120,8 @@ function stSubjectColumns(unitsDb) {
     units: [
       { name: 'Order', type: 'number' },
       { name: 'Weight', type: 'number' },
+      // His: other names a unit goes by in other tools, for Progress (14-progress-model.js). Study reads it and never writes it.
+      { name: 'Also Called', type: 'text' },
       kept('Questions', 'number'), kept('Answered', 'number'), kept('Right Last Time', 'number'), kept('Last Worked', 'date'),
     ],
     questions: [
@@ -2413,6 +2416,232 @@ function stSubjectLogValues(session, items, unitRowIds) {
       Origin: 'App',
     },
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 14: PROGRESS — the pure part
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Progress is a subject's units as bars: the questions of each unit by their
+// Last Result, and beside them one bar for every tool that reports progress
+// through the core's progress providers (problems, cards, whatever a tool
+// counts). Everything counts in the same four states, best first: good,
+// middling, poor, and the rest (not worked yet). This part is the arithmetic
+// of that, with no database and no DOM: which unit a tool's group belongs to
+// (by name, and by the names in Also Called), a question's state, the rows
+// and totals the view shows, the order weakest first, and the names a screen
+// reader speaks. 28-progress.js holds the live providers; 63-progress-view.js
+// draws it.
+
+const ST_PROGRESS_STATES = ['good', 'middling', 'poor', 'rest'];
+/** Study's own words for the four states of a question. */
+const ST_PROGRESS_WORDS = { good: 'Right', middling: 'Partly', poor: 'Wrong', rest: 'Not yet' };
+/** A tool that gives no word for a state gets these. */
+const ST_PROGRESS_PLAIN = { good: 'Good', middling: 'Middling', poor: 'Poor', rest: 'Not yet' };
+/** The column of Units where he lists a unit's other names. It is his: Study only reads it. */
+const ST_PROGRESS_ALSO = 'Also Called';
+/** The id of Study's own kind beside the providers' ids. */
+const ST_PROGRESS_QUESTIONS = 'questions';
+
+/** A name as matching reads it: case, spaces, punctuation and accents aside. */
+function stProgressFold(s) {
+  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+/** The names an Also Called cell lists: separated by commas (a semicolon or a new line does as well). */
+function stProgressAliases(value) {
+  if (value === null || value === undefined) return [];
+  const text = Array.isArray(value) ? value.join(',') : String(value);
+  return text.split(/[,;\n]/).map((t) => t.trim()).filter(Boolean);
+}
+
+/**
+ * Which unit each group of a tool belongs to: the unit whose name the
+ * group's label equals (as stProgressFold reads names), else the unit that
+ * lists the label in Also Called. `units` are [{ name, also }] in the Units
+ * order; a name is matched before any Also Called, and the first unit wins a
+ * name two units share. Returns { matched: one list of groups per unit,
+ * unmatched: the groups no unit claims }, each in the order given.
+ */
+function stProgressMatch(units, groups) {
+  const list = Array.isArray(units) ? units : [];
+  const claim = new Map();
+  list.forEach((u, i) => { const k = stProgressFold(u && u.name); if (k && !claim.has(k)) claim.set(k, i); });
+  list.forEach((u, i) => { for (const a of stProgressAliases(u && u.also)) { const k = stProgressFold(a); if (k && !claim.has(k)) claim.set(k, i); } });
+  const matched = list.map(() => []);
+  const unmatched = [];
+  for (const g of Array.isArray(groups) ? groups : []) {
+    if (!g) continue;
+    const at = claim.get(stProgressFold(g.label));
+    if (at === undefined) unmatched.push(g); else matched[at].push(g);
+  }
+  return { matched, unmatched };
+}
+
+/** A group's counts as [good, middling, poor, rest]: whole numbers, none below zero, the three never more than the total. */
+function stProgressCountsOf(group) {
+  const whole = (v) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const g = group || {};
+  const total = whole(g.total);
+  const good = Math.min(whole(g.good), total);
+  const middling = Math.min(whole(g.middling), total - good);
+  const poor = Math.min(whole(g.poor), total - good - middling);
+  return [good, middling, poor, total - good - middling - poor];
+}
+
+const stProgressAdd = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]];
+const stProgressZero = () => [0, 0, 0, 0];
+
+/**
+ * A question's state from its Last Result cell: Right good, Partly middling,
+ * Wrong poor (each in the database's own words too), nothing there the rest.
+ * A checkbox or a number has no way to say "not answered", so unchecked (or
+ * zero) is wrong only once the question was attempted.
+ */
+function stProgressQuestionState(value, attempted) {
+  if (stSubjectMeansRight(value)) return 'good';
+  if (value === false || value === 0) return attempted ? 'poor' : 'rest';
+  if (typeof value !== 'string') return 'rest';
+  const word = stSubjectFold(value);
+  if (ST_SUBJECT_WORDS.partly.includes(word)) return 'middling';
+  if (ST_SUBJECT_WORDS.wrong.includes(word)) return 'poor';
+  return 'rest';
+}
+
+/**
+ * A subject's questions by unit and state, counted from its Questions rows:
+ * { units: [{ name, counts }], total, noUnit }, the units in the order the
+ * rows first name them. A row naming two units counts in each and once in
+ * the total; `noUnit` rows name none and count in the total only.
+ */
+function stProgressQuestions(rows, mapping, titleById, relation = false) {
+  const m = mapping || {};
+  const units = [];
+  let total = stProgressZero();
+  let noUnit = 0;
+  for (const row of rows || []) {
+    if (!row) continue;
+    const v = row.values || {};
+    const at = ST_PROGRESS_STATES.indexOf(stProgressQuestionState(v[m.lastResult], stSubjectNum(v[m.attempts]) > 0));
+    const one = stProgressZero();
+    one[at] = 1;
+    total = stProgressAdd(total, one);
+    const names = stSubjectUnitNames(v[m.unit], titleById, relation);
+    if (!names.length) noUnit += 1;
+    for (const name of names) {
+      let u = units.find((x) => stSubjectSameName(x.name, name));
+      if (!u) { u = { name, counts: stProgressZero() }; units.push(u); }
+      u.counts = stProgressAdd(u.counts, one);
+    }
+  }
+  return { units, total, noUnit };
+}
+
+/**
+ * What the Progress view shows. `units` are [{ name, rowId, also }] in the
+ * Units order; `questions` is stProgressQuestions' result; `providers` are
+ * [{ id, kind, words, canOpen, groups }] as the tools report now. Returns
+ * { rows, kinds, totals, unmatched, noUnit }:
+ *   rows       one per unit: { name, rowId, kinds: [{ id, kind, words, counts,
+ *              canOpen, groups: [{ group, counts }] }], all }, with a kind only
+ *              when the unit has something in it; `all` is every kind together
+ *   kinds      the kinds some unit has, questions first: [{ id, kind }]
+ *   totals     one per kind: the questions over the whole subject, a tool's
+ *              kind over its units' bars
+ *   unmatched  per tool, the groups no unit claims: [{ id, kind, groups: [{ label, counts }] }]
+ */
+function stProgressBuild({ units, questions, providers }) {
+  const list = Array.isArray(units) ? units : [];
+  const q = questions || { units: [], total: stProgressZero(), noUnit: 0 };
+  const sum = (c) => c[0] + c[1] + c[2] + c[3];
+  const rows = list.map((u) => {
+    const own = q.units.find((x) => stSubjectSameName(x.name, u.name));
+    const kinds = own && sum(own.counts) > 0 ? [{ id: ST_PROGRESS_QUESTIONS, kind: 'Questions', words: ST_PROGRESS_WORDS, counts: own.counts.slice(), canOpen: true, groups: [] }] : [];
+    return { name: u.name, rowId: u.rowId, kinds, all: stProgressZero() };
+  });
+  const kinds = [];
+  const totals = [];
+  const unmatched = [];
+  if (sum(q.total) > 0) {
+    kinds.push({ id: ST_PROGRESS_QUESTIONS, kind: 'Questions' });
+    totals.push({ id: ST_PROGRESS_QUESTIONS, kind: 'Questions', words: ST_PROGRESS_WORDS, counts: q.total.slice() });
+  }
+  for (const p of Array.isArray(providers) ? providers : []) {
+    if (!p) continue;
+    const m = stProgressMatch(list, p.groups);
+    let total = stProgressZero();
+    m.matched.forEach((groups, i) => {
+      const parts = groups.map((g) => ({ group: String(g.group ?? ''), counts: stProgressCountsOf(g) })).filter((g) => sum(g.counts) > 0);
+      if (!parts.length) return;
+      const counts = parts.reduce((t, g) => stProgressAdd(t, g.counts), stProgressZero());
+      rows[i].kinds.push({ id: p.id, kind: p.kind, words: p.words || {}, counts, canOpen: !!p.canOpen, groups: parts });
+      total = stProgressAdd(total, counts);
+    });
+    if (sum(total) > 0) {
+      kinds.push({ id: p.id, kind: p.kind });
+      totals.push({ id: p.id, kind: p.kind, words: p.words || {}, counts: total });
+    }
+    const loose = m.unmatched.map((g) => ({ label: String(g.label || g.group || ''), counts: stProgressCountsOf(g) })).filter((g) => sum(g.counts) > 0);
+    if (loose.length) unmatched.push({ id: p.id, kind: p.kind, groups: loose });
+  }
+  for (const row of rows) row.all = row.kinds.reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero());
+  return { rows, kinds, totals, unmatched, noUnit: Number(q.noUnit) || 0 };
+}
+
+/**
+ * The rows weakest first: the lowest share of good over all a unit's items
+ * first; units with nothing attempted come last. Equals keep their order.
+ */
+function stProgressWeakestFirst(rows) {
+  const list = (rows || []).map((row, i) => {
+    const c = row.all || stProgressZero();
+    const total = c[0] + c[1] + c[2] + c[3];
+    return { row, i, attempted: c[0] + c[1] + c[2] > 0, share: total ? c[0] / total : 0 };
+  });
+  return list.sort((a, b) => (Number(b.attempted) - Number(a.attempted)) || (a.attempted ? a.share - b.share : 0) || (a.i - b.i)).map((x) => x.row);
+}
+
+/** A state's word as a bar speaks it: lower case, and no comma (the name's own separator). */
+function stProgressWord(words, state) {
+  const own = words && typeof words[state] === 'string' ? words[state].trim() : '';
+  return (own || ST_PROGRESS_PLAIN[state]).replace(/\s*,\s*/g, ' ').toLowerCase();
+}
+
+/** A bar's whole name: "Mack, Questions: 12 right, 3 partly, 2 wrong, 5 not yet". With no kind: "Mack: …". */
+function stProgressBarName(owner, kind, counts, words) {
+  const said = ST_PROGRESS_STATES.map((s, i) => `${counts[i]} ${stProgressWord(words, s)}`).join(', ');
+  return `${owner}${kind ? `, ${kind}` : ''}: ${said}`;
+}
+
+/** One part's name: "Mack, Questions, wrong: 2. Study these" (the last sentence only when pressing it does something). */
+function stProgressPartName(owner, kind, word, count, action = '') {
+  return `${owner}, ${kind}, ${String(word).replace(/\s*,\s*/g, ' ').toLowerCase()}: ${count}${action ? `. ${action}` : ''}`;
+}
+
+/** "N of M": the three states together over all. */
+function stProgressCountText(counts) {
+  return `${counts[0] + counts[1] + counts[2]} of ${counts[0] + counts[1] + counts[2] + counts[3]}`;
+}
+
+/** The line for a tool's groups that match no unit: "Problems not matched to a unit: Brosius 6, Hürlimann 3". */
+function stProgressUnmatchedText(kind, groups) {
+  return `${kind} not matched to a unit: ${(groups || []).map((g) => `${g.label} ${g.counts[0] + g.counts[1] + g.counts[2] + g.counts[3]}`).join(', ')}`;
+}
+
+/**
+ * The questions whose row is in `state` now. `rows` is the subject's rows by
+ * page id, `names` its mapped column names. A question whose row is gone, a
+ * state that is not one, or no rows to read: none.
+ */
+function stProgressFilterByResult(questions, rows, names, state) {
+  if (!rows || !ST_PROGRESS_STATES.includes(state)) return [];
+  const n = names || {};
+  return (questions || []).filter((q) => {
+    const row = rows.get(stProviderRefOf(q));
+    if (!row) return false;
+    const v = row.values || {};
+    return stProgressQuestionState(v[n.lastResult], stSubjectNum(v[n.attempts]) > 0) === state;
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4116,11 +4345,19 @@ function stSubjectScope(subject, unit = '') {
   return scope;
 }
 
-/** A fixed scope's questions narrowed to its unit, when it names one. */
+/**
+ * A fixed scope's questions narrowed to its unit, when it names one, and to
+ * one last result, when it names that too (`scope.result`, one of the four
+ * progress states: a session started from a bar of Progress). The result is
+ * read from the subject's rows as they are now.
+ */
 function stScopeUnitFilter(scope, questions) {
   const unit = scope && scope.unit ? String(scope.unit) : '';
-  if (!unit) return questions;
-  return (questions || []).filter((q) => stSubjectSameName(stQuestionMeta(q).paper, unit));
+  const ofUnit = unit ? (questions || []).filter((q) => stSubjectSameName(stQuestionMeta(q).paper, unit)) : questions;
+  const result = scope && scope.result ? String(scope.result) : '';
+  if (!result) return ofUnit;
+  const st = stSubjectOfScope(scope);
+  return st ? stProgressFilterByResult(ofUnit, st.rows, st.names, result) : [];
 }
 
 /**
@@ -4686,6 +4923,180 @@ function registerSubjects(context, token = stActivation()) {
       await stSubjectRecover(token);
     })
     .catch((err) => { if (!stIsStopped(err) && stIsCurrent(token)) console.warn('[Study] subjects could not be loaded:', err); });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 28: PROGRESS — the tools that report it, as they are now
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The other tools' progress comes through the core's progress providers
+// (the core command `progress.getRegistry`, the same door as the question
+// providers): Study names no tool, it lists whatever is registered. A
+// provider's groups are read only once something of Study shows progress
+// (a subject in the sidebar, an open Progress tab), then again whenever the
+// provider says its counts changed. A tool turned off takes its provider out
+// of the registry, and its bars go with the next paint. Everything here
+// belongs to the activation: Study off, no provider is listened to or read.
+// The pure part is 14-progress-model.js.
+
+/** The live registry once `progress.getRegistry` answers. */
+let _stProgressRegistry = null;
+/** provider id → { provider, groups: null until read, sub, seq, timer }. */
+const _stProgressProviders = new Map();
+/** Has anything of Study asked to show progress in this activation? */
+let _stProgressWanted = false;
+
+/** A provider's groups as plain rows; whatever is not a group is left out. */
+function stProgressCleanGroups(list) {
+  return (Array.isArray(list) ? list : []).filter((g) => g && typeof g === 'object').map((g) => ({
+    group: String(g.group ?? ''), label: String(g.label ?? g.group ?? ''), total: g.total, good: g.good, middling: g.middling, poor: g.poor,
+  }));
+}
+
+/** Read one provider's groups now; the latest read wins, and one that outlives the activation is dropped. */
+function stProgressRead(id, token) {
+  const entry = _stProgressProviders.get(id);
+  if (!entry || !stIsCurrent(token)) return;
+  const seq = (entry.seq += 1);
+  const current = () => stIsCurrent(token) && _stProgressProviders.get(id) === entry && entry.seq === seq;
+  Promise.resolve()
+    .then(() => entry.provider.groups())
+    .then((groups) => { if (current()) { entry.groups = stProgressCleanGroups(groups); bus.emit('progress'); } })
+    .catch((err) => {
+      if (!current()) return;
+      // A tool that cannot say is a tool with nothing to show, said once.
+      if (entry.groups === null) console.warn(`[Study] progress of ${id} could not be read:`, err && err.message);
+      entry.groups = [];
+      bus.emit('progress');
+    });
+}
+
+/** A provider said its counts changed: read it again shortly, if anything shows progress. */
+function stProgressTouched(id, token) {
+  const entry = _stProgressProviders.get(id);
+  if (!entry || !_stProgressWanted || !stIsCurrent(token)) return;
+  clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => stProgressRead(id, token), 60);
+}
+
+function stProgressDrop(id) {
+  const entry = _stProgressProviders.get(id);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  entry.seq += 1;
+  entry.sub.dispose();
+  _stProgressProviders.delete(id);
+}
+
+/** Make Study's list agree with the registry: providers that went are dropped, new ones heard (and read, when progress is shown). */
+function stProgressSync(context, token) {
+  const registry = _stProgressRegistry;
+  if (!registry || !stIsCurrent(token)) return;
+  let listed = [];
+  try { listed = (registry.list() || []).filter((p) => p && typeof p.id === 'string' && p.id && typeof p.groups === 'function'); } catch { listed = []; }
+  let changed = false;
+  for (const [id, entry] of [..._stProgressProviders]) {
+    if (listed.some((p) => p === entry.provider)) continue;
+    stProgressDrop(id);
+    changed = true;
+  }
+  for (const provider of listed) {
+    if (_stProgressProviders.has(provider.id)) continue;
+    const id = provider.id;
+    let raw = null;
+    try { raw = typeof provider.onDidChange === 'function' ? provider.onDidChange(() => stProgressTouched(id, token)) : null; } catch { raw = null; }
+    // Disposed once, by whichever comes first: the provider going, or the activation (with Study off, nothing listens to any provider).
+    let done = false;
+    const sub = { dispose() { if (done) return; done = true; try { if (raw && typeof raw.dispose === 'function') raw.dispose(); else if (typeof raw === 'function') raw(); } catch { /* the provider's own */ } } };
+    context.subscriptions.push(sub);
+    _stProgressProviders.set(id, { provider, groups: null, sub, seq: 0, timer: 0 });
+    changed = true;
+    if (_stProgressWanted) stProgressRead(id, token);
+  }
+  if (changed) bus.emit('progress');
+}
+
+/** Something of Study shows progress: read every provider not read yet. */
+function stProgressWant(token = stActivation()) {
+  if (!stIsCurrent(token)) return;
+  _stProgressWanted = true;
+  for (const [id, entry] of _stProgressProviders) if (entry.groups === null && entry.seq === 0) stProgressRead(id, token);
+}
+
+/** The providers as the view model takes them: [{ id, kind, words, canOpen, groups }], in registration order. */
+function stProgressProviders() {
+  return [..._stProgressProviders.values()].map(({ provider, groups }) => ({
+    id: provider.id,
+    kind: String(provider.displayName || provider.id),
+    words: provider.words && typeof provider.words === 'object' ? provider.words : {},
+    canOpen: typeof provider.open === 'function',
+    groups: groups || [],
+  }));
+}
+
+/** Units' order in the Units database: Order, then the table's own. */
+function stProgressUnitsOf(st) {
+  const order = (r) => { const v = (r.values || {}).Order; const n = Number(v); return Number.isFinite(n) && v !== '' && v != null ? n : Infinity; };
+  const also = (r) => { const key = Object.keys(r.values || {}).find((k) => stSubjectSameName(k, ST_PROGRESS_ALSO)); return key ? r.values[key] : ''; };
+  return (st.unitRows || []).map((r, i) => ({ r, i })).filter((x) => String(x.r.title || '').trim())
+    .sort((a, b) => (order(a.r) - order(b.r)) || (a.i - b.i))
+    .map(({ r }) => ({ name: String(r.title).trim(), rowId: r.pageId, also: also(r) }));
+}
+
+/**
+ * A subject's progress as it is now (stProgressBuild's view), or null while
+ * the subject is not read yet or has a problem (its database in the Trash).
+ */
+function stProgressOfSubject(subjectId) {
+  const st = _stSubjects.get(Number(subjectId));
+  if (!st || !st.synced || st.problem) return null;
+  const questions = stProgressQuestions([...st.rows.values()], st.names, st.titleById, st.unitRelation);
+  return stProgressBuild({ units: stProgressUnitsOf(st), questions, providers: stProgressProviders() });
+}
+
+/**
+ * Open a tool on the items behind one part of its bar: the provider's own
+ * `open`, on the unit's group with the most items in that state (a unit
+ * matched to two groups opens the larger). Resolves false when the tool
+ * could not.
+ */
+async function stProgressOpenItems(providerId, groups, state) {
+  const entry = _stProgressProviders.get(String(providerId));
+  const at = ST_PROGRESS_STATES.indexOf(state);
+  if (!entry || at < 0 || typeof entry.provider.open !== 'function') return false;
+  const wanted = (Array.isArray(groups) ? groups : [groups]).map(String);
+  const best = (entry.groups || []).filter((g) => wanted.includes(g.group)).map((g) => ({ g, n: stProgressCountsOf(g)[at] })).sort((a, b) => b.n - a.n)[0];
+  const group = best ? best.g.group : wanted[0];
+  if (group === undefined) return false;
+  try { return (await entry.provider.open(group, state)) !== false; } catch (err) { console.warn('[Study] a tool could not open its items:', err && err.message); return false; }
+}
+
+/**
+ * Hear the progress providers for this activation. Retries while the core
+ * command is not there yet (an older host never has it: Study then shows
+ * its own questions only).
+ */
+function registerProgress(context, attempt = 0, token = stActivation()) {
+  const live = () => stIsCurrent(token);
+  if (!live()) return;
+  _api.commands.executeCommand('progress.getRegistry')
+    .then((registry) => {
+      if (!live()) return;
+      if (!registry || typeof registry.list !== 'function') throw new Error('no registry');
+      _stProgressRegistry = registry;
+      if (typeof registry.onDidChange === 'function') context.subscriptions.push(registry.onDidChange(() => stProgressSync(context, token)));
+      stProgressSync(context, token);
+    })
+    .catch(() => {
+      if (attempt < 5 && live()) stRetryLater(() => registerProgress(context, attempt + 1, token), 2000, token);
+    });
+}
+
+/** Forget every provider (deactivate): no timer left, nothing read. */
+function stProgressReset() {
+  for (const id of [..._stProgressProviders.keys()]) stProgressDrop(id);
+  _stProgressRegistry = null;
+  _stProgressWanted = false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -7754,9 +8165,58 @@ function injectStyles() {
 .st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
 .st-sb__none--unit { padding-left: var(--px-space-8); }
+/* A unit's thin bar (the kit's stacked bar) sits beside its "N of M": over the button, which stays the whole row to press. The counts share one width so the bars line up. */
+.st-sb__unit { position: relative; }
+.st-sb__unit--bar .st-sb__r { min-width: 10ch; text-align: right; margin-left: calc(48px + var(--px-space-2)); }
+.st-sb__unit > .px-stacked-bar { position: absolute; top: 50%; transform: translateY(-50%); right: calc(var(--px-sidebar-inset) + 10ch + var(--px-space-2)); width: 48px; font-size: var(--px-text-xs); pointer-events: none; }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
+
+/* ── Progress (63-progress-view.js): totals, a row per unit, a bar per kind ── */
+/* The bars are the kit's (.px-stacked-bar); these rules only lay them out. One grid template for the head and
+   every row, so every bar of a kind has the same length and the counts stand in one column. */
+.st-prog { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-prog__in { max-width: 68rem; margin: 0 auto; container-type: inline-size; }
+.st-prog__body { display: flex; flex-direction: column; gap: var(--px-space-4); padding: 0 var(--px-space-6) var(--px-space-8); }
+.st-prog__top:empty, .st-prog__under:empty, .st-prog__bar[hidden] { display: none; }
+.st-prog__top { display: flex; flex-direction: column; gap: var(--px-space-3); }
+.st-prog__totals { display: flex; flex-direction: column; gap: var(--px-space-3); padding: var(--px-space-4) var(--px-space-5); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.st-prog__cell { display: flex; align-items: center; gap: var(--px-space-3); min-width: 0; }
+.st-prog__cell .px-stacked-bar { flex: 1; }
+.st-prog__kind { flex: none; width: 6rem; color: var(--px-text-secondary); font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-prog__n { flex: none; min-width: 7ch; text-align: right; color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-prog__totals .st-prog__kind { color: var(--px-text); font-weight: 600; }
+.st-prog__totals .st-prog__n { min-width: 9ch; }
+.st-prog__totals .px-stacked-bar { height: 14px; }
+.st-prog__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-4); padding: 0 var(--px-space-5); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-1); }
+.st-prog__sw { width: 10px; height: 10px; border-radius: var(--px-radius-xs); box-sizing: border-box; }
+.st-prog__sw--good { background: var(--px-success); }
+.st-prog__sw--middling { background: var(--px-warning); }
+.st-prog__sw--poor { background: var(--px-danger); }
+.st-prog__sw--rest { border: 1px solid var(--px-bar-rest); }
+.st-prog__bar { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.st-prog__bar .px-section-label { padding: 0; }
+.st-prog__list { display: flex; flex-direction: column; }
+.st-prog__row { display: grid; grid-template-columns: minmax(7rem, 12rem) repeat(var(--st-prog-kinds, 1), minmax(0, 1fr)); align-items: center; column-gap: var(--px-space-6); min-height: 36px; padding: 0 var(--px-space-2); border-top: 1px solid var(--px-divider); }
+.st-prog__row--head { min-height: 28px; border-top: 0; color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-prog__row--head > span:first-child { padding-left: var(--px-space-2); }
+.st-prog__row .st-prog__kind { display: none; }
+.st-prog__name { justify-content: flex-start; min-width: 0; max-width: 100%; justify-self: start; color: var(--px-text); font-weight: 500; }
+.st-prog__name .px-btn__label { overflow: hidden; text-overflow: ellipsis; }
+.st-prog__name .svg-icon { color: var(--px-text-faint); flex: none; }
+.st-prog__name--done .svg-icon { color: var(--px-success); }
+.st-prog__under { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2) 0; border-top: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-prog__hint { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2); color: var(--px-text-faint); font-size: var(--px-text-xs); }
+.st-prog .px-empty { padding-top: var(--px-space-8); }
+/* A narrow tab: a unit's kinds stack under its name, each bar named in words where the column heads were. */
+@container (max-width: 40rem) {
+  .st-prog__row--head { display: none; }
+  .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-2); padding: var(--px-space-2); }
+  .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
+  .st-prog__cell--none { display: none; }
+}
 
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
 .st-widget { display: flex; flex-direction: column; min-height: 0; }
@@ -8114,12 +8574,20 @@ function createSidebarView(container) {
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
     if (s.folded) return;
+    // Each unit's thin bar is over every kind of work together (its questions, and what the tools that report progress have for it), with that "N of M".
+    const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
     for (const u of s.units) {
-      const unit = _api.ui.createButton(host, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
+      const all = progress ? (progress.rows.find((r) => r.rowId === u.rowId) || {}).all : null;
+      const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
+      const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
         title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
       if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
-      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: countText(u.answered, u.total) });
+      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: all ? stProgressCountText(all) : countText(u.answered, u.total) });
+      if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
+      // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
+      line.classList.add('st-sb__unit--bar');
+      _api.ui.createStackedBar(line, { size: 'sm', label: stProgressBarName(u.name, '', all, ST_PROGRESS_WORDS), parts: stProgressParts(u.name, 'All work', all, ST_PROGRESS_WORDS) });
     }
     if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
   };
@@ -8205,6 +8673,8 @@ function createSidebarView(container) {
     // A subject's bank is shown under Subjects, with its units.
     const banks = ((await stListBanks()) || []).filter((b) => !stIsSubjectBank(b));
     const subjects = stSubjectsShown();
+    // The units' bars take in the tools that report progress: they are read once there is a subject to show them on.
+    if (subjects.length) stProgressWant();
     const marked = (await stListMarkedQuestions()) || [];
     if (state.disposed) return;
 
@@ -8302,6 +8772,7 @@ function createSidebarView(container) {
 
   const offData = onDataChanged(() => void paint());
   const offSession = bus.on('session', () => void paint());
+  const offProgress = bus.on('progress', () => void paint());
   const offRoute = bus.on('route', (route) => {
     // The New Subject sheet changes nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
     if (!route || route.view === 'newSubject') return;
@@ -8316,7 +8787,7 @@ function createSidebarView(container) {
   return {
     dispose() {
       state.disposed = true;
-      stOff(offData); stOff(offSession); stOff(offRoute);
+      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute);
       root.remove();
     },
   };
@@ -9061,6 +9532,7 @@ function stRouteInstanceId(route) {
   if (!route) return 'setup';
   if (route.view === 'setup') return 'setup';
   if (route.view === 'newSubject') return 'new-subject';
+  if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -9075,6 +9547,8 @@ function stRouteFromInstanceId(instanceId) {
   m = /^learn-(\d+)-(\d+)$/.exec(id);
   if (m) return { view: 'learn', materialId: Number(m[1]), sectionId: Number(m[2]) };
   if (id === 'new-subject') return { view: 'newSubject' };
+  m = /^progress-(\d+)$/.exec(id);
+  if (m) return { view: 'progress', subjectId: Number(m[1]) };
   return { view: 'setup', materialIds: [] };
 }
 
@@ -9082,6 +9556,10 @@ async function stRouteTitle(route) {
   try {
     if (route.view === 'setup') return 'Study';
     if (route.view === 'newSubject') return 'New Subject';
+    if (route.view === 'progress') {
+      const st = _stSubjects.get(Number(route.subjectId));
+      return st ? `${st.subject.name} Progress` : 'Progress';
+    }
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
       let title = material ? material.label : 'Learn';
@@ -9125,7 +9603,7 @@ function stOpenSetup(partial) {
   stNoteSheetOpener();
   const route = { view: 'setup', materialIds: Array.isArray(p.materialIds) ? p.materialIds.slice() : [] };
   if (Array.isArray(p.bankIds) && p.bankIds.length) route.bankIds = p.bankIds.slice();
-  for (const k of ['unit', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
+  for (const k of ['unit', 'result', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
   return stOpenPane(route);
 }
 
@@ -9398,6 +9876,7 @@ function createEditorPane(container, input) {
         try {
           if (route.view === 'setup') await renderSetup(root, route, ctx);
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
+          else if (route.view === 'progress') await renderProgress(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);
@@ -9825,6 +10304,8 @@ async function renderBankSetup(host, route, ctx) {
   const scope = { kind: 'bank', bankIds: banks.map((b) => b.id), materialIds: [], label: banks.map((b) => b.name).join(' + ') };
   // One unit of a subject: its bank, narrowed.
   if (route.unit && banks.length === 1) { scope.unit = String(route.unit); scope.label = `${banks[0].name} · ${scope.unit}`; }
+  // And to one last result (from a bar of Progress): the same scope, filtered.
+  if (ST_PROGRESS_STATES.includes(route.result) && banks.length === 1 && stIsSubjectBank(banks[0])) { scope.result = route.result; scope.label = `${scope.label} · ${ST_PROGRESS_WORDS[route.result]}`; }
   const ofSubject = banks.length === 1 && stIsSubjectBank(banks[0]);
   const questions = ((await stFixedScopeQuestions(scope)) || []).filter((q) => !q.hidden);
   const count = await stCountScopeQuestions(scope);
@@ -11042,6 +11523,7 @@ async function stOpenSubjectDatabase(databaseId) {
 /** A subject's actions: its More Actions menu, its context menu, and the Subject Actions… command. */
 function stSubjectMenuItems(s) {
   return [
+    { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenPane({ view: 'progress', subjectId: s.id }) },
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
     { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
@@ -11078,12 +11560,12 @@ async function stPickSubject(arg, placeholder) {
   return pick ? all.find((s) => s.id === pick.id) || null : null;
 }
 
-/** Study a Subject…: the setup sheet on the subject, or on one of its units. */
-async function stCmdStudySubject(arg, unit) {
+/** Study a Subject…: the setup sheet on the subject, or on one of its units, or on that unit's questions in one state (`result`, from a bar of Progress). */
+async function stCmdStudySubject(arg, unit, result) {
   const s = await stPickSubject(arg, 'Study which subject?');
   if (!s) return null;
   const named = unit ? s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
-  return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}) });
+  return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}), ...(named && ST_PROGRESS_STATES.includes(result) ? { result } : {}) });
 }
 
 /** Subject Actions…: the menu at the subject's row when it is on screen, else a pick. */
@@ -11147,7 +11629,8 @@ async function stCmdNewSubject(arg) {
 function registerSubjectCommands(context) {
   const cmds = [
     ['study.newSubject', (arg) => stCmdNewSubject(arg)],
-    ['study.studySubject', (subject, unit) => stCmdStudySubject(subject, unit)],
+    ['study.studySubject', (subject, unit, result) => stCmdStudySubject(subject, unit, result)],
+    ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -11298,6 +11781,202 @@ async function renderNewSubject(host, route, ctx) {
     else if (e.key === 'Escape') { e.stopPropagation(); void ctx.closeTab(); }
   });
   setTimeout(() => { if (!ctx.disposed() && nameInput && nameInput.isConnected) nameInput.focus(); }, 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 63: PROGRESS — the tab
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// One tab per subject ('progress-<subjectId>', titled "<Subject> Progress"):
+// the subject's totals per kind, then a row for every unit in the Units
+// order with one bar per kind of work. Each bar is the kit's stacked bar
+// (api.ui.createStackedBar), never Study's own: green, yellow, red and the
+// rest, with "N of M" beside it. A part of a Questions bar starts the unit's
+// setup on the questions in that state; a part of a tool's bar opens that
+// tool on those items when the tool offers it. Under the rows, what a tool
+// has that matched no unit. The tab redraws when a count changes (Study's
+// own data, or a provider's event), only if what it shows differs, and the
+// control that had the focus has it again. The arithmetic is
+// 14-progress-model.js; the providers are 28-progress.js.
+
+/** Progress is in order unless he chose weakest first (the setting study.progressSort). */
+function stProgressSort() {
+  return cfg('progressSort', 'order') === 'weakest' ? 'weakest' : 'order';
+}
+
+/** Remember the order he chose, for every Progress tab and the next start. */
+function stProgressSetSort(value) {
+  try {
+    const config = _api.workspace.getConfiguration('study');
+    if (config && typeof config.update === 'function') return Promise.resolve(config.update('progressSort', value)).catch(() => {});
+  } catch { /* a host that keeps no settings: the choice lasts while the tab does */ }
+  return Promise.resolve();
+}
+
+/** Open Progress…: a subject's Progress tab. With `where` ({ provider, groups, state }) it opens that tool on the items behind one part of a bar instead. */
+async function stCmdOpenProgress(arg, where) {
+  if (where && typeof where === 'object' && where.provider) return stProgressOpenItems(where.provider, where.groups, where.state);
+  const s = await stPickSubject(arg, 'Progress of which subject?');
+  if (!s) return null;
+  return stOpenPane({ view: 'progress', subjectId: s.id });
+}
+
+/** The parts of a kit bar for `counts`. `act(state, i)` gives a part's command, or nothing for a plain part. */
+function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, action = '' } = {}) {
+  return ST_PROGRESS_STATES.map((state, i) => {
+    const word = stProgressWord(words, state);
+    const run = act ? act(state, i) : null;
+    return {
+      state, count: counts[i],
+      label: stProgressPartName(owner, kind, word, counts[i], run ? action : ''),
+      ...(run ? { id: `${idBase}.${state}`, command: run.command, args: run.args } : {}),
+    };
+  });
+}
+
+async function renderProgress(host, route, ctx) {
+  const subjectId = Number(route.subjectId) || 0;
+  const ui = _api.ui;
+  const page = ui.createBlock(host, 'div', { className: 'st-prog' });
+  const inner = ui.createBlock(page, 'div', { className: 'st-prog__in' });
+  const shownNow = () => stSubjectsShown().find((s) => s.id === subjectId) || null;
+  const first = shownNow();
+  const st = _stSubjects.get(subjectId);
+  if (!first || !st) {
+    ui.createEmptyState(inner, { icon: 'graduation-cap', headline: 'This subject is no longer in Study.', hint: 'It was removed. Its page and its databases are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    return;
+  }
+  const subject = st.subject;
+  const slug = (v) => (typeof ui.sceneSlug === 'function' ? ui.sceneSlug(String(v)) : String(v).toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+  ui.createPageHeader(inner, {
+    title: `${subject.name} Progress`,
+    more: [
+      { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [subject.bankId] }) },
+      { separator: true },
+      { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(subject.unitsDb) },
+      { label: 'Open Questions', icon: 'database', onSelect: () => void stOpenSubjectDatabase(subject.questionsDb) },
+    ],
+  });
+  const body = ui.createBlock(inner, 'div', { className: 'st-prog__body' });
+  const top = ui.createBlock(body, 'div', { className: 'st-prog__top' });
+  const bar = ui.createBlock(body, 'div', { className: 'st-prog__bar' });
+  ui.createSectionLabel(bar, 'Units');
+  ui.createBlock(bar, 'span', { className: 'st-sp' });
+  let sort = stProgressSort();
+  const order = ui.createSegmented(bar, {
+    id: 'study.progress.sort', ariaLabel: 'Order of the units', value: sort,
+    items: [{ value: 'order', label: 'In Order' }, { value: 'weakest', label: 'Weakest First' }],
+    onChange: (value) => { sort = value === 'weakest' ? 'weakest' : 'order'; void stProgressSetSort(sort); paint(); },
+  });
+  ctx.add(order);
+  const list = ui.createBlock(body, 'div', { className: 'st-prog__list' });
+  const under = ui.createBlock(body, 'div', { className: 'st-prog__under' });
+
+  let bars = [];
+  let drawn = '';
+  const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
+  const stacked = (into, options) => { const b = ui.createStackedBar(into, options); bars.push(b); return b; };
+  /** One kind's bar with its "N of M": the cell of a row, or a line of the totals. */
+  const cell = (into, kindName, options, counts) => {
+    const box = ui.createBlock(into, 'div', { className: 'st-prog__cell' });
+    ui.createBlock(box, 'span', { className: 'st-prog__kind', text: kindName });
+    stacked(box, options);
+    ui.createBlock(box, 'span', { className: 'st-prog__n', text: stProgressCountText(counts) });
+    return box;
+  };
+  const says = (headline, hint, action) => {
+    clear();
+    bar.hidden = true;
+    ui.createEmptyState(top, { icon: 'chart-column', headline, hint, ...(action ? { action } : {}) });
+  };
+
+  function paint() {
+    if (ctx.disposed()) return;
+    const s = shownNow();
+    if (!s) { ctx.rerender(); return; }
+    const view = s.problem || !s.ready ? null : stProgressOfSubject(subjectId);
+    const key = JSON.stringify([s.problem, s.ready, sort, view]);
+    if (key === drawn) return;
+    drawn = key;
+    const focused = body.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
+    const scroll = page.scrollTop;
+    if (s.problem) {
+      const inTrash = /in the Trash/.test(s.problem);
+      says(s.problem, inTrash ? 'Restore it from the Trash and its progress is here again, as it was.' : 'Study has nothing to count without it. Remove the subject, or put the database back.');
+      return;
+    }
+    if (!view) { clear(); bar.hidden = true; return; }
+    if (!view.kinds.length) {
+      says('No questions yet.', 'Add rows to its Questions database, each with its unit, and the units show here as bars.', { id: 'study.progress.openQuestions', label: 'Open Questions', icon: 'database', command: 'canvas.openPage', args: [subject.questionsDb] });
+      return;
+    }
+    clear();
+    bar.hidden = false;
+    order.value = sort;
+
+    // The subject's totals, one line per kind, and the legend in words.
+    const totals = ui.createBlock(top, 'div', { className: 'st-prog__totals' });
+    for (const t of view.totals) {
+      cell(totals, t.kind, { label: stProgressBarName('All units', t.kind, t.counts, t.words), parts: stProgressParts('All units', t.kind, t.counts, t.words) }, t.counts);
+    }
+    const legend = ui.createBlock(top, 'div', { className: 'st-prog__legend' });
+    for (const state of ST_PROGRESS_STATES) {
+      const item = ui.createBlock(legend, 'span', { className: 'st-prog__key' });
+      ui.createBlock(item, 'span', { className: `st-prog__sw st-prog__sw--${state}`, attrs: { 'aria-hidden': 'true' } });
+      ui.createBlock(item, 'span', { text: ST_PROGRESS_WORDS[state] });
+    }
+
+    // A row per unit: its name (the unit's setup, as in the sidebar), then one bar per kind.
+    list.style.setProperty('--st-prog-kinds', String(view.kinds.length));
+    list.setAttribute('role', 'list');
+    const head = ui.createBlock(list, 'div', { className: 'st-prog__row st-prog__row--head', attrs: { 'aria-hidden': 'true' } });
+    ui.createBlock(head, 'span', { text: 'Unit' });
+    for (const k of view.kinds) ui.createBlock(head, 'span', { text: k.kind });
+    const rows = sort === 'weakest' ? stProgressWeakestFirst(view.rows) : view.rows;
+    for (const row of rows) {
+      const line = ui.createBlock(list, 'div', { className: 'st-prog__row', attrs: { role: 'listitem' } });
+      const done = row.all[3] === 0 && row.all[0] + row.all[1] + row.all[2] > 0;
+      const started = row.all[0] + row.all[1] + row.all[2] > 0;
+      const name = ui.createButton(line, { id: `study.progress.unit.${row.rowId}`, label: row.name, icon: done ? 'circle-check' : started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
+        title: `Study ${row.name}`, command: 'study.studySubject', args: [subjectId, row.name] });
+      name.classList.add('st-prog__name');
+      if (done) name.classList.add('st-prog__name--done');
+      for (const k of view.kinds) {
+        const own = row.kinds.find((x) => x.id === k.id);
+        if (!own) { ui.createBlock(line, 'div', { className: 'st-prog__cell st-prog__cell--none', attrs: { 'aria-hidden': 'true' } }); continue; }
+        const idBase = `study.progress.part.${row.rowId}.${slug(k.id)}`;
+        const mine = own.id === ST_PROGRESS_QUESTIONS;
+        const act = !own.canOpen ? null : mine
+          ? (state) => ({ command: 'study.studySubject', args: [subjectId, row.name, state] })
+          : (state) => ({ command: 'study.openProgress', args: [subjectId, { provider: own.id, groups: own.groups.map((g) => g.group), state }] });
+        cell(line, own.kind, { label: stProgressBarName(row.name, own.kind, own.counts, own.words), parts: stProgressParts(row.name, own.kind, own.counts, own.words, { idBase, act, action: mine ? 'Study these' : 'Open these' }) }, own.counts);
+      }
+      if (!row.kinds.length) line.classList.add('st-prog__row--none');
+    }
+
+    // What a tool has that no unit claims, and the questions that name no unit: said, not dropped.
+    for (const u of view.unmatched) ui.createBlock(under, 'div', { className: 'st-prog__loose', text: stProgressUnmatchedText(u.kind, u.groups) });
+    if (view.unmatched.length) {
+      const hint = ui.createBlock(under, 'div', { className: 'st-prog__hint' });
+      ui.createBlock(hint, 'span', { text: 'To match one, add its name to Also Called in Units, on the row of the unit it belongs to. Commas separate several.' });
+      ui.createButton(hint, { id: 'study.progress.openUnits', label: 'Open Units', icon: 'database', kind: 'ghost', size: 'sm', command: 'canvas.openPage', args: [subject.unitsDb] });
+    }
+    if (view.noUnit) ui.createBlock(under, 'div', { className: 'st-prog__loose', text: `${view.noUnit} ${view.noUnit === 1 ? 'question names' : 'questions name'} no unit. Give each its unit in Questions and it joins that unit's bar.` });
+
+    page.scrollTop = scroll;
+    if (focused) {
+      const again = Array.from(body.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === focused);
+      if (again) again.focus();
+    }
+  }
+
+  let timer = 0;
+  const later = () => { clearTimeout(timer); timer = setTimeout(paint, 30); };
+  ctx.add(onDataChanged(later));
+  ctx.add(bus.on('progress', later));
+  ctx.add({ dispose: () => { clearTimeout(timer); clear(); } });
+  stProgressWant();
+  paint();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -11774,7 +12453,7 @@ function stQuestionsInScope(questions, concepts, scope, now, staleDays = 14) {
   const to = Number(s.pageTo) || 0;
   return (questions || []).filter((q) => {
     if (q.hidden) return false;
-    if (s.kind === 'bank') return (bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0) && (!s.unit || stScopeUnitFilter(s, [q]).length > 0);
+    if (s.kind === 'bank') return (bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0) && ((!s.unit && !s.result) || stScopeUnitFilter(s, [q]).length > 0);
     if (materialIds.size && !materialIds.has(Number(q.materialId))) return false;
     const concept = conceptById.get(Number(q.conceptId));
     if (sectionIds && !(concept && sectionIds.has(Number(concept.sectionId)))) return false;
@@ -13018,6 +13697,7 @@ export async function activate(api, context) {
   registerQuestionProviders(owned, 0, token);
   registerSubjectCommands(owned);
   registerSubjects(owned, token);
+  registerProgress(owned, 0, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -13056,6 +13736,7 @@ export async function deactivate() {
   _picked = [];
   _stSeenProviders.clear();
   stSubjectsReset();
+  stProgressReset();
   _stSubjectSheet = null;
   _stSubjectOpener = null;
   _dbBridge = null;
@@ -13185,6 +13866,12 @@ export const __testables = {
   stSubjectColumns, stSubjectRoleColumn, stSubjectGuessMapping, stSubjectResultCell, stSubjectMeansRight, stSubjectResultOfItem,
   stSubjectUnitNames, stSubjectCounts, stSubjectUnitChanges, stSubjectItems, stSubjectUnitsFromListing,
   stSubjectLocalDate, stSubjectLocalDateTime, stSubjectMinutes, stSubjectLogValues,
+  // 14-progress-model: Progress, the pure part
+  ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
+  stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
+  stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressUnmatchedText, stProgressFilterByResult,
+  // 28-progress, 63-progress-view: the providers as they are now, and the tab
+  registerProgress, stProgressReset, stProgressWant, stProgressProviders, stProgressOfSubject, stProgressOpenItems, stCmdOpenProgress,
   // 27-subjects, 62-subject-view: the record in canvas databases
   stListSubjects, stSubjectsShown, stCreateSubject, stRemoveSubject, stSubjectSyncNow, stSubjectReconcile, stSubjectScope, stScopeUnitFilter, registerSubjects, stSubjectsReset,
   // 70-integration: state and pure helpers

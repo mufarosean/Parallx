@@ -380,9 +380,58 @@ function injectStyles() {
 .st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
 .st-sb__none--unit { padding-left: var(--px-space-8); }
+/* A unit's thin bar (the kit's stacked bar) sits beside its "N of M": over the button, which stays the whole row to press. The counts share one width so the bars line up. */
+.st-sb__unit { position: relative; }
+.st-sb__unit--bar .st-sb__r { min-width: 10ch; text-align: right; margin-left: calc(48px + var(--px-space-2)); }
+.st-sb__unit > .px-stacked-bar { position: absolute; top: 50%; transform: translateY(-50%); right: calc(var(--px-sidebar-inset) + 10ch + var(--px-space-2)); width: 48px; font-size: var(--px-text-xs); pointer-events: none; }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
+
+/* ── Progress (63-progress-view.js): totals, a row per unit, a bar per kind ── */
+/* The bars are the kit's (.px-stacked-bar); these rules only lay them out. One grid template for the head and
+   every row, so every bar of a kind has the same length and the counts stand in one column. */
+.st-prog { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-prog__in { max-width: 68rem; margin: 0 auto; container-type: inline-size; }
+.st-prog__body { display: flex; flex-direction: column; gap: var(--px-space-4); padding: 0 var(--px-space-6) var(--px-space-8); }
+.st-prog__top:empty, .st-prog__under:empty, .st-prog__bar[hidden] { display: none; }
+.st-prog__top { display: flex; flex-direction: column; gap: var(--px-space-3); }
+.st-prog__totals { display: flex; flex-direction: column; gap: var(--px-space-3); padding: var(--px-space-4) var(--px-space-5); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.st-prog__cell { display: flex; align-items: center; gap: var(--px-space-3); min-width: 0; }
+.st-prog__cell .px-stacked-bar { flex: 1; }
+.st-prog__kind { flex: none; width: 6rem; color: var(--px-text-secondary); font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-prog__n { flex: none; min-width: 7ch; text-align: right; color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-prog__totals .st-prog__kind { color: var(--px-text); font-weight: 600; }
+.st-prog__totals .st-prog__n { min-width: 9ch; }
+.st-prog__totals .px-stacked-bar { height: 14px; }
+.st-prog__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-4); padding: 0 var(--px-space-5); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-1); }
+.st-prog__sw { width: 10px; height: 10px; border-radius: var(--px-radius-xs); box-sizing: border-box; }
+.st-prog__sw--good { background: var(--px-success); }
+.st-prog__sw--middling { background: var(--px-warning); }
+.st-prog__sw--poor { background: var(--px-danger); }
+.st-prog__sw--rest { border: 1px solid var(--px-bar-rest); }
+.st-prog__bar { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.st-prog__bar .px-section-label { padding: 0; }
+.st-prog__list { display: flex; flex-direction: column; }
+.st-prog__row { display: grid; grid-template-columns: minmax(7rem, 12rem) repeat(var(--st-prog-kinds, 1), minmax(0, 1fr)); align-items: center; column-gap: var(--px-space-6); min-height: 36px; padding: 0 var(--px-space-2); border-top: 1px solid var(--px-divider); }
+.st-prog__row--head { min-height: 28px; border-top: 0; color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-prog__row--head > span:first-child { padding-left: var(--px-space-2); }
+.st-prog__row .st-prog__kind { display: none; }
+.st-prog__name { justify-content: flex-start; min-width: 0; max-width: 100%; justify-self: start; color: var(--px-text); font-weight: 500; }
+.st-prog__name .px-btn__label { overflow: hidden; text-overflow: ellipsis; }
+.st-prog__name .svg-icon { color: var(--px-text-faint); flex: none; }
+.st-prog__name--done .svg-icon { color: var(--px-success); }
+.st-prog__under { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2) 0; border-top: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-prog__hint { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2); color: var(--px-text-faint); font-size: var(--px-text-xs); }
+.st-prog .px-empty { padding-top: var(--px-space-8); }
+/* A narrow tab: a unit's kinds stack under its name, each bar named in words where the column heads were. */
+@container (max-width: 40rem) {
+  .st-prog__row--head { display: none; }
+  .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-2); padding: var(--px-space-2); }
+  .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
+  .st-prog__cell--none { display: none; }
+}
 
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
 .st-widget { display: flex; flex-direction: column; min-height: 0; }
