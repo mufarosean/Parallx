@@ -161,6 +161,10 @@ function createSidebarView(container) {
       label.addEventListener('click', () => fold.onToggle());
       label.setAttribute('role', 'button');
       label.setAttribute('aria-expanded', fold.open ? 'true' : 'false');
+      // Reachable and worked by keys, as a button is; the focus is on it again after the fold repaints.
+      label.tabIndex = 0;
+      stDeclare(label, `study.side.fold.${text.toLowerCase().replace(/\s+/g, '-')}`, text);
+      label.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fold.onToggle(); } });
     }
     if (count != null) label.appendChild(el('span', 'st-sb__n', String(count)));
     row.appendChild(label);
@@ -290,6 +294,35 @@ function createSidebarView(container) {
     return row;
   };
 
+  // A subject: its name opens the setup sheet on all of it, its actions are
+  // behind More Actions and the context menu (62-subject-view.js), then each
+  // unit is a row that opens the sheet on that unit. The numbers are the
+  // Questions database's, as it is now; a unit's mark says how far it is.
+  const countText = (answered, total) => `${answered} of ${total}`;
+  const unitIcon = (u) => (u.total > 0 && u.answered >= u.total ? 'circle-check' : u.answered > 0 ? 'circle-dot' : 'circle');
+  const subjectRows = (host, s) => {
+    const row = _api.ui.createBlock(host, 'div', { className: 'st-sb__subj' });
+    row.dataset.subjectId = String(s.id);
+    const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
+      title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
+    head.classList.add('st-sb__nav');
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? 'missing' : s.ready ? countText(s.answered, s.total) : '' });
+    _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
+    });
+    if (s.folded) return;
+    for (const u of s.units) {
+      const unit = _api.ui.createButton(host, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
+        title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
+      unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
+      if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
+      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: countText(u.answered, u.total) });
+    }
+    if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
+  };
+
   // ── Destructive flows, each behind the app's confirm modal ──
   async function removeMaterial(m, concepts) {
     const ok = await _api.window.showConfirmModal({
@@ -345,7 +378,17 @@ function createSidebarView(container) {
     } finally { painting = false; }
   }
 
+  // A repaint rebuilds the rows: the control he was on (by keyboard) has the focus again after it.
   async function paintOnce() {
+    await paintRows();
+    const id = state.refocus;
+    state.refocus = '';
+    if (!id || state.disposed || body.contains(document.activeElement)) return;
+    const again = Array.from(body.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === id);
+    if (again) again.focus();
+  }
+
+  async function paintRows() {
     const now = stNow();
     const materials = (await stListMaterials()) || [];
     const perMaterial = [];
@@ -358,19 +401,24 @@ function createSidebarView(container) {
     const done = (await stListSessions({ open: false })) || [];
     const itemsBySession = new Map();
     for (const s of [...open, ...done]) itemsBySession.set(s.id, (await stListSessionItems(s.id)) || []);
-    const banks = (await stListBanks()) || [];
+    // A subject's bank is shown under Subjects, with its units.
+    const banks = ((await stListBanks()) || []).filter((b) => !stIsSubjectBank(b));
+    const subjects = stSubjectsShown();
     const marked = (await stListMarkedQuestions()) || [];
     if (state.disposed) return;
 
+    const focused = body.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
+    if (focused) state.refocus = focused;
     body.innerHTML = '';
 
-    if (!materials.length && !banks.length && !open.length && !done.length) {
-      _api.ui.createEmptyState(body, {
+    if (!materials.length && !banks.length && !open.length && !done.length && !subjects.length) {
+      const empty = _api.ui.createEmptyState(body, {
         icon: 'px-study',
         headline: 'Nothing to study yet.',
-        hint: 'Open a PDF and choose Study This Document, or add one here.',
+        hint: 'Open a PDF and choose Study This Document, or add one here. A subject keeps its units, questions and work log in databases you can open.',
         action: { id: 'study.addPdf', label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
       });
+      if (stSubjectDoor()) _api.ui.createButton(empty, { id: 'study.side.newSubject', label: 'New Subject…', icon: 'plus', kind: 'ghost', size: 'sm', title: 'A subject: a page with its units, questions and work log.', command: 'study.newSubject' });
       return;
     }
 
@@ -397,6 +445,17 @@ function createSidebarView(container) {
         },
       });
       body.appendChild(bar);
+    }
+
+    // Subjects, each with its units.
+    if (stSubjectDoor()) {
+      const subSec = _api.ui.createBlock(body, 'div', { className: 'st-sb__sec st-sb__sec--subjects' });
+      sectionLabel(subSec, 'Subjects', subjects.length || null, { actions: (row) => {
+        _api.ui.createBlock(row, 'span', { className: 'st-sp' });
+        _api.ui.createIconButton(row, { id: 'study.side.newSubject', icon: 'plus', title: 'New Subject…', size: 'sm', command: 'study.newSubject' });
+      } });
+      if (!subjects.length) _api.ui.createBlock(subSec, 'div', { className: 'st-sb__none', text: 'No subjects yet.' });
+      for (const s of subjects) subjectRows(subSec, s);
     }
 
     // Materials.
@@ -443,7 +502,8 @@ function createSidebarView(container) {
   const offData = onDataChanged(() => void paint());
   const offSession = bus.on('session', () => void paint());
   const offRoute = bus.on('route', (route) => {
-    if (!route) return;
+    // The New Subject sheet changes nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
+    if (!route || route.view === 'newSubject') return;
     if (Array.isArray(route.materialIds) && route.materialIds.length === 1) state.expandedId = route.materialIds[0];
     if (route.view === 'learn' && route.materialId) state.expandedId = route.materialId;
     state.activeSessionId = route.sessionId != null ? route.sessionId : state.activeSessionId;

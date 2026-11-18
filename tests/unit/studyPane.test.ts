@@ -896,13 +896,13 @@ describe('Study end to end', () => {
     await boot();
     await waitFor(() => one("SELECT COUNT(*) AS n FROM st_banks WHERE kind = 'provider'").n === 1, 'the provider bank');
     expect(env.db.migratedFrom).toBe(join(STUDY_DIR, 'db', 'migrations'));
-    expect(one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name LIKE 'st_%'").n).toBe(10);
+    expect(one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name LIKE 'st_%'").n).toBe(13); // study_004 adds st_subjects, st_subject_marks, st_subject_logs
     expect(one('PRAGMA foreign_keys').foreign_keys).toBe(1);
 
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(19); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, and the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat)
+    expect(MANIFEST_COMMANDS.length).toBe(22); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), and a subject's three (New Subject…, Study a Subject…, Subject Actions…)
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.

@@ -45,6 +45,7 @@
   opacity: 0.7;
   flex-shrink: 0;
 }
+.ui-dropdown__chevron::before { content: '\25BE'; }
 
 /* The trigger's text. Its own element so a swatch can precede it. */
 .ui-dropdown__label {

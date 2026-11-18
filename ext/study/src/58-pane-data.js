@@ -211,7 +211,7 @@ async function stCountScopeQuestions(scope) {
     if (typeof stScopeQuestionCount === 'function') return Number(await stScopeQuestionCount(scope)) || 0;
   } catch { /* fall through */ }
   try {
-    if (scope && scope.kind === 'bank') return ((await stListQuestions({ bankIds: scope.bankIds || [] })) || []).filter((q) => !q.hidden).length;
+    if (scope && scope.kind === 'bank') return ((await stFixedScopeQuestions(scope)) || []).filter((q) => !q.hidden).length;
     const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
     const [questions, concepts] = await Promise.all([
       stListQuestions({ materialIds }),
@@ -235,6 +235,7 @@ function stSetupCountText({ mode, concepts, clean, questions, size }) {
 function stBankOriginText(bank, questions) {
   if (bank && bank.kind === 'report') return "examiner's report";
   if (bank && bank.kind === 'provider') return 'from another tool';
+  if (bank && bank.kind === 'subject') return 'from its Questions database';
   const counts = new Map();
   for (const q of questions || []) counts.set(q.origin, (counts.get(q.origin) || 0) + 1);
   let top = '', n = -1;

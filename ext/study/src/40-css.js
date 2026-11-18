@@ -196,6 +196,27 @@ function injectStyles() {
   .st-ma { flex-direction: column; align-items: flex-start; gap: var(--px-space-4); }
   .st-ma .st-row__lab--inline { width: 64px; margin-left: 0; }
 }
+/* New Subject: label and field on one line, a hint under the field; the columns of his database in two columns. */
+.st-subj__row { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; column-gap: var(--px-space-3); row-gap: var(--px-space-1); }
+.st-subj .st-row__lab { width: auto; }
+.st-subj__cell { display: flex; align-items: flex-start; gap: var(--px-space-2); min-width: 0; }
+.st-subj__cell > .px-btn { flex: none; }
+.st-subj__cell > .ui-input-box, .st-subj__cell > .ui-select, .st-subj__pair > .ui-select { flex: 1; min-width: 0; }
+.st-subj__cell .ui-dropdown, .st-subj__pair .ui-dropdown { width: 100%; }
+.st-subj__row > .st-subj__hint { grid-column: 2; }
+.st-subj__hint { font-size: var(--px-text-xs); color: var(--px-text-muted); line-height: 1.4; }
+.st-subj__map { padding: var(--px-space-3); display: grid; gap: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.st-subj__map[hidden] { display: none; }
+.st-subj__maphd { display: grid; gap: var(--px-space-1); }
+.st-subj__mapt { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.st-subj__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--px-space-2) var(--px-space-4); }
+.st-subj__pair { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: var(--px-space-2); min-width: 0; }
+.st-subj__problem { flex: 1; min-width: 0; font-size: var(--px-text-sm); color: var(--px-danger); }
+@container st-sheet (max-width: 560px) {
+  .st-subj__row { grid-template-columns: minmax(0, 1fr); }
+  .st-subj__row > .st-subj__hint { grid-column: 1; }
+  .st-subj__grid { grid-template-columns: minmax(0, 1fr); }
+}
 .st-sheet__count { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .st-outline { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); overflow: hidden; max-height: 240px; overflow-y: auto; }
 .st-outline__o { display: flex; align-items: center; gap: var(--px-space-2); min-height: var(--px-control-h); padding: 0 var(--px-space-3); font-size: var(--px-text-sm); color: var(--px-text-secondary); border-top: 1px solid var(--px-divider); cursor: pointer; }
@@ -326,6 +347,7 @@ function injectStyles() {
 .st-sb__secl .px-section-label { display: inline-flex; align-items: center; gap: var(--px-space-1); min-width: 0; }
 .st-sb__secl--fold .px-section-label { cursor: pointer; color: var(--px-text-faint); }
 .st-sb__secl--fold .px-section-label:hover { color: var(--px-text-secondary); }
+.st-sb__secl--fold .px-section-label:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); color: var(--px-text-secondary); }
 .st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: var(--px-space-1); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
 .st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
 .st-sb__it:hover { background: var(--px-surface-hover); color: var(--px-text); }
@@ -346,8 +368,19 @@ function injectStyles() {
 .st-sb__bar small { display: block; font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; }
 .st-sb__live { width: 6px; height: 6px; border-radius: var(--px-radius-full); background: var(--px-accent); animation: st-pulse calc(var(--px-dur-slow) * 6) var(--px-ease) infinite; justify-self: center; }
 /* Review rows (Weak Spots, Marked): kit buttons laid out as the rows around them. */
-.st-sb__sec--review .st-sb__nav { display: flex; width: 100%; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); border-radius: 0; color: var(--px-text-secondary); font-weight: 400; }
+.st-sb__sec--review .st-sb__nav, .st-sb__sec--subjects .st-sb__nav { display: flex; width: 100%; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); border-radius: 0; color: var(--px-text-secondary); font-weight: 400; }
 .st-sb__nav .px-btn__label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+/* A subject: its name studies all of it, More Actions beside it; a unit is a row under it, its mark filling as it is answered. */
+.st-sb__subj { display: flex; align-items: center; padding-right: var(--px-space-2); }
+.st-sb__subj .st-sb__nav { flex: 1; min-width: 0; width: auto; padding-right: var(--px-space-1); color: var(--px-text); font-weight: 500; }
+.st-sb__sec--subjects .st-sb__nav .svg-icon { color: var(--px-text-muted); flex: none; }
+.st-sb__sec--subjects .st-sb__nav--unit { padding-left: var(--px-space-8); }
+.st-sb__sec--subjects .st-sb__nav--unit .svg-icon { color: var(--px-text-faint); }
+.st-sb__sec--subjects .st-sb__nav--done .svg-icon { color: var(--px-success); }
+.st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
+.st-sb__none--unit { padding-left: var(--px-space-8); }
+.st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 

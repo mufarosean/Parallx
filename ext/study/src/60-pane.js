@@ -24,6 +24,7 @@ function _stTakePendingRoute() {
 function stRouteInstanceId(route) {
   if (!route) return 'setup';
   if (route.view === 'setup') return 'setup';
+  if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -37,12 +38,14 @@ function stRouteFromInstanceId(instanceId) {
   if (m) return { view: 'session', sessionId: Number(m[1]) };
   m = /^learn-(\d+)-(\d+)$/.exec(id);
   if (m) return { view: 'learn', materialId: Number(m[1]), sectionId: Number(m[2]) };
+  if (id === 'new-subject') return { view: 'newSubject' };
   return { view: 'setup', materialIds: [] };
 }
 
 async function stRouteTitle(route) {
   try {
     if (route.view === 'setup') return 'Study';
+    if (route.view === 'newSubject') return 'New Subject';
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
       let title = material ? material.label : 'Learn';
@@ -85,7 +88,7 @@ function stOpenSetup(partial) {
   const p = partial || {};
   const route = { view: 'setup', materialIds: Array.isArray(p.materialIds) ? p.materialIds.slice() : [] };
   if (Array.isArray(p.bankIds) && p.bankIds.length) route.bankIds = p.bankIds.slice();
-  for (const k of ['sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
+  for (const k of ['unit', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
   return stOpenPane(route);
 }
 
@@ -357,6 +360,7 @@ function createEditorPane(container, input) {
         const route = state.route;
         try {
           if (route.view === 'setup') await renderSetup(root, route, ctx);
+          else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);
@@ -428,15 +432,15 @@ function createEditorPane(container, input) {
 // ── Setup sheet ─────────────────────────────────────────────────────────────
 
 /** The scrim, the sheet and its header; returns the body to fill. */
-function stSheetFrame(host, ctx, subtitle) {
+function stSheetFrame(host, ctx, subtitle, { title = 'Study' } = {}) {
   host.appendChild(el('div', 'st-scrim'));
   const sheet = el('div', 'st-sheet');
   sheet.setAttribute('role', 'dialog');
-  sheet.setAttribute('aria-label', 'Study');
+  sheet.setAttribute('aria-label', title);
   host.appendChild(sheet);
   const hd = el('div', 'st-sheet__hd');
   const titles = el('div', '');
-  titles.appendChild(el('h3', 'st-sheet__title', 'Study'));
+  titles.appendChild(el('h3', 'st-sheet__title', title));
   const sub = el('div', 'st-sheet__sub', subtitle);
   sub.title = subtitle;
   titles.appendChild(sub);
@@ -574,12 +578,13 @@ async function renderSetup(host, route, ctx) {
   if (!ids.length) ids = all.map((m) => m.id);
   const materials = ids.map((id) => all.find((m) => m.id === id)).filter(Boolean);
   if (!materials.length) {
-    _api.ui.createEmptyState(host, {
+    const empty = _api.ui.createEmptyState(host, {
       icon: 'px-study',
       headline: 'Nothing to study yet.',
-      hint: 'Open a PDF or a notes file and choose Study This Document…, or add one here.',
+      hint: 'Open a PDF or a notes file and choose Study This Document…, or add one here. A subject keeps its units, questions and work log in databases you can open.',
       action: { id: 'study.addPdf', label: 'Add Document…', onClick: () => void stAddPdfFlow() },
     });
+    if (stSubjectDoor()) _api.ui.createButton(empty, { id: 'study.home.newSubject', label: 'New Subject…', icon: 'plus', kind: 'ghost', title: 'A subject: a page with its units, questions and work log.', command: 'study.newSubject' });
     return;
   }
   const primary = materials[0];
@@ -776,7 +781,10 @@ async function renderBankSetup(host, route, ctx) {
     return;
   }
   const scope = { kind: 'bank', bankIds: banks.map((b) => b.id), materialIds: [], label: banks.map((b) => b.name).join(' + ') };
-  const questions = ((await stListQuestions({ bankIds: scope.bankIds })) || []).filter((q) => !q.hidden);
+  // One unit of a subject: its bank, narrowed.
+  if (route.unit && banks.length === 1) { scope.unit = String(route.unit); scope.label = `${banks[0].name} · ${scope.unit}`; }
+  const ofSubject = banks.length === 1 && stIsSubjectBank(banks[0]);
+  const questions = ((await stFixedScopeQuestions(scope)) || []).filter((q) => !q.hidden);
   const count = await stCountScopeQuestions(scope);
   const hasChoice = questions.some((q) => q.format === 'mc' && Array.isArray(q.options) && q.options.length);
   const { models, activeModel } = await stSheetModels();
@@ -790,7 +798,7 @@ async function renderBankSetup(host, route, ctx) {
     starting: false,
   };
 
-  const { sheet, bd } = stSheetFrame(host, ctx, banks.length > 1 ? `${banks.length} banks` : banks[0].name);
+  const { sheet, bd } = stSheetFrame(host, ctx, banks.length > 1 ? `${banks.length} banks` : scope.label);
   const origin = stBankOriginText(banks[0], questions);
   bd.appendChild(el('div', 'st-sheet__count', `${count} ${count === 1 ? 'question' : 'questions'} · ${origin}`));
   stModeAnswerRow(bd, ctx, st, {
@@ -799,8 +807,8 @@ async function renderBankSetup(host, route, ctx) {
     onChange: () => {},
   });
   const { startBtn } = stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs: async () => {}, onStart: () => start() });
-  if (!count) { startBtn.disabled = true; startBtn.title = 'This bank has no questions to draw.'; }
-  else startBtn.title = `Draws ${Math.min(count, Number(cfg('sessionSize', 20)) || 20)} questions from the bank.`;
+  if (!count) { startBtn.disabled = true; startBtn.title = ofSubject ? 'No question with an answer here yet. Add rows to its Questions database.' : 'This bank has no questions to draw.'; }
+  else startBtn.title = `Draws ${Math.min(count, Number(cfg('sessionSize', 20)) || 20)} questions from ${ofSubject ? 'its Questions database' : 'the bank'}.`;
 
   async function start() {
     if (st.starting || !count) return;
@@ -903,7 +911,8 @@ async function renderSession(host, route, ctx) {
     seconds++;
     if (seconds % 30 === 0) saveSeconds();
   }, 1000);
-  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); } });
+  // The tab closing is told too, with the time as it stands (a subject's Work Log row follows it).
+  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
 
   // ── Strand ──
   const segs = new Map();
@@ -1562,6 +1571,7 @@ async function renderSession(host, route, ctx) {
     current = null;
     stStopRun(session.id);
     await stUpdateSession(session.id, { position: drawItems.length, finishedAt: stNow(), seconds });
+    bus.emit('session', { sessionId: session.id, seconds });
     _emitDataChanged();
     ctx.setRoute({ view: 'results', sessionId: session.id });
   }
@@ -1576,6 +1586,7 @@ async function renderSession(host, route, ctx) {
     if (!ok || ctx.disposed()) return;
     stStopRun(session.id);
     await stUpdateSession(session.id, { finishedAt: stNow(), seconds });
+    bus.emit('session', { sessionId: session.id, seconds });
     _emitDataChanged();
     ctx.setRoute({ view: 'results', sessionId: session.id });
   }

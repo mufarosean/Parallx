@@ -225,7 +225,7 @@ function stQuestionsInScope(questions, concepts, scope, now, staleDays = 14) {
   const to = Number(s.pageTo) || 0;
   return (questions || []).filter((q) => {
     if (q.hidden) return false;
-    if (s.kind === 'bank') return bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0;
+    if (s.kind === 'bank') return (bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0) && (!s.unit || stScopeUnitFilter(s, [q]).length > 0);
     if (materialIds.size && !materialIds.has(Number(q.materialId))) return false;
     const concept = conceptById.get(Number(q.conceptId));
     if (sectionIds && !(concept && sectionIds.has(Number(concept.sectionId)))) return false;
@@ -706,7 +706,7 @@ async function stCmdOpen(arg) {
   if (picked.length) return stOpenSetup({ materialIds: picked });
   const materials = await stListMaterials();
   if (materials.length) return stOpenSetup({ materialIds: [materials[0].id] });
-  return stOpenPane({ view: 'setup', materialIds: [] });
+  return stOpenHome();
 }
 
 /** `arg` is an editor's More Actions `{ uri, fsPath, page? }` (a PDF, or a notes file), a path string, or nothing (the palette). */

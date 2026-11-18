@@ -302,6 +302,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.markAnswerRight` | Mark Answer as Right | study | Study |  |  |
 | `study.markAnswerWrong` | Mark Answer as Wrong | study | Study |  |  |
 | `study.markQuestion` | Mark Question to Come Back To | study | Study |  |  |
+| `study.newSubject` | New Subject… | study | Study |  |  |
 | `study.nextQuestion` | Next Question | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
 | `study.previousQuestion` | Previous Question | study | Study |  |  |
@@ -309,7 +310,9 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.stopMaking` | Stop Making Questions | study | Study |  |  |
 | `study.studyDocument` | Study This Document… | study | Study |  |  |
 | `study.studyMarked` | Study Marked Questions | study | Study |  |  |
+| `study.studySubject` | Study a Subject… | study | Study |  |  |
 | `study.studyTogether` | Study Materials Together… | study | Study |  |  |
+| `study.subjectActions` | Subject Actions… | study | Study |  |  |
 | `study.weakSpots` | Study Weak Spots | study | Study |  |  |
 | `terminal.clear` | Terminal: Clear | terminal |  |  |  |
 | `terminal.restart` | Terminal: Restart Shell | terminal |  |  |  |

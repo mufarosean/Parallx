@@ -194,6 +194,8 @@ async function stSaveQuestionEdit(q, { stem, answer }) {
   }
   await stUpdateQuestion(next);
   if (typeof _stTypedRubrics !== 'undefined') _stTypedRubrics.delete(q.id);
+  // A subject's question lives in its database: the edit goes to its row.
+  try { await stSubjectPushEdit(next); } catch (err) { if (!stIsStopped(err)) console.warn('[Study] the edit did not reach its row:', err && err.message); }
   return next;
 }
 

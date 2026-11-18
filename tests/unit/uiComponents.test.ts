@@ -219,6 +219,14 @@ describe('Dropdown', () => {
     dd.dispose();
   });
 
+  it('the trigger says the chosen option and nothing else: the arrow is drawn, not text', () => {
+    const dd = new Dropdown(parent, { items, selected: 'b' });
+    const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;
+    expect(btn.textContent).toBe('Beta');
+    expect(btn.querySelector('.ui-dropdown__chevron')?.getAttribute('aria-hidden')).toBe('true');
+    dd.dispose();
+  });
+
   it('opens and closes on button click', () => {
     const dd = new Dropdown(parent, { items });
     const btn = parent.querySelector('.ui-dropdown__button') as HTMLElement;

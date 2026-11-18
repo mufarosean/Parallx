@@ -55,7 +55,8 @@ function stFixedScope(scope) {
 /** Every question a fixed scope holds, hidden ones included (the caller filters). */
 async function stFixedScopeQuestions(scope) {
   if (scope.kind === 'marked') return stListMarkedQuestions();
-  return stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+  // A subject's unit is its bank narrowed to the questions of that unit.
+  return stScopeUnitFilter(scope, await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] }));
 }
 
 /** Study the marked questions as a set: one Practice session over exactly those. */

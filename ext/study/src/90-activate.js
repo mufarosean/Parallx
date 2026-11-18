@@ -76,6 +76,8 @@ export async function activate(api, context) {
   registerSessionCommands(owned);
   registerSelectionAction(owned, 0, token);
   registerQuestionProviders(owned, 0, token);
+  registerSubjectCommands(owned);
+  registerSubjects(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -113,6 +115,9 @@ export async function deactivate() {
   _fcCheck = null;
   _picked = [];
   _stSeenProviders.clear();
+  stSubjectsReset();
+  _stSubjectSheet = null;
+  _stSubjectOpener = null;
   _dbBridge = null;
   _api = null;
 }
@@ -235,6 +240,13 @@ export const __testables = {
   stMatchReportToQuestions,
   stInterleaveMaterials,
   stMasteryFromCardRating,
+  // 12-subject-model: a subject's record, the pure part
+  ST_SUBJECT_ROLES, ST_SUBJECT_ROLE_LABELS, ST_SUBJECT_KEPT,
+  stSubjectColumns, stSubjectRoleColumn, stSubjectGuessMapping, stSubjectResultCell, stSubjectMeansRight, stSubjectResultOfItem,
+  stSubjectUnitNames, stSubjectCounts, stSubjectUnitChanges, stSubjectItems, stSubjectUnitsFromListing,
+  stSubjectLocalDate, stSubjectLocalDateTime, stSubjectMinutes, stSubjectLogValues,
+  // 27-subjects, 62-subject-view: the record in canvas databases
+  stListSubjects, stSubjectsShown, stCreateSubject, stRemoveSubject, stSubjectSyncNow, stSubjectReconcile, stSubjectScope, stScopeUnitFilter, registerSubjects, stSubjectsReset,
   // 70-integration: state and pure helpers
   stPicked,
   stSetPicked,

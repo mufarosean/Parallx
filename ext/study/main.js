@@ -2090,6 +2090,328 @@ function stBankConceptTitle(q) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 12: A SUBJECT'S RECORD — the pure part
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A subject is a canvas page with three canvas databases under it: Units,
+// Questions and a Work Log. They are the person's own tables and they are the
+// record: Study reads the rows, asks them, and writes each result back to its
+// row. This part is the arithmetic of that, with no database and no DOM: which
+// column of a database he already has plays which role, what a result is in
+// the words its column uses, a unit's numbers counted from the rows, the
+// units a folder proposes. 27-subjects.js does the reading and the writing.
+
+/** What Study needs of a Questions database, in the order the mapping step shows them. */
+const ST_SUBJECT_ROLES = ['answer', 'unit', 'attempts', 'correct', 'lastResult', 'lastAnswered'];
+/** A role's name: its label on the mapping step, and the column added for it. */
+const ST_SUBJECT_ROLE_LABELS = { answer: 'Answer', unit: 'Unit', attempts: 'Attempts', correct: 'Correct', lastResult: 'Last Result', lastAnswered: 'Last Answered' };
+/** The columns of Units that Study works out; the person reads them. */
+const ST_SUBJECT_KEPT = ['Questions', 'Answered', 'Right Last Time', 'Last Worked'];
+
+/**
+ * The columns of a subject's three databases (the title column, "Name", is
+ * always there). `unitsDb` is the Units database a Unit column points at.
+ */
+function stSubjectColumns(unitsDb) {
+  const unit = { name: 'Unit', type: 'relation', config: { databaseId: String(unitsDb || ''), synced: false } };
+  const kept = (name, type) => ({ name, type, config: { computedBy: true } });
+  return {
+    units: [
+      { name: 'Order', type: 'number' },
+      { name: 'Weight', type: 'number' },
+      kept('Questions', 'number'), kept('Answered', 'number'), kept('Right Last Time', 'number'), kept('Last Worked', 'date'),
+    ],
+    questions: [
+      { name: 'Answer', type: 'text' },
+      unit,
+      { name: 'Kind', type: 'select', config: { options: ['Short', 'Essay'] } },
+      { name: 'Source', type: 'url' },
+      { name: 'Attempts', type: 'number' },
+      { name: 'Correct', type: 'number' },
+      { name: 'Last Result', type: 'select', config: { options: ['Right', 'Partly', 'Wrong'] } },
+      { name: 'Last Answered', type: 'date' },
+    ],
+    log: [
+      { name: 'Date', type: 'datetime' },
+      { name: 'Minutes', type: 'number' },
+      unit,
+      { name: 'Tool', type: 'select', config: { options: ['Study'] } },
+      { name: 'Kind', type: 'select', config: { options: ['Questions', 'Cards', 'Problems', 'Reading', 'Notes', 'Discussion'] } },
+      { name: 'Items', type: 'number' },
+      { name: 'Right', type: 'number' },
+      { name: 'Confirmed', type: 'checkbox' },
+      { name: 'Origin', type: 'select', config: { options: ['App', 'Manual', 'Import'] } },
+    ],
+  };
+}
+
+/** The column a role adds when the database has none for it. */
+function stSubjectRoleColumn(role, unitsDb) {
+  const name = ST_SUBJECT_ROLE_LABELS[role];
+  return stSubjectColumns(unitsDb).questions.find((c) => c.name === name) || null;
+}
+
+const stSubjectFold = (s) => String(s ?? '').replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** What a column's name must look like for each role, best first, and the types it may have. */
+const ST_SUBJECT_GUESS = {
+  answer: { types: ['text'], names: [/^(the )?(model|reference|correct|ideal|sample|full|right) answers?$/, /^answers?$/, /answer/, /^solutions?$/, /solution|response|explanation/] },
+  unit: { types: ['select', 'status', 'text', 'relation', 'tags'], names: [/^units?$/, /^(paper|chapter|topic|reading|module|lesson|section|part|week)s?$/, /unit|paper|chapter|topic|reading|module|lesson/, /^(category|subject|area)$/] },
+  attempts: { types: ['number'], names: [/^(times )?attempt(s|ed)?$/, /attempt/, /^(tries|times (asked|seen|answered|tried))$/, /tries|asked|seen/] },
+  correct: { types: ['number'], names: [/^(times )?(correct|right)$/, /correct|right/, /^(wins|hits|score)$/] },
+  lastResult: { types: ['select', 'status', 'checkbox', 'text'], names: [/^last (result|outcome|grade|mark|verdict)$/, /^(result|outcome|verdict)$/, /result|outcome/, /^(got it|correct|right|passed|known)\??$/] },
+  lastAnswered: { types: ['date', 'datetime'], names: [/^last (answered|attempt(ed)?|asked|studied|seen|reviewed|worked|practi[cs]ed|tried)( on| at)?$/, /^(answered|reviewed|studied|attempted)( on| at)?$/, /last|answered|reviewed|studied/] },
+};
+
+/**
+ * Which column of a database plays each role, guessed from the columns'
+ * names and types: { answer, unit, attempts, correct, lastResult,
+ * lastAnswered }, each a column's name or '' (nothing fits: a column is
+ * added). A column is used once; the title column is the question itself.
+ */
+function stSubjectGuessMapping(columns) {
+  const cols = (Array.isArray(columns) ? columns : []).filter((c) => c && c.type !== 'title' && c.name);
+  const used = new Set();
+  const out = {};
+  for (const role of ST_SUBJECT_ROLES) {
+    const rule = ST_SUBJECT_GUESS[role];
+    let hit = null;
+    for (const re of rule.names) {
+      hit = cols.find((c) => !used.has(c.name) && rule.types.includes(c.type) && re.test(stSubjectFold(c.name)));
+      if (hit) break;
+    }
+    out[role] = hit ? hit.name : '';
+    if (hit) used.add(hit.name);
+  }
+  return out;
+}
+
+const ST_SUBJECT_WORDS = {
+  right: ['right', 'correct', 'yes', 'pass', 'passed', 'true', 'got it', 'good', 'known', 'done'],
+  partly: ['partly', 'partial', 'partially', 'half', 'almost', 'close', 'part right'],
+  wrong: ['wrong', 'incorrect', 'no', 'fail', 'failed', 'false', 'miss', 'missed', 'bad', 'unknown', 'not yet'],
+};
+
+/** An option of a select meaning `result`, in the database's own word; '' when it has none. */
+function stSubjectOptionFor(column, result) {
+  const raw = column && column.config && Array.isArray(column.config.options) ? column.config.options : [];
+  const options = raw.map((o) => String(o && typeof o === 'object' ? (o.value ?? o.name ?? '') : o)).filter(Boolean);
+  const words = ST_SUBJECT_WORDS[result] || [];
+  for (const w of words) {
+    const hit = options.find((o) => stSubjectFold(o) === w);
+    if (hit) return hit;
+  }
+  return '';
+}
+
+/**
+ * A result ('right' | 'partly' | 'wrong') as the value its column takes: a
+ * checkbox is checked when right; a select that already has words meaning
+ * right and wrong gets those (partly, with no word of its own there, is
+ * not right); anything else gets Right, Partly, Wrong.
+ */
+function stSubjectResultCell(column, result) {
+  const type = column ? column.type : '';
+  if (type === 'checkbox') return result === 'right';
+  if (type === 'number') return result === 'right' ? 1 : 0;
+  const plain = result === 'right' ? 'Right' : result === 'partly' ? 'Partly' : 'Wrong';
+  if (type === 'select' || type === 'status') {
+    const own = stSubjectOptionFor(column, result);
+    if (own) return own;
+    // His words for right and wrong, and none for partly: partly is his word for wrong.
+    if (result === 'partly' && stSubjectOptionFor(column, 'right') && stSubjectOptionFor(column, 'wrong') && stSubjectOptionFor(column, 'right') !== 'Right') return stSubjectOptionFor(column, 'wrong');
+  }
+  return plain;
+}
+
+/** Does a stored Last Result mean the question was right last time? */
+function stSubjectMeansRight(value) {
+  if (value === true || value === 1) return true;
+  if (typeof value !== 'string') return false;
+  return ST_SUBJECT_WORDS.right.includes(stSubjectFold(value));
+}
+
+/** A session item's final verdict as a result, '' while it has none (pending, a Test answer not marked yet, skipped). */
+function stSubjectResultOfItem(item) {
+  const status = item ? item.status : '';
+  if (status === 'right') return 'right';
+  if (status !== 'wrong') return '';
+  const v = item.verdict;
+  return v && !v.overruled && Number(v.rating) === 2 ? 'partly' : 'wrong';
+}
+
+/**
+ * The units a cell names: the text or the option itself, each tag, or the
+ * titles of the Units rows a relation points at (`titleById`, by row page id).
+ */
+function stSubjectUnitNames(value, titleById) {
+  const list = Array.isArray(value) ? value : (value === null || value === undefined || value === '' ? [] : [value]);
+  const out = [];
+  for (const v of list) {
+    const id = v && typeof v === 'object' ? String(v.id ?? v.pageId ?? '') : String(v);
+    let name = titleById && titleById.has(id) ? titleById.get(id) : (v && typeof v === 'object' ? (v.title ?? v.name ?? v.value ?? '') : v);
+    name = String(name ?? '').replace(/\s+/g, ' ').trim();
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+const stSubjectNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const stSubjectSameName = (a, b) => stSubjectFold(a) === stSubjectFold(b);
+
+/**
+ * A subject's numbers, counted from its Questions rows as they are now:
+ * { total, answered, units: [{ name, total, answered, right, lastWorked }] }
+ * with the units in the order the rows first name them. Answered is
+ * Attempts over zero; right is what the Last Result means; last worked is
+ * the latest Last Answered. A row naming no unit counts in the totals only.
+ */
+function stSubjectCounts(rows, mapping, titleById) {
+  const m = mapping || {};
+  const units = [];
+  let total = 0, answered = 0;
+  for (const row of rows || []) {
+    if (!row) continue;
+    const v = row.values || {};
+    const isAnswered = stSubjectNum(v[m.attempts]) > 0;
+    const isRight = stSubjectMeansRight(v[m.lastResult]);
+    const when = typeof v[m.lastAnswered] === 'string' ? v[m.lastAnswered].slice(0, 10) : '';
+    total += 1;
+    if (isAnswered) answered += 1;
+    for (const name of stSubjectUnitNames(v[m.unit], titleById)) {
+      let u = units.find((x) => stSubjectSameName(x.name, name));
+      if (!u) { u = { name, total: 0, answered: 0, right: 0, lastWorked: '' }; units.push(u); }
+      u.total += 1;
+      if (isAnswered) u.answered += 1;
+      if (isRight) u.right += 1;
+      if (when > u.lastWorked) u.lastWorked = when;
+    }
+  }
+  return { total, answered, units };
+}
+
+/**
+ * What Study must write into Units so its kept columns say what `counts`
+ * says: [{ pageId, values }] for the rows that differ, naming only the cells
+ * that differ and only columns the database has (`columnNames`).
+ */
+function stSubjectUnitChanges(unitRows, counts, columnNames) {
+  const has = (name) => (columnNames || []).some((c) => stSubjectSameName(c, name));
+  const out = [];
+  for (const row of unitRows || []) {
+    const c = ((counts && counts.units) || []).find((u) => stSubjectSameName(u.name, row.title)) || { total: 0, answered: 0, right: 0, lastWorked: '' };
+    const want = { Questions: c.total, Answered: c.answered, 'Right Last Time': c.right, 'Last Worked': c.lastWorked };
+    const values = {};
+    for (const [name, value] of Object.entries(want)) {
+      if (!has(name)) continue;
+      const now = (row.values || {})[name];
+      if (name === 'Last Worked') {
+        const have = typeof now === 'string' ? now.slice(0, 10) : '';
+        // A unit never worked keeps an empty cell; a date is never taken away by a count.
+        if (value && have !== value) values[name] = value;
+      } else if (now === undefined || now === null || now === '' || Number(now) !== value) values[name] = value;
+    }
+    if (Object.keys(values).length) out.push({ pageId: row.pageId, values });
+  }
+  return out;
+}
+
+/** A cell as the text of a question or an answer. */
+function stSubjectText(value) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.map(stSubjectText).filter(Boolean).join(', ');
+  if (typeof value === 'object') return String(value.title ?? value.name ?? value.value ?? '');
+  return String(value);
+}
+
+/**
+ * The Questions rows as question-provider items, one per row with a title:
+ * { ref: the row's page id, question, answer, unit, kind }. The kind is the
+ * row's Kind when it says Essay, else short.
+ */
+function stSubjectItems(rows, mapping, titleById) {
+  const m = mapping || {};
+  const out = [];
+  for (const row of rows || []) {
+    const question = String((row && row.title) || '').trim();
+    if (!row || !row.pageId || !question) continue;
+    const v = row.values || {};
+    out.push({
+      ref: String(row.pageId),
+      question,
+      answer: stSubjectText(v[m.answer]).trim(),
+      unit: stSubjectUnitNames(v[m.unit], titleById)[0] || '',
+      kind: /essay|long/i.test(stSubjectText(v.Kind)) ? 'essay' : 'short',
+    });
+  }
+  return out;
+}
+
+/** File endings a unit is proposed from. */
+const ST_SUBJECT_SOURCE_EXTS = ['pdf', 'md', 'markdown', 'txt'];
+
+/**
+ * The units a sources folder proposes, from its listing ([{ name, type }],
+ * type 2 a folder): one per subfolder when it has any, else one per .pdf,
+ * .md, .markdown or .txt file (named without the ending, once), in name
+ * order with numbers read as numbers. Dot names are left out.
+ */
+function stSubjectUnitsFromListing(entries) {
+  const list = (Array.isArray(entries) ? entries : []).filter((e) => e && e.name && !String(e.name).startsWith('.'));
+  const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  const folders = list.filter((e) => e.type === 2).map((e) => String(e.name));
+  if (folders.length) return folders.sort(byName);
+  const names = [];
+  for (const e of list) {
+    const m = /^(.+)\.([^.]+)$/.exec(String(e.name));
+    if (!m || !ST_SUBJECT_SOURCE_EXTS.includes(m[2].toLowerCase())) continue;
+    if (!names.some((n) => stSubjectSameName(n, m[1]))) names.push(m[1].trim());
+  }
+  return names.sort(byName);
+}
+
+const stSubjectPad = (n) => String(n).padStart(2, '0');
+/** A moment as the date in his own day: "YYYY-MM-DD". */
+function stSubjectLocalDate(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${stSubjectPad(d.getMonth() + 1)}-${stSubjectPad(d.getDate())}`;
+}
+/** A moment as a canvas datetime: "YYYY-MM-DDTHH:mm", local. */
+function stSubjectLocalDateTime(ts) {
+  const d = new Date(ts);
+  return `${stSubjectLocalDate(ts)}T${stSubjectPad(d.getHours())}:${stSubjectPad(d.getMinutes())}`;
+}
+
+/** A session's own time as Work Log minutes: rounded up, at least one. */
+function stSubjectMinutes(seconds) {
+  return Math.max(1, Math.ceil((Number(seconds) || 0) / 60));
+}
+
+/**
+ * A session's Work Log row: { title, values }, or null while nothing is
+ * answered. Items counts every answer given (a Test answer waiting to be
+ * marked too); Right the ones right. `unitRowIds` are the Units rows worked.
+ */
+function stSubjectLogValues(session, items, unitRowIds) {
+  const given = (items || []).filter((i) => i && (i.status === 'right' || i.status === 'wrong' || i.status === 'answered'));
+  if (!given.length) return null;
+  return {
+    title: String((session && session.name) || 'Study'),
+    values: {
+      Date: stSubjectLocalDateTime(Number(session && session.startedAt) || 0),
+      Minutes: stSubjectMinutes(session && session.seconds),
+      Unit: (unitRowIds || []).slice(),
+      Tool: 'Study',
+      Kind: 'Questions',
+      Items: given.length,
+      Right: given.filter((i) => i.status === 'right').length,
+      Confirmed: true,
+      Origin: 'App',
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 20: DATA LAYER
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -3675,7 +3997,8 @@ function stFixedScope(scope) {
 /** Every question a fixed scope holds, hidden ones included (the caller filters). */
 async function stFixedScopeQuestions(scope) {
   if (scope.kind === 'marked') return stListMarkedQuestions();
-  return stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+  // A subject's unit is its bank narrowed to the questions of that unit.
+  return stScopeUnitFilter(scope, await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] }));
 }
 
 /** Study the marked questions as a set: one Practice session over exactly those. */
@@ -3686,6 +4009,573 @@ async function stStudyMarked() {
     return null;
   }
   return stStartOrSay({ scope: { kind: 'marked', materialIds: [], label: 'Marked questions' }, mode: 'practice', ...stSessionPrefs(null) });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 27: SUBJECTS — the record kept in canvas databases
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A subject (st_subjects, migration study_004) names a canvas page and the
+// canvas databases under it: Units, Questions, a Work Log. They are read and
+// written through the core's door, api.canvas.databases; nothing here knows
+// how the canvas stores them. The Questions database is the record:
+//
+//   in    every row is a question of the subject's bank (st_questions, by the
+//         row's page id), taken in again whenever the database changes, so a
+//         row added, retitled, re-answered or deleted in the table is what
+//         the next session asks. One read of the rows, one batch of inserts.
+//   out   each final verdict on a session item goes to its row (Attempts,
+//         Correct, Last Result, Last Answered) as a difference from what that
+//         item already added (st_subject_marks), so a hand edit is added to
+//         and a changed verdict never counts an attempt twice. One row written.
+//   then  the unit's kept columns in Units follow, and the session's one row
+//         in the Work Log (st_subject_logs holds which row).
+//
+// Everything a subject has running (its change listeners, its timer) belongs
+// to the activation and goes with it; nothing is written when Study goes off.
+// The pure part is 12-subject-model.js.
+
+/** id → the live state of a subject: { subject, rows, unitRows, counts, ... }. */
+const _stSubjects = new Map();
+
+function stSubjectDoor() {
+  return _api && _api.canvas && _api.canvas.databases ? _api.canvas.databases : null;
+}
+
+/** The door, or the reason there is none (an older shell). */
+function stSubjectDoorOrThrow() {
+  const door = stSubjectDoor();
+  if (!door) throw new Error('This version of Parallx has no canvas databases for Study to keep a subject in.');
+  return door;
+}
+
+const stSubjectProviderId = (id) => `subject:${Number(id) || 0}`;
+
+function stRowToSubject(row) {
+  const mapping = stParseJson(row.mapping_json, {}) || {};
+  return {
+    id: row.id,
+    name: row.name,
+    pageId: row.page_id || '',
+    unitsDb: row.units_db || '',
+    questionsDb: row.questions_db || '',
+    logDb: row.log_db || '',
+    notesDb: row.notes_db || '',
+    sourcesFolder: row.sources_folder || '',
+    mapping,
+    bankId: row.bank_id || 0,
+    folded: !!row.folded,
+    createdAt: row.created_at || 0,
+  };
+}
+
+async function stListSubjects() {
+  const rows = await db.all('SELECT * FROM st_subjects ORDER BY created_at, id');
+  return rows.map(stRowToSubject);
+}
+
+/** A subject's mapping as column names by role. */
+function stSubjectNames(subject) {
+  const out = {};
+  for (const role of ST_SUBJECT_ROLES) out[role] = String((subject.mapping[role] && subject.mapping[role].name) || ST_SUBJECT_ROLE_LABELS[role]);
+  return out;
+}
+
+/** The columns Study makes sure a subject's Questions database has: all of them in one it made, the mapped ones in one of his. */
+function stSubjectQuestionSpecs(subject) {
+  if (subject.mapping.own) return stSubjectColumns(subject.unitsDb).questions;
+  const names = stSubjectNames(subject);
+  // A column of his is never given options: only its absence is mended.
+  return ST_SUBJECT_ROLES.map((role) => {
+    const c = stSubjectRoleColumn(role, subject.unitsDb);
+    return { name: names[role], type: c.type, ...(c.type === 'relation' ? { config: c.config } : {}) };
+  });
+}
+
+/** The live subject a session scope draws from, or null. */
+function stSubjectOfScope(scope) {
+  if (!scope || scope.kind !== 'bank' || !Array.isArray(scope.bankIds) || scope.bankIds.length !== 1) return null;
+  const bankId = Number(scope.bankIds[0]);
+  for (const st of _stSubjects.values()) if (Number(st.subject.bankId) === bankId) return st;
+  return null;
+}
+
+/** Is this bank a subject's (shown under Subjects, not under Question banks)? */
+function stIsSubjectBank(bank) {
+  return !!bank && bank.kind === 'subject';
+}
+
+/** The scope of a session over a subject, or over one of its units. */
+function stSubjectScope(subject, unit = '') {
+  const scope = { kind: 'bank', bankIds: [subject.bankId], materialIds: [], label: unit ? `${subject.name} · ${unit}` : subject.name };
+  if (unit) scope.unit = unit;
+  return scope;
+}
+
+/** A fixed scope's questions narrowed to its unit, when it names one. */
+function stScopeUnitFilter(scope, questions) {
+  const unit = scope && scope.unit ? String(scope.unit) : '';
+  if (!unit) return questions;
+  return (questions || []).filter((q) => stSubjectSameName(stQuestionMeta(q).paper, unit));
+}
+
+/**
+ * What the sidebar shows: every subject with its units in the Units
+ * database's order (Order, then the table's own), each "answered of total"
+ * as the Questions rows say now.
+ */
+function stSubjectsShown() {
+  const out = [];
+  for (const st of _stSubjects.values()) {
+    const counts = st.counts || { total: 0, answered: 0, units: [] };
+    const order = (r) => { const n = Number((r.values || {}).Order); return Number.isFinite(n) && (r.values || {}).Order !== '' && (r.values || {}).Order != null ? n : Infinity; };
+    const units = (st.unitRows || []).map((r, i) => ({ r, i })).filter((x) => String(x.r.title || '').trim())
+      .sort((a, b) => (order(a.r) - order(b.r)) || (a.i - b.i))
+      .map(({ r }) => {
+        const c = counts.units.find((u) => stSubjectSameName(u.name, r.title));
+        return { name: String(r.title).trim(), rowId: r.pageId, total: c ? c.total : 0, answered: c ? c.answered : 0 };
+      });
+    out.push({ id: st.subject.id, name: st.subject.name, subject: st.subject, folded: !!st.subject.folded, total: counts.total, answered: counts.answered, units, ready: !!st.synced, problem: st.problem || '' });
+  }
+  return out;
+}
+
+/** Before each write to a database: work that outlived its activation (Study went off under it) stops here, so nothing is written after. */
+function stSubjectLive(st) {
+  if (!stIsCurrent(st.token) || _stSubjects.get(st.subject.id) !== st) throw stStoppedError();
+}
+
+// ── Taking the rows in ──────────────────────────────────────────────────────
+
+/** The questions of a subject follow its rows: inserted, changed (whatever was edited in Study), or put aside when the row is gone. */
+async function stSubjectIngest(st, items) {
+  const subject = st.subject;
+  const pid = stSubjectProviderId(subject.id);
+  const existing = await db.all('SELECT id, stem, answer, format, provider_ref, rubric_origin, bank_id, edited FROM st_questions WHERE provider_id = ?', [pid]);
+  const byRef = new Map();
+  for (const r of existing) byRef.set(stProviderRefOf({ providerRef: r.provider_ref }), r);
+  const now = stNow();
+  const statements = [];
+  const insertSql = `INSERT INTO st_questions (${ST_QUESTION_COLS.join(', ')}) VALUES (${stPlaceholders(ST_QUESTION_COLS)})`;
+  const seen = new Set();
+  for (const item of items) {
+    if (seen.has(item.ref)) continue;
+    seen.add(item.ref);
+    const mapped = stImportedToQuestion({ kind: item.kind, question: item.question, answer: item.answer, paper: item.unit }, { origin: 'provider', bankId: subject.bankId, providerId: pid, ref: item.ref });
+    const prior = byRef.get(item.ref);
+    if (!prior) { statements.push({ sql: insertSql, params: stQuestionParams(mapped, now) }); continue; }
+    const answerChanged = String(prior.answer || '') !== mapped.answer;
+    if (prior.stem === mapped.stem && !answerChanged && prior.format === mapped.format && prior.provider_ref === mapped.providerRef && Number(prior.bank_id) === Number(subject.bankId) && !prior.edited) continue;
+    // A changed answer drops a rubric made from the old one (an examiner's report keeps its own).
+    const dropRubric = answerChanged && prior.rubric_origin !== 'report';
+    statements.push({
+      sql: `UPDATE st_questions SET stem = ?, answer = ?, format = ?, origin_label = ?, provider_ref = ?, bank_id = ?, edited = 0${dropRubric ? ", rubric_json = '[]', rubric_origin = ''" : ''} WHERE id = ?`,
+      params: [mapped.stem, mapped.answer, mapped.format, mapped.originLabel, mapped.providerRef, subject.bankId, prior.id],
+    });
+    if (dropRubric && typeof _stTypedRubrics !== 'undefined') _stTypedRubrics.delete(prior.id);
+  }
+  // A row that is gone is no longer asked; its question stays for the sessions that asked it.
+  for (const [ref, r] of byRef) {
+    if (seen.has(ref)) continue;
+    statements.push({ sql: 'UPDATE st_questions SET provider_id = ?, bank_id = 0, hidden = 1 WHERE id = ?', params: [`${pid}:gone`, r.id] });
+  }
+  if (!statements.length) return false;
+  await db.runAll(statements);
+  await db.run('UPDATE st_banks SET count = (SELECT COUNT(*) FROM st_questions WHERE provider_id = ?), name = ? WHERE id = ?', [pid, subject.name, subject.bankId]);
+  return true;
+}
+
+/** The mapped columns by the names they have now: a renamed column is followed by its id. */
+async function stSubjectFollowRenames(st, columns) {
+  const subject = st.subject;
+  let changed = false;
+  for (const role of ST_SUBJECT_ROLES) {
+    const m = subject.mapping[role];
+    if (!m || !m.name) continue;
+    const byName = columns.find((c) => stSubjectSameName(c.name, m.name));
+    const byId = m.id ? columns.find((c) => c.id === m.id) : null;
+    const now = byName || byId;
+    if (!now) continue;
+    if (now.name !== m.name || now.id !== m.id) { subject.mapping[role] = { id: now.id, name: now.name }; changed = true; }
+  }
+  if (changed) await db.run('UPDATE st_subjects SET mapping_json = ? WHERE id = ?', [stJsonCol(subject.mapping, '{}'), subject.id]);
+}
+
+/**
+ * Read a subject's databases and make Study agree with them. With `ensure`,
+ * the columns Study needs are put back first (one he deleted returns empty;
+ * Study's own are then worked out again below). Writes only what differs, so
+ * the changes this causes end in a run that writes nothing.
+ */
+async function stSubjectSyncNow(st, { ensure = false } = {}) {
+  const door = stSubjectDoor();
+  if (!door) return;
+  const subject = st.subject;
+  const specs = stSubjectColumns(subject.unitsDb);
+  const read = () => Promise.all([door.get(subject.questionsDb), door.get(subject.unitsDb), subject.logDb ? door.get(subject.logDb).catch(() => null) : null]);
+  let [qInfo, uInfo, logInfo] = await read();
+  if (!qInfo || !uInfo) {
+    // He deleted one of them: said in the sidebar, nothing made in its place.
+    st.problem = !qInfo ? 'Its questions database is gone.' : 'Its Units database is gone.';
+    st.rows = new Map(); st.unitRows = []; st.counts = { total: 0, answered: 0, units: [] }; st.synced = true;
+    return;
+  }
+  if (ensure) {
+    stSubjectLive(st);
+    await door.ensureColumns(subject.unitsDb, specs.units);
+    await door.ensureColumns(subject.questionsDb, stSubjectQuestionSpecs(subject));
+    if (logInfo) await door.ensureColumns(subject.logDb, specs.log);
+    [qInfo, uInfo, logInfo] = await read();
+    if (!qInfo || !uInfo) return;
+  }
+  st.problem = '';
+  await stSubjectFollowRenames(st, qInfo.columns);
+  const names = stSubjectNames(subject);
+  const [rows, unitRows] = await Promise.all([door.listRows(subject.questionsDb), door.listRows(subject.unitsDb)]);
+  const titleById = new Map(unitRows.map((r) => [r.pageId, r.title]));
+  const counts = stSubjectCounts(rows, names, titleById);
+
+  // A unit the questions name and Units lacks gets its row (a select's own order, else as first named).
+  const unitColumn = qInfo.columns.find((c) => stSubjectSameName(c.name, names.unit));
+  const options = unitColumn && unitColumn.config && Array.isArray(unitColumn.config.options) ? unitColumn.config.options.map((o) => String(o && typeof o === 'object' ? o.value : o)) : [];
+  const rank = (name) => { const i = options.findIndex((o) => stSubjectSameName(o, name)); return i < 0 ? options.length : i; };
+  const missing = counts.units.filter((u) => !unitRows.some((r) => stSubjectSameName(r.title, u.name))).sort((a, b) => rank(a.name) - rank(b.name));
+  const unitColumnNames = uInfo.columns.map((c) => c.name);
+  const hasOrder = unitColumnNames.some((n) => stSubjectSameName(n, 'Order'));
+  let nextOrder = unitRows.reduce((m, r) => Math.max(m, Number((r.values || {}).Order) || 0), 0);
+  for (const u of missing) {
+    nextOrder += 1;
+    stSubjectLive(st);
+    const made = await door.addRow(subject.unitsDb, { title: u.name, values: hasOrder ? { Order: nextOrder } : {} });
+    unitRows.push({ pageId: made.pageId, title: made.title, values: { ...(made.values || {}) } });
+  }
+
+  for (const change of stSubjectUnitChanges(unitRows, counts, unitColumnNames)) {
+    stSubjectLive(st);
+    await door.updateRow(subject.unitsDb, change.pageId, { values: change.values });
+    const row = unitRows.find((r) => r.pageId === change.pageId);
+    if (row) row.values = { ...(row.values || {}), ...change.values };
+  }
+
+  stSubjectLive(st);
+  await stSubjectIngest(st, stSubjectItems(rows, names, titleById));
+  st.rows = new Map(rows.map((r) => [r.pageId, r]));
+  st.unitRows = unitRows;
+  st.counts = counts;
+  st.names = names;
+  st.columns = qInfo.columns;
+  st.logColumns = logInfo ? logInfo.columns.map((c) => c.name) : [];
+  st.synced = true;
+}
+
+// ── One subject's work, in order ────────────────────────────────────────────
+
+/** Run `fn` after whatever this subject is doing; a failure is said once and does not stop what follows. */
+function stSubjectEnqueue(st, fn) {
+  const token = st.token;
+  const run = () => (stIsCurrent(token) && _stSubjects.get(st.subject.id) === st ? fn() : undefined);
+  st.chain = st.chain.then(run, run);
+  return st.chain;
+}
+
+/** The sync the last changes asked for, now. */
+async function stSubjectFlush(st) {
+  if (!st.dirty && st.synced) return;
+  const ensure = st.ensure || !st.synced;
+  st.dirty = false;
+  st.ensure = false;
+  clearTimeout(st.timer);
+  try {
+    await stSubjectSyncNow(st, { ensure });
+    st.tries = 0;
+  } catch (err) {
+    if (stIsStopped(err) || !stIsCurrent(st.token)) return;
+    // The canvas is still starting (the door says so): look again shortly.
+    st.dirty = true; st.ensure = st.ensure || ensure;
+    st.tries = (st.tries || 0) + 1;
+    if (st.tries <= 20) st.timer = setTimeout(() => void stSubjectEnqueue(st, () => stSubjectFlush(st)), 1500);
+    if (st.tries === 1 || st.tries === 20) console.warn(`[Study] ${st.subject.name}: its databases could not be read:`, err && err.message);
+    st.problem = st.tries >= 20 ? 'Its databases could not be read.' : '';
+    return;
+  }
+  if (stIsCurrent(st.token)) _emitDataChanged();
+}
+
+/** One of the subject's databases changed (the person, the chat, another tool, or Study itself): read again shortly. */
+function stSubjectTouched(st, kind) {
+  st.dirty = true;
+  // A column deleted is not put back under his hands: it returns with the next change of rows or values, or at the next start.
+  if (kind !== 'columns') st.ensure = true;
+  clearTimeout(st.timer);
+  st.timer = setTimeout(() => void stSubjectEnqueue(st, () => stSubjectFlush(st)), 200);
+}
+
+/** Start following a subject: hear its databases, and read them once. */
+function stSubjectWatch(context, subject, token = stActivation()) {
+  const door = stSubjectDoor();
+  if (!door || !stIsCurrent(token)) return null;
+  const st = { subject, token, rows: new Map(), unitRows: [], counts: null, names: stSubjectNames(subject), columns: [], logColumns: [], synced: false, dirty: true, ensure: true, timer: 0, tries: 0, chain: Promise.resolve(), listeners: [], problem: '' };
+  _stSubjects.set(subject.id, st);
+  for (const id of new Set([subject.questionsDb, subject.unitsDb, subject.logDb].filter(Boolean))) {
+    const off = stOwn(context, token, door.onDidChange(id, (e) => { if (stIsCurrent(token) && _stSubjects.get(subject.id) === st) stSubjectTouched(st, e && e.kind); }));
+    st.listeners.push(off);
+  }
+  void stSubjectEnqueue(st, () => stSubjectFlush(st));
+  return st;
+}
+
+/** Show or hide a subject's units in the sidebar; kept with the subject. */
+async function stSetSubjectFolded(id, on) {
+  await db.run('UPDATE st_subjects SET folded = ? WHERE id = ?', [on ? 1 : 0, id]);
+  const st = _stSubjects.get(id);
+  if (st) st.subject.folded = !!on;
+  _emitDataChanged();
+}
+
+/** Stop following every subject (deactivate): no timer left, nothing written. */
+function stSubjectsReset() {
+  for (const st of _stSubjects.values()) clearTimeout(st.timer);
+  _stSubjects.clear();
+}
+
+// ── Making and removing a subject ───────────────────────────────────────────
+
+/** The entries of a folder (an absolute path, or one inside the workspace), [] when it cannot be read. */
+async function stSubjectFolderListing(folder) {
+  const fs = _api.workspace && _api.workspace.fs;
+  let p = String(folder || '').trim();
+  if (!p || !fs || typeof fs.readdir !== 'function') return [];
+  if (!/^([a-zA-Z]:[\\/]|[\\/]|file:)/.test(p)) p = `${stWorkspaceRoot().replace(/[\\/]$/, '')}/${p}`;
+  try { return (await fs.readdir(stUriOf(stFsPathOf(p)))) || []; } catch { return []; }
+}
+
+/**
+ * New Subject: a page named after it, Units and a Work Log under it, and its
+ * Questions: a new database there, or one he has (`questionsDb`), used in
+ * place with `mapping` ({ role: column name, or '' to add the column }).
+ * Returns the subject; its rows are taken in right after.
+ */
+async function stCreateSubject({ name, folder = '', questionsDb = '', notesDb = '', mapping = null }) {
+  const door = stSubjectDoorOrThrow();
+  const title = String(name || '').trim();
+  if (!title) throw new Error('Give the subject a name.');
+  let adopted = null;
+  if (questionsDb) {
+    adopted = await door.get(questionsDb);
+    if (!adopted) throw new Error('That database is no longer there.');
+  }
+  const page = await door.createPage({ title });
+  const units = await door.create({ title: 'Units', parentPageId: page.id, columns: stSubjectColumns('').units });
+  const specs = stSubjectColumns(units.id);
+  const stored = {};
+  let questionsId = questionsDb;
+  if (!adopted) {
+    const made = await door.create({ title: 'Questions', parentPageId: page.id, columns: specs.questions });
+    questionsId = made.id;
+    stored.own = true;
+    for (const role of ST_SUBJECT_ROLES) { const c = made.columns.find((x) => x.name === ST_SUBJECT_ROLE_LABELS[role]); stored[role] = { id: c ? c.id : '', name: ST_SUBJECT_ROLE_LABELS[role] }; }
+  } else {
+    const chosen = mapping || stSubjectGuessMapping(adopted.columns);
+    const taken = new Set(adopted.columns.map((c) => stSubjectFold(c.name)));
+    const add = [];
+    for (const role of ST_SUBJECT_ROLES) {
+      const have = chosen[role] ? adopted.columns.find((c) => c.type !== 'title' && stSubjectSameName(c.name, chosen[role])) : null;
+      if (have) { stored[role] = { id: have.id, name: have.name }; continue; }
+      // A column is added under the role's name; when he already has one of that name doing something else, under "Study <name>".
+      let colName = ST_SUBJECT_ROLE_LABELS[role];
+      if (taken.has(stSubjectFold(colName))) colName = `Study ${colName}`;
+      taken.add(stSubjectFold(colName));
+      add.push({ ...stSubjectRoleColumn(role, units.id), name: colName });
+      stored[role] = { id: '', name: colName };
+    }
+    if (add.length) await door.ensureColumns(questionsId, add);
+  }
+  const log = await door.create({ title: 'Work Log', parentPageId: page.id, columns: specs.log });
+  const proposed = stSubjectUnitsFromListing(await stSubjectFolderListing(folder));
+  for (let i = 0; i < proposed.length; i++) await door.addRow(units.id, { title: proposed[i], values: { Order: i + 1 } });
+
+  const bank = await stInsertBank({ name: title, kind: 'subject', providerId: '', count: 0 });
+  const res = await db.run(
+    'INSERT INTO st_subjects (name, page_id, units_db, questions_db, log_db, notes_db, sources_folder, mapping_json, bank_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [title, page.id, units.id, questionsId, log.id, String(notesDb || ''), String(folder || '').trim(), stJsonCol(stored, '{}'), bank.id, stNow()],
+  );
+  await db.run('UPDATE st_banks SET provider_id = ? WHERE id = ?', [stSubjectProviderId(res.lastInsertRowid), bank.id]);
+  const subject = stRowToSubject(await db.get('SELECT * FROM st_subjects WHERE id = ?', [res.lastInsertRowid]));
+  // Its rows are read behind this (a long database takes a moment): the sidebar shows the subject now and its numbers as they arrive.
+  stSubjectWatch(null, subject);
+  _emitDataChanged();
+  return subject;
+}
+
+/** Remove Subject: Study forgets it (its bank, the sessions over it, what it noted of them). The page and every database stay as they are. */
+async function stRemoveSubject(id) {
+  const st = _stSubjects.get(id);
+  if (st) {
+    clearTimeout(st.timer);
+    for (const off of st.listeners) off.dispose();
+    _stSubjects.delete(id);
+  }
+  const row = await db.get('SELECT * FROM st_subjects WHERE id = ?', [id]);
+  if (!row) return;
+  await db.run('DELETE FROM st_subject_marks WHERE subject_id = ?', [id]);
+  await db.run('DELETE FROM st_subject_logs WHERE subject_id = ?', [id]);
+  await db.run('DELETE FROM st_questions WHERE provider_id IN (?, ?)', [stSubjectProviderId(id), `${stSubjectProviderId(id)}:gone`]);
+  if (row.bank_id) await stDeleteBank(row.bank_id);
+  await db.run('DELETE FROM st_subjects WHERE id = ?', [id]);
+  _emitDataChanged();
+}
+
+// ── Results back to the rows ────────────────────────────────────────────────
+
+/** The session's row in the Work Log: made with the first answer, then only what changed is written. */
+async function stSubjectWriteLog(st, session, items, questionsById) {
+  const door = stSubjectDoor();
+  const subject = st.subject;
+  if (!door || !subject.logDb) return;
+  const unitIds = [];
+  for (const item of items) {
+    if (!(item.status === 'right' || item.status === 'wrong' || item.status === 'answered')) continue;
+    const q = questionsById.get(item.questionId);
+    const unit = q ? String(stQuestionMeta({ providerRef: q.provider_ref }).paper || '') : '';
+    const row = unit ? st.unitRows.find((r) => stSubjectSameName(r.title, unit)) : null;
+    if (row && !unitIds.includes(row.pageId)) unitIds.push(row.pageId);
+  }
+  const want = stSubjectLogValues(session, items, unitIds);
+  if (!want) return;
+  stSubjectLive(st);
+  const has = (name) => st.logColumns.some((c) => stSubjectSameName(c, name));
+  const values = Object.fromEntries(Object.entries(want.values).filter(([name]) => has(name)));
+  const rec = await db.get('SELECT * FROM st_subject_logs WHERE session_id = ?', [session.id]);
+  const written = rec ? (stParseJson(rec.written_json, {}) || {}) : {};
+  if (rec && rec.row_id) {
+    const changed = Object.fromEntries(Object.entries(values).filter(([name, v]) => JSON.stringify(written[name]) !== JSON.stringify(v)));
+    if (!Object.keys(changed).length) return;
+    try {
+      await door.updateRow(subject.logDb, rec.row_id, { values: changed });
+      await db.run('UPDATE st_subject_logs SET written_json = ? WHERE session_id = ?', [stJsonCol({ ...written, ...changed }, '{}'), session.id]);
+      return;
+    } catch (err) {
+      if (stIsStopped(err)) throw err;
+      // The row is gone from the Work Log: the work is logged again below.
+    }
+  }
+  const made = await door.addRow(subject.logDb, { title: want.title, values });
+  await db.run('INSERT OR REPLACE INTO st_subject_logs (session_id, subject_id, row_id, written_json) VALUES (?, ?, ?, ?)', [session.id, subject.id, made.pageId, stJsonCol(values, '{}')]);
+}
+
+/**
+ * Make a session's rows say what its items say: every item with a final
+ * verdict has added one attempt to its question's row, and Correct and Last
+ * Result follow the verdict as it stands now (the grader's, or his over it).
+ * Then the units' kept columns and the session's Work Log row follow.
+ * `seconds` is the session's own time when the caller knows it better than
+ * the stored row (the pane, as its tab closes).
+ */
+async function stSubjectReconcile(sessionId, { seconds = 0 } = {}) {
+  const door = stSubjectDoor();
+  const first = await stGetSession(sessionId);
+  const st = first ? stSubjectOfScope(first.scope) : null;
+  if (!door || !st) return;
+  await stSubjectEnqueue(st, async () => {
+    await stSubjectFlush(st);
+    if (!st.synced || st.problem) return;
+    const session = await stGetSession(sessionId);
+    if (!session) return;
+    session.seconds = Math.max(Number(session.seconds) || 0, Number(seconds) || 0);
+    const subject = st.subject;
+    const pid = stSubjectProviderId(subject.id);
+    const items = await stListSessionItems(sessionId);
+    const marks = new Map((await db.all('SELECT * FROM st_subject_marks WHERE session_id = ?', [sessionId])).map((m) => [m.item_id, m]));
+    const qids = [...new Set(items.map((i) => Number(i.questionId)).filter((n) => n > 0))];
+    const questionsById = new Map(qids.length ? (await db.all(`SELECT id, provider_id, provider_ref FROM st_questions WHERE id IN (${stPlaceholders(qids)})`, qids)).map((q) => [q.id, q]) : []);
+    const names = st.names;
+    const columnOf = (name) => st.columns.find((c) => stSubjectSameName(c.name, name)) || null;
+    let wrote = false;
+    for (const item of items) {
+      const result = stSubjectResultOfItem(item);
+      const mark = marks.get(item.id);
+      if (!result || (mark && mark.result === result)) continue;
+      const q = questionsById.get(item.questionId);
+      if (!q || (q.provider_id !== pid && q.provider_id !== `${pid}:gone`)) continue;
+      const rowId = stProviderRefOf({ providerRef: q.provider_ref });
+      const row = st.rows.get(rowId);
+      const correct = result === 'right' ? 1 : 0;
+      if (row) {
+        const values = {};
+        const addCorrect = correct - (mark ? Number(mark.correct) || 0 : 0);
+        if (!mark && columnOf(names.attempts)) values[columnOf(names.attempts).name] = stSubjectNum(row.values[columnOf(names.attempts).name]) + 1;
+        if (addCorrect && columnOf(names.correct)) values[columnOf(names.correct).name] = Math.max(0, stSubjectNum(row.values[columnOf(names.correct).name]) + addCorrect);
+        const resultColumn = columnOf(names.lastResult);
+        if (resultColumn) values[resultColumn.name] = stSubjectResultCell(resultColumn, result);
+        const whenColumn = columnOf(names.lastAnswered);
+        if (whenColumn) values[whenColumn.name] = whenColumn.type === 'datetime' ? stSubjectLocalDateTime(item.answeredAt || stNow()) : stSubjectLocalDate(item.answeredAt || stNow());
+        try {
+          stSubjectLive(st);
+          await door.updateRow(subject.questionsDb, rowId, { values });
+          row.values = { ...row.values, ...values };
+          wrote = true;
+        } catch (err) {
+          if (stIsStopped(err)) throw err;
+          console.warn('[Study] a result could not be written to its row:', err && err.message);
+          continue;
+        }
+      }
+      await db.run('INSERT OR REPLACE INTO st_subject_marks (item_id, session_id, subject_id, row_id, correct, result) VALUES (?, ?, ?, ?, ?, ?)', [item.id, sessionId, subject.id, row ? rowId : '', correct, result]);
+    }
+    if (wrote) {
+      const titleById = new Map(st.unitRows.map((r) => [r.pageId, r.title]));
+      st.counts = stSubjectCounts([...st.rows.values()], names, titleById);
+      const unitInfo = await door.get(subject.unitsDb);
+      for (const change of stSubjectUnitChanges(st.unitRows, st.counts, unitInfo ? unitInfo.columns.map((c) => c.name) : [])) {
+        stSubjectLive(st);
+        await door.updateRow(subject.unitsDb, change.pageId, { values: change.values });
+        const row = st.unitRows.find((r) => r.pageId === change.pageId);
+        if (row) row.values = { ...(row.values || {}), ...change.values };
+      }
+    }
+    await stSubjectWriteLog(st, session, items, questionsById);
+    if (wrote && stIsCurrent(st.token)) _emitDataChanged();
+  }).catch((err) => { if (!stIsStopped(err) && stIsCurrent(st.token)) console.warn('[Study] results could not be written back:', err); });
+}
+
+/** His edit of a subject's question inside Study goes to its row, so the database stays the record. */
+async function stSubjectPushEdit(q) {
+  const door = stSubjectDoor();
+  const st = q && q.bankId ? stSubjectOfScope({ kind: 'bank', bankIds: [q.bankId] }) : null;
+  if (!door || !st || q.providerId !== stSubjectProviderId(st.subject.id)) return false;
+  const rowId = stProviderRefOf(q);
+  const answerColumn = st.columns.find((c) => stSubjectSameName(c.name, st.names.answer));
+  await door.updateRow(st.subject.questionsDb, rowId, { title: q.stem, values: answerColumn && q.format !== 'mc' ? { [answerColumn.name]: q.answer } : {} });
+  return true;
+}
+
+// ── Activation ──────────────────────────────────────────────────────────────
+
+/**
+ * Follow every subject for this activation: hear their databases, read them
+ * once (the columns Study needs are put back then), and write each answered
+ * item's result back as sessions report it. With no door (an older shell)
+ * nothing is registered.
+ */
+function registerSubjects(context, token = stActivation()) {
+  if (!stSubjectDoor() || !stIsCurrent(token)) return;
+  // After the bus has told everyone else, and only while this activation runs: a tab closing because Study went off writes nothing.
+  context.subscriptions.push(bus.on('session', (e) => {
+    const sessionId = e && Number(e.sessionId);
+    if (!sessionId) return;
+    setTimeout(() => { if (stIsCurrent(token)) void stSubjectReconcile(sessionId, { seconds: e.seconds }); }, 0);
+  }));
+  stListSubjects()
+    .then(async (subjects) => {
+      if (!stIsCurrent(token)) return;
+      for (const subject of subjects) stSubjectWatch(context, subject, token);
+      _emitDataChanged();
+      // An answer whose write was cut short (the app closed) is written now.
+      await Promise.all([..._stSubjects.values()].map((st) => st.chain));
+      if (!stIsCurrent(token)) return;
+      for (const session of await stListSessions({ open: true })) if (stSubjectOfScope(session.scope)) await stSubjectReconcile(session.id);
+    })
+    .catch((err) => { if (!stIsStopped(err) && stIsCurrent(token)) console.warn('[Study] subjects could not be loaded:', err); });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -6570,6 +7460,27 @@ function injectStyles() {
   .st-ma { flex-direction: column; align-items: flex-start; gap: var(--px-space-4); }
   .st-ma .st-row__lab--inline { width: 64px; margin-left: 0; }
 }
+/* New Subject: label and field on one line, a hint under the field; the columns of his database in two columns. */
+.st-subj__row { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; column-gap: var(--px-space-3); row-gap: var(--px-space-1); }
+.st-subj .st-row__lab { width: auto; }
+.st-subj__cell { display: flex; align-items: flex-start; gap: var(--px-space-2); min-width: 0; }
+.st-subj__cell > .px-btn { flex: none; }
+.st-subj__cell > .ui-input-box, .st-subj__cell > .ui-select, .st-subj__pair > .ui-select { flex: 1; min-width: 0; }
+.st-subj__cell .ui-dropdown, .st-subj__pair .ui-dropdown { width: 100%; }
+.st-subj__row > .st-subj__hint { grid-column: 2; }
+.st-subj__hint { font-size: var(--px-text-xs); color: var(--px-text-muted); line-height: 1.4; }
+.st-subj__map { padding: var(--px-space-3); display: grid; gap: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.st-subj__map[hidden] { display: none; }
+.st-subj__maphd { display: grid; gap: var(--px-space-1); }
+.st-subj__mapt { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.st-subj__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--px-space-2) var(--px-space-4); }
+.st-subj__pair { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: var(--px-space-2); min-width: 0; }
+.st-subj__problem { flex: 1; min-width: 0; font-size: var(--px-text-sm); color: var(--px-danger); }
+@container st-sheet (max-width: 560px) {
+  .st-subj__row { grid-template-columns: minmax(0, 1fr); }
+  .st-subj__row > .st-subj__hint { grid-column: 1; }
+  .st-subj__grid { grid-template-columns: minmax(0, 1fr); }
+}
 .st-sheet__count { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .st-outline { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); overflow: hidden; max-height: 240px; overflow-y: auto; }
 .st-outline__o { display: flex; align-items: center; gap: var(--px-space-2); min-height: var(--px-control-h); padding: 0 var(--px-space-3); font-size: var(--px-text-sm); color: var(--px-text-secondary); border-top: 1px solid var(--px-divider); cursor: pointer; }
@@ -6700,6 +7611,7 @@ function injectStyles() {
 .st-sb__secl .px-section-label { display: inline-flex; align-items: center; gap: var(--px-space-1); min-width: 0; }
 .st-sb__secl--fold .px-section-label { cursor: pointer; color: var(--px-text-faint); }
 .st-sb__secl--fold .px-section-label:hover { color: var(--px-text-secondary); }
+.st-sb__secl--fold .px-section-label:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); color: var(--px-text-secondary); }
 .st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: var(--px-space-1); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
 .st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
 .st-sb__it:hover { background: var(--px-surface-hover); color: var(--px-text); }
@@ -6720,8 +7632,19 @@ function injectStyles() {
 .st-sb__bar small { display: block; font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; }
 .st-sb__live { width: 6px; height: 6px; border-radius: var(--px-radius-full); background: var(--px-accent); animation: st-pulse calc(var(--px-dur-slow) * 6) var(--px-ease) infinite; justify-self: center; }
 /* Review rows (Weak Spots, Marked): kit buttons laid out as the rows around them. */
-.st-sb__sec--review .st-sb__nav { display: flex; width: 100%; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); border-radius: 0; color: var(--px-text-secondary); font-weight: 400; }
+.st-sb__sec--review .st-sb__nav, .st-sb__sec--subjects .st-sb__nav { display: flex; width: 100%; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); border-radius: 0; color: var(--px-text-secondary); font-weight: 400; }
 .st-sb__nav .px-btn__label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+/* A subject: its name studies all of it, More Actions beside it; a unit is a row under it, its mark filling as it is answered. */
+.st-sb__subj { display: flex; align-items: center; padding-right: var(--px-space-2); }
+.st-sb__subj .st-sb__nav { flex: 1; min-width: 0; width: auto; padding-right: var(--px-space-1); color: var(--px-text); font-weight: 500; }
+.st-sb__sec--subjects .st-sb__nav .svg-icon { color: var(--px-text-muted); flex: none; }
+.st-sb__sec--subjects .st-sb__nav--unit { padding-left: var(--px-space-8); }
+.st-sb__sec--subjects .st-sb__nav--unit .svg-icon { color: var(--px-text-faint); }
+.st-sb__sec--subjects .st-sb__nav--done .svg-icon { color: var(--px-success); }
+.st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
+.st-sb__none--unit { padding-left: var(--px-space-8); }
+.st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 
@@ -6929,6 +7852,10 @@ function createSidebarView(container) {
       label.addEventListener('click', () => fold.onToggle());
       label.setAttribute('role', 'button');
       label.setAttribute('aria-expanded', fold.open ? 'true' : 'false');
+      // Reachable and worked by keys, as a button is; the focus is on it again after the fold repaints.
+      label.tabIndex = 0;
+      stDeclare(label, `study.side.fold.${text.toLowerCase().replace(/\s+/g, '-')}`, text);
+      label.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fold.onToggle(); } });
     }
     if (count != null) label.appendChild(el('span', 'st-sb__n', String(count)));
     row.appendChild(label);
@@ -7058,6 +7985,35 @@ function createSidebarView(container) {
     return row;
   };
 
+  // A subject: its name opens the setup sheet on all of it, its actions are
+  // behind More Actions and the context menu (62-subject-view.js), then each
+  // unit is a row that opens the sheet on that unit. The numbers are the
+  // Questions database's, as it is now; a unit's mark says how far it is.
+  const countText = (answered, total) => `${answered} of ${total}`;
+  const unitIcon = (u) => (u.total > 0 && u.answered >= u.total ? 'circle-check' : u.answered > 0 ? 'circle-dot' : 'circle');
+  const subjectRows = (host, s) => {
+    const row = _api.ui.createBlock(host, 'div', { className: 'st-sb__subj' });
+    row.dataset.subjectId = String(s.id);
+    const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
+      title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
+    head.classList.add('st-sb__nav');
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? 'missing' : s.ready ? countText(s.answered, s.total) : '' });
+    _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
+    });
+    if (s.folded) return;
+    for (const u of s.units) {
+      const unit = _api.ui.createButton(host, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
+        title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
+      unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
+      if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
+      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: countText(u.answered, u.total) });
+    }
+    if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
+  };
+
   // ── Destructive flows, each behind the app's confirm modal ──
   async function removeMaterial(m, concepts) {
     const ok = await _api.window.showConfirmModal({
@@ -7113,7 +8069,17 @@ function createSidebarView(container) {
     } finally { painting = false; }
   }
 
+  // A repaint rebuilds the rows: the control he was on (by keyboard) has the focus again after it.
   async function paintOnce() {
+    await paintRows();
+    const id = state.refocus;
+    state.refocus = '';
+    if (!id || state.disposed || body.contains(document.activeElement)) return;
+    const again = Array.from(body.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === id);
+    if (again) again.focus();
+  }
+
+  async function paintRows() {
     const now = stNow();
     const materials = (await stListMaterials()) || [];
     const perMaterial = [];
@@ -7126,19 +8092,24 @@ function createSidebarView(container) {
     const done = (await stListSessions({ open: false })) || [];
     const itemsBySession = new Map();
     for (const s of [...open, ...done]) itemsBySession.set(s.id, (await stListSessionItems(s.id)) || []);
-    const banks = (await stListBanks()) || [];
+    // A subject's bank is shown under Subjects, with its units.
+    const banks = ((await stListBanks()) || []).filter((b) => !stIsSubjectBank(b));
+    const subjects = stSubjectsShown();
     const marked = (await stListMarkedQuestions()) || [];
     if (state.disposed) return;
 
+    const focused = body.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
+    if (focused) state.refocus = focused;
     body.innerHTML = '';
 
-    if (!materials.length && !banks.length && !open.length && !done.length) {
-      _api.ui.createEmptyState(body, {
+    if (!materials.length && !banks.length && !open.length && !done.length && !subjects.length) {
+      const empty = _api.ui.createEmptyState(body, {
         icon: 'px-study',
         headline: 'Nothing to study yet.',
-        hint: 'Open a PDF and choose Study This Document, or add one here.',
+        hint: 'Open a PDF and choose Study This Document, or add one here. A subject keeps its units, questions and work log in databases you can open.',
         action: { id: 'study.addPdf', label: 'Add PDF…', onClick: () => void stAddPdfFlow() },
       });
+      if (stSubjectDoor()) _api.ui.createButton(empty, { id: 'study.side.newSubject', label: 'New Subject…', icon: 'plus', kind: 'ghost', size: 'sm', title: 'A subject: a page with its units, questions and work log.', command: 'study.newSubject' });
       return;
     }
 
@@ -7165,6 +8136,17 @@ function createSidebarView(container) {
         },
       });
       body.appendChild(bar);
+    }
+
+    // Subjects, each with its units.
+    if (stSubjectDoor()) {
+      const subSec = _api.ui.createBlock(body, 'div', { className: 'st-sb__sec st-sb__sec--subjects' });
+      sectionLabel(subSec, 'Subjects', subjects.length || null, { actions: (row) => {
+        _api.ui.createBlock(row, 'span', { className: 'st-sp' });
+        _api.ui.createIconButton(row, { id: 'study.side.newSubject', icon: 'plus', title: 'New Subject…', size: 'sm', command: 'study.newSubject' });
+      } });
+      if (!subjects.length) _api.ui.createBlock(subSec, 'div', { className: 'st-sb__none', text: 'No subjects yet.' });
+      for (const s of subjects) subjectRows(subSec, s);
     }
 
     // Materials.
@@ -7211,7 +8193,8 @@ function createSidebarView(container) {
   const offData = onDataChanged(() => void paint());
   const offSession = bus.on('session', () => void paint());
   const offRoute = bus.on('route', (route) => {
-    if (!route) return;
+    // The New Subject sheet changes nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
+    if (!route || route.view === 'newSubject') return;
     if (Array.isArray(route.materialIds) && route.materialIds.length === 1) state.expandedId = route.materialIds[0];
     if (route.view === 'learn' && route.materialId) state.expandedId = route.materialId;
     state.activeSessionId = route.sessionId != null ? route.sessionId : state.activeSessionId;
@@ -7896,7 +8879,7 @@ async function stCountScopeQuestions(scope) {
     if (typeof stScopeQuestionCount === 'function') return Number(await stScopeQuestionCount(scope)) || 0;
   } catch { /* fall through */ }
   try {
-    if (scope && scope.kind === 'bank') return ((await stListQuestions({ bankIds: scope.bankIds || [] })) || []).filter((q) => !q.hidden).length;
+    if (scope && scope.kind === 'bank') return ((await stFixedScopeQuestions(scope)) || []).filter((q) => !q.hidden).length;
     const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
     const [questions, concepts] = await Promise.all([
       stListQuestions({ materialIds }),
@@ -7920,6 +8903,7 @@ function stSetupCountText({ mode, concepts, clean, questions, size }) {
 function stBankOriginText(bank, questions) {
   if (bank && bank.kind === 'report') return "examiner's report";
   if (bank && bank.kind === 'provider') return 'from another tool';
+  if (bank && bank.kind === 'subject') return 'from its Questions database';
   const counts = new Map();
   for (const q of questions || []) counts.set(q.origin, (counts.get(q.origin) || 0) + 1);
   let top = '', n = -1;
@@ -7966,6 +8950,7 @@ function _stTakePendingRoute() {
 function stRouteInstanceId(route) {
   if (!route) return 'setup';
   if (route.view === 'setup') return 'setup';
+  if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -7979,12 +8964,14 @@ function stRouteFromInstanceId(instanceId) {
   if (m) return { view: 'session', sessionId: Number(m[1]) };
   m = /^learn-(\d+)-(\d+)$/.exec(id);
   if (m) return { view: 'learn', materialId: Number(m[1]), sectionId: Number(m[2]) };
+  if (id === 'new-subject') return { view: 'newSubject' };
   return { view: 'setup', materialIds: [] };
 }
 
 async function stRouteTitle(route) {
   try {
     if (route.view === 'setup') return 'Study';
+    if (route.view === 'newSubject') return 'New Subject';
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
       let title = material ? material.label : 'Learn';
@@ -8027,7 +9014,7 @@ function stOpenSetup(partial) {
   const p = partial || {};
   const route = { view: 'setup', materialIds: Array.isArray(p.materialIds) ? p.materialIds.slice() : [] };
   if (Array.isArray(p.bankIds) && p.bankIds.length) route.bankIds = p.bankIds.slice();
-  for (const k of ['sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
+  for (const k of ['unit', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
   return stOpenPane(route);
 }
 
@@ -8299,6 +9286,7 @@ function createEditorPane(container, input) {
         const route = state.route;
         try {
           if (route.view === 'setup') await renderSetup(root, route, ctx);
+          else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);
@@ -8370,15 +9358,15 @@ function createEditorPane(container, input) {
 // ── Setup sheet ─────────────────────────────────────────────────────────────
 
 /** The scrim, the sheet and its header; returns the body to fill. */
-function stSheetFrame(host, ctx, subtitle) {
+function stSheetFrame(host, ctx, subtitle, { title = 'Study' } = {}) {
   host.appendChild(el('div', 'st-scrim'));
   const sheet = el('div', 'st-sheet');
   sheet.setAttribute('role', 'dialog');
-  sheet.setAttribute('aria-label', 'Study');
+  sheet.setAttribute('aria-label', title);
   host.appendChild(sheet);
   const hd = el('div', 'st-sheet__hd');
   const titles = el('div', '');
-  titles.appendChild(el('h3', 'st-sheet__title', 'Study'));
+  titles.appendChild(el('h3', 'st-sheet__title', title));
   const sub = el('div', 'st-sheet__sub', subtitle);
   sub.title = subtitle;
   titles.appendChild(sub);
@@ -8516,12 +9504,13 @@ async function renderSetup(host, route, ctx) {
   if (!ids.length) ids = all.map((m) => m.id);
   const materials = ids.map((id) => all.find((m) => m.id === id)).filter(Boolean);
   if (!materials.length) {
-    _api.ui.createEmptyState(host, {
+    const empty = _api.ui.createEmptyState(host, {
       icon: 'px-study',
       headline: 'Nothing to study yet.',
-      hint: 'Open a PDF or a notes file and choose Study This Document…, or add one here.',
+      hint: 'Open a PDF or a notes file and choose Study This Document…, or add one here. A subject keeps its units, questions and work log in databases you can open.',
       action: { id: 'study.addPdf', label: 'Add Document…', onClick: () => void stAddPdfFlow() },
     });
+    if (stSubjectDoor()) _api.ui.createButton(empty, { id: 'study.home.newSubject', label: 'New Subject…', icon: 'plus', kind: 'ghost', title: 'A subject: a page with its units, questions and work log.', command: 'study.newSubject' });
     return;
   }
   const primary = materials[0];
@@ -8718,7 +9707,10 @@ async function renderBankSetup(host, route, ctx) {
     return;
   }
   const scope = { kind: 'bank', bankIds: banks.map((b) => b.id), materialIds: [], label: banks.map((b) => b.name).join(' + ') };
-  const questions = ((await stListQuestions({ bankIds: scope.bankIds })) || []).filter((q) => !q.hidden);
+  // One unit of a subject: its bank, narrowed.
+  if (route.unit && banks.length === 1) { scope.unit = String(route.unit); scope.label = `${banks[0].name} · ${scope.unit}`; }
+  const ofSubject = banks.length === 1 && stIsSubjectBank(banks[0]);
+  const questions = ((await stFixedScopeQuestions(scope)) || []).filter((q) => !q.hidden);
   const count = await stCountScopeQuestions(scope);
   const hasChoice = questions.some((q) => q.format === 'mc' && Array.isArray(q.options) && q.options.length);
   const { models, activeModel } = await stSheetModels();
@@ -8732,7 +9724,7 @@ async function renderBankSetup(host, route, ctx) {
     starting: false,
   };
 
-  const { sheet, bd } = stSheetFrame(host, ctx, banks.length > 1 ? `${banks.length} banks` : banks[0].name);
+  const { sheet, bd } = stSheetFrame(host, ctx, banks.length > 1 ? `${banks.length} banks` : scope.label);
   const origin = stBankOriginText(banks[0], questions);
   bd.appendChild(el('div', 'st-sheet__count', `${count} ${count === 1 ? 'question' : 'questions'} · ${origin}`));
   stModeAnswerRow(bd, ctx, st, {
@@ -8741,8 +9733,8 @@ async function renderBankSetup(host, route, ctx) {
     onChange: () => {},
   });
   const { startBtn } = stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs: async () => {}, onStart: () => start() });
-  if (!count) { startBtn.disabled = true; startBtn.title = 'This bank has no questions to draw.'; }
-  else startBtn.title = `Draws ${Math.min(count, Number(cfg('sessionSize', 20)) || 20)} questions from the bank.`;
+  if (!count) { startBtn.disabled = true; startBtn.title = ofSubject ? 'No question with an answer here yet. Add rows to its Questions database.' : 'This bank has no questions to draw.'; }
+  else startBtn.title = `Draws ${Math.min(count, Number(cfg('sessionSize', 20)) || 20)} questions from ${ofSubject ? 'its Questions database' : 'the bank'}.`;
 
   async function start() {
     if (st.starting || !count) return;
@@ -8845,7 +9837,8 @@ async function renderSession(host, route, ctx) {
     seconds++;
     if (seconds % 30 === 0) saveSeconds();
   }, 1000);
-  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); } });
+  // The tab closing is told too, with the time as it stands (a subject's Work Log row follows it).
+  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
 
   // ── Strand ──
   const segs = new Map();
@@ -9504,6 +10497,7 @@ async function renderSession(host, route, ctx) {
     current = null;
     stStopRun(session.id);
     await stUpdateSession(session.id, { position: drawItems.length, finishedAt: stNow(), seconds });
+    bus.emit('session', { sessionId: session.id, seconds });
     _emitDataChanged();
     ctx.setRoute({ view: 'results', sessionId: session.id });
   }
@@ -9518,6 +10512,7 @@ async function renderSession(host, route, ctx) {
     if (!ok || ctx.disposed()) return;
     stStopRun(session.id);
     await stUpdateSession(session.id, { finishedAt: stNow(), seconds });
+    bus.emit('session', { sessionId: session.id, seconds });
     _emitDataChanged();
     ctx.setRoute({ view: 'results', sessionId: session.id });
   }
@@ -9902,6 +10897,294 @@ async function renderLearn(host, route, ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 62: NEW SUBJECT — the sheet that makes a subject
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// One sheet, the setup sheet's frame: Name (the only thing it needs), a
+// sources folder, the Questions (a new database, or one he already has) and
+// his Notes. Choosing a database he has shows which of its columns Study
+// would use for what, each guess a choice he can change; nothing of his is
+// copied or renamed, only a missing column is added. Create makes the page
+// and its databases (27-subjects.js) and opens the page.
+
+/** "Add a column" in a mapping choice. */
+const ST_SUBJECT_ADD = '+add';
+
+/** Open one of a subject's databases in the editor; say so when it is gone. */
+async function stOpenSubjectDatabase(databaseId) {
+  const door = stSubjectDoor();
+  try {
+    if (!door || !databaseId) throw new Error('gone');
+    await door.open(databaseId);
+  } catch (err) {
+    if (stIsStopped(err)) return;
+    try { await _api.window.showWarningMessage('That database is no longer there. It may be in the Trash.'); } catch { /* noop */ }
+  }
+}
+
+/** A subject's actions: its More Actions menu, its context menu, and the Subject Actions… command. */
+function stSubjectMenuItems(s) {
+  return [
+    { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
+    { separator: true },
+    { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
+    { label: 'Open Questions', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.questionsDb) },
+    { label: 'Open Work Log', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.logDb) },
+    { separator: true },
+    s.folded
+      ? { label: 'Show Units', icon: 'chevron-down', onSelect: () => void stSetSubjectFolded(s.id, false) }
+      : { label: 'Hide Units', icon: 'chevron-right', onSelect: () => void stSetSubjectFolded(s.id, true) },
+    { separator: true },
+    { label: 'Remove Subject…', icon: 'trash', danger: true, onSelect: () => void stRemoveSubjectFlow(s) },
+  ];
+}
+
+/** Remove Subject…: asks first. Study forgets it; the page and the databases stay. */
+async function stRemoveSubjectFlow(s) {
+  const ok = await _api.window.showConfirmModal({
+    message: `Remove the subject ${s.name}?`,
+    detail: 'Study forgets it, with the sessions over it. Its page, Units, Questions and Work Log stay exactly as they are.',
+    confirmLabel: 'Remove', danger: true,
+  });
+  if (!ok) return;
+  await stRemoveSubject(s.id);
+  await stCloseGoneSessionTabs();
+}
+
+/** The subject a command names (its id or its name), else the only one, else his pick. */
+async function stPickSubject(arg, placeholder) {
+  const all = stSubjectsShown();
+  if (arg != null && arg !== '') return all.find((s) => s.id === Number(arg)) || all.find((s) => stSubjectSameName(s.name, arg)) || null;
+  if (!all.length) { await _api.window.showInformationMessage('No subjects yet. New Subject… makes one.'); return null; }
+  if (all.length === 1) return all[0];
+  const pick = await _api.window.showQuickPick(all.map((s) => ({ label: s.name, description: `${s.answered} of ${s.total}`, id: s.id })), { placeholder });
+  return pick ? all.find((s) => s.id === pick.id) || null : null;
+}
+
+/** Study a Subject…: the setup sheet on the subject, or on one of its units. */
+async function stCmdStudySubject(arg, unit) {
+  const s = await stPickSubject(arg, 'Study which subject?');
+  if (!s) return null;
+  const named = unit ? s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
+  return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}) });
+}
+
+/** Subject Actions…: the menu at the subject's row when it is on screen, else a pick. */
+async function stCmdSubjectActions(arg) {
+  const s = await stPickSubject(arg, 'Which subject?');
+  if (!s) return null;
+  const items = stSubjectMenuItems(s);
+  const at = Array.from(document.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === `study.side.subject.${s.id}.more` && n.getClientRects().length);
+  if (at) { _api.ui.showContextMenu(at, items, { anchorPosition: 'below' }); return null; }
+  const pick = await _api.window.showQuickPick(items.filter((i) => !i.separator).map((i) => ({ label: i.label })), { placeholder: s.name });
+  const chosen = pick ? items.find((i) => i.label === pick.label) : null;
+  if (chosen) chosen.onSelect();
+  return null;
+}
+
+/** With no material to open the sheet on: the first subject, else Study's empty home. */
+function stOpenHome() {
+  const subject = stSubjectsShown()[0];
+  return subject ? stOpenSetup({ bankIds: [subject.subject.bankId] }) : stOpenPane({ view: 'setup', materialIds: [] });
+}
+
+/** The New Subject sheet on screen: its form, and what its Create does. */
+let _stSubjectSheet = null;
+/** What had the focus when New Subject… was chosen. */
+let _stSubjectOpener = null;
+
+/** Give the focus back to what opened the sheet (the same control, or the one with its id when its view was drawn again). */
+function stRefocusSubjectOpener() {
+  const opener = _stSubjectOpener;
+  _stSubjectOpener = null;
+  if (!opener) return;
+  setTimeout(() => {
+    if (document.querySelector('.st-sheet')) return;
+    const node = opener.node.isConnected && opener.node.getClientRects().length ? opener.node
+      : opener.id ? Array.from(document.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === opener.id && n.getClientRects().length) : null;
+    if (node && typeof node.focus === 'function') node.focus();
+  }, 60);
+}
+
+/**
+ * New Subject…: the sheet. Given what the sheet would ask ({ name, folder,
+ * questions, notes, mapping }: the chat, a script, or the sheet's own
+ * Create handing over its form), the subject is made without it.
+ */
+async function stCmdNewSubject(arg) {
+  if (!arg || typeof arg !== 'object') {
+    // Where he was (the button that opened it): the focus goes back there when the sheet closes with nothing made.
+    const from = typeof document !== 'undefined' ? document.activeElement : null;
+    _stSubjectOpener = from && from !== document.body ? { node: from, id: from.getAttribute('data-px-id') || '' } : null;
+    return stOpenPane({ view: 'newSubject' });
+  }
+  if (_stSubjectSheet && arg === _stSubjectSheet.form) return _stSubjectSheet.create();
+  return stCreateSubject({ name: arg.name, folder: arg.folder, questionsDb: arg.questions, notesDb: arg.notes, mapping: arg.mapping || null });
+}
+
+function registerSubjectCommands(context) {
+  const cmds = [
+    ['study.newSubject', (arg) => stCmdNewSubject(arg)],
+    ['study.studySubject', (subject, unit) => stCmdStudySubject(subject, unit)],
+    ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
+  ];
+  for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
+}
+
+/** The command that closes the tab in front: the sheet's Cancel. */
+const ST_CLOSE_TAB = 'workbench.action.closeActiveEditor';
+
+/** The folders of the workspace, three levels down, as paths from its root (a few hundred at most), in name order. */
+async function stWorkspaceFolders() {
+  const folders = (_api.workspace && _api.workspace.workspaceFolders) || [];
+  const fs = _api.workspace && _api.workspace.fs;
+  if (!folders.length || !fs || typeof fs.readdir !== 'function') return [];
+  const found = [];
+  let level = [{ uri: String(folders[0].uri).replace(/\/$/, ''), rel: '' }];
+  for (let depth = 0; depth < 3 && level.length && found.length < 300; depth++) {
+    const next = [];
+    const listings = await Promise.all(level.map((d) => fs.readdir(d.uri).catch(() => [])));
+    listings.forEach((entries, i) => {
+      for (const ent of entries || []) {
+        const name = String((ent && ent.name) || '');
+        if (!ent || ent.type !== ST_FS_DIRECTORY || !name || name.startsWith('.') || name === 'node_modules') continue;
+        const rel = level[i].rel ? `${level[i].rel}/${name}` : name;
+        found.push(rel);
+        next.push({ uri: `${level[i].uri}/${name}`, rel });
+      }
+    });
+    level = next;
+  }
+  return found.slice(0, 300).sort((x, y) => x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+async function renderNewSubject(host, route, ctx) {
+  const door = stSubjectDoor();
+  if (!door) {
+    _api.ui.createEmptyState(host, { icon: 'database', headline: 'Subjects need canvas databases.', hint: 'This version of Parallx does not offer them to Study.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    return;
+  }
+  let databases = [];
+  try { databases = (await door.list()) || []; } catch { databases = []; }
+  // A database another subject is made of is not offered again.
+  const used = new Set();
+  for (const s of _stSubjects.values()) for (const id of [s.subject.unitsDb, s.subject.questionsDb, s.subject.logDb]) used.add(id);
+  const offered = databases.filter((d) => d && !used.has(d.id)).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true }));
+  const workspaceFolders = await stWorkspaceFolders();
+  if (ctx.disposed()) return;
+  // The form: what Create hands to the command (stCmdNewSubject).
+  const st = { name: '', folder: '', questions: '', notes: '', columns: [], mapping: null, busy: false };
+  const sheetActions = { form: st, create: () => create() };
+  _stSubjectSheet = sheetActions;
+  ctx.add({ dispose: () => { if (_stSubjectSheet === sheetActions) _stSubjectSheet = null; if (!st.made) stRefocusSubjectOpener(); } });
+
+  const { sheet, bd } = stSheetFrame(host, ctx, 'A page with its units, questions and work log.', { title: 'New Subject' });
+  bd.classList.add('st-subj');
+  ctx.add(_api.ui.keepTabInside(sheet, host));
+  let seq = 0;
+  const field = (label, { hint = '' } = {}) => {
+    const row = _api.ui.createBlock(bd, 'div', { className: 'st-subj__row' });
+    const lab = _api.ui.createBlock(row, 'span', { className: 'st-row__lab', text: label });
+    lab.id = `st-subj-lab-${++seq}`;
+    const cell = _api.ui.createBlock(row, 'div', { className: 'st-subj__cell' });
+    if (hint) _api.ui.createBlock(row, 'div', { className: 'st-subj__hint', text: hint });
+    return cell;
+  };
+
+  // Name.
+  const name = _api.ui.createInput(field('Name'), { id: 'study.subject.name', label: 'Name', placeholder: 'For example, Exam 7' });
+  ctx.add(name);
+  const nameInput = name.element.querySelector('input');
+
+  // Sources folder: one of the workspace's.
+  const folder = _api.ui.createSelect(field('Sources folder', { hint: 'Optional. Each subfolder becomes a unit, or each PDF, Markdown or text file.' }), {
+    id: 'study.subject.folder', label: 'Sources folder', items: [{ value: '', label: 'None' }, ...workspaceFolders.map((f) => ({ value: f, label: f }))], value: '', onChange: (v) => { st.folder = v; } });
+  ctx.add(folder);
+
+  // Questions, and the columns of a database he already has.
+  const dbItems = (first) => [{ value: '', label: first }, ...offered.map((d) => ({ value: d.id, label: String(d.title || 'Untitled') }))];
+  const questions = _api.ui.createSelect(field('Questions'), { id: 'study.subject.questions', label: 'Questions', items: dbItems('New database'), value: '', onChange: (v) => void chooseQuestions(v) });
+  ctx.add(questions);
+  const mapHost = _api.ui.createBlock(bd, 'div', { className: 'st-subj__map' });
+  mapHost.hidden = true;
+  let mapSelects = [];
+  const clearMap = () => { for (const s of mapSelects) s.dispose(); mapSelects = []; mapHost.replaceChildren(); mapHost.hidden = true; };
+  ctx.add({ dispose: () => { for (const s of mapSelects) s.dispose(); } });
+
+  async function chooseQuestions(id) {
+    st.questions = id;
+    st.mapping = null;
+    clearMap();
+    say('');
+    if (!id) return;
+    let info = null;
+    try { info = await door.get(id); } catch { info = null; }
+    if (ctx.disposed() || st.questions !== id) return;
+    if (!info) { say('That database is no longer there.'); return; }
+    st.columns = info.columns.filter((c) => c.type !== 'title');
+    st.mapping = stSubjectGuessMapping(info.columns);
+    const head = _api.ui.createBlock(mapHost, 'div', { className: 'st-subj__maphd' });
+    _api.ui.createBlock(head, 'span', { className: 'st-subj__mapt', text: 'Its columns' });
+    _api.ui.createBlock(head, 'span', { className: 'st-subj__hint', text: 'The database is used where it is. Only a column it lacks is added; your rows stay as they are.' });
+    const grid = _api.ui.createBlock(mapHost, 'div', { className: 'st-subj__grid' });
+    const items = [...st.columns.map((c) => ({ value: c.name, label: c.name })), { value: ST_SUBJECT_ADD, label: 'Add a column' }];
+    for (const role of ST_SUBJECT_ROLES) {
+      const pair = _api.ui.createBlock(grid, 'div', { className: 'st-subj__pair' });
+      _api.ui.createBlock(pair, 'span', { className: 'st-row__lab', text: ST_SUBJECT_ROLE_LABELS[role] });
+      mapSelects.push(_api.ui.createSelect(pair, { id: `study.subject.map.${role}`, label: ST_SUBJECT_ROLE_LABELS[role], items, value: st.mapping[role] || ST_SUBJECT_ADD,
+        onChange: (v) => { st.mapping[role] = v === ST_SUBJECT_ADD ? '' : v; say(''); } }));
+    }
+    mapHost.hidden = false;
+  }
+
+  // Notes.
+  const notes = _api.ui.createSelect(field('Notes'), { id: 'study.subject.notes', label: 'Notes', items: dbItems('None'), value: '', onChange: (v) => { st.notes = v; } });
+  ctx.add(notes);
+
+  // Footer: what is wrong (when something is), Cancel, Create.
+  const ft = _api.ui.createBlock(sheet, 'div', { className: 'st-sheet__ft' });
+  const problem = _api.ui.createBlock(ft, 'div', { className: 'st-subj__problem', attrs: { role: 'alert' } });
+  const say = (text) => { problem.textContent = text; };
+  const acts = _api.ui.createBlock(ft, 'span', { className: 'st-sheet__acts' });
+  _api.ui.createButton(acts, { id: 'study.subject.cancel', label: 'Cancel', kind: 'ghost', command: ST_CLOSE_TAB });
+  const createBtn = _api.ui.createButton(acts, { id: 'study.subject.create', label: 'Create', icon: 'plus', kind: 'primary', title: 'Make the page and its databases.', command: 'study.newSubject', args: [st] });
+
+  async function create() {
+    if (st.busy) return;
+    const title = String(name.value || '').trim();
+    if (!title) { say('Give the subject a name.'); if (nameInput) nameInput.focus(); return; }
+    if (st.questions && !st.mapping) { say('Its columns are still being read. Try again in a moment.'); return; }
+    if (st.mapping) {
+      const picked = ST_SUBJECT_ROLES.map((r) => st.mapping[r]).filter(Boolean);
+      const twice = picked.find((c, i) => picked.indexOf(c) !== i);
+      if (twice) { say(`${twice} is chosen twice. A column can stand for one thing.`); return; }
+    }
+    st.busy = true;
+    createBtn.disabled = true;
+    say('');
+    try {
+      const subject = await stCreateSubject({ name: title, folder: st.folder, questionsDb: st.questions, notesDb: st.notes, mapping: st.mapping });
+      st.made = true;
+      await ctx.closeTab();
+      // What was made, on screen: the subject's page, with its databases under it.
+      try { if (subject.pageId) await _api.commands.executeCommand('canvas.openPage', subject.pageId); } catch { /* the sidebar shows it all the same */ }
+    } catch (err) {
+      st.busy = false;
+      createBtn.disabled = false;
+      if (!stIsStopped(err) && !ctx.disposed()) say(stSentence(stErrText(err)));
+    }
+  }
+
+  // In the Name field, Enter creates and Escape closes the sheet (the field itself takes both keys, so the sheet's own Escape never hears it).
+  sheet.addEventListener('keydown', (e) => {
+    if (e.isComposing || !e.target || e.target.tagName !== 'INPUT') return;
+    if (e.key === 'Enter') { e.preventDefault(); void create(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); void ctx.closeTab(); }
+  });
+  setTimeout(() => { if (!ctx.disposed() && nameInput && nameInput.isConnected) nameInput.focus(); }, 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 65: THE SESSION, HIS TO CORRECT — looking back, marks, edits, his verdict, drafts
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -10097,6 +11380,8 @@ async function stSaveQuestionEdit(q, { stem, answer }) {
   }
   await stUpdateQuestion(next);
   if (typeof _stTypedRubrics !== 'undefined') _stTypedRubrics.delete(q.id);
+  // A subject's question lives in its database: the edit goes to its row.
+  try { await stSubjectPushEdit(next); } catch (err) { if (!stIsStopped(err)) console.warn('[Study] the edit did not reach its row:', err && err.message); }
   return next;
 }
 
@@ -10373,7 +11658,7 @@ function stQuestionsInScope(questions, concepts, scope, now, staleDays = 14) {
   const to = Number(s.pageTo) || 0;
   return (questions || []).filter((q) => {
     if (q.hidden) return false;
-    if (s.kind === 'bank') return bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0;
+    if (s.kind === 'bank') return (bankIds ? bankIds.has(Number(q.bankId)) : Number(q.bankId) > 0) && (!s.unit || stScopeUnitFilter(s, [q]).length > 0);
     if (materialIds.size && !materialIds.has(Number(q.materialId))) return false;
     const concept = conceptById.get(Number(q.conceptId));
     if (sectionIds && !(concept && sectionIds.has(Number(concept.sectionId)))) return false;
@@ -10854,7 +12139,7 @@ async function stCmdOpen(arg) {
   if (picked.length) return stOpenSetup({ materialIds: picked });
   const materials = await stListMaterials();
   if (materials.length) return stOpenSetup({ materialIds: [materials[0].id] });
-  return stOpenPane({ view: 'setup', materialIds: [] });
+  return stOpenHome();
 }
 
 /** `arg` is an editor's More Actions `{ uri, fsPath, page? }` (a PDF, or a notes file), a path string, or nothing (the palette). */
@@ -11615,6 +12900,8 @@ export async function activate(api, context) {
   registerSessionCommands(owned);
   registerSelectionAction(owned, 0, token);
   registerQuestionProviders(owned, 0, token);
+  registerSubjectCommands(owned);
+  registerSubjects(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -11652,6 +12939,9 @@ export async function deactivate() {
   _fcCheck = null;
   _picked = [];
   _stSeenProviders.clear();
+  stSubjectsReset();
+  _stSubjectSheet = null;
+  _stSubjectOpener = null;
   _dbBridge = null;
   _api = null;
 }
@@ -11774,6 +13064,13 @@ export const __testables = {
   stMatchReportToQuestions,
   stInterleaveMaterials,
   stMasteryFromCardRating,
+  // 12-subject-model: a subject's record, the pure part
+  ST_SUBJECT_ROLES, ST_SUBJECT_ROLE_LABELS, ST_SUBJECT_KEPT,
+  stSubjectColumns, stSubjectRoleColumn, stSubjectGuessMapping, stSubjectResultCell, stSubjectMeansRight, stSubjectResultOfItem,
+  stSubjectUnitNames, stSubjectCounts, stSubjectUnitChanges, stSubjectItems, stSubjectUnitsFromListing,
+  stSubjectLocalDate, stSubjectLocalDateTime, stSubjectMinutes, stSubjectLogValues,
+  // 27-subjects, 62-subject-view: the record in canvas databases
+  stListSubjects, stSubjectsShown, stCreateSubject, stRemoveSubject, stSubjectSyncNow, stSubjectReconcile, stSubjectScope, stScopeUnitFilter, registerSubjects, stSubjectsReset,
   // 70-integration: state and pure helpers
   stPicked,
   stSetPicked,
