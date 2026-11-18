@@ -1059,13 +1059,85 @@ artifact he uses at the library (an export and an import, with time);
 Worksheets' campaign moves into the harness ("that was then, this is
 now"); notes in a canvas database; no log of work hours needed.
 
+**Piece 1 shipped: the record (2026-11-18).** Commits `1c5756a6` (the
+acceptance probe, before the build), `5a63c9a9` (the core door),
+`81c8f02b` (Study's subjects), `0e81fc13` (what review found, fixed).
+
+*What is built.*
+- The core has a door to canvas databases for any tool,
+  `api.canvas.databases` (list, get, create, a page, columns, rows,
+  changes, open), and a column can be kept by a tool: only that tool
+  sets it, and the cell says "Kept by" and the tool's name. Authoring
+  guide §4.17.
+- In Study, New Subject… makes a page with three databases: Units,
+  Questions and Work Log. An existing questions database is used where
+  it is, its columns matched in the same sheet; only columns it lacks
+  are added.
+- Study reads the questions from the database. A unit's session asks
+  that unit's questions; each result is written to its row (Attempts,
+  Correct, Last Result, Last Answered); Units carries Questions,
+  Answered, Right Last Time and Last Worked, kept by Study; each session
+  writes one row in the Work Log.
+- Study's sidebar has a Subjects section: each subject and its units
+  with "N of M" answered, and Open Units, Open Questions, Open Work Log,
+  Study… and Remove Subject….
+- With Study off, nothing of it runs and the page and databases stay.
+
+*How it was checked.*
+- The acceptance probe `tests/probes/study-record-acceptance.mjs` was
+  written from the request before the build and not edited after: 72 of
+  72 on the real app. 2,000 questions: counts shown 9.3 s after New
+  Subject, an answer on its row in 0.3 s.
+- Typecheck, 9,516 unit tests, the build, `study-usable-acceptance` (59
+  of 59) and the touch-drag probe pass.
+- Four reviewers that did not see the build read or drove it, and a
+  skeptic tried to refute the bug findings and could not. Fixed, each
+  with a test seen failing first: no write-back from a session over the
+  marked set; a unit renamed in Units splitting; a unit named by a page
+  id; a renamed column getting an empty twin; a session finished just
+  before quitting never written; a database in the Trash read as empty
+  and its questions made new on restore; "Kept by" shown to the mouse
+  only; Study's setup sheet letting Tab out and losing focus on Escape.
+- Grading in every run used a scripted stand-in for the model.
+
+*Found and left.*
+- A result is counted twice if the app is killed in the few milliseconds
+  between writing the row and noting it.
+- A select, status or tags column kept by a tool can still be changed
+  through Edit options…, and another tool can add options to it. Study
+  keeps only numbers and a date.
+- A session already open does not follow edits made to its questions;
+  the next session does.
+- A unit renamed in Units while Study is off still splits (the rename is
+  followed only while Study runs).
+- A question with a unit but no answer is counted and never asked.
+- In a sidebar about 125 px wide, subject names are cut to a letter.
+- A session over two subjects puts its whole minutes on each subject's
+  Work Log row.
+- Work Log's Date, Items and Right are not kept, so dragging a row on a
+  calendar re-dates it.
+- Removing a subject and adopting its questions again makes a second
+  page, Units and Work Log; the first stay.
+- The full keyboard audit does not finish in the cloud container. The
+  screens it reached read 0 except one missing focus ring on the
+  terminal's command input, which this piece did not touch.
+
+*Decided for him to overrule.* The kit dropdown's arrow is drawn in CSS
+(every dropdown); the column matching is inline in the one sheet;
+Sources folder is a list of workspace folders, not a typed path; a
+unit shows a state icon and no bar (bars are piece 2); a Work Log row
+is written at the first answer and updated; a row with no Kind is asked
+as a short answer; after Create the subject's page opens.
+
+*Only his machine can show.* His own conceptual database adopted with
+its real columns; grading by his model; the full keyboard audit.
+
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
-XP; and, before piece 1 of the system plan, his yes on three of its
-choices: his conceptual database adopted as Items rather than copied;
-subject and campaign as two levels; a work row per stretch of work, not
-per review.
+XP. Piece 1 was built on three choices his "execute plan" was taken to
+approve: his conceptual database adopted rather than copied; subject and
+campaign as two levels; a work row per stretch of work, not per review.
 
 ### AI chat: message times, model speed, dates on old chats
 
