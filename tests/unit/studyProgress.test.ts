@@ -551,6 +551,30 @@ describe('the Progress tab', () => {
     expect(barsIn(h.host)).toEqual([]);
   });
 
+  it('a tab that comes back with the app before Study has read its subjects waits for its subject, and says so only when it is gone', async () => {
+    const h = await subject();
+    await started(h);
+    // As at the start of the app: the subject is in Study's database, not yet followed.
+    const live = h.S._stSubjects.get(h.subject.id);
+    h.S._stSubjects.delete(h.subject.id);
+    const host = tab(h);
+    await wait(60);
+    expect(host.querySelector('.px-empty')).toBeNull();
+    expect(barsIn(host)).toEqual([]);
+    h.S._stSubjects.set(h.subject.id, live);
+    h.S.bus.emit('data');
+    await until(() => barsIn(host).length, 'the bars once the subject is read');
+    expect(host.querySelector('.px-page-header__title')!.textContent).toBe('Exam 7 Progress');
+    host.close();
+    // A subject Study does not have at all.
+    const gone = document.createElement('div');
+    document.body.appendChild(gone);
+    const pane = h.S.createEditorPane(gone, { instanceId: 'progress-999' });
+    cleanup.push(() => pane.dispose());
+    const headline = await until(() => gone.querySelector('.px-empty__headline'), 'the message');
+    expect(headline.textContent).toBe('This subject is no longer in Study.');
+  });
+
   it('says how many questions name no unit', async () => {
     const h = await open([], [...BANK_ROWS, { title: 'Loose?', values: { 'Model Answer': 'A' } }]);
     await until(() => barsIn(h.host).length, 'the bars');
@@ -573,12 +597,17 @@ describe('the sidebar', () => {
     expect(barsIn(host)).toEqual(['Mack: 2 right, 1 partly, 1 wrong, 1 not yet', 'Clark: 3 right, 1 partly, 3 wrong, 5 not yet', 'Venter: 2 right, 0 partly, 0 wrong, 0 not yet']);
     const units = [...host.querySelectorAll<HTMLElement>('.st-sb__unit')];
     expect(units.map((u) => u.querySelector('.st-sb__r')!.textContent)).toEqual(['4 of 5', '7 of 12', '2 of 2']);
-    // The subject's own count is every kind's total: 7 of 9 questions and 6 of 10 problems.
+    // The counts stay "answered of total" of the questions, with what the tool has rated of its own added: the subject's 7 of 9 questions and 6 of 10 problems.
     expect(host.querySelector('.st-sb__subj .st-sb__r')!.textContent).toBe('13 of 19');
     // The bar is the kit's small one, beside the button, never inside it, and nothing in it can be pressed.
     expect(units.every((u) => u.querySelector(':scope > .px-stacked-bar.px-stacked-bar--sm') && !u.querySelector('button .px-stacked-bar') && !u.querySelector('.px-stacked-bar button'))).toBe(true);
     expect(units[0].querySelector('.px-stacked-bar')!.getAttribute('role')).toBe('img');
     problems.set([g('Clark', 10, 10)]);
     await until(() => barsIn(host).includes('Clark: 10 right, 0 partly, 1 wrong, 1 not yet'), 'the provider\'s change in the sidebar');
+    expect([...host.querySelectorAll<HTMLElement>('.st-sb__unit')].map((u) => u.querySelector('.st-sb__r')!.textContent)).toEqual(['4 of 5', '11 of 12', '2 of 2']);
+    // A question attempted with no result yet is answered, as the piece before counted it: the count says so, the bar has no colour for it.
+    h.person.edit(h.bank, 'Q7 about Clark?', { 'Times Attempted': 2 });
+    await until(() => host.querySelectorAll<HTMLElement>('.st-sb__unit')[1]?.querySelector('.st-sb__r')!.textContent === '12 of 12', 'the hand edit of Attempts in the count');
+    expect(barsIn(host)).toContain('Clark: 10 right, 0 partly, 1 wrong, 1 not yet');
   });
 });

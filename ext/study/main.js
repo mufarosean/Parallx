@@ -8567,10 +8567,12 @@ function createSidebarView(container) {
     const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
       title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
     head.classList.add('st-sb__nav');
-    // The units' bars take in the tools that report progress (its questions, and what each tool has for a unit), and so do the counts: the subject's is every kind's total.
+    // The units' bars take in the tools that report progress, and so do the counts: "answered of total" stays the questions'
+    // (answered is Attempts over zero, as the Units database keeps it), and what each tool has rated of its own is added to both.
     const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
-    const whole = progress ? progress.totals.reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero()) : null;
-    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : !s.ready ? '' : whole ? stProgressCountText(whole) : countText(s.answered, s.total) });
+    const others = (kinds) => (kinds || []).filter((k) => k.id !== ST_PROGRESS_QUESTIONS).reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero());
+    const withOthers = (answered, total, t) => countText(answered + t[0] + t[1] + t[2], total + t[0] + t[1] + t[2] + t[3]);
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? withOthers(s.answered, s.total, others(progress && progress.totals)) : '' });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -8579,13 +8581,14 @@ function createSidebarView(container) {
     if (s.folded) return;
     // Each unit's thin bar is over every kind of work together, with that "N of M".
     for (const u of s.units) {
-      const all = progress ? (progress.rows.find((r) => r.rowId === u.rowId) || {}).all : null;
+      const row = progress ? progress.rows.find((r) => r.rowId === u.rowId) : null;
+      const all = row ? row.all : null;
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
       const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
         title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
       if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
-      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: all ? stProgressCountText(all) : countText(u.answered, u.total) });
+      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: withOthers(u.answered, u.total, others(row && row.kinds)) });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
       line.classList.add('st-sb__unit--bar');
@@ -11848,7 +11851,10 @@ async function renderProgress(host, route, ctx) {
   const first = shownNow();
   const st = _stSubjects.get(subjectId);
   if (!first || !st) {
-    ui.createEmptyState(inner, { icon: 'graduation-cap', headline: 'This subject is no longer in Study.', hint: 'It was removed. Its page and its databases are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    // A tab that came back with the app is drawn before Study has read its subjects: it waits for this one, and says so only when Study does not have it at all.
+    ctx.add(onDataChanged(() => { if (shownNow() && _stSubjects.get(subjectId)) ctx.rerender(); }));
+    const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
+    if (!kept && !ctx.disposed()) ui.createEmptyState(inner, { icon: 'graduation-cap', headline: 'This subject is no longer in Study.', hint: 'It was removed. Its page and its databases are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
     return;
   }
   const subject = st.subject;

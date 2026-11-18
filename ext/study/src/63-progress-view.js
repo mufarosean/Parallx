@@ -61,7 +61,10 @@ async function renderProgress(host, route, ctx) {
   const first = shownNow();
   const st = _stSubjects.get(subjectId);
   if (!first || !st) {
-    ui.createEmptyState(inner, { icon: 'graduation-cap', headline: 'This subject is no longer in Study.', hint: 'It was removed. Its page and its databases are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    // A tab that came back with the app is drawn before Study has read its subjects: it waits for this one, and says so only when Study does not have it at all.
+    ctx.add(onDataChanged(() => { if (shownNow() && _stSubjects.get(subjectId)) ctx.rerender(); }));
+    const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
+    if (!kept && !ctx.disposed()) ui.createEmptyState(inner, { icon: 'graduation-cap', headline: 'This subject is no longer in Study.', hint: 'It was removed. Its page and its databases are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
     return;
   }
   const subject = st.subject;
