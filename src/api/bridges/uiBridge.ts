@@ -15,6 +15,8 @@ import {
   createBlock as kitCreateBlock,
   createChoiceGrid as kitCreateChoiceGrid,
   type IKitChoiceGridOptions,
+  createStackedBar as kitCreateStackedBar,
+  type IKitStackedBarOptions,
   type IKitBlockOptions,
   createSegmented as kitCreateSegmented,
   createSurface as kitCreateSurface,
@@ -134,6 +136,8 @@ export function createUiApi() {
     createSectionLabel: (container: HTMLElement | null, text: string) => kitCreateSectionLabel(container, text),
     createBlock: (container: HTMLElement | null, tag: string, options?: IKitBlockOptions) => kitCreateBlock(container, tag, options),
     createChoiceGrid: (container: HTMLElement | null, options: IKitChoiceGridOptions) => kitCreateChoiceGrid(container, options),
+    // Counts in four states (good, middling, poor, the rest) as one bar: a part with an action is a button.
+    createStackedBar: (container: HTMLElement | null, options: IKitStackedBarOptions) => kitCreateStackedBar(container, options),
     createFilterChip: (container: HTMLElement | null, options: IKitFilterChipOptions) => kitCreateFilterChip(container, options),
     createSegmented: (container: HTMLElement | null, options: IKitSegmentedOptions) => kitCreateSegmented(container, options),
     // The scene (docs/SELF_DESCRIBING_UI_DESIGN.md): a region of the

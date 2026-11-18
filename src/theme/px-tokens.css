@@ -157,6 +157,10 @@
   --px-success:       rgb(var(--px-green-rgb));
   --px-warning:       rgb(var(--px-yellow-rgb));
   --px-warning-soft:  rgba(var(--px-yellow-rgb), 0.15);
+  /* The stacked bar (kit createStackedBar): the outline of the part not
+     worked yet. 3.7:1 or more against every surface in every palette, so
+     the empty part is seen without a fourth colour. */
+  --px-bar-rest:      var(--px-base-50);
   --px-info:          rgb(var(--px-blue-rgb));
 
   /* Syntax — ONE palette for every place code is coloured.

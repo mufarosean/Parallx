@@ -986,7 +986,7 @@ Calm, dense, dark-first desktop workbench in the spirit of Linear and Obsidian: 
 
 ### 6.2 Iron rules
 
-1. **Chrome comes from the kit** (Section 6.3): `api.ui.createButton`, `createIconButton`, `createPageHeader`, `createEmptyState`, `createSectionLabel`, `createFilterChip`, `createSegmented`, `createDropdown`, `showContextMenu`, and `api.window.showConfirmModal` for confirmations. Never clone them.
+1. **Chrome comes from the kit** (Section 6.3): `api.ui.createButton`, `createIconButton`, `createPageHeader`, `createEmptyState`, `createSectionLabel`, `createFilterChip`, `createSegmented`, `createDropdown`, `createStackedBar`, `showContextMenu`, and `api.window.showConfirmModal` for confirmations. Never clone them.
 2. **Never write a colour literal.** No hex, no `rgb()`/`rgba()` with numbers. Use the `--px-*` tokens in 6.4. (A data palette, such as category colours a user picks, is data, not styling.)
 3. **Never write a pixel font size.** Use `--px-text-*` (6.5). Six sizes; nothing between them.
 4. **Never set a font-family.** Inherit it (the user picks the app font in Appearance).
@@ -1044,6 +1044,17 @@ const noted = api.ui.createFilterChip(bar, { label: 'Noted', count: 5, onToggle:
 
 // One choice of a few (a setting, a rating): the segmented switch.
 api.ui.createSegmented(row, { ariaLabel: 'Sheet appearance', items: [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], value: 'light', onChange: save });
+
+// Counts in four states (how far along a paper, a deck, a unit is): THE stacked bar, never your own.
+// Green good, yellow middling, red poor, the rest an outline; one order always; a part with nothing is not drawn.
+// `label` is the whole bar spoken in full. A part with `command` (or `onClick`) is a button with its own name;
+// without one the bar is one picture. `size: 'sm'` is a thin line for a list row, never pressable.
+api.ui.createStackedBar(row, { label: 'Mack, Questions: 12 right, 3 partly, 2 wrong, 5 not yet', parts: [
+  { state: 'good', count: 12, label: 'Right: 12' },
+  { state: 'middling', count: 3, label: 'Partly: 3' },
+  { state: 'poor', count: 2, label: 'Mack, Questions, wrong: 2. Study these', command: 'myExt.study', args: ['mack', 'wrong'] },
+  { state: 'rest', count: 5, label: 'Not yet: 5' },
+] });   // → { element, update(options), dispose() }: update() redraws new counts in place and keeps the focus
 
 // A sub-page links back to the page it belongs to.
 api.ui.createPageHeader(root, { title: 'Problem Bank', back: { label: 'Worksheets', onClick: openHome } });

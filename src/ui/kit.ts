@@ -33,6 +33,7 @@ import type { IDisposable } from '../platform/lifecycle.js';
 // The Undo toast (undoToast.ts): one at a time, at the bottom of the window.
 export { createBlock, type IKitBlockOptions } from './block.js';
 export { createChoiceGrid, type IKitChoiceGridOptions, type IKitChoiceGrid, type IKitChoiceGridItem } from './choiceGrid.js';
+export { createStackedBar, type IKitStackedBarOptions, type IKitStackedBar, type IKitStackedBarPart, type StackedBarState } from './stackedBar.js';
 export { installKitCommands, runKitCommand } from './kitCommands.js';
 import { runCommand } from './kitCommands.js';
 export { showUndoToast, type IUndoToastOptions, type IUndoToast } from './undoToast.js';

@@ -1,0 +1,44 @@
+/* stackedBar.css — the kit's stacked bar (stackedBar.ts): counts in four
+   states, in one order. Never read by colour alone: the bar has no fill of
+   its own, so 2px of the surface it sits on separates the parts, and the
+   part not worked yet is an outline, not a fourth colour. The three signal
+   tones and the outline are each 3:1 or more against every surface of every
+   palette, light and dark (tests/unit/stackedBar.test.ts measures them). */
+
+.px-stacked-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 12px;
+  min-width: 0;
+}
+.px-stacked-bar[hidden] { display: none; }
+
+.px-stacked-bar__part {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 4px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--px-radius-xs);
+  box-sizing: border-box;
+  font: inherit;
+}
+.px-stacked-bar__part[data-state="good"] { background-color: var(--px-success); }
+.px-stacked-bar__part[data-state="middling"] { background-color: var(--px-warning); }
+.px-stacked-bar__part[data-state="poor"] { background-color: var(--px-danger); }
+.px-stacked-bar__part[data-state="rest"] { background-color: transparent; border: 1px solid var(--px-bar-rest); }
+
+/* A part that acts: wide enough for a finger whatever its share (WCAG 2.5.8),
+   and taller to the touch than it is drawn. */
+button.px-stacked-bar__part { min-width: 24px; cursor: pointer; transition: filter var(--px-dur-fast) var(--px-ease-out); }
+button.px-stacked-bar__part::before { content: ""; position: absolute; inset: -8px 0; }
+button.px-stacked-bar__part:hover { filter: brightness(1.12); }
+button.px-stacked-bar__part[data-state="rest"]:hover { background-color: var(--px-surface-hover); filter: none; }
+button.px-stacked-bar__part:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; box-shadow: none; }
+
+/* The thin line of a list row. */
+.px-stacked-bar--sm { height: 4px; gap: 1px; }
+.px-stacked-bar--sm .px-stacked-bar__part { min-width: 2px; border-radius: var(--px-radius-full); }

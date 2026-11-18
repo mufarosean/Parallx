@@ -736,6 +736,31 @@ export namespace ui {
     readonly onChange?: (value: string) => void;
   }): { readonly element: HTMLElement; value: string; setImage(value: string, image: string): void; dispose(): void };
 
+  /** One part of a stacked bar. With `command` or `onClick` it is a button. */
+  export interface StackedBarPart extends ControlDeclaration {
+    readonly state: 'good' | 'middling' | 'poor' | 'rest';
+    /** How many items are in this state; the part is as wide as its share. A part with nothing in it is not drawn. */
+    readonly count: number;
+    /** The part's own name: its tooltip, and what a screen reader speaks when it is a button. */
+    readonly label: string;
+    readonly command?: string;
+    readonly args?: readonly unknown[];
+    readonly onClick?: (e: MouseEvent) => void;
+  }
+
+  /**
+   * Counts in four states as one bar: green good, yellow middling, red poor,
+   * and the rest (not worked yet) an outline. The parts keep that order
+   * whatever order they are given in. `label` is the whole bar, spoken in
+   * full ("Mack, Questions: 12 right, 3 partly, 2 wrong, 5 not yet").
+   * `size: 'sm'` is a thin line for a list row and is never pressable.
+   */
+  export function createStackedBar(container: HTMLElement | null, options: {
+    readonly label: string;
+    readonly parts: readonly StackedBarPart[];
+    readonly size?: 'md' | 'sm';
+  }): { readonly element: HTMLElement; update(options: { readonly label: string; readonly parts: readonly StackedBarPart[]; readonly size?: 'md' | 'sm' }): void; dispose(): void };
+
   export interface FilterChipOptions extends ControlDeclaration {
     readonly label: string;
     /** Drawn after the label in a fainter tone. */
