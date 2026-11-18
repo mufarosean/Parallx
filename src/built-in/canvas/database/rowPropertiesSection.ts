@@ -27,7 +27,8 @@ import { createIconElement } from '../../../ui/iconRegistry.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { showPropertyPicker } from '../properties/propertyPicker.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
-import { attachPopupDismiss } from '../../../ui/dom.js';
+import { addDisposableListener, attachPopupDismiss } from '../../../ui/dom.js';
+import { dismissTooltipNow, showTooltipNow } from '../../../ui/tooltip.js';
 import { sceneSlug } from '../../../ui/kit.js';
 import { parseStoredTime } from '../../../platform/storedTime.js';
 import { appDateTimeString } from '../../../services/localTime.js';
@@ -125,6 +126,17 @@ export async function mountRowPropertiesSection(
     }
   };
 
+  // A value a tool keeps says who keeps it to whoever has no hover: when the
+  // keyboard's focus arrives on it, and on a tap or a click.
+  const sayKept = (e: Event): void => {
+    const shown = (e.target as HTMLElement | null)?.closest<HTMLElement>('.canvas-prop-readonly--kept');
+    const words = shown?.getAttribute('aria-description');
+    if (shown && words) showTooltipNow(shown, words);
+  };
+  disposables.add(addDisposableListener(body, 'focusin', sayKept));
+  disposables.add(addDisposableListener(body, 'click', sayKept));
+  disposables.add({ dispose: dismissTooltipNow });
+
   // ── "Pages with value X" popover ──
   let activePopover: HTMLElement | null = null;
   const closePopover = (): void => { activePopover?.remove(); activePopover = null; };
@@ -196,6 +208,9 @@ export async function mountRowPropertiesSection(
       const shown = createReadOnlyEditor(asDefinition(prop), home.values[prop.id] ?? null);
       shown.title = kept;
       shown.setAttribute('aria-description', kept);
+      // Read-only, and still a stop for Tab: the keyboard's focus arriving, a tap or a click shows who keeps it (below), as resting the mouse does.
+      shown.tabIndex = 0;
+      shown.classList.add('canvas-prop-readonly--kept');
       value.appendChild(shown);
       row.appendChild(deleteDefinitionButton(home, prop));
       return row;

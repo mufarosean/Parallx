@@ -298,3 +298,15 @@ dialog that Escape did not close before the next screen ("stuck
 dialogs"), and closes it so the next screens are the ones audited. The
 touch probe's planner check dragged an event one day to the right, which
 has no day to go to on the last day of a week; it goes a day back then.
+
+2026-11-18, words only a mouse was shown: a cell a tool keeps said "Kept
+by Study" as a title, which a keyboard and a finger never see. In a
+table, Enter or F2 on a kept cell (the keys that edit any other cell), a
+tap and a click now show the same tooltip at once (`showTooltipNow` in
+src/ui/tooltip.ts); Escape, a press elsewhere, a scroll or the focus
+leaving takes it away. On a row's own page a kept value is a stop for
+Tab, and the words show when the focus arrives. A screen reader has them
+as the cell's description, as before. Study's setup sheets (a subject's,
+a unit's, a material's) keep Tab inside while they are up, and closing
+one with nothing started gives the focus back to the control that opened
+it; both live in the sheet's frame, so every sheet built on it has them.

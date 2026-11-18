@@ -18,13 +18,13 @@ import { DatabaseSync } from 'node:sqlite';
 
 const NAMES = [
   '__testables', '_stSubjects', 'stCreateSubject', 'stRemoveSubject', 'stSubjectsShown', 'stSubjectEnqueue', 'stSubjectFlush', 'stSubjectReconcile', 'stSubjectsReset',
-  'stSubjectScope', 'stFixedScopeQuestions', 'stCreateSession', 'stAddSessionItems', 'stAnswerItem', 'stUpdateSession', 'stSaveQuestionEdit', 'stListQuestions', 'stSubjectTouched', 'registerSubjects', 'deactivate',
+  'stSubjectScope', 'stFixedScopeQuestions', 'stCreateSession', 'stAddSessionItems', 'stAnswerItem', 'stUpdateSession', 'stSaveQuestionEdit', 'stListQuestions', 'stSubjectTouched', 'registerSubjects', 'deactivate', 'stSubjectDatabasesOffered',
 ];
 const MIGRATIONS = join(__dirname, '../../ext/study/db/migrations');
 
 type Row = { pageId: string; title: string; values: Record<string, unknown> };
 type Col = { id: string; name: string; type: string; config: Record<string, unknown> };
-type Db = { id: string; title: string; parentPageId: string | null; columns: Col[]; rows: Row[] };
+type Db = { id: string; title: string; parentPageId: string | null; columns: Col[]; rows: Row[]; trashed?: boolean };
 
 /** The door, in memory: values by column name, a change event after every write, as the canvas's does. */
 function fakeDoor() {
@@ -39,8 +39,8 @@ function fakeDoor() {
   const TITLE: Col = { id: 'title', name: 'Name', type: 'title', config: {} };
   const options = (spec: any) => (Array.isArray(spec?.config?.options) ? { options: spec.config.options.map((o: any) => (typeof o === 'string' ? { value: o, color: 'gray' } : o)) } : {});
   const door = {
-    list: async () => [...dbs.values()].map((d) => ({ id: d.id, title: d.title })),
-    get: async (dbId: string) => { const d = dbs.get(dbId); return d ? { id: d.id, title: d.title, pageId: d.id, parentPageId: d.parentPageId, columns: [TITLE, ...d.columns.map((c) => ({ ...c }))] } : null; },
+    list: async () => [...dbs.values()].filter((d) => !d.trashed).map((d) => ({ id: d.id, title: d.title })),
+    get: async (dbId: string) => { const d = dbs.get(dbId); return d ? { id: d.id, title: d.title, pageId: d.id, parentPageId: d.parentPageId, columns: [TITLE, ...d.columns.map((c) => ({ ...c }))], ...(d.trashed ? { trashed: true } : {}) } : null; },
     create: async (o: { title: string; parentPageId?: string; columns?: any[] }) => {
       const d: Db = { id: id('db'), title: o.title, parentPageId: o.parentPageId ?? null, columns: (o.columns || []).map((s) => ({ id: id('col'), name: s.name, type: s.type, config: { ...(s.config || {}), ...options(s) } })), rows: [] };
       dbs.set(d.id, d); writes.push(`create ${o.title}`);
@@ -49,10 +49,16 @@ function fakeDoor() {
     createPage: async (o: { title: string }) => { writes.push(`page ${o.title}`); return { id: id('page') }; },
     ensureColumns: async (dbId: string, specs: any[]) => {
       const d = need(dbId);
-      for (const s of specs) if (!d.columns.some((c) => c.name.toLowerCase() === String(s.name).toLowerCase())) { d.columns.push({ id: id('col'), name: s.name, type: s.type, config: { ...(s.config || {}), ...options(s) } }); writes.push(`column ${d.title}.${s.name}`); fire(dbId, 'columns'); }
+      for (const s of specs) {
+        const have = d.columns.find((c) => c.name.toLowerCase() === String(s.name).toLowerCase());
+        if (!have) { d.columns.push({ id: id('col'), name: s.name, type: s.type, config: { ...(s.config || {}), ...options(s) } }); writes.push(`column ${d.title}.${s.name}`); fire(dbId, 'columns'); continue; }
+        // As the canvas's door: a column that is there only gains the listed options it lacks.
+        const lacking = (options(s).options || []).filter((o: any) => Array.isArray(have.config.options) && !(have.config.options as any[]).some((x) => x.value === o.value));
+        if (lacking.length) { (have.config.options as any[]).push(...lacking); writes.push(`options ${d.title}.${have.name}: ${lacking.map((o: any) => o.value).join(', ')}`); fire(dbId, 'columns'); }
+      }
       return [TITLE, ...d.columns];
     },
-    listRows: async (dbId: string) => need(dbId).rows.map((r) => ({ pageId: r.pageId, title: r.title, values: Object.fromEntries(Object.entries(r.values).filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0))) })),
+    listRows: async (dbId: string) => (need(dbId).trashed ? [] : need(dbId).rows).map((r) => ({ pageId: r.pageId, title: r.title, values: Object.fromEntries(Object.entries(r.values).filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0))) })),
     addRow: async (dbId: string, row: { title: string; values?: Record<string, unknown> }) => {
       const d = need(dbId); const values: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(row.values || {})) values[col(d, k).name] = v;
@@ -81,6 +87,12 @@ function fakeDoor() {
     edit: (d: Db, title: string, patch: { title?: string; values?: Record<string, unknown> }) => { const r = d.rows.find((x) => x.title === title)!; Object.assign(r.values, patch.values || {}); if (patch.title) r.title = patch.title; fire(d.id, patch.title ? 'rows' : 'cells', r.pageId); },
     add: (d: Db, title: string, values: Record<string, unknown>) => { const r = { pageId: id('row'), title, values }; d.rows.push(r); fire(d.id, 'rows', r.pageId); },
     remove: (d: Db, title: string) => { const r = d.rows.find((x) => x.title === title)!; d.rows = d.rows.filter((x) => x !== r); fire(d.id, 'rows', r.pageId); },
+    renameColumn: (d: Db, from: string, to: string) => { d.columns.find((c) => c.name === from)!.name = to; for (const r of d.rows) if (from in r.values) { r.values[to] = r.values[from]; delete r.values[from]; } fire(d.id, 'columns'); },
+    /** The database's page sent to the Trash, and restored: still a database, listing no rows meanwhile. */
+    trash: (d: Db) => { d.trashed = true; fire(d.id, 'rows'); },
+    restore: (d: Db) => { d.trashed = false; fire(d.id, 'rows'); },
+    /** A row restored from the Trash: the same page. */
+    putBack: (d: Db, row: Row) => { d.rows.push(row); fire(d.id, 'rows', row.pageId); },
     dropColumn: (d: Db, name: string) => { d.columns = d.columns.filter((c) => c.name !== name); for (const r of d.rows) delete r.values[name]; fire(d.id, 'columns'); },
   };
   return { door, dbs, writes, person, byTitle: (t: string) => [...dbs.values()].find((d) => d.title === t)! };
@@ -217,7 +229,8 @@ describe('results go back to the row', () => {
     const row = () => h.bank.rows.find((r) => r.title === 'Q2 about Mack?')!.values;
     await h.S.stAnswerItem(item.id, { status: 'wrong', typed: 'x', verdict: { rating: 1 } });
     await h.S.stSubjectReconcile(session.id);
-    expect([row()['Times Attempted'], row()['Times Correct'], row()['Last Result']]).toEqual([1, undefined, 'Incorrect']);
+    // A first answer that is not right: none correct is written as 0, not left empty.
+    expect([row()['Times Attempted'], row()['Times Correct'], row()['Last Result']]).toEqual([1, 0, 'Incorrect']);
     expect(String(row()['Last Answered'])).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     // The same verdict told again writes nothing.
     await h.settle();
@@ -295,5 +308,206 @@ describe('turned off, removed', () => {
     await h.settle();
     expect(h.S.stSubjectsShown()[0].units.map((u: any) => `${u.name} ${u.answered} of ${u.total}`)).toEqual(['Mack 2 of 2', 'Clark 1 of 1']);
     expect(h.byTitle('Units').rows.find((r) => r.title === 'Mack')!.values.Answered).toBe(2);
+  });
+});
+
+/** Study off and on again, as a restart: the subjects are loaded and what was left unwritten is written. */
+async function restart(h: Awaited<ReturnType<typeof adopted>>) {
+  await h.S.deactivate();
+  return async () => {
+    h.S.__testables.__setApi(h.api);
+    h.S.registerSubjects({ subscriptions: [] });
+    await vi.waitFor(() => { expect(h.S.stSubjectsShown()[0]?.ready).toBe(true); });
+    await h.settle();
+  };
+}
+const MARKED = { kind: 'marked', materialIds: [], label: 'Marked questions' };
+const shownUnits = (h: { S: Study }, i = 0) => h.S.stSubjectsShown()[i].units.map((u: any) => `${u.name} ${u.answered} of ${u.total}`);
+
+describe('a result finds its row whatever the session was drawn from', () => {
+  it('a subject\'s question answered in a session over the marked set is written to its row, and logged in its subject', async () => {
+    const h = await adopted();
+    const q = (await h.S.stListQuestions({ bankIds: [h.subject.bankId] })).find((x: any) => x.stem === 'Q2 about Mack?');
+    const session = await h.S.stCreateSession({ name: 'Marked questions', scope: MARKED, mode: 'practice', answerFormat: 'type', size: 20 });
+    const items = await h.S.stAddSessionItems(session.id, 0, [q.id], ['short']);
+    await h.S.stAnswerItem(items[0].id, { status: 'right', typed: 'x', verdict: { rating: 3 } });
+    await h.S.stSubjectReconcile(session.id);
+    const row = h.bank.rows.find((r) => r.title === 'Q2 about Mack?')!.values;
+    expect([row['Times Attempted'], row['Times Correct'], row['Last Result']]).toEqual([1, 1, 'Correct']);
+    expect(h.byTitle('Work Log').rows.map((r) => [r.title, r.values.Items, r.values.Right])).toEqual([['Marked questions', 1, 1]]);
+    expect(h.byTitle('Units').rows.find((r) => r.title === 'Mack')!.values.Answered).toBe(2);
+  });
+
+  it('a session over two subjects writes to each, and each Work Log has one row counting only its own', async () => {
+    const h = await adopted();
+    const other = h.person.database('GLM Questions', BANK_COLUMNS, [{ title: 'G1?', values: { 'Model Answer': 'B1', Paper: 'Clark' } }, { title: 'G2?', values: { 'Model Answer': 'B2', Paper: 'Clark' } }]);
+    const second = await h.S.stCreateSubject({ name: 'GLMs', questionsDb: other.id });
+    await h.settle();
+    const pick = async (bankId: number, stem: string) => (await h.S.stListQuestions({ bankIds: [bankId] })).find((x: any) => x.stem === stem);
+    const qs = [await pick(h.subject.bankId, 'Q2 about Mack?'), await pick(second.bankId, 'G1?'), await pick(second.bankId, 'G2?')];
+    const session = await h.S.stCreateSession({ name: 'Marked questions', scope: MARKED, mode: 'practice', answerFormat: 'type', size: 20 });
+    const items = await h.S.stAddSessionItems(session.id, 0, qs.map((q: any) => q.id), qs.map(() => 'short'));
+    await h.S.stAnswerItem(items[0].id, { status: 'wrong', typed: 'x', verdict: { rating: 1 } });
+    await h.S.stAnswerItem(items[1].id, { status: 'right', typed: 'x', verdict: { rating: 3 } });
+    await h.S.stAnswerItem(items[2].id, { status: 'right', typed: 'x', verdict: { rating: 3 } });
+    await h.S.stSubjectReconcile(session.id);
+    await h.S.stSubjectReconcile(session.id);
+    const log = (id: string) => h.dbs.get(id)!.rows.map((r) => [r.values.Items, r.values.Right]);
+    expect(log(h.subject.logDb)).toEqual([[1, 0]]);
+    expect(log(second.logDb)).toEqual([[2, 2]]);
+    expect(other.rows.map((r) => r.values['Times Attempted'])).toEqual([1, 1]);
+    expect(h.all('SELECT session_id, subject_id FROM st_subject_logs ORDER BY subject_id').map((r) => [r.session_id, r.subject_id])).toEqual([[session.id, h.subject.id], [session.id, second.id]]);
+  });
+
+  it('a session finished before its results were written is written at the next start, once', async () => {
+    const h = await adopted();
+    const { session, items, questions } = await sessionOver(h, 'Mack');
+    await h.S.stAnswerItem(items[questions.findIndex((q: any) => q.stem === 'Q2 about Mack?')].id, { status: 'right', typed: 'x', verdict: { rating: 3 } });
+    await h.S.stUpdateSession(session.id, { finishedAt: Date.now(), seconds: 90 });
+    const row = () => h.bank.rows.find((r) => r.title === 'Q2 about Mack?')!.values;
+    const on = await restart(h);
+    await on();
+    await vi.waitFor(() => { expect(h.byTitle('Work Log').rows.length).toBe(1); });
+    expect([row()['Times Attempted'], row()['Times Correct'], row()['Last Result']]).toEqual([1, 1, 'Correct']);
+    // The next start finds its mark and writes nothing.
+    await h.settle();
+    const writes = h.writes.length;
+    await (await restart(h))();
+    await new Promise((r) => setTimeout(r, 30));
+    await h.settle();
+    expect(h.writes.slice(writes)).toEqual([]);
+    expect(row()['Times Attempted']).toBe(1);
+  });
+});
+
+describe('units, as the tables name them', () => {
+  it('a unit renamed in Units is renamed in the questions that name it in words; the old name does not come back as a second unit', async () => {
+    const h = await adopted();
+    const units = h.byTitle('Units');
+    h.person.edit(units, 'Mack', { title: 'Mack (1993)' });
+    await h.settle();
+    expect(units.rows.map((r) => r.title)).toEqual(['Mack (1993)', 'Clark']);
+    expect(h.bank.rows.map((r) => r.values.Paper)).toEqual(['Mack (1993)', 'Mack (1993)', 'Clark']);
+    // A select takes only a word it has.
+    expect((h.bank.columns.find((c) => c.name === 'Paper')!.config.options as { value: string }[]).map((o) => o.value)).toContain('Mack (1993)');
+    expect(shownUnits(h)).toEqual(['Mack (1993) 1 of 2', 'Clark 1 of 1']);
+    expect(units.rows[0].values).toMatchObject({ Questions: 2, Answered: 1 });
+    // And then nothing more is written.
+    const quiet = h.writes.length;
+    await h.settle();
+    expect(h.writes.slice(quiet)).toEqual([]);
+  });
+
+  it('a Unit pointing at a Units row that is gone names no unit, not one called by a page id', async () => {
+    const h = harness();
+    const subject = await h.S.stCreateSubject({ name: 'GLMs' });
+    await h.settle();
+    const units = h.dbs.get(subject.unitsDb)!, questions = h.dbs.get(subject.questionsDb)!;
+    h.person.add(units, 'Chapter 1', {});
+    const unitId = units.rows[0].pageId;
+    h.person.add(questions, 'What is a link?', { Answer: 'g(mu)', Unit: [unitId] });
+    await h.settle();
+    expect(shownUnits(h)).toEqual(['Chapter 1 0 of 1']);
+    h.person.remove(units, 'Chapter 1');
+    await h.settle();
+    expect(units.rows.map((r) => r.title)).toEqual([]);
+    expect(h.S.stSubjectsShown()[0]).toMatchObject({ total: 1, units: [] });
+  });
+
+  it('a Unit column of his that is a relation to another database names units by that database\'s rows', async () => {
+    const h = harness();
+    const topics = h.person.database('Topics', [], [{ title: 'Reserving', values: {} }, { title: 'Pricing', values: {} }]);
+    const bank = h.person.database('Bank', [{ name: 'Model Answer', type: 'text' }, { name: 'Topic', type: 'relation' }], [
+      { title: 'R1?', values: { 'Model Answer': 'a', Topic: [topics.rows[0].pageId] } },
+      { title: 'P1?', values: { 'Model Answer': 'b', Topic: [topics.rows[1].pageId] } },
+      { title: 'Lost?', values: { 'Model Answer': 'c', Topic: ['row-0000-4000-8000-00000000dead'] } },
+    ]);
+    bank.columns.find((c) => c.name === 'Topic')!.config = { databaseId: topics.id };
+    await h.S.stCreateSubject({ name: 'Exam', questionsDb: bank.id, mapping: { answer: 'Model Answer', unit: 'Topic', attempts: '', correct: '', lastResult: '', lastAnswered: '' } });
+    await h.settle();
+    expect(h.byTitle('Units').rows.map((r) => [r.title, r.values.Questions])).toEqual([['Reserving', 1], ['Pricing', 1]]);
+    expect(h.S.stSubjectsShown()[0].total).toBe(3);
+  });
+
+  it('a mapped column renamed while Study was off is followed by its id, not given an empty twin under the old name', async () => {
+    const h = await adopted();
+    const on = await restart(h);
+    h.person.renameColumn(h.bank, 'Times Attempted', 'Tries');
+    await on();
+    expect(h.bank.columns.map((c) => c.name)).toEqual(['Model Answer', 'Paper', 'Tries', 'Times Correct', 'Last Result', 'Last Answered']);
+    expect(JSON.parse(h.one('SELECT mapping_json FROM st_subjects').mapping_json).attempts.name).toBe('Tries');
+    expect(shownUnits(h)).toEqual(['Mack 1 of 2', 'Clark 1 of 1']);
+  });
+});
+
+describe('the Trash is not the end of a database', () => {
+  it('with its questions in the Trash the subject says so, writes nothing and puts no question aside; restored, it is as it was', async () => {
+    const h = await adopted();
+    const writes = h.writes.length;
+    const unitsBefore = JSON.stringify(h.byTitle('Units').rows);
+    h.person.trash(h.bank);
+    await h.settle();
+    expect(h.S.stSubjectsShown()[0]).toMatchObject({ problem: 'Its questions database is in the Trash.', problemTag: 'in the Trash' });
+    expect(h.writes.slice(writes)).toEqual([]);
+    expect(JSON.stringify(h.byTitle('Units').rows)).toBe(unitsBefore);
+    expect(h.all("SELECT provider_id, hidden FROM st_questions").map((q) => [q.provider_id, q.hidden])).toEqual([1, 2, 3].map(() => [`subject:${h.subject.id}`, 0]));
+    h.person.restore(h.bank);
+    await h.settle();
+    expect(h.S.stSubjectsShown()[0]).toMatchObject({ problem: '', answered: 2, total: 3 });
+    expect(shownUnits(h)).toEqual(['Mack 1 of 2', 'Clark 1 of 1']);
+    expect(h.writes.slice(writes)).toEqual([]);
+  });
+
+  it('an answer given while the questions are in the Trash is written to its row when they are restored', async () => {
+    const h = await adopted();
+    const { session, items, questions } = await sessionOver(h, 'Mack');
+    const writes = h.writes.length;
+    h.person.trash(h.bank);
+    await h.settle();
+    await h.S.stAnswerItem(items[questions.findIndex((q: any) => q.stem === 'Q2 about Mack?')].id, { status: 'right', typed: 'x', verdict: { rating: 3 } });
+    await h.S.stSubjectReconcile(session.id);
+    expect(h.writes.slice(writes)).toEqual([]);
+    h.person.restore(h.bank);
+    await h.settle();
+    await vi.waitFor(() => { expect(h.bank.rows.find((r) => r.title === 'Q2 about Mack?')!.values['Times Attempted']).toBe(1); });
+  });
+
+  it('Units or the Work Log in the Trash is said too, and nothing is written meanwhile', async () => {
+    const h = await adopted();
+    const writes = h.writes.length;
+    h.person.trash(h.byTitle('Work Log'));
+    await h.settle();
+    expect(h.S.stSubjectsShown()[0].problem).toBe('Its Work Log is in the Trash.');
+    h.person.restore(h.byTitle('Work Log'));
+    h.person.trash(h.byTitle('Units'));
+    await h.settle();
+    expect(h.S.stSubjectsShown()[0].problem).toBe('Its Units database is in the Trash.');
+    h.person.edit(h.bank, 'Q2 about Mack?', { values: { 'Times Attempted': 4 } });
+    await h.settle();
+    expect(h.writes.slice(writes)).toEqual([]);
+  });
+
+  it('a row that comes back is the question it was (its mark, its id), not a new one beside a hidden copy', async () => {
+    const h = await adopted();
+    h.sql.exec("UPDATE st_questions SET marked = 1 WHERE stem = 'Q1 about Mack?'");
+    const was = h.one("SELECT id FROM st_questions WHERE stem = 'Q1 about Mack?'").id;
+    const row = h.bank.rows.find((r) => r.title === 'Q1 about Mack?')!;
+    h.person.remove(h.bank, 'Q1 about Mack?');
+    await h.settle();
+    expect(h.one('SELECT provider_id, hidden FROM st_questions WHERE id = ?', was)).toMatchObject({ provider_id: `subject:${h.subject.id}:gone`, hidden: 1 });
+    h.person.putBack(h.bank, row);
+    await h.settle();
+    expect(h.all("SELECT id, provider_id, hidden, marked, bank_id FROM st_questions WHERE stem = 'Q1 about Mack?'").map((q) => ({ ...q }))).toEqual([{ id: was, provider_id: `subject:${h.subject.id}`, hidden: 0, marked: 1, bank_id: h.subject.bankId }]);
+    expect(h.one('SELECT count FROM st_banks WHERE id = ?', h.subject.bankId).count).toBe(3);
+  });
+});
+
+describe('New Subject\'s choice of databases', () => {
+  it('leaves out the Units, Questions and Work Log of every subject there is, even before the subjects are loaded', async () => {
+    const h = await adopted();
+    h.person.database('Reading Notes', [], []);
+    expect((await h.S.stSubjectDatabasesOffered()).map((d: any) => d.title)).toEqual(['Reading Notes']);
+    h.S.stSubjectsReset(); // as at a start, before the subjects are read from Study's store
+    expect((await h.S.stSubjectDatabasesOffered()).map((d: any) => d.title)).toEqual(['Reading Notes']);
   });
 });

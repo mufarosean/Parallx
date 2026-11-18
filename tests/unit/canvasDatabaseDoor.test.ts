@@ -213,6 +213,46 @@ describe('api.canvas.databases: hearing changes', () => {
     expect(heard).toEqual([{ kind: 'rows', pageId: row.pageId }]);
   });
 
+  it('a database in the Trash says so and lists no rows; its going there and its coming back are heard, and a row\'s too', async () => {
+    const made = await door.create({ title: 'Q' });   // no rows: nothing else speaks for it
+    const heard: CanvasDatabaseChange[] = [];
+    door.onDidChange(made.id, (e) => heard.push(e));
+    const turn = () => new Promise((r) => setTimeout(r, 0));
+    expect(await door.get(made.id)).not.toHaveProperty('trashed');
+    await pages.archivePage(made.id);
+    expect(heard).toEqual([{ kind: 'rows' }]);
+    expect(await door.get(made.id)).toMatchObject({ id: made.id, title: 'Q', trashed: true });
+    expect(await door.list()).toEqual([]);
+    heard.length = 0;
+    await pages.restorePage(made.id);
+    expect(heard).toEqual([{ kind: 'rows' }]);
+    expect(await door.get(made.id)).not.toHaveProperty('trashed');
+    expect(await door.list()).toEqual([{ id: made.id, title: 'Q' }]);
+    // A row sent to the Trash from its own page, and restored.
+    const row = await door.addRow(made.id, { title: 'A' });
+    heard.length = 0;
+    await pages.archivePage(row.pageId); await turn();
+    expect(heard).toEqual([{ kind: 'rows', pageId: row.pageId }]);
+    expect(await door.listRows(made.id)).toEqual([]);
+    heard.length = 0;
+    await pages.restorePage(row.pageId); await turn();
+    expect(heard).toEqual([{ kind: 'rows', pageId: row.pageId }]);
+    expect((await door.listRows(made.id)).map((r) => r.title)).toEqual(['A']);
+  });
+
+  it('a database with rows restored from the Trash is heard as itself, so a listener reads its rows again', async () => {
+    const made = await door.create({ title: 'Q' });
+    await door.addRow(made.id, { title: 'A' });
+    await pages.archivePage(made.id);
+    await new Promise((r) => setTimeout(r, 0));
+    const heard: CanvasDatabaseChange[] = [];
+    door.onDidChange(made.id, (e) => heard.push(e));
+    await pages.restorePage(made.id);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(heard).toContainEqual({ kind: 'rows' });
+    expect((await door.listRows(made.id)).map((r) => r.title)).toEqual(['A']);
+  });
+
   it('several values in one update are one write and one event', async () => {
     const made = await door.create({ title: 'Q', columns: [{ name: 'Attempts', type: 'number' }, { name: 'Correct', type: 'number' }, { name: 'Last Result', type: 'select', config: { options: ['Right', 'Wrong'] } }, { name: 'Last Answered', type: 'date' }] });
     const row = await door.addRow(made.id, { title: 'A' });
@@ -342,6 +382,39 @@ describe('a column kept by a tool', () => {
     expect(weightTd!.dataset.editable).toBe('true');
     weightTd!.querySelector<HTMLElement>('.canvas-db-cell__value')!.click();
     expect(editors).toBe(1);
+    store.dispose(); body.remove();
+  });
+
+  it('in the table Enter on a kept cell, or a tap on it, shows who keeps it; Escape takes the words away', async () => {
+    const { made } = await kept();
+    const body = document.createElement('div'); document.body.appendChild(body);
+    const store = new DisposableStore();
+    renderTableView(body, { view: (await dbs.listViews(made.id))[0]!, props: await dbs.listProperties(made.id), rows: await dbs.listRows(made.id) }, {
+      setCell: async () => {}, renameRow: async () => {}, openRow: () => {}, addRow: async () => {}, updateView: async () => {},
+      openHeaderMenu: () => {}, openAddProperty: () => {}, openRowMenu: () => {}, openCalcMenu: () => {},
+      editorFor: () => document.createElement('input'), rowIcon: () => null,
+    }, store);
+    const [, weightTd, answeredTd] = [...body.querySelectorAll<HTMLElement>('tr.canvas-db-row td[role="gridcell"]')];
+    const shown = (): string => [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].filter((t) => t.style.display !== 'none').map((t) => t.textContent).join('|');
+    const press = (on: HTMLElement, key: string): boolean => on.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    expect(shown()).toBe('');
+    // The keyboard: the cell has the focus, Enter is the key that would edit another cell.
+    answeredTd!.focus();
+    press(answeredTd!, 'Enter');
+    expect(shown()).toBe('Kept by Tracker');
+    press(answeredTd!, 'Escape');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(shown()).toBe('');
+    // A finger: a tap is a click with no hover before it.
+    answeredTd!.querySelector<HTMLElement>('.canvas-db-cell__value')!.click();
+    expect(shown()).toBe('Kept by Tracker');
+    // A press elsewhere takes it away; a cell he can edit says nothing of the kind.
+    document.body.dispatchEvent(new (window as any).Event('pointerdown', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(shown()).toBe('');
+    weightTd!.focus();
+    press(weightTd!, 'Enter');
+    expect(shown()).toBe('');
     store.dispose(); body.remove();
   });
 

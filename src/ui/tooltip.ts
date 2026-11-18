@@ -164,6 +164,50 @@ export function setupTooltip(
   };
 }
 
+/** Takes away the tooltip `showTooltipNow` put up, and its listeners. */
+let _dismissNow: (() => void) | null = null;
+
+/**
+ * The tooltip for whoever has no hover: shown at once on `target` when it is
+ * asked for (a key pressed on it, a finger's tap, the keyboard's focus
+ * arriving), in the same place and style as the one a mouse gets. It stays
+ * until Escape, a press anywhere, a scroll, or the focus leaving `target`.
+ */
+export function showTooltipNow(target: HTMLElement, text: string, placement: TooltipPlacement = 'top'): void {
+  if (!text.trim()) return;
+  dismissTooltipNow();
+  clearTimers();
+  _currentTarget = target;
+  const el = ensureTooltipElement();
+  el.textContent = text;
+  el.style.display = 'block';
+  positionTooltip(el, target, placement);
+
+  const doc = target.ownerDocument;
+  const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape' || !target.isConnected) dismissTooltipNow(); };
+  const away = (): void => dismissTooltipNow();
+  doc.addEventListener('keydown', onKey, true);
+  doc.addEventListener('pointerdown', away, true);
+  doc.addEventListener('scroll', away, true);
+  target.addEventListener('focusout', away);
+  _dismissNow = () => {
+    doc.removeEventListener('keydown', onKey, true);
+    doc.removeEventListener('pointerdown', away, true);
+    doc.removeEventListener('scroll', away, true);
+    target.removeEventListener('focusout', away);
+    _dismissNow = null;
+    if (_currentTarget !== target) return;
+    clearTimers();
+    el.style.display = 'none';
+    _currentTarget = null;
+  };
+}
+
+/** Take away the tooltip `showTooltipNow` put up, if it is up (its surface is being drawn again or is going). */
+export function dismissTooltipNow(): void {
+  _dismissNow?.();
+}
+
 // ─── Global Delegate ─────────────────────────────────────────────────────────
 // Intercepts every element with a `title` attribute and shows the custom
 // tooltip instead of the browser-native one. This ensures a single tooltip

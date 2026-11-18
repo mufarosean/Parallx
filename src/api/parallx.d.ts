@@ -1725,6 +1725,12 @@ export namespace canvas {
       readonly pageId: string;
       readonly parentPageId: string | null;
       readonly columns: readonly Column[];
+      /**
+       * True while the database is in the Trash (absent otherwise). It lists
+       * no rows then, and `list()` leaves it out; `onDidChange` fires when it
+       * goes to the Trash and when it is restored.
+       */
+      readonly trashed?: boolean;
     }
     interface Row {
       /** A row is a page: its id. */

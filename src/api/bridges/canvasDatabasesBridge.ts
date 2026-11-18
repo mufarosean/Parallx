@@ -45,6 +45,8 @@ export interface CanvasDatabaseInfo {
   readonly pageId: string;
   readonly parentPageId: string | null;
   readonly columns: readonly CanvasDatabaseColumn[];
+  /** True while the database is in the Trash: it lists no rows until it is restored. Absent otherwise. */
+  readonly trashed?: boolean;
 }
 
 export interface CanvasDatabaseRow {

@@ -86,6 +86,7 @@ async function stOpenPane(route) {
 
 function stOpenSetup(partial) {
   const p = partial || {};
+  stNoteSheetOpener();
   const route = { view: 'setup', materialIds: Array.isArray(p.materialIds) ? p.materialIds.slice() : [] };
   if (Array.isArray(p.bankIds) && p.bankIds.length) route.bankIds = p.bankIds.slice();
   for (const k of ['unit', 'sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
@@ -453,6 +454,9 @@ function stSheetFrame(host, ctx, subtitle, { title = 'Study' } = {}) {
   const onKey = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); void ctx.closeTab(); } };
   host.addEventListener('keydown', onKey);
   ctx.add({ dispose: () => host.removeEventListener('keydown', onKey) });
+  // Modal while it is up: Tab stays among its controls. Closed (its tab gone, not drawn again), the focus goes back to what opened it.
+  ctx.add(_api.ui.keepTabInside(sheet, host));
+  ctx.add({ dispose: () => { if (ctx.disposed()) stRefocusSubjectOpener(); } });
   setTimeout(() => { if (!ctx.disposed() && sheet.isConnected && !sheet.contains(document.activeElement)) sheet.focus(); }, 0);
   return { sheet, bd };
 }
@@ -746,11 +750,13 @@ async function renderSetup(host, route, ctx) {
       await savePrefs();
       if (st.mode === 'learn') {
         await stOpenPane({ view: 'learn', materialId: primary.id, sectionId: (scope.sectionIds && scope.sectionIds[0]) || 0 });
+        _stSubjectOpener = null;
         await ctx.closeTab();
         return;
       }
       await stStartSession({ scope, mode: st.mode, answerFormat: st.mode === 'test' ? 'type' : st.answer, model: st.model, numCtx: st.contextSetting });
       _emitDataChanged();
+      _stSubjectOpener = null; // the session has the focus now
       await ctx.closeTab();
     } catch (err) {
       st.starting = false;
@@ -817,6 +823,7 @@ async function renderBankSetup(host, route, ctx) {
     try {
       await stStartSession({ scope, mode: st.mode, answerFormat: st.mode === 'test' ? 'type' : st.answer, model: st.model, numCtx: st.contextSetting });
       _emitDataChanged();
+      _stSubjectOpener = null; // the session has the focus now
       await ctx.closeTab();
     } catch (err) {
       st.starting = false;

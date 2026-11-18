@@ -43,6 +43,7 @@ class Database {
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import * as kit from '../../src/ui/kit.js';
+import { keepTabInside } from '../../src/ui/dom.js';
 import { renderMarkdown } from '../../src/ui/renderMarkdown.js';
 import { getIcon, hasIcon, registerIcon } from '../../src/ui/iconRegistry.js';
 // @ts-expect-error — JS module with no types
@@ -637,6 +638,7 @@ function makeEnv(): Env {
       createSegmented: kit.createSegmented,
       createPageHeader: kit.createPageHeader,
       createFilterChip: kit.createFilterChip,
+      keepTabInside,
       showContextMenu: (_anchor: unknown, items: AnyRec[]) => { calls.menus.push(items); return { update(next: AnyRec[]) { calls.menus.push(next); }, dispose() {} }; },
       renderMarkdown,
     },
@@ -1741,6 +1743,38 @@ describe('Study end to end', () => {
     await settle(40);
     expect(T.stLiveRun(sessionId)).toBeNull();
     expect(env.lmCalls.length).toBe(calls);
+  });
+
+  it('3k. the setup sheet is modal to the keyboard: Tab stays among its controls, and Escape gives the focus back to what opened it', async () => {
+    await boot();
+    // jsdom lays nothing out; what is on the page counts as on screen here.
+    const rects = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(function (this: HTMLElement) { return (this.isConnected ? [{}] : []) as unknown as DOMRectList; });
+    const opener = document.createElement('button');
+    opener.setAttribute('data-px-id', 'test.opener');
+    document.body.appendChild(opener);
+    try {
+      opener.focus();
+      const setup = await openChapterSetup();
+      const sheet = q(setup, '.st-sheet')!;
+      const stops = qa<HTMLElement>(sheet, 'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]').filter((n) => n.tabIndex >= 0);
+      expect(stops.length).toBeGreaterThan(2);
+      const tab = (on: HTMLElement, shiftKey = false) => { const e = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }); on.dispatchEvent(e); return e.defaultPrevented; };
+      // Past the last control Tab goes round to the first, and back again; in between it is the browser's.
+      stops.at(-1)!.focus();
+      expect(tab(stops.at(-1)!)).toBe(true);
+      expect(document.activeElement).toBe(stops[0]);
+      expect(tab(stops[0], true)).toBe(true);
+      expect(document.activeElement).toBe(stops.at(-1));
+      stops[1].focus();
+      expect(tab(stops[1])).toBe(false);
+      // Escape closes the sheet; the focus is where he was, not on nothing.
+      key(setup, 'Escape');
+      await waitFor(() => !paneHost('setup'), 'the sheet to close');
+      await waitFor(() => document.activeElement === opener, 'the focus back on what opened the sheet');
+    } finally {
+      opener.remove();
+      rects.mockRestore();
+    }
   });
 
   it('5b. without flashcards.addCards there is no Send Missed; Refresh stays', async () => {

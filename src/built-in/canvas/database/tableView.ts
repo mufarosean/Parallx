@@ -12,6 +12,7 @@
 import type { DisposableStore } from '../../../platform/lifecycle.js';
 import { createBlock, createButton, createIconButton, createInput, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { addDisposableListener } from '../../../ui/dom.js';
+import { dismissTooltipNow, showTooltipNow } from '../../../ui/tooltip.js';
 import { onDragPress } from '../../../ui/touchDrag.js';
 import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import { createTypeIconElement } from '../properties/propertyEditors.js';
@@ -181,6 +182,7 @@ export function renderTableView(body: HTMLElement, state: ITableViewState, deps:
   tableEl(calcRow, 'canvas-db-calc canvas-db-calc--pad', 'td');
 
   wireGridKeys(table, store);
+  wireKeptHints(table, store);
 }
 
 /** A table element (table, thead, tr, th, td, col …): layout, never a control, so a kit block. */
@@ -195,7 +197,7 @@ function renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow,
     const kept = keptByLabel(prop);
     const shown = createBlock(td, 'div', { className: 'canvas-db-cell__value canvas-db-cell__value--computed', attrs: kept ? { title: kept } : {} });
     renderCellValue(shown, prop, value);
-    if (kept) td.setAttribute('aria-description', kept);
+    if (kept) { td.setAttribute('aria-description', kept); td.classList.add('canvas-db-cell--kept'); }
     return;
   }
   if (prop.type === 'checkbox') {
@@ -301,6 +303,20 @@ function attachReorder(th: HTMLElement, id: string, state: ITableViewState, deps
     e.preventDefault();
     void deps.updateView({ config: { ...state.view.config, order: placeInOrder(state.props, state.view, moved, id) } });
   }));
+}
+
+/**
+ * A kept cell says who keeps it to whoever asks: Enter or F2 on it (the keys
+ * that would edit another cell), a finger's tap, a click. The same words the
+ * mouse gets by resting on it, and a screen reader as the cell's description.
+ */
+function wireKeptHints(table: HTMLElement, store: DisposableStore): void {
+  store.add(addDisposableListener(table, 'click', (e) => {
+    const cell = (e.target as HTMLElement | null)?.closest<HTMLElement>('td.canvas-db-cell--kept');
+    const words = cell?.getAttribute('aria-description');
+    if (cell && words) showTooltipNow(cell, words);
+  }));
+  store.add({ dispose: dismissTooltipNow });
 }
 
 /** Arrow keys move between cells; Enter or F2 edits the focused one; Space toggles a checkbox. */

@@ -122,7 +122,7 @@ function stSubjectsShown() {
         const c = counts.units.find((u) => stSubjectSameName(u.name, r.title));
         return { name: String(r.title).trim(), rowId: r.pageId, total: c ? c.total : 0, answered: c ? c.answered : 0 };
       });
-    out.push({ id: st.subject.id, name: st.subject.name, subject: st.subject, folded: !!st.subject.folded, total: counts.total, answered: counts.answered, units, ready: !!st.synced, problem: st.problem || '' });
+    out.push({ id: st.subject.id, name: st.subject.name, subject: st.subject, folded: !!st.subject.folded, total: counts.total, answered: counts.answered, units, ready: !!st.synced, problem: st.problem || '', problemTag: !st.problem ? '' : /in the Trash/.test(st.problem) ? 'in the Trash' : 'missing' });
   }
   return out;
 }
@@ -138,9 +138,15 @@ function stSubjectLive(st) {
 async function stSubjectIngest(st, items) {
   const subject = st.subject;
   const pid = stSubjectProviderId(subject.id);
-  const existing = await db.all('SELECT id, stem, answer, format, provider_ref, rubric_origin, bank_id, edited FROM st_questions WHERE provider_id = ?', [pid]);
+  const existing = await db.all('SELECT id, stem, answer, format, provider_id, provider_ref, rubric_origin, bank_id, edited FROM st_questions WHERE provider_id IN (?, ?) ORDER BY id', [pid, `${pid}:gone`]);
   const byRef = new Map();
-  for (const r of existing) byRef.set(stProviderRefOf({ providerRef: r.provider_ref }), r);
+  // Put aside when its row went (deleted, or in the Trash): it comes back as itself, with its marks and its history, when the row does.
+  const goneByRef = new Map();
+  for (const r of existing) {
+    const ref = stProviderRefOf({ providerRef: r.provider_ref });
+    if (r.provider_id === pid) byRef.set(ref, r);
+    else if (!goneByRef.has(ref)) goneByRef.set(ref, r);
+  }
   const now = stNow();
   const statements = [];
   const insertSql = `INSERT INTO st_questions (${ST_QUESTION_COLS.join(', ')}) VALUES (${stPlaceholders(ST_QUESTION_COLS)})`;
@@ -149,15 +155,16 @@ async function stSubjectIngest(st, items) {
     if (seen.has(item.ref)) continue;
     seen.add(item.ref);
     const mapped = stImportedToQuestion({ kind: item.kind, question: item.question, answer: item.answer, paper: item.unit }, { origin: 'provider', bankId: subject.bankId, providerId: pid, ref: item.ref });
-    const prior = byRef.get(item.ref);
+    const live = byRef.get(item.ref);
+    const prior = live || goneByRef.get(item.ref);
     if (!prior) { statements.push({ sql: insertSql, params: stQuestionParams(mapped, now) }); continue; }
     const answerChanged = String(prior.answer || '') !== mapped.answer;
-    if (prior.stem === mapped.stem && !answerChanged && prior.format === mapped.format && prior.provider_ref === mapped.providerRef && Number(prior.bank_id) === Number(subject.bankId) && !prior.edited) continue;
+    if (live && prior.stem === mapped.stem && !answerChanged && prior.format === mapped.format && prior.provider_ref === mapped.providerRef && Number(prior.bank_id) === Number(subject.bankId) && !prior.edited) continue;
     // A changed answer drops a rubric made from the old one (an examiner's report keeps its own).
     const dropRubric = answerChanged && prior.rubric_origin !== 'report';
     statements.push({
-      sql: `UPDATE st_questions SET stem = ?, answer = ?, format = ?, origin_label = ?, provider_ref = ?, bank_id = ?, edited = 0${dropRubric ? ", rubric_json = '[]', rubric_origin = ''" : ''} WHERE id = ?`,
-      params: [mapped.stem, mapped.answer, mapped.format, mapped.originLabel, mapped.providerRef, subject.bankId, prior.id],
+      sql: `UPDATE st_questions SET stem = ?, answer = ?, format = ?, origin_label = ?, provider_ref = ?, bank_id = ?, edited = 0${live ? '' : ', provider_id = ?, hidden = 0'}${dropRubric ? ", rubric_json = '[]', rubric_origin = ''" : ''} WHERE id = ?`,
+      params: [mapped.stem, mapped.answer, mapped.format, mapped.originLabel, mapped.providerRef, subject.bankId, ...(live ? [] : [pid]), prior.id],
     });
     if (dropRubric && typeof _stTypedRubrics !== 'undefined') _stTypedRubrics.delete(prior.id);
   }
@@ -181,7 +188,8 @@ async function stSubjectFollowRenames(st, columns) {
     if (!m || !m.name) continue;
     const byName = columns.find((c) => stSubjectSameName(c.name, m.name));
     const byId = m.id ? columns.find((c) => c.id === m.id) : null;
-    const now = byName || byId;
+    // The id first: a column renamed is still his column, whatever now carries its old name.
+    const now = byId || byName;
     if (!now) continue;
     if (now.name !== m.name || now.id !== m.id) { subject.mapping[role] = { id: now.id, name: now.name }; changed = true; }
   }
@@ -207,6 +215,15 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
     st.rows = new Map(); st.unitRows = []; st.counts = { total: 0, answered: 0, units: [] }; st.synced = true;
     return;
   }
+  // In the Trash: said in the sidebar. Nothing is written and no question is put aside; Restore brings it all back as it was.
+  const trashed = qInfo.trashed ? 'questions database' : uInfo.trashed ? 'Units database' : logInfo && logInfo.trashed ? 'Work Log' : '';
+  if (trashed) {
+    st.problem = `Its ${trashed} is in the Trash.`;
+    st.synced = true;
+    return;
+  }
+  // Before a column is put back: one renamed while Study was off is followed, not given an empty twin under its old name.
+  await stSubjectFollowRenames(st, qInfo.columns);
   if (ensure) {
     stSubjectLive(st);
     await door.ensureColumns(subject.unitsDb, specs.units);
@@ -214,16 +231,50 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
     if (logInfo) await door.ensureColumns(subject.logDb, specs.log);
     [qInfo, uInfo, logInfo] = await read();
     if (!qInfo || !uInfo) return;
+    await stSubjectFollowRenames(st, qInfo.columns);
   }
   st.problem = '';
-  await stSubjectFollowRenames(st, qInfo.columns);
   const names = stSubjectNames(subject);
-  const [rows, unitRows] = await Promise.all([door.listRows(subject.questionsDb), door.listRows(subject.unitsDb)]);
+  const [rows, unitRows] = await Promise.all([door.listRows(subject.questionsDb).then((r) => r.slice()), door.listRows(subject.unitsDb).then((r) => r.slice())]);
+  const unitColumn = qInfo.columns.find((c) => stSubjectSameName(c.name, names.unit));
+  const relation = !!unitColumn && unitColumn.type === 'relation';
   const titleById = new Map(unitRows.map((r) => [r.pageId, r.title]));
-  const counts = stSubjectCounts(rows, names, titleById);
+  // A relation to another database of his: its rows are what the cells name.
+  const related = relation ? String((unitColumn.config || {}).databaseId || '') : '';
+  if (related && related !== subject.unitsDb) {
+    try { for (const r of await door.listRows(related)) titleById.set(r.pageId, r.title); } catch { /* that database is gone: its ids name no unit */ }
+  }
+  let counts = stSubjectCounts(rows, names, titleById, relation);
+
+  // A unit renamed in Units, where the questions name their unit in words (a select, a text): the questions follow the row, so the old name does not come back as a second unit.
+  if (unitColumn && !relation) {
+    const before = new Map((st.unitRows || []).map((r) => [r.pageId, String(r.title || '')]));
+    const renames = [];
+    for (const r of unitRows) {
+      const from = before.get(r.pageId);
+      const to = String(r.title || '').trim();
+      if (!from || !from.trim() || !to || stSubjectSameName(from, to)) continue;
+      if (unitRows.some((x) => stSubjectSameName(x.title, from)) || !counts.units.some((u) => stSubjectSameName(u.name, from))) continue;
+      renames.push({ from, to });
+    }
+    if (renames.length) {
+      stSubjectLive(st);
+      // A select takes only a word it has: the new name is made one of its options first.
+      if (['select', 'status', 'tags'].includes(unitColumn.type)) await door.ensureColumns(subject.questionsDb, [{ name: unitColumn.name, type: unitColumn.type, config: { options: renames.map((r) => r.to) } }]);
+      const renamed = (v) => { const hit = typeof v === 'string' ? renames.find((r) => stSubjectSameName(r.from, v)) : null; return hit ? hit.to : v; };
+      for (let i = 0; i < rows.length; i++) {
+        const now = (rows[i].values || {})[unitColumn.name];
+        const next = Array.isArray(now) ? now.map(renamed) : renamed(now);
+        if (JSON.stringify(next) === JSON.stringify(now)) continue;
+        stSubjectLive(st);
+        await door.updateRow(subject.questionsDb, rows[i].pageId, { values: { [unitColumn.name]: next } });
+        rows[i] = { ...rows[i], values: { ...rows[i].values, [unitColumn.name]: next } };
+      }
+      counts = stSubjectCounts(rows, names, titleById, relation);
+    }
+  }
 
   // A unit the questions name and Units lacks gets its row (a select's own order, else as first named).
-  const unitColumn = qInfo.columns.find((c) => stSubjectSameName(c.name, names.unit));
   const options = unitColumn && unitColumn.config && Array.isArray(unitColumn.config.options) ? unitColumn.config.options.map((o) => String(o && typeof o === 'object' ? o.value : o)) : [];
   const rank = (name) => { const i = options.findIndex((o) => stSubjectSameName(o, name)); return i < 0 ? options.length : i; };
   const missing = counts.units.filter((u) => !unitRows.some((r) => stSubjectSameName(r.title, u.name))).sort((a, b) => rank(a.name) - rank(b.name));
@@ -235,20 +286,23 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
     stSubjectLive(st);
     const made = await door.addRow(subject.unitsDb, { title: u.name, values: hasOrder ? { Order: nextOrder } : {} });
     unitRows.push({ pageId: made.pageId, title: made.title, values: { ...(made.values || {}) } });
+    titleById.set(made.pageId, made.title);
   }
 
   for (const change of stSubjectUnitChanges(unitRows, counts, unitColumnNames)) {
     stSubjectLive(st);
     await door.updateRow(subject.unitsDb, change.pageId, { values: change.values });
-    const row = unitRows.find((r) => r.pageId === change.pageId);
-    if (row) row.values = { ...(row.values || {}), ...change.values };
+    const at = unitRows.findIndex((r) => r.pageId === change.pageId);
+    if (at >= 0) unitRows[at] = { ...unitRows[at], values: { ...(unitRows[at].values || {}), ...change.values } };
   }
 
   stSubjectLive(st);
-  await stSubjectIngest(st, stSubjectItems(rows, names, titleById));
+  await stSubjectIngest(st, stSubjectItems(rows, names, titleById, relation));
   st.rows = new Map(rows.map((r) => [r.pageId, r]));
   st.unitRows = unitRows;
   st.counts = counts;
+  st.titleById = titleById;
+  st.unitRelation = relation;
   st.names = names;
   st.columns = qInfo.columns;
   st.logColumns = logInfo ? logInfo.columns.map((c) => c.name) : [];
@@ -272,9 +326,12 @@ async function stSubjectFlush(st) {
   st.dirty = false;
   st.ensure = false;
   clearTimeout(st.timer);
+  const hadProblem = !!st.problem;
   try {
     await stSubjectSyncNow(st, { ensure });
     st.tries = 0;
+    // Back from the Trash: what was answered meanwhile goes to its rows now (after this read, not inside it).
+    if (hadProblem && !st.problem) setTimeout(() => { stSubjectRecover(st.token).catch((err) => { if (!stIsStopped(err) && stIsCurrent(st.token)) console.warn('[Study] results could not be written back:', err); }); }, 0);
   } catch (err) {
     if (stIsStopped(err) || !stIsCurrent(st.token)) return;
     // The canvas is still starting (the door says so): look again shortly.
@@ -323,6 +380,22 @@ async function stSetSubjectFolded(id, on) {
 function stSubjectsReset() {
   for (const st of _stSubjects.values()) clearTimeout(st.timer);
   _stSubjects.clear();
+}
+
+/**
+ * The databases New Subject offers as Questions or Notes: every database of
+ * the canvas but the ones a subject is already made of (its Units, its
+ * Questions, its Work Log), by what Study has stored, so it holds before the
+ * subjects are loaded too.
+ */
+async function stSubjectDatabasesOffered() {
+  const door = stSubjectDoor();
+  if (!door) return [];
+  let databases = [];
+  try { databases = (await door.list()) || []; } catch { databases = []; }
+  const used = new Set();
+  for (const subject of [...(await stListSubjects()), ...[..._stSubjects.values()].map((st) => st.subject)]) for (const id of [subject.unitsDb, subject.questionsDb, subject.logDb]) if (id) used.add(id);
+  return databases.filter((d) => d && !used.has(d.id)).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true }));
 }
 
 // ── Making and removing a subject ───────────────────────────────────────────
@@ -414,7 +487,7 @@ async function stRemoveSubject(id) {
 
 // ── Results back to the rows ────────────────────────────────────────────────
 
-/** The session's row in the Work Log: made with the first answer, then only what changed is written. */
+/** The session's row in a subject's Work Log: made with the first answer to one of its questions, then only what changed is written. `items` are the session's items over this subject. */
 async function stSubjectWriteLog(st, session, items, questionsById) {
   const door = stSubjectDoor();
   const subject = st.subject;
@@ -432,14 +505,14 @@ async function stSubjectWriteLog(st, session, items, questionsById) {
   stSubjectLive(st);
   const has = (name) => st.logColumns.some((c) => stSubjectSameName(c, name));
   const values = Object.fromEntries(Object.entries(want.values).filter(([name]) => has(name)));
-  const rec = await db.get('SELECT * FROM st_subject_logs WHERE session_id = ?', [session.id]);
+  const rec = await db.get('SELECT * FROM st_subject_logs WHERE session_id = ? AND subject_id = ?', [session.id, subject.id]);
   const written = rec ? (stParseJson(rec.written_json, {}) || {}) : {};
   if (rec && rec.row_id) {
     const changed = Object.fromEntries(Object.entries(values).filter(([name, v]) => JSON.stringify(written[name]) !== JSON.stringify(v)));
     if (!Object.keys(changed).length) return;
     try {
       await door.updateRow(subject.logDb, rec.row_id, { values: changed });
-      await db.run('UPDATE st_subject_logs SET written_json = ? WHERE session_id = ?', [stJsonCol({ ...written, ...changed }, '{}'), session.id]);
+      await db.run('UPDATE st_subject_logs SET written_json = ? WHERE session_id = ? AND subject_id = ?', [stJsonCol({ ...written, ...changed }, '{}'), session.id, subject.id]);
       return;
     } catch (err) {
       if (stIsStopped(err)) throw err;
@@ -450,19 +523,34 @@ async function stSubjectWriteLog(st, session, items, questionsById) {
   await db.run('INSERT OR REPLACE INTO st_subject_logs (session_id, subject_id, row_id, written_json) VALUES (?, ?, ?, ?)', [session.id, subject.id, made.pageId, stJsonCol(values, '{}')]);
 }
 
+/** The live subjects a session has questions of, whatever it was drawn from (a subject, a unit, the marked set, weak spots). */
+async function stSubjectsOfSession(sessionId) {
+  if (!_stSubjects.size) return [];
+  const rows = await db.all("SELECT DISTINCT q.provider_id AS pid FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? AND q.provider_id LIKE 'subject:%'", [sessionId]);
+  const ids = new Set(rows.map((r) => Number(String(r.pid).split(':')[1]) || 0));
+  return [..._stSubjects.values()].filter((st) => ids.has(Number(st.subject.id)));
+}
+
 /**
- * Make a session's rows say what its items say: every item with a final
+ * Make the rows say what a session's items say: every item with a final
  * verdict has added one attempt to its question's row, and Correct and Last
  * Result follow the verdict as it stands now (the grader's, or his over it).
- * Then the units' kept columns and the session's Work Log row follow.
+ * Then the units' kept columns and the session's Work Log row follow. The
+ * subject is the question's own, so an answer given in a session over the
+ * marked set or the weak spots reaches its row too; a session over several
+ * subjects writes to each, and logs in each what it did there.
  * `seconds` is the session's own time when the caller knows it better than
  * the stored row (the pane, as its tab closes).
  */
 async function stSubjectReconcile(sessionId, { seconds = 0 } = {}) {
+  if (!stSubjectDoor()) return;
+  let subjects = [];
+  try { subjects = await stSubjectsOfSession(sessionId); } catch (err) { if (!stIsStopped(err)) console.warn('[Study] results could not be written back:', err); return; }
+  for (const st of subjects) await stSubjectReconcileIn(st, sessionId, seconds);
+}
+
+async function stSubjectReconcileIn(st, sessionId, seconds) {
   const door = stSubjectDoor();
-  const first = await stGetSession(sessionId);
-  const st = first ? stSubjectOfScope(first.scope) : null;
-  if (!door || !st) return;
   await stSubjectEnqueue(st, async () => {
     await stSubjectFlush(st);
     if (!st.synced || st.problem) return;
@@ -471,10 +559,12 @@ async function stSubjectReconcile(sessionId, { seconds = 0 } = {}) {
     session.seconds = Math.max(Number(session.seconds) || 0, Number(seconds) || 0);
     const subject = st.subject;
     const pid = stSubjectProviderId(subject.id);
-    const items = await stListSessionItems(sessionId);
+    const all = await stListSessionItems(sessionId);
     const marks = new Map((await db.all('SELECT * FROM st_subject_marks WHERE session_id = ?', [sessionId])).map((m) => [m.item_id, m]));
-    const qids = [...new Set(items.map((i) => Number(i.questionId)).filter((n) => n > 0))];
+    const qids = [...new Set(all.map((i) => Number(i.questionId)).filter((n) => n > 0))];
     const questionsById = new Map(qids.length ? (await db.all(`SELECT id, provider_id, provider_ref FROM st_questions WHERE id IN (${stPlaceholders(qids)})`, qids)).map((q) => [q.id, q]) : []);
+    // This subject's share of the session.
+    const items = all.filter((item) => { const q = questionsById.get(item.questionId); return !!q && (q.provider_id === pid || q.provider_id === `${pid}:gone`); });
     const names = st.names;
     const columnOf = (name) => st.columns.find((c) => stSubjectSameName(c.name, name)) || null;
     let wrote = false;
@@ -483,7 +573,6 @@ async function stSubjectReconcile(sessionId, { seconds = 0 } = {}) {
       const mark = marks.get(item.id);
       if (!result || (mark && mark.result === result)) continue;
       const q = questionsById.get(item.questionId);
-      if (!q || (q.provider_id !== pid && q.provider_id !== `${pid}:gone`)) continue;
       const rowId = stProviderRefOf({ providerRef: q.provider_ref });
       const row = st.rows.get(rowId);
       const correct = result === 'right' ? 1 : 0;
@@ -491,7 +580,13 @@ async function stSubjectReconcile(sessionId, { seconds = 0 } = {}) {
         const values = {};
         const addCorrect = correct - (mark ? Number(mark.correct) || 0 : 0);
         if (!mark && columnOf(names.attempts)) values[columnOf(names.attempts).name] = stSubjectNum(row.values[columnOf(names.attempts).name]) + 1;
-        if (addCorrect && columnOf(names.correct)) values[columnOf(names.correct).name] = Math.max(0, stSubjectNum(row.values[columnOf(names.correct).name]) + addCorrect);
+        const correctColumn = columnOf(names.correct);
+        if (correctColumn) {
+          const have = row.values[correctColumn.name];
+          if (addCorrect) values[correctColumn.name] = Math.max(0, stSubjectNum(have) + addCorrect);
+          // A first answer that is not right: none correct is a number, not an empty cell.
+          else if (!mark && (have === undefined || have === null || have === '')) values[correctColumn.name] = 0;
+        }
         const resultColumn = columnOf(names.lastResult);
         if (resultColumn) values[resultColumn.name] = stSubjectResultCell(resultColumn, result);
         const whenColumn = columnOf(names.lastAnswered);
@@ -510,14 +605,13 @@ async function stSubjectReconcile(sessionId, { seconds = 0 } = {}) {
       await db.run('INSERT OR REPLACE INTO st_subject_marks (item_id, session_id, subject_id, row_id, correct, result) VALUES (?, ?, ?, ?, ?, ?)', [item.id, sessionId, subject.id, row ? rowId : '', correct, result]);
     }
     if (wrote) {
-      const titleById = new Map(st.unitRows.map((r) => [r.pageId, r.title]));
-      st.counts = stSubjectCounts([...st.rows.values()], names, titleById);
+      st.counts = stSubjectCounts([...st.rows.values()], names, st.titleById, st.unitRelation);
       const unitInfo = await door.get(subject.unitsDb);
       for (const change of stSubjectUnitChanges(st.unitRows, st.counts, unitInfo ? unitInfo.columns.map((c) => c.name) : [])) {
         stSubjectLive(st);
         await door.updateRow(subject.unitsDb, change.pageId, { values: change.values });
-        const row = st.unitRows.find((r) => r.pageId === change.pageId);
-        if (row) row.values = { ...(row.values || {}), ...change.values };
+        const at = st.unitRows.findIndex((r) => r.pageId === change.pageId);
+        if (at >= 0) st.unitRows[at] = { ...st.unitRows[at], values: { ...(st.unitRows[at].values || {}), ...change.values } };
       }
     }
     await stSubjectWriteLog(st, session, items, questionsById);
@@ -534,6 +628,19 @@ async function stSubjectPushEdit(q) {
   const answerColumn = st.columns.find((c) => stSubjectSameName(c.name, st.names.answer));
   await door.updateRow(st.subject.questionsDb, rowId, { title: q.stem, values: answerColumn && q.format !== 'mc' ? { [answerColumn.name]: q.answer } : {} });
   return true;
+}
+
+/**
+ * Write what was answered and never reached its row: every session, open or
+ * finished, with an answer to a subject's question that has no mark yet, and
+ * the open ones (a verdict he changed). A session already written is found
+ * marked and writes nothing.
+ */
+async function stSubjectRecover(token = stActivation()) {
+  if (!stIsCurrent(token) || !_stSubjects.size) return;
+  const ids = new Set((await stListSessions({ open: true })).map((session) => session.id));
+  for (const r of await db.all("SELECT DISTINCT i.session_id AS id FROM st_session_items i JOIN st_questions q ON q.id = i.question_id LEFT JOIN st_subject_marks m ON m.item_id = i.id WHERE q.provider_id LIKE 'subject:%' AND i.status IN ('right', 'wrong') AND m.item_id IS NULL")) ids.add(r.id);
+  for (const id of ids) { if (!stIsCurrent(token)) return; await stSubjectReconcile(id); }
 }
 
 // ── Activation ──────────────────────────────────────────────────────────────
@@ -559,8 +666,7 @@ function registerSubjects(context, token = stActivation()) {
       _emitDataChanged();
       // An answer whose write was cut short (the app closed) is written now.
       await Promise.all([..._stSubjects.values()].map((st) => st.chain));
-      if (!stIsCurrent(token)) return;
-      for (const session of await stListSessions({ open: true })) if (stSubjectOfScope(session.scope)) await stSubjectReconcile(session.id);
+      await stSubjectRecover(token);
     })
     .catch((err) => { if (!stIsStopped(err) && stIsCurrent(token)) console.warn('[Study] subjects could not be loaded:', err); });
 }

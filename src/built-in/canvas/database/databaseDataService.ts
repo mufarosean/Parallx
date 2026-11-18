@@ -121,12 +121,18 @@ export class DatabaseDataService extends Disposable {
         void this._cleanupDatabaseRows(e.pageId);
       }
       // A row is a page, and a page is also changed from outside the table:
-      // retitled in its own editor, sent to the Trash from the sidebar.
+      // retitled in its own editor, sent to the Trash from the sidebar,
+      // restored from the Trash. So is a database: in the Trash its rows are
+      // not listed, and Restore lists them again.
       if (this._ownPageWrites.has(e.pageId) || this._databaseIds.size === 0) return;
-      if (e.kind === PageChangeKind.Updated && e.page?.parentId && this._databaseIds.has(e.page.parentId)
+      const restored = e.kind === PageChangeKind.Updated && !!e.changedFields?.includes('isArchived');
+      if (this._databaseIds.has(e.pageId) && (restored || (e.kind === PageChangeKind.Deleted && e.archived))) {
+        this._onDidChange.fire({ databaseId: e.pageId, kind: 'rows' });
+      }
+      if (e.kind === PageChangeKind.Updated && !restored && e.page?.parentId && this._databaseIds.has(e.page.parentId)
         && (!e.changedFields || e.changedFields.includes('title'))) {
         this._onDidChange.fire({ databaseId: e.page.parentId, kind: 'rows', pageId: e.pageId });
-      } else if (e.kind === PageChangeKind.Deleted && !this._databaseIds.has(e.pageId)) {
+      } else if ((e.kind === PageChangeKind.Deleted || restored) && !this._databaseIds.has(e.pageId)) {
         void this.listDatabasesForPage(e.pageId).then((ids) => {
           for (const databaseId of ids) this._onDidChange.fire({ databaseId, kind: 'rows', pageId: e.pageId });
         }).catch(() => { /* the store is closing */ });

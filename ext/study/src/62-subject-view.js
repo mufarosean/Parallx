@@ -92,8 +92,14 @@ function stOpenHome() {
 
 /** The New Subject sheet on screen: its form, and what its Create does. */
 let _stSubjectSheet = null;
-/** What had the focus when New Subject… was chosen. */
+/** What had the focus when a sheet was asked for (New Subject…, a subject's or a unit's row, any Study… button). */
 let _stSubjectOpener = null;
+
+/** Remember where he was as a sheet opens: the focus goes back there when the sheet closes with nothing started (stSheetFrame). */
+function stNoteSheetOpener() {
+  const from = typeof document !== 'undefined' ? document.activeElement : null;
+  _stSubjectOpener = from && from !== document.body && typeof from.getAttribute === 'function' ? { node: from, id: from.getAttribute('data-px-id') || '' } : null;
+}
 
 /** Give the focus back to what opened the sheet (the same control, or the one with its id when its view was drawn again). */
 function stRefocusSubjectOpener() {
@@ -116,8 +122,7 @@ function stRefocusSubjectOpener() {
 async function stCmdNewSubject(arg) {
   if (!arg || typeof arg !== 'object') {
     // Where he was (the button that opened it): the focus goes back there when the sheet closes with nothing made.
-    const from = typeof document !== 'undefined' ? document.activeElement : null;
-    _stSubjectOpener = from && from !== document.body ? { node: from, id: from.getAttribute('data-px-id') || '' } : null;
+    stNoteSheetOpener();
     return stOpenPane({ view: 'newSubject' });
   }
   if (_stSubjectSheet && arg === _stSubjectSheet.form) return _stSubjectSheet.create();
@@ -166,23 +171,17 @@ async function renderNewSubject(host, route, ctx) {
     _api.ui.createEmptyState(host, { icon: 'database', headline: 'Subjects need canvas databases.', hint: 'This version of Parallx does not offer them to Study.', action: { label: 'Close', command: ST_CLOSE_TAB } });
     return;
   }
-  let databases = [];
-  try { databases = (await door.list()) || []; } catch { databases = []; }
-  // A database another subject is made of is not offered again.
-  const used = new Set();
-  for (const s of _stSubjects.values()) for (const id of [s.subject.unitsDb, s.subject.questionsDb, s.subject.logDb]) used.add(id);
-  const offered = databases.filter((d) => d && !used.has(d.id)).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true }));
+  const offered = await stSubjectDatabasesOffered();
   const workspaceFolders = await stWorkspaceFolders();
   if (ctx.disposed()) return;
   // The form: what Create hands to the command (stCmdNewSubject).
   const st = { name: '', folder: '', questions: '', notes: '', columns: [], mapping: null, busy: false };
   const sheetActions = { form: st, create: () => create() };
   _stSubjectSheet = sheetActions;
-  ctx.add({ dispose: () => { if (_stSubjectSheet === sheetActions) _stSubjectSheet = null; if (!st.made) stRefocusSubjectOpener(); } });
+  ctx.add({ dispose: () => { if (_stSubjectSheet === sheetActions) _stSubjectSheet = null; if (st.made) _stSubjectOpener = null; } });
 
   const { sheet, bd } = stSheetFrame(host, ctx, 'A page with its units, questions and work log.', { title: 'New Subject' });
   bd.classList.add('st-subj');
-  ctx.add(_api.ui.keepTabInside(sheet, host));
   let seq = 0;
   const field = (label, { hint = '' } = {}) => {
     const row = _api.ui.createBlock(bd, 'div', { className: 'st-subj__row' });

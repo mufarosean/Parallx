@@ -687,7 +687,7 @@ reads.
 | Call | What it does |
 |---|---|
 | `list()` | `{ id, title }` of every database the person has. |
-| `get(databaseId)` | `{ id, title, pageId, parentPageId, columns }`, or `null`. `columns[0]` is always the title column (`type: 'title'`, named "Name"). |
+| `get(databaseId)` | `{ id, title, pageId, parentPageId, columns }`, or `null` when there is no such database. `columns[0]` is always the title column (`type: 'title'`, named "Name"). A database in the Trash is still returned, with `trashed: true`: it lists no rows until the person restores it, so treat it as away, not as empty. |
 | `create({ title, parentPageId?, columns? })` | A database with exactly those columns after the title column. No starter Status column. |
 | `createPage({ title, parentPageId? })` | A plain page, to hold your databases. Returns `{ id }`. |
 | `ensureColumns(databaseId, columns)` | Adds the columns missing by name (case does not matter). Never changes or removes one that is there; a select, status or tags column only gains listed options it lacks. Does nothing when nothing is missing. |
@@ -695,7 +695,7 @@ reads.
 | `addRow(databaseId, { title, values? })` | Adds a row; returns it. |
 | `updateRow(databaseId, pageId, { title?, values? })` | Changes only what is named (`null` clears a cell). One write, one change event. |
 | `removeRow(databaseId, pageId)` | The row's page goes to the Trash. |
-| `onDidChange(databaseId, listener)` | `{ kind: 'rows' \| 'cells' \| 'columns', pageId? }` for every change, whoever made it: the person in any view, the chat, another extension, you. |
+| `onDidChange(databaseId, listener)` | `{ kind: 'rows' \| 'cells' \| 'columns', pageId? }` for every change, whoever made it: the person in any view, the chat, another extension, you. A row, or the database itself, going to the Trash or coming back from it is a `'rows'` change. |
 | `open(databaseId)` | Opens the database in the editor. |
 
 Column types: `text`, `number`, `checkbox`, `date` ("YYYY-MM-DD"),

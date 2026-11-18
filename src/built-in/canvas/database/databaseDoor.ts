@@ -123,7 +123,8 @@ export function createDatabaseDoor(db: DatabaseDataService, pages: ICanvasDataSe
     const found = await db.getDatabase(databaseId);
     if (!found) return null;
     const [props, page] = await Promise.all([db.listProperties(databaseId), pages.getPage(databaseId).catch(() => null)]);
-    return { id: found.id, title: found.title, pageId: found.id, parentPageId: page?.parentId ?? null, columns: [TITLE_COLUMN, ...props.map(column)] };
+    // In the Trash it is still a database (Restore brings it back whole), and says so.
+    return { id: found.id, title: found.title, pageId: found.id, parentPageId: page?.parentId ?? null, columns: [TITLE_COLUMN, ...props.map(column)], ...(page?.isArchived ? { trashed: true } : {}) };
   }
 
   async function ensureColumns(toolId: string, databaseId: string, columns: readonly CanvasDatabaseColumnSpec[]): Promise<readonly CanvasDatabaseColumn[]> {

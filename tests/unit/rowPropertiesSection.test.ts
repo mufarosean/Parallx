@@ -38,4 +38,36 @@ describe('mountRowPropertiesSection', () => {
     expect(changes).toEqual([false]);
     section!.dispose();
   });
+
+  it('a value kept by a tool is a stop for Tab, and says who keeps it when the focus arrives or it is tapped', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const db = {
+      ...fakeDb('db1'),
+      listProperties: vi.fn(async () => [
+        { id: 'p-kept', databaseId: 'db1', name: 'Answered', type: 'number', config: { computedBy: 'acme.gone' }, sortOrder: 1 },
+        { id: 'p-own', databaseId: 'db1', name: 'Weight', type: 'number', config: {}, sortOrder: 2 },
+      ]),
+      getRowValues: vi.fn(async () => ({ 'p-kept': 3, 'p-own': 10 })),
+    };
+    const section = await mountRowPropertiesSection(host, 'p1', db as any, null);
+    const kept = host.querySelector<HTMLElement>('.canvas-prop-readonly')!;
+    expect(kept.textContent).toContain('3');
+    expect(kept.tabIndex).toBe(0);
+    const shown = (): string => [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].filter((t) => t.style.display !== 'none').map((t) => t.textContent).join('|');
+    expect(shown()).toBe('');
+    kept.focus();
+    expect(document.activeElement).toBe(kept);
+    expect(shown()).toBe('Kept by a tool that is off');
+    kept.blur();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(shown()).toBe('');
+    kept.click();
+    expect(shown()).toBe('Kept by a tool that is off');
+    kept.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(shown()).toBe('');
+    section!.dispose();
+    host.remove();
+  });
 });

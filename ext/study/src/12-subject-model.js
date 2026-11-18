@@ -152,13 +152,17 @@ function stSubjectResultOfItem(item) {
 /**
  * The units a cell names: the text or the option itself, each tag, or the
  * titles of the Units rows a relation points at (`titleById`, by row page id).
+ * With `relation` (the unit column is a relation) an id that names no row
+ * (the row was deleted) names no unit, instead of becoming one called by its id.
  */
-function stSubjectUnitNames(value, titleById) {
+function stSubjectUnitNames(value, titleById, relation = false) {
   const list = Array.isArray(value) ? value : (value === null || value === undefined || value === '' ? [] : [value]);
   const out = [];
   for (const v of list) {
     const id = v && typeof v === 'object' ? String(v.id ?? v.pageId ?? '') : String(v);
-    let name = titleById && titleById.has(id) ? titleById.get(id) : (v && typeof v === 'object' ? (v.title ?? v.name ?? v.value ?? '') : v);
+    const known = !!titleById && titleById.has(id);
+    if (relation && !known) continue;
+    let name = known ? titleById.get(id) : (v && typeof v === 'object' ? (v.title ?? v.name ?? v.value ?? '') : v);
     name = String(name ?? '').replace(/\s+/g, ' ').trim();
     if (name && !out.includes(name)) out.push(name);
   }
@@ -175,7 +179,7 @@ const stSubjectSameName = (a, b) => stSubjectFold(a) === stSubjectFold(b);
  * Attempts over zero; right is what the Last Result means; last worked is
  * the latest Last Answered. A row naming no unit counts in the totals only.
  */
-function stSubjectCounts(rows, mapping, titleById) {
+function stSubjectCounts(rows, mapping, titleById, relation = false) {
   const m = mapping || {};
   const units = [];
   let total = 0, answered = 0;
@@ -187,7 +191,7 @@ function stSubjectCounts(rows, mapping, titleById) {
     const when = typeof v[m.lastAnswered] === 'string' ? v[m.lastAnswered].slice(0, 10) : '';
     total += 1;
     if (isAnswered) answered += 1;
-    for (const name of stSubjectUnitNames(v[m.unit], titleById)) {
+    for (const name of stSubjectUnitNames(v[m.unit], titleById, relation)) {
       let u = units.find((x) => stSubjectSameName(x.name, name));
       if (!u) { u = { name, total: 0, answered: 0, right: 0, lastWorked: '' }; units.push(u); }
       u.total += 1;
@@ -238,7 +242,7 @@ function stSubjectText(value) {
  * { ref: the row's page id, question, answer, unit, kind }. The kind is the
  * row's Kind when it says Essay, else short.
  */
-function stSubjectItems(rows, mapping, titleById) {
+function stSubjectItems(rows, mapping, titleById, relation = false) {
   const m = mapping || {};
   const out = [];
   for (const row of rows || []) {
@@ -249,7 +253,7 @@ function stSubjectItems(rows, mapping, titleById) {
       ref: String(row.pageId),
       question,
       answer: stSubjectText(v[m.answer]).trim(),
-      unit: stSubjectUnitNames(v[m.unit], titleById)[0] || '',
+      unit: stSubjectUnitNames(v[m.unit], titleById, relation)[0] || '',
       kind: /essay|long/i.test(stSubjectText(v.Kind)) ? 'essay' : 'short',
     });
   }
