@@ -702,7 +702,7 @@ guides, his own notes), for mock-ups and his pick.
 model and see how long the first question takes, whether the questions
 are good, and whether grading is fair. None of that can be judged here.
 
-#### The study harness: a campaign that runs the other tools
+#### Study as the study system: learning, planning and tracking in one
 
 **His words (2026-11-17, spelling corrected, shortened):** "I want us to
 formalize the study extension into something substantive." Coaching
@@ -845,86 +845,6 @@ already built, in the wrong place and shaped to Exam 7:
   about pages read (the journal records only a PDF opened, viewed and
   closed).
 
-**Proposed by Claude, nothing agreed.**
-
-*The premise questioned.* Coaching Actuaries' shape, a Learn phase and
-then a Practice phase, is the shape of his spring sitting: read
-everything, then try problems with the reading forgotten. So the harness
-keeps his ask (a start, an exam date, a learn stretch, a practice
-stretch, study days and rest days) but a phase changes the mix of a day,
-never what is allowed in it. From day one every unit he opens is
-reopened on a schedule, and problems of the units already seen are
-worked mixed together. The plan is counted in exposures of each unit as
-well as in hours, because "see the content as many times as possible"
-is the goal and hours are its budget.
-
-*What a campaign is* (the same nouns for Exam 7 and for GLMs):
-
-- A goal: an exam on a date, or a topic with an end date. Hours wanted.
-- Units: the syllabus, one per paper or chapter, each with a weight. For
-  an exam the weight can come from his own data: the bank keeps points
-  and a paper per problem (`ws_items.points`, `paper`), so the points
-  past sittings put on each paper can be summed.
-  Units are read from the sources folder (a file or a heading each) or a
-  pasted syllabus, and he edits the list.
-- Where things are: the sources folder (guides, summaries, cookbook,
-  workbook), the notes (a parent page or a canvas database), and for each
-  unit the name each tool knows it by (a card tag, a Worksheets paper, a
-  Study material, the PDFs). That one map is what lets the harness
-  count work done in any tool against a unit.
-- A week: blocks per weekday with a start, an end, a kind (deep work or
-  light review) and an account (personal or work). His would be 5:30 to
-  7:30 personal, 7:30 to 9:30 work, one evening hour light, Friday rest.
-  Dates off (holidays) on top.
-- Stretches, each with its own week: learn and practice as he sets them,
-  then the ramp (his last 6 to 8 weeks, more evening study), then the
-  half-day week, then the week off before the exam. A stretch can add
-  blocks, lengthen them, or turn a work day into a study day.
-- Accounts, each with rules. Work study, for him: 130 hours a sitting,
-  2 hours a day as a rule, up to 4 a day in the last two weeks, never
-  more than 20 in a week. PTO: days he takes off work, which turn the
-  work day into study time (the second 20 hours of each of the last two
-  weeks). The plan books the accounts under their rules and shows what
-  is left of each.
-
-*The plan is arithmetic, not a model's guess.* Code works it out and the
-AI explains it. Capacity is summed from the week and the dates; units are
-placed in reading order with their first exposure, then their returns at
-growing gaps, and the mixed problem sets drawn from every unit seen so
-far; each block becomes a Planner task on its day, with its time. A
-missed day is never quietly spread over the rest (Coaching Actuaries and
-TIA do that; RemNote offers a catch-up instead). On Monday, the fresh
-start, the harness shows the week as it now stands and offers two or
-three ways to absorb what slipped, and he picks.
-
-*Sweeps: the question campaign, made general.* What worked in the fall
-was the Worksheets campaign: every workbook problem in N days, a quota a
-day (what is left over the study days left, the last day asking only for
-what remains), each problem counted once, the day's draw spread across
-papers, ahead or behind shown. A sweep is that shape over any set: all
-problems, all conceptual questions, every card of a tag, every unit's
-summary. It draws only from units already opened in the plan, so in the
-learn stretch it grows as the reading does, and its draw is mixed across
-units by design (interleaving). Sweeps follow one another: a first sweep
-of every problem, a second of those rated Medium or Hard, the roster for
-what is still starred; a second and third sweep of the conceptual
-questions. "See the content as many times as possible" then has a
-number: the sweeps finished over each set, and the plan says how many
-fit before the exam. Sweep work fills the plan's blocks; it is not a
-second plan beside it.
-
-*Three plans as one band.* He sees the target plan. Behind it the
-harness keeps a floor and a stretch, drawn as lines on one hours chart
-(where he is, the floor that still makes 400, the target, the stretch),
-so "best case, worst case" is always visible without three plans to
-read. The worst case is not a guess after the first two weeks: it is his
-own record of which blocks he keeps (mornings, evenings, weekends
-separately), so the forecast says, for example, "at the pace of your
-worst two weeks you finish at 371; one Saturday block a week makes 400".
-The plan also carries reserve days, 2 a month say: a missed day spends a
-reserve instead of breaking anything, and unspent reserves pay XP at the
-end of the month.
-
 **Worked out with him, 2026-11-17 (his spring 2027 plan, the first real
 run of the arithmetic).** The sheet and the script that makes it are on
 `exam7-campaign` in `campaign/spring-2027/` (every day, three plans,
@@ -960,99 +880,174 @@ running totals). What he settled in the discussion:
   hours, and a summary of hours per day by number of days. Weeks alone
   hide too much.
 
-*Honest time, without a timer to forget.* One ledger of study time for
-the campaign. Every tool already leaves evidence (pages in the PDF pane,
-reviews, problem sheets, quizzes, chat turns); the harness rebuilds the
-session from it, with the idle cut-off Worksheets' clock already uses,
-and asks once: "5:34 to 7:41, 2 h 07, mostly Clark and Mack. Log it as
-personal?" Time in the work window is booked to the work account under
-its rules (2 a day, 4 in the last two weeks, 20 a week) until its 130
-are spent, and a week's work hours can be listed for a timesheet. A start-and-stop timer stays for those who want
-it. Reading time is logged as time; it simply earns little XP (below).
+**The system, planned (2026-11-18).** His words on the drafts before it:
+"No, lets not use dashboard. We want it to live in study. We are
+essentially moving the tracking and planning to study extension." "Study
+still also keeps the ability to generate questions and study." "Rethink.
+Think system." Then: "plan it accordingly." This replaces Claude's
+earlier proposals in this entry; the spring 2027 numbers above stand.
 
-*XP for the work that makes memory, not for minutes.*
+*What it is for.* What is known on exam day must cover what the exam
+asks. Hours are the input; the stock that matters is what he knows of
+each paper, which grows with every time he works the material and leaks
+every day he does not. Study runs the loop that keeps it rising with the
+time there is: a goal, a plan, the work (in Study and in the other
+tools), a measure of what was done and what is known, a comparison, a
+correction (catch-up, a replan, weak spots, extras). Each past failure
+was a broken link of that loop: spring measured nothing, so the leak
+went unseen; hours were never measured; the plan took a day by hand;
+nothing corrected a plan but reshuffling; nothing fed back, so it ran on
+willpower and panic.
 
-- Earned by retrieval and production: a card reviewed, a conceptual
-  question answered, a problem worked and rated, a practice exam sat, a
-  note written in his words for a unit, and an explanation given in chat
-  that the tutor checks (he explains the concept back; the tutor marks
-  it through a chat tool the harness registers, with the unit). Reading
-  earns its XP when it is closed by a check on the same unit the same
-  day.
-- Worth more when it matters more: going back to a unit that has faded
-  pays more than redoing one he saw yesterday (the fade is the unit's
-  memory, below), so XP pulls him toward spacing instead of comfort.
-  Work beyond the day's target pays half again as much. Repeats of the
-  same easy thing pay less each time, so nothing can be farmed.
-- Kept weekly, not daily: the count is "weeks kept" (the floor met), and
-  rest days and spent reserves never break it. A broken daily streak is
-  the thing the research says makes people stop.
-- Quests are the "extra XP" he described: each day, two or three things
-  the harness picks from his own data (Mack has faded, 12 days; 3 Clark
-  problems you rated Hard; explain Mack's three
-  assumptions). Done unprompted, the same work earns the same.
-- Stretches change the quests so the game does not go stale after a
-  month (the research saw effects fade at about four weeks).
-- Cash Out (dollars to himself per 100 XP, already in Worksheets) stays,
-  as his real reward. Worksheets' three daily-streak milestones would
-  become weekly ones in the move.
-- XP never claims readiness. Beside it, separately: the syllabus memory
-  and his scores on problems he has not seen, mixed.
+*Four stocks:* time (personal, work study, PTO; a day unused is gone);
+material (papers, their sources, the items made from them); knowledge
+(his state on each item and paper); energy (rest and the range of plans
+keep it, visible progress feeds it).
 
-*The syllabus memory: what no vendor shows.* One map of every unit and
-how well he holds it now, from what the tools already record: the
-retrievability of the unit's cards (FSRS), his conceptual answers
-(Study's mastery and his concept database), his problem ratings by paper.
-It fades day by day where he has not been. This is the answer to "I was
-reading and forgetting it the next day": he sees the forgetting before
-week 14 and the plan's returns aim at it. It feeds the quests and the
-XP for going back.
+*Study is both halves, in one tool.* It keeps what it was built for:
+sources in, questions made from them and anchored to their page,
+sessions graded against the text, mastery by concept, weak spots,
+Discuss in Chat. It adds the campaign: the plan, today, progress, hours,
+and later rewards, taking over what Worksheets holds now. The other
+tools are where the rest of the work is done (reading in the PDF editor,
+notes on canvas, cards in Flashcards, problems in Worksheets, chat,
+tasks in Planner); Study sends him into them and counts what was done.
+No dashboard: Study's own views.
 
-*His machine, overnight.* The night before a unit's first exposure, his
-own model builds what the morning needs from the sources: the unit's
-conceptual questions in Study's bank (the background bank already
-proposed above) and cards from the summary in Flashcards, each marked
-for him to keep or drop. The morning starts on material, not on a wait.
+*Subject and campaign.* A subject (Exam 7, GLMs) holds the papers, the
+items and the notes, and outlives a sitting. A campaign is one stretch of
+time over a subject (spring 2027): its dates, week, phases and days. A
+retake is a new campaign on the same subject, with what he knows carried
+over.
 
-*Built along the first principle.* The harness lives in Study and names
-no tool. Tools register into a new core contribution point (study
-activity providers, built like the question-provider registry): what
-kinds of work they offer for a unit, what was done, by when, for how
-long. Flashcards, Worksheets, Study's own quizzes, the PDF pane and chat
-register; turn Worksheets off and the plan simply has no problem blocks,
-which is the GLM case. Planner tasks go through the Planner's registry;
-the Today card, the hours band, the week and the syllabus map are
-dashboard widgets Study registers. For the notes database, the missing
-typed canvas-database API is built in the core, not reached through chat
-tools.
+*Two records, which everything else is read from.*
 
-*What this does to Worksheets' pick 4.* On 2026-11-15 he took Claude's
-pick 4i, which kept timers, ratings and rewards out of Study. This
-request makes Study the harness, so the proposal now is: the campaign,
-the day plan, the roster, XP, milestones, Cash Out and the study clock
-move from Worksheets into the harness, made generic; Worksheets keeps the
-bank, attempts, practice sessions and the exam surface, and becomes an
-activity provider. His data and the `worksheet.*` commands keep working
-throughout, as that entry requires. His word owed.
+- Item state: an item is anything he can be tested on, tied to a paper
+  and the page it came from: a conceptual question (Study's), a problem
+  (Worksheets), a card (Flashcards), and, for the reading phases, a
+  section of a guide. Each keeps its latest result where it lives.
+  Study's own items keep attempts, correct, last result and last date on
+  their row, the shape of his 296-question database. Progress and memory
+  are read from item state.
+- The work log: one row per stretch of work, not per card (a row per
+  review would be some 10,000 rows a campaign, each a page): when, how
+  long, which paper, which tool, what kind, how many items, how it went,
+  confirmed or not, and whether it came from the app, his hand or the
+  artifact. Hours, the plan against what was done, and later rewards are
+  read from the work log.
 
-*Considered and set aside:* three separate plans shown side by side
-(one band says the same with less to read); a daily streak; XP for
-minutes or pages; badges and leaderboards as the motor (a solo learner,
-and the one field trial went the wrong way); re-spreading missed work
-silently; a readiness number presented as a pass chance (Coaching
-Actuaries' and UWorld's are unverified); having a model write the plan;
-new surfaces for notes, reading or cards.
+*Where the data lives: canvas databases Study creates and reads, visible
+and editable, kept when Study is off.*
 
-*Pieces, one to a session, in this order:* (1) the campaign setup and
-the plan as arithmetic: units, week, accounts, the band, Planner tasks,
-tested on his own numbers; (2) the activity seam and the ledger of time,
-with the providers in Flashcards, Worksheets, Study, the PDF pane and
-chat; (3) the dashboard widgets; (4) XP, quests and the syllabus memory;
-(5) the move of Worksheets' campaign, plan, roster and rewards into the
-harness, his data carried over, with sweeps over any set; (6) the
-overnight build. The surfaces
-(setup, Today, the band, the map) get the bar read and mock-ups for his
-pick before any is built.
+| Database | Belongs to | One row per | Holds |
+|---|---|---|---|
+| Papers | subject | paper | order, weight (exam points), sources, guide pages, card tag, problem paper; counts by kind and colour, last worked (Study's) |
+| Items | subject | Study's question | question, model answer, kind, paper, source and page, origin, marked, confusion point, attempts, correct, last result, last date |
+| Notes | subject | note | his database, with a Paper relation |
+| Campaign | campaign | campaign | subject, exam date, start, hours goal, account rules |
+| Week | campaign | block | weekday, start, end, account, floor / standard / stretch hours, the dates it holds |
+| Phases | campaign | phase | dates, the rule (which items, in what order, how many passes); hours rolled up from Days |
+| Days | campaign | date | phase, type (study, rest, catch-up, holiday, half day, off), planned personal and work hours for each plan, actual hours rolled up from the work log, running totals, kept-as-edited, a note |
+| Work log | campaign | stretch of work | as above |
+
+Edit a rule (Week, Phases, rest dates) and the days not edited by him are
+worked out again; edit a day and it is kept. Rows rolled up into Days and
+Phases move Study's views at once (the databases fire row and cell
+changes). Items is his conceptual database adopted, not copied: Study
+adds the columns it needs, his 296 keep their history, and
+`/concept-quiz` keeps working on them.
+
+*The plan is a schedule of work on items, paid for in hours.* Each of his
+phases is a rule over items: read only (every guide section, in order);
+read and notes (again, with a note per paper); read with problems and
+recipes (each chapter's problems, kept by chapter); every problem mixed
+(all of them, shuffled across papers, which is the fall question
+campaign as one phase); the hard ones (last result yellow or red); exams
+and mixed quizzes. Hours and items meet through his minutes per item,
+measured from the work log (and from Worksheets' clock for the fall), so
+the plan checks a phase fits before it starts ("560 problems at 9
+minutes is 84 hours; the phase has 70"). Early phases give fixed day
+lists; later ones a quota, what is left over the study days left. Rest,
+catch-up and the three plans sit on top, as in his spring draft.
+
+*Questions are made ahead of the plan, not on demand.* The plan knows the
+next paper and how many items it has; what is short is made the night
+before on his machine and marked for him to keep or drop. Weak spots ask
+for more on the concepts missed. Nothing waits at the start of a
+session, which is what made Study unusable.
+
+*What he sees in Study, every day:* what to do now (Today, each block
+opening the right tool already set up); whether he is on track (hours
+and items against the plan, floor to stretch); what he knows and what is
+fading (a bar per paper and kind, green, yellow and red per item, the
+counts attempted: the fall dashboard that drove him, made general).
+
+*Built in the core, for any tool:*
+
+1. A door to canvas databases for tools: create one a tool owns by role,
+   keep its columns, read and write rows, hear row and cell changes. The
+   service exists (`databaseDataService.ts`, with change events and
+   roles) and no tool can reach it.
+2. Columns a tool computes: marked as that tool's in the column's
+   config, read-only to the person, put back if deleted.
+3. Study work providers, a contribution point like the question
+   providers: a tool answers "the state of this paper's items" and
+   reports work done. Worksheets, Flashcards, the PDF editor, canvas and
+   chat register; a tool turned off adds nothing and nothing else
+   changes.
+
+*Pieces, one to a session, each by the ship-piece order (acceptance
+probe first, reviewers who did not build it):*
+
+1. The record: the database door and tool-owned columns; a subject in
+   Study (name, sources folder proposing the papers, his notes database
+   linked); his conceptual database adopted as Items; Study's sessions
+   drawing from Items and writing results back; the work log, written by
+   Study's sessions. Done when his 296 keep their history and
+   `/concept-quiz` still works, a Study session on a paper writes item
+   results and one work row, a deleted owned column comes back, Study off
+   leaves every database whole, and 2,000 item rows open in a measured
+   time.
+2. Progress: providers in Worksheets (Easy, Medium, Hard as green,
+   yellow, red) and Flashcards (last rating: Again red, Hard yellow,
+   Good or Easy green); the Progress view. Mock-ups first. Done when it
+   shows his bank with the counts the Worksheets dashboard shows today, a
+   rating moves its bar without a reload, and Worksheets off takes only
+   its bars.
+3. The plan: the setup form writing Campaign, Week, Phases and Days; the
+   three plans; the fit check; the Plan view (every day, and hours per
+   day by number of days); edits kept, rules regenerated; Planner tasks
+   when Planner is on. Mock-ups first. Done when his spring 2027 draft
+   gives 385, 486 and 557 and the same days as the sheet, a new exam
+   date reworks it, an edited day survives, and the mixed-problem phase
+   is flagged if it does not fit.
+4. Today and the loop: Today with the day's items (a list early, a quota
+   later), each block opening its tool set up; catch-up days; the Monday
+   look back offering ways to absorb what slipped, never re-spreading it
+   silently. Mock-ups first.
+5. Hours: work rows from every provider, reading in the PDF editor, and
+   chat; a session rebuilt with the idle cut-off and confirmed once; the
+   accounts and their rules; actual against plan; the artifact's export
+   and import (items out, results and time in).
+6. Questions ahead of the plan, overnight on his machine.
+7. Rewards, after the XP discussion; the chat skill that credits
+   discussions.
+8. Worksheets hands over: its campaign, dashboard, day plan, roster,
+   rewards and clock retire once Study shows his data and he says so;
+   the `worksheet.*` commands keep working.
+
+Kept from Study as built: materials and their outline, the question
+maker and its checks, grading, mastery by concept, weak spots, examiner's
+report import, Discuss in Chat; all pointed at Items. The bar for the
+Progress, Plan, Today and setup views is read again from the Default
+environment before their mock-ups (this session could read the vendors
+and papers only through search excerpts).
+
+*Risks:* each database row is a canvas page, so the size of Items is
+measured in piece 1; a rule regenerating days must never overwrite a day
+he edited; a PDF's reading is credited to a paper only through the
+sources folder's mapping; ratings differ between tools and are mapped,
+not compared.
 
 **Settled in the same discussion:** videos are not used; hours per paper
 from the guide's length and Rising Fellow's guidance, corrected by his own
@@ -1067,7 +1062,10 @@ now"); notes in a canvas database; no log of work hours needed.
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
-XP; how the bars by paper generalize.
+XP; and, before piece 1 of the system plan, his yes on three of its
+choices: his conceptual database adopted as Items rather than copied;
+subject and campaign as two levels; a work row per stretch of work, not
+per review.
 
 ### AI chat: message times, model speed, dates on old chats
 
