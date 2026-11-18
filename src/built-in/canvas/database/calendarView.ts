@@ -10,7 +10,7 @@ import { readViewConfig } from './viewConfig.js';
 import { addDays, addMonths, dayOfValue, monthGrid, monthOf, monthTitle, todayKey, weekdayLabels, type DayKey } from './calendarDates.js';
 import { ROW_DRAG_TYPE, renderAddHere, type IViewDeps, type IViewState } from './viewShared.js';
 import { renderCellValue } from './cellRender.js';
-import { isComputedType } from '../properties/propertyTypes.js';
+import { isPersonEditable } from './keptColumns.js';
 
 /** The month each calendar view shows, for the session (not a saved setting). */
 const shownMonth = new Map<string, string>();
@@ -51,7 +51,7 @@ export function renderCalendarView(body: HTMLElement, state: IViewState, deps: I
     createBlock(root, 'div', { className: 'canvas-db-board-empty', text: 'A calendar needs a date property. Add one from the table view, or pick one under Calendar By in the view settings.' });
     return;
   }
-  const editable = !isComputedType(dateProp.type);
+  const editable = isPersonEditable(dateProp);
   const byDay = new Map<DayKey, IDatabaseRow[]>();
   const undated: IDatabaseRow[] = [];
   for (const r of state.rows) {

@@ -57,6 +57,7 @@ import {
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { registerHomeSource, type HomeSource } from '../services/homeSources.js';
 import { CanvasBlocksBridge, createCanvasApi, type CanvasApi } from './bridges/canvasBlocksBridge.js';
+import { createCanvasDatabasesApi } from './bridges/canvasDatabasesBridge.js';
 import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js'; import { callToolAsApp } from '../services/appConnections.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkCheck, type LinkCheckOptions, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
@@ -828,7 +829,7 @@ export function createToolApi(
       listWidgetTypes: () => dashboardBridge.listWidgetTypes(),
     }),
 
-    canvas: createCanvasApi(canvasBlocksBridge),
+    canvas: createCanvasApi(canvasBlocksBridge, createCanvasDatabasesApi(toolId, subscriptions)),
 
     tools: Object.freeze({
       onDidChange: (listener: () => void) => deps.toolRegistry.onDidChangeToolState(() => listener()),

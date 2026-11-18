@@ -53,11 +53,11 @@ export async function createRelationProperty(db: DatabaseDataService, databaseId
  * Store a relation cell, and keep the mirror cells true when the relation
  * is synced: pages newly linked gain this page, pages unlinked lose it.
  */
-export async function setRelationValue(db: DatabaseDataService, databaseId: string, pageId: string, prop: IDatabaseProperty, value: unknown): Promise<void> {
+export async function setRelationValue(db: DatabaseDataService, databaseId: string, pageId: string, prop: IDatabaseProperty, value: unknown, writer?: string): Promise<void> {
   const next = relationIds(value);
   const cfg = relationConfig(prop);
   const before = relationIds((await db.getRowValues(databaseId, pageId))[prop.id]);
-  await db.setCellValue(databaseId, pageId, prop.id, next);
+  await db.setCellValue(databaseId, pageId, prop.id, next, writer);
   if (!cfg.synced || !cfg.syncedWith || !cfg.databaseId) return;
   const added = next.filter((id) => !before.includes(id));
   const removed = before.filter((id) => !next.includes(id));

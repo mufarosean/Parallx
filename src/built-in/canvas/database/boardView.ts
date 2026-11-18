@@ -10,6 +10,7 @@ import type { IDatabaseProperty, IDatabaseRow } from './databaseTypes.js';
 import { boardDropValue, groupRows, type IRowGroup } from './databaseViewModel.js';
 import { readViewConfig } from './viewConfig.js';
 import { optionColor, pill } from './cellRender.js';
+import { isPersonEditable } from './keptColumns.js';
 import { ROW_DRAG_TYPE, noValueLabel, renderAddHere, renderCard, type IViewDeps, type IViewState } from './viewShared.js';
 
 const GROUP_DRAG_TYPE = 'text/parallx-db-group';
@@ -59,6 +60,8 @@ function renderLane(parent: HTMLElement, rows: readonly IDatabaseRow[], groupPro
   const groups = groupRows(rows, groupProp.id, optionOrder(groupProp)).filter((g) => !(state.view.hideEmptyGroups && g.rows.length === 0));
   const board = createBlock(parent, 'div', { className: 'canvas-db-board' });
   const multi = groupProp.type === 'tags';
+  // A column a tool keeps groups the board like any other, but a card is not moved between its values by hand.
+  const movable = isPersonEditable(groupProp);
   const moveTo = (row: IDatabaseRow, from: IRowGroup, to: IRowGroup | undefined): void => {
     if (!to) return;
     void deps.setCell(row.pageId, groupProp.id, boardDropValue(row.values[groupProp.id], from.key, to.key, multi));
@@ -75,11 +78,12 @@ function renderLane(parent: HTMLElement, rows: readonly IDatabaseRow[], groupPro
     for (const row of group.rows) {
       renderCard(list, row, state, deps, store, {
         omit: [groupProp.id],
-        draggable: true,
+        draggable: movable,
         dragData: { [GROUP_DRAG_TYPE]: group.key },
-        move: (step) => moveTo(row, group, groups[groups.indexOf(group) + step]),
+        move: movable ? (step) => moveTo(row, group, groups[groups.indexOf(group) + step]) : undefined,
       });
     }
+    if (!movable) continue;
     // Drop target: a card dropped here takes this column's value.
     store.add(addDisposableListener(colEl, 'dragover', (e) => { if (e.dataTransfer?.types.includes(ROW_DRAG_TYPE)) { e.preventDefault(); colEl.classList.add('canvas-db-board__col--over'); } }));
     store.add(addDisposableListener(colEl, 'dragleave', () => colEl.classList.remove('canvas-db-board__col--over')));

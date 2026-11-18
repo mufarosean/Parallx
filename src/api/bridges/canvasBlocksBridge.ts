@@ -16,6 +16,7 @@
 // survive activation order) + per-tool bridges cleaned up on deactivation.
 
 import { type IDisposable, toDisposable } from '../../platform/lifecycle.js';
+import type { CanvasDatabasesApi } from './canvasDatabasesBridge.js';
 
 // ─── Contract ────────────────────────────────────────────────────────────────
 
@@ -245,10 +246,13 @@ export interface CanvasApi {
    * from (`id` is `<toolId>.<name>`). The tab is there only while the tool runs.
    */
   registerCoverSource(source: CanvasCoverSource): IDisposable;
+  /** The door to canvas databases: make, read, write and hear them (canvasDatabasesBridge.ts). */
+  readonly databases: CanvasDatabasesApi;
 }
 
-export function createCanvasApi(bridge: CanvasBlocksBridge): CanvasApi {
+export function createCanvasApi(bridge: CanvasBlocksBridge, databases: CanvasDatabasesApi): CanvasApi {
   return Object.freeze({
+    databases,
     registerBlock: (registration: CanvasBlockRegistration) => bridge.registerBlock(registration),
     registerCoverSource: (source: CanvasCoverSource) => bridge.registerCoverSource(source),
   });

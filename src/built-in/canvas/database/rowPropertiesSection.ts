@@ -21,6 +21,8 @@ import type { DatabaseDataService } from './databaseDataService.js';
 import type { IDatabaseProperty } from './databaseTypes.js';
 import { applyFilter } from './databaseViewModel.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
+import { createReadOnlyEditor } from '../properties/propertyEditorsMore.js';
+import { keptByLabel } from './keptColumns.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { showPropertyPicker } from '../properties/propertyPicker.js';
@@ -187,6 +189,17 @@ export async function mountRowPropertiesSection(
 
   const createHomeRow = (home: IHome, prop: IDatabaseProperty): HTMLElement => {
     const { row, value } = buildRowShell(prop.name, prop.type, prop.name);
+    // A column a tool keeps (keptColumns.ts) is read here, never edited or
+    // cleared; the row says who keeps it. The column can still be deleted.
+    const kept = keptByLabel(prop);
+    if (kept) {
+      const shown = createReadOnlyEditor(asDefinition(prop), home.values[prop.id] ?? null);
+      shown.title = kept;
+      shown.setAttribute('aria-description', kept);
+      value.appendChild(shown);
+      row.appendChild(deleteDefinitionButton(home, prop));
+      return row;
+    }
     const editor = createPropertyEditor(asDefinition(prop), home.values[prop.id] ?? null, (newValue) => {
       db.setCellValue(home.databaseId, pageId, prop.id, newValue).catch((err) => {
         console.error(`[PropertyPanel] Failed to save property "${prop.name}":`, err);
@@ -210,7 +223,12 @@ export async function mountRowPropertiesSection(
     });
     row.appendChild(clearBtn);
 
-    // 🗑 — delete the property (column) from the home database, everywhere.
+    row.appendChild(deleteDefinitionButton(home, prop));
+    return row;
+  };
+
+  // 🗑 — delete the property (column) from the home database, everywhere.
+  const deleteDefinitionButton = (home: IHome, prop: IDatabaseProperty): HTMLElement => {
     const deleteDefinitionBtn = document.createElement('button');
     deleteDefinitionBtn.className = 'canvas-property-row__delete-definition';
     deleteDefinitionBtn.title = `Delete property "${prop.name}" from "${home.title}" everywhere`;
@@ -226,9 +244,7 @@ export async function mountRowPropertiesSection(
         if (ok) void db.deleteProperty(home.databaseId, prop.id);
       });
     });
-    row.appendChild(deleteDefinitionBtn);
-
-    return row;
+    return deleteDefinitionBtn;
   };
 
   /** The always-present Tags row when the page's schema has no tags yet:

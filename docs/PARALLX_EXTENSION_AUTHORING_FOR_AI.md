@@ -674,6 +674,101 @@ _disposables.push(api.home.registerSource({
 - Search is yours only for what is not recent; Home already filters the
   recent items by title, summary, kind and tag.
 
+### 4.17 `api.canvas.databases` — keep your record where the person can see it
+
+A canvas database is the person's own table: they open it, sort it, filter
+it, edit it, and build views on it. If your extension tracks things a person
+would want to look at or correct (questions answered, sessions logged, items
+collected), keep them in a canvas database instead of a private store: the
+visibility comes for free, and what they change in the table is what you
+read next. `api.database` (4.6) stays the place for data only your code
+reads.
+
+| Call | What it does |
+|---|---|
+| `list()` | `{ id, title }` of every database the person has. |
+| `get(databaseId)` | `{ id, title, pageId, parentPageId, columns }`, or `null`. `columns[0]` is always the title column (`type: 'title'`, named "Name"). |
+| `create({ title, parentPageId?, columns? })` | A database with exactly those columns after the title column. No starter Status column. |
+| `createPage({ title, parentPageId? })` | A plain page, to hold your databases. Returns `{ id }`. |
+| `ensureColumns(databaseId, columns)` | Adds the columns missing by name (case does not matter). Never changes or removes one that is there; a select, status or tags column only gains listed options it lacks. Does nothing when nothing is missing. |
+| `listRows(databaseId)` | `{ pageId, title, values }[]`, values by column **name**. A few queries however many rows. |
+| `addRow(databaseId, { title, values? })` | Adds a row; returns it. |
+| `updateRow(databaseId, pageId, { title?, values? })` | Changes only what is named (`null` clears a cell). One write, one change event. |
+| `removeRow(databaseId, pageId)` | The row's page goes to the Trash. |
+| `onDidChange(databaseId, listener)` | `{ kind: 'rows' \| 'cells' \| 'columns', pageId? }` for every change, whoever made it: the person in any view, the chat, another extension, you. |
+| `open(databaseId)` | Opens the database in the editor. |
+
+Column types: `text`, `number`, `checkbox`, `date` ("YYYY-MM-DD"),
+`datetime` ("YYYY-MM-DDTHH:mm", local), `select` and `status` (an option's
+name), `tags` (names), `url`, `email`, `phone`, `files`, `relation` (page
+ids of rows in `config.databaseId`), `unique_id`, and the ones the app
+computes: `created_time`, `last_edited_time`, `formula`
+(`config.expression`), `rollup`.
+
+```js
+const db = api.canvas.databases;
+
+// Once: a page, and a database under it.
+const page = await db.createPage({ title: 'Reading' });
+const log = await db.create({
+  title: 'Reading Log',
+  parentPageId: page.id,
+  columns: [
+    { name: 'Finished', type: 'date' },
+    { name: 'Kind', type: 'select', config: { options: ['Book', 'Paper'] } },
+    { name: 'Pages', type: 'number' },
+    { name: 'Times Opened', type: 'number', config: { computedBy: true } },  // yours: see below
+  ],
+});
+await context.workspaceState.update('reading.logId', log.id);   // remember the id, not the title
+
+// Every start, and whenever columns change: the person may have deleted one.
+await db.ensureColumns(log.id, COLUMNS);
+
+// Write by column name.
+const row = await db.addRow(log.id, { title: 'Meditations', values: { Kind: 'Book', Pages: 254 } });
+await db.updateRow(log.id, row.pageId, { values: { Finished: '2026-11-18', 'Times Opened': 3 } });
+
+// Read what is there now, including what the person typed into the table.
+const rows = await db.listRows(log.id);   // [{ pageId, title: 'Meditations', values: { Kind: 'Book', Pages: 254, … } }]
+
+// Follow their edits. Disposed for you when your extension is turned off.
+context.subscriptions.push(db.onDidChange(log.id, (e) => {
+  if (e.kind === 'columns') void db.ensureColumns(log.id, COLUMNS);
+  void refresh();
+}));
+```
+
+Rules:
+
+- **The database is the record.** Read it when you need it; do not keep a
+  copy that can disagree with what the person sees. Rows they add, retitle,
+  edit or delete are the truth.
+- **Use what is there.** Offer to use a database the person already has
+  (`list`, `get`, then `ensureColumns` for what is missing) before making a
+  new one. `ensureColumns` never changes a column that exists, so a column
+  of another type under your name is theirs: read it as it is.
+- **A column you keep** (`config: { computedBy: true }`) is one you work out
+  and the person should not type into: a count, a last-used date. Only your
+  extension writes it, through this API. The person sees it in every view;
+  no view, the row's page, nor the chat's tools can change it, its type is
+  fixed, and its cells say "Kept by" and your extension's name. With your
+  extension off it stays, read-only. They can still delete the column:
+  `ensureColumns` puts it back (empty), then write its values again. Keep
+  only what you compute; everything a person might correct stays theirs.
+- **Names are the contract.** Values are keyed by column name, matched
+  whatever the case. A name the database lacks is refused with the names it
+  has, and nothing is written. The person can rename a column: `get` it by
+  the id you stored if a name stops matching.
+- **Remember ids** (the database's, a row's `pageId`) in your own state;
+  titles change.
+- **Never throws when you start.** Every call rejects with "Canvas databases
+  are not available" while the canvas is not running; `onDidChange` set
+  before then starts hearing when it is. Guard for older shells:
+  `if (api.canvas?.databases) { … }`.
+- **Turned off, you leave nothing running** and nothing is taken away: the
+  page, the databases, rows and values stay the person's.
+
 ---
 
 ## 5. Patterns (copy verbatim)
@@ -1465,6 +1560,7 @@ api.icons.{getIcon, hasIcon, getAllIconIds, createIconHtml, getFileTypeIcon}
 api.tools.{getAll, getById, isEnabled, setEnabled, onDidChangeEnablement,
            installFromFile, uninstall, onDidInstallTool, onDidUninstallTool, onDidChangeTools}
 api.env.{appName, appVersion, toolPath, timeZone}
+api.canvas.databases.{list, get, create, createPage, ensureColumns, listRows, addRow, updateRow, removeRow, onDidChange, open}
 api.lm?.{getModels, sendChatRequest, registerProvider, onDidChangeModels, parseJson} // may be undefined
 api.chat?.{createChatParticipant, registerTool, registerDropHandler}                 // may be undefined
 api.mcp?.{invokeTool, listTools}                                                     // may be undefined

@@ -30,6 +30,9 @@ import { EMPTY_FILTER, asViewType } from './databaseTypes.js';
 import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
 import { coerceCellValue, missingOptions } from './cellValues.js';
 import { backfillUniqueIds, nextUniqueIds } from './uniqueIds.js';
+import { keptBy, keptRefusal, mayWrite } from './keptColumns.js';
+import { DEFAULT_STATUS_OPTIONS, ensureWorkspaceDatabase, findDatabaseByRole, reconcileSingleHome, type WorkspaceDatabaseRole } from './workspaceDatabases.js';
+export type { WorkspaceDatabaseRole } from './workspaceDatabases.js';
 
 export interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
@@ -64,25 +67,19 @@ function rowToProperty(r: Record<string, unknown>): IDatabaseProperty {
   };
 }
 
-/** Databases the app keeps for itself, found by role (not by title). */
-export type WorkspaceDatabaseRole = 'tags' | 'page-properties' | 'migrated-properties';
-const WORKSPACE_DATABASE_TITLES: Record<WorkspaceDatabaseRole, string> = {
-  'tags': 'Tags',
-  'page-properties': 'Page properties',
-  'migrated-properties': 'Migrated properties',
-};
+/** One change to a database, said once: what changed, and to which row when it is one row. */
+export interface IDatabaseChange {
+  readonly databaseId: string;
+  /** rows: added, removed, retitled. cells: values. columns: a property added, changed or deleted. */
+  readonly kind: 'rows' | 'cells' | 'columns';
+  readonly pageId?: string;
+}
 
 /** Placeholder for the page id of a row being created (see addRow). */
 const CELL_PAGE = Symbol('cell-page');
 
 /** Colors given to options created by typing a new name (PILL_COLORS minus default). */
 const NEW_OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const;
-
-const DEFAULT_STATUS_OPTIONS = [
-  { value: 'To do', color: 'gray' },
-  { value: 'In progress', color: 'blue' },
-  { value: 'Done', color: 'green' },
-];
 
 export class DatabaseDataService extends Disposable {
   private readonly _onDidChangeStructure = this._register(new Emitter<string>()); // databaseId
@@ -97,6 +94,18 @@ export class DatabaseDataService extends Disposable {
   /** A single page's cell value changed (page-scoped — used for reindexing). */
   readonly onDidChangeCell: Event<{ databaseId: string; pageId: string }> = this._onDidChangeCell.event;
 
+  private readonly _onDidChange = this._register(new Emitter<IDatabaseChange>());
+  /**
+   * Every change, once, with its kind: for listeners outside the editor (the
+   * tools' door, databaseDoor.ts). The three events above are what the views
+   * reload on; a cell write fires two of them, a view setting fires the
+   * structure one, so they cannot say what happened.
+   */
+  readonly onDidChange: Event<IDatabaseChange> = this._onDidChange.event;
+
+  /** Row pages this service is writing itself (its own event follows the write). */
+  private readonly _ownPageWrites = new Set<string>();
+
   /** Known database ids (kept fresh for cheap sync isDatabase checks). */
   private readonly _databaseIds = new Set<string>();
   private _idsLoaded = false;
@@ -110,6 +119,17 @@ export class DatabaseDataService extends Disposable {
     this._register(this._pages.onDidChangePage((e) => {
       if (e.kind === PageChangeKind.Deleted && !e.archived && this._databaseIds.has(e.pageId)) {
         void this._cleanupDatabaseRows(e.pageId);
+      }
+      // A row is a page, and a page is also changed from outside the table:
+      // retitled in its own editor, sent to the Trash from the sidebar.
+      if (this._ownPageWrites.has(e.pageId) || this._databaseIds.size === 0) return;
+      if (e.kind === PageChangeKind.Updated && e.page?.parentId && this._databaseIds.has(e.page.parentId)
+        && (!e.changedFields || e.changedFields.includes('title'))) {
+        this._onDidChange.fire({ databaseId: e.page.parentId, kind: 'rows', pageId: e.pageId });
+      } else if (e.kind === PageChangeKind.Deleted && !this._databaseIds.has(e.pageId)) {
+        void this.listDatabasesForPage(e.pageId).then((ids) => {
+          for (const databaseId of ids) this._onDidChange.fire({ databaseId, kind: 'rows', pageId: e.pageId });
+        }).catch(() => { /* the store is closing */ });
       }
     }));
   }
@@ -182,6 +202,7 @@ export class DatabaseDataService extends Disposable {
 
     this._databaseIds.add(page.id);
     this._onDidChangeStructure.fire(page.id);
+    this._onDidChange.fire({ databaseId: page.id, kind: 'columns' });
     return {
       id: page.id, title: page.title, icon: page.icon,
       description: null, isLocked: false,
@@ -237,6 +258,7 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeStructure.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'columns' });
     if (type === 'unique_id') await backfillUniqueIds(this, databaseId, id);
     return { id, databaseId, name, type, config, sortOrder };
   }
@@ -245,7 +267,17 @@ export class DatabaseDataService extends Disposable {
     databaseId: string,
     propertyId: string,
     patch: Partial<Pick<IDatabaseProperty, 'name' | 'type' | 'config' | 'sortOrder'>>,
+    writer?: string,
   ): Promise<void> {
+    // A column a tool keeps (keptColumns.ts) stays that tool's: nobody else
+    // changes its type, and a new config from anyone else keeps the mark.
+    if (patch.type !== undefined || patch.config !== undefined) {
+      const current = (await this.listProperties(databaseId)).find((p) => p.id === propertyId);
+      if (current && !mayWrite(current, writer)) {
+        if (patch.type !== undefined && patch.type !== current.type) throw new Error(keptRefusal(current).replace('sets it', 'changes its type'));
+        if (patch.config !== undefined) patch = { ...patch, config: { ...patch.config, computedBy: keptBy(current) } };
+      }
+    }
     const sets: string[] = []; const params: unknown[] = [];
     if (patch.name !== undefined) { sets.push('name = ?'); params.push(patch.name); }
     if (patch.type !== undefined) { sets.push('type = ?'); params.push(patch.type); }
@@ -260,6 +292,7 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeStructure.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'columns' });
   }
 
   /**
@@ -334,6 +367,8 @@ export class DatabaseDataService extends Disposable {
     if (txn.error) throw new Error(txn.error.message);
     this._onDidChangeStructure.fire(databaseId);
     this._onDidChangeRows.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'columns' });
+    if (ops.length > 1) this._onDidChange.fire({ databaseId, kind: 'cells' });
   }
 
   async deleteProperty(databaseId: string, propertyId: string): Promise<void> {
@@ -351,6 +386,7 @@ export class DatabaseDataService extends Disposable {
     ]);
     if (txn.error) throw new Error(txn.error.message);
     this._onDidChangeStructure.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'columns' });
   }
 
   // ── Views ──────────────────────────────────────────────────────────────────
@@ -506,12 +542,17 @@ export class DatabaseDataService extends Disposable {
    * removed again if that fails, so a failed add leaves no page behind
    * that is in the tree but not in the table.  One change event, after.
    */
-  async addRow(databaseId: string, title?: string, values: Record<string, unknown> = {}): Promise<IDatabaseRow> {
+  async addRow(databaseId: string, title?: string, values: Record<string, unknown> = {}, writer?: string): Promise<IDatabaseRow> {
     // Values are checked before anything is written; an ID column takes its next number.
     const cells: { ops: { type: 'run'; sql: string; params: unknown[] }[]; addedOptions: boolean; propertyId: string; value: unknown }[] = [];
-    values = { ...(await nextUniqueIds(this, databaseId, await this.listProperties(databaseId))), ...values };
+    const props = await this.listProperties(databaseId);
+    values = { ...(await nextUniqueIds(this, databaseId, props)), ...values };
     for (const [propertyId, value] of Object.entries(values)) {
-      cells.push(await this._cellWrite(databaseId, '', propertyId, value));
+      const prop = props.find((p) => p.id === propertyId);
+      // A column a tool keeps is not seeded by anyone else: a row the person
+      // adds in a view filtered on it, or from a template, starts without it.
+      if (prop && !mayWrite(prop, writer)) continue;
+      cells.push(await this._cellWrite(databaseId, '', propertyId, value, writer, prop));
     }
     const page = await this._pages.createPage(databaseId, title || 'Untitled');
     try {
@@ -529,8 +570,9 @@ export class DatabaseDataService extends Disposable {
       }
       const res = await this._db.runTransaction(ops);
       if (res.error) throw new Error(res.error.message);
-      if (cells.some((c) => c.addedOptions)) this._onDidChangeStructure.fire(databaseId);
+      if (cells.some((c) => c.addedOptions)) { this._onDidChangeStructure.fire(databaseId); this._onDidChange.fire({ databaseId, kind: 'columns' }); }
       this._onDidChangeRows.fire(databaseId);
+      this._onDidChange.fire({ databaseId, kind: 'rows', pageId: page.id });
       return {
         pageId: page.id, title: page.title, icon: page.icon, sortOrder,
         values: Object.fromEntries(cells.map((c) => [c.propertyId, c.value])),
@@ -570,6 +612,7 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeRows.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'rows', pageId });
   }
 
   /** The page's HOME database (single-home invariant), or null. */
@@ -584,73 +627,8 @@ export class DatabaseDataService extends Disposable {
     return t.row ? (t.row.id as string) : null;
   }
 
-  /**
-   * Collapse any multi-membership left by earlier versions into the
-   * single-home model: the page's home is its first NON-"Tags" membership
-   * (richer schema) — else the first membership. Every other membership's
-   * values are MERGED into the home (same-named columns created as needed,
-   * values copied when the home's cell is empty), then dropped. Idempotent and
-   * cheap (no-op when no page has more than one membership).
-   */
-  async reconcileSingleHome(): Promise<number> {
-    const multi = await this._db.all(
-      'SELECT page_id FROM database_pages GROUP BY page_id HAVING COUNT(*) > 1',
-    );
-    const pageIds = (multi.rows ?? []).map((r) => r.page_id as string);
-    if (pageIds.length === 0) return 0;
-    // The workspace Tags database, also when it predates roles.
-    const tagsDb = (await this.findDatabaseByRole('tags')) ?? (await this._adoptableForRole('tags'));
-
-    for (const pageId of pageIds) {
-      const memberships = await this._db.all(
-        'SELECT database_id FROM database_pages WHERE page_id = ? ORDER BY created_at',
-        [pageId],
-      );
-      const rows = memberships.rows ?? [];
-      if (rows.length <= 1) continue;
-      // The workspace Tags database is home only when nothing else is.
-      const home = (rows.find((r) => r.database_id !== tagsDb) ?? rows[0]).database_id as string;
-      const homeProps = await this.listProperties(home);
-      const homeValues = await this.getRowValues(home, pageId);
-
-      for (const m of rows) {
-        const otherId = m.database_id as string;
-        if (otherId === home) continue;
-        const otherProps = await this.listProperties(otherId);
-        const otherValues = await this.getRowValues(otherId, pageId);
-        for (const prop of otherProps) {
-          const value = otherValues[prop.id];
-          if (value === null || value === undefined) continue;
-          let target = homeProps.find((p) => p.name.toLowerCase() === prop.name.toLowerCase());
-          if (!target) {
-            target = await this.addProperty(home, prop.name, prop.type, prop.config);
-            homeProps.push(target);
-          }
-          const existing = homeValues[target.id];
-          const empty = existing === null || existing === undefined || existing === '' || (Array.isArray(existing) && existing.length === 0);
-          if (!empty) continue;
-          try {
-            await this.setCellValue(home, pageId, target.id, value);
-          } catch {
-            // The home's column of that name has another type: the value
-            // keeps its own column rather than being dropped with the
-            // membership below.
-            const own = await this.addProperty(home, `${prop.name} (${prop.type})`, prop.type, prop.config);
-            homeProps.push(own);
-            await this.setCellValue(home, pageId, own.id, value);
-          }
-        }
-        // Drop the extra membership + its cells (values merged above).
-        await this._db.runTransaction([
-          { type: 'run', sql: 'DELETE FROM page_property_values WHERE page_id = ? AND database_id = ?', params: [pageId, otherId] },
-          { type: 'run', sql: 'DELETE FROM database_pages WHERE database_id = ? AND page_id = ?', params: [otherId, pageId] },
-        ]);
-        this._onDidChangeRows.fire(otherId);
-      }
-      this._onDidChangeRows.fire(home);
-    }
-    return pageIds.length;
-  }
+  /** Collapse multi-membership left by earlier versions into one home per page (workspaceDatabases.ts). */
+  reconcileSingleHome(): Promise<number> { return reconcileSingleHome(this); }
 
   /** Remove a row: drop membership + its cell values, and archive the page (trash). */
   async removeRow(databaseId: string, pageId: string): Promise<void> {
@@ -661,6 +639,7 @@ export class DatabaseDataService extends Disposable {
     if (txn.error) throw new Error(txn.error.message);
     try { await this._pages.archivePage(pageId); } catch { /* membership already gone; page archive is best-effort */ }
     this._onDidChangeRows.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'rows', pageId });
   }
 
   /** Upsert one cell. Values are stored JSON-encoded. */
@@ -670,28 +649,70 @@ export class DatabaseDataService extends Disposable {
    * select or tag name that is not an option yet becomes one, so it gets a
    * color and a board column like any other.
    */
-  async setCellValue(databaseId: string, pageId: string, propertyId: string, value: unknown): Promise<void> {
-    const { ops, addedOptions } = await this._cellWrite(databaseId, pageId, propertyId, value);
+  async setCellValue(databaseId: string, pageId: string, propertyId: string, value: unknown, writer?: string): Promise<void> {
+    const { ops, addedOptions } = await this._cellWrite(databaseId, pageId, propertyId, value, writer);
     const res = await this._db.runTransaction(ops);
     if (res.error) throw new Error(res.error.message);
-    if (addedOptions) this._onDidChangeStructure.fire(databaseId);
+    if (addedOptions) { this._onDidChangeStructure.fire(databaseId); this._onDidChange.fire({ databaseId, kind: 'columns' }); }
     this._onDidChangeRows.fire(databaseId);
     this._onDidChangeCell.fire({ databaseId, pageId });
+    this._onDidChange.fire({ databaseId, kind: 'cells', pageId });
+  }
+
+  /**
+   * Change one row in one go: its title and any number of cells (by property
+   * id), the cells in a single transaction, and one change event for all of
+   * it. Every value is checked before anything is written.
+   */
+  async updateRow(databaseId: string, pageId: string, patch: { title?: string; values?: Readonly<Record<string, unknown>> }, writer?: string): Promise<void> {
+    const member = await this._db.get('SELECT 1 AS n FROM database_pages WHERE database_id = ? AND page_id = ?', [databaseId, pageId]);
+    if (member.error) throw new Error(member.error.message);
+    if (!member.row) throw new Error(`Page ${pageId} is not a row of this database.`);
+    const entries = Object.entries(patch.values ?? {});
+    const props = entries.length > 0 ? await this.listProperties(databaseId) : [];
+    const ops: { type: 'run'; sql: string; params: unknown[] }[] = [];
+    let addedOptions = false;
+    for (const [propertyId, value] of entries) {
+      const cell = await this._cellWrite(databaseId, pageId, propertyId, value, writer, props.find((p) => p.id === propertyId));
+      ops.push(...cell.ops);
+      addedOptions = addedOptions || cell.addedOptions;
+    }
+    const retitle = patch.title !== undefined;
+    if (retitle) {
+      this._ownPageWrites.add(pageId);
+      try { await this._pages.updatePage(pageId, { title: patch.title }); } finally { this._ownPageWrites.delete(pageId); }
+    }
+    if (ops.length > 0) {
+      const res = await this._db.runTransaction(ops);
+      if (res.error) throw new Error(res.error.message);
+    }
+    if (!retitle && ops.length === 0) return;
+    if (addedOptions) { this._onDidChangeStructure.fire(databaseId); this._onDidChange.fire({ databaseId, kind: 'columns' }); }
+    this._onDidChangeRows.fire(databaseId);
+    if (ops.length > 0) this._onDidChangeCell.fire({ databaseId, pageId });
+    this._onDidChange.fire({ databaseId, kind: retitle ? 'rows' : 'cells', pageId });
   }
 
   /** The writes that store one cell (and any new select/tag options), after
    *  checking the value against the property's type.  `pageId` '' leaves a
    *  CELL_PAGE placeholder for a row that does not exist yet. */
-  private async _cellWrite(databaseId: string, pageId: string, propertyId: string, value: unknown): Promise<{
+  private async _cellWrite(databaseId: string, pageId: string, propertyId: string, value: unknown, writer?: string, known?: IDatabaseProperty): Promise<{
     ops: { type: 'run'; sql: string; params: unknown[] }[]; addedOptions: boolean; propertyId: string; value: unknown;
   }> {
-    const propRes = await this._db.get(
-      'SELECT * FROM database_properties WHERE id = ? AND database_id = ?',
-      [propertyId, databaseId],
-    );
-    if (propRes.error) throw new Error(propRes.error.message);
-    if (!propRes.row) throw new Error(`Property "${propertyId}" is not in this database.`);
-    const prop = rowToProperty(propRes.row);
+    let prop = known;
+    if (!prop) {
+      const propRes = await this._db.get(
+        'SELECT * FROM database_properties WHERE id = ? AND database_id = ?',
+        [propertyId, databaseId],
+      );
+      if (propRes.error) throw new Error(propRes.error.message);
+      if (!propRes.row) throw new Error(`Property "${propertyId}" is not in this database.`);
+      prop = rowToProperty(propRes.row);
+    }
+    // The one gate for a column a tool keeps: every writer comes through
+    // here (the views, the row's page, the commands, the chat's tools), and
+    // only the keeping tool passes.
+    if (!mayWrite(prop, writer)) throw new Error(keptRefusal(prop));
     const coerced = coerceCellValue(prop.type, value);
     if (!coerced.ok) throw new Error(`"${prop.name}": ${coerced.reason}.`);
 
@@ -719,82 +740,23 @@ export class DatabaseDataService extends Disposable {
 
   /** Rename a row (delegates to the page title — cards/sidebar stay in sync). */
   async renameRow(databaseId: string, pageId: string, title: string): Promise<void> {
-    await this._pages.updatePage(pageId, { title });
+    this._ownPageWrites.add(pageId);
+    try { await this._pages.updatePage(pageId, { title }); } finally { this._ownPageWrites.delete(pageId); }
     this._onDidChangeRows.fire(databaseId);
+    this._onDidChange.fire({ databaseId, kind: 'rows', pageId });
   }
 
   /** The live database that holds a workspace role, if any. */
-  async findDatabaseByRole(role: WorkspaceDatabaseRole): Promise<string | null> {
-    const res = await this._db.get(
-      'SELECT d.id FROM databases d JOIN pages p ON p.id = d.id WHERE d.role = ? AND p.is_archived = 0',
-      [role],
-    );
-    return res.row ? (res.row.id as string) : null;
-  }
-
-  /**
-   * A database made before roles existed that can take `role`: the oldest
-   * live one with the role's title that the app made, not the user.  The
-   * user's own databases start with the default Status column; the app's
-   * never had one (and Tags has its Tags column).
-   */
-  private async _adoptableForRole(role: WorkspaceDatabaseRole): Promise<string | null> {
-    const res = await this._db.all(
-      `SELECT d.id FROM databases d JOIN pages p ON p.id = d.id
-        WHERE p.title = ? AND p.is_archived = 0 AND d.role IS NULL ORDER BY d.created_at`,
-      [WORKSPACE_DATABASE_TITLES[role]],
-    );
-    for (const row of res.rows ?? []) {
-      const id = row.id as string;
-      const props = await this.listProperties(id);
-      const seededStatus = props.some((p) => p.name === 'Status' && p.type === 'select'
-        && JSON.stringify(((p.config['options'] as { value: string }[] | undefined) ?? []).map((o) => o.value))
-          === JSON.stringify(DEFAULT_STATUS_OPTIONS.map((o) => o.value)));
-      if (seededStatus) continue;
-      if (role === 'tags' && !props.some((p) => p.type === 'tags' && p.name.toLowerCase() === 'tags')) continue;
-      return id;
-    }
-    return null;
-  }
-
-  /**
-   * Ensure a well-known workspace database exists (created lazily, no Status
-   * seed), optionally with one seeded property. Returns the database id and —
-   * when a seed property name is given — that property's id.
-   *
-   * Backs the always-present property panel: the 'Tags' database (every page
-   * can be tagged; tagging joins the page to it) and the 'Page properties'
-   * bucket ('+ Add property' on a page that's in no other database).
-   */
-  async ensureWorkspaceDatabase(
-    role: WorkspaceDatabaseRole,
-    seedProperty?: { name: string; type: PropertyType; config?: Record<string, unknown> },
-  ): Promise<{ databaseId: string; propertyId?: string }> {
-    let databaseId = await this.findDatabaseByRole(role);
-    if (!databaseId) {
-      // One in the Trash gives up the role: tagging must not join a page to a
-      // database nobody can see.  Restoring it brings it back as a database.
-      await this._db.run(
-        'UPDATE databases SET role = NULL WHERE role = ? AND id IN (SELECT id FROM pages WHERE is_archived = 1)',
-        [role],
-      );
-      databaseId = await this._adoptableForRole(role)
-        ?? (await this.createDatabase({ title: WORKSPACE_DATABASE_TITLES[role], seedDefaults: false })).id;
-      const res = await this._db.run('UPDATE databases SET role = ? WHERE id = ?', [role, databaseId]);
-      if (res.error) throw new Error(res.error.message);
-    }
-    if (!seedProperty) return { databaseId };
-    const props = await this.listProperties(databaseId);
-    const existing = props.find((p) => p.name.toLowerCase() === seedProperty.name.toLowerCase());
-    if (existing) return { databaseId, propertyId: existing.id };
-    const created = await this.addProperty(databaseId, seedProperty.name, seedProperty.type, seedProperty.config ?? {});
-    return { databaseId, propertyId: created.id };
+  findDatabaseByRole(role: WorkspaceDatabaseRole): Promise<string | null> { return findDatabaseByRole(this, role); }
+  /** Ensure a well-known workspace database exists, optionally with one seeded property (workspaceDatabases.ts). */
+  ensureWorkspaceDatabase(role: WorkspaceDatabaseRole, seedProperty?: { name: string; type: PropertyType; config?: Record<string, unknown> }): Promise<{ databaseId: string; propertyId?: string }> {
+    return ensureWorkspaceDatabase(this, role, seedProperty);
   }
 
   /** Notify listeners that a database's rows/cells changed via an external
    *  writer (e.g. the canvas_set_page_property tool's raw upsert) so open
    *  database editors and row sections refresh. */
-  notifyRowsChanged(databaseId: string): void { this._onDidChangeRows.fire(databaseId); }
+  notifyRowsChanged(databaseId: string): void { this._onDidChangeRows.fire(databaseId); this._onDidChange.fire({ databaseId, kind: 'cells' }); }
   notifyStructureChanged(databaseId: string): void { this._onDidChangeStructure.fire(databaseId); }
   /** The SQL bridge, for the modules that extend this service (databaseMeta.ts and the like). */
   get bridge(): DatabaseBridge { return this._db; }

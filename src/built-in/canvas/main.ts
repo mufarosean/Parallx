@@ -31,6 +31,7 @@ import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema
 import { CanvasDataService } from './canvasDataService.js';
 import { ICanvasDataService, PageChangeKind } from './canvasTypes.js';
 import { getContributedBlock } from '../../api/bridges/canvasBlocksBridge.js';
+import { openDatabaseDoor } from './database/databaseDoor.js';
 import { toolBlockContent } from './extensions/toolBlockNode.js';
 import type { IPageSummary, IPageSummaryTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
@@ -91,6 +92,7 @@ interface ParallxApi {
     register(key: string, commandId: string, when?: string): IDisposable;
   };
   links: LinksApi;
+  tools?: { getById(id: string): { readonly name: string } | undefined };
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
@@ -339,11 +341,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // Created before the AI tools registration so the database tools get a live
   // service reference.
   _databaseService = new DatabaseDataService(_dataService);
-  context.subscriptions.push(_databaseService);
+  context.subscriptions.push(_databaseService, openDatabaseDoor(_databaseService, _dataService, openPageInEditor, (toolId) => api.tools?.getById(toolId)?.name)); // api.canvas.databases: the door other tools have to databases, open while the canvas runs
   if (api.services.has(IDatabaseService)) {
-    _databaseService.attachDatabase(
-      api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge(),
-    );
+    _databaseService.attachDatabase(api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService).asBridge());
   }
   void _databaseService.ensureIdsLoaded();
 

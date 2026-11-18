@@ -12,11 +12,13 @@ import type { DatabaseDataService } from './databaseDataService.js';
 import type { IDatabaseProperty } from './databaseTypes.js';
 import { coerceCellValue } from './cellValues.js';
 import { PILL_COLORS, valueText } from './cellRender.js';
+import { keptBy } from './keptColumns.js';
 
 /** The types a column can be changed between: the plain ones, whose values are text, numbers, dates or option names. */
 export const RETYPE_TYPES: readonly PropertyType[] = ['text', 'number', 'select', 'tags', 'status', 'date', 'datetime', 'checkbox', 'url', 'email', 'phone'];
 
-export function canRetype(prop: IDatabaseProperty): boolean { return RETYPE_TYPES.includes(prop.type); }
+/** A plain column can change type; one a tool keeps (keptColumns.ts) stays the type its tool made it. */
+export function canRetype(prop: IDatabaseProperty): boolean { return RETYPE_TYPES.includes(prop.type) && keptBy(prop) === null; }
 
 interface IOption { value: string; color: string; group?: string }
 const optionsOf = (prop: IDatabaseProperty): IOption[] => ((prop.config as { options?: IOption[] }).options ?? []).map((o) => ({ ...o }));

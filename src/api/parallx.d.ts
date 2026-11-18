@@ -1669,6 +1669,124 @@ export namespace canvas {
     coverUrl(itemId: string): Promise<string | undefined>;
   }
   export function registerCoverSource(source: CoverSource): Disposable;
+
+  /**
+   * Canvas databases: the person's own tables. An extension that keeps its
+   * record in one gives them that record to see, sort, filter and edit, and
+   * reads back what they changed. Open to every extension.
+   *
+   * Every call returns a promise that rejects with
+   * "Canvas databases are not available" when the canvas is not running;
+   * asking for `databases` and calling `onDidChange` never throw.
+   */
+  export namespace databases {
+    /**
+     * A column. The first column of every database is its title column
+     * (`type: 'title'`, named "Name"): a row's title, not a stored cell.
+     */
+    interface Column {
+      readonly id: string;
+      readonly name: string;
+      /**
+       * 'title', or: text, number, checkbox, date, datetime, select, status,
+       * tags, url, email, phone, files, relation, unique_id, created_time,
+       * last_edited_time, formula, rollup.
+       */
+      readonly type: string;
+      /**
+       * Type settings. `options` ({ value, color }[]) on select, status and
+       * tags; `databaseId` on a relation; `expression` on a formula;
+       * `computedBy` (an extension id) on a column an extension keeps.
+       */
+      readonly config: Readonly<Record<string, unknown>>;
+    }
+    /** A column to make. */
+    interface ColumnSpec {
+      readonly name: string;
+      readonly type: string;
+      /**
+       * `options`: names (or { value, color }) a select, status or tags
+       * column must have.
+       *
+       * `computedBy: true`: this extension keeps the column. Only it writes
+       * the cells (through this API); the person sees them in every view but
+       * cannot edit them, the cell says "Kept by <your extension's name>",
+       * and the column cannot change type. Your own id is stored whatever
+       * you pass. With your extension off the column and its values stay,
+       * read-only. The person can delete the column: call `ensureColumns`
+       * when you start and when columns change to put it back.
+       */
+      readonly config?: Readonly<Record<string, unknown>>;
+    }
+    interface Database {
+      readonly id: string;
+      readonly title: string;
+      /** A database is a page: the same id. */
+      readonly pageId: string;
+      readonly parentPageId: string | null;
+      readonly columns: readonly Column[];
+    }
+    interface Row {
+      /** A row is a page: its id. */
+      readonly pageId: string;
+      readonly title: string;
+      /**
+       * Cell values by column NAME; an empty cell has no entry. number: a
+       * number. checkbox: boolean. date: "YYYY-MM-DD". datetime:
+       * "YYYY-MM-DDTHH:mm" (local). select, status: the option's name. tags:
+       * names[]. relation: page ids[]. created_time, last_edited_time,
+       * formula and rollup are read as what they compute.
+       */
+      readonly values: Readonly<Record<string, unknown>>;
+    }
+    interface Change {
+      /** rows: a row was added, removed or retitled. cells: values changed. columns: a column was added, changed or deleted. */
+      readonly kind: 'rows' | 'cells' | 'columns';
+      /** The row, when the change is to one row. */
+      readonly pageId?: string;
+    }
+
+    /** The person's databases (not ones in the Trash), by title. */
+    export function list(): Promise<readonly { readonly id: string; readonly title: string }[]>;
+    /** One database with its columns; null when there is none with that id. */
+    export function get(databaseId: string): Promise<Database | null>;
+    /**
+     * Make a database with exactly these columns after its title column (no
+     * starter Status column), at the top level or under `parentPageId`.
+     */
+    export function create(options: { title: string; parentPageId?: string | null; columns?: readonly ColumnSpec[] }): Promise<Database>;
+    /** Make a plain page (to hold databases), at the top level or under `parentPageId`. */
+    export function createPage(options: { title: string; parentPageId?: string | null }): Promise<{ readonly id: string }>;
+    /**
+     * Add the columns the database lacks, matched by name (case does not
+     * matter). A column that is there is never changed or removed, whatever
+     * its type; a select, status or tags column only gains the listed
+     * options it lacks. Returns every column. Changes nothing, and tells no
+     * listener, when nothing is missing.
+     */
+    export function ensureColumns(databaseId: string, columns: readonly ColumnSpec[]): Promise<readonly Column[]>;
+    /** Every row with its values, in the database's order. A few queries however many rows. */
+    export function listRows(databaseId: string): Promise<readonly Row[]>;
+    /** Add a row. `values` by column name; a name the database lacks is refused and nothing is added. */
+    export function addRow(databaseId: string, row: { title: string; values?: Readonly<Record<string, unknown>> }): Promise<Row>;
+    /**
+     * Change a row's title, cells, or both. Only the named cells change (null
+     * clears one). All of it is one write and one change event. A name the
+     * database lacks, or a value its column cannot take, is refused and
+     * nothing changes.
+     */
+    export function updateRow(databaseId: string, pageId: string, patch: { title?: string; values?: Readonly<Record<string, unknown>> }): Promise<void>;
+    /** Remove a row: its page goes to the Trash. */
+    export function removeRow(databaseId: string, pageId: string): Promise<void>;
+    /**
+     * Hear every change to one database, whoever made it: the person in any
+     * view, the chat, another extension, your own calls. Stops when disposed
+     * and when your extension is turned off.
+     */
+    export function onDidChange(databaseId: string, listener: (e: Change) => void): Disposable;
+    /** Open the database in the editor. */
+    export function open(databaseId: string): Promise<void>;
+  }
 }
 
 export namespace tools {

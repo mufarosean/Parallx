@@ -249,11 +249,11 @@ const GATE_RULES: Record<string, string[]> = {
   'properties/propertyTypeMeta.ts':        ['properties/propertyTypes'],  // the one list of property types
   'properties/propertyEditorsMore.ts':     ['properties/propertyTypes', 'properties/propertyEditors', 'database/cellRender', 'imageStore'],  // editors for the round-2 types (kit-built)
   'database/viewShared.ts':                ['database/databaseTypes', 'database/viewConfig', 'database/cellRender', 'database/boardCardKeys'],  // what every view shares: deps, the card
-  'database/boardView.ts':                 ['database/databaseTypes', 'database/databaseViewModel', 'database/viewConfig', 'database/cellRender', 'database/viewShared'],  // the board
+  'database/boardView.ts':                 ['database/databaseTypes', 'database/databaseViewModel', 'database/viewConfig', 'database/cellRender', 'database/viewShared', 'database/keptColumns'],  // the board
   'database/listView.ts':                  ['database/viewConfig', 'database/cellRender', 'database/viewShared'],  // the list
   'database/galleryView.ts':               ['database/viewConfig', 'database/viewShared'],  // the gallery
-  'database/calendarView.ts':              ['database/databaseTypes', 'database/viewConfig', 'database/calendarDates', 'database/viewShared', 'database/cellRender', 'properties/propertyTypes'],  // the calendar
-  'database/timelineView.ts':              ['database/databaseTypes', 'database/viewConfig', 'database/calendarDates', 'database/calendarView', 'database/viewShared', 'properties/propertyTypes'],  // the timeline
+  'database/calendarView.ts':              ['database/databaseTypes', 'database/viewConfig', 'database/calendarDates', 'database/viewShared', 'database/cellRender', 'properties/propertyTypes', 'database/keptColumns'],  // the calendar
+  'database/timelineView.ts':              ['database/databaseTypes', 'database/viewConfig', 'database/calendarDates', 'database/calendarView', 'database/viewShared', 'properties/propertyTypes', 'database/keptColumns'],  // the timeline
   'database/chartView.ts':                 ['database/viewConfig', 'database/chartData', 'database/viewShared'],  // the chart
   'database/chartData.ts':                 ['database/databaseTypes', 'database/viewConfig', 'database/databaseViewModel', 'database/cellValues', 'database/calendarDates'],  // what a chart draws (pure)
   'database/calendarDates.ts':             [],  // days for the calendar and timeline (pure)
@@ -264,10 +264,13 @@ const GATE_RULES: Record<string, string[]> = {
   'database/viewSettings.ts':              ['database/databaseDataService', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/databaseCsvActions', 'database/calendarView', 'database/chartData', 'properties/propertyTypes'],  // the view settings and calculations menus
   'database/formula.ts':                   [],  // the formula language (pure)
   'database/formulaDialog.ts':             ['database/databaseDataService', 'database/databaseTypes', 'database/formula', 'database/cellRender'],  // the formula dialog (kit-built)
-  'database/propertyRetype.ts':            ['database/databaseDataService', 'database/databaseTypes', 'database/cellValues', 'database/cellRender', 'properties/propertyTypes', 'properties/propertyTypeMeta'],  // Change Type: a column's values carried to another type
+  'database/propertyRetype.ts':            ['database/databaseDataService', 'database/databaseTypes', 'database/cellValues', 'database/cellRender', 'properties/propertyTypes', 'properties/propertyTypeMeta', 'database/keptColumns'],  // Change Type: a column's values carried to another type
   'database/templates.ts':                 ['database/databaseDataService', 'database/databaseMeta'],  // new-row templates
+  'database/keptColumns.ts':               ['properties/propertyTypes'],  // a column a tool keeps: who may edit it, what its cell says (pure)
+  'database/databaseDoor.ts':              ['database/databaseDataService', 'database/databaseTypes', 'database/cellRender', 'database/keptColumns', 'database/rowCompute', 'database/formula', 'database/relations', 'database/rollups', 'properties/propertyTypes', 'properties/propertyTypeMeta'],  // the canvas's side of api.canvas.databases
+  'database/workspaceDatabases.ts':        ['database/databaseDataService', 'properties/propertyTypes'],  // the databases the app keeps by role, and the one-home repair (split from the data service)
   'database/databaseCommands.ts':          [],  // the database editor's commands (no DOM, no imports)
-  'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues'],  // the table view
+  'database/tableView.ts':                 ['properties/propertyEditors', 'properties/propertyTypes', 'database/databaseTypes', 'database/viewConfig', 'database/calculations', 'database/cellRender', 'database/cellValues', 'database/keptColumns'],  // the table view
   'database/databaseCsvActions.ts':        ['database/databaseDataService', 'database/databaseTypes', 'database/databaseCsv', 'export/pageBundle', 'properties/propertyTypes'],  // Export as CSV… / Import CSV… (dialogs, commands)
 
   // ── Fonts ───────────────────────────────────────────────────────────────

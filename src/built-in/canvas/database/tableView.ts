@@ -16,7 +16,7 @@ import { onDragPress } from '../../../ui/touchDrag.js';
 import { registerKeyboardResize } from '../../../ui/keyboardResize.js';
 import { createTypeIconElement } from '../properties/propertyEditors.js';
 import type { PropertyType } from '../properties/propertyTypes.js';
-import { isComputedType } from '../properties/propertyTypes.js';
+import { isPersonEditable, keptByLabel } from './keptColumns.js';
 import type { IDatabaseProperty, IDatabaseRow, IDatabaseView } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
 import { MIN_COLUMN_WIDTH, columnWidth, frozenKeys, patchRecord, placeInOrder, readViewConfig, visibleProperties, type IViewConfig } from './viewConfig.js';
@@ -190,6 +190,14 @@ function tableEl(parent: HTMLElement, className: string, tag: 'table' | 'thead' 
 
 function renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow, deps: ITableViewDeps, store: DisposableStore): void {
   const value = row.values[prop.id];
+  // Computed by the app, or kept by a tool: shown, never edited here. A kept cell says who keeps it.
+  if (!isPersonEditable(prop)) {
+    const kept = keptByLabel(prop);
+    const shown = createBlock(td, 'div', { className: 'canvas-db-cell__value canvas-db-cell__value--computed', attrs: kept ? { title: kept } : {} });
+    renderCellValue(shown, prop, value);
+    if (kept) td.setAttribute('aria-description', kept);
+    return;
+  }
   if (prop.type === 'checkbox') {
     const checked = isChecked(value);
     const box = createIconButton(td, { id: null, icon: checked ? 'check-square' : 'square', title: checked ? 'Checked' : 'Unchecked', size: 'sm', command: 'database.setCell', args: [row.pageId, prop.id, !checked] });
@@ -199,7 +207,6 @@ function renderCell(td: HTMLElement, prop: IDatabaseProperty, row: IDatabaseRow,
   }
   const display = createBlock(td, 'div', { className: 'canvas-db-cell__value' });
   renderCellValue(display, prop, value);
-  if (isComputedType(prop.sourceType ?? prop.type)) { display.classList.add('canvas-db-cell__value--computed'); return; }
   if (deps.openOptionMenu && (prop.type === 'select' || prop.type === 'tags' || prop.type === 'status')) {
     store.add(addDisposableListener(display, 'contextmenu', (e) => {
       const pillEl = (e.target as HTMLElement).closest<HTMLElement>('.canvas-db-pill');

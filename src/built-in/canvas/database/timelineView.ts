@@ -12,7 +12,7 @@ import { readViewConfig } from './viewConfig.js';
 import { addDays, addMonths, dayOfValue, daysBetween, daysInMonth, firstOfMonth, monthOf, monthTitle, shortDay, todayKey, weekdayOf, type DayKey } from './calendarDates.js';
 import { calendarProperty, dateProperties } from './calendarView.js';
 import type { IViewDeps, IViewState } from './viewShared.js';
-import { isComputedType } from '../properties/propertyTypes.js';
+import { isPersonEditable } from './keptColumns.js';
 
 const DAY_PX = 34;
 const shownMonth = new Map<string, string>();
@@ -42,7 +42,7 @@ export function renderTimelineView(body: HTMLElement, state: IViewState, deps: I
     createBlock(root, 'div', { className: 'canvas-db-board-empty', text: 'A timeline needs a date property for its start, and another for its end. Add them from the table view, or pick them under Timeline By in the view settings.' });
     return;
   }
-  const editable = !isComputedType(startProp.type) && !state.locked;
+  const editable = isPersonEditable(startProp) && !state.locked;
   // The window: the month shown with a week either side.
   const first = addDays(firstOfMonth(month), -7);
   const total = daysInMonth(month) + 14;
@@ -105,7 +105,7 @@ export function renderTimelineView(body: HTMLElement, state: IViewState, deps: I
         };
         document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
       }));
-      if (endProp && !isComputedType(endProp.type)) {
+      if (endProp && isPersonEditable(endProp)) {
         const grip = createBlock(barEl, 'div', { className: 'canvas-db-tl__grip', attrs: { role: 'presentation' } });
         store.add(onDragPress(grip, (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -143,5 +143,5 @@ function keepTime(current: unknown, day: DayKey, prop: IDatabaseProperty): strin
 
 async function moveBar(row: IDatabaseRow, start: DayKey, end: DayKey, delta: number, startProp: IDatabaseProperty, endProp: IDatabaseProperty | null, deps: IViewDeps): Promise<void> {
   await deps.setCell(row.pageId, startProp.id, keepTime(row.values[startProp.id], addDays(start, delta), startProp));
-  if (endProp && !isComputedType(endProp.type) && dayOfValue(row.values[endProp.id])) await deps.setCell(row.pageId, endProp.id, keepTime(row.values[endProp.id], addDays(end, delta), endProp));
+  if (endProp && isPersonEditable(endProp) && dayOfValue(row.values[endProp.id])) await deps.setCell(row.pageId, endProp.id, keepTime(row.values[endProp.id], addDays(end, delta), endProp));
 }
