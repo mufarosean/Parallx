@@ -741,8 +741,10 @@ export namespace ui {
     readonly state: 'good' | 'middling' | 'poor' | 'rest';
     /** How many items are in this state; the part is as wide as its share. A part with nothing in it is not drawn. */
     readonly count: number;
-    /** The part's own name: its tooltip, and what a screen reader speaks when it is a button. */
+    /** The part's own name: what a screen reader speaks when it is a button, and its tooltip unless `title` gives a shorter one. */
     readonly label: string;
+    /** The tooltip, when the row it sits in already says whose bar it is. */
+    readonly title?: string;
     readonly command?: string;
     readonly args?: readonly unknown[];
     readonly onClick?: (e: MouseEvent) => void;

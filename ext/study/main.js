@@ -8165,10 +8165,11 @@ function injectStyles() {
 .st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
 .st-sb__none--unit { padding-left: var(--px-space-8); }
-/* A unit's thin bar (the kit's stacked bar) sits beside its "N of M": over the button, which stays the whole row to press. The counts share one width so the bars line up. */
+/* A unit's thin bar (the kit's stacked bar) runs under its name and its "N of M", from the name to the count, whatever the
+   sidebar's width: the name keeps the whole line. It lies over the foot of the button, which stays the whole row to press. */
 .st-sb__unit { position: relative; }
-.st-sb__unit--bar .st-sb__r { min-width: 10ch; text-align: right; margin-left: calc(48px + var(--px-space-2)); }
-.st-sb__unit > .px-stacked-bar { position: absolute; top: 50%; transform: translateY(-50%); right: calc(var(--px-sidebar-inset) + 10ch + var(--px-space-2)); width: 48px; font-size: var(--px-text-xs); pointer-events: none; }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit { height: calc(var(--px-control-h) + var(--px-space-2)); padding-bottom: var(--px-space-2); }
+.st-sb__unit > .px-stacked-bar { position: absolute; bottom: 5px; left: calc(var(--px-space-8) + 16px + var(--px-space-2)); right: var(--px-sidebar-inset); pointer-events: none; }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
@@ -8177,7 +8178,7 @@ function injectStyles() {
 /* The bars are the kit's (.px-stacked-bar); these rules only lay them out. One grid template for the head and
    every row, so every bar of a kind has the same length and the counts stand in one column. */
 .st-prog { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
-.st-prog__in { max-width: 68rem; margin: 0 auto; container-type: inline-size; }
+.st-prog__in { max-width: 68rem; margin: 0 auto; }
 .st-prog__body { display: flex; flex-direction: column; gap: var(--px-space-4); padding: 0 var(--px-space-6) var(--px-space-8); }
 .st-prog__top:empty, .st-prog__under:empty, .st-prog__bar[hidden] { display: none; }
 .st-prog__top { display: flex; flex-direction: column; gap: var(--px-space-3); }
@@ -8210,13 +8211,12 @@ function injectStyles() {
 .st-prog__under { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2) 0; border-top: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-prog__hint { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2); color: var(--px-text-faint); font-size: var(--px-text-xs); }
 .st-prog .px-empty { padding-top: var(--px-space-8); }
-/* A narrow tab: a unit's kinds stack under its name, each bar named in words where the column heads were. */
-@container (max-width: 40rem) {
-  .st-prog__row--head { display: none; }
-  .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-2); padding: var(--px-space-2); }
-  .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
-  .st-prog__cell--none { display: none; }
-}
+/* A tab too narrow for its columns (the more kinds, the sooner; 63-progress-view.js measures it): a unit's kinds
+   stack under its name, each bar named in words where the column heads were, so a bar always has room for its parts and its count. */
+.st-prog__list--stacked .st-prog__row--head { display: none; }
+.st-prog__list--stacked .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2); }
+.st-prog__list--stacked .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
+.st-prog__list--stacked .st-prog__cell--none { display: none; }
 
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
 .st-widget { display: flex; flex-direction: column; min-height: 0; }
@@ -8567,15 +8567,17 @@ function createSidebarView(container) {
     const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
       title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
     head.classList.add('st-sb__nav');
-    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? countText(s.answered, s.total) : '' });
+    // The units' bars take in the tools that report progress (its questions, and what each tool has for a unit), and so do the counts: the subject's is every kind's total.
+    const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
+    const whole = progress ? progress.totals.reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero()) : null;
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : !s.ready ? '' : whole ? stProgressCountText(whole) : countText(s.answered, s.total) });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
     if (s.folded) return;
-    // Each unit's thin bar is over every kind of work together (its questions, and what the tools that report progress have for it), with that "N of M".
-    const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
+    // Each unit's thin bar is over every kind of work together, with that "N of M".
     for (const u of s.units) {
       const all = progress ? (progress.rows.find((r) => r.rowId === u.rowId) || {}).all : null;
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
@@ -11826,9 +11828,12 @@ function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, 
   return ST_PROGRESS_STATES.map((state, i) => {
     const word = stProgressWord(words, state);
     const run = act ? act(state, i) : null;
+    const said = `${word.charAt(0).toUpperCase()}${word.slice(1)}: ${counts[i]}`;
     return {
       state, count: counts[i],
       label: stProgressPartName(owner, kind, word, counts[i], run ? action : ''),
+      // The row and the column already say whose bar it is: the tooltip is the state and its count.
+      title: run ? `${said}. ${action}` : said,
       ...(run ? { id: `${idBase}.${state}`, command: run.command, args: run.args } : {}),
     };
   });
@@ -11874,6 +11879,10 @@ async function renderProgress(host, route, ctx) {
 
   let bars = [];
   let drawn = '';
+  // Columns while each kind has room for a bar with its count (four parts a finger can press, and "N of M"); stacked under the name when not.
+  let kinds = 0;
+  const fit = () => { const w = list.clientWidth; list.classList.toggle('st-prog__list--stacked', w > 0 && w < 200 * (kinds + 1)); };
+  if (typeof ResizeObserver === 'function') { const seen = new ResizeObserver(fit); seen.observe(list); ctx.add({ dispose: () => seen.disconnect() }); }
   const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
   const stacked = (into, options) => { const b = ui.createStackedBar(into, options); bars.push(b); return b; };
   /** One kind's bar with its "N of M": the cell of a row, or a line of the totals. */
@@ -11928,6 +11937,8 @@ async function renderProgress(host, route, ctx) {
 
     // A row per unit: its name (the unit's setup, as in the sidebar), then one bar per kind.
     list.style.setProperty('--st-prog-kinds', String(view.kinds.length));
+    kinds = view.kinds.length;
+    fit();
     list.setAttribute('role', 'list');
     const head = ui.createBlock(list, 'div', { className: 'st-prog__row st-prog__row--head', attrs: { 'aria-hidden': 'true' } });
     ui.createBlock(head, 'span', { text: 'Unit' });

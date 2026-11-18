@@ -22,8 +22,10 @@ export interface IKitStackedBarPart extends IKitControlDeclaration {
   readonly state: StackedBarState;
   /** How many items are in this state; the part is as wide as its share. */
   readonly count: number;
-  /** The part's own name: its tooltip, and what a screen reader speaks when it is a button ("Mack, Questions, wrong: 2. Study these"). */
+  /** The part's own name: what a screen reader speaks when it is a button ("Mack, Questions, wrong: 2. Study these"), and its tooltip unless `title` gives a shorter one. */
   readonly label: string;
+  /** The tooltip, when the row it sits in already says whose bar it is ("Wrong: 2"). */
+  readonly title?: string;
   /** With a command or a handler the part is a button. */
   readonly command?: string;
   readonly args?: readonly unknown[];
@@ -67,7 +69,7 @@ export function createStackedBar(container: HTMLElement | null | undefined, opti
       el.className = 'px-stacked-bar__part';
       el.dataset.state = state;
       el.style.flexGrow = String(count);
-      el.title = part.label;
+      el.title = part.title ?? part.label;
       root.appendChild(el);
       if (!acts) continue;
       pressable = true;

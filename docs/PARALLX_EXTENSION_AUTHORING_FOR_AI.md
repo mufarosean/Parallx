@@ -1049,6 +1049,7 @@ api.ui.createSegmented(row, { ariaLabel: 'Sheet appearance', items: [{ value: 'l
 // Green good, yellow middling, red poor, the rest an outline; one order always; a part with nothing is not drawn.
 // `label` is the whole bar spoken in full. A part with `command` (or `onClick`) is a button with its own name;
 // without one the bar is one picture. `size: 'sm'` is a thin line for a list row, never pressable.
+// A part's tooltip is its `label`; give `title` a shorter one when the row already says whose bar it is ('Wrong: 2').
 api.ui.createStackedBar(row, { label: 'Mack, Questions: 12 right, 3 partly, 2 wrong, 5 not yet', parts: [
   { state: 'good', count: 12, label: 'Right: 12' },
   { state: 'middling', count: 3, label: 'Partly: 3' },

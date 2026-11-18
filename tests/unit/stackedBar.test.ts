@@ -69,6 +69,17 @@ describe('createStackedBar', () => {
     expect(clicked).toEqual(['poor']);
   });
 
+  it('a part\'s tooltip is its name, or the shorter title it is given; the spoken name stays whole', () => {
+    const bar = createStackedBar(host, { label: NAME, parts: [
+      { state: 'good', count: 3, label: 'Mack, Questions, right: 3. Study these', title: 'Right: 3. Study these', onClick: () => {} },
+      { state: 'rest', count: 2, label: 'Mack, Questions, not yet: 2', title: 'Not yet: 2' },
+      { state: 'poor', count: 1, label: 'Wrong: 1' },
+    ] });
+    const [good, poor, rest] = partsOf(bar.element);
+    expect([good.title, poor.title, rest.title]).toEqual(['Right: 3. Study these', 'Wrong: 1', 'Not yet: 2']);
+    expect(good.getAttribute('aria-label')).toBe('Mack, Questions, right: 3. Study these');
+  });
+
   it('a part can run a command, and with an id it is in the scene', async () => {
     const run = vi.fn(async () => undefined);
     installKitCommands({ executeCommand: run } as never);

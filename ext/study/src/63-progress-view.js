@@ -41,9 +41,12 @@ function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, 
   return ST_PROGRESS_STATES.map((state, i) => {
     const word = stProgressWord(words, state);
     const run = act ? act(state, i) : null;
+    const said = `${word.charAt(0).toUpperCase()}${word.slice(1)}: ${counts[i]}`;
     return {
       state, count: counts[i],
       label: stProgressPartName(owner, kind, word, counts[i], run ? action : ''),
+      // The row and the column already say whose bar it is: the tooltip is the state and its count.
+      title: run ? `${said}. ${action}` : said,
       ...(run ? { id: `${idBase}.${state}`, command: run.command, args: run.args } : {}),
     };
   });
@@ -89,6 +92,10 @@ async function renderProgress(host, route, ctx) {
 
   let bars = [];
   let drawn = '';
+  // Columns while each kind has room for a bar with its count (four parts a finger can press, and "N of M"); stacked under the name when not.
+  let kinds = 0;
+  const fit = () => { const w = list.clientWidth; list.classList.toggle('st-prog__list--stacked', w > 0 && w < 200 * (kinds + 1)); };
+  if (typeof ResizeObserver === 'function') { const seen = new ResizeObserver(fit); seen.observe(list); ctx.add({ dispose: () => seen.disconnect() }); }
   const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
   const stacked = (into, options) => { const b = ui.createStackedBar(into, options); bars.push(b); return b; };
   /** One kind's bar with its "N of M": the cell of a row, or a line of the totals. */
@@ -143,6 +150,8 @@ async function renderProgress(host, route, ctx) {
 
     // A row per unit: its name (the unit's setup, as in the sidebar), then one bar per kind.
     list.style.setProperty('--st-prog-kinds', String(view.kinds.length));
+    kinds = view.kinds.length;
+    fit();
     list.setAttribute('role', 'list');
     const head = ui.createBlock(list, 'div', { className: 'st-prog__row st-prog__row--head', attrs: { 'aria-hidden': 'true' } });
     ui.createBlock(head, 'span', { text: 'Unit' });

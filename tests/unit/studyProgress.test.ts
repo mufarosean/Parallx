@@ -475,7 +475,9 @@ describe('the Progress tab', () => {
     expect(h.calls.opened).toHaveLength(0);
     const plain = [...h.host.querySelectorAll<HTMLElement>('.px-stacked-bar')].find((b) => b.getAttribute('aria-label') === 'Clark, Reps: 1 easy, 2 medium, 3 hard, 0 not rated')!;
     expect(plain.getAttribute('role')).toBe('img');
-    expect([...plain.querySelectorAll<HTMLElement>('[data-state]')].map((p) => [p.tagName, p.tabIndex, p.title])).toEqual([['SPAN', -1, 'Clark, Reps, easy: 1'], ['SPAN', -1, 'Clark, Reps, medium: 2'], ['SPAN', -1, 'Clark, Reps, hard: 3']]);
+    expect([...plain.querySelectorAll<HTMLElement>('[data-state]')].map((p) => [p.tagName, p.tabIndex, p.title])).toEqual([['SPAN', -1, 'Easy: 1'], ['SPAN', -1, 'Medium: 2'], ['SPAN', -1, 'Hard: 3']]);
+    // A part that acts says so in its tooltip too; its spoken name stays whole.
+    expect([blank.title, blank.getAttribute('aria-label')]).toEqual(['Hard: 1. Open these', 'Mack, Drills, hard: 1. Open these']);
   });
 
   it('In Order and Weakest First: the rows move, and the choice is kept in the setting study.progressSort', async () => {
@@ -571,6 +573,8 @@ describe('the sidebar', () => {
     expect(barsIn(host)).toEqual(['Mack: 2 right, 1 partly, 1 wrong, 1 not yet', 'Clark: 3 right, 1 partly, 3 wrong, 5 not yet', 'Venter: 2 right, 0 partly, 0 wrong, 0 not yet']);
     const units = [...host.querySelectorAll<HTMLElement>('.st-sb__unit')];
     expect(units.map((u) => u.querySelector('.st-sb__r')!.textContent)).toEqual(['4 of 5', '7 of 12', '2 of 2']);
+    // The subject's own count is every kind's total: 7 of 9 questions and 6 of 10 problems.
+    expect(host.querySelector('.st-sb__subj .st-sb__r')!.textContent).toBe('13 of 19');
     // The bar is the kit's small one, beside the button, never inside it, and nothing in it can be pressed.
     expect(units.every((u) => u.querySelector(':scope > .px-stacked-bar.px-stacked-bar--sm') && !u.querySelector('button .px-stacked-bar') && !u.querySelector('.px-stacked-bar button'))).toBe(true);
     expect(units[0].querySelector('.px-stacked-bar')!.getAttribute('role')).toBe('img');

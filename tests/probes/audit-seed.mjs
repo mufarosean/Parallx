@@ -133,6 +133,31 @@ export async function seedAfterLaunch(page, pre) {
   const dbId = await page.evaluate(() => { const s = Array.from(document.querySelectorAll('[data-px-surface]')).find((e) => e.getClientRects().length && /database|canvas/.test(e.getAttribute('data-px-surface') || '') && e.getAttribute('data-px-instance')); return s ? (s.getAttribute('data-px-instance') || '').split(':').pop() || null : null; });
   log('database', dbId);
 
+  // A Study subject over a small bank with questions in every state (right, partly, wrong, not answered), for its Progress tab.
+  log('study subject', await page.evaluate(async () => {
+    const services = window.__parallx_workbench__._services;
+    const tools = services.get({ id: 'ILanguageModelToolsService' });
+    const cmds = services.get({ id: 'ICommandService' });
+    const make = tools.getTool('canvas_create_database'); const add = tools.getTool('canvas_add_database_row');
+    if (!make || !add || !cmds.hasCommand('study.newSubject')) return 'no canvas tools, or Study is off';
+    const token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
+    const made = String((await make.handler({ title: 'Seeded Questions', properties: [
+      { name: 'Model Answer', type: 'text' }, { name: 'Paper', type: 'select', options: ['Mack', 'Clark', 'Venter'] },
+      { name: 'Times Attempted', type: 'number' }, { name: 'Times Correct', type: 'number' }, { name: 'Last Result', type: 'select', options: ['Right', 'Partly', 'Wrong'] },
+    ] }, token))?.content || '');
+    const id = (/id: ([0-9a-f-]{20,})/i.exec(made) || [])[1];
+    if (!id) return `no database: ${made.slice(0, 120)}`;
+    const states = { Mack: ['Right', 'Right', 'Partly', 'Wrong', ''], Clark: ['Wrong', '', ''], Venter: ['Right', 'Right'] };
+    let n = 0;
+    for (const [paper, list] of Object.entries(states)) for (const result of list) {
+      n += 1;
+      await add.handler({ databaseId: id, title: `Seeded question ${n} on ${paper}?`, values: { 'Model Answer': `The answer to question ${n}.`, Paper: paper, ...(result ? { 'Times Attempted': 1, 'Times Correct': result === 'Right' ? 1 : 0, 'Last Result': result } : {}) } }, token);
+    }
+    await cmds.executeCommand('study.newSubject', { name: 'Seeded Subject', questions: id });
+    return 'ok';
+  }));
+  await page.waitForTimeout(1_500);
+
   // Planner events: one timed and one all-day, today.
   log('planner events', await page.evaluate(async () => {
     const svc = window.__parallx_workbench__._services.get({ id: 'ICommandService' });
@@ -223,6 +248,8 @@ export async function seedAfterLaunch(page, pre) {
     'seed:plan.beforeAfter': planTool('Values', async () => { await page.locator('[data-px-id="media-organizer.plan.toggleBeforeAfter"]').first().click().catch(() => {}); await page.waitForTimeout(800); }),
     'seed:plan.notes': planTool('Compose', async () => { await page.locator('[data-px-id="media-organizer.plan.toggleNotes"]').first().click().catch(() => {}); await page.waitForTimeout(800); }),
     'seed:plan.myPaints': planTool('Colour', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
+    // Study's Progress tab on the seeded subject: bars with parts to press.
+    'seed:study.progress': async () => { await run(page, 'study.openProgress', 'Seeded Subject'); },
     'seed:page': async () => { if (pageId) await run(page, 'canvas.openPage', pageId); },
     'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },
     'seed:conceptMap': async () => { if (typeof mapId === 'string' && !mapId.startsWith('failed')) await run(page, 'canvas.openPage', mapId); },

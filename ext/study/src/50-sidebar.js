@@ -306,15 +306,17 @@ function createSidebarView(container) {
     const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
       title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
     head.classList.add('st-sb__nav');
-    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? countText(s.answered, s.total) : '' });
+    // The units' bars take in the tools that report progress (its questions, and what each tool has for a unit), and so do the counts: the subject's is every kind's total.
+    const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
+    const whole = progress ? progress.totals.reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero()) : null;
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : !s.ready ? '' : whole ? stProgressCountText(whole) : countText(s.answered, s.total) });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
     if (s.folded) return;
-    // Each unit's thin bar is over every kind of work together (its questions, and what the tools that report progress have for it), with that "N of M".
-    const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
+    // Each unit's thin bar is over every kind of work together, with that "N of M".
     for (const u of s.units) {
       const all = progress ? (progress.rows.find((r) => r.rowId === u.rowId) || {}).all : null;
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });

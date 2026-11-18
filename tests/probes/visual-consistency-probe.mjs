@@ -78,6 +78,7 @@ const SCREENS = [
   { label: 'Media Organizer', run: ['media-organizer.openGrid'], home: true },
   { label: 'Creations', run: ['textGenerator.openHome'], home: true },
   { label: 'Study', run: ['study.open'], home: true },
+  { label: 'Study: Progress', run: ['study.openProgress', 'Seeded Subject'] },
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx-community.study'];
 
