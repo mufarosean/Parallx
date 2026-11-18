@@ -1067,8 +1067,9 @@ acceptance probe, before the build), `5a63c9a9` (the core door),
 - The core has a door to canvas databases for any tool,
   `api.canvas.databases` (list, get, create, a page, columns, rows,
   changes, open), and a column can be kept by a tool: only that tool
-  sets it, and the cell says "Kept by" and the tool's name. Authoring
-  guide §4.17.
+  sets its cells, and the cell says "Kept by" and the tool's name while
+  the app knows the tool. The person can still rename or delete such a
+  column. Authoring guide §4.17.
 - In Study, New Subject… makes a page with three databases: Units,
   Questions and Work Log. An existing questions database is used where
   it is, its columns matched in the same sheet; only columns it lacks
@@ -1094,7 +1095,8 @@ acceptance probe, before the build), `5a63c9a9` (the core door),
   skeptic tried to refute the bug findings and could not. Fixed, each
   with a test seen failing first: no write-back from a session over the
   marked set; a unit renamed in Units splitting; a unit named by a page
-  id; a renamed column getting an empty twin; a session finished just
+  id; a mapped column of an adopted database, renamed, getting an empty
+  twin; a session finished just
   before quitting never written; a database in the Trash read as empty
   and its questions made new on restore; "Kept by" shown to the mouse
   only; Study's setup sheet letting Tab out and losing focus on Escape.
@@ -1110,7 +1112,13 @@ acceptance probe, before the build), `5a63c9a9` (the core door),
   the next session does.
 - A unit renamed in Units while Study is off still splits (the rename is
   followed only while Study runs).
-- A question with a unit but no answer is counted and never asked.
+- A question with no answer is counted and never asked.
+- A question naming two units is counted in both and asked only in the
+  first.
+- A column renamed in a Questions database Study made, in Units or in
+  the Work Log comes back empty under its old name; in Units the renamed
+  one keeps its last numbers and is no longer updated.
+- Notes in New Subject… is stored and not yet used.
 - In a sidebar about 125 px wide, subject names are cut to a letter.
 - A session over two subjects puts its whole minutes on each subject's
   Work Log row.
@@ -1124,7 +1132,8 @@ acceptance probe, before the build), `5a63c9a9` (the core door),
 
 *Decided for him to overrule.* The kit dropdown's arrow is drawn in CSS
 (every dropdown); the column matching is inline in the one sheet;
-Sources folder is a list of workspace folders, not a typed path; a
+Sources folder is a list of the first workspace folder's folders (three
+levels, 300 at most), not a typed path; a
 unit shows a state icon and no bar (bars are piece 2); a Work Log row
 is written at the first answer and updated; a row with no Kind is asked
 as a short answer; after Create the subject's page opens.
@@ -1135,9 +1144,10 @@ its real columns; grading by his model; the full keyboard audit.
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
-XP. Piece 1 was built on three choices his "execute plan" was taken to
-approve: his conceptual database adopted rather than copied; subject and
-campaign as two levels; a work row per stretch of work, not per review.
+XP. Piece 1 was built on two choices his "execute plan" was taken to
+approve: his conceptual database adopted rather than copied, and a work
+row per session, not per review. It makes subjects only; campaign as a
+second level is not built.
 
 ### AI chat: message times, model speed, dates on old chats
 
