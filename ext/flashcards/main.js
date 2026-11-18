@@ -19,6 +19,8 @@
 //   - questions.getRegistry (core command) provider 'flashcards.essay-practice'
 //                           over the essay-practice cards, for any tool that
 //                           practises questions
+//   - progress.getRegistry  (core command) provider 'flashcards.cards': every tag
+//                           and deck by last rating, for any tool that shows progress
 //   - flashcards.addCards   command: ({ deckName, cards: [{ front, back, tags,
 //                           sourceUri, sourceLabel, sourcePage, sourceExcerpt,
 //                           recallMode, rubric, notes }] }) → { deckId, ids, count }
@@ -31,6 +33,7 @@
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
 import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js'; import { fcFitWide } from './fitWide.js';
+import { fcProgressProvider, fcWithRegistry } from './progress.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -11931,34 +11934,30 @@ async function fcListEssayPracticeQuestions(limit = 500) {
   return rows.map((r) => fcQuestionItemFromCard(rowToCard(r), r.deck_name));
 }
 
-/**
- * Offer the essay-practice cards to any tool that practises questions,
- * through the core's question-provider registry. Same retry shape as the
- * dispatcher above, should the command land after this extension.
- */
-function registerQuestionProvider(context, attempt = 0) {
-  _api.commands.executeCommand('questions.getRegistry')
-    .then((registry) => {
-      if (!_dbBridge) return;
-      if (!registry || typeof registry.register !== 'function') throw new Error('no registry');
-      context.subscriptions.push(registry.register({
-        id: 'flashcards.essay-practice',
-        displayName: 'Essay Practice Cards',
-        toolId: 'parallx-community.flashcards',
-        list: (opts) => fcListEssayPracticeQuestions(opts?.limit),
-        open: async (ref) => {
-          const card = await fcGetCard(parseInt(String(ref), 10)).catch(() => null);
-          if (!card) return false;
-          // The browse search is a LIKE over the front; wildcards stand for themselves.
-          const search = String(card.front || '').replace(/^#+/, '').replace(/[%_]/g, '_').slice(0, 60).trim();
-          await openFlashcards({ view: 'browse', deckId: card.deckId, search });
-          return true;
-        },
-      }));
-    })
-    .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerQuestionProvider(context, attempt + 1), 2000);
-    });
+/** Offer the essay-practice cards to any tool that practises questions, through the core's question-provider registry. */
+function registerQuestionProvider(context) {
+  fcWithRegistry(_api, 'questions.getRegistry', () => !!_dbBridge, (registry) => context.subscriptions.push(registry.register({
+    id: 'flashcards.essay-practice',
+    displayName: 'Essay Practice Cards',
+    toolId: 'parallx-community.flashcards',
+    list: (opts) => fcListEssayPracticeQuestions(opts?.limit),
+    open: async (ref) => {
+      const card = await fcGetCard(parseInt(String(ref), 10)).catch(() => null);
+      if (!card) return false;
+      // The browse search is a LIKE over the front; wildcards stand for themselves.
+      const search = String(card.front || '').replace(/^#+/, '').replace(/[%_]/g, '_').slice(0, 60).trim();
+      await openFlashcards({ view: 'browse', deckId: card.deckId, search });
+      return true;
+    },
+  })));
+}
+
+/** The cards by tag and by deck, for any tool that shows progress (progress.js); the provider leaves with the extension. */
+function registerProgressProvider(context) {
+  fcWithRegistry(_api, 'progress.getRegistry', () => !!_dbBridge, (registry) => context.subscriptions.push(registry.register(fcProgressProvider({
+    all: (sql) => db.all(sql),
+    onDidChange: (listener) => { _dataListeners.add(listener); return { dispose: () => { _dataListeners.delete(listener); } }; },
+  }))));
 }
 
 /**
@@ -12114,6 +12113,7 @@ export async function activate(api, context) {
   registerSelectionAction(context);
   registerPlannerDayLoads(context);
   registerQuestionProvider(context);
+  registerProgressProvider(context);
   syncReminderJob();
 
   if (api.workspace?.onDidChangeConfiguration) {
