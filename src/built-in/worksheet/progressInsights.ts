@@ -141,11 +141,24 @@ export function isWorkbookProblem(item: Pick<InsightItem, 'paper' | 'kind' | 'so
   return !!item.paper && item.kind !== 'essay' && (item.source === 'rf' || item.source === 'cas');
 }
 
+/**
+ * "Progress by paper": the workbook's problems counted per paper, in paper
+ * order. The dashboard draws its bars from this, and Worksheets' progress
+ * provider (progressProvider.ts) reports the same list to other tools.
+ */
+export function progressByPaper(items: readonly InsightItem[]): PaperProgress[] {
+  const byPaperMap = new Map<string, InsightItem[]>();
+  for (const it of items) {
+    if (!isWorkbookProblem(it)) continue;
+    if (!byPaperMap.has(it.paper)) byPaperMap.set(it.paper, []);
+    byPaperMap.get(it.paper)!.push(it);
+  }
+  return [...byPaperMap.entries()].map(([paper, list]) => paperProgress(paper, list)).sort((a, b) => a.paper.localeCompare(b.paper));
+}
+
 export function computeInsights(items: readonly InsightItem[], attempts: readonly InsightAttempt[], snapshots: readonly ProgressSnapshot[] = [], now: number = Date.now()): Insights {
   const problems = items.filter(isWorkbookProblem);
-  const byPaperMap = new Map<string, InsightItem[]>();
-  for (const it of problems) { if (!byPaperMap.has(it.paper)) byPaperMap.set(it.paper, []); byPaperMap.get(it.paper)!.push(it); }
-  const byPaper = [...byPaperMap.entries()].map(([paper, list]) => paperProgress(paper, list)).sort((a, b) => a.paper.localeCompare(b.paper));
+  const byPaper = progressByPaper(problems);
   const all = paperProgress('', problems);
 
   // Due: last rating Hard three or more days ago, Medium seven or more; oldest first.

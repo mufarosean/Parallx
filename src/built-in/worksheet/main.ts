@@ -34,6 +34,8 @@ import { registerWorksheetChatTools } from './worksheetChat.js';
 import { practiceBlock } from './worksheetPracticeBlock.js';
 import { worksheetQuestionProvider } from './questionProvider.js';
 import { registerQuestionProvider } from '../../services/questionProviders.js';
+import { worksheetProgressProvider } from './progressProvider.js';
+import { registerProgressProvider } from '../../services/progressProviders.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
 import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
 import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilder, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
@@ -252,6 +254,14 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     listRows: (limit) => listQuestionRows(limit),
     getItem: (id) => getItem(id),
     openItem: (id, title) => openWorksheet(`item:${id}`, title),
+  })));
+
+  // "Progress by paper", for any tool that shows progress (the core's generic
+  // progress-provider seam); it goes with the tool when Worksheets is off.
+  context.subscriptions.push(registerProgressProvider(worksheetProgressProvider({
+    listItems: () => listItems(),
+    onDidChange: (listener) => onWorksheetDataChanged(listener),
+    openQuiz: (ids, name) => { state.quizPreset = { ids, name }; openBuilder(); },
   })));
 
   // The AI's read surface: bank/progress + the user's actual sheet work.
