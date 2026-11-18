@@ -1100,6 +1100,8 @@ acceptance probe, before the build), `5a63c9a9` (the core door),
   before quitting never written; a database in the Trash read as empty
   and its questions made new on restore; "Kept by" shown to the mouse
   only; Study's setup sheet letting Tab out and losing focus on Escape.
+- After the fixes a verifier drove the eight fixed cases on the real app
+  and could not make one fail.
 - Grading in every run used a scripted stand-in for the model.
 
 *Found and left.*
@@ -1119,6 +1121,15 @@ acceptance probe, before the build), `5a63c9a9` (the core door),
   the Work Log comes back empty under its old name; in Units the renamed
   one keeps its last numbers and is no longer updated.
 - Notes in New Subject… is stored and not yet used.
+- When a Units row is deleted, its questions sit under no unit in the
+  sidebar (the subject's total still counts them) and their Unit cell
+  reads "Untitled".
+- After a unit is renamed, the old name stays as an unused option in a
+  select column.
+- The results screen of a marked-set session read "0 of 1 concepts
+  clean" straight after a right answer.
+- "Kept by" shown on a tap goes after half a second if a mouse pointer
+  is resting on another control.
 - In a sidebar about 125 px wide, subject names are cut to a letter.
 - A session over two subjects puts its whole minutes on each subject's
   Work Log row.
