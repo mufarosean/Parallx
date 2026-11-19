@@ -1,6 +1,6 @@
 // workspaceFiles.ts — every file of the open workspace, for a tool that lets a person choose among them
 //
-// A picker over "any file" (Study's Add Notes or Files…, anything a tool lets
+// A picker over "any file" (a tool's Add… picker, anything a tool lets
 // a person attach) needs the workspace's files with where each one is. The
 // folders the app never shows as a person's own are left out: machinery
 // (node_modules, .git, venv, caches: WATCH_IGNORE_SEGMENTS, the watcher's

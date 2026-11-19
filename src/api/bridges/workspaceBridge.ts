@@ -203,7 +203,7 @@ export class WorkspaceBridge {
       this.onDidFilesChange = fallbackEmitter.event;
     }
 
-    // Moves the app made (M-unit hub: a file attached somewhere follows its rename)
+    // Moves the app made (a file a tool attached somewhere follows its rename)
     const moveEmitter = new Emitter<readonly { readonly from: string; readonly to: string }[]>();
     this._disposables.push(moveEmitter);
     this.onDidMoveFiles = moveEmitter.event;
