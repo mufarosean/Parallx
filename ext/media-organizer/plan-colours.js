@@ -58,11 +58,12 @@ export async function moPlanPaintSet(io) { await loadShared(io); return { paints
 export async function moPlanStages(io) { await loadShared(io); return shared.stages.map((s) => ({ ...s })); }
 const saveStages = (io) => io.setSetting(STAGES_KEY, JSON.stringify(shared.stages)).catch(() => {});
 const saveSets = (io) => io.setSetting(SETS_KEY, JSON.stringify({ sets: shared.sets, current: shared.setName })).catch(() => {});
-// The paints changed: kept, the set in use follows them, and every open plan and colour study hears of it.
+// The paints changed: kept, and every open plan and colour study hears of it. A set is a copy taken when
+// it was saved: paints changed since are no longer that set until it is saved again.
 const savePaints = (io) => {
   shared.paintsSet = true;
   const set = shared.sets.find((x) => x.name === shared.setName);
-  if (set) { set.paints = shared.paints.map(cleanPaint); void saveSets(io); }
+  if (set && JSON.stringify(set.paints) !== JSON.stringify(shared.paints.map(cleanPaint))) { shared.setName = ''; void saveSets(io); }
   const done = io.setSetting(PAINTS_KEY, JSON.stringify({ paints: shared.paints, rules: shared.rules })).catch(() => {});
   if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('mo:paints-changed'));
   return done;

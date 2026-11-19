@@ -82,7 +82,8 @@ export const MO_COLOUR_CSS = `
 .mo-cs-nums span { flex: 1; text-align: center; }
 .mo-cs-note-line { align-items: flex-start; }
 .mo-cs-row-note { flex: 1; min-width: 0; line-height: var(--px-leading-base); }
-.mo-cs-why, .mo-cs-fix-advice { padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-divider); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
+.mo-cs-why { display: flex; flex-direction: column; align-items: flex-start; gap: var(--px-space-1); }
+.mo-cs-why-text, .mo-cs-fix-advice { padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-divider); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
 .mo-cs-compare, .mo-cs-tubes { display: flex; flex-direction: column; gap: var(--px-space-2); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .mo-cs-cmp { flex: none; width: 44px; height: 32px; border-radius: var(--px-radius-xs); box-shadow: var(--px-ring); }
 .mo-cs-cmp:nth-child(2) { margin-right: var(--px-space-3); }
