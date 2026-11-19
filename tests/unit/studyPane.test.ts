@@ -898,7 +898,7 @@ describe('Study end to end', () => {
     await boot();
     await waitFor(() => one("SELECT COUNT(*) AS n FROM st_banks WHERE kind = 'provider'").n === 1, 'the provider bank');
     expect(env.db.migratedFrom).toBe(join(STUDY_DIR, 'db', 'migrations'));
-    expect(one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name LIKE 'st_%'").n).toBe(13); // study_004 adds st_subjects, st_subject_marks, st_subject_logs
+    expect(one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name LIKE 'st_%'").n).toBe(14); // study_004 adds st_subjects, st_subject_marks, st_subject_logs; study_006 st_plans
     expect(one('PRAGMA foreign_keys').foreign_keys).toBe(1);
 
     expect([...env.views.keys()]).toEqual(['study.materials']);
