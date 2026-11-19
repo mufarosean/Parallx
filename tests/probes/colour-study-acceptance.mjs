@@ -42,6 +42,11 @@
 //   node scripts/build.mjs
 //   mkdir -p test-results && xvfb-run -a node tests/probes/colour-study-acceptance.mjs test-results/colour-study
 //
+// Corrected once after the build, by the verifier, for faults of the probe (the commit says each):
+// frames are taken with capturePage (page.screenshot hangs or is stale in a hidden window); the app's
+// input box is waited out before the next click; a paint is removed in My Paints only; 5.8 no longer
+// asks that a double-clicked cell also joins the palette (the owner asked only that it become the base).
+//
 // COLOUR_STUDY_EXT=<dir> runs against another copy of `ext/` (the code as it
 // was before the build, to see every check of new behaviour fail).
 
@@ -174,6 +179,7 @@ function dbTool(mode, dbPath, argPath) {
   return JSON.parse(r.stdout.trim().split(/\r?\n/).pop());
 }
 async function seed() {
+  await fs.rm(shots, { recursive: true, force: true }); // an earlier run's pictures are not this run's
   for (const d of [path.join(appRoot, 'data'), photos, shots]) await fs.mkdir(d, { recursive: true });
   await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.stringify({ path: workspace }));
   await fs.symlink(EXT, path.join(appRoot, 'ext'), 'junction');
@@ -233,11 +239,13 @@ function installHelpers() {
     mark() { p.seen = new WeakSet(clickables()); },
     fresh() { p.stash = clickables().filter((e) => !p.seen.has(e)); return p.stash.map((e, i) => ({ i, name: nameOf(e), role: e.getAttribute('role') || e.tagName.toLowerCase() })); },
     // A PNG (base64) as numbers: its mean colour, its centre, how many of twelve hue bands it has, and a coarse signature.
-    async decode(b64) {
+    async decode(b64, crop) {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-      const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
-      const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
+      const k = bmp.width / window.innerWidth; // the frame's pixels per CSS pixel
+      const q = crop ? { x: Math.round(crop.x * k), y: Math.round(crop.y * k), w: Math.max(1, Math.round(crop.width * k)), h: Math.max(1, Math.round(crop.height * k)) } : { x: 0, y: 0, w: bmp.width, h: bmp.height };
+      const c = document.createElement('canvas'); c.width = q.w; c.height = q.h;
+      const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, -q.x, -q.y);
       const d = ctx.getImageData(0, 0, c.width, c.height).data, n = c.width * c.height;
       const bands = new Array(12).fill(0), mean = [0, 0, 0];
       for (let i = 0; i < d.length; i += 4) {
@@ -309,22 +317,38 @@ const pressedOf = (id) => P((sel) => { const el = window.__csProbe.all(sel)[0]; 
 // The picture of a rectangle of the window, as numbers.
 async function pixels(b) {
   const clip = { x: Math.max(0, Math.floor(b.left)), y: Math.max(0, Math.floor(b.top)), width: Math.max(1, Math.floor(b.w)), height: Math.max(1, Math.floor(b.h)) };
-  let buf;
-  try { buf = await page.screenshot({ clip, timeout: 8_000 }); } catch {
-    const b64 = await app.evaluate(async ({ BrowserWindow }, rect) => { const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed()); return w ? (await w.webContents.capturePage(rect)).toPNG().toString('base64') : null; }, clip);
-    if (!b64) throw new Error('no frame could be captured');
-    buf = Buffer.from(b64, 'base64');
-  }
-  return P((b64) => window.__csProbe.decode(b64), buf.toString('base64'));
+  return P(({ b64, clip }) => window.__csProbe.decode(b64, clip), { b64: await frame(), clip });
+}
+// A frame of the window as the compositor has it now. capturePage, because in a hidden window
+// page.screenshot waits for a frame that may never come (it timed out, or gave the frame before).
+async function frame() {
+  // Two animation frames first: a hidden window draws about once a second, and capturePage gives the last frame drawn.
+  await P(() => new Promise((done) => { const t = setTimeout(done, 4_000); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); done(); })); }));
+  await wait(120);
+  const b64 = await app.evaluate(async ({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed()); if (!w) return null; const img = await w.webContents.capturePage(); return img.isEmpty() ? null : img.toPNG().toString('base64'); });
+  if (!b64) throw new Error('no frame could be captured');
+  return b64;
+}
+// The wheel as it is seen once it differs from `was` (a redraw may take a frame or two to reach the screen).
+async function wheelAfter(was) {
+  let px = await pixels(await wheelBox());
+  for (let i = 0; i < 6 && px.sig === was.sig; i++) { await wait(500); px = await pixels(await wheelBox()); }
+  return px;
+}
+// After a question is answered no dialog should be left. One that is still there 2 s later is noted (7.5a
+// reports it) and dismissed with Escape, so the checks after it are not judged through it.
+const leftOpen = [];
+async function modalGone(after) {
+  const gone = await until(() => P(() => window.__csProbe.all('[aria-modal="true"]').length === 0), 2_000);
+  if (gone) return;
+  const what = await P(() => window.__csProbe.all('[aria-modal="true"]').map((m) => `${m.getAttribute('aria-label') || m.className}${m.querySelector('input') ? ` (field: "${m.querySelector('input').value}")` : ''}`).join(' | '));
+  leftOpen.push(`${after}: ${what}`);
+  await page.keyboard.press('Escape'); await wait(400);
 }
 async function shot(name, sel) {
   if (sel) await boxOf(sel); // only a surface that is on screen is a screenshot of it
   const file = path.join(shots, `${name}.png`);
-  try { await page.screenshot({ path: file, timeout: 8_000 }); } catch {
-    const b64 = await app.evaluate(async ({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed()); return w ? (await w.webContents.capturePage()).toPNG().toString('base64') : null; });
-    if (!b64) throw new Error('no frame could be captured');
-    await fs.writeFile(file, Buffer.from(b64, 'base64'));
-  }
+  await fs.writeFile(file, Buffer.from(await frame(), 'base64'));
   return file;
 }
 const wheelBox = async () => {
@@ -376,33 +400,23 @@ async function openAtelierSidebar() {
   await page.waitForSelector('.mo-sidebar-item', { timeout: 10_000 });
   await wait(600);
 }
-// Removes a paint from the list through the page. ASSUMED: My Paints (`.myPaints`) shows the list, and a
-// paint leaves it by a control named "Remove <paint>" (as Painting Plans has it), or by the documented
-// `.tubeOn.<slug>` or `.dropPaint.<slug>`. The one that takes the paint out of state.paints is used.
+// Removes a paint from the list through the page: My Paints (`.myPaints`), then the control named
+// "Remove <paint>" (as Painting Plans has it). `.tubeOn.<slug>` is not used: it turns a tube off for one
+// sheet and leaves the shared list alone, so it is not a removal.
 async function removePaint(name) {
-  const tries = [
-    ['a control named Remove', () => byName(`^(remove|delete)\\b.*${esc(name)}`)],
-    ['tubeOn', () => boxOf(ctl(`tubeOn.${slug(name)}`), { anywhere: true }).catch(() => null)],
-    ['dropPaint', () => boxOf(ctl(`dropPaint.${slug(name)}`), { anywhere: true }).catch(() => null)],
-  ];
-  const attempt = async () => {
-    for (const [how, find] of tries) {
-      const b = await find();
-      if (!b) continue;
-      await page.mouse.click(b.x, b.y); await wait(600);
-      if ((await state()).paints.some((p) => flat(p) === flat(name))) { // a question before it goes
-        const ask = await byName('^(remove|delete|ok|yes)$');
-        if (ask) { await page.mouse.click(ask.x, ask.y); await wait(500); }
-      }
-      if (!(await state()).paints.some((p) => flat(p) === flat(name))) return how;
-    }
-    return null;
-  };
-  let how = await attempt();
-  if (!how) { await clickCtl('myPaints'); await wait(600); how = await attempt(); }
-  if (!how) throw new Error(`nothing on the page took ${name} out of the paint list (My Paints, Remove ${name}, tubeOn, dropPaint)`);
+  const find = () => byName(`^(remove|delete)\\b.*${esc(name)}`);
+  let b = await find();
+  if (!b) { await clickCtl('myPaints'); await wait(700); b = await find(); }
+  if (!b) throw new Error(`My Paints has no control named Remove ${name}`);
+  await page.mouse.click(b.x, b.y); await wait(600);
+  if ((await state()).paints.some((p) => flat(p) === flat(name))) { // a question before it goes
+    const ask = await byName('^(remove|delete|ok|yes)$');
+    if (ask) { await page.mouse.click(ask.x, ask.y); await wait(500); }
+  }
+  await modalGone(`after Remove ${name}`);
+  if ((await state()).paints.some((p) => flat(p) === flat(name))) throw new Error(`"${b.name}" did not take ${name} out of state.paints`);
   await wait(500);
-  return how;
+  return b.name;
 }
 // Saves the paints in use as a named set. ASSUMED: a control named like "Save As Set…" / "Save Set…" /
 // "New Set…" is in My Paints or in what `.paintSet` opens; it asks for the name in a text field that
@@ -420,6 +434,7 @@ async function saveSetAs(name) {
   await page.keyboard.type(name);
   await page.keyboard.press('Enter');
   await wait(800);
+  await modalGone(`after the set was named "${name}" and Enter pressed`);
 }
 async function switchSet(name) {
   if (!(await boxOf(ctl('paintSet'), { anywhere: true }).catch(() => null))) { await clickCtl('myPaints'); await wait(600); }
@@ -608,9 +623,9 @@ await t('3.6 the wheel is drawn at the active colour\'s lightness: darker colour
   const before = await pixels(await wheelBox());
   await P((n) => { const p = window.__csProbe, row = p.all('.mo-cs-pal-row', p.root())[n]; p.all('.mo-cs-vbar', row)[0].focus(); }, a.active);
   await press('ArrowLeft', 12);
-  const dark = await pixels(await wheelBox());
+  const dark = await wheelAfter(before);
   await press('ArrowRight', 12);
-  const back = await pixels(await wheelBox());
+  const back = await wheelAfter(dark);
   return [lum(dark.mean) < lum(before.mean) - 1.5 && lum(back.mean) > lum(dark.mean) + 1.5, { before: lum(before.mean).toFixed(1), darker: lum(dark.mean).toFixed(1), back: lum(back.mean).toFixed(1) }];
 });
 
@@ -639,7 +654,7 @@ await t('4.3 the wheel model: Screen then Painter change state.wheel, and the se
 await t('4.4 the wheel is redrawn for the model (its pixels differ between Painter and Screen)', async () => {
   const painter = await pixels(await wheelBox());
   await choose('wheelModel', '^screen');
-  const screen = await pixels(await wheelBox());
+  const screen = await wheelAfter(painter);
   await choose('wheelModel', '^painter');
   return [painter.sig !== screen.sig && (await state()).wheel === 'painter', { same: painter.sig === screen.sig }];
 });
@@ -648,7 +663,7 @@ await t('4.5 the hatch toggle changes state.hatch, and hatching is drawn on the 
   const pa = await pixels(await wheelBox());
   await clickCtl('hatch');
   const b = await state();
-  const pb = await pixels(await wheelBox());
+  const pb = await wheelAfter(pa);
   await clickCtl('hatch');
   const c = await state();
   return [typeof a.hatch === 'boolean' && b.hatch === !a.hatch && c.hatch === a.hatch && pa.sig !== pb.sig, { hatch: [a.hatch, b.hatch, c.hatch], wheelChanged: pa.sig !== pb.sig }];
@@ -657,7 +672,9 @@ await t('4.5 the hatch toggle changes state.hatch, and hatching is drawn on the 
 // with "grey", "gray" or "value" in it that it does not carry when off.
 await t('4.6 Value Check sets state.valueCheck and marks the root', async () => {
   const marks = () => P(() => { const r = window.__csProbe.root(); return r ? [...r.classList, ...Object.entries(r.dataset).map(([k, v]) => `data-${k}=${v}`)] : null; });
-  const a = await state(), ma = await marks();
+  let a = await state();
+  if (hsl(hexRgb(activeHex(a)))[1] < 0.3) { await focusDot(a.active); await press('ArrowUp', 8); a = await state(); } // the keys of 3.3 left the colour weak; a colour with a hue is needed to see it go grey
+  const ma = await marks();
   await clickCtl('valueCheck');
   const b = await state(), mb = await marks();
   const added = (mb || []).filter((m) => !(ma || []).includes(m));
@@ -735,7 +752,7 @@ await t('5.8 a double click on a cell makes it the base (state.base), and the ro
   await page.mouse.dblclick(b0.x, b0.y); await wait(800);
   const b = await state();
   const isBase = typeof b.base === 'number' ? nearHex(b.colours[b.base], cell) : nearHex(String(b.base), cell);
-  return [isBase && JSON.stringify(b.base) !== JSON.stringify(a.base) && b.colours.some((c) => nearHex(c, cell)) && JSON.stringify(b.rows.value) !== JSON.stringify(a.rows.value), { cell, baseWas: a.base, baseNow: b.base, colours: b.colours }];
+  return [isBase && JSON.stringify(b.base) !== JSON.stringify(a.base) && JSON.stringify(b.rows.value) !== JSON.stringify(a.rows.value), { cell, baseWas: a.base, baseNow: b.base, colours: b.colours }];
 });
 await t('5.9 the light toggle (Warm Light, Cool Light) changes state.light and the light row', async () => {
   const a = await state();
@@ -831,8 +848,9 @@ await t('6.8 Swap on a paint offers mixes without it, and choosing one takes tha
   const a = await state();
   const name = ([...a.mix].reverse().find((m) => !/white/i.test(m.name)) || a.mix[0]).name;
   await P(() => window.__csProbe.mark());
-  await clickCtl(`swap.${slug(name)}`); await wait(600);
-  const offers = (await P(() => window.__csProbe.fresh())).filter((o) => !/^(cancel|close|back)\b/i.test(o.name));
+  await clickCtl(`swap.${slug(name)}`);
+  const offered = async () => (await P(() => window.__csProbe.fresh())).filter((o) => !/^(cancel|close|back)\b/i.test(o.name));
+  const offers = (await until(async () => { const o = await offered(); return o.length ? o : null; }, 4_000)) || [];
   if (!offers.length) throw new Error(`Swap on ${name} offered nothing new to choose`);
   await clickStash(offers[0].i); await wait(600);
   const b = await state();
@@ -878,6 +896,8 @@ await t('7.4 switching to the first set brings its paints back; switching to the
   const ok = a.paintSet === 'Probe Set A' && sameSet(a.paints, paintsA) && a.paints.some((p) => flat(p) === flat(removed2)) && b.paintSet === 'Probe Set B' && !b.paints.some((p) => flat(p) === flat(removed2)) && b.paints.length === paintsA.length - 1 && b.recipe.paints.every((p) => b.paints.some((n) => flat(n) === flat(p.name)));
   return [ok, { A: [a.paintSet, a.paints], B: [b.paintSet, b.paints] }];
 });
+
+await t('7.5a a question answered with Enter is over: no dialog is left open or opened again (naming a set, removing a paint)', async () => [leftOpen.length === 0 && !!paintsA, leftOpen]);
 
 // 8. It comes back as it was ─────────────────────────────────────────────────
 const KEPT = ['wheel', 'harmony', 'colours', 'paints', 'paintSet'];
