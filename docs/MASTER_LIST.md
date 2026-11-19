@@ -1301,12 +1301,35 @@ Commits `d34f8e57` (the acceptance probe, before the build), `16a0d4a3`,
   longer draws its field in a row a refresh replaced.
 - New Subject has no Notes choice; a subject made with one keeps it.
 
-*How it was checked.* The acceptance probe (74 checks) on the real app;
-its tab and list helpers measure a control's place before later
-scrolling moves it, which with the probe's 40 open page tabs misses some
-tabs and long lists: see the piece's report for both runs. Typecheck,
-the unit suite and the build pass; the earlier Study probes, the
-keyboard audit, touch drag and the visual probe are in the report.
+*How it was checked.* The acceptance probe (74 checks) on the real
+app, unedited: 56 of 74. The verifier traced all 18 failures to two of
+the probe's own helpers (its tab and list points go stale once scrolling
+moves the tab strip or a long list, so with 40 page tabs open the clicks
+land on the wrong tab or box). With only those helpers re-reading the
+point before a click (a patch waiting on his approval; no check
+changed), 74 of 74, after the review fixes too. The verifier also drove
+it by hand: attach a page and a file, open each with one press, rename
+the page (the tab follows, after a restart too), Flashcards off (its
+group goes in 0.09 s) and on. Typecheck, 9,795 unit tests and the build
+pass; keyboard audit 0 on the unit tab, its picker and Find Matches.
+Piece 1's probe builds its workspace with the Notes choice, so it now
+gives 29 of 72; with that seed line and checks 1.1 and 2.5 changed (his
+approval asked), the rest pass.
+
+*Review.* Modularity: no breach (two core comments named Study; reworded).
+Correctness: seven findings, six reproduced by the skeptic; fixed the
+one he would meet: Add Notes or Files… from the palette opened the
+unit's tab instead of the picker (`021b9593`). Left, reproduced but not
+met in his use: a file outside the workspace reads Missing (the picker
+offers only workspace files; a typed outside path is the only way in);
+in a workspace of several folders, files outside the first do not follow
+a move; a Material column he retypes to text breaks attaching; a slow
+page read can leave the tab without its "where" lines until the next
+change; Find Matches stops silently if one attach fails. Not reproduced:
+a retitle write can land over a newer edit in the same instant. Access:
+fixed a missing item not said to a screen reader, the picker's unticked
+box outline under 3:1, and Enter with nothing ticked saying nothing
+(`a19fd6b8`). Left: a one-item More Actions menu on a unit row.
 
 *Decided for him to overrule.* Material is one files column (pages and
 files together) rather than a relation plus a files column. Find
