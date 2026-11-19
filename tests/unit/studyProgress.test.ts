@@ -721,7 +721,7 @@ describe('the sidebar', () => {
     // The tooltip and the mark say what the count says: Clark's 11 of 12 is questions and problems, and it is not done.
     const buttons = () => [...host.querySelectorAll<HTMLElement>('.st-sb__unit .st-sb__nav--unit')];
     const said = (b: HTMLElement) => b.getAttribute('title') || b.getAttribute('data-parallx-title');
-    expect(buttons().map(said)).toEqual(['Study Mack: 4 of 5 answered.', 'Study Clark: 11 of 12 answered or rated.', 'Study Venter: 2 of 2 answered.']);
+    expect(buttons().map(said)).toEqual(['Open Mack: 4 of 5 answered.', 'Open Clark: 11 of 12 answered or rated.', 'Open Venter: 2 of 2 answered.']);
     expect(buttons().map((b) => b.classList.contains('st-sb__nav--done'))).toEqual([false, false, true]);
     expect(said(host.querySelector<HTMLElement>('.st-sb__subj .st-sb__nav')!)).toBe('Study Exam 7: 17 of 19 answered or rated.');
     // The name comes first in the row, then the count; the bar is told how much room the count takes at the end of its line.
@@ -733,7 +733,7 @@ describe('the sidebar', () => {
     expect(barsIn(host)).toContain('Clark: 10 right, 0 partly, 1 wrong, 1 not yet');
     // Every question and every problem of Clark is done: the mark fills when the count does.
     expect(buttons().map((b) => b.classList.contains('st-sb__nav--done'))).toEqual([false, true, true]);
-    expect(said(buttons()[1])).toBe('Study Clark: 12 of 12 answered or rated.');
+    expect(said(buttons()[1])).toBe('Open Clark: 12 of 12 answered or rated.');
   });
 
   it('a unit with questions only says "answered", and a subject "questions answered"', async () => {

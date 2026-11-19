@@ -8,6 +8,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { scene } from '../../src/ui/scene.js';
 import { showQuickPickModal } from '../../src/api/notificationService.js';
+import { acceptQuickPickMany, cancelQuickPickMany } from '../../src/api/quickPickMany.js';
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 20));
 const key = (k: string, shift = false) => {
@@ -18,7 +19,7 @@ const key = (k: string, shift = false) => {
 const opener = () => { const b = document.createElement('button'); b.textContent = 'Add Notes or Files…'; document.body.appendChild(b); b.focus(); return b; };
 const rows = () => Array.from(document.querySelectorAll<HTMLElement>('[role=option]'));
 const labels = () => rows().map((r) => r.querySelector('.parallx-quickpick-label')?.textContent);
-const search = (text: string) => { const input = document.querySelector('.parallx-quickpick-input') as HTMLInputElement; input.value = text; input.dispatchEvent(new Event('input')); };
+const search = (text: string) => { const input = document.querySelector('[role=dialog] input') as HTMLInputElement; input.value = text; input.dispatchEvent(new Event('input')); };
 const button = (text: string) => Array.from(document.querySelectorAll<HTMLButtonElement>('[role=dialog] button')).find((b) => b.textContent === text)!;
 
 const ITEMS = [
@@ -48,7 +49,7 @@ describe('a quick pick of several', () => {
     search('');
     expect(rows().filter((r) => r.getAttribute('aria-selected') === 'true').map((r) => r.querySelector('.parallx-quickpick-label')?.textContent)).toEqual(['Mack 1993.pdf', 'Clark.md']);
     expect(document.querySelector('.parallx-quickpick-count')?.textContent).toBe('2 chosen');
-    button('Attach').click();
+    acceptQuickPickMany();
     expect((await answer as { label: string }[]).map((i) => i.label)).toEqual(['Mack 1993.pdf', 'Clark.md']);
   });
 
@@ -70,9 +71,9 @@ describe('a quick pick of several', () => {
     await settle();
     const dialog = document.querySelector('[role=dialog]') as HTMLElement;
     expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(document.activeElement?.className).toBe('parallx-quickpick-input');
+    expect(document.activeElement?.tagName).toBe('INPUT');
     expect(key('Tab').defaultPrevented || dialog.contains(document.activeElement)).toBe(true);
-    (document.querySelector('.parallx-quickpick-input') as HTMLElement).focus();
+    (document.querySelector('[role=dialog] input') as HTMLElement).focus();
     key('ArrowDown');
     expect(document.activeElement?.getAttribute('role')).toBe('listbox');
     key('ArrowDown');
@@ -97,7 +98,7 @@ describe('a quick pick of several', () => {
     await settle();
     expect(rows()).toHaveLength(200);
     expect(document.querySelector('.parallx-quickpick-more')?.textContent).toBe('30 more. Type to narrow the list.');
-    button('Cancel').click();
+    cancelQuickPickMany();
     expect(await answer).toBeUndefined();
   });
 

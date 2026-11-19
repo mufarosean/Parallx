@@ -337,8 +337,7 @@ function createSidebarView(container) {
       if (count.done) unit.classList.add('st-sb__nav--done');
       const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
       // The unit's own actions (its setup, Study…): More Actions beside the row, and its context menu.
-      const more = _api.ui.createIconButton(line, { id: `study.side.unit.${s.id}.${u.rowId}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm',
-        onClick: () => _api.ui.showContextMenu(more, stUnitMenuItems(s, u), { anchorPosition: 'below' }) });
+      const more = _api.ui.createIconButton(line, { id: `study.side.unit.${s.id}.${u.rowId}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.unitActions', args: [s.id, u.rowId] });
       more.classList.add('st-sb__unitmore');
       line.addEventListener('contextmenu', (e) => {
         e.preventDefault();

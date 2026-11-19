@@ -10053,8 +10053,7 @@ function createSidebarView(container) {
       if (count.done) unit.classList.add('st-sb__nav--done');
       const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
       // The unit's own actions (its setup, Study…): More Actions beside the row, and its context menu.
-      const more = _api.ui.createIconButton(line, { id: `study.side.unit.${s.id}.${u.rowId}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm',
-        onClick: () => _api.ui.showContextMenu(more, stUnitMenuItems(s, u), { anchorPosition: 'below' }) });
+      const more = _api.ui.createIconButton(line, { id: `study.side.unit.${s.id}.${u.rowId}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.unitActions', args: [s.id, u.rowId] });
       more.classList.add('st-sb__unitmore');
       line.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -13090,7 +13089,7 @@ async function stPickSubject(arg, placeholder) {
 async function stCmdStudySubject(arg, unit, result) {
   const s = await stPickSubject(arg, 'Study which subject?');
   if (!s) return null;
-  const named = unit ? s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
+  const named = unit ? s.units.find((u) => u.rowId === unit) || s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
   return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}), ...(named && ST_PROGRESS_STATES.includes(result) ? { result } : {}) });
 }
 
@@ -13159,6 +13158,10 @@ function registerSubjectCommands(context) {
     ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
     ['study.openUnit', (subject, unit) => stCmdOpenUnit(subject, unit)],
+    ['study.unitActions', (subject, unit) => stCmdUnitActions(subject, unit)],
+    ['study.addNotesOrFiles', (subject, unit) => stCmdAddNotesOrFiles(subject, unit)],
+    ['study.openUnitItem', (subject, unit, key) => stCmdOpenUnitItem(subject, unit, key)],
+    ['study.removeUnitItem', (subject, unit, key) => stCmdRemoveUnitItem(subject, unit, key)],
     ['study.findMatches', async (subject) => { const s = await stPickSubject(subject, 'Find matches for which subject?'); return s ? stUnitFindMatches(s.id) : false; }],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -14261,6 +14264,47 @@ async function stCmdOpenUnit(subject, unit) {
   return u ? stOpenUnit(s.id, u.rowId) : null;
 }
 
+/** Open one of a unit's items (its key) in its own editor. */
+async function stCmdOpenUnitItem(subjectId, rowId, key) {
+  const { row } = stUnitRowOf(subjectId, rowId);
+  if (!row) return false;
+  const shown = (await stUnitShown(stUnitCell(row), await stUnitPages())).find((i) => i.key === key);
+  if (!shown) return false;
+  await stUnitOpen(shown);
+  return true;
+}
+
+/** Take one item (its key) off a unit; the page or the file stays as it is. */
+async function stCmdRemoveUnitItem(subjectId, rowId, key) {
+  try { return await stUnitDetach(subjectId, rowId, key); } catch (err) {
+    if (!stIsStopped(err)) await _api.window.showWarningMessage(stSentence(stErrText(err)));
+    return false;
+  }
+}
+
+/** Add Notes or Files…: the picker for a unit (by its row id or its name); with none named, his pick. */
+async function stCmdAddNotesOrFiles(subject, unit) {
+  const s = await stPickSubject(subject, 'Which subject?');
+  const u = s ? stUnitNamed(s, unit) : null;
+  if (s && u) return stUnitPick(s.id, u.rowId);
+  if (s) { const opened = await stCmdOpenUnit(s.id); return !!opened; }
+  return false;
+}
+
+/** Unit Actions…: the unit's menu at its row's More Actions in the sidebar, else a pick. */
+async function stCmdUnitActions(subject, unit) {
+  const s = await stPickSubject(subject, 'Which subject?');
+  const u = s ? stUnitNamed(s, unit) : null;
+  if (!s || !u) return null;
+  const items = stUnitMenuItems(s, u);
+  const at = Array.from(document.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === `study.side.unit.${s.id}.${u.rowId}.more` && n.getClientRects().length);
+  if (at) { _api.ui.showContextMenu(at, items, { anchorPosition: 'below' }); return null; }
+  const pick = await _api.window.showQuickPick(items.map((i) => ({ label: i.label })), { placeholder: u.name });
+  const chosen = pick ? items.find((i) => i.label === pick.label) : null;
+  if (chosen) chosen.onSelect();
+  return null;
+}
+
 /** A unit's actions: its row's More Actions and context menu in the sidebar. */
 function stUnitMenuItems(s, u) {
   return [
@@ -14346,7 +14390,7 @@ async function renderUnit(host, route, ctx) {
 
   const header = ui.createPageHeader(inner, {
     title: `${subject.name} · ${unitName}`,
-    primary: { id: 'study.unit.study', label: 'Study…', icon: 'px-study', title: `Study ${unitName}`, onClick: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [subject.bankId], unit: unitName }); } },
+    primary: { id: 'study.unit.study', label: 'Study…', icon: 'px-study', title: `Study ${unitName}`, command: 'study.studySubject', args: [subjectId, rowId] },
     more: [
       { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(subjectId) },
       { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(subject.unitsDb) },
@@ -14371,10 +14415,10 @@ async function renderUnit(host, route, ctx) {
 
   // The two groups every unit has: drawn once, so their buttons stay what they are while the lists under them change.
   const notes = group(body, 'Notes and files');
-  ui.createButton(notes.acts, { id: 'study.unit.add', label: 'Add Notes or Files…', icon: 'plus', kind: 'ghost', size: 'sm', onClick: () => void stUnitPick(subjectId, rowId) });
+  ui.createButton(notes.acts, { id: 'study.unit.add', label: 'Add Notes or Files…', icon: 'plus', kind: 'ghost', size: 'sm', command: 'study.addNotesOrFiles', args: [subjectId, rowId] });
   const questions = group(body, 'Questions');
-  ui.createButton(questions.acts, { id: 'study.unit.studyQuestions', label: 'Study Questions…', icon: 'px-study', kind: 'ghost', size: 'sm', onClick: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [subject.bankId], unit: unitName }); } });
-  ui.createButton(questions.acts, { id: 'study.unit.openQuestions', label: 'Open Questions', icon: 'database', kind: 'ghost', size: 'sm', onClick: () => void stOpenSubjectDatabase(subject.questionsDb) });
+  ui.createButton(questions.acts, { id: 'study.unit.studyQuestions', label: 'Study Questions…', icon: 'px-study', kind: 'ghost', size: 'sm', command: 'study.studySubject', args: [subjectId, rowId] });
+  ui.createButton(questions.acts, { id: 'study.unit.openQuestions', label: 'Open Questions', icon: 'database', kind: 'ghost', size: 'sm', command: 'canvas.openPage', args: [subject.questionsDb] });
   const tools = ui.createBlock(body, 'div', { className: 'st-unit__tools' });
 
   let bars = [];
@@ -14419,12 +14463,12 @@ async function renderUnit(host, route, ctx) {
       for (const it of shown) {
         const line = ui.createBlock(list, 'div', { className: `st-unit__item${it.missing ? ' st-unit__item--gone' : ''}`, attrs: { role: 'listitem' } });
         const icon = it.missing ? 'file-question' : ST_UNIT_ICONS[it.kind] || 'file';
-        const open = ui.createButton(line, { id: null, label: it.title, icon, kind: 'ghost', size: 'sm', onClick: () => void stUnitOpen(it) });
+        const open = ui.createButton(line, { id: null, label: it.title, icon, kind: 'ghost', size: 'sm', command: 'study.openUnitItem', args: [subjectId, rowId, it.key] });
         open.classList.add('st-unit__open');
         open.setAttribute('aria-label', `Open ${it.title}`);
         const where = it.missing ? (it.kind === 'page' ? 'Missing: in the Trash or deleted' : 'Missing: moved or deleted') : it.where;
         if (where) ui.createBlock(open, 'span', { className: `st-unit__where${it.missing ? ' st-unit__where--gone' : ''}`, text: where });
-        const rm = ui.createIconButton(line, { id: null, icon: 'x', title: `Remove ${it.title} from ${unitName}`, size: 'sm', onClick: () => void stUnitDetach(subjectId, rowId, it.key).catch((err) => { if (!stIsStopped(err)) void _api.window.showWarningMessage(stSentence(stErrText(err))); }) });
+        const rm = ui.createIconButton(line, { id: null, icon: 'x', title: `Remove ${it.title} from ${unitName}`, size: 'sm', command: 'study.removeUnitItem', args: [subjectId, rowId, it.key] });
         rm.classList.add('st-unit__rm');
       }
     }

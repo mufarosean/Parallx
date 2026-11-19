@@ -30,7 +30,7 @@ import type { IFileLocateResult } from '../../services/fileLocator.js';
 import type { IFileRevealTarget } from '../../editor/fileReveal.js';
 import { checkFileLink, findLinkedFile, revealTargetOf, type IFileLinkHost } from './fileLink.js';
 import { createOpenEditorsView } from './openEditorsView.js';
-import { orThrow, withOpenFilesFollowing } from './openFilesFollow.js';
+import { moveOnDisk, withOpenFilesFollowing } from './openFilesFollow.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -896,23 +896,7 @@ async function fsDelete(uri: string): Promise<void> {
 const openFiles = () => ({ editors: _api.editors, roots: _roots.map((r) => uriToFsPath(r.uri)) });
 
 async function fsRename(oldUri: string, newUri: string): Promise<void> {
-  await moveOnDisk(uriToFsPath(oldUri), uriToFsPath(newUri), 'Rename failed');
-}
-
-/**
- * Move or rename on disk through the app's file service, so whoever keeps a
- * link to the file hears where it went (workspace.onDidMoveFiles). The bare
- * bridge only when the service is not there.
- */
-async function moveOnDisk(fromPath: string, toPath: string, what = 'Move failed'): Promise<undefined> {
-  const fs = _api.workspace.fs;
-  if (fs) {
-    try { await fs.rename(URI.file(fromPath).toString(), URI.file(toPath).toString()); } catch (err) { throw new Error((err as Error)?.message || what); }
-    return undefined;
-  }
-  const electronFs = (globalThis as any).parallxElectron?.fs;
-  if (!electronFs) return undefined;
-  return orThrow(electronFs.rename(fromPath, toPath), what);
+  await moveOnDisk(_api.workspace.fs, uriToFsPath(oldUri), uriToFsPath(newUri), 'Rename failed');
 }
 
 // ─── Keyboard Navigation ─────────────────────────────────────────────────────
@@ -1039,7 +1023,7 @@ async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> 
     const destName = mode === 'copy' ? await getUniqueDestName(destFolder, item.name, electronFs) : item.name;
     const destPath = destFolder + '/' + destName;
     try {
-      const result = mode === 'cut' ? await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => moveOnDisk(sourcePath, destPath)) : await electronFs.copy(sourcePath, destPath);
+      const result = mode === 'cut' ? await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => moveOnDisk(_api.workspace.fs, sourcePath, destPath)) : await electronFs.copy(sourcePath, destPath);
       if (result?.error) throw new Error(result.error.message || 'Copy failed');
     } catch (err) {
       _api.window.showErrorMessage(`Failed to paste "${item.name}": ${err}`);
@@ -1142,7 +1126,7 @@ function setupDropTarget(el: HTMLElement, node: TreeNode): void {
     const destPath = uriToFsPath(targetFolder.uri) + '/' + source.name;
 
     try {
-      await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => moveOnDisk(sourcePath, destPath));
+      await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => moveOnDisk(_api.workspace.fs, sourcePath, destPath));
 
       // Reload both source parent and target folder
       const sourceParent = source.parent;
@@ -1625,9 +1609,7 @@ function commandTarget(arg: unknown): TreeNode | null {
       && typeof (arg as TreeNode).uri === 'string'
       && typeof (arg as TreeNode).name === 'string'
       && Array.isArray((arg as TreeNode).children)) {
-    // The row as the tree has it now: a refresh between the right-click and the
-    // menu's choice rebuilds the rows, and the old node's element is gone (Rename
-    // then drew its field in a row no longer on screen).
+    // The row as the tree has it now: a refresh may have rebuilt it since the right-click.
     return findNodeByUri((arg as TreeNode).uri) ?? (arg as TreeNode);
   }
   return _selectedNode;

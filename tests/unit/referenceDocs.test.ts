@@ -20,6 +20,7 @@ import * as modelCallsCommands from '../../src/commands/modelCallsCommands.js';
 import * as layoutCommands from '../../src/commands/layoutCommands.js';
 import * as questionCommands from '../../src/commands/questionCommands.js';
 import * as progressCommands from '../../src/commands/progressCommands.js';
+import * as quickPickCommands from '../../src/commands/quickPickCommands.js';
 import * as startCommands from '../../src/commands/startCommands.js';
 import * as structuralCommands from '../../src/commands/structuralCommands.js';
 import * as textSizeCommands from '../../src/commands/textSizeCommands.js';
@@ -40,6 +41,7 @@ const COMMAND_MODULES: Record<string, Record<string, unknown>> = {
   'modelCallsCommands.ts': modelCallsCommands,
   'questionCommands.ts': questionCommands,
   'progressCommands.ts': progressCommands,
+  'quickPickCommands.ts': quickPickCommands,
   'startCommands.ts': startCommands,
   'structuralCommands.ts': structuralCommands,
   'textSizeCommands.ts': textSizeCommands,

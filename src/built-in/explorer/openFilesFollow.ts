@@ -7,6 +7,8 @@
 // rename or a move they are opened again under the new path. Closing a tab
 // through the editors API waits for that last save.
 
+import { URI } from '../../platform/uri.js';
+
 interface OpenEditor { readonly id: string; readonly description: string; readonly isDirty: boolean }
 export interface OpenFilesFollow {
   readonly editors: {
@@ -64,4 +66,19 @@ export async function withOpenFilesFollowing<T>(follow: OpenFilesFollow, path: s
 export async function orThrow(op: Promise<{ error?: { message?: string } } | undefined>, what: string): Promise<undefined> {
   const result = await op;
   if (result?.error) throw new Error(result.error.message || what);
+}
+
+/**
+ * Move or rename on disk through the app's file service (`fs`, the
+ * workspace.fs of the api), so whoever keeps a link to the file hears where it
+ * went (workspace.onDidMoveFiles). The bare bridge only when there is no
+ * service.
+ */
+export async function moveOnDisk(fs: { rename(source: string, target: string): Promise<void> } | undefined, fromPath: string, toPath: string, what = 'Move failed'): Promise<undefined> {
+  if (fs) {
+    try { await fs.rename(URI.file(fromPath).toString(), URI.file(toPath).toString()); } catch (err) { throw new Error((err as Error)?.message || what); }
+    return undefined;
+  }
+  const electronFs = (globalThis as { parallxElectron?: { fs?: { rename(a: string, b: string): Promise<{ error?: { message?: string } } | undefined> } } }).parallxElectron?.fs;
+  return electronFs ? orThrow(electronFs.rename(fromPath, toPath), what) : undefined;
 }

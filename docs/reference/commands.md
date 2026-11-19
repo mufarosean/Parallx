@@ -123,6 +123,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `pdf.readAgain` | Read This Document Again | core | PDF |  | activeEditor == 'parallx.editor.pdf' |
 | `progress.getRegistry` | Get Progress Providers | core | Progress |  |  |
 | `questions.getRegistry` | Get Question Providers | core | Questions |  |  |
+| `quickPick.accept` | Accept the Ticked Items | core | Quick Pick |  |  |
+| `quickPick.cancel` | Close the Pick | core | Quick Pick |  |  |
 | `view.moveToPanel` | Move View to Panel | core | View |  |  |
 | `view.moveToSidebar` | Move View to Sidebar | core | View |  |  |
 | `workbench.action.addWidget` | Add Widget to Workbench | core | View |  |  |
@@ -295,8 +297,10 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workspace.importConfig` | Workspace: Import Configuration | settings |  |  |  |
 | `workspace.resetConfig` | Workspace: Reset Configuration | settings |  |  |  |
 | `study.addMaterial` | Add Material… | study | Study |  |  |
+| `study.addNotesOrFiles` | Add Notes or Files… | study | Study |  |  |
 | `study.discussInChat` | Discuss in Chat | study | Study |  |  |
 | `study.editQuestion` | Edit Question… | study | Study |  |  |
+| `study.findMatches` | Find Matches… | study | Study |  |  |
 | `study.gradeAgain` | Grade Answer Again | study | Study |  |  |
 | `study.importQuestions` | Import Questions… | study | Study |  |  |
 | `study.importReport` | Import Examiner's Report… | study | Study |  |  |
@@ -308,14 +312,18 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.nextQuestion` | Next Question | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
 | `study.openProgress` | Open Progress… | study | Study |  |  |
+| `study.openUnit` | Open Unit… | study | Study |  |  |
+| `study.openUnitItem` | Open an Attached Item | study | Study |  |  |
 | `study.previousQuestion` | Previous Question | study | Study |  |  |
 | `study.quizSelection` | Quiz This Selection | study | Study |  |  |
+| `study.removeUnitItem` | Remove an Attached Item | study | Study |  |  |
 | `study.stopMaking` | Stop Making Questions | study | Study |  |  |
 | `study.studyDocument` | Study This Document… | study | Study |  |  |
 | `study.studyMarked` | Study Marked Questions | study | Study |  |  |
 | `study.studySubject` | Study a Subject… | study | Study |  |  |
 | `study.studyTogether` | Study Materials Together… | study | Study |  |  |
 | `study.subjectActions` | Subject Actions… | study | Study |  |  |
+| `study.unitActions` | Unit Actions… | study | Study |  |  |
 | `study.weakSpots` | Study Weak Spots | study | Study |  |  |
 | `terminal.clear` | Terminal: Clear | terminal |  |  |  |
 | `terminal.restart` | Terminal: Restart Shell | terminal |  |  |  |

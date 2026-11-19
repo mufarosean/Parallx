@@ -55,6 +55,7 @@ import {
 import { installDocling, readDocumentAgain } from './doclingCommands.js';
 import { questionsGetRegistry } from './questionCommands.js';
 import { progressGetRegistry } from './progressCommands.js';
+import { quickPickAccept, quickPickCancel } from './quickPickCommands.js';
 import { copyDiagnostics } from './diagnosticsCommands.js';
 import { openRecentItem } from './startCommands.js';
 import { showModelCalls, clearModelCalls, closeModelCalls } from './modelCallsCommands.js';
@@ -428,6 +429,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   questionsGetRegistry,
   // The progress-provider registry, for extensions
   progressGetRegistry,
+  // The buttons of a quick pick of several
+  quickPickAccept,
+  quickPickCancel,
 ];
 
 /**

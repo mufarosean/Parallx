@@ -509,7 +509,18 @@
   font-size: var(--px-text-sm);
 }
 
+.parallx-quickpick-field {
+  margin: var(--px-space-2) var(--px-space-3);
+}
+
+.parallx-quickpick-box--many .parallx-quickpick-list {
+  border-top: 1px solid var(--px-divider);
+}
+
 .parallx-quickpick-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--px-space-2);
   align-items: center;
   margin: 0;
   padding: var(--px-space-2) var(--px-space-3);

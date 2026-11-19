@@ -71,7 +71,7 @@ async function stPickSubject(arg, placeholder) {
 async function stCmdStudySubject(arg, unit, result) {
   const s = await stPickSubject(arg, 'Study which subject?');
   if (!s) return null;
-  const named = unit ? s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
+  const named = unit ? s.units.find((u) => u.rowId === unit) || s.units.find((u) => stSubjectSameName(u.name, unit)) : null;
   return stOpenSetup({ bankIds: [s.subject.bankId], ...(named ? { unit: named.name } : {}), ...(named && ST_PROGRESS_STATES.includes(result) ? { result } : {}) });
 }
 
@@ -140,6 +140,10 @@ function registerSubjectCommands(context) {
     ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
     ['study.openUnit', (subject, unit) => stCmdOpenUnit(subject, unit)],
+    ['study.unitActions', (subject, unit) => stCmdUnitActions(subject, unit)],
+    ['study.addNotesOrFiles', (subject, unit) => stCmdAddNotesOrFiles(subject, unit)],
+    ['study.openUnitItem', (subject, unit, key) => stCmdOpenUnitItem(subject, unit, key)],
+    ['study.removeUnitItem', (subject, unit, key) => stCmdRemoveUnitItem(subject, unit, key)],
     ['study.findMatches', async (subject) => { const s = await stPickSubject(subject, 'Find matches for which subject?'); return s ? stUnitFindMatches(s.id) : false; }],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
