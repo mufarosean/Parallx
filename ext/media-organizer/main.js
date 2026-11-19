@@ -13972,7 +13972,7 @@ function renderGridBrowser(container, api, input) {
       !isMulti && { group: 'open', label: 'Edit Details', handler: () => handleCardOpen(item) },
       !isMulti && { group: 'edit', kinds: ['photo'], label: 'Edit Image', handler: () => void moOpenImageEditor(api, item.id) },
       _moEditClipboard && { group: 'edit', kinds: ['photo'], label: 'Paste Edit', handler: () => void moEditPasteTo(api, photoIds) },
-      !isMulti && _artToolsEnabled && { group: 'edit', kinds: ['photo'], label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) },
+      !isMulti && _artToolsEnabled && { group: 'edit', kinds: ['photo'], label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) }, !isMulti && _artToolsEnabled && { group: 'edit', kinds: ['photo'], label: 'Open in Colour Study', handler: () => void _api.commands.executeCommand('media-organizer.colour.fromPhoto', item.id) },
       // Upscale (Section 38B): still photos only.
       { group: 'edit', kinds: ['photo'], label: 'Upscale…', handler: () => void moUpscaleItems(picked.filter((it) => moItemKind(it) === 'photo'), api, () => loadPage()) },
       !isMulti && { group: 'edit', kinds: ['video', 'gif'], label: item.type === 'video' ? 'Enhance Video…' : 'Enhance GIF…', handler: () => void moEnhanceMotion(api, item, () => loadPage()) },

@@ -21,6 +21,7 @@ import { MO_COLOUR_ROWS, moRowNote } from './colour-lessons.js';
 import { GROUNDS, HOME, VALUE_WORDS, clamp, cleanState, defaultState, groundHex, harmonyColours, parse, rgbOf, say } from './colour-study-state.js';
 import { moColourDeps, moColourSheetOpened } from './colour-study-home.js';
 import { moDrawBench, moDrawPaints } from './colour-study-panels.js';
+import { MO_SAMPLE_SIZES, moPictureSampler } from './colour-study-picture.js';
 
 // ── a sheet ─────────────────────────────────────────────────────────────────
 
@@ -85,11 +86,16 @@ export function moRenderColourSheet(container, api, sheetId) {
   const picBox = moEl('div', 'mo-cs-picture-box');
   const picCanvas = moEl('canvas', 'mo-cs-picture');
   const picPin = moEl('span', 'mo-cs-pin mo-hidden', { 'aria-hidden': 'true' });
-  picBox.append(picCanvas, picPin);
+  const loupe = moEl('canvas', 'mo-cs-loupe mo-hidden', { 'aria-hidden': 'true', width: '126', height: '126' });
+  const sampler = moPictureSampler();
+  picBox.append(picCanvas, picPin, loupe);
   const picCap = moEl('div', 'mo-practice-dim mo-cs-cap');
   const picRow = moEl('div', 'mo-cs-line');
   go(picRow, 'choosePlan', 'Choose Plan', 'palette').setAttribute('aria-haspopup', 'menu');
   const choosePicBtn = go(picRow, 'choosePicture', 'Choose Picture', 'image');
+  const sampleRow = moEl('div', 'mo-cs-line');
+  sampleRow.appendChild(moEl('span', 'mo-practice-dim', { textContent: 'Sample' }));
+  const sampleSeg = segmented(sampleRow, 'sampleSize', 'Sample size', MO_SAMPLE_SIZES.map(([n, l]) => [String(n), l]), String(st.sample || 1), (v) => { st.sample = Number(v); change(); });
   const picker = moEl('section', 'mo-cs-picker mo-hidden', { 'aria-label': 'Choose a picture' });
   const pickSearch = moEl('input', 'mo-clip-input', { type: 'search', 'aria-label': 'Search photos', placeholder: 'Search the library', sceneId: 'media-organizer.colour.pickSearch' });
   picker.id = `mo-cs-picker-${sheetId}`; choosePicBtn.setAttribute('aria-expanded', 'false'); choosePicBtn.setAttribute('aria-controls', picker.id);
@@ -97,7 +103,9 @@ export function moRenderColourSheet(container, api, sheetId) {
   picker.append(pickSearch, pickGrid);
   const massTitle = moEl('div', 'mo-practice-section-title', { textContent: 'Colours in this picture' });
   const massList = moEl('div', 'mo-cs-masses', { role: 'group', 'aria-label': 'Colours in this picture' });
-  picBlock.append(picBox, picCap, picRow, picker, massTitle, massList);
+  const moreBtn = go(null, 'morePhotos', 'Show More', 'plus', { kind: 'ghost' });
+  picker.appendChild(moreBtn);
+  picBlock.append(picBox, picCap, sampleRow, picRow, picker, massTitle, massList);
 
   const palTitle = moEl('div', 'mo-practice-section-title', { textContent: 'Palette' });
   const palList = moEl('div', 'mo-cs-pal', { role: 'group', 'aria-label': 'Palette' });
@@ -354,7 +362,7 @@ export function moRenderColourSheet(container, api, sheetId) {
   // ── the picture ──
   function drawPicture() {
     if (!pictureImage) { picCanvas.width = 8; picCanvas.height = 8; return; }
-    const w = pictureImage.naturalWidth, h = pictureImage.naturalHeight, k = Math.min(1, 720 / Math.max(w, h));
+    const w = pictureImage.naturalWidth, h = pictureImage.naturalHeight, k = Math.min(1, 1600 / Math.max(w, h));
     picCanvas.width = Math.max(8, Math.round(w * k)); picCanvas.height = Math.max(8, Math.round(h * k));
     picCanvas.getContext('2d', { willReadFrequently: true }).drawImage(pictureImage, 0, 0, picCanvas.width, picCanvas.height);
   }
@@ -364,25 +372,32 @@ export function moRenderColourSheet(container, api, sheetId) {
     const im = new Image();
     im.onload = () => { if (disposed) return; pictureImage = im; drawPicture(); change(false); };
     im.src = picture;
+    // colours are read from the original photo where there is one, else from the picture kept with the sheet
+    const ref = st.pictureRef;
+    void (ref ? deps.photoUrl(ref.photo).catch(() => null) : Promise.resolve(null)).then((url) => sampler.load(url || picture)).then((ok) => { if (!ok && !disposed) void sampler.load(picture); });
   }
   function pickAt(u, v) {
     if (!pictureImage) return;
-    const g = picCanvas.getContext('2d', { willReadFrequently: true }), x = clamp(Math.round(u * picCanvas.width), 1, picCanvas.width - 2), y = clamp(Math.round(v * picCanvas.height), 1, picCanvas.height - 2);
-    const d = g.getImageData(x - 1, y - 1, 3, 3).data; let r = 0, gg = 0, b = 0;
-    for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; }
-    pin = { u, v };
-    setColour(st.active, [r / 9, gg / 9, b / 9].map(Math.round)); st.shown = null; st.mix = null;
+    const rgb = sampler.sample(u, v, st.sample) || (() => { const g = picCanvas.getContext('2d', { willReadFrequently: true }), d = g.getImageData(clamp(Math.floor(u * picCanvas.width), 0, picCanvas.width - 1), clamp(Math.floor(v * picCanvas.height), 0, picCanvas.height - 1), 1, 1).data; return [d[0], d[1], d[2]]; })();
+    pin = { u, v }; showLoupe(u, v);
+    setColour(st.active, rgb); st.shown = null; st.mix = null;
     live.textContent = `${moColourName(activeRgb()).name}, ${st.colours[st.active]}`;
     change();
   }
+  // the loupe: the pixels under the pointer, at the picture's own resolution
+  function showLoupe(u, v) { if (!sampler.ready() || u == null) { loupe.classList.add('mo-hidden'); return; } sampler.loupe(loupe, u, v, st.sample); loupe.classList.remove('mo-hidden'); loupe.style.left = `${u * 100}%`; loupe.style.top = `${v * 100}%`; loupe.classList.toggle('is-left', u > 0.6); loupe.classList.toggle('is-below', v < 0.3); }
+  const uvOf = (ev) => { const r = picCanvas.getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
+  picCanvas.addEventListener('pointermove', (ev) => { if (ev.pointerType === 'mouse') showLoupe(...uvOf(ev)); });
+  picCanvas.addEventListener('pointerleave', () => { if (document.activeElement !== picCanvas) showLoupe(null); });
+  picCanvas.addEventListener('blur', () => showLoupe(null));
   dragOn(picCanvas, (ev) => { const r = picCanvas.getBoundingClientRect(); pickAt(clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)); });
   disposers.push(moPointKeys(picCanvas, 'Picture. Arrow keys move the picker, Enter takes the colour under it.', {
-    move: (dx, dy) => { const p = pin || { u: 0.5, v: 0.5 }; pin = { u: clamp(p.u + dx / 100, 0, 1), v: clamp(p.v + dy / 100, 0, 1) }; change(false); },
+    move: (dx, dy) => { const p = pin || { u: 0.5, v: 0.5 }; pin = { u: clamp(p.u + dx / 100, 0, 1), v: clamp(p.v + dy / 100, 0, 1) }; showLoupe(pin.u, pin.v); change(false); },
     take: () => { const p = pin || { u: 0.5, v: 0.5 }; pickAt(p.u, p.v); },
   }));
-  async function setPicture(url, from, colours) {
+  async function setPicture(url, from, colours, ref) {
     picture = url || '';
-    st.pictureFrom = from || ''; st.source = 'picture';
+    st.pictureFrom = from || ''; st.source = 'picture'; st.pictureRef = ref || null;
     await deps.db.run('UPDATE mo_colour_sheets SET picture = ? WHERE id = ?', [picture, sheetId]).catch(() => {});
     loadPicture();
     if (colours && colours.length) st.masses = colours.map(moHex).filter((h, i, a) => a.indexOf(h) === i).slice(0, 16);
@@ -395,20 +410,24 @@ export function moRenderColourSheet(container, api, sheetId) {
     change();
   }
   let pickSeq = 0, pickTimer = 0;
-  async function findPhotos() {
-    const mine = ++pickSeq, found = await deps.searchPhotos(pickSearch.value.trim()).catch(() => []);
+  const PAGE = 48;
+  let pickShown = 0;
+  async function findPhotos(more) {
+    const mine = ++pickSeq, found = await deps.browsePhotos(pickSearch.value.trim(), more ? pickShown : 0, PAGE).catch(() => []);
     if (mine !== pickSeq || disposed) return;
-    pickGrid.replaceChildren();
-    for (const p of found.slice(0, 18)) {
+    if (!more) { pickGrid.replaceChildren(); pickShown = 0; }
+    pickShown += found.length;
+    moreBtn.classList.toggle('mo-hidden', found.length < PAGE);
+    for (const p of found) {
       const b = go(pickGrid, 'pickPhoto', p.title || `Photo ${p.id}`, 'image', { kind: 'ghost', tail: String(p.id), args: [p.id, p.title || ''] });
       b.classList.add('mo-plans-pick'); b.setAttribute('aria-label', `Use ${p.title || `photo ${p.id}`}`);
       const img = moEl('img', null, { alt: '' });
       b.replaceChildren(img); deps.thumb(img, p.id);
     }
-    if (!found.length) pickGrid.appendChild(moEl('div', 'mo-practice-dim', { textContent: 'No photos match.' }));
+    if (!pickShown) pickGrid.appendChild(moEl('div', 'mo-practice-dim', { textContent: 'No photos match.' }));
   }
-  function togglePicker(on) { choosing = on; picker.classList.toggle('mo-hidden', !on); choosePicBtn.setAttribute('aria-expanded', String(on)); if (on) { void findPhotos(); pickSearch.focus(); } else if (picker.contains(document.activeElement)) choosePicBtn.focus(); }
-  pickSearch.addEventListener('input', () => { clearTimeout(pickTimer); pickTimer = setTimeout(findPhotos, 220); });
+  function togglePicker(on) { choosing = on; picker.classList.toggle('mo-hidden', !on); choosePicBtn.setAttribute('aria-expanded', String(on)); if (on) { void findPhotos(false); pickSearch.focus(); } else if (picker.contains(document.activeElement)) choosePicBtn.focus(); }
+  pickSearch.addEventListener('input', () => { clearTimeout(pickTimer); pickTimer = setTimeout(() => findPhotos(false), 220); });
   picker.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); togglePicker(false); } });
   async function choosePlan() {
     const plans = await deps.plans().catch(() => []);
@@ -426,7 +445,8 @@ export function moRenderColourSheet(container, api, sheetId) {
 
   function render() {
     titleEl.textContent = title;
-    root.classList.toggle('is-grey', st.valueCheck); root.dataset.grey = String(st.valueCheck);
+    root.classList.toggle('is-grey', st.valueCheck); root.classList.toggle('is-picture', st.source === 'picture');
+    if (sampleSeg.value !== String(st.sample)) sampleSeg.value = String(st.sample); root.dataset.grey = String(st.valueCheck);
     pressed(greyBtn, st.valueCheck); pressed(hatchBtn, st.hatch); pressed(editBtn, view === 'bench'); pressed(paintsBtn, view === 'paints');
     if (sourceSeg.value !== st.source) sourceSeg.value = st.source;
     if (wheelSeg.value !== st.wheel) wheelSeg.value = st.wheel;
@@ -643,7 +663,8 @@ export function moRenderColourSheet(container, api, sheetId) {
     role(name) { roleShown = roleShown === name ? '' : name; showRole(roleShown); },
     choosePlan: () => choosePlan(),
     choosePicture: () => togglePicker(!choosing),
-    async pickPhoto(id, name) { togglePicker(false); const url = await deps.photoPicture(id, 720).catch(() => null); if (url) await setPicture(url, name ? `From ${name}` : 'From the library', null); else api.window.showWarningMessage('That photo is not on disk right now.'); },
+    morePhotos: () => findPhotos(true),
+    async pickPhoto(id, name) { togglePicker(false); const url = await deps.photoPicture(id, 1600).catch(() => null); if (url) await setPicture(url, name ? `From ${name}` : 'From the library', null, { photo: Number(id) }); else api.window.showWarningMessage('That photo is not on disk right now.'); },
     mass(i) { const hex = st.masses[i]; if (hex) { setColour(st.active, rgbOf(hex)); st.shown = null; st.mix = null; change(); } },
     pick: (i) => pickColour(i),
     cell(row, i) { const c = rowEls[row] && rowEls[row].cells[i]; if (c && c.dataset.hex) { st.shown = c.dataset.hex; st.mix = null; change(); } },
@@ -681,7 +702,7 @@ export function moRenderColourSheet(container, api, sheetId) {
       const rgb = shownRgb(), rec = recipeOf(rgb), mix = mixNow(), mixRgb = st.mix ? moMixOfParts(inUse(), mix) : rec ? rec.rgb : null, rows = moVariationRows(baseRgb(), { cells: 10, light: st.light });
       return { sheetId, title, wheel: st.wheel, harmony: st.harmony, colours: st.colours.slice(), active: st.active, shown: moHex(rgb), base: moHex(baseRgb()), light: st.light, valueCheck: st.valueCheck, hatch: st.hatch, twinsGrey: st.twinsGrey, source: st.source, view, paints: inUse().map((p) => p.name), allPaints: all.map((p) => p.name), paintSet: setInfo.current, paintSets: setInfo.sets.map((s) => s.name), mix: st.mix || view === 'bench' ? mix.map((m) => ({ ...m })) : null,
         recipe: rec ? { paints: rec.paints.map((p) => ({ ...p })), hex: rec.hex, de: rec.de, closeness: rec.closeness } : null, mixHex: mixRgb ? moHex(mixRgb) : null, drift: mixRgb ? moDrift(rgb, mixRgb) : null,
-        rows: Object.fromEntries(Object.entries(rows).map(([k, list]) => [k, list.map((c) => moHex(c.rgb))])), rowValues: Object.fromEntries(Object.entries(rows).map(([k, list]) => [k, list.map((c) => c.value)])), masses: st.masses.slice(), hasPicture: !!picture };
+        rows: Object.fromEntries(Object.entries(rows).map(([k, list]) => [k, list.map((c) => moHex(c.rgb))])), rowValues: Object.fromEntries(Object.entries(rows).map(([k, list]) => [k, list.map((c) => c.value)])), masses: st.masses.slice(), hasPicture: !!picture, sample: st.sample, pictureRef: st.pictureRef };
     },
   };
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => change(false)) : null;

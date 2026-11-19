@@ -44,11 +44,15 @@ export const MO_COLOUR_CSS = `
 .mo-cs .mo-pc-close:empty { display: none; }
 
 /* the picture */
-.mo-cs-picture-box { position: relative; align-self: flex-start; max-width: 100%; line-height: 0; }
-.mo-cs-picture { display: block; max-width: 100%; height: auto; border-radius: var(--px-radius-sm); cursor: crosshair; touch-action: none; }
+.mo-cs.is-picture .mo-cs-left { flex-basis: max(300px, 44%); }
+.mo-cs-picture-box { position: relative; align-self: stretch; max-width: 100%; line-height: 0; }
+.mo-cs-picture { display: block; width: 100%; height: auto; border-radius: var(--px-radius-sm); cursor: crosshair; touch-action: none; }
 .mo-cs-pin { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: var(--px-radius-full); border: 2px solid white; box-shadow: 0 0 0 1px black; pointer-events: none; box-sizing: border-box; }
 .mo-cs-picker { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
-.mo-cs-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: var(--px-space-1); max-height: 220px; overflow-y: auto; }
+.mo-cs-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: var(--px-space-1); max-height: 360px; overflow-y: auto; }
+.mo-cs-loupe { position: absolute; width: 126px; height: 126px; margin: -146px 0 0 20px; border-radius: var(--px-radius-md); box-shadow: 0 0 0 2px white, 0 0 0 3px black; pointer-events: none; image-rendering: pixelated; }
+.mo-cs-loupe.is-left { margin-left: -146px; }
+.mo-cs-loupe.is-below { margin-top: 20px; }
 .mo-cs-picker-grid .px-btn { height: auto; padding: 0; }
 .mo-cs-picker-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--px-radius-xs); display: block; }
 .mo-cs-masses { display: flex; flex-direction: column; }

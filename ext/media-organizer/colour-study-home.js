@@ -22,7 +22,7 @@ export function moColourSheetOpened(handle) {
   return () => { open.delete(handle); if (lastUsed === handle) lastUsed = null; handle.root.removeEventListener('focusin', used); handle.root.removeEventListener('pointerdown', used, true); };
 }
 /** Everything a sheet's controls run. */
-export const MO_COLOUR_ACTIONS = ['role', 'myPaints', 'valueCheck', 'hatch', 'choosePlan', 'choosePicture', 'pickPhoto', 'mass', 'pick', 'cell', 'editMix', 'copyRecipe', 'studyThis', 'putOnPalette', 'twinsGrey', 'why', 'tubeOn',
+export const MO_COLOUR_ACTIONS = ['morePhotos', 'role', 'myPaints', 'valueCheck', 'hatch', 'choosePlan', 'choosePicture', 'pickPhoto', 'mass', 'pick', 'cell', 'editMix', 'copyRecipe', 'studyThis', 'putOnPalette', 'twinsGrey', 'why', 'tubeOn',
   'resetMix', 'closeBench', 'less', 'more', 'swap', 'dropPaint', 'nudge', 'fix', 'closePaints', 'saveSet', 'deleteSet', 'starterPaints', 'paintColour', 'removePaint', 'customPaint'];
 
 // ── commands and the home ───────────────────────────────────────────────────
@@ -57,6 +57,16 @@ export function moColourStudyActivate(api, d) {
       if (!r || !(await api.window.showConfirmModal({ message: `Delete the colour study "${r.title}"?`, detail: 'Its colours, mix and notes go with it. Your paints stay.', confirmLabel: 'Delete', danger: true }))) return;
       await d.db.run('DELETE FROM mo_colour_sheets WHERE id = ?', [id]);
       changed();
+    },
+    /** A sheet from a photo in the library (its right-click menu): the photo, its colours read from the original. */
+    async fromPhoto(photoId) {
+      const id = Number(photoId);
+      const picture = id > 0 ? await d.photoPicture(id, 1600).catch(() => null) : null;
+      if (!picture) { api.window.showWarningMessage('That photo is not on disk right now.'); return null; }
+      const name = await d.photoTitle(id);
+      const st = defaultState();
+      Object.assign(st, { source: 'picture', pictureRef: { photo: id }, pictureFrom: name ? `From ${name}` : 'From the library' });
+      return newSheet({ title: `${name || 'Photo'} Colours`, state: st, picture });
     },
     /** A sheet from a painting plan: its picture as it stands and its colours. */
     async fromPlan(planId, variantId) {

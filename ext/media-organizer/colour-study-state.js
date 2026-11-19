@@ -41,6 +41,8 @@ export function cleanState(raw) {
   if (s.mix && !s.mix.length) s.mix = null;
   for (const k of ['hatch', 'valueCheck', 'twinsGrey']) s[k] = !!s[k];
   s.ground = GROUNDS.includes(s.ground) ? s.ground : d.ground;
+  s.sample = [1, 5, 15].includes(Number(s.sample)) ? Number(s.sample) : 1;
+  s.pictureRef = s.pictureRef && Number(s.pictureRef.photo) > 0 ? { photo: Number(s.pictureRef.photo) } : null;
   s.notes = String(s.notes || '').slice(0, 4000); s.pictureFrom = String(s.pictureFrom || '').slice(0, 120);
   return s;
 }
