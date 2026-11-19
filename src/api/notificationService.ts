@@ -630,7 +630,7 @@ export function showInputBoxModal(
     // Keyboard: Escape anywhere in the box, Enter in the field, Tab around the field and the two buttons.
     box.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { cancel(); }
-      else if (e.key === 'Enter' && e.target === input) { accept(); }
+      else if (e.key === 'Enter' && e.target === input) { e.preventDefault(); accept(); } // spent here: focus goes back to the button that opened the box, which the same Enter would press again
       else if (e.key === 'Tab') { const stops: HTMLElement[] = [input, cancelBtn, okBtn]; const at = stops.indexOf(document.activeElement as HTMLElement); stops[(at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length].focus(); e.preventDefault(); }
     });
 

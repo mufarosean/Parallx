@@ -63,6 +63,17 @@ describe('dialogs for the keyboard', () => {
     expect(document.activeElement).toBe(back);
   });
 
+  it('Enter in an input box answers it and is spent: the button focus goes back to is not pressed by the same key', async () => {
+    const back = opener();
+    const answer = showInputBoxModal(document.body, { prompt: 'Name this set of paints', value: 'Studio Oils' });
+    await settle();
+    (document.querySelector('[role=dialog] input') as HTMLInputElement).focus();
+    const e = key('Enter');
+    expect(await answer).toBe('Studio Oils');
+    expect(document.activeElement).toBe(back);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
   it('a quick pick names the highlighted row and gives focus back', async () => {
     const back = opener();
     const answer = showQuickPickModal(document.body, [{ label: 'Alpha' }, { label: 'Beta' }], { placeholder: 'Pick a page' });

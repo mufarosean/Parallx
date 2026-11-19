@@ -106,7 +106,8 @@ export const MO_COLOUR_CSS = `
 /* the paints */
 .mo-cs-paint { display: grid; grid-template-columns: auto minmax(90px, 1fr) minmax(140px, 1fr) auto; align-items: center; gap: var(--px-space-2); padding: var(--px-space-1) 0; border-bottom: 1px solid var(--px-divider); }
 .mo-cs-paint .px-btn.mo-cs-paint-colour { padding: 2px; }
-.mo-cs-strength { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; font-size: var(--px-text-xs); white-space: nowrap; }
+.mo-cs-strength { min-width: 0; font-size: var(--px-text-xs); }
+.mo-cs-strength .mo-plan-slider { margin: 0; }
 .mo-cs-tube-chip { gap: 5px; }
 .mo-cs-tube-chip[aria-pressed="false"] { opacity: 0.55; text-decoration: line-through; }
 

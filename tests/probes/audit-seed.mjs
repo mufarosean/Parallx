@@ -235,6 +235,17 @@ export async function seedAfterLaunch(page, pre) {
     if (then) await then();
   };
   const PLAN_TOOLS = ['Compose', 'Photo', 'Values', 'Colour', 'Transfer'];
+  // Colour Study: a sheet from the wheel, and one from the plan (its picture and colours).
+  const plainSheet = await run(page, 'media-organizer.colour.newSheet');
+  await page.waitForTimeout(1_500);
+  const planSheet = await run(page, 'media-organizer.plan.openInColourStudy', 1);
+  await page.waitForTimeout(2_000);
+  log('colour sheets', plainSheet, planSheet);
+  const colourSheet = (id, press) => async () => {
+    await run(page, 'media-organizer.colour.open', id);
+    await page.waitForTimeout(2_000);
+    if (press) { await page.locator(`.mo-cs [data-px-id="media-organizer.colour.${press}"]`).first().click().catch(() => {}); await page.waitForTimeout(900); }
+  };
 
   return {
     'seed:chat': seededChat(),
@@ -243,6 +254,11 @@ export async function seedAfterLaunch(page, pre) {
     // the citation with the keyboard's focus on it: its card showing
     'seed:chat.citation': seededChat(async () => { await page.keyboard.press('Tab'); await page.evaluate(() => document.querySelector('.parallx-chat-message--assistant a[href*="quote="]')?.focus()); await page.waitForSelector('.parallx-cite-peek img', { timeout: 20_000 }).catch(() => {}); }),
     'seed:plans': async () => { await run(page, 'media-organizer.paintingPlans'); },
+    'seed:colour': async () => { await run(page, 'media-organizer.colourStudy'); },
+    'seed:colour.sheet': colourSheet(plainSheet),
+    'seed:colour.bench': colourSheet(plainSheet, 'editMix'),
+    'seed:colour.paints': colourSheet(plainSheet, 'myPaints'),
+    'seed:colour.picture': colourSheet(planSheet),
     'seed:plan.board': async () => { await run(page, 'media-organizer.openBoard', 1); },
     ...Object.fromEntries(PLAN_TOOLS.map((t) => [`seed:plan.${t}`, planTool(t)])),
     'seed:plan.beforeAfter': planTool('Values', async () => { await page.locator('[data-px-id="media-organizer.plan.toggleBeforeAfter"]').first().click().catch(() => {}); await page.waitForTimeout(800); }),

@@ -8,6 +8,7 @@ import { moEl, moSlug } from './dom.js';
 import { MO_COMMON_PAINTS } from './colour.js';
 import { moFixMix, moHex, moMixOrder, moTubeNudges } from './paint-engine.js';
 import { PROBLEMS, say } from './colour-study-state.js';
+import { moPlanSlider } from './plan-kit.js';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -98,9 +99,7 @@ export function moDrawPaints(c) {
     colour.replaceChildren(sw);
     row.appendChild(moEl('span', 'mo-cs-tube-name', { textContent: p.name }));
     const strength = moEl('span', 'mo-cs-strength');
-    const sl = ui.createSlider(strength, { id: `media-organizer.colour.strength.${slug}`, label: `Strength of ${p.name}`, min: 0.5, max: 2, step: 0.1, value: p.strength || 1, onCommit: (v) => c.onStrength(p.name, v) });
-    c.owned.push(() => sl.dispose());
-    strength.appendChild(moEl('span', 'mo-practice-dim', { textContent: `Strength ${say(p.strength || 1)}` }));
+    moPlanSlider(strength, { id: `media-organizer.colour.strength.${slug}`, label: `Strength of ${p.name}`, min: 0.5, max: 2, step: 0.1, value: p.strength || 1, text: (v) => say(v), onChange: (v) => c.onStrength(p.name, v) });
     row.appendChild(strength);
     goIcon(row, 'removePaint', 'x', `Remove ${p.name}`, { tail: slug, args: [p.name] });
     list.appendChild(row);
