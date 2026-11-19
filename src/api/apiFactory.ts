@@ -153,7 +153,7 @@ export interface ParallxApiObject {
     showWarningMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
     showInputBox(options?: { prompt?: string; value?: string; placeholder?: string; password?: boolean }): Promise<string | undefined>;
-    showQuickPick(items: readonly { label: string; description?: string }[], options?: { placeholder?: string; canPickMany?: boolean }): Promise<any>;
+    showQuickPick(items: readonly { label: string; description?: string; detail?: string; picked?: boolean }[], options?: { placeholder?: string; canPickMany?: boolean; matchOnDescription?: boolean; confirmLabel?: string }): Promise<any>;
     showConfirmModal(options: { message: string; detail?: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
     createOutputChannel(name: string): IDisposable & { name: string; append(v: string): void; appendLine(v: string): void; clear(): void; show(): void; hide(): void };
     createStatusBarItem(alignment?: number, priority?: number): {
@@ -192,6 +192,8 @@ export interface ParallxApiObject {
     getCanvasPages(): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string }[]>;
     getCanvasPageTree(): Promise<{ id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string; children: any[] }[]>;
     readonly onDidChangeCanvasPages: (listener: (e: { kind: string; pageId: string; page?: { id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string } }) => void) => IDisposable;
+    readonly onDidMoveFiles: (listener: (moves: readonly { readonly from: string; readonly to: string }[]) => void) => IDisposable;
+    listFiles(maxFiles?: number): Promise<{ uri: string; name: string; relativePath: string; folder: string }[]>;
     readonly fs: {
       readFile(uri: string): Promise<{ content: string; encoding: string }>;
       writeFile(uri: string, content: string): Promise<void>;
@@ -755,6 +757,8 @@ export function createToolApi(
       getCanvasPages: () => workspaceBridge.getCanvasPages(),
       getCanvasPageTree: () => workspaceBridge.getCanvasPageTree(),
       onDidChangeCanvasPages: workspaceBridge.onDidChangeCanvasPages,
+      onDidMoveFiles: workspaceBridge.onDidMoveFiles,
+      listFiles: (maxFiles?: number) => workspaceBridge.listFiles(maxFiles),
       get fs() {
         if (!fileSystemBridge) return undefined;
         const manifest = toolDescription.manifest;

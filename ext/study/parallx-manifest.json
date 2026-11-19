@@ -29,6 +29,8 @@
       { "id": "study.studySubject", "title": "Study a Subject…", "category": "Study" },
       { "id": "study.subjectActions", "title": "Subject Actions…", "category": "Study" },
       { "id": "study.openProgress", "title": "Open Progress…", "category": "Study" },
+      { "id": "study.openUnit", "title": "Open Unit…", "category": "Study" },
+      { "id": "study.findMatches", "title": "Find Matches…", "category": "Study" },
       { "id": "study.addMaterial", "title": "Add Material…", "category": "Study" },
       { "id": "study.importQuestions", "title": "Import Questions…", "category": "Study" },
       { "id": "study.importReport", "title": "Import Examiner's Report…", "category": "Study" },

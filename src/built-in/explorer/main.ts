@@ -896,12 +896,23 @@ async function fsDelete(uri: string): Promise<void> {
 const openFiles = () => ({ editors: _api.editors, roots: _roots.map((r) => uriToFsPath(r.uri)) });
 
 async function fsRename(oldUri: string, newUri: string): Promise<void> {
-  const electronFs = (globalThis as any).parallxElectron?.fs;
-  if (!electronFs) return;
-  const result = await electronFs.rename(uriToFsPath(oldUri), uriToFsPath(newUri));
-  if (result?.error) {
-    throw new Error(result.error.message || 'Rename failed');
+  await moveOnDisk(uriToFsPath(oldUri), uriToFsPath(newUri), 'Rename failed');
+}
+
+/**
+ * Move or rename on disk through the app's file service, so whoever keeps a
+ * link to the file hears where it went (workspace.onDidMoveFiles). The bare
+ * bridge only when the service is not there.
+ */
+async function moveOnDisk(fromPath: string, toPath: string, what = 'Move failed'): Promise<undefined> {
+  const fs = _api.workspace.fs;
+  if (fs) {
+    try { await fs.rename(URI.file(fromPath).toString(), URI.file(toPath).toString()); } catch (err) { throw new Error((err as Error)?.message || what); }
+    return undefined;
   }
+  const electronFs = (globalThis as any).parallxElectron?.fs;
+  if (!electronFs) return undefined;
+  return orThrow(electronFs.rename(fromPath, toPath), what);
 }
 
 // ─── Keyboard Navigation ─────────────────────────────────────────────────────
@@ -1028,7 +1039,7 @@ async function pasteFromClipboard(targetFolder: TreeNode | null): Promise<void> 
     const destName = mode === 'copy' ? await getUniqueDestName(destFolder, item.name, electronFs) : item.name;
     const destPath = destFolder + '/' + destName;
     try {
-      const result = mode === 'cut' ? await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => orThrow(electronFs.rename(sourcePath, destPath), 'Move failed')) : await electronFs.copy(sourcePath, destPath);
+      const result = mode === 'cut' ? await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => moveOnDisk(sourcePath, destPath)) : await electronFs.copy(sourcePath, destPath);
       if (result?.error) throw new Error(result.error.message || 'Copy failed');
     } catch (err) {
       _api.window.showErrorMessage(`Failed to paste "${item.name}": ${err}`);
@@ -1131,7 +1142,7 @@ function setupDropTarget(el: HTMLElement, node: TreeNode): void {
     const destPath = uriToFsPath(targetFolder.uri) + '/' + source.name;
 
     try {
-      await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => orThrow(electronFs.rename(sourcePath, destPath), 'Move failed'));
+      await withOpenFilesFollowing(openFiles(), sourcePath, destPath, () => moveOnDisk(sourcePath, destPath));
 
       // Reload both source parent and target folder
       const sourceParent = source.parent;

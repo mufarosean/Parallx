@@ -185,7 +185,7 @@ describe('the work log', () => {
 describe('the databases a subject is made of', () => {
   it('has the request\'s columns, Study\'s own marked as kept, and no Status', () => {
     const c = stSubjectColumns('units-db');
-    expect(c.units.map((x: { name: string }) => x.name)).toEqual(['Order', 'Weight', 'Also Called', 'Questions', 'Answered', 'Right Last Time', 'Last Worked']);
+    expect(c.units.map((x: { name: string }) => x.name)).toEqual(['Order', 'Weight', 'Also Called', 'Material', 'Questions', 'Answered', 'Right Last Time', 'Last Worked']);
     expect(c.units.filter((x: { config?: { computedBy?: boolean } }) => x.config?.computedBy).map((x: { name: string }) => x.name)).toEqual(['Questions', 'Answered', 'Right Last Time', 'Last Worked']);
     expect(c.questions.map((x: { name: string; type: string }) => `${x.name}:${x.type}`)).toEqual(['Answer:text', 'Unit:relation', 'Kind:select', 'Source:url', 'Attempts:number', 'Correct:number', 'Last Result:select', 'Last Answered:date']);
     expect(c.questions.find((x: { name: string }) => x.name === 'Unit').config).toEqual({ databaseId: 'units-db', synced: false });

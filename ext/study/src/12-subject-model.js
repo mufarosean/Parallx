@@ -30,6 +30,8 @@ function stSubjectColumns(unitsDb) {
       { name: 'Weight', type: 'number' },
       // His: other names a unit goes by in other tools, for Progress (14-progress-model.js). Study reads it and never writes it.
       { name: 'Also Called', type: 'text' },
+      // His: the pages and files attached to the unit (15-unit-model.js). Study writes what he attaches and reads what he types.
+      { name: 'Material', type: 'files' },
       kept('Questions', 'number'), kept('Answered', 'number'), kept('Right Last Time', 'number'), kept('Last Worked', 'date'),
     ],
     questions: [

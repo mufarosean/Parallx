@@ -3,8 +3,10 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // One sheet, the setup sheet's frame: Name (the only thing it needs), a
-// sources folder, the Questions (a new database, or one he already has) and
-// his Notes. Choosing a database he has shows which of its columns Study
+// sources folder, and the Questions (a new database, or one he already has).
+// His notes are whatever pages and files he attaches to a unit, in any
+// layout (67-unit-view.js), so the sheet no longer asks for a notes database;
+// a subject made with one keeps it, untouched. Choosing a database he has shows which of its columns Study
 // would use for what, each guess a choice he can change; nothing of his is
 // copied or renamed, only a missing column is added. Create makes the page
 // and its databases (27-subjects.js) and opens the page.
@@ -29,6 +31,7 @@ function stSubjectMenuItems(s) {
   return [
     { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(s.id) },
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
+    { label: 'Find Matches…', icon: 'paperclip', onSelect: () => void stUnitFindMatches(s.id) },
     { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
     { label: 'Open Questions', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.questionsDb) },
@@ -117,7 +120,7 @@ function stRefocusSubjectOpener() {
 
 /**
  * New Subject…: the sheet. Given what the sheet would ask ({ name, folder,
- * questions, notes, mapping }: the chat, a script, or the sheet's own
+ * questions, mapping }: the chat, a script, or the sheet's own
  * Create handing over its form), the subject is made without it.
  */
 async function stCmdNewSubject(arg) {
@@ -127,7 +130,7 @@ async function stCmdNewSubject(arg) {
     return stOpenPane({ view: 'newSubject' });
   }
   if (_stSubjectSheet && arg === _stSubjectSheet.form) return _stSubjectSheet.create();
-  return stCreateSubject({ name: arg.name, folder: arg.folder, questionsDb: arg.questions, notesDb: arg.notes, mapping: arg.mapping || null });
+  return stCreateSubject({ name: arg.name, folder: arg.folder, questionsDb: arg.questions, mapping: arg.mapping || null });
 }
 
 function registerSubjectCommands(context) {
@@ -136,6 +139,8 @@ function registerSubjectCommands(context) {
     ['study.studySubject', (subject, unit, result) => stCmdStudySubject(subject, unit, result)],
     ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
+    ['study.openUnit', (subject, unit) => stCmdOpenUnit(subject, unit)],
+    ['study.findMatches', async (subject) => { const s = await stPickSubject(subject, 'Find matches for which subject?'); return s ? stUnitFindMatches(s.id) : false; }],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
 }
@@ -177,7 +182,7 @@ async function renderNewSubject(host, route, ctx) {
   const workspaceFolders = await stWorkspaceFolders();
   if (ctx.disposed()) return;
   // The form: what Create hands to the command (stCmdNewSubject).
-  const st = { name: '', folder: '', questions: '', notes: '', columns: [], mapping: null, busy: false };
+  const st = { name: '', folder: '', questions: '', columns: [], mapping: null, busy: false };
   const sheetActions = { form: st, create: () => create() };
   _stSubjectSheet = sheetActions;
   ctx.add({ dispose: () => { if (_stSubjectSheet === sheetActions) _stSubjectSheet = null; if (st.made) _stSubjectOpener = null; } });
@@ -240,10 +245,6 @@ async function renderNewSubject(host, route, ctx) {
     mapHost.hidden = false;
   }
 
-  // Notes.
-  const notes = _api.ui.createSelect(field('Notes'), { id: 'study.subject.notes', label: 'Notes', items: dbItems('None'), value: '', onChange: (v) => { st.notes = v; } });
-  ctx.add(notes);
-
   // Footer: what is wrong (when something is), Cancel, Create.
   const ft = _api.ui.createBlock(sheet, 'div', { className: 'st-sheet__ft' });
   const problem = _api.ui.createBlock(ft, 'div', { className: 'st-subj__problem', attrs: { role: 'alert' } });
@@ -266,7 +267,7 @@ async function renderNewSubject(host, route, ctx) {
     createBtn.disabled = true;
     say('');
     try {
-      const subject = await stCreateSubject({ name: title, folder: st.folder, questionsDb: st.questions, notesDb: st.notes, mapping: st.mapping });
+      const subject = await stCreateSubject({ name: title, folder: st.folder, questionsDb: st.questions, mapping: st.mapping });
       st.made = true;
       await ctx.closeTab();
       // What was made, on screen: the subject's page, with its databases under it.

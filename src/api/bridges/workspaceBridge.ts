@@ -14,6 +14,7 @@ import type { IWorkspaceConfiguration, IConfigurationChangeEvent } from '../../c
 import type { WorkspaceFolder, WorkspaceFoldersChangeEvent } from '../../workspace/workspaceTypes.js';
 import type { FileChangeEvent } from '../../platform/fileTypes.js';
 import type { ICanvasPageQueryService } from '../../services/serviceTypes.js';
+import { listWorkspaceFiles, type WorkspaceFileInfo } from '../../services/workspaceFiles.js';
 
 /** Minimal workspace identity exposed to tools on workspace switch. */
 export interface WorkspaceChangeInfo {
@@ -34,6 +35,8 @@ interface WorkspaceServiceLike {
 /** Minimal shape of the file service for the bridge. */
 interface FileServiceLike {
   readonly onDidFileChange: Event<FileChangeEvent[]>;
+  readonly onDidMoveFiles?: Event<readonly { readonly source: URI; readonly target: URI }[]>;
+  readdir?(uri: URI): Promise<readonly { readonly name: string; readonly uri: URI; readonly type: number }[]>;
 }
 
 /** Serialized workspace folder for tool API (URI as string). */
@@ -113,6 +116,9 @@ export class WorkspaceBridge {
 
   /** Fires when a canvas page is created, updated, deleted, moved, or reordered. */
   readonly onDidChangeCanvasPages: Event<ToolCanvasPageChangeEvent>;
+
+  /** Fires after the app moved or renamed a file or folder (the Explorer, a tool through workspace.fs): from and to, as file:// URIs. */
+  readonly onDidMoveFiles: Event<readonly { readonly from: string; readonly to: string }[]>;
 
   constructor(
     private readonly _toolId: string,
@@ -195,6 +201,16 @@ export class WorkspaceBridge {
       const fallbackEmitter = new Emitter<{ type: number; uri: string }[]>();
       this._disposables.push(fallbackEmitter);
       this.onDidFilesChange = fallbackEmitter.event;
+    }
+
+    // Moves the app made (M-unit hub: a file attached somewhere follows its rename)
+    const moveEmitter = new Emitter<readonly { readonly from: string; readonly to: string }[]>();
+    this._disposables.push(moveEmitter);
+    this.onDidMoveFiles = moveEmitter.event;
+    if (this._fileService?.onDidMoveFiles) {
+      this._disposables.push(this._fileService.onDidMoveFiles((moves) => {
+        moveEmitter.fire(moves.map((m) => ({ from: m.source.toString(), to: m.target.toString() })));
+      }));
     }
 
     // Canvas page change events
@@ -299,6 +315,19 @@ export class WorkspaceBridge {
     if (!svc) return [];
     const tree = await svc.getPageTree();
     return tree.map(WorkspaceBridge._serializePageTree);
+  }
+
+  /**
+   * Every file in the workspace's folders, machinery and hidden folders left
+   * out (src/services/workspaceFiles.ts), at most `maxFiles`.
+   */
+  async listFiles(maxFiles?: number): Promise<WorkspaceFileInfo[]> {
+    this._throwIfDisposed();
+    const fsvc = this._fileService;
+    if (!fsvc?.readdir || !this._workspaceService) return [];
+    const folders = this._workspaceService.folders.map((f) => ({ uri: f.uri.toString(), name: f.name }));
+    const readdir = async (uri: string) => (await fsvc.readdir!(URI.parse(uri))).map((e) => ({ name: e.name, uri: e.uri.toString(), type: e.type }));
+    return listWorkspaceFiles(folders, readdir, maxFiles);
   }
 
   private static _serializePage(p: { id: string; parentId: string | null; title: string; icon: string | null; isFavorited: boolean; isArchived: boolean; createdAt: string; updatedAt: string }): ToolCanvasPageInfo {

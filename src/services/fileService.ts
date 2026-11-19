@@ -116,6 +116,8 @@ export class FileService extends Disposable implements IFileService {
   // ── Events ──
   private readonly _onDidFileChange = this._register(new Emitter<FileChangeEvent[]>());
   readonly onDidFileChange: Event<FileChangeEvent[]> = this._onDidFileChange.event;
+  private readonly _onDidMoveFiles = this._register(new Emitter<readonly { readonly source: URI; readonly target: URI }[]>());
+  readonly onDidMoveFiles: Event<readonly { readonly source: URI; readonly target: URI }[]> = this._onDidMoveFiles.event;
 
   // ── Watchers ──
   private readonly _watchers = new Map<string, { watchId: string; uri: URI }>();
@@ -248,6 +250,7 @@ export class FileService extends Disposable implements IFileService {
     throwIfError(result, source);
     this._contentCache.delete(source.toKey());
     this._contentCache.delete(target.toKey());
+    this._onDidMoveFiles.fire([{ source, target }]);
   }
 
   async delete(uri: URI, options?: FileDeleteOptions): Promise<void> {

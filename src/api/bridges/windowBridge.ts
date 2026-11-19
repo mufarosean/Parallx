@@ -55,7 +55,7 @@ export class WindowBridge {
 
   async showQuickPick(
     items: readonly { label: string; description?: string; detail?: string; picked?: boolean }[],
-    options?: { placeholder?: string; canPickMany?: boolean; matchOnDescription?: boolean },
+    options?: { placeholder?: string; canPickMany?: boolean; matchOnDescription?: boolean; confirmLabel?: string },
   ): Promise<any> {
     this._throwIfDisposed();
     const parent = this._workbenchContainer ?? document.body;

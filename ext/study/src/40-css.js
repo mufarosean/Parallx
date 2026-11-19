@@ -394,6 +394,15 @@ function injectStyles() {
 .st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r { position: absolute; right: var(--px-sidebar-inset); bottom: var(--px-space-1); line-height: 1; }
 .st-sb__unit > .px-stacked-bar { position: absolute; bottom: var(--px-space-2); left: calc(min(var(--px-space-8), 15%) + 16px + var(--px-space-2)); right: calc(var(--px-sidebar-inset) + var(--st-count-w, 8ch) + var(--px-space-2)); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; overflow: hidden; pointer-events: none; }
 @container (max-width: 136px) { .st-sb__unit > .px-stacked-bar { display: none; } }
+/* A unit's own More Actions sits at the end of its first line, in a slot of its own so it never covers the count. Shown while
+   the row is hovered, holds the focus, or is used by touch. */
+.st-sb__sec--subjects .st-sb__unit { display: flex; align-items: flex-start; padding-right: var(--px-space-2); }
+.st-sb__sec--subjects .st-sb__unit > .st-sb__nav--unit { flex: 1; min-width: 0; width: auto; padding-right: var(--px-space-1); }
+.st-sb__unitmore { flex: none; margin-top: calc((var(--px-control-h) - var(--px-control-h-sm)) / 2); opacity: 0; }
+.st-sb__unit--bar > .st-sb__unitmore { margin-top: 0; }
+.st-sb__unit:hover > .st-sb__unitmore, .st-sb__unit:focus-within > .st-sb__unitmore, [data-input-modality="touch"] .st-sb__unit > .st-sb__unitmore { opacity: 1; }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r { right: var(--px-space-1); }
+.st-sb__sec--subjects .st-sb__unit > .px-stacked-bar { right: calc(var(--px-space-2) + var(--px-control-h-sm) + var(--px-space-1) + var(--st-count-w, 8ch) + var(--px-space-2)); }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
@@ -434,6 +443,35 @@ function injectStyles() {
 .st-prog__under { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2) 0; border-top: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-prog__hint { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2); color: var(--px-text-faint); font-size: var(--px-text-xs); }
 .st-prog .px-empty { padding-top: var(--px-space-8); }
+
+/* ── A unit's tab (67-unit-view.js): the header, then its groups as quiet lists. Each group's name with its count, its
+   actions at the end of that line; under it one line per item (its icon, its title, where it lives, faint) whose press
+   opens it, and its Remove; or the kinds' bars with their counts in words. ── */
+.st-unit { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-unit__in { max-width: 52rem; margin: 0 auto; }
+.st-unit__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
+.st-unit__tools { display: contents; }
+.st-unit__sec { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
+.st-unit__hd { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-1) var(--px-space-2); min-height: var(--px-control-h); border-bottom: 1px solid var(--px-divider); padding-bottom: var(--px-space-1); }
+.st-unit__name { flex: 1; min-width: 0; margin: 0; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.st-unit__n { margin-left: var(--px-space-1); font-weight: 400; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.st-unit__acts { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-1); }
+.st-unit__none { color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; padding: var(--px-space-1) 0; }
+.st-unit__list { display: flex; flex-direction: column; }
+.st-unit__item { display: flex; align-items: center; gap: var(--px-space-1); min-width: 0; border-radius: var(--px-radius-sm); }
+.st-unit__item:hover { background: var(--px-surface-hover); }
+.st-unit__open { flex: 1; min-width: 0; justify-content: flex-start; height: auto; min-height: var(--px-control-h); color: var(--px-text); font-weight: 400; }
+.st-unit__open:hover { background: transparent; }
+.st-unit__open .svg-icon { flex: none; color: var(--px-text-muted); }
+.st-unit__open .px-btn__label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.st-unit__where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.st-unit__where--gone { color: var(--px-text-secondary); font-style: italic; }
+.st-unit__item--gone .st-unit__open .px-btn__label { color: var(--px-text-secondary); text-decoration: line-through; text-decoration-color: var(--px-text-muted); }
+.st-unit__rm { flex: none; color: var(--px-text-muted); opacity: 0; }
+.st-unit__item:hover > .st-unit__rm, .st-unit__item:focus-within > .st-unit__rm, [data-input-modality="touch"] .st-unit__item > .st-unit__rm, .st-unit__item--gone > .st-unit__rm { opacity: 1; }
+.st-unit__bar { display: flex; align-items: center; min-width: 0; padding-top: var(--px-space-1); }
+.st-unit__bar .px-stacked-bar { flex: 1; }
+.st-unit__words { color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; line-height: 1.5; }
 /* A tab too narrow for its columns (the more kinds, the sooner; 63-progress-view.js measures it): a unit's kinds
    stack under its name, each bar named in words where the column heads were, so a bar always has room for its parts and its count. */
 .st-prog__list--stacked .st-prog__row--head { display: none; }

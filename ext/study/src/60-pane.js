@@ -26,6 +26,7 @@ function stRouteInstanceId(route) {
   if (route.view === 'setup') return 'setup';
   if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
+  if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -42,6 +43,8 @@ function stRouteFromInstanceId(instanceId) {
   if (id === 'new-subject') return { view: 'newSubject' };
   m = /^progress-(\d+)$/.exec(id);
   if (m) return { view: 'progress', subjectId: Number(m[1]) };
+  m = /^unit-(\d+)-(.+)$/.exec(id);
+  if (m) return { view: 'unit', subjectId: Number(m[1]), rowId: m[2] };
   return { view: 'setup', materialIds: [] };
 }
 
@@ -52,6 +55,11 @@ async function stRouteTitle(route) {
     if (route.view === 'progress') {
       const st = _stSubjects.get(Number(route.subjectId));
       return st ? `${st.subject.name} Progress` : 'Progress';
+    }
+    if (route.view === 'unit') {
+      const s = stSubjectsShown().find((x) => x.id === Number(route.subjectId));
+      const u = s ? s.units.find((x) => x.rowId === route.rowId) : null;
+      return s && u ? `${s.name} · ${u.name}` : 'Unit';
     }
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
@@ -369,6 +377,7 @@ function createEditorPane(container, input) {
           if (route.view === 'setup') await renderSetup(root, route, ctx);
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'progress') await renderProgress(root, route, ctx);
+          else if (route.view === 'unit') await renderUnit(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);

@@ -213,8 +213,16 @@ export interface QuickPickItem {
 
 export interface QuickPickOptions {
   readonly placeholder?: string;
+  /**
+   * Several at once: each row a checkbox, ticked by a click or by Space in
+   * the list, kept while the search changes, then the dialog's Cancel and its
+   * confirming button. Resolves the ticked items (an array).
+   */
   readonly canPickMany?: boolean;
+  /** The search finds the description and detail too, not only the label. A search of several words finds rows holding every one. */
   readonly matchOnDescription?: boolean;
+  /** With `canPickMany`: the confirming button's words ("Attach", "Add Selected"). "OK" when not given. */
+  readonly confirmLabel?: string;
 }
 
 /**
@@ -1233,6 +1241,37 @@ export namespace workspace {
    * Does not fire if the canvas tool is not active.
    */
   export const onDidChangeCanvasPages: Event<CanvasPageChangeEvent>;
+
+  // ── Files ──
+
+  /** One file of the workspace, as `listFiles` gives it. */
+  export interface WorkspaceFileInfo {
+    /** Its file:// URI (what `editors.openFileEditor` and `workspace.fs` take). */
+    readonly uri: string;
+    /** Its name with its extension. */
+    readonly name: string;
+    /** Its path from its workspace folder, forward slashes: "Readings/Week 1/Mack 1993.pdf". */
+    readonly relativePath: string;
+    /** The name of the workspace folder it is in. */
+    readonly folder: string;
+  }
+
+  /**
+   * Every file in the workspace's folders, for a picker over "any file".
+   * Machinery folders (node_modules, .git, venv, caches) and hidden folders
+   * (a name starting with a dot, the app's own .parallx among them) are left
+   * out. At most `maxFiles` (20,000 when not given). Each call reads the disk.
+   */
+  export function listFiles(maxFiles?: number): Promise<WorkspaceFileInfo[]>;
+
+  /**
+   * Fires after the app moved or renamed a file or folder: the Explorer's
+   * Rename, cut and paste or drag, or a tool's `workspace.fs.rename`. `from`
+   * and `to` are file:// URIs; for a folder, everything under it moved with
+   * it. A move made outside the app is seen only as a delete and a create
+   * (`onDidFilesChange`). Use it to keep a link to a file the person moved.
+   */
+  export const onDidMoveFiles: Event<readonly { readonly from: string; readonly to: string }[]>;
 }
 
 /**

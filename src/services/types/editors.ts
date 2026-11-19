@@ -222,6 +222,13 @@ export interface IFileService extends IDisposable {
   /** Fires when files change (create, modify, delete). */
   readonly onDidFileChange: Event<import('../../platform/fileTypes.js').FileChangeEvent[]>;
 
+  /**
+   * Fires after `rename` moved a file or a folder (a rename is a move to a
+   * new name): where it was and where it is now. A move made outside the app
+   * is seen only as a delete and a create, through `onDidFileChange`.
+   */
+  readonly onDidMoveFiles: Event<readonly { readonly source: import('../../platform/uri.js').URI; readonly target: import('../../platform/uri.js').URI }[]>;
+
   // ── Dialogs ──
 
   /** Open native file picker. Returns selected file URIs, or null if cancelled. */

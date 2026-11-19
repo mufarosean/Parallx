@@ -2122,6 +2122,8 @@ function stSubjectColumns(unitsDb) {
       { name: 'Weight', type: 'number' },
       // His: other names a unit goes by in other tools, for Progress (14-progress-model.js). Study reads it and never writes it.
       { name: 'Also Called', type: 'text' },
+      // His: the pages and files attached to the unit (15-unit-model.js). Study writes what he attaches and reads what he types.
+      { name: 'Material', type: 'files' },
       kept('Questions', 'number'), kept('Answered', 'number'), kept('Right Last Time', 'number'), kept('Last Worked', 'date'),
     ],
     questions: [
@@ -3133,6 +3135,261 @@ function stProgressFilterByResult(questions, rows, names, state) {
     const v = row.values || {};
     return stProgressQuestionState(v[n.lastResult], stSubjectNum(v[n.attempts]) > 0) === state;
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 15: A UNIT'S MATERIAL — the pure part
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A unit is one place for everything that belongs to it: the canvas pages
+// and the workspace files he attached, its questions, and whatever every
+// tool that reports progress has for it. What is attached is his, in the
+// Units database: a column "Material" (a files column, not kept by Study),
+// one entry per item, each { name, src }. A page's src is its link,
+// "parallx-page:<id>" (the canvas's own page link); a file in the workspace
+// is "parallx-media://workspace/<path>" (the canvas's own link to a file in
+// the workspace), so the table shows each by its name and he can add or
+// remove one there as in any files cell. What he types there by hand is read
+// too: a page link, a file:// URI, a whole path or a path from the
+// workspace. Nothing assumes a folder, a parent page or a naming scheme.
+// This part is the arithmetic of that, with no database and no DOM:
+// reading a cell, adding to it, taking from it, following a file that moved,
+// and what Find Matches proposes (the Progress matcher, by name and Also
+// Called). 31-unit-material.js reads and writes; 67-unit-view.js draws.
+
+/** The column of Units that holds a unit's material. His: Study writes what he attaches through it, and reads what he types there. */
+const ST_UNIT_MATERIAL = 'Material';
+/** A page's link, as the canvas writes it (pageLinks.ts). */
+const ST_UNIT_PAGE_SCHEME = 'parallx-page:';
+/** A file of the workspace, as the canvas's files cells keep one (imageStore.ts). */
+const ST_UNIT_FILE_SCHEME = 'parallx-media://workspace/';
+
+const stUnitSlashes = (p) => String(p ?? '').replace(/\\/g, '/');
+/** Is this a whole path (from the root of a disk), not one from the workspace? */
+const stUnitIsWhole = (p) => /^(\/|[a-zA-Z]:\/)/.test(stUnitSlashes(p));
+
+/** A path from the workspace's folder (forward slashes), or '' when `abs` is not under it. */
+function stUnitRelative(abs, root) {
+  const a = stUnitSlashes(abs).replace(/\/+$/, '');
+  const r = stUnitSlashes(root).replace(/\/+$/, '');
+  if (!r || !a) return '';
+  const win = /^[a-zA-Z]:\//.test(r);
+  const head = win ? a.slice(0, r.length).toLowerCase() : a.slice(0, r.length);
+  if (head !== (win ? r.toLowerCase() : r) || a.charAt(r.length) !== '/') return '';
+  return a.slice(r.length + 1);
+}
+
+/** The link a cell keeps for a page. */
+function stUnitPageSrc(pageId) {
+  return `${ST_UNIT_PAGE_SCHEME}${pageId}`;
+}
+
+/** The link a cell keeps for a file at `rel` in the workspace. */
+function stUnitFileSrc(rel) {
+  return ST_UNIT_FILE_SCHEME + stUnitSlashes(rel).split('/').map(encodeURIComponent).join('/');
+}
+
+const stUnitBase = (p) => stUnitSlashes(p).split('/').filter(Boolean).pop() || '';
+
+/**
+ * One entry of a Material cell, as what it points at: { kind: 'page', id,
+ * name } or { kind: 'file', rel, abs, name } (`rel` its path in the
+ * workspace, '' when it is outside it; `abs` its whole path, '' when only
+ * `rel` is known), or null for what points at nothing Study can open (a web
+ * link, an empty entry). `root` is the workspace folder's path.
+ */
+function stUnitParse(entry, root = '') {
+  let src = '';
+  let name = '';
+  if (typeof entry === 'string') src = entry.trim();
+  else if (entry && typeof entry === 'object') { src = String(entry.src ?? entry.url ?? entry.path ?? '').trim(); name = String(entry.name ?? entry.title ?? '').trim(); }
+  if (!src) return null;
+  const page = /^(?:parallx-page:|parallx:\/\/canvas\/page\/)([A-Za-z0-9_-]{1,64})(?:#.*)?$/.exec(src);
+  if (page) return { kind: 'page', id: page[1], name };
+  let rel = '';
+  let abs = '';
+  if (src.startsWith(ST_UNIT_FILE_SCHEME)) {
+    try { rel = src.slice(ST_UNIT_FILE_SCHEME.length).split('/').map(decodeURIComponent).join('/'); } catch { rel = src.slice(ST_UNIT_FILE_SCHEME.length); }
+  } else if (/^file:\/\//i.test(src)) {
+    let p = src.replace(/^file:\/\//i, '');
+    try { p = decodeURIComponent(p); } catch { /* as written */ }
+    if (/^\/[a-zA-Z]:/.test(p)) p = p.slice(1);
+    abs = stUnitSlashes(p);
+  } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(src)) {
+    return null;
+  } else if (stUnitIsWhole(src)) {
+    abs = stUnitSlashes(src);
+  } else {
+    rel = stUnitSlashes(src).replace(/^\.\//, '');
+  }
+  if (abs && !rel) rel = stUnitRelative(abs, root);
+  if (!rel && !abs) return null;
+  return { kind: 'file', rel, abs, name: name || stUnitBase(rel || abs) };
+}
+
+/** What an item is known by, the same however it was written: "page:<id>", "file:<path in the workspace>" (or its whole path). */
+function stUnitKey(item) {
+  if (!item) return '';
+  if (item.kind === 'page') return `page:${item.id}`;
+  return `file:${item.rel || item.abs}`;
+}
+
+/** A cell's value as its entries: an array, or text listing them (a comma, a semicolon or a new line between). */
+function stUnitEntriesOf(value) {
+  if (value === null || value === undefined || value === '') return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') return value.split(/\s*[\n;,]\s*/).filter(Boolean);
+  return [value];
+}
+
+/** A unit's material: what each entry of its cell points at, once each, in the cell's order. */
+function stUnitItems(value, root = '') {
+  const out = [];
+  const seen = new Set();
+  for (const entry of stUnitEntriesOf(value)) {
+    const item = stUnitParse(entry, root);
+    const key = stUnitKey(item);
+    if (!item || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...item, key });
+  }
+  return out;
+}
+
+/** The entry Study writes for an item: { name, src }. A file outside the workspace keeps its file:// link. */
+function stUnitEntry(item) {
+  if (item.kind === 'page') return { name: String(item.name || 'Untitled'), src: stUnitPageSrc(item.id) };
+  const src = item.rel ? stUnitFileSrc(item.rel) : `file://${stUnitSlashes(item.abs).startsWith('/') ? '' : '/'}${encodeURI(stUnitSlashes(item.abs))}`;
+  return { name: String(item.name || stUnitBase(item.rel || item.abs)), src };
+}
+
+/** The cell as an array of entries, as the files column takes them (what he typed is kept as he typed it). */
+function stUnitCellArray(value) {
+  return stUnitEntriesOf(value).map((e) => (typeof e === 'string' ? { name: stUnitBase(e) || e, src: e } : e));
+}
+
+/** The cell with `items` added at its end; one already there is not added again. Null when nothing is added. */
+function stUnitAdd(value, items, root = '') {
+  const have = new Set(stUnitItems(value, root).map((i) => i.key));
+  const add = [];
+  for (const item of items || []) {
+    const key = stUnitKey(item);
+    if (!key || have.has(key)) continue;
+    have.add(key);
+    add.push(stUnitEntry(item));
+  }
+  return add.length ? [...stUnitCellArray(value), ...add] : null;
+}
+
+/** The cell without the entries that point at `key`. Null when none does. */
+function stUnitRemove(value, key, root = '') {
+  const list = stUnitCellArray(value);
+  const kept = list.filter((e) => stUnitKey(stUnitParse(e, root)) !== key);
+  return kept.length === list.length ? null : kept;
+}
+
+/**
+ * The cell after a file or folder at `from` moved to `to` (both paths in the
+ * workspace): each entry for it, or under it, points at the new place under
+ * its new name. Null when no entry is touched.
+ */
+function stUnitMoved(value, from, to, root = '') {
+  const f = stUnitSlashes(from).replace(/\/+$/, '');
+  const t = stUnitSlashes(to).replace(/\/+$/, '');
+  if (!f || !t || f === t) return null;
+  let touched = false;
+  const out = stUnitCellArray(value).map((e) => {
+    const item = stUnitParse(e, root);
+    if (!item || item.kind !== 'file' || !item.rel) return e;
+    if (item.rel !== f && !item.rel.startsWith(`${f}/`)) return e;
+    touched = true;
+    const rel = t + item.rel.slice(f.length);
+    // A name he gave it stays, unless it was the file's own name.
+    const own = !item.name || item.name === stUnitBase(item.rel);
+    return stUnitEntry({ kind: 'file', rel, abs: '', name: own ? stUnitBase(rel) : item.name });
+  });
+  return touched ? out : null;
+}
+
+/** The cell with each page entry named as the page is titled now (`titleOf(id)`, undefined when not known). Null when every name is right. */
+function stUnitRetitled(value, titleOf, root = '') {
+  let touched = false;
+  const out = stUnitCellArray(value).map((e) => {
+    const item = stUnitParse(e, root);
+    if (!item || item.kind !== 'page' || typeof e !== 'object') return e;
+    const now = titleOf(item.id);
+    if (typeof now !== 'string' || !now || now === item.name) return e;
+    touched = true;
+    return { ...e, name: now };
+  });
+  return touched ? out : null;
+}
+
+/** A file's name without its last extension: what Find Matches compares with a unit's names. */
+function stUnitStem(name) {
+  const n = String(name ?? '');
+  const at = n.lastIndexOf('.');
+  return at > 0 ? n.slice(0, at) : n;
+}
+
+/**
+ * What Find Matches proposes: every candidate whose title (a page) or name
+ * without its extension (a file) is a unit's name or one of its Also Called,
+ * as Progress matches a tool's groups (stProgressMatch: case, spaces,
+ * punctuation and accents aside). `units` are [{ name, also, attached: Set
+ * of keys }] in the Units order; `candidates` are [{ key, label, ... }].
+ * Returns [{ unit, candidate }] in the units' order, then the candidates'.
+ * What a unit has already is not proposed for it.
+ */
+function stUnitProposals(units, candidates) {
+  const list = Array.isArray(units) ? units : [];
+  const groups = (candidates || []).map((c, i) => ({ group: String(i), label: c.label, candidate: c }));
+  const m = stProgressMatch(list.map((u) => ({ name: u.name, also: u.also })), groups);
+  const out = [];
+  m.matched.forEach((gs, i) => {
+    const unit = list[i];
+    for (const g of gs) if (!(unit.attached && unit.attached.has(g.candidate.key))) out.push({ unit: unit.name, candidate: g.candidate });
+  });
+  return out;
+}
+
+/** Where a page lives: the titles of the pages above it, nearest last ("Reading Log", "Course › Week 3"); '' at the top. */
+function stUnitPageWhere(id, byId) {
+  const names = [];
+  const seen = new Set([id]);
+  let at = byId.get(id);
+  while (at && at.parentId && !seen.has(at.parentId)) {
+    seen.add(at.parentId);
+    const up = byId.get(at.parentId);
+    if (!up) break;
+    names.unshift(String(up.title || 'Untitled'));
+    at = up;
+  }
+  return names.join(' › ');
+}
+
+/** Where a file lives: its folders from the workspace ("Readings › Week 1"); '' at the root; its whole folder when outside. */
+function stUnitFileWhere(item) {
+  const p = item.rel || item.abs;
+  const parts = stUnitSlashes(p).split('/').filter(Boolean);
+  parts.pop();
+  return item.rel ? parts.join(' › ') : `${stUnitIsWhole(p) && !p.startsWith('/') ? '' : '/'}${parts.join('/')}`;
+}
+
+/** The kind an icon is chosen by: a page, a PDF, a picture, text, or any other file. */
+function stUnitKindOf(item) {
+  if (item.kind === 'page') return 'page';
+  const ext = (/\.([^./]+)$/.exec(String(item.rel || item.abs || item.name)) || [])[1] || '';
+  const e = ext.toLowerCase();
+  if (e === 'pdf') return 'pdf';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'svg'].includes(e)) return 'image';
+  if (['md', 'markdown', 'txt', 'text'].includes(e)) return 'text';
+  return 'file';
+}
+
+/** A count in his words: "3 right · 1 partly · 2 wrong · 2 not yet". */
+function stUnitCountsLine(counts, words) {
+  return ST_PROGRESS_STATES.map((s, i) => `${counts[i]} ${stProgressWord(words, s)}`).join(' · ');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5128,7 +5385,7 @@ function stSubjectsReset() {
 }
 
 /**
- * The databases New Subject offers as Questions or Notes: every database of
+ * The databases New Subject offers as Questions: every database of
  * the canvas but the ones a subject is already made of (its Units, its
  * Questions, its Work Log), by what Study has stored, so it holds before the
  * subjects are loaded too.
@@ -8025,6 +8282,271 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 31: A UNIT'S MATERIAL — read, written, followed
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// What a unit has attached lives in its row of Units, the column Material
+// (15-unit-model.js says how an entry is written). This part reads it as
+// things to show (a page by its title now and where it lives, a file by its
+// name and its folders, each one missing when it is gone), writes what he
+// attaches and removes, and keeps an entry on its file when the app moves
+// the file (the Explorer's Rename, its cut and paste or drag). The pages and
+// files themselves are never touched.
+//
+// The canvas's page tree is read once a unit tab or a picker wants it, and
+// again when a page changes; whether an attached file is there is asked
+// once and again when the workspace says that file changed. Everything here
+// belongs to the activation: Study off, nothing is heard or read.
+
+/** The canvas's pages as Study last read them: id → { id, parentId, title }, or null until read. */
+let _stUnitPages = null;
+/** The read in flight, so callers share it. */
+let _stUnitPagesAsk = null;
+/** Bumped when the pages change, so a read that started before it is not kept. */
+let _stUnitPagesSeq = 0;
+/** A file's path → whether it is there, as last asked. */
+const _stUnitFiles = new Map();
+/** Has a unit tab or a picker asked for the pages in this activation? */
+let _stUnitWanted = false;
+let _stUnitPagesTimer = 0;
+
+const stUnitRoot = () => stWorkspaceRoot();
+
+/** The Material cell of a Units row (whatever the case of the column's name). */
+function stUnitCell(row) {
+  const values = (row && row.values) || {};
+  const key = Object.keys(values).find((k) => stSubjectSameName(k, ST_UNIT_MATERIAL));
+  return key ? values[key] : undefined;
+}
+
+/** The column's name as Units has it (he may have changed its case), or the one Study adds. */
+function stUnitColumnName(row) {
+  const values = (row && row.values) || {};
+  return Object.keys(values).find((k) => stSubjectSameName(k, ST_UNIT_MATERIAL)) || ST_UNIT_MATERIAL;
+}
+
+/** A live subject and one of its Units rows. */
+function stUnitRowOf(subjectId, rowId) {
+  const st = _stSubjects.get(Number(subjectId));
+  const row = st ? (st.unitRows || []).find((r) => r.pageId === rowId) || null : null;
+  return { st, row };
+}
+
+/** The canvas's pages, read now if they never were (or changed since). */
+function stUnitPages() {
+  _stUnitWanted = true;
+  if (_stUnitPages) return Promise.resolve(_stUnitPages);
+  if (_stUnitPagesAsk) return _stUnitPagesAsk;
+  const seq = _stUnitPagesSeq;
+  const token = stActivation();
+  const read = async () => {
+    const tree = await _api.workspace.getCanvasPageTree();
+    const byId = new Map();
+    const walk = (nodes) => { for (const n of nodes || []) { byId.set(n.id, { id: n.id, parentId: n.parentId || null, title: String(n.title || '').trim() || 'Untitled' }); walk(n.children); } };
+    walk(tree);
+    return byId;
+  };
+  _stUnitPagesAsk = read().then((byId) => {
+    _stUnitPagesAsk = null;
+    if (!stIsCurrent(token)) return byId;
+    if (seq === _stUnitPagesSeq) _stUnitPages = byId;
+    return byId;
+  }, (err) => { _stUnitPagesAsk = null; console.warn('[Study] the canvas pages could not be read:', err && err.message); return new Map(); });
+  return _stUnitPagesAsk;
+}
+
+/** The pages as last read, without asking (null until they are). */
+const stUnitPagesNow = () => _stUnitPages;
+
+/** A page changed somewhere: read them again shortly, if a tab or a picker shows them. */
+function stUnitPagesTouched(token) {
+  _stUnitPagesSeq += 1;
+  _stUnitPages = null;
+  if (!_stUnitWanted || !stIsCurrent(token)) return;
+  clearTimeout(_stUnitPagesTimer);
+  _stUnitPagesTimer = setTimeout(() => {
+    if (!stIsCurrent(token)) return;
+    void stUnitPages().then(() => { if (stIsCurrent(token)) bus.emit('unit'); });
+  }, 120);
+}
+
+/** A file's whole path, from an item. */
+function stUnitAbs(item) {
+  if (item.abs) return item.abs;
+  const root = stUnitRoot().replace(/[\\/]+$/, '');
+  return root ? `${root}/${item.rel}` : item.rel;
+}
+
+/** Is this file there? Asked once, then known until the workspace says it changed. */
+async function stUnitFileThere(item) {
+  const abs = stUnitAbs(item);
+  if (_stUnitFiles.has(abs)) return _stUnitFiles.get(abs);
+  const fs = _api.workspace && _api.workspace.fs;
+  let there = true;
+  try { there = fs && typeof fs.exists === 'function' ? !!(await fs.exists(stUriOf(abs))) : true; } catch { there = false; }
+  _stUnitFiles.set(abs, there);
+  return there;
+}
+
+/** The workspace says these files changed: what Study knew of them is asked again, and every tab looks again. */
+function stUnitFilesTouched(events, token) {
+  if (!stIsCurrent(token) || !_stUnitFiles.size) return;
+  let touched = false;
+  for (const e of events || []) {
+    const p = stUnitSlashes(stFsPathOf(e && e.uri)).replace(/\/+$/, '');
+    for (const k of [..._stUnitFiles.keys()]) {
+      const known = stUnitSlashes(k);
+      if (known === p || known.startsWith(`${p}/`)) { _stUnitFiles.delete(k); touched = true; }
+    }
+  }
+  if (touched) bus.emit('unit');
+}
+
+/** Forget what was known of the files (a tab shown again looks afresh). */
+function stUnitFilesForget() {
+  _stUnitFiles.clear();
+}
+
+/**
+ * A unit's material as the tab shows it: [{ key, kind, title, where,
+ * missing, item }] in the cell's order. `pages` is the page index (null:
+ * not read yet, then nothing is said missing and each page keeps the name
+ * the cell gives it).
+ */
+async function stUnitShown(value, pages) {
+  const root = stUnitRoot();
+  const items = stUnitItems(value, root);
+  return Promise.all(items.map(async (item) => {
+    if (item.kind === 'page') {
+      const page = pages ? pages.get(item.id) : null;
+      return { key: item.key, kind: 'page', title: page ? page.title : (item.name || 'Untitled page'), where: page ? stUnitPageWhere(item.id, pages) : '', missing: !!pages && !page, item };
+    }
+    const there = await stUnitFileThere(item);
+    return { key: item.key, kind: stUnitKindOf(item), title: stUnitBase(item.rel || item.abs) || item.name, where: stUnitFileWhere(item), missing: !there, item };
+  }));
+}
+
+/** Write a unit's cell, and show it at once (the next read of Units says the same). */
+async function stUnitWrite(st, rowId, next) {
+  const door = stSubjectDoorOrThrow();
+  const row = (st.unitRows || []).find((r) => r.pageId === rowId);
+  if (!row) throw new Error('That unit is no longer in Units.');
+  const name = stUnitColumnName(row);
+  stSubjectLive(st);
+  // The column first, for a subject made before it (a person who deleted it gets it back, empty, as for Study's other columns).
+  await door.ensureColumns(st.subject.unitsDb, [{ name: ST_UNIT_MATERIAL, type: 'files' }]);
+  await door.updateRow(st.subject.unitsDb, rowId, { values: { [name]: next } });
+  row.values = { ...(row.values || {}), [name]: next };
+  _emitDataChanged();
+}
+
+/** Attach these items to a unit: pages [{ kind: 'page', id, name }] and files [{ kind: 'file', rel, abs, name }]. One already there stays once. */
+async function stUnitAttach(subjectId, rowId, items) {
+  const { st, row } = stUnitRowOf(subjectId, rowId);
+  if (!st || !row) throw new Error('That unit is no longer in Units.');
+  const next = stUnitAdd(stUnitCell(row), items, stUnitRoot());
+  if (next) await stUnitWrite(st, rowId, next);
+  return !!next;
+}
+
+/** Take one item off a unit (its key). The page or the file itself is untouched. */
+async function stUnitDetach(subjectId, rowId, key) {
+  const { st, row } = stUnitRowOf(subjectId, rowId);
+  if (!st || !row) return false;
+  const next = stUnitRemove(stUnitCell(row), key, stUnitRoot());
+  if (next) await stUnitWrite(st, rowId, next);
+  return !!next;
+}
+
+/** Open an item in its own editor: a page in the canvas, a file in what the app opens it with. */
+async function stUnitOpen(shown) {
+  if (shown.missing) {
+    await _api.window.showWarningMessage(shown.kind === 'page' ? `${shown.title} is not there any more. It may be in the Trash.` : `${shown.title} is not there any more. It was moved or deleted.`);
+    return;
+  }
+  if (shown.item.kind === 'page') await _api.commands.executeCommand('canvas.openPage', shown.item.id);
+  else await _api.editors.openFileEditor(stUriOf(stUnitAbs(shown.item)));
+}
+
+/** The pages and databases a subject is made of: its Units, Questions and Work Log, and their rows. Not material. */
+function stUnitInternalIds() {
+  const out = new Set();
+  for (const st of _stSubjects.values()) {
+    for (const id of [st.subject.unitsDb, st.subject.questionsDb, st.subject.logDb]) if (id) out.add(id);
+    for (const r of st.unitRows || []) out.add(r.pageId);
+    for (const id of (st.rows && st.rows.keys ? st.rows.keys() : [])) out.add(id);
+  }
+  return out;
+}
+
+/**
+ * Everything that can be attached: every canvas page (a subject's own
+ * databases and their rows aside) and every file of the workspace, each
+ * { key, kind, label, where, item }.
+ */
+async function stUnitCandidates() {
+  const [pages, files] = await Promise.all([
+    stUnitPages(),
+    typeof _api.workspace.listFiles === 'function' ? _api.workspace.listFiles().catch(() => []) : Promise.resolve([]),
+  ]);
+  const internal = stUnitInternalIds();
+  const out = [];
+  for (const p of pages.values()) {
+    if (internal.has(p.id)) continue;
+    const item = { kind: 'page', id: p.id, name: p.title };
+    out.push({ key: stUnitKey(item), kind: 'page', label: p.title, where: stUnitPageWhere(p.id, pages), item });
+  }
+  const root = stUnitRoot();
+  const single = ((_api.workspace && _api.workspace.workspaceFolders) || []).length <= 1;
+  for (const f of files || []) {
+    const abs = stFsPathOf(f.uri);
+    const rel = stUnitRelative(abs, root) || (single ? f.relativePath : '');
+    const item = { kind: 'file', rel, abs: rel ? '' : abs, name: f.name };
+    out.push({ key: stUnitKey(item), kind: stUnitKindOf(item), label: f.name, where: stUnitFileWhere(item), item });
+  }
+  return out;
+}
+
+/** The app moved a file or a folder: every unit's entry for it, or under it, follows. */
+async function stUnitFollowMoves(moves, token) {
+  if (!stIsCurrent(token) || !_stSubjects.size) return;
+  const root = stUnitRoot();
+  for (const m of moves || []) {
+    const from = stUnitRelative(stFsPathOf(m && m.from), root);
+    const to = stUnitRelative(stFsPathOf(m && m.to), root);
+    if (!from || !to) continue;
+    for (const st of _stSubjects.values()) {
+      for (const row of st.unitRows || []) {
+        const next = stUnitMoved(stUnitCell(row), from, to, root);
+        if (!next) continue;
+        try { await stUnitWrite(st, row.pageId, next); } catch (err) { if (!stIsStopped(err)) console.warn('[Study] a moved file could not be followed:', err && err.message); }
+      }
+    }
+  }
+  stUnitFilesForget();
+  bus.emit('unit');
+}
+
+/** Hear the pages, the files and the moves for this activation. */
+function registerUnits(context, token = stActivation()) {
+  const ws = _api.workspace;
+  if (!ws) return;
+  if (typeof ws.onDidChangeCanvasPages === 'function') context.subscriptions.push(ws.onDidChangeCanvasPages(() => stUnitPagesTouched(token)));
+  if (typeof ws.onDidFilesChange === 'function') context.subscriptions.push(ws.onDidFilesChange((events) => stUnitFilesTouched(events, token)));
+  if (typeof ws.onDidMoveFiles === 'function') context.subscriptions.push(ws.onDidMoveFiles((moves) => { void stUnitFollowMoves(moves, token); }));
+}
+
+/** Forget it all (deactivate). */
+function stUnitsReset() {
+  clearTimeout(_stUnitPagesTimer);
+  _stUnitPages = null;
+  _stUnitPagesAsk = null;
+  _stUnitPagesSeq += 1;
+  _stUnitFiles.clear();
+  _stUnitWanted = false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 35: MAKING — a reply asked again, the concept map, a session filled as questions arrive
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -9064,6 +9586,15 @@ function injectStyles() {
 .st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r { position: absolute; right: var(--px-sidebar-inset); bottom: var(--px-space-1); line-height: 1; }
 .st-sb__unit > .px-stacked-bar { position: absolute; bottom: var(--px-space-2); left: calc(min(var(--px-space-8), 15%) + 16px + var(--px-space-2)); right: calc(var(--px-sidebar-inset) + var(--st-count-w, 8ch) + var(--px-space-2)); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; overflow: hidden; pointer-events: none; }
 @container (max-width: 136px) { .st-sb__unit > .px-stacked-bar { display: none; } }
+/* A unit's own More Actions sits at the end of its first line, in a slot of its own so it never covers the count. Shown while
+   the row is hovered, holds the focus, or is used by touch. */
+.st-sb__sec--subjects .st-sb__unit { display: flex; align-items: flex-start; padding-right: var(--px-space-2); }
+.st-sb__sec--subjects .st-sb__unit > .st-sb__nav--unit { flex: 1; min-width: 0; width: auto; padding-right: var(--px-space-1); }
+.st-sb__unitmore { flex: none; margin-top: calc((var(--px-control-h) - var(--px-control-h-sm)) / 2); opacity: 0; }
+.st-sb__unit--bar > .st-sb__unitmore { margin-top: 0; }
+.st-sb__unit:hover > .st-sb__unitmore, .st-sb__unit:focus-within > .st-sb__unitmore, [data-input-modality="touch"] .st-sb__unit > .st-sb__unitmore { opacity: 1; }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r { right: var(--px-space-1); }
+.st-sb__sec--subjects .st-sb__unit > .px-stacked-bar { right: calc(var(--px-space-2) + var(--px-control-h-sm) + var(--px-space-1) + var(--st-count-w, 8ch) + var(--px-space-2)); }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
@@ -9104,6 +9635,35 @@ function injectStyles() {
 .st-prog__under { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2) 0; border-top: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-prog__hint { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2); color: var(--px-text-faint); font-size: var(--px-text-xs); }
 .st-prog .px-empty { padding-top: var(--px-space-8); }
+
+/* ── A unit's tab (67-unit-view.js): the header, then its groups as quiet lists. Each group's name with its count, its
+   actions at the end of that line; under it one line per item (its icon, its title, where it lives, faint) whose press
+   opens it, and its Remove; or the kinds' bars with their counts in words. ── */
+.st-unit { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-unit__in { max-width: 52rem; margin: 0 auto; }
+.st-unit__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
+.st-unit__tools { display: contents; }
+.st-unit__sec { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
+.st-unit__hd { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-1) var(--px-space-2); min-height: var(--px-control-h); border-bottom: 1px solid var(--px-divider); padding-bottom: var(--px-space-1); }
+.st-unit__name { flex: 1; min-width: 0; margin: 0; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.st-unit__n { margin-left: var(--px-space-1); font-weight: 400; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.st-unit__acts { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-1); }
+.st-unit__none { color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; padding: var(--px-space-1) 0; }
+.st-unit__list { display: flex; flex-direction: column; }
+.st-unit__item { display: flex; align-items: center; gap: var(--px-space-1); min-width: 0; border-radius: var(--px-radius-sm); }
+.st-unit__item:hover { background: var(--px-surface-hover); }
+.st-unit__open { flex: 1; min-width: 0; justify-content: flex-start; height: auto; min-height: var(--px-control-h); color: var(--px-text); font-weight: 400; }
+.st-unit__open:hover { background: transparent; }
+.st-unit__open .svg-icon { flex: none; color: var(--px-text-muted); }
+.st-unit__open .px-btn__label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.st-unit__where { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.st-unit__where--gone { color: var(--px-text-secondary); font-style: italic; }
+.st-unit__item--gone .st-unit__open .px-btn__label { color: var(--px-text-secondary); text-decoration: line-through; text-decoration-color: var(--px-text-muted); }
+.st-unit__rm { flex: none; color: var(--px-text-muted); opacity: 0; }
+.st-unit__item:hover > .st-unit__rm, .st-unit__item:focus-within > .st-unit__rm, [data-input-modality="touch"] .st-unit__item > .st-unit__rm, .st-unit__item--gone > .st-unit__rm { opacity: 1; }
+.st-unit__bar { display: flex; align-items: center; min-width: 0; padding-top: var(--px-space-1); }
+.st-unit__bar .px-stacked-bar { flex: 1; }
+.st-unit__words { color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; line-height: 1.5; }
 /* A tab too narrow for its columns (the more kinds, the sooner; 63-progress-view.js measures it): a unit's kinds
    stack under its name, each bar named in words where the column heads were, so a bar always has room for its parts and its count. */
 .st-prog__list--stacked .st-prog__row--head { display: none; }
@@ -9452,7 +10012,8 @@ function createSidebarView(container) {
 
   // A subject: its name opens the setup sheet on all of it, its actions are
   // behind More Actions and the context menu (62-subject-view.js), then each
-  // unit is a row that opens the sheet on that unit. The numbers are the
+  // unit is a row that opens the unit's tab (67-unit-view.js), its setup one
+  // press away in its own More Actions. The numbers are the
   // Questions database's, as it is now; a unit's mark says how far it is.
   const countText = (answered, total) => `${answered} of ${total}`;
   const subjectRows = (host, s) => {
@@ -9487,10 +10048,18 @@ function createSidebarView(container) {
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
       const count = shown(u.answered, u.total, others(row && row.kinds));
       const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: count.done ? 'circle-check' : count.started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
-        title: `Study ${u.name}: ${count.says(false)}`, command: 'study.studySubject', args: [s.id, u.name] });
+        title: `Open ${u.name}: ${count.says(false)}`, command: 'study.openUnit', args: [s.id, u.rowId] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
       if (count.done) unit.classList.add('st-sb__nav--done');
       const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
+      // The unit's own actions (its setup, Study…): More Actions beside the row, and its context menu.
+      const more = _api.ui.createIconButton(line, { id: `study.side.unit.${s.id}.${u.rowId}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm',
+        onClick: () => _api.ui.showContextMenu(more, stUnitMenuItems(s, u), { anchorPosition: 'below' }) });
+      more.classList.add('st-sb__unitmore');
+      line.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stUnitMenuItems(s, u));
+      });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
       // The name has the first line to itself; the bar runs under it, up to the count at the end of its line.
@@ -10444,6 +11013,7 @@ function stRouteInstanceId(route) {
   if (route.view === 'setup') return 'setup';
   if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
+  if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -10460,6 +11030,8 @@ function stRouteFromInstanceId(instanceId) {
   if (id === 'new-subject') return { view: 'newSubject' };
   m = /^progress-(\d+)$/.exec(id);
   if (m) return { view: 'progress', subjectId: Number(m[1]) };
+  m = /^unit-(\d+)-(.+)$/.exec(id);
+  if (m) return { view: 'unit', subjectId: Number(m[1]), rowId: m[2] };
   return { view: 'setup', materialIds: [] };
 }
 
@@ -10470,6 +11042,11 @@ async function stRouteTitle(route) {
     if (route.view === 'progress') {
       const st = _stSubjects.get(Number(route.subjectId));
       return st ? `${st.subject.name} Progress` : 'Progress';
+    }
+    if (route.view === 'unit') {
+      const s = stSubjectsShown().find((x) => x.id === Number(route.subjectId));
+      const u = s ? s.units.find((x) => x.rowId === route.rowId) : null;
+      return s && u ? `${s.name} · ${u.name}` : 'Unit';
     }
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
@@ -10787,6 +11364,7 @@ function createEditorPane(container, input) {
           if (route.view === 'setup') await renderSetup(root, route, ctx);
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'progress') await renderProgress(root, route, ctx);
+          else if (route.view === 'unit') await renderUnit(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);
@@ -12444,8 +13022,10 @@ async function renderLearn(host, route, ctx) {
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // One sheet, the setup sheet's frame: Name (the only thing it needs), a
-// sources folder, the Questions (a new database, or one he already has) and
-// his Notes. Choosing a database he has shows which of its columns Study
+// sources folder, and the Questions (a new database, or one he already has).
+// His notes are whatever pages and files he attaches to a unit, in any
+// layout (67-unit-view.js), so the sheet no longer asks for a notes database;
+// a subject made with one keeps it, untouched. Choosing a database he has shows which of its columns Study
 // would use for what, each guess a choice he can change; nothing of his is
 // copied or renamed, only a missing column is added. Create makes the page
 // and its databases (27-subjects.js) and opens the page.
@@ -12470,6 +13050,7 @@ function stSubjectMenuItems(s) {
   return [
     { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(s.id) },
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
+    { label: 'Find Matches…', icon: 'paperclip', onSelect: () => void stUnitFindMatches(s.id) },
     { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
     { label: 'Open Questions', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.questionsDb) },
@@ -12558,7 +13139,7 @@ function stRefocusSubjectOpener() {
 
 /**
  * New Subject…: the sheet. Given what the sheet would ask ({ name, folder,
- * questions, notes, mapping }: the chat, a script, or the sheet's own
+ * questions, mapping }: the chat, a script, or the sheet's own
  * Create handing over its form), the subject is made without it.
  */
 async function stCmdNewSubject(arg) {
@@ -12568,7 +13149,7 @@ async function stCmdNewSubject(arg) {
     return stOpenPane({ view: 'newSubject' });
   }
   if (_stSubjectSheet && arg === _stSubjectSheet.form) return _stSubjectSheet.create();
-  return stCreateSubject({ name: arg.name, folder: arg.folder, questionsDb: arg.questions, notesDb: arg.notes, mapping: arg.mapping || null });
+  return stCreateSubject({ name: arg.name, folder: arg.folder, questionsDb: arg.questions, mapping: arg.mapping || null });
 }
 
 function registerSubjectCommands(context) {
@@ -12577,6 +13158,8 @@ function registerSubjectCommands(context) {
     ['study.studySubject', (subject, unit, result) => stCmdStudySubject(subject, unit, result)],
     ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
+    ['study.openUnit', (subject, unit) => stCmdOpenUnit(subject, unit)],
+    ['study.findMatches', async (subject) => { const s = await stPickSubject(subject, 'Find matches for which subject?'); return s ? stUnitFindMatches(s.id) : false; }],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
 }
@@ -12618,7 +13201,7 @@ async function renderNewSubject(host, route, ctx) {
   const workspaceFolders = await stWorkspaceFolders();
   if (ctx.disposed()) return;
   // The form: what Create hands to the command (stCmdNewSubject).
-  const st = { name: '', folder: '', questions: '', notes: '', columns: [], mapping: null, busy: false };
+  const st = { name: '', folder: '', questions: '', columns: [], mapping: null, busy: false };
   const sheetActions = { form: st, create: () => create() };
   _stSubjectSheet = sheetActions;
   ctx.add({ dispose: () => { if (_stSubjectSheet === sheetActions) _stSubjectSheet = null; if (st.made) _stSubjectOpener = null; } });
@@ -12681,10 +13264,6 @@ async function renderNewSubject(host, route, ctx) {
     mapHost.hidden = false;
   }
 
-  // Notes.
-  const notes = _api.ui.createSelect(field('Notes'), { id: 'study.subject.notes', label: 'Notes', items: dbItems('None'), value: '', onChange: (v) => { st.notes = v; } });
-  ctx.add(notes);
-
   // Footer: what is wrong (when something is), Cancel, Create.
   const ft = _api.ui.createBlock(sheet, 'div', { className: 'st-sheet__ft' });
   const problem = _api.ui.createBlock(ft, 'div', { className: 'st-subj__problem', attrs: { role: 'alert' } });
@@ -12707,7 +13286,7 @@ async function renderNewSubject(host, route, ctx) {
     createBtn.disabled = true;
     say('');
     try {
-      const subject = await stCreateSubject({ name: title, folder: st.folder, questionsDb: st.questions, notesDb: st.notes, mapping: st.mapping });
+      const subject = await stCreateSubject({ name: title, folder: st.folder, questionsDb: st.questions, mapping: st.mapping });
       st.made = true;
       await ctx.closeTab();
       // What was made, on screen: the subject's page, with its databases under it.
@@ -13619,6 +14198,290 @@ async function renderPlan(host, route, ctx) {
   ctx.add({ dispose: () => { clearTimeout(timer); for (const p of parts) p.dispose(); parts = []; } });
   paint();
   stPlanTakeFocus(planId, ctx.root);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 67: A UNIT — the tab
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// One tab per unit ('unit-<subjectId>-<rowId>', titled "<Subject> · <Unit>"):
+// everything of the unit in one place, by kind. Notes and files (what he
+// attached, each opened in its own editor with one press), Questions (its
+// questions by their last result; Study Questions… and Open Questions), then
+// one group per tool that reports progress, in that tool's words, whose bar
+// opens the tool on those items through its provider (no tool is named
+// here). The header has the unit's setup, Study…, as its main action.
+// "Add Notes or Files…" picks from every page and file; "Find Matches…" on
+// the subject proposes what is named like a unit, and attaches only what he
+// ticks. The arithmetic is 15-unit-model.js; the reading and writing
+// 31-unit-material.js; the bars are Progress's (14, 28).
+
+/** An item's icon by its kind: a canvas page, a PDF, a picture, text, any other file. */
+const ST_UNIT_ICONS = { page: 'notebook-text', pdf: 'file-text', image: 'file-image', text: 'file-type', file: 'file' };
+
+const stUnitInstanceId = (subjectId, rowId) => `unit-${Number(subjectId) || 0}-${rowId}`;
+
+/** The unit tab that was just asked for and has not taken the focus yet ('': none). */
+let _stUnitFocusFor = '';
+
+/** Open a unit's tab (or bring it forward) and put the focus on its Study…: a press from the sidebar goes on from there. */
+async function stOpenUnit(subjectId, rowId) {
+  const instanceId = stUnitInstanceId(subjectId, rowId);
+  _stUnitFocusFor = instanceId;
+  const opened = await stOpenPane({ view: 'unit', subjectId: Number(subjectId) || 0, rowId: String(rowId) });
+  const page = Array.from(document.querySelectorAll('.st-unit')).find((n) => n.isConnected && n.dataset.instance === instanceId);
+  if (page) stUnitTakeFocus(instanceId, page);
+  return opened;
+}
+
+/** The focus onto the tab's Study…, once, for the tab that was asked for. */
+function stUnitTakeFocus(instanceId, page) {
+  if (!page || _stUnitFocusFor !== instanceId) return;
+  _stUnitFocusFor = '';
+  const study = page.querySelector('[data-px-id="study.unit.study"]');
+  if (study && typeof study.focus === 'function') study.focus();
+}
+
+/** The unit a command names: its row id, or its name (the subject's first unit of that name). */
+function stUnitNamed(s, unit) {
+  if (!s || unit === undefined || unit === null || unit === '') return null;
+  return s.units.find((u) => u.rowId === unit) || s.units.find((u) => stSubjectSameName(u.name, unit)) || null;
+}
+
+/** Open Unit…: a unit's tab; with no unit named, his pick of the subject's units. */
+async function stCmdOpenUnit(subject, unit) {
+  const s = await stPickSubject(subject, 'Which subject?');
+  if (!s) return null;
+  let u = stUnitNamed(s, unit);
+  if (!u) {
+    if (!s.units.length) { await _api.window.showInformationMessage(`${s.name} has no units yet. Add them in Open Units.`); return null; }
+    const pick = await _api.window.showQuickPick(s.units.map((x) => ({ label: x.name, rowId: x.rowId })), { placeholder: 'Open which unit?' });
+    u = pick ? s.units.find((x) => x.rowId === pick.rowId) || null : null;
+  }
+  return u ? stOpenUnit(s.id, u.rowId) : null;
+}
+
+/** A unit's actions: its row's More Actions and context menu in the sidebar. */
+function stUnitMenuItems(s, u) {
+  return [
+    { label: 'Study…', icon: 'px-study', onSelect: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [s.subject.bankId], unit: u.name }); } },
+  ];
+}
+
+/** What the picker says of an item: its kind when the name does not, and where it lives. */
+function stUnitDescribe(c) {
+  return [c.kind === 'page' ? 'Page' : '', c.where].filter(Boolean).join(' · ');
+}
+
+/** Add Notes or Files…: every page and file, searchable by name and place, several at once; the ticked ones are attached to the unit. */
+async function stUnitPick(subjectId, rowId) {
+  const { st, row } = stUnitRowOf(subjectId, rowId);
+  if (!st || !row) return false;
+  const unit = String(row.title || '').trim();
+  const all = await stUnitCandidates();
+  const have = new Set(stUnitItems(stUnitCell(row), stUnitRoot()).map((i) => i.key));
+  const items = all.map((c) => ({ label: c.label, description: [stUnitDescribe(c), have.has(c.key) ? 'attached' : ''].filter(Boolean).join(' · '), candidate: c }));
+  const picked = await _api.window.showQuickPick(items, { placeholder: `Find pages and files to attach to ${unit}`, canPickMany: true, matchOnDescription: true, confirmLabel: 'Attach' });
+  if (!Array.isArray(picked) || !picked.length) return false;
+  try {
+    await stUnitAttach(subjectId, rowId, picked.map((p) => p.candidate.item));
+  } catch (err) {
+    if (!stIsStopped(err)) await _api.window.showWarningMessage(stSentence(stErrText(err)));
+    return false;
+  }
+  return true;
+}
+
+/** Find Matches…: the pages and files named like a unit (or an Also Called of it), each with its unit, all unticked; Attach Selected attaches the ticked ones. */
+async function stUnitFindMatches(subjectId) {
+  const st = _stSubjects.get(Number(subjectId));
+  if (!st || !st.synced) return false;
+  const root = stUnitRoot();
+  const units = stProgressUnitsOf(st).map((u) => {
+    const row = (st.unitRows || []).find((r) => r.pageId === u.rowId);
+    return { ...u, attached: new Set(stUnitItems(stUnitCell(row), root).map((i) => i.key)) };
+  });
+  const all = await stUnitCandidates();
+  const proposals = stUnitProposals(units, all.map((c) => ({ ...c, label: c.kind === 'page' ? c.label : stUnitStem(c.label), shown: c.label })));
+  if (!proposals.length) {
+    await _api.window.showInformationMessage(`No page or file is named like a unit of ${st.subject.name}. Add the names they go by to Also Called in Units.`);
+    return false;
+  }
+  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, stUnitDescribe(p.candidate)].join(' · '), proposal: p }));
+  const picked = await _api.window.showQuickPick(items, { placeholder: `Tick what belongs to its unit in ${st.subject.name}`, canPickMany: true, matchOnDescription: true, confirmLabel: 'Attach Selected' });
+  if (!Array.isArray(picked) || !picked.length) return false;
+  const byUnit = new Map();
+  for (const p of picked) {
+    const u = units.find((x) => x.name === p.proposal.unit);
+    if (!u) continue;
+    if (!byUnit.has(u.rowId)) byUnit.set(u.rowId, []);
+    byUnit.get(u.rowId).push(p.proposal.candidate.item);
+  }
+  for (const [rowId, list] of byUnit) await stUnitAttach(subjectId, rowId, list);
+  return true;
+}
+
+async function renderUnit(host, route, ctx) {
+  const subjectId = Number(route.subjectId) || 0;
+  const rowId = String(route.rowId || '');
+  const instanceId = stUnitInstanceId(subjectId, rowId);
+  const ui = _api.ui;
+  const page = ui.createBlock(host, 'div', { className: 'st-unit', attrs: { 'data-instance': instanceId } });
+  const inner = ui.createBlock(page, 'div', { className: 'st-unit__in' });
+  const now = () => {
+    const s = stSubjectsShown().find((x) => x.id === subjectId) || null;
+    return { s, u: s ? s.units.find((x) => x.rowId === rowId) || null : null };
+  };
+  const first = now();
+  if (!first.s || !first.u) {
+    // A tab that came back with the app is drawn before Study has read its subjects: it waits for them, and says so only when the unit is gone.
+    ctx.add(onDataChanged(() => { const n = now(); if (n.s && n.u) ctx.rerender(); }));
+    const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
+    const st = _stSubjects.get(subjectId);
+    if (!ctx.disposed() && (!kept || (st && st.synced && !first.u))) ui.createEmptyState(inner, { icon: 'graduation-cap', headline: kept ? 'This unit is no longer in Units.' : 'This subject is no longer in Study.', hint: 'Its pages and files are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    return;
+  }
+  const subject = first.s.subject;
+  let unitName = first.u.name;
+
+  const header = ui.createPageHeader(inner, {
+    title: `${subject.name} · ${unitName}`,
+    primary: { id: 'study.unit.study', label: 'Study…', icon: 'px-study', title: `Study ${unitName}`, onClick: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [subject.bankId], unit: unitName }); } },
+    more: [
+      { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(subjectId) },
+      { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(subject.unitsDb) },
+    ],
+  });
+  const title = header.querySelector('.px-page-header__title');
+  const body = ui.createBlock(inner, 'div', { className: 'st-unit__body' });
+  let seq = 0;
+  /** A group: its heading with its count, its actions, then what it holds. */
+  const group = (into, name) => {
+    const sec = ui.createBlock(into, 'section', { className: 'st-unit__sec' });
+    const hd = ui.createBlock(sec, 'div', { className: 'st-unit__hd' });
+    const h = ui.createBlock(hd, 'div', { className: 'st-unit__name', text: name, attrs: { role: 'heading', 'aria-level': '2' } });
+    h.id = `st-unit-${instanceId}-${++seq}`;
+    sec.setAttribute('aria-labelledby', h.id);
+    h.appendChild(document.createTextNode(' '));
+    const n = ui.createBlock(h, 'span', { className: 'st-unit__n' });
+    const acts = ui.createBlock(hd, 'div', { className: 'st-unit__acts' });
+    const box = ui.createBlock(sec, 'div', { className: 'st-unit__box' });
+    return { sec, h, n, acts, box, count: (k) => { n.textContent = String(k); } };
+  };
+
+  // The two groups every unit has: drawn once, so their buttons stay what they are while the lists under them change.
+  const notes = group(body, 'Notes and files');
+  ui.createButton(notes.acts, { id: 'study.unit.add', label: 'Add Notes or Files…', icon: 'plus', kind: 'ghost', size: 'sm', onClick: () => void stUnitPick(subjectId, rowId) });
+  const questions = group(body, 'Questions');
+  ui.createButton(questions.acts, { id: 'study.unit.studyQuestions', label: 'Study Questions…', icon: 'px-study', kind: 'ghost', size: 'sm', onClick: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [subject.bankId], unit: unitName }); } });
+  ui.createButton(questions.acts, { id: 'study.unit.openQuestions', label: 'Open Questions', icon: 'database', kind: 'ghost', size: 'sm', onClick: () => void stOpenSubjectDatabase(subject.questionsDb) });
+  const tools = ui.createBlock(body, 'div', { className: 'st-unit__tools' });
+
+  let bars = [];
+  let drawn = '';
+  const dropBars = () => { for (const b of bars) b.dispose(); bars = []; };
+  /** A kind's bar and its counts in its own words. */
+  const counted = (box, owner, kind, counts, words, act, action) => {
+    const line = ui.createBlock(box, 'div', { className: 'st-unit__bar' });
+    bars.push(ui.createStackedBar(line, { label: stProgressBarName(owner, kind, counts, words), parts: stProgressParts(owner, kind, counts, words, { idBase: `study.unit.${slug(kind)}`, act, action }) }));
+    ui.createBlock(box, 'div', { className: 'st-unit__words', text: stUnitCountsLine(counts, words), attrs: { 'aria-hidden': 'true' } });
+  };
+  const slug = (v) => (typeof ui.sceneSlug === 'function' ? ui.sceneSlug(String(v)) : String(v).toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+  const focusKey = (n) => (n ? n.getAttribute('data-px-id') || n.getAttribute('aria-label') || '' : '');
+
+  async function paint() {
+    if (ctx.disposed()) return;
+    const n = now();
+    if (!n.s || !n.u) { ctx.rerender(); return; }
+    unitName = n.u.name;
+    const { st, row } = stUnitRowOf(subjectId, rowId);
+    const cell = stUnitCell(row);
+    const progress = stProgressOfSubject(subjectId);
+    const prow = progress ? progress.rows.find((r) => r.rowId === rowId) : null;
+    const pages = stUnitPagesNow();
+    const shown = await stUnitShown(cell, pages);
+    if (ctx.disposed()) return;
+    const key = JSON.stringify([unitName, n.s.problem, shown.map((i) => [i.key, i.title, i.where, i.missing]), prow ? prow.kinds.map((k) => [k.id, k.kind, k.counts, k.words, k.canOpen, k.groups]) : null]);
+    if (key === drawn) return;
+    drawn = key;
+    const focused = body.contains(document.activeElement) ? focusKey(document.activeElement) : '';
+    const scroll = page.scrollTop;
+    const label = `${subject.name} · ${unitName}`;
+    if (title && title.textContent !== label) title.textContent = label;
+    dropBars();
+
+    // Notes and files.
+    notes.count(shown.length);
+    notes.box.replaceChildren();
+    if (!shown.length) ui.createBlock(notes.box, 'div', { className: 'st-unit__none', text: 'Nothing attached yet. Add the pages and files that are your notes for this unit.' });
+    else {
+      const list = ui.createBlock(notes.box, 'div', { className: 'st-unit__list', attrs: { role: 'list' } });
+      for (const it of shown) {
+        const line = ui.createBlock(list, 'div', { className: `st-unit__item${it.missing ? ' st-unit__item--gone' : ''}`, attrs: { role: 'listitem' } });
+        const icon = it.missing ? 'file-question' : ST_UNIT_ICONS[it.kind] || 'file';
+        const open = ui.createButton(line, { id: null, label: it.title, icon, kind: 'ghost', size: 'sm', onClick: () => void stUnitOpen(it) });
+        open.classList.add('st-unit__open');
+        open.setAttribute('aria-label', `Open ${it.title}`);
+        const where = it.missing ? (it.kind === 'page' ? 'Missing: in the Trash or deleted' : 'Missing: moved or deleted') : it.where;
+        if (where) ui.createBlock(open, 'span', { className: `st-unit__where${it.missing ? ' st-unit__where--gone' : ''}`, text: where });
+        const rm = ui.createIconButton(line, { id: null, icon: 'x', title: `Remove ${it.title} from ${unitName}`, size: 'sm', onClick: () => void stUnitDetach(subjectId, rowId, it.key).catch((err) => { if (!stIsStopped(err)) void _api.window.showWarningMessage(stSentence(stErrText(err))); }) });
+        rm.classList.add('st-unit__rm');
+      }
+    }
+
+    // Questions, in his words.
+    const own = prow ? prow.kinds.find((k) => k.id === ST_PROGRESS_QUESTIONS) : null;
+    const qCounts = own ? own.counts : stProgressZero();
+    questions.count(qCounts[0] + qCounts[1] + qCounts[2] + qCounts[3]);
+    questions.box.replaceChildren();
+    if (!own) ui.createBlock(questions.box, 'div', { className: 'st-unit__none', text: 'No questions in this unit yet. Add them to its Questions database, with this unit as their Unit.' });
+    else counted(questions.box, unitName, 'Questions', qCounts, ST_PROGRESS_WORDS, (state) => ({ command: 'study.studySubject', args: [subjectId, unitName, state] }), 'Study these');
+
+    // One group per tool that reports progress for this unit, in its own words.
+    tools.replaceChildren();
+    for (const k of prow ? prow.kinds.filter((x) => x.id !== ST_PROGRESS_QUESTIONS) : []) {
+      const g = group(tools, k.kind);
+      g.count(k.counts[0] + k.counts[1] + k.counts[2] + k.counts[3]);
+      const act = k.canOpen ? (state) => ({ command: 'study.openProgress', args: [subjectId, { provider: k.id, groups: k.groups.map((x) => x.group), state }] }) : null;
+      counted(g.box, unitName, k.kind, k.counts, k.words, act, 'Open these');
+    }
+
+    page.scrollTop = scroll;
+    if (focused) {
+      const again = Array.from(body.querySelectorAll('button, [tabindex]')).find((x) => focusKey(x) === focused);
+      if (again) again.focus();
+    }
+    // A page renamed since it was attached: its entry in Material is named as it is now, so the table says the same.
+    if (pages && st && row) {
+      const next = stUnitRetitled(cell, (id) => (pages.get(id) ? pages.get(id).title : undefined), stUnitRoot());
+      if (next) void stUnitWrite(st, rowId, next).catch(() => { /* the tab shows the title all the same */ });
+    }
+  }
+
+  let timer = 0;
+  let painting = Promise.resolve();
+  const later = () => { clearTimeout(timer); timer = setTimeout(() => { painting = painting.then(paint, paint); }, 30); };
+  ctx.add(onDataChanged(later));
+  ctx.add(bus.on('progress', later));
+  ctx.add(bus.on('unit', later));
+  ctx.add({ dispose: () => { clearTimeout(timer); dropBars(); } });
+  // Shown again (its tab brought forward): what is on disk and in the canvas is looked at afresh.
+  if (typeof IntersectionObserver === 'function') {
+    let wasShown = true;
+    const seen = new IntersectionObserver((entries) => {
+      const on = entries.some((e) => e.isIntersecting);
+      if (on && !wasShown) { stUnitFilesForget(); later(); }
+      wasShown = on;
+    });
+    seen.observe(page);
+    ctx.add({ dispose: () => seen.disconnect() });
+  }
+  stProgressWant();
+  painting = paint();
+  await painting;
+  stUnitTakeFocus(instanceId, page);
+  // The pages' titles and places, read once, then the list again.
+  void stUnitPages().then(() => { if (!ctx.disposed()) later(); });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -15090,6 +15953,7 @@ export async function activate(api, context) {
   registerSubjects(owned, token);
   registerPlans(owned, token);
   registerProgress(owned, 0, token);
+  registerUnits(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -15130,6 +15994,8 @@ export async function deactivate() {
   stSubjectsReset();
   stPlansReset();
   stProgressReset();
+  stUnitsReset();
+  _stUnitFocusFor = '';
   _stSubjectSheet = null;
   _stSubjectOpener = null;
   _dbBridge = null;
@@ -15263,6 +16129,10 @@ export const __testables = {
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
   stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
+  // 15-unit-model, 31-unit-material, 67-unit-view: a unit's material
+  ST_UNIT_MATERIAL, stUnitRelative, stUnitPageSrc, stUnitFileSrc, stUnitParse, stUnitKey, stUnitItems, stUnitEntry, stUnitAdd, stUnitRemove,
+  stUnitMoved, stUnitRetitled, stUnitStem, stUnitProposals, stUnitPageWhere, stUnitFileWhere, stUnitKindOf, stUnitCountsLine,
+  stUnitShown, stUnitAttach, stUnitDetach, stUnitCandidates, stUnitFollowMoves, stUnitPick, stUnitFindMatches, stOpenUnit, stUnitsReset, registerUnits, renderUnit,
   // 13-plan-model: a plan, the pure part
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,

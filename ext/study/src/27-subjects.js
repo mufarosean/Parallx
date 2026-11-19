@@ -391,7 +391,7 @@ function stSubjectsReset() {
 }
 
 /**
- * The databases New Subject offers as Questions or Notes: every database of
+ * The databases New Subject offers as Questions: every database of
  * the canvas but the ones a subject is already made of (its Units, its
  * Questions, its Work Log), by what Study has stored, so it holds before the
  * subjects are loaded too.

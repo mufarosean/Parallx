@@ -432,6 +432,96 @@
   font-size: var(--px-text-sm);
 }
 
+/* A quick pick of several: a checkbox per row, the search, then Cancel and the confirming button. */
+.parallx-quickpick-box--many {
+  width: min(560px, calc(100vw - 2 * var(--px-space-4)));
+  min-width: 0;
+  max-width: none;
+  max-height: min(520px, calc(100vh - 2 * var(--px-space-8)));
+}
+
+.parallx-quickpick-box--many .parallx-quickpick-list:focus {
+  outline: none;
+}
+
+.parallx-quickpick-box--many .parallx-quickpick-list:focus-visible {
+  box-shadow: inset 0 0 0 var(--px-focus-width) var(--px-accent);
+}
+
+.parallx-quickpick-row--many {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--px-space-2);
+  min-height: var(--px-control-h);
+  padding: var(--px-space-1) var(--px-space-3);
+}
+
+.parallx-quickpick-row--many.parallx-quickpick-row--active {
+  background-color: transparent;
+}
+
+.parallx-quickpick-list:focus .parallx-quickpick-row--many.parallx-quickpick-row--active,
+.parallx-quickpick-row--many:hover {
+  background-color: var(--px-surface-hover);
+}
+
+.parallx-quickpick-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-on-accent);
+}
+
+.parallx-quickpick-check svg {
+  width: 12px;
+  height: 12px;
+}
+
+.parallx-quickpick-row--picked .parallx-quickpick-check {
+  background-color: var(--px-accent);
+  border-color: var(--px-accent);
+}
+
+.parallx-quickpick-text {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--px-space-2);
+  min-width: 0;
+}
+
+.parallx-quickpick-label {
+  overflow-wrap: anywhere;
+}
+
+.parallx-quickpick-row--many .parallx-quickpick-desc {
+  overflow-wrap: anywhere;
+}
+
+.parallx-quickpick-more {
+  padding: var(--px-space-1) var(--px-space-3);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+}
+
+.parallx-quickpick-footer {
+  align-items: center;
+  margin: 0;
+  padding: var(--px-space-2) var(--px-space-3);
+  border-top: 1px solid var(--px-divider);
+}
+
+.parallx-quickpick-count {
+  margin-right: auto;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+}
+
 /* A dismissed toast closes its slot (height and the stack gap) so the rest
    of the stack settles smoothly instead of jumping. */
 .parallx-notification--draining {

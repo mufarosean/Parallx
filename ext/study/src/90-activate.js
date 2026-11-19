@@ -80,6 +80,7 @@ export async function activate(api, context) {
   registerSubjects(owned, token);
   registerPlans(owned, token);
   registerProgress(owned, 0, token);
+  registerUnits(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -120,6 +121,8 @@ export async function deactivate() {
   stSubjectsReset();
   stPlansReset();
   stProgressReset();
+  stUnitsReset();
+  _stUnitFocusFor = '';
   _stSubjectSheet = null;
   _stSubjectOpener = null;
   _dbBridge = null;
@@ -253,6 +256,10 @@ export const __testables = {
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
   stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
+  // 15-unit-model, 31-unit-material, 67-unit-view: a unit's material
+  ST_UNIT_MATERIAL, stUnitRelative, stUnitPageSrc, stUnitFileSrc, stUnitParse, stUnitKey, stUnitItems, stUnitEntry, stUnitAdd, stUnitRemove,
+  stUnitMoved, stUnitRetitled, stUnitStem, stUnitProposals, stUnitPageWhere, stUnitFileWhere, stUnitKindOf, stUnitCountsLine,
+  stUnitShown, stUnitAttach, stUnitDetach, stUnitCandidates, stUnitFollowMoves, stUnitPick, stUnitFindMatches, stOpenUnit, stUnitsReset, registerUnits, renderUnit,
   // 13-plan-model: a plan, the pure part
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,

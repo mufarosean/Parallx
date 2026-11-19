@@ -296,7 +296,8 @@ function createSidebarView(container) {
 
   // A subject: its name opens the setup sheet on all of it, its actions are
   // behind More Actions and the context menu (62-subject-view.js), then each
-  // unit is a row that opens the sheet on that unit. The numbers are the
+  // unit is a row that opens the unit's tab (67-unit-view.js), its setup one
+  // press away in its own More Actions. The numbers are the
   // Questions database's, as it is now; a unit's mark says how far it is.
   const countText = (answered, total) => `${answered} of ${total}`;
   const subjectRows = (host, s) => {
@@ -331,10 +332,18 @@ function createSidebarView(container) {
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
       const count = shown(u.answered, u.total, others(row && row.kinds));
       const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: count.done ? 'circle-check' : count.started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
-        title: `Study ${u.name}: ${count.says(false)}`, command: 'study.studySubject', args: [s.id, u.name] });
+        title: `Open ${u.name}: ${count.says(false)}`, command: 'study.openUnit', args: [s.id, u.rowId] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
       if (count.done) unit.classList.add('st-sb__nav--done');
       const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
+      // The unit's own actions (its setup, Study…): More Actions beside the row, and its context menu.
+      const more = _api.ui.createIconButton(line, { id: `study.side.unit.${s.id}.${u.rowId}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm',
+        onClick: () => _api.ui.showContextMenu(more, stUnitMenuItems(s, u), { anchorPosition: 'below' }) });
+      more.classList.add('st-sb__unitmore');
+      line.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stUnitMenuItems(s, u));
+      });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
       // The name has the first line to itself; the bar runs under it, up to the count at the end of its line.

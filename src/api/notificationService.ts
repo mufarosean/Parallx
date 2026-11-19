@@ -9,7 +9,7 @@ import './notificationService.css';
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $ } from '../ui/dom.js';
+import { $, keepTabInside } from '../ui/dom.js';
 import { enterMode } from '../ui/interactionMode.js';
 import { getIcon } from '../ui/iconRegistry.js';
 import { createList, createSurface, declareControl, sceneSlug } from '../ui/kit.js';
@@ -657,8 +657,9 @@ export function showInputBoxModal(
 export function showQuickPickModal(
   parent: HTMLElement,
   items: readonly { label: string; description?: string; detail?: string; picked?: boolean }[],
-  options: { placeholder?: string; canPickMany?: boolean } = {},
+  options: { placeholder?: string; canPickMany?: boolean; matchOnDescription?: boolean; confirmLabel?: string } = {},
 ): Promise<typeof items[number] | (typeof items[number])[] | undefined> {
+  if (options.canPickMany) return showQuickPickMany(parent, items, options);
   return new Promise(resolve => {
     const overlay = _createModalOverlay(parent);
 
@@ -776,6 +777,191 @@ export function showQuickPickModal(
     overlay.appendChild(box);
     renderItems('');
     input.focus(); // now, so focus is never left behind on the opener
+  });
+}
+
+/** How many rows a quick pick of many draws at once; the rest wait for the search to narrow them. */
+const QUICK_PICK_MANY_ROWS = 200;
+
+/** The words a person typed, each to be found: case and accents aside. */
+function quickPickWords(text: string): string[] {
+  return quickPickFold(text).split(/\s+/).filter(Boolean);
+}
+function quickPickFold(text: string): string {
+  return String(text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/**
+ * A quick pick of several: each row a checkbox (role option, aria-selected),
+ * a search that finds every word typed in the label (and the description and
+ * detail with `matchOnDescription`), and the dialog's own buttons, Cancel and
+ * the confirming one (`confirmLabel`, "OK" when none is given). The search
+ * field, the list, Cancel and the confirming button are the Tab stops, and
+ * Tab stays among them. In the list the arrows move, Space ticks the row; a
+ * click ticks it too. Enter confirms from anywhere; Escape cancels. What is
+ * ticked stays ticked while the search changes. Resolves the ticked items in
+ * the order given, or undefined when cancelled.
+ */
+function showQuickPickMany(
+  parent: HTMLElement,
+  items: readonly { label: string; description?: string; detail?: string; picked?: boolean }[],
+  options: { placeholder?: string; matchOnDescription?: boolean; confirmLabel?: string },
+): Promise<(typeof items[number])[] | undefined> {
+  return new Promise(resolve => {
+    const overlay = _createModalOverlay(parent);
+    const seq = ++_modalSeq;
+    const box = $('div');
+    box.className = 'parallx-quickpick-box parallx-quickpick-box--many';
+    const label = options.placeholder ?? 'Select items';
+    createSurface(box, { id: 'quickPick', owner: 'core', label, instance: String(seq) });
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', label);
+    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+
+    const input = $('input');
+    input.type = 'text';
+    input.placeholder = label;
+    input.className = 'parallx-quickpick-input';
+    input.setAttribute('aria-label', label);
+    declareControl(input, { id: 'quickPick.filter', label: 'Filter', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
+    box.appendChild(input);
+
+    const list = $('div');
+    list.className = 'parallx-quickpick-list';
+    list.setAttribute('role', 'listbox'); list.setAttribute('aria-multiselectable', 'true'); list.setAttribute('aria-label', label);
+    list.id = `quick-pick-list-${seq}`;
+    list.tabIndex = 0;
+    box.appendChild(list);
+
+    const more = $('div');
+    more.className = 'parallx-quickpick-more';
+    box.appendChild(more);
+
+    const picked = new Set<number>(items.map((it, i) => (it.picked ? i : -1)).filter((i) => i >= 0));
+    let shown: number[] = [];
+    let active = 0;
+    const rowsOf = () => Array.from(list.querySelectorAll<HTMLElement>('[data-index]'));
+    createList(list, { id: 'quickPick.list', label: 'Items', rows: rowsOf, selected: () => [...picked].map(String) });
+
+    const footer = $('div');
+    footer.className = 'parallx-modal-buttons parallx-quickpick-footer';
+    const count = $('span');
+    count.className = 'parallx-quickpick-count';
+    count.setAttribute('aria-live', 'polite');
+    const cancelBtn = $('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'parallx-modal-btn parallx-modal-btn--secondary';
+    const okBtn = $('button');
+    okBtn.type = 'button';
+    okBtn.textContent = options.confirmLabel || 'OK';
+    okBtn.className = 'parallx-modal-btn parallx-modal-btn--primary';
+    declareControl(cancelBtn, { id: 'quickPick.cancel', label: 'Cancel' });
+    declareControl(okBtn, { id: 'quickPick.confirm', label: okBtn.textContent });
+    footer.append(count, cancelBtn, okBtn);
+    box.appendChild(footer);
+
+    const say = () => {
+      count.textContent = picked.size ? `${picked.size} chosen` : '';
+      okBtn.disabled = picked.size === 0;
+    };
+    const paintRow = (row: HTMLElement) => {
+      const on = picked.has(Number(row.dataset.index));
+      row.setAttribute('aria-selected', String(on));
+      row.classList.toggle('parallx-quickpick-row--picked', on);
+      const check = row.querySelector<HTMLElement>('.parallx-quickpick-check');
+      if (check) check.innerHTML = on ? getIcon('check') : '';
+    };
+    const highlight = (at: number, scroll = true) => {
+      const rows = rowsOf();
+      if (!rows.length) { list.removeAttribute('aria-activedescendant'); return; }
+      active = Math.max(0, Math.min(at, rows.length - 1));
+      rows.forEach((r, i) => r.classList.toggle('parallx-quickpick-row--active', i === active));
+      list.setAttribute('aria-activedescendant', rows[active].id);
+      if (scroll) rows[active].scrollIntoView?.({ block: 'nearest' });
+    };
+    const toggle = (i: number) => {
+      if (picked.has(i)) picked.delete(i); else picked.add(i);
+      const row = list.querySelector<HTMLElement>(`[data-index="${i}"]`);
+      if (row) paintRow(row);
+      say();
+    };
+
+    const render = () => {
+      const words = quickPickWords(input.value);
+      const haystack = (it: typeof items[number]) => quickPickFold([it.label, ...(options.matchOnDescription ? [it.description, it.detail] : [])].filter(Boolean).join(' '));
+      shown = [];
+      items.forEach((it, i) => { if (!words.length || words.every((w) => haystack(it).includes(w))) shown.push(i); });
+      list.replaceChildren();
+      for (const i of shown.slice(0, QUICK_PICK_MANY_ROWS)) {
+        const it = items[i];
+        const row = $('div');
+        row.className = 'parallx-quickpick-row parallx-quickpick-row--many';
+        row.dataset.index = String(i); row.setAttribute('role', 'option'); row.id = `${list.id}-${i}`;
+        const check = $('span');
+        check.className = 'parallx-quickpick-check';
+        check.setAttribute('aria-hidden', 'true');
+        row.appendChild(check);
+        const text = $('span');
+        text.className = 'parallx-quickpick-text';
+        const name = $('span');
+        name.className = 'parallx-quickpick-label';
+        name.textContent = it.label;
+        text.appendChild(name);
+        if (it.description) {
+          const desc = $('span');
+          desc.className = 'parallx-quickpick-desc';
+          desc.textContent = it.description;
+          text.appendChild(desc);
+        }
+        if (it.detail) {
+          const detail = $('span');
+          detail.className = 'parallx-quickpick-desc parallx-quickpick-detail';
+          detail.textContent = it.detail;
+          text.appendChild(detail);
+        }
+        row.appendChild(text);
+        paintRow(row);
+        row.addEventListener('click', () => { toggle(i); highlight(rowsOf().indexOf(row), false); });
+        list.appendChild(row);
+      }
+      const rest = shown.length - Math.min(shown.length, QUICK_PICK_MANY_ROWS);
+      more.textContent = !shown.length ? (words.length ? 'Nothing matches.' : 'Nothing to choose.') : rest > 0 ? `${rest} more. Type to narrow the list.` : '';
+      more.hidden = !more.textContent;
+      highlight(0, false);
+    };
+
+    let done = false;
+    const close = (result: (typeof items[number])[] | undefined) => {
+      if (done) return;
+      done = true;
+      tabs.dispose();
+      overlay.remove();
+      if (returnFocus?.isConnected) returnFocus.focus();
+      resolve(result);
+    };
+    const confirm = () => { if (picked.size) close(items.filter((_, i) => picked.has(i))); };
+
+    input.addEventListener('input', render);
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(undefined); return; }
+      if (e.key === 'Enter' && e.target !== cancelBtn && e.target !== okBtn) { e.preventDefault(); confirm(); return; }
+      const inList = e.target === list;
+      if (e.key === 'ArrowDown' && (e.target === input || inList)) { e.preventDefault(); if (e.target === input) { list.focus(); highlight(0); } else highlight(active + 1); return; }
+      if (e.key === 'ArrowUp' && inList) { e.preventDefault(); if (active === 0) input.focus(); else highlight(active - 1); return; }
+      if (inList && (e.key === 'Home' || e.key === 'End')) { e.preventDefault(); highlight(e.key === 'Home' ? 0 : rowsOf().length - 1); return; }
+      if (inList && e.key === ' ') { e.preventDefault(); const row = rowsOf()[active]; if (row) toggle(Number(row.dataset.index)); return; }
+      // A letter typed in the list goes on the search.
+      if (inList && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) input.focus();
+    });
+    const tabs = keepTabInside(box);
+    cancelBtn.addEventListener('click', () => close(undefined));
+    okBtn.addEventListener('click', confirm);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(undefined); });
+
+    overlay.appendChild(box);
+    render();
+    say();
+    input.focus();
   });
 }
 
