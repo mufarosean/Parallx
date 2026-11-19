@@ -2440,7 +2440,7 @@ const ST_PROGRESS_WORDS = { good: 'Right', middling: 'Partly', poor: 'Wrong', re
 const ST_PROGRESS_PLAIN = { good: 'Good', middling: 'Middling', poor: 'Poor', rest: 'Not yet' };
 /** Words for wrong that also say "not answered": wrong only once the question was attempted. */
 const ST_PROGRESS_UNSAID = ['not yet', 'unknown'];
-/** The column of Units where he lists a unit's other names. It is his: Study only reads it. */
+/** The column of Units where he lists a unit's other names. Study adds the column and only reads it; what is in it is his. */
 const ST_PROGRESS_ALSO = 'Also Called';
 /** The id of Study's own kind beside the providers' ids. */
 const ST_PROGRESS_QUESTIONS = 'questions';

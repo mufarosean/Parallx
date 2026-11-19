@@ -1216,6 +1216,9 @@ verifier), `ac54cd16` and `7fd210cd` (what review found, fixed).
   sidebar's spoken count and tick disagreeing with the visible count;
   parts 23 px tall to a finger when stacked; focus left behind when the
   tab is opened from the palette.
+- After the fixes a verifier drove nine fixed cases on the real app:
+  eight held; the sidebar still loses its names in a 900 px window at
+  200% zoom (below).
 - Grading in every run used a scripted stand-in for the model.
 
 *Found and left.*
@@ -1231,8 +1234,12 @@ verifier), `ac54cd16` and `7fd210cd` (what review found, fixed).
   matched; a catch-all deck is always listed.
 - On the thin sidebar bar the texture is a line style (solid, dashed,
   dotted), the weakest of the cues; in a sidebar row of 136 px or less
-  the bar is not drawn. At 200% zoom the subject's own name is still
-  cut. The sidebar bar cannot be pressed or asked for its numbers; a
+  the bar is not drawn. In greyscale and in high contrast, partly and
+  wrong are hard to tell apart on that thin bar. At 200% zoom the
+  subject's own name is cut, and in a 900 px window at 200% the app
+  gives the sidebar 53 px, where no unit name shows at all.
+- Two units whose names start alike read the same when cut; the full
+  name is in the tooltip. The sidebar bar cannot be pressed or asked for its numbers; a
   screen reader is told them.
 - Unit rows show per-state numbers only in a part's words (hover,
   focus, tap, long press); for a plain bar (Cards) only hover and tap,
