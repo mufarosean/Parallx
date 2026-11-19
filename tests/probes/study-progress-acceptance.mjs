@@ -1932,12 +1932,21 @@ phase(9, 'Everyone can read it', 'subject', {
   await check(c, '9.7', async () => {
     const f = reached.find((x) => x.name === `Mack, Questions, wrong: ${Q.Mack[2]}. Study these`);
     if (!f) return [false, 'the wrong part of Mack was not reached with Tab'];
-    await S.page.mouse.click(5, 5);
+    // The same part, on screen, without the focus. (A click at the window's corner took the focus away
+    // before: that corner is the title bar's Home button, it opened the Home tab over Progress, the part
+    // was no longer on screen, and "unfocused" came back null, which differs from any ring.) The focus is
+    // moved on with the keyboard instead, and the unfocused look has to be read, not missing.
+    must(await showTab(S, progressTitle(SUBJECT)), 'the Progress tab');
+    for (let i = 0; i < 3 && (await S.focused())?.name === f.name; i++) await S.page.keyboard.press('Tab');
+    const now = await S.focused();
+    if (now && now.name === f.name) return [false, 'the focus could not be moved off the part with Tab'];
     const plainLook = await S.page.evaluate((name) => window.__ap.ringOf(name), f.name);
-    return [f.keyboard && f.hasRing && f.ring !== plainLook, { focused: f.ring, unfocused: plainLook, focusVisible: f.keyboard }];
+    if (typeof plainLook !== 'string') return [false, { focused: f.ring, unfocused: plainLook, why: 'the part was not on screen to be read without the focus' }];
+    return [f.keyboard && f.hasRing && f.ring !== plainLook, { focused: f.ring, unfocused: plainLook, focusVisible: f.keyboard, focusNowOn: now ? now.name : null }];
   });
   await check(c, '9.8', async () => {
     const target = `Mack, Questions, wrong: ${Q.Mack[2]}. Study these`;
+    must(await showTab(S, progressTitle(SUBJECT)), 'the Progress tab');
     const s = await sortChoices(S);
     await S.click(must(s.inOrder, 'the choice "In Order"'));
     let on = null;
