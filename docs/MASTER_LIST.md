@@ -1167,12 +1167,14 @@ verifier), `ac54cd16` and `7fd210cd` (what review found, fixed).
   Authoring guide §4.11c.
 - The kit has one stacked bar, `api.ui.createStackedBar` (guide §6.3):
   four states told apart by colour and by texture (solid, hatched,
-  ticked, an outline), each part named for a screen reader, a part with
-  an action a button.
-- Worksheets reports its problems by paper (Easy, Medium, Hard, Not
-  rated) from the same function its dashboard uses. Flashcards reports
-  its cards by tag and by deck from each card's last rating (Good or
-  Easy, Hard, Again, Not reviewed).
+  ticked, an outline), the whole bar named in full for a screen
+  reader, a part with an action a button with its own name.
+- Worksheets reports its workbook problems by paper (Easy, Medium,
+  Hard, Not rated) from the same function its dashboard uses, so essays,
+  custom-bank and practice-exam problems are in no bar, as there.
+  Flashcards reports its cards by tag and by deck from each card's last
+  rating (Good or Easy, Hard, Again, Not reviewed), leaving out
+  suspended cards and archived decks.
 - Study has a Progress tab per subject (More Actions > Open Progress,
   or "Study: Open Progress…"): a totals card with a bar and the counts
   in words per kind, then a row per unit with a bar per kind and
@@ -1186,7 +1188,7 @@ verifier), `ac54cd16` and `7fd210cd` (what review found, fixed).
 - A tool's group belongs to the unit of the same name (case, spaces,
   punctuation and accents ignored) or one named in the unit's Also
   Called, a column Study adds to Units for him to fill. Groups matching
-  no unit are listed under the rows with their counts.
+  no unit are listed under the rows, each with its total.
 - Each unit in Study's sidebar carries a thin bar over all kinds.
 - A tool turned off takes only its bars, at once.
 
@@ -1217,19 +1219,26 @@ verifier), `ac54cd16` and `7fd210cd` (what review found, fixed).
 - Grading in every run used a scripted stand-in for the model.
 
 *Found and left.*
-- The sidebar's "N of M" counts questions with an attempt; its bar and
-  the tab count questions with a result. They differ only where a
-  result was typed without an attempt. Piece 1's probe pins the
+- The sidebar's "N of M" is questions with an attempt plus each tool's
+  rated items, over all of both; its bar and the tab count questions by
+  result. They differ where a result was typed without an attempt, and
+  where an attempt has no result Study can read; then a unit can show
+  the done tick over a bar with a not-yet part. Piece 1's probe pins the
   sidebar's count; which he wants is his call.
 - A question naming two units shows in both units' bars and is asked
   only under the first.
 - With two subjects, each tab lists the other subject's groups as not
   matched; a catch-all deck is always listed.
 - On the thin sidebar bar the texture is a line style (solid, dashed,
-  dotted), the weakest of the cues; below 24 px of room the bar is not
-  drawn. At 200% zoom the subject's own name is still cut.
+  dotted), the weakest of the cues; in a sidebar row of 136 px or less
+  the bar is not drawn. At 200% zoom the subject's own name is still
+  cut. The sidebar bar cannot be pressed or asked for its numbers; a
+  screen reader is told them.
 - Unit rows show per-state numbers only in a part's words (hover,
-  focus, tap, long press); the totals card shows them plainly.
+  focus, tap, long press); for a plain bar (Cards) only hover and tap,
+  so a sighted keyboard user cannot read them there. The totals card
+  shows them plainly. The legend is in Study's words only; a tool's
+  words are on its totals line.
 - A provider that forgets to register through its tool's subscriptions
   would outlive its tool; the seam does not tie the two (the question
   providers have the same shape).
