@@ -489,6 +489,8 @@ async function stRemoveSubject(id) {
   await db.run('DELETE FROM st_subject_logs WHERE subject_id = ?', [id]);
   await db.run('DELETE FROM st_questions WHERE provider_id IN (?, ?)', [stSubjectProviderId(id), `${stSubjectProviderId(id)}:gone`]);
   if (row.bank_id) await stDeleteBank(row.bank_id);
+  // Its plans are forgotten with it; their pages and databases stay too.
+  await stForgetSubjectPlans(id);
   await db.run('DELETE FROM st_subjects WHERE id = ?', [id]);
   _emitDataChanged();
 }

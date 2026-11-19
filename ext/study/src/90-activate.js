@@ -78,6 +78,7 @@ export async function activate(api, context) {
   registerQuestionProviders(owned, 0, token);
   registerSubjectCommands(owned);
   registerSubjects(owned, token);
+  registerPlans(owned, token);
   registerProgress(owned, 0, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
@@ -117,6 +118,7 @@ export async function deactivate() {
   _picked = [];
   _stSeenProviders.clear();
   stSubjectsReset();
+  stPlansReset();
   stProgressReset();
   _stSubjectSheet = null;
   _stSubjectOpener = null;
@@ -256,6 +258,8 @@ export const __testables = {
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,
+  // 29-plans: a plan's databases, read and written
+  stListPlans, stPlanColumns, stPlanWeekRowsOf, stPlanFormProblem, stCreatePlan, stPlanSyncNow, stPlanFlush, stPlanEnqueue, stPlansOfSubject, stPlanSetFollowing, registerPlans, stPlansReset, stPlanToday,
   // 28-progress, 63-progress-view: the providers as they are now, and the tab
   registerProgress, stProgressReset, stProgressWant, stProgressProviders, stProgressOfSubject, stProgressOpenItems, stCmdOpenProgress,
   // 27-subjects, 62-subject-view: the record in canvas databases
