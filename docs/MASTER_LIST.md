@@ -1266,6 +1266,59 @@ totals are over its matched units. One sort choice for all subjects.
 *Only his machine can show.* His own database, problems and cards
 matched to his units; whether the bars feel like the fall dashboard.
 
+**Piece 3 shipped: a unit is one place for all its material
+(2026-11-19).** His words: "Think of study as a harness, one stop shop to
+access all your study material across all the extensions. A user can
+click and the editors open." "Just let me select the files that are my
+notes. ... Build something that can handle any and all layouts."
+Commits `d34f8e57` (the acceptance probe, before the build), `16a0d4a3`,
+`970d0b6c`, `0e505282` and the ones after them.
+
+*What is built.*
+- A unit in Study's sidebar opens its tab "<Subject> · <Unit>" (one per
+  unit, back after a restart); Study… is the tab's main action and the
+  unit row's own More Actions. The tab: Notes and files (each item one
+  line, its icon, title and where it lives; the row opens it in its own
+  editor; Remove takes it off the unit), Questions (counts in his words;
+  Study Questions…, Open Questions, a bar whose parts start those
+  questions), then one group per tool that reports progress, in its own
+  words, whose bar opens the tool on those items through its provider.
+- What is attached is his: a column Material (files type, not kept by
+  Study) in Units; a page is held by its link (parallx-page:<id>), a file
+  by the canvas's workspace link, so the table shows each by name and an
+  edit there shows in the tab. A page renamed is named again there; a
+  file renamed or moved by the app's Explorer is followed; a page in the
+  Trash or a file gone says Missing, with Remove.
+- Add Notes or Files…: every page and every workspace file, searched by
+  name and place, several at once. Find Matches… (the subject's More
+  Actions) proposes pages and files named like a unit or an Also Called
+  of it (Progress's own matcher), all unticked; Attach Selected.
+- The core, generic: the quick pick of several (checkboxes, Cancel and a
+  confirming button that run quickPick.cancel / quickPick.accept,
+  `confirmLabel`, a search over every word); `workspace.listFiles()`;
+  `workspace.onDidMoveFiles` (the file service says where a moved file
+  went; the Explorer's moves go through it). The Explorer's Rename no
+  longer draws its field in a row a refresh replaced.
+- New Subject has no Notes choice; a subject made with one keeps it.
+
+*How it was checked.* The acceptance probe (74 checks) on the real app;
+its tab and list helpers measure a control's place before later
+scrolling moves it, which with the probe's 40 open page tabs misses some
+tabs and long lists: see the piece's report for both runs. Typecheck,
+the unit suite and the build pass; the earlier Study probes, the
+keyboard audit, touch drag and the visual probe are in the report.
+
+*Decided for him to overrule.* Material is one files column (pages and
+files together) rather than a relation plus a files column. Find
+Matches proposes exact name matches only (a title that merely contains a
+unit's name is not proposed). Questions has its own Study Questions…
+beside the header's Study…. A unit row's More Actions shows on hover,
+focus or touch and keeps a slot of its own, so long unit names are cut
+a little sooner in a narrow sidebar.
+
+*Only his machine can show.* His Exam 7 workspace's pages and files in
+the picker, and Windows paths.
+
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
