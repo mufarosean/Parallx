@@ -27,7 +27,7 @@ async function stOpenSubjectDatabase(databaseId) {
 /** A subject's actions: its More Actions menu, its context menu, and the Subject Actions… command. */
 function stSubjectMenuItems(s) {
   return [
-    { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenPane({ view: 'progress', subjectId: s.id }) },
+    { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(s.id) },
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
     { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },

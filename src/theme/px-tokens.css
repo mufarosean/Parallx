@@ -161,6 +161,10 @@
      worked yet. 3.7:1 or more against every surface in every palette, so
      the empty part is seen without a fourth colour. */
   --px-bar-rest:      var(--px-base-50);
+  /* The lines cut into a part of the bar so its state reads without hue:
+     the surface the bar lies on. A bar on another surface (a card) sets it
+     to that surface. */
+  --px-bar-cut:       var(--px-bg);
   --px-info:          rgb(var(--px-blue-rgb));
 
   /* Syntax — ONE palette for every place code is coloured.

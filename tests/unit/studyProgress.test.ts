@@ -477,6 +477,31 @@ describe('Open Progress', () => {
     expect(h.S.stRouteFromInstanceId(`progress-${h.subject.id}`)).toEqual({ view: 'progress', subjectId: h.subject.id });
   });
 
+  it('puts the focus in the tab it opened: its pane, as Study\'s other views', async () => {
+    const h = await subject();
+    await started(h);
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.focus();
+    const host = tab(h);
+    await until(() => host.querySelector('.st-prog'), 'the tab drawn');
+    expect(host.querySelector<HTMLElement>('.st-prog')!.dataset.subjectId).toBe(String(h.subject.id));
+    expect(document.activeElement).toBe(outside);
+    await h.S.stCmdOpenProgress('Exam 7');
+    await until(() => host.querySelector('.st-root') === document.activeElement, 'the focus in the Progress tab');
+    // The menu's Open Progress goes the same way.
+    outside.focus();
+    h.S.stSubjectMenuItems(h.S.stSubjectsShown()[0])[0].onSelect();
+    await until(() => host.querySelector('.st-root') === document.activeElement, 'the focus in the Progress tab from the menu');
+    // A tab that is drawn for another reason (it came back with the app) takes no focus.
+    outside.focus();
+    host.close();
+    const again = tab(h);
+    await until(() => again.querySelector('.st-prog'), 'the tab drawn again');
+    await wait(120);
+    expect(document.activeElement).toBe(outside);
+  });
+
   it('asks which subject when there is more than one', async () => {
     const h = await subject();
     const second = await h.S.stCreateSubject({ name: 'GLMs' });
@@ -518,6 +543,13 @@ describe('the Progress tab', () => {
     expect(h.host.querySelectorAll('.st-prog__cell--none')).toHaveLength(2);
     expect([...h.host.querySelectorAll('.st-prog__loose')].map((n) => n.textContent)).toEqual(['Problems not matched to a unit: Brosius 6, Hürlimann 3']);
     expect(h.host.querySelector('.st-prog__hint')!.textContent).toMatch(/Also Called in Units/);
+    // Under each total, its numbers in the kind's own words, there to read (the bar's name speaks them).
+    expect([...h.host.querySelectorAll('.st-prog__totals .st-prog__words')].map((n) => [n.textContent, n.getAttribute('aria-hidden')])).toEqual([
+      ['Right 4 · Partly 1 · Wrong 2 · Not yet 2', 'true'], ['Easy 3 · Medium 1 · Hard 2 · Not rated 4', 'true'],
+    ]);
+    expect(h.host.querySelectorAll('.st-prog__row .st-prog__words')).toHaveLength(0);
+    // The legend's swatches are the kit's own, one per state in the bar's order.
+    expect([...h.host.querySelectorAll('.st-prog__key .px-stacked-bar-key')].map((n) => n.getAttribute('data-state'))).toEqual(['good', 'middling', 'poor', 'rest']);
     // The totals are read, not pressed; every bar is the kit's.
     expect([...h.host.querySelectorAll('.st-prog__totals .px-stacked-bar')].map((b) => b.getAttribute('role'))).toEqual(['img', 'img']);
   });
@@ -686,9 +718,75 @@ describe('the sidebar', () => {
     problems.set([g('Clark', 10, 10)]);
     await until(() => barsIn(host).includes('Clark: 10 right, 0 partly, 1 wrong, 1 not yet'), 'the provider\'s change in the sidebar');
     expect([...host.querySelectorAll<HTMLElement>('.st-sb__unit')].map((u) => u.querySelector('.st-sb__r')!.textContent)).toEqual(['4 of 5', '11 of 12', '2 of 2']);
+    // The tooltip and the mark say what the count says: Clark's 11 of 12 is questions and problems, and it is not done.
+    const buttons = () => [...host.querySelectorAll<HTMLElement>('.st-sb__unit .st-sb__nav--unit')];
+    const said = (b: HTMLElement) => b.getAttribute('title') || b.getAttribute('data-parallx-title');
+    expect(buttons().map(said)).toEqual(['Study Mack: 4 of 5 answered.', 'Study Clark: 11 of 12 answered or rated.', 'Study Venter: 2 of 2 answered.']);
+    expect(buttons().map((b) => b.classList.contains('st-sb__nav--done'))).toEqual([false, false, true]);
+    expect(said(host.querySelector<HTMLElement>('.st-sb__subj .st-sb__nav')!)).toBe('Study Exam 7: 17 of 19 answered or rated.');
+    // The name comes first in the row, then the count; the bar is told how much room the count takes at the end of its line.
+    expect(buttons().map((b) => [...b.children].filter((c) => !c.classList.contains('svg-icon')).map((c) => c.textContent!.trim()))).toEqual([['Mack', '4 of 5'], ['Clark', '11 of 12'], ['Venter', '2 of 2']]);
+    expect([...host.querySelectorAll<HTMLElement>('.st-sb__unit')].map((u) => u.style.getPropertyValue('--st-count-w'))).toEqual(['6ch', '8ch', '6ch']);
     // A question attempted with no result yet is answered, as the piece before counted it: the count says so, the bar has no colour for it.
     h.person.edit(h.bank, 'Q7 about Clark?', { 'Times Attempted': 2 });
     await until(() => host.querySelectorAll<HTMLElement>('.st-sb__unit')[1]?.querySelector('.st-sb__r')!.textContent === '12 of 12', 'the hand edit of Attempts in the count');
     expect(barsIn(host)).toContain('Clark: 10 right, 0 partly, 1 wrong, 1 not yet');
+    // Every question and every problem of Clark is done: the mark fills when the count does.
+    expect(buttons().map((b) => b.classList.contains('st-sb__nav--done'))).toEqual([false, true, true]);
+    expect(said(buttons()[1])).toBe('Study Clark: 12 of 12 answered or rated.');
+  });
+
+  it('a unit with questions only says "answered", and a subject "questions answered"', async () => {
+    const h = await subject();
+    await started(h);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = h.S.createSidebarView(host);
+    cleanup.push(() => view.dispose());
+    await until(() => host.querySelector('.st-sb__subj .st-sb__r')?.textContent === '7 of 9', 'the subject row');
+    const said = (b: HTMLElement) => b.getAttribute('title') || b.getAttribute('data-parallx-title');
+    expect(said(host.querySelector<HTMLElement>('.st-sb__subj .st-sb__nav')!)).toBe('Study Exam 7: 7 of 9 questions answered.');
+  });
+});
+
+describe('the styles Study lays its bars out with', () => {
+  const css = () => [...document.head.querySelectorAll('style')].map((s) => s.textContent || '').find((t) => t.includes('.st-sb__unit')) || '';
+  const rule = (selector: string) => { const all = css(); const at = all.indexOf(`${selector} {`); expect(at, `a rule for ${selector}`).toBeGreaterThanOrEqual(0); return all.slice(at, all.indexOf('}', at)); };
+  async function drawn() {
+    const h = await subject();
+    const host = tab(h);
+    await until(() => host.querySelector('.st-prog'), 'the tab');
+    return h;
+  }
+
+  it('the sidebar gives a unit\'s name the whole first line: the count is at the end of the bar\'s line, and the bar stops before it', async () => {
+    await drawn();
+    expect(rule('.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r')).toMatch(/position:\s*absolute;\s*right:\s*var\(--px-sidebar-inset\);\s*bottom:/);
+    expect(rule('.st-sb__unit > .px-stacked-bar')).toMatch(/right:\s*calc\(var\(--px-sidebar-inset\) \+ var\(--st-count-w, 8ch\) \+ var\(--px-space-2\)\)/);
+    // With under 24px left for it the bar is not drawn (never over the count), and a unit's inset gives way on a narrow sidebar.
+    expect(css()).toMatch(/@container \(max-width: 136px\) \{ \.st-sb__unit > \.px-stacked-bar \{ display: none; \} \}/);
+    expect(rule('.st-sb__unit')).toMatch(/container-type:\s*inline-size/);
+    expect(rule('.st-sb__sec--subjects .st-sb__nav--unit')).toMatch(/padding-left:\s*min\(var\(--px-space-8\), 15%\)/);
+    expect(rule('.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit')).toMatch(/height:\s*calc\(var\(--px-control-h\) \+ var\(--px-space-3\)\)/);
+  });
+
+  it('a row with no bar keeps name and count on one line while both fit, and the count goes under the name when they do not', async () => {
+    await drawn();
+    expect(rule('.st-sb__sec--subjects .st-sb__subj .st-sb__nav, .st-sb__sec--subjects .st-sb__nav--unit')).toMatch(/flex-wrap:\s*wrap;[^}]*height:\s*auto;\s*min-height:\s*var\(--px-control-h\);\s*padding-block:\s*var\(--px-space-1\)/);
+    expect(rule('.st-sb__sec--subjects .st-sb__nav .px-btn__label')).toMatch(/flex:\s*1 1 min\(7ch, calc\(100% - 16px - var\(--px-space-2\)\)\)/);
+    expect(rule('.st-sb__sec--subjects .st-sb__nav .st-sb__r')).toMatch(/margin-left:\s*auto/);
+  });
+
+  it('stacked, the bars of a unit are a finger\'s height apart: 16px of cell and 12px between, under a press area of 28', async () => {
+    await drawn();
+    expect(rule('.st-prog__list--stacked .st-prog__row')).toMatch(/row-gap:\s*var\(--px-space-3\)/);
+    expect(rule('.st-prog__list--stacked .st-prog__cell')).toMatch(/min-height:\s*var\(--px-space-4\)/);
+  });
+
+  it('the legend has no colours of its own, and the totals\' textures are cut in the card\'s colour', async () => {
+    await drawn();
+    expect(css()).not.toMatch(/st-prog__sw--/);
+    expect(rule('.st-prog__totals')).toMatch(/border|background/);
+    expect(css()).toMatch(/\.st-prog__totals \{ --px-bar-cut:\s*var\(--px-bg-elevated\); \}/);
   });
 });

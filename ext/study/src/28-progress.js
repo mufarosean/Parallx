@@ -211,4 +211,5 @@ function stProgressReset() {
   for (const id of [..._stProgressProviders.keys()]) stProgressDrop(id);
   _stProgressRegistry = null;
   _stProgressWanted = false;
+  _stProgressFocusFor = 0;
 }

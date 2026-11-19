@@ -222,6 +222,14 @@ function stProgressCountText(counts) {
   return `${counts[0] + counts[1] + counts[2]} of ${counts[0] + counts[1] + counts[2] + counts[3]}`;
 }
 
+/** A bar's counts in the kind's own words, as one line to read: "Right 14 · Partly 3 · Wrong 4 · Not yet 8". */
+function stProgressCountsLine(counts, words) {
+  return ST_PROGRESS_STATES.map((s, i) => {
+    const own = words && typeof words[s] === 'string' ? words[s].trim() : '';
+    return `${own || ST_PROGRESS_PLAIN[s]} ${counts[i]}`;
+  }).join(' · ');
+}
+
 /** The line for a tool's groups that match no unit: "Problems not matched to a unit: Brosius 6, Hürlimann 3". */
 function stProgressUnmatchedText(kind, groups) {
   return `${kind} not matched to a unit: ${(groups || []).map((g) => `${g.label} ${g.counts[0] + g.counts[1] + g.counts[2] + g.counts[3]}`).join(', ')}`;

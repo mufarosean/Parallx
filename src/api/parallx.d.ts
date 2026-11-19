@@ -741,7 +741,7 @@ export namespace ui {
     readonly state: 'good' | 'middling' | 'poor' | 'rest';
     /** How many items are in this state; the part is as wide as its share. A part with nothing in it is not drawn. */
     readonly count: number;
-    /** The part's own name: what a screen reader speaks when it is a button, and its tooltip unless `title` gives a shorter one. */
+    /** The part's own name: what a screen reader speaks when it is a button, and its tooltip unless `title` gives a shorter one. The tooltip shows to the mouse, to the keyboard's focus on the part, to a tap on a part that does nothing else and to a long press on one that acts. */
     readonly label: string;
     /** The tooltip, when the row it sits in already says whose bar it is. */
     readonly title?: string;
@@ -752,7 +752,10 @@ export namespace ui {
 
   /**
    * Counts in four states as one bar: green good, yellow middling, red poor,
-   * and the rest (not worked yet) an outline. The parts keep that order
+   * and the rest (not worked yet) an outline; each state has a texture of
+   * its own too (solid, hatched, ticked), so a bar reads without hue and
+   * under forced colours. A legend's swatch is an element with class
+   * `px-stacked-bar-key` and `data-state`. The parts keep that order
    * whatever order they are given in. `label` is the whole bar, spoken in
    * full ("Mack, Questions: 12 right, 3 partly, 2 wrong, 5 not yet").
    * `size: 'sm'` is a thin line for a list row and is never pressable.

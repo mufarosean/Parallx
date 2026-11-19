@@ -1,7 +1,8 @@
 /* stackedBar.css — the kit's stacked bar (stackedBar.ts): counts in four
    states, in one order. Never read by colour alone: the bar has no fill of
-   its own, so 2px of the surface it sits on separates the parts, and the
-   part not worked yet is an outline, not a fourth colour. The three signal
+   its own, so 2px of the surface it sits on separates the parts, each state
+   has a texture of its own, and the part not worked yet is an outline, not a
+   fourth colour. The three signal
    tones and the outline are each 3:1 or more against every surface of every
    palette, light and dark (tests/unit/stackedBar.test.ts measures them). */
 
@@ -26,9 +27,20 @@
   box-sizing: border-box;
   font: inherit;
 }
+/* Each state has a texture as well as a tone, so the three are told apart
+   with no hue at all (in grey, by an eye that does not see red from green):
+   good is solid, middling is hatched, poor is ticked, the rest is an outline.
+   The lines are cut in the colour of the surface (--px-bar-cut), which the
+   tones are 3:1 against. A legend's swatch is the same thing by itself:
+   an element with class px-stacked-bar-key and the state in data-state. */
+.px-stacked-bar-key { display: inline-block; flex: none; width: 14px; height: 10px; border-radius: var(--px-radius-sm); box-sizing: border-box; }
+.px-stacked-bar-key[data-state="good"],
 .px-stacked-bar__part[data-state="good"] { background-color: var(--px-success); }
-.px-stacked-bar__part[data-state="middling"] { background-color: var(--px-warning); }
-.px-stacked-bar__part[data-state="poor"] { background-color: var(--px-danger); }
+.px-stacked-bar-key[data-state="middling"],
+.px-stacked-bar__part[data-state="middling"] { background-color: var(--px-warning); background-image: repeating-linear-gradient(135deg, transparent 0 5px, var(--px-bar-cut) 5px 6.5px); }
+.px-stacked-bar-key[data-state="poor"],
+.px-stacked-bar__part[data-state="poor"] { background-color: var(--px-danger); background-image: repeating-linear-gradient(90deg, transparent 0 4px, var(--px-bar-cut) 4px 5px); }
+.px-stacked-bar-key[data-state="rest"],
 .px-stacked-bar__part[data-state="rest"] { background-color: transparent; border: 1px solid var(--px-bar-rest); }
 
 /* A part that acts: wide enough for a finger whatever its share (WCAG 2.5.8),
@@ -39,6 +51,23 @@ button.px-stacked-bar__part:hover { filter: brightness(1.12); }
 button.px-stacked-bar__part[data-state="rest"]:hover { background-color: var(--px-surface-hover); filter: none; }
 button.px-stacked-bar__part:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; box-shadow: none; }
 
-/* The thin line of a list row. */
+/* The thin line of a list row. At 4px a hatch has no room, so the textures
+   are a line's: good solid, middling dashed, poor dotted, the rest an outline. */
 .px-stacked-bar--sm { height: 4px; gap: 1px; }
 .px-stacked-bar--sm .px-stacked-bar__part { min-width: 2px; border-radius: var(--px-radius-full); }
+.px-stacked-bar--sm .px-stacked-bar__part[data-state="middling"] { background-image: repeating-linear-gradient(90deg, transparent 0 6px, var(--px-bar-cut) 6px 8px); }
+.px-stacked-bar--sm .px-stacked-bar__part[data-state="poor"] { background-image: repeating-linear-gradient(90deg, transparent 0 2px, var(--px-bar-cut) 2px 4px); }
+
+/* Forced colours (Windows contrast themes) replace every background, and a
+   bar of backgrounds would vanish. The parts keep their own paint in the
+   system's colours: each has the text colour's border, good is filled,
+   middling and poor are filled and cut by the same textures, the rest is
+   the border alone. */
+@media (forced-colors: active) {
+  .px-stacked-bar, .px-stacked-bar-key { --px-bar-cut: Canvas; }
+  .px-stacked-bar__part[data-state], .px-stacked-bar-key[data-state] { forced-color-adjust: none; border: 1px solid CanvasText; background-color: CanvasText; }
+  .px-stacked-bar__part[data-state="rest"], .px-stacked-bar-key[data-state="rest"],
+  button.px-stacked-bar__part[data-state="rest"]:hover { background-color: Canvas; border-color: CanvasText; }
+  button.px-stacked-bar__part:hover { filter: none; border-color: Highlight; }
+  button.px-stacked-bar__part:focus-visible { outline-color: Highlight; }
+}

@@ -33,7 +33,27 @@ async function stCmdOpenProgress(arg, where) {
   if (where && typeof where === 'object' && where.provider) return stProgressOpenItems(where.provider, where.groups, where.state);
   const s = await stPickSubject(arg, 'Progress of which subject?');
   if (!s) return null;
-  return stOpenPane({ view: 'progress', subjectId: s.id });
+  return stOpenProgress(s.id);
+}
+
+/** The subject whose Progress tab was just asked for and has not taken the focus yet (0: none). */
+let _stProgressFocusFor = 0;
+
+/** Open a subject's Progress tab and put the focus in it: whoever asked by keyboard (the palette, a menu) goes on from the tab, not from where they were. */
+async function stOpenProgress(subjectId) {
+  _stProgressFocusFor = Number(subjectId) || 0;
+  const opened = await stOpenPane({ view: 'progress', subjectId });
+  // A tab that was already open is not drawn again: it takes the focus here. A new one takes it when it is drawn.
+  const page = Array.from(document.querySelectorAll('.st-prog')).find((n) => n.isConnected && n.dataset.subjectId === String(subjectId));
+  if (page) stProgressTakeFocus(subjectId, page.closest('.st-root'));
+  return opened;
+}
+
+/** The focus into the pane of the Progress tab that was asked for, once: as Study's other views take it. A tab drawn for any other reason takes none. */
+function stProgressTakeFocus(subjectId, root) {
+  if (!root || _stProgressFocusFor !== Number(subjectId)) return;
+  _stProgressFocusFor = 0;
+  if (!root.contains(document.activeElement)) root.focus();
 }
 
 /** The parts of a kit bar for `counts`. `act(state, i)` gives a part's command, or nothing for a plain part. */
@@ -55,7 +75,7 @@ function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, 
 async function renderProgress(host, route, ctx) {
   const subjectId = Number(route.subjectId) || 0;
   const ui = _api.ui;
-  const page = ui.createBlock(host, 'div', { className: 'st-prog' });
+  const page = ui.createBlock(host, 'div', { className: 'st-prog', attrs: { 'data-subject-id': String(subjectId) } });
   const inner = ui.createBlock(page, 'div', { className: 'st-prog__in' });
   const shownNow = () => stSubjectsShown().find((s) => s.id === subjectId) || null;
   const first = shownNow();
@@ -142,12 +162,15 @@ async function renderProgress(host, route, ctx) {
     // The subject's totals, one line per kind, and the legend in words.
     const totals = ui.createBlock(top, 'div', { className: 'st-prog__totals' });
     for (const t of view.totals) {
-      cell(totals, t.kind, { label: stProgressBarName('All units', t.kind, t.counts, t.words), parts: stProgressParts('All units', t.kind, t.counts, t.words) }, t.counts);
+      const box = cell(totals, t.kind, { label: stProgressBarName('All units', t.kind, t.counts, t.words), parts: stProgressParts('All units', t.kind, t.counts, t.words) }, t.counts);
+      // The numbers in the kind's own words, there to read without a hover (a screen reader has them in the bar's name).
+      ui.createBlock(box, 'div', { className: 'st-prog__words', text: stProgressCountsLine(t.counts, t.words), attrs: { 'aria-hidden': 'true' } });
     }
     const legend = ui.createBlock(top, 'div', { className: 'st-prog__legend' });
     for (const state of ST_PROGRESS_STATES) {
       const item = ui.createBlock(legend, 'span', { className: 'st-prog__key' });
-      ui.createBlock(item, 'span', { className: `st-prog__sw st-prog__sw--${state}`, attrs: { 'aria-hidden': 'true' } });
+      // The kit's own swatch: the tone and the texture of that state in a bar.
+      ui.createBlock(item, 'span', { className: 'px-stacked-bar-key st-prog__sw', attrs: { 'data-state': state, 'aria-hidden': 'true' } });
       ui.createBlock(item, 'span', { text: ST_PROGRESS_WORDS[state] });
     }
 
@@ -204,4 +227,5 @@ async function renderProgress(host, route, ctx) {
   ctx.add({ dispose: () => { clearTimeout(timer); clear(); } });
   stProgressWant();
   paint();
+  stProgressTakeFocus(subjectId, ctx.root);
 }

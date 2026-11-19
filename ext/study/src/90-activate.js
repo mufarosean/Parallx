@@ -250,7 +250,7 @@ export const __testables = {
   // 14-progress-model: Progress, the pure part
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
-  stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressUnmatchedText, stProgressFilterByResult,
+  stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
   // 28-progress, 63-progress-view: the providers as they are now, and the tab
   registerProgress, stProgressReset, stProgressWant, stProgressProviders, stProgressOfSubject, stProgressOpenItems, stCmdOpenProgress,
   // 27-subjects, 62-subject-view: the record in canvas databases

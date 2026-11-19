@@ -1048,15 +1048,23 @@ api.ui.createSegmented(row, { ariaLabel: 'Sheet appearance', items: [{ value: 'l
 
 // Counts in four states (how far along a paper, a deck, a unit is): THE stacked bar, never your own.
 // Green good, yellow middling, red poor, the rest an outline; one order always; a part with nothing is not drawn.
+// Never by hue alone: each state has its own texture too (good solid, middling hatched, poor ticked; on the thin
+// bar solid, dashed, dotted), and under forced colours the parts are drawn in the system's colours.
 // `label` is the whole bar spoken in full. A part with `command` (or `onClick`) is a button with its own name;
 // without one the bar is one picture. `size: 'sm'` is a thin line for a list row, never pressable.
 // A part's tooltip is its `label`; give `title` a shorter one when the row already says whose bar it is ('Wrong: 2').
+// The tooltip is not the mouse's only: it shows when the keyboard's focus arrives on a part, on a tap of a part that
+// does nothing else, and on a long press of one that acts (a tap there runs its action). Where there is room, also
+// write the numbers out beside the bar; a tooltip is the only place for them nowhere.
 api.ui.createStackedBar(row, { label: 'Mack, Questions: 12 right, 3 partly, 2 wrong, 5 not yet', parts: [
   { state: 'good', count: 12, label: 'Right: 12' },
   { state: 'middling', count: 3, label: 'Partly: 3' },
   { state: 'poor', count: 2, label: 'Mack, Questions, wrong: 2. Study these', command: 'myExt.study', args: ['mack', 'wrong'] },
   { state: 'rest', count: 5, label: 'Not yet: 5' },
 ] });   // → { element, update(options), dispose() }: update() redraws new counts in place and keeps the focus
+// A legend's swatch is the bar's own: an element with class px-stacked-bar-key and the state, so tone and texture match the bars.
+api.ui.createBlock(legend, 'span', { className: 'px-stacked-bar-key', attrs: { 'data-state': 'middling', 'aria-hidden': 'true' } });
+// A bar on a surface other than the page's (a card) sets --px-bar-cut to that surface on its container: the textures are cut in it.
 
 // A sub-page links back to the page it belongs to.
 api.ui.createPageHeader(root, { title: 'Problem Bank', back: { label: 'Worksheets', onClick: openHome } });

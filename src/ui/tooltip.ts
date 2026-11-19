@@ -46,6 +46,8 @@ function ensureTooltipElement(): HTMLElement {
     _tooltipEl.style.display = 'none';
     document.body.appendChild(_tooltipEl);
   }
+  // Taken out with whatever cleared the body: it goes back, or nothing it shows is seen.
+  if (!_tooltipEl.isConnected) document.body.appendChild(_tooltipEl);
   return _tooltipEl;
 }
 

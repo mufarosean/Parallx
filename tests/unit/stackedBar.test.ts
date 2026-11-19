@@ -80,6 +80,88 @@ describe('createStackedBar', () => {
     expect(good.getAttribute('aria-label')).toBe('Mack, Questions, right: 3. Study these');
   });
 
+  describe('a part\'s words for whoever has no hover', () => {
+    const tip = () => { const t = document.querySelector<HTMLElement>('.parallx-tooltip'); return t && t.style.display !== 'none' ? t.textContent : null; };
+    const make = (onClick = vi.fn()) => ({ onClick, bar: createStackedBar(host, { label: NAME, parts: [
+      { state: 'good', count: 3, label: 'Mack, Questions, right: 3. Study these', title: 'Right: 3. Study these', onClick },
+      { state: 'poor', count: 2, label: 'Mack, Questions, wrong: 2', title: 'Wrong: 2' },
+    ] }) });
+    beforeEach(() => { document.documentElement.dataset.inputModality = 'keyboard'; });
+
+    it('show when the keyboard\'s focus arrives on a part, and go when it leaves', () => {
+      const { bar } = make();
+      const [good] = partsOf(bar.element);
+      expect(tip()).toBeNull();
+      good.focus();
+      expect(tip()).toBe('Right: 3. Study these');
+      good.blur();
+      expect(tip()).toBeNull();
+      bar.dispose();
+    });
+
+    it('do not show for a focus the mouse gave: that press is about to run the part', () => {
+      document.documentElement.dataset.inputModality = 'pointer';
+      const { bar } = make();
+      partsOf(bar.element)[0].focus();
+      expect(tip()).toBeNull();
+      bar.dispose();
+    });
+
+    it('show on a tap or click of a part that does nothing else; a part that acts runs its action instead', () => {
+      const { bar, onClick } = make();
+      const [good, poor] = partsOf(bar.element);
+      poor.click();
+      expect(tip()).toBe('Wrong: 2');
+      document.dispatchEvent(new Event('pointerdown'));
+      expect(tip()).toBeNull();
+      good.click();
+      expect(onClick).toHaveBeenCalledOnce();
+      expect(tip()).toBeNull();
+      bar.dispose();
+    });
+
+    it('show on a long press by finger or pen of a part that acts, and that press does not run it; a tap still does', () => {
+      vi.useFakeTimers();
+      try {
+        const { bar, onClick } = make();
+        const [good] = partsOf(bar.element);
+        const fire = (type: string, pointerType: string) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, 'pointerType', { value: pointerType }); good.dispatchEvent(e); return e; };
+        // A tap: down, up before the half second, click.
+        fire('pointerdown', 'touch'); vi.advanceTimersByTime(120); fire('pointerup', 'touch'); good.click();
+        vi.advanceTimersByTime(1000);
+        expect(onClick).toHaveBeenCalledOnce();
+        expect(tip()).toBeNull();
+        // A long press: the words show while the finger rests, and the click that ends it is not the part's.
+        fire('pointerdown', 'touch'); vi.advanceTimersByTime(499);
+        expect(tip()).toBeNull();
+        vi.advanceTimersByTime(2);
+        expect(tip()).toBe('Right: 3. Study these');
+        expect(fire('contextmenu', 'touch').defaultPrevented).toBe(true);
+        fire('pointerup', 'touch'); good.click();
+        expect(onClick).toHaveBeenCalledOnce();
+        expect(tip()).toBe('Right: 3. Study these');
+        // The next tap is a tap again; a mouse held down is not a long press, and its right click is left alone.
+        fire('pointerdown', 'touch'); fire('pointerup', 'touch'); good.click();
+        expect(onClick).toHaveBeenCalledTimes(2);
+        fire('pointerdown', 'mouse'); vi.advanceTimersByTime(800);
+        expect(fire('contextmenu', 'mouse').defaultPrevented).toBe(false);
+        fire('pointerup', 'mouse'); good.click();
+        expect(onClick).toHaveBeenCalledTimes(3);
+        bar.dispose();
+      } finally { vi.useRealTimers(); }
+    });
+
+    it('are taken down when the bar is drawn again, and put back on the part that keeps the focus', () => {
+      const { bar } = make();
+      partsOf(bar.element)[0].focus();
+      bar.update({ label: NAME, parts: [{ state: 'good', count: 4, label: 'Right: 4', onClick: () => {} }] });
+      expect(tip()).toBe('Right: 4');
+      bar.update({ label: NAME, parts: [{ state: 'rest', count: 4, label: 'Not yet: 4' }] });
+      expect(tip()).toBeNull();
+      bar.dispose();
+    });
+  });
+
   it('a part can run a command, and with an id it is in the scene', async () => {
     const run = vi.fn(async () => undefined);
     installKitCommands({ executeCommand: run } as never);
@@ -154,6 +236,41 @@ describe('the bar\'s styles', () => {
     expect(rule('.px-stacked-bar')).not.toMatch(/background/);
     expect(rule('.px-stacked-bar__part[data-state="rest"]')).toMatch(/border:\s*1px solid var\(--px-bar-rest\)/);
     expect(tokens).toMatch(/--px-bar-rest:\s*var\(--px-base-50\)/);
+  });
+
+  it('never tells the three tones apart by hue alone: middling is hatched and poor is ticked, each cut in the surface\'s colour; good stays solid', () => {
+    const image = (r: string) => (/background-image:\s*([^;]+);/.exec(r) || [])[1] || '';
+    const [good, middling, poor] = ['good', 'middling', 'poor'].map((s) => rule(`.px-stacked-bar__part[data-state="${s}"]`));
+    expect(image(good)).toBe('');
+    expect(image(middling)).toMatch(/^repeating-linear-gradient\(135deg, transparent [^)]*var\(--px-bar-cut\)/);
+    expect(image(poor)).toMatch(/^repeating-linear-gradient\(90deg, transparent [^)]*var\(--px-bar-cut\)/);
+    expect(image(middling)).not.toBe(image(poor));
+    // The cut is the surface the bar lies on, which the tones are 3:1 against (measured below).
+    expect(tokens).toMatch(/--px-bar-cut:\s*var\(--px-bg\)/);
+  });
+
+  it('the thin bar has a line\'s textures: middling dashed, poor dotted, each its own', () => {
+    const image = (r: string) => (/background-image:\s*([^;]+);/.exec(r) || [])[1] || '';
+    const [middling, poor] = ['middling', 'poor'].map((s) => image(rule(`.px-stacked-bar--sm .px-stacked-bar__part[data-state="${s}"]`)));
+    expect(middling).toMatch(/^repeating-linear-gradient\(90deg, transparent [^)]*var\(--px-bar-cut\)/);
+    expect(poor).toMatch(/^repeating-linear-gradient\(90deg, transparent [^)]*var\(--px-bar-cut\)/);
+    expect(middling).not.toBe(poor);
+  });
+
+  it('a legend\'s swatch is the bar\'s own tone and texture: the same rule draws both', () => {
+    for (const s of ['good', 'middling', 'poor', 'rest']) expect(css).toContain(`.px-stacked-bar-key[data-state="${s}"],\n.px-stacked-bar__part[data-state="${s}"] {`);
+  });
+
+  it('under forced colours the parts keep their own paint, in the system\'s colours, with the textures', () => {
+    const at = css.indexOf('@media (forced-colors: active)');
+    expect(at).toBeGreaterThan(0);
+    const forced = css.slice(at);
+    expect(forced).toMatch(/\.px-stacked-bar__part\[data-state\], \.px-stacked-bar-key\[data-state\] \{[^}]*forced-color-adjust:\s*none;[^}]*border:\s*1px solid CanvasText;[^}]*background-color:\s*CanvasText/);
+    expect(forced).toMatch(/--px-bar-cut:\s*Canvas/);
+    expect(forced).toMatch(/\[data-state="rest"\][^{]*\{[^}]*background-color:\s*Canvas;/);
+    expect(forced).toMatch(/:focus-visible \{ outline-color:\s*Highlight/);
+    // The textures are background images, which forced colours leave alone once the part opts out.
+    expect(forced).not.toMatch(/background-image:\s*none/);
   });
 
   it('a pressable part is wide enough for a finger and shows the keyboard\'s focus', () => {

@@ -299,19 +299,25 @@ function createSidebarView(container) {
   // unit is a row that opens the sheet on that unit. The numbers are the
   // Questions database's, as it is now; a unit's mark says how far it is.
   const countText = (answered, total) => `${answered} of ${total}`;
-  const unitIcon = (u) => (u.total > 0 && u.answered >= u.total ? 'circle-check' : u.answered > 0 ? 'circle-dot' : 'circle');
   const subjectRows = (host, s) => {
     const row = _api.ui.createBlock(host, 'div', { className: 'st-sb__subj' });
     row.dataset.subjectId = String(s.id);
-    const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
-      title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
-    head.classList.add('st-sb__nav');
     // The units' bars take in the tools that report progress, and so do the counts: "answered of total" stays the questions'
     // (answered is Attempts over zero, as the Units database keeps it), and what each tool has rated of its own is added to both.
+    // The count on the row is the one its tooltip gives and its mark follows: all three are `shown`.
     const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
     const others = (kinds) => (kinds || []).filter((k) => k.id !== ST_PROGRESS_QUESTIONS).reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero());
-    const withOthers = (answered, total, t) => countText(answered + t[0] + t[1] + t[2], total + t[0] + t[1] + t[2] + t[3]);
-    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? withOthers(s.answered, s.total, others(progress && progress.totals)) : '' });
+    const shown = (answered, total, t) => {
+      const n = answered + t[0] + t[1] + t[2];
+      const m = total + t[0] + t[1] + t[2] + t[3];
+      const tools = t[0] + t[1] + t[2] + t[3] > 0;
+      return { n, m, text: countText(n, m), done: m > 0 && n >= m, started: n > 0, says: (questions) => `${countText(n, m)} ${tools ? 'answered or rated' : questions ? 'questions answered' : 'answered'}.` };
+    };
+    const whole = shown(s.answered, s.total, others(progress && progress.totals));
+    const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
+      title: s.problem || `Study ${s.name}: ${whole.says(true)}`, command: 'study.studySubject', args: [s.id] });
+    head.classList.add('st-sb__nav');
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? whole.text : '' });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -323,14 +329,18 @@ function createSidebarView(container) {
       const row = progress ? progress.rows.find((r) => r.rowId === u.rowId) : null;
       const all = row ? row.all : null;
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
-      const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
-        title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
+      const count = shown(u.answered, u.total, others(row && row.kinds));
+      const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: count.done ? 'circle-check' : count.started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
+        title: `Study ${u.name}: ${count.says(false)}`, command: 'study.studySubject', args: [s.id, u.name] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
-      if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
-      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: withOthers(u.answered, u.total, others(row && row.kinds)) });
+      if (count.done) unit.classList.add('st-sb__nav--done');
+      const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
+      // The name has the first line to itself; the bar runs under it, up to the count at the end of its line.
       line.classList.add('st-sb__unit--bar');
+      const wide = counted.getBoundingClientRect().width;
+      line.style.setProperty('--st-count-w', wide > 0 ? `${Math.ceil(wide)}px` : `${count.text.length}ch`);
       _api.ui.createStackedBar(line, { size: 'sm', label: stProgressBarName(u.name, '', all, ST_PROGRESS_WORDS), parts: stProgressParts(u.name, 'All work', all, ST_PROGRESS_WORDS) });
     }
     if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });

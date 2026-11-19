@@ -2642,6 +2642,14 @@ function stProgressCountText(counts) {
   return `${counts[0] + counts[1] + counts[2]} of ${counts[0] + counts[1] + counts[2] + counts[3]}`;
 }
 
+/** A bar's counts in the kind's own words, as one line to read: "Right 14 · Partly 3 · Wrong 4 · Not yet 8". */
+function stProgressCountsLine(counts, words) {
+  return ST_PROGRESS_STATES.map((s, i) => {
+    const own = words && typeof words[s] === 'string' ? words[s].trim() : '';
+    return `${own || ST_PROGRESS_PLAIN[s]} ${counts[i]}`;
+  }).join(' · ');
+}
+
 /** The line for a tool's groups that match no unit: "Problems not matched to a unit: Brosius 6, Hürlimann 3". */
 function stProgressUnmatchedText(kind, groups) {
   return `${kind} not matched to a unit: ${(groups || []).map((g) => `${g.label} ${g.counts[0] + g.counts[1] + g.counts[2] + g.counts[3]}`).join(', ')}`;
@@ -5157,6 +5165,7 @@ function stProgressReset() {
   for (const id of [..._stProgressProviders.keys()]) stProgressDrop(id);
   _stProgressRegistry = null;
   _stProgressWanted = false;
+  _stProgressFocusFor = 0;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -8219,17 +8228,26 @@ function injectStyles() {
 .st-sb__subj { display: flex; align-items: center; padding-right: var(--px-space-2); }
 .st-sb__subj .st-sb__nav { flex: 1; min-width: 0; width: auto; padding-right: var(--px-space-1); color: var(--px-text); font-weight: 500; }
 .st-sb__sec--subjects .st-sb__nav .svg-icon { color: var(--px-text-muted); flex: none; }
-.st-sb__sec--subjects .st-sb__nav--unit { padding-left: var(--px-space-8); }
+/* A unit is set in under its subject, by less on a sidebar too narrow to spare it (the bar's left edge follows: it starts under the name). */
+.st-sb__sec--subjects .st-sb__nav--unit { padding-left: min(var(--px-space-8), 15%); }
 .st-sb__sec--subjects .st-sb__nav--unit .svg-icon { color: var(--px-text-faint); }
 .st-sb__sec--subjects .st-sb__nav--done .svg-icon { color: var(--px-success); }
 .st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
-.st-sb__none--unit { padding-left: var(--px-space-8); }
-/* A unit's thin bar (the kit's stacked bar) runs under its name and its "N of M", from the name to the count, whatever the
-   sidebar's width: the name keeps the whole line. It lies over the foot of the button, which stays the whole row to press. */
-.st-sb__unit { position: relative; }
-.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit { height: calc(var(--px-control-h) + var(--px-space-2)); padding-bottom: var(--px-space-2); }
-.st-sb__unit > .px-stacked-bar { position: absolute; bottom: 5px; left: calc(var(--px-space-8) + 16px + var(--px-space-2)); right: var(--px-sidebar-inset); pointer-events: none; }
+/* A name is never squeezed to a letter by its count: on a sidebar too narrow for both (or zoomed), the count goes under the name, at the end of the row. */
+.st-sb__sec--subjects .st-sb__subj .st-sb__nav, .st-sb__sec--subjects .st-sb__nav--unit { flex-wrap: wrap; align-content: center; row-gap: 0; height: auto; min-height: var(--px-control-h); padding-block: var(--px-space-1); }
+.st-sb__sec--subjects .st-sb__nav .px-btn__label { flex: 1 1 min(7ch, calc(100% - 16px - var(--px-space-2))); }
+.st-sb__sec--subjects .st-sb__nav .st-sb__r { margin-left: auto; }
+.st-sb__none--unit { padding-left: min(var(--px-space-8), 15%); }
+/* A unit with a bar is two lines: its name has the whole first line, whatever the sidebar's width; under it the thin bar (the
+   kit's stacked bar) runs from the name's edge to the "N of M" at the end of its line (--st-count-w is the count's width,
+   50-sidebar.js). Bar and count lie over the foot of the button, which stays the whole row to press. On a sidebar so narrow
+   (or zoomed) that under 24px is left between the two, the bar is not drawn: a sliver says nothing, the count says it. */
+.st-sb__unit { position: relative; container-type: inline-size; }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit { position: relative; flex-wrap: nowrap; height: calc(var(--px-control-h) + var(--px-space-3)); padding-block: 0 var(--px-space-4); }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r { position: absolute; right: var(--px-sidebar-inset); bottom: var(--px-space-1); line-height: 1; }
+.st-sb__unit > .px-stacked-bar { position: absolute; bottom: var(--px-space-2); left: calc(min(var(--px-space-8), 15%) + 16px + var(--px-space-2)); right: calc(var(--px-sidebar-inset) + var(--st-count-w, 8ch) + var(--px-space-2)); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; overflow: hidden; pointer-events: none; }
+@container (max-width: 136px) { .st-sb__unit > .px-stacked-bar { display: none; } }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
@@ -8250,13 +8268,12 @@ function injectStyles() {
 .st-prog__totals .st-prog__kind { color: var(--px-text); font-weight: 600; }
 .st-prog__totals .st-prog__n { min-width: 9ch; }
 .st-prog__totals .px-stacked-bar { height: 14px; }
+/* The totals lie on a card: the bars' textures are cut in its colour. Under each bar, its numbers in the kind's own words. */
+.st-prog__totals { --px-bar-cut: var(--px-bg-elevated); }
+.st-prog__totals .st-prog__cell { flex-wrap: wrap; row-gap: var(--px-space-1); }
+.st-prog__words { flex: 0 0 100%; box-sizing: border-box; padding-left: calc(6rem + var(--px-space-3)); color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; line-height: 1.4; }
 .st-prog__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-4); padding: 0 var(--px-space-5); color: var(--px-text-muted); font-size: var(--px-text-xs); }
-.st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-1); }
-.st-prog__sw { width: 10px; height: 10px; border-radius: var(--px-radius-xs); box-sizing: border-box; }
-.st-prog__sw--good { background: var(--px-success); }
-.st-prog__sw--middling { background: var(--px-warning); }
-.st-prog__sw--poor { background: var(--px-danger); }
-.st-prog__sw--rest { border: 1px solid var(--px-bar-rest); }
+.st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-2); }
 .st-prog__bar { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .st-prog__bar .px-section-label { padding: 0; }
 .st-prog__list { display: flex; flex-direction: column; }
@@ -8274,7 +8291,9 @@ function injectStyles() {
 /* A tab too narrow for its columns (the more kinds, the sooner; 63-progress-view.js measures it): a unit's kinds
    stack under its name, each bar named in words where the column heads were, so a bar always has room for its parts and its count. */
 .st-prog__list--stacked .st-prog__row--head { display: none; }
-.st-prog__list--stacked .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2); }
+/* The bars are a finger's height apart (WCAG 2.5.8): each part's press area is 24px tall or more and none lies over the next bar's. */
+.st-prog__list--stacked .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-2); }
+.st-prog__list--stacked .st-prog__cell { min-height: var(--px-space-4); }
 .st-prog__list--stacked .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
 .st-prog__list--stacked .st-prog__cell--none { display: none; }
 
@@ -8620,19 +8639,25 @@ function createSidebarView(container) {
   // unit is a row that opens the sheet on that unit. The numbers are the
   // Questions database's, as it is now; a unit's mark says how far it is.
   const countText = (answered, total) => `${answered} of ${total}`;
-  const unitIcon = (u) => (u.total > 0 && u.answered >= u.total ? 'circle-check' : u.answered > 0 ? 'circle-dot' : 'circle');
   const subjectRows = (host, s) => {
     const row = _api.ui.createBlock(host, 'div', { className: 'st-sb__subj' });
     row.dataset.subjectId = String(s.id);
-    const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
-      title: s.problem || `Study ${s.name}: ${s.answered} of ${s.total} questions answered.`, command: 'study.studySubject', args: [s.id] });
-    head.classList.add('st-sb__nav');
     // The units' bars take in the tools that report progress, and so do the counts: "answered of total" stays the questions'
     // (answered is Attempts over zero, as the Units database keeps it), and what each tool has rated of its own is added to both.
+    // The count on the row is the one its tooltip gives and its mark follows: all three are `shown`.
     const progress = s.problem || typeof _api.ui.createStackedBar !== 'function' ? null : stProgressOfSubject(s.id);
     const others = (kinds) => (kinds || []).filter((k) => k.id !== ST_PROGRESS_QUESTIONS).reduce((t, k) => stProgressAdd(t, k.counts), stProgressZero());
-    const withOthers = (answered, total, t) => countText(answered + t[0] + t[1] + t[2], total + t[0] + t[1] + t[2] + t[3]);
-    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? withOthers(s.answered, s.total, others(progress && progress.totals)) : '' });
+    const shown = (answered, total, t) => {
+      const n = answered + t[0] + t[1] + t[2];
+      const m = total + t[0] + t[1] + t[2] + t[3];
+      const tools = t[0] + t[1] + t[2] + t[3] > 0;
+      return { n, m, text: countText(n, m), done: m > 0 && n >= m, started: n > 0, says: (questions) => `${countText(n, m)} ${tools ? 'answered or rated' : questions ? 'questions answered' : 'answered'}.` };
+    };
+    const whole = shown(s.answered, s.total, others(progress && progress.totals));
+    const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
+      title: s.problem || `Study ${s.name}: ${whole.says(true)}`, command: 'study.studySubject', args: [s.id] });
+    head.classList.add('st-sb__nav');
+    _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? whole.text : '' });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -8644,14 +8669,18 @@ function createSidebarView(container) {
       const row = progress ? progress.rows.find((r) => r.rowId === u.rowId) : null;
       const all = row ? row.all : null;
       const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__unit' });
-      const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: unitIcon(u), kind: 'ghost', size: 'sm',
-        title: `Study ${u.name}: ${u.answered} of ${u.total} answered.`, command: 'study.studySubject', args: [s.id, u.name] });
+      const count = shown(u.answered, u.total, others(row && row.kinds));
+      const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: count.done ? 'circle-check' : count.started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
+        title: `Study ${u.name}: ${count.says(false)}`, command: 'study.studySubject', args: [s.id, u.name] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
-      if (u.total > 0 && u.answered >= u.total) unit.classList.add('st-sb__nav--done');
-      _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: withOthers(u.answered, u.total, others(row && row.kinds)) });
+      if (count.done) unit.classList.add('st-sb__nav--done');
+      const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
+      // The name has the first line to itself; the bar runs under it, up to the count at the end of its line.
       line.classList.add('st-sb__unit--bar');
+      const wide = counted.getBoundingClientRect().width;
+      line.style.setProperty('--st-count-w', wide > 0 ? `${Math.ceil(wide)}px` : `${count.text.length}ch`);
       _api.ui.createStackedBar(line, { size: 'sm', label: stProgressBarName(u.name, '', all, ST_PROGRESS_WORDS), parts: stProgressParts(u.name, 'All work', all, ST_PROGRESS_WORDS) });
     }
     if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
@@ -11588,7 +11617,7 @@ async function stOpenSubjectDatabase(databaseId) {
 /** A subject's actions: its More Actions menu, its context menu, and the Subject Actions… command. */
 function stSubjectMenuItems(s) {
   return [
-    { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenPane({ view: 'progress', subjectId: s.id }) },
+    { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(s.id) },
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
     { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
@@ -11883,7 +11912,27 @@ async function stCmdOpenProgress(arg, where) {
   if (where && typeof where === 'object' && where.provider) return stProgressOpenItems(where.provider, where.groups, where.state);
   const s = await stPickSubject(arg, 'Progress of which subject?');
   if (!s) return null;
-  return stOpenPane({ view: 'progress', subjectId: s.id });
+  return stOpenProgress(s.id);
+}
+
+/** The subject whose Progress tab was just asked for and has not taken the focus yet (0: none). */
+let _stProgressFocusFor = 0;
+
+/** Open a subject's Progress tab and put the focus in it: whoever asked by keyboard (the palette, a menu) goes on from the tab, not from where they were. */
+async function stOpenProgress(subjectId) {
+  _stProgressFocusFor = Number(subjectId) || 0;
+  const opened = await stOpenPane({ view: 'progress', subjectId });
+  // A tab that was already open is not drawn again: it takes the focus here. A new one takes it when it is drawn.
+  const page = Array.from(document.querySelectorAll('.st-prog')).find((n) => n.isConnected && n.dataset.subjectId === String(subjectId));
+  if (page) stProgressTakeFocus(subjectId, page.closest('.st-root'));
+  return opened;
+}
+
+/** The focus into the pane of the Progress tab that was asked for, once: as Study's other views take it. A tab drawn for any other reason takes none. */
+function stProgressTakeFocus(subjectId, root) {
+  if (!root || _stProgressFocusFor !== Number(subjectId)) return;
+  _stProgressFocusFor = 0;
+  if (!root.contains(document.activeElement)) root.focus();
 }
 
 /** The parts of a kit bar for `counts`. `act(state, i)` gives a part's command, or nothing for a plain part. */
@@ -11905,7 +11954,7 @@ function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, 
 async function renderProgress(host, route, ctx) {
   const subjectId = Number(route.subjectId) || 0;
   const ui = _api.ui;
-  const page = ui.createBlock(host, 'div', { className: 'st-prog' });
+  const page = ui.createBlock(host, 'div', { className: 'st-prog', attrs: { 'data-subject-id': String(subjectId) } });
   const inner = ui.createBlock(page, 'div', { className: 'st-prog__in' });
   const shownNow = () => stSubjectsShown().find((s) => s.id === subjectId) || null;
   const first = shownNow();
@@ -11992,12 +12041,15 @@ async function renderProgress(host, route, ctx) {
     // The subject's totals, one line per kind, and the legend in words.
     const totals = ui.createBlock(top, 'div', { className: 'st-prog__totals' });
     for (const t of view.totals) {
-      cell(totals, t.kind, { label: stProgressBarName('All units', t.kind, t.counts, t.words), parts: stProgressParts('All units', t.kind, t.counts, t.words) }, t.counts);
+      const box = cell(totals, t.kind, { label: stProgressBarName('All units', t.kind, t.counts, t.words), parts: stProgressParts('All units', t.kind, t.counts, t.words) }, t.counts);
+      // The numbers in the kind's own words, there to read without a hover (a screen reader has them in the bar's name).
+      ui.createBlock(box, 'div', { className: 'st-prog__words', text: stProgressCountsLine(t.counts, t.words), attrs: { 'aria-hidden': 'true' } });
     }
     const legend = ui.createBlock(top, 'div', { className: 'st-prog__legend' });
     for (const state of ST_PROGRESS_STATES) {
       const item = ui.createBlock(legend, 'span', { className: 'st-prog__key' });
-      ui.createBlock(item, 'span', { className: `st-prog__sw st-prog__sw--${state}`, attrs: { 'aria-hidden': 'true' } });
+      // The kit's own swatch: the tone and the texture of that state in a bar.
+      ui.createBlock(item, 'span', { className: 'px-stacked-bar-key st-prog__sw', attrs: { 'data-state': state, 'aria-hidden': 'true' } });
       ui.createBlock(item, 'span', { text: ST_PROGRESS_WORDS[state] });
     }
 
@@ -12054,6 +12106,7 @@ async function renderProgress(host, route, ctx) {
   ctx.add({ dispose: () => { clearTimeout(timer); clear(); } });
   stProgressWant();
   paint();
+  stProgressTakeFocus(subjectId, ctx.root);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -13946,7 +13999,7 @@ export const __testables = {
   // 14-progress-model: Progress, the pure part
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
-  stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressUnmatchedText, stProgressFilterByResult,
+  stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
   // 28-progress, 63-progress-view: the providers as they are now, and the tab
   registerProgress, stProgressReset, stProgressWant, stProgressProviders, stProgressOfSubject, stProgressOpenItems, stCmdOpenProgress,
   // 27-subjects, 62-subject-view: the record in canvas databases

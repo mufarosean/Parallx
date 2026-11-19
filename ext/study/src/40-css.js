@@ -374,17 +374,26 @@ function injectStyles() {
 .st-sb__subj { display: flex; align-items: center; padding-right: var(--px-space-2); }
 .st-sb__subj .st-sb__nav { flex: 1; min-width: 0; width: auto; padding-right: var(--px-space-1); color: var(--px-text); font-weight: 500; }
 .st-sb__sec--subjects .st-sb__nav .svg-icon { color: var(--px-text-muted); flex: none; }
-.st-sb__sec--subjects .st-sb__nav--unit { padding-left: var(--px-space-8); }
+/* A unit is set in under its subject, by less on a sidebar too narrow to spare it (the bar's left edge follows: it starts under the name). */
+.st-sb__sec--subjects .st-sb__nav--unit { padding-left: min(var(--px-space-8), 15%); }
 .st-sb__sec--subjects .st-sb__nav--unit .svg-icon { color: var(--px-text-faint); }
 .st-sb__sec--subjects .st-sb__nav--done .svg-icon { color: var(--px-success); }
 .st-sb__sec--subjects .st-sb__nav:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__nav .st-sb__r { flex: none; font-weight: 400; }
-.st-sb__none--unit { padding-left: var(--px-space-8); }
-/* A unit's thin bar (the kit's stacked bar) runs under its name and its "N of M", from the name to the count, whatever the
-   sidebar's width: the name keeps the whole line. It lies over the foot of the button, which stays the whole row to press. */
-.st-sb__unit { position: relative; }
-.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit { height: calc(var(--px-control-h) + var(--px-space-2)); padding-bottom: var(--px-space-2); }
-.st-sb__unit > .px-stacked-bar { position: absolute; bottom: 5px; left: calc(var(--px-space-8) + 16px + var(--px-space-2)); right: var(--px-sidebar-inset); pointer-events: none; }
+/* A name is never squeezed to a letter by its count: on a sidebar too narrow for both (or zoomed), the count goes under the name, at the end of the row. */
+.st-sb__sec--subjects .st-sb__subj .st-sb__nav, .st-sb__sec--subjects .st-sb__nav--unit { flex-wrap: wrap; align-content: center; row-gap: 0; height: auto; min-height: var(--px-control-h); padding-block: var(--px-space-1); }
+.st-sb__sec--subjects .st-sb__nav .px-btn__label { flex: 1 1 min(7ch, calc(100% - 16px - var(--px-space-2))); }
+.st-sb__sec--subjects .st-sb__nav .st-sb__r { margin-left: auto; }
+.st-sb__none--unit { padding-left: min(var(--px-space-8), 15%); }
+/* A unit with a bar is two lines: its name has the whole first line, whatever the sidebar's width; under it the thin bar (the
+   kit's stacked bar) runs from the name's edge to the "N of M" at the end of its line (--st-count-w is the count's width,
+   50-sidebar.js). Bar and count lie over the foot of the button, which stays the whole row to press. On a sidebar so narrow
+   (or zoomed) that under 24px is left between the two, the bar is not drawn: a sliver says nothing, the count says it. */
+.st-sb__unit { position: relative; container-type: inline-size; }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit { position: relative; flex-wrap: nowrap; height: calc(var(--px-control-h) + var(--px-space-3)); padding-block: 0 var(--px-space-4); }
+.st-sb__sec--subjects .st-sb__unit--bar .st-sb__nav--unit .st-sb__r { position: absolute; right: var(--px-sidebar-inset); bottom: var(--px-space-1); line-height: 1; }
+.st-sb__unit > .px-stacked-bar { position: absolute; bottom: var(--px-space-2); left: calc(min(var(--px-space-8), 15%) + 16px + var(--px-space-2)); right: calc(var(--px-sidebar-inset) + var(--st-count-w, 8ch) + var(--px-space-2)); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; overflow: hidden; pointer-events: none; }
+@container (max-width: 136px) { .st-sb__unit > .px-stacked-bar { display: none; } }
 .st-sb .px-empty .px-btn--ghost { margin-top: var(--px-space-2); }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
 .st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
@@ -405,13 +414,12 @@ function injectStyles() {
 .st-prog__totals .st-prog__kind { color: var(--px-text); font-weight: 600; }
 .st-prog__totals .st-prog__n { min-width: 9ch; }
 .st-prog__totals .px-stacked-bar { height: 14px; }
+/* The totals lie on a card: the bars' textures are cut in its colour. Under each bar, its numbers in the kind's own words. */
+.st-prog__totals { --px-bar-cut: var(--px-bg-elevated); }
+.st-prog__totals .st-prog__cell { flex-wrap: wrap; row-gap: var(--px-space-1); }
+.st-prog__words { flex: 0 0 100%; box-sizing: border-box; padding-left: calc(6rem + var(--px-space-3)); color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; line-height: 1.4; }
 .st-prog__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-4); padding: 0 var(--px-space-5); color: var(--px-text-muted); font-size: var(--px-text-xs); }
-.st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-1); }
-.st-prog__sw { width: 10px; height: 10px; border-radius: var(--px-radius-xs); box-sizing: border-box; }
-.st-prog__sw--good { background: var(--px-success); }
-.st-prog__sw--middling { background: var(--px-warning); }
-.st-prog__sw--poor { background: var(--px-danger); }
-.st-prog__sw--rest { border: 1px solid var(--px-bar-rest); }
+.st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-2); }
 .st-prog__bar { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .st-prog__bar .px-section-label { padding: 0; }
 .st-prog__list { display: flex; flex-direction: column; }
@@ -429,7 +437,9 @@ function injectStyles() {
 /* A tab too narrow for its columns (the more kinds, the sooner; 63-progress-view.js measures it): a unit's kinds
    stack under its name, each bar named in words where the column heads were, so a bar always has room for its parts and its count. */
 .st-prog__list--stacked .st-prog__row--head { display: none; }
-.st-prog__list--stacked .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-2); padding: var(--px-space-3) var(--px-space-2); }
+/* The bars are a finger's height apart (WCAG 2.5.8): each part's press area is 24px tall or more and none lies over the next bar's. */
+.st-prog__list--stacked .st-prog__row { grid-template-columns: minmax(0, 1fr); row-gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-2); }
+.st-prog__list--stacked .st-prog__cell { min-height: var(--px-space-4); }
 .st-prog__list--stacked .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
 .st-prog__list--stacked .st-prog__cell--none { display: none; }
 
