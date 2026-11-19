@@ -71,19 +71,24 @@ All four phases, in one pass at his word ("build all").
   Atelier), migration 032 (`mo_colour_sheets`).
 - Paints: one list for plans and Colour Study (`plan-colours.js`), each with
   an optional strength, and named sets (`plan_paint_sets_v1`). A set is a copy
-  taken when it is saved.
+  taken when it is saved. Choosing a set asks first when the paints in use
+  are in no set and have ever been changed.
+- Buttons run `media-organizer.colour.*` commands on the sheet in use;
+  dropdowns, switches of a few choices, sliders, the wheel's dots and menu
+  rows act through their own callbacks.
+- Compare gives the difference in value only.
 - From a plan: Open In Colour Study on the plan's menu and on a variation.
 
 How it differs from the brief, and why:
 
 - JavaScript with JSDoc, not TypeScript: extensions load from disk unbuilt.
 - Kubelka-Munk, not the geometric mean (measured, above).
-- Whole parts up to 8 (two paints), 6 (three), 4 (four), not 1 to 4: closer
+- Whole parts up to 8 (two paints), 6 (three), 4 (four), 3 (five), not 1 to 4: closer
   recipes for the same count of mixes (19,713 for the eight starter paints).
 - Atelier's closeness words and measure (Very close, Close, Near, Far), not
   the brief's bands; "out of reach" is Far.
 - The gamut is built on the main thread after the sheet's first paint (about
-  140 ms here for eight paints), kept per paint list; no Web Worker.
+  140 to 160 ms here for eight paints), kept per paint list; no Web Worker.
 - The ground is a setting of the sheet (Burnt Sienna unless changed).
 - No sheets listed under Colour Study in the sidebar (the mock-up drew them);
   the home lists them.
@@ -92,9 +97,12 @@ How it was checked:
 
 - `tests/unit/moPaintEngine.test.ts`: 61 tests written from the contract by
   an agent that did not see the engine, before it; all pass.
-- `tests/probes/colour-study-acceptance.mjs`: written before the build by a
-  verifier, corrected once by the same verifier after the first real runs
-  (its commit says what and why); 73 of 73 on the built app, hidden, again
+- `tests/probes/colour-study-acceptance.mjs`: written by a verifier before
+  the tool's screen was built (the engine was already committed), corrected once by the same verifier after the first real runs
+  (its commit says what and why: frames read after two animation frames; the
+  check that a double-clicked cell also joins the palette dropped, since his
+  words give that to Put on Palette; a paint is removed in My Paints, not by
+  the per-sheet switch; one check added for a dialog left open); 73 of 73 on the built app, hidden, again
   after the review's fixes.
 - `keyboard-audit-probe.mjs` on the five Colour Study screens (added to its
   seeds): 0. `touch-drag-probe.mjs`: all ok.
