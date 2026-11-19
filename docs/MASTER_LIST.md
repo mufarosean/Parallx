@@ -1276,21 +1276,29 @@ Commits `d34f8e57` (the acceptance probe, before the build), `16a0d4a3`,
 
 *What is built.*
 - A unit in Study's sidebar opens its tab "<Subject> · <Unit>" (one per
-  unit, back after a restart); Study… is the tab's main action and the
+  unit: pressed again after a restart, still one; a tab coming back by
+  itself with the app is read in code, not seen); Study… is the tab's main action and the
   unit row's own More Actions. The tab: Notes and files (each item one
   line, its icon, title and where it lives; the row opens it in its own
   editor; Remove takes it off the unit), Questions (counts in his words;
   Study Questions…, Open Questions, a bar whose parts start those
   questions), then one group per tool that reports progress, in its own
-  words, whose bar opens the tool on those items through its provider.
-- What is attached is his: a column Material (files type, not kept by
-  Study) in Units; a page is held by its link (parallx-page:<id>), a file
+  words, whose bar, when the tool can open its items, opens the tool on
+  them through its provider.
+- What is attached is his: a column Material (files type) in Units,
+  which he edits like any column; Study also writes to it on its own (a
+  page renamed, a file moved) and adds it back if he deletes it; a page is held by its link (parallx-page:<id>), a file
   by the canvas's workspace link, so the table shows each by name and an
-  edit there shows in the tab. A page renamed is named again there; a
-  file renamed or moved by the app's Explorer is followed; a page in the
+  edit there shows in the tab. A page renamed is named again in the
+  tab, and in Material the next time that unit's tab is drawn. A file
+  renamed in the Explorer is followed (seen); one moved by its cut and
+  paste or drag goes the same way (read in code, not run); a file moved
+  while Study is off is not followed and reads Missing. A page in the
   Trash or a file gone says Missing, with Remove.
-- Add Notes or Files…: every page and every workspace file, searched by
-  name and place, several at once. Find Matches… (the subject's More
+- Add Notes or Files…: every page (the subject's own Units, Questions
+  and Work Log aside) and every workspace file outside hidden and
+  machinery folders (up to 20,000; 200 drawn until the search narrows
+  them), searched by name and place, several at once. Find Matches… (the subject's More
   Actions) proposes pages and files named like a unit or an Also Called
   of it (Progress's own matcher), all unticked; Attach Selected.
 - The core, generic: the quick pick of several (checkboxes, Cancel and a
@@ -1299,24 +1307,32 @@ Commits `d34f8e57` (the acceptance probe, before the build), `16a0d4a3`,
   `workspace.onDidMoveFiles` (the file service says where a moved file
   went; the Explorer's moves go through it). The Explorer's Rename no
   longer draws its field in a row a refresh replaced.
-- New Subject has no Notes choice; a subject made with one keeps it.
+- New Subject has no Notes choice. A subject made with one keeps its id
+  in Study's store, but nothing shows those notes in the unit's tab
+  unless they are attached; `study.newSubject` now ignores a `notes`
+  argument.
 
 *How it was checked.* The acceptance probe (74 checks) on the real
-app, unedited: 56 of 74. The verifier traced all 18 failures to two of
-the probe's own helpers (its tab and list points go stale once scrolling
-moves the tab strip or a long list, so with 40 page tabs open the clicks
-land on the wrong tab or box). With only those helpers re-reading the
-point before a click (a patch waiting on his approval; no check
-changed), 74 of 74, after the review fixes too. The verifier also drove
-it by hand: attach a page and a file, open each with one press, rename
-the page (the tab follows, after a restart too), Flashcards off (its
-group goes in 0.09 s) and on. Typecheck, 9,795 unit tests and the build
-pass; keyboard audit 0 on the unit tab, its picker and Find Matches.
-Piece 1's probe builds its workspace with the Notes choice, so it now
-gives 29 of 72; with that seed line and checks 1.1 and 2.5 changed (his
-approval asked), the rest pass.
+app (seeded Linux workspace, a scripted model, a stand-in third tool),
+unedited: 56 of 74. The verifier measured that with 44 tabs open, 43 of
+the probe's tab points land on another tab or nothing, and 10 of 59
+choice points miss their box; the 18 pass once the probe re-reads each
+point before its click (a patch to `tabs()`, `choices()` and `click()`
+waiting on his approval; no assertion changed): 74 of 74, after the
+review fixes too. The verifier also drove it with a script of its own
+(9 checks, before the review fixes): attach a page and a file, open each
+with one press, rename the page (the tab lists the new name, and again
+after a relaunch), Flashcards off (its group goes in 0.09 s) and on. Typecheck, 9,795 unit tests and the build
+pass; keyboard audit 0 on the unit tab, its picker and Find Matches (the
+audit does not measure a box's outline; the 3:1 outline is read from the
+tokens for the default dark only). Piece 1's probe builds its workspace
+with the Notes choice, so it gives 29 of 72; with only its seed line
+changed, 70 of 72, and 1.1 and 2.5 fail because they ask for the Notes
+choice this piece removed (changing all three asked of him). The piece 1
+and earlier Study probes were run before the review fixes.
 
-*Review.* Modularity: no breach (two core comments named Study; reworded).
+*Review* (the reviewers' and skeptic's reports were in the session, not
+saved as files). Modularity: no breach (two core comments named Study; reworded).
 Correctness: seven findings, six reproduced by the skeptic; fixed the
 one he would meet: Add Notes or Files… from the palette opened the
 unit's tab instead of the picker (`021b9593`). Left, reproduced but not
@@ -1331,7 +1347,9 @@ fixed a missing item not said to a screen reader, the picker's unticked
 box outline under 3:1, and Enter with nothing ticked saying nothing
 (`a19fd6b8`). Left: a one-item More Actions menu on a unit row.
 
-*Decided for him to overrule.* Material is one files column (pages and
+*Decided for him to overrule.* The Notes choice in New Subject, which
+piece 1's probe asks for, is removed: notes are attached to units from
+any layout instead. Material is one files column (pages and
 files together) rather than a relation plus a files column. Find
 Matches proposes exact name matches only (a title that merely contains a
 unit's name is not proposed). Questions has its own Study Questions…
