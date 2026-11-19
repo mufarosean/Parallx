@@ -31,7 +31,7 @@ export function moRenderColourSheet(container, api, sheetId) {
   const disposers = [];
   let disposed = false, st = defaultState(), title = 'Colour Study', picture = '';
   let all = [], rules = {}, setInfo = { sets: [], current: '', starter: true };
-  let gamut = null, view = 'rows', fixing = '', whyOpen = new Set(), frame = 0, frameTimer = 0, loaded = false, painted = false, said = '', saveTimer = 0, wheelKey = '', pictureImage = null, pin = null, choosing = false;
+  let gamut = null, view = 'rows', fixing = '', whyOpen = '', frame = 0, frameTimer = 0, loaded = false, painted = false, said = '', saveTimer = 0, wheelKey = '', pictureImage = null, pin = null, choosing = false;
   let hsl = []; // each palette colour as hue, saturation, lightness: kept beside the hex so a turn does not drift
 
   // ── what the page is made of (built once) ──
@@ -115,18 +115,30 @@ export function moRenderColourSheet(container, api, sheetId) {
   groundCol.append(ground, groundCap);
   const groundDd = dropdown(groundCol, 'ground', 'The ground the canvas is toned with', GROUNDS.map((g) => ({ value: g, label: g === 'Titanium White' ? 'White Ground' : `${g} Ground`, color: groundHex(g) })), st.ground, (v) => { st.ground = v; change(); });
   const cardWords = moEl('div', 'mo-cs-card-words');
+  const nameLine = moEl('div', 'mo-cs-line mo-cs-wrap');
   const nameEl = moEl('div', 'mo-cs-name'), subEl = moEl('div', 'mo-practice-dim mo-cs-sub');
-  const chips = moEl('div', 'mo-cs-chips', { role: 'list', 'aria-label': 'Recipe' });
-  const bandRow = moEl('div', 'mo-cs-line');
-  const bandEl = moEl('span', 'mo-cs-band'), diffEl = moEl('span', 'mo-practice-dim');
-  bandRow.append(bandEl, diffEl);
-  const cardBtns = moEl('div', 'mo-cs-line mo-cs-wrap');
+  const bandEl = moEl('span', 'mo-cs-band'), diffEl = moEl('span', 'mo-practice-dim mo-cs-sub');
+  nameLine.append(nameEl, subEl, bandEl, diffEl);
+  // The recipe: a bar of its parts in the paints' own colours, then the paints. Why each is there shows
+  // on a chip's hover, focus or press, so the card stays quiet.
+  const partsBar = moEl('div', 'mo-cs-parts-bar', { 'aria-hidden': 'true' });
+  const chips = moEl('div', 'mo-cs-chips', { role: 'group', 'aria-label': 'Recipe' });
+  const roleLine = moEl('div', 'mo-cs-chip-role mo-practice-dim', { 'aria-live': 'polite' });
+  cardWords.append(nameLine, partsBar, chips, roleLine);
+  const cardBtns = moEl('div', 'mo-cs-card-acts');
   const editBtn = go(cardBtns, 'editMix', 'Edit Mix', 'pencil');
-  go(cardBtns, 'copyRecipe', 'Copy Recipe', 'copy', { kind: 'ghost' });
-  const studyBtn = go(cardBtns, 'studyThis', 'Study This Colour', 'pipette', { kind: 'ghost', title: 'Make the rows from this colour' });
-  const putBtn = go(cardBtns, 'putOnPalette', 'Put on Palette', 'swatch-book', { kind: 'ghost', title: 'Replace the chosen palette colour with this one' });
-  cardWords.append(nameEl, subEl, chips, bandRow, cardBtns);
-  card.append(groundCol, cardWords);
+  goIcon(cardBtns, 'copyRecipe', 'copy', 'Copy Recipe');
+  const studyBtn = goIcon(cardBtns, 'studyThis', 'pipette', 'Study This Colour: make the rows from it');
+  const putBtn = goIcon(cardBtns, 'putOnPalette', 'swatch-book', 'Put on Palette: replace the chosen palette colour with it');
+  card.append(groundCol, cardWords, cardBtns);
+  const roles = new Map();
+  let roleShown = '';
+  /** The role of a paint in the recipe, on the line under the chips ('' clears it). */
+  function showRole(name) {
+    const role = name && roles.get(name);
+    roleLine.textContent = role ? `${name}: ${role.charAt(0).toLowerCase()}${role.slice(1)}` : '';
+    for (const c of chips.children) c.setAttribute('aria-pressed', String(c.getAttribute('data-paint') === roleShown));
+  }
 
   const rowsView = moEl('div', 'mo-cs-view'), benchView = moEl('section', 'mo-cs-view mo-cs-bench', { 'aria-label': 'The mix' }), paintsView = moEl('section', 'mo-cs-view mo-cs-paints', { 'aria-label': 'My paints' });
   right.append(card, rowsView, benchView, paintsView);
@@ -139,10 +151,14 @@ export function moRenderColourSheet(container, api, sheetId) {
   const rowEls = {};
   for (const def of MO_COLOUR_ROWS) {
     const el = moEl('section', 'mo-cs-row', { 'data-row': def.id, 'aria-label': def.title });
+    const main = moEl('div', 'mo-cs-row-main');
     const head = moEl('div', 'mo-cs-line');
     head.appendChild(moEl('span', 'mo-practice-section-title', { textContent: def.title }));
+    const r = { el, cells: [], nums: null, note: moEl('div', 'mo-cs-row-note'), noteKey: '', whyBtn: null, why: moEl('div', 'mo-cs-why mo-hidden', { role: 'dialog', 'aria-label': `Why: ${def.title}`, id: `mo-cs-why-${sheetId}-${def.id}` }) };
+    r.whyBtn = goIcon(head, 'why', 'circle-help', `Why: ${def.title}`, { tail: def.id, args: [def.id] });
+    r.whyBtn.setAttribute('aria-controls', r.why.id); r.whyBtn.setAttribute('aria-expanded', 'false'); r.whyBtn.classList.add('mo-cs-why-btn');
+    r.why.append(moEl('div', 'mo-cs-why-title', { textContent: `Why: ${def.title}` }), moEl('div', null, { textContent: def.why }));
     head.appendChild(moEl('span', 'mo-cs-grow'));
-    const r = { el, cells: [], nums: null, note: moEl('span', 'mo-cs-row-note'), whyBtn: null, why: moEl('div', 'mo-cs-why'), whyText: moEl('div', 'mo-cs-why-text mo-hidden', { textContent: def.why, id: `mo-cs-why-${sheetId}-${def.id}` }) };
     if (def.id === 'light') r.lightSeg = segmented(head, 'lightKind', 'The light', [['warm', 'Warm Light'], ['cool', 'Cool Light']], st.light, (v) => { st.light = v; change(); });
     if (def.id === 'twins') r.greyBtn = go(head, 'twinsGrey', 'Show in Grey', 'contrast', { kind: 'ghost' });
     const cells = moEl('div', 'mo-cs-cells', { role: 'toolbar', 'aria-label': `${def.title}. Arrow keys move along the row, Enter shows a colour, Shift Enter studies it.` });
@@ -154,14 +170,9 @@ export function moRenderColourSheet(container, api, sheetId) {
       c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.shiftKey && c.dataset.hex) { e.preventDefault(); st.base = c.dataset.hex; st.shown = c.dataset.hex; change(); } });
       cells.appendChild(c); r.cells.push(c);
     }
-    el.append(head, cells);
-    if (def.id === 'value' || def.id === 'light') { r.nums = moEl('div', 'mo-cs-nums', { 'aria-hidden': 'true' }); for (let i = 0; i < 10; i++) r.nums.appendChild(moEl('span')); el.appendChild(r.nums); }
-    const foot = moEl('div', 'mo-cs-line mo-cs-note-line');
-    r.whyBtn = go(null, 'why', 'Why', 'circle-help', { kind: 'ghost', tail: def.id, args: [def.id] });
-    r.whyBtn.setAttribute('aria-controls', r.whyText.id);
-    r.why.append(r.whyBtn, r.whyText);
-    foot.append(r.note);
-    el.append(foot, r.why);
+    main.append(head, cells);
+    if (def.id === 'value' || def.id === 'light') { r.nums = moEl('div', 'mo-cs-nums', { 'aria-hidden': 'true' }); for (let i = 0; i < 10; i++) r.nums.appendChild(moEl('span')); main.appendChild(r.nums); }
+    el.append(main, r.note);
     rowsView.appendChild(el);
     rowEls[def.id] = r;
   }
@@ -180,6 +191,9 @@ export function moRenderColourSheet(container, api, sheetId) {
   const notes = moEl('textarea', 'mo-cs-notes', { 'aria-label': 'Notes', placeholder: 'Notes on this study', rows: '2', sceneId: 'media-organizer.colour.notes' });
   notes.addEventListener('input', () => { st.notes = notes.value.slice(0, 4000); save(); });
   rowsView.append(compare, tubes, notes);
+  // Why pop-ups last, so they are drawn over the rows after their own (no z-index: house rule)
+  for (const def of MO_COLOUR_ROWS) rowsView.appendChild(rowEls[def.id].why);
+  rowsView.classList.add('mo-cs-rows-view');
 
   // ── the paints and what they reach ──
   const inUse = () => all.filter((p) => !st.tubesOff.includes(p.name));
@@ -327,6 +341,7 @@ export function moRenderColourSheet(container, api, sheetId) {
   dragOn(canvas, (ev) => { const p = wheelPoint(ev); moveDot(st.active, p.angle, p.strength); change(); });
   // keys 1 to 9 choose a colour, anywhere on the sheet outside a field
   const onKey = (e) => {
+    if (e.key === 'Escape' && whyOpen) { const r = rowEls[whyOpen]; whyOpen = ''; e.preventDefault(); e.stopPropagation(); change(false); if (r) r.whyBtn.focus(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
     const n = Number(e.key);
     if (!(n >= 1 && n <= st.colours.length)) return;
@@ -428,7 +443,7 @@ export function moRenderColourSheet(container, api, sheetId) {
       const css = Math.round(clamp(wheelBox.clientWidth || 260, 120, 320));
       const key = [css, st.wheel, Math.round(l * 200), st.hatch, gamut ? gamut.key : ''].join('|');
       if (key !== wheelKey) { wheelKey = key; painter.size(css, window.devicePixelRatio || 1); painter.draw({ model: st.wheel, lightness: l, gamut, hatch: st.hatch }); }
-      wheelCap.textContent = `Showing lightness ${Math.round(l * 100)}%.${st.hatch && gamut ? ` Hatched: out of reach with your ${inUse().length} paints.` : ''}`;
+      wheelCap.textContent = `Lightness ${Math.round(l * 100)}%.${st.hatch && gamut ? ' Hatched: out of reach.' : ''}`;
       st.colours.forEach((hex, i) => {
         const d = dots[i], ang = moWheelAngle(hsl[i][0], st.wheel), rad = (hsl[i][1] * 50 * (css - 2)) / css;
         d.style.left = `${50 + Math.sin((ang * Math.PI) / 180) * rad}%`; d.style.top = `${50 - Math.cos((ang * Math.PI) / 180) * rad}%`;
@@ -481,23 +496,32 @@ export function moRenderColourSheet(container, api, sheetId) {
     targetEl.style.background = moHex(rgb); mixEl.style.background = mixRgb ? moHex(mixRgb) : 'transparent';
     targetEl.setAttribute('aria-label', `Target, ${moHex(rgb)}`); mixEl.setAttribute('aria-label', mixRgb ? `Your mix, ${moHex(mixRgb)}` : 'No mix yet');
     nameEl.textContent = moColourName(rgb).name;
-    subEl.textContent = `${moHex(rgb).toUpperCase()} · value ${say(moValue(rgb))} · ${VALUE_WORDS[vStep]} colour`;
+    subEl.textContent = `${moHex(rgb).toUpperCase()} · value ${say(moValue(rgb))}`; subEl.title = `${VALUE_WORDS[vStep]} colour`;
     const drift = mixRgb ? moDrift(rgb, mixRgb) : null;
     bandSet(bandEl, drift ? drift.closeness : gamut || painted ? '' : 'Working it out');
-    diffEl.textContent = drift ? `Difference ${say(drift.de * 100)}${drift.closeness === 'Far' ? ' · out of reach with your paints' : ''}` : all.length ? '' : 'Add paints to see a recipe.';
+    diffEl.textContent = drift ? `${say(drift.de * 100)} off${drift.closeness === 'Far' ? ' · out of reach' : ''}` : all.length ? '' : 'Add paints to see a recipe.';
     studyBtn.disabled = moHex(rgb) === moHex(baseRgb()); putBtn.disabled = !st.shown || st.shown === st.colours[st.active];
     const roleOf = (name) => { const p = rec && rec.paints.find((x) => x.name === name); return p ? p.role : ''; };
     const ck = JSON.stringify([mix, st.mix ? 1 : 0, rec ? rec.paints.map((p) => p.role) : 0]);
     if (ck !== chipKey) {
-      chipKey = ck; chips.replaceChildren();
-      for (const m of mix) {
-        const p = all.find((x) => x.name === m.name), c = moEl('span', 'mo-cs-chip', { role: 'listitem' });
-        const sw = moEl('span', 'mo-cs-sw mo-cs-sw-sm', { 'aria-hidden': 'true' }); if (p) sw.style.background = p.hex;
-        c.append(sw, moEl('b', null, { textContent: String(m.parts) }), moEl('span', null, { textContent: m.name }));
-        const role = !st.mix && roleOf(m.name);
-        if (role) c.appendChild(moEl('span', 'mo-practice-dim mo-cs-role', { textContent: role }));
-        chips.appendChild(c);
-      }
+      chipKey = ck;
+      keepFocus(chips, () => {
+        chips.replaceChildren(); partsBar.replaceChildren(); roles.clear();
+        for (const m of mix) {
+          const p = all.find((x) => x.name === m.name), role = !st.mix && roleOf(m.name);
+          if (role) roles.set(m.name, role);
+          const seg = moEl('span'); seg.style.flex = String(m.parts); if (p) seg.style.background = p.hex; partsBar.appendChild(seg);
+          const name = `${m.parts} part${m.parts === 1 ? '' : 's'} ${m.name}${role ? `: ${role.toLowerCase()}` : ''}`;
+          const c = go(chips, 'role', m.name, null, { kind: 'ghost', tail: moSlug(m.name), args: [m.name], title: name });
+          c.classList.add('mo-cs-chip'); c.setAttribute('data-paint', m.name); c.setAttribute('aria-label', name);
+          const sw = moEl('span', 'mo-cs-sw mo-cs-sw-sm', { 'aria-hidden': 'true' }); if (p) sw.style.background = p.hex;
+          c.replaceChildren(sw, moEl('b', null, { textContent: String(m.parts) }), moEl('span', null, { textContent: m.name }));
+          c.addEventListener('pointerenter', () => showRole(m.name)); c.addEventListener('pointerleave', () => showRole(roleShown));
+          c.addEventListener('focus', () => showRole(m.name)); c.addEventListener('blur', () => showRole(roleShown));
+        }
+        if (roleShown && !roles.has(roleShown)) roleShown = '';
+        showRole(roleShown);
+      });
     }
 
     const tell = st.mix && drift ? (drift.text === 'the same' ? 'Your mix matches the target.' : `Your mix is ${drift.text} than the target.`) : st.shown ? `${moColourName(rgb).name}, ${moHex(rgb)}, value ${say(moValue(rgb))}${rec ? `, ${rec.closeness}` : ''}` : '';
@@ -542,16 +566,28 @@ export function moRenderColourSheet(container, api, sheetId) {
         c.setAttribute('aria-pressed', String(hex === shown));
         if (r.nums) r.nums.children[i].textContent = say(cell.value);
       });
-      r.note.textContent = moRowNote(def.id, { value: moValue(base), light: st.light, fixes });
-      const open = whyOpen.has(def.id);
-      r.whyText.classList.toggle('mo-hidden', !open); r.whyBtn.setAttribute('aria-expanded', String(open));
+      const note = moRowNote(def.id, { value: moValue(base), light: st.light, fixes });
+      if (note.text !== r.noteKey) {
+        r.noteKey = note.text;
+        r.note.replaceChildren(moEl('div', 'mo-cs-note-fact', { textContent: note.fact }));
+        for (const [label, name] of note.advice) {
+          const line = moEl('div', 'mo-cs-note-advice');
+          const p = name && all.find((x) => x.name === name);
+          if (!name) line.textContent = label;
+          else { line.append(moEl('span', null, { textContent: `${label}: ` })); if (p) { const d = moEl('span', 'mo-cs-sw mo-cs-sw-sm', { 'aria-hidden': 'true' }); d.style.background = p.hex; line.append(d); } line.append(moEl('span', 'mo-cs-note-paint', { textContent: name })); }
+          r.note.appendChild(line);
+        }
+      }
+      const open = whyOpen === def.id;
+      r.why.classList.toggle('mo-hidden', !open); r.whyBtn.setAttribute('aria-expanded', String(open));
+      if (open) { r.why.style.top = `${r.whyBtn.offsetTop + r.whyBtn.offsetHeight + 4}px`; r.why.style.left = `${r.el.offsetLeft}px`; }
       if (r.lightSeg && r.lightSeg.value !== st.light) r.lightSeg.value = st.light;
       if (r.greyBtn) { pressed(r.greyBtn, st.twinsGrey); r.el.classList.toggle('is-grey', st.twinsGrey); }
     }
     // compare: the base beside the colour shown
     const b = moHex(base), s = moHex(shownRgb()), dv = moValue(shownRgb()) - moValue(base);
     [b, s, b, s].forEach((h, i) => { cmp[i].style.background = h; });
-    verdict.textContent = s === b ? 'Press a cell to compare it with the base.' : Math.abs(dv) < 0.25 ? `Same value (${say(Math.abs(dv))} apart).` : `The shown colour is ${say(Math.abs(dv))} ${dv > 0 ? 'lighter' : 'darker'} than the base.`;
+    verdict.textContent = s === b ? 'Press a cell to compare.' : Math.abs(dv) < 0.25 ? 'Same value.' : `Shown is ${say(Math.abs(dv))} ${dv > 0 ? 'lighter' : 'darker'}.`;
     // the limited palette test
     const tk = JSON.stringify([all.map((p) => p.name + p.hex), st.tubesOff]);
     if (tk !== tubeKey) {
@@ -603,7 +639,8 @@ export function moRenderColourSheet(container, api, sheetId) {
     valueCheck() { st.valueCheck = !st.valueCheck; change(); },
     hatch() { st.hatch = !st.hatch; change(); },
     twinsGrey() { st.twinsGrey = !st.twinsGrey; change(); },
-    why(row) { if (whyOpen.has(row)) whyOpen.delete(row); else whyOpen.add(row); change(false); },
+    why(row) { whyOpen = whyOpen === row ? '' : row; change(false); },
+    role(name) { roleShown = roleShown === name ? '' : name; showRole(roleShown); },
     choosePlan: () => choosePlan(),
     choosePicture: () => togglePicker(!choosing),
     async pickPhoto(id, name) { togglePicker(false); const url = await deps.photoPicture(id, 720).catch(() => null); if (url) await setPicture(url, name ? `From ${name}` : 'From the library', null); else api.window.showWarningMessage('That photo is not on disk right now.'); },

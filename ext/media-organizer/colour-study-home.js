@@ -22,7 +22,7 @@ export function moColourSheetOpened(handle) {
   return () => { open.delete(handle); if (lastUsed === handle) lastUsed = null; handle.root.removeEventListener('focusin', used); handle.root.removeEventListener('pointerdown', used, true); };
 }
 /** Everything a sheet's controls run. */
-export const MO_COLOUR_ACTIONS = ['myPaints', 'valueCheck', 'hatch', 'choosePlan', 'choosePicture', 'pickPhoto', 'mass', 'pick', 'cell', 'editMix', 'copyRecipe', 'studyThis', 'putOnPalette', 'twinsGrey', 'why', 'tubeOn',
+export const MO_COLOUR_ACTIONS = ['role', 'myPaints', 'valueCheck', 'hatch', 'choosePlan', 'choosePicture', 'pickPhoto', 'mass', 'pick', 'cell', 'editMix', 'copyRecipe', 'studyThis', 'putOnPalette', 'twinsGrey', 'why', 'tubeOn',
   'resetMix', 'closeBench', 'less', 'more', 'swap', 'dropPaint', 'nudge', 'fix', 'closePaints', 'saveSet', 'deleteSet', 'starterPaints', 'paintColour', 'removePaint', 'customPaint'];
 
 // ── commands and the home ───────────────────────────────────────────────────

@@ -134,7 +134,7 @@ Review (agents that did not see the build; a skeptic tried each finding):
 - Not done: the visual-consistency probe does not list Colour Study (nor
   Painting Plans); the bar was not read from primary sources.
 
-## A calmer sheet (asked 2026-11-19, waiting on his picks)
+## A calmer sheet (asked 2026-11-19; he picked "1A 2B", built)
 
 His words: "Instead of having explainer text underneath, put it to the right,
 use more space. The UI currently has too many words. Feels too busy."
@@ -150,6 +150,15 @@ colour from his screenshot with the engine's real rows, recipe and reach.
 All options drop the 1,100 px width cap and shorten the copy; the page lists
 every sentence before and after. The picks are judgment: no source could be
 read from this environment.
+
+He picked 1A and 2B, and said the label "The row you are on" (1B) was not
+necessary. Built: each row's note sits to the right of its swatches (one
+fact, then the paint to reach for), Why is a ? beside the row's name that
+opens a pop-up (Escape closes it), the card shows the recipe as a bar of its
+parts and chips whose role shows on hover, focus or press, Copy Recipe,
+Study This Colour and Put on Palette are icons, and the width cap is gone.
+Checked: the acceptance probe, updated by its verifier for his picks (80
+checks), passes 80 of 80; the full unit suite and the typecheck pass.
 
 ## Open
 

@@ -9,9 +9,9 @@ export const MO_COLOUR_CSS = `
 .mo-cs-top { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-4); border-bottom: 1px solid var(--px-border); flex: none; }
 .mo-cs-title { margin: 0; font-size: var(--px-text-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .mo-cs-grow { flex: 1; }
-.mo-cs-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--px-space-5); padding: var(--px-space-4); max-width: 1100px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.mo-cs-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--px-space-5); padding: var(--px-space-4); width: 100%; margin: 0 auto; box-sizing: border-box; }
 .mo-cs-left { flex: 0 0 300px; max-width: 100%; display: flex; flex-direction: column; gap: var(--px-space-3); }
-.mo-cs-right { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-3); }
+.mo-cs-right { flex: 1 1 420px; min-width: 0; container-type: inline-size; display: flex; flex-direction: column; gap: var(--px-space-3); }
 .mo-cs-block, .mo-cs-view { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
 .mo-cs-line { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
 .mo-cs-wrap { flex-wrap: wrap; }
@@ -64,16 +64,25 @@ export const MO_COLOUR_CSS = `
 .mo-cs-mix { border-radius: 0 var(--px-radius-xs) var(--px-radius-xs) 0; }
 .mo-cs-ground-cap { display: flex; padding: 0 var(--px-space-3); font-size: var(--px-text-2xs); color: var(--px-text-muted); }
 .mo-cs-ground-cap span { width: 64px; text-align: center; }
-.mo-cs-card-words { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-2); }
+.mo-cs-card-words { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-2); }
+.mo-cs-card-acts { margin-left: auto; display: flex; align-items: center; gap: 2px; flex: none; align-self: flex-start; }
+.mo-cs-parts-bar { display: flex; height: 14px; max-width: 320px; border-radius: var(--px-radius-xs); overflow: hidden; box-shadow: var(--px-ring); }
+.mo-cs-chip-role { min-height: 1.4em; font-size: var(--px-text-xs); }
 .mo-cs-name { font-size: var(--px-text-lg); font-weight: 600; line-height: var(--px-leading-tight); }
 .mo-cs-sub { font-variant-numeric: tabular-nums; }
 .mo-cs-chips { display: flex; flex-wrap: wrap; gap: var(--px-space-1); }
-.mo-cs-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-full); font-size: var(--px-text-xs); }
+.mo-cs-chips .px-btn.mo-cs-chip { height: auto; gap: 5px; padding: 2px var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-full); font-size: var(--px-text-xs); }
+.mo-cs-chips .px-btn.mo-cs-chip[aria-pressed="true"] { border-color: var(--px-accent); }
 .mo-cs-role { font-size: var(--px-text-xs); }
-.mo-cs-chip .mo-cs-role::before { content: '· '; }
 
 /* the rows */
-.mo-cs-row { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.mo-cs-rows-view { position: relative; }
+.mo-cs-row { display: grid; grid-template-columns: minmax(0, 1fr) 236px; column-gap: var(--px-space-4); align-items: center; }
+.mo-cs-row-main { display: flex; flex-direction: column; gap: var(--px-space-1); min-width: 0; }
+.mo-cs .px-btn.mo-cs-why-btn { width: 20px; height: 20px; color: var(--px-text-muted); }
+.mo-cs-why { position: absolute; width: 320px; max-width: calc(100% - var(--px-space-4)); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); box-shadow: var(--px-shadow-md); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
+.mo-cs-why-title { color: var(--px-text); font-weight: 600; margin-bottom: 2px; }
+@container (max-width: 680px) { .mo-cs-row { grid-template-columns: minmax(0, 1fr); } .mo-cs-row-note { margin-top: var(--px-space-1); } }
 .mo-cs-cells { display: flex; gap: 2px; }
 .mo-cs-cells .px-btn.mo-cs-cell { flex: 1; min-width: 0; width: auto; height: 30px; padding: 0; border: 0; border-radius: var(--px-radius-xs); cursor: pointer; }
 .mo-cs-cell.is-base { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 3px var(--px-text); position: relative; }
@@ -82,10 +91,11 @@ export const MO_COLOUR_CSS = `
 .mo-cs-cell.is-shown { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 4px var(--px-accent); position: relative; }
 .mo-cs-nums { display: flex; gap: 2px; font-size: var(--px-text-2xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .mo-cs-nums span { flex: 1; text-align: center; }
-.mo-cs-note-line { align-items: flex-start; }
-.mo-cs-row-note { flex: 1; min-width: 0; line-height: var(--px-leading-base); }
-.mo-cs-why { display: flex; flex-direction: column; align-items: flex-start; gap: var(--px-space-1); }
-.mo-cs-why-text, .mo-cs-fix-advice { padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-divider); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
+.mo-cs-row-note { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-left: var(--px-space-3); border-left: 2px solid var(--px-divider); font-size: var(--px-text-xs); line-height: var(--px-leading-tight); }
+.mo-cs-note-fact { color: var(--px-text); }
+.mo-cs-note-advice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; color: var(--px-text-muted); }
+.mo-cs-note-paint { color: var(--px-text-secondary); }
+.mo-cs-fix-advice { padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-divider); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
 .mo-cs-compare, .mo-cs-tubes { display: flex; flex-direction: column; gap: var(--px-space-2); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .mo-cs-cmp { flex: none; width: 44px; height: 32px; border-radius: var(--px-radius-xs); box-shadow: var(--px-ring); }
 .mo-cs-cmp:nth-child(2) { margin-right: var(--px-space-3); }
