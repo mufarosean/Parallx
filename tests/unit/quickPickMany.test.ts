@@ -92,6 +92,17 @@ describe('a quick pick of several', () => {
     expect(document.activeElement).toBe(back);
   });
 
+  it('closes on Escape even when the focus fell behind it, and gives it back', async () => {
+    const back = opener();
+    const answer = showQuickPickModal(document.body, ITEMS, { canPickMany: true });
+    await settle();
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    key('Escape');
+    expect(await answer).toBeUndefined();
+    expect(document.activeElement).toBe(back);
+  });
+
   it('draws at most 200 rows and says how many more the search would show', async () => {
     const many = Array.from({ length: 230 }, (_, i) => ({ label: `Bulk ${i}` }));
     const answer = showQuickPickModal(document.body, many, { canPickMany: true });

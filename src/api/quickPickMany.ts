@@ -151,6 +151,12 @@ export function showQuickPickMany<T extends Item>(
       if (inList && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) input.focus();
     }));
     subs.push(keepTabInside(box));
+    // A modal: a key pressed while the focus is somewhere behind it (it fell to the page) brings the focus back, and Escape still closes it.
+    subs.push(addDisposableListener(document, 'keydown', (e) => {
+      if (box.contains(document.activeElement) || _open[_open.length - 1] !== handle) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); handle.cancel(); return; }
+      input.focus();
+    }));
     subs.push(addDisposableListener(overlay, 'click', (e) => { if (e.target === overlay) handle.cancel(); }));
 
     overlay.appendChild(box);
