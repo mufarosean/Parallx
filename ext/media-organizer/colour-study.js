@@ -388,7 +388,7 @@ export function moRenderColourSheet(container, api, sheetId) {
   function showLoupe(u, v) { if (!sampler.ready() || u == null) { loupe.classList.add('mo-hidden'); return; } sampler.loupe(loupe, u, v, st.sample); loupe.classList.remove('mo-hidden'); loupe.style.left = `${u * 100}%`; loupe.style.top = `${v * 100}%`; loupe.classList.toggle('is-left', u > 0.6); loupe.classList.toggle('is-below', v < 0.3); }
   const uvOf = (ev) => { const r = picCanvas.getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
   picCanvas.addEventListener('pointermove', (ev) => { if (ev.pointerType === 'mouse') showLoupe(...uvOf(ev)); });
-  picCanvas.addEventListener('pointerleave', () => { if (document.activeElement !== picCanvas) showLoupe(null); });
+  picCanvas.addEventListener('pointerleave', () => showLoupe(null)); // the keyboard's arrows bring it back
   picCanvas.addEventListener('blur', () => showLoupe(null));
   dragOn(picCanvas, (ev) => { const r = picCanvas.getBoundingClientRect(); pickAt(clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)); });
   disposers.push(moPointKeys(picCanvas, 'Picture. Arrow keys move the picker, Enter takes the colour under it.', {

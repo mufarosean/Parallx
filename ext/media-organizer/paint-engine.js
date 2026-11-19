@@ -397,14 +397,28 @@ export function moMixOrder(recipePaints, paints) {
 
 // ── the rows: one dial at a time ────────────────────────────────────────────
 
-const POLES = { warm: { light: 95, shadow: 285 }, cool: { light: 230, shadow: 40 } };
-const POLE_C = 0.12; // how coloured the light and the shadow are
-const WARM_POLE = 60, COOL_POLE = 250;
+// Temperature runs from orange (warmest) to the blue opposite it (coolest).
+const WARM_POLE = 60, COOL_POLE = 240;
+// The colour of the light on the lit side: warm light a sunlit yellow, cool light a north-sky blue.
+const LIGHT_WARM = 95, LIGHT_COOL = 230, LIGHT_C = 0.09;
+/**
+ * A hue leaned warmer (dir 1) or cooler (dir -1) by up to `deg`, never past the pole: the way round that
+ * changes its temperature, so a yellow cools toward lemon green, a red toward crimson, a blue warms
+ * toward violet and cools toward cyan.
+ */
+export function moLeanHue(h, dir, deg) {
+  if (!dir || !(deg > 0)) return h;
+  const pole = dir > 0 ? WARM_POLE : COOL_POLE, gap = hueGap(h, pole);
+  const way = gap !== 0 ? Math.sign(gap) : 0, room = Math.abs(gap);
+  // exactly opposite the pole either way changes it as much: a blue warms toward violet, an orange cools toward yellow
+  const w = Math.abs(room - 180) < 1e-9 ? (dir > 0 ? 1 : 1) : way;
+  return turn(h + w * Math.min(deg, room));
+}
 /**
  * The study rows for a base colour, each turning one dial and holding the others:
  *   value  the base hue and chroma from value 1 to 9.5;
- *   light  light to shadow as light behaves: the lights lean to the light's colour, the shadows to its
- *          opposite, and colour drains from the deepest shadow and the top highlight;
+ *   light  light to shadow as a painter sees it: the lights take the light's colour, the shadows keep
+ *          the object's colour and lean the other way in temperature;
  *   tone   full chroma down to grey at the base's value;
  *   temp   cooler to warmer at the base's value and chroma;
  *   twins  other hues at the base's value.
@@ -420,16 +434,25 @@ export function moVariationRows(rgb, opts) {
   for (let i = 0; i < n; i++) { const tv = 1 + at(i) * 8.5; value.push(cell(moColourAtValue(h, C, tv))); if (Math.abs(tv - v) < Math.abs(1 + at(nearest) * 8.5 - v)) nearest = i; }
   value[nearest].base = true;
 
-  const pole = POLES[opts && opts.light === 'cool' ? 'cool' : 'warm'], light = [];
-  // Each cell is tinted by the light (lights) or by the shadow's colour (darks), more toward the ends: the
-  // colour is pulled toward the pole in OKLab, so a yellow's shadow under warm light goes cool and grey,
-  // never round the wheel through orange.
-  const rad = (d) => (d * Math.PI) / 180, ba = C * Math.cos(rad(h)), bb = C * Math.sin(rad(h));
+  // Light to shadow, as a painter sees it. The lit side takes the colour of the light: each light cell is
+  // tinted toward it (warm light a yellow, cool light a blue), more toward the top, so a blue lit by warm
+  // light goes greener and greyer and skin under cool light goes grey blue. The shadow keeps the object's
+  // own colour and leans the other way in temperature (at most 30°): under warm light a yellow's shadow is
+  // a cooler, greener yellow and a red's a crimson. Colour drains a little at both ends; a grey, with no
+  // hue to lean, is tinted instead.
+  const warmLight = !(opts && opts.light === 'cool'), lightHue = warmLight ? LIGHT_WARM : LIGHT_COOL, light = [];
+  const rad = (d) => (d * Math.PI) / 180;
   for (let i = 0; i < n; i++) {
-    const t = at(i) * 2 - 1, k = 0.55 * Math.abs(t), ph = rad(t > 0 ? pole.light : pole.shadow);
-    const a2 = ba * (1 - k) + POLE_C * Math.cos(ph) * k, b2 = bb * (1 - k) + POLE_C * Math.sin(ph) * k;
-    const drain = t < -0.6 ? 1 - 0.5 * ((-t - 0.6) / 0.4) : t > 0.75 ? 1 - 0.55 * ((t - 0.75) / 0.25) : 1;
-    light.push(cell(moColourAtValue((Math.atan2(b2, a2) * 180) / Math.PI, Math.hypot(a2, b2) * drain, 1.5 + at(i) * 7.7)));
+    const t = at(i) * 2 - 1, tv = 1.5 + at(i) * 7.7;
+    if (t > 0) {
+      const k = 0.4 * t, a2 = C * Math.cos(rad(h)) * (1 - k) + LIGHT_C * Math.cos(rad(lightHue)) * k, b2 = C * Math.sin(rad(h)) * (1 - k) + LIGHT_C * Math.sin(rad(lightHue)) * k;
+      const drain = t > 0.6 ? 1 - 0.45 * ((t - 0.6) / 0.4) : 1;
+      light.push(cell(moColourAtValue((Math.atan2(b2, a2) * 180) / Math.PI, Math.hypot(a2, b2) * drain, tv)));
+    } else {
+      const drain = t < -0.6 ? 1 - 0.4 * ((-t - 0.6) / 0.4) : 1, dir = warmLight ? -1 : 1;
+      if (C < 0.025) light.push(cell(moColourAtValue(dir > 0 ? WARM_POLE + 10 : COOL_POLE, Math.max(C, 0.035 * -t), tv)));
+      else light.push(cell(moColourAtValue(moLeanHue(h, dir, 30 * -t), C * drain, tv)));
+    }
   }
 
   const tone = [];
@@ -437,12 +460,11 @@ export function moVariationRows(rgb, opts) {
   for (let i = 0; i < n; i++) tone.push(i === 0 ? cell(own, { base: true }) : cell(moColourAtValue(h, C * (1 - at(i)), v)));
 
   // Cool on the left, warm on the right; neither end passes its pole.
-  const toWarm = hueGap(h, WARM_POLE), toCool = hueGap(h, COOL_POLE), temp = [];
+  const temp = [];
   const mid = Math.floor((n - 1) / 2), span = Math.max(mid, n - 1 - mid);
   for (let i = 0; i < n; i++) {
     const t = (i - mid) / span;
-    const gap = t > 0 ? toWarm : toCool, turnBy = Math.sign(gap) * Math.min(Math.abs(gap), 35) * Math.abs(t);
-    temp.push(cell(moColourAtValue(h + turnBy, C, v)));
+    temp.push(cell(moColourAtValue(moLeanHue(h, Math.sign(t), 35 * Math.abs(t)), C, v)));
   }
   temp[mid] = cell(own, { base: true });
 
