@@ -14285,6 +14285,8 @@ async function stCmdRemoveUnitItem(subjectId, rowId, key) {
   }
 }
 
+let _stUnitWhereSeq = 0;
+
 /** Add Notes or Files…: the picker for a unit (by its row id or its name); with none named, his pick. */
 async function stCmdAddNotesOrFiles(subject, unit) {
   const s = await stPickSubject(subject, 'Which subject?');
@@ -14466,9 +14468,14 @@ async function renderUnit(host, route, ctx) {
         const icon = it.missing ? 'file-question' : ST_UNIT_ICONS[it.kind] || 'file';
         const open = ui.createButton(line, { id: null, label: it.title, icon, kind: 'ghost', size: 'sm', command: 'study.openUnitItem', args: [subjectId, rowId, it.key] });
         open.classList.add('st-unit__open');
-        open.setAttribute('aria-label', `Open ${it.title}`);
         const where = it.missing ? (it.kind === 'page' ? 'Missing: in the Trash or deleted' : 'Missing: moved or deleted') : it.where;
-        if (where) ui.createBlock(open, 'span', { className: `st-unit__where${it.missing ? ' st-unit__where--gone' : ''}`, text: where });
+        open.setAttribute('aria-label', `Open ${it.title}`);
+        if (where) {
+          // Where it lives, or that it is missing, is the button's description: the name stays "Open <title>".
+          const whereId = `st-unit-where-${++_stUnitWhereSeq}`;
+          ui.createBlock(open, 'span', { className: `st-unit__where${it.missing ? ' st-unit__where--gone' : ''}`, text: where, attrs: { id: whereId } });
+          open.setAttribute('aria-describedby', whereId);
+        }
         const rm = ui.createIconButton(line, { id: null, icon: 'x', title: `Remove ${it.title} from ${unitName}`, size: 'sm', command: 'study.removeUnitItem', args: [subjectId, rowId, it.key] });
         rm.classList.add('st-unit__rm');
       }

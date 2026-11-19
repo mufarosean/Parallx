@@ -103,6 +103,17 @@ describe('a quick pick of several', () => {
     expect(document.activeElement).toBe(back);
   });
 
+  it('says so when Enter is pressed with nothing ticked, and stays open', async () => {
+    opener();
+    const answer = showQuickPickModal(document.body, ITEMS, { canPickMany: true });
+    await settle();
+    key('Enter');
+    expect(document.querySelector('[role=dialog]')).not.toBeNull();
+    expect(document.querySelector('[role=dialog] [aria-live]')?.textContent).toBe('Nothing is ticked yet.');
+    key('Escape');
+    expect(await answer).toBeUndefined();
+  });
+
   it('draws at most 200 rows and says how many more the search would show', async () => {
     const many = Array.from({ length: 230 }, (_, i) => ({ label: `Bulk ${i}` }));
     const answer = showQuickPickModal(document.body, many, { canPickMany: true });

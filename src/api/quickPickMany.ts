@@ -125,7 +125,11 @@ export function showQuickPickMany<T extends Item>(
       resolve(result);
     };
     const handle = {
-      accept: () => { if (picked.size) close(items.filter((_, i) => picked.has(i))); },
+      accept: () => {
+        if (picked.size) { close(items.filter((_, i) => picked.has(i))); return; }
+        // Enter with nothing ticked: say why nothing happened, in the live count.
+        count.textContent = 'Nothing is ticked yet.';
+      },
       cancel: () => close(undefined),
     };
     _open.push(handle);

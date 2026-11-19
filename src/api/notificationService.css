@@ -473,7 +473,8 @@
   width: 16px;
   height: 16px;
   margin-top: 2px;
-  border: 1px solid var(--px-border-strong);
+  /* The box's outline is all that says an unticked row is a checkbox: text-muted keeps it at 3:1 or more (WCAG 1.4.11). */
+  border: 1px solid var(--px-text-muted);
   border-radius: var(--px-radius-sm);
   color: var(--px-text-on-accent);
 }
