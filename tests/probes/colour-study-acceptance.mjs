@@ -47,6 +47,12 @@
 // input box is waited out before the next click; a paint is removed in My Paints only; 5.8 no longer
 // asks that a double-clicked cell also joins the palette (the owner asked only that it become the base).
 //
+// Changed on 2026-11-19 to the owner's later picks ("1A 2B": "put it to the right, use more space. The UI
+// currently has too many words"): a row's note sits to the right of its swatches and is short; Why is a
+// ? button that opens a pop-up over the page; the card shows a parts bar and chips, the role only when a
+// chip is pressed; Copy Recipe, Study This Colour and Put On Palette are icon buttons; the sheet fills
+// the editor. Checks 2.8 and 5.6 were rewritten to that and 2.8a to 2.8d, 2.12, 5.2a and 5.6a added.
+//
 // COLOUR_STUDY_EXT=<dir> runs against another copy of `ext/` (the code as it
 // was before the build, to see every check of new behaviour fail).
 
@@ -537,13 +543,58 @@ await t('2.7 the recipe has a closeness word and a measure, and its mix is a col
   const r = (await state()).recipe || {};
   return [typeof r.closeness === 'string' && r.closeness.trim().length > 0 && Number.isFinite(Number(r.de)) && r.de !== null && !!hexRgb(r.hex), { closeness: r.closeness, de: r.de, hex: r.hex }];
 });
-await t('2.8 the card shows the recipe: every paint by name, its role hint, and the closeness word', async () => {
+// The card after the owner's pick 2B: a bar split by parts, the paints as chips without their role
+// words; the role is in the chip's name and title, and on the card once the chip is pressed.
+const cardText = () => P(() => { const p = window.__csProbe, c = p.all('.mo-cs-card', p.root())[0]; return c ? c.innerText.replace(/\s+/g, ' ').toLowerCase() : null; });
+const chips = () => P(() => { const p = window.__csProbe, c = p.all('.mo-cs-card', p.root())[0]; return c ? p.all('.mo-cs-chip[data-paint]', c).map((e) => ({ paint: e.getAttribute('data-paint'), tag: e.tagName, role: e.getAttribute('role'), name: p.nameOf(e), title: e.getAttribute('title') || '', text: (e.innerText || '').replace(/\s+/g, ' ').trim() })) : null; });
+const roleShown = () => P(() => { const p = window.__csProbe, c = p.all('.mo-cs-card', p.root())[0], r = c && p.all('.mo-cs-chip-role', c)[0]; return r ? { text: (r.innerText || '').replace(/\s+/g, ' ').trim(), live: !!r.closest('[aria-live], [role="status"]') } : null; });
+const low = (x) => String(x).replace(/\s+/g, ' ').trim().toLowerCase();
+await t('2.8 the card shows the recipe as chips: one per paint, named with its parts, its paint and its role, and the closeness word', async () => {
   const s = await state();
-  const card = await P(() => { const p = window.__csProbe, c = p.all('.mo-cs-card', p.root())[0]; if (!c) return null; return [c.innerText, ...Array.from(c.querySelectorAll('[title], [aria-label]')).map((e) => (e.getAttribute('title') || '') + ' ' + (e.getAttribute('aria-label') || ''))].join(' ').replace(/\s+/g, ' ').toLowerCase(); });
+  const card = await cardText(), ch = await chips();
   if (card == null) throw new Error('no .mo-cs-card on screen');
-  const has = (x) => card.includes(String(x).replace(/\s+/g, ' ').trim().toLowerCase());
-  const missing = [...s.recipe.paints.flatMap((p) => [has(p.name) ? null : `name ${p.name}`, has(p.role) ? null : `role of ${p.name}`]), has(s.recipe.closeness) ? null : `closeness ${s.recipe.closeness}`].filter(Boolean);
-  return [s.recipe.paints.length >= 1 && missing.length === 0, { missing, card: card.slice(0, 200) }];
+  if (!ch) throw new Error('no chips in the card');
+  const bad = s.recipe.paints.map((p) => { const c = ch.find((x) => flat(x.paint) === flat(p.name)); if (!c) return `no chip for ${p.name}`; const told = (t) => low(t).includes(low(p.name)) && low(t).includes(low(p.role)) && t.includes(String(p.parts)); return (c.tag === 'BUTTON' || c.role === 'button') && told(c.name) && told(c.title) && low(c.text).includes(low(p.name)) && c.text.includes(String(p.parts)) ? null : `chip of ${p.name}: ${JSON.stringify(c)}`; }).filter(Boolean);
+  return [s.recipe.paints.length >= 1 && ch.length === s.recipe.paints.length && bad.length === 0 && card.includes(low(s.recipe.closeness)), { bad, closeness: s.recipe.closeness, card: card.slice(0, 200) }];
+});
+await t('2.8a fewer words: before a chip is pressed the card\'s visible text has none of the role words', async () => {
+  const s = await state();
+  const card = await cardText(), shown = await roleShown();
+  if (card == null) throw new Error('no .mo-cs-card on screen');
+  const there = s.recipe.paints.filter((p) => card.includes(low(p.role))).map((p) => p.role);
+  return [s.recipe.paints.length >= 1 && (await chips())?.length === s.recipe.paints.length && there.length === 0 && (!shown || shown.text === ''), { rolesInText: there, chipRole: shown }];
+});
+await t('2.8b pressing a chip shows that paint\'s role on the card (.mo-cs-chip-role, announced); the keyboard does the same on the next chip', async () => {
+  const s = await state();
+  const ps = s.recipe.paints;
+  await click('.mo-cs-card .mo-cs-chip[data-paint]', { nth: 0 });
+  const ch = await chips();
+  const first = ps.find((p) => flat(p.name) === flat(ch[0].paint));
+  const a = await roleShown();
+  let b = null, second = null;
+  if (ch.length > 1) {
+    second = ps.find((p) => flat(p.name) === flat(ch[1].paint));
+    const on = await P(() => { const p = window.__csProbe, c = p.all('.mo-cs-card .mo-cs-chip[data-paint]', p.root())[1]; c.focus(); return document.activeElement === c; });
+    if (!on) throw new Error('the second chip cannot take the keyboard focus');
+    await press('Enter');
+    b = await roleShown();
+  }
+  const ok = !!a && !!first && low(a.text).includes(low(first.role)) && a.live && (ch.length === 1 || (!!b && low(b.text).includes(low(second.role)) && (low(second.role) === low(first.role) || !low(b.text).includes(low(first.role)))));
+  return [ok, { first: first && first.role, afterClick: a, second: second && second.role, afterEnter: b }];
+});
+await t('2.8c the parts bar: one segment per paint, in the paint\'s own colour, as wide as its share of the parts', async () => {
+  const s = await state();
+  const segs = await P(() => { const p = window.__csProbe, bar = p.all('.mo-cs-card .mo-cs-parts-bar', p.root())[0]; return bar ? Array.from(bar.children).filter(p.vis).map((e) => ({ w: e.getBoundingClientRect().width, painted: p.paint(e) })) : null; });
+  if (!segs) throw new Error('no .mo-cs-parts-bar in the card');
+  const ps = s.recipe.paints, total = ps.reduce((n, p) => n + Number(p.parts), 0), width = segs.reduce((n, g) => n + g.w, 0);
+  const rest = segs.slice();
+  const bad = ps.map((p) => { const i = rest.findIndex((g) => near(g.painted, hexRgb(p.hex), 3) && Math.abs(g.w / width - Number(p.parts) / total) <= 0.04); if (i < 0) return `${p.name} ${p.hex} ${p.parts}/${total}`; rest.splice(i, 1); return null; }).filter(Boolean);
+  return [segs.length === ps.length && width >= 60 && bad.length === 0, { noSegmentFor: bad, segments: segs.map((g) => [Math.round(g.w), g.painted]) }];
+});
+await t('2.8d Copy Recipe, Study This Colour and Put On Palette are icon buttons with a name and no visible words; Edit Mix keeps its words', async () => {
+  const got = await P((ids) => Object.fromEntries(ids.map((id) => { const p = window.__csProbe, e = p.all(`[data-px-id="media-organizer.colour.${id}"]`)[0]; return [id, e ? { words: (e.innerText || '').replace(/\s+/g, ' ').trim(), name: (e.getAttribute('aria-label') || e.getAttribute('title') || '').trim(), icon: !!e.querySelector('svg'), w: Math.round(e.getBoundingClientRect().width) } : null]; })), ['copyRecipe', 'studyThis', 'putOnPalette', 'editMix']);
+  const icons = ['copyRecipe', 'studyThis', 'putOnPalette'].every((id) => got[id] && got[id].words === '' && got[id].name.length >= 4 && got[id].icon);
+  return [icons && !!got.editMix && /edit mix/i.test(got.editMix.words) && new Set(['copyRecipe', 'studyThis', 'putOnPalette'].map((id) => got[id].name)).size === 3, got];
 });
 await t('2.9 target and mix sit on the ground: the target is the active colour, the mix is the recipe\'s', async () => {
   const s = await state();
@@ -565,6 +616,29 @@ await t('2.11 Copy Recipe puts the recipe\'s paints on the clipboard', async () 
   return [s.recipe.paints.length >= 1 && s.recipe.paints.every((p) => text.toLowerCase().includes(p.name.toLowerCase())) && /\d/.test(text), text.slice(0, 200)];
 });
 await t('10.1 a screenshot of the sheet', async () => { const f = await shot('colour-study-sheet', '.mo-cs-wheel'); sheetShot = true; return [true, f]; });
+
+// The sheet fills the editor (no 1,100 px cap). The probe's window gives the editor about 1,100 px, so the
+// window is made wider for this one look and put back.
+{
+  let wide = false, why = 'the app did not start';
+  if (up) {
+    try {
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setContentSize(2000, 900); });
+      await page.setViewportSize({ width: 2000, height: 900 }).catch(() => {});
+      wide = !!(await until(() => P(() => window.innerWidth >= 1900), 4_000));
+      if (!wide) why = `the hidden window would not go wider than ${await P(() => window.innerWidth)} px`;
+    } catch (e) { why = String(e?.message || e).slice(0, 160); }
+  }
+  const NAME = '2.12 the sheet fills the editor: .mo-cs-body is wider than 1,100 px in a wide window and reaches across the editor';
+  if (!wide) notRun(NAME, why);
+  else await t(NAME, async () => {
+    await wait(900);
+    const g = await P(() => { const p = window.__csProbe, r = p.root(), b = r && p.all('.mo-cs-body', r)[0]; if (!b) return null; const ed = (r.closest('.editor-pane, .editor-group-content, [data-part-id="workbench.parts.editor"]') || document.querySelector('[data-part-id="workbench.parts.editor"]')).getBoundingClientRect(); return { body: Math.round(b.getBoundingClientRect().width), root: Math.round(r.getBoundingClientRect().width), editor: Math.round(ed.width), window: window.innerWidth }; });
+    if (!g) throw new Error('no .mo-cs-body on screen');
+    return [g.root > 1300 && g.body > 1100 && g.body >= g.root - 80, g];
+  });
+  if (up) { await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setContentSize(1400, 900); }).catch(() => {}); await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {}); await until(() => P(() => window.innerWidth <= 1450), 4_000); await wait(900); }
+}
 
 // 3. The keyboard ────────────────────────────────────────────────────────────
 await t('3.1 ArrowRight on a dot turns the set: every colour\'s hue moves and the harmony holds', async () => {
@@ -704,7 +778,12 @@ await t('5.1 five rows (value, light, tone, temp, twins), each with the cells st
 });
 await t('5.2 every row has its one-line explanation', async () => {
   const notes = await P(() => { const p = window.__csProbe; return Object.fromEntries(p.all('.mo-cs-row[data-row]', p.root()).map((r) => [r.getAttribute('data-row'), (p.all('.mo-cs-row-note', r)[0]?.innerText || '').replace(/\s+/g, ' ').trim()])); });
-  return [ROWS.every((k) => (notes[k] || '').length >= 12) && new Set(ROWS.map((k) => notes[k])).size === 5, notes];
+  const words = (x) => (x || '').split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  return [ROWS.every((k) => (notes[k] || '').length >= 12 && words(notes[k]) <= 16) && new Set(ROWS.map((k) => notes[k])).size === 5, Object.fromEntries(ROWS.map((k) => [k, `${words(notes[k])} words: ${notes[k]}`]))];
+});
+await t('5.2a the explanation sits to the right of the row\'s swatches, beside them, not under (window 1,400 px wide)', async () => {
+  const g = await P(() => { const p = window.__csProbe; return Object.fromEntries(p.all('.mo-cs-row[data-row]', p.root()).map((r) => { const c = p.all('.mo-cs-cells', r)[0], n = p.all('.mo-cs-row-note', r)[0]; if (!c || !n) return [r.getAttribute('data-row'), null]; const a = c.getBoundingClientRect(), b = n.getBoundingClientRect(); return [r.getAttribute('data-row'), { cellsRight: Math.round(a.right), cellsTop: Math.round(a.top), cellsBottom: Math.round(a.bottom), cellsWidth: Math.round(a.width), noteLeft: Math.round(b.left), noteTop: Math.round(b.top), noteWidth: Math.round(b.width) }]; })); });
+  return [ROWS.every((k) => g[k] && g[k].noteLeft >= g[k].cellsRight - 1 && g[k].noteTop < g[k].cellsBottom && g[k].noteWidth >= 80 && g[k].cellsWidth >= 200), g];
 });
 await t('5.3 the value row climbs: each cell lighter than the one before', async () => {
   const v = (await state()).rows.value.map((c) => value(hexRgb(c)));
@@ -721,16 +800,40 @@ await t('5.5 value twins: the same value, different colours', async () => {
   const v = tw.map(value);
   return [tw.length >= 3 && Math.max(...v) - Math.min(...v) <= 0.75 && new Set(tw.map(String)).size === tw.length, v.map((x) => x.toFixed(2))];
 });
-// ASSUMED: `.mo-cs-why` is a <details>, or holds (or is) a button with aria-expanded.
-await t('5.6 every row\'s Why opens to an explanation', async () => {
+// Why, after the owner's pick 1A: a ? button beside the row's name (`media-organizer.colour.why.<row>`) that
+// opens a pop-up `.mo-cs-why` over the page, in place of a paragraph that pushed the rows down.
+const whySel = (k) => `.mo-cs-row[data-row="${k}"] [data-px-id="media-organizer.colour.why.${k}"]`;
+const whyState = () => P((rows) => { const p = window.__csProbe, r = p.root(); if (!r) return null; const pops = p.all('.mo-cs-why').map((w) => ({ id: w.id, role: w.getAttribute('role'), modal: w.getAttribute('aria-modal'), text: (w.innerText || '').replace(/\s+/g, ' ').trim() })); return { pops, buttons: Object.fromEntries(rows.map((k) => { const b = r.querySelector(`.mo-cs-row[data-row="${k}"] [data-px-id="media-organizer.colour.why.${k}"]`); return [k, b ? { expanded: b.getAttribute('aria-expanded'), controls: b.getAttribute('aria-controls'), name: p.nameOf(b), tag: b.tagName } : null]; })), rows: p.all('.mo-cs-row[data-row]', r).map((x) => { const q = x.getBoundingClientRect(); return [Math.round(q.left), Math.round(q.top), Math.round(q.width), Math.round(q.height)].join(','); }).join(' ') }; }, ROWS);
+await t('5.6 every row\'s ? opens a pop-up with the rule, over the page (the rows do not move), and Escape closes it', async () => {
   const out = {};
+  const texts = new Set();
   for (const k of ROWS) {
-    const b = await P((k) => { const p = window.__csProbe, row = p.all(`.mo-cs-row[data-row="${k}"]`, p.root())[0], w = row && p.all('.mo-cs-why', row)[0]; if (!w) return null; const t = w.matches('summary, button, [role="button"]') ? w : w.querySelector('summary, button, [role="button"], [aria-expanded]') || w; return { ...p.box(t), len: document.body.innerText.length }; }, k);
-    if (!b) { out[k] = 'no .mo-cs-why'; continue; }
-    await page.mouse.click(b.x, b.y); await wait(400);
-    out[k] = await P(({ k, len }) => { const p = window.__csProbe, row = p.all(`.mo-cs-row[data-row="${k}"]`, p.root())[0], w = row && row.querySelector('.mo-cs-why'); if (!w) return 'gone'; const open = (w.matches('details') ? w : w.querySelector('details'))?.open === true || [w, ...w.querySelectorAll('[aria-expanded]')].some((e) => e.getAttribute('aria-expanded') === 'true'); return { open, grew: document.body.innerText.length - len }; }, { k, len: b.len });
+    if (!(await boxOf(whySel(k)).catch(() => null))) { out[k] = 'no ? button media-organizer.colour.why.' + k; continue; } // and the button is scrolled into view before the rows are measured
+    await wait(250);
+    const before = await whyState();
+    await click(whySel(k));
+    const open = await whyState();
+    await press('Escape');
+    const closed = await whyState();
+    const pop = open.pops[0];
+    if (pop) texts.add(pop.text);
+    const ok = before.pops.length === 0 && before.buttons[k].tag === 'BUTTON' && before.buttons[k].name.length > 0 && before.buttons[k].expanded === 'false' && open.pops.length === 1 && pop.role === 'dialog' && pop.modal !== 'true' && pop.text.length >= 20 && open.buttons[k].expanded === 'true' && !!open.buttons[k].controls && open.buttons[k].controls === pop.id && open.rows === before.rows && closed.pops.length === 0 && closed.buttons[k].expanded === 'false' && closed.rows === before.rows;
+    out[k] = ok ? true : { button: before.buttons[k], whenOpen: { pops: open.pops, expanded: open.buttons[k]?.expanded, controls: open.buttons[k]?.controls, rowsMoved: open.rows !== before.rows }, afterEscape: { pops: closed.pops.length, expanded: closed.buttons[k]?.expanded } };
   }
-  return [ROWS.every((k) => out[k] && out[k].open === true && out[k].grew >= 20), out];
+  return [ROWS.every((k) => out[k] === true) && texts.size === 5, out];
+});
+await t('5.6a one pop-up at a time, and pressing ? again closes it', async () => {
+  await click(whySel('value'));
+  const one = await whyState();
+  const on = await P((sel) => { const b = window.__csProbe.root().querySelector(sel); if (!b) return false; b.focus(); return document.activeElement === b; }, whySel('tone'));
+  if (!on) throw new Error('the tone row\'s ? cannot take the keyboard focus');
+  await press('Enter');
+  const two = await whyState();
+  await press('Enter');
+  const none = await whyState();
+  const ok = one.pops.length === 1 && two.pops.length === 1 && two.pops[0].text !== one.pops[0].text && two.buttons.value.expanded === 'false' && two.buttons.tone.expanded === 'true' && none.pops.length === 0 && none.buttons.tone.expanded === 'false';
+  if (none.pops.length) await press('Escape');
+  return [ok, { first: one.pops.map((x) => x.text.slice(0, 40)), second: two.pops.map((x) => x.text.slice(0, 40)), expanded: [two.buttons.value?.expanded, two.buttons.tone?.expanded], afterSecondPress: none.pops.length }];
 });
 await t('5.7 a click on a cell shows that colour in the card and leaves the base alone', async () => {
   const a = await state();
