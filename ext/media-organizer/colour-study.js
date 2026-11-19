@@ -12,148 +12,20 @@
 
 import { moEl, moSlug } from './dom.js';
 import { moPointKeys, moSliderKeys } from './keys.js';
-import { MO_COMMON_PAINTS, MO_STARTER_PAINTS, moColourName, moHexRgb, moPalette } from './colour.js';
+import { MO_STARTER_PAINTS, moColourName, moHexRgb, moPalette } from './colour.js';
 import { moPaintSetRemove, moPaintSetSave, moPaintSetUse, moPaintSets, moPaintsEdit, moPlanPaintSet } from './plan-colours.js';
-import { moDrift, moFixMix, moGamut, moHex, moMixOfParts, moMixOrder, moRecipe, moSubstitutes, moTubeNudges, moValue, moVariationRows } from './paint-engine.js';
+import { moDrift, moFixMix, moGamut, moHex, moMixOfParts, moRecipe, moSubstitutes, moValue, moVariationRows } from './paint-engine.js';
 import { MO_HARMONIES, MO_HARMONY_NAMES, moHslRgb, moRgbHsl, moWheelAngle, moWheelHue } from './paint-wheel.js';
 import { moWheelPainter } from './colour-study-wheel.js';
 import { MO_COLOUR_ROWS, moRowNote } from './colour-lessons.js';
-
-let deps = null;
-const HOME = 'mo:colour-sheets-changed';
-const PROBLEMS = [['bright', 'Too Bright'], ['dull', 'Too Dull'], ['dark', 'Too Dark'], ['light', 'Too Light'], ['warm', 'Too Warm'], ['cool', 'Too Cool']];
-const say = (v) => (Math.round(v * 10) / 10).toFixed(1);
-const rgbOf = (hex) => moHexRgb(hex) || [128, 128, 128];
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const parse = (text, fallback) => { try { const v = JSON.parse(text); return v == null ? fallback : v; } catch { return fallback; } };
-// What the canvas is toned with, behind the target and the mix.
-const GROUNDS = ['Burnt Sienna', 'Raw Sienna', 'Raw Umber', 'Burnt Umber', 'Yellow Ochre', 'Titanium White', 'Grey'];
-const groundHex = (name) => { const p = MO_COMMON_PAINTS.find((x) => x.name === name); return p ? p.hex : moHex([128, 128, 128]); };
-const VALUE_WORDS = ['a very dark', 'a very dark', 'a dark', 'a dark', 'a middle dark', 'a middle', 'a middle light', 'a light', 'a light', 'a very light', 'a very light'];
-
-function harmonyColours(type, h, s, l, wheel) {
-  const at = moWheelAngle(h, wheel);
-  return (MO_HARMONIES[type] || [0]).map((o) => moHex(moHslRgb(moWheelHue(at + o, wheel), s, l)));
-}
-function defaultState() {
-  return { wheel: 'painter', harmony: 'splitComplementary', colours: harmonyColours('splitComplementary', 81, 0.3, 0.34, 'painter'), active: 0, shown: null, base: null, light: 'warm', hatch: true, valueCheck: false, twinsGrey: false, source: 'wheel', tubesOff: [], mix: null, masses: [], pictureFrom: '', notes: '', ground: 'Burnt Sienna' };
-}
-function cleanState(raw) {
-  const d = defaultState(), s = Object.assign({}, d, raw && typeof raw === 'object' ? raw : {});
-  const hexes = (list) => (Array.isArray(list) ? list.map((h) => moHexRgb(h)).filter(Boolean).map(moHex) : []);
-  s.colours = hexes(s.colours).slice(0, 9); if (!s.colours.length) s.colours = d.colours;
-  s.active = clamp(Math.round(Number(s.active) || 0), 0, s.colours.length - 1);
-  s.wheel = s.wheel === 'screen' ? 'screen' : 'painter';
-  s.harmony = s.harmony === 'none' || MO_HARMONIES[s.harmony] ? s.harmony : d.harmony;
-  s.light = s.light === 'cool' ? 'cool' : 'warm';
-  s.source = s.source === 'picture' ? 'picture' : 'wheel';
-  s.shown = moHexRgb(s.shown) ? moHex(moHexRgb(s.shown)) : null;
-  s.base = moHexRgb(s.base) ? moHex(moHexRgb(s.base)) : null;
-  s.masses = hexes(s.masses).slice(0, 16);
-  s.tubesOff = Array.isArray(s.tubesOff) ? s.tubesOff.map(String) : [];
-  s.mix = Array.isArray(s.mix) ? s.mix.filter((m) => m && m.name && m.parts > 0).map((m) => ({ name: String(m.name), parts: clamp(Math.round(m.parts), 1, 24) })) : null;
-  if (s.mix && !s.mix.length) s.mix = null;
-  for (const k of ['hatch', 'valueCheck', 'twinsGrey']) s[k] = !!s[k];
-  s.ground = GROUNDS.includes(s.ground) ? s.ground : d.ground;
-  s.notes = String(s.notes || '').slice(0, 4000); s.pictureFrom = String(s.pictureFrom || '').slice(0, 120);
-  return s;
-}
-
-// ── commands and the home ───────────────────────────────────────────────────
-
-/** d: { api, db, getSetting, setSetting, openHome(), openSheet(id, title), searchPhotos(text), thumb(img, photoId), photoPicture(photoId, max) -> data URL, plans() -> [{ id, title }], planSnapshot(planId, variantId?) -> { title, picture, colours: [rgb] } } */
-export function moColourStudyActivate(api, d) {
-  deps = d;
-  const changed = () => document.dispatchEvent(new CustomEvent(HOME));
-  async function newSheet(seed) {
-    const n = await d.db.get('SELECT COUNT(*) AS n FROM mo_colour_sheets');
-    const title = (seed && seed.title) || `Colour Study ${((n && n.n) || 0) + 1}`;
-    const st = cleanState(seed && seed.state);
-    const now = new Date().toISOString();
-    await d.db.run('INSERT INTO mo_colour_sheets (title, state_json, picture, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', [title.slice(0, 80), JSON.stringify(st), (seed && seed.picture) || '', now, now]);
-    const row = await d.db.get('SELECT id FROM mo_colour_sheets ORDER BY id DESC LIMIT 1');
-    changed();
-    if (row) d.openSheet(row.id, title);
-    return row ? row.id : null;
-  }
-  const acts = {
-    newSheet: () => newSheet(null),
-    open: async (id) => { const r = await d.db.get('SELECT title FROM mo_colour_sheets WHERE id = ?', [id]); if (r) d.openSheet(id, r.title); },
-    async rename(id, to) {
-      const r = await d.db.get('SELECT title FROM mo_colour_sheets WHERE id = ?', [id]);
-      const t = r && (to != null ? to : await api.window.showInputBox({ prompt: 'Name this colour study', value: r.title }));
-      if (!t || !String(t).trim()) return;
-      await d.db.run('UPDATE mo_colour_sheets SET title = ?, updated_at = ? WHERE id = ?', [String(t).trim().slice(0, 80), new Date().toISOString(), id]);
-      changed();
-    },
-    async remove(id) {
-      const r = await d.db.get('SELECT title FROM mo_colour_sheets WHERE id = ?', [id]);
-      if (!r || !(await api.window.showConfirmModal({ message: `Delete the colour study "${r.title}"?`, detail: 'Its colours, mix and notes go with it. Your paints stay.', confirmLabel: 'Delete', danger: true }))) return;
-      await d.db.run('DELETE FROM mo_colour_sheets WHERE id = ?', [id]);
-      changed();
-    },
-    /** A sheet from a painting plan: its picture as it stands and its colours. */
-    async fromPlan(planId, variantId) {
-      const snap = await d.planSnapshot(planId, variantId);
-      if (!snap) { api.window.showWarningMessage('That plan could not be read.'); return null; }
-      const masses = (snap.colours || []).map(moHex).filter((h, i, a) => a.indexOf(h) === i).slice(0, 16);
-      const st = defaultState();
-      if (masses.length) { st.colours = masses.slice(0, 9); st.harmony = 'none'; }
-      Object.assign(st, { masses, source: snap.picture ? 'picture' : 'wheel', pictureFrom: `From the plan ${snap.title}` });
-      return newSheet({ title: `${snap.title} Colours`, state: st, picture: snap.picture || '' });
-    },
-  };
-  return [
-    api.commands.registerCommand('media-organizer.colourStudy', () => d.openHome()),
-    api.commands.registerCommand('media-organizer.plan.openInColourStudy', (planId, variantId) => { const id = planId != null ? planId : d.planInUse && d.planInUse(); return id != null ? acts.fromPlan(id, variantId) : null; }),
-    ...Object.entries(acts).map(([k, fn]) => api.commands.registerCommand(`media-organizer.colour.${k}`, fn)),
-  ];
-}
-
-export function moRenderColourHome(container, api) {
-  const ui = api.ui;
-  const root = moEl('div', 'mo-practice-setup mo-plans mo-cs-home');
-  container.appendChild(root);
-  let disposed = false;
-  const head = moEl('div', 'mo-plans-head');
-  const words = moEl('div', 'mo-plans-words');
-  words.append(moEl('div', 'mo-home-title', { textContent: 'Colour Study' }), moEl('div', 'mo-home-sub', { textContent: 'Learn to mix a colour from the paints you have: what goes in it and why, and what each tube does to it.' }));
-  head.appendChild(words);
-  ui.createButton(head, { id: 'media-organizer.colour.newSheet', label: 'New Colour Study', kind: 'primary', command: 'media-organizer.colour.newSheet' });
-  root.appendChild(head);
-  const grid = moEl('div', 'mo-plans-grid', { role: 'list', 'aria-label': 'Colour studies' });
-  root.appendChild(grid);
-  async function load() {
-    const rows = await deps.db.all('SELECT id, title, state_json, picture, updated_at FROM mo_colour_sheets ORDER BY updated_at DESC').catch(() => []);
-    if (disposed) return;
-    const had = grid.contains(document.activeElement) && document.activeElement.getAttribute('data-px-id');
-    grid.replaceChildren();
-    if (!rows.length) { grid.appendChild(moEl('div', 'mo-practice-dim', { textContent: 'No colour studies yet. New Colour Study starts one from the painter’s wheel; a painting plan can open one from its picture.' })); return; }
-    for (const r of rows) {
-      const st = cleanState(parse(r.state_json, null));
-      const card = moEl('article', 'mo-plans-card', { role: 'listitem', 'aria-label': r.title });
-      const openBtn = ui.createButton(card, { id: `media-organizer.colour.open.${r.id}`, label: `Open ${r.title}`, kind: 'ghost', command: 'media-organizer.colour.open', args: [r.id] });
-      openBtn.classList.add('mo-plans-open');
-      const strip = moEl('span', 'mo-cs-home-strip', { 'aria-hidden': 'true' });
-      for (const c of st.colours) { const s = moEl('span'); s.style.background = c; strip.appendChild(s); }
-      openBtn.replaceChildren(strip, moEl('span', 'mo-plans-card-title', { textContent: r.title }), moEl('span', 'mo-practice-dim', { textContent: `${st.colours.length} colour${st.colours.length === 1 ? '' : 's'}${r.picture ? ' · with a picture' : ''}` }), moEl('span', 'mo-practice-dim', { textContent: deps.date ? deps.date(r.updated_at) : '' }));
-      const actions = moEl('div', 'mo-plans-actions');
-      ui.createIconButton(actions, { id: `media-organizer.colour.rename.${r.id}`, icon: 'pencil', title: `Rename ${r.title}…`, size: 'sm', command: 'media-organizer.colour.rename', args: [r.id] });
-      ui.createIconButton(actions, { id: `media-organizer.colour.remove.${r.id}`, icon: 'trash-2', title: `Delete ${r.title}…`, size: 'sm', command: 'media-organizer.colour.remove', args: [r.id] });
-      card.appendChild(actions);
-      grid.appendChild(card);
-    }
-    if (had) { const el = grid.querySelector(`[data-px-id="${CSS.escape(had)}"]`); if (el) el.focus(); }
-  }
-  document.addEventListener(HOME, load);
-  void load();
-  return { dispose() { disposed = true; document.removeEventListener(HOME, load); container.replaceChildren(); } };
-}
+import { GROUNDS, HOME, VALUE_WORDS, clamp, cleanState, defaultState, groundHex, harmonyColours, parse, rgbOf, say } from './colour-study-state.js';
+import { moColourDeps, moColourSheetOpened } from './colour-study-home.js';
+import { moDrawBench, moDrawPaints } from './colour-study-panels.js';
 
 // ── a sheet ─────────────────────────────────────────────────────────────────
 
 export function moRenderColourSheet(container, api, sheetId) {
-  const ui = api.ui, io = { getSetting: deps.getSetting, setSetting: deps.setSetting };
+  const deps = moColourDeps(), ui = api.ui, io = { getSetting: deps.getSetting, setSetting: deps.setSetting };
   const root = moEl('div', 'mo-cs');
   container.appendChild(root);
   const disposers = [];
@@ -171,7 +43,9 @@ export function moRenderColourSheet(container, api, sheetId) {
   root.append(top, body);
   const live = moEl('div', 'mo-cs-live', { 'aria-live': 'polite' });
   root.appendChild(live);
-  const btn = (parent, id, label, onClick, o = {}) => ui.createButton(parent, { id: `media-organizer.colour.${id}`, label, kind: o.kind || 'secondary', size: 'sm', onClick, ...(o.icon ? { icon: o.icon } : {}), ...(o.title ? { title: o.title } : {}) });
+  const idOf = (action, tail) => `media-organizer.colour.${action}${tail != null && tail !== '' ? `.${tail}` : ''}`;
+  const go = (parent, action, label, icon, o = {}) => ui.createButton(parent, { id: idOf(action, o.tail), label, icon, kind: o.kind || 'secondary', size: 'sm', command: `media-organizer.colour.${action}`, ...(o.args ? { args: o.args } : {}), ...(o.title ? { title: o.title } : {}) });
+  const goIcon = (parent, action, icon, title, o = {}) => ui.createIconButton(parent, { id: idOf(action, o.tail), icon, title, size: 'sm', command: `media-organizer.colour.${action}`, ...(o.args ? { args: o.args } : {}) });
   const pressed = (b, on) => b.setAttribute('aria-pressed', String(!!on));
   const dropdown = (parent, id, label, items, selected, onChange) => {
     const dd = ui.createDropdown(parent, { items, selected, ariaLabel: label });
@@ -187,8 +61,8 @@ export function moRenderColourSheet(container, api, sheetId) {
   top.appendChild(titleEl);
   top.appendChild(moEl('span', 'mo-cs-grow'));
   const setDd = dropdown(top, 'paintSet', 'Paint set', [{ value: '', label: 'My Paints' }], '', (v) => { if (v !== setInfo.current && v) void moPaintSetUse(io, v); });
-  btn(top, 'myPaints', 'My Paints…', () => show(view === 'paints' ? 'rows' : 'paints'));
-  const greyBtn = btn(top, 'valueCheck', 'Value Check', () => { st.valueCheck = !st.valueCheck; change(); }, { kind: 'ghost', icon: 'contrast', title: 'Show everything in grey: the squint test' });
+  go(top, 'myPaints', 'My Paints…', 'palette');
+  const greyBtn = go(top, 'valueCheck', 'Value Check', 'contrast', { kind: 'ghost', title: 'Show everything in grey: the squint test' });
 
   // left: where a colour comes from
   const sourceSeg = segmented(left, 'source', 'Where colours come from', [['wheel', 'Wheel'], ['picture', 'Picture']], 'wheel', (v) => { st.source = v; change(); });
@@ -202,7 +76,7 @@ export function moRenderColourSheet(container, api, sheetId) {
   wheelBox.append(canvas, dotLayer);
   const painter = moWheelPainter(canvas);
   const wheelCap = moEl('div', 'mo-practice-dim mo-cs-cap');
-  const hatchBtn = btn(null, 'hatch', 'Hatching', () => { st.hatch = !st.hatch; change(); }, { kind: 'ghost', title: 'Hatch what your paints cannot mix' });
+  const hatchBtn = go(null, 'hatch', 'Hatching', 'eye', { kind: 'ghost', title: 'Hatch what your paints cannot mix' });
   const capRow = moEl('div', 'mo-cs-line');
   capRow.append(wheelCap, hatchBtn);
   wheelBlock.append(wheelRow, wheelBox, capRow);
@@ -214,8 +88,8 @@ export function moRenderColourSheet(container, api, sheetId) {
   picBox.append(picCanvas, picPin);
   const picCap = moEl('div', 'mo-practice-dim mo-cs-cap');
   const picRow = moEl('div', 'mo-cs-line');
-  btn(picRow, 'choosePlan', 'Choose Plan…', () => void choosePlan());
-  const choosePicBtn = btn(picRow, 'choosePicture', 'Choose Picture…', () => togglePicker(!choosing));
+  go(picRow, 'choosePlan', 'Choose Plan…', 'palette');
+  const choosePicBtn = go(picRow, 'choosePicture', 'Choose Picture…', 'image');
   const picker = moEl('section', 'mo-cs-picker mo-hidden', { 'aria-label': 'Choose a picture' });
   const pickSearch = moEl('input', 'mo-clip-input', { type: 'search', 'aria-label': 'Search photos', placeholder: 'Search the library' });
   const pickGrid = moEl('div', 'mo-cs-picker-grid', { role: 'group', 'aria-label': 'Photos' });
@@ -246,10 +120,10 @@ export function moRenderColourSheet(container, api, sheetId) {
   const bandEl = moEl('span', 'mo-cs-band'), diffEl = moEl('span', 'mo-practice-dim');
   bandRow.append(bandEl, diffEl);
   const cardBtns = moEl('div', 'mo-cs-line mo-cs-wrap');
-  const editBtn = btn(cardBtns, 'editMix', 'Edit Mix', () => show(view === 'bench' ? 'rows' : 'bench'));
-  btn(cardBtns, 'copyRecipe', 'Copy Recipe', () => void copyRecipe(), { kind: 'ghost', icon: 'copy' });
-  const studyBtn = btn(cardBtns, 'studyThis', 'Study This Colour', () => { st.base = moHex(shownRgb()); change(); }, { kind: 'ghost', title: 'Make the rows from this colour' });
-  const putBtn = btn(cardBtns, 'putOnPalette', 'Put On Palette', () => { setColour(st.active, shownRgb()); st.shown = null; change(); }, { kind: 'ghost', title: 'Replace the chosen palette colour with this one' });
+  const editBtn = go(cardBtns, 'editMix', 'Edit Mix', 'pencil');
+  go(cardBtns, 'copyRecipe', 'Copy Recipe', 'copy', { kind: 'ghost' });
+  const studyBtn = go(cardBtns, 'studyThis', 'Study This Colour', 'pipette', { kind: 'ghost', title: 'Make the rows from this colour' });
+  const putBtn = go(cardBtns, 'putOnPalette', 'Put On Palette', 'swatch-book', { kind: 'ghost', title: 'Replace the chosen palette colour with this one' });
   cardWords.append(nameEl, subEl, chips, bandRow, cardBtns);
   card.append(groundCol, cardWords);
 
@@ -269,11 +143,11 @@ export function moRenderColourSheet(container, api, sheetId) {
     head.appendChild(moEl('span', 'mo-cs-grow'));
     const r = { el, cells: [], nums: null, note: moEl('span', 'mo-cs-row-note'), whyBtn: null, why: moEl('div', 'mo-cs-why'), whyText: moEl('div', 'mo-cs-why-text mo-hidden', { textContent: def.why, id: `mo-cs-why-${sheetId}-${def.id}` }) };
     if (def.id === 'light') r.lightSeg = segmented(head, 'lightKind', 'The light', [['warm', 'Warm Light'], ['cool', 'Cool Light']], st.light, (v) => { st.light = v; change(); });
-    if (def.id === 'twins') r.greyBtn = btn(head, 'twinsGrey', 'Show In Grey', () => { st.twinsGrey = !st.twinsGrey; change(); }, { kind: 'ghost' });
+    if (def.id === 'twins') r.greyBtn = go(head, 'twinsGrey', 'Show In Grey', 'contrast', { kind: 'ghost' });
     const cells = moEl('div', 'mo-cs-cells', { role: 'group', 'aria-label': `${def.title} cells` });
     for (let i = 0; i < 10; i++) {
-      const c = moEl('button', 'mo-cs-cell', { type: 'button' });
-      c.addEventListener('click', () => { if (c.dataset.hex) { st.shown = c.dataset.hex; st.mix = null; change(); } });
+      const c = goIcon(null, 'cell', 'pipette', def.title, { tail: `${def.id}.${i + 1}`, args: [def.id, i] });
+      c.classList.add('mo-cs-cell'); c.replaceChildren();
       c.addEventListener('dblclick', () => { if (c.dataset.hex) { st.base = c.dataset.hex; st.shown = c.dataset.hex; change(); } });
       c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.shiftKey && c.dataset.hex) { e.preventDefault(); st.base = c.dataset.hex; st.shown = c.dataset.hex; change(); } });
       cells.appendChild(c); r.cells.push(c);
@@ -281,7 +155,7 @@ export function moRenderColourSheet(container, api, sheetId) {
     el.append(head, cells);
     if (def.id === 'value' || def.id === 'light') { r.nums = moEl('div', 'mo-cs-nums', { 'aria-hidden': 'true' }); for (let i = 0; i < 10; i++) r.nums.appendChild(moEl('span')); el.appendChild(r.nums); }
     const foot = moEl('div', 'mo-cs-line mo-cs-note-line');
-    r.whyBtn = btn(null, `why.${def.id}`, 'Why', () => { if (whyOpen.has(def.id)) whyOpen.delete(def.id); else whyOpen.add(def.id); change(false); }, { kind: 'ghost' });
+    r.whyBtn = go(null, 'why', 'Why', 'circle-help', { kind: 'ghost', tail: def.id, args: [def.id] });
     r.whyBtn.setAttribute('aria-controls', r.whyText.id);
     r.why.append(r.whyBtn, r.whyText);
     foot.append(r.note);
@@ -359,10 +233,7 @@ export function moRenderColourSheet(container, api, sheetId) {
     change();
   }
   function setBase(v) {
-    if (v === 'hex') {
-      void api.window.showInputBox({ prompt: 'The colour to study, as a hex code', placeHolder: 'A hex code, like 8A3F22' }).then((t) => { const rgb = moHexRgb(t); if (rgb) { st.base = moHex(rgb); st.shown = st.base; } else if (t) api.window.showWarningMessage('That is not a hex colour, like 8A3F22.'); change(); });
-      return;
-    }
+    if (v === 'hex') { void askHex('The colour to study, as a hex code').then((rgb) => { if (rgb) { st.base = moHex(rgb); st.shown = st.base; } baseKey = ''; change(); }); return; }
     const p = all.find((x) => `paint:${x.name}` === v);
     st.base = p ? moHex(rgbOf(p.hex)) : v === 'keep' ? st.base : null;
     if (p) st.shown = st.base;
@@ -424,10 +295,10 @@ export function moRenderColourSheet(container, api, sheetId) {
     while (palRows.length < st.colours.length) {
       const i = palRows.length;
       const row = moEl('div', 'mo-cs-pal-row');
-      const pick = moEl('button', 'mo-cs-pal-pick', { type: 'button' });
-      pick.addEventListener('click', () => { st.active = i; st.shown = null; st.mix = null; change(); });
+      const pick = go(null, 'pick', `Colour ${i + 1}`, 'palette', { kind: 'ghost', tail: String(i + 1), args: [i] });
+      pick.classList.add('mo-cs-pal-pick');
       const sw = moEl('span', 'mo-cs-sw', { 'aria-hidden': 'true' }), num = moEl('span', 'mo-cs-pal-n', { 'aria-hidden': 'true', textContent: String(i + 1) }), hex = moEl('span', 'mo-cs-pal-hex'), val = moEl('span', 'mo-practice-dim mo-cs-pal-val');
-      pick.append(num, sw, hex, val);
+      pick.replaceChildren(num, sw, hex, val);
       const bar = moEl('div', 'mo-cs-vbar');
       const knob = moEl('span', 'mo-cs-vbar-knob', { 'aria-hidden': 'true' });
       bar.appendChild(knob);
@@ -502,7 +373,7 @@ export function moRenderColourSheet(container, api, sheetId) {
     if (mine !== pickSeq || disposed) return;
     pickGrid.replaceChildren();
     for (const p of found.slice(0, 18)) {
-      const b = ui.createButton(pickGrid, { id: `media-organizer.colour.pickPhoto.${p.id}`, label: p.title || `Photo ${p.id}`, kind: 'ghost', onClick: async () => { togglePicker(false); const url = await deps.photoPicture(p.id, 720).catch(() => null); if (url) await setPicture(url, p.title ? `From ${p.title}` : 'From the library', null); else api.window.showWarningMessage('That photo is not on disk right now.'); } });
+      const b = go(pickGrid, 'pickPhoto', p.title || `Photo ${p.id}`, 'image', { kind: 'ghost', tail: String(p.id), args: [p.id, p.title || ''] });
       b.classList.add('mo-plans-pick'); b.setAttribute('aria-label', `Use ${p.title || `photo ${p.id}`}`);
       const img = moEl('img', null, { alt: '' });
       b.replaceChildren(img); deps.thumb(img, p.id);
@@ -580,7 +451,7 @@ export function moRenderColourSheet(container, api, sheetId) {
           massList.replaceChildren();
           st.masses.forEach((hex, i) => {
             const rgb = rgbOf(hex), rec = recipeOf(rgb);
-            const b = ui.createButton(massList, { id: `media-organizer.colour.mass.${i + 1}`, label: `${moColourName(rgb).name}, value ${say(moValue(rgb))}${rec ? `, ${rec.closeness}` : ''}`, kind: 'ghost', size: 'sm', onClick: () => { setColour(st.active, rgb); st.shown = null; st.mix = null; change(); } });
+            const b = go(massList, 'mass', `${moColourName(rgb).name}, value ${say(moValue(rgb))}${rec ? `, ${rec.closeness}` : ''}`, 'pipette', { kind: 'ghost', tail: String(i + 1), args: [i] });
             b.classList.add('mo-cs-mass');
             const sw = moEl('span', 'mo-cs-sw', { 'aria-hidden': 'true' }); sw.style.background = hex;
             const band = moEl('span', 'mo-cs-band'); bandSet(band, rec ? rec.closeness : '');
@@ -618,8 +489,21 @@ export function moRenderColourSheet(container, api, sheetId) {
     }
 
     if (view === 'rows') renderRows(rec);
-    if (view === 'bench') renderBench(rgb, rec, mix, mixRgb, drift);
-    if (view === 'paints') renderPaints();
+    if (view === 'bench') {
+      const key = JSON.stringify([mix, moHex(rgb), fixing, gamut ? gamut.key : '', !!st.mix]);
+      if (key !== benchKey) {
+        benchKey = key;
+        keepFocus(benchView, () => { drop(benchOwned); moDrawBench({ ui, view: benchView, go, goIcon, owned: benchOwned, mix, edited: !!st.mix, rec, drift, paints: inUse(), all, fixing, onAdd: (name) => { st.mix = [...mix, { name, parts: 1 }]; change(); } }); });
+        warmSubs(mix.map((m) => m.name), rgb);
+      }
+    }
+    if (view === 'paints') {
+      const key = JSON.stringify([all, setInfo]);
+      if (key !== paintsKey) {
+        paintsKey = key;
+        keepFocus(paintsView, () => { drop(paintsOwned); moDrawPaints({ ui, view: paintsView, go, goIcon, owned: paintsOwned, all, setInfo, onAddCommon: (p) => void moPaintsEdit(io, (list) => { list.push({ ...p }); }), onStrength: (name, v) => void moPaintsEdit(io, (list) => { const x = list.find((y) => y.name === name); if (x) { if (Math.abs(v - 1) < 0.05) delete x.strength; else x.strength = Math.round(v * 10) / 10; } }) }); });
+      }
+    }
   }
 
   function renderRows(rec) {
@@ -661,10 +545,10 @@ export function moRenderColourSheet(container, api, sheetId) {
         tubeChips.replaceChildren();
         for (const p of all) {
           const on = !st.tubesOff.includes(p.name);
-          const b2 = ui.createButton(tubeChips, { id: `media-organizer.colour.tubeOn.${moSlug(p.name)}`, label: p.name, kind: 'ghost', size: 'sm', title: on ? `Mix without ${p.name}` : `Use ${p.name} again`, onClick: () => { st.tubesOff = on ? [...st.tubesOff, p.name] : st.tubesOff.filter((n) => n !== p.name); st.mix = null; regamut(); change(); } });
+          const b2 = go(tubeChips, 'tubeOn', p.name, 'palette', { kind: 'ghost', tail: moSlug(p.name), args: [p.name], title: on ? `Mix without ${p.name}` : `Use ${p.name} again` });
           b2.classList.add('mo-cs-tube-chip'); pressed(b2, on);
           const sw = moEl('span', 'mo-cs-sw mo-cs-sw-sm', { 'aria-hidden': 'true' }); sw.style.background = p.hex;
-          b2.prepend(sw);
+          b2.replaceChildren(sw, moEl('span', null, { textContent: p.name }));
         }
       });
     }
@@ -675,74 +559,7 @@ export function moRenderColourSheet(container, api, sheetId) {
     void rec;
   }
 
-  function renderBench(rgb, rec, mix, mixRgb, drift) {
-    const key = JSON.stringify([mix, moHex(rgb), fixing, gamut ? gamut.key : '', !!st.mix]);
-    if (key === benchKey) return;
-    benchKey = key;
-    keepFocus(benchView, () => {
-      drop(benchOwned);
-      benchView.replaceChildren();
-      const head = moEl('div', 'mo-cs-line');
-      head.append(moEl('span', 'mo-practice-section-title', { textContent: 'The mix' }), moEl('span', 'mo-cs-grow'));
-      const reset = btn(head, 'resetMix', rec && rec.paints.length ? `Back To ${rec.paints.map((p) => p.parts).join(' : ')}` : 'Back To The Recipe', () => { st.mix = null; change(); }, { kind: 'ghost' });
-      reset.disabled = !st.mix;
-      btn(head, 'closeBench', 'Back To Rows', () => show('rows'), { kind: 'ghost', icon: 'chevron-left' });
-      benchView.appendChild(head);
-      const driftEl = moEl('div', 'mo-cs-drift');
-      driftEl.textContent = !drift ? 'Put a paint down to start a mix.' : !st.mix ? '' : drift.text === 'the same' ? 'Your mix matches the target: the eye would not tell them apart.' : `Your mix is ${drift.text} than the target.`;
-      benchView.appendChild(driftEl);
-      if (mix.length > 1) benchView.appendChild(moEl('div', 'mo-practice-dim mo-cs-cap', { textContent: moMixOrder(mix, all).text }));
-      const list = moEl('div', 'mo-cs-tube-list');
-      const setParts = (name, n) => { const next = mix.map((m) => (m.name === name ? { name, parts: n } : m)).filter((m) => m.parts > 0); st.mix = next.length ? next : null; if (!next.length) st.mix = []; change(); };
-      for (const m of mix) {
-        const p = all.find((x) => x.name === m.name), slug = moSlug(m.name);
-        const row = moEl('div', 'mo-cs-tube', { 'data-paint': m.name });
-        const sw = moEl('span', 'mo-cs-sw', { 'aria-hidden': 'true' }); if (p) sw.style.background = p.hex;
-        const step = moEl('span', 'mo-cs-step', { role: 'group', 'aria-label': `Parts of ${m.name}` });
-        const less = ui.createIconButton(step, { id: `media-organizer.colour.less.${slug}`, icon: 'minus', title: `Less ${m.name}`, size: 'sm', onClick: () => setParts(m.name, m.parts - 1) });
-        less.disabled = m.parts <= 1 && mix.length === 1;
-        step.appendChild(moEl('span', 'mo-cs-parts', { textContent: String(m.parts), 'aria-label': `${m.parts} part${m.parts === 1 ? '' : 's'}` }));
-        const more = ui.createIconButton(step, { id: `media-organizer.colour.more.${slug}`, icon: 'plus', title: `More ${m.name}`, size: 'sm', onClick: () => setParts(m.name, m.parts + 1) });
-        more.disabled = m.parts >= 24;
-        const role = !st.mix && rec ? (rec.paints.find((x) => x.name === m.name) || {}).role : '';
-        const acts = moEl('span', 'mo-cs-line');
-        const swap = ui.createButton(acts, { id: `media-organizer.colour.swap.${slug}`, label: 'Swap…', icon: 'arrow-left-right', kind: 'ghost', size: 'sm', title: `Mix this without ${m.name}`, onClick: () => swapMenu(swap, m.name, rgb) });
-        ui.createIconButton(acts, { id: `media-organizer.colour.dropPaint.${slug}`, icon: 'x', title: `Take ${m.name} out`, size: 'sm', onClick: () => setParts(m.name, 0) });
-        row.append(sw, moEl('span', 'mo-cs-tube-name', { textContent: m.name }), step, moEl('span', 'mo-practice-dim mo-cs-role', { textContent: role || '' }), acts);
-        list.appendChild(row);
-      }
-      benchView.appendChild(list);
-      const addable = inUse().filter((p) => !mix.some((m) => m.name === p.name));
-      if (addable.length) {
-        const line = moEl('div', 'mo-cs-line');
-        const dd = ui.createDropdown(line, { items: [{ value: '', label: 'Add A Paint' }, ...addable.map((p) => ({ value: p.name, label: p.name, color: p.hex }))], selected: '', ariaLabel: 'Add a paint to the mix' });
-        dd.element.setAttribute('data-px-id', 'media-organizer.colour.addPaintToMix');
-        const sub = dd.onDidChange((v) => { if (v) { st.mix = [...mix, { name: v, parts: 1 }]; change(); } });
-        benchOwned.push(() => { sub.dispose(); dd.dispose(); });
-        benchView.appendChild(line);
-      }
-      // one more part of each tube
-      const nt = moEl('div', 'mo-practice-section-title', { textContent: 'One more part of each tube' });
-      const nudges = moEl('div', 'mo-cs-nudges', { role: 'group', 'aria-label': 'One more part of each tube' });
-      for (const n of moTubeNudges(inUse(), mix, 1)) {
-        const words = n.drift.text === 'the same' ? 'Hardly changes' : n.drift.text.charAt(0).toUpperCase() + n.drift.text.slice(1);
-        const b = ui.createButton(nudges, { id: `media-organizer.colour.nudge.${moSlug(n.name)}`, label: `${n.name}: ${words}`, kind: 'ghost', size: 'sm', title: `Add one part of ${n.name}`, onClick: () => { st.mix = mix.some((m) => m.name === n.name) ? mix.map((m) => (m.name === n.name ? { name: m.name, parts: Math.min(24, m.parts + 1) } : m)) : [...mix, { name: n.name, parts: 1 }]; change(); } });
-        b.classList.add('mo-cs-nudge'); b.setAttribute('data-paint', n.name);
-        const sw = moEl('span', 'mo-cs-nudge-sw', { 'aria-hidden': 'true' }); sw.style.background = moHex(n.rgb);
-        b.replaceChildren(sw, moEl('b', null, { textContent: n.name }), moEl('span', 'mo-practice-dim', { textContent: words }));
-      }
-      benchView.append(nt, nudges, moEl('div', 'mo-practice-dim mo-cs-cap', { textContent: 'Each swatch is the mix with one more part of that tube. Press one to add it.' }));
-      // fix my mix
-      const ft = moEl('div', 'mo-practice-section-title', { textContent: 'Fix my mix' });
-      const fixRow = moEl('div', 'mo-cs-line mo-cs-wrap', { role: 'group', 'aria-label': 'What is wrong with the mix' });
-      for (const [k, label] of PROBLEMS) { const b = btn(fixRow, `fix.${k}`, label, () => { fixing = fixing === k ? '' : k; change(false); }, { kind: 'ghost' }); b.classList.add('mo-cs-fix'); pressed(b, fixing === k); }
-      const advice = moEl('div', 'mo-cs-fix-advice', { 'aria-live': 'polite' });
-      if (fixing) { const f = mix.length ? moFixMix(inUse(), mix, fixing) : null; advice.textContent = f ? f.text : 'None of your paints moves this mix that way.'; }
-      advice.classList.toggle('mo-hidden', !fixing);
-      benchView.append(ft, fixRow, advice);
-    });
-    warmSubs(mix.map((m) => m.name), rgb);
-  }
+  // (bench and paints: colour-study-panels.js)
   // What stands in for a paint takes a few gamuts to work out: done ahead, one paint at a time, once the
   // bench is drawn, so the Swap menu opens at once.
   const subsCache = new Map();
@@ -753,68 +570,57 @@ export function moRenderColourSheet(container, api, sheetId) {
     const next = names.find((n) => !subsCache.has(`${gamut ? gamut.key : ''}|${moHex(rgb)}|${n}`));
     if (next && gamut) subsTimer = setTimeout(() => { if (!disposed && view === 'bench') { subsFor(next, rgb); warmSubs(names, rgb); } }, 30);
   }
-  function swapMenu(at, name, rgb) {
-    const subs = subsFor(name, rgb);
+  function swapMenu(name) {
+    const rgb = shownRgb(), at = benchView.querySelector(`[data-px-id="${CSS.escape(idOf('swap', moSlug(name)))}"]`), subs = subsFor(name, rgb);
+    if (!at) return;
     ui.createMenu(at, { id: 'media-organizer.colour.swapMenu', label: `Without ${name}`, items: subs.length ? subs.map((s) => ({ label: `${s.paints.map((p) => `${p.parts} ${p.name}`).join(', ')} (${s.closeness}, ${say(s.de * 100)})`, tooltip: s.drift.text === 'the same' ? 'Matches the target' : `${s.drift.text.charAt(0).toUpperCase()}${s.drift.text.slice(1)} than the target`, onSelect: () => { st.mix = s.paints.map((p) => ({ name: p.name, parts: p.parts })); change(); } })) : [{ label: 'No other paint can stand in', disabled: true }] });
   }
 
-  function renderPaints() {
-    const key = JSON.stringify([all, setInfo]);
-    if (key === paintsKey) return;
-    paintsKey = key;
-    keepFocus(paintsView, () => {
-      drop(paintsOwned);
-      paintsView.replaceChildren();
-      const head = moEl('div', 'mo-cs-line');
-      head.append(moEl('span', 'mo-practice-section-title', { textContent: 'Paints you have' }), moEl('span', 'mo-practice-dim', { textContent: String(all.length) }), moEl('span', 'mo-cs-grow'));
-      btn(head, 'closePaints', 'Back To Rows', () => show('rows'), { kind: 'ghost', icon: 'chevron-left' });
-      paintsView.appendChild(head);
-      paintsView.appendChild(moEl('div', 'mo-practice-dim mo-cs-cap', { textContent: setInfo.current ? `These are the set ${setInfo.current}. Change them and save the set again to keep the change in it. Painting plans use these paints too.` : `${setInfo.starter ? 'Starter paints until you set your own. ' : ''}Painting plans use these paints too. Save them as a set to keep more than one kit.` }));
-      const setRow = moEl('div', 'mo-cs-line mo-cs-wrap');
-      btn(setRow, 'saveSet', 'Save As Set…', async () => { const n = await api.window.showInputBox({ prompt: 'Name this set of paints', value: setInfo.current || '', placeHolder: 'Studio Oils' }); if (n && String(n).trim()) await moPaintSetSave(io, n); });
-      const del = btn(setRow, 'deleteSet', 'Delete Set', async () => { if (setInfo.current && await api.window.showConfirmModal({ message: `Delete the set "${setInfo.current}"?`, detail: 'The paints in use stay as they are.', confirmLabel: 'Delete', danger: true })) await moPaintSetRemove(io, setInfo.current); }, { kind: 'ghost' });
-      del.disabled = !setInfo.current;
-      btn(setRow, 'starterPaints', 'Use Starter Paints', () => void moPaintsEdit(io, () => MO_STARTER_PAINTS.map((p) => ({ ...p }))), { kind: 'ghost' });
-      paintsView.appendChild(setRow);
-      const list = moEl('div', 'mo-cs-paint-list');
-      for (const p of all) {
-        const slug = moSlug(p.name), row = moEl('div', 'mo-cs-paint', { 'data-paint': p.name });
-        const colour = ui.createButton(row, { id: `media-organizer.colour.paintColour.${slug}`, label: `Colour of ${p.name}, ${p.hex}`, kind: 'ghost', size: 'sm', title: `Change the colour of ${p.name}…`, onClick: async () => { const t = await api.window.showInputBox({ prompt: `The colour of ${p.name}, as a hex code`, value: p.hex.replace(/^./, ''), placeHolder: 'A hex code, like 8A3F22' }); const rgb = moHexRgb(t); if (rgb) await moPaintsEdit(io, (list2) => { const x = list2.find((y) => y.name === p.name); if (x) x.hex = moHex(rgb); }); else if (t) api.window.showWarningMessage('That is not a hex colour, like 8A3F22.'); } });
-        colour.classList.add('mo-cs-paint-colour');
-        const sw = moEl('span', 'mo-cs-sw', { 'aria-hidden': 'true' }); sw.style.background = p.hex;
-        colour.replaceChildren(sw);
-        row.appendChild(moEl('span', 'mo-cs-tube-name', { textContent: p.name }));
-        const strength = moEl('span', 'mo-cs-strength');
-        const sl = ui.createSlider(strength, { id: `media-organizer.colour.strength.${slug}`, label: `Strength of ${p.name}`, min: 0.5, max: 2, step: 0.1, value: p.strength || 1, onCommit: (v) => void moPaintsEdit(io, (list2) => { const x = list2.find((y) => y.name === p.name); if (x) { if (Math.abs(v - 1) < 0.05) delete x.strength; else x.strength = Math.round(v * 10) / 10; } }) });
-        paintsOwned.push(() => sl.dispose());
-        strength.appendChild(moEl('span', 'mo-practice-dim', { textContent: `Strength ${say(p.strength || 1)}` }));
-        row.appendChild(strength);
-        ui.createIconButton(row, { id: `media-organizer.colour.removePaint.${slug}`, icon: 'x', title: `Remove ${p.name}`, size: 'sm', onClick: () => void moPaintsEdit(io, (list2) => list2.filter((y) => y.name !== p.name)) });
-        list.appendChild(row);
-      }
-      paintsView.appendChild(list);
-      const addRow = moEl('div', 'mo-cs-line mo-cs-wrap');
-      const addable = MO_COMMON_PAINTS.filter((c) => !all.some((p) => p.name === c.name));
-      if (addable.length) {
-        const dd = ui.createDropdown(addRow, { items: [{ value: '', label: 'Add A Common Paint' }, ...addable.map((p) => ({ value: p.name, label: p.name, color: p.hex }))], selected: '', ariaLabel: 'Add a common paint' });
-        dd.element.setAttribute('data-px-id', 'media-organizer.colour.addCommonPaint');
-        const sub = dd.onDidChange((v) => { const c = MO_COMMON_PAINTS.find((x) => x.name === v); if (c) void moPaintsEdit(io, (list2) => { list2.push({ ...c }); }); });
-        paintsOwned.push(() => { sub.dispose(); dd.dispose(); });
-      }
-      btn(addRow, 'customPaint', 'Custom Paint…', async () => {
-        const n = await api.window.showInputBox({ prompt: 'Name the paint', placeHolder: 'Paint name' });
-        if (!n || !String(n).trim()) return;
-        const name = String(n).trim().slice(0, 40);
-        if (all.some((p) => p.name === name)) { api.window.showWarningMessage(`You already have ${name}.`); return; }
-        const t = await api.window.showInputBox({ prompt: `The colour of ${name}, as a hex code`, placeHolder: 'A hex code, like 8A3F22' });
-        const rgb = moHexRgb(t);
-        if (!rgb) { if (t) api.window.showWarningMessage('That is not a hex colour, like 8A3F22.'); return; }
-        await moPaintsEdit(io, (list2) => { list2.push({ name, hex: moHex(rgb) }); });
-      });
-      paintsView.appendChild(addRow);
-      paintsView.appendChild(moEl('div', 'mo-practice-dim mo-cs-cap', { textContent: 'A paint’s colour is how its mid tone reads on screen. Strength is how far one part of it goes: raise it for a tube that takes over a mix, lower it for a weak one. Both are estimates until you set them from your own tubes.' }));
-    });
-  }
+  // ── what each command does on this sheet (MO_COLOUR_ACTIONS) ──
+  const pickColour = (i) => { if (i >= 0 && i < st.colours.length) { st.active = i; st.shown = null; st.mix = null; change(); } };
+  const setParts = (name, n) => { const mix = mixNow(), next = (mix.some((m) => m.name === name) ? mix.map((m) => (m.name === name ? { name, parts: clamp(n, 0, 24) } : m)) : [...mix, { name, parts: clamp(n, 1, 24) }]).filter((m) => m.parts > 0); st.mix = next; change(); };
+  const partsOf = (name) => (mixNow().find((m) => m.name === name) || { parts: 0 }).parts;
+  const askHex = async (prompt, value) => { const t = await api.window.showInputBox({ prompt, ...(value ? { value } : {}), placeHolder: 'A hex code, like 8A3F22' }); const rgb = moHexRgb(t); if (!rgb && t) api.window.showWarningMessage('That is not a hex colour, like 8A3F22.'); return rgb; };
+  const acts = {
+    myPaints: () => show(view === 'paints' ? 'rows' : 'paints'),
+    closePaints: () => show('rows'), closeBench: () => show('rows'),
+    editMix: () => show(view === 'bench' ? 'rows' : 'bench'),
+    valueCheck() { st.valueCheck = !st.valueCheck; change(); },
+    hatch() { st.hatch = !st.hatch; change(); },
+    twinsGrey() { st.twinsGrey = !st.twinsGrey; change(); },
+    why(row) { if (whyOpen.has(row)) whyOpen.delete(row); else whyOpen.add(row); change(false); },
+    choosePlan: () => choosePlan(),
+    choosePicture: () => togglePicker(!choosing),
+    async pickPhoto(id, name) { togglePicker(false); const url = await deps.photoPicture(id, 720).catch(() => null); if (url) await setPicture(url, name ? `From ${name}` : 'From the library', null); else api.window.showWarningMessage('That photo is not on disk right now.'); },
+    mass(i) { const hex = st.masses[i]; if (hex) { setColour(st.active, rgbOf(hex)); st.shown = null; st.mix = null; change(); } },
+    pick: (i) => pickColour(i),
+    cell(row, i) { const c = rowEls[row] && rowEls[row].cells[i]; if (c && c.dataset.hex) { st.shown = c.dataset.hex; st.mix = null; change(); } },
+    copyRecipe: () => copyRecipe(),
+    studyThis() { st.base = moHex(shownRgb()); change(); },
+    putOnPalette() { setColour(st.active, shownRgb()); st.shown = null; change(); },
+    tubeOn(name) { st.tubesOff = st.tubesOff.includes(name) ? st.tubesOff.filter((n) => n !== name) : [...st.tubesOff, name]; st.mix = null; regamut(); change(); },
+    resetMix() { st.mix = null; change(); },
+    less: (name) => setParts(name, partsOf(name) - 1),
+    more: (name) => setParts(name, partsOf(name) + 1),
+    dropPaint: (name) => setParts(name, 0),
+    nudge: (name) => setParts(name, partsOf(name) + 1),
+    swap: (name) => swapMenu(name),
+    fix(problem) { fixing = fixing === problem ? '' : problem; change(false); },
+    async saveSet() { const n = await api.window.showInputBox({ prompt: 'Name this set of paints', value: setInfo.current || '', placeHolder: 'Studio Oils' }); if (n && String(n).trim()) await moPaintSetSave(io, n); },
+    async deleteSet() { if (setInfo.current && await api.window.showConfirmModal({ message: `Delete the set "${setInfo.current}"?`, detail: 'The paints in use stay as they are.', confirmLabel: 'Delete', danger: true })) await moPaintSetRemove(io, setInfo.current); },
+    starterPaints: () => moPaintsEdit(io, () => MO_STARTER_PAINTS.map((p) => ({ ...p }))),
+    async paintColour(name) { const p = all.find((x) => x.name === name); const rgb = p && await askHex(`The colour of ${name}, as a hex code`, p.hex.slice(1)); if (rgb) await moPaintsEdit(io, (list) => { const x = list.find((y) => y.name === name); if (x) x.hex = moHex(rgb); }); },
+    removePaint: (name) => moPaintsEdit(io, (list) => list.filter((y) => y.name !== name)),
+    async customPaint() {
+      const n = await api.window.showInputBox({ prompt: 'Name the paint', placeHolder: 'Paint name' });
+      if (!n || !String(n).trim()) return;
+      const name = String(n).trim().slice(0, 40);
+      if (all.some((p) => p.name === name)) { api.window.showWarningMessage(`You already have ${name}.`); return; }
+      const rgb = await askHex(`The colour of ${name}, as a hex code`);
+      if (rgb) await moPaintsEdit(io, (list) => { list.push({ name, hex: moHex(rgb) }); });
+    },
+  };
+  disposers.push(moColourSheetOpened({ root, act: (name, ...args) => (acts[name] ? acts[name](...args) : undefined) }));
 
   // ── load, and the way out ──
   const hook = {
