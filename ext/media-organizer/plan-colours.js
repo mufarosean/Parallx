@@ -16,6 +16,7 @@ import { MO_COMMON_PAINTS, MO_MIX_RULES, MO_STARTER_PAINTS, moColourName, moHexR
 const STAGES_KEY = 'plan_stages_v1';
 const PAINTS_KEY = 'plan_paints_v1';
 const PICK_KEY = 'plan_pick_v1';
+const SETS_KEY = 'plan_paint_sets_v1';
 export const MO_PLAN_STAGES = [
   { name: 'Block In', blur: 0.6, levels: 3, grey: false, notan: 0 },
   { name: 'Big Shapes', blur: 0.3, levels: 5, grey: false, notan: 0 },
@@ -30,18 +31,23 @@ const MO_PLAN_UNDERS = ['', 'Burnt Sienna', 'Raw Umber', 'Burnt Umber', 'Yellow 
 const parse = (text, fallback) => { try { const v = JSON.parse(text); return v == null ? fallback : v; } catch { return fallback; } };
 
 // The painter's settings, shared by every open plan.
-const shared = { stages: MO_PLAN_STAGES.map((s) => ({ ...s })), paints: MO_STARTER_PAINTS.map((p) => ({ ...p })), paintsSet: false, rules: { ...MO_MIX_RULES }, pickSize: 9, pins: true, loading: null };
+const shared = { stages: MO_PLAN_STAGES.map((s) => ({ ...s })), paints: MO_STARTER_PAINTS.map((p) => ({ ...p })), paintsSet: false, rules: { ...MO_MIX_RULES }, pickSize: 9, pins: true, loading: null, sets: [], setName: '' };
+// A paint as it is kept: its name, its colour and, when the painter set one, its strength (1 is ordinary).
+const cleanPaint = (p) => ({ name: String(p.name).slice(0, 40), hex: String(p.hex), ...(Number(p.strength) > 0 && Number(p.strength) !== 1 ? { strength: Math.max(0.2, Math.min(3, Number(p.strength))) } : {}) });
+const validPaints = (list) => (Array.isArray(list) ? list.filter((p) => p && p.name && moHexRgb(p.hex)).map(cleanPaint) : []);
 function loadShared(io) {
   if (!shared.loading) {
     shared.loading = (async () => {
       const st = parse(await io.getSetting(STAGES_KEY, ''), null);
       if (Array.isArray(st) && st.length) shared.stages = st.slice(0, MAX_STAGES).map((s, i) => ({ name: String(s.name || `Stage ${i + 1}`), blur: Math.max(0, Math.min(1, Number(s.blur) || 0)), levels: Math.max(0, Math.min(8, Math.round(Number(s.levels) || 0))), grey: !!s.grey, notan: Math.max(0, Math.min(0.95, Number(s.notan) || 0)) }));
       const pt = parse(await io.getSetting(PAINTS_KEY, ''), null);
-      if (pt && Array.isArray(pt.paints)) { shared.paints = pt.paints.filter((p) => p && p.name && moHexRgb(p.hex)).map((p) => ({ name: String(p.name), hex: String(p.hex) })); shared.paintsSet = true; }
+      if (pt && Array.isArray(pt.paints)) { shared.paints = validPaints(pt.paints); shared.paintsSet = true; }
       if (pt && pt.rules) shared.rules = Object.assign({}, MO_MIX_RULES, pt.rules);
       const pk = parse(await io.getSetting(PICK_KEY, ''), null);
       if (pk && Number.isFinite(Number(pk.size))) shared.pickSize = Math.max(1, Math.min(45, Math.round(Number(pk.size))));
       if (pk && typeof pk.pins === 'boolean') shared.pins = pk.pins;
+      const ps = parse(await io.getSetting(SETS_KEY, ''), null);
+      if (ps && Array.isArray(ps.sets)) { shared.sets = ps.sets.filter((x) => x && x.name).map((x) => ({ name: String(x.name).slice(0, 40), paints: validPaints(x.paints) })); shared.setName = shared.sets.some((x) => x.name === ps.current) ? ps.current : ''; }
     })().catch(() => {});
   }
   return shared.loading;
@@ -51,7 +57,49 @@ export async function moPlanPaintSet(io) { await loadShared(io); return { paints
 // The stages, for a variation per stage.
 export async function moPlanStages(io) { await loadShared(io); return shared.stages.map((s) => ({ ...s })); }
 const saveStages = (io) => io.setSetting(STAGES_KEY, JSON.stringify(shared.stages)).catch(() => {});
-const savePaints = (io) => { shared.paintsSet = true; return io.setSetting(PAINTS_KEY, JSON.stringify({ paints: shared.paints, rules: shared.rules })).catch(() => {}); };
+const saveSets = (io) => io.setSetting(SETS_KEY, JSON.stringify({ sets: shared.sets, current: shared.setName })).catch(() => {});
+// The paints changed: kept, the set in use follows them, and every open plan and colour study hears of it.
+const savePaints = (io) => {
+  shared.paintsSet = true;
+  const set = shared.sets.find((x) => x.name === shared.setName);
+  if (set) { set.paints = shared.paints.map(cleanPaint); void saveSets(io); }
+  const done = io.setSetting(PAINTS_KEY, JSON.stringify({ paints: shared.paints, rules: shared.rules })).catch(() => {});
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('mo:paints-changed'));
+  return done;
+};
+const putPaints = (list) => { shared.paints.splice(0, shared.paints.length, ...list.map(cleanPaint)); }; // in place: plans hold this list
+
+// ── The painter's paints, for every tool that mixes (the plan's Colour step, the board, Colour Study) ──
+/** Change the paints: `change(paints)` edits the list in place (or returns a new one), then it is kept. */
+export async function moPaintsEdit(io, change) { await loadShared(io); const next = change(shared.paints); if (Array.isArray(next)) putPaints(validPaints(next)); await savePaints(io); }
+/** The named sets and the one in use ('' when the paints are no set's). */
+export async function moPaintSets(io) { await loadShared(io); return { sets: shared.sets.map((x) => ({ name: x.name, count: x.paints.length })), current: shared.setName, starter: !shared.paintsSet }; }
+/** Keep the paints as they are under a name, and work in that set from now on. */
+export async function moPaintSetSave(io, name) {
+  await loadShared(io);
+  const n = String(name || '').trim().slice(0, 40);
+  if (!n) return;
+  const had = shared.sets.find((x) => x.name === n);
+  if (had) had.paints = shared.paints.map(cleanPaint); else shared.sets.push({ name: n, paints: shared.paints.map(cleanPaint) });
+  shared.setName = n;
+  await saveSets(io); await savePaints(io);
+}
+/** Put a set's paints in use. */
+export async function moPaintSetUse(io, name) {
+  await loadShared(io);
+  const set = shared.sets.find((x) => x.name === name);
+  if (!set) return;
+  shared.setName = set.name; putPaints(set.paints);
+  await saveSets(io); await savePaints(io);
+}
+/** Forget a set; the paints in use stay as they are. */
+export async function moPaintSetRemove(io, name) {
+  await loadShared(io);
+  shared.sets = shared.sets.filter((x) => x.name !== name);
+  if (shared.setName === name) shared.setName = '';
+  await saveSets(io);
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('mo:paints-changed'));
+}
 const savePick = (io) => io.setSetting(PICK_KEY, JSON.stringify({ size: shared.pickSize, pins: shared.pins })).catch(() => {});
 
 // ── Commands: the stage keys (1 to 9 choose a stage, 0 the picture, while a plan has the
@@ -389,7 +437,7 @@ export function moPlanColours(ctx) {
       shared.paints.push({ name: String(name).trim().slice(0, 40), hex: hexOf(rgb) });
       changed();
     },
-    starterPaints() { shared.paints = MO_STARTER_PAINTS.map((p) => ({ ...p })); changed(); },
+    starterPaints() { putPaints(MO_STARTER_PAINTS); changed(); },
     removePaint(name) { const i = shared.paints.findIndex((p) => p.name === name); if (i >= 0) { shared.paints.splice(i, 1); changed(); } },
   };
   function check(label, sceneId, on, set) {
