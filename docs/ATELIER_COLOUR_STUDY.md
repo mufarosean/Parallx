@@ -58,22 +58,57 @@ right; a picture (4A) takes the wheel's place on the left while it shows.
 - Engine: `colour.js` (OKLab, painter's value, Kubelka-Munk mixing,
   `moMixRecipes`), used by the Colour step and the plan board.
 
-## Phases (none started; each needs his go)
+## What is built (2026-11-19, on `dev`)
 
-1. Engine and tests: gamut, reach, recipes, role hints, the variation rows,
-   forward mixing from edited parts, the drift in words, substitutes, what
-   each tube does.
-2. Colour Study in Studio: wheel, palette, colour card, editable mix, sheets
-   in their own table, changing the paints.
-3. The rows (value, intensity, warm and cool, value twins), Compare, the
-   lessons.
-4. Bringing in a picture or a plan; Open In Colour Study from a plan; the
-   limited palette test.
+All four phases, in one pass at his word ("build all").
+
+- The engine: `paint-wheel.js`, `paint-engine.js` (pure). `colour.js` gained
+  an unrounded value, a one-pass mix and a paint's strength.
+- The tool: `colour-study.js` (a sheet), `colour-study-home.js` (commands and
+  the home), `colour-study-panels.js` (the mix bench and My Paints),
+  `colour-study-state.js`, `colour-study-wheel.js`, `colour-lessons.js`,
+  `colour-study-styles.js`, `colour-study-host.js` (what it needs from
+  Atelier), migration 032 (`mo_colour_sheets`).
+- Paints: one list for plans and Colour Study (`plan-colours.js`), each with
+  an optional strength, and named sets (`plan_paint_sets_v1`). A set is a copy
+  taken when it is saved.
+- From a plan: Open In Colour Study on the plan's menu and on a variation.
+
+How it differs from the brief, and why:
+
+- JavaScript with JSDoc, not TypeScript: extensions load from disk unbuilt.
+- Kubelka-Munk, not the geometric mean (measured, above).
+- Whole parts up to 8 (two paints), 6 (three), 4 (four), not 1 to 4: closer
+  recipes for the same count of mixes (19,713 for the eight starter paints).
+- Atelier's closeness words and measure (Very close, Close, Near, Far), not
+  the brief's bands; "out of reach" is Far.
+- The gamut is built on the main thread after the sheet's first paint (about
+  140 ms here for eight paints), kept per paint list; no Web Worker.
+- The ground is a setting of the sheet (Burnt Sienna unless changed).
+- No sheets listed under Colour Study in the sidebar (the mock-up drew them);
+  the home lists them.
+
+How it was checked:
+
+- `tests/unit/moPaintEngine.test.ts`: 61 tests written from the contract by
+  an agent that did not see the engine, before it; all pass.
+- `tests/probes/colour-study-acceptance.mjs`: written before the build by a
+  verifier, corrected once by the same verifier after the first real runs
+  (its commit says what and why); 73 of 73 on the built app, hidden.
+- `keyboard-audit-probe.mjs` on the five Colour Study screens (added to its
+  seeds): 0. `touch-drag-probe.mjs`: all ok.
+- Found on the way and fixed in the core: Enter in the app's input box
+  pressed the button that opened it a second time (`notificationService.ts`,
+  with a test seen to fail first).
 
 ## Open
 
-- The widget's source file (`painting-color-wheel.txt`) has not reached the
-  repo or a session; it is needed for phase 2.
+- The widget's source file (`painting-color-wheel.txt`) never reached the repo
+  or a session: the tool was built from the brief and the picked mock-ups, not
+  from the widget's code.
+- Paint colours and strengths are estimates until he sets them from his tubes.
+- Only his machine can show: how it feels to drag at full frame rate, and the
+  recipes against real paint.
 
 ## Later decisions (2026-11-19)
 
