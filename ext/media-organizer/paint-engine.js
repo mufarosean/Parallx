@@ -99,7 +99,8 @@ export function moMixRgb(paints, parts, model = MO_MIX_MODEL) {
   if (!list.length) return [128, 128, 128];
   return moEncode(model.mix(list.map((p) => model.prep(p)), list.map((_, i) => Math.max(0, Number(parts[i]) || 0))));
 }
-const mixOf = (paints, mix, model) => { const used = mix.filter((m) => m.parts > 0 && paints.some((p) => p.name === m.name)); return used.length ? moMixRgb(used.map((m) => paints.find((p) => p.name === m.name)), used.map((m) => m.parts), model) : null; };
+const WATER = { name: 'Water', hex: HASH + 'ffffff', water: true };
+const mixOf = (list, mix, model) => { const paints = mix.some((m) => m.name === WATER.name) && !list.some((p) => p.name === WATER.name) ? [...list, WATER] : list; const used = mix.filter((m) => m.parts > 0 && paints.some((p) => p.name === m.name)); return used.length ? moMixRgb(used.map((m) => paints.find((p) => p.name === m.name)), used.map((m) => m.parts), model) : null; };
 
 // ── the gamut: every mix the paints reach ───────────────────────────────────
 
@@ -352,8 +353,9 @@ const PROBLEMS = {
  * part of it, or one part less of one in the mix) that moves the mix that way with the least
  * side effect, and a sentence saying why.
  */
-export function moFixMix(paints, mix, problem, model = MO_MIX_MODEL) {
-  const P = PROBLEMS[problem], list = cleanPaints(paints), now = mixOf(list, mix || [], model);
+export function moFixMix(paints, mix, problem, model = MO_MIX_MODEL, rules) {
+  const R = Object.assign({}, MO_MIX_RULES, rules || {});
+  const P = PROBLEMS[problem], list = cleanPaints(paints).filter((p) => !(R.noBlack && moPaintPrep(p).black)), now = mixOf(list, mix || [], model);
   if (!P || !now) return null;
   const side = (d, key) => (key === 'bright' || key === 'dull' ? Math.abs(d.dValue) / 10 * 3 + Math.abs(d.dWarm) * 0.5 : key === 'dark' || key === 'light' ? Math.abs(d.dChroma) * 10 + Math.abs(d.dWarm) * 0.5 : Math.abs(d.dValue) / 10 * 3 + Math.abs(d.dChroma) * 10);
   const tries = moTubeNudges(list, mix, 1, model).map((n) => ({ name: n.name, hex: n.hex, action: 'add', rgb: n.rgb, drift: n.drift }));
@@ -364,8 +366,11 @@ export function moFixMix(paints, mix, problem, model = MO_MIX_MODEL) {
     if (rgb && p) tries.push({ name: m.name, hex: p.hex, action: 'less', rgb, drift: moDrift(now, rgb) });
   }
   let best = null, bestScore = 0.004;
-  for (const t of tries) { const gain = P.want(t.drift); const s = gain - 0.6 * side(t.drift, problem); if (gain > 0.004 && s > bestScore) { bestScore = s; best = t; } }
-  if (!best) { for (const t of tries) { const gain = P.want(t.drift); if (gain > bestScore) { bestScore = gain; best = t; } } }
+  // Only a change a person would call by that name counts: the same thresholds moDrift speaks by.
+  const real = (d) => (problem === 'bright' || problem === 'dull' ? Math.abs(d.dChroma) >= 0.006 : problem === 'dark' || problem === 'light' ? Math.abs(d.dValue) >= 0.15 : Math.abs(d.dHue) >= 4 && Math.abs(d.dWarm) >= 0.03);
+  const able = tries.filter((t) => P.want(t.drift) > 0 && real(t.drift));
+  for (const t of able) { const s = P.want(t.drift) - 0.6 * side(t.drift, problem); if (s > bestScore) { bestScore = s; best = t; } }
+  if (!best) { bestScore = 0; for (const t of able) { const gain = P.want(t.drift); if (gain > bestScore) { bestScore = gain; best = t; } } }
   if (!best) return null;
   const opposite = best.action === 'add' && opposed(moHexRgb(best.hex), now);
   const lead = best.action === 'add' ? `Add ${best.name}, a touch at a time.` : `Use less ${best.name}.`;
@@ -374,7 +379,7 @@ export function moFixMix(paints, mix, problem, model = MO_MIX_MODEL) {
   if ((problem === 'bright' || problem === 'dull' || problem === 'warm' || problem === 'cool') && Math.abs(d.dValue) >= 0.2) also.push(`makes it ${round1(Math.abs(d.dValue)).toFixed(1)} ${d.dValue > 0 ? 'lighter' : 'darker'}`);
   if ((problem === 'dark' || problem === 'light') && Math.abs(d.dChroma) >= 0.006) also.push(`makes it ${d.dChroma > 0 ? 'brighter' : 'duller'}`);
   if ((problem === 'dark' || problem === 'light' || problem === 'bright' || problem === 'dull') && Math.abs(d.dHue) >= 4 && Math.abs(d.dWarm) >= 0.03) also.push(`${d.dWarm > 0 ? 'warms' : 'cools'} it`);
-  const follow = also.length ? ` It also ${also.join(' and ')}${problem !== 'dark' && problem !== 'light' && d.dValue <= -0.2 ? ', so follow with a little white' : ''}.` : '';
+  const follow = also.length ? ` It also ${also.join(' and ')}${problem !== 'dark' && problem !== 'light' && d.dValue <= -0.2 && list.some((p) => moPaintPrep(p).white) ? ', so follow with a little white' : ''}.` : '';
   return { name: best.name, action: best.action, rgb: best.rgb, drift: d, text: `${lead}${why}${follow}` };
 }
 
@@ -428,14 +433,13 @@ export function moVariationRows(rgb, opts) {
 
   // Cool on the left, warm on the right; neither end passes its pole.
   const toWarm = hueGap(h, WARM_POLE), toCool = hueGap(h, COOL_POLE), temp = [];
+  const mid = Math.floor((n - 1) / 2), span = Math.max(mid, n - 1 - mid);
   for (let i = 0; i < n; i++) {
-    const t = at(i) * 2 - 1;
+    const t = (i - mid) / span;
     const gap = t > 0 ? toWarm : toCool, turnBy = Math.sign(gap) * Math.min(Math.abs(gap), 35) * Math.abs(t);
     temp.push(cell(moColourAtValue(h + turnBy, C, v)));
   }
-  let mid = 0; for (let i = 0; i < n; i++) if (Math.abs(at(i) * 2 - 1) < Math.abs(at(mid) * 2 - 1)) mid = i;
-  if (Math.abs(at(mid) * 2 - 1) < 1e-9) temp[mid] = cell(own);
-  temp[mid].base = true;
+  temp[mid] = cell(own, { base: true });
 
   const twins = [cell(own, { base: true })], tc = clamp(C, 0.06, 0.1);
   for (let i = 1; i < n; i++) twins.push(cell(moColourAtValue(h + (i * 360) / n, tc, v)));

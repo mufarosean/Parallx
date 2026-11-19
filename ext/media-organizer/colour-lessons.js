@@ -34,5 +34,5 @@ export function moRowNote(row, c) {
     const w = tube(f.cool), k = tube(f.warm);
     return `Cooler on the left, warmer on the right, all at value ${v}.${w ? ` ${w} warms it.` : ''}${k ? ` ${k} cools it.` : ''}`;
   }
-  return `Different colours, one value: ${v}. Turn on Show In Grey and they become a single grey.`;
+  return `Different colours, one value: ${v}. Turn on Show in Grey and they become a single grey.`;
 }

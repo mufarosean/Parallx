@@ -30,7 +30,7 @@ export const MO_COLOUR_CSS = `
 .mo-cs-wheel-canvas { display: block; border-radius: var(--px-radius-full); cursor: crosshair; touch-action: none; }
 .mo-cs-dots { position: absolute; inset: 0; pointer-events: none; }
 .mo-cs-dot { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: var(--px-radius-full); border: 2px solid white; box-shadow: 0 0 0 1px black; display: grid; place-items: center; font-size: var(--px-text-2xs); font-weight: 600; line-height: 1; cursor: grab; pointer-events: auto; touch-action: none; box-sizing: border-box; }
-.mo-cs-dot.is-on { width: 28px; height: 28px; margin: -14px 0 0 -14px; border-width: 3px; z-index: 1; }
+.mo-cs-dot.is-on { width: 28px; height: 28px; margin: -14px 0 0 -14px; border-width: 3px; }
 .mo-cs-dot:focus-visible, .mo-cs-vbar:focus-visible, .mo-cs-picture:focus-visible, .mo-cs-cell:focus-visible, .mo-cs-pal-pick:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
 
 /* the palette */
@@ -39,8 +39,8 @@ export const MO_COLOUR_CSS = `
 .mo-cs-pal-row.is-on { background: var(--px-surface-selected); }
 .mo-cs-pal-pick { display: inline-flex; align-items: center; gap: var(--px-space-2); padding: 2px; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
 .mo-cs-pal-n { width: 12px; text-align: center; color: var(--px-text-muted); font-size: var(--px-text-xs); }
-.mo-cs-vbar { position: relative; height: 10px; min-width: 48px; border-radius: var(--px-radius-full); background: linear-gradient(90deg, black, white); box-shadow: var(--px-ring); cursor: ew-resize; touch-action: none; }
-.mo-cs-vbar-knob { position: absolute; top: -3px; width: 6px; height: 16px; margin-left: -3px; border-radius: var(--px-radius-xs); background: var(--px-text); box-shadow: 0 0 0 1px var(--px-bg); }
+.mo-cs-vbar { position: relative; height: 16px; min-width: 48px; border-radius: var(--px-radius-full); background: linear-gradient(90deg, black, white); box-shadow: var(--px-ring); cursor: ew-resize; touch-action: none; }
+.mo-cs-vbar-knob { position: absolute; top: -3px; width: 6px; height: 22px; margin-left: -3px; border-radius: var(--px-radius-xs); background: var(--px-text); box-shadow: 0 0 0 1px var(--px-bg); }
 .mo-cs .mo-pc-close:empty { display: none; }
 
 /* the picture */
@@ -75,8 +75,10 @@ export const MO_COLOUR_CSS = `
 /* the rows */
 .mo-cs-row { display: flex; flex-direction: column; gap: var(--px-space-1); }
 .mo-cs-cells { display: flex; gap: 2px; }
-.mo-cs-cell { flex: 1; min-width: 0; height: 30px; padding: 0; border: 0; border-radius: var(--px-radius-xs); cursor: pointer; }
+.mo-cs-cells .px-btn.mo-cs-cell { flex: 1; min-width: 0; width: auto; height: 30px; padding: 0; border: 0; border-radius: var(--px-radius-xs); cursor: pointer; }
 .mo-cs-cell.is-base { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 3px var(--px-text); position: relative; }
+/* the base carries a mark of its own, so it is told from the shown cell without colour */
+.mo-cs-cell.is-base::after { content: ''; position: absolute; left: 3px; top: 3px; width: 6px; height: 6px; border-radius: var(--px-radius-full); background: white; box-shadow: 0 0 0 1px black; }
 .mo-cs-cell.is-shown { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 4px var(--px-accent); position: relative; }
 .mo-cs-nums { display: flex; gap: 2px; font-size: var(--px-text-2xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .mo-cs-nums span { flex: 1; text-align: center; }

@@ -55,13 +55,16 @@ export function moPlanStudy(ctx) {
   let paints = null;
   let mod = false;                     // Shift or Ctrl was held on the last press in the list
   let list = null;                     // the panel's colour list, while shown
-  void moPlanPaintSet(io).then((p) => { paints = p; if (state.tool === 'colour') ctx.afterRecipeChange(false, false); }).catch(() => {});
+  const loadPaints = () => void moPlanPaintSet(io).then((p) => { paints = p; if (state.tool === 'colour') ctx.afterRecipeChange(false, false); }).catch(() => {});
+  loadPaints();
+  document.addEventListener('mo:paints-changed', loadPaints);
 
   // ── on the picture: the layer that takes clicks and keys (the masses are drawn by the editor, gpu()) ──
   const marks = moEl('div', 'mo-ps-marks', { 'aria-hidden': 'true' });
   const layer = moEl('div', 'mo-pc-layer mo-ps-layer mo-hidden');
   ctx.frame.append(marks, layer);
   const disposers = [];
+  disposers.push(() => document.removeEventListener('mo:paints-changed', loadPaints));
   disposers.push(moPointKeys(layer, 'Picture. Arrow keys move a point, Enter finds the colour under it in the palette.', {
     move: (dx, dy) => { cursor = cursor || { u: 0.5, v: 0.5 }; cursor = { u: Math.max(0, Math.min(1, cursor.u + dx * 0.01)), v: Math.max(0, Math.min(1, cursor.v + dy * 0.01)) }; drawMarks(); },
     take: () => findAt(cursor || { u: 0.5, v: 0.5 }),

@@ -139,7 +139,7 @@ export function moPlanVariations(ctx) {
         { label: 'Make Stage Variations', icon: 'layers', onSelect: () => void stageVariations() },
         { separator: true },
         { label: 'Add To Board', icon: 'layout-dashboard', submenu: ctx.boardItems() },
-        { label: 'Open In Colour Study', icon: 'swatch-book', tooltip: 'A colour study from this plan as it stands: its picture and its colours', onSelect: () => void keepChanges().then(() => api.commands.executeCommand('media-organizer.plan.openInColourStudy', state.plan.id)) },
+        { label: 'Open in Colour Study', icon: 'swatch-book', tooltip: 'A colour study from this plan as it stands: its picture and its colours', onSelect: () => void keepChanges().then(() => api.commands.executeCommand('media-organizer.plan.openInColourStudy', state.plan.id)) },
       ] });
     },
   };
@@ -151,7 +151,7 @@ export function moPlanVariations(ctx) {
       { label: 'Duplicate', icon: 'copy', onSelect: () => void duplicate(v) },
       { label: 'Use For Export', icon: 'download', disabled: state.plan.variant_id === v.id, onSelect: () => void keep(v).then(() => { render(); touch(); }) },
       { label: 'Add To Board', icon: 'layout-dashboard', submenu: ctx.boardItems(v) },
-      { label: 'Open In Colour Study', icon: 'swatch-book', onSelect: () => void api.commands.executeCommand('media-organizer.plan.openInColourStudy', state.plan.id, v.id) },
+      { label: 'Open in Colour Study', icon: 'swatch-book', onSelect: () => void api.commands.executeCommand('media-organizer.plan.openInColourStudy', state.plan.id, v.id) },
       { separator: true },
       { label: 'Remove…', icon: 'trash-2', onSelect: () => void remove(v) },
     ] });

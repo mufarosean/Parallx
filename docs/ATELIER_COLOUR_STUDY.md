@@ -94,12 +94,37 @@ How it was checked:
   an agent that did not see the engine, before it; all pass.
 - `tests/probes/colour-study-acceptance.mjs`: written before the build by a
   verifier, corrected once by the same verifier after the first real runs
-  (its commit says what and why); 73 of 73 on the built app, hidden.
+  (its commit says what and why); 73 of 73 on the built app, hidden, again
+  after the review's fixes.
 - `keyboard-audit-probe.mjs` on the five Colour Study screens (added to its
   seeds): 0. `touch-drag-probe.mjs`: all ok.
 - Found on the way and fixed in the core: Enter in the app's input box
   pressed the button that opened it a second time (`notificationService.ts`,
   with a test seen to fail first).
+
+Review (agents that did not see the build; a skeptic tried each finding):
+
+- Fixed, reproduced or plain in the code: choosing a set replaced paints that
+  were in no set without asking (now asked); Fix My Mix could say a paint
+  "warms" a mix it barely moved, could suggest black against the no-black
+  rule, and said "follow with white" with no white (now only a change a
+  person would name counts); focus alone on a wheel dot chose that colour and
+  dropped an edited mix; the warm and cool row's base cell was not the base;
+  open boards and plans did not hear of changed paints; a mix with water lost
+  it when edited; the mix's drift and the advice were silent to a screen
+  reader; a removed tube left the focus nowhere; each row is one Tab stop
+  with arrow keys; the base cell has a mark, not only an outline; the
+  lightness bars are taller for a finger; copy (joining words lower case, no
+  ellipsis where no dialog opens).
+- Reported and left: the one-pass mix differs from the old by rounding, which
+  changed the recipe in about 2 of 100 random cases (never the closeness
+  word); after Atelier is turned off its paint tables stay in memory until
+  restart (about 10 MB, nothing runs); the dot rings and lightness bar use the
+  named colours black and white (no token fits; a pair for marks on pictures
+  should be registered); the top bar is hand-laid, not the kit's page header;
+  dropdowns carry their scene id by hand (the kit's dropdown takes none).
+- Not done: the visual-consistency probe does not list Colour Study (nor
+  Painting Plans); the bar was not read from primary sources.
 
 ## Open
 

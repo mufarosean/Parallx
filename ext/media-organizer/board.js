@@ -740,7 +740,9 @@ export function moRenderBoard(container, ctx) {
     renderAll(); applyView();
     if (!keepView && board.items.length && !fresh.view.set) requestAnimationFrame(() => { if (!disposed) fit(); }); // a board never looked at opens fitted
   }
-  void moPlanPaintSet(io).then((p) => { paints = p; mixCache.clear(); if (!disposed) renderAll(); });
+  const loadPaints = () => void moPlanPaintSet(io).then((p) => { paints = p; mixCache.clear(); if (!disposed) renderAll(); });
+  loadPaints();
+  document.addEventListener('mo:paints-changed', loadPaints);
   const onChanged = (e) => { if (e.detail && e.detail.planId === ctx.planId) void load(true); };
   const onPlans = () => { void ctx.loadPlan().then((d) => { if (!d || disposed) return; plan = d.plan; variants = d.variants; renders.clear(); renderAll(); }); };
   document.addEventListener('mo:board-changed', onChanged);
@@ -752,6 +754,7 @@ export function moRenderBoard(container, ctx) {
   return {
     dispose() {
       disposed = true;
+      document.removeEventListener('mo:paints-changed', loadPaints);
       clearTimeout(saveTimer);
       void moBoardSave(ctx.db, ctx.planId, board).catch(() => {});
       open.delete(handle); if (lastUsed === handle) lastUsed = null;
