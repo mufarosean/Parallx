@@ -79,6 +79,7 @@ const SCREENS = [
   { label: 'Creations', run: ['textGenerator.openHome'], home: true },
   { label: 'Study', run: ['study.open'], home: true },
   { label: 'Study: Progress', run: ['study.openProgress', 'Seeded Subject'] },
+  { label: 'Study: Unit', run: ['study.openUnit', 'Seeded Subject', 'Mack'] },
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx-community.study'];
 

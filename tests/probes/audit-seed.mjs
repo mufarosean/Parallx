@@ -154,6 +154,9 @@ export async function seedAfterLaunch(page, pre) {
       await add.handler({ databaseId: id, title: `Seeded question ${n} on ${paper}?`, values: { 'Model Answer': `The answer to question ${n}.`, Paper: paper, ...(result ? { 'Times Attempted': 1, 'Times Correct': result === 'Right' ? 1 : 0, 'Last Result': result } : {}) } }, token);
     }
     await cmds.executeCommand('study.newSubject', { name: 'Seeded Subject', questions: id });
+    // Pages named like a unit, for its unit tab's notes and for Find Matches.
+    const pageTool = tools.getTool('canvas_create_page');
+    if (pageTool) for (const title of ['Mack', 'Clark Notes', 'Venter']) await pageTool.handler({ title, markdown: `Notes on ${title}.` }, token);
     return 'ok';
   }));
   await page.waitForTimeout(1_500);
@@ -266,6 +269,28 @@ export async function seedAfterLaunch(page, pre) {
     'seed:plan.myPaints': planTool('Colour', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
     // Study's Progress tab on the seeded subject: bars with parts to press.
     'seed:study.progress': async () => { await run(page, 'study.openProgress', 'Seeded Subject'); },
+    // A unit's tab with notes attached (the picker's first two rows), its picker open, and Find Matches' list.
+    'seed:study.unit': async () => {
+      await run(page, 'study.openUnit', 'Seeded Subject', 'Mack');
+      await page.waitForTimeout(1_200);
+      if (!(await page.locator('.st-unit__item:visible').count())) {
+        await page.locator('[data-px-id="study.unit.add"]:visible').first().click().catch(() => {});
+        await page.waitForTimeout(1_200);
+        for (const i of [0, 1]) await page.locator('.parallx-quickpick-box--many [role=option]').nth(i).click().catch(() => {});
+        await page.locator('[data-px-id="quickPick.confirm"]').first().click().catch(() => {});
+        await page.waitForTimeout(1_200);
+      }
+    },
+    'seed:study.unit.picker': async () => {
+      await run(page, 'study.openUnit', 'Seeded Subject', 'Clark');
+      await page.waitForTimeout(1_200);
+      await page.locator('[data-px-id="study.unit.add"]:visible').first().click().catch(() => {});
+      await page.waitForTimeout(1_500);
+    },
+    'seed:study.unit.matches': async () => {
+      await page.evaluate(() => { void window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('study.findMatches', 'Seeded Subject').catch(() => {}); });
+      await page.waitForTimeout(2_000);
+    },
     'seed:page': async () => { if (pageId) await run(page, 'canvas.openPage', pageId); },
     'seed:database': async () => { if (dbId) await run(page, 'canvas.openPage', dbId); },
     'seed:conceptMap': async () => { if (typeof mapId === 'string' && !mapId.startsWith('failed')) await run(page, 'canvas.openPage', mapId); },

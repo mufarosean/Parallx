@@ -340,7 +340,10 @@ api.window.showInformationMessage(msg, ...actions)   // returns the picked actio
 api.window.showWarningMessage(msg, ...actions)
 api.window.showErrorMessage(msg, ...actions)
 api.window.showInputBox({ prompt?, value?, placeholder?, password? })   // → Promise<string|undefined>
-api.window.showQuickPick(items, { placeholder?, canPickMany? })         // → picked item(s) or undefined
+api.window.showQuickPick(items, { placeholder?, canPickMany?, matchOnDescription?, confirmLabel? })   // → picked item(s) or undefined
+// canPickMany: a checkbox per row (a click, or Space in the list), ticks kept while the search changes, then the
+// dialog's Cancel and its confirming button (confirmLabel, "OK" by default); resolves the ticked items. The search
+// finds every word typed in the label, and in the description and detail with matchOnDescription.
 api.window.createOutputChannel(name)                                    // → channel with append/appendLine/show/hide/clear/dispose
 api.window.createStatusBarItem(alignment, priority)                     // alignment: 1=Left, 2=Right
 api.window.activeColorTheme                                             // { kind } 1=dark 2=light 3=hc-dark 4=hc-light
@@ -369,6 +372,10 @@ api.workspace.name                                        // workspace display n
 api.workspace.getCanvasPages()                            // → Promise<CanvasPageInfo[]>
 api.workspace.getCanvasPageTree()                         // → Promise<tree>
 api.workspace.onDidChangeCanvasPages(listener)
+api.workspace.listFiles(maxFiles?)                        // → Promise<[{ uri, name, relativePath, folder }]>: every file of the
+                                                          //   workspace (machinery and hidden folders left out), for a picker over "any file"
+api.workspace.onDidMoveFiles(listener)                    // → IDisposable; listener gets [{ from, to }] (file:// URIs) after the app
+                                                          //   moved or renamed a file or folder (the Explorer, workspace.fs.rename): keep a link to it
 api.workspace.fs                                          // file-system surface, see below
 ```
 
@@ -1604,7 +1611,7 @@ api.window.{showInformationMessage, showWarningMessage, showErrorMessage, showIn
             createOutputChannel, createStatusBarItem, activeColorTheme, onDidChangeActiveColorTheme, startDrag}
 api.workspace.{getConfiguration, onDidChangeConfiguration, workspaceFolders, getWorkspaceFolder,
                onDidChangeWorkspaceFolders, onDidChangeWorkspace, onDidRename, onDidFilesChange,
-               name, getCanvasPages, getCanvasPageTree, onDidChangeCanvasPages, fs}
+               name, getCanvasPages, getCanvasPageTree, onDidChangeCanvasPages, listFiles, onDidMoveFiles, fs}
 api.workspace.fs.{readFile, writeFile, stat, readdir, exists, rename, delete, mkdir}
 api.context.{createContextKey, getContextValue}
 api.icons.{getIcon, hasIcon, getAllIconIds, createIconHtml, getFileTypeIcon}

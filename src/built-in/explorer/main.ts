@@ -1625,7 +1625,10 @@ function commandTarget(arg: unknown): TreeNode | null {
       && typeof (arg as TreeNode).uri === 'string'
       && typeof (arg as TreeNode).name === 'string'
       && Array.isArray((arg as TreeNode).children)) {
-    return arg as TreeNode;
+    // The row as the tree has it now: a refresh between the right-click and the
+    // menu's choice rebuilds the rows, and the old node's element is gone (Rename
+    // then drew its field in a row no longer on screen).
+    return findNodeByUri((arg as TreeNode).uri) ?? (arg as TreeNode);
   }
   return _selectedNode;
 }

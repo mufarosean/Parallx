@@ -105,7 +105,7 @@ async function stUnitFindMatches(subjectId) {
     await _api.window.showInformationMessage(`No page or file is named like a unit of ${st.subject.name}. Add the names they go by to Also Called in Units.`);
     return false;
   }
-  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, stUnitDescribe(p.candidate)].join(' · '), proposal: p }));
+  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, stUnitDescribe(p.candidate)].filter(Boolean).join(' · '), proposal: p }));
   const picked = await _api.window.showQuickPick(items, { placeholder: `Tick what belongs to its unit in ${st.subject.name}`, canPickMany: true, matchOnDescription: true, confirmLabel: 'Attach Selected' });
   if (!Array.isArray(picked) || !picked.length) return false;
   const byUnit = new Map();
