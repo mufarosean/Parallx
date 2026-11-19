@@ -52,17 +52,22 @@ export function moOklab(r, g, b) {
     0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
 }
 
+// OKLab to linear RGB, not clamped: a channel below 0 or above 1 is outside the screen's range.
+export function moOklabLinear(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+}
+// Linear RGB (0..1) to sRGB bytes.
+export const moEncode = (linear) => linear.map((v) => Math.round(enc(v)));
+
 // OKLab to sRGB bytes; a colour outside the screen's range keeps its hue and
 // lightness and gives up chroma.
 export function moFromOklab(L, a, b) {
-  const raw = (k) => {
-    const l = (L + 0.3963377774 * a * k + 0.2158037573 * b * k) ** 3;
-    const m = (L - 0.1055613458 * a * k - 0.0638541728 * b * k) ** 3;
-    const s = (L - 0.0894841775 * a * k - 1.2914855480 * b * k) ** 3;
-    return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-      -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
-  };
+  const raw = (k) => moOklabLinear(L, a * k, b * k);
   let k = 1; let c = raw(k);
   for (let i = 0; i < 30 && (Math.min(...c) < -0.001 || Math.max(...c) > 1.001); i++) { k *= 0.85; c = raw(k); }
   return c.map((v) => Math.round(enc(v)));
@@ -137,10 +142,12 @@ const linOf = (rgb) => rgb.map(lin);
 const lumOf = (l) => 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
 
 // A painter's value, 0 (black) to 10 (white), from the colour's lightness (CIE L*).
-export function moValueStep(rgb) {
+export function moValueStep(rgb) { return Math.round(moValueOf(rgb)); }
+// The same value, not rounded to a step.
+export function moValueOf(rgb) {
   const Y = lumOf(linOf(rgb));
   const Ls = Y > 0.008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y;
-  return Math.max(0, Math.min(10, Math.round(Ls / 10)));
+  return Math.max(0, Math.min(10, Ls / 10));
 }
 const VALUE_WORDS = ['very dark', 'very dark', 'dark', 'dark', 'mid dark', 'mid', 'mid light', 'light', 'light', 'very light', 'very light'];
 
@@ -234,6 +241,8 @@ function rawRgb(spec) {
 }
 const WHITE_RGB = rawRgb(WL.map(() => 1));
 const specRgb = (s) => rawRgb(s).map((v, i) => v / WHITE_RGB[i]);
+// What one unit of reflectance at each wavelength adds to the colour (specRgb is linear in the curve).
+const SPEC = WL.map((_, i) => specRgb(WL.map((__, j) => (i === j ? 1 : 0))));
 const rise = (at) => WL.map((l) => 1 / (1 + Math.exp(-(l - at) / 8)));
 const S_W = WL.map(() => 1), S_R = rise(595), S_Y = rise(495);
 const S_B = S_Y.map((v) => 1 - v), S_C = S_R.map((v) => 1 - v), S_G = S_Y.map((v, i) => v * (1 - S_R[i])), S_M = S_G.map((v) => 1 - v);
@@ -252,6 +261,7 @@ function curveOf(t) {
 }
 const toKs = (R) => (1 - R) ** 2 / (2 * R);
 const fromKs = (k) => 1 + k - Math.sqrt(k * k + 2 * k);
+export const moLinearOklab = (l) => labLin(l);
 const labLin = (l) => {
   const a = Math.cbrt(Math.max(0, 0.4122214708 * l[0] + 0.5363325363 * l[1] + 0.0514459929 * l[2]));
   const m = Math.cbrt(Math.max(0, 0.2119034982 * l[0] + 0.6806995451 * l[1] + 0.1073969566 * l[2]));
@@ -261,6 +271,7 @@ const labLin = (l) => {
 
 // A paint ready to mix: its curve as absorption over scattering, its
 // lightness, and the small difference between its curve and its colour.
+// A paint's strength (1 unless the painter set it) scales how far a part of it goes.
 export function moPaintPrep(p) {
   const rgb = moHexRgb(p.hex) || [128, 128, 128];
   const l = linOf(rgb);
@@ -268,7 +279,7 @@ export function moPaintPrep(p) {
   const back = specRgb(curve);
   const [L, a, b] = moOklab(rgb[0], rgb[1], rgb[2]);
   const C = Math.hypot(a, b);
-  return { name: p.name, hex: p.hex, water: !!p.water, ks: curve.map(toKs), Y: Math.max(0.003, lumOf(l)), err: p.water ? [0, 0, 0] : l.map((v, i) => v - back[i]),
+  return { name: p.name, hex: p.hex, water: !!p.water, ks: curve.map(toKs), Y: Math.max(0.003, lumOf(l)) * (Number(p.strength) > 0 ? Number(p.strength) ** 2 : 1), err: p.water ? [0, 0, 0] : l.map((v, i) => v - back[i]),
     white: !p.water && L > 0.93 && C < 0.03, black: L < 0.3 && C < 0.035 };
 }
 
@@ -276,10 +287,15 @@ export function moPaintPrep(p) {
 export function moMixLinear(paints, parts) {
   const w = parts.map((c, i) => paints[i].Y * c * c);
   const tot = w.reduce((s, v) => s + v, 0) || 1;
-  const k = new Float64Array(WL.length);
-  for (let i = 0; i < paints.length; i++) { const f = w[i] / tot; if (f) for (let j = 0; j < WL.length; j++) k[j] += f * paints[i].ks[j]; }
-  const rgb = specRgb(Array.from(k, fromKs));
-  for (let i = 0; i < paints.length; i++) for (let ch = 0; ch < 3; ch++) rgb[ch] += (w[i] / tot) * paints[i].err[ch];
+  const rgb = [0, 0, 0], n = paints.length;
+  for (let i = 0; i < n; i++) w[i] /= tot;
+  for (let j = 0; j < WL.length; j++) {
+    let k = 0;
+    for (let i = 0; i < n; i++) k += w[i] * paints[i].ks[j];
+    const R = fromKs(k), sp = SPEC[j];
+    rgb[0] += R * sp[0]; rgb[1] += R * sp[1]; rgb[2] += R * sp[2];
+  }
+  for (let i = 0; i < n; i++) { const e = paints[i].err; rgb[0] += w[i] * e[0]; rgb[1] += w[i] * e[1]; rgb[2] += w[i] * e[2]; }
   return rgb.map((v) => Math.max(0, Math.min(1, v)));
 }
 const toHex = (l) => '\u0023' + l.map((v) => Math.round(enc(v)).toString(16).padStart(2, '0')).join('');
