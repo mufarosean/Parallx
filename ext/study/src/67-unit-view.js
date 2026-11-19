@@ -49,14 +49,17 @@ function stUnitNamed(s, unit) {
 /** Open Unit…: a unit's tab; with no unit named, his pick of the subject's units. */
 async function stCmdOpenUnit(subject, unit) {
   const s = await stPickSubject(subject, 'Which subject?');
-  if (!s) return null;
-  let u = stUnitNamed(s, unit);
-  if (!u) {
-    if (!s.units.length) { await _api.window.showInformationMessage(`${s.name} has no units yet. Add them in Open Units.`); return null; }
-    const pick = await _api.window.showQuickPick(s.units.map((x) => ({ label: x.name, rowId: x.rowId })), { placeholder: 'Open which unit?' });
-    u = pick ? s.units.find((x) => x.rowId === pick.rowId) || null : null;
-  }
+  const u = s ? await stPickUnit(s, unit, 'Open which unit?') : null;
   return u ? stOpenUnit(s.id, u.rowId) : null;
+}
+
+/** A subject's unit: the one named (row id or name), else his pick among its units. */
+async function stPickUnit(s, unit, placeholder) {
+  const named = stUnitNamed(s, unit);
+  if (named) return named;
+  if (!s.units.length) { await _api.window.showInformationMessage(`${s.name} has no units yet. Add them in Open Units.`); return null; }
+  const pick = await _api.window.showQuickPick(s.units.map((x) => ({ label: x.name, rowId: x.rowId })), { placeholder });
+  return pick ? s.units.find((x) => x.rowId === pick.rowId) || null : null;
 }
 
 /** Open one of a unit's items (its key) in its own editor. */
@@ -80,10 +83,8 @@ async function stCmdRemoveUnitItem(subjectId, rowId, key) {
 /** Add Notes or Files…: the picker for a unit (by its row id or its name); with none named, his pick. */
 async function stCmdAddNotesOrFiles(subject, unit) {
   const s = await stPickSubject(subject, 'Which subject?');
-  const u = s ? stUnitNamed(s, unit) : null;
-  if (s && u) return stUnitPick(s.id, u.rowId);
-  if (s) { const opened = await stCmdOpenUnit(s.id); return !!opened; }
-  return false;
+  const u = s ? await stPickUnit(s, unit, 'Add to which unit?') : null;
+  return u ? stUnitPick(s.id, u.rowId) : false;
 }
 
 /** Unit Actions…: the unit's menu at its row's More Actions in the sidebar, else a pick. */
