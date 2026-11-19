@@ -149,6 +149,46 @@ export function createDatabaseDoor(db: DatabaseDataService, pages: ICanvasDataSe
     return [TITLE_COLUMN, ...props.map(column)];
   }
 
+  /** Values by property id as values by column name, the empty ones left out. */
+  const byName = (props: readonly IDatabaseProperty[], values: Readonly<Record<string, unknown>>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const p of props) {
+      const v = values[p.id];
+      if (v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0)) out[p.name] = v;
+    }
+    return out;
+  };
+
+  async function addRow(toolId: string, databaseId: string, row: { title: string; values?: Readonly<Record<string, unknown>> }): Promise<CanvasDatabaseRow> {
+    const props = await propsOf(databaseId);
+    const { cells, title } = byId(toolId, props, row?.values);
+    const synced = Object.keys(cells).filter((id) => isSynced(props.find((p) => p.id === id)));
+    const plain = Object.fromEntries(Object.entries(cells).filter(([id]) => !synced.includes(id)));
+    const made = await db.addRow(databaseId, String(row?.title ?? title ?? '').trim() || 'Untitled', plain, toolId);
+    for (const id of synced) await setRelationValue(db, databaseId, made.pageId, props.find((p) => p.id === id)!, cells[id], toolId);
+    return { pageId: made.pageId, title: made.title, values: byName(props, { ...made.values, ...Object.fromEntries(synced.map((id) => [id, cells[id]])) }) };
+  }
+
+  /** Many rows at once: one transaction, one change event. A row that sets a synced relation is written on its own, as addRow writes it. */
+  async function addRows(toolId: string, databaseId: string, rows: readonly { title: string; values?: Readonly<Record<string, unknown>> }[]): Promise<CanvasDatabaseRow[]> {
+    const props = await propsOf(databaseId);
+    const prepared = (rows ?? []).map((r) => { const { cells, title } = byId(toolId, props, r?.values); return { title: String(r?.title ?? title ?? '').trim() || 'Untitled', values: cells }; });
+    if (prepared.some((r) => Object.keys(r.values).some((id) => isSynced(props.find((p) => p.id === id))))) {
+      const out: CanvasDatabaseRow[] = [];
+      for (const r of rows) out.push(await addRow(toolId, databaseId, r));
+      return out;
+    }
+    return (await db.addRows(databaseId, prepared, toolId)).map((m) => ({ pageId: m.pageId, title: m.title, values: byName(props, m.values) }));
+  }
+
+  async function updateRows(toolId: string, databaseId: string, patches: readonly { pageId: string; title?: string; values?: Readonly<Record<string, unknown>> }[]): Promise<void> {
+    const props = await propsOf(databaseId);
+    const prepared = (patches ?? []).map((p) => { const { cells, title } = byId(toolId, props, p?.values); const nextTitle = p?.title ?? title; return { pageId: String(p?.pageId ?? ''), values: cells, ...(nextTitle !== undefined ? { title: String(nextTitle) } : {}) }; });
+    const synced = prepared.filter((p) => Object.keys(p.values).some((id) => isSynced(props.find((x) => x.id === id))));
+    await db.updateRows(databaseId, prepared.map((p) => (synced.includes(p) ? { ...p, values: Object.fromEntries(Object.entries(p.values).filter(([id]) => !isSynced(props.find((x) => x.id === id)))) } : p)), toolId);
+    for (const p of synced) for (const [id, v] of Object.entries(p.values)) if (isSynced(props.find((x) => x.id === id))) await setRelationValue(db, databaseId, p.pageId, props.find((x) => x.id === id)!, v, toolId);
+  }
+
   return {
     async list() {
       return (await db.listDatabases()).map((d) => ({ id: d.id, title: d.title }));
@@ -194,31 +234,10 @@ export function createDatabaseDoor(db: DatabaseDataService, pages: ICanvasDataSe
         }, cache),
         ...(related ? { rollup: (prop, _row, values) => rollupValue(prop, values, props, related) } : {}),
       });
-      return rows.map((r): CanvasDatabaseRow => {
-        const values: Record<string, unknown> = {};
-        for (const p of props) {
-          const v = r.values[p.id];
-          if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) continue;
-          values[p.name] = v;
-        }
-        return { pageId: r.pageId, title: r.title, values };
-      });
+      return rows.map((r): CanvasDatabaseRow => ({ pageId: r.pageId, title: r.title, values: byName(props, r.values) }));
     },
 
-    async addRow(toolId, databaseId, row) {
-      const props = await propsOf(databaseId);
-      const { cells, title } = byId(toolId, props, row?.values);
-      const synced = Object.keys(cells).filter((id) => isSynced(props.find((p) => p.id === id)));
-      const plain = Object.fromEntries(Object.entries(cells).filter(([id]) => !synced.includes(id)));
-      const made = await db.addRow(databaseId, String(row?.title ?? title ?? '').trim() || 'Untitled', plain, toolId);
-      for (const id of synced) await setRelationValue(db, databaseId, made.pageId, props.find((p) => p.id === id)!, cells[id], toolId);
-      const values: Record<string, unknown> = {};
-      for (const p of props) {
-        const v = synced.includes(p.id) ? cells[p.id] : made.values[p.id];
-        if (v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0)) values[p.name] = v;
-      }
-      return { pageId: made.pageId, title: made.title, values };
-    },
+    addRow,
 
     async updateRow(toolId, databaseId, pageId, patch) {
       const props = await propsOf(databaseId);
@@ -228,6 +247,14 @@ export function createDatabaseDoor(db: DatabaseDataService, pages: ICanvasDataSe
       const nextTitle = patch?.title ?? title;
       await db.updateRow(databaseId, pageId, { ...(nextTitle !== undefined ? { title: String(nextTitle).trim() || 'Untitled' } : {}), values: plain }, toolId);
       for (const id of synced) await setRelationValue(db, databaseId, pageId, props.find((p) => p.id === id)!, cells[id], toolId);
+    },
+
+    addRows,
+    updateRows,
+
+    async removeRows(databaseId, pageIds) {
+      await propsOf(databaseId);
+      await db.removeRows(databaseId, [...(pageIds ?? [])].map(String));
     },
 
     async removeRow(databaseId, pageId) {

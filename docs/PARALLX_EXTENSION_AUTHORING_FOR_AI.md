@@ -723,6 +723,7 @@ reads.
 | `addRow(databaseId, { title, values? })` | Adds a row; returns it. |
 | `updateRow(databaseId, pageId, { title?, values? })` | Changes only what is named (`null` clears a cell). One write, one change event. |
 | `removeRow(databaseId, pageId)` | The row's page goes to the Trash. |
+| `addRows(databaseId, rows)`, `updateRows(databaseId, patches)`, `removeRows(databaseId, pageIds)` | Many rows at once (`patches` are `{ pageId, title?, values? }`): one transaction and one change event (no `pageId`), so an open view reloads once. Every value is checked first; one refused writes nothing. Use these for a table you keep a hundred rows of (a plan's days), not a loop of single writes. |
 | `onDidChange(databaseId, listener)` | `{ kind: 'rows' \| 'cells' \| 'columns', pageId? }` for every change, whoever made it: the person in any view, the chat, another extension, you. A row, or the database itself, going to the Trash or coming back from it is a `'rows'` change. |
 | `open(databaseId)` | Opens the database in the editor. |
 

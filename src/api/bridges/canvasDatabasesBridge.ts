@@ -75,6 +75,12 @@ export interface CanvasDatabasesApi {
   addRow(databaseId: string, row: { title: string; values?: Readonly<Record<string, unknown>> }): Promise<CanvasDatabaseRow>;
   updateRow(databaseId: string, pageId: string, patch: { title?: string; values?: Readonly<Record<string, unknown>> }): Promise<void>;
   removeRow(databaseId: string, pageId: string): Promise<void>;
+  /** Many rows added in one transaction, with one change event (no `pageId`); returned in order. */
+  addRows(databaseId: string, rows: readonly { title: string; values?: Readonly<Record<string, unknown>> }[]): Promise<readonly CanvasDatabaseRow[]>;
+  /** Many rows changed in one transaction, with one change event; every value is checked before anything is written. */
+  updateRows(databaseId: string, patches: readonly { pageId: string; title?: string; values?: Readonly<Record<string, unknown>> }[]): Promise<void>;
+  /** Many rows to the Trash, with one change event. */
+  removeRows(databaseId: string, pageIds: readonly string[]): Promise<void>;
   onDidChange(databaseId: string, listener: (e: CanvasDatabaseChange) => void): IDisposable;
   open(databaseId: string): Promise<void>;
 }
@@ -94,6 +100,9 @@ export interface CanvasDatabasesHost {
   addRow(toolId: string, databaseId: string, row: { title: string; values?: Readonly<Record<string, unknown>> }): Promise<CanvasDatabaseRow>;
   updateRow(toolId: string, databaseId: string, pageId: string, patch: { title?: string; values?: Readonly<Record<string, unknown>> }): Promise<void>;
   removeRow(databaseId: string, pageId: string): Promise<void>;
+  addRows(toolId: string, databaseId: string, rows: readonly { title: string; values?: Readonly<Record<string, unknown>> }[]): Promise<readonly CanvasDatabaseRow[]>;
+  updateRows(toolId: string, databaseId: string, patches: readonly { pageId: string; title?: string; values?: Readonly<Record<string, unknown>> }[]): Promise<void>;
+  removeRows(databaseId: string, pageIds: readonly string[]): Promise<void>;
   onDidChange(databaseId: string, listener: (e: CanvasDatabaseChange) => void): IDisposable;
   open(databaseId: string): Promise<void>;
 }
@@ -146,6 +155,9 @@ export function createCanvasDatabasesApi(toolId: string, subscriptions: IDisposa
     addRow: (databaseId: string, row: { title: string; values?: Readonly<Record<string, unknown>> }) => host().then((h) => h.addRow(toolId, String(databaseId), row)),
     updateRow: (databaseId: string, pageId: string, patch: { title?: string; values?: Readonly<Record<string, unknown>> }) => host().then((h) => h.updateRow(toolId, String(databaseId), String(pageId), patch)),
     removeRow: (databaseId: string, pageId: string) => host().then((h) => h.removeRow(String(databaseId), String(pageId))),
+    addRows: (databaseId: string, rows: readonly { title: string; values?: Readonly<Record<string, unknown>> }[]) => host().then((h) => h.addRows(toolId, String(databaseId), rows)),
+    updateRows: (databaseId: string, patches: readonly { pageId: string; title?: string; values?: Readonly<Record<string, unknown>> }[]) => host().then((h) => h.updateRows(toolId, String(databaseId), patches)),
+    removeRows: (databaseId: string, pageIds: readonly string[]) => host().then((h) => h.removeRows(String(databaseId), pageIds)),
     onDidChange: (databaseId: string, listener: (e: CanvasDatabaseChange) => void): IDisposable => {
       const l: Listening = { databaseId: String(databaseId), listener, attached: null };
       _listening.add(l);

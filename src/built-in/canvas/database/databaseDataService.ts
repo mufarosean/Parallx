@@ -30,6 +30,7 @@ import { EMPTY_FILTER, asViewType } from './databaseTypes.js';
 import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
 import { coerceCellValue, missingOptions } from './cellValues.js';
 import { backfillUniqueIds, nextUniqueIds } from './uniqueIds.js';
+import { NEW_OPTION_COLORS, addRows, removeRows, updateRows, type IBulkRowsHost } from './bulkRows.js';
 import { keptBy, keptRefusal, mayWrite } from './keptColumns.js';
 import { DEFAULT_STATUS_OPTIONS, ensureWorkspaceDatabase, findDatabaseByRole, reconcileSingleHome, type WorkspaceDatabaseRole } from './workspaceDatabases.js';
 export type { WorkspaceDatabaseRole } from './workspaceDatabases.js';
@@ -78,8 +79,6 @@ export interface IDatabaseChange {
 /** Placeholder for the page id of a row being created (see addRow). */
 const CELL_PAGE = Symbol('cell-page');
 
-/** Colors given to options created by typing a new name (PILL_COLORS minus default). */
-const NEW_OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const;
 
 export class DatabaseDataService extends Disposable {
   private readonly _onDidChangeStructure = this._register(new Emitter<string>()); // databaseId
@@ -646,6 +645,25 @@ export class DatabaseDataService extends Disposable {
     try { await this._pages.archivePage(pageId); } catch { /* membership already gone; page archive is best-effort */ }
     this._onDidChangeRows.fire(databaseId);
     this._onDidChange.fire({ databaseId, kind: 'rows', pageId });
+  }
+
+  /** Many rows added, changed or removed in one transaction and one change event (bulkRows.ts). */
+  addRows(databaseId: string, rows: readonly { title?: string; values?: Readonly<Record<string, unknown>> }[], writer?: string): ReturnType<typeof addRows> { return addRows(this._bulk(), databaseId, rows, writer); }
+  updateRows(databaseId: string, patches: readonly { pageId: string; title?: string; values?: Readonly<Record<string, unknown>> }[], writer?: string): Promise<void> { return updateRows(this._bulk(), databaseId, patches, writer); }
+  removeRows(databaseId: string, pageIds: readonly string[]): Promise<void> { return removeRows(this._bulk(), databaseId, pageIds); }
+  private _bulk(): IBulkRowsHost {
+    return {
+      bridge: this._db, pages: this._pages,
+      listProperties: (id) => this.listProperties(id),
+      nextUniqueIds: (id, props) => nextUniqueIds(this, id, props),
+      cellWrite: (databaseId, pageId, propertyId, value, writer, prop) => this._cellWrite(databaseId, pageId, propertyId, value, writer, prop),
+      changed: (databaseId, kind, pageIds, structure) => {
+        if (structure) { this._onDidChangeStructure.fire(databaseId); this._onDidChange.fire({ databaseId, kind: 'columns' }); }
+        this._onDidChangeRows.fire(databaseId);
+        if (kind === 'cells') for (const pageId of pageIds) this._onDidChangeCell.fire({ databaseId, pageId });
+        this._onDidChange.fire({ databaseId, kind });
+      },
+    };
   }
 
   /** Upsert one cell. Values are stored JSON-encoded. */

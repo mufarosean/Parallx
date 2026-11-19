@@ -282,6 +282,71 @@ describe('api.canvas.databases: hearing changes', () => {
   });
 });
 
+describe('api.canvas.databases: many rows at once', () => {
+  const countWrites = () => {
+    const n = { writes: 0, transactions: 0 };
+    for (const k of ['run', 'runTransaction'] as const) {
+      const real = env.bridge[k] as (...a: unknown[]) => Promise<unknown>;
+      (env.bridge as any)[k] = (...a: unknown[]) => { if (k === 'runTransaction') n.transactions++; else n.writes++; return real(...a); };
+    }
+    return n;
+  };
+  const DAYS = [{ name: 'Date', type: 'date' }, { name: 'Type', type: 'select', config: { options: ['Study', 'Rest'] } }, { name: 'Days', type: 'tags', config: { options: ['Mon', 'Tue'] } }, { name: 'Hours', type: 'number' }, { name: 'Running', type: 'number', config: { computedBy: true } }];
+
+  it('adds 134 rows in one transaction and one change event, in order, values as given and new options made once', async () => {
+    const made = await door.create({ title: 'Days', columns: DAYS });
+    const heard: CanvasDatabaseChange[] = [];
+    door.onDidChange(made.id, (e) => heard.push(e));
+    const n = countWrites();
+    const rows = Array.from({ length: 134 }, (_, i) => ({ title: `Day ${i + 1}`, values: { Date: `2027-01-${String((i % 28) + 1).padStart(2, '0')}`, Type: i % 7 === 6 ? 'Holiday' : 'Study', Days: ['Mon', 'Sun'], Hours: i % 5, Running: i } }));
+    const out = await door.addRows(made.id, rows);
+    expect(out).toHaveLength(134);
+    expect(out[6]).toMatchObject({ title: 'Day 7', values: { Date: '2027-01-07', Type: 'Holiday', Days: ['Mon', 'Sun'], Hours: 1, Running: 6 } });
+    expect(n.transactions).toBe(1);
+    expect(heard.filter((e) => e.kind !== 'columns')).toEqual([{ kind: 'rows' }]);
+    const listed = await door.listRows(made.id);
+    expect(listed.map((r) => r.title)).toEqual(rows.map((r) => r.title));
+    const info = await door.get(made.id);
+    expect((info!.columns.find((c) => c.name === 'Type')!.config.options as { value: string }[]).map((o) => o.value)).toEqual(['Study', 'Rest', 'Holiday']);
+    expect((info!.columns.find((c) => c.name === 'Days')!.config.options as { value: string }[]).map((o) => o.value)).toEqual(['Mon', 'Tue', 'Sun']);
+  });
+
+  it('changes many rows in one transaction and one change event', async () => {
+    const made = await door.create({ title: 'Days', columns: DAYS });
+    const rows = await door.addRows(made.id, Array.from({ length: 50 }, (_, i) => ({ title: `Day ${i}`, values: { Hours: 1 } })));
+    const heard: CanvasDatabaseChange[] = [];
+    door.onDidChange(made.id, (e) => heard.push(e));
+    const n = countWrites();
+    await door.updateRows(made.id, rows.map((r, i) => ({ pageId: r.pageId, values: { Hours: i, Running: i * 2, Type: 'Rest' } })));
+    expect(n.transactions).toBe(1);
+    expect(heard).toEqual([{ kind: 'cells' }]);
+    const listed = await door.listRows(made.id);
+    expect(listed[49]!.values).toEqual({ Hours: 49, Running: 98, Type: 'Rest' });
+  });
+
+  it('refuses the whole change when one value cannot be taken, a column is not there, a row is not its, or a kept column is another tool\'s', async () => {
+    const made = await door.create({ title: 'Days', columns: DAYS });
+    const rows = await door.addRows(made.id, [{ title: 'A', values: { Hours: 1 } }, { title: 'B', values: { Hours: 2 } }]);
+    await expect(door.updateRows(made.id, [{ pageId: rows[0]!.pageId, values: { Hours: 5 } }, { pageId: rows[1]!.pageId, values: { Hours: 'lots' } }])).rejects.toThrow(/Hours/);
+    await expect(door.updateRows(made.id, [{ pageId: rows[0]!.pageId, values: { Nope: 1 } }])).rejects.toThrow(/no column named "Nope"/);
+    await expect(door.updateRows(made.id, [{ pageId: 'not-a-row', values: { Hours: 1 } }])).rejects.toThrow(/not a row/);
+    await expect(otherDoor.updateRows(made.id, [{ pageId: rows[0]!.pageId, values: { Running: 1 } }])).rejects.toThrow();
+    await expect(door.addRows(made.id, [{ title: 'C', values: { Hours: 3 } }, { title: 'D', values: { Hours: 'many' } }])).rejects.toThrow(/Hours/);
+    expect((await door.listRows(made.id)).map((r) => [r.title, r.values.Hours])).toEqual([['A', 1], ['B', 2]]);
+  });
+
+  it('removes many rows in one change event, their pages to the Trash', async () => {
+    const made = await door.create({ title: 'Days', columns: DAYS });
+    const rows = await door.addRows(made.id, Array.from({ length: 10 }, (_, i) => ({ title: `Day ${i}` })));
+    const heard: CanvasDatabaseChange[] = [];
+    door.onDidChange(made.id, (e) => heard.push(e));
+    await door.removeRows(made.id, rows.slice(0, 7).map((r) => r.pageId));
+    expect((await door.listRows(made.id)).map((r) => r.title)).toEqual(['Day 7', 'Day 8', 'Day 9']);
+    expect(heard.filter((e) => !e.pageId)).toEqual([{ kind: 'rows' }]);
+    expect(env.db.prepare('SELECT COUNT(*) AS n FROM pages WHERE id = ? AND is_archived = 1').get(rows[0]!.pageId)).toEqual({ n: 1 });
+  });
+});
+
 describe('a column kept by a tool', () => {
   async function kept() {
     const made = await door.create({ title: 'Units', columns: [{ name: 'Weight', type: 'number' }, { name: 'Answered', type: 'number', config: { computedBy: true } }] });
@@ -447,6 +512,7 @@ describe('api.canvas.databases with the canvas away', () => {
       () => away.list(), () => away.get('x'), () => away.create({ title: 'X' }), () => away.createPage({ title: 'X' }),
       () => away.ensureColumns('x', []), () => away.listRows('x'), () => away.addRow('x', { title: 'A' }),
       () => away.updateRow('x', 'p', { title: 'B' }), () => away.removeRow('x', 'p'), () => away.open('x'),
+      () => away.addRows('x', [{ title: 'A' }]), () => away.updateRows('x', []), () => away.removeRows('x', ['p']),
     ]) {
       await expect(call()).rejects.toThrow('Canvas databases are not available');
     }

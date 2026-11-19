@@ -1815,6 +1815,16 @@ export namespace canvas {
     /** Remove a row: its page goes to the Trash. */
     export function removeRow(databaseId: string, pageId: string): Promise<void>;
     /**
+     * Add many rows at once, in order, after the last: one transaction and
+     * one change event (with no `pageId`), so an open view reloads once.
+     * Every value is checked first; one that is refused adds nothing.
+     */
+    export function addRows(databaseId: string, rows: readonly { title: string; values?: Readonly<Record<string, unknown>> }[]): Promise<readonly Row[]>;
+    /** Change many rows at once (each as updateRow): one transaction, one change event; one value refused changes nothing. */
+    export function updateRows(databaseId: string, patches: readonly { pageId: string; title?: string; values?: Readonly<Record<string, unknown>> }[]): Promise<void>;
+    /** Remove many rows at once: their pages go to the Trash, with one change event. */
+    export function removeRows(databaseId: string, pageIds: readonly string[]): Promise<void>;
+    /**
      * Hear every change to one database, whoever made it: the person in any
      * view, the chat, another extension, your own calls. Stops when disposed
      * and when your extension is turned off.
