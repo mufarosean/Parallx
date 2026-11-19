@@ -59,3 +59,59 @@
 .ui-segmented-control--disabled .ui-segmented-control__segment {
   cursor: default;
 }
+
+/* ── Cards: segments with lines under their label (three plans side by side) ── */
+
+.ui-segmented-control--cards {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--px-space-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: visible;
+}
+
+.ui-segmented-control__segment--card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--px-space-1);
+  min-width: 0;
+  padding: var(--px-space-3) var(--px-space-4);
+  text-align: left;
+  white-space: normal;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  line-height: var(--px-leading-tight);
+}
+
+.ui-segmented-control__label {
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
+}
+
+.ui-segmented-control__detail {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+}
+
+.ui-segmented-control__detail:nth-child(2) {
+  font-size: var(--px-text-xl);
+  font-weight: 600;
+  color: var(--px-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-segmented-control__segment--card.ui-segmented-control__segment--active {
+  border-color: var(--px-accent);
+  box-shadow: inset 0 0 0 1px var(--px-accent);
+  background: color-mix(in srgb, var(--px-accent) 8%, var(--px-bg-elevated));
+}
+
+.ui-segmented-control__segment--card:focus-visible {
+  outline-offset: 2px;
+}

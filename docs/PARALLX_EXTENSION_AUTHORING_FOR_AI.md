@@ -1046,6 +1046,8 @@ const noted = api.ui.createFilterChip(bar, { label: 'Noted', count: 5, onToggle:
 
 // One choice of a few (a setting, a rating): the segmented switch.
 api.ui.createSegmented(row, { ariaLabel: 'Sheet appearance', items: [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], value: 'light', onChange: save });
+// The same choice as cards side by side, each with lines under its label (its name for a screen reader is all of it).
+api.ui.createSegmented(row, { ariaLabel: 'The plan you follow', items: [{ value: 'floor', label: 'Floor', detail: ['104 h', '96 under 200'] }, { value: 'standard', label: 'Standard', detail: ['144 h', '56 under 200'] }], value: 'standard', onChange: follow });
 
 // Counts in four states (how far along a paper, a deck, a unit is): THE stacked bar, never your own.
 // Green good, yellow middling, red poor, the rest an outline; one order always; a part with nothing is not drawn.

@@ -203,6 +203,8 @@ export interface IKitFilterChip {
 export interface IKitSegmentedItem {
   readonly value: string;
   readonly label: string;
+  /** Lines under the label: the segments become cards side by side (three plans with their totals). */
+  readonly detail?: readonly string[];
 }
 
 export interface IKitSegmentedOptions extends IKitControlDeclaration {

@@ -784,7 +784,12 @@ export namespace ui {
   export function createFilterChip(container: HTMLElement | null, options: FilterChipOptions): FilterChip;
 
   export interface SegmentedOptions extends ControlDeclaration {
-    readonly items: readonly { readonly value: string; readonly label: string }[];
+    /**
+     * `detail`: lines under a segment's label (a total, how it compares).
+     * With them the segments are cards side by side, and each one's name
+     * for a screen reader is its label and its lines.
+     */
+    readonly items: readonly { readonly value: string; readonly label: string; readonly detail?: readonly string[] }[];
     readonly value?: string;
     /** Required: the group's name for screen readers. */
     readonly ariaLabel: string;

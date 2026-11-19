@@ -15,6 +15,12 @@ import './segmentedControl.css';
 export interface ISegment {
   readonly value: string;
   readonly label: string;
+  /**
+   * Lines under the label (a total, how it compares). With them the
+   * segments are drawn as cards side by side, and a segment's name for a
+   * screen reader is its label and its lines.
+   */
+  readonly detail?: readonly string[];
 }
 
 export interface ISegmentedControlOptions {
@@ -71,6 +77,7 @@ export class SegmentedControl extends Disposable {
     }
 
     this._renderSegments();
+    if (this._segments.some((seg) => seg.detail?.length)) this.element.classList.add('ui-segmented-control--cards');
 
     // Keyboard navigation: left/right arrows
     this._register(addDisposableListener(this.element, 'keydown', (e) => {
@@ -123,7 +130,14 @@ export class SegmentedControl extends Disposable {
       btn.type = 'button';
       btn.className = 'ui-segmented-control__segment';
       btn.dataset.value = seg.value;
-      btn.textContent = seg.label;
+      if (seg.detail?.length) {
+        btn.classList.add('ui-segmented-control__segment--card');
+        btn.setAttribute('aria-label', [seg.label, ...seg.detail].join(', '));
+        btn.appendChild($('span.ui-segmented-control__label', seg.label));
+        for (const line of seg.detail) btn.appendChild($('span.ui-segmented-control__detail', line));
+      } else {
+        btn.textContent = seg.label;
+      }
       btn.setAttribute('role', 'radio');
       btn.setAttribute('aria-checked', String(seg.value === this._selectedValue));
       btn.setAttribute('tabindex', seg.value === this._selectedValue ? '0' : '-1');
