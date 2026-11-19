@@ -51,11 +51,45 @@ function ensureTooltipElement(): HTMLElement {
   return _tooltipEl;
 }
 
+// ─── The anchor leaving ──────────────────────────────────────────────────────
+// A control taken out of the page under the pointer gets no mouseleave, so a
+// tooltip shown (or about to show) for it would stay over whatever replaced
+// it. While one is up or pending, the document is watched: once its anchor is
+// no longer in the page, it goes at once.
+
+let _anchorWatch: MutationObserver | null = null;
+
+function watchAnchor(target: HTMLElement): void {
+  if (typeof MutationObserver === 'undefined') return;
+  const root = target.ownerDocument?.documentElement;
+  if (!root) return;
+  if (!_anchorWatch) _anchorWatch = new MutationObserver(() => { if (_currentTarget && !_currentTarget.isConnected) hideForGoneAnchor(); });
+  _anchorWatch.disconnect();
+  _anchorWatch.observe(root, { childList: true, subtree: true });
+}
+
+function unwatchAnchor(): void {
+  _anchorWatch?.disconnect();
+}
+
+/** The anchor left the page: the tooltip, its pending show and its listeners go now. */
+function hideForGoneAnchor(): void {
+  unwatchAnchor();
+  if (_dismissNow) { _dismissNow(); }
+  clearTimers();
+  if (_tooltipEl) _tooltipEl.style.display = 'none';
+  _currentTarget = null;
+  if (_delegateTarget && !_delegateTarget.isConnected) _cleanupDelegateTarget();
+}
+
 function showTooltip(target: HTMLElement, text: string, placement: TooltipPlacement): void {
   clearTimers();
   _currentTarget = target;
+  watchAnchor(target);
 
   _showTimer = setTimeout(() => {
+    _showTimer = null;
+    if (!target.isConnected) { hideForGoneAnchor(); return; }
     const el = ensureTooltipElement();
     el.textContent = text;
     el.style.display = 'block';
@@ -70,6 +104,7 @@ function hideTooltip(): void {
       _tooltipEl.style.display = 'none';
     }
     _currentTarget = null;
+    unwatchAnchor();
   }, HIDE_DELAY);
 }
 
@@ -180,6 +215,7 @@ export function showTooltipNow(target: HTMLElement, text: string, placement: Too
   dismissTooltipNow();
   clearTimers();
   _currentTarget = target;
+  watchAnchor(target);
   const el = ensureTooltipElement();
   el.textContent = text;
   el.style.display = 'block';
@@ -202,6 +238,7 @@ export function showTooltipNow(target: HTMLElement, text: string, placement: Too
     clearTimers();
     el.style.display = 'none';
     _currentTarget = null;
+    unwatchAnchor();
   };
 }
 

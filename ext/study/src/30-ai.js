@@ -1340,15 +1340,10 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     }
   }
   if (!rubric.length && reference && format !== 'mc') {
-    const derived = await stRubricFromAnswer(question, { modelId, numCtx });
-    if (derived.length) {
-      rubric = derived;
-      if (question.id) {
-        question.rubric = derived;
-        question.rubricOrigin = 'answer';
-        try { await stUpdateQuestion(question); } catch { /* grading still proceeds */ }
-      }
-    }
+    // Made just ahead while the question was on screen (stPrefetchAnswerRubric), or
+    // being made now: that one is waited for, never asked for twice.
+    const derived = await stAnswerRubric(question, { modelId, numCtx });
+    if (derived.length) rubric = derived;
   }
   if (!rubric.length && reference) rubric = [{ text: reference, required: true }];
   if (!rubric.length) throw new Error('This question has no reference answer, so it has been left out.');
@@ -1417,8 +1412,69 @@ async function stExplain(question, { chosen = null, typed = '', modelId = '', nu
   return out;
 }
 
-/** Derive a rubric from a bank question's answer (origin 'answer'). [] when the model gives nothing. */
-async function stRubricFromAnswer(question, { modelId = '', numCtx = 0 } = {}) {
+// ── Marking points made just ahead ──────────────────────────────────────────
+// A bank question with an answer and no rubric gets its marking points from
+// its answer the first time it is marked. A session makes them for the next
+// such question while he answers the one on screen, so Check is no slower;
+// the grader waits for one being made instead of asking the model again.
+
+/** Marking points being made, by question id: { promise, token }. */
+const _stAnswerRubrics = new Map();
+
+/** Are a question's marking points being made from its answer right now? */
+function stAnswerRubricInFlight(questionId) {
+  return _stAnswerRubrics.has(Number(questionId) || 0);
+}
+
+/** Start making a question's marking points from its answer, stored on it (origin 'answer') when they come. */
+function stStartAnswerRubric(question, { modelId = '', numCtx = 0, token = null } = {}) {
+  const id = Number(question && question.id) || 0;
+  const entry = { token: token || { cancelled: false }, promise: null };
+  entry.promise = (async () => {
+    const rubric = await stRubricFromAnswer(question, { modelId, numCtx, token: entry.token });
+    if (entry.token.cancelled || !rubric.length) return rubric;
+    question.rubric = rubric;
+    question.rubricOrigin = 'answer';
+    if (id) { try { await stUpdateQuestion(question); } catch { /* grading still proceeds */ } }
+    return rubric;
+  })().finally(() => { if (_stAnswerRubrics.get(id) === entry) _stAnswerRubrics.delete(id); });
+  if (id) _stAnswerRubrics.set(id, entry);
+  return entry;
+}
+
+/**
+ * The marking points for a short or essay question made from its answer, for
+ * the grader: the ones already being made are waited for (a prefetch stopped
+ * before it ended is made again here), else they are made now. [] when the
+ * model gives none.
+ */
+async function stAnswerRubric(question, { modelId = '', numCtx = 0 } = {}) {
+  const id = Number(question && question.id) || 0;
+  const running = id ? _stAnswerRubrics.get(id) : null;
+  if (running) {
+    const got = (await running.promise) || [];
+    if (!running.token.cancelled) {
+      if (got.length && !stNormalizeRubric(question.rubric).length) { question.rubric = got; question.rubricOrigin = 'answer'; }
+      return got;
+    }
+    if (stNormalizeRubric(question.rubric).length) return stNormalizeRubric(question.rubric);
+  }
+  return (await stStartAnswerRubric(question, { modelId, numCtx }).promise) || [];
+}
+
+/**
+ * Make the marking points of a question ahead of its turn, quietly, when it
+ * needs them and none are being made for it. Returns the promise, or null
+ * when there was nothing to make. `token.cancelled` stops the model call.
+ */
+function stPrefetchAnswerRubric(question, { modelId = '', numCtx = 0, token = null } = {}) {
+  if (!question || !question.id || !stNeedsAnswerRubric(question) || stAnswerRubricInFlight(question.id)) return null;
+  if (token && token.cancelled) return null;
+  return stStartAnswerRubric(question, { modelId, numCtx, token }).promise;
+}
+
+/** Derive a rubric from a bank question's answer (origin 'answer'). [] when the model gives nothing or `token` stops it. */
+async function stRubricFromAnswer(question, { modelId = '', numCtx = 0, token = null } = {}) {
   const reference = String(question.answer || '').trim();
   if (!reference) return [];
   let model = modelId;
@@ -1432,10 +1488,11 @@ async function stRubricFromAnswer(question, { modelId = '', numCtx = 0 } = {}) {
   ].filter((l) => l !== '').join('\n');
   try {
     const plan = await stPlanFor(model, null, numCtx);
-    const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true });
+    const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true, token });
     const raw = stJsonObjectFrom(output);
     return stNormalizeRubric(raw && (raw.rubric || raw.points));
   } catch (err) {
+    if (token && token.cancelled) return [];
     console.warn('[Study] rubric derivation failed:', err && err.message);
     return [];
   }
@@ -1654,7 +1711,7 @@ function stNeedsAnswerRubric(q) {
  * What a scope holds now: `available` usable questions (the same pool as
  * stNextDraw), `unanswerable` ones left out (no answer and no rubric), and
  * `needsRubric`, the short and essay ones whose rubric is made from the
- * answer when first drawn.
+ * answer, just ahead of their turn in a session.
  */
 async function stScopeStats(scope) {
   const pool = await stScopePool(scope || {});
@@ -1965,31 +2022,13 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
 }
 
 /**
- * Rubrics for the drawn short and essay questions that have an answer and
- * no rubric (bank questions), made from the answer and stored with
- * rubric_origin 'answer', before the session shows them.
- */
-async function stDeriveDrawRubrics(draw, session, { token = null, onProgress = null } = {}) {
-  const todo = draw.filter(stNeedsAnswerRubric);
-  for (let k = 0; k < todo.length; k++) {
-    if (token && token.cancelled) return;
-    const q = todo[k];
-    const p = { phase: 'rubric', rubricsDone: k, rubricsTotal: todo.length, sessionId: session.id };
-    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    const rubric = await stRubricFromAnswer(q, { modelId: session.model, numCtx: session.numCtx });
-    if (!rubric.length) continue;
-    q.rubric = rubric;
-    q.rubricOrigin = 'answer';
-    try { await stUpdateQuestion(q); } catch { /* grading derives it again */ }
-  }
-}
-
-/**
  * The next draw for a session: top the bank up when fewer than `size`
  * unseen questions remain (never for a bank scope: there is nothing to
  * generate from), draw with stDrawSession excluding everything the session
- * already holds, give bank questions their concepts and rubrics, and record
- * the items. When the scope still has fewer than `size` unseen questions
+ * already holds, give bank questions their concepts, and record the items.
+ * A bank question's marking points are not made here: the session makes them
+ * just ahead of each one (stPrefetchAnswerRubric), so a bank session opens at
+ * once. When the scope still has fewer than `size` unseen questions
  * after that, the draw is filled with questions this session already asked
  * (stRepeatFill: missed first, then retried, then the oldest answered),
  * never one twice, materials still interleaved. Returns the questions in
@@ -2032,7 +2071,6 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
     if (repeats) draw = stInterleaveMaterials(fresh.concat(again));
   }
   if (!draw.length) return empty();
-  await stDeriveDrawRubrics(draw, session, { token, onProgress });
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
   return Object.assign(draw, { unanswerable: pool.unanswerable, repeats });

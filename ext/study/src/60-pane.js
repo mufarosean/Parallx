@@ -134,10 +134,9 @@ function stAfterAnimation(node, timeoutMs) {
   });
 }
 
-/** What the eyebrow says a bank question is graded against. */
+/** What the eyebrow says of a bank question's origin beside its label. What
+ *  it is graded against (a report, points from its answer) is not said. */
 function stRubricOriginText(q) {
-  if (q.rubricOrigin === 'report') return "graded against the examiner's report";
-  if (q.rubricOrigin === 'answer') return 'rubric from the answer';
   if (q.origin === 'rising-fellow') return 'Rising Fellow';
   if (q.origin === 'provider' && q.originLabel) return '';
   return '';
@@ -1112,6 +1111,34 @@ async function renderSession(host, route, ctx) {
     cur.nextBtn.appendChild(el('span', 'st-k', '↵'));
 
     queueMicrotask(() => { if (current !== cur || ctx.disposed()) return; if (cur.typedField) cur.typedField.focus(); else ctx.root.focus(); });
+    prefetchAhead();
+  }
+
+  // ── Marking points made just ahead ──
+  // While a question is on screen, the next one in the draw whose marking
+  // points are still to be made from its answer gets them, quietly: one
+  // model call at a time, stopped when this screen goes (End Session, the
+  // tab closing, another view), so Check on it is no slower than on a
+  // question that came with its points. The grader waits for one in flight.
+  const ahead = { token: { cancelled: false }, busy: false, shownAt: -1 };
+  ctx.add({ dispose: () => { ahead.token.cancelled = true; } });
+  function prefetchAhead() {
+    if (ctx.disposed() || ahead.busy || ahead.token.cancelled) return;
+    for (let k = index + 1; k < queue.length; k++) {
+      const nq = questions.get(queue[k].questionId);
+      if (!nq || !stNeedsAnswerRubric(nq)) continue;
+      if (stAnswerRubricInFlight(nq.id)) return;
+      const made = stPrefetchAnswerRubric(nq, { modelId, numCtx, token: ahead.token });
+      if (!made) return;
+      ahead.busy = true;
+      ahead.shownAt = index;
+      void made.catch(() => {}).then(() => {
+        ahead.busy = false;
+        // He moved on while it was being made: the one after the card now on screen is next.
+        if (!ctx.disposed() && current && ahead.shownAt !== index) prefetchAhead();
+      });
+      return;
+    }
   }
 
   function buildOptions(card, cur) {
@@ -1140,10 +1167,8 @@ async function renderSession(host, route, ctx) {
     if (fmt === 'numeric') return 'A number, within the tolerance the question sets.';
     if (fmt === 'formula') return 'Compared after normalising; the model reads it when it differs.';
     if (fmt === 'cloze') return 'The term the blank stands for.';
-    const n = Array.isArray(q.rubric) ? q.rubric.length : 0;
-    if (q.rubricOrigin === 'report') return "Graded against the examiner's report for this question.";
-    if (n) return `Graded against ${n} ${n === 1 ? 'point' : 'points'} from the ${q.rubricOrigin === 'answer' ? 'answer' : 'source'}.`;
-    return 'Graded against the model answer.';
+    // A written answer has no hint of its own: what it is marked against is the grader's business, not his.
+    return '';
   }
 
   function buildTyped(card, cur) {
@@ -1180,7 +1205,8 @@ async function renderSession(host, route, ctx) {
     cur.saver = stDraftSaver(cur.item);
     field.addEventListener('input', () => cur.saver.set(field.value));
     const hint = el('div', 'st-ta__hint');
-    hint.appendChild(el('span', '', typedHint(q, fmt)));
+    const hintText = typedHint(q, fmt);
+    if (hintText) hint.appendChild(el('span', '', hintText));
     const enterWord = isTest ? 'Enter for the next question' : 'Enter to check';
     hint.appendChild(el('span', '', fmt === 'short' || fmt === 'essay' ? `${enterWord} · Shift+Enter for a new line` : enterWord));
     ta.appendChild(hint);

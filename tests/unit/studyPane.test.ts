@@ -48,6 +48,7 @@ import { renderMarkdown } from '../../src/ui/renderMarkdown.js';
 import { getIcon, hasIcon, registerIcon } from '../../src/ui/iconRegistry.js';
 // @ts-expect-error — JS module with no types
 import { activate, deactivate, __testables } from '../../ext/study/main.js';
+import { fakeDoor } from './fixtures/studyFakeDoor';
 
 type AnyRec = Record<string, any>;
 const T = __testables as AnyRec;
@@ -1534,7 +1535,8 @@ describe('Study end to end', () => {
       const qr = currentQuestion(h);
       const rubric = JSON.parse(qr.rubric_json);
       expect(rubric.length).toBe(3);
-      expect(qa(q(h, '.st-ta__hint'), 'span').map(text)).toEqual(['Graded against 3 points from the source.', 'Enter to check · Shift+Enter for a new line']);
+      // The hint under the box says how to check, not what the answer is graded against.
+      expect(qa(q(h, '.st-ta__hint'), 'span').map(text)).toEqual(['Enter to check · Shift+Enter for a new line']);
       expect(text(q(btn(h, 'Check'), '.px-btn__label'))).toBe('Check');
       const field = q<HTMLTextAreaElement>(h, 'textarea.st-ta__field')!;
       field.value = typedAnswer(rubric, plan);
@@ -2013,6 +2015,136 @@ describe('Study end to end', () => {
     const line = QUESTIONS_MD.split('\n').findIndex((l) => l === `Q: ${cur.stem}`) + 1;
     expect(line).toBeGreaterThan(0);
     expect(env.calls.openFileEditor[0]).toEqual({ uri: 'file:///ws/banks/questions.md', options: { reveal: { line }, side: true } });
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 8c. A subject's own questions: no wait before the first one
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /** A subject "Exam 7" over his Questions database: 22 questions of unit Taylor, each with a written answer and no rubric. */
+  async function taylorSubject() {
+    const fake = fakeDoor();
+    env.api.canvas = { databases: fake.door };
+    env.settings.sessionSize = 20; // his session size
+    await boot();
+    const rows = Array.from({ length: 22 }, (_, i) => ({
+      title: `Taylor question ${i + 1}: why does the reserve change in case ${i + 1}?`,
+      values: { 'Model Answer': `The reserve changes because case ${i + 1} moves the development. The tail factor follows the case.`, Paper: 'Taylor' },
+    }));
+    const bank = fake.person.database('Questions', [{ name: 'Model Answer', type: 'text' }, { name: 'Paper', type: 'select', options: ['Taylor'] }], rows);
+    const subject = await T.stCreateSubject({ name: 'Exam 7', questionsDb: bank.id });
+    await waitFor(() => one("SELECT COUNT(*) AS n FROM st_questions WHERE stem LIKE 'Taylor question%'").n === 22, 'the 22 questions');
+    expect(all("SELECT rubric_json FROM st_questions WHERE stem LIKE 'Taylor question%'").every((r) => JSON.parse(r.rubric_json || '[]').length === 0)).toBe(true);
+    return { subject, scope: T.stSubjectScope(subject, 'Taylor') };
+  }
+  /** The draw's questions, in the order the session asks them. */
+  const drawStems = (sessionId: number): string[] => all('SELECT q.stem FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? ORDER BY i.ord', sessionId).map((r) => r.stem);
+  const rubricCalls = () => env.lmCalls.filter((c) => c.kind === 'rubric');
+
+  it('8c. Start on a subject unit of 22 questions with no rubric opens on the first question with no model call; the next one\'s marking points are made while it is on screen', async () => {
+    const { scope } = await taylorSubject();
+    const before = env.lmCalls.length;
+    const hold = holdLm('rubric');
+    const session = await T.stStartSession({ scope, mode: 'practice', answerFormat: 'type', model: '', numCtx: 0 });
+    // The session's tab opens on its first question; nothing was asked of the model to get there.
+    const tab = `session-${session.id}`;
+    expect(latestSessionTab()).toBe(tab);
+    const h = await waitFor(() => { const host = paneHost(tab); return host && q(host, '.st-card') ? host : null; }, 'the first card');
+    expect(q(h, '.st-gen')).toBeNull();
+    const stems = drawStems(session.id);
+    expect(stems.length).toBe(20);
+    expect(norm(text(q(h, '.st-card__q')))).toBe(norm(stems[0]));
+    // While question 1 is shown: one call, for question 2, and only one.
+    await waitFor(() => hold.reached, 'the marking points for question 2');
+    expect(env.lmCalls.slice(0, before).length).toBe(before);
+    const made = env.lmCalls.slice(before);
+    expect(made.map((c) => c.kind)).toEqual(['rubric']);
+    expect(made[0].user).toContain(`Question:\n${stems[1]}`);
+    expect(made[0].maxTokens).toBeUndefined();
+    hold.release();
+    await waitFor(() => JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[1]).rubric_json || '[]').length > 0, 'question 2 keeps its points');
+    await settle(20);
+    expect(rubricCalls().length).toBe(1);
+    expect(one('SELECT rubric_origin FROM st_questions WHERE stem = ?', stems[1]).rubric_origin).toBe('answer');
+    // Neither the old header label nor the line under the box says what it is graded against.
+    expect(text(h)).not.toMatch(/rubric from the answer|Graded against/);
+  });
+
+  it('8d. Enter on a question whose marking points are still being made waits for them: no second call; ending the session stops the one in flight', async () => {
+    const { scope } = await taylorSubject();
+    const session = await T.stStartSession({ scope, mode: 'practice', answerFormat: 'type', model: '', numCtx: 0 });
+    const tab = `session-${session.id}`;
+    const h = await waitFor(() => { const host = paneHost(tab); return host && q(host, '.st-card') ? host : null; }, 'the first card');
+    const stems = drawStems(session.id);
+    // Question 2's points are made while question 1 is on screen.
+    await waitFor(() => rubricCalls().length === 1 && JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[1]).rubric_json || '[]').length > 0, 'question 2\'s points');
+    // Question 1 has none yet: Check makes them, as the grader always has, once.
+    let field = q<HTMLTextAreaElement>(h, 'textarea.st-ta__field')!;
+    field.value = 'The reserve changes because the case moves the development.';
+    key(h, 'Enter', field);
+    await waitFor(() => q(h, '.st-fb--show'), 'question 1 marked');
+    expect(rubricCalls().filter((c) => c.user.includes(`Question:\n${stems[0]}\n`)).length).toBe(1);
+    // Question 3's points are held in flight while he moves to question 2 and on to 3.
+    const hold3 = holdLm('rubric');
+    key(h, 'Enter');
+    await cardLeft(h);
+    expect(norm(text(q(h, '.st-card__q')))).toBe(norm(stems[1]));
+    await waitFor(() => hold3.reached, 'question 3\'s points asked for');
+    const third = rubricCalls().at(-1)!;
+    expect(third.user).toContain(`Question:\n${stems[2]}\n`);
+    // Question 2 came with its points: Check asks only the marker.
+    const callsBefore2 = env.lmCalls.length;
+    field = q<HTMLTextAreaElement>(h, 'textarea.st-ta__field')!;
+    field.value = 'The case moves the development.';
+    key(h, 'Enter', field);
+    await waitFor(() => q(h, '.st-fb--show'), 'question 2 marked');
+    expect(env.lmCalls.slice(callsBefore2).map((c) => c.kind)).toEqual(['grade']);
+    key(h, 'Enter');
+    await cardLeft(h);
+    expect(norm(text(q(h, '.st-card__q')))).toBe(norm(stems[2]));
+    // Enter on question 3 while its points are still being made: it waits for them, it does not ask again.
+    field = q<HTMLTextAreaElement>(h, 'textarea.st-ta__field')!;
+    field.value = 'The tail factor follows the case.';
+    const callsBefore3 = env.lmCalls.length;
+    key(h, 'Enter', field);
+    await settle(30);
+    expect(q(h, '.st-fb--show')).toBeNull();
+    expect(env.lmCalls.slice(callsBefore3).map((c) => c.kind)).toEqual([]);
+    hold3.release();
+    await waitFor(() => q(h, '.st-fb--show'), 'question 3 marked');
+    expect(rubricCalls().filter((c) => c.user.includes(`Question:\n${stems[2]}\n`)).length).toBe(1);
+    expect(env.lmCalls.slice(callsBefore3).map((c) => c.kind).filter((k) => k !== 'rubric')).toEqual(['grade']);
+    // Moving on starts question 5's points (4 is being made now or made): end the session while one is in flight.
+    await waitFor(() => rubricCalls().some((c) => c.user.includes(`Question:\n${stems[3]}\n`)), 'question 4\'s points');
+    const hold5 = holdLm('rubric');
+    key(h, 'Enter');
+    await cardLeft(h);
+    await waitFor(() => hold5.reached, 'question 5\'s points asked for');
+    expect(rubricCalls().at(-1)!.user).toContain(`Question:\n${stems[4]}\n`);
+    const asked = rubricCalls().length;
+    // He ends the session with the call in flight: what it brings back is dropped, and nothing more is asked.
+    key(h, 'Escape');
+    await waitFor(() => q(h, '.st-res') || !q(h, '.st-sess'), 'the session ended');
+    hold5.release();
+    await settle(40);
+    expect(JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[4]).rubric_json || '[]')).toEqual([]);
+    expect(rubricCalls().length).toBe(asked);
+  });
+
+  it('8e. with no model, Start on his own questions still opens the session, and Check says plainly that no model is there to mark it', async () => {
+    const { scope } = await taylorSubject();
+    env.noModels = true;
+    const session = await T.stStartSession({ scope, mode: 'practice', answerFormat: 'type', model: '', numCtx: 0 });
+    const tab = `session-${session.id}`;
+    const h = await waitFor(() => { const host = paneHost(tab); return host && q(host, '.st-card') ? host : null; }, 'the first card');
+    await settle(20);
+    expect(env.lmCalls.length).toBe(0);
+    const field = q<HTMLTextAreaElement>(h, 'textarea.st-ta__field')!;
+    field.value = 'The reserve changes.';
+    key(h, 'Enter', field);
+    await waitFor(() => q(h, '.st-fb--show'), 'the feedback');
+    expect(text(q(h, '.st-fb'))).toContain('No model is available to grade with.');
+    expect(env.lmCalls.length).toBe(0);
   });
 
   // ═════════════════════════════════════════════════════════════════════════

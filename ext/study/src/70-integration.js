@@ -355,14 +355,10 @@ async function stPickWorkspaceFile(exts, placeholder) {
 async function stSessionNeedsGeneration(session) {
   const scope = stScopeOf(session);
   const size = Number(session?.size) || Number(cfg('sessionSize', 20)) || 20;
-  // A bank is never generated into, but its short and essay questions get a
-  // rubric from their answer when first drawn: that model work goes through
-  // the generating screen too, never invisibly.
-  if (stFixedScope(scope)) {
-    if (typeof stScopeStats !== 'function') return false;
-    const stats = await stScopeStats(scope);
-    return (Number(stats && stats.needsRubric) || 0) > 0;
-  }
+  // A bank (a subject's unit among them) is never generated into, and its
+  // draw asks no model: the marking points a question lacks are made just
+  // ahead of it in the session (stPrefetchAnswerRubric), so it opens at once.
+  if (stFixedScope(scope)) return false;
   if (typeof stScopeQuestionCount === 'function') return (Number(await stScopeQuestionCount(scope)) || 0) < size;
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
   const [questions, concepts] = await Promise.all([

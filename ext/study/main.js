@@ -7288,15 +7288,10 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     }
   }
   if (!rubric.length && reference && format !== 'mc') {
-    const derived = await stRubricFromAnswer(question, { modelId, numCtx });
-    if (derived.length) {
-      rubric = derived;
-      if (question.id) {
-        question.rubric = derived;
-        question.rubricOrigin = 'answer';
-        try { await stUpdateQuestion(question); } catch { /* grading still proceeds */ }
-      }
-    }
+    // Made just ahead while the question was on screen (stPrefetchAnswerRubric), or
+    // being made now: that one is waited for, never asked for twice.
+    const derived = await stAnswerRubric(question, { modelId, numCtx });
+    if (derived.length) rubric = derived;
   }
   if (!rubric.length && reference) rubric = [{ text: reference, required: true }];
   if (!rubric.length) throw new Error('This question has no reference answer, so it has been left out.');
@@ -7365,8 +7360,69 @@ async function stExplain(question, { chosen = null, typed = '', modelId = '', nu
   return out;
 }
 
-/** Derive a rubric from a bank question's answer (origin 'answer'). [] when the model gives nothing. */
-async function stRubricFromAnswer(question, { modelId = '', numCtx = 0 } = {}) {
+// ── Marking points made just ahead ──────────────────────────────────────────
+// A bank question with an answer and no rubric gets its marking points from
+// its answer the first time it is marked. A session makes them for the next
+// such question while he answers the one on screen, so Check is no slower;
+// the grader waits for one being made instead of asking the model again.
+
+/** Marking points being made, by question id: { promise, token }. */
+const _stAnswerRubrics = new Map();
+
+/** Are a question's marking points being made from its answer right now? */
+function stAnswerRubricInFlight(questionId) {
+  return _stAnswerRubrics.has(Number(questionId) || 0);
+}
+
+/** Start making a question's marking points from its answer, stored on it (origin 'answer') when they come. */
+function stStartAnswerRubric(question, { modelId = '', numCtx = 0, token = null } = {}) {
+  const id = Number(question && question.id) || 0;
+  const entry = { token: token || { cancelled: false }, promise: null };
+  entry.promise = (async () => {
+    const rubric = await stRubricFromAnswer(question, { modelId, numCtx, token: entry.token });
+    if (entry.token.cancelled || !rubric.length) return rubric;
+    question.rubric = rubric;
+    question.rubricOrigin = 'answer';
+    if (id) { try { await stUpdateQuestion(question); } catch { /* grading still proceeds */ } }
+    return rubric;
+  })().finally(() => { if (_stAnswerRubrics.get(id) === entry) _stAnswerRubrics.delete(id); });
+  if (id) _stAnswerRubrics.set(id, entry);
+  return entry;
+}
+
+/**
+ * The marking points for a short or essay question made from its answer, for
+ * the grader: the ones already being made are waited for (a prefetch stopped
+ * before it ended is made again here), else they are made now. [] when the
+ * model gives none.
+ */
+async function stAnswerRubric(question, { modelId = '', numCtx = 0 } = {}) {
+  const id = Number(question && question.id) || 0;
+  const running = id ? _stAnswerRubrics.get(id) : null;
+  if (running) {
+    const got = (await running.promise) || [];
+    if (!running.token.cancelled) {
+      if (got.length && !stNormalizeRubric(question.rubric).length) { question.rubric = got; question.rubricOrigin = 'answer'; }
+      return got;
+    }
+    if (stNormalizeRubric(question.rubric).length) return stNormalizeRubric(question.rubric);
+  }
+  return (await stStartAnswerRubric(question, { modelId, numCtx }).promise) || [];
+}
+
+/**
+ * Make the marking points of a question ahead of its turn, quietly, when it
+ * needs them and none are being made for it. Returns the promise, or null
+ * when there was nothing to make. `token.cancelled` stops the model call.
+ */
+function stPrefetchAnswerRubric(question, { modelId = '', numCtx = 0, token = null } = {}) {
+  if (!question || !question.id || !stNeedsAnswerRubric(question) || stAnswerRubricInFlight(question.id)) return null;
+  if (token && token.cancelled) return null;
+  return stStartAnswerRubric(question, { modelId, numCtx, token }).promise;
+}
+
+/** Derive a rubric from a bank question's answer (origin 'answer'). [] when the model gives nothing or `token` stops it. */
+async function stRubricFromAnswer(question, { modelId = '', numCtx = 0, token = null } = {}) {
   const reference = String(question.answer || '').trim();
   if (!reference) return [];
   let model = modelId;
@@ -7380,10 +7436,11 @@ async function stRubricFromAnswer(question, { modelId = '', numCtx = 0 } = {}) {
   ].filter((l) => l !== '').join('\n');
   try {
     const plan = await stPlanFor(model, null, numCtx);
-    const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true });
+    const output = await stChat(model, ST_RUBRIC_SYSTEM, user, { temperature: ST_TEMP_RUBRIC, numCtx: plan.numCtx, json: true, token });
     const raw = stJsonObjectFrom(output);
     return stNormalizeRubric(raw && (raw.rubric || raw.points));
   } catch (err) {
+    if (token && token.cancelled) return [];
     console.warn('[Study] rubric derivation failed:', err && err.message);
     return [];
   }
@@ -7602,7 +7659,7 @@ function stNeedsAnswerRubric(q) {
  * What a scope holds now: `available` usable questions (the same pool as
  * stNextDraw), `unanswerable` ones left out (no answer and no rubric), and
  * `needsRubric`, the short and essay ones whose rubric is made from the
- * answer when first drawn.
+ * answer, just ahead of their turn in a session.
  */
 async function stScopeStats(scope) {
   const pool = await stScopePool(scope || {});
@@ -7913,31 +7970,13 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
 }
 
 /**
- * Rubrics for the drawn short and essay questions that have an answer and
- * no rubric (bank questions), made from the answer and stored with
- * rubric_origin 'answer', before the session shows them.
- */
-async function stDeriveDrawRubrics(draw, session, { token = null, onProgress = null } = {}) {
-  const todo = draw.filter(stNeedsAnswerRubric);
-  for (let k = 0; k < todo.length; k++) {
-    if (token && token.cancelled) return;
-    const q = todo[k];
-    const p = { phase: 'rubric', rubricsDone: k, rubricsTotal: todo.length, sessionId: session.id };
-    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    const rubric = await stRubricFromAnswer(q, { modelId: session.model, numCtx: session.numCtx });
-    if (!rubric.length) continue;
-    q.rubric = rubric;
-    q.rubricOrigin = 'answer';
-    try { await stUpdateQuestion(q); } catch { /* grading derives it again */ }
-  }
-}
-
-/**
  * The next draw for a session: top the bank up when fewer than `size`
  * unseen questions remain (never for a bank scope: there is nothing to
  * generate from), draw with stDrawSession excluding everything the session
- * already holds, give bank questions their concepts and rubrics, and record
- * the items. When the scope still has fewer than `size` unseen questions
+ * already holds, give bank questions their concepts, and record the items.
+ * A bank question's marking points are not made here: the session makes them
+ * just ahead of each one (stPrefetchAnswerRubric), so a bank session opens at
+ * once. When the scope still has fewer than `size` unseen questions
  * after that, the draw is filled with questions this session already asked
  * (stRepeatFill: missed first, then retried, then the oldest answered),
  * never one twice, materials still interleaved. Returns the questions in
@@ -7980,7 +8019,6 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
     if (repeats) draw = stInterleaveMaterials(fresh.concat(again));
   }
   if (!draw.length) return empty();
-  await stDeriveDrawRubrics(draw, session, { token, onProgress });
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
   return Object.assign(draw, { unanswerable: pool.unanswerable, repeats });
@@ -9725,7 +9763,6 @@ function stRunNowText(p, run, { names = true } = {}) {
     const what = { anchor: 'Finding the quote in the material', support: 'Checking the quote supports the answer', distractor: 'Checking the wrong options', numeric: 'Running the calculation' }[phase.slice(6)] || 'Checking a question';
     return `${what}${concept ? ` for ${concept}` : ''}`;
   }
-  if (phase === 'rubric') return 'Writing marking guides';
   return 'Starting';
 }
 
@@ -9905,14 +9942,16 @@ async function renderGenerating(host, route, ctx) {
   if (!modelId) { try { modelId = (await stPickModel(primary)) || ''; } catch { modelId = ''; } }
 
   const gen = stBlock(host, 'div', 'st-gen');
-  // A bank is never written to: the screen only bridges the draw.
+  // A bank is never written to and its draw asks no model: the screen only
+  // bridges the moment its questions are picked, and says just that (no
+  // counters of question-making, no Stop).
   const isBank = stFixedScope(scope);
-  stBlock(gen, 'div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`);
+  stBlock(gen, 'div', 'st-gen__t', isBank ? `Opening ${scope.label || session.name}` : `Making questions for ${scope.label || session.name}`);
   const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
   const sub = stBlock(gen, 'div', 'st-gen__s');
   const now = isBank ? stBlock(null, 'div', 'st-gen__now') : stBlock(gen, 'div', 'st-gen__now');
-  const fill = stBlock(stBlock(gen, 'div', 'st-gen__bar'), 'span', 'st-gen__fill');
-  const line = stBlock(gen, 'div', 'st-genline');
+  const fill = stBlock(stBlock(isBank ? null : gen, 'div', 'st-gen__bar'), 'span', 'st-gen__fill');
+  const line = stBlock(isBank ? null : gen, 'div', 'st-genline');
   const checks = stBlock(isBank ? null : gen, 'div', 'st-checks');
   const checkRow = (key, label) => {
     const ck = stBlock(null, 'div', 'st-ck');
@@ -9932,7 +9971,7 @@ async function renderGenerating(host, route, ctx) {
   const unusable = checkRow('parse', 'Unusable model output');
   const acts = stBlock(gen, 'div', 'st-gen__acts');
   stBlock(acts, 'span', 'st-gen__hint', isBank ? '' : 'The session opens on the first question as soon as it is ready.');
-  const stopBtn = _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', command: 'study.stopMaking', args: [session.id] });
+  const stopBtn = isBank ? null : _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', command: 'study.stopMaking', args: [session.id] });
 
   const run = stRunFor(session);
   let settling = false;
@@ -9940,7 +9979,7 @@ async function renderGenerating(host, route, ctx) {
     if (ctx.disposed() || settling) return;
     const p = run.progress;
     const ready = Math.min(size, run.held);
-    sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
+    sub.textContent = isBank ? 'Picking this session\'s questions from your bank. No model is needed for this.' : `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
     // Before the first question there is no count to draw: the bar follows the run's own steps.
     const total = Number(p.total) || 0;
     fill.style.width = `${total ? Math.min(100, Math.round(((Number(p.done) || 0) / total) * 100)) : 0}%`;
@@ -9973,7 +10012,7 @@ async function renderGenerating(host, route, ctx) {
       unusable.n.textContent = `${parsed} dropped`;
       if (!unusable.ck.parentNode) checks.appendChild(unusable.ck);
     } else if (unusable.ck.parentNode) unusable.ck.remove();
-    stopBtn.disabled = run.done || run.token.cancelled;
+    if (stopBtn) stopBtn.disabled = run.done || run.token.cancelled;
     if (run.held > 0 || run.done) void settle();
   };
 
@@ -10513,10 +10552,9 @@ function stAfterAnimation(node, timeoutMs) {
   });
 }
 
-/** What the eyebrow says a bank question is graded against. */
+/** What the eyebrow says of a bank question's origin beside its label. What
+ *  it is graded against (a report, points from its answer) is not said. */
 function stRubricOriginText(q) {
-  if (q.rubricOrigin === 'report') return "graded against the examiner's report";
-  if (q.rubricOrigin === 'answer') return 'rubric from the answer';
   if (q.origin === 'rising-fellow') return 'Rising Fellow';
   if (q.origin === 'provider' && q.originLabel) return '';
   return '';
@@ -11491,6 +11529,34 @@ async function renderSession(host, route, ctx) {
     cur.nextBtn.appendChild(el('span', 'st-k', '↵'));
 
     queueMicrotask(() => { if (current !== cur || ctx.disposed()) return; if (cur.typedField) cur.typedField.focus(); else ctx.root.focus(); });
+    prefetchAhead();
+  }
+
+  // ── Marking points made just ahead ──
+  // While a question is on screen, the next one in the draw whose marking
+  // points are still to be made from its answer gets them, quietly: one
+  // model call at a time, stopped when this screen goes (End Session, the
+  // tab closing, another view), so Check on it is no slower than on a
+  // question that came with its points. The grader waits for one in flight.
+  const ahead = { token: { cancelled: false }, busy: false, shownAt: -1 };
+  ctx.add({ dispose: () => { ahead.token.cancelled = true; } });
+  function prefetchAhead() {
+    if (ctx.disposed() || ahead.busy || ahead.token.cancelled) return;
+    for (let k = index + 1; k < queue.length; k++) {
+      const nq = questions.get(queue[k].questionId);
+      if (!nq || !stNeedsAnswerRubric(nq)) continue;
+      if (stAnswerRubricInFlight(nq.id)) return;
+      const made = stPrefetchAnswerRubric(nq, { modelId, numCtx, token: ahead.token });
+      if (!made) return;
+      ahead.busy = true;
+      ahead.shownAt = index;
+      void made.catch(() => {}).then(() => {
+        ahead.busy = false;
+        // He moved on while it was being made: the one after the card now on screen is next.
+        if (!ctx.disposed() && current && ahead.shownAt !== index) prefetchAhead();
+      });
+      return;
+    }
   }
 
   function buildOptions(card, cur) {
@@ -11519,10 +11585,8 @@ async function renderSession(host, route, ctx) {
     if (fmt === 'numeric') return 'A number, within the tolerance the question sets.';
     if (fmt === 'formula') return 'Compared after normalising; the model reads it when it differs.';
     if (fmt === 'cloze') return 'The term the blank stands for.';
-    const n = Array.isArray(q.rubric) ? q.rubric.length : 0;
-    if (q.rubricOrigin === 'report') return "Graded against the examiner's report for this question.";
-    if (n) return `Graded against ${n} ${n === 1 ? 'point' : 'points'} from the ${q.rubricOrigin === 'answer' ? 'answer' : 'source'}.`;
-    return 'Graded against the model answer.';
+    // A written answer has no hint of its own: what it is marked against is the grader's business, not his.
+    return '';
   }
 
   function buildTyped(card, cur) {
@@ -11559,7 +11623,8 @@ async function renderSession(host, route, ctx) {
     cur.saver = stDraftSaver(cur.item);
     field.addEventListener('input', () => cur.saver.set(field.value));
     const hint = el('div', 'st-ta__hint');
-    hint.appendChild(el('span', '', typedHint(q, fmt)));
+    const hintText = typedHint(q, fmt);
+    if (hintText) hint.appendChild(el('span', '', hintText));
     const enterWord = isTest ? 'Enter for the next question' : 'Enter to check';
     hint.appendChild(el('span', '', fmt === 'short' || fmt === 'essay' ? `${enterWord} · Shift+Enter for a new line` : enterWord));
     ta.appendChild(hint);
@@ -13905,14 +13970,10 @@ async function stPickWorkspaceFile(exts, placeholder) {
 async function stSessionNeedsGeneration(session) {
   const scope = stScopeOf(session);
   const size = Number(session?.size) || Number(cfg('sessionSize', 20)) || 20;
-  // A bank is never generated into, but its short and essay questions get a
-  // rubric from their answer when first drawn: that model work goes through
-  // the generating screen too, never invisibly.
-  if (stFixedScope(scope)) {
-    if (typeof stScopeStats !== 'function') return false;
-    const stats = await stScopeStats(scope);
-    return (Number(stats && stats.needsRubric) || 0) > 0;
-  }
+  // A bank (a subject's unit among them) is never generated into, and its
+  // draw asks no model: the marking points a question lacks are made just
+  // ahead of it in the session (stPrefetchAnswerRubric), so it opens at once.
+  if (stFixedScope(scope)) return false;
   if (typeof stScopeQuestionCount === 'function') return (Number(await stScopeQuestionCount(scope)) || 0) < size;
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
   const [questions, concepts] = await Promise.all([

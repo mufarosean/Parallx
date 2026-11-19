@@ -58,7 +58,6 @@ function stRunNowText(p, run, { names = true } = {}) {
     const what = { anchor: 'Finding the quote in the material', support: 'Checking the quote supports the answer', distractor: 'Checking the wrong options', numeric: 'Running the calculation' }[phase.slice(6)] || 'Checking a question';
     return `${what}${concept ? ` for ${concept}` : ''}`;
   }
-  if (phase === 'rubric') return 'Writing marking guides';
   return 'Starting';
 }
 
@@ -238,14 +237,16 @@ async function renderGenerating(host, route, ctx) {
   if (!modelId) { try { modelId = (await stPickModel(primary)) || ''; } catch { modelId = ''; } }
 
   const gen = stBlock(host, 'div', 'st-gen');
-  // A bank is never written to: the screen only bridges the draw.
+  // A bank is never written to and its draw asks no model: the screen only
+  // bridges the moment its questions are picked, and says just that (no
+  // counters of question-making, no Stop).
   const isBank = stFixedScope(scope);
-  stBlock(gen, 'div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`);
+  stBlock(gen, 'div', 'st-gen__t', isBank ? `Opening ${scope.label || session.name}` : `Making questions for ${scope.label || session.name}`);
   const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
   const sub = stBlock(gen, 'div', 'st-gen__s');
   const now = isBank ? stBlock(null, 'div', 'st-gen__now') : stBlock(gen, 'div', 'st-gen__now');
-  const fill = stBlock(stBlock(gen, 'div', 'st-gen__bar'), 'span', 'st-gen__fill');
-  const line = stBlock(gen, 'div', 'st-genline');
+  const fill = stBlock(stBlock(isBank ? null : gen, 'div', 'st-gen__bar'), 'span', 'st-gen__fill');
+  const line = stBlock(isBank ? null : gen, 'div', 'st-genline');
   const checks = stBlock(isBank ? null : gen, 'div', 'st-checks');
   const checkRow = (key, label) => {
     const ck = stBlock(null, 'div', 'st-ck');
@@ -265,7 +266,7 @@ async function renderGenerating(host, route, ctx) {
   const unusable = checkRow('parse', 'Unusable model output');
   const acts = stBlock(gen, 'div', 'st-gen__acts');
   stBlock(acts, 'span', 'st-gen__hint', isBank ? '' : 'The session opens on the first question as soon as it is ready.');
-  const stopBtn = _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', command: 'study.stopMaking', args: [session.id] });
+  const stopBtn = isBank ? null : _api.ui.createButton(acts, { id: 'study.generating.stop', label: 'Stop', icon: 'circle-stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', command: 'study.stopMaking', args: [session.id] });
 
   const run = stRunFor(session);
   let settling = false;
@@ -273,7 +274,7 @@ async function renderGenerating(host, route, ctx) {
     if (ctx.disposed() || settling) return;
     const p = run.progress;
     const ready = Math.min(size, run.held);
-    sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
+    sub.textContent = isBank ? 'Picking this session\'s questions from your bank. No model is needed for this.' : `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
     // Before the first question there is no count to draw: the bar follows the run's own steps.
     const total = Number(p.total) || 0;
     fill.style.width = `${total ? Math.min(100, Math.round(((Number(p.done) || 0) / total) * 100)) : 0}%`;
@@ -306,7 +307,7 @@ async function renderGenerating(host, route, ctx) {
       unusable.n.textContent = `${parsed} dropped`;
       if (!unusable.ck.parentNode) checks.appendChild(unusable.ck);
     } else if (unusable.ck.parentNode) unusable.ck.remove();
-    stopBtn.disabled = run.done || run.token.cancelled;
+    if (stopBtn) stopBtn.disabled = run.done || run.token.cancelled;
     if (run.held > 0 || run.done) void settle();
   };
 

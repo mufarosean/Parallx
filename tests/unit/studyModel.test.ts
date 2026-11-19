@@ -1177,7 +1177,7 @@ describe('banks are studiable', () => {
     '---', '## Three', 'Q: Discuss the reserve range.',
   ].join('\n');
 
-  it('draws a bank scope without generating: concepts made on first draw, rubrics from answers, unanswerable left out', async () => {
+  it('draws a bank scope without generating or any model call: concepts made on first draw, rubrics from answers when first marked, unanswerable left out', async () => {
     const h = harness({ files: { 'file:///ws/q.md': FILE } });
     const { bank, inserted } = await h.S.stImportQuestionFile('/ws/q.md');
     expect(inserted).toBe(3);
@@ -1190,9 +1190,16 @@ describe('banks are studiable', () => {
     expect(draw).toHaveLength(2);
     expect(draw.unanswerable).toBe(1);
     expect(h.count('You write questions') + h.count('You read a passage')).toBe(0);
-    const qs = await h.S.stListQuestions({ bankIds: [bank.id] });
-    const one = qs.find((q: any) => q.stem.startsWith('Explain'));
+    // The draw asks no model: a question's marking points are made just ahead of it in the session, or when it is marked.
+    expect(h.calls).toHaveLength(0);
+    let qs = await h.S.stListQuestions({ bankIds: [bank.id] });
+    let one = qs.find((q: any) => q.stem.startsWith('Explain'));
     expect(one.conceptId).toBeGreaterThan(0);
+    expect(one.rubric).toEqual([]);
+    await h.S.stGradeTyped(one, 'It fits one expected loss ratio for every year.', {});
+    expect(h.count('You reduce a model answer')).toBe(1);
+    qs = await h.S.stListQuestions({ bankIds: [bank.id] });
+    one = qs.find((q: any) => q.stem.startsWith('Explain'));
     expect(one).toMatchObject({ rubricOrigin: 'answer' });
     expect(one.rubric).toEqual([{ text: 'names the right method', required: true }, { text: 'gives the reason', required: false }]);
     expect(qs.find((q: any) => q.stem.startsWith('State')).rubricOrigin).toBe('source');
