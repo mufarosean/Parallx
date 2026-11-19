@@ -246,6 +246,7 @@ const GATE_RULES: Record<string, string[]> = {
   'database/databaseMeta.ts':              ['database/databaseDataService'],  // description, lock and settings of a database
   'database/rowCompute.ts':                ['database/databaseTypes', 'properties/propertyTypes'],  // computed values of a row (pure)
   'database/uniqueIds.ts':                 ['database/databaseDataService', 'database/databaseTypes'],  // the ID property's numbers
+  'database/bulkRows.ts':                  ['database/databaseDataService', 'database/databaseTypes', 'database/cellValues', 'database/keptColumns', 'canvasTypes'],  // many rows of one database written at once
   'properties/propertyTypeMeta.ts':        ['properties/propertyTypes'],  // the one list of property types
   'properties/propertyEditorsMore.ts':     ['properties/propertyTypes', 'properties/propertyEditors', 'database/cellRender', 'imageStore'],  // editors for the round-2 types (kit-built)
   'database/viewShared.ts':                ['database/databaseTypes', 'database/viewConfig', 'database/cellRender', 'database/boardCardKeys'],  // what every view shares: deps, the card

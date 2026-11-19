@@ -13366,7 +13366,7 @@ async function renderPlan(host, route, ctx) {
   const head = ui.createBlock(inner, 'div', { className: 'st-plan__head' });
   const opens = ui.createBlock(inner, 'div', { className: 'st-plan__opens', attrs: { role: 'group', 'aria-label': 'The plan\'s databases' } });
   for (const [label, key] of [['Open Days', 'daysDb'], ['Open Week', 'weekDb'], ['Open Phases', 'phasesDb'], ['Open Plan Settings', 'planDb']]) {
-    ui.createButton(opens, { id: `study.plan.${key}`, label, icon: 'database', kind: 'ghost', size: 'sm', title: `${label.replace('Open ', 'Open the ')} database.`, onClick: () => void stOpenSubjectDatabase(plan[key]) });
+    ui.createButton(opens, { id: `study.plan.${key}`, label, icon: 'database', kind: 'ghost', size: 'sm', title: `${label.replace('Open ', 'Open the ')} database.`, command: 'canvas.openPage', args: [plan[key]] });
   }
   const body = ui.createBlock(inner, 'div', { className: 'st-plan__body' });
   const expanded = new Set();
@@ -13456,9 +13456,10 @@ async function renderPlan(host, route, ctx) {
       const said = stPlanFitWords(p.fit, p.per[view.following]);
       ui.createBlock(fit, 'span', { className: short ? 'st-plan__needs' : 'st-plan__fits', text: said.charAt(0).toUpperCase() + said.slice(1) });
       const open = expanded.has(p.id);
-      const btn = ui.createButton(fit, { id: `study.plan.fit.${p.id}`, label: open ? 'Hide Plans' : 'All Plans', kind: 'ghost', size: 'sm', title: `${p.name}: what its work needs in each of the three plans.`, onClick: () => { if (expanded.has(p.id)) expanded.delete(p.id); else expanded.add(p.id); paint(); } });
-      btn.setAttribute('aria-expanded', String(open));
-      btn.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
+      // A switch: the other two plans shown or not, kept while the tab is open; Escape on it hides them.
+      const all = ui.createToggle(fit, { id: `study.plan.fit.${p.id}`, label: 'All Plans', checked: open, onChange: (on) => { if (on) expanded.add(p.id); else expanded.delete(p.id); paint(); } });
+      parts.push(all);
+      all.element.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
       if (open) {
         const all = ui.createBlock(li, 'div', { className: 'st-plan__all' });
         for (const pl of ST_PLAN_PLANS) ui.createBlock(all, 'span', { text: `${pl} ${stPlanFitWords(p.fit, p.per[pl])}` });
@@ -13489,8 +13490,6 @@ async function renderPlan(host, route, ctx) {
     const box = ui.createBlock(body, 'section', { className: 'st-plan__sec st-plan__days', attrs: { 'aria-label': 'Every day' } });
     const bar = ui.createBlock(box, 'div', { className: 'st-plan__daysbar' });
     ui.createBlock(bar, 'h2', { className: 'st-plan__h', text: 'Every day' });
-    const todayRow = view.weeks.some((w) => w.days.some((d) => d.today));
-    if (todayRow) ui.createButton(bar, { id: 'study.plan.today', label: 'Go to Today', icon: 'calendar', kind: 'ghost', size: 'sm', title: 'Show today\'s row.', onClick: () => { const tr = box.querySelector('tr[aria-current]'); if (tr) tr.scrollIntoView({ block: 'center' }); } });
     const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll' });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
     ui.createBlock(table, 'caption', { className: 'st-plan__cap', text: `Every day of ${plan.name}, ${stPlanSpanWords(view.start, stPlanAddDays(view.exam, -1))}, in the ${view.following} plan, by week` });
