@@ -741,9 +741,20 @@ export function moRenderColourSheet(container, api, sheetId) {
       advice.classList.toggle('mo-hidden', !fixing);
       benchView.append(ft, fixRow, advice);
     });
+    warmSubs(mix.map((m) => m.name), rgb);
+  }
+  // What stands in for a paint takes a few gamuts to work out: done ahead, one paint at a time, once the
+  // bench is drawn, so the Swap menu opens at once.
+  const subsCache = new Map();
+  let subsTimer = 0;
+  const subsFor = (name, rgb) => { const k = `${gamut ? gamut.key : ''}|${moHex(rgb)}|${name}`; if (!subsCache.has(k)) { if (subsCache.size > 60) subsCache.clear(); subsCache.set(k, moSubstitutes(inUse(), rules, rgb, name)); } return subsCache.get(k); };
+  function warmSubs(names, rgb) {
+    clearTimeout(subsTimer);
+    const next = names.find((n) => !subsCache.has(`${gamut ? gamut.key : ''}|${moHex(rgb)}|${n}`));
+    if (next && gamut) subsTimer = setTimeout(() => { if (!disposed && view === 'bench') { subsFor(next, rgb); warmSubs(names, rgb); } }, 30);
   }
   function swapMenu(at, name, rgb) {
-    const subs = moSubstitutes(inUse(), rules, rgb, name);
+    const subs = subsFor(name, rgb);
     ui.createMenu(at, { id: 'media-organizer.colour.swapMenu', label: `Without ${name}`, items: subs.length ? subs.map((s) => ({ label: `${s.paints.map((p) => `${p.parts} ${p.name}`).join(', ')} (${s.closeness}, ${say(s.de * 100)})`, tooltip: s.drift.text === 'the same' ? 'Matches the target' : `${s.drift.text.charAt(0).toUpperCase()}${s.drift.text.slice(1)} than the target`, onSelect: () => { st.mix = s.paints.map((p) => ({ name: p.name, parts: p.parts })); change(); } })) : [{ label: 'No other paint can stand in', disabled: true }] });
   }
 
@@ -834,7 +845,7 @@ export function moRenderColourSheet(container, api, sheetId) {
       disposed = true;
       if (saveTimer) { clearTimeout(saveTimer); void deps.db.run('UPDATE mo_colour_sheets SET state_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(st), new Date().toISOString(), sheetId]).then(() => document.dispatchEvent(new CustomEvent(HOME))).catch(() => {}); }
       if (frame) cancelAnimationFrame(frame);
-      clearTimeout(frameTimer); clearTimeout(pickTimer);
+      clearTimeout(frameTimer); clearTimeout(pickTimer); clearTimeout(subsTimer);
       if (ro) ro.disconnect();
       document.removeEventListener('mo:paints-changed', onPaints);
       root.removeEventListener('keydown', onKey);
