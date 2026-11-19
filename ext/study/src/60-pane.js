@@ -1115,31 +1115,39 @@ async function renderSession(host, route, ctx) {
   }
 
   // ── Marking points made just ahead ──
-  // While a question is on screen, the next one in the draw whose marking
-  // points are still to be made from its answer gets them, quietly: one
-  // model call at a time, stopped when this screen goes (End Session, the
-  // tab closing, another view), so Check on it is no slower than on a
-  // question that came with its points. The grader waits for one in flight.
-  const ahead = { token: { cancelled: false }, busy: false, shownAt: -1 };
+  // While a question is on screen, its own marking points (when they are
+  // still to be made from its answer) and then the next question's are
+  // made, quietly: one model call at a time, stopped when this screen goes
+  // (End Session, the tab closing, another view), so Check is not kept
+  // waiting on them. The grader waits for one already in flight.
+  // `tried`: asked once here; a question the model gave no points for is left to the grader.
+  const ahead = { token: { cancelled: false }, busy: false, tried: new Set() };
   ctx.add({ dispose: () => { ahead.token.cancelled = true; } });
+  const fromAnswer = (x) => !!x && (x.format === 'short' || x.format === 'essay') && !!String(x.answer || '').trim();
   function prefetchAhead() {
     if (ctx.disposed() || ahead.busy || ahead.token.cancelled) return;
+    // The card on screen, then the next question whose points come from its answer.
+    const wanted = [];
+    if (index < queue.length) wanted.push(questions.get(queue[index].questionId));
     for (let k = index + 1; k < queue.length; k++) {
       const nq = questions.get(queue[k].questionId);
-      if (!nq || !stNeedsAnswerRubric(nq)) continue;
+      if (fromAnswer(nq)) { wanted.push(nq); break; }
+    }
+    for (const nq of wanted) {
+      if (!nq || !stNeedsAnswerRubric(nq) || ahead.tried.has(nq.id)) continue;
       if (stAnswerRubricInFlight(nq.id)) return;
+      ahead.tried.add(nq.id);
       const made = stPrefetchAnswerRubric(nq, { modelId, numCtx, token: ahead.token });
       if (!made) return;
       ahead.busy = true;
-      ahead.shownAt = index;
       void made.catch(() => {}).then(() => {
         ahead.busy = false;
-        // He moved on while it was being made: the one after the card now on screen is next.
-        if (!ctx.disposed() && current && ahead.shownAt !== index) prefetchAhead();
+        if (!ctx.disposed() && current) prefetchAhead();
       });
       return;
     }
   }
+
 
   function buildOptions(card, cur) {
     const opts = el('div', 'st-opts');

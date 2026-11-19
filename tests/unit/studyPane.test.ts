@@ -469,7 +469,7 @@ function makeEnv(): Env {
       : system.startsWith('You explain') ? 'explain'
       : system.startsWith('You reduce') ? 'rubric'
       : 'other';
-    lmCalls.push({ kind, modelId, numCtx: options.numCtx, format: options.format, think: options.think, temperature: options.temperature, maxTokens: options.maxTokens, user });
+    lmCalls.push({ kind, modelId, numCtx: options.numCtx, format: options.format, think: options.think, temperature: options.temperature, maxTokens: options.maxTokens, user, cardOnScreen: !!document.querySelector('.st-card') });
     const hold = env.hold;
     if (hold && hold.kind === kind && !hold.reached) { hold.reached = true; await hold.promise; }
     if (kind === "questions" && env.loops > 0) {
@@ -2041,10 +2041,10 @@ describe('Study end to end', () => {
   const drawStems = (sessionId: number): string[] => all('SELECT q.stem FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? ORDER BY i.ord', sessionId).map((r) => r.stem);
   const rubricCalls = () => env.lmCalls.filter((c) => c.kind === 'rubric');
 
-  it('8c. Start on a subject unit of 22 questions with no rubric opens on the first question with no model call; the next one\'s marking points are made while it is on screen', async () => {
+  it('8c. Start on a subject unit of 22 questions with no rubric opens on the first question with no model call; its marking points, then the next one\'s, are made while it is on screen, one call at a time', async () => {
     const { scope } = await taylorSubject();
     const before = env.lmCalls.length;
-    const hold = holdLm('rubric');
+    const hold1 = holdLm('rubric');
     const session = await T.stStartSession({ scope, mode: 'practice', answerFormat: 'type', model: '', numCtx: 0 });
     // The session's tab opens on its first question; nothing was asked of the model to get there.
     const tab = `session-${session.id}`;
@@ -2054,17 +2054,29 @@ describe('Study end to end', () => {
     const stems = drawStems(session.id);
     expect(stems.length).toBe(20);
     expect(norm(text(q(h, '.st-card__q')))).toBe(norm(stems[0]));
-    // While question 1 is shown: one call, for question 2, and only one.
-    await waitFor(() => hold.reached, 'the marking points for question 2');
-    expect(env.lmCalls.slice(0, before).length).toBe(before);
-    const made = env.lmCalls.slice(before);
-    expect(made.map((c) => c.kind)).toEqual(['rubric']);
-    expect(made[0].user).toContain(`Question:\n${stems[1]}`);
-    expect(made[0].maxTokens).toBeUndefined();
-    hold.release();
+    // While question 1 is shown: first a call for its own points, made after the card was on screen.
+    await waitFor(() => hold1.reached, 'the marking points for question 1');
+    const first = env.lmCalls.slice(before);
+    expect(first.map((c) => c.kind)).toEqual(['rubric']);
+    expect(first[0].cardOnScreen).toBe(true);
+    expect(first[0].user).toContain(`Question:\n${stems[0]}\n`);
+    expect(first[0].maxTokens).toBeUndefined();
+    // One at a time: nothing more is asked while it is in flight.
+    await settle(30);
+    expect(env.lmCalls.length - before).toBe(1);
+    // Then question 2's, once question 1's are back; and no more while question 1 is shown.
+    const hold2 = holdLm('rubric');
+    hold1.release();
+    await waitFor(() => hold2.reached, 'the marking points for question 2');
+    expect(JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[0]).rubric_json || '[]').length).toBeGreaterThan(0);
+    await settle(30);
+    const second = env.lmCalls.slice(before);
+    expect(second.map((c) => c.kind)).toEqual(['rubric', 'rubric']);
+    expect(second[1].user).toContain(`Question:\n${stems[1]}\n`);
+    hold2.release();
     await waitFor(() => JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[1]).rubric_json || '[]').length > 0, 'question 2 keeps its points');
-    await settle(20);
-    expect(rubricCalls().length).toBe(1);
+    await settle(30);
+    expect(rubricCalls().length).toBe(2);
     expect(one('SELECT rubric_origin FROM st_questions WHERE stem = ?', stems[1]).rubric_origin).toBe('answer');
     // Neither the old header label nor the line under the box says what it is graded against.
     expect(text(h)).not.toMatch(/rubric from the answer|Graded against/);
@@ -2076,13 +2088,15 @@ describe('Study end to end', () => {
     const tab = `session-${session.id}`;
     const h = await waitFor(() => { const host = paneHost(tab); return host && q(host, '.st-card') ? host : null; }, 'the first card');
     const stems = drawStems(session.id);
-    // Question 2's points are made while question 1 is on screen.
-    await waitFor(() => rubricCalls().length === 1 && JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[1]).rubric_json || '[]').length > 0, 'question 2\'s points');
-    // Question 1 has none yet: Check makes them, as the grader always has, once.
+    // Question 1's points, then question 2's, are made while question 1 is on screen.
+    await waitFor(() => rubricCalls().length === 2 && JSON.parse(one('SELECT rubric_json FROM st_questions WHERE stem = ?', stems[1]).rubric_json || '[]').length > 0, 'question 1\'s and 2\'s points');
+    // Check on question 1 asks only the marker: its points were made while he wrote.
+    const callsBefore1 = env.lmCalls.length;
     let field = q<HTMLTextAreaElement>(h, 'textarea.st-ta__field')!;
     field.value = 'The reserve changes because the case moves the development.';
     key(h, 'Enter', field);
     await waitFor(() => q(h, '.st-fb--show'), 'question 1 marked');
+    expect(env.lmCalls.slice(callsBefore1).map((c) => c.kind)).toEqual(['grade']);
     expect(rubricCalls().filter((c) => c.user.includes(`Question:\n${stems[0]}\n`)).length).toBe(1);
     // Question 3's points are held in flight while he moves to question 2 and on to 3.
     const hold3 = holdLm('rubric');
