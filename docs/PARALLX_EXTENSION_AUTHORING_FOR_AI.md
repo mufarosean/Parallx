@@ -539,11 +539,12 @@ context.subscriptions.push(registry.register({
     return [{ group: 'mack', label: 'Mack', total: 9, good: 4, middling: 2, poor: 1 }];   // the rest is total minus the three
   },
   onDidChange(listener) { … return { dispose() { … } }; },   // call listener() when any count may have changed
-  async open(group, state) { … return true; },   // show that group's items in that state ('good' | 'middling' | 'poor' | 'rest'); optional
+  async count(groups) { … return { total: 12, good: 5, middling: 2, poor: 1 }; },   // these groups together, each item once; only when your groups can share items
+  async open(groups, state) { … return true; },   // show the items of these groups in that state ('good' | 'middling' | 'poor' | 'rest'), all together; optional
 }));
 ```
 
-`group` is your own key (it comes back in `open`); `label` is the name a person reads. A reader matches a group to its own things by name, so name groups as the person names them. Counts are whole numbers; a reader clamps what does not add up. Leave `open` out when you have nowhere to show the items: a reader then draws the bar without buttons. A reader lists providers with `registry.list()`, reads `groups()` again on the provider's `onDidChange`, and re-lists on `registry.onDidChange` (a tool turned off takes its provider with it, at once). The command may be missing on an older host: retry a few times, then give up quietly. Study's Progress consumes this seam; Worksheets (`worksheets.problems`) and Flashcards (`flashcards.cards`) provide into it.
+`group` is your own key (it comes back in `count` and `open`, always as a list); `label` is the name a person reads. A reader matches a group to its own things by name, so name groups as the person names them. Counts are whole numbers; a reader clamps what does not add up. A reader may show several of your groups as one (two of them match one of its things): when your groups cannot share an item (a problem is in one paper), leave `count` out and the reader adds them; when they can (a card is in its deck and in each of its tags), give `count(groups)`, the same four numbers over those groups with each item once, because the sum would count an item twice. `open(groups, state)` gets every group behind the part that was pressed, so what opens is what the part counts. Leave `open` out when you have nowhere to show the items: a reader then draws the bar without buttons. A reader lists providers with `registry.list()`, reads `groups()` again on the provider's `onDidChange`, and re-lists on `registry.onDidChange` (a tool turned off takes its provider with it, at once). The command may be missing on an older host: retry a few times, then give up quietly. Study's Progress consumes this seam; Worksheets (`worksheets.problems`) and Flashcards (`flashcards.cards`) provide into it.
 
 ### 4.12 `api.context`
 

@@ -6,7 +6,7 @@ import { listItems, type WorksheetItemSummary } from '../worksheetData.js';
 import { paperLabel, SOURCE_LABELS, KIND_LABELS } from '../problemImport.js';
 import { buildPracticeSet } from '../practiceSession.js';
 import { BACK_TO_HOME, openWorksheet, startQuizWith } from '../actions.js';
-import { state } from '../state.js';
+import { quizPresetListeners, state } from '../state.js';
 import { STAR_HINT, el } from '../widgets.js';
 
 /** The longest quiz the builder makes: a whole roster fits in one. */
@@ -167,6 +167,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
     multi('kinds', kinds.host, [...count((it) => it.kind).entries()].map(([k, n]) => [k, KIND_LABELS[k] ?? k, n] as [string, string, number]), filters.kinds);
     syncSide();
   };
+  let switches: { rating: { value: string }; star: { value: string } } | null = null;
   const renderSwitches = () => {
     // One rating band and one starred choice: switches, made once.
     const rating = createSegmented(ratingGroup.host, {
@@ -190,6 +191,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
       },
     });
     star.element.title = STAR_HINT;
+    switches = { rating, star };
     disposables.push(rating, star);
   };
 
@@ -201,6 +203,41 @@ export function createPracticeConfigPane(container: HTMLElement) {
     if (ids.length === 0) return;
     startQuizWith(ids, 0, nameIn.value.trim() || filtersName());
   });
+
+  // The choices of a builder just opened: generated items are left out until asked for, so a quiz is the workbook's problems by default.
+  let loaded = false;
+  const startClean = () => {
+    filters.papers.clear(); filters.sources.clear(); filters.kinds.clear();
+    filters.state = 'all'; filters.starred = 'any';
+    presetIds = null; presetName = '';
+    const realSources = new Set(bank.map((it) => it.source).filter(Boolean));
+    if (realSources.size > 0 && bank.some((it) => !it.source)) for (const src of realSources) filters.sources.add(src);
+  };
+  /** The set handed over (state.quizPreset), taken once: whoever reads it clears it. */
+  const takePreset = (): boolean => {
+    const preset = state.quizPreset;
+    if (!preset) return false;
+    state.quizPreset = null;
+    for (const p of preset.papers ?? []) filters.papers.add(p);
+    if (preset.state) filters.state = preset.state;
+    if (preset.starred) filters.starred = preset.starred;
+    if (preset.ids && preset.ids.length) {
+      presetIds = new Set(preset.ids);
+      presetName = preset.name || 'Problem Bank selection';
+      countIn.value = String(Math.min(MAX_QUIZ, preset.ids.length));
+    }
+    return true;
+  };
+  // A set handed to a builder that is already open replaces what it had chosen (one still reading the bank takes it when it has).
+  const onPreset = (): void => {
+    if (disposed || !loaded || !state.quizPreset) return;
+    startClean();
+    takePreset();
+    nameEdited = false;
+    if (switches) { switches.rating.value = filters.state; switches.star.value = filters.starred; }
+    renderFilters();
+  };
+  quizPresetListeners.add(onPreset);
 
   void (async () => {
     bank = await listItems().catch(() => []);
@@ -215,24 +252,13 @@ export function createPracticeConfigPane(container: HTMLElement) {
       });
       return;
     }
-    // Generated items are left out until asked for, so a quiz is the workbook's problems by default.
-    const realSources = new Set(bank.map((it) => it.source).filter(Boolean));
-    if (realSources.size > 0 && bank.some((it) => !it.source)) for (const src of realSources) filters.sources.add(src);
-    if (state.quizPreset) {
-      for (const p of state.quizPreset.papers ?? []) filters.papers.add(p);
-      if (state.quizPreset.state) filters.state = state.quizPreset.state;
-      if (state.quizPreset.starred) filters.starred = state.quizPreset.starred;
-      if (state.quizPreset.ids && state.quizPreset.ids.length) {
-        presetIds = new Set(state.quizPreset.ids);
-        presetName = state.quizPreset.name || 'Problem Bank selection';
-        countIn.value = String(Math.min(MAX_QUIZ, state.quizPreset.ids.length));
-      }
-      state.quizPreset = null;
-    }
+    loaded = true;
+    startClean();
+    takePreset();
     renderSwitches();
     renderFilters();
   })();
 
-  return { dispose: () => { disposed = true; for (const d of disposables) d.dispose(); root.remove(); } };
+  return { dispose: () => { disposed = true; quizPresetListeners.delete(onPreset); for (const d of disposables) d.dispose(); root.remove(); } };
 }
 

@@ -38,7 +38,7 @@ import { worksheetProgressProvider } from './progressProvider.js';
 import { registerProgressProvider } from '../../services/progressProviders.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
 import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
-import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilder, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
+import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilderWith, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
 import { createBankPane, readPendingRecipes } from './panes/bankPane.js';
 import { createExcelImportPane } from './panes/excelImportPane.js';
 import { createGeneratePane } from './panes/generatePane.js';
@@ -114,7 +114,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
             resumeQuiz: () => openQuizTab(),
             openQuiz: (id) => void openPastQuiz(id),
             renderIcon: (id, size) => { try { return state.api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
-            configureQuiz: (preset) => { state.quizPreset = preset; openBuilder(); },
+            configureQuiz: (preset) => openBuilderWith(preset),
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
             openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
             openHome: () => BACK_TO_HOME.onClick?.(),
@@ -261,7 +261,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   context.subscriptions.push(registerProgressProvider(worksheetProgressProvider({
     listItems: () => listItems(),
     onDidChange: (listener) => onWorksheetDataChanged(listener),
-    openQuiz: (ids, name) => { state.quizPreset = { ids, name }; openBuilder(); },
+    openQuiz: (ids, name) => openBuilderWith({ ids, name }),
   })));
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

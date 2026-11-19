@@ -3,7 +3,9 @@
 // Offered through the core's progress-provider seam (the core command
 // `progress.getRegistry`): every tag and every deck is a group, and a card's
 // state is its last rating: Good or Easy good, Hard middling, Again poor,
-// never reviewed the rest. Suspended cards and archived decks are left out,
+// never reviewed the rest. A card is in its deck and in each of its tags, so
+// groups cannot be added: `count` takes several together, each card once.
+// Suspended cards and archived decks are left out,
 // as they are out of study. There is no `open`: Flashcards has no screen for
 // "the cards of this tag last rated Again", so a reader draws the bar plain.
 // The mapping is pure and tested in tests/unit/flashcardsProgress.test.ts.
@@ -56,6 +58,25 @@ export function fcProgressGroups(rows) {
   return [...[...tags.values()].sort(byLabel), ...[...decks.values()].sort(byLabel)];
 }
 
+/**
+ * These groups taken together, each card once: a card in its deck and in two
+ * of its tags is in three groups and is still one card. `groups` are the
+ * keys fcProgressGroups gives ('tag:mack', 'deck:3'). Returns
+ * { total, good, middling, poor }.
+ */
+export function fcProgressCount(rows, groups) {
+  const wanted = new Set((groups || []).map(String));
+  const out = { total: 0, good: 0, middling: 0, poor: 0 };
+  for (const row of rows || []) {
+    const tags = String(row.tags || '').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+    if (!wanted.has(`deck:${row.deck_id}`) && !tags.some((t) => wanted.has(`tag:${t}`))) continue;
+    const state = fcProgressState(row.last_rating);
+    out.total += 1;
+    if (state !== 'rest') out[state] += 1;
+  }
+  return out;
+}
+
 /** The provider: `all(sql)` reads Flashcards' database, `onDidChange` is its data-change event. */
 export function fcProgressProvider({ all, onDidChange }) {
   return {
@@ -64,6 +85,7 @@ export function fcProgressProvider({ all, onDidChange }) {
     toolId: 'parallx-community.flashcards',
     words: FC_PROGRESS_WORDS,
     groups: async () => fcProgressGroups(await all(FC_PROGRESS_SQL)),
+    count: async (groups) => fcProgressCount(await all(FC_PROGRESS_SQL), groups),
     onDidChange: (listener) => onDidChange(listener),
   };
 }

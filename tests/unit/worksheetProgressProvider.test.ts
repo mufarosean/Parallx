@@ -62,6 +62,11 @@ describe('worksheetProgressIds', () => {
     expect(worksheetProgressIds(bank, 'clark', 'rest')).toEqual([6, 7]);
     expect(worksheetProgressIds(bank, 'nobody', 'good')).toEqual([]);
   });
+  it('takes several papers together', () => {
+    expect(worksheetProgressIds(bank, ['clark', 'mack1994'], 'good')).toEqual([1, 2, 8]);
+    expect(worksheetProgressIds(bank, ['clark', 'mack1994', 'friedland'], 'rest')).toEqual([6, 7, 9, 11]);
+    expect(worksheetProgressIds(bank, [], 'good')).toEqual([]);
+  });
 });
 
 describe('worksheetProgressProvider', () => {
@@ -98,11 +103,19 @@ describe('worksheetProgressProvider', () => {
   it('opens the quiz builder on a paper\'s problems in a state, and says false when there are none', async () => {
     const d = deps();
     const p = worksheetProgressProvider(d);
-    expect(await p.open!('clark', 'poor')).toBe(true);
+    expect(await p.open!(['clark'], 'poor')).toBe(true);
     expect(d.openQuiz).toHaveBeenCalledWith([4, 5], 'Clark Hard');
-    expect(await p.open!('friedland', 'good')).toBe(false);
-    expect(await p.open!('clark', 'sideways' as never)).toBe(false);
+    expect(await p.open!(['friedland'], 'good')).toBe(false);
+    expect(await p.open!(['clark'], 'sideways' as never)).toBe(false);
     expect(d.openQuiz).toHaveBeenCalledOnce();
+  });
+
+  it('opens every paper it is given, so what opens is what the part of a bar counts; it has no count of its own (papers share no problem)', async () => {
+    const d = deps();
+    const p = worksheetProgressProvider(d);
+    expect(await p.open!(['clark', 'mack1994'], 'good')).toBe(true);
+    expect(d.openQuiz).toHaveBeenCalledWith([1, 2, 8], `${worksheetProgressGroups(bank).find((g) => g.group === 'clark')!.label}, ${worksheetProgressGroups(bank).find((g) => g.group === 'mack1994')!.label} Easy`);
+    expect(p.count).toBeUndefined();
   });
 
   it('registers in the core registry and leaves it when disposed', () => {

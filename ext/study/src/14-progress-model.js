@@ -18,6 +18,8 @@ const ST_PROGRESS_STATES = ['good', 'middling', 'poor', 'rest'];
 const ST_PROGRESS_WORDS = { good: 'Right', middling: 'Partly', poor: 'Wrong', rest: 'Not yet' };
 /** A tool that gives no word for a state gets these. */
 const ST_PROGRESS_PLAIN = { good: 'Good', middling: 'Middling', poor: 'Poor', rest: 'Not yet' };
+/** Words for wrong that also say "not answered": wrong only once the question was attempted. */
+const ST_PROGRESS_UNSAID = ['not yet', 'unknown'];
 /** The column of Units where he lists a unit's other names. It is his: Study only reads it. */
 const ST_PROGRESS_ALSO = 'Also Called';
 /** The id of Study's own kind beside the providers' ids. */
@@ -76,7 +78,8 @@ const stProgressZero = () => [0, 0, 0, 0];
  * A question's state from its Last Result cell: Right good, Partly middling,
  * Wrong poor (each in the database's own words too), nothing there the rest.
  * A checkbox or a number has no way to say "not answered", so unchecked (or
- * zero) is wrong only once the question was attempted.
+ * zero) is wrong only once the question was attempted; the same holds for a
+ * select of his own that says "Not yet" or "Unknown".
  */
 function stProgressQuestionState(value, attempted) {
   if (stSubjectMeansRight(value)) return 'good';
@@ -84,7 +87,7 @@ function stProgressQuestionState(value, attempted) {
   if (typeof value !== 'string') return 'rest';
   const word = stSubjectFold(value);
   if (ST_SUBJECT_WORDS.partly.includes(word)) return 'middling';
-  if (ST_SUBJECT_WORDS.wrong.includes(word)) return 'poor';
+  if (ST_SUBJECT_WORDS.wrong.includes(word)) return attempted || !ST_PROGRESS_UNSAID.includes(word) ? 'poor' : 'rest';
   return 'rest';
 }
 
@@ -120,14 +123,20 @@ function stProgressQuestions(rows, mapping, titleById, relation = false) {
 /**
  * What the Progress view shows. `units` are [{ name, rowId, also }] in the
  * Units order; `questions` is stProgressQuestions' result; `providers` are
- * [{ id, kind, words, canOpen, groups }] as the tools report now. Returns
+ * [{ id, kind, words, canOpen, groups, counted? }] as the tools report now.
+ * A tool whose groups can share items gives `counted(groups)`: those groups
+ * together with each item once ({ total, good, middling, poor }), null while
+ * it has not answered (the tool's bars then wait: a sum would count an item
+ * twice), false when it could not (they are added, as for a tool without
+ * it). It is asked whenever a unit matches more than one group, and for the
+ * tool's total. Returns
  * { rows, kinds, totals, unmatched, noUnit }:
  *   rows       one per unit: { name, rowId, kinds: [{ id, kind, words, counts,
  *              canOpen, groups: [{ group, counts }] }], all }, with a kind only
  *              when the unit has something in it; `all` is every kind together
  *   kinds      the kinds some unit has, questions first: [{ id, kind }]
  *   totals     one per kind: the questions over the whole subject, a tool's
- *              kind over its units' bars
+ *              kind over the groups its units matched
  *   unmatched  per tool, the groups no unit claims: [{ id, kind, groups: [{ label, counts }] }]
  */
 function stProgressBuild({ units, questions, providers }) {
@@ -149,14 +158,24 @@ function stProgressBuild({ units, questions, providers }) {
   for (const p of Array.isArray(providers) ? providers : []) {
     if (!p) continue;
     const m = stProgressMatch(list, p.groups);
+    const together = (parts) => {
+      const added = () => parts.reduce((t, g) => stProgressAdd(t, g.counts), stProgressZero());
+      if (parts.length < 2 || typeof p.counted !== 'function') return added();
+      const once = p.counted(parts.map((g) => g.group));
+      return once === null || once === undefined ? null : once ? stProgressCountsOf(once) : added();
+    };
+    const perUnit = m.matched.map((groups) => groups.map((g) => ({ group: String(g.group ?? ''), counts: stProgressCountsOf(g) })).filter((g) => sum(g.counts) > 0));
+    const bars = perUnit.map((parts) => (parts.length ? together(parts) : null));
+    const whole = together(perUnit.flat().filter((g, i, all) => all.findIndex((x) => x.group === g.group) === i));
+    const waiting = whole === null || perUnit.some((parts, i) => parts.length && bars[i] === null);
     let total = stProgressZero();
-    m.matched.forEach((groups, i) => {
-      const parts = groups.map((g) => ({ group: String(g.group ?? ''), counts: stProgressCountsOf(g) })).filter((g) => sum(g.counts) > 0);
-      if (!parts.length) return;
-      const counts = parts.reduce((t, g) => stProgressAdd(t, g.counts), stProgressZero());
-      rows[i].kinds.push({ id: p.id, kind: p.kind, words: p.words || {}, counts, canOpen: !!p.canOpen, groups: parts });
-      total = stProgressAdd(total, counts);
-    });
+    if (!waiting) {
+      perUnit.forEach((parts, i) => {
+        if (!parts.length || sum(bars[i]) === 0) return;
+        rows[i].kinds.push({ id: p.id, kind: p.kind, words: p.words || {}, counts: bars[i], canOpen: !!p.canOpen, groups: parts });
+      });
+      total = whole;
+    }
     if (sum(total) > 0) {
       kinds.push({ id: p.id, kind: p.kind });
       totals.push({ id: p.id, kind: p.kind, words: p.words || {}, counts: total });

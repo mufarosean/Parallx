@@ -109,6 +109,14 @@ describe('stProgressQuestionState: a question\'s state from its Last Result', ()
     expect(stProgressQuestionState('Someday', true)).toBe('rest');
     expect(stProgressQuestionState('Right', false)).toBe('good');
   });
+  it('reads "Not yet" and "Unknown" in his own select as wrong only once answered, like an unchecked box', () => {
+    expect(['Not yet', 'not yet', 'Unknown'].map((v) => stProgressQuestionState(v, false))).toEqual(['rest', 'rest', 'rest']);
+    expect(['Not yet', 'Unknown'].map((v) => stProgressQuestionState(v, true))).toEqual(['poor', 'poor']);
+    // A word that only ever means wrong is wrong whatever the attempts say.
+    expect(['Wrong', 'Missed', 'No'].map((v) => stProgressQuestionState(v, false))).toEqual(['poor', 'poor', 'poor']);
+    const rows = [{ values: { Unit: 'Mack', 'Last Result': 'Not yet' } }, { values: { Unit: 'Mack', 'Last Result': 'Not yet', Attempts: 2 } }];
+    expect(stProgressQuestions(rows, { unit: 'Unit', lastResult: 'Last Result', attempts: 'Attempts' }, null, false).units).toEqual([{ name: 'Mack', counts: [0, 0, 1, 1] }]);
+  });
   it('reads a checkbox or a number by the attempts: unchecked is wrong only once answered', () => {
     expect([stProgressQuestionState(true, true), stProgressQuestionState(false, true), stProgressQuestionState(false, false)]).toEqual(['good', 'poor', 'rest']);
     expect([stProgressQuestionState(1, true), stProgressQuestionState(0, true), stProgressQuestionState(0, false)]).toEqual(['good', 'poor', 'rest']);
@@ -198,6 +206,42 @@ describe('stProgressBuild: the rows, the totals and what matched nothing', () =>
     const v = stProgressBuild({ units: [unit('Mack')], questions: { units: [], total: [0, 0, 0, 0], noUnit: 0 }, providers: [] });
     expect(v).toMatchObject({ kinds: [], totals: [], unmatched: [], noUnit: 0 });
     expect(v.rows[0]).toMatchObject({ name: 'Mack', kinds: [], all: [0, 0, 0, 0] });
+  });
+});
+
+describe('stProgressBuild: a tool whose groups share items', () => {
+  // Five cards, all in the deck Mack, one of them tagged mack and chain ladder too: each group counts it, and it is one card.
+  const groups = [group('mack', 1, 0, 0, 1, 'tag:mack'), group('chain ladder', 1, 0, 0, 1, 'tag:chain ladder'), group('Mack', 5, 2, 0, 1, 'deck:1'), group('clark', 3, 1, 0, 0, 'tag:clark')];
+  const units = [unit('Mack', 'Chain Ladder'), unit('Clark')];
+  const once: Record<string, object> = {
+    'deck:1|tag:chain ladder|tag:mack': { total: 5, good: 2, middling: 0, poor: 1 },
+    'deck:1|tag:chain ladder|tag:clark|tag:mack': { total: 7, good: 3, middling: 0, poor: 1 },
+  };
+  const cards = (counted?: (set: string[]) => unknown) => ({ id: 'flashcards.cards', kind: 'Cards', words: {}, canOpen: false, groups, ...(counted ? { counted } : {}) });
+  const asked: string[] = [];
+  const view = stProgressBuild({ units, questions: null, providers: [cards((set) => { const key = [...set].sort().join('|'); asked.push(key); return once[key]; })] });
+
+  it('asks the tool for a unit\'s groups together, so a card in three of them is one card', () => {
+    expect(view.rows[0].kinds.map((k: { counts: number[] }) => k.counts)).toEqual([[2, 0, 1, 2]]);
+    expect(view.rows[0].all).toEqual([2, 0, 1, 2]);
+    expect(view.rows[0].kinds[0].groups.map((g: { group: string }) => g.group)).toEqual(['tag:mack', 'tag:chain ladder', 'deck:1']);
+  });
+  it('does not ask for a unit with one group, and asks for the tool\'s total over every matched group', () => {
+    expect(view.rows[1].kinds.map((k: { counts: number[] }) => k.counts)).toEqual([[1, 0, 0, 2]]);
+    expect(asked.sort()).toEqual(['deck:1|tag:chain ladder|tag:clark|tag:mack', 'deck:1|tag:chain ladder|tag:mack']);
+    expect(view.totals).toEqual([{ id: 'flashcards.cards', kind: 'Cards', words: {}, counts: [3, 0, 1, 3] }]);
+  });
+  it('adds the groups of a tool that offers no such count, as their items are in one group each', () => {
+    const added = stProgressBuild({ units, questions: null, providers: [cards()] });
+    expect(added.rows[0].kinds[0].counts).toEqual([2, 0, 3, 2]);
+    expect(added.totals[0].counts).toEqual([3, 0, 3, 4]);
+  });
+  it('draws none of the tool\'s bars while a count is still being asked for, and adds when the tool could not say', () => {
+    const waiting = stProgressBuild({ units, questions: null, providers: [cards(() => null)] });
+    expect(waiting.rows.map((r: { kinds: unknown[] }) => r.kinds)).toEqual([[], []]);
+    expect([waiting.kinds, waiting.totals]).toEqual([[], []]);
+    const failed = stProgressBuild({ units, questions: null, providers: [cards(() => false)] });
+    expect(failed.rows[0].kinds[0].counts).toEqual([2, 0, 3, 2]);
   });
 });
 

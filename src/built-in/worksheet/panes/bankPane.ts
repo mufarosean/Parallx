@@ -11,7 +11,7 @@ import { normalizeRating, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABEL
 import { recipeOfSheet, recipeGroups, recipeKey } from '../recipes.js';
 import { appDateString } from '../../../services/localTime.js';
 import { fmtStudy, gradeLabel } from '../labels.js';
-import { BACK_TO_HOME, beginReview, openBuilder, openWorksheet, showMenu, startQuizWith } from '../actions.js';
+import { BACK_TO_HOME, beginReview, openBuilderWith, openWorksheet, showMenu, startQuizWith } from '../actions.js';
 import { discussNotesInChat } from '../chatReview.js';
 import { state } from '../state.js';
 import { el, starBtn } from '../widgets.js';
@@ -31,8 +31,7 @@ export async function reviewPaper(paper: string): Promise<void> {
 export async function quizPaper(paper: string): Promise<void> {
   const ids = await paperProblems(paper);
   if (!ids.length) return;
-  state.quizPreset = { ids, name: paperLabel(paper) };
-  openBuilder();
+  openBuilderWith({ ids, name: paperLabel(paper) });
 }
 
 // ── Item browser (instanceId 'home') ────────────────────────────────────────
@@ -71,7 +70,7 @@ export function createBankPane(container: HTMLElement) {
         ...(shown.length ? [{ id: 'worksheet.reviewShown', label: 'Review These', icon: 'eye', title: 'Walks through the problems shown here with your work and the solution showing. Not a quiz: nothing is scored or recorded.', onClick: () => void beginReview(shown.map((it) => it.id)) }] : []),
         ...(noted.length ? [{ id: 'worksheet.discussNotes', label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', title: 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.', onClick: () => void discussNotesInChat(items) }] : []),
       ],
-      primary: shown.length ? { id: 'worksheet.quizShown', label: 'Quiz These…', title: 'Opens the quiz builder with the problems shown here.', onClick: () => { state.quizPreset = { ids: shown.map((it) => it.id), name: '' }; openBuilder(); } } : undefined,
+      primary: shown.length ? { id: 'worksheet.quizShown', label: 'Quiz These…', title: 'Opens the quiz builder with the problems shown here.', onClick: () => openBuilderWith({ ids: shown.map((it) => it.id), name: '' }) } : undefined,
       more: generated.length ? [{ label: `Delete All Generated Items (${generated.length})…`, icon: 'trash-2', danger: true, onSelect: () => void deleteGeneratedItems(generated) }] : [],
     });
   };

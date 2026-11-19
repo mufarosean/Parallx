@@ -21,10 +21,11 @@ export function worksheetProgressGroups(items: readonly InsightItem[]): IProgres
   return progressByPaper(items).map((p) => ({ group: p.paper, label: paperLabel(p.paper), total: p.total, good: p.easy, middling: p.medium, poor: p.hard }));
 }
 
-/** The workbook's problems of a paper whose last rating is that state (rest: never rated). Pure. */
-export function worksheetProgressIds(items: readonly InsightItem[], paper: string, state: ProgressState): number[] {
+/** The workbook's problems of these papers (one, or several together) whose last rating is that state (rest: never rated). Pure. */
+export function worksheetProgressIds(items: readonly InsightItem[], papers: string | readonly string[], state: ProgressState): number[] {
   if (!(state in RATING_OF)) return [];
-  return items.filter((it) => isWorkbookProblem(it) && it.paper === paper && normalizeRating(it.attemptState) === RATING_OF[state]).map((it) => it.id);
+  const wanted = new Set(typeof papers === 'string' ? [papers] : papers);
+  return items.filter((it) => isWorkbookProblem(it) && wanted.has(it.paper) && normalizeRating(it.attemptState) === RATING_OF[state]).map((it) => it.id);
 }
 
 export function worksheetProgressProvider(deps: {
@@ -42,10 +43,12 @@ export function worksheetProgressProvider(deps: {
       return worksheetProgressGroups(await deps.listItems());
     },
     onDidChange: (listener) => deps.onDidChange(listener),
-    async open(group, state) {
-      const ids = worksheetProgressIds(await deps.listItems(), group, state);
+    // A paper's problems are in no other paper, so there is no `count`: a reader adds the papers.
+    async open(groups, state) {
+      const papers = [...new Set(groups)];
+      const ids = worksheetProgressIds(await deps.listItems(), papers, state);
       if (!ids.length) return false;
-      deps.openQuiz(ids, `${paperLabel(group)} ${WORKSHEET_PROGRESS_WORDS[state]}`);
+      deps.openQuiz(ids, `${papers.map(paperLabel).join(', ')} ${WORKSHEET_PROGRESS_WORDS[state]}`);
       return true;
     },
   };

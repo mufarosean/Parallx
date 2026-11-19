@@ -7,7 +7,8 @@
 // the same four states, so a reader can draw one bar for any of them:
 // good, middling, poor, and the rest (not worked yet). The words a person
 // reads for them are the provider's own ("Easy", "Medium", "Hard",
-// "Not rated"). Turned off, a tool's provider goes with its subscriptions and
+// "Not rated"). Groups whose items overlap are counted together by the
+// provider (`count`), never added by the reader. Turned off, a tool's provider goes with its subscriptions and
 // `onDidChangeProgressProviders` fires, so a reader drops its bars at once.
 //
 // Module-global registry (providers survive activation order). Built-ins
@@ -40,6 +41,9 @@ export interface IProgressGroup {
   readonly poor: number;
 }
 
+/** Counts with no group to belong to: a set of groups taken together. */
+export type IProgressCounts = Pick<IProgressGroup, 'total' | 'good' | 'middling' | 'poor'>;
+
 export interface IProgressProvider {
   /** Stable, unique across tools: `<tool>.<store>`. */
   readonly id: string;
@@ -52,8 +56,16 @@ export interface IProgressProvider {
   groups(): Promise<IProgressGroup[]> | IProgressGroup[];
   /** Fires when any count may have changed. */
   onDidChange(listener: () => void): IDisposable;
-  /** Show the group's items in that state where they live. Resolves false when it could not. */
-  open?(group: string, state: ProgressState): Promise<boolean>;
+  /**
+   * These groups taken together, each item counted once. A provider whose
+   * groups can share items (a card in its deck and in each of its tags) gives
+   * it, because their counts cannot be added; a reader that shows several
+   * groups as one asks here. Without it the groups share nothing and a reader
+   * adds them.
+   */
+  count?(groups: readonly string[]): Promise<IProgressCounts> | IProgressCounts;
+  /** Show the items of these groups in that state where they live, all of them together. Resolves false when it could not. */
+  open?(groups: readonly string[], state: ProgressState): Promise<boolean>;
 }
 
 /** The live object `progress.getRegistry` returns to extensions. */
@@ -98,7 +110,7 @@ export function registerProgressProvider(provider: IProgressProvider): IDisposab
  * three never more than the total (a provider that miscounts cannot make a
  * bar longer than its items). Returns [good, middling, poor, rest].
  */
-export function progressCounts(group: Pick<IProgressGroup, 'total' | 'good' | 'middling' | 'poor'>): [number, number, number, number] {
+export function progressCounts(group: IProgressCounts): [number, number, number, number] {
   const whole = (v: unknown): number => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; };
   const total = whole(group.total);
   const good = Math.min(whole(group.good), total);

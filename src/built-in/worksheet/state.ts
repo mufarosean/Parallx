@@ -87,7 +87,7 @@ export const state = {
   practice: null as RunningPractice | null,
   /** The review walk open in Review tabs. */
   review: null as ReviewWalk | null,
-  /** Filters the quiz builder opens with, set by whoever opened it. */
+  /** Filters the quiz builder opens with, set by whoever opened it (openBuilderWith); the builder that takes them clears them. */
   quizPreset: null as { papers?: string[]; state?: string; starred?: 'starred' | 'unstarred'; ids?: number[]; name?: string } | null,
   /**
    * A workbook path handed to `worksheet.importExcel` (a probe, a drop, a
@@ -313,6 +313,8 @@ export interface RunningPractice {
 export const markListeners = new Set<() => void>();
 /** Open Quiz tabs, told when a different quiz begins so they show it. */
 export const practiceListeners = new Set<() => void>();
+/** The open quiz builder, told when a set is handed to it (actions.ts, openBuilderWith). */
+export const quizPresetListeners = new Set<() => void>();
 
 /** The running quiz as stored: a restart or a tool reload resumes it. */
 export async function persistPractice(announce = false): Promise<void> {

@@ -2438,6 +2438,8 @@ const ST_PROGRESS_STATES = ['good', 'middling', 'poor', 'rest'];
 const ST_PROGRESS_WORDS = { good: 'Right', middling: 'Partly', poor: 'Wrong', rest: 'Not yet' };
 /** A tool that gives no word for a state gets these. */
 const ST_PROGRESS_PLAIN = { good: 'Good', middling: 'Middling', poor: 'Poor', rest: 'Not yet' };
+/** Words for wrong that also say "not answered": wrong only once the question was attempted. */
+const ST_PROGRESS_UNSAID = ['not yet', 'unknown'];
 /** The column of Units where he lists a unit's other names. It is his: Study only reads it. */
 const ST_PROGRESS_ALSO = 'Also Called';
 /** The id of Study's own kind beside the providers' ids. */
@@ -2496,7 +2498,8 @@ const stProgressZero = () => [0, 0, 0, 0];
  * A question's state from its Last Result cell: Right good, Partly middling,
  * Wrong poor (each in the database's own words too), nothing there the rest.
  * A checkbox or a number has no way to say "not answered", so unchecked (or
- * zero) is wrong only once the question was attempted.
+ * zero) is wrong only once the question was attempted; the same holds for a
+ * select of his own that says "Not yet" or "Unknown".
  */
 function stProgressQuestionState(value, attempted) {
   if (stSubjectMeansRight(value)) return 'good';
@@ -2504,7 +2507,7 @@ function stProgressQuestionState(value, attempted) {
   if (typeof value !== 'string') return 'rest';
   const word = stSubjectFold(value);
   if (ST_SUBJECT_WORDS.partly.includes(word)) return 'middling';
-  if (ST_SUBJECT_WORDS.wrong.includes(word)) return 'poor';
+  if (ST_SUBJECT_WORDS.wrong.includes(word)) return attempted || !ST_PROGRESS_UNSAID.includes(word) ? 'poor' : 'rest';
   return 'rest';
 }
 
@@ -2540,14 +2543,20 @@ function stProgressQuestions(rows, mapping, titleById, relation = false) {
 /**
  * What the Progress view shows. `units` are [{ name, rowId, also }] in the
  * Units order; `questions` is stProgressQuestions' result; `providers` are
- * [{ id, kind, words, canOpen, groups }] as the tools report now. Returns
+ * [{ id, kind, words, canOpen, groups, counted? }] as the tools report now.
+ * A tool whose groups can share items gives `counted(groups)`: those groups
+ * together with each item once ({ total, good, middling, poor }), null while
+ * it has not answered (the tool's bars then wait: a sum would count an item
+ * twice), false when it could not (they are added, as for a tool without
+ * it). It is asked whenever a unit matches more than one group, and for the
+ * tool's total. Returns
  * { rows, kinds, totals, unmatched, noUnit }:
  *   rows       one per unit: { name, rowId, kinds: [{ id, kind, words, counts,
  *              canOpen, groups: [{ group, counts }] }], all }, with a kind only
  *              when the unit has something in it; `all` is every kind together
  *   kinds      the kinds some unit has, questions first: [{ id, kind }]
  *   totals     one per kind: the questions over the whole subject, a tool's
- *              kind over its units' bars
+ *              kind over the groups its units matched
  *   unmatched  per tool, the groups no unit claims: [{ id, kind, groups: [{ label, counts }] }]
  */
 function stProgressBuild({ units, questions, providers }) {
@@ -2569,14 +2578,24 @@ function stProgressBuild({ units, questions, providers }) {
   for (const p of Array.isArray(providers) ? providers : []) {
     if (!p) continue;
     const m = stProgressMatch(list, p.groups);
+    const together = (parts) => {
+      const added = () => parts.reduce((t, g) => stProgressAdd(t, g.counts), stProgressZero());
+      if (parts.length < 2 || typeof p.counted !== 'function') return added();
+      const once = p.counted(parts.map((g) => g.group));
+      return once === null || once === undefined ? null : once ? stProgressCountsOf(once) : added();
+    };
+    const perUnit = m.matched.map((groups) => groups.map((g) => ({ group: String(g.group ?? ''), counts: stProgressCountsOf(g) })).filter((g) => sum(g.counts) > 0));
+    const bars = perUnit.map((parts) => (parts.length ? together(parts) : null));
+    const whole = together(perUnit.flat().filter((g, i, all) => all.findIndex((x) => x.group === g.group) === i));
+    const waiting = whole === null || perUnit.some((parts, i) => parts.length && bars[i] === null);
     let total = stProgressZero();
-    m.matched.forEach((groups, i) => {
-      const parts = groups.map((g) => ({ group: String(g.group ?? ''), counts: stProgressCountsOf(g) })).filter((g) => sum(g.counts) > 0);
-      if (!parts.length) return;
-      const counts = parts.reduce((t, g) => stProgressAdd(t, g.counts), stProgressZero());
-      rows[i].kinds.push({ id: p.id, kind: p.kind, words: p.words || {}, counts, canOpen: !!p.canOpen, groups: parts });
-      total = stProgressAdd(total, counts);
-    });
+    if (!waiting) {
+      perUnit.forEach((parts, i) => {
+        if (!parts.length || sum(bars[i]) === 0) return;
+        rows[i].kinds.push({ id: p.id, kind: p.kind, words: p.words || {}, counts: bars[i], canOpen: !!p.canOpen, groups: parts });
+      });
+      total = whole;
+    }
     if (sum(total) > 0) {
       kinds.push({ id: p.id, kind: p.kind });
       totals.push({ id: p.id, kind: p.kind, words: p.words || {}, counts: total });
@@ -4941,7 +4960,7 @@ function registerSubjects(context, token = stActivation()) {
 
 /** The live registry once `progress.getRegistry` answers. */
 let _stProgressRegistry = null;
-/** provider id → { provider, groups: null until read, sub, seq, timer }. */
+/** provider id → { provider, groups: null until read, counted: sets of groups counted together, asking, failed, sub, seq, timer }. */
 const _stProgressProviders = new Map();
 /** Has anything of Study asked to show progress in this activation? */
 let _stProgressWanted = false;
@@ -4953,22 +4972,65 @@ function stProgressCleanGroups(list) {
   }));
 }
 
+/** A set of groups as one key, whatever order they are named in. */
+const stProgressSetKey = (groups) => [...new Set((groups || []).map(String))].sort().join('\u0000');
+
+/** Ask a provider for a set of its groups together, each item once; false when it cannot say. */
+function stProgressAskCount(provider, key) {
+  return Promise.resolve().then(() => provider.count(key.split('\u0000')))
+    .then((c) => (c && typeof c === 'object' ? { total: c.total, good: c.good, middling: c.middling, poor: c.poor } : false), () => false);
+}
+
 /** Read one provider's groups now; the latest read wins, and one that outlives the activation is dropped. */
 function stProgressRead(id, token) {
   const entry = _stProgressProviders.get(id);
   if (!entry || !stIsCurrent(token)) return;
   const seq = (entry.seq += 1);
+  entry.failed = false;
   const current = () => stIsCurrent(token) && _stProgressProviders.get(id) === entry && entry.seq === seq;
   Promise.resolve()
     .then(() => entry.provider.groups())
-    .then((groups) => { if (current()) { entry.groups = stProgressCleanGroups(groups); bus.emit('progress'); } })
+    .then(async (list) => {
+      const groups = stProgressCleanGroups(list);
+      // The sets counted together are counted again with the groups, so a bar never shows new groups beside old sums.
+      const keys = [...entry.counted.keys()].filter((key) => key.split('\u0000').every((k) => groups.some((g) => g.group === k)));
+      const counted = new Map(await Promise.all(keys.map(async (key) => [key, await stProgressAskCount(entry.provider, key)])));
+      if (current()) { entry.groups = groups; entry.counted = counted; bus.emit('progress'); }
+    })
     .catch((err) => {
       if (!current()) return;
-      // A tool that cannot say is a tool with nothing to show, said once.
-      if (entry.groups === null) console.warn(`[Study] progress of ${id} could not be read:`, err && err.message);
+      // What was read last stays (one failed read does not empty a tool's bars), and the next thing that shows progress asks again.
+      entry.failed = true;
+      if (entry.groups !== null) return;
+      // A tool that could never say is a tool with nothing to show, said once.
+      console.warn(`[Study] progress of ${id} could not be read:`, err && err.message);
       entry.groups = [];
       bus.emit('progress');
     });
+}
+
+/**
+ * A set of a provider's groups taken together, each item once (the
+ * provider's own `count`): the counts once known, null while they are being
+ * asked for (whoever shows progress hears 'progress' when they land), false
+ * when the provider could not say.
+ */
+function stProgressCounted(id, groups, token = stActivation()) {
+  const entry = _stProgressProviders.get(id);
+  if (!entry || typeof entry.provider.count !== 'function') return false;
+  const key = stProgressSetKey(groups);
+  if (entry.counted.has(key)) return entry.counted.get(key);
+  if (entry.asking.has(key) || !stIsCurrent(token)) return null;
+  entry.asking.add(key);
+  const seq = entry.seq;
+  void stProgressAskCount(entry.provider, key).then((counts) => {
+    entry.asking.delete(key);
+    if (!stIsCurrent(token) || _stProgressProviders.get(id) !== entry) return;
+    // Asked before a newer read of the groups: not kept, and whoever shows progress asks again.
+    if (entry.seq === seq) entry.counted.set(key, counts);
+    bus.emit('progress');
+  });
+  return null;
 }
 
 /** A provider said its counts changed: read it again shortly, if anything shows progress. */
@@ -5009,21 +5071,21 @@ function stProgressSync(context, token) {
     let done = false;
     const sub = { dispose() { if (done) return; done = true; try { if (raw && typeof raw.dispose === 'function') raw.dispose(); else if (typeof raw === 'function') raw(); } catch { /* the provider's own */ } } };
     context.subscriptions.push(sub);
-    _stProgressProviders.set(id, { provider, groups: null, sub, seq: 0, timer: 0 });
+    _stProgressProviders.set(id, { provider, groups: null, counted: new Map(), asking: new Set(), failed: false, sub, seq: 0, timer: 0 });
     changed = true;
     if (_stProgressWanted) stProgressRead(id, token);
   }
   if (changed) bus.emit('progress');
 }
 
-/** Something of Study shows progress: read every provider not read yet. */
+/** Something of Study shows progress: read every provider not read yet, and again one whose last read failed. */
 function stProgressWant(token = stActivation()) {
   if (!stIsCurrent(token)) return;
   _stProgressWanted = true;
-  for (const [id, entry] of _stProgressProviders) if (entry.groups === null && entry.seq === 0) stProgressRead(id, token);
+  for (const [id, entry] of _stProgressProviders) if ((entry.groups === null && entry.seq === 0) || entry.failed) stProgressRead(id, token);
 }
 
-/** The providers as the view model takes them: [{ id, kind, words, canOpen, groups }], in registration order. */
+/** The providers as the view model takes them: [{ id, kind, words, canOpen, groups }], in registration order; with `counted` for one whose groups can share items. */
 function stProgressProviders() {
   return [..._stProgressProviders.values()].map(({ provider, groups }) => ({
     id: provider.id,
@@ -5031,6 +5093,7 @@ function stProgressProviders() {
     words: provider.words && typeof provider.words === 'object' ? provider.words : {},
     canOpen: typeof provider.open === 'function',
     groups: groups || [],
+    ...(typeof provider.count === 'function' ? { counted: (set) => stProgressCounted(provider.id, set) } : {}),
   }));
 }
 
@@ -5056,19 +5119,16 @@ function stProgressOfSubject(subjectId) {
 
 /**
  * Open a tool on the items behind one part of its bar: the provider's own
- * `open`, on the unit's group with the most items in that state (a unit
- * matched to two groups opens the larger). Resolves false when the tool
- * could not.
+ * `open`, on every group the unit matched, so what opens is what the part
+ * counts. Resolves false when the tool could not.
  */
 async function stProgressOpenItems(providerId, groups, state) {
   const entry = _stProgressProviders.get(String(providerId));
   const at = ST_PROGRESS_STATES.indexOf(state);
   if (!entry || at < 0 || typeof entry.provider.open !== 'function') return false;
-  const wanted = (Array.isArray(groups) ? groups : [groups]).map(String);
-  const best = (entry.groups || []).filter((g) => wanted.includes(g.group)).map((g) => ({ g, n: stProgressCountsOf(g)[at] })).sort((a, b) => b.n - a.n)[0];
-  const group = best ? best.g.group : wanted[0];
-  if (group === undefined) return false;
-  try { return (await entry.provider.open(group, state)) !== false; } catch (err) { console.warn('[Study] a tool could not open its items:', err && err.message); return false; }
+  const wanted = [...new Set((Array.isArray(groups) ? groups : [groups]).filter((g) => g !== undefined && g !== null).map(String))];
+  if (!wanted.length) return false;
+  try { return (await entry.provider.open(wanted, state)) !== false; } catch (err) { console.warn('[Study] a tool could not open its items:', err && err.message); return false; }
 }
 
 /**

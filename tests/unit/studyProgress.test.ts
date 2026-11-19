@@ -108,7 +108,7 @@ function tool(id: string, kind: string, groups: IProgressGroup[], { open = false
     words: { good: 'Easy', middling: 'Medium', poor: 'Hard', rest: 'Not rated' },
     groups: async () => { state.reads += 1; return state.groups.map((g) => ({ ...g })); },
     onDidChange: (l) => { listeners.add(l); return { dispose: () => { listeners.delete(l); } }; },
-    ...(open ? { open: async (group: string, s: string) => { state.opened.push([group, s]); return true; } } : {}),
+    ...(open ? { open: async (groups: readonly string[], s: string) => { state.opened.push([[...groups], s]); return true; } } : {}),
   };
   return { provider, state, listeners, set(next: IProgressGroup[]) { state.groups = next; for (const l of [...listeners]) l(); } };
 }
@@ -272,6 +272,86 @@ describe('the providers as they are now', () => {
     expect(row.kinds.map((k: Any) => [k.kind, k.counts])).toEqual([['Questions', [2, 1, 1, 1]], ['Odd', [4, 0, 0, 0]]]);
   });
 
+  it('keeps the last counts when a later read fails, and asks again the next time progress is shown', async () => {
+    const h = await subject();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    cleanup.push(() => warn.mockRestore());
+    const problems = tool('test.problems', 'Problems', [g('Clark', 10, 3, 1, 2)]);
+    h.register(problems);
+    await started(h);
+    h.S.stProgressWant();
+    await until(() => problems.state.reads === 1, 'the first read');
+    await wait(0);
+    const good = problems.provider.groups;
+    let failures = 0;
+    problems.provider.groups = async () => { failures += 1; throw new Error('busy'); };
+    problems.set([g('Clark', 10, 9)]);
+    await until(() => failures === 1, 'the failed read');
+    await wait(20);
+    expect(h.S.stProgressProviders()[0].groups).toEqual([g('Clark', 10, 3, 1, 2)]);
+    expect(h.S.stProgressOfSubject(h.subject.id).rows.find((r: Any) => r.name === 'Clark').kinds.map((k: Any) => k.kind)).toEqual(['Questions', 'Problems']);
+    // The next thing that shows progress asks again, with no change from the tool; once it answers, nothing more is asked.
+    problems.provider.groups = good;
+    h.S.stProgressWant();
+    await until(() => h.S.stProgressProviders()[0].groups[0].good === 9, 'the retry');
+    h.S.stProgressWant();
+    await wait(20);
+    expect([problems.state.reads, failures]).toEqual([2, 1]);
+  });
+
+  it('a tool that never answers is asked again only when progress is shown again, and is said once', async () => {
+    const h = await subject();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    cleanup.push(() => warn.mockRestore());
+    const broken = tool('test.broken', 'Broken', []);
+    let reads = 0;
+    broken.provider.groups = async () => { reads += 1; throw new Error('no'); };
+    h.register(broken);
+    await started(h);
+    h.S.stProgressWant();
+    await until(() => reads === 1, 'the first read');
+    await wait(40);
+    expect(reads).toBe(1);
+    h.S.stProgressWant();
+    await until(() => reads === 2, 'the read asked for again');
+    await wait(40);
+    expect(reads).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a unit\'s groups together through the tool\'s own count, once per card, and again when the tool changes', async () => {
+    const h = await subject();
+    // One card in the deck Mack, tagged mack too: two groups, one card. Clark has one group.
+    let cards = { mack: [5, 2, 0, 1], both: [5, 2, 0, 1] };
+    const t = tool('test.cards', 'Cards', [g('mack', 1, 0, 0, 1, 'tag:mack'), g('Mack', 5, 2, 0, 1, 'deck:1'), g('clark', 3, 1, 0, 0, 'tag:clark')]);
+    const counts: string[][] = [];
+    t.provider.count = async (groups) => {
+      counts.push([...groups]);
+      const c = groups.includes('tag:clark') ? [cards.both[0] + 3, cards.both[1] + 1, 0, cards.both[3]] : cards.mack;
+      return { total: c[0], good: c[1], middling: c[2], poor: c[3] };
+    };
+    h.register(t);
+    await started(h);
+    h.S.stProgressWant();
+    const heard = vi.fn();
+    cleanup.push(h.S.bus.on('progress', heard));
+    const cardsOf = (name: string) => (h.S.stProgressOfSubject(h.subject.id).rows.find((r: Any) => r.name === name).kinds.find((k: Any) => k.kind === 'Cards') || {}).counts;
+    await until(() => cardsOf('Mack'), 'the counted bar');
+    expect(cardsOf('Mack')).toEqual([2, 0, 1, 2]);
+    expect(cardsOf('Clark')).toEqual([1, 0, 0, 2]);
+    expect(h.S.stProgressOfSubject(h.subject.id).totals.find((x: Any) => x.kind === 'Cards').counts).toEqual([3, 0, 1, 4]);
+    expect(counts.map((c) => c.join('+')).sort()).toEqual(['deck:1+tag:clark+tag:mack', 'deck:1+tag:mack']);
+    expect(heard).toHaveBeenCalled();
+    // The card is rated Good: the groups and the counted sets arrive together, the bar never falls back to a sum.
+    cards = { mack: [5, 3, 0, 0], both: [5, 3, 0, 0] };
+    const seen: number[][] = [];
+    cleanup.push(h.S.bus.on('progress', () => { const c = cardsOf('Mack'); if (c) seen.push(c); }));
+    t.set([g('mack', 1, 1, 0, 0, 'tag:mack'), g('Mack', 5, 3, 0, 0, 'deck:1'), g('clark', 3, 1, 0, 0, 'tag:clark')]);
+    await until(() => (cardsOf('Mack') || [])[0] === 3, 'the new count');
+    expect(cardsOf('Mack')).toEqual([3, 0, 0, 2]);
+    expect(seen.every((c) => c[0] + c[1] + c[2] + c[3] === 5)).toBe(true);
+  });
+
   it('once Study is off, listens to no provider and reads none, whatever they say', async () => {
     const h = await subject();
     const problems = tool('test.problems', 'Problems', [g('Clark', 10, 3, 1, 2)]);
@@ -292,7 +372,7 @@ describe('the providers as they are now', () => {
     expect(h.S.stProgressProviders()).toEqual([]);
   });
 
-  it('opens a tool on a part: the provider\'s own open, on the unit\'s group with the most in that state', async () => {
+  it('opens a tool on a part: the provider\'s own open, on every group the unit matched', async () => {
     const h = await subject();
     const drills = tool('test.drills', 'Drills', [g('Mack', 9, 4, 2, 1), g('Mack 1994', 7, 1, 0, 5, 'mack1994')], { open: true });
     h.register(drills);
@@ -302,7 +382,8 @@ describe('the providers as they are now', () => {
     await wait(0);
     expect(await h.S.stProgressOpenItems('test.drills', ['mack', 'mack1994'], 'poor')).toBe(true);
     expect(await h.S.stProgressOpenItems('test.drills', ['mack'], 'good')).toBe(true);
-    expect(drills.state.opened).toEqual([['mack1994', 'poor'], ['mack', 'good']]);
+    expect(await h.S.stProgressOpenItems('test.drills', [], 'good')).toBe(false);
+    expect(drills.state.opened).toEqual([[['mack', 'mack1994'], 'poor'], [['mack'], 'good']]);
     expect(await h.S.stProgressOpenItems('test.drills', ['mack'], 'sideways')).toBe(false);
     expect(await h.S.stProgressOpenItems('test.nobody', ['mack'], 'good')).toBe(false);
   });
@@ -471,7 +552,7 @@ describe('the Progress tab', () => {
     expect(blank.tagName).toBe('BUTTON');
     blank.click();
     await until(() => drills.state.opened.length, 'the tool opened');
-    expect(drills.state.opened).toEqual([['mack', 'poor']]);
+    expect(drills.state.opened).toEqual([[['mack'], 'poor']]);
     expect(h.calls.opened).toHaveLength(0);
     const plain = [...h.host.querySelectorAll<HTMLElement>('.px-stacked-bar')].find((b) => b.getAttribute('aria-label') === 'Clark, Reps: 1 easy, 2 medium, 3 hard, 0 not rated')!;
     expect(plain.getAttribute('role')).toBe('img');

@@ -10,7 +10,7 @@ import { notifyWorksheetViewsChanged, getQuizSession, savePlanJson, clearPlan } 
 import type { PlanActions } from './panes/planPane.js';
 import { parsePlan } from './plan.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
-import { practiceListeners, reviewListeners, beginPractice, sheetsToFocus, state } from './state.js';
+import { practiceListeners, quizPresetListeners, reviewListeners, beginPractice, sheetsToFocus, state } from './state.js';
 import { WS_ICON_SVG } from './widgets.js';
 
 /** A past quiz reopened: the same player over the same problems, with the
@@ -229,6 +229,17 @@ export function planActions(): PlanActions {
 /** The page every Worksheets tab links back to. */
 export const BACK_TO_HOME: IKitAction = { id: 'worksheet.home', label: 'Worksheets', onClick: () => void openWorksheet('home', 'Worksheets') };
 export const openBuilder = () => void openWorksheet('practice', 'New Quiz');
+/**
+ * The quiz builder on a set handed over (a paper, the problems shown, a
+ * rating band). A builder that is already open takes it at once, in place of
+ * what it had chosen; one not yet made reads it as it is made. Either way it
+ * is taken once, so the next builder starts clean.
+ */
+export function openBuilderWith(preset: NonNullable<typeof state.quizPreset>): void {
+  state.quizPreset = preset;
+  for (const fn of [...quizPresetListeners]) { try { fn(); } catch { /* pane torn down */ } }
+  openBuilder();
+}
 /** The quiz tab: one tab for the running quiz, named after it. */
 export const openQuizTab = () => void openWorksheet('practice-run', state.practice?.name || 'Quiz');
 

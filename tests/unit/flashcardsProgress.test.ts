@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { FC_PROGRESS_WORDS, FC_PROGRESS_SQL, fcProgressState, fcProgressGroups, fcProgressProvider, fcWithRegistry } from '../../ext/flashcards/progress.js';
+import { FC_PROGRESS_WORDS, FC_PROGRESS_SQL, fcProgressState, fcProgressGroups, fcProgressCount, fcProgressProvider, fcWithRegistry } from '../../ext/flashcards/progress.js';
 import { registerProgressProvider, listProgressProviders, progressCounts } from '../../src/services/progressProviders.js';
 
 type Row = { tags: string; deck_id: number; deck_name: string; last_rating: number | null };
@@ -49,6 +49,29 @@ describe('fcProgressGroups', () => {
   it('gives nothing for no cards', () => {
     expect(fcProgressGroups([])).toEqual([]);
     expect(fcProgressGroups(null)).toEqual([]);
+  });
+});
+
+describe('fcProgressCount: groups together, each card once', () => {
+  const rows = [
+    row('mack, chain ladder', [3, 'Mack'], 1), row('mack', [3, 'Mack'], 3), row('', [3, 'Mack'], 4), row('', [3, 'Mack'], null), row('', [3, 'Mack'], null),
+    row('Mack', MAIN, 2), row('clark', MAIN, 3),
+  ];
+  it('counts a card in its deck and in two of its tags once', () => {
+    expect(fcProgressCount(rows, ['tag:mack', 'tag:chain ladder', 'deck:3'])).toEqual({ total: 6, good: 2, middling: 1, poor: 1 });
+    // The groups themselves add up to more: 3 + 1 + 5.
+    const sum = fcProgressGroups(rows).filter((g: { group: string }) => ['tag:mack', 'tag:chain ladder', 'deck:3'].includes(g.group)).reduce((t: number, g: { total: number }) => t + g.total, 0);
+    expect(sum).toBe(9);
+  });
+  it('is the group\'s own counts for one group, and nothing for none or for a group it does not have', () => {
+    const one = fcProgressGroups(rows).find((g: { group: string }) => g.group === 'tag:mack');
+    expect(fcProgressCount(rows, ['tag:mack'])).toEqual({ total: one.total, good: one.good, middling: one.middling, poor: one.poor });
+    expect(fcProgressCount(rows, [])).toEqual({ total: 0, good: 0, middling: 0, poor: 0 });
+    expect(fcProgressCount(rows, ['tag:nobody', 'deck:99'])).toEqual({ total: 0, good: 0, middling: 0, poor: 0 });
+  });
+  it('is what the provider offers as count', async () => {
+    const provider = fcProgressProvider({ all: async () => rows, onDidChange: () => ({ dispose() {} }) });
+    expect(await provider.count(['tag:mack', 'deck:3'])).toEqual({ total: 6, good: 2, middling: 1, poor: 1 });
   });
 });
 
