@@ -232,7 +232,7 @@ if (mode === 'seed') {
 db.close();
 `;
 function dbTool(mode, dbPath, argPath) {
-  const r = spawnSync(ELECTRON, [DB_TOOL, path.join(REPO, 'node_modules', 'better-sqlite3'), mode, dbPath, ...(argPath ? [argPath] : [])], { env: nodeEnv(), encoding: 'utf8', windowsHide: true });
+  const r = spawnSync(ELECTRON, [DB_TOOL, path.join(REPO, 'node_modules', 'better-sqlite3'), mode, dbPath, ...(argPath ? [argPath] : [])], { env: nodeEnv(), encoding: 'utf8', windowsHide: true, maxBuffer: 512 * 1024 * 1024 }); // a sheet keeps its picture as a data URL
   if (r.status !== 0) throw new Error(`db ${mode} failed: ${(r.stderr || r.stdout || '').slice(0, 300)}`);
   return JSON.parse(r.stdout.trim().split(/\r?\n/).pop());
 }
@@ -1322,6 +1322,9 @@ await t('9.17 the loupe (.mo-cs-loupe, aria-hidden) shows the pixels under the p
   return [L.hidden === 'true' && L.w >= 40 && L.h >= 40 && sh[0] >= 0.12 && sh[1] >= 0.12 && !after, { loupe: L, shareOfEachColour: sh, afterLeaving: after }];
 });
 await t('9.18 the loupe also shows while the keyboard picker is in use (focus on the picture, arrow keys)', async () => {
+  // From no focus: the clicks of 9.14 to 9.16 left it on the picture, which is 9.17's business, not this check's.
+  await P(() => { const a = document.activeElement; if (a && a !== document.body) a.blur(); });
+  await wait(400);
   const on = await P(() => { const p = window.__csProbe, r = p.root(), pic = r && p.all('.mo-cs-picture', r)[0]; if (!pic) return false; const f = pic.matches('[tabindex]') ? pic : pic.querySelector('[tabindex]') || pic.closest('[tabindex]') || pic; f.focus(); const a = document.activeElement; return !!a && a !== document.body && (pic.contains(a) || a.contains(pic)); });
   if (!on) throw new Error('the picture cannot take the keyboard focus');
   if (await loupe()) throw new Error('the loupe was already showing before a key was pressed (the pointer is off the picture)');
