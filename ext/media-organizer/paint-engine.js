@@ -398,6 +398,7 @@ export function moMixOrder(recipePaints, paints) {
 // ── the rows: one dial at a time ────────────────────────────────────────────
 
 const POLES = { warm: { light: 95, shadow: 285 }, cool: { light: 230, shadow: 40 } };
+const POLE_C = 0.12; // how coloured the light and the shadow are
 const WARM_POLE = 60, COOL_POLE = 250;
 /**
  * The study rows for a base colour, each turning one dial and holding the others:
@@ -420,11 +421,15 @@ export function moVariationRows(rgb, opts) {
   value[nearest].base = true;
 
   const pole = POLES[opts && opts.light === 'cool' ? 'cool' : 'warm'], light = [];
+  // Each cell is tinted by the light (lights) or by the shadow's colour (darks), more toward the ends: the
+  // colour is pulled toward the pole in OKLab, so a yellow's shadow under warm light goes cool and grey,
+  // never round the wheel through orange.
+  const rad = (d) => (d * Math.PI) / 180, ba = C * Math.cos(rad(h)), bb = C * Math.sin(rad(h));
   for (let i = 0; i < n; i++) {
-    const t = at(i) * 2 - 1;
-    const gap = hueGap(h, t > 0 ? pole.light : pole.shadow), lean = Math.sign(gap) * Math.min(Math.abs(gap), 38) * Math.abs(t);
+    const t = at(i) * 2 - 1, k = 0.55 * Math.abs(t), ph = rad(t > 0 ? pole.light : pole.shadow);
+    const a2 = ba * (1 - k) + POLE_C * Math.cos(ph) * k, b2 = bb * (1 - k) + POLE_C * Math.sin(ph) * k;
     const drain = t < -0.6 ? 1 - 0.5 * ((-t - 0.6) / 0.4) : t > 0.75 ? 1 - 0.55 * ((t - 0.75) / 0.25) : 1;
-    light.push(cell(moColourAtValue(h + lean, C * drain, 1.5 + at(i) * 7.7)));
+    light.push(cell(moColourAtValue((Math.atan2(b2, a2) * 180) / Math.PI, Math.hypot(a2, b2) * drain, 1.5 + at(i) * 7.7)));
   }
 
   const tone = [];
