@@ -35,6 +35,7 @@
 //   9. A picture as the source (a click takes the pixel's colour), and a
 //      sheet made from a painting plan's variation with its saved colours.
 //  10. Screenshots of the sheet, the bench and the picture source.
+//  11. The picture source as the owner asked on 2026-11-19 (9.8 to 9.20, 8.4a, 10.5, 10.6; see below).
 //
 // Where the contract leaves a detail open the probe finds the control by its
 // accessible name or role; each such place says ASSUMED and what it expects.
@@ -55,6 +56,17 @@
 //
 // COLOUR_STUDY_EXT=<dir> runs against another copy of `ext/` (the code as it
 // was before the build, to see every check of new behaviour fail).
+//
+// Added on 2026-11-19, before it was built, for the owner's words on the picture source: "The image
+// searcher is bad, if I do not know name of image, then what, it only loads a few images. Second, the
+// image is too small. Color picking then approximates vs giving me the more accurate color." Checks 9.8 to
+// 9.18: Choose Picture lists the library newest first, 48 at a time, Show More adds 48, and a search finds a
+// photo by its tag, folder, details or filename; the picture's column is at least 40% of the sheet and the
+// picture fills it; Point, 5 px and 15 px are read from the original file; the loupe. 8.4a: the sample
+// size is kept. 9.19 and 9.20: Open in Colour Study from a photo's menu in the library, and its command.
+// 10.5 and 10.6: their screenshots. For them the library has 109 photos: 100 small ones (m001 to m100),
+// three in a folder of their own ("harbour-walk"), and checker.png, 2,310 x 1,540, lossless, a checkerboard
+// of 2 px cells of two colours: any smaller copy of it turns them into their mix.
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -92,6 +104,11 @@ const RIGHT = [42, 80, 200];
 // The plan's variation carries three saved colours (two on the picture, one from the palette).
 const PLAN_SAVED = [{ rgb: [200, 64, 42], x: 0.25, y: 0.5 }, { rgb: [42, 80, 200], x: 0.75, y: 0.5 }, { rgb: [30, 140, 90], x: null, y: null }];
 const HARMONIES = { complementary: [0, 180], splitComplementary: [0, 150, 210], triadic: [0, 120, 240], tetradic: [0, 60, 180, 300], square: [0, 90, 180, 270], analogous: [0, -30, 30] };
+// checker.png: 2 px cells, CHK_A where floor(x / 2) + floor(y / 2) is even, CHK_B where it is odd.
+const CHK_A = [250, 210, 20];
+const CHK_B = [20, 140, 60];
+const CHK_W = 2310, CHK_H = 1540;
+const MANY = 100; // m001.png to m100.png, so the picker has more than two pages of 48
 
 // ── Colour arithmetic (the probe's own, from the contract) ───────────────────
 const hexRgb = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? '').trim()); return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null; };
@@ -171,6 +188,41 @@ if (mode === 'seed') {
   const variant = Number(db.prepare('INSERT INTO mo_plan_variants (plan_id, name, recipe_json, position) VALUES (?, ?, ?, 0)').run(plan, 'Probe Variation', JSON.stringify({ saved: a.saved })).lastInsertRowid);
   db.prepare('UPDATE mo_plans SET variant_id = ? WHERE id = ?').run(variant, plan);
   console.log(JSON.stringify({ plan, variant }));
+} else if (mode === 'extra') {
+  // More photos for the picker: { photos: [{ dir, basename, width, height, title }], tag: { name, photo }, details: { text, photo } }.
+  const a = JSON.parse(fs.readFileSync(argPath, 'utf8'));
+  const path = require('path'), crypto = require('crypto');
+  const ins = (table, values) => {
+    const row = Object.assign({}, values);
+    for (const c of db.prepare('PRAGMA table_info(' + table + ')').all()) {
+      if (c.name in row || c.pk || !c.notnull || c.dflt_value !== null) continue;
+      row[c.name] = /INT|REAL|NUM/i.test(c.type) ? 0 : '';
+    }
+    const keys = Object.keys(row);
+    return Number(db.prepare('INSERT INTO ' + table + ' (' + keys.join(', ') + ') VALUES (' + keys.map(() => '?').join(', ') + ')').run(keys.map((k) => row[k])).lastInsertRowid);
+  };
+  const folders = {};
+  const folderOf = (dir) => { if (folders[dir]) return folders[dir]; const r = db.prepare('SELECT id FROM mo_folders WHERE path = ?').get(dir); return (folders[dir] = r ? r.id : ins('mo_folders', { path: dir })); };
+  const ids = {};
+  db.transaction(() => {
+    for (const p of a.photos) {
+      const buf = fs.readFileSync(path.join(p.dir, p.basename));
+      const file = ins('mo_files', { folder_id: folderOf(p.dir), basename: p.basename, size: buf.length, mod_time: '2025-01-01 00:00:00' });
+      ins('mo_fingerprints', { file_id: file, type: 'md5', value: crypto.createHash('md5').update(buf).digest('hex') });
+      ins('mo_image_files', { file_id: file, width: p.width, height: p.height });
+      const id = ins('mo_photos', { title: p.title });
+      ins('mo_photos_files', { photo_id: id, file_id: file, is_primary: 1 });
+      ids[p.basename] = id;
+    }
+    const tag = ins('mo_tags', { name: a.tag.name });
+    db.prepare('INSERT INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)').run(ids[a.tag.photo], tag);
+    db.prepare('UPDATE mo_photos SET details = ? WHERE id = ?').run(a.details.text, ids[a.details.photo]);
+    // Newest first reads the same whichever date is meant: ids, added, taken and file times climb together.
+    db.prepare("UPDATE mo_photos SET created_at = datetime('2025-01-01', '+' || id || ' hours'), updated_at = datetime('2025-01-01', '+' || id || ' hours'), taken_at = datetime('2025-01-01', '+' || id || ' hours')").run();
+    db.prepare("UPDATE mo_files SET created_at = datetime('2025-01-01', '+' || id || ' hours'), updated_at = datetime('2025-01-01', '+' || id || ' hours'), mod_time = datetime('2025-01-01', '+' || id || ' hours')").run();
+  })();
+  const all = db.prepare('SELECT id FROM mo_photos WHERE deleted_at IS NULL ORDER BY id DESC').all().map((r) => r.id);
+  console.log(JSON.stringify({ ids, all }));
 } else {
   const has = !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mo_colour_sheets'").get();
   const sheets = has ? db.prepare('SELECT * FROM mo_colour_sheets ORDER BY id').all() : null;
@@ -195,6 +247,23 @@ async function seed() {
   for (const [name, src] of gen) ff(['-f', 'lavfi', '-i', src, '-frames:v', '1', '-q:v', '3'], name);
   const hexOf = (c) => '0x' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
   ff(['-f', 'lavfi', '-i', `color=c=${hexOf(LEFT)}:s=600x800`, '-f', 'lavfi', '-i', `color=c=${hexOf(RIGHT)}:s=600x800`, '-filter_complex', 'hstack', '-frames:v', '1', '-q:v', '2'], 'halves.jpg');
+  // The picker's library: checker.png (lossless, full size), MANY small photos, three in a folder of their own.
+  const odd = 'mod(floor(X/2)+floor(Y/2)\\,2)';
+  const chk = (c) => `if(${odd},${CHK_B[c]},${CHK_A[c]})`;
+  ff(['-f', 'lavfi', '-i', `color=c=black:s=${CHK_W}x${CHK_H},format=rgb24`, '-vf', `geq=r='${chk(0)}':g='${chk(1)}':b='${chk(2)}'`, '-frames:v', '1', '-pix_fmt', 'rgb24'], 'checker.png');
+  ff(['-f', 'lavfi', '-i', 'testsrc=size=96x64:rate=25', '-frames:v', String(MANY)], 'm%03d.png');
+  await fs.mkdir(path.join(photos, 'harbour-walk'), { recursive: true });
+  ff(['-f', 'lavfi', '-i', 'testsrc2=size=120x80:rate=25', '-frames:v', '3'], path.join('harbour-walk', 'h%d.png'));
+  const extraPath = path.join(appRoot, 'seed-extra.json');
+  await fs.writeFile(extraPath, JSON.stringify({
+    photos: [
+      ...Array.from({ length: MANY }, (_, i) => { const b = `m${String(i + 1).padStart(3, '0')}.png`; return { dir: photos, basename: b, width: 96, height: 64, title: b === 'm051.png' ? 'Evening Walk' : b.slice(0, -4) }; }),
+      ...[1, 2, 3].map((i) => ({ dir: path.join(photos, 'harbour-walk'), basename: `h${i}.png`, width: 120, height: 80, title: `h${i}` })),
+      { dir: photos, basename: 'checker.png', width: CHK_W, height: CHK_H, title: 'Checker' },
+    ],
+    tag: { name: 'LIGHTHOUSE', photo: 'm017.png' },
+    details: { text: 'a misty quay at dawn', photo: 'm033.png' },
+  }));
   const spec = [...gen.map(([basename, , width, height]) => ({ basename, width, height })), { basename: 'halves.jpg', width: 1200, height: 800 }];
   const specPath = path.join(appRoot, 'spec.json');
   await fs.writeFile(specPath, JSON.stringify(spec));
@@ -206,6 +275,7 @@ async function seed() {
     const lib = JSON.parse(r.stdout.trim().split(/\r?\n/).pop());
     await fs.writeFile(argPath, JSON.stringify({ paints: SEEDED_PAINTS, photoId: lib.photo['halves.jpg'], saved: PLAN_SAVED }));
     out = { photo: lib.photo, ...dbTool('seed', db, argPath) };
+    out.lib = dbTool('extra', db, extraPath);
   }
   return out;
 }
@@ -263,6 +333,19 @@ function installHelpers() {
       let sig = '';
       for (let gy = 0; gy < 24; gy++) for (let gx = 0; gx < 24; gx++) { const q = at((gx + 0.5) / 24, (gy + 0.5) / 24); sig += (q[0] >> 4).toString(16) + (q[1] >> 4).toString(16) + (q[2] >> 4).toString(16); }
       return { w: c.width, h: c.height, mean: mean.map((v) => Math.round((v / n) * 10) / 10), centre: at(0.5, 0.5), hues: bands.filter((v) => v > n * 0.004).length, sig };
+    },
+    // What share of a rectangle of a PNG (base64) is each of the given colours (within tol on every channel).
+    async share(b64, crop, colours, tol) {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      const k = bmp.width / window.innerWidth;
+      const x0 = Math.max(0, Math.round(crop.x * k)), y0 = Math.max(0, Math.round(crop.y * k));
+      const w = Math.max(1, Math.min(bmp.width - x0, Math.round(crop.width * k))), h = Math.max(1, Math.min(bmp.height - y0, Math.round(crop.height * k)));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, -x0, -y0);
+      const d = ctx.getImageData(0, 0, w, h).data, hits = colours.map(() => 0);
+      for (let i = 0; i < d.length; i += 4) colours.forEach((col, j) => { if (Math.abs(d[i] - col[0]) <= tol && Math.abs(d[i + 1] - col[1]) <= tol && Math.abs(d[i + 2] - col[2]) <= tol) hits[j]++; });
+      return hits.map((n) => Math.round((n / (w * h)) * 1000) / 1000);
     },
   };
   window.__csProbe = p;
@@ -1071,6 +1154,191 @@ await t('9.4 back to Wheel: the wheel returns and the colour taken from the pict
   const w = await wheelBox();
   return [b.source === 'wheel' && w.vis && (await countOf('.mo-cs-picture')) === 0 && nearHex(activeHex(b), activeHex(a)), { source: b.source, was: activeHex(a), now: activeHex(b) }];
 });
+// 9b. Choosing the picture, and taking its colour exactly (the owner, 2026-11-19) ─────────────────────
+const lib = seeded?.lib || { ids: {}, all: [] };
+const PICK = '[data-px-id^="media-organizer.colour.pickPhoto."]';
+const pickIds = () => P((sel) => window.__csProbe.all(sel).map((e) => Number(String(e.getAttribute('data-px-id')).split('.').pop())), PICK);
+// ASSUMED: the picker's search field is an input in `.mo-cs-picker` (or the one data-px-id pickSearch names).
+const searchField = () => P(() => { const p = window.__csProbe; const f = p.all('[data-px-id="media-organizer.colour.pickSearch"], .mo-cs-picker input')[0]; return f ? p.box(f) : null; });
+async function openPicker() {
+  if ((await state()).source !== 'picture') { await choose('source', '^picture'); await wait(600); }
+  if (!(await searchField())) { await clickCtl('choosePicture'); await wait(800); }
+  if (!(await searchField())) throw new Error('Choose Picture showed no search field');
+}
+// The photos listed once the list has stopped changing.
+async function listed(allowEmpty = false) {
+  let prev = null;
+  for (let i = 0; i < 30; i++) { const ids = await pickIds(); if (prev && JSON.stringify(ids) === JSON.stringify(prev) && (ids.length || allowEmpty)) return ids; prev = ids; await wait(400); }
+  return prev || [];
+}
+async function searchFor(text) {
+  const f = await searchField();
+  if (!f) throw new Error('no search field in the picker');
+  await page.mouse.click(f.x, f.y); await wait(150);
+  await page.keyboard.press('Control+a'); await page.keyboard.press('Backspace');
+  if (text) await page.keyboard.type(text);
+  await wait(900);
+  return listed(true);
+}
+const cellColour = (ox, oy) => ((Math.floor(ox / 2) + Math.floor(oy / 2)) % 2 === 0 ? CHK_A : CHK_B);
+// Window points (whole CSS pixels, as the mouse has them) on the checker whose original pixel is 0.6 px or more
+// inside a cell, so a mapping that floors or rounds lands in the same cell; half of each colour, spread out.
+function clearPoints(b, want = 6) {
+  const pts = [];
+  for (let yy = Math.ceil(b.top + b.h * 0.3); yy < b.top + b.h * 0.7 && pts.length < want; yy += 7) {
+    for (let xx = Math.ceil(b.left + b.w * 0.25); xx < b.left + b.w * 0.75 && pts.length < want; xx++) {
+      const ox = ((xx - b.left) * CHK_W) / b.w, oy = ((yy - b.top) * CHK_H) / b.h, fx = ox % 2, fy = oy % 2;
+      if (fx < 0.6 || fx > 1.4 || fy < 0.6 || fy > 1.4) continue;
+      const c = cellColour(ox, oy);
+      if (pts.filter((p) => p.c === c).length >= want / 2) continue;
+      pts.push({ x: xx, y: yy, ox: Math.round(ox * 10) / 10, oy: Math.round(oy * 10) / 10, c });
+      xx += 37;
+    }
+  }
+  return pts;
+}
+// The mix of the two checker colours: their plain mean, or their mean in linear light (either is an average).
+const toLin = (x) => { x /= 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+const fromLin = (m) => 255 * (m <= 0.0031308 ? 12.92 * m : 1.055 * m ** (1 / 2.4) - 0.055);
+const MIX = { srgb: CHK_A.map((v, i) => (v + CHK_B[i]) / 2), linear: CHK_A.map((v, i) => fromLin((toLin(v) + toLin(CHK_B[i])) / 2)) };
+const nearMix = (c, share) => !!c && [MIX.srgb, MIX.linear].some((m) => c.every((v, i) => Math.abs(v - m[i]) <= share * Math.abs(CHK_A[i] - CHK_B[i]) + 4));
+const loupe = () => P(() => { const p = window.__csProbe; const e = p.all('.mo-cs-loupe').find((x) => Number(getComputedStyle(x).opacity) > 0.1); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, w: r.width, h: r.height, hidden: e.getAttribute('aria-hidden') }; });
+let pointPresses = null, sampleSet = null, loupeShot = false, menuShot = false;
+
+await t('9.8 with the search empty, Choose Picture lists the library newest first, 48 of them (pickPhoto.<id>)', async () => {
+  if (!lib.all.length) throw new Error('the extra photos were not seeded');
+  await openSheet(sheetA, titleA);
+  await openPicker();
+  const ids = await searchFor('');
+  const want = lib.all.slice(0, 48);
+  return [ids.length === 48 && JSON.stringify(ids) === JSON.stringify(want), { listed: ids.length, first: ids.slice(0, 5), wantFirst: want.slice(0, 5), library: lib.all.length }];
+});
+await t('9.9 Show More (morePhotos) adds the next 48, and again the rest, still newest first', async () => {
+  await clickCtl('morePhotos'); await wait(700);
+  const two = await listed();
+  let three = two;
+  if (lib.all.length > 96) { await clickCtl('morePhotos'); await wait(700); three = await listed(); }
+  return [two.length === 96 && JSON.stringify(two) === JSON.stringify(lib.all.slice(0, 96)) && JSON.stringify(three) === JSON.stringify(lib.all), { afterOne: two.length, afterTwo: three.length, library: lib.all.length }];
+});
+await t('9.10 a search finds a photo by a word its title lacks: its tag (lighthouse), its folder (harbour), its details (misty), its filename (m051, titled Evening Walk)', async () => {
+  const r = await run('media-organizer.rebuildSearchIndex'); // the seed wrote the rows without the app; the library's own index is rebuilt from them
+  await wait(1_500);
+  const cases = [['lighthouse', ['m017.png']], ['harbour', ['h1.png', 'h2.png', 'h3.png']], ['misty', ['m033.png']], ['m051', ['m051.png']]];
+  const got = {};
+  for (const [word, names] of cases) {
+    const ids = await searchFor(word);
+    const want = names.map((n) => lib.ids[n]);
+    got[word] = { listed: ids, want, ok: want.every((id) => ids.includes(id)) && ids.length <= want.length + 2 };
+  }
+  return [r.ok && Object.values(got).every((g) => g.ok), got];
+});
+await t('9.11 a photo\'s button in the picker makes it the picture: checker.png, at its own proportions', async () => {
+  const chk = lib.ids['checker.png'];
+  const ids = await searchFor('');
+  if (!ids.includes(chk)) throw new Error(`checker.png (${chk}) is not among the ${ids.length} listed`);
+  const bb = await boxOf(`[data-px-id="media-organizer.colour.pickPhoto.${chk}"]`, { anywhere: true });
+  await page.mouse.click(bb.x, bb.y);
+  const b = await until(async () => { const x = await pictureBox(); return x && Math.abs(x.w / x.h - CHK_W / CHK_H) < 0.03 ? x : null; }, 8_000);
+  await wait(3_000); // time to read the original file
+  const s = await state();
+  return [!!b && s.source === 'picture', { picture: b && [Math.round(b.w), Math.round(b.h)], source: s.source }];
+});
+{
+  let wide = false, why = 'the app did not start';
+  if (up) {
+    try {
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setContentSize(2000, 900); });
+      await page.setViewportSize({ width: 2000, height: 900 }).catch(() => {});
+      wide = !!(await until(() => P(() => window.innerWidth >= 1900), 4_000));
+      if (!wide) why = `the hidden window would not go wider than ${await P(() => window.innerWidth)} px`;
+    } catch (e) { why = String(e?.message || e).slice(0, 160); }
+  }
+  const NAME = '9.12 with Picture as the source, .mo-cs-left is at least 40% of .mo-cs-body (and 300 px) in a wide window, and .mo-cs-picture fills its width';
+  if (!wide) notRun(NAME, why);
+  else await t(NAME, async () => {
+    await wait(1_200);
+    const g = await P(() => { const p = window.__csProbe, r = p.root(); const body = r && p.all('.mo-cs-body', r)[0], left = r && p.all('.mo-cs-left', r)[0], pic = r && p.all('.mo-cs-picture', r)[0]; if (!body || !left || !pic) return { missing: [!body && '.mo-cs-body', !left && '.mo-cs-left', !pic && '.mo-cs-picture'].filter(Boolean) }; const cs = getComputedStyle(left); return { body: Math.round(body.getBoundingClientRect().width), left: Math.round(left.getBoundingClientRect().width), inner: Math.round(left.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)), picture: Math.round(pic.getBoundingClientRect().width), window: window.innerWidth }; });
+    if (g.missing) throw new Error('not on screen: ' + g.missing.join(', '));
+    return [g.left >= 0.4 * g.body && g.left >= 300 && g.picture >= g.inner - 2, g];
+  });
+  if (up) { await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setContentSize(1400, 900); }).catch(() => {}); await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {}); await until(() => P(() => window.innerWidth <= 1450), 4_000); await wait(1_200); }
+}
+await t('9.13 the sample size control (sampleSize) offers Point, 5 px and 15 px; a sheet starts on Point (state.sample 1)', async () => {
+  const s = await state();
+  const seg = await P((sel) => { const p = window.__csProbe, el = p.all(sel)[0]; return el ? p.clickables(el).map((e) => ({ name: p.nameOf(e), on: e.getAttribute('aria-pressed') ?? e.getAttribute('aria-checked') })) : null; }, ctl('sampleSize'));
+  if (!seg) throw new Error(`not on screen: ${ctl('sampleSize')}`);
+  const names = seg.map((x) => x.name);
+  const has = [/^point/i, /^5\s*px/i, /^15\s*px/i].every((re) => names.some((n) => re.test(n)));
+  const pointOn = seg.find((x) => /^point/i.test(x.name))?.on === 'true';
+  return [has && pointOn && s.sample === 1, { sample: s.sample, options: seg }];
+});
+await t('9.14 Point takes the original\'s own pixel: six presses on the 2 px checkerboard are each one of its two colours (±2), not their mix, and both are met', async () => {
+  await choose('sampleSize', '^point');
+  const b = await pictureBox();
+  if (!b) throw new Error('no picture on screen');
+  const pts = clearPoints(b, 6);
+  const got = [];
+  for (const q of pts) { await page.mouse.click(q.x, q.y); await wait(600); got.push({ at: [q.x, q.y], original: [q.ox, q.oy], want: q.c, got: hexRgb(activeHex(await state())) }); }
+  pointPresses = got;
+  const pure = got.every((g) => near(g.got, CHK_A, 2) || near(g.got, CHK_B, 2));
+  const both = got.some((g) => near(g.got, CHK_A, 2)) && got.some((g) => near(g.got, CHK_B, 2));
+  return [pts.length === 6 && pure && both && (await state()).sample === 1, { picture: [Math.round(b.left), Math.round(b.top), Math.round(b.w), Math.round(b.h)], presses: got.map((g) => [g.original, g.got]) }];
+});
+// ASSUMED: "under the pointer" is the original pixel at (clientX - left) x width / shown width (floored or rounded).
+await t('9.14a ... and it is the pixel under the pointer: each press has the colour of the cell the pointer maps to', async () => {
+  if (!pointPresses || pointPresses.length !== 6) throw new Error('9.14 made no presses');
+  const bad = pointPresses.filter((g) => !near(g.got, g.want, 2));
+  return [bad.length === 0, bad];
+});
+async function sampled(source, size) {
+  await choose('sampleSize', source);
+  const b = await pictureBox();
+  if (!b) throw new Error('no picture on screen');
+  const out = [];
+  for (const q of clearPoints(b, 4).slice(0, 3)) { await page.mouse.click(q.x, q.y); await wait(600); out.push(hexRgb(activeHex(await state()))); }
+  return { out, sample: (await state()).sample, size };
+}
+await t('9.15 15 px averages a 15 x 15 square of the original: three presses each give the two colours\' mix (state.sample 15)', async () => {
+  const r = await sampled('^15', 15);
+  return [r.out.length === 3 && r.out.every((c) => nearMix(c, 0.02)) && r.sample === 15, { ...r, mix: MIX }];
+});
+await t('9.16 5 px averages a 5 x 5 square: near the mix (12 or 13 of 25 pixels are one colour), neither colour alone (state.sample 5)', async () => {
+  const r = await sampled('^5\\s*px', 5);
+  const ok = r.out.length === 3 && r.out.every((c) => nearMix(c, 0.05) && !near(c, CHK_A, 10) && !near(c, CHK_B, 10)) && r.sample === 5;
+  if (ok) sampleSet = 5;
+  return [ok, { ...r, mix: MIX }];
+});
+await t('9.17 the loupe (.mo-cs-loupe, aria-hidden) shows the pixels under the pointer magnified, both checker colours unmixed; off the picture it goes', async () => {
+  const b = await pictureBox();
+  if (!b) throw new Error('no picture on screen');
+  await page.mouse.move(b.left + b.w * 0.5, b.top + b.h * 0.5, { steps: 4 }); await wait(400);
+  await page.mouse.move(b.left + b.w * 0.5 + 3, b.top + b.h * 0.5 + 2); await wait(600);
+  const L = await loupe();
+  if (!L) throw new Error('no .mo-cs-loupe on screen while the pointer is over the picture');
+  const sh = await P(({ b64, clip, cols }) => window.__csProbe.share(b64, clip, cols, 24), { b64: await frame(), clip: { x: L.left, y: L.top, width: L.w, height: L.h }, cols: [CHK_A, CHK_B] });
+  const off = await boxOf('.mo-cs-card');
+  await page.mouse.move(off.x, off.y, { steps: 4 }); await wait(700);
+  const after = await loupe();
+  return [L.hidden === 'true' && L.w >= 40 && L.h >= 40 && sh[0] >= 0.12 && sh[1] >= 0.12 && !after, { loupe: L, shareOfEachColour: sh, afterLeaving: after }];
+});
+await t('9.18 the loupe also shows while the keyboard picker is in use (focus on the picture, arrow keys)', async () => {
+  const on = await P(() => { const p = window.__csProbe, r = p.root(), pic = r && p.all('.mo-cs-picture', r)[0]; if (!pic) return false; const f = pic.matches('[tabindex]') ? pic : pic.querySelector('[tabindex]') || pic.closest('[tabindex]') || pic; f.focus(); const a = document.activeElement; return !!a && a !== document.body && (pic.contains(a) || a.contains(pic)); });
+  if (!on) throw new Error('the picture cannot take the keyboard focus');
+  if (await loupe()) throw new Error('the loupe was already showing before a key was pressed (the pointer is off the picture)');
+  await press('ArrowRight', 3);
+  const L = await loupe();
+  return [!!L && L.hidden === 'true', L];
+});
+await t('10.5 a screenshot of the picture with the loupe', async () => {
+  const b = await pictureBox();
+  if (!b) throw new Error('no picture on screen');
+  await page.mouse.move(b.left + b.w * 0.4, b.top + b.h * 0.4, { steps: 3 }); await wait(600);
+  const f = await shot('colour-study-loupe', '.mo-cs-picture');
+  const off = await boxOf('.mo-cs-card'); await page.mouse.move(off.x, off.y); await wait(300);
+  loupeShot = true;
+  return [true, f];
+});
+if (up) { try { await choose('source', '^wheel'); await wait(600); } catch { /* 9.4 and 8.x read the sheet as they find it */ } }
 await t('8.2 what the sheet holds at the end is read for the checks after the restart', async () => {
   await wait(1_500);
   finalA = await state();
@@ -1146,6 +1414,10 @@ await t('8.4 after the app is closed and opened, the sheet opens from the home a
   const s = await openSheet(sheetA, titleA);
   return [JSON.stringify(kept(s)) === JSON.stringify(kept(finalA)) && s.paintSet === 'Probe Set B', { before: kept(finalA), after: kept(s) }];
 });
+await t('8.4a the sample size is kept with the sheet: 5 px, chosen before the app was closed, is state.sample after it was opened again', async () => {
+  const s = await openSheet(sheetA, titleA);
+  return [sampleSet === 5 && s.sample === 5, { chosen: sampleSet, now: s.sample }];
+});
 await t('8.5 Atelier turned off: the sheet and its command go at once; turned on again, the sheet is as it was', async () => {
   if (!finalA) throw new Error('the sheet\'s last state was never read');
   await openSheet(sheetA, titleA);
@@ -1158,12 +1430,61 @@ await t('8.5 Atelier turned off: the sheet and its command go at once; turned on
   const s = await openSheet(sheetA, titleA);
   return [gone === 0 && refused.ok === false && JSON.stringify(kept(s)) === JSON.stringify(kept(finalA)), { sheetsWhileOff: gone, commandWhileOff: refused, after: kept(s) }];
 });
+// From the library, and the command ───────────────────────────────────────
+const maxSheetId = () => { let ids = [sheetA, sheetB].map(Number).filter(Number.isFinite); try { const d = readDb(); if (d.sheets) ids = ids.concat(d.sheets.map((r) => Number(r.id))); } catch { /* the ids seen */ } return Math.max(0, ...ids); };
+const newerSheet = (than) => until(async () => { const x = await stateOrNull(); return x && Number(x.sheetId) > than ? x : null; }, 8_000);
+await t('9.19 the library grid: a photo\'s right-click menu has "Open in Colour Study"; it opens a new sheet with that photo (checker.png) as the source', async () => {
+  const chk = lib.ids['checker.png'];
+  if (!chk) throw new Error('checker.png was not seeded');
+  const before = maxSheetId();
+  const g = await run('media-organizer.openGrid');
+  if (!g.ok) throw new Error(g.error);
+  await page.waitForSelector('.mo-feed-card, .mo-card', { timeout: 20_000 });
+  let tile = null;
+  for (let i = 0; i < 14 && !tile; i++) {
+    tile = await P((id) => { const p = window.__csProbe; const el = p.all('.mo-feed-card, .mo-card').find((e) => (e._moItem && Number(e._moItem.id) === id && (e._moItem.type || 'photo') === 'photo') || e.dataset.key === `photo:${id}`); return el ? p.box(el) : null; }, chk);
+    if (!tile) { await P(() => { const c = document.querySelector('.mo-feed-card, .mo-card'); let s = c && c.parentElement; while (s && s.scrollHeight <= s.clientHeight + 4) s = s.parentElement; if (s) s.scrollTop += 700; }); await wait(900); }
+  }
+  if (!tile) throw new Error('checker.png has no tile in the library grid');
+  await page.mouse.click(tile.x, tile.y, { button: 'right' }); await wait(700);
+  const item = await P(() => { const p = window.__csProbe, m = p.all('.context-menu')[0]; if (!m) return { none: true }; const items = p.all('[role="menuitem"], .context-menu-item', m); const hit = items.find((e) => /^open in colou?r study/i.test(p.nameOf(e))); return hit ? p.box(hit) : { names: items.map(p.nameOf) }; });
+  if (item.none) throw new Error('no context menu opened');
+  if (item.x === undefined) { await page.keyboard.press('Escape'); throw new Error('the menu has no Open in Colour Study: ' + item.names.join(' | ')); }
+  await shot('colour-study-library-menu'); menuShot = true;
+  await page.mouse.click(item.x, item.y);
+  const s = await newerSheet(before);
+  await wait(1_500);
+  const b = s ? await until(pictureBox, 6_000) : null;
+  const seen = b ? (await pixels(b)).mean : null;
+  return [!!s && s.source === 'picture' && (await activeInstance()) === `colour:sheet:${s.sheetId}` && !!b && Math.abs(b.w / b.h - CHK_W / CHK_H) < 0.04 && nearMix(seen, 0.2), { sheet: s && s.sheetId, before, source: s && s.source, picture: b && [Math.round(b.w), Math.round(b.h)], seen }];
+});
+await t('9.20 media-organizer.colour.fromPhoto run with a photo\'s id opens a new sheet with that picture (halves.jpg); run again, another new sheet', async () => {
+  const id = seeded?.photo?.['halves.jpg'];
+  if (!id) throw new Error('halves.jpg was not seeded');
+  const before = maxSheetId();
+  const r1 = await run('media-organizer.colour.fromPhoto', id);
+  if (!r1.ok) throw new Error(r1.error);
+  const s1 = await newerSheet(before);
+  if (!s1) throw new Error('no new sheet opened');
+  await wait(1_500);
+  const b = await until(pictureBox, 6_000);
+  const at = async (fx) => (await pixels({ left: b.left + b.w * fx, top: b.top + b.h * 0.45, w: b.w * 0.1, h: b.h * 0.1 })).centre;
+  const l = b ? await at(0.2) : null, rr = b ? await at(0.7) : null;
+  const r2 = await run('media-organizer.colour.fromPhoto', id);
+  const s2 = r2.ok ? await newerSheet(Number(s1.sheetId)) : null;
+  return [s1.source === 'picture' && !!b && near(l, LEFT, 30) && near(rr, RIGHT, 30) && !!s2 && s2.source === 'picture', { first: s1.sheetId, second: s2 && s2.sheetId, leftSeen: l, rightSeen: rr }];
+});
 await t('10.4 the three screenshots are files in the out dir', async () => {
   const files = ['colour-study-sheet', 'colour-study-bench', 'colour-study-picture'].map((n) => path.join(shots, `${n}.png`));
   const sizes = await Promise.all(files.map(async (f) => (existsSync(f) ? (await fs.stat(f)).size : 0)));
   return [sheetShot && benchShot && pictureShot && sizes.every((n) => n > 4_000), Object.fromEntries(files.map((f, i) => [path.basename(f), sizes[i]]))];
 });
 
+await t('10.6 the screenshots of the loupe and of the library menu are files in the out dir', async () => {
+  const files = ['colour-study-loupe', 'colour-study-library-menu'].map((n) => path.join(shots, `${n}.png`));
+  const sizes = await Promise.all(files.map(async (f) => (existsSync(f) ? (await fs.stat(f)).size : 0)));
+  return [loupeShot && menuShot && sizes.every((n) => n > 4_000), Object.fromEntries(files.map((f, i) => [path.basename(f), sizes[i]]))];
+});
 const pageErrors = [...pageErrors1, ...errors];
 await app?.close().catch(() => {});
 for (const d of [appRoot, workspace]) await fs.rm(d, { recursive: true, force: true }).catch(() => {});
