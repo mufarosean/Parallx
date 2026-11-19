@@ -1152,6 +1152,104 @@ as a short answer; after Create the subject's page opens.
 *Only his machine can show.* His own conceptual database adopted with
 its real columns; grading by his model; the full keyboard audit.
 
+**Piece 2 shipped: Progress (2026-11-19).** His word on piece 1's
+report: "go ahead. I will check everything at the end." Commits
+`cde23e2c` (the acceptance probe, before the build), `74df56d0` (the
+core seam), `e96c45ff` (the kit bar), `9fc71afd` and `35cf94ac`
+(Worksheets and Flashcards report), `c46f2541`, `8a1f1c97`, `e4e6b07b`
+(Study's Progress), `d3637fcc` (two probe checks corrected by the
+verifier), `ac54cd16` and `7fd210cd` (what review found, fixed).
+
+*What is built.*
+- The core has a registry any tool reports progress into,
+  `progress.getRegistry`: a provider names its kind of item, its own
+  words for four states, and its groups with counts. It names no tool.
+  Authoring guide §4.11c.
+- The kit has one stacked bar, `api.ui.createStackedBar` (guide §6.3):
+  four states told apart by colour and by texture (solid, hatched,
+  ticked, an outline), each part named for a screen reader, a part with
+  an action a button.
+- Worksheets reports its problems by paper (Easy, Medium, Hard, Not
+  rated) from the same function its dashboard uses. Flashcards reports
+  its cards by tag and by deck from each card's last rating (Good or
+  Easy, Hard, Again, Not reviewed).
+- Study has a Progress tab per subject (More Actions > Open Progress,
+  or "Study: Open Progress…"): a totals card with a bar and the counts
+  in words per kind, then a row per unit with a bar per kind and
+  "N of M". Questions are Study's own, by Last Result (Right, Partly,
+  Wrong, Not yet).
+- A part of a Questions bar starts that unit's setup on just those
+  questions; a part of a Problems bar opens Worksheets' quiz builder on
+  those problems. Cards parts are plain.
+- In Order / Weakest First, remembered. An answer, a database edit, a
+  rated problem or a rated card moves an open tab without a reload.
+- A tool's group belongs to the unit of the same name (case, spaces,
+  punctuation and accents ignored) or one named in the unit's Also
+  Called, a column Study adds to Units for him to fill. Groups matching
+  no unit are listed under the rows with their counts.
+- Each unit in Study's sidebar carries a thin bar over all kinds.
+- A tool turned off takes only its bars, at once.
+
+*How it was checked.*
+- `tests/probes/study-progress-acceptance.mjs`, written from the request
+  before the build: 87 of 87 on the real app. Two of its checks (9.7,
+  9.8) were corrected by the verifier that wrote it, not the builder: a
+  click in the window's corner pressed Home, so they measured the wrong
+  tab; 9.7 gained an assertion and both fail on a build with the focus
+  ring and Enter removed. Piece 1's probe still passes 72 of 72.
+- Typecheck, 9,653 unit tests, the build, `study-usable-acceptance` (59
+  of 59), the touch-drag probe and the keyboard audit on Study's screens
+  pass.
+- In the real app the Problems counts equalled Worksheets' dashboard
+  after each rating and re-rating; live changes showed in under 0.3 s;
+  20 units with three kinds opened in 0.07 s.
+- Four reviewers that did not see the build read or drove it; a skeptic
+  upheld the count findings. Fixed, each with a test: a card counted
+  once per matching tag or deck; a part opening only one of two matched
+  papers; Worksheets' open quiz builder ignoring a new selection;
+  "Not yet" in his own result column drawn red before any attempt; a
+  tool's bars emptied by one failed read; states told apart by hue
+  alone and gone in high contrast; a part's word and count shown to the
+  mouse only; sidebar names cut to a letter in a narrow sidebar; the
+  sidebar's spoken count and tick disagreeing with the visible count;
+  parts 23 px tall to a finger when stacked; focus left behind when the
+  tab is opened from the palette.
+- Grading in every run used a scripted stand-in for the model.
+
+*Found and left.*
+- The sidebar's "N of M" counts questions with an attempt; its bar and
+  the tab count questions with a result. They differ only where a
+  result was typed without an attempt. Piece 1's probe pins the
+  sidebar's count; which he wants is his call.
+- A question naming two units shows in both units' bars and is asked
+  only under the first.
+- With two subjects, each tab lists the other subject's groups as not
+  matched; a catch-all deck is always listed.
+- On the thin sidebar bar the texture is a line style (solid, dashed,
+  dotted), the weakest of the cues; below 24 px of room the bar is not
+  drawn. At 200% zoom the subject's own name is still cut.
+- Unit rows show per-state numbers only in a part's words (hover,
+  focus, tap, long press); the totals card shows them plainly.
+- A provider that forgets to register through its tool's subscriptions
+  would outlive its tool; the seam does not tie the two (the question
+  providers have the same shape).
+- Also Called is added to every subject's Units, of use only with a
+  reporting tool on.
+- The app's older hand-made bars were not moved to the kit bar.
+- The full keyboard audit was not compared with the commit before; on
+  Study's screens it reads 0.
+
+*Decided for him to overrule.* No mock-ups were drawn first, on his
+"I will check everything at the end"; the look was held to the measured
+criteria and the reviewers. Built in the same session as piece 1.
+Hatch and ticks as the second cue on the bar. The sidebar bar runs
+under the unit's name with the count at its end. Problems parts open
+the quiz builder set to those problems, not the quiz itself. A tool's
+totals are over its matched units. One sort choice for all subjects.
+
+*Only his machine can show.* His own database, problems and cards
+matched to his units; whether the bars feel like the fall dashboard.
+
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
