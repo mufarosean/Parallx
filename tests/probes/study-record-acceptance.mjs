@@ -881,7 +881,7 @@ const LOG_WANT = { Date: ['datetime'], Minutes: ['number'], Unit: [], Tool: ['se
 const hasAll = (have, want) => want.filter((w) => !have.some((h) => h.toLowerCase() === w.toLowerCase()));
 
 phase(1, 'New Subject…', 'plain', {
-  '1.1': 'the command study.newSubject opens a dialog that asks for Name, Sources folder, Questions (New database by default) and Notes',
+  '1.1': 'the command study.newSubject opens a dialog that asks for Name, Sources folder, Questions (New database by default), and no Notes choice',
   '1.2': 'New Subject… is in Study\'s sidebar menu',
   '1.3': 'New Subject… is on Study\'s home',
   '1.4': 'the name is required: confirming without one makes no page and no database',
@@ -902,7 +902,7 @@ phase(1, 'New Subject…', 'plain', {
   await sleep(400);
   const fields = open ? { name: await S.field(F.name), folder: (await S.field(F.folder)) || (await S.find('form', /sources?|folder/i, 'button'))[0] || null, questions: await S.field(F.questions), notes: await S.field(F.notes) } : {};
   await S.shot('01-new-subject-dialog');
-  c('1.1', !!open && !!fields.name && !!fields.folder && !!fields.questions && !!fields.notes && /new database/i.test(fields.questions.value), { command: has, dialog: !!open, name: !!fields.name, folder: !!fields.folder, questions: fields.questions ? fields.questions.value : null, notes: !!fields.notes });
+  c('1.1', !!open && !!fields.name && !!fields.folder && !!fields.questions && !fields.notes && /new database/i.test(fields.questions.value), { command: has, dialog: !!open, name: !!fields.name, folder: !!fields.folder, questions: fields.questions ? fields.questions.value : null, notes: !!fields.notes });
   // No name.
   if (open) {
     const before = databases(ws).length + coreAll(ws, 'SELECT COUNT(*) AS n FROM pages')[0].n;
@@ -965,7 +965,7 @@ phase(2, 'An existing database as the questions', 'plain', {
   '2.2': 'the guesses from the column names: Model Answer, Paper, Times Attempted, Times Correct, Last Result',
   '2.3': 'a role with no matching column (Last Answered) offers "Add a column"',
   '2.4': 'a guess can be changed, and changed back, on the mapping step',
-  '2.5': 'an existing database can be chosen as the Notes',
+  '2.5': 'there is no Notes field to choose a database in (notes are attached to units)',
   '2.6': 'adoption copies, moves and renames nothing: the same rows, titles, order, place and values, and no second Questions database',
   '2.7': 'only a missing column is added: his columns are as they were and a Last Answered date column is new',
   '2.8': 'Units gets one row per distinct value of the Unit column, with its Questions, Answered and Right Last Time from the history',
@@ -980,7 +980,8 @@ phase(2, 'An existing database as the questions', 'plain', {
   await S.click(nameField); await S.page.keyboard.type(SUBJECT);
   const picked = await chooseIn(S, F.questions, exact(BANK));
   const notesPicked = await chooseIn(S, F.notes, exact(NOTES_DB));
-  c('2.5', notesPicked.ok, notesPicked);
+  // New Subject has no Notes choice (owner, 2026-11-22: notes are attached to units from any layout).
+  c('2.5', !notesPicked.ok && notesPicked.why === 'no such field', notesPicked);
   if (!(await S.field(MAP.answer))) { await pressConfirm(S); await until(() => S.field(MAP.answer), 5000); }
   await sleep(400);
   const shown = {}; for (const [k, re] of Object.entries(MAP)) shown[k] = await S.field(re);
@@ -1485,7 +1486,7 @@ async function adoptedBase(fixtures) {
   try {
     await S.open();
     await seedBank(S);
-    await newSubject(S, { name: SUBJECT, questions: BANK, notes: NOTES_DB });
+    await newSubject(S, { name: SUBJECT, questions: BANK });
     must(await waitSubject(S, SUBJECT), `the page "${SUBJECT}" with Units and Work Log under it`);
     await showStudySidebar(S);
     must(await until(async () => sameCounts(await countsOf(S, Object.keys(SEED_UNITS)), SEED_UNITS), 10_000), `the adopted subject's counts in the sidebar (${(await subjectsText(S)) ?? 'no Subjects section'})`);

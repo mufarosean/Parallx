@@ -533,7 +533,7 @@ function installPageHelpers() {
       b.setAttribute('data-probe-choice', String(i));
       const target = shown(b) ? b : b.parentElement;
       const pt = point(target);
-      return { i, lines, text: norm(row.innerText || lines.join(' ')), on: isOn(b), x: pt.x, y: pt.y };
+      return { i, probeChoice: i, lines, text: norm(row.innerText || lines.join(' ')), on: isOn(b), x: pt.x, y: pt.y };
     });
   };
   window.__ap = {
@@ -600,7 +600,17 @@ function installPageHelpers() {
       return { stem: norm(c.querySelector('.st-card__q')?.innerText), options: Array.from(c.querySelectorAll('.st-opt')).filter(shown).length, field: field ? { ...point(field), value: field.value } : null, verdict: fb ? norm(fb.innerText).slice(0, 80) : '' };
     },
     results: () => { const r = scopeEl('root'); return !!r && Array.from(r.querySelectorAll('.st-res')).some(shown); },
-    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: norm(t.querySelector('.ui-tab-label')?.textContent), ...point(l) }; }),
+    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', probeTab: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: norm(t.querySelector('.ui-tab-label')?.textContent), ...point(l) }; }),
+    /** A tab's or a choice's point read again just before the press: reading the others may have scrolled the strip or the list since. */
+    relocate(pt) {
+      let n = null;
+      if (pt.probeTab !== undefined) { const t = Array.from(document.querySelectorAll('.ui-tab')).find((x) => x.getAttribute('data-tab-id') === pt.probeTab); n = t && (t.querySelector('.ui-tab-label') || t); }
+      else if (pt.probeChoice !== undefined) { const b = document.querySelector(`[data-probe-choice="${pt.probeChoice}"]`); n = b && (shown(b) ? b : b.parentElement); }
+      if (!n) return null;
+      n.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      const r = n.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    },
     cell(dbId, rowTitle, column) {
       const surfaces = Array.from(document.querySelectorAll('[data-px-surface="database"]')).filter(shown);
       const sf = dbId ? surfaces.find((e) => (e.getAttribute('data-px-instance') || '').endsWith(dbId)) : surfaces[0];
@@ -783,7 +793,10 @@ function makeSession({ dir, workspace }) {
       await S.page.mouse.click(hit.x, hit.y);
       return hit;
     },
-    click: (pt, opts) => S.page.mouse.click(pt.x, pt.y, opts),
+    async click(pt, opts) {
+      const at = (pt.probeTab !== undefined || pt.probeChoice !== undefined) ? (await S.page.evaluate((p) => window.__ap.relocate(p), pt)) || pt : pt;
+      return S.page.mouse.click(at.x, at.y, opts);
+    },
     async setTool(tool, on) {
       const r = await S.page.evaluate(async ({ id, on }) => { try { await window.__parallx_workbench__._services.get({ id: 'IToolEnablementService' }).setEnablement(id, on); return true; } catch (e) { return String(e); } }, { id: TOOLS[tool], on });
       if (r !== true) throw new Error(`${tool} could not be turned ${on ? 'on' : 'off'}: ${r}`);

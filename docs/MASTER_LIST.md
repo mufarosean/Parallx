@@ -1328,8 +1328,9 @@ audit does not measure a box's outline; the 3:1 outline is read from the
 tokens for the default dark only). Piece 1's probe builds its workspace
 with the Notes choice, so it gives 29 of 72; with only its seed line
 changed, 70 of 72, and 1.1 and 2.5 fail because they ask for the Notes
-choice this piece removed (changing all three asked of him). The piece 1
-and earlier Study probes were run before the review fixes.
+choice this piece removed. He approved both probe changes (2026-11-22,
+"approved"); with them, on the final build: unit 74 of 74, record 72 of
+72, progress 87 of 87, usable 59 of 59.
 
 *Review* (the reviewers' and skeptic's reports were in the session, not
 saved as files). Modularity: no breach (two core comments named Study; reworded).
