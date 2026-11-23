@@ -879,7 +879,7 @@ const waitSubject = (S, name, ms = 15_000) => until(() => { const s = subjectOf(
 // The canvas table, with the mouse and the keys.
 async function openDb(S, dbId) {
   await S.cmd('canvas.openPage', dbId);
-  return !!(await until(() => S.page.evaluate((dbId) => !!window.__ap.tableState(dbId), dbId), 8000));
+  return !!(await until(() => S.page.evaluate((dbId) => !!window.__ap.tableState(dbId)?.heads?.length, dbId), 8000));
 }
 /** Type `text` into a cell's editor and press Enter. Returns the moment Enter was pressed, or null when the cell opens no editor. */
 async function typeCell(S, dbId, rowTitle, column, text) {
@@ -996,8 +996,8 @@ async function fillField(S, re, value, what) {
 async function openPlanSheet(S) {
   if (!(await S.hasCommand('study.newPlan'))) throw new Error('there is no command study.newPlan');
   S.run('study.newPlan');
-  const seen = await until(async () => ((await S.formOpen()) && (await S.field(PF.exam)) ? 'sheet' : (await S.find('body', new RegExp(`^${esc(SUBJECT)}(?![A-Za-z0-9])`), '.parallx-quickpick-row, [role="option"]')).length ? 'asked' : null), 8000, 80);
-  if (seen === 'asked') await S.press('body', new RegExp(`^${esc(SUBJECT)}(?![A-Za-z0-9])`), '.parallx-quickpick-row, [role="option"]');
+  const seen = await until(async () => ((await S.formOpen()) && (await S.field(PF.exam)) ? 'sheet' : (await S.find('body', new RegExp(`^${esc(SUBJECT)}(?![A-Za-z0-9])`), '.parallx-quickpick-row, [role="dialog"] [role="option"], .parallx-modal-box [role="option"]')).length ? 'asked' : null), 8000, 80);
+  if (seen === 'asked') await S.press('body', new RegExp(`^${esc(SUBJECT)}(?![A-Za-z0-9])`), '.parallx-quickpick-row, [role="dialog"] [role="option"], .parallx-modal-box [role="option"]');
   must(await until(async () => (await S.formOpen()) && (await S.field(PF.exam)), 8000, 80), 'the New Plan sheet (a form with an Exam date field) after study.newPlan');
   await sleep(400);
 }
@@ -1671,7 +1671,7 @@ phase(4, 'Keep a day he changed', 'plan', {
     const ticked = await until(() => (dayRow(Y).edited ? Date.now() : null), 4000, 30);
     kept[Y] = { ...frozen(y), type: 'Catch-up' };
     const extra = must(rulesIn(ws, p).week.find((w) => w.name === 'Every Day Extra') || rulesIn(ws, p).week.find((w) => w.account === 'Personal' && w.days.includes('Thu')), 'a Week row that holds Thursday');
-    const r = await ruleChange(S, p, () => setProp(S, extra.pageId, 'Standard', extra.standard + 2), { kept });
+    const r = await ruleChange(S, p, () => setProp(S, extra.pageId, 'Standard', extra.standard + 3), { kept });
     const now = dayRow(Y);
     return [!!ticked && ticked - at <= 2000 && inTime(r) && now.type === 'Catch-up' && now.standard === y.standard && now.edited, { editedTickedAfterMs: ticked ? ticked - at : null, ...r, theDay: `${now.type} ${now.standard} (was ${y.type} ${y.standard})` }];
   });
@@ -1829,7 +1829,7 @@ phase(6, 'Be told when the plan misses the goal, and when rules contradict', 'pl
     await setProp(S, ids.ghost, 'Days', ['Sun']);
     await setProp(S, ids.backwards, 'End', '2027-02-11');
     const at = await setProp(S, ids.overlap, 'Kind', 'Catch-up');
-    const gone = await until(async () => { const t = await S.paneWords(); return !/no days/i.test(t) && !/overlap/i.test(t) && !/before it starts|ends? before/i.test(t) ? Date.now() : null; }, 2000, 80);
+    const gone = await until(async () => { const t = (await S.paneWords()).replace(/Overlapper/g, ''); return !/no days/i.test(t) && !/overlap/i.test(t) && !/before it starts|ends? before/i.test(t) ? Date.now() : null; }, 2000, 80);
     const r = await follows(S, p, at);
     const sun = daysIn(ws, p).find((d) => d.date === '2027-01-10');
     return [!!gone && r.rowsMs !== null && r.tabMs !== null && sun.standard === 9, { goneAfterMs: gone ? gone - at : null, ...r, aSundayNow: sun.standard }];
