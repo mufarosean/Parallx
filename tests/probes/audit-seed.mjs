@@ -162,6 +162,22 @@ export async function seedAfterLaunch(page, pre) {
       const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n); const p = (v) => String(v).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
       const week = (a, b, c, d) => ({ Mon: a, Tue: a, Wed: a, Thu: a, Fri: b, Sat: c, Sun: d });
       await cmds.executeCommand('study.newPlan', { subject: 'Seeded Subject', name: 'Seeded Plan', start: iso(-10), exam: iso(32), goal: 120, personal: week(2, 0, 4, 3), work: week(1, 2, 0, 0) });
+      await new Promise((r) => setTimeout(r, 2500));
+      // Its spans as he would add them: a rest day, a catch-up day, a holiday, and a study phase whose work does not
+      // fit (its fit and its All plans switch); then one day he changed (Edited, with its words).
+      const idIn = (text) => (/id: ([0-9a-f-]{20,})/i.exec(String(text)) || [])[1];
+      const add = tools.getTool('canvas_add_database_row'); const find = tools.getTool('canvas_find_pages'); const query = tools.getTool('canvas_query_database'); const set = tools.getTool('canvas_set_page_property');
+      const phases = idIn((await find.handler({ query: 'Phases' }, token))?.content);
+      if (phases) {
+        for (const [title, values] of [
+          ['Seeded Rest', { Kind: 'Rest', Start: iso(2), End: iso(3) }], ['Seeded Catch-up', { Kind: 'Catch-up', Start: iso(5), End: iso(5) }],
+          ['Seeded Holiday', { Kind: 'Holiday', Start: iso(8), End: iso(9) }], ['Seeded Reading', { Kind: 'Study', Start: iso(10), End: iso(20), Items: 120, 'Minutes per Item': 30 }],
+        ]) await add.handler({ databaseId: phases, title, values }, token);
+      }
+      const days = idIn((await find.handler({ query: 'Days' }, token))?.content);
+      const day = days ? (/\| ([0-9a-f-]{36}) \|/.exec(String((await query.handler({ databaseId: days }, token))?.content)) || [])[1] : null;
+      if (day) await set.handler({ pageId: day, propertyName: 'Standard', value: 6 }, token);
+      return `ok; the plan's phases ${phases ? 'added' : 'not found'}, a day he changed ${day ? 'set' : 'not found'}`;
     }
     return 'ok';
   }));
