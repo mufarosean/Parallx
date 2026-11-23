@@ -12,7 +12,8 @@
 // of them in one write (the door's updateRows), the days added or removed in
 // one more. A day he changed is his (13-plan-model.js decides it from what
 // Study last wrote there, st_plans.written_json): Study ticks Edited on it and
-// never works it out again. One plan's work runs in order (a chain), and
+// never works it out again. A day before today is never worked out again
+// either: a change of the rules applies from today on. One plan's work runs in order (a chain), and
 // nothing is written while one of its databases is in the Trash or gone, or
 // while its dates make no stretch. Everything running belongs to the
 // activation and goes with it.
@@ -45,7 +46,7 @@ function stPlanColumns() {
   return {
     plan: [title(200), { name: 'Exam Date', type: 'date', width: 130 }, { name: 'Start Date', type: 'date', width: 130 }, { name: 'Hours Goal', type: 'number', width: 110 }, { name: 'Following', type: 'select', config: { options: ST_PLAN_PLANS }, width: 120 }],
     week: [title(240), { name: 'Days', type: 'tags', config: { options: ST_PLAN_WEEKDAYS }, width: 200 }, { name: 'Account', type: 'select', config: { options: ['Personal', 'Work'] }, width: 110 }, { name: 'From', type: 'date', width: 120 }, { name: 'Until', type: 'date', width: 120 }, ...hours(84)],
-    phases: [title(240), { name: 'Kind', type: 'select', config: { options: ST_PLAN_KINDS }, width: 110 }, { name: 'Start', type: 'date', width: 120 }, { name: 'End', type: 'date', width: 120 }, { name: 'Items', type: 'number', width: 84 }, { name: 'Minutes per Item', type: 'number', width: 140 }],
+    phases: [title(240), { name: 'Kind', type: 'select', config: { options: ST_PLAN_KINDS }, width: 110 }, { name: 'Start', type: 'date', width: 120 }, { name: 'End', type: 'date', width: 120 }, { name: 'Follows', type: 'select', config: { options: ST_PLAN_FOLLOWS }, width: 130 }, { name: 'Items', type: 'number', width: 84 }, { name: 'Minutes per Item', type: 'number', width: 140 }],
     days: [
       title(150), { name: 'Date', type: 'date', width: 110 }, { name: 'Type', type: 'select', config: { options: ST_PLAN_KINDS }, width: 100 }, { name: 'Phase', type: 'text', width: 150 },
       { name: 'Work', type: 'number', width: 66 }, { name: 'Floor', type: 'number', width: 66 }, { name: 'Standard', type: 'number', width: 84 }, { name: 'Stretch', type: 'number', width: 72 },
@@ -132,23 +133,35 @@ function stPlanWeekRowsOf({ personal = {}, work = {}, less = 1, more = 1 }) {
 }
 
 /** What is wrong with the New Plan sheet's answers, in words; '' when nothing is. */
-function stPlanFormProblem({ name, start, exam }) {
+function stPlanFormProblem({ name, start, exam, off = 0 }) {
   if (!String(name || '').trim()) return 'Give the plan a name.';
   if (!stPlanDateOf(start)) return 'Give the start date as a date, for example 2027-01-04.';
   if (!stPlanDateOf(exam)) return 'Give the exam date as a date, for example 2027-04-20.';
   if (exam <= start) return 'The exam date must be after the start date.';
+  const days = stPlanDaysOff(off);
+  if (days === null) return 'Give the days off before the exam as a whole number, 0 for none.';
+  if (days >= stPlanDaysBetween(start, exam)) return 'The days off before the exam must be fewer than the plan\'s days.';
   return '';
+}
+
+/** The sheet's "Days off before the exam" as a whole number of days (nothing typed is none); null when it is not one. */
+function stPlanDaysOff(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return 0;
+  return /^\d{1,4}$/.test(text) ? Number(text) : null;
 }
 
 /**
  * New Plan: a page named for it under the subject's page, its four
  * databases, Plan and Week filled from the form, one Study phase from the
- * start to the day before the exam. The days are worked out right after,
- * behind this (the tab shows them as they land).
+ * start to the day before the exam that follows the whole plan, and with
+ * `off` days off before the exam a Rest phase "Days off" that follows the
+ * exam. The days are worked out right after, behind this (the tab shows them
+ * as they land).
  */
-async function stCreatePlan({ subjectId, name, start, exam, goal = 0, personal = {}, work = {}, less = 1, more = 1 }) {
+async function stCreatePlan({ subjectId, name, start, exam, goal = 0, personal = {}, work = {}, less = 1, more = 1, off = 0 }) {
   const door = stSubjectDoorOrThrow();
-  const problem = stPlanFormProblem({ name, start, exam });
+  const problem = stPlanFormProblem({ name, start, exam, off });
   if (problem) throw new Error(problem);
   const subject = await db.get('SELECT * FROM st_subjects WHERE id = ?', [Number(subjectId) || 0]);
   if (!subject) throw new Error('That subject is no longer in Study.');
@@ -162,10 +175,19 @@ async function stCreatePlan({ subjectId, name, start, exam, goal = 0, personal =
   await door.addRow(plan.id, { title, values: { 'Start Date': start, 'Exam Date': exam, 'Hours Goal': stPlanHours(goal), Following: 'Standard' } });
   const weekRows = stPlanWeekRowsOf({ personal, work, less, more });
   if (weekRows.length) await door.addRows(week.id, weekRows);
-  await door.addRow(phases.id, { title: 'Start to exam', values: { Kind: 'Study', Start: start, End: stPlanAddDays(exam, -1) } });
+  const last = stPlanAddDays(exam, -1);
+  const follows = {};
+  const whole = await door.addRow(phases.id, { title: 'Start to exam', values: { Kind: 'Study', Start: start, End: last, Follows: 'Whole plan' } });
+  if (whole && whole.pageId) follows[whole.pageId] = { follows: 'Whole plan', start, end: last };
+  const daysOff = stPlanDaysOff(off) || 0;
+  if (daysOff > 0) {
+    const from = stPlanAddDays(exam, -daysOff);
+    const rest = await door.addRow(phases.id, { title: 'Days off', values: { Kind: 'Rest', Start: from, End: last, Follows: 'Before exam' } });
+    if (rest && rest.pageId) follows[rest.pageId] = { follows: 'Before exam', start: from, end: last };
+  }
   const res = await db.run(
-    'INSERT INTO st_plans (subject_id, name, page_id, plan_db, week_db, phases_db, days_db, written_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [subject.id, title, page.id, plan.id, week.id, phases.id, days.id, '{}', stNow()],
+    'INSERT INTO st_plans (subject_id, name, page_id, plan_db, week_db, phases_db, days_db, written_json, follows_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [subject.id, title, page.id, plan.id, week.id, phases.id, days.id, '{}', stJsonCol(follows, '{}'), stNow()],
   );
   const made = stRowToPlan(await db.get('SELECT * FROM st_plans WHERE id = ?', [res.lastInsertRowid]));
   stPlanWatch(null, made, stActivation(), { ensure: false });
@@ -218,12 +240,26 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
     door.listRows(plan.planDb), door.listRows(plan.weekDb), door.listRows(plan.phasesDb), door.listRows(plan.daysDb),
     log && !log.trashed ? door.listRows(logId).catch(() => null) : null,
   ]);
-  const rules = stPlanRules({ plan: planRows[0] ? planRows[0].values : null, week: weekRows, phases: phaseRows });
+  const read = stPlanRules({ plan: planRows[0] ? planRows[0].values : null, week: weekRows, phases: phaseRows });
   const done = logRows ? stPlanDoneByDate(logRows, stPlanLocalDate) : null;
-  const rec = await db.get('SELECT written_json FROM st_plans WHERE id = ?', [plan.id]);
+  const rec = await db.get('SELECT written_json, follows_json FROM st_plans WHERE id = ?', [plan.id]);
+  // The phases that follow get their dates first, so the days are worked out from the rules as they will be. The
+  // record of what is about to be written goes first, with the dates before it: a write that stops half way is not
+  // read as his edit. Without its Follows column nothing follows and nothing is written.
+  const followsBefore = rec ? String(rec.follows_json || '{}') : '{}';
+  const follow = stPlanFollow(read, stParseJson(followsBefore, {}) || {});
+  const rules = follow.rules;
+  if (follow.updates.length) {
+    const pending = stJsonCol(follow.seen, '{}');
+    if (pending !== followsBefore) { stPlanLive(st); await db.run('UPDATE st_plans SET follows_json = ? WHERE id = ?', [pending, plan.id]); }
+    stPlanLive(st);
+    await door.updateRows(plan.phasesDb, follow.updates);
+  }
+  const followsAfter = stJsonCol(stPlanFollowSettled(follow.seen), '{}');
+  if (followsAfter !== followsBefore || follow.updates.length) { stPlanLive(st); await db.run('UPDATE st_plans SET follows_json = ? WHERE id = ?', [followsAfter, plan.id]); }
   const before = rec ? String(rec.written_json || '{}') : '{}';
   const prior = stParseJson(before, {}) || {};
-  const r = stPlanReconcile({ rules, rows: dayRows, written: prior, done, absent, fresh });
+  const r = stPlanReconcile({ rules, rows: dayRows, written: prior, done, absent, fresh, today: stPlanToday() });
   let written = r.written;
   // Without its Date or Edited column a day cannot be told from another, or his from Study's: nothing is written.
   if (stPlanHasStretch(rules) && !absent.includes('Date') && !absent.includes('Edited')) {

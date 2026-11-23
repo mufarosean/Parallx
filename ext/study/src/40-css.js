@@ -487,11 +487,13 @@ function injectStyles() {
    rest days' and holidays' rows sit on the inset ground, so each Type is told apart by more than its colour. ── */
 .st-plan { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
 .st-plan__in { max-width: 72rem; margin: 0 auto; container-type: inline-size; container-name: st-plan; }
-.st-plan__opens { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding: 0 var(--px-space-6) var(--px-space-4); }
+.st-plan__opens { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding: 0 var(--px-space-6) var(--px-space-2); }
+.st-plan__applies { padding: 0 var(--px-space-6) var(--px-space-4); color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-plan__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
 .st-plan__sec { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
 .st-plan__h { margin: 0; padding-bottom: var(--px-space-1); border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
 .st-plan__goal, .st-plan__note, .st-plan__wait { color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-plan__words { display: flex; flex-direction: column; gap: 2px; color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-plan__wait { padding: var(--px-space-6) 0; }
 .st-plan__plans .ui-segmented-control--cards { margin-top: var(--px-space-1); }
 .st-plan__pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--px-space-6); align-items: start; }
@@ -556,6 +558,7 @@ function injectStyles() {
 .st-psheet__pair { display: grid; grid-template-columns: auto 4.5rem auto; align-items: center; gap: var(--px-space-2); }
 .st-psheet__pair .st-row__lab { width: auto; }
 .st-psheet__pair input { text-align: center; font-variant-numeric: tabular-nums; }
+.st-psheet__words { display: flex; flex-direction: column; gap: 2px; color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-psheet__sums { color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; font-variant-numeric: tabular-nums; }
 @container st-sheet (max-width: 520px) { .st-psheet__grid { grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); } }
 

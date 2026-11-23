@@ -2446,8 +2446,32 @@ const ST_PLAN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 
 const ST_PLAN_PLANS = ['Floor', 'Standard', 'Stretch'];
 const ST_PLAN_KINDS = ['Study', 'Rest', 'Catch-up', 'Holiday'];
 const ST_PLAN_ACCOUNTS = ['Personal', 'Work'];
+/** What a phase's dates can follow: the whole plan (its start to the day before the exam), or the exam (its length kept, ending the day before it). */
+const ST_PLAN_FOLLOWS = ['Whole plan', 'Before exam'];
 /** The Days cells that the rules give, and that make a day his when he changes one. */
 const ST_PLAN_RULE_CELLS = ['Type', 'Phase', 'Work', 'Floor', 'Standard', 'Stretch'];
+
+/**
+ * The words that say what the plan's terms are, one line each, shown where
+ * the term is used: in the New Plan sheet and in the plan's tab.
+ */
+const ST_PLAN_WORDS = {
+  accounts: [
+    'Personal hours are the hours you study in your own time.',
+    'Work hours are the hours your job gives you to study.',
+  ],
+  plans: [
+    'Floor is the least you mean to do, the plan for a bad week.',
+    'Standard is the plan you expect to keep.',
+    'Stretch is the most you could do, the plan for a good week.',
+  ],
+  once: 'The hours less and the hours more fill the Floor and Stretch columns of Week once, at Create. After that the three columns are independent: change any of them in Week.',
+  kinds: [
+    'Rest: a day in a Rest phase has no hours.',
+    'Catch-up: a day in a Catch-up phase keeps its hours, and is marked for work that fell behind.',
+    'Holiday: a day in a Holiday phase has no hours.',
+  ],
+};
 
 // ── Dates ───────────────────────────────────────────────────────────────────
 
@@ -2517,6 +2541,13 @@ function stPlanHours(v) {
 const stPlanRound = (n) => Math.round(n * 100) / 100;
 /** Hours as they are read: "3", "2.5", "71.7". */
 const stPlanH = (n) => String(Math.round(n * 10) / 10);
+/** A day's Done as it is read: hours ("1.6"), under a tenth of an hour in minutes ("2 min", never "0" when there was work), "0" for none. */
+function stPlanDoneWords(hours) {
+  const h = Number(hours) || 0;
+  if (!(h > 0)) return '0';
+  const minutes = Math.round(h * 60);
+  return minutes < 6 ? `${Math.max(1, minutes)} min` : stPlanH(h);
+}
 
 // ── The rules, read from the rows ───────────────────────────────────────────
 
@@ -2576,6 +2607,7 @@ function stPlanRules({ plan, week, phases }) {
         id: r.pageId, name: String(r.title || '').trim(), order,
         kind: stPlanWordOf(stPlanCell(v, 'Kind'), ST_PLAN_KINDS),
         start: stPlanDateOf(stPlanCell(v, 'Start')), end: stPlanDateOf(stPlanCell(v, 'End')),
+        follows: stPlanWordOf(stPlanCell(v, 'Follows'), ST_PLAN_FOLLOWS),
         items, minutes,
       };
     }),
@@ -2592,13 +2624,63 @@ const stPlanByStart = (a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 
 /** Is there a stretch to plan: both dates, the exam after the start? */
 const stPlanHasStretch = (rules) => !!(rules.start && rules.exam && rules.start < rules.exam);
 
+// ── A phase that follows the exam ───────────────────────────────────────────
+
+/**
+ * The dates of the phases that follow. A phase with Follows "Whole plan" runs
+ * from the plan's start to the day before the exam; one with "Before exam"
+ * keeps its length and ends the day before the exam. `seen` is what Study
+ * last left in each following row (phase id → { follows, start, end }, with
+ * `prev` the dates before a write that may not have landed): a row that
+ * followed already and whose dates are neither is one he edited by hand. Its
+ * Follows is cleared and the phase is his, dated, from then on.
+ *
+ * Returns { rules (the phases as they will be), updates: [{ pageId, values }]
+ * for the Phases rows that differ, seen (the next record) }. Nothing moves
+ * while the plan's dates make no stretch, and a "Before exam" phase without
+ * two dates in order has no length to keep.
+ */
+function stPlanFollow(rules, seen = {}) {
+  const prior = seen || {};
+  const next = {};
+  const updates = [];
+  const can = stPlanHasStretch(rules);
+  const last = can ? stPlanAddDays(rules.exam, -1) : '';
+  const phases = rules.phases.map((s) => {
+    if (!s.follows) return s;
+    const was = prior[s.id] && prior[s.id].follows === s.follows ? prior[s.id] : null;
+    const same = (r) => !!r && r.start === s.start && r.end === s.end;
+    if (was && !same(was) && !same(was.prev)) {
+      updates.push({ pageId: s.id, values: { Follows: null } });
+      return { ...s, follows: '' };
+    }
+    if (!can || (s.follows === 'Before exam' && !stPlanSpanValid(s))) {
+      if (was) next[s.id] = was;
+      return s;
+    }
+    const start = s.follows === 'Whole plan' ? rules.start : stPlanAddDays(last, -stPlanDaysBetween(s.start, s.end));
+    if (start === s.start && last === s.end) { next[s.id] = { follows: s.follows, start, end: last }; return s; }
+    updates.push({ pageId: s.id, values: { Start: start, End: last } });
+    next[s.id] = { follows: s.follows, start, end: last, prev: { start: s.start, end: s.end } };
+    return { ...s, start, end: last };
+  });
+  return { rules: { ...rules, phases }, updates, seen: next };
+}
+
+/** The record of following rows once their writes have landed: no `prev`. */
+function stPlanFollowSettled(seen) {
+  return Object.fromEntries(Object.entries(seen || {}).map(([id, r]) => [id, { follows: r.follows, start: r.start, end: r.end }]));
+}
+
 /**
  * Every day from the start to the day before the exam, worked out from the
  * rules: { date, type, phase, work, floor, standard, stretch, planned,
  * running, per: { Floor, Standard, Stretch } (work and personal in each
- * plan), kept }. `kept` is date → the cells of a day he changed ({ type,
- * phase, work, floor, standard, stretch }): those stand as he left them,
- * and Planned and Running follow them.
+ * plan), kept, frozen }. `kept` is date → the cells of a day he changed ({
+ * type, phase, work, floor, standard, stretch }): those stand as he left
+ * them, and Planned and Running follow them. An entry with `frozen` is a day
+ * gone by: it stands as it was written the same way, but it is not his edit
+ * (`kept` false, `frozen` true).
  */
 function stPlanDays(rules, kept = new Map()) {
   if (!stPlanHasStretch(rules)) return [];
@@ -2628,11 +2710,11 @@ function stPlanDays(rules, kept = new Map()) {
     if (his) {
       const w = stPlanHours(his.work);
       const o = { floor: stPlanHours(his.floor), standard: stPlanHours(his.standard), stretch: stPlanHours(his.stretch) };
-      day = { date, type: stPlanWordOf(his.type, ST_PLAN_KINDS) || '', phase: String(his.phase ?? ''), work: w, ...o, per: { Floor: stPlanRound(w + o.floor), Standard: stPlanRound(w + o.standard), Stretch: stPlanRound(w + o.stretch) }, kept: true };
+      day = { date, type: stPlanWordOf(his.type, ST_PLAN_KINDS) || '', phase: String(his.phase ?? ''), work: w, ...o, per: { Floor: stPlanRound(w + o.floor), Standard: stPlanRound(w + o.standard), Stretch: stPlanRound(w + o.stretch) }, kept: !his.frozen, frozen: !!his.frozen };
     } else {
       const per = { Floor: stPlanRound(work.floor + own.floor), Standard: stPlanRound(work.standard + own.standard), Stretch: stPlanRound(work.stretch + own.stretch) };
       const type = off ? off.kind : catchUp ? 'Catch-up' : per[rules.following] > 0 ? 'Study' : 'Rest';
-      day = { date, type, phase, work: stPlanRound(work[plan]), floor: stPlanRound(own.floor), standard: stPlanRound(own.standard), stretch: stPlanRound(own.stretch), per, kept: false };
+      day = { date, type, phase, work: stPlanRound(work[plan]), floor: stPlanRound(own.floor), standard: stPlanRound(own.standard), stretch: stPlanRound(own.stretch), per, kept: false, frozen: false };
     }
     day.planned = day.per[rules.following];
     running = stPlanRound(running + day.planned);
@@ -2686,7 +2768,7 @@ function stPlanPhases(rules, days) {
     for (const d of inside) for (const p of ST_PLAN_PLANS) per[p] = stPlanRound(per[p] + d.per[p]);
     const needs = s.kind === 'Study' && s.items > 0 && s.minutes > 0 ? stPlanRound((s.items * s.minutes) / 60) : 0;
     return {
-      id: s.id, name: s.name, kind: s.kind, start: s.start, end: s.end, valid, days: inside.length, per, hours: per[rules.following],
+      id: s.id, name: s.name, kind: s.kind, start: s.start, end: s.end, follows: s.follows || '', valid, days: inside.length, per, hours: per[rules.following],
       fit: needs ? { needs, short: ST_PLAN_PLANS.filter((p) => needs > per[p] + 1e-9) } : null,
     };
   });
@@ -2701,10 +2783,13 @@ function stPlanFitWords(fit, has) {
 /**
  * Where the rules contradict, in words, each naming the row: a plan with
  * no stretch, a Week block with no days, a block or a span that ends
- * before it starts, a span with a date missing or no kind, and two Study
- * phases over one date (the first by start keeps those days).
+ * before it starts, a span with a date missing or no kind, two Study
+ * phases over one date (the first by start keeps those days), a dated phase
+ * (one that follows nothing) the plan's dates leave wholly outside, and,
+ * given the `days`, the study days from `today` on that no Study phase holds
+ * (said when the plan has a Study phase at all).
  */
-function stPlanContradictions(rules) {
+function stPlanContradictions(rules, { days = null, today = '' } = {}) {
   const out = [];
   const called = (r, what) => r.name || `A ${what} row`;
   if (!rules.start || !rules.exam) out.push({ kind: 'dates', text: 'The plan needs a start date and an exam date.' });
@@ -2718,6 +2803,13 @@ function stPlanContradictions(rules) {
     else if (s.end < s.start) out.push({ kind: 'phase', id: s.id, text: `${called(s, 'Phases')} ends before it starts, so it holds no day.` });
     else if (!s.kind) out.push({ kind: 'phase', id: s.id, text: `${called(s, 'Phases')} has no kind: Study, Rest, Catch-up or Holiday.` });
   }
+  if (stPlanHasStretch(rules)) {
+    const last = stPlanAddDays(rules.exam, -1);
+    for (const s of rules.phases) {
+      if (s.follows || !stPlanSpanValid(s) || (s.end >= rules.start && s.start <= last)) continue;
+      out.push({ kind: 'outside', id: s.id, text: `${called(s, 'Phases')} (${stPlanSpanWords(s.start, s.end)}) is outside the plan's dates, so it holds no day. Give it new dates, or set its Follows.` });
+    }
+  }
   const study = rules.phases.filter((s) => s.kind === 'Study' && stPlanSpanValid(s)).sort(stPlanByStart);
   for (let i = 0; i < study.length; i++) {
     for (let j = i + 1; j < study.length; j++) {
@@ -2725,6 +2817,13 @@ function stPlanContradictions(rules) {
       if (b.start > a.end) continue;
       const until = a.end < b.end ? a.end : b.end;
       out.push({ kind: 'overlap', id: b.id, text: `${called(b, 'Phases')} overlaps ${called(a, 'Phases')} from ${stPlanSpanWords(b.start, until)}: those days stay in ${called(a, 'Phases')}, which starts first.` });
+    }
+  }
+  if (days && study.length) {
+    const loose = days.filter((d) => d.planned > 0 && !d.phase && (!today || d.date >= today));
+    if (loose.length) {
+      const n = loose.length;
+      out.push({ kind: 'loose', text: `${n} study ${n === 1 ? 'day is' : 'days are'} in no Study phase, the first on ${stPlanDateWords(loose[0].date)}. Give a Study phase those dates, or set its Follows to Whole plan.` });
     }
   }
   return out;
@@ -2770,11 +2869,19 @@ const stPlanDayTitle = (iso) => stPlanDateWords(iso, { year: true });
  * Study's outside them, or a second row of Study's for one date, goes. A
  * row Study never wrote that is not a day of the plan is left alone.
  *
+ * Days gone by are never rewritten. With `today` (the person's local date),
+ * a row dated before it stands as it is: its Type, Phase and hours are not
+ * worked out again and it is not ticked Edited (unless he changed it, which
+ * makes it his like any day); Planned, Running and Done still follow. Such a
+ * row is never removed, inside the plan's dates or not. A day before today
+ * that has no row yet (a plan just made, a start date moved earlier) is
+ * worked out from the rules, once.
+ *
  * Returns { days, adds: [{ title, values }], updates: [{ pageId, values }],
  * removes: [pageId], written (the next record, by row id), outside: [{
  * pageId, date, ...cells }] }. Only differences are in `updates`.
  */
-function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], fresh = [] }) {
+function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], fresh = [], today = '' }) {
   const prior = written || {};
   // A Days column that is not there (`absent`), or was just put back and is empty (`fresh`), has no reading: it never
   // counts as his edit. An absent one is not written; a fresh one is written again from the rules, its dates from the titles.
@@ -2794,7 +2901,8 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     if (w) for (const c of blank) if (c in w) cells[c] = w[c];
     // His when ticked; when Study's record says it ticked it and he has unticked it, the rules again.
     const changed = !ticked && !!w && !w.Edited && !stPlanAsWritten(cells, w, skip);
-    seen.push({ row: r, date, w, cells, kept: ticked || changed, tick: changed });
+    const kept = ticked || changed;
+    seen.push({ row: r, date, w, cells, kept, tick: changed, frozen: !kept && !!today && !!date && date < today });
   }
   const byDate = new Map();
   const removes = [];
@@ -2803,24 +2911,25 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     if (!s.date) continue;
     if (!inPlan(s.date)) {
       if (s.kept) outside.push({ pageId: s.row.pageId, date: s.date, type: s.cells.Type, phase: s.cells.Phase, work: s.cells.Work, floor: s.cells.Floor, standard: s.cells.Standard, stretch: s.cells.Stretch });
-      else if (s.w) removes.push(s.row.pageId);
+      else if (s.w && !s.frozen) removes.push(s.row.pageId);
       continue;
     }
     const have = byDate.get(s.date);
     if (!have || (s.kept && !have.kept)) {
-      if (have && have.w) removes.push(have.row.pageId);
+      if (have && have.w && !have.frozen) removes.push(have.row.pageId);
       byDate.set(s.date, s);
-    } else if (s.w && !s.kept) removes.push(s.row.pageId);
+    } else if (s.w && !s.kept && !s.frozen) removes.push(s.row.pageId);
   }
   const kept = new Map();
-  for (const [date, s] of byDate) if (s.kept) kept.set(date, { type: s.cells.Type, phase: s.cells.Phase, work: s.cells.Work, floor: s.cells.Floor, standard: s.cells.Standard, stretch: s.cells.Stretch });
+  for (const [date, s] of byDate) if (s.kept || s.frozen) kept.set(date, { type: s.cells.Type, phase: s.cells.Phase, work: s.cells.Work, floor: s.cells.Floor, standard: s.cells.Standard, stretch: s.cells.Stretch, frozen: !s.kept });
   const days = stPlanDays(rules, kept);
   const next = {};
   // A row left as it is keeps its record (a day he kept outside the dates comes back as his).
   for (const s of seen) if (prior[s.row.pageId] && !removes.includes(s.row.pageId) && byDate.get(s.date) !== s) next[s.row.pageId] = prior[s.row.pageId];
   const adds = []; const updates = [];
   for (const d of days) {
-    const want = d.kept
+    const stands = d.kept || d.frozen;
+    const want = stands
       ? { Planned: d.planned, Running: d.running }
       : { Date: d.date, Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Planned: d.planned, Running: d.running };
     if (done) want.Done = stPlanRound(done.get(d.date) || 0);
@@ -2832,7 +2941,7 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     }
     if (s.tick) want.Edited = true;
     // A kept day loses nothing to a column put back: its Date, and its cells as Study last had them.
-    if (d.kept) for (const c of blank) want[c] = c === 'Date' ? d.date : c === 'Type' ? d.type : c === 'Phase' ? d.phase : d[c.toLowerCase()];
+    if (stands) for (const c of blank) want[c] = c === 'Date' ? d.date : c === 'Type' ? d.type : c === 'Phase' ? d.phase : d[c.toLowerCase()];
     for (const c of missing) delete want[c];
     const values = {};
     for (const [k, v] of Object.entries(want)) {
@@ -2840,9 +2949,11 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     }
     if (Object.keys(values).length) updates.push({ pageId: s.row.pageId, values });
     const { prev: _prev, ...was } = s.w || s.cells;
+    // A day gone by keeps its record too: what stands there is what Study last wrote, so a later change by him shows.
     next[s.row.pageId] = d.kept
       ? { ...was, Edited: true }
-      : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
+      : d.frozen ? { ...was, Edited: false }
+        : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
   }
   return { days, adds, updates, removes, written: next, outside };
 }
@@ -2902,7 +3013,7 @@ function stPlanView(rules, days, { today = '', outside = [], done = null } = {})
     phases: stPlanPhases(rules, days),
     weeks,
     outside: outside.slice().sort((a, b) => (a.date < b.date ? -1 : 1)),
-    contradictions: stPlanContradictions(rules),
+    contradictions: stPlanContradictions(rules, { days, today }),
   };
 }
 
@@ -5927,7 +6038,8 @@ function stProgressReset() {
 // of them in one write (the door's updateRows), the days added or removed in
 // one more. A day he changed is his (13-plan-model.js decides it from what
 // Study last wrote there, st_plans.written_json): Study ticks Edited on it and
-// never works it out again. One plan's work runs in order (a chain), and
+// never works it out again. A day before today is never worked out again
+// either: a change of the rules applies from today on. One plan's work runs in order (a chain), and
 // nothing is written while one of its databases is in the Trash or gone, or
 // while its dates make no stretch. Everything running belongs to the
 // activation and goes with it.
@@ -5960,7 +6072,7 @@ function stPlanColumns() {
   return {
     plan: [title(200), { name: 'Exam Date', type: 'date', width: 130 }, { name: 'Start Date', type: 'date', width: 130 }, { name: 'Hours Goal', type: 'number', width: 110 }, { name: 'Following', type: 'select', config: { options: ST_PLAN_PLANS }, width: 120 }],
     week: [title(240), { name: 'Days', type: 'tags', config: { options: ST_PLAN_WEEKDAYS }, width: 200 }, { name: 'Account', type: 'select', config: { options: ['Personal', 'Work'] }, width: 110 }, { name: 'From', type: 'date', width: 120 }, { name: 'Until', type: 'date', width: 120 }, ...hours(84)],
-    phases: [title(240), { name: 'Kind', type: 'select', config: { options: ST_PLAN_KINDS }, width: 110 }, { name: 'Start', type: 'date', width: 120 }, { name: 'End', type: 'date', width: 120 }, { name: 'Items', type: 'number', width: 84 }, { name: 'Minutes per Item', type: 'number', width: 140 }],
+    phases: [title(240), { name: 'Kind', type: 'select', config: { options: ST_PLAN_KINDS }, width: 110 }, { name: 'Start', type: 'date', width: 120 }, { name: 'End', type: 'date', width: 120 }, { name: 'Follows', type: 'select', config: { options: ST_PLAN_FOLLOWS }, width: 130 }, { name: 'Items', type: 'number', width: 84 }, { name: 'Minutes per Item', type: 'number', width: 140 }],
     days: [
       title(150), { name: 'Date', type: 'date', width: 110 }, { name: 'Type', type: 'select', config: { options: ST_PLAN_KINDS }, width: 100 }, { name: 'Phase', type: 'text', width: 150 },
       { name: 'Work', type: 'number', width: 66 }, { name: 'Floor', type: 'number', width: 66 }, { name: 'Standard', type: 'number', width: 84 }, { name: 'Stretch', type: 'number', width: 72 },
@@ -6047,23 +6159,35 @@ function stPlanWeekRowsOf({ personal = {}, work = {}, less = 1, more = 1 }) {
 }
 
 /** What is wrong with the New Plan sheet's answers, in words; '' when nothing is. */
-function stPlanFormProblem({ name, start, exam }) {
+function stPlanFormProblem({ name, start, exam, off = 0 }) {
   if (!String(name || '').trim()) return 'Give the plan a name.';
   if (!stPlanDateOf(start)) return 'Give the start date as a date, for example 2027-01-04.';
   if (!stPlanDateOf(exam)) return 'Give the exam date as a date, for example 2027-04-20.';
   if (exam <= start) return 'The exam date must be after the start date.';
+  const days = stPlanDaysOff(off);
+  if (days === null) return 'Give the days off before the exam as a whole number, 0 for none.';
+  if (days >= stPlanDaysBetween(start, exam)) return 'The days off before the exam must be fewer than the plan\'s days.';
   return '';
+}
+
+/** The sheet's "Days off before the exam" as a whole number of days (nothing typed is none); null when it is not one. */
+function stPlanDaysOff(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return 0;
+  return /^\d{1,4}$/.test(text) ? Number(text) : null;
 }
 
 /**
  * New Plan: a page named for it under the subject's page, its four
  * databases, Plan and Week filled from the form, one Study phase from the
- * start to the day before the exam. The days are worked out right after,
- * behind this (the tab shows them as they land).
+ * start to the day before the exam that follows the whole plan, and with
+ * `off` days off before the exam a Rest phase "Days off" that follows the
+ * exam. The days are worked out right after, behind this (the tab shows them
+ * as they land).
  */
-async function stCreatePlan({ subjectId, name, start, exam, goal = 0, personal = {}, work = {}, less = 1, more = 1 }) {
+async function stCreatePlan({ subjectId, name, start, exam, goal = 0, personal = {}, work = {}, less = 1, more = 1, off = 0 }) {
   const door = stSubjectDoorOrThrow();
-  const problem = stPlanFormProblem({ name, start, exam });
+  const problem = stPlanFormProblem({ name, start, exam, off });
   if (problem) throw new Error(problem);
   const subject = await db.get('SELECT * FROM st_subjects WHERE id = ?', [Number(subjectId) || 0]);
   if (!subject) throw new Error('That subject is no longer in Study.');
@@ -6077,10 +6201,19 @@ async function stCreatePlan({ subjectId, name, start, exam, goal = 0, personal =
   await door.addRow(plan.id, { title, values: { 'Start Date': start, 'Exam Date': exam, 'Hours Goal': stPlanHours(goal), Following: 'Standard' } });
   const weekRows = stPlanWeekRowsOf({ personal, work, less, more });
   if (weekRows.length) await door.addRows(week.id, weekRows);
-  await door.addRow(phases.id, { title: 'Start to exam', values: { Kind: 'Study', Start: start, End: stPlanAddDays(exam, -1) } });
+  const last = stPlanAddDays(exam, -1);
+  const follows = {};
+  const whole = await door.addRow(phases.id, { title: 'Start to exam', values: { Kind: 'Study', Start: start, End: last, Follows: 'Whole plan' } });
+  if (whole && whole.pageId) follows[whole.pageId] = { follows: 'Whole plan', start, end: last };
+  const daysOff = stPlanDaysOff(off) || 0;
+  if (daysOff > 0) {
+    const from = stPlanAddDays(exam, -daysOff);
+    const rest = await door.addRow(phases.id, { title: 'Days off', values: { Kind: 'Rest', Start: from, End: last, Follows: 'Before exam' } });
+    if (rest && rest.pageId) follows[rest.pageId] = { follows: 'Before exam', start: from, end: last };
+  }
   const res = await db.run(
-    'INSERT INTO st_plans (subject_id, name, page_id, plan_db, week_db, phases_db, days_db, written_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [subject.id, title, page.id, plan.id, week.id, phases.id, days.id, '{}', stNow()],
+    'INSERT INTO st_plans (subject_id, name, page_id, plan_db, week_db, phases_db, days_db, written_json, follows_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [subject.id, title, page.id, plan.id, week.id, phases.id, days.id, '{}', stJsonCol(follows, '{}'), stNow()],
   );
   const made = stRowToPlan(await db.get('SELECT * FROM st_plans WHERE id = ?', [res.lastInsertRowid]));
   stPlanWatch(null, made, stActivation(), { ensure: false });
@@ -6133,12 +6266,26 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
     door.listRows(plan.planDb), door.listRows(plan.weekDb), door.listRows(plan.phasesDb), door.listRows(plan.daysDb),
     log && !log.trashed ? door.listRows(logId).catch(() => null) : null,
   ]);
-  const rules = stPlanRules({ plan: planRows[0] ? planRows[0].values : null, week: weekRows, phases: phaseRows });
+  const read = stPlanRules({ plan: planRows[0] ? planRows[0].values : null, week: weekRows, phases: phaseRows });
   const done = logRows ? stPlanDoneByDate(logRows, stPlanLocalDate) : null;
-  const rec = await db.get('SELECT written_json FROM st_plans WHERE id = ?', [plan.id]);
+  const rec = await db.get('SELECT written_json, follows_json FROM st_plans WHERE id = ?', [plan.id]);
+  // The phases that follow get their dates first, so the days are worked out from the rules as they will be. The
+  // record of what is about to be written goes first, with the dates before it: a write that stops half way is not
+  // read as his edit. Without its Follows column nothing follows and nothing is written.
+  const followsBefore = rec ? String(rec.follows_json || '{}') : '{}';
+  const follow = stPlanFollow(read, stParseJson(followsBefore, {}) || {});
+  const rules = follow.rules;
+  if (follow.updates.length) {
+    const pending = stJsonCol(follow.seen, '{}');
+    if (pending !== followsBefore) { stPlanLive(st); await db.run('UPDATE st_plans SET follows_json = ? WHERE id = ?', [pending, plan.id]); }
+    stPlanLive(st);
+    await door.updateRows(plan.phasesDb, follow.updates);
+  }
+  const followsAfter = stJsonCol(stPlanFollowSettled(follow.seen), '{}');
+  if (followsAfter !== followsBefore || follow.updates.length) { stPlanLive(st); await db.run('UPDATE st_plans SET follows_json = ? WHERE id = ?', [followsAfter, plan.id]); }
   const before = rec ? String(rec.written_json || '{}') : '{}';
   const prior = stParseJson(before, {}) || {};
-  const r = stPlanReconcile({ rules, rows: dayRows, written: prior, done, absent, fresh });
+  const r = stPlanReconcile({ rules, rows: dayRows, written: prior, done, absent, fresh, today: stPlanToday() });
   let written = r.written;
   // Without its Date or Edited column a day cannot be told from another, or his from Study's: nothing is written.
   if (stPlanHasStretch(rules) && !absent.includes('Date') && !absent.includes('Edited')) {
@@ -9756,11 +9903,13 @@ function injectStyles() {
    rest days' and holidays' rows sit on the inset ground, so each Type is told apart by more than its colour. ── */
 .st-plan { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
 .st-plan__in { max-width: 72rem; margin: 0 auto; container-type: inline-size; container-name: st-plan; }
-.st-plan__opens { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding: 0 var(--px-space-6) var(--px-space-4); }
+.st-plan__opens { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding: 0 var(--px-space-6) var(--px-space-2); }
+.st-plan__applies { padding: 0 var(--px-space-6) var(--px-space-4); color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-plan__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
 .st-plan__sec { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
 .st-plan__h { margin: 0; padding-bottom: var(--px-space-1); border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
 .st-plan__goal, .st-plan__note, .st-plan__wait { color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-plan__words { display: flex; flex-direction: column; gap: 2px; color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-plan__wait { padding: var(--px-space-6) 0; }
 .st-plan__plans .ui-segmented-control--cards { margin-top: var(--px-space-1); }
 .st-plan__pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--px-space-6); align-items: start; }
@@ -9825,6 +9974,7 @@ function injectStyles() {
 .st-psheet__pair { display: grid; grid-template-columns: auto 4.5rem auto; align-items: center; gap: var(--px-space-2); }
 .st-psheet__pair .st-row__lab { width: auto; }
 .st-psheet__pair input { text-align: center; font-variant-numeric: tabular-nums; }
+.st-psheet__words { display: flex; flex-direction: column; gap: 2px; color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; }
 .st-psheet__sums { color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; font-variant-numeric: tabular-nums; }
 @container st-sheet (max-width: 520px) { .st-psheet__grid { grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); } }
 
@@ -13746,9 +13896,10 @@ async function renderProgress(host, route, ctx) {
 //
 // The New Subject sheet's frame (stSheetFrame: a dialog, Tab kept inside,
 // Escape closes, the focus back to what opened it): Name, Exam date, Start
-// date, Hours goal, and the usual week of the Standard plan, a personal and a
-// work field for each weekday, then how many hours less a study day is on the
-// Floor and how many more on the Stretch. Under the week, as he types, what
+// date, Hours goal, Days off before the exam (a Rest phase that moves with the
+// exam), and the usual week of the Standard plan, a personal and a work field
+// for each weekday, then how many hours less a study day is on the Floor and
+// how many more on the Stretch, each term said in a line of words. Under the week, as he types, what
 // that week comes to in each plan over the stretch, worked out by the same
 // arithmetic as the plan's days (13-plan-model.js). Create makes the plan
 // (29-plans.js) and opens its tab; an exam on or before the start is refused
@@ -13761,7 +13912,7 @@ let _stPlanSheet = null;
  * New Plan…: the sheet for a subject (its id or name, else the only one, else
  * his pick). Given the sheet's own form, its Create; given what the sheet asks
  * ({ subject or subjectId, name, start, exam, goal, personal, work, less,
- * more }: a script or the audits), the plan is made without it.
+ * more, off }: a script or the audits), the plan is made without it.
  */
 async function stCmdNewPlan(arg) {
   if (_stPlanSheet && arg === _stPlanSheet.form) return _stPlanSheet.create();
@@ -13799,7 +13950,7 @@ async function renderNewPlan(host, route, ctx) {
     ui.createEmptyState(host, { icon: 'calendar', headline: !subject ? 'This subject is no longer in Study.' : 'Plans need canvas databases.', hint: !subject ? 'Choose New Plan… on a subject that is.' : 'This version of Parallx does not offer them to Study.', action: { label: 'Close', command: ST_CLOSE_TAB } });
     return;
   }
-  const form = { subjectId, name: '', exam: '', start: stPlanToday(), goal: '', personal: {}, work: {}, less: 1, more: 1, busy: false };
+  const form = { subjectId, name: '', exam: '', start: stPlanToday(), goal: '', off: '0', personal: {}, work: {}, less: 1, more: 1, busy: false };
   const actions = { form, create: () => create() };
   _stPlanSheet = actions;
   ctx.add({ dispose: () => { if (_stPlanSheet === actions) _stPlanSheet = null; if (form.made) _stSubjectOpener = null; } });
@@ -13834,6 +13985,8 @@ async function renderNewPlan(host, route, ctx) {
   const startSaid = dateField('Start date', 'start', 'study.plan.start', '2026-12-07');
   input(field('Hours goal', { hint: 'The hours you want in all. Each plan says how far it is from them.' }).cell, { id: 'study.plan.goal', label: 'Hours goal', placeholder: 'For example, 500' }, (v) => { form.goal = v; });
 
+  input(field('Days off before the exam', { hint: 'Rest days that end the day before the exam, 0 for none. They move with the exam date.' }).cell, { id: 'study.plan.off', label: 'Days off before the exam', value: '0' }, (v) => { form.off = v; });
+
   // The usual week: a column per weekday, the personal hours over the work hours, each field named for both.
   const weekBox = ui.createBlock(bd, 'div', { className: 'st-psheet__week', attrs: { role: 'group', 'aria-label': 'The usual week, in hours of the Standard plan' } });
   ui.createBlock(weekBox, 'div', { className: 'st-psheet__weekhd', text: 'The usual week, in hours of the Standard plan' });
@@ -13847,6 +14000,9 @@ async function renderNewPlan(host, route, ctx) {
       input(cell, { id: `study.plan.${key}.${d.toLowerCase()}`, label: `${ST_PLAN_WEEKDAY_NAMES[i]}, ${account.toLowerCase()} hours`, placeholder: '0' }, (v) => { form[key][d] = v; });
     });
   }
+  // What the two rows of the week are, in words.
+  const hourWords = ui.createBlock(weekBox, 'div', { className: 'st-psheet__words' });
+  for (const line of ST_PLAN_WORDS.accounts) ui.createBlock(hourWords, 'div', { text: line });
   const spread = ui.createBlock(weekBox, 'div', { className: 'st-psheet__spread' });
   const lessBox = ui.createBlock(spread, 'div', { className: 'st-psheet__pair' });
   ui.createBlock(lessBox, 'span', { className: 'st-row__lab', text: 'Floor', attrs: { 'aria-hidden': 'true' } });
@@ -13856,6 +14012,9 @@ async function renderNewPlan(host, route, ctx) {
   ui.createBlock(moreBox, 'span', { className: 'st-row__lab', text: 'Stretch', attrs: { 'aria-hidden': 'true' } });
   input(moreBox, { id: 'study.plan.more', label: 'Stretch: hours more on a study day', value: '1' }, (v) => { form.more = v; });
   ui.createBlock(moreBox, 'span', { className: 'st-subj__hint', text: 'hours more on a study day', attrs: { 'aria-hidden': 'true' } });
+  // What the three plans are, and that the two numbers above fill Week's columns once.
+  const planWords = ui.createBlock(weekBox, 'div', { className: 'st-psheet__words' });
+  for (const line of [...ST_PLAN_WORDS.plans, ST_PLAN_WORDS.once]) ui.createBlock(planWords, 'div', { text: line });
   const sums = ui.createBlock(weekBox, 'div', { className: 'st-psheet__sums', attrs: { 'aria-live': 'polite' } });
 
   // Footer: what is wrong (when something is), Cancel, Create.
@@ -13872,7 +14031,8 @@ async function renderNewPlan(host, route, ctx) {
     examSaid.textContent = words(form.exam);
     startSaid.textContent = words(form.start);
     const t = stPlanFormTotals(form);
-    sums.textContent = t ? `Over ${t.days} days: Floor ${stPlanH(t.Floor)} h, Standard ${stPlanH(t.Standard)} h, Stretch ${stPlanH(t.Stretch)} h. Rest, holidays and phases are rows you add after.` : 'Give both dates to see what this week comes to.';
+    const off = stPlanDaysOff(form.off) || 0;
+    sums.textContent = t ? `Over ${t.days} days${off > 0 ? `, before the ${off} ${off === 1 ? 'day' : 'days'} off` : ''}: Floor ${stPlanH(t.Floor)} h, Standard ${stPlanH(t.Standard)} h, Stretch ${stPlanH(t.Stretch)} h. Rest, holidays and phases are rows you add after.` : 'Give both dates to see what this week comes to.';
     // Only the dates' problem is said as he types; the rest waits for Create.
     if (stPlanDateOf(form.exam) && stPlanDateOf(form.start) && form.exam <= form.start) say('The exam date must be after the start date.');
     else if (/exam date must be after/.test(problem.textContent)) say('');
@@ -14169,7 +14329,7 @@ function stDraftSaver(item) {
 // a real table grouped by week (a <tbody> each, its first row the week), the
 // ordinary day quiet, Rest, Catch-up and Holiday told apart in words and by
 // shape, a day he changed marked Edited, today marked, Done beside Total for
-// the days gone by. Days he kept outside the dates are listed after it. The
+// today and the days gone by (under a tenth of an hour in minutes). Days he kept outside the dates are listed after it. The
 // tab draws what 29-plans.js last worked out, and again only when that
 // differs; the control that had the focus has it again.
 
@@ -14229,6 +14389,8 @@ async function renderPlan(host, route, ctx) {
   for (const [label, key] of [['Open Days', 'daysDb'], ['Open Week', 'weekDb'], ['Open Phases', 'phasesDb'], ['Open Plan Settings', 'planDb']]) {
     ui.createButton(opens, { id: `study.plan.${key}`, label, icon: 'database', kind: 'ghost', size: 'sm', title: `${label.replace('Open ', 'Open the ')} database.`, command: 'canvas.openPage', args: [plan[key]] });
   }
+  // Said by the rules' own buttons: a change to Week, Phases or the dates never rewrites a day gone by.
+  ui.createBlock(inner, 'div', { className: 'st-plan__applies', text: 'Changes apply from today on. A day gone by keeps the Type, Phase and hours it had.' });
   const body = ui.createBlock(inner, 'div', { className: 'st-plan__body' });
   const expanded = new Set();
   const editedNoteId = `st-plan-edited-${planId}`;
@@ -14282,6 +14444,8 @@ async function renderPlan(host, route, ctx) {
       onChange: (value) => { void stPlanSetFollowing(planId, value).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] the plan you follow could not be written:', err && err.message); }); },
     });
     parts.push(chooser);
+    const planWords = ui.createBlock(plans, 'div', { className: 'st-plan__words' });
+    for (const line of ST_PLAN_WORDS.plans) ui.createBlock(planWords, 'div', { text: line });
 
     const pair = ui.createBlock(body, 'div', { className: 'st-plan__pair' });
     // Hours per day for the plan he follows, as a small bar each.
@@ -14301,6 +14465,9 @@ async function renderPlan(host, route, ctx) {
     // The phases in date order.
     const phases = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__phases', attrs: { 'aria-label': 'Phases' } });
     ui.createBlock(phases, 'div', { className: 'st-plan__h', text: 'Phases', attrs: { role: 'heading', 'aria-level': '2' } });
+    // What the kinds other than Study do to a day's hours.
+    const kindWords = ui.createBlock(phases, 'div', { className: 'st-plan__words' });
+    for (const line of ST_PLAN_WORDS.kinds) ui.createBlock(kindWords, 'div', { text: line });
     const ol = ui.createBlock(phases, 'ol', { className: 'st-plan__plist' });
     if (!view.phases.length) ui.createBlock(phases, 'div', { className: 'st-plan__note', text: 'No phases yet. Add rows to Phases: study spans, rest, catch-up days, holidays.' });
     for (const p of view.phases) {
@@ -14308,7 +14475,8 @@ async function renderPlan(host, route, ctx) {
       const line = ui.createBlock(li, 'div', { className: 'st-plan__pline' });
       ui.createBlock(line, 'span', { className: 'st-plan__pname', text: p.name || 'A row with no name' });
       ui.createBlock(line, 'span', { className: `st-plan__kind ${stPlanTypeClass(p.kind)}`, text: p.kind || 'No kind' });
-      ui.createBlock(li, 'div', { className: 'st-plan__pfacts', text: [p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates', `${p.days} ${p.days === 1 ? 'day' : 'days'}`, `${stPlanH(p.hours)} h`].join(' · ') });
+      const follows = p.follows === 'Whole plan' ? 'follows the plan\'s dates' : p.follows === 'Before exam' ? 'moves with the exam' : '';
+      ui.createBlock(li, 'div', { className: 'st-plan__pfacts', text: [p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates', `${p.days} ${p.days === 1 ? 'day' : 'days'}`, `${stPlanH(p.hours)} h`, ...(follows ? [follows] : [])].join(' · ') });
       if (!p.fit) continue;
       const fit = ui.createBlock(li, 'div', { className: 'st-plan__fit' });
       const short = p.fit.short.includes(view.following);
@@ -14353,6 +14521,8 @@ async function renderPlan(host, route, ctx) {
     ui.createBlock(bar, 'div', { className: 'st-plan__h', text: 'Every day', attrs: { role: 'heading', 'aria-level': '2' } });
     // Too wide for a narrow tab, it scrolls sideways on its own; named, so the browser's own Tab stop on a scroller says what it is.
     // What Edited means, in words on the tab, and each edited day's row described by it.
+    const hourWords = ui.createBlock(box, 'div', { className: 'st-plan__words' });
+    for (const line of ST_PLAN_WORDS.accounts) ui.createBlock(hourWords, 'div', { text: line });
     if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited there and it follows the rules again.', attrs: { id: editedNoteId } });
     const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
@@ -14381,7 +14551,7 @@ async function renderPlan(host, route, ctx) {
     ui.createBlock(tr, 'td', { className: 'st-plan__n', text: stPlanCellHours(d[following.toLowerCase()]) });
     ui.createBlock(tr, 'td', { className: 'st-plan__n', text: stPlanCellHours(d.work) });
     ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__total', text: stPlanCellHours(d.planned) });
-    ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__done', text: d.past && d.done !== null ? stPlanH(d.done) : '' });
+    ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__done', text: (d.past || d.today) && d.done !== null ? stPlanDoneWords(d.done) : '' });
     ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__run', text: stPlanH(d.running) });
   }
 
@@ -16398,6 +16568,7 @@ export const __testables = {
   stUnitShown, stUnitAttach, stUnitDetach, stUnitCandidates, stUnitFollowMoves, stUnitPick, stUnitFindMatches, stOpenUnit, stUnitsReset, registerUnits, renderUnit,
   // 13-plan-model: a plan, the pure part
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
+  ST_PLAN_FOLLOWS, ST_PLAN_WORDS, stPlanFollow, stPlanFollowSettled, stPlanDaysOff, stPlanDoneWords,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,

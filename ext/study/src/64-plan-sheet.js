@@ -4,9 +4,10 @@
 //
 // The New Subject sheet's frame (stSheetFrame: a dialog, Tab kept inside,
 // Escape closes, the focus back to what opened it): Name, Exam date, Start
-// date, Hours goal, and the usual week of the Standard plan, a personal and a
-// work field for each weekday, then how many hours less a study day is on the
-// Floor and how many more on the Stretch. Under the week, as he types, what
+// date, Hours goal, Days off before the exam (a Rest phase that moves with the
+// exam), and the usual week of the Standard plan, a personal and a work field
+// for each weekday, then how many hours less a study day is on the Floor and
+// how many more on the Stretch, each term said in a line of words. Under the week, as he types, what
 // that week comes to in each plan over the stretch, worked out by the same
 // arithmetic as the plan's days (13-plan-model.js). Create makes the plan
 // (29-plans.js) and opens its tab; an exam on or before the start is refused
@@ -19,7 +20,7 @@ let _stPlanSheet = null;
  * New Plan…: the sheet for a subject (its id or name, else the only one, else
  * his pick). Given the sheet's own form, its Create; given what the sheet asks
  * ({ subject or subjectId, name, start, exam, goal, personal, work, less,
- * more }: a script or the audits), the plan is made without it.
+ * more, off }: a script or the audits), the plan is made without it.
  */
 async function stCmdNewPlan(arg) {
   if (_stPlanSheet && arg === _stPlanSheet.form) return _stPlanSheet.create();
@@ -57,7 +58,7 @@ async function renderNewPlan(host, route, ctx) {
     ui.createEmptyState(host, { icon: 'calendar', headline: !subject ? 'This subject is no longer in Study.' : 'Plans need canvas databases.', hint: !subject ? 'Choose New Plan… on a subject that is.' : 'This version of Parallx does not offer them to Study.', action: { label: 'Close', command: ST_CLOSE_TAB } });
     return;
   }
-  const form = { subjectId, name: '', exam: '', start: stPlanToday(), goal: '', personal: {}, work: {}, less: 1, more: 1, busy: false };
+  const form = { subjectId, name: '', exam: '', start: stPlanToday(), goal: '', off: '0', personal: {}, work: {}, less: 1, more: 1, busy: false };
   const actions = { form, create: () => create() };
   _stPlanSheet = actions;
   ctx.add({ dispose: () => { if (_stPlanSheet === actions) _stPlanSheet = null; if (form.made) _stSubjectOpener = null; } });
@@ -92,6 +93,8 @@ async function renderNewPlan(host, route, ctx) {
   const startSaid = dateField('Start date', 'start', 'study.plan.start', '2026-12-07');
   input(field('Hours goal', { hint: 'The hours you want in all. Each plan says how far it is from them.' }).cell, { id: 'study.plan.goal', label: 'Hours goal', placeholder: 'For example, 500' }, (v) => { form.goal = v; });
 
+  input(field('Days off before the exam', { hint: 'Rest days that end the day before the exam, 0 for none. They move with the exam date.' }).cell, { id: 'study.plan.off', label: 'Days off before the exam', value: '0' }, (v) => { form.off = v; });
+
   // The usual week: a column per weekday, the personal hours over the work hours, each field named for both.
   const weekBox = ui.createBlock(bd, 'div', { className: 'st-psheet__week', attrs: { role: 'group', 'aria-label': 'The usual week, in hours of the Standard plan' } });
   ui.createBlock(weekBox, 'div', { className: 'st-psheet__weekhd', text: 'The usual week, in hours of the Standard plan' });
@@ -105,6 +108,9 @@ async function renderNewPlan(host, route, ctx) {
       input(cell, { id: `study.plan.${key}.${d.toLowerCase()}`, label: `${ST_PLAN_WEEKDAY_NAMES[i]}, ${account.toLowerCase()} hours`, placeholder: '0' }, (v) => { form[key][d] = v; });
     });
   }
+  // What the two rows of the week are, in words.
+  const hourWords = ui.createBlock(weekBox, 'div', { className: 'st-psheet__words' });
+  for (const line of ST_PLAN_WORDS.accounts) ui.createBlock(hourWords, 'div', { text: line });
   const spread = ui.createBlock(weekBox, 'div', { className: 'st-psheet__spread' });
   const lessBox = ui.createBlock(spread, 'div', { className: 'st-psheet__pair' });
   ui.createBlock(lessBox, 'span', { className: 'st-row__lab', text: 'Floor', attrs: { 'aria-hidden': 'true' } });
@@ -114,6 +120,9 @@ async function renderNewPlan(host, route, ctx) {
   ui.createBlock(moreBox, 'span', { className: 'st-row__lab', text: 'Stretch', attrs: { 'aria-hidden': 'true' } });
   input(moreBox, { id: 'study.plan.more', label: 'Stretch: hours more on a study day', value: '1' }, (v) => { form.more = v; });
   ui.createBlock(moreBox, 'span', { className: 'st-subj__hint', text: 'hours more on a study day', attrs: { 'aria-hidden': 'true' } });
+  // What the three plans are, and that the two numbers above fill Week's columns once.
+  const planWords = ui.createBlock(weekBox, 'div', { className: 'st-psheet__words' });
+  for (const line of [...ST_PLAN_WORDS.plans, ST_PLAN_WORDS.once]) ui.createBlock(planWords, 'div', { text: line });
   const sums = ui.createBlock(weekBox, 'div', { className: 'st-psheet__sums', attrs: { 'aria-live': 'polite' } });
 
   // Footer: what is wrong (when something is), Cancel, Create.
@@ -130,7 +139,8 @@ async function renderNewPlan(host, route, ctx) {
     examSaid.textContent = words(form.exam);
     startSaid.textContent = words(form.start);
     const t = stPlanFormTotals(form);
-    sums.textContent = t ? `Over ${t.days} days: Floor ${stPlanH(t.Floor)} h, Standard ${stPlanH(t.Standard)} h, Stretch ${stPlanH(t.Stretch)} h. Rest, holidays and phases are rows you add after.` : 'Give both dates to see what this week comes to.';
+    const off = stPlanDaysOff(form.off) || 0;
+    sums.textContent = t ? `Over ${t.days} days${off > 0 ? `, before the ${off} ${off === 1 ? 'day' : 'days'} off` : ''}: Floor ${stPlanH(t.Floor)} h, Standard ${stPlanH(t.Standard)} h, Stretch ${stPlanH(t.Stretch)} h. Rest, holidays and phases are rows you add after.` : 'Give both dates to see what this week comes to.';
     // Only the dates' problem is said as he types; the rest waits for Create.
     if (stPlanDateOf(form.exam) && stPlanDateOf(form.start) && form.exam <= form.start) say('The exam date must be after the start date.');
     else if (/exam date must be after/.test(problem.textContent)) say('');

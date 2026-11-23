@@ -12,7 +12,7 @@
 // a real table grouped by week (a <tbody> each, its first row the week), the
 // ordinary day quiet, Rest, Catch-up and Holiday told apart in words and by
 // shape, a day he changed marked Edited, today marked, Done beside Total for
-// the days gone by. Days he kept outside the dates are listed after it. The
+// today and the days gone by (under a tenth of an hour in minutes). Days he kept outside the dates are listed after it. The
 // tab draws what 29-plans.js last worked out, and again only when that
 // differs; the control that had the focus has it again.
 
@@ -72,6 +72,8 @@ async function renderPlan(host, route, ctx) {
   for (const [label, key] of [['Open Days', 'daysDb'], ['Open Week', 'weekDb'], ['Open Phases', 'phasesDb'], ['Open Plan Settings', 'planDb']]) {
     ui.createButton(opens, { id: `study.plan.${key}`, label, icon: 'database', kind: 'ghost', size: 'sm', title: `${label.replace('Open ', 'Open the ')} database.`, command: 'canvas.openPage', args: [plan[key]] });
   }
+  // Said by the rules' own buttons: a change to Week, Phases or the dates never rewrites a day gone by.
+  ui.createBlock(inner, 'div', { className: 'st-plan__applies', text: 'Changes apply from today on. A day gone by keeps the Type, Phase and hours it had.' });
   const body = ui.createBlock(inner, 'div', { className: 'st-plan__body' });
   const expanded = new Set();
   const editedNoteId = `st-plan-edited-${planId}`;
@@ -125,6 +127,8 @@ async function renderPlan(host, route, ctx) {
       onChange: (value) => { void stPlanSetFollowing(planId, value).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] the plan you follow could not be written:', err && err.message); }); },
     });
     parts.push(chooser);
+    const planWords = ui.createBlock(plans, 'div', { className: 'st-plan__words' });
+    for (const line of ST_PLAN_WORDS.plans) ui.createBlock(planWords, 'div', { text: line });
 
     const pair = ui.createBlock(body, 'div', { className: 'st-plan__pair' });
     // Hours per day for the plan he follows, as a small bar each.
@@ -144,6 +148,9 @@ async function renderPlan(host, route, ctx) {
     // The phases in date order.
     const phases = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__phases', attrs: { 'aria-label': 'Phases' } });
     ui.createBlock(phases, 'div', { className: 'st-plan__h', text: 'Phases', attrs: { role: 'heading', 'aria-level': '2' } });
+    // What the kinds other than Study do to a day's hours.
+    const kindWords = ui.createBlock(phases, 'div', { className: 'st-plan__words' });
+    for (const line of ST_PLAN_WORDS.kinds) ui.createBlock(kindWords, 'div', { text: line });
     const ol = ui.createBlock(phases, 'ol', { className: 'st-plan__plist' });
     if (!view.phases.length) ui.createBlock(phases, 'div', { className: 'st-plan__note', text: 'No phases yet. Add rows to Phases: study spans, rest, catch-up days, holidays.' });
     for (const p of view.phases) {
@@ -151,7 +158,8 @@ async function renderPlan(host, route, ctx) {
       const line = ui.createBlock(li, 'div', { className: 'st-plan__pline' });
       ui.createBlock(line, 'span', { className: 'st-plan__pname', text: p.name || 'A row with no name' });
       ui.createBlock(line, 'span', { className: `st-plan__kind ${stPlanTypeClass(p.kind)}`, text: p.kind || 'No kind' });
-      ui.createBlock(li, 'div', { className: 'st-plan__pfacts', text: [p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates', `${p.days} ${p.days === 1 ? 'day' : 'days'}`, `${stPlanH(p.hours)} h`].join(' · ') });
+      const follows = p.follows === 'Whole plan' ? 'follows the plan\'s dates' : p.follows === 'Before exam' ? 'moves with the exam' : '';
+      ui.createBlock(li, 'div', { className: 'st-plan__pfacts', text: [p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates', `${p.days} ${p.days === 1 ? 'day' : 'days'}`, `${stPlanH(p.hours)} h`, ...(follows ? [follows] : [])].join(' · ') });
       if (!p.fit) continue;
       const fit = ui.createBlock(li, 'div', { className: 'st-plan__fit' });
       const short = p.fit.short.includes(view.following);
@@ -196,6 +204,8 @@ async function renderPlan(host, route, ctx) {
     ui.createBlock(bar, 'div', { className: 'st-plan__h', text: 'Every day', attrs: { role: 'heading', 'aria-level': '2' } });
     // Too wide for a narrow tab, it scrolls sideways on its own; named, so the browser's own Tab stop on a scroller says what it is.
     // What Edited means, in words on the tab, and each edited day's row described by it.
+    const hourWords = ui.createBlock(box, 'div', { className: 'st-plan__words' });
+    for (const line of ST_PLAN_WORDS.accounts) ui.createBlock(hourWords, 'div', { text: line });
     if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited there and it follows the rules again.', attrs: { id: editedNoteId } });
     const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
@@ -224,7 +234,7 @@ async function renderPlan(host, route, ctx) {
     ui.createBlock(tr, 'td', { className: 'st-plan__n', text: stPlanCellHours(d[following.toLowerCase()]) });
     ui.createBlock(tr, 'td', { className: 'st-plan__n', text: stPlanCellHours(d.work) });
     ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__total', text: stPlanCellHours(d.planned) });
-    ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__done', text: d.past && d.done !== null ? stPlanH(d.done) : '' });
+    ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__done', text: (d.past || d.today) && d.done !== null ? stPlanDoneWords(d.done) : '' });
     ui.createBlock(tr, 'td', { className: 'st-plan__n st-plan__run', text: stPlanH(d.running) });
   }
 

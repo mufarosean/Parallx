@@ -44,7 +44,7 @@ describe('New Plan', () => {
     expect(['Plan', 'Week', 'Phases', 'Days'].map((t) => h.db(t).columns.map((c) => c.name))).toEqual([
       ['Exam Date', 'Start Date', 'Hours Goal', 'Following'],
       ['Days', 'Account', 'From', 'Until', 'Floor', 'Standard', 'Stretch'],
-      ['Kind', 'Start', 'End', 'Items', 'Minutes per Item'],
+      ['Kind', 'Start', 'End', 'Follows', 'Items', 'Minutes per Item'],
       ['Date', 'Type', 'Phase', 'Work', 'Floor', 'Standard', 'Stretch', 'Planned', 'Running', 'Done', 'Edited', 'Note'],
     ]);
     expect(h.db('Days').columns.filter((c) => c.config.computedBy).map((c) => c.name)).toEqual(['Planned', 'Running', 'Done']);
@@ -55,7 +55,7 @@ describe('New Plan', () => {
       ['Work, Mon to Thu', ['Mon', 'Tue', 'Wed', 'Thu'], 'Work', 1, 1, 1],
       ['Work, Fri', ['Fri'], 'Work', 2, 2, 2],
     ]);
-    expect(h.db('Phases').rows.map((r) => [r.title, r.values])).toEqual([['Start to exam', { Kind: 'Study', Start: '2027-01-04', End: '2027-02-28' }]]);
+    expect(h.db('Phases').rows.map((r) => [r.title, r.values])).toEqual([['Start to exam', { Kind: 'Study', Start: '2027-01-04', End: '2027-02-28', Follows: 'Whole plan' }]]);
     expect(h.days().length).toBe(56);
     expect([h.days()[0].title, h.days()[0].values.Type, h.days()[0].values.Running, h.days()[55].values.Running]).toEqual(['Mon, Jan 4, 2027', 'Study', 3, 144]);
     expect(h.writes.filter((w) => w.startsWith('add 56 to Days'))).toHaveLength(1);
@@ -102,6 +102,91 @@ describe('a rule changed in a database', () => {
     await h.settle();
     expect(h.db('Plan').rows[0].values.Following).toBe('Stretch');
     expect(h.days()[48].values.Running).toBe(161);
+  });
+});
+
+describe('a phase that follows the exam', () => {
+  const phase = (h: any, title: string) => { const r = h.db('Phases').rows.find((x: any) => x.title === title); return r ? [r.values.Start, r.values.End, r.values.Follows ?? null] : null; };
+  async function tapered() {
+    const h = studyHarness(NAMES);
+    live = h.S;
+    const settle = async () => { for (let i = 0; i < 4; i++) for (const st of [...h.S._stPlans.values()]) await h.S.stPlanEnqueue(st, () => h.S.stPlanFlush(st)); };
+    const subject = await h.S.stCreateSubject({ name: 'Exam 7' });
+    const plan = await h.S.stCreatePlan({ subjectId: subject.id, ...BASIC, off: 3 });
+    await settle();
+    const db = (t: string) => [...h.dbs.values()].find((d) => d.title === t && d.parentPageId === plan.pageId)!;
+    const days = () => db('Days').rows.slice().sort((a, b) => (String(a.values.Date) < String(b.values.Date) ? -1 : 1));
+    return { ...h, settle, plan, db, days };
+  }
+
+  it('New Plan with days off makes the Rest phase "Days off" that follows Before exam: the last days rest', async () => {
+    const h = await tapered();
+    expect(h.db('Phases').rows.map((r) => [r.title, r.values])).toEqual([
+      ['Start to exam', { Kind: 'Study', Start: '2027-01-04', End: '2027-02-28', Follows: 'Whole plan' }],
+      ['Days off', { Kind: 'Rest', Start: '2027-02-26', End: '2027-02-28', Follows: 'Before exam' }],
+    ]);
+    expect(h.days().slice(-4).map((d) => [d.values.Date, d.values.Type, d.values.Planned])).toEqual([['2027-02-25', 'Study', 3], ['2027-02-26', 'Rest', 0], ['2027-02-27', 'Rest', 0], ['2027-02-28', 'Rest', 0]]);
+    await expect(h.S.stCreatePlan({ subjectId: 1, ...BASIC, name: 'Too Long', off: 56 })).rejects.toThrow('The days off before the exam must be fewer than the plan\'s days.');
+    await expect(h.S.stCreatePlan({ subjectId: 1, ...BASIC, name: 'Not A Number', off: 'two' })).rejects.toThrow('Give the days off before the exam as a whole number, 0 for none.');
+  });
+
+  it('the exam date moved, both phases move in one write of Phases, and the days follow', async () => {
+    const h = await tapered();
+    const n = h.writes.length;
+    h.person.edit(h.db('Plan'), 'Winter Block', { values: { 'Exam Date': '2027-03-08' } });
+    await h.settle();
+    expect([phase(h, 'Start to exam'), phase(h, 'Days off')]).toEqual([['2027-01-04', '2027-03-07', 'Whole plan'], ['2027-03-05', '2027-03-07', 'Before exam']]);
+    expect(h.writes.slice(n).filter((w) => / in Phases: /.test(w))).toEqual(['update 2 in Phases: Start,End Start,End']);
+    expect(h.days().length).toBe(63);
+    expect(h.days().slice(-3).every((d) => d.values.Type === 'Rest' && d.values.Planned === 0)).toBe(true);
+    expect(h.days().find((d) => d.values.Date === '2027-02-26')!.values.Type).toBe('Study');
+    // The start moved: the whole-plan phase starts there, the days off stay.
+    h.person.edit(h.db('Plan'), 'Winter Block', { values: { 'Start Date': '2027-01-11' } });
+    await h.settle();
+    expect([phase(h, 'Start to exam'), phase(h, 'Days off')]).toEqual([['2027-01-11', '2027-03-07', 'Whole plan'], ['2027-03-05', '2027-03-07', 'Before exam']]);
+    // And then nothing more is written.
+    const m = h.writes.length;
+    await h.settle();
+    expect(h.writes.slice(m)).toEqual([]);
+  });
+
+  it('a row he adds with Follows takes the plan\'s dates; one with Follows empty keeps its own', async () => {
+    const h = await tapered();
+    h.person.add(h.db('Phases'), 'Final Push', { Kind: 'Study', Start: '2027-01-06', End: '2027-01-10', Follows: 'Before exam' });
+    h.person.add(h.db('Phases'), 'Mock Sitting', { Kind: 'Catch-up', Start: '2027-02-20', End: '2027-02-20' });
+    await h.settle();
+    expect([phase(h, 'Final Push'), phase(h, 'Mock Sitting')]).toEqual([['2027-02-24', '2027-02-28', 'Before exam'], ['2027-02-20', '2027-02-20', null]]);
+  });
+
+  it('a hand edit of its End clears its Follows and stays, through a later exam date too; Follows emptied by him leaves the dates', async () => {
+    const h = await tapered();
+    h.person.edit(h.db('Phases'), 'Start to exam', { values: { End: '2027-02-14' } });
+    await h.settle();
+    expect(phase(h, 'Start to exam')).toEqual(['2027-01-04', '2027-02-14', null]);
+    h.person.edit(h.db('Phases'), 'Days off', { values: { Follows: null } });
+    h.person.edit(h.db('Plan'), 'Winter Block', { values: { 'Exam Date': '2027-03-08' } });
+    await h.settle();
+    expect([phase(h, 'Start to exam'), phase(h, 'Days off')]).toEqual([['2027-01-04', '2027-02-14', null], ['2027-02-26', '2027-02-28', null]]);
+  });
+
+  it('still follows after Study was off and on again (the record is kept)', async () => {
+    const h = await tapered();
+    h.S.stPlansReset();
+    h.person.edit(h.db('Plan'), 'Winter Block', { values: { 'Exam Date': '2027-03-08' } });
+    h.S.registerPlans({ subscriptions: [] });
+    await new Promise((r) => setTimeout(r, 0));
+    await h.settle();
+    expect([phase(h, 'Start to exam'), phase(h, 'Days off')]).toEqual([['2027-01-04', '2027-03-07', 'Whole plan'], ['2027-03-05', '2027-03-07', 'Before exam']]);
+  });
+
+  it('a plan made before Follows gets the column, and its phase stays dated', async () => {
+    const h = await planned();
+    h.person.dropColumn(h.db('Phases'), 'Follows');
+    h.sql.prepare("UPDATE st_plans SET follows_json = '{}'").run();
+    h.person.edit(h.db('Plan'), 'Winter Block', { values: { 'Exam Date': '2027-03-08' } });
+    await h.settle();
+    expect(h.db('Phases').columns.map((c) => c.name)).toContain('Follows');
+    expect(h.db('Phases').rows.map((r) => [r.values.Start, r.values.End])).toEqual([['2027-01-04', '2027-02-28']]);
   });
 });
 

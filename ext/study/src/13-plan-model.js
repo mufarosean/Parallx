@@ -24,8 +24,32 @@ const ST_PLAN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 
 const ST_PLAN_PLANS = ['Floor', 'Standard', 'Stretch'];
 const ST_PLAN_KINDS = ['Study', 'Rest', 'Catch-up', 'Holiday'];
 const ST_PLAN_ACCOUNTS = ['Personal', 'Work'];
+/** What a phase's dates can follow: the whole plan (its start to the day before the exam), or the exam (its length kept, ending the day before it). */
+const ST_PLAN_FOLLOWS = ['Whole plan', 'Before exam'];
 /** The Days cells that the rules give, and that make a day his when he changes one. */
 const ST_PLAN_RULE_CELLS = ['Type', 'Phase', 'Work', 'Floor', 'Standard', 'Stretch'];
+
+/**
+ * The words that say what the plan's terms are, one line each, shown where
+ * the term is used: in the New Plan sheet and in the plan's tab.
+ */
+const ST_PLAN_WORDS = {
+  accounts: [
+    'Personal hours are the hours you study in your own time.',
+    'Work hours are the hours your job gives you to study.',
+  ],
+  plans: [
+    'Floor is the least you mean to do, the plan for a bad week.',
+    'Standard is the plan you expect to keep.',
+    'Stretch is the most you could do, the plan for a good week.',
+  ],
+  once: 'The hours less and the hours more fill the Floor and Stretch columns of Week once, at Create. After that the three columns are independent: change any of them in Week.',
+  kinds: [
+    'Rest: a day in a Rest phase has no hours.',
+    'Catch-up: a day in a Catch-up phase keeps its hours, and is marked for work that fell behind.',
+    'Holiday: a day in a Holiday phase has no hours.',
+  ],
+};
 
 // ── Dates ───────────────────────────────────────────────────────────────────
 
@@ -95,6 +119,13 @@ function stPlanHours(v) {
 const stPlanRound = (n) => Math.round(n * 100) / 100;
 /** Hours as they are read: "3", "2.5", "71.7". */
 const stPlanH = (n) => String(Math.round(n * 10) / 10);
+/** A day's Done as it is read: hours ("1.6"), under a tenth of an hour in minutes ("2 min", never "0" when there was work), "0" for none. */
+function stPlanDoneWords(hours) {
+  const h = Number(hours) || 0;
+  if (!(h > 0)) return '0';
+  const minutes = Math.round(h * 60);
+  return minutes < 6 ? `${Math.max(1, minutes)} min` : stPlanH(h);
+}
 
 // ── The rules, read from the rows ───────────────────────────────────────────
 
@@ -154,6 +185,7 @@ function stPlanRules({ plan, week, phases }) {
         id: r.pageId, name: String(r.title || '').trim(), order,
         kind: stPlanWordOf(stPlanCell(v, 'Kind'), ST_PLAN_KINDS),
         start: stPlanDateOf(stPlanCell(v, 'Start')), end: stPlanDateOf(stPlanCell(v, 'End')),
+        follows: stPlanWordOf(stPlanCell(v, 'Follows'), ST_PLAN_FOLLOWS),
         items, minutes,
       };
     }),
@@ -170,13 +202,63 @@ const stPlanByStart = (a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 
 /** Is there a stretch to plan: both dates, the exam after the start? */
 const stPlanHasStretch = (rules) => !!(rules.start && rules.exam && rules.start < rules.exam);
 
+// ── A phase that follows the exam ───────────────────────────────────────────
+
+/**
+ * The dates of the phases that follow. A phase with Follows "Whole plan" runs
+ * from the plan's start to the day before the exam; one with "Before exam"
+ * keeps its length and ends the day before the exam. `seen` is what Study
+ * last left in each following row (phase id → { follows, start, end }, with
+ * `prev` the dates before a write that may not have landed): a row that
+ * followed already and whose dates are neither is one he edited by hand. Its
+ * Follows is cleared and the phase is his, dated, from then on.
+ *
+ * Returns { rules (the phases as they will be), updates: [{ pageId, values }]
+ * for the Phases rows that differ, seen (the next record) }. Nothing moves
+ * while the plan's dates make no stretch, and a "Before exam" phase without
+ * two dates in order has no length to keep.
+ */
+function stPlanFollow(rules, seen = {}) {
+  const prior = seen || {};
+  const next = {};
+  const updates = [];
+  const can = stPlanHasStretch(rules);
+  const last = can ? stPlanAddDays(rules.exam, -1) : '';
+  const phases = rules.phases.map((s) => {
+    if (!s.follows) return s;
+    const was = prior[s.id] && prior[s.id].follows === s.follows ? prior[s.id] : null;
+    const same = (r) => !!r && r.start === s.start && r.end === s.end;
+    if (was && !same(was) && !same(was.prev)) {
+      updates.push({ pageId: s.id, values: { Follows: null } });
+      return { ...s, follows: '' };
+    }
+    if (!can || (s.follows === 'Before exam' && !stPlanSpanValid(s))) {
+      if (was) next[s.id] = was;
+      return s;
+    }
+    const start = s.follows === 'Whole plan' ? rules.start : stPlanAddDays(last, -stPlanDaysBetween(s.start, s.end));
+    if (start === s.start && last === s.end) { next[s.id] = { follows: s.follows, start, end: last }; return s; }
+    updates.push({ pageId: s.id, values: { Start: start, End: last } });
+    next[s.id] = { follows: s.follows, start, end: last, prev: { start: s.start, end: s.end } };
+    return { ...s, start, end: last };
+  });
+  return { rules: { ...rules, phases }, updates, seen: next };
+}
+
+/** The record of following rows once their writes have landed: no `prev`. */
+function stPlanFollowSettled(seen) {
+  return Object.fromEntries(Object.entries(seen || {}).map(([id, r]) => [id, { follows: r.follows, start: r.start, end: r.end }]));
+}
+
 /**
  * Every day from the start to the day before the exam, worked out from the
  * rules: { date, type, phase, work, floor, standard, stretch, planned,
  * running, per: { Floor, Standard, Stretch } (work and personal in each
- * plan), kept }. `kept` is date → the cells of a day he changed ({ type,
- * phase, work, floor, standard, stretch }): those stand as he left them,
- * and Planned and Running follow them.
+ * plan), kept, frozen }. `kept` is date → the cells of a day he changed ({
+ * type, phase, work, floor, standard, stretch }): those stand as he left
+ * them, and Planned and Running follow them. An entry with `frozen` is a day
+ * gone by: it stands as it was written the same way, but it is not his edit
+ * (`kept` false, `frozen` true).
  */
 function stPlanDays(rules, kept = new Map()) {
   if (!stPlanHasStretch(rules)) return [];
@@ -206,11 +288,11 @@ function stPlanDays(rules, kept = new Map()) {
     if (his) {
       const w = stPlanHours(his.work);
       const o = { floor: stPlanHours(his.floor), standard: stPlanHours(his.standard), stretch: stPlanHours(his.stretch) };
-      day = { date, type: stPlanWordOf(his.type, ST_PLAN_KINDS) || '', phase: String(his.phase ?? ''), work: w, ...o, per: { Floor: stPlanRound(w + o.floor), Standard: stPlanRound(w + o.standard), Stretch: stPlanRound(w + o.stretch) }, kept: true };
+      day = { date, type: stPlanWordOf(his.type, ST_PLAN_KINDS) || '', phase: String(his.phase ?? ''), work: w, ...o, per: { Floor: stPlanRound(w + o.floor), Standard: stPlanRound(w + o.standard), Stretch: stPlanRound(w + o.stretch) }, kept: !his.frozen, frozen: !!his.frozen };
     } else {
       const per = { Floor: stPlanRound(work.floor + own.floor), Standard: stPlanRound(work.standard + own.standard), Stretch: stPlanRound(work.stretch + own.stretch) };
       const type = off ? off.kind : catchUp ? 'Catch-up' : per[rules.following] > 0 ? 'Study' : 'Rest';
-      day = { date, type, phase, work: stPlanRound(work[plan]), floor: stPlanRound(own.floor), standard: stPlanRound(own.standard), stretch: stPlanRound(own.stretch), per, kept: false };
+      day = { date, type, phase, work: stPlanRound(work[plan]), floor: stPlanRound(own.floor), standard: stPlanRound(own.standard), stretch: stPlanRound(own.stretch), per, kept: false, frozen: false };
     }
     day.planned = day.per[rules.following];
     running = stPlanRound(running + day.planned);
@@ -264,7 +346,7 @@ function stPlanPhases(rules, days) {
     for (const d of inside) for (const p of ST_PLAN_PLANS) per[p] = stPlanRound(per[p] + d.per[p]);
     const needs = s.kind === 'Study' && s.items > 0 && s.minutes > 0 ? stPlanRound((s.items * s.minutes) / 60) : 0;
     return {
-      id: s.id, name: s.name, kind: s.kind, start: s.start, end: s.end, valid, days: inside.length, per, hours: per[rules.following],
+      id: s.id, name: s.name, kind: s.kind, start: s.start, end: s.end, follows: s.follows || '', valid, days: inside.length, per, hours: per[rules.following],
       fit: needs ? { needs, short: ST_PLAN_PLANS.filter((p) => needs > per[p] + 1e-9) } : null,
     };
   });
@@ -279,10 +361,13 @@ function stPlanFitWords(fit, has) {
 /**
  * Where the rules contradict, in words, each naming the row: a plan with
  * no stretch, a Week block with no days, a block or a span that ends
- * before it starts, a span with a date missing or no kind, and two Study
- * phases over one date (the first by start keeps those days).
+ * before it starts, a span with a date missing or no kind, two Study
+ * phases over one date (the first by start keeps those days), a dated phase
+ * (one that follows nothing) the plan's dates leave wholly outside, and,
+ * given the `days`, the study days from `today` on that no Study phase holds
+ * (said when the plan has a Study phase at all).
  */
-function stPlanContradictions(rules) {
+function stPlanContradictions(rules, { days = null, today = '' } = {}) {
   const out = [];
   const called = (r, what) => r.name || `A ${what} row`;
   if (!rules.start || !rules.exam) out.push({ kind: 'dates', text: 'The plan needs a start date and an exam date.' });
@@ -296,6 +381,13 @@ function stPlanContradictions(rules) {
     else if (s.end < s.start) out.push({ kind: 'phase', id: s.id, text: `${called(s, 'Phases')} ends before it starts, so it holds no day.` });
     else if (!s.kind) out.push({ kind: 'phase', id: s.id, text: `${called(s, 'Phases')} has no kind: Study, Rest, Catch-up or Holiday.` });
   }
+  if (stPlanHasStretch(rules)) {
+    const last = stPlanAddDays(rules.exam, -1);
+    for (const s of rules.phases) {
+      if (s.follows || !stPlanSpanValid(s) || (s.end >= rules.start && s.start <= last)) continue;
+      out.push({ kind: 'outside', id: s.id, text: `${called(s, 'Phases')} (${stPlanSpanWords(s.start, s.end)}) is outside the plan's dates, so it holds no day. Give it new dates, or set its Follows.` });
+    }
+  }
   const study = rules.phases.filter((s) => s.kind === 'Study' && stPlanSpanValid(s)).sort(stPlanByStart);
   for (let i = 0; i < study.length; i++) {
     for (let j = i + 1; j < study.length; j++) {
@@ -303,6 +395,13 @@ function stPlanContradictions(rules) {
       if (b.start > a.end) continue;
       const until = a.end < b.end ? a.end : b.end;
       out.push({ kind: 'overlap', id: b.id, text: `${called(b, 'Phases')} overlaps ${called(a, 'Phases')} from ${stPlanSpanWords(b.start, until)}: those days stay in ${called(a, 'Phases')}, which starts first.` });
+    }
+  }
+  if (days && study.length) {
+    const loose = days.filter((d) => d.planned > 0 && !d.phase && (!today || d.date >= today));
+    if (loose.length) {
+      const n = loose.length;
+      out.push({ kind: 'loose', text: `${n} study ${n === 1 ? 'day is' : 'days are'} in no Study phase, the first on ${stPlanDateWords(loose[0].date)}. Give a Study phase those dates, or set its Follows to Whole plan.` });
     }
   }
   return out;
@@ -348,11 +447,19 @@ const stPlanDayTitle = (iso) => stPlanDateWords(iso, { year: true });
  * Study's outside them, or a second row of Study's for one date, goes. A
  * row Study never wrote that is not a day of the plan is left alone.
  *
+ * Days gone by are never rewritten. With `today` (the person's local date),
+ * a row dated before it stands as it is: its Type, Phase and hours are not
+ * worked out again and it is not ticked Edited (unless he changed it, which
+ * makes it his like any day); Planned, Running and Done still follow. Such a
+ * row is never removed, inside the plan's dates or not. A day before today
+ * that has no row yet (a plan just made, a start date moved earlier) is
+ * worked out from the rules, once.
+ *
  * Returns { days, adds: [{ title, values }], updates: [{ pageId, values }],
  * removes: [pageId], written (the next record, by row id), outside: [{
  * pageId, date, ...cells }] }. Only differences are in `updates`.
  */
-function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], fresh = [] }) {
+function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], fresh = [], today = '' }) {
   const prior = written || {};
   // A Days column that is not there (`absent`), or was just put back and is empty (`fresh`), has no reading: it never
   // counts as his edit. An absent one is not written; a fresh one is written again from the rules, its dates from the titles.
@@ -372,7 +479,8 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     if (w) for (const c of blank) if (c in w) cells[c] = w[c];
     // His when ticked; when Study's record says it ticked it and he has unticked it, the rules again.
     const changed = !ticked && !!w && !w.Edited && !stPlanAsWritten(cells, w, skip);
-    seen.push({ row: r, date, w, cells, kept: ticked || changed, tick: changed });
+    const kept = ticked || changed;
+    seen.push({ row: r, date, w, cells, kept, tick: changed, frozen: !kept && !!today && !!date && date < today });
   }
   const byDate = new Map();
   const removes = [];
@@ -381,24 +489,25 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     if (!s.date) continue;
     if (!inPlan(s.date)) {
       if (s.kept) outside.push({ pageId: s.row.pageId, date: s.date, type: s.cells.Type, phase: s.cells.Phase, work: s.cells.Work, floor: s.cells.Floor, standard: s.cells.Standard, stretch: s.cells.Stretch });
-      else if (s.w) removes.push(s.row.pageId);
+      else if (s.w && !s.frozen) removes.push(s.row.pageId);
       continue;
     }
     const have = byDate.get(s.date);
     if (!have || (s.kept && !have.kept)) {
-      if (have && have.w) removes.push(have.row.pageId);
+      if (have && have.w && !have.frozen) removes.push(have.row.pageId);
       byDate.set(s.date, s);
-    } else if (s.w && !s.kept) removes.push(s.row.pageId);
+    } else if (s.w && !s.kept && !s.frozen) removes.push(s.row.pageId);
   }
   const kept = new Map();
-  for (const [date, s] of byDate) if (s.kept) kept.set(date, { type: s.cells.Type, phase: s.cells.Phase, work: s.cells.Work, floor: s.cells.Floor, standard: s.cells.Standard, stretch: s.cells.Stretch });
+  for (const [date, s] of byDate) if (s.kept || s.frozen) kept.set(date, { type: s.cells.Type, phase: s.cells.Phase, work: s.cells.Work, floor: s.cells.Floor, standard: s.cells.Standard, stretch: s.cells.Stretch, frozen: !s.kept });
   const days = stPlanDays(rules, kept);
   const next = {};
   // A row left as it is keeps its record (a day he kept outside the dates comes back as his).
   for (const s of seen) if (prior[s.row.pageId] && !removes.includes(s.row.pageId) && byDate.get(s.date) !== s) next[s.row.pageId] = prior[s.row.pageId];
   const adds = []; const updates = [];
   for (const d of days) {
-    const want = d.kept
+    const stands = d.kept || d.frozen;
+    const want = stands
       ? { Planned: d.planned, Running: d.running }
       : { Date: d.date, Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Planned: d.planned, Running: d.running };
     if (done) want.Done = stPlanRound(done.get(d.date) || 0);
@@ -410,7 +519,7 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     }
     if (s.tick) want.Edited = true;
     // A kept day loses nothing to a column put back: its Date, and its cells as Study last had them.
-    if (d.kept) for (const c of blank) want[c] = c === 'Date' ? d.date : c === 'Type' ? d.type : c === 'Phase' ? d.phase : d[c.toLowerCase()];
+    if (stands) for (const c of blank) want[c] = c === 'Date' ? d.date : c === 'Type' ? d.type : c === 'Phase' ? d.phase : d[c.toLowerCase()];
     for (const c of missing) delete want[c];
     const values = {};
     for (const [k, v] of Object.entries(want)) {
@@ -418,9 +527,11 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     }
     if (Object.keys(values).length) updates.push({ pageId: s.row.pageId, values });
     const { prev: _prev, ...was } = s.w || s.cells;
+    // A day gone by keeps its record too: what stands there is what Study last wrote, so a later change by him shows.
     next[s.row.pageId] = d.kept
       ? { ...was, Edited: true }
-      : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
+      : d.frozen ? { ...was, Edited: false }
+        : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
   }
   return { days, adds, updates, removes, written: next, outside };
 }
@@ -480,6 +591,6 @@ function stPlanView(rules, days, { today = '', outside = [], done = null } = {})
     phases: stPlanPhases(rules, days),
     weeks,
     outside: outside.slice().sort((a, b) => (a.date < b.date ? -1 : 1)),
-    contradictions: stPlanContradictions(rules),
+    contradictions: stPlanContradictions(rules, { days, today }),
   };
 }
