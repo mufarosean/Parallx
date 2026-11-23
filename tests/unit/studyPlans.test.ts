@@ -13,7 +13,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { studyHarness, type Study } from './fixtures/studyDoor';
 
-const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stRouteInstanceId', 'stRouteFromInstanceId', 'stSubjectMenuItems', 'stSubjectsShown', 'stCreateSubject', 'stCreatePlan', 'stPlanEnqueue', 'stPlanFlush', 'stPlansOfSubject', 'stPlanSetFollowing', 'stSubjectsReset', 'stPlansReset', 'registerPlans', 'deactivate', 'stRemoveSubject'];
+const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stRouteInstanceId', 'stRouteFromInstanceId', 'stSubjectMenuItems', 'stSubjectsShown', 'stCreateSubject', 'stCreatePlan', 'stPlanEnqueue', 'stPlanFlush', 'stPlansOfSubject', 'stPlanSetFollowing', 'stSubjectsReset', 'stPlansReset', 'stAtEachNewDay', 'registerPlans', 'deactivate', 'stRemoveSubject'];
 
 let live: Study | null = null;
 afterEach(() => { live?.stPlansReset(); live?.stSubjectsReset(); live = null; });
@@ -266,5 +266,31 @@ describe('the record of what Study wrote', () => {
     await vi.waitFor(() => { expect(h.S._stPlans.size).toBe(1); });
     await h.settle();
     expect([h.days().filter((d) => d.values.Edited).length, h.day('2027-01-09').values.Standard]).toEqual([0, 6]);
+  });
+});
+
+describe('a new local day', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it('redraws just after local midnight, once a day, and not before; disposed or Study off, never again', () => {
+    vi.useFakeTimers({ now: new Date(2027, 0, 4, 23, 59, 0) });
+    const h = studyHarness(NAMES); live = h.S;
+    let n = 0;
+    const one = h.S.stAtEachNewDay(() => { n += 1; });
+    vi.advanceTimersByTime(55_000);
+    expect(n).toBe(0);
+    vi.advanceTimersByTime(10_000);
+    expect(n).toBe(1);
+    vi.advanceTimersByTime(12 * 3600_000);
+    expect(n).toBe(1);
+    vi.advanceTimersByTime(12 * 3600_000);
+    expect(n).toBe(2);
+    one.dispose();
+    vi.advanceTimersByTime(48 * 3600_000);
+    expect(n).toBe(2);
+    let m = 0;
+    h.S.stAtEachNewDay(() => { m += 1; });
+    h.S.stPlansReset();
+    vi.advanceTimersByTime(48 * 3600_000);
+    expect([m, vi.getTimerCount()]).toEqual([0, 0]);
   });
 });

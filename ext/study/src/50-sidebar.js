@@ -551,6 +551,8 @@ function createSidebarView(container) {
   const offData = onDataChanged(() => void paint());
   const offSession = bus.on('session', () => void paint());
   const offProgress = bus.on('progress', () => void paint());
+  // A plan's days left move at local midnight.
+  const newDay = stAtEachNewDay(() => void paint());
   const offRoute = bus.on('route', (route) => {
     // The New Subject and New Plan sheets change nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
     if (!route || route.view === 'newSubject' || route.view === 'newPlan') return;
@@ -565,7 +567,7 @@ function createSidebarView(container) {
   return {
     dispose() {
       state.disposed = true;
-      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute);
+      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute); newDay.dispose();
       root.remove();
     },
   };

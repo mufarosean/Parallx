@@ -247,6 +247,8 @@ async function renderPlan(host, route, ctx) {
   let timer = 0;
   const later = () => { clearTimeout(timer); timer = setTimeout(paint, 20); };
   ctx.add(onDataChanged(later));
+  // Today's row and the days left move at local midnight.
+  ctx.add(stAtEachNewDay(later));
   ctx.add({ dispose: () => { clearTimeout(timer); for (const p of parts) p.dispose(); parts = []; } });
   paint();
   stPlanTakeFocus(planId, ctx.root);

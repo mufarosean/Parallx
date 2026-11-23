@@ -5977,6 +5977,35 @@ function stPlanToday() {
   return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
 }
 
+/** What waits for the next local day (stAtEachNewDay): all of it stops with Study (stPlansReset). */
+const _stDayTimers = new Set();
+
+/**
+ * Call `fn` each time the person's local date changes (today's row and the
+ * days left move at midnight). The wait is to just after the next local
+ * midnight, and never more than an hour, so a clock or a time zone that
+ * changes, or a machine asleep over midnight, is caught within the hour; it
+ * fires only when the date has really changed. Returns its disposable.
+ */
+function stAtEachNewDay(fn) {
+  let day = stPlanToday();
+  let timer = 0;
+  const handle = { dispose() { clearTimeout(timer); _stDayTimers.delete(handle); } };
+  const arm = () => {
+    const n = new Date();
+    const midnight = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 0, 0, 1).getTime();
+    timer = setTimeout(() => {
+      if (!_stDayTimers.has(handle)) return;
+      const now = stPlanToday();
+      if (now !== day) { day = now; try { fn(); } catch (err) { console.warn('[Study] a redraw for the new day failed:', err && err.message); } }
+      arm();
+    }, Math.min(3600000, Math.max(1000, midnight - n.getTime())));
+  };
+  _stDayTimers.add(handle);
+  arm();
+  return handle;
+}
+
 /** The person's date of a moment written with a zone ("…Z", "…+02:00"). */
 function stPlanLocalDate(raw) {
   const t = new Date(raw);
@@ -6213,6 +6242,7 @@ async function stForgetSubjectPlans(subjectId) {
 /** Stop following every plan (deactivate): no timer left, nothing written. */
 function stPlansReset() {
   for (const st of _stPlans.values()) clearTimeout(st.timer);
+  for (const h of [..._stDayTimers]) h.dispose();
   _stPlans.clear();
 }
 
@@ -10397,6 +10427,8 @@ function createSidebarView(container) {
   const offData = onDataChanged(() => void paint());
   const offSession = bus.on('session', () => void paint());
   const offProgress = bus.on('progress', () => void paint());
+  // A plan's days left move at local midnight.
+  const newDay = stAtEachNewDay(() => void paint());
   const offRoute = bus.on('route', (route) => {
     // The New Subject and New Plan sheets change nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
     if (!route || route.view === 'newSubject' || route.view === 'newPlan') return;
@@ -10411,7 +10443,7 @@ function createSidebarView(container) {
   return {
     dispose() {
       state.disposed = true;
-      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute);
+      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute); newDay.dispose();
       root.remove();
     },
   };
@@ -14372,6 +14404,8 @@ async function renderPlan(host, route, ctx) {
   let timer = 0;
   const later = () => { clearTimeout(timer); timer = setTimeout(paint, 20); };
   ctx.add(onDataChanged(later));
+  // Today's row and the days left move at local midnight.
+  ctx.add(stAtEachNewDay(later));
   ctx.add({ dispose: () => { clearTimeout(timer); for (const p of parts) p.dispose(); parts = []; } });
   paint();
   stPlanTakeFocus(planId, ctx.root);
