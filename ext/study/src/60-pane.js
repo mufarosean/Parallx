@@ -537,8 +537,12 @@ function stModeAnswerRow(bd, ctx, st, { modes, noChoose = false, onChange }) {
   return { modeSeg, answerSeg };
 }
 
+/** The controls of a setup sheet that take Enter themselves: Enter there is theirs, anywhere else in the sheet it starts. */
+const ST_SHEET_OWN_ENTER = 'button, [role="button"], [role="radio"], [role="checkbox"], [role="switch"], [role="tab"], [role="option"], [role="menuitem"], [role="combobox"], a[href], summary, select, textarea, [contenteditable]:not([contenteditable="false"])';
+
 /** The footer: the model line on the left (a kit ghost button with its
- *  chevron), Cancel and Start on the right. */
+ *  chevron), Cancel and Start on the right. Enter in the sheet does what
+ *  Start does. */
 function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }) {
   const ft = el('div', 'st-sheet__ft');
   const mdlBtn = _api.ui.createButton(ft, {
@@ -555,6 +559,17 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
   const startBtn = _api.ui.createButton(acts, { id: 'study.setup.start', label: 'Start', kind: 'primary', onClick: () => void onStart() });
   ft.appendChild(acts);
   sheet.appendChild(ft);
+  // Enter starts, with the focus anywhere in the sheet but on a control that takes Enter itself (a button, a choice, a
+  // multi-line field). A key held down from the press that opened the sheet starts nothing.
+  const onEnter = (e) => {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const at = e.target && typeof e.target.closest === 'function' ? e.target : null;
+    if (!at || at.closest(ST_SHEET_OWN_ENTER) || startBtn.disabled) return;
+    e.preventDefault();
+    void onStart();
+  };
+  sheet.addEventListener('keydown', onEnter);
+  ctx.add({ dispose: () => sheet.removeEventListener('keydown', onEnter) });
 
   // A choice left at its default falls back to Settings first (stPickModel,
   // stContextSettingFor), so the line and the menu name what a run will use.
@@ -935,7 +950,7 @@ async function renderSession(host, route, ctx) {
   pastWrap.hidden = true;
   pastCtl.hidden = true;
 
-  // ── Timing: seconds while the pane is visible, stored every 30 s and on close ──
+  // ── Timing: seconds while this tab is showing and he is at the desk (16-clock-model.js), stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
   // The timer belongs to this activation: once Study goes off it stops, and
   // a save that lands after that is dropped quietly.
@@ -944,15 +959,32 @@ async function renderSession(host, route, ctx) {
     if (!stIsCurrent(timerToken)) return;
     stUpdateSession(session.id, { seconds }).catch((err) => { if (stIsCurrent(timerToken) && !stIsStopped(err)) console.warn('[Study] session time not saved:', err); });
   };
+  // He is at the desk when he pressed a key, clicked, tapped or scrolled anywhere in the app within the last ten
+  // minutes. A finger's scroll is its moves; a scroll the app makes by itself is not his.
+  let inputAt = Date.now();
+  const noteInput = () => { inputAt = Date.now(); };
+  const heard = ['keydown', 'pointerdown', 'wheel', 'touchmove'];
+  for (const type of heard) window.addEventListener(type, noteInput, { capture: true, passive: true });
+  /** Is this tab the one showing: drawn at some size, in a window that is not hidden? */
+  const showing = () => !ctx.disposed() && host.isConnected && host.getClientRects().length > 0
+    && !(typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
+  const clock = stClockState(Date.now(), inputAt);
+  let carryMs = 0;
+  const look = () => {
+    carryMs += stClockAdvance(clock, Date.now(), showing(), inputAt);
+    const whole = Math.trunc(carryMs / 1000);
+    if (!whole) return;
+    carryMs -= whole * 1000;
+    const before = seconds;
+    seconds = Math.max(0, seconds + whole);
+    if (Math.floor(seconds / 30) !== Math.floor(before / 30)) saveSeconds();
+  };
   const tick = setInterval(() => {
     if (!stIsCurrent(timerToken)) { clearInterval(tick); return; }
-    if (ctx.disposed() || !host.isConnected) return;
-    if (typeof document.visibilityState === 'string' && document.visibilityState !== 'visible') return;
-    seconds++;
-    if (seconds % 30 === 0) saveSeconds();
+    look();
   }, 1000);
   // The tab closing is told too, with the time as it stands (a subject's Work Log row follows it).
-  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
+  ctx.add({ dispose: () => { clearInterval(tick); for (const type of heard) window.removeEventListener(type, noteInput, { capture: true }); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
 
   // ── Strand ──
   const segs = new Map();

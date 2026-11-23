@@ -1781,6 +1781,32 @@ describe('Study end to end', () => {
     }
   });
 
+  it('3l. Enter in the setup sheet does what Start does; on a button that is not Start it is that button\'s, and a held key starts nothing', async () => {
+    await boot();
+    const setup = await openChapterSetup();
+    const sheet = q<HTMLElement>(setup, '.st-sheet')!;
+    const before = latestSessionTab();
+    // On Cancel's neighbour, a choice of the sheet: Enter is the control's own.
+    const choice = qa<HTMLElement>(sheet, 'button').find((b) => b.getAttribute('data-px-id') !== 'study.setup.start' && b.getAttribute('data-px-id') !== 'study.setup.cancel' && b.getAttribute('data-px-id') !== 'study.sheet.close')!;
+    const onChoice = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    choice.dispatchEvent(onChoice);
+    expect(onChoice.defaultPrevented).toBe(false);
+    // Held down from the press that opened the sheet: nothing.
+    const held = new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true, cancelable: true });
+    sheet.dispatchEvent(held);
+    expect(held.defaultPrevented).toBe(false);
+    await settle();
+    expect(latestSessionTab()).toBe(before);
+    // With the focus on the sheet itself: the session starts.
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    sheet.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(true);
+    const tab = await waitFor(() => { const t = latestSessionTab(); return t && t !== before ? t : null; }, 'a session tab after Enter');
+    await waitFor(() => q(paneHost(tab)!, '.st-card'), 'the first card');
+    await madeAll(Number(tab.slice('session-'.length)));
+    await settle();
+  });
+
   it('5b. without flashcards.addCards there is no Send Missed; Refresh stays', async () => {
     env.flashcardsOn = false;
     await boot();

@@ -3599,6 +3599,61 @@ function stUnitCountsLine(counts, words) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 16: THE SESSION CLOCK — the pure part
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A session's seconds are time with its tab showing and the person at the
+// desk. The clock cannot tell reading from a break: it sees only input (a
+// key, a click, a tap, a scroll). So it counts while the tab is showing and
+// the last input is less than ten minutes old, and when ten minutes pass
+// with none it takes the whole stretch since that input back, once: a break
+// with the tab up counts for nothing, and an hour left open writes no hour
+// to the Work Log. This is the rule of Worksheets' study clock, written
+// here again because an extension shares no code with a built-in tool. Time
+// is the wall time between two looks, capped, never a count of looks.
+// 60-pane.js runs it; this part has no timer, no DOM and no clock of its own.
+
+/** Ten minutes without input: where a stretch stops being study. */
+const ST_CLOCK_IDLE_MS = 10 * 60 * 1000;
+/** The most one look may count: a machine asleep, or a stalled tab, does not count its nap. */
+const ST_CLOCK_LOOK_MS = 5000;
+
+/** A clock that starts at `now`; `inputAt` is when he last touched the app. */
+function stClockState(now, inputAt = now) {
+  return { at: now, inputSeen: inputAt, stretchMs: 0, idle: false };
+}
+
+/**
+ * One look at the clock. Returns the milliseconds to add to the session:
+ * above zero while its tab is `showing` and he is there, below zero once
+ * when the stretch since his last input is found idle (what it counted comes
+ * back), zero otherwise. `inputAt` is when he last touched the app.
+ */
+function stClockAdvance(state, now, showing, inputAt, idleMs = ST_CLOCK_IDLE_MS) {
+  const passed = Math.min(ST_CLOCK_LOOK_MS, Math.max(0, now - state.at));
+  state.at = now;
+  if (inputAt > state.inputSeen) {
+    // He is back, or still here: a new stretch starts at this input. What passed up to it belongs to the stretch
+    // before, which stands (nothing, when that one had gone idle).
+    const wasIdle = state.idle;
+    state.inputSeen = inputAt;
+    state.stretchMs = 0;
+    state.idle = false;
+    return showing && !wasIdle ? passed : 0;
+  }
+  if (state.idle) return 0;
+  if (now - inputAt >= idleMs) {
+    state.idle = true;
+    const back = state.stretchMs;
+    state.stretchMs = 0;
+    return back ? -back : 0;
+  }
+  if (!showing) return 0;
+  state.stretchMs += passed;
+  return passed;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 20: DATA LAYER
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -9762,6 +9817,10 @@ function injectStyles() {
 .st-subj__cell { display: flex; align-items: flex-start; gap: var(--px-space-2); min-width: 0; }
 .st-subj__cell > .px-btn { flex: none; }
 .st-subj__cell > .ui-input-box, .st-subj__cell > .ui-select, .st-subj__pair > .ui-select { flex: 1; min-width: 0; }
+/* A field of a sheet reached by the keys shows the app's ring as well as the kit's border colour, as Study's own fields do (.st-input): one line of
+   colour is easy to miss among the New Plan sheet's twenty fields. The ring is there at once, not eased in, so the focus is seen where Tab put it. */
+.st-sheet .ui-input-box-input { transition-property: border-color, background-color; }
+.st-sheet .ui-input-box-input:focus-visible { box-shadow: var(--px-ring-accent); }
 .st-subj__cell .ui-dropdown, .st-subj__pair .ui-dropdown { width: 100%; }
 .st-subj__row > .st-subj__hint { grid-column: 2; }
 .st-subj__hint { font-size: var(--px-text-xs); color: var(--px-text-muted); line-height: 1.4; }
@@ -11995,8 +12054,12 @@ function stModeAnswerRow(bd, ctx, st, { modes, noChoose = false, onChange }) {
   return { modeSeg, answerSeg };
 }
 
+/** The controls of a setup sheet that take Enter themselves: Enter there is theirs, anywhere else in the sheet it starts. */
+const ST_SHEET_OWN_ENTER = 'button, [role="button"], [role="radio"], [role="checkbox"], [role="switch"], [role="tab"], [role="option"], [role="menuitem"], [role="combobox"], a[href], summary, select, textarea, [contenteditable]:not([contenteditable="false"])';
+
 /** The footer: the model line on the left (a kit ghost button with its
- *  chevron), Cancel and Start on the right. */
+ *  chevron), Cancel and Start on the right. Enter in the sheet does what
+ *  Start does. */
 function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }) {
   const ft = el('div', 'st-sheet__ft');
   const mdlBtn = _api.ui.createButton(ft, {
@@ -12013,6 +12076,17 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
   const startBtn = _api.ui.createButton(acts, { id: 'study.setup.start', label: 'Start', kind: 'primary', onClick: () => void onStart() });
   ft.appendChild(acts);
   sheet.appendChild(ft);
+  // Enter starts, with the focus anywhere in the sheet but on a control that takes Enter itself (a button, a choice, a
+  // multi-line field). A key held down from the press that opened the sheet starts nothing.
+  const onEnter = (e) => {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const at = e.target && typeof e.target.closest === 'function' ? e.target : null;
+    if (!at || at.closest(ST_SHEET_OWN_ENTER) || startBtn.disabled) return;
+    e.preventDefault();
+    void onStart();
+  };
+  sheet.addEventListener('keydown', onEnter);
+  ctx.add({ dispose: () => sheet.removeEventListener('keydown', onEnter) });
 
   // A choice left at its default falls back to Settings first (stPickModel,
   // stContextSettingFor), so the line and the menu name what a run will use.
@@ -12393,7 +12467,7 @@ async function renderSession(host, route, ctx) {
   pastWrap.hidden = true;
   pastCtl.hidden = true;
 
-  // ── Timing: seconds while the pane is visible, stored every 30 s and on close ──
+  // ── Timing: seconds while this tab is showing and he is at the desk (16-clock-model.js), stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
   // The timer belongs to this activation: once Study goes off it stops, and
   // a save that lands after that is dropped quietly.
@@ -12402,15 +12476,32 @@ async function renderSession(host, route, ctx) {
     if (!stIsCurrent(timerToken)) return;
     stUpdateSession(session.id, { seconds }).catch((err) => { if (stIsCurrent(timerToken) && !stIsStopped(err)) console.warn('[Study] session time not saved:', err); });
   };
+  // He is at the desk when he pressed a key, clicked, tapped or scrolled anywhere in the app within the last ten
+  // minutes. A finger's scroll is its moves; a scroll the app makes by itself is not his.
+  let inputAt = Date.now();
+  const noteInput = () => { inputAt = Date.now(); };
+  const heard = ['keydown', 'pointerdown', 'wheel', 'touchmove'];
+  for (const type of heard) window.addEventListener(type, noteInput, { capture: true, passive: true });
+  /** Is this tab the one showing: drawn at some size, in a window that is not hidden? */
+  const showing = () => !ctx.disposed() && host.isConnected && host.getClientRects().length > 0
+    && !(typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
+  const clock = stClockState(Date.now(), inputAt);
+  let carryMs = 0;
+  const look = () => {
+    carryMs += stClockAdvance(clock, Date.now(), showing(), inputAt);
+    const whole = Math.trunc(carryMs / 1000);
+    if (!whole) return;
+    carryMs -= whole * 1000;
+    const before = seconds;
+    seconds = Math.max(0, seconds + whole);
+    if (Math.floor(seconds / 30) !== Math.floor(before / 30)) saveSeconds();
+  };
   const tick = setInterval(() => {
     if (!stIsCurrent(timerToken)) { clearInterval(tick); return; }
-    if (ctx.disposed() || !host.isConnected) return;
-    if (typeof document.visibilityState === 'string' && document.visibilityState !== 'visible') return;
-    seconds++;
-    if (seconds % 30 === 0) saveSeconds();
+    look();
   }, 1000);
   // The tab closing is told too, with the time as it stands (a subject's Work Log row follows it).
-  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
+  ctx.add({ dispose: () => { clearInterval(tick); for (const type of heard) window.removeEventListener(type, noteInput, { capture: true }); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
 
   // ── Strand ──
   const segs = new Map();
@@ -16742,6 +16833,7 @@ export const __testables = {
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
   ST_PLAN_FOLLOWS, ST_PLAN_WORDS, stPlanFollow, stPlanFollowSettled, stPlanDaysOff, stPlanDoneWords,
   stUnitHolds, stUnitWords, stSubjectUnitsFromFolder, stRemoveUnit, stSubjectBankUnits,
+  ST_CLOCK_IDLE_MS, stClockState, stClockAdvance,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,

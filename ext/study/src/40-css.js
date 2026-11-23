@@ -202,6 +202,10 @@ function injectStyles() {
 .st-subj__cell { display: flex; align-items: flex-start; gap: var(--px-space-2); min-width: 0; }
 .st-subj__cell > .px-btn { flex: none; }
 .st-subj__cell > .ui-input-box, .st-subj__cell > .ui-select, .st-subj__pair > .ui-select { flex: 1; min-width: 0; }
+/* A field of a sheet reached by the keys shows the app's ring as well as the kit's border colour, as Study's own fields do (.st-input): one line of
+   colour is easy to miss among the New Plan sheet's twenty fields. The ring is there at once, not eased in, so the focus is seen where Tab put it. */
+.st-sheet .ui-input-box-input { transition-property: border-color, background-color; }
+.st-sheet .ui-input-box-input:focus-visible { box-shadow: var(--px-ring-accent); }
 .st-subj__cell .ui-dropdown, .st-subj__pair .ui-dropdown { width: 100%; }
 .st-subj__row > .st-subj__hint { grid-column: 2; }
 .st-subj__hint { font-size: var(--px-text-xs); color: var(--px-text-muted); line-height: 1.4; }
