@@ -1361,6 +1361,96 @@ a little sooner in a narrow sidebar.
 *Only his machine can show.* His Exam 7 workspace's pages and files in
 the picker, and Windows paths.
 
+**The plan shipped (2026-11-23).** His words: "a study harness like the
+Coaching Actuaries planner: exam date, start date, study days and rest
+days, a generated plan." "Three plans: bare minimum, standard,
+ambitious." "A plan with no built in contingencies is built to fail."
+"Changes made to a database reflect in Study automatically." Commits
+`d3d1042d` (the acceptance probe, before the build), `e747e1bb` (the day
+arithmetic), `4914e441` (many rows at once in the core), `7915b994`,
+`f8f5eee3`, `d6654f73`, `bcb341b6`, `b813c51b`, `f04097f2`.
+
+*What is built.*
+- New Plan… in a subject's More Actions and the palette ("Study: New
+  Plan…", `study.newPlan`): a sheet for Name, Exam date, Start date, Hours
+  goal, the usual week (a personal and a work field per weekday, in the
+  Standard plan's hours) and how many hours less the Floor and more the
+  Stretch (both 1). As he types it says the dates in words and what the
+  week comes to in each plan. An exam on or before the start is refused in
+  words. Create makes a page named for the plan under the subject's page
+  with Plan, Week, Phases and Days, one Study phase "Start to exam", works
+  out every day and opens the tab.
+- The tab "<Plan name>": the exam date and the days left; Open Days, Open
+  Week, Open Phases, Open Plan Settings; the three plans as cards side by
+  side ("Standard · Following 486 h, 14 under 500"), choosing one writes
+  Following; hours per day by number of days with the study days and all
+  days counted; the phases in date order (kind, dates, days, hours), and a
+  study phase with Items and Minutes per Item says "Needs 84 h, has 72 h"
+  or that it fits, its switch "All plans" showing Floor, Standard and
+  Stretch; "Rules that disagree" naming a Week block with no days, a span
+  that ends before it starts, two Study phases over one date; then every
+  day as a table (caption, column headers, a header cell per row), a
+  tbody per week, today marked (aria-current), Done beside Total on days
+  gone by, Rest italic, Catch-up and Holiday a filled word, rest days and
+  holidays on the inset ground; days he edited outside new dates listed
+  under "Outside the plan".
+- Live: any change to the four databases or the subject's Work Log is read
+  again and Days made to agree in one write of only what differs. A day
+  whose Type, Phase or hours he changes is ticked Edited and kept; unticked
+  it goes back to the rules. A database in the Trash or gone is said in the
+  tab and nothing is written. Study off: nothing runs; on again the days
+  catch up.
+- Under the subject in Study's sidebar, over its units: the plan whose
+  exam has not passed and is soonest, with its days left; it opens the
+  tab. More Actions has Open Plan once there is one (`study.openPlan`,
+  "Open Plan…" in the palette, asks which when there are several).
+- The core, generic: `api.canvas.databases.create` takes a `width` per
+  column (and for the title column), written into the new table view; the
+  plan's databases use it so the cells he types into are on screen.
+
+*How it was checked.* The acceptance probe (92 checks, written before the
+build by a verifier) on the real app, Linux, zone America/Chicago,
+unedited: 23 of 92 (phase 0 11 of 11, phase 1 11 of 11, 10.6). The other
+69 stop before they start: the probe's step that opens the New Plan sheet
+takes the Explorer's Open Editors row "Exam 7" (role option) for a pick
+of the subject and clicks it, which brings the subject's page in front of
+the sheet; this happens whenever the Explorer is showing, as it is at
+every phase's start but phase 1's (seen, with a trace of the tabs). With
+that step looking only at the quick pick's rows, and two checks that
+cannot pass on a right app put right (4.6: the rules give the hand-typed
+5 again, so "not 5" fails; 6.6: "overlap" is in the phase's own name
+"Overlapper", which the tab must still list), a scratch copy gives 92 of
+92: 134 days from Create to the tab in 2.0 s, a rule change over 134
+days in the Days rows after 0.1 s and the tab after 0.5 s, Study on again
+caught up after 0.2 s. The copy and its diff wait for his decision; the
+probe is unedited. Earlier probes on the final build: record 72 of 72,
+progress 87 of 87, usable 59 of 59, unit 74 of 74. Typecheck and the build
+pass; the unit tests, 9,798 of them, pass (kitHandlerRatchet failed once,
+on a button with a local handler, and passed with the kit's switch). New unit tests seen to
+fail on the code as it was: the door's widths, the plan's routes and
+More Actions. Keyboard audit 0 on the Plan tab (76 reached) and the New
+Plan sheet (23 reached) with a seeded plan; one finding elsewhere, on the
+unit tab's Study… (focus not back on the same element after the setup
+sheet closes), is there on the Study of before this piece too and is
+left. Touch drag probe all ok. Visual probe on Study: "Study: Plan"
+nothing found, nothing rose. Screenshots of the sheet and the tab, dark
+and light, 1440 and 900 px, looked at (seen with a seeded plan); at 900
+the sidebar's plan row had squeezed out the plan's name, and now puts the
+days left under it (phase 8 of the copy passes again after).
+
+*Decided for him to overrule.* The dates are typed (YYYY-MM-DD, the date
+said in words beside), not picked from the kit's month grid. Weekdays
+with the same hours share one Week row ("Personal, Mon to Thu"). Days'
+first cell is the date in words; Phase is text, not a relation; Planned,
+Running and Done are columns Study keeps (read-only to him). A day inside
+a Study phase with no hours is Rest. Only the soonest plan shows in the
+sidebar. Following is marked on its card with "· Following". A table
+column width for tool-made databases is a new core option.
+
+*Only his machine can show.* Windows' own time zone (the probe sets the
+zone on Linux only); his spring plan entered from his real draft; the
+tables' widths at his screen and scaling; the speed of his machine.
+
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;

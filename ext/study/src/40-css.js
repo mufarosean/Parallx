@@ -560,7 +560,8 @@ function injectStyles() {
 @container st-sheet (max-width: 520px) { .st-psheet__grid { grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); } }
 
 /* ── The plan's row in the sidebar, under its subject, over its units ───── */
-.st-sb__sec--subjects .st-sb__nav--plan { padding-left: min(var(--px-space-8), 15%); padding-right: calc(var(--px-space-2) + var(--px-control-h-sm) + var(--px-space-1)); }
+/* In a narrow sidebar the days left go under the name rather than squeeze it out. */
+.st-sb__sec--subjects .st-sb__nav--plan { flex-wrap: wrap; align-content: center; row-gap: 0; height: auto; min-height: var(--px-control-h); padding-block: var(--px-space-1); padding-left: min(var(--px-space-8), 15%); }
 .st-sb__sec--subjects .st-sb__nav--plan .svg-icon { color: var(--px-accent-text); }
 
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
