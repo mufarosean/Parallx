@@ -1368,7 +1368,7 @@ ambitious." "A plan with no built in contingencies is built to fail."
 "Changes made to a database reflect in Study automatically." Commits
 `d3d1042d` (the acceptance probe, before the build), `e747e1bb` (the day
 arithmetic), `4914e441` (many rows at once in the core), `7915b994`,
-`f8f5eee3`, `d6654f73`, `bcb341b6`, `b813c51b`, `f04097f2` and the review's fixes after them.
+`f8f5eee3`, `d6654f73`, `bcb341b6`, `31dbe9a1`, `b813c51b`, `f04097f2`, `1b99f710`, and the review's fixes after them.
 
 *What is built.*
 - New Plan… in a subject's More Actions and the palette ("Study: New
@@ -1395,7 +1395,7 @@ arithmetic), `4914e441` (many rows at once in the core), `7915b994`,
   holidays on the inset ground; days he edited outside new dates listed
   under "Outside the plan".
 - Live: any change to the four databases or the subject's Work Log is read
-  again and Days made to agree in one write of only what differs. A day
+  again and Days made to agree: the cells that differ in one write, days added or removed in one more each. A day
   whose Type, Phase or hours he changes is ticked Edited and kept; unticked
   it goes back to the rules. A database in the Trash or gone is said in the
   tab and nothing is written. Study off: nothing runs; on again the days
@@ -1406,30 +1406,33 @@ arithmetic), `4914e441` (many rows at once in the core), `7915b994`,
   "Open Plan…" in the palette, asks which when there are several).
 - The core, generic: `api.canvas.databases.create` takes a `width` per
   column (and for the title column), written into the new table view; the
-  plan's databases use it so the cells he types into are on screen.
+  plan's databases use it so the cells he types into are on screen. The
+  door's `addRows`, `updateRows` and `removeRows` (many rows in one
+  write). The kit's segmented control as cards (`detail` under a label).
 
 *How it was checked.* The acceptance probe (92 checks, written before the
 build by a verifier) on the real app, Linux, zone America/Chicago, with a
-scripted model. Unedited it gave 22 to 32 of 92, by timing. The verifier
+no model (the chat's tools are called directly). Unedited it gave 22 to 32 of 92, by timing. The verifier
 traced every failure to the probe, seen on the app: its step that opens
 the New Plan sheet took the Explorer's Open Editors row "Exam 7" for the
 subject pick and so hid the sheet; 4.6 could not pass on a right app (the
 rules gave the hand-typed 5 again); 6.6 found "overlap" in the phase's
 own name "Overlapper"; and 1.6 read Week's headings before they were
 drawn (1 run in 3). He approved those four changes (2026-11-23, "sure";
-`0fb63174`); none loosens a check, and 4.4 now also tells a day worked
-out again from a kept one. With them, the committed probe: 92 of 92 (134 days from Create to
-the tab in 2.0 s; a rule change in the Days rows after 0.1 s, the tab
-after 0.65 s; Study on again caught up after 0.2 s). Earlier probes on the
+`0fb63174`); none loosens a check. With them, the committed probe: 92 of 92 (134 days from Create to
+the tab in 1.9 s; a rule change in the Days rows after 0.11 s, the tab
+after 0.66 s; Study on again caught up after 0.18 s). Earlier probes on the
 final build: record 72 of 72, progress 87 of 87, usable 59 of 59, unit 74
-of 74. Typecheck, the build and 9,805 unit tests pass; the new unit tests
-were seen to fail first. Keyboard audit 0 on the Plan tab and the New Plan
+of 74. Typecheck, the build and 9,805 unit tests pass; the builder reports the
+new unit tests failed first (no log kept). Keyboard audit 0 on the Plan tab and the New Plan
 sheet, with a seeded plan that has a rest span, a catch-up day, a
-holiday, a study phase that does not fit and a day he changed. Touch drag
-all ok; visual probe on Study nothing rose. The verifier also drove it
-with a script of its own (seen on the app): New Plan from the palette, a
-Week row's hours typed in the database (Days and the tab followed in
-about 0.1 s), a day typed by hand marked Edited and kept through a rule
+holiday, a study phase that does not fit and a day he changed. On the final build: touch drag all ok; visual probe on Study nothing
+rose against the baseline, and the Plan tab 0 on every count (it has no
+baseline of its own yet). The verifier also drove it
+with a script of its own, on the build before the access fixes, its log
+not kept, its screenshots looked at (seen on the app): New Plan from the palette, a
+Week row's hours typed in the database (Days followed in about 0.1 s,
+the tab when next looked at, 0.6 s later), a day typed by hand marked Edited and kept through a rule
 change, the exam moved later (days added) and earlier (removed, the
 edited day kept), unticking Edited, a relaunch.
 
@@ -1444,11 +1447,12 @@ milliseconds while Study writes that same cell is overwritten; an edited
 day counts the followed plan's Work in Floor and Stretch (New Plan always
 gives the three plans the same Work); "Its databases could not be read"
 shows only at the next redraw, after 30 s of failures; a deleted Planned,
-Running or Done column comes back at his next edit. Refuted: a cleared
-Date doubling the days. Access: fixed (`8b58248e`, `6b058b87`) every
+Running or Done column comes back at his next edit. Refuted: a cleared Date doubling every day; but while one row's Date
+is empty, that day has a second row beside the dateless one (one again
+once the Date is back). Access: fixed (`8b58248e`, `6b058b87`) every
 phase's switch named only "All plans"; Edited explained only in a hover
 tooltip; the week heading heading no cells; the audit's seeded plan
-having no rest, catch-up, holiday or phase. Left: a hovered Catch-up word
+having no rest, catch-up, holiday, phase that does not fit, or edited day. Left: a hovered Catch-up word
 at 4.2:1 in light; the sheet's dates read back in words are not tied to
 their fields. Refuted: the chosen card shown by colour alone (it also
 says "· Following"); doubled landmarks. A noted gap, not asked for: the
@@ -1458,10 +1462,11 @@ phase "Start to exam" that Create makes keeps its end when the exam moves.
 said in words beside), not picked from the kit's month grid. Weekdays
 with the same hours share one Week row ("Personal, Mon to Thu"). Days'
 first cell is the date in words; Phase is text, not a relation; Planned,
-Running and Done are columns Study keeps (read-only to him). A day inside
-a Study phase with no hours is Rest. Only the soonest plan shows in the
-sidebar. Following is marked on its card with "· Following". A table
-column width for tool-made databases is a new core option.
+Running and Done are columns Study keeps (read-only to him). A day with no
+hours in the plan he follows is Rest (so Type can change with Following). Only the soonest plan shows in the
+sidebar. Following is marked on its card with "· Following". New core
+options: a column width for tool-made databases, many rows in one
+write, and segmented choices as cards.
 
 *Only his machine can show.* Windows' own time zone (the probe sets the
 zone on Linux only); his spring plan entered from his real draft; the
