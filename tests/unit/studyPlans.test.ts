@@ -13,7 +13,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { studyHarness, type Study } from './fixtures/studyDoor';
 
-const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stCreateSubject', 'stCreatePlan', 'stPlanEnqueue', 'stPlanFlush', 'stPlansOfSubject', 'stPlanSetFollowing', 'stSubjectsReset', 'stPlansReset', 'registerPlans', 'deactivate', 'stRemoveSubject'];
+const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stRouteInstanceId', 'stRouteFromInstanceId', 'stSubjectMenuItems', 'stSubjectsShown', 'stCreateSubject', 'stCreatePlan', 'stPlanEnqueue', 'stPlanFlush', 'stPlansOfSubject', 'stPlanSetFollowing', 'stSubjectsReset', 'stPlansReset', 'registerPlans', 'deactivate', 'stRemoveSubject'];
 
 let live: Study | null = null;
 afterEach(() => { live?.stPlansReset(); live?.stSubjectsReset(); live = null; });
@@ -188,5 +188,25 @@ describe('the Trash, and Study off', () => {
     expect(h.S.stPlansOfSubject(h.subject.id, '2027-02-02').shown.plan.name).toBe('Winter Block');
     expect(h.S.stPlansOfSubject(h.subject.id, '2027-03-02').shown).toBe(null);
     expect(near.name).toBe('Mock Exam');
+  });
+});
+
+describe('finding a plan', () => {
+  it('the sheet and the tab have their own tabs, and a tab that comes back with the app knows its route', async () => {
+    const h = await planned();
+    const tab = h.S.stRouteInstanceId({ view: 'plan', planId: h.plan.id });
+    expect([h.S.stRouteInstanceId({ view: 'newPlan', subjectId: h.subject.id }), tab]).toEqual([`new-plan-${h.subject.id}`, `plan-${h.plan.id}`]);
+    expect(h.S.stRouteFromInstanceId(tab)).toEqual({ view: 'plan', planId: h.plan.id });
+    expect(h.S.stRouteFromInstanceId(`new-plan-${h.subject.id}`)).toEqual({ view: 'newPlan', subjectId: h.subject.id });
+  });
+
+  it('a subject\'s More Actions has New Plan…, and Open Plan once it has a plan', async () => {
+    const h = studyHarness(NAMES); live = h.S;
+    const subject = await h.S.stCreateSubject({ name: 'Exam 7' });
+    const labels = () => h.S.stSubjectMenuItems(h.S.stSubjectsShown().find((s: any) => s.id === subject.id)).map((i: any) => i.label).filter(Boolean);
+    expect(labels()).toContain('New Plan…');
+    expect(labels()).not.toContain('Open Plan');
+    await h.S.stCreatePlan({ subjectId: subject.id, ...BASIC });
+    expect(labels()).toEqual(expect.arrayContaining(['Open Plan', 'New Plan…']));
   });
 });

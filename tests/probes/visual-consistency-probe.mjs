@@ -80,6 +80,7 @@ const SCREENS = [
   { label: 'Study', run: ['study.open'], home: true },
   { label: 'Study: Progress', run: ['study.openProgress', 'Seeded Subject'] },
   { label: 'Study: Unit', run: ['study.openUnit', 'Seeded Subject', 'Mack'] },
+  { label: 'Study: Plan', run: ['study.openPlan', 'Seeded Subject'] },
 ];
 const EXTS = ['parallx.workspace-graph', 'parallx.budget', 'parallx-community.flashcards', 'parallx.concept-lab', 'parallx-community.media-organizer', 'parallx-community.creations-ai', 'parallx-community.study'];
 

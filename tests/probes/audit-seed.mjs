@@ -157,6 +157,12 @@ export async function seedAfterLaunch(page, pre) {
     // Pages named like a unit, for its unit tab's notes and for Find Matches.
     const pageTool = tools.getTool('canvas_create_page');
     if (pageTool) for (const title of ['Mack', 'Clark Notes', 'Venter']) await pageTool.handler({ title, markdown: `Notes on ${title}.` }, token);
+    // A plan around today (its tab: the three plans, the phases, today's row), with a day of rest, a catch-up day and a holiday.
+    if (cmds.hasCommand('study.newPlan')) {
+      const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n); const p = (v) => String(v).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+      const week = (a, b, c, d) => ({ Mon: a, Tue: a, Wed: a, Thu: a, Fri: b, Sat: c, Sun: d });
+      await cmds.executeCommand('study.newPlan', { subject: 'Seeded Subject', name: 'Seeded Plan', start: iso(-10), exam: iso(32), goal: 120, personal: week(2, 0, 4, 3), work: week(1, 2, 0, 0) });
+    }
     return 'ok';
   }));
   await page.waitForTimeout(1_500);
@@ -287,6 +293,9 @@ export async function seedAfterLaunch(page, pre) {
       await page.locator('[data-px-id="study.unit.add"]:visible').first().click().catch(() => {});
       await page.waitForTimeout(1_500);
     },
+    // The plan's tab on the seeded plan, and the New Plan sheet over the seeded subject.
+    'seed:study.plan': async () => { await run(page, 'study.openPlan', 'Seeded Subject'); await page.waitForTimeout(1_200); },
+    'seed:study.plan.sheet': async () => { await page.evaluate(() => { void window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('study.newPlan', 'Seeded Subject').catch(() => {}); }); await page.waitForTimeout(1_500); },
     'seed:study.unit.matches': async () => {
       await page.evaluate(() => { void window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('study.findMatches', 'Seeded Subject').catch(() => {}); });
       await page.waitForTimeout(2_000);

@@ -14241,12 +14241,12 @@ async function renderPlan(host, route, ctx) {
       const said = stPlanFitWords(p.fit, p.per[view.following]);
       ui.createBlock(fit, 'span', { className: short ? 'st-plan__needs' : 'st-plan__fits', text: said.charAt(0).toUpperCase() + said.slice(1) });
       const open = expanded.has(p.id);
-      // A disclosure: the three plans' fit shown or not, kept while the tab is open; Escape on it hides them.
-      const all = ui.createButton(fit, { id: `study.plan.fit.${p.id}`, label: 'All Plans', icon: open ? 'chevron-down' : 'chevron-right', kind: 'ghost', size: 'sm',
-        title: open ? 'Hide how the work fits in each plan.' : `How the work of ${p.name || 'this phase'} fits in Floor, Standard and Stretch.`,
-        onClick: () => { if (expanded.has(p.id)) expanded.delete(p.id); else expanded.add(p.id); paint(); } });
-      all.setAttribute('aria-expanded', open ? 'true' : 'false');
-      all.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
+      // A switch: the three plans' fit shown or not, kept while the tab is open; Escape on it hides them.
+      const pairBox = ui.createBlock(fit, 'span', { className: 'st-plan__fitall' });
+      const all = ui.createToggle(pairBox, { id: `study.plan.fit.${p.id}`, label: 'All plans', checked: open, onChange: (on) => { if (on) expanded.add(p.id); else expanded.delete(p.id); paint(); } });
+      parts.push(all);
+      ui.createBlock(pairBox, 'span', { text: 'All plans', attrs: { 'aria-hidden': 'true' } });
+      all.element.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
       if (open) {
         const all = ui.createBlock(li, 'div', { className: 'st-plan__all' });
         for (const pl of ST_PLAN_PLANS) ui.createBlock(all, 'span', { text: `${pl} ${stPlanFitWords(p.fit, p.per[pl])}` });
