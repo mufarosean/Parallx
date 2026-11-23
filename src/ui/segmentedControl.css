@@ -60,7 +60,7 @@
   cursor: default;
 }
 
-/* ── Cards: segments with lines under their label (three plans side by side) ── */
+/* ── Cards: segments with lines under their label (choices side by side) ── */
 
 .ui-segmented-control--cards {
   display: grid;

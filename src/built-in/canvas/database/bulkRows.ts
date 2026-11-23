@@ -1,6 +1,6 @@
 // bulkRows.ts — many rows of one database added, changed or removed in one go.
 //
-// A tool that keeps a long table (a plan's every day, a log imported at
+// A tool that keeps a long table (one row per day, a log imported at
 // once) writes a hundred rows where a person writes one. Row by row that is
 // a transaction and a change event each, and every open view of the table
 // reloads each time. Here the cells of all the rows are checked first,
