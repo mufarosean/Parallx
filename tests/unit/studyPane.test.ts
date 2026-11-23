@@ -639,6 +639,8 @@ function makeEnv(): Env {
       createSegmented: kit.createSegmented,
       createPageHeader: kit.createPageHeader,
       createFilterChip: kit.createFilterChip,
+      createToggle: kit.createToggle,
+      createInput: kit.createInput,
       keepTabInside,
       showContextMenu: (_anchor: unknown, items: AnyRec[]) => { calls.menus.push(items); return { update(next: AnyRec[]) { calls.menus.push(next); }, dispose() {} }; },
       renderMarkdown,
@@ -2740,6 +2742,33 @@ describe('Study end to end', () => {
   // ═════════════════════════════════════════════════════════════════════════
   // Test mode (bugs 4, 12)
   // ═════════════════════════════════════════════════════════════════════════
+
+  it('17. a plan\'s tab: each phase\'s All plans switch is named for its phase, Edited is said in words the row points to, a week heads its rows', async () => {
+    const fake = fakeDoor();
+    env.api.canvas = { databases: fake.door };
+    await boot();
+    const subject = await T.stCreateSubject({ name: 'Exam 7' });
+    const week = (a: number, f: number, s: number, u: number) => ({ Mon: a, Tue: a, Wed: a, Thu: a, Fri: f, Sat: s, Sun: u });
+    const plan = await T.stCreatePlan({ subjectId: subject.id, name: 'Winter Block', start: '2027-01-04', exam: '2027-03-01', goal: 200, personal: week(2, 0, 4, 0), work: week(1, 2, 0, 0) });
+    const db = (t: string) => [...fake.dbs.values()].find((d) => d.title === t && d.parentPageId === plan.pageId)!;
+    await waitFor(() => db('Days').rows.length === 56, 'the 56 days');
+    fake.person.edit(db('Phases'), 'Start to exam', { values: { End: '2027-01-31', Items: 560, 'Minutes per Item': 9 } });
+    fake.person.add(db('Phases'), 'Second Half', { Kind: 'Study', Start: '2027-02-01', End: '2027-02-28', Items: 100, 'Minutes per Item': 60 });
+    fake.person.edit(db('Days'), 'Wed, Jan 13, 2027', { values: { Standard: 5 } });
+    await waitFor(() => db('Days').rows.find((r) => r.values.Date === '2027-01-13')?.values.Edited === true, 'the day he changed ticked Edited');
+    await T.stOpenPlan(plan.id);
+    const host = () => paneHost(`plan-${plan.id}`);
+    await waitFor(() => !!host()?.querySelector('tr[data-date="2027-01-13"] .st-plan__tag'), `the tab with the edited day (${[...env.editors.open.keys()].join(',')}: ${(host()?.textContent || '').slice(0, 200)})`);
+    const h = host()!;
+    const switches = Array.from(h.querySelectorAll('[role="switch"]')).map((n) => n.getAttribute('aria-label'));
+    expect(switches).toEqual(['All plans for Start to exam', 'All plans for Second Half']);
+    const th = h.querySelector('tr[data-date="2027-01-13"] th')!;
+    const note = document.getElementById(th.getAttribute('aria-describedby') || '');
+    expect(note && h.contains(note) ? note.textContent : null).toMatch(/^Edited: a day you changed in Days\b.*untick Edited/);
+    expect(h.querySelector('tr[data-date="2027-01-12"] th')!.hasAttribute('aria-describedby')).toBe(false);
+    expect(h.querySelector('[title*="Untick Edited"]')).toBeNull();
+    expect(Array.from(h.querySelectorAll('.st-plan__wkrow th')).map((n) => n.getAttribute('scope'))).toEqual(Array(8).fill('rowgroup'));
+  });
 
   it('Test mode: typed answers only, no feedback per answer, mc questions graded against the option text, results at the end with points', async () => {
     await boot();

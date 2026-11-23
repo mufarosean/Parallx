@@ -266,7 +266,7 @@ export const __testables = {
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,
   // 29-plans: a plan's databases, read and written
-  stListPlans, stPlanColumns, stPlanWeekRowsOf, stPlanFormProblem, stCreatePlan, stPlanSyncNow, stPlanFlush, stPlanEnqueue, stPlansOfSubject, stPlanSetFollowing, registerPlans, stPlansReset, stPlanToday,
+  stListPlans, stPlanColumns, stPlanWeekRowsOf, stPlanFormProblem, stCreatePlan, stPlanSyncNow, stPlanFlush, stPlanEnqueue, stPlansOfSubject, stPlanSetFollowing, registerPlans, stPlansReset, stPlanToday, stOpenPlan,
   // 28-progress, 63-progress-view: the providers as they are now, and the tab
   registerProgress, stProgressReset, stProgressWant, stProgressProviders, stProgressOfSubject, stProgressOpenItems, stCmdOpenProgress,
   // 27-subjects, 62-subject-view: the record in canvas databases

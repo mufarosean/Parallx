@@ -74,6 +74,7 @@ async function renderPlan(host, route, ctx) {
   }
   const body = ui.createBlock(inner, 'div', { className: 'st-plan__body' });
   const expanded = new Set();
+  const editedNoteId = `st-plan-edited-${planId}`;
   let parts = [];
   let drawn = '';
 
@@ -159,7 +160,7 @@ async function renderPlan(host, route, ctx) {
       const open = expanded.has(p.id);
       // A switch: the three plans' fit shown or not, kept while the tab is open; Escape on it hides them.
       const pairBox = ui.createBlock(fit, 'span', { className: 'st-plan__fitall' });
-      const all = ui.createToggle(pairBox, { id: `study.plan.fit.${p.id}`, label: 'All plans', checked: open, onChange: (on) => { if (on) expanded.add(p.id); else expanded.delete(p.id); paint(); } });
+      const all = ui.createToggle(pairBox, { id: `study.plan.fit.${p.id}`, label: `All plans for ${p.name || 'this phase'}`, checked: open, onChange: (on) => { if (on) expanded.add(p.id); else expanded.delete(p.id); paint(); } });
       parts.push(all);
       ui.createBlock(pairBox, 'span', { text: 'All plans', attrs: { 'aria-hidden': 'true' } });
       all.element.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
@@ -194,6 +195,8 @@ async function renderPlan(host, route, ctx) {
     const bar = ui.createBlock(box, 'div', { className: 'st-plan__daysbar' });
     ui.createBlock(bar, 'div', { className: 'st-plan__h', text: 'Every day', attrs: { role: 'heading', 'aria-level': '2' } });
     // Too wide for a narrow tab, it scrolls sideways on its own; named, so the browser's own Tab stop on a scroller says what it is.
+    // What Edited means, in words on the tab, and each edited day's row described by it.
+    if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited there and it follows the rules again.', attrs: { id: editedNoteId } });
     const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
     ui.createBlock(table, 'caption', { className: 'st-plan__cap', text: `Every day of ${plan.name}, ${stPlanSpanWords(view.start, stPlanAddDays(view.exam, -1))}, in the ${view.following} plan, by week` });
@@ -203,7 +206,7 @@ async function renderPlan(host, route, ctx) {
     for (const w of view.weeks) {
       const tb = ui.createBlock(table, 'tbody', { className: 'st-plan__week' });
       const wr = ui.createBlock(tb, 'tr', { className: 'st-plan__wkrow' });
-      ui.createBlock(wr, 'th', { className: 'st-plan__wk', text: `Week ${w.n} · ${stPlanSpanWords(w.first, w.last)} · ${stPlanH(w.hours)} h`, attrs: { colspan: '8', scope: 'colgroup' } });
+      ui.createBlock(wr, 'th', { className: 'st-plan__wk', text: `Week ${w.n} · ${stPlanSpanWords(w.first, w.last)} · ${stPlanH(w.hours)} h`, attrs: { colspan: '8', scope: 'rowgroup' } });
       for (const d of w.days) dayRow(tb, d, view.following);
     }
   }
@@ -211,10 +214,10 @@ async function renderPlan(host, route, ctx) {
   function dayRow(tb, d, following) {
     const unusual = d.type && d.type !== 'Study';
     const tr = ui.createBlock(tb, 'tr', { className: ['st-plan__day', unusual ? `st-plan__day--${stPlanTypeClass(d.type).split('--')[1]}` : '', d.today ? 'st-plan__day--today' : '', d.kept ? 'st-plan__day--edited' : '', d.past ? 'st-plan__day--past' : ''].filter(Boolean).join(' '), attrs: { 'data-date': d.date, ...(d.today ? { 'aria-current': 'date' } : {}) } });
-    const date = ui.createBlock(tr, 'th', { className: 'st-plan__date', attrs: { scope: 'row' } });
+    const date = ui.createBlock(tr, 'th', { className: 'st-plan__date', attrs: { scope: 'row', ...(d.kept ? { 'aria-describedby': editedNoteId } : {}) } });
     ui.createBlock(date, 'span', { text: stPlanDateWords(d.date) });
     if (d.today) ui.createBlock(date, 'span', { className: 'st-plan__tag st-plan__tag--today', text: 'Today' });
-    if (d.kept) ui.createBlock(date, 'span', { className: 'st-plan__tag', text: 'Edited', attrs: { title: 'You changed this day in Days. Untick Edited there and it follows the rules again.' } });
+    if (d.kept) ui.createBlock(date, 'span', { className: 'st-plan__tag', text: 'Edited' });
     const type = ui.createBlock(tr, 'td', { className: 'st-plan__tcell' });
     ui.createBlock(type, 'span', { className: `st-plan__type ${stPlanTypeClass(d.type)}`, text: d.type || '–' });
     ui.createBlock(tr, 'td', { className: 'st-plan__pcell', text: d.phase || '–' });
