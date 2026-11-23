@@ -1520,6 +1520,139 @@ E. XP for learning, across tools, shown in Study: a question turned from
 Set aside: leaderboards, badges for time, strict daily streaks, nagging
 reminders, silent re-spreading, an XP per tool.
 
+**A shipped (2026-11-23).** Fix what shipped, the eight points of the
+request, in Study alone (no core code changed). Commits `6f6ec764`,
+`3a841f70`, `f2693a31`, `3e89321b`; the acceptance probe
+`tests/probes/study-walk-acceptance.mjs` was written before the build
+(`8ab15202`) and is unedited.
+
+*What shipped.*
+1. Days gone by are never rewritten. A Week row, a Phases row or the
+   plan's dates changed: today and the days after follow, a day before
+   today keeps its Type, Phase and hours, unmarked; Planned, Running and
+   Done still follow, and a day he changes is still his (Edited). A past
+   row is never removed. A past day with no row (a plan just made, a
+   start moved earlier) is worked out once. The tab says "Changes apply
+   from today on."
+2. Phases has Follows (Whole plan, Before exam). Create's "Start to exam"
+   follows Whole plan. The New Plan sheet asks "Days off before the exam"
+   (0 to begin with); more makes the Rest phase "Days off" that follows
+   Before exam. Study writes a following phase's Start and End when the
+   dates move, and keeps what it left there (`st_plans.follows_json`,
+   migration `study_007`) to tell that from his own edit. His edit of
+   those dates clears Follows (his ruling). Rules that disagree names a
+   dated phase the dates leave outside the plan, and the study days from
+   today on that no Study phase holds.
+3. New Subject with a sources folder and a bank makes one unit per paper:
+   the bank's units in its order, then one per file that belongs to none.
+   A file whose name holds a bank unit's name as whole words joins it (in
+   Material, its name in Also Called); every unit made from a file holds
+   that file. A unit row's More Actions has "Remove Unit…": it asks, the
+   row goes to the Trash, questions and files stay, and Study keeps the
+   name (`st_subjects.removed_units`, migration `study_008`) so the
+   questions do not make the row again. A tab of a unit that is gone says
+   so after a restart too.
+4. Find Matches… also proposes a page or file whose name holds a unit's
+   name or an Also Called name as whole words, any letter case, after the
+   exact names, unticked, each row with its unit and why ("name holds
+   Mack"). It opens whenever there is something to propose.
+5. Done shows on today's row; under six minutes it is said in minutes.
+6. A session's seconds count only while its tab is showing and he pressed
+   a key, clicked, tapped or scrolled in the app within ten minutes; a
+   stretch that ends idle is taken back (`16-clock-model.js`, the rule of
+   Worksheets' clock written again in Study).
+7. One line each for Personal and Work hours, Floor, Standard, Stretch
+   (sheet and tab), Rest, Catch-up, Holiday (the tab's Phases), and that
+   the hours less and more fill Week's columns once.
+8. Enter in the Study setup sheet does what Start does.
+
+*How it was checked, and what kind of seeing each was.*
+- Seen on the real app (hidden, real mouse, keys and finger, zone
+  America/Chicago, the cloud's Linux): the walk probe in full, 74 checks,
+  72 ok. The 18 of the ground hold; of the 56 of the new behaviour 54
+  hold. The earlier Study probes, unedited: record 72 of 72, progress 87
+  of 87, usable 59 of 59, unit 74 of 74, plan 92 of 92. The keyboard
+  audit on Study's seven seeded screens (its home, Progress, a unit, the
+  picker, Find Matches, a plan, the New Plan sheet): 0 in every count,
+  contrast in dark and light too; its dialog pass was not run (the walk
+  probe's 9.2 and 9.3 drive Remove Unit…'s question by keys and finger).
+  The touch drags: all ok. The visual probe, `--only=Study`: nothing rose
+  against the baseline (Study's front page has no kit page header, as
+  before). Screenshots of each changed surface in dark and light were
+  looked at.
+- Seen with a stand-in: every session in the probes is graded by a
+  scripted model (the plumbing, never the grading). Idle time and "two
+  days on" were seen on the page's own clock moved by the probe
+  (Playwright's), not on a real hour. The finger is Chromium's touch
+  events. In the unit tests the door is a stand-in kept in memory.
+- Read in code only: Enter starting from a single-line field of the
+  material setup sheet (the probe's sheets have none); a file that holds
+  two units' names joining the longer one, and a comma in a file's name
+  (unit tests, not the app); the minimised or hidden window stopping the
+  clock (`document.visibilityState`).
+- Assumed: that migrations `study_007` and `study_008` run once on his
+  real workspace as they did on the probes' (which restart the app on
+  the same workspace four times).
+- Unit tests: `studyWalkModel` (37), `studyWalkSubjects` (8), six more
+  in `studyPlans`, one in `studyPane`, each run on the code before its
+  change. Those that hold a new behaviour failed there (48 on the code
+  before the piece); five of the nine for point 1 passed, as they pin
+  what must stay (a plan made, the exam date moved, a day he changes,
+  Done, no today given). `npm run typecheck`, `npx vitest run`
+  (9857 passed, 18 skipped as before) and `npm run build` pass.
+- Not done by the builder: the independent review (step 7 of
+  `ship-piece`) and the claim check; they follow.
+
+*Two probe checks believed wrong, left as they are: 1.5 and 1.7.* Both
+fail only on "a row too many" in the tab, while what they are about holds
+(no past row changed, went or was marked; the days from today followed).
+Check 1.6 changes the day eight days back by hand, the probe then leaves
+that day out of what it compares (its line 2033), and the comparison
+counts any day of the tab it was not given as a row too many: his own
+edited day, which must be in the table. 1.5 also counts the three new
+past days of a start moved earlier, which its header says are not
+checked. Proposed: one line (1656), compare the tab's past days only on
+the dates it was given. With it, phase 1 is 9 of 9. The evidence and the
+copy are in the session's scratchpad; he decides.
+
+*Decided for him to overrule.*
+- A start date moved later leaves the earlier days' rows in Days. They
+  are outside the plan: the tab does not show them and their Running no
+  longer moves. A past day he unticks Edited on stays as it is.
+- A plan made before this piece is not changed: its "Start to exam" keeps
+  its dates until he sets its Follows to Whole plan (the column is added).
+- "Study days in no Study phase" is said only when the plan has a Study
+  phase, and counts from today on. A dated phase is named only when it is
+  wholly outside the dates.
+- Whole words are matched in any letter case, accents aside, for New
+  Subject as for Find Matches. A file that holds two units' names joins
+  the longer. Units are ordered bank first, then files by name.
+- Remove Unit… removes the row the door's way: its page is in the Trash,
+  but its cells (Material, Also Called, Order) are not kept, so the unit
+  comes back by adding a row of its name to Units, not by Restore. A row
+  put in the Trash in the table itself is still made again from its
+  questions, as before.
+- An item can be proposed for more than one unit; exact rows now say
+  "name is Mack".
+- A day with no work reads "0", today too; six minutes or more read as
+  hours ("0.1").
+- Moving the mouse alone is not being at the desk (the request names a
+  key, a click, a tap, a scroll); a scroll the app makes by itself is not
+  his. Ten minutes is not a setting.
+- A field of a Study sheet reached by the keys shows the accent ring
+  besides the kit's border colour, at once. The walk probe's 9.1 asked
+  for a ring on the field itself; the kit's text field shows focus by
+  its border colour only, which the keyboard audit accepts.
+- Days off is a whole number, fewer than the plan's days. The words of
+  the eleven explaining lines.
+
+*Only his machine can show.* Windows' own time zone (the probe sets the
+zone on Linux only). A real idle hour on the real clock, the lid closed,
+the window minimised or behind another program. A pen or a real touch
+screen, and what a screen reader says. Real PDFs with long names from his
+folders, and his model's grading. His Exam 7 plan after the two
+migrations, and its phases once he sets Follows.
+
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
