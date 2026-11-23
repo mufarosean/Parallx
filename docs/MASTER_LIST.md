@@ -1472,6 +1472,54 @@ write, and segmented choices as cards.
 zone on Linux only); his spring plan entered from his real draft; the
 tables' widths at his screen and scaling; the speed of his machine.
 
+**After the student walk-through (2026-11-23).** His words: "Have you
+tested the full workflow. Think like a student. How else can you make
+life easier for them?" "how student sets everything up, and sets up the
+plan, and executes it, tracks it, changes it over time. The xp system.
+The gamification." On the list below: "fix all. execute."
+
+*What the walk-through saw* (the real app, a new workspace of six papers,
+real mouse and keys, a stand-in model, zone America/Chicago): nothing
+says what to study today (today's row reads "2 h", no unit, no Start;
+Planner's Today is empty); Flashcards and Worksheets time never reaches
+the plan's Done, Study's clock counts an idle tab, today's Done shows
+only tomorrow; a missed day only recomputes; a Week change rewrites days
+gone by; a moved exam leaves the week off behind; New Subject with a
+sources folder and a bank made 12 units for 6 papers and the PDF units
+did not hold their PDF; Find Matches found nothing for real file names
+(about 50 presses to attach by hand); XP lives only in a Worksheets
+campaign with its own exam date and plan; Personal, Work, Floor,
+Standard, Stretch and the phase kinds are never explained. *What the code
+map saw:* time is counted four ways (Worksheets' idle-aware clock,
+Study's visible tab, Flashcards per card, the Dashboard timer) and no
+tool can read another's; two streaks; a missed day is never stored; no
+shared key for a paper.
+
+*The order he said go on:*
+A. Fix what shipped: days gone by never rewritten; a phase that follows
+   the exam and "Days off before the exam"; units merged by name and
+   holding their file, Remove Unit…; Find Matches proposing names that
+   hold a unit's name (reverses the unit hub's exact-only choice);
+   today's Done today; Study's clock without idle time; the words
+   explained; Enter starts a session.
+B. One record of study work for every tool: a contribution point where a
+   tool reports minutes and items by unit, one idle-aware clock in the
+   core (from Worksheets'), Flashcards, Worksheets, Study, PDF reading
+   and chat all counting toward Done. Before Today and XP, which read it.
+C. Today, made from his state: the day's hours filled with what is red
+   or fading from the phase's units, mixed; one Start per block opening
+   its tool set up; tomorrow's questions made overnight; a weekly look
+   back that offers ways to absorb what slipped and never re-spreads it
+   silently.
+D. The plan corrected by his pace: the phase fit uses his measured
+   minutes per problem, card and question once the record holds them.
+E. XP for learning, across tools, shown in Study: a question turned from
+   wrong to right, a card kept, a problem worked, a day at Floor or more;
+   rest days never break a streak; a chat skill credits discussions;
+   Worksheets' campaign, exam date and XP fold in; Cash Out stays.
+Set aside: leaderboards, badges for time, strict daily streaks, nagging
+reminders, silent re-spreading, an XP per tool.
+
 **Still open:** closing the 14 hours between the standard and 500 (a
 start on November 30, or 5-hour weekends); whether the week off runs
 through Monday April 19; the phase lengths once the guides are sized;
