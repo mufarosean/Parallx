@@ -241,3 +241,30 @@ describe('a Days column deleted or renamed', () => {
   });
 });
 
+describe('the record of what Study wrote', () => {
+  it('a sync stopped half way (a write refused after the cells were changed) marks no day Edited', async () => {
+    const h = await planned();
+    const addRows = h.door.addRows; let once = true;
+    (h.door as any).addRows = async (...a: any[]) => { if (once) { once = false; throw new Error('refused'); } return (addRows as any)(...a); };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    h.person.edit(h.db('Week'), 'Personal, Sat', { values: { Standard: 6 } });
+    h.person.edit(h.db('Plan'), 'Winter Block', { values: { 'Exam Date': '2027-03-08' } });
+    await h.settle();
+    warn.mockRestore();
+    expect([h.days().length, h.days().filter((d) => d.values.Edited).length, h.day('2027-01-09').values.Standard]).toEqual([63, 0, 6]);
+  });
+
+  it('Study off between the writes and the record: on again, no day is marked Edited', async () => {
+    const h = await planned();
+    const updateRows = h.door.updateRows;
+    (h.door as any).updateRows = async (...a: any[]) => { const r = await (updateRows as any)(...a); await h.S.deactivate(); return r; };
+    h.person.edit(h.db('Week'), 'Personal, Sat', { values: { Standard: 6 } });
+    await h.settle();
+    (h.door as any).updateRows = updateRows;
+    h.S.__testables.__setApi(h.api);
+    h.S.registerPlans({ subscriptions: [] });
+    await vi.waitFor(() => { expect(h.S._stPlans.size).toBe(1); });
+    await h.settle();
+    expect([h.days().filter((d) => d.values.Edited).length, h.day('2027-01-09').values.Standard]).toEqual([0, 6]);
+  });
+});

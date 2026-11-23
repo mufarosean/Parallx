@@ -198,6 +198,16 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
   let written = r.written;
   // Without its Date or Edited column a day cannot be told from another, or his from Study's: nothing is written.
   if (stPlanHasStretch(rules) && !absent.includes('Date') && !absent.includes('Edited')) {
+    // The record of what is about to be written is kept first, with what was there before: whatever stops the
+    // writes half way (Study off, the app closed, a refusal), a day as either one is still Study's, not his edit.
+    const attempt = {};
+    for (const [id, w] of Object.entries(written)) {
+      const old = prior[id];
+      const { prev: _p, ...was } = old || {};
+      attempt[id] = old && !w.prev && JSON.stringify(was) !== JSON.stringify(w) ? { ...w, prev: was } : w;
+    }
+    const pending = stJsonCol(attempt, '{}');
+    if (pending !== before && (r.removes.length || r.updates.length || r.adds.length)) { stPlanLive(st); await db.run('UPDATE st_plans SET written_json = ? WHERE id = ?', [pending, plan.id]); }
     if (r.removes.length) { stPlanLive(st); await door.removeRows(plan.daysDb, r.removes); }
     if (r.updates.length) { stPlanLive(st); await door.updateRows(plan.daysDb, r.updates); }
     if (r.adds.length) {
