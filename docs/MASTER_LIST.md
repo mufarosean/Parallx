@@ -1368,7 +1368,7 @@ ambitious." "A plan with no built in contingencies is built to fail."
 "Changes made to a database reflect in Study automatically." Commits
 `d3d1042d` (the acceptance probe, before the build), `e747e1bb` (the day
 arithmetic), `4914e441` (many rows at once in the core), `7915b994`,
-`f8f5eee3`, `d6654f73`, `bcb341b6`, `b813c51b`, `f04097f2`.
+`f8f5eee3`, `d6654f73`, `bcb341b6`, `b813c51b`, `f04097f2` and the review's fixes after them.
 
 *What is built.*
 - New Plan… in a subject's More Actions and the palette ("Study: New
@@ -1409,34 +1409,50 @@ arithmetic), `4914e441` (many rows at once in the core), `7915b994`,
   plan's databases use it so the cells he types into are on screen.
 
 *How it was checked.* The acceptance probe (92 checks, written before the
-build by a verifier) on the real app, Linux, zone America/Chicago,
-unedited: 23 of 92 (phase 0 11 of 11, phase 1 11 of 11, 10.6). The other
-69 stop before they start: the probe's step that opens the New Plan sheet
-takes the Explorer's Open Editors row "Exam 7" (role option) for a pick
-of the subject and clicks it, which brings the subject's page in front of
-the sheet; this happens whenever the Explorer is showing, as it is at
-every phase's start but phase 1's (seen, with a trace of the tabs). With
-that step looking only at the quick pick's rows, and two checks that
-cannot pass on a right app put right (4.6: the rules give the hand-typed
-5 again, so "not 5" fails; 6.6: "overlap" is in the phase's own name
-"Overlapper", which the tab must still list), a scratch copy gives 92 of
-92: 134 days from Create to the tab in 2.0 s, a rule change over 134
-days in the Days rows after 0.1 s and the tab after 0.5 s, Study on again
-caught up after 0.2 s. The copy and its diff wait for his decision; the
-probe is unedited. Earlier probes on the final build: record 72 of 72,
-progress 87 of 87, usable 59 of 59, unit 74 of 74. Typecheck and the build
-pass; the unit tests, 9,798 of them, pass (kitHandlerRatchet failed once,
-on a button with a local handler, and passed with the kit's switch). New unit tests seen to
-fail on the code as it was: the door's widths, the plan's routes and
-More Actions. Keyboard audit 0 on the Plan tab (76 reached) and the New
-Plan sheet (23 reached) with a seeded plan; one finding elsewhere, on the
-unit tab's Study… (focus not back on the same element after the setup
-sheet closes), is there on the Study of before this piece too and is
-left. Touch drag probe all ok. Visual probe on Study: "Study: Plan"
-nothing found, nothing rose. Screenshots of the sheet and the tab, dark
-and light, 1440 and 900 px, looked at (seen with a seeded plan); at 900
-the sidebar's plan row had squeezed out the plan's name, and now puts the
-days left under it (phase 8 of the copy passes again after).
+build by a verifier) on the real app, Linux, zone America/Chicago, with a
+scripted model. Unedited it gave 22 to 32 of 92, by timing. The verifier
+traced every failure to the probe, seen on the app: its step that opens
+the New Plan sheet took the Explorer's Open Editors row "Exam 7" for the
+subject pick and so hid the sheet; 4.6 could not pass on a right app (the
+rules gave the hand-typed 5 again); 6.6 found "overlap" in the phase's
+own name "Overlapper"; and 1.6 read Week's headings before they were
+drawn (1 run in 3). He approved those four changes (2026-11-23, "sure";
+`0fb63174`); none loosens a check, and 4.4 now also tells a day worked
+out again from a kept one. With them, the committed probe: 92 of 92 (134 days from Create to
+the tab in 2.0 s; a rule change in the Days rows after 0.1 s, the tab
+after 0.65 s; Study on again caught up after 0.2 s). Earlier probes on the
+final build: record 72 of 72, progress 87 of 87, usable 59 of 59, unit 74
+of 74. Typecheck, the build and 9,805 unit tests pass; the new unit tests
+were seen to fail first. Keyboard audit 0 on the Plan tab and the New Plan
+sheet, with a seeded plan that has a rest span, a catch-up day, a
+holiday, a study phase that does not fit and a day he changed. Touch drag
+all ok; visual probe on Study nothing rose. The verifier also drove it
+with a script of its own (seen on the app): New Plan from the palette, a
+Week row's hours typed in the database (Days and the tab followed in
+about 0.1 s), a day typed by hand marked Edited and kept through a rule
+change, the exam moved later (days added) and earlier (removed, the
+edited day kept), unticking Edited, a relaunch.
+
+*Review.* Modularity: no breach (three core comments used the plan as
+their example; made neutral). Correctness: eight findings; the skeptic
+reproduced and these were fixed: a Days column deleted or renamed marked
+every day with hours Edited for good (`28949522`); a sync stopped between
+writing Days and saving Study's record froze every changed day as Edited
+(`c96e9306`); nothing redrew at local midnight (`09b9359b`). Left,
+reproduced but not met in his use: a day he types in the tens of
+milliseconds while Study writes that same cell is overwritten; an edited
+day counts the followed plan's Work in Floor and Stretch (New Plan always
+gives the three plans the same Work); "Its databases could not be read"
+shows only at the next redraw, after 30 s of failures; a deleted Planned,
+Running or Done column comes back at his next edit. Refuted: a cleared
+Date doubling the days. Access: fixed (`8b58248e`, `6b058b87`) every
+phase's switch named only "All plans"; Edited explained only in a hover
+tooltip; the week heading heading no cells; the audit's seeded plan
+having no rest, catch-up, holiday or phase. Left: a hovered Catch-up word
+at 4.2:1 in light; the sheet's dates read back in words are not tied to
+their fields. Refuted: the chosen card shown by colour alone (it also
+says "· Following"); doubled landmarks. A noted gap, not asked for: the
+phase "Start to exam" that Create makes keeps its end when the exam moves.
 
 *Decided for him to overrule.* The dates are typed (YYYY-MM-DD, the date
 said in words beside), not picked from the kit's month grid. Weekdays
