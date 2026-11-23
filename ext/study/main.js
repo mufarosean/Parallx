@@ -9673,6 +9673,88 @@ function injectStyles() {
 .st-prog__list--stacked .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
 .st-prog__list--stacked .st-prog__cell--none { display: none; }
 
+/* ── A plan's tab (66-plan-view.js): the header and the four Open buttons, the three plans as cards, hours per day and
+   the phases side by side (one over the other when narrow), the rules that disagree, then every day as a table grouped
+   by week. The ordinary study day is quiet; Rest is italic, a Holiday and a Catch-up day carry a filled word, and the
+   rest days' and holidays' rows sit on the inset ground, so each Type is told apart by more than its colour. ── */
+.st-plan { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-plan__in { max-width: 72rem; margin: 0 auto; container-type: inline-size; container-name: st-plan; }
+.st-plan__opens { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding: 0 var(--px-space-6) var(--px-space-4); }
+.st-plan__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
+.st-plan__sec { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
+.st-plan__h { margin: 0; padding-bottom: var(--px-space-1); border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.st-plan__goal, .st-plan__note, .st-plan__wait { color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-plan__wait { padding: var(--px-space-6) 0; }
+.st-plan__plans .ui-segmented-control--cards { margin-top: var(--px-space-1); }
+.st-plan__pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--px-space-6); align-items: start; }
+@container st-plan (max-width: 640px) { .st-plan__pair { grid-template-columns: minmax(0, 1fr); } }
+.st-plan__bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--px-space-1); }
+.st-plan__barrow { display: grid; grid-template-columns: 5ch minmax(0, 1fr) 8ch; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__barh { color: var(--px-text); text-align: right; }
+.st-plan__bard { color: var(--px-text-secondary); }
+.st-plan__track { display: block; height: 6px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; }
+.st-plan__fill { display: block; height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); }
+.st-plan__plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.st-plan__phase { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); }
+.st-plan__phase:first-child { border-top: 0; padding-top: 0; }
+.st-plan__pline { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--px-space-2); min-width: 0; }
+.st-plan__pname { color: var(--px-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.st-plan__kind { color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-plan__pfacts { color: var(--px-text-secondary); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__fit { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-3); font-size: var(--px-text-sm); }
+.st-plan__needs { color: var(--px-danger); font-weight: 500; }
+.st-plan__fits { color: var(--px-text-secondary); }
+.st-plan__fitall { display: inline-flex; align-items: center; gap: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-plan__all { display: flex; flex-direction: column; gap: 2px; color: var(--px-text-secondary); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__badlist { margin: 0; padding-left: var(--px-space-5); display: flex; flex-direction: column; gap: var(--px-space-1); color: var(--px-text); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-plan__bad .st-plan__h { color: var(--px-danger); }
+.st-plan__scroll { overflow-x: auto; min-width: 0; border-radius: var(--px-radius-sm); }
+.st-plan__scroll:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
+.st-plan__table { width: 100%; border-collapse: collapse; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__cap { caption-side: top; text-align: left; padding-bottom: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-plan__table th, .st-plan__table td { padding: 3px var(--px-space-2); text-align: left; white-space: nowrap; border-bottom: 1px solid var(--px-divider); }
+.st-plan__table thead th { color: var(--px-text-muted); font-size: var(--px-text-xs); font-weight: 500; }
+.st-plan__table .st-plan__n { text-align: right; }
+.st-plan__wkrow th { padding-top: var(--px-space-3); color: var(--px-text-secondary); font-size: var(--px-text-xs); font-weight: 600; background: var(--px-bg); }
+.st-plan__date { font-weight: 400; color: var(--px-text); }
+.st-plan__date > span + span { margin-left: var(--px-space-2); }
+.st-plan__tag { display: inline-block; padding: 0 var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-xs); color: var(--px-text-secondary); font-size: var(--px-text-2xs); line-height: 1.5; }
+.st-plan__tag--today { border-color: var(--px-accent); color: var(--px-accent-text); }
+.st-plan__pcell { color: var(--px-text-secondary); max-width: 16rem; overflow: hidden; text-overflow: ellipsis; }
+.st-plan__total { color: var(--px-text); font-weight: 600; }
+.st-plan__done, .st-plan__run { color: var(--px-text-secondary); }
+.st-plan__type { display: inline-block; padding: 0 var(--px-space-1); border-radius: var(--px-radius-xs); color: var(--px-text-secondary); }
+.st-plan__type--rest { font-style: italic; }
+.st-plan__type--catchup { background: var(--px-accent-soft); color: var(--px-accent-text); font-weight: 600; }
+.st-plan__type--holiday { background: var(--px-warning-soft); color: var(--px-text); font-weight: 600; }
+.st-plan__day--rest, .st-plan__day--holiday { background: var(--px-bg-inset); }
+.st-plan__day--today > th:first-child { box-shadow: inset 3px 0 0 var(--px-accent); }
+.st-plan__day:hover { background: var(--px-surface-hover); }
+.st-plan__outside .st-plan__table { max-width: 40rem; }
+.st-plan .px-empty { padding-top: var(--px-space-8); }
+
+/* ── The New Plan sheet (64-plan-sheet.js): the Name, the dates and the goal as the New Subject sheet's rows; the usual
+   week as a grid, a column per weekday, the personal hours over the work hours; then Floor's and Stretch's spread. ── */
+.st-psheet { width: min(680px, calc(100% - var(--px-space-8))); max-height: calc(100% - var(--px-space-8)); display: flex; flex-direction: column; }
+.st-psheet .st-sheet__bd { overflow: auto; min-height: 0; }
+.st-psheet__week { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.st-psheet__weekhd { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.st-psheet__grid { display: grid; grid-template-columns: 5rem repeat(7, minmax(0, 1fr)); align-items: center; gap: var(--px-space-1) var(--px-space-1); }
+.st-psheet__day { text-align: center; color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-psheet__acct { color: var(--px-text-secondary); font-size: var(--px-text-sm); }
+.st-psheet__h .ui-input-box { width: 100%; }
+.st-psheet__h input { text-align: center; font-variant-numeric: tabular-nums; }
+.st-psheet__spread { display: flex; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-5); }
+.st-psheet__pair { display: grid; grid-template-columns: auto 4.5rem auto; align-items: center; gap: var(--px-space-2); }
+.st-psheet__pair .st-row__lab { width: auto; }
+.st-psheet__pair input { text-align: center; font-variant-numeric: tabular-nums; }
+.st-psheet__sums { color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; font-variant-numeric: tabular-nums; }
+@container st-sheet (max-width: 520px) { .st-psheet__grid { grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); } }
+
+/* ── The plan's row in the sidebar, under its subject, over its units ───── */
+.st-sb__sec--subjects .st-sb__nav--plan { padding-left: min(var(--px-space-8), 15%); padding-right: calc(var(--px-space-2) + var(--px-control-h-sm) + var(--px-space-1)); }
+.st-sb__sec--subjects .st-sb__nav--plan .svg-icon { color: var(--px-accent-text); }
+
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
 .st-widget { display: flex; flex-direction: column; min-height: 0; }
 .st-widget__empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) 0; }
@@ -10040,6 +10122,7 @@ function createSidebarView(container) {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
+    planRow(host, s);
     if (s.folded) return;
     // Each unit's thin bar is over every kind of work together, with that "N of M".
     for (const u of s.units) {
@@ -10068,6 +10151,21 @@ function createSidebarView(container) {
       _api.ui.createStackedBar(line, { size: 'sm', label: stProgressBarName(u.name, '', all, ST_PROGRESS_WORDS), parts: stProgressParts(u.name, 'All work', all, ST_PROGRESS_WORDS) });
     }
     if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
+  };
+
+  // The subject's plan, under its name and over its units: the one whose exam has not passed and is soonest
+  // (29-plans.js), its name and the days left; pressing it opens the plan's tab (66-plan-view.js).
+  const planRow = (host, s) => {
+    const { shown } = stPlansOfSubject(s.id);
+    if (!shown) return;
+    const left = shown.rules && shown.rules.exam ? stPlanDaysBetween(stPlanToday(), shown.rules.exam) : null;
+    const words = left === null ? '' : left === 0 ? 'exam today' : `${left} ${left === 1 ? 'day' : 'days'} left`;
+    const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__plan' });
+    const exam = shown.rules && shown.rules.exam ? `, exam ${stPlanDateWords(shown.rules.exam, { year: true, long: true })}` : '';
+    const btn = _api.ui.createButton(line, { id: `study.side.plan.${s.id}`, label: shown.plan.name, icon: 'calendar', kind: 'ghost', size: 'sm',
+      title: `Open the plan ${shown.plan.name}${exam}${words ? `: ${words}` : ''}.`, command: 'study.openPlan', args: [{ planId: shown.plan.id }] });
+    btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
+    if (words) _api.ui.createBlock(btn, 'span', { className: 'st-sb__r', text: words });
   };
 
   // ── Destructive flows, each behind the app's confirm modal ──
@@ -10252,8 +10350,8 @@ function createSidebarView(container) {
   const offSession = bus.on('session', () => void paint());
   const offProgress = bus.on('progress', () => void paint());
   const offRoute = bus.on('route', (route) => {
-    // The New Subject sheet changes nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
-    if (!route || route.view === 'newSubject') return;
+    // The New Subject and New Plan sheets change nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
+    if (!route || route.view === 'newSubject' || route.view === 'newPlan') return;
     if (Array.isArray(route.materialIds) && route.materialIds.length === 1) state.expandedId = route.materialIds[0];
     if (route.view === 'learn' && route.materialId) state.expandedId = route.materialId;
     state.activeSessionId = route.sessionId != null ? route.sessionId : state.activeSessionId;
@@ -11013,6 +11111,8 @@ function stRouteInstanceId(route) {
   if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
+  if (route.view === 'newPlan') return `new-plan-${Number(route.subjectId) || 0}`;
+  if (route.view === 'plan') return `plan-${Number(route.planId) || 0}`;
   if (route.view === 'learn') return `learn-${route.materialId}-${route.sectionId || 0}`;
   return `session-${route.sessionId}`;
 }
@@ -11031,6 +11131,10 @@ function stRouteFromInstanceId(instanceId) {
   if (m) return { view: 'progress', subjectId: Number(m[1]) };
   m = /^unit-(\d+)-(.+)$/.exec(id);
   if (m) return { view: 'unit', subjectId: Number(m[1]), rowId: m[2] };
+  m = /^new-plan-(\d+)$/.exec(id);
+  if (m) return { view: 'newPlan', subjectId: Number(m[1]) };
+  m = /^plan-(\d+)$/.exec(id);
+  if (m) return { view: 'plan', planId: Number(m[1]) };
   return { view: 'setup', materialIds: [] };
 }
 
@@ -11046,6 +11150,13 @@ async function stRouteTitle(route) {
       const s = stSubjectsShown().find((x) => x.id === Number(route.subjectId));
       const u = s ? s.units.find((x) => x.rowId === route.rowId) : null;
       return s && u ? `${s.name} · ${u.name}` : 'Unit';
+    }
+    if (route.view === 'newPlan') return 'New Plan';
+    if (route.view === 'plan') {
+      const st = _stPlans.get(Number(route.planId));
+      if (st) return st.plan.name;
+      const row = await db.get('SELECT name FROM st_plans WHERE id = ?', [Number(route.planId) || 0]);
+      return row ? String(row.name) : 'Plan';
     }
     if (route.view === 'learn') {
       const material = await stGetMaterial(route.materialId);
@@ -11364,6 +11475,8 @@ function createEditorPane(container, input) {
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'progress') await renderProgress(root, route, ctx);
           else if (route.view === 'unit') await renderUnit(root, route, ctx);
+          else if (route.view === 'newPlan') await renderNewPlan(root, route, ctx);
+          else if (route.view === 'plan') await renderPlan(root, route, ctx);
           else if (route.view === 'generating') await renderGenerating(root, route, ctx);
           else if (route.view === 'session') await renderSession(root, route, ctx);
           else if (route.view === 'results') await renderResults(root, route, ctx);
@@ -13051,6 +13164,9 @@ function stSubjectMenuItems(s) {
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
     { label: 'Find Matches…', icon: 'paperclip', onSelect: () => void stUnitFindMatches(s.id) },
     { separator: true },
+    ...(stPlansOfSubject(s.id).all.length ? [{ label: 'Open Plan', icon: 'calendar', onSelect: () => void stCmdOpenPlan(s.id) }] : []),
+    ...(stSubjectDoor() ? [{ label: 'New Plan…', icon: 'calendar-plus', onSelect: () => void stCmdNewPlan(s.id) }] : []),
+    { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
     { label: 'Open Questions', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.questionsDb) },
     { label: 'Open Work Log', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.logDb) },
@@ -13162,6 +13278,8 @@ function registerSubjectCommands(context) {
     ['study.addNotesOrFiles', (subject, unit) => stCmdAddNotesOrFiles(subject, unit)],
     ['study.openUnitItem', (subject, unit, key) => stCmdOpenUnitItem(subject, unit, key)],
     ['study.removeUnitItem', (subject, unit, key) => stCmdRemoveUnitItem(subject, unit, key)],
+    ['study.newPlan', (arg) => stCmdNewPlan(arg)],
+    ['study.openPlan', (arg) => stCmdOpenPlan(arg)],
     ['study.findMatches', async (subject) => { const s = await stPickSubject(subject, 'Find matches for which subject?'); return s ? stUnitFindMatches(s.id) : false; }],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -13559,11 +13677,18 @@ async function renderProgress(host, route, ctx) {
 /** The New Plan sheet on screen: its form, and what its Create does. */
 let _stPlanSheet = null;
 
-/** New Plan…: the sheet for a subject (its id or name, else the only one, else his pick). Given the sheet's own form, its Create. */
+/**
+ * New Plan…: the sheet for a subject (its id or name, else the only one, else
+ * his pick). Given the sheet's own form, its Create; given what the sheet asks
+ * ({ subject or subjectId, name, start, exam, goal, personal, work, less,
+ * more }: a script or the audits), the plan is made without it.
+ */
 async function stCmdNewPlan(arg) {
   if (_stPlanSheet && arg === _stPlanSheet.form) return _stPlanSheet.create();
   if (arg && typeof arg === 'object' && arg.start && arg.exam) {
-    const plan = await stCreatePlan(arg);
+    const s = arg.subjectId ? null : await stPickSubject(arg.subject, 'A plan for which subject?');
+    if (!arg.subjectId && !s) return null;
+    const plan = await stCreatePlan({ ...arg, subjectId: arg.subjectId || s.id });
     await stOpenPlan(plan.id);
     return plan.id;
   }
@@ -13986,11 +14111,12 @@ function stPlanTakeFocus(planId, root) {
   if (!root.contains(document.activeElement)) root.focus();
 }
 
-/** Open Plan: a plan by its id; given a subject (or nothing), the subject's plan shown in the sidebar, else his pick of its plans. */
+/** Open Plan: a plan ({ planId }); given a subject (its id or name, or nothing), the subject's plan shown in the sidebar, else his pick of its plans. */
 async function stCmdOpenPlan(arg) {
   if (arg && typeof arg === 'object' && arg.planId) return stOpenPlan(arg.planId);
-  if (typeof arg === 'number' && _stPlans.has(arg)) return stOpenPlan(arg);
-  const subject = arg != null && arg !== '' ? stSubjectsShown().find((s) => s.id === Number(arg) || stSubjectSameName(s.name, arg)) : null;
+  const named = arg != null && arg !== '' && typeof arg !== 'object';
+  const subject = named ? stSubjectsShown().find((s) => s.id === Number(arg) || stSubjectSameName(s.name, arg)) : null;
+  if (named && !subject) { await _api.window.showInformationMessage('That subject is not in Study.'); return null; }
   const all = [..._stPlans.values()].filter((st) => !subject || Number(st.plan.subjectId) === subject.id);
   if (!all.length) { await _api.window.showInformationMessage('No plans yet. New Plan… makes one for a subject.'); return null; }
   if (subject) { const { shown } = stPlansOfSubject(subject.id); if (shown) return stOpenPlan(shown.plan.id); }
@@ -14038,7 +14164,7 @@ async function renderPlan(host, route, ctx) {
 
   const section = (label, className) => {
     const box = ui.createBlock(body, 'section', { className: `st-plan__sec ${className || ''}`, attrs: { 'aria-label': label } });
-    ui.createBlock(box, 'h2', { className: 'st-plan__h', text: label });
+    ui.createBlock(box, 'div', { className: 'st-plan__h', text: label, attrs: { role: 'heading', 'aria-level': '2' } });
     return box;
   };
 
@@ -14079,7 +14205,7 @@ async function renderPlan(host, route, ctx) {
     const pair = ui.createBlock(body, 'div', { className: 'st-plan__pair' });
     // Hours per day for the plan he follows, as a small bar each.
     const perDay = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__perday', attrs: { 'aria-label': 'Hours per day' } });
-    ui.createBlock(perDay, 'h2', { className: 'st-plan__h', text: 'Hours per day' });
+    ui.createBlock(perDay, 'div', { className: 'st-plan__h', text: 'Hours per day', attrs: { role: 'heading', 'aria-level': '2' } });
     const most = Math.max(1, ...view.perDay.map((r) => r.days));
     const list = ui.createBlock(perDay, 'ul', { className: 'st-plan__bars' });
     for (const r of view.perDay) {
@@ -14093,7 +14219,7 @@ async function renderPlan(host, route, ctx) {
 
     // The phases in date order.
     const phases = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__phases', attrs: { 'aria-label': 'Phases' } });
-    ui.createBlock(phases, 'h2', { className: 'st-plan__h', text: 'Phases' });
+    ui.createBlock(phases, 'div', { className: 'st-plan__h', text: 'Phases', attrs: { role: 'heading', 'aria-level': '2' } });
     const ol = ui.createBlock(phases, 'ol', { className: 'st-plan__plist' });
     if (!view.phases.length) ui.createBlock(phases, 'div', { className: 'st-plan__note', text: 'No phases yet. Add rows to Phases: study spans, rest, catch-up days, holidays.' });
     for (const p of view.phases) {
@@ -14101,20 +14227,19 @@ async function renderPlan(host, route, ctx) {
       const line = ui.createBlock(li, 'div', { className: 'st-plan__pline' });
       ui.createBlock(line, 'span', { className: 'st-plan__pname', text: p.name || 'A row with no name' });
       ui.createBlock(line, 'span', { className: `st-plan__kind ${stPlanTypeClass(p.kind)}`, text: p.kind || 'No kind' });
-      const facts = ui.createBlock(li, 'div', { className: 'st-plan__pfacts' });
-      ui.createBlock(facts, 'span', { text: p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates' });
-      ui.createBlock(facts, 'span', { text: `${p.days} ${p.days === 1 ? 'day' : 'days'}` });
-      ui.createBlock(facts, 'span', { className: 'st-plan__ph', text: `${stPlanH(p.hours)} h` });
+      ui.createBlock(li, 'div', { className: 'st-plan__pfacts', text: [p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates', `${p.days} ${p.days === 1 ? 'day' : 'days'}`, `${stPlanH(p.hours)} h`].join(' · ') });
       if (!p.fit) continue;
       const fit = ui.createBlock(li, 'div', { className: 'st-plan__fit' });
       const short = p.fit.short.includes(view.following);
       const said = stPlanFitWords(p.fit, p.per[view.following]);
       ui.createBlock(fit, 'span', { className: short ? 'st-plan__needs' : 'st-plan__fits', text: said.charAt(0).toUpperCase() + said.slice(1) });
       const open = expanded.has(p.id);
-      // A switch: the other two plans shown or not, kept while the tab is open; Escape on it hides them.
-      const all = ui.createToggle(fit, { id: `study.plan.fit.${p.id}`, label: 'All Plans', checked: open, onChange: (on) => { if (on) expanded.add(p.id); else expanded.delete(p.id); paint(); } });
-      parts.push(all);
-      all.element.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
+      // A disclosure: the three plans' fit shown or not, kept while the tab is open; Escape on it hides them.
+      const all = ui.createButton(fit, { id: `study.plan.fit.${p.id}`, label: 'All Plans', icon: open ? 'chevron-down' : 'chevron-right', kind: 'ghost', size: 'sm',
+        title: open ? 'Hide how the work fits in each plan.' : `How the work of ${p.name || 'this phase'} fits in Floor, Standard and Stretch.`,
+        onClick: () => { if (expanded.has(p.id)) expanded.delete(p.id); else expanded.add(p.id); paint(); } });
+      all.setAttribute('aria-expanded', open ? 'true' : 'false');
+      all.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
       if (open) {
         const all = ui.createBlock(li, 'div', { className: 'st-plan__all' });
         for (const pl of ST_PLAN_PLANS) ui.createBlock(all, 'span', { text: `${pl} ${stPlanFitWords(p.fit, p.per[pl])}` });
@@ -14144,8 +14269,9 @@ async function renderPlan(host, route, ctx) {
   function dayTable(view) {
     const box = ui.createBlock(body, 'section', { className: 'st-plan__sec st-plan__days', attrs: { 'aria-label': 'Every day' } });
     const bar = ui.createBlock(box, 'div', { className: 'st-plan__daysbar' });
-    ui.createBlock(bar, 'h2', { className: 'st-plan__h', text: 'Every day' });
-    const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll' });
+    ui.createBlock(bar, 'div', { className: 'st-plan__h', text: 'Every day', attrs: { role: 'heading', 'aria-level': '2' } });
+    // Too wide for a narrow tab, it scrolls sideways on its own; named, so the browser's own Tab stop on a scroller says what it is.
+    const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
     ui.createBlock(table, 'caption', { className: 'st-plan__cap', text: `Every day of ${plan.name}, ${stPlanSpanWords(view.start, stPlanAddDays(view.exam, -1))}, in the ${view.following} plan, by week` });
     const thead = ui.createBlock(table, 'thead');

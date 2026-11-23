@@ -308,9 +308,11 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.markAnswerRight` | Mark Answer as Right | study | Study |  |  |
 | `study.markAnswerWrong` | Mark Answer as Wrong | study | Study |  |  |
 | `study.markQuestion` | Mark Question to Come Back To | study | Study |  |  |
+| `study.newPlan` | New Plan… | study | Study |  |  |
 | `study.newSubject` | New Subject… | study | Study |  |  |
 | `study.nextQuestion` | Next Question | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
+| `study.openPlan` | Open Plan… | study | Study |  |  |
 | `study.openProgress` | Open Progress… | study | Study |  |  |
 | `study.openUnit` | Open Unit… | study | Study |  |  |
 | `study.openUnitItem` | Open an Attached Item | study | Study |  |  |

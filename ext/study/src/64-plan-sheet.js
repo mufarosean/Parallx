@@ -15,11 +15,18 @@
 /** The New Plan sheet on screen: its form, and what its Create does. */
 let _stPlanSheet = null;
 
-/** New Plan…: the sheet for a subject (its id or name, else the only one, else his pick). Given the sheet's own form, its Create. */
+/**
+ * New Plan…: the sheet for a subject (its id or name, else the only one, else
+ * his pick). Given the sheet's own form, its Create; given what the sheet asks
+ * ({ subject or subjectId, name, start, exam, goal, personal, work, less,
+ * more }: a script or the audits), the plan is made without it.
+ */
 async function stCmdNewPlan(arg) {
   if (_stPlanSheet && arg === _stPlanSheet.form) return _stPlanSheet.create();
   if (arg && typeof arg === 'object' && arg.start && arg.exam) {
-    const plan = await stCreatePlan(arg);
+    const s = arg.subjectId ? null : await stPickSubject(arg.subject, 'A plan for which subject?');
+    if (!arg.subjectId && !s) return null;
+    const plan = await stCreatePlan({ ...arg, subjectId: arg.subjectId || s.id });
     await stOpenPlan(plan.id);
     return plan.id;
   }

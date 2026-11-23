@@ -33,6 +33,9 @@ function stSubjectMenuItems(s) {
     { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [s.subject.bankId] }) },
     { label: 'Find Matches…', icon: 'paperclip', onSelect: () => void stUnitFindMatches(s.id) },
     { separator: true },
+    ...(stPlansOfSubject(s.id).all.length ? [{ label: 'Open Plan', icon: 'calendar', onSelect: () => void stCmdOpenPlan(s.id) }] : []),
+    ...(stSubjectDoor() ? [{ label: 'New Plan…', icon: 'calendar-plus', onSelect: () => void stCmdNewPlan(s.id) }] : []),
+    { separator: true },
     { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.unitsDb) },
     { label: 'Open Questions', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.questionsDb) },
     { label: 'Open Work Log', icon: 'database', onSelect: () => void stOpenSubjectDatabase(s.subject.logDb) },
@@ -144,6 +147,8 @@ function registerSubjectCommands(context) {
     ['study.addNotesOrFiles', (subject, unit) => stCmdAddNotesOrFiles(subject, unit)],
     ['study.openUnitItem', (subject, unit, key) => stCmdOpenUnitItem(subject, unit, key)],
     ['study.removeUnitItem', (subject, unit, key) => stCmdRemoveUnitItem(subject, unit, key)],
+    ['study.newPlan', (arg) => stCmdNewPlan(arg)],
+    ['study.openPlan', (arg) => stCmdOpenPlan(arg)],
     ['study.findMatches', async (subject) => { const s = await stPickSubject(subject, 'Find matches for which subject?'); return s ? stUnitFindMatches(s.id) : false; }],
   ];
   for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));

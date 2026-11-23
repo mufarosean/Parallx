@@ -481,6 +481,88 @@ function injectStyles() {
 .st-prog__list--stacked .st-prog__row .st-prog__kind { display: block; padding-left: var(--px-space-2); }
 .st-prog__list--stacked .st-prog__cell--none { display: none; }
 
+/* ── A plan's tab (66-plan-view.js): the header and the four Open buttons, the three plans as cards, hours per day and
+   the phases side by side (one over the other when narrow), the rules that disagree, then every day as a table grouped
+   by week. The ordinary study day is quiet; Rest is italic, a Holiday and a Catch-up day carry a filled word, and the
+   rest days' and holidays' rows sit on the inset ground, so each Type is told apart by more than its colour. ── */
+.st-plan { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-plan__in { max-width: 72rem; margin: 0 auto; container-type: inline-size; container-name: st-plan; }
+.st-plan__opens { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding: 0 var(--px-space-6) var(--px-space-4); }
+.st-plan__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
+.st-plan__sec { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
+.st-plan__h { margin: 0; padding-bottom: var(--px-space-1); border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.st-plan__goal, .st-plan__note, .st-plan__wait { color: var(--px-text-muted); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-plan__wait { padding: var(--px-space-6) 0; }
+.st-plan__plans .ui-segmented-control--cards { margin-top: var(--px-space-1); }
+.st-plan__pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--px-space-6); align-items: start; }
+@container st-plan (max-width: 640px) { .st-plan__pair { grid-template-columns: minmax(0, 1fr); } }
+.st-plan__bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--px-space-1); }
+.st-plan__barrow { display: grid; grid-template-columns: 5ch minmax(0, 1fr) 8ch; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__barh { color: var(--px-text); text-align: right; }
+.st-plan__bard { color: var(--px-text-secondary); }
+.st-plan__track { display: block; height: 6px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; }
+.st-plan__fill { display: block; height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); }
+.st-plan__plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.st-plan__phase { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); }
+.st-plan__phase:first-child { border-top: 0; padding-top: 0; }
+.st-plan__pline { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--px-space-2); min-width: 0; }
+.st-plan__pname { color: var(--px-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.st-plan__kind { color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-plan__pfacts { color: var(--px-text-secondary); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__fit { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-3); font-size: var(--px-text-sm); }
+.st-plan__needs { color: var(--px-danger); font-weight: 500; }
+.st-plan__fits { color: var(--px-text-secondary); }
+.st-plan__fitall { display: inline-flex; align-items: center; gap: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-plan__all { display: flex; flex-direction: column; gap: 2px; color: var(--px-text-secondary); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__badlist { margin: 0; padding-left: var(--px-space-5); display: flex; flex-direction: column; gap: var(--px-space-1); color: var(--px-text); font-size: var(--px-text-sm); line-height: 1.5; }
+.st-plan__bad .st-plan__h { color: var(--px-danger); }
+.st-plan__scroll { overflow-x: auto; min-width: 0; border-radius: var(--px-radius-sm); }
+.st-plan__scroll:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
+.st-plan__table { width: 100%; border-collapse: collapse; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-plan__cap { caption-side: top; text-align: left; padding-bottom: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-plan__table th, .st-plan__table td { padding: 3px var(--px-space-2); text-align: left; white-space: nowrap; border-bottom: 1px solid var(--px-divider); }
+.st-plan__table thead th { color: var(--px-text-muted); font-size: var(--px-text-xs); font-weight: 500; }
+.st-plan__table .st-plan__n { text-align: right; }
+.st-plan__wkrow th { padding-top: var(--px-space-3); color: var(--px-text-secondary); font-size: var(--px-text-xs); font-weight: 600; background: var(--px-bg); }
+.st-plan__date { font-weight: 400; color: var(--px-text); }
+.st-plan__date > span + span { margin-left: var(--px-space-2); }
+.st-plan__tag { display: inline-block; padding: 0 var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-xs); color: var(--px-text-secondary); font-size: var(--px-text-2xs); line-height: 1.5; }
+.st-plan__tag--today { border-color: var(--px-accent); color: var(--px-accent-text); }
+.st-plan__pcell { color: var(--px-text-secondary); max-width: 16rem; overflow: hidden; text-overflow: ellipsis; }
+.st-plan__total { color: var(--px-text); font-weight: 600; }
+.st-plan__done, .st-plan__run { color: var(--px-text-secondary); }
+.st-plan__type { display: inline-block; padding: 0 var(--px-space-1); border-radius: var(--px-radius-xs); color: var(--px-text-secondary); }
+.st-plan__type--rest { font-style: italic; }
+.st-plan__type--catchup { background: var(--px-accent-soft); color: var(--px-accent-text); font-weight: 600; }
+.st-plan__type--holiday { background: var(--px-warning-soft); color: var(--px-text); font-weight: 600; }
+.st-plan__day--rest, .st-plan__day--holiday { background: var(--px-bg-inset); }
+.st-plan__day--today > th:first-child { box-shadow: inset 3px 0 0 var(--px-accent); }
+.st-plan__day:hover { background: var(--px-surface-hover); }
+.st-plan__outside .st-plan__table { max-width: 40rem; }
+.st-plan .px-empty { padding-top: var(--px-space-8); }
+
+/* ── The New Plan sheet (64-plan-sheet.js): the Name, the dates and the goal as the New Subject sheet's rows; the usual
+   week as a grid, a column per weekday, the personal hours over the work hours; then Floor's and Stretch's spread. ── */
+.st-psheet { width: min(680px, calc(100% - var(--px-space-8))); max-height: calc(100% - var(--px-space-8)); display: flex; flex-direction: column; }
+.st-psheet .st-sheet__bd { overflow: auto; min-height: 0; }
+.st-psheet__week { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.st-psheet__weekhd { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.st-psheet__grid { display: grid; grid-template-columns: 5rem repeat(7, minmax(0, 1fr)); align-items: center; gap: var(--px-space-1) var(--px-space-1); }
+.st-psheet__day { text-align: center; color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-psheet__acct { color: var(--px-text-secondary); font-size: var(--px-text-sm); }
+.st-psheet__h .ui-input-box { width: 100%; }
+.st-psheet__h input { text-align: center; font-variant-numeric: tabular-nums; }
+.st-psheet__spread { display: flex; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-5); }
+.st-psheet__pair { display: grid; grid-template-columns: auto 4.5rem auto; align-items: center; gap: var(--px-space-2); }
+.st-psheet__pair .st-row__lab { width: auto; }
+.st-psheet__pair input { text-align: center; font-variant-numeric: tabular-nums; }
+.st-psheet__sums { color: var(--px-text-secondary); font-size: var(--px-text-sm); line-height: 1.5; font-variant-numeric: tabular-nums; }
+@container st-sheet (max-width: 520px) { .st-psheet__grid { grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); } }
+
+/* ── The plan's row in the sidebar, under its subject, over its units ───── */
+.st-sb__sec--subjects .st-sb__nav--plan { padding-left: min(var(--px-space-8), 15%); padding-right: calc(var(--px-space-2) + var(--px-control-h-sm) + var(--px-space-1)); }
+.st-sb__sec--subjects .st-sb__nav--plan .svg-icon { color: var(--px-accent-text); }
+
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
 .st-widget { display: flex; flex-direction: column; min-height: 0; }
 .st-widget__empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) 0; }

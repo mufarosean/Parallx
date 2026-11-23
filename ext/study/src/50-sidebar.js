@@ -324,6 +324,7 @@ function createSidebarView(container) {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
+    planRow(host, s);
     if (s.folded) return;
     // Each unit's thin bar is over every kind of work together, with that "N of M".
     for (const u of s.units) {
@@ -352,6 +353,21 @@ function createSidebarView(container) {
       _api.ui.createStackedBar(line, { size: 'sm', label: stProgressBarName(u.name, '', all, ST_PROGRESS_WORDS), parts: stProgressParts(u.name, 'All work', all, ST_PROGRESS_WORDS) });
     }
     if (s.ready && !s.problem && !s.units.length) _api.ui.createBlock(host, 'div', { className: 'st-sb__none st-sb__none--unit', text: 'No units yet. Add them in Open Units.' });
+  };
+
+  // The subject's plan, under its name and over its units: the one whose exam has not passed and is soonest
+  // (29-plans.js), its name and the days left; pressing it opens the plan's tab (66-plan-view.js).
+  const planRow = (host, s) => {
+    const { shown } = stPlansOfSubject(s.id);
+    if (!shown) return;
+    const left = shown.rules && shown.rules.exam ? stPlanDaysBetween(stPlanToday(), shown.rules.exam) : null;
+    const words = left === null ? '' : left === 0 ? 'exam today' : `${left} ${left === 1 ? 'day' : 'days'} left`;
+    const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__plan' });
+    const exam = shown.rules && shown.rules.exam ? `, exam ${stPlanDateWords(shown.rules.exam, { year: true, long: true })}` : '';
+    const btn = _api.ui.createButton(line, { id: `study.side.plan.${s.id}`, label: shown.plan.name, icon: 'calendar', kind: 'ghost', size: 'sm',
+      title: `Open the plan ${shown.plan.name}${exam}${words ? `: ${words}` : ''}.`, command: 'study.openPlan', args: [{ planId: shown.plan.id }] });
+    btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
+    if (words) _api.ui.createBlock(btn, 'span', { className: 'st-sb__r', text: words });
   };
 
   // ── Destructive flows, each behind the app's confirm modal ──
@@ -536,8 +552,8 @@ function createSidebarView(container) {
   const offSession = bus.on('session', () => void paint());
   const offProgress = bus.on('progress', () => void paint());
   const offRoute = bus.on('route', (route) => {
-    // The New Subject sheet changes nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
-    if (!route || route.view === 'newSubject') return;
+    // The New Subject and New Plan sheets change nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
+    if (!route || route.view === 'newSubject' || route.view === 'newPlan') return;
     if (Array.isArray(route.materialIds) && route.materialIds.length === 1) state.expandedId = route.materialIds[0];
     if (route.view === 'learn' && route.materialId) state.expandedId = route.materialId;
     state.activeSessionId = route.sessionId != null ? route.sessionId : state.activeSessionId;

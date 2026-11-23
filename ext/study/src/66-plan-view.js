@@ -34,11 +34,12 @@ function stPlanTakeFocus(planId, root) {
   if (!root.contains(document.activeElement)) root.focus();
 }
 
-/** Open Plan: a plan by its id; given a subject (or nothing), the subject's plan shown in the sidebar, else his pick of its plans. */
+/** Open Plan: a plan ({ planId }); given a subject (its id or name, or nothing), the subject's plan shown in the sidebar, else his pick of its plans. */
 async function stCmdOpenPlan(arg) {
   if (arg && typeof arg === 'object' && arg.planId) return stOpenPlan(arg.planId);
-  if (typeof arg === 'number' && _stPlans.has(arg)) return stOpenPlan(arg);
-  const subject = arg != null && arg !== '' ? stSubjectsShown().find((s) => s.id === Number(arg) || stSubjectSameName(s.name, arg)) : null;
+  const named = arg != null && arg !== '' && typeof arg !== 'object';
+  const subject = named ? stSubjectsShown().find((s) => s.id === Number(arg) || stSubjectSameName(s.name, arg)) : null;
+  if (named && !subject) { await _api.window.showInformationMessage('That subject is not in Study.'); return null; }
   const all = [..._stPlans.values()].filter((st) => !subject || Number(st.plan.subjectId) === subject.id);
   if (!all.length) { await _api.window.showInformationMessage('No plans yet. New Plan… makes one for a subject.'); return null; }
   if (subject) { const { shown } = stPlansOfSubject(subject.id); if (shown) return stOpenPlan(shown.plan.id); }
@@ -86,7 +87,7 @@ async function renderPlan(host, route, ctx) {
 
   const section = (label, className) => {
     const box = ui.createBlock(body, 'section', { className: `st-plan__sec ${className || ''}`, attrs: { 'aria-label': label } });
-    ui.createBlock(box, 'h2', { className: 'st-plan__h', text: label });
+    ui.createBlock(box, 'div', { className: 'st-plan__h', text: label, attrs: { role: 'heading', 'aria-level': '2' } });
     return box;
   };
 
@@ -127,7 +128,7 @@ async function renderPlan(host, route, ctx) {
     const pair = ui.createBlock(body, 'div', { className: 'st-plan__pair' });
     // Hours per day for the plan he follows, as a small bar each.
     const perDay = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__perday', attrs: { 'aria-label': 'Hours per day' } });
-    ui.createBlock(perDay, 'h2', { className: 'st-plan__h', text: 'Hours per day' });
+    ui.createBlock(perDay, 'div', { className: 'st-plan__h', text: 'Hours per day', attrs: { role: 'heading', 'aria-level': '2' } });
     const most = Math.max(1, ...view.perDay.map((r) => r.days));
     const list = ui.createBlock(perDay, 'ul', { className: 'st-plan__bars' });
     for (const r of view.perDay) {
@@ -141,7 +142,7 @@ async function renderPlan(host, route, ctx) {
 
     // The phases in date order.
     const phases = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__phases', attrs: { 'aria-label': 'Phases' } });
-    ui.createBlock(phases, 'h2', { className: 'st-plan__h', text: 'Phases' });
+    ui.createBlock(phases, 'div', { className: 'st-plan__h', text: 'Phases', attrs: { role: 'heading', 'aria-level': '2' } });
     const ol = ui.createBlock(phases, 'ol', { className: 'st-plan__plist' });
     if (!view.phases.length) ui.createBlock(phases, 'div', { className: 'st-plan__note', text: 'No phases yet. Add rows to Phases: study spans, rest, catch-up days, holidays.' });
     for (const p of view.phases) {
@@ -149,20 +150,19 @@ async function renderPlan(host, route, ctx) {
       const line = ui.createBlock(li, 'div', { className: 'st-plan__pline' });
       ui.createBlock(line, 'span', { className: 'st-plan__pname', text: p.name || 'A row with no name' });
       ui.createBlock(line, 'span', { className: `st-plan__kind ${stPlanTypeClass(p.kind)}`, text: p.kind || 'No kind' });
-      const facts = ui.createBlock(li, 'div', { className: 'st-plan__pfacts' });
-      ui.createBlock(facts, 'span', { text: p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates' });
-      ui.createBlock(facts, 'span', { text: `${p.days} ${p.days === 1 ? 'day' : 'days'}` });
-      ui.createBlock(facts, 'span', { className: 'st-plan__ph', text: `${stPlanH(p.hours)} h` });
+      ui.createBlock(li, 'div', { className: 'st-plan__pfacts', text: [p.valid ? stPlanSpanWords(p.start, p.end) : 'No dates', `${p.days} ${p.days === 1 ? 'day' : 'days'}`, `${stPlanH(p.hours)} h`].join(' · ') });
       if (!p.fit) continue;
       const fit = ui.createBlock(li, 'div', { className: 'st-plan__fit' });
       const short = p.fit.short.includes(view.following);
       const said = stPlanFitWords(p.fit, p.per[view.following]);
       ui.createBlock(fit, 'span', { className: short ? 'st-plan__needs' : 'st-plan__fits', text: said.charAt(0).toUpperCase() + said.slice(1) });
       const open = expanded.has(p.id);
-      // A switch: the other two plans shown or not, kept while the tab is open; Escape on it hides them.
-      const all = ui.createToggle(fit, { id: `study.plan.fit.${p.id}`, label: 'All Plans', checked: open, onChange: (on) => { if (on) expanded.add(p.id); else expanded.delete(p.id); paint(); } });
-      parts.push(all);
-      all.element.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
+      // A disclosure: the three plans' fit shown or not, kept while the tab is open; Escape on it hides them.
+      const all = ui.createButton(fit, { id: `study.plan.fit.${p.id}`, label: 'All Plans', icon: open ? 'chevron-down' : 'chevron-right', kind: 'ghost', size: 'sm',
+        title: open ? 'Hide how the work fits in each plan.' : `How the work of ${p.name || 'this phase'} fits in Floor, Standard and Stretch.`,
+        onClick: () => { if (expanded.has(p.id)) expanded.delete(p.id); else expanded.add(p.id); paint(); } });
+      all.setAttribute('aria-expanded', open ? 'true' : 'false');
+      all.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expanded.has(p.id)) { e.preventDefault(); e.stopPropagation(); expanded.delete(p.id); paint(); } });
       if (open) {
         const all = ui.createBlock(li, 'div', { className: 'st-plan__all' });
         for (const pl of ST_PLAN_PLANS) ui.createBlock(all, 'span', { text: `${pl} ${stPlanFitWords(p.fit, p.per[pl])}` });
@@ -192,8 +192,9 @@ async function renderPlan(host, route, ctx) {
   function dayTable(view) {
     const box = ui.createBlock(body, 'section', { className: 'st-plan__sec st-plan__days', attrs: { 'aria-label': 'Every day' } });
     const bar = ui.createBlock(box, 'div', { className: 'st-plan__daysbar' });
-    ui.createBlock(bar, 'h2', { className: 'st-plan__h', text: 'Every day' });
-    const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll' });
+    ui.createBlock(bar, 'div', { className: 'st-plan__h', text: 'Every day', attrs: { role: 'heading', 'aria-level': '2' } });
+    // Too wide for a narrow tab, it scrolls sideways on its own; named, so the browser's own Tab stop on a scroller says what it is.
+    const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
     ui.createBlock(table, 'caption', { className: 'st-plan__cap', text: `Every day of ${plan.name}, ${stPlanSpanWords(view.start, stPlanAddDays(view.exam, -1))}, in the ${view.following} plan, by week` });
     const thead = ui.createBlock(table, 'thead');

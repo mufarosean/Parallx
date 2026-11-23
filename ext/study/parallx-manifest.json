@@ -30,6 +30,8 @@
       { "id": "study.subjectActions", "title": "Subject Actions…", "category": "Study" },
       { "id": "study.openProgress", "title": "Open Progress…", "category": "Study" },
       { "id": "study.openUnit", "title": "Open Unit…", "category": "Study" },
+      { "id": "study.newPlan", "title": "New Plan…", "category": "Study" },
+      { "id": "study.openPlan", "title": "Open Plan…", "category": "Study" },
       { "id": "study.findMatches", "title": "Find Matches…", "category": "Study" },
       { "id": "study.unitActions", "title": "Unit Actions…", "category": "Study" },
       { "id": "study.addNotesOrFiles", "title": "Add Notes or Files…", "category": "Study" },
