@@ -2366,17 +2366,50 @@ const ST_SUBJECT_SOURCE_EXTS = ['pdf', 'md', 'markdown', 'txt'];
  * order with numbers read as numbers. Dot names are left out.
  */
 function stSubjectUnitsFromListing(entries) {
+  return stSubjectUnitsFromFolder(entries, []).map((u) => u.name);
+}
+
+/**
+ * The units New Subject makes from a sources folder and the units its
+ * question bank already names (`bankUnits`, in the bank's order): one unit
+ * per paper, not two. With subfolders, one per subfolder as the listing
+ * proposes. Else every bank unit, then one per source file that belongs to
+ * none of them: a file whose name (without its ending) is a bank unit's
+ * name, or holds it as whole words (stUnitHolds; the longest such name when
+ * it holds several), joins that unit. Returns [{ name, bank, files: the file
+ * names that are its material, also: the joined files' names without their
+ * endings, for Also Called }].
+ */
+function stSubjectUnitsFromFolder(entries, bankUnits = []) {
   const list = (Array.isArray(entries) ? entries : []).filter((e) => e && e.name && !String(e.name).startsWith('.'));
   const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   const folders = list.filter((e) => e.type === 2).map((e) => String(e.name));
-  if (folders.length) return folders.sort(byName);
-  const names = [];
-  for (const e of list) {
-    const m = /^(.+)\.([^.]+)$/.exec(String(e.name));
-    if (!m || !ST_SUBJECT_SOURCE_EXTS.includes(m[2].toLowerCase())) continue;
-    if (!names.some((n) => stSubjectSameName(n, m[1]))) names.push(m[1].trim());
+  if (folders.length) return folders.sort(byName).map((name) => ({ name, bank: false, files: [], also: [] }));
+  const bank = [];
+  for (const n of bankUnits || []) {
+    const name = String(n ?? '').trim();
+    if (name && !bank.some((u) => stSubjectSameName(u.name, name))) bank.push({ name, bank: true, files: [], also: [] });
   }
-  return names.sort(byName);
+  const own = [];
+  for (const e of list) {
+    const file = String(e.name);
+    const m = /^(.+)\.([^.]+)$/.exec(file);
+    if (!m || !ST_SUBJECT_SOURCE_EXTS.includes(m[2].toLowerCase())) continue;
+    const stem = m[1].trim();
+    const same = bank.find((u) => stSubjectSameName(u.name, stem));
+    const holder = same || bank.filter((u) => stUnitHolds(stem, u.name)).sort((a, b) => stUnitWords(b.name).length - stUnitWords(a.name).length || b.name.length - a.name.length)[0];
+    if (holder) {
+      holder.files.push(file);
+      // Its name is another name the unit goes by. A comma would split it into two names, so it is written without.
+      const also = stem.replace(/\s*[,;\n]+\s*/g, ' ').trim();
+      if (!same && also && !holder.also.some((a) => stSubjectSameName(a, also))) holder.also.push(also);
+      continue;
+    }
+    let unit = own.find((u) => stSubjectSameName(u.name, stem));
+    if (!unit) { unit = { name: stem, bank: false, files: [], also: [] }; own.push(unit); }
+    unit.files.push(file);
+  }
+  return [...bank, ...own.sort((a, b) => byName(a.name, b.name))];
 }
 
 const stSubjectPad = (n) => String(n).padStart(2, '0');
@@ -3465,23 +3498,63 @@ function stUnitStem(name) {
   return at > 0 ? n.slice(0, at) : n;
 }
 
+/** A name as its words: letters and digits in runs, lower case, accents aside. */
+function stUnitWords(s) {
+  return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
 /**
- * What Find Matches proposes: every candidate whose title (a page) or name
- * without its extension (a file) is a unit's name or one of its Also Called,
- * as Progress matches a tool's groups (stProgressMatch: case, spaces,
- * punctuation and accents aside). `units` are [{ name, also, attached: Set
- * of keys }] in the Units order; `candidates` are [{ key, label, ... }].
- * Returns [{ unit, candidate }] in the units' order, then the candidates'.
- * What a unit has already is not proposed for it.
+ * Does `text` hold `name` as whole words: the name's words in a row, each a
+ * whole word of the text (between characters that are neither letters nor
+ * digits), in any letter case? "Mack 1994 - Measuring" holds Mack;
+ * "Mackenzie 2001" and "Unmacked" do not.
+ */
+function stUnitHolds(text, name) {
+  const hay = stUnitWords(text);
+  const want = stUnitWords(name);
+  if (!want.length) return false;
+  for (let i = 0; i + want.length <= hay.length; i++) if (want.every((w, j) => hay[i + j] === w)) return true;
+  return false;
+}
+
+/**
+ * What Find Matches proposes. First every candidate whose title (a page) or
+ * name without its extension (a file) is a unit's name or one of its Also
+ * Called, as Progress matches a tool's groups (stProgressMatch: case,
+ * spaces, punctuation and accents aside). Then every candidate whose name
+ * holds a unit's name, or one of its Also Called names, as whole words
+ * (stUnitHolds), for each unit it does. `units` are [{ name, also, attached:
+ * Set of keys }] in the Units order; `candidates` are [{ key, label, ... }].
+ * Returns [{ unit, candidate, exact, why }]: the exact ones in the units'
+ * order, then the candidates', and after them the ones that hold a name the
+ * same way; `why` says which name ("name is Mack", "name holds Chain
+ * Ladder"). An item is proposed once for a unit, and what a unit has already
+ * is not proposed for it.
  */
 function stUnitProposals(units, candidates) {
   const list = Array.isArray(units) ? units : [];
-  const groups = (candidates || []).map((c, i) => ({ group: String(i), label: c.label, candidate: c }));
+  const all = candidates || [];
+  const groups = all.map((c, i) => ({ group: String(i), label: c.label, candidate: c }));
   const m = stProgressMatch(list.map((u) => ({ name: u.name, also: u.also })), groups);
+  const has = (unit, c) => !!(unit.attached && unit.attached.has(c.key));
   const out = [];
+  const taken = new Set();
   m.matched.forEach((gs, i) => {
     const unit = list[i];
-    for (const g of gs) if (!(unit.attached && unit.attached.has(g.candidate.key))) out.push({ unit: unit.name, candidate: g.candidate });
+    for (const g of gs) {
+      taken.add(`${i}|${g.candidate.key}`);
+      if (has(unit, g.candidate)) continue;
+      const named = [unit.name, ...stProgressAliases(unit.also)].find((n) => stProgressFold(n) === stProgressFold(g.label)) || unit.name;
+      out.push({ unit: unit.name, candidate: g.candidate, exact: true, why: `name is ${named}` });
+    }
+  });
+  list.forEach((unit, i) => {
+    const names = [unit.name, ...stProgressAliases(unit.also)];
+    for (const c of all) {
+      if (taken.has(`${i}|${c.key}`) || has(unit, c)) continue;
+      const held = names.find((n) => stUnitHolds(c.label, n));
+      if (held) out.push({ unit: unit.name, candidate: c, exact: false, why: `name holds ${held}` });
+    }
   });
   return out;
 }
@@ -5177,6 +5250,7 @@ function stRowToSubject(row) {
     notesDb: row.notes_db || '',
     sourcesFolder: row.sources_folder || '',
     mapping,
+    removedUnits: (stParseJson(row.removed_units, []) || []).map((n) => String(n)).filter(Boolean),
     bankId: row.bank_id || 0,
     folded: !!row.folded,
     createdAt: row.created_at || 0,
@@ -5409,10 +5483,15 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
     }
   }
 
+  // A unit he removed (Remove Unit…) is not made again from the questions that still name it; a row of its name in Units again is the unit back.
+  const removed = (subject.removedUnits || []).filter((n) => !unitRows.some((r) => stSubjectSameName(r.title, n)));
+  if (removed.length !== (subject.removedUnits || []).length) {
+    subject.removedUnits = removed;
+    await db.run('UPDATE st_subjects SET removed_units = ? WHERE id = ?', [stJsonCol(removed, '[]'), subject.id]);
+  }
   // A unit the questions name and Units lacks gets its row (a select's own order, else as first named).
-  const options = unitColumn && unitColumn.config && Array.isArray(unitColumn.config.options) ? unitColumn.config.options.map((o) => String(o && typeof o === 'object' ? o.value : o)) : [];
-  const rank = (name) => { const i = options.findIndex((o) => stSubjectSameName(o, name)); return i < 0 ? options.length : i; };
-  const missing = counts.units.filter((u) => !unitRows.some((r) => stSubjectSameName(r.title, u.name))).sort((a, b) => rank(a.name) - rank(b.name));
+  const rank = stSubjectUnitRank(unitColumn);
+  const missing = counts.units.filter((u) => !unitRows.some((r) => stSubjectSameName(r.title, u.name)) && !removed.some((n) => stSubjectSameName(n, u.name))).sort((a, b) => rank(a.name) - rank(b.name));
   const unitColumnNames = uInfo.columns.map((c) => c.name);
   const hasOrder = unitColumnNames.some((n) => stSubjectSameName(n, 'Order'));
   let nextOrder = unitRows.reduce((m, r) => Math.max(m, Number((r.values || {}).Order) || 0), 0);
@@ -5535,13 +5614,39 @@ async function stSubjectDatabasesOffered() {
 
 // ── Making and removing a subject ───────────────────────────────────────────
 
+/** A folder's whole path (given whole, or as a path inside the workspace); '' for none. */
+function stSubjectFolderPath(folder) {
+  let p = String(folder || '').trim();
+  if (!p) return '';
+  if (!/^([a-zA-Z]:[\\/]|[\\/]|file:)/.test(p)) p = `${stWorkspaceRoot().replace(/[\\/]$/, '')}/${p}`;
+  return stFsPathOf(p);
+}
+
 /** The entries of a folder (an absolute path, or one inside the workspace), [] when it cannot be read. */
 async function stSubjectFolderListing(folder) {
   const fs = _api.workspace && _api.workspace.fs;
-  let p = String(folder || '').trim();
+  const p = stSubjectFolderPath(folder);
   if (!p || !fs || typeof fs.readdir !== 'function') return [];
-  if (!/^([a-zA-Z]:[\\/]|[\\/]|file:)/.test(p)) p = `${stWorkspaceRoot().replace(/[\\/]$/, '')}/${p}`;
-  try { return (await fs.readdir(stUriOf(stFsPathOf(p)))) || []; } catch { return []; }
+  try { return (await fs.readdir(stUriOf(p))) || []; } catch { return []; }
+}
+
+/** Where a unit's name stands in its column's own order (a select's options); past them all when it has none. */
+function stSubjectUnitRank(unitColumn) {
+  const options = unitColumn && unitColumn.config && Array.isArray(unitColumn.config.options) ? unitColumn.config.options.map((o) => String(o && typeof o === 'object' ? o.value : o)) : [];
+  return (name) => { const i = options.findIndex((o) => stSubjectSameName(o, name)); return i < 0 ? options.length : i; };
+}
+
+/** The units a questions database he has already names, in its column's own order, else as its rows first name them. */
+async function stSubjectBankUnits(door, info, unitName) {
+  const column = unitName ? (info.columns || []).find((c) => c.type !== 'title' && stSubjectSameName(c.name, unitName)) : null;
+  if (!column) return [];
+  const rows = await door.listRows(info.id);
+  const relation = column.type === 'relation';
+  const titleById = new Map();
+  const related = relation ? String((column.config || {}).databaseId || '') : '';
+  if (related) { try { for (const r of await door.listRows(related)) titleById.set(r.pageId, r.title); } catch { /* that database is gone: its ids name no unit */ } }
+  const rank = stSubjectUnitRank(column);
+  return stSubjectCounts(rows, { unit: column.name }, titleById, relation).units.map((u) => u.name).sort((a, b) => rank(a) - rank(b));
 }
 
 /**
@@ -5586,8 +5691,19 @@ async function stCreateSubject({ name, folder = '', questionsDb = '', notesDb = 
     if (add.length) await door.ensureColumns(questionsId, add);
   }
   const log = await door.create({ title: 'Work Log', parentPageId: page.id, columns: specs.log });
-  const proposed = stSubjectUnitsFromListing(await stSubjectFolderListing(folder));
-  for (let i = 0; i < proposed.length; i++) await door.addRow(units.id, { title: proposed[i], values: { Order: i + 1 } });
+  // One unit per paper: a file of the folder joins the unit of his bank whose name it holds, any other file is its own
+  // unit. Each unit made from a file holds that file in Material, and a joined file's name is another name it goes by.
+  const listing = await stSubjectFolderListing(folder);
+  const bankUnits = adopted && listing.length ? await stSubjectBankUnits(door, adopted, stored.unit && stored.unit.id ? stored.unit.name : '') : [];
+  const proposed = stSubjectUnitsFromFolder(listing, bankUnits);
+  const dir = stUnitSlashes(stSubjectFolderPath(folder)).replace(/\/+$/, '');
+  const root = stWorkspaceRoot();
+  const fileItem = (name) => { const abs = `${dir}/${name}`; const rel = stUnitRelative(abs, root); return { kind: 'file', rel, abs: rel ? '' : abs, name }; };
+  for (let i = 0; i < proposed.length; i++) {
+    const u = proposed[i];
+    const material = u.files.length ? stUnitAdd(undefined, u.files.map(fileItem), root) : null;
+    await door.addRow(units.id, { title: u.name, values: { Order: i + 1, ...(u.also.length ? { [ST_PROGRESS_ALSO]: u.also.join(', ') } : {}), ...(material ? { [ST_UNIT_MATERIAL]: material } : {}) } });
+  }
 
   const bank = await stInsertBank({ name: title, kind: 'subject', providerId: '', count: 0 });
   const res = await db.run(
@@ -5620,6 +5736,34 @@ async function stRemoveSubject(id) {
   await stForgetSubjectPlans(id);
   await db.run('DELETE FROM st_subjects WHERE id = ?', [id]);
   _emitDataChanged();
+}
+
+/**
+ * Remove Unit: the unit's row of Units goes to the Trash (the door's own
+ * removal of a row). Its questions stay where they are, and its pages and
+ * files are untouched. Study remembers the name, so the questions that still
+ * name the unit do not make its row again. It runs in the subject's own
+ * order of work, so no read of Units falls between the two.
+ */
+async function stRemoveUnit(subjectId, rowId) {
+  const door = stSubjectDoorOrThrow();
+  const st = _stSubjects.get(Number(subjectId));
+  if (!st) throw new Error('That subject is no longer in Study.');
+  let removed = false;
+  await stSubjectEnqueue(st, async () => {
+    const row = (st.unitRows || []).find((r) => r.pageId === rowId);
+    if (!row) return;
+    stSubjectLive(st);
+    await door.removeRow(st.subject.unitsDb, rowId);
+    const name = String(row.title || '').trim();
+    const names = [...(st.subject.removedUnits || []).filter((n) => !stSubjectSameName(n, name)), ...(name ? [name] : [])];
+    st.subject.removedUnits = names;
+    await db.run('UPDATE st_subjects SET removed_units = ? WHERE id = ?', [stJsonCol(names, '[]'), st.subject.id]);
+    st.unitRows = st.unitRows.filter((r) => r.pageId !== rowId);
+    removed = true;
+  });
+  if (removed) _emitDataChanged();
+  return removed;
 }
 
 // ── Results back to the rows ────────────────────────────────────────────────
@@ -14683,7 +14827,7 @@ async function stCmdUnitActions(subject, unit) {
   const items = stUnitMenuItems(s, u);
   const at = Array.from(document.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === `study.side.unit.${s.id}.${u.rowId}.more` && n.getClientRects().length);
   if (at) { _api.ui.showContextMenu(at, items, { anchorPosition: 'below' }); return null; }
-  const pick = await _api.window.showQuickPick(items.map((i) => ({ label: i.label })), { placeholder: u.name });
+  const pick = await _api.window.showQuickPick(items.filter((i) => !i.separator).map((i) => ({ label: i.label })), { placeholder: u.name });
   const chosen = pick ? items.find((i) => i.label === pick.label) : null;
   if (chosen) chosen.onSelect();
   return null;
@@ -14693,7 +14837,23 @@ async function stCmdUnitActions(subject, unit) {
 function stUnitMenuItems(s, u) {
   return [
     { label: 'Study…', icon: 'px-study', onSelect: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [s.subject.bankId], unit: u.name }); } },
+    { separator: true },
+    { label: 'Remove Unit…', icon: 'trash', danger: true, onSelect: () => void stRemoveUnitFlow(s, u) },
   ];
+}
+
+/** Remove Unit…: asks first. The unit's row of Units goes to the Trash; its questions, pages and files stay. */
+async function stRemoveUnitFlow(s, u) {
+  const ok = await _api.window.showConfirmModal({
+    message: `Remove the unit ${u.name}?`,
+    detail: `Its row in Units goes to the Trash. Its questions stay where they are, and are still asked in a session over ${s.name}. Its pages and files are not touched. To have the unit again, add a row named ${u.name} to Units.`,
+    confirmLabel: 'Remove', danger: true,
+  });
+  if (!ok) return false;
+  try { return await stRemoveUnit(s.id, u.rowId); } catch (err) {
+    if (!stIsStopped(err)) await _api.window.showWarningMessage(stSentence(stErrText(err)));
+    return false;
+  }
 }
 
 /** What the picker says of an item: its kind when the name does not, and where it lives. */
@@ -14720,7 +14880,12 @@ async function stUnitPick(subjectId, rowId) {
   return true;
 }
 
-/** Find Matches…: the pages and files named like a unit (or an Also Called of it), each with its unit, all unticked; Attach Selected attaches the ticked ones. */
+/**
+ * Find Matches…: the pages and files named like a unit (or an Also Called of
+ * it), then the ones whose name holds such a name as whole words, each with
+ * its unit and why, all unticked; Attach Selected attaches the ticked ones.
+ * It opens whenever there is something to propose, and says so when not.
+ */
 async function stUnitFindMatches(subjectId) {
   const st = _stSubjects.get(Number(subjectId));
   if (!st || !st.synced) return false;
@@ -14732,10 +14897,10 @@ async function stUnitFindMatches(subjectId) {
   const all = await stUnitCandidates();
   const proposals = stUnitProposals(units, all.map((c) => ({ ...c, label: c.kind === 'page' ? c.label : stUnitStem(c.label), shown: c.label })));
   if (!proposals.length) {
-    await _api.window.showInformationMessage(`No page or file is named like a unit of ${st.subject.name}. Add the names they go by to Also Called in Units.`);
+    await _api.window.showInformationMessage(`Nothing to propose for ${st.subject.name}: no page or file that is not attached has a unit's name in its own. Add the names the units go by to Also Called in Units.`);
     return false;
   }
-  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, stUnitDescribe(p.candidate)].filter(Boolean).join(' · '), proposal: p }));
+  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, p.why, stUnitDescribe(p.candidate)].filter(Boolean).join(' · '), proposal: p }));
   const picked = await _api.window.showQuickPick(items, { placeholder: `Tick what belongs to its unit in ${st.subject.name}`, canPickMany: true, matchOnDescription: true, confirmLabel: 'Attach Selected' });
   if (!Array.isArray(picked) || !picked.length) return false;
   const byUnit = new Map();
@@ -14762,11 +14927,18 @@ async function renderUnit(host, route, ctx) {
   };
   const first = now();
   if (!first.s || !first.u) {
-    // A tab that came back with the app is drawn before Study has read its subjects: it waits for them, and says so only when the unit is gone.
-    ctx.add(onDataChanged(() => { const n = now(); if (n.s && n.u) ctx.rerender(); }));
-    const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
-    const st = _stSubjects.get(subjectId);
-    if (!ctx.disposed() && (!kept || (st && st.synced && !first.u))) ui.createEmptyState(inner, { icon: 'graduation-cap', headline: kept ? 'This unit is no longer in Units.' : 'This subject is no longer in Study.', hint: 'Its pages and files are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    // A tab that came back with the app is drawn before Study has read its subjects: it waits for them, and says so
+    // once they are read and the unit is not among them (a tab of a unit that is gone, after a restart too).
+    let said = false;
+    const say = async () => {
+      const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
+      const st = _stSubjects.get(subjectId);
+      if (said || ctx.disposed() || (kept && !(st && st.synced && !now().u))) return;
+      said = true;
+      ui.createEmptyState(inner, { icon: 'graduation-cap', headline: kept ? 'This unit is no longer in Units.' : 'This subject is no longer in Study.', hint: 'Its pages and files are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    };
+    ctx.add(onDataChanged(() => { const n = now(); if (n.s && n.u) ctx.rerender(); else if (!said) void say(); }));
+    await say();
     return;
   }
   const subject = first.s.subject;
@@ -16569,6 +16741,7 @@ export const __testables = {
   // 13-plan-model: a plan, the pure part
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
   ST_PLAN_FOLLOWS, ST_PLAN_WORDS, stPlanFollow, stPlanFollowSettled, stPlanDaysOff, stPlanDoneWords,
+  stUnitHolds, stUnitWords, stSubjectUnitsFromFolder, stRemoveUnit, stSubjectBankUnits,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,

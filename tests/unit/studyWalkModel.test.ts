@@ -256,3 +256,97 @@ describe('a day\'s Done as it is read', () => {
     expect(stPlanDoneWords(0.004)).toBe('1 min');
   });
 });
+
+describe('a name that holds a unit\'s name as whole words', () => {
+  const { stUnitHolds } = T;
+  it('holds it between characters that are not letters or digits, in any letter case, accents aside', () => {
+    expect(stUnitHolds('Mack 1994 - Measuring the Variability of Chain Ladder Reserve Estimates', 'Mack')).toBe(true);
+    expect(stUnitHolds('mack summary', 'Mack')).toBe(true);
+    expect(stUnitHolds('CLARK - outline', 'Clark')).toBe(true);
+    expect(stUnitHolds('chain ladder worked example', 'Chain Ladder')).toBe(true);
+    expect(stUnitHolds('Bornhuetter_Ferguson 1972', 'Bornhuetter Ferguson')).toBe(true);
+    expect(stUnitHolds('Notes on Hurlimann (2009)', 'Hürlimann')).toBe(true);
+    expect(stUnitHolds('Mack', 'Mack')).toBe(true);
+  });
+  it('does not hold it inside a longer word, across other words, or when there is no name', () => {
+    expect(stUnitHolds('Mackenzie 2001 - Notes', 'Mack')).toBe(false);
+    expect(stUnitHolds('Unmacked thoughts', 'Mack')).toBe(false);
+    expect(stUnitHolds('Chain of the Ladder', 'Chain Ladder')).toBe(false);
+    expect(stUnitHolds('Mack1994', 'Mack')).toBe(false);
+    expect(stUnitHolds('Grocery list', '')).toBe(false);
+    expect(stUnitHolds('Grocery list', ' - ')).toBe(false);
+    expect(stUnitHolds('', 'Mack')).toBe(false);
+  });
+});
+
+describe('New Subject with a sources folder and a question bank', () => {
+  const { stSubjectUnitsFromFolder, stSubjectUnitsFromListing } = T;
+  const FILE = 1, DIR = 2;
+  const listing = [
+    'Mack 1994 - Measuring the Variability of Chain Ladder Reserve Estimates.pdf', 'Clark 2003 - LDF Curve Fitting and Stochastic Reserving.pdf', 'Venter 1998 - Testing the Assumptions of Age-to-Age Factors.pdf',
+    'Bornhuetter Ferguson 1972 - The Actuary and IBNR.pdf', 'Brosius 1993 - Loss Development Using Credibility.pdf', 'Mackenzie 2001 - Notes.pdf', 'cover.png', '.hidden.md',
+  ].map((name) => ({ name, type: FILE }));
+  const BANK = ['Mack', 'Clark', 'Venter', 'Friedland', 'Bornhuetter Ferguson'];
+
+  it('makes one unit per paper: a file joins the bank unit whose name it holds, any other file is its own unit', () => {
+    const units = stSubjectUnitsFromFolder(listing, BANK);
+    expect(units.map((u: any) => u.name)).toEqual([...BANK, 'Brosius 1993 - Loss Development Using Credibility', 'Mackenzie 2001 - Notes']);
+    expect(units.find((u: any) => u.name === 'Mack')).toEqual({ name: 'Mack', bank: true, files: ['Mack 1994 - Measuring the Variability of Chain Ladder Reserve Estimates.pdf'], also: ['Mack 1994 - Measuring the Variability of Chain Ladder Reserve Estimates'] });
+    expect(units.find((u: any) => u.name === 'Friedland')).toEqual({ name: 'Friedland', bank: true, files: [], also: [] });
+    expect(units.find((u: any) => u.name === 'Mackenzie 2001 - Notes')).toEqual({ name: 'Mackenzie 2001 - Notes', bank: false, files: ['Mackenzie 2001 - Notes.pdf'], also: [] });
+  });
+
+  it('joins a file named exactly as the unit without another name for it, two files of one paper to one unit, and the longest name a file holds', () => {
+    const units = stSubjectUnitsFromFolder([{ name: 'mack.pdf', type: FILE }, { name: 'Mack - my notes.md', type: FILE }, { name: 'Mack and Clark Compared.txt', type: FILE }, { name: 'Brosius.pdf', type: FILE }, { name: 'Brosius.md', type: FILE }], ['Mack', 'Clark', 'Mack and Clark']);
+    expect(units).toEqual([
+      { name: 'Mack', bank: true, files: ['mack.pdf', 'Mack - my notes.md'], also: ['Mack - my notes'] },
+      { name: 'Clark', bank: true, files: [], also: [] },
+      { name: 'Mack and Clark', bank: true, files: ['Mack and Clark Compared.txt'], also: ['Mack and Clark Compared'] },
+      { name: 'Brosius', bank: false, files: ['Brosius.pdf', 'Brosius.md'], also: [] },
+    ]);
+  });
+
+  it('with no bank, every file is its own unit and holds its file; the names are the ones a listing proposed before', () => {
+    const units = stSubjectUnitsFromFolder(listing, []);
+    expect(units.map((u: any) => u.name)).toEqual(stSubjectUnitsFromListing(listing));
+    expect(units.every((u: any) => u.files.length === 1 && !u.bank && !u.also.length)).toBe(true);
+  });
+
+  it('with subfolders, one unit per subfolder as before, holding no file', () => {
+    expect(stSubjectUnitsFromFolder([{ name: 'B Clark', type: DIR }, { name: 'A Mack', type: DIR }, { name: 'syllabus.txt', type: FILE }], ['Mack'])).toEqual([{ name: 'A Mack', bank: false, files: [], also: [] }, { name: 'B Clark', bank: false, files: [], also: [] }]);
+  });
+
+  it('writes a file\'s name into Also Called without the commas that would split it', () => {
+    const units = stSubjectUnitsFromFolder([{ name: 'Mack, 1994; variability.pdf', type: FILE }], ['Mack']);
+    expect(units[0].also).toEqual(['Mack 1994 variability']);
+  });
+});
+
+describe('Find Matches, after the walk-through', () => {
+  const { stUnitProposals } = T;
+  const units = [{ name: 'Mack', also: 'Chain Ladder', attached: new Set<string>() }, { name: 'Clark', also: '', attached: new Set<string>() }, { name: 'Venter', also: '', attached: new Set(['page:v']) }];
+  const cand = (key: string, label: string) => ({ key, label });
+  const said = (list: any[]) => list.map((p) => `${p.candidate.key} → ${p.unit}: ${p.why}`);
+
+  it('proposes exact names first, then the names that hold a unit\'s name or an Also Called name, each saying why', () => {
+    const out = stUnitProposals(units, [cand('file:mack summary.md', 'mack summary'), cand('page:m', 'Mack'), cand('page:c', 'chain ladder worked example'), cand('file:Clark.md', 'Clark'), cand('file:CLARK - outline.txt', 'CLARK - outline'), cand('page:x', 'Mackenzie review'), cand('page:u', 'Unmacked thoughts')]);
+    expect(said(out)).toEqual([
+      'page:m → Mack: name is Mack',
+      'file:Clark.md → Clark: name is Clark',
+      'file:mack summary.md → Mack: name holds Mack',
+      'page:c → Mack: name holds Chain Ladder',
+      'file:CLARK - outline.txt → Clark: name holds Clark',
+    ]);
+    expect(out.map((p: any) => p.exact)).toEqual([true, true, false, false, false]);
+  });
+
+  it('proposes an item once for a unit (its own name before an Also Called name), for each unit whose name it holds, and never what the unit has', () => {
+    const out = stUnitProposals(units, [cand('file:Mack 1994 - Chain Ladder.pdf', 'Mack 1994 - Chain Ladder'), cand('page:mc', 'Mack and Clark Compared'), cand('page:v', 'Venter - my notes'), cand('page:cl', 'Chain-Ladder')]);
+    expect(said(out)).toEqual([
+      'page:cl → Mack: name is Chain Ladder',
+      'file:Mack 1994 - Chain Ladder.pdf → Mack: name holds Mack',
+      'page:mc → Mack: name holds Mack',
+      'page:mc → Clark: name holds Clark',
+    ]);
+  });
+});

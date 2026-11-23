@@ -102,12 +102,15 @@ describe('where an item lives, and its kind', () => {
 describe('Find Matches', () => {
   const units = [{ name: 'Mack', also: 'Mack 1993, Chain Ladder', attached: new Set<string>() }, { name: 'Hürlimann', also: '', attached: new Set<string>() }, { name: 'Friedland', also: '', attached: new Set(['page:fl']) }];
   const cand = (key: string, label: string) => ({ key, label });
-  it('proposes what is named like a unit or an Also Called of it, and nothing else', () => {
+  it('proposes what is named like a unit or an Also Called of it, then what holds such a name as whole words, and nothing else', () => {
     const out = stUnitProposals(units, [cand('page:m', 'Mack'), cand('file:Readings/Mack 1993.pdf', stUnitStem('Mack 1993.pdf')), cand('page:c', 'chain-ladder'), cand('page:h', 'hurlimann'), cand('page:x', 'Mack and Clark Compared'), cand('page:g', 'Grocery List')]);
-    expect(out.map((p: { unit: string; candidate: { key: string } }) => `${p.candidate.key} → ${p.unit}`)).toEqual(['page:m → Mack', 'file:Readings/Mack 1993.pdf → Mack', 'page:c → Mack', 'page:h → Hürlimann']);
+    // Since the student walk-through (2026-11-23) a name that holds a unit's name is proposed too, after the exact ones: "Mack and Clark Compared" for Mack.
+    expect(out.map((p: { unit: string; candidate: { key: string } }) => `${p.candidate.key} → ${p.unit}`)).toEqual(['page:m → Mack', 'file:Readings/Mack 1993.pdf → Mack', 'page:c → Mack', 'page:h → Hürlimann', 'page:x → Mack']);
+    expect(out.map((p: { exact: boolean }) => p.exact)).toEqual([true, true, true, true, false]);
   });
   it('leaves out what the unit already has', () => {
     expect(stUnitProposals(units, [cand('page:fl', 'Fried-Land')])).toEqual([]);
+    expect(stUnitProposals(units, [cand('page:fl', 'Friedland - my notes')])).toEqual([]);
   });
 });
 

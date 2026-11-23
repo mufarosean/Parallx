@@ -50,6 +50,7 @@ function stRowToSubject(row) {
     notesDb: row.notes_db || '',
     sourcesFolder: row.sources_folder || '',
     mapping,
+    removedUnits: (stParseJson(row.removed_units, []) || []).map((n) => String(n)).filter(Boolean),
     bankId: row.bank_id || 0,
     folded: !!row.folded,
     createdAt: row.created_at || 0,
@@ -282,10 +283,15 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
     }
   }
 
+  // A unit he removed (Remove Unit…) is not made again from the questions that still name it; a row of its name in Units again is the unit back.
+  const removed = (subject.removedUnits || []).filter((n) => !unitRows.some((r) => stSubjectSameName(r.title, n)));
+  if (removed.length !== (subject.removedUnits || []).length) {
+    subject.removedUnits = removed;
+    await db.run('UPDATE st_subjects SET removed_units = ? WHERE id = ?', [stJsonCol(removed, '[]'), subject.id]);
+  }
   // A unit the questions name and Units lacks gets its row (a select's own order, else as first named).
-  const options = unitColumn && unitColumn.config && Array.isArray(unitColumn.config.options) ? unitColumn.config.options.map((o) => String(o && typeof o === 'object' ? o.value : o)) : [];
-  const rank = (name) => { const i = options.findIndex((o) => stSubjectSameName(o, name)); return i < 0 ? options.length : i; };
-  const missing = counts.units.filter((u) => !unitRows.some((r) => stSubjectSameName(r.title, u.name))).sort((a, b) => rank(a.name) - rank(b.name));
+  const rank = stSubjectUnitRank(unitColumn);
+  const missing = counts.units.filter((u) => !unitRows.some((r) => stSubjectSameName(r.title, u.name)) && !removed.some((n) => stSubjectSameName(n, u.name))).sort((a, b) => rank(a.name) - rank(b.name));
   const unitColumnNames = uInfo.columns.map((c) => c.name);
   const hasOrder = unitColumnNames.some((n) => stSubjectSameName(n, 'Order'));
   let nextOrder = unitRows.reduce((m, r) => Math.max(m, Number((r.values || {}).Order) || 0), 0);
@@ -408,13 +414,39 @@ async function stSubjectDatabasesOffered() {
 
 // ── Making and removing a subject ───────────────────────────────────────────
 
+/** A folder's whole path (given whole, or as a path inside the workspace); '' for none. */
+function stSubjectFolderPath(folder) {
+  let p = String(folder || '').trim();
+  if (!p) return '';
+  if (!/^([a-zA-Z]:[\\/]|[\\/]|file:)/.test(p)) p = `${stWorkspaceRoot().replace(/[\\/]$/, '')}/${p}`;
+  return stFsPathOf(p);
+}
+
 /** The entries of a folder (an absolute path, or one inside the workspace), [] when it cannot be read. */
 async function stSubjectFolderListing(folder) {
   const fs = _api.workspace && _api.workspace.fs;
-  let p = String(folder || '').trim();
+  const p = stSubjectFolderPath(folder);
   if (!p || !fs || typeof fs.readdir !== 'function') return [];
-  if (!/^([a-zA-Z]:[\\/]|[\\/]|file:)/.test(p)) p = `${stWorkspaceRoot().replace(/[\\/]$/, '')}/${p}`;
-  try { return (await fs.readdir(stUriOf(stFsPathOf(p)))) || []; } catch { return []; }
+  try { return (await fs.readdir(stUriOf(p))) || []; } catch { return []; }
+}
+
+/** Where a unit's name stands in its column's own order (a select's options); past them all when it has none. */
+function stSubjectUnitRank(unitColumn) {
+  const options = unitColumn && unitColumn.config && Array.isArray(unitColumn.config.options) ? unitColumn.config.options.map((o) => String(o && typeof o === 'object' ? o.value : o)) : [];
+  return (name) => { const i = options.findIndex((o) => stSubjectSameName(o, name)); return i < 0 ? options.length : i; };
+}
+
+/** The units a questions database he has already names, in its column's own order, else as its rows first name them. */
+async function stSubjectBankUnits(door, info, unitName) {
+  const column = unitName ? (info.columns || []).find((c) => c.type !== 'title' && stSubjectSameName(c.name, unitName)) : null;
+  if (!column) return [];
+  const rows = await door.listRows(info.id);
+  const relation = column.type === 'relation';
+  const titleById = new Map();
+  const related = relation ? String((column.config || {}).databaseId || '') : '';
+  if (related) { try { for (const r of await door.listRows(related)) titleById.set(r.pageId, r.title); } catch { /* that database is gone: its ids name no unit */ } }
+  const rank = stSubjectUnitRank(column);
+  return stSubjectCounts(rows, { unit: column.name }, titleById, relation).units.map((u) => u.name).sort((a, b) => rank(a) - rank(b));
 }
 
 /**
@@ -459,8 +491,19 @@ async function stCreateSubject({ name, folder = '', questionsDb = '', notesDb = 
     if (add.length) await door.ensureColumns(questionsId, add);
   }
   const log = await door.create({ title: 'Work Log', parentPageId: page.id, columns: specs.log });
-  const proposed = stSubjectUnitsFromListing(await stSubjectFolderListing(folder));
-  for (let i = 0; i < proposed.length; i++) await door.addRow(units.id, { title: proposed[i], values: { Order: i + 1 } });
+  // One unit per paper: a file of the folder joins the unit of his bank whose name it holds, any other file is its own
+  // unit. Each unit made from a file holds that file in Material, and a joined file's name is another name it goes by.
+  const listing = await stSubjectFolderListing(folder);
+  const bankUnits = adopted && listing.length ? await stSubjectBankUnits(door, adopted, stored.unit && stored.unit.id ? stored.unit.name : '') : [];
+  const proposed = stSubjectUnitsFromFolder(listing, bankUnits);
+  const dir = stUnitSlashes(stSubjectFolderPath(folder)).replace(/\/+$/, '');
+  const root = stWorkspaceRoot();
+  const fileItem = (name) => { const abs = `${dir}/${name}`; const rel = stUnitRelative(abs, root); return { kind: 'file', rel, abs: rel ? '' : abs, name }; };
+  for (let i = 0; i < proposed.length; i++) {
+    const u = proposed[i];
+    const material = u.files.length ? stUnitAdd(undefined, u.files.map(fileItem), root) : null;
+    await door.addRow(units.id, { title: u.name, values: { Order: i + 1, ...(u.also.length ? { [ST_PROGRESS_ALSO]: u.also.join(', ') } : {}), ...(material ? { [ST_UNIT_MATERIAL]: material } : {}) } });
+  }
 
   const bank = await stInsertBank({ name: title, kind: 'subject', providerId: '', count: 0 });
   const res = await db.run(
@@ -493,6 +536,34 @@ async function stRemoveSubject(id) {
   await stForgetSubjectPlans(id);
   await db.run('DELETE FROM st_subjects WHERE id = ?', [id]);
   _emitDataChanged();
+}
+
+/**
+ * Remove Unit: the unit's row of Units goes to the Trash (the door's own
+ * removal of a row). Its questions stay where they are, and its pages and
+ * files are untouched. Study remembers the name, so the questions that still
+ * name the unit do not make its row again. It runs in the subject's own
+ * order of work, so no read of Units falls between the two.
+ */
+async function stRemoveUnit(subjectId, rowId) {
+  const door = stSubjectDoorOrThrow();
+  const st = _stSubjects.get(Number(subjectId));
+  if (!st) throw new Error('That subject is no longer in Study.');
+  let removed = false;
+  await stSubjectEnqueue(st, async () => {
+    const row = (st.unitRows || []).find((r) => r.pageId === rowId);
+    if (!row) return;
+    stSubjectLive(st);
+    await door.removeRow(st.subject.unitsDb, rowId);
+    const name = String(row.title || '').trim();
+    const names = [...(st.subject.removedUnits || []).filter((n) => !stSubjectSameName(n, name)), ...(name ? [name] : [])];
+    st.subject.removedUnits = names;
+    await db.run('UPDATE st_subjects SET removed_units = ? WHERE id = ?', [stJsonCol(names, '[]'), st.subject.id]);
+    st.unitRows = st.unitRows.filter((r) => r.pageId !== rowId);
+    removed = true;
+  });
+  if (removed) _emitDataChanged();
+  return removed;
 }
 
 // ── Results back to the rows ────────────────────────────────────────────────

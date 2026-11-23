@@ -97,7 +97,7 @@ async function stCmdUnitActions(subject, unit) {
   const items = stUnitMenuItems(s, u);
   const at = Array.from(document.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === `study.side.unit.${s.id}.${u.rowId}.more` && n.getClientRects().length);
   if (at) { _api.ui.showContextMenu(at, items, { anchorPosition: 'below' }); return null; }
-  const pick = await _api.window.showQuickPick(items.map((i) => ({ label: i.label })), { placeholder: u.name });
+  const pick = await _api.window.showQuickPick(items.filter((i) => !i.separator).map((i) => ({ label: i.label })), { placeholder: u.name });
   const chosen = pick ? items.find((i) => i.label === pick.label) : null;
   if (chosen) chosen.onSelect();
   return null;
@@ -107,7 +107,23 @@ async function stCmdUnitActions(subject, unit) {
 function stUnitMenuItems(s, u) {
   return [
     { label: 'Study…', icon: 'px-study', onSelect: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [s.subject.bankId], unit: u.name }); } },
+    { separator: true },
+    { label: 'Remove Unit…', icon: 'trash', danger: true, onSelect: () => void stRemoveUnitFlow(s, u) },
   ];
+}
+
+/** Remove Unit…: asks first. The unit's row of Units goes to the Trash; its questions, pages and files stay. */
+async function stRemoveUnitFlow(s, u) {
+  const ok = await _api.window.showConfirmModal({
+    message: `Remove the unit ${u.name}?`,
+    detail: `Its row in Units goes to the Trash. Its questions stay where they are, and are still asked in a session over ${s.name}. Its pages and files are not touched. To have the unit again, add a row named ${u.name} to Units.`,
+    confirmLabel: 'Remove', danger: true,
+  });
+  if (!ok) return false;
+  try { return await stRemoveUnit(s.id, u.rowId); } catch (err) {
+    if (!stIsStopped(err)) await _api.window.showWarningMessage(stSentence(stErrText(err)));
+    return false;
+  }
 }
 
 /** What the picker says of an item: its kind when the name does not, and where it lives. */
@@ -134,7 +150,12 @@ async function stUnitPick(subjectId, rowId) {
   return true;
 }
 
-/** Find Matches…: the pages and files named like a unit (or an Also Called of it), each with its unit, all unticked; Attach Selected attaches the ticked ones. */
+/**
+ * Find Matches…: the pages and files named like a unit (or an Also Called of
+ * it), then the ones whose name holds such a name as whole words, each with
+ * its unit and why, all unticked; Attach Selected attaches the ticked ones.
+ * It opens whenever there is something to propose, and says so when not.
+ */
 async function stUnitFindMatches(subjectId) {
   const st = _stSubjects.get(Number(subjectId));
   if (!st || !st.synced) return false;
@@ -146,10 +167,10 @@ async function stUnitFindMatches(subjectId) {
   const all = await stUnitCandidates();
   const proposals = stUnitProposals(units, all.map((c) => ({ ...c, label: c.kind === 'page' ? c.label : stUnitStem(c.label), shown: c.label })));
   if (!proposals.length) {
-    await _api.window.showInformationMessage(`No page or file is named like a unit of ${st.subject.name}. Add the names they go by to Also Called in Units.`);
+    await _api.window.showInformationMessage(`Nothing to propose for ${st.subject.name}: no page or file that is not attached has a unit's name in its own. Add the names the units go by to Also Called in Units.`);
     return false;
   }
-  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, stUnitDescribe(p.candidate)].filter(Boolean).join(' · '), proposal: p }));
+  const items = proposals.map((p) => ({ label: p.candidate.shown, description: [`to ${p.unit}`, p.why, stUnitDescribe(p.candidate)].filter(Boolean).join(' · '), proposal: p }));
   const picked = await _api.window.showQuickPick(items, { placeholder: `Tick what belongs to its unit in ${st.subject.name}`, canPickMany: true, matchOnDescription: true, confirmLabel: 'Attach Selected' });
   if (!Array.isArray(picked) || !picked.length) return false;
   const byUnit = new Map();
@@ -176,11 +197,18 @@ async function renderUnit(host, route, ctx) {
   };
   const first = now();
   if (!first.s || !first.u) {
-    // A tab that came back with the app is drawn before Study has read its subjects: it waits for them, and says so only when the unit is gone.
-    ctx.add(onDataChanged(() => { const n = now(); if (n.s && n.u) ctx.rerender(); }));
-    const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
-    const st = _stSubjects.get(subjectId);
-    if (!ctx.disposed() && (!kept || (st && st.synced && !first.u))) ui.createEmptyState(inner, { icon: 'graduation-cap', headline: kept ? 'This unit is no longer in Units.' : 'This subject is no longer in Study.', hint: 'Its pages and files are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    // A tab that came back with the app is drawn before Study has read its subjects: it waits for them, and says so
+    // once they are read and the unit is not among them (a tab of a unit that is gone, after a restart too).
+    let said = false;
+    const say = async () => {
+      const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
+      const st = _stSubjects.get(subjectId);
+      if (said || ctx.disposed() || (kept && !(st && st.synced && !now().u))) return;
+      said = true;
+      ui.createEmptyState(inner, { icon: 'graduation-cap', headline: kept ? 'This unit is no longer in Units.' : 'This subject is no longer in Study.', hint: 'Its pages and files are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+    };
+    ctx.add(onDataChanged(() => { const n = now(); if (n.s && n.u) ctx.rerender(); else if (!said) void say(); }));
+    await say();
     return;
   }
   const subject = first.s.subject;

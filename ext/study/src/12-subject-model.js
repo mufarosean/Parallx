@@ -274,17 +274,50 @@ const ST_SUBJECT_SOURCE_EXTS = ['pdf', 'md', 'markdown', 'txt'];
  * order with numbers read as numbers. Dot names are left out.
  */
 function stSubjectUnitsFromListing(entries) {
+  return stSubjectUnitsFromFolder(entries, []).map((u) => u.name);
+}
+
+/**
+ * The units New Subject makes from a sources folder and the units its
+ * question bank already names (`bankUnits`, in the bank's order): one unit
+ * per paper, not two. With subfolders, one per subfolder as the listing
+ * proposes. Else every bank unit, then one per source file that belongs to
+ * none of them: a file whose name (without its ending) is a bank unit's
+ * name, or holds it as whole words (stUnitHolds; the longest such name when
+ * it holds several), joins that unit. Returns [{ name, bank, files: the file
+ * names that are its material, also: the joined files' names without their
+ * endings, for Also Called }].
+ */
+function stSubjectUnitsFromFolder(entries, bankUnits = []) {
   const list = (Array.isArray(entries) ? entries : []).filter((e) => e && e.name && !String(e.name).startsWith('.'));
   const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   const folders = list.filter((e) => e.type === 2).map((e) => String(e.name));
-  if (folders.length) return folders.sort(byName);
-  const names = [];
-  for (const e of list) {
-    const m = /^(.+)\.([^.]+)$/.exec(String(e.name));
-    if (!m || !ST_SUBJECT_SOURCE_EXTS.includes(m[2].toLowerCase())) continue;
-    if (!names.some((n) => stSubjectSameName(n, m[1]))) names.push(m[1].trim());
+  if (folders.length) return folders.sort(byName).map((name) => ({ name, bank: false, files: [], also: [] }));
+  const bank = [];
+  for (const n of bankUnits || []) {
+    const name = String(n ?? '').trim();
+    if (name && !bank.some((u) => stSubjectSameName(u.name, name))) bank.push({ name, bank: true, files: [], also: [] });
   }
-  return names.sort(byName);
+  const own = [];
+  for (const e of list) {
+    const file = String(e.name);
+    const m = /^(.+)\.([^.]+)$/.exec(file);
+    if (!m || !ST_SUBJECT_SOURCE_EXTS.includes(m[2].toLowerCase())) continue;
+    const stem = m[1].trim();
+    const same = bank.find((u) => stSubjectSameName(u.name, stem));
+    const holder = same || bank.filter((u) => stUnitHolds(stem, u.name)).sort((a, b) => stUnitWords(b.name).length - stUnitWords(a.name).length || b.name.length - a.name.length)[0];
+    if (holder) {
+      holder.files.push(file);
+      // Its name is another name the unit goes by. A comma would split it into two names, so it is written without.
+      const also = stem.replace(/\s*[,;\n]+\s*/g, ' ').trim();
+      if (!same && also && !holder.also.some((a) => stSubjectSameName(a, also))) holder.also.push(also);
+      continue;
+    }
+    let unit = own.find((u) => stSubjectSameName(u.name, stem));
+    if (!unit) { unit = { name: stem, bank: false, files: [], also: [] }; own.push(unit); }
+    unit.files.push(file);
+  }
+  return [...bank, ...own.sort((a, b) => byName(a.name, b.name))];
 }
 
 const stSubjectPad = (n) => String(n).padStart(2, '0');

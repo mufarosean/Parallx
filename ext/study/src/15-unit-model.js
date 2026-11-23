@@ -193,23 +193,63 @@ function stUnitStem(name) {
   return at > 0 ? n.slice(0, at) : n;
 }
 
+/** A name as its words: letters and digits in runs, lower case, accents aside. */
+function stUnitWords(s) {
+  return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
 /**
- * What Find Matches proposes: every candidate whose title (a page) or name
- * without its extension (a file) is a unit's name or one of its Also Called,
- * as Progress matches a tool's groups (stProgressMatch: case, spaces,
- * punctuation and accents aside). `units` are [{ name, also, attached: Set
- * of keys }] in the Units order; `candidates` are [{ key, label, ... }].
- * Returns [{ unit, candidate }] in the units' order, then the candidates'.
- * What a unit has already is not proposed for it.
+ * Does `text` hold `name` as whole words: the name's words in a row, each a
+ * whole word of the text (between characters that are neither letters nor
+ * digits), in any letter case? "Mack 1994 - Measuring" holds Mack;
+ * "Mackenzie 2001" and "Unmacked" do not.
+ */
+function stUnitHolds(text, name) {
+  const hay = stUnitWords(text);
+  const want = stUnitWords(name);
+  if (!want.length) return false;
+  for (let i = 0; i + want.length <= hay.length; i++) if (want.every((w, j) => hay[i + j] === w)) return true;
+  return false;
+}
+
+/**
+ * What Find Matches proposes. First every candidate whose title (a page) or
+ * name without its extension (a file) is a unit's name or one of its Also
+ * Called, as Progress matches a tool's groups (stProgressMatch: case,
+ * spaces, punctuation and accents aside). Then every candidate whose name
+ * holds a unit's name, or one of its Also Called names, as whole words
+ * (stUnitHolds), for each unit it does. `units` are [{ name, also, attached:
+ * Set of keys }] in the Units order; `candidates` are [{ key, label, ... }].
+ * Returns [{ unit, candidate, exact, why }]: the exact ones in the units'
+ * order, then the candidates', and after them the ones that hold a name the
+ * same way; `why` says which name ("name is Mack", "name holds Chain
+ * Ladder"). An item is proposed once for a unit, and what a unit has already
+ * is not proposed for it.
  */
 function stUnitProposals(units, candidates) {
   const list = Array.isArray(units) ? units : [];
-  const groups = (candidates || []).map((c, i) => ({ group: String(i), label: c.label, candidate: c }));
+  const all = candidates || [];
+  const groups = all.map((c, i) => ({ group: String(i), label: c.label, candidate: c }));
   const m = stProgressMatch(list.map((u) => ({ name: u.name, also: u.also })), groups);
+  const has = (unit, c) => !!(unit.attached && unit.attached.has(c.key));
   const out = [];
+  const taken = new Set();
   m.matched.forEach((gs, i) => {
     const unit = list[i];
-    for (const g of gs) if (!(unit.attached && unit.attached.has(g.candidate.key))) out.push({ unit: unit.name, candidate: g.candidate });
+    for (const g of gs) {
+      taken.add(`${i}|${g.candidate.key}`);
+      if (has(unit, g.candidate)) continue;
+      const named = [unit.name, ...stProgressAliases(unit.also)].find((n) => stProgressFold(n) === stProgressFold(g.label)) || unit.name;
+      out.push({ unit: unit.name, candidate: g.candidate, exact: true, why: `name is ${named}` });
+    }
+  });
+  list.forEach((unit, i) => {
+    const names = [unit.name, ...stProgressAliases(unit.also)];
+    for (const c of all) {
+      if (taken.has(`${i}|${c.key}`) || has(unit, c)) continue;
+      const held = names.find((n) => stUnitHolds(c.label, n));
+      if (held) out.push({ unit: unit.name, candidate: c, exact: false, why: `name holds ${held}` });
+    }
   });
   return out;
 }
