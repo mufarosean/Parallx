@@ -174,10 +174,16 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
     st.synced = true;
     return;
   }
+  // The Days columns Study works out that are not there now: put back when it is time to (`fresh`, empty until
+  // written again), else not read and not written (`absent`). Neither ever reads as a day he changed.
+  const has = new Set((infos[3].columns || []).map((c) => String(c.name).toLowerCase()));
+  const missing = stPlanColumns().days.filter((c) => c.type !== 'title' && !has.has(c.name.toLowerCase())).map((c) => c.name);
   if (ensure) {
     const cols = stPlanColumns();
     for (const [key, name] of ST_PLAN_DBS) { stPlanLive(st); await door.ensureColumns(plan[key], cols[name.toLowerCase()]); }
   }
+  const fresh = ensure ? missing : [];
+  const absent = ensure ? [] : missing;
   const log = logId ? await door.get(logId).catch(() => null) : null;
   const [planRows, weekRows, phaseRows, dayRows, logRows] = await Promise.all([
     door.listRows(plan.planDb), door.listRows(plan.weekDb), door.listRows(plan.phasesDb), door.listRows(plan.daysDb),
@@ -187,9 +193,11 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
   const done = logRows ? stPlanDoneByDate(logRows, stPlanLocalDate) : null;
   const rec = await db.get('SELECT written_json FROM st_plans WHERE id = ?', [plan.id]);
   const before = rec ? String(rec.written_json || '{}') : '{}';
-  const r = stPlanReconcile({ rules, rows: dayRows, written: stParseJson(before, {}) || {}, done });
+  const prior = stParseJson(before, {}) || {};
+  const r = stPlanReconcile({ rules, rows: dayRows, written: prior, done, absent, fresh });
   let written = r.written;
-  if (stPlanHasStretch(rules)) {
+  // Without its Date or Edited column a day cannot be told from another, or his from Study's: nothing is written.
+  if (stPlanHasStretch(rules) && !absent.includes('Date') && !absent.includes('Edited')) {
     if (r.removes.length) { stPlanLive(st); await door.removeRows(plan.daysDb, r.removes); }
     if (r.updates.length) { stPlanLive(st); await door.updateRows(plan.daysDb, r.updates); }
     if (r.adds.length) {

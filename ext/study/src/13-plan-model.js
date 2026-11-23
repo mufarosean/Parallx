@@ -320,7 +320,17 @@ function stPlanCellKey(name, value) {
 
 /** The cells of a row that the rules give, as Study compares them. */
 const stPlanRuleCellsOf = (values) => Object.fromEntries(ST_PLAN_RULE_CELLS.map((c) => [c, stPlanCellKey(c, stPlanCell(values, c))]));
-const stPlanSameCells = (a, b) => ST_PLAN_RULE_CELLS.every((c) => JSON.stringify(a[c]) === JSON.stringify(b[c]));
+/** The rule cells of a row the same as a record's, leaving out `skip` (columns with no reading). */
+const stPlanSameCells = (a, b, skip = null) => ST_PLAN_RULE_CELLS.every((c) => (skip && skip.has(c)) || JSON.stringify(a[c]) === JSON.stringify(b[c]));
+/** A row as Study last wrote it, or as it was about to (a record entry's `prev` is the write before one that may not have landed). */
+const stPlanAsWritten = (cells, w, skip) => stPlanSameCells(cells, w, skip) || (!!w.prev && stPlanSameCells(cells, w.prev, skip));
+
+/** The date a Days row's title says ("Mon, Jan 4, 2027", as stPlanDayTitle writes it), else ''. */
+function stPlanDateOfTitle(title) {
+  const m = /^\w{3}, (\w{3}) (\d{1,2}), (\d{4})$/.exec(String(title || '').trim());
+  const month = m ? ST_PLAN_MONTHS.indexOf(m[1]) : -1;
+  return month < 0 ? '' : stPlanDateOf(`${m[3]}-${String(month + 1).padStart(2, '0')}-${m[2].padStart(2, '0')}`);
+}
 
 /** A Days row's title: unique to its day. */
 const stPlanDayTitle = (iso) => stPlanDateWords(iso, { year: true });
@@ -342,19 +352,26 @@ const stPlanDayTitle = (iso) => stPlanDateWords(iso, { year: true });
  * removes: [pageId], written (the next record, by row id), outside: [{
  * pageId, date, ...cells }] }. Only differences are in `updates`.
  */
-function stPlanReconcile({ rules, rows, written = {}, done = null }) {
+function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], fresh = [] }) {
   const prior = written || {};
+  // A Days column that is not there (`absent`), or was just put back and is empty (`fresh`), has no reading: it never
+  // counts as his edit. An absent one is not written; a fresh one is written again from the rules, its dates from the titles.
+  const missing = new Set(absent);
+  const blank = new Set(fresh);
+  const skip = new Set([...missing, ...blank]);
   const start = rules.start; const end = stPlanHasStretch(rules) ? stPlanAddDays(rules.exam, -1) : '';
   const inPlan = (d) => !!end && start <= d && d <= end;
   const seen = [];
   for (const r of rows || []) {
     const v = r.values || {};
-    const date = stPlanDateOf(stPlanCell(v, 'Date'));
+    const date = stPlanDateOf(stPlanCell(v, 'Date')) || (blank.has('Date') ? stPlanDateOfTitle(r.title) : '');
     const w = prior[r.pageId] || null;
     const ticked = stPlanCellKey('Edited', stPlanCell(v, 'Edited'));
     const cells = stPlanRuleCellsOf(v);
+    // A kept day's cell in a column just put back is the one in Study's record, the best there is.
+    if (w) for (const c of blank) if (c in w) cells[c] = w[c];
     // His when ticked; when Study's record says it ticked it and he has unticked it, the rules again.
-    const changed = !ticked && !!w && !w.Edited && !stPlanSameCells(cells, w);
+    const changed = !ticked && !!w && !w.Edited && !stPlanAsWritten(cells, w, skip);
     seen.push({ row: r, date, w, cells, kept: ticked || changed, tick: changed });
   }
   const byDate = new Map();
@@ -387,17 +404,22 @@ function stPlanReconcile({ rules, rows, written = {}, done = null }) {
     if (done) want.Done = stPlanRound(done.get(d.date) || 0);
     const s = byDate.get(d.date);
     if (!s) {
+      for (const c of missing) delete want[c];
       adds.push({ date: d.date, title: stPlanDayTitle(d.date), values: Object.fromEntries(Object.entries(want).map(([k, v]) => [k, v === '' ? null : v])) });
       continue;
     }
     if (s.tick) want.Edited = true;
+    // A kept day loses nothing to a column put back: its Date, and its cells as Study last had them.
+    if (d.kept) for (const c of blank) want[c] = c === 'Date' ? d.date : c === 'Type' ? d.type : c === 'Phase' ? d.phase : d[c.toLowerCase()];
+    for (const c of missing) delete want[c];
     const values = {};
     for (const [k, v] of Object.entries(want)) {
       if (JSON.stringify(stPlanCellKey(k, stPlanCell(s.row.values, k))) !== JSON.stringify(stPlanCellKey(k, v))) values[k] = v === '' ? null : v;
     }
     if (Object.keys(values).length) updates.push({ pageId: s.row.pageId, values });
+    const { prev: _prev, ...was } = s.w || s.cells;
     next[s.row.pageId] = d.kept
-      ? { ...(s.w || s.cells), Edited: true }
+      ? { ...was, Edited: true }
       : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
   }
   return { days, adds, updates, removes, written: next, outside };

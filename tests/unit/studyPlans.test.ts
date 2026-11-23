@@ -210,3 +210,34 @@ describe('finding a plan', () => {
     expect(labels()).toEqual(expect.arrayContaining(['Open Plan', 'New Plan…']));
   });
 });
+
+describe('a Days column deleted or renamed', () => {
+  const edited = (h: Awaited<ReturnType<typeof planned>>) => h.days().filter((d) => d.values.Edited).length;
+  it('is no edit of his: no day is marked Edited, and once it is put back its cells are worked out again', async () => {
+    const h = await planned();
+    h.person.dropColumn(h.db('Days'), 'Standard');
+    await h.settle();
+    expect(edited(h)).toBe(0);
+    h.person.edit(h.db('Week'), 'Personal, Sat', { values: { Standard: 6 } });
+    await h.settle();
+    expect(h.db('Days').columns.some((c) => c.name === 'Standard')).toBe(true);
+    expect([edited(h), h.day('2027-01-09').values.Standard, h.day('2027-01-05').values.Standard, h.total()]).toEqual([0, 6, 2, 160]);
+  });
+
+  it('renamed: no day is marked Edited', async () => {
+    const h = await planned();
+    h.person.renameColumn(h.db('Days'), 'Work', 'Work Hours');
+    await h.settle();
+    expect(edited(h)).toBe(0);
+  });
+
+  it('Date deleted and put back: the days keep their rows, dated again from their titles, no second set', async () => {
+    const h = await planned();
+    h.person.dropColumn(h.db('Days'), 'Date');
+    await h.settle();
+    h.person.edit(h.db('Week'), 'Personal, Sat', { values: { Standard: 6 } });
+    await h.settle();
+    expect([h.days().length, h.days().filter((d) => !d.values.Date).length, edited(h), h.day('2027-01-09').values.Standard]).toEqual([56, 0, 0, 6]);
+  });
+});
+
