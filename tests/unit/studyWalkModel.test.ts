@@ -404,3 +404,16 @@ describe('the session clock', () => {
     expect(stClockAdvance(s, 8 * 60 * MIN, true, 8 * 60 * MIN)).toBe(5000);
   });
 });
+
+describe('the New Plan sheet\'s sum, with days off', () => {
+  it('counts the days off before the exam at no hours', () => {
+    const { stPlanFormTotals } = T;
+    const form = { start: '2027-01-04', exam: '2027-01-18', personal: { Mon: 2, Tue: 2, Wed: 2, Thu: 2, Fri: 2, Sat: 2, Sun: 2 }, work: {}, less: 1, more: 1, off: '0' };
+    expect(stPlanFormTotals(form)).toEqual({ Floor: 14, Standard: 28, Stretch: 42, days: 14, off: 0 });
+    expect(stPlanFormTotals({ ...form, off: '3' })).toEqual({ Floor: 11, Standard: 22, Stretch: 33, days: 14, off: 3 });
+    // What cannot be days off (not a number, the whole plan) leaves the sum as it was; Create says what is wrong.
+    expect(stPlanFormTotals({ ...form, off: 'two' })).toMatchObject({ Standard: 28, off: 0 });
+    expect(stPlanFormTotals({ ...form, off: '14' })).toMatchObject({ Standard: 28, off: 0 });
+    expect(stPlanFormTotals({ ...form, exam: '' })).toBeNull();
+  });
+});

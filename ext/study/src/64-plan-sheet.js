@@ -37,16 +37,19 @@ async function stCmdNewPlan(arg) {
   return stOpenPane({ view: 'newPlan', subjectId: s.id });
 }
 
-/** What the week of the form comes to over its dates: { Floor, Standard, Stretch, days }, or null while the dates do not make a stretch. */
+/** What the week of the form comes to over its dates, its days off before the exam at no hours: { Floor, Standard, Stretch, days, off }, or null while the dates do not make a stretch. */
 function stPlanFormTotals(form) {
+  const dated = stPlanDateOf(form.start) && stPlanDateOf(form.exam) && form.start < form.exam;
+  const asked = dated ? stPlanDaysOff(form.off) || 0 : 0;
+  const off = dated && asked < stPlanDaysBetween(form.start, form.exam) ? asked : 0;
   const rules = stPlanRules({
     plan: { 'Start Date': form.start, 'Exam Date': form.exam, Following: 'Standard' },
     week: stPlanWeekRowsOf(form).map((r, i) => ({ pageId: String(i), title: r.title, values: r.values })),
-    phases: [],
+    phases: off ? [{ pageId: 'off', title: 'Days off', values: { Kind: 'Rest', Start: stPlanAddDays(form.exam, -off), End: stPlanAddDays(form.exam, -1) } }] : [],
   });
   if (!stPlanHasStretch(rules)) return null;
   const days = stPlanDays(rules);
-  return { ...stPlanTotals(days), days: days.length };
+  return { ...stPlanTotals(days), days: days.length, off };
 }
 
 async function renderNewPlan(host, route, ctx) {
@@ -139,8 +142,7 @@ async function renderNewPlan(host, route, ctx) {
     examSaid.textContent = words(form.exam);
     startSaid.textContent = words(form.start);
     const t = stPlanFormTotals(form);
-    const off = stPlanDaysOff(form.off) || 0;
-    sums.textContent = t ? `Over ${t.days} days${off > 0 ? `, before the ${off} ${off === 1 ? 'day' : 'days'} off` : ''}: Floor ${stPlanH(t.Floor)} h, Standard ${stPlanH(t.Standard)} h, Stretch ${stPlanH(t.Stretch)} h. Rest, holidays and phases are rows you add after.` : 'Give both dates to see what this week comes to.';
+    sums.textContent = t ? `Over ${t.days} days${t.off > 0 ? `, the last ${t.off === 1 ? 'one' : t.off} off` : ''}: Floor ${stPlanH(t.Floor)} h, Standard ${stPlanH(t.Standard)} h, Stretch ${stPlanH(t.Stretch)} h. Rest, holidays and phases are rows you add after.` : 'Give both dates to see what this week comes to.';
     // Only the dates' problem is said as he types; the rest waits for Create.
     if (stPlanDateOf(form.exam) && stPlanDateOf(form.start) && form.exam <= form.start) say('The exam date must be after the start date.');
     else if (/exam date must be after/.test(problem.textContent)) say('');
