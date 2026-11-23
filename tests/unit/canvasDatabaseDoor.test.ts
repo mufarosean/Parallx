@@ -69,6 +69,17 @@ describe('api.canvas.databases: making and reading', () => {
     expect(await door.get('no-such-database')).toBeNull();
   });
 
+  it('opens with the widths a tool gave its columns, the title\'s too, each kept between 48 and 640 px', async () => {
+    const made = await door.create({ title: 'Week', columns: [{ name: 'Name', type: 'title', width: 240 }, { name: 'Days', type: 'tags', width: 200 }, { name: 'Hours', type: 'number', width: 12 }, { name: 'Note', type: 'text' }, { name: 'Wide', type: 'text', width: 5000 }] });
+    expect(names(made.columns)).toEqual(['Name', 'Days', 'Hours', 'Note', 'Wide']);
+    const view = (await dbs.listViews(made.id))[0]!;
+    const id = (n: string) => made.columns.find((c) => c.name === n)!.id;
+    expect((view.config as { widths: Record<string, number> }).widths).toEqual({ __title: 240, [id('Days')]: 200, [id('Hours')]: 48, [id('Wide')]: 640 });
+    // With no width asked for, the view is left as the app makes it.
+    const plain = await door.create({ title: 'Plain', columns: [{ name: 'Order', type: 'number' }] });
+    expect((await dbs.listViews(plain.id))[0]!.config).not.toHaveProperty('widths');
+  });
+
   it('a database made with no columns has only its title column', async () => {
     const made = await door.create({ title: 'Bare' });
     expect(names(made.columns)).toEqual(['Name']);

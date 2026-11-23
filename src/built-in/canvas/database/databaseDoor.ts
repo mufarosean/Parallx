@@ -204,7 +204,24 @@ export function createDatabaseDoor(db: DatabaseDataService, pages: ICanvasDataSe
         if (same(s.name, TITLE_COLUMN.name) || specs.findIndex((x) => same(x.name, s.name)) !== i) throw new Error(`Two columns are named "${s.name}".`);
       }
       const made = await db.createDatabase({ title, parentId: options?.parentPageId ?? null, seedDefaults: false });
-      for (const s of specs) await db.addProperty(made.id, s.name, s.type, s.config);
+      // Widths asked for go into the new table view, keyed as the view keys them (a column's id, the title's key).
+      const widths: Record<string, number> = {};
+      const sized = (spec: CanvasDatabaseColumnSpec): number | null => {
+        const w = Number(spec?.width);
+        return Number.isFinite(w) && w > 0 ? Math.round(Math.min(640, Math.max(48, w))) : null;
+      };
+      const asked = (options?.columns ?? []).filter((s) => !isTitleSpec(s));
+      const titleWidth = sized((options?.columns ?? []).find(isTitleSpec) as CanvasDatabaseColumnSpec);
+      if (titleWidth) widths[TITLE_KEY] = titleWidth;
+      for (const [i, s] of specs.entries()) {
+        const prop = await db.addProperty(made.id, s.name, s.type, s.config);
+        const w = sized(asked[i]);
+        if (w && prop?.id) widths[prop.id] = w;
+      }
+      if (Object.keys(widths).length) {
+        const view = (await db.listViews(made.id))[0];
+        if (view) await db.updateView(made.id, view.id, { config: { ...(view.config ?? {}), widths } });
+      }
       return (await info(made.id))!;
     },
 

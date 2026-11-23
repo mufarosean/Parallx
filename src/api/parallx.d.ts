@@ -1791,6 +1791,13 @@ export namespace canvas {
        * when you start and when columns change to put it back.
        */
       readonly config?: Readonly<Record<string, unknown>>;
+      /**
+       * `create` only: the column's width in the new database's table, in
+       * px (kept between 48 and 640), so it opens sized to what it holds.
+       * A `{ name: 'Name', type: 'title', width }` spec sizes the title
+       * column. The person can resize every column as usual.
+       */
+      readonly width?: number;
     }
     interface Database {
       readonly id: string;

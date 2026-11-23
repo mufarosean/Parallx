@@ -36,6 +36,12 @@ export interface CanvasDatabaseColumnSpec {
    * (its own id is stored, whatever is passed): only that tool writes its cells.
    */
   readonly config?: Readonly<Record<string, unknown>>;
+  /**
+   * `create` only: the column's width in the new database's table, in px
+   * (kept between 48 and 640), so a database a tool makes opens with its
+   * columns sized to what they hold. A title spec sizes the title column.
+   */
+  readonly width?: number;
 }
 
 export interface CanvasDatabaseInfo {

@@ -792,6 +792,11 @@ Rules:
   extension off it stays, read-only. They can still delete the column:
   `ensureColumns` puts it back (empty), then write its values again. Keep
   only what you compute; everything a person might correct stays theirs.
+- **Sized to what it holds.** A column made by `create` may carry a
+  `width` in px (48 to 640) for the new table; `{ name: 'Name', type:
+  'title', width }` sizes the title column. Give narrow numbers and dates
+  narrow widths so the columns the person types into are on screen when the
+  table opens; they can resize every column as usual.
 - **Names are the contract.** Values are keyed by column name, matched
   whatever the case. A name the database lacks is refused with the names it
   has, and nothing is written. The person can rename a column: `get` it by

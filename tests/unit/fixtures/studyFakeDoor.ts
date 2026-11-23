@@ -22,14 +22,15 @@ export function fakeDoor() {
     list: async () => [...dbs.values()].filter((d) => !d.trashed).map((d) => ({ id: d.id, title: d.title })),
     get: async (dbId: string) => { const d = dbs.get(dbId); return d ? { id: d.id, title: d.title, pageId: d.id, parentPageId: d.parentPageId, columns: [TITLE, ...d.columns.map((c) => ({ ...c }))], ...(d.trashed ? { trashed: true } : {}) } : null; },
     create: async (o: { title: string; parentPageId?: string; columns?: any[] }) => {
-      const d: Db = { id: id('db'), title: o.title, parentPageId: o.parentPageId ?? null, columns: (o.columns || []).map((s) => ({ id: id('col'), name: s.name, type: s.type, config: { ...(s.config || {}), ...options(s) } })), rows: [] };
+      const d: Db = { id: id('db'), title: o.title, parentPageId: o.parentPageId ?? null, columns: (o.columns || []).filter((s) => s.type !== 'title').map((s) => ({ id: id('col'), name: s.name, type: s.type, config: { ...(s.config || {}), ...options(s) } })), rows: [] };
       dbs.set(d.id, d); writes.push(`create ${o.title}`);
       return door.get(d.id);
     },
     createPage: async (o: { title: string }) => { writes.push(`page ${o.title}`); return { id: id('page') }; },
     ensureColumns: async (dbId: string, specs: any[]) => {
       const d = need(dbId);
-      for (const s of specs) {
+      // As the canvas's door: the title column is always there.
+      for (const s of specs.filter((x) => x.type !== 'title')) {
         const have = d.columns.find((c) => c.name.toLowerCase() === String(s.name).toLowerCase());
         if (!have) { d.columns.push({ id: id('col'), name: s.name, type: s.type, config: { ...(s.config || {}), ...options(s) } }); writes.push(`column ${d.title}.${s.name}`); fire(dbId, 'columns'); continue; }
         // As the canvas's door: a column that is there only gains the listed options it lacks.

@@ -5925,18 +5925,25 @@ async function stListPlans() {
   return (await db.all('SELECT * FROM st_plans ORDER BY created_at, id')).map(stRowToPlan);
 }
 
-/** The columns of a plan's four databases (each has its title column, "Name", first). */
+/**
+ * The columns of a plan's four databases (each has its title column, "Name",
+ * first), each with the width it opens at: narrow numbers and dates, so the
+ * cells he types into (a block's hours, a day's hours and Edited) are on
+ * screen in a tab beside the sidebar.
+ */
 function stPlanColumns() {
-  const kept = (name) => ({ name, type: 'number', config: { computedBy: true } });
-  const hours = ['Floor', 'Standard', 'Stretch'].map((name) => ({ name, type: 'number' }));
+  const kept = (name, width) => ({ name, type: 'number', config: { computedBy: true }, width });
+  const hours = (width) => ['Floor', 'Standard', 'Stretch'].map((name) => ({ name, type: 'number', width }));
+  const title = (width) => ({ name: 'Name', type: 'title', width });
   return {
-    plan: [{ name: 'Exam Date', type: 'date' }, { name: 'Start Date', type: 'date' }, { name: 'Hours Goal', type: 'number' }, { name: 'Following', type: 'select', config: { options: ST_PLAN_PLANS } }],
-    week: [{ name: 'Days', type: 'tags', config: { options: ST_PLAN_WEEKDAYS } }, { name: 'Account', type: 'select', config: { options: ['Personal', 'Work'] } }, { name: 'From', type: 'date' }, { name: 'Until', type: 'date' }, ...hours],
-    phases: [{ name: 'Kind', type: 'select', config: { options: ST_PLAN_KINDS } }, { name: 'Start', type: 'date' }, { name: 'End', type: 'date' }, { name: 'Items', type: 'number' }, { name: 'Minutes per Item', type: 'number' }],
+    plan: [title(200), { name: 'Exam Date', type: 'date', width: 130 }, { name: 'Start Date', type: 'date', width: 130 }, { name: 'Hours Goal', type: 'number', width: 110 }, { name: 'Following', type: 'select', config: { options: ST_PLAN_PLANS }, width: 120 }],
+    week: [title(240), { name: 'Days', type: 'tags', config: { options: ST_PLAN_WEEKDAYS }, width: 200 }, { name: 'Account', type: 'select', config: { options: ['Personal', 'Work'] }, width: 110 }, { name: 'From', type: 'date', width: 120 }, { name: 'Until', type: 'date', width: 120 }, ...hours(84)],
+    phases: [title(240), { name: 'Kind', type: 'select', config: { options: ST_PLAN_KINDS }, width: 110 }, { name: 'Start', type: 'date', width: 120 }, { name: 'End', type: 'date', width: 120 }, { name: 'Items', type: 'number', width: 84 }, { name: 'Minutes per Item', type: 'number', width: 140 }],
     days: [
-      { name: 'Date', type: 'date' }, { name: 'Type', type: 'select', config: { options: ST_PLAN_KINDS } }, { name: 'Phase', type: 'text' },
-      { name: 'Work', type: 'number' }, ...hours, kept('Planned'), kept('Running'), kept('Done'),
-      { name: 'Edited', type: 'checkbox' }, { name: 'Note', type: 'text' },
+      title(150), { name: 'Date', type: 'date', width: 110 }, { name: 'Type', type: 'select', config: { options: ST_PLAN_KINDS }, width: 100 }, { name: 'Phase', type: 'text', width: 150 },
+      { name: 'Work', type: 'number', width: 66 }, { name: 'Floor', type: 'number', width: 66 }, { name: 'Standard', type: 'number', width: 84 }, { name: 'Stretch', type: 'number', width: 72 },
+      kept('Planned', 80), kept('Running', 80), kept('Done', 66),
+      { name: 'Edited', type: 'checkbox', width: 72 }, { name: 'Note', type: 'text', width: 200 },
     ],
   };
 }
