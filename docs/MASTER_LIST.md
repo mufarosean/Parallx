@@ -1600,8 +1600,49 @@ request, in Study alone (no core code changed). Commits `6f6ec764`,
   what must stay (a plan made, the exam date moved, a day he changes,
   Done, no today given). `npm run typecheck`, `npx vitest run`
   (9857 passed, 18 skipped as before) and `npm run build` pass.
-- Not done by the builder: the independent review (step 7 of
-  `ship-piece`) and the claim check; they follow.
+- Run again by the session after the build, not by the builder:
+  typecheck, the unit tests, the build and all six Study probes, with the
+  same counts. The keyboard audit, the touch drags and the visual probe
+  were the builder's runs and were not run again after the review's
+  fixes, which change one sentence on the tab and nothing else he sees.
+
+*The independent review (`454169c0`).* Three reviewers who did not see
+the build (bugs, modularity, the UI rules), then a skeptic on all twelve
+findings. Fixed:
+- A day gone by he unticked Edited on: Study ticked it again one run
+  later. It now stays as he left it, unticked, and the tab's note says
+  unticking is for a day still to come. The same cause could mark a day
+  Edited that he never touched (a write that did not land before
+  midnight); both have a unit test that fails on the code before.
+- A session tab closed while it loads left the idle clock's four
+  listeners on the window until a reload, Study off or not. Unit test.
+- `studyPlans.test.ts` used the machine's date: eight tests would have
+  failed from January 2027. Its date is now held; no expectation changed;
+  seen passing with the clock at 2027-02-10.
+The skeptic ruled only the third as mattering to him; the first two were
+fixed as well because the tab's own words were untrue and "off means
+off" is the first principle. Reproduced and left, for him to overrule:
+- Remove Unit… on a subject whose questions are in Study's own Questions
+  database (Unit is a relation there): a new row of the same name comes
+  back with no questions, so the question's words are untrue there. They
+  are true for a bank that names units in words, which is his.
+- Floor and Stretch totals drift by a day's difference each midnight when
+  a Work row's hours differ by plan (the sheet writes them the same; only
+  a hand edit of Week makes it). Edited days already did this.
+- Remove Unit… removes the row before it records the name: the app
+  closed between the two makes the unit again.
+- The idle stop is not shown or said anywhere, and no line tells him the
+  ten-minute rule. Reading for ten minutes with no key, click or scroll
+  loses those minutes.
+- Study gives the kit's text field its accent ring inside its sheets, so
+  one field focuses two ways in the app; the ring belongs in the kit.
+- The new explaining lines use the secondary text colour where the hints
+  beside them use muted, and a 2px gap off the space scale.
+- Not put to the skeptic, from the UI review: Done mixes "4 min" and
+  "1.6" under one header; the plan tab's body is redrawn whole when
+  today's Done moves; "Rules that disagree" appears unannounced; the Days
+  off hint is not tied to its field; Enter does not start from a Mode or
+  Answer choice and Start does not name the key.
 
 *Two probe checks believed wrong, left as they are: 1.5 and 1.7.* Both
 fail only on "a row too many" in the tab, while what they are about holds
@@ -1618,7 +1659,7 @@ copy are in the session's scratchpad; he decides.
 *Decided for him to overrule.*
 - A start date moved later leaves the earlier days' rows in Days. They
   are outside the plan: the tab does not show them and their Running no
-  longer moves. A past day he unticks Edited on stays as it is.
+  longer moves. A past day he unticks Edited on stays as it is, unticked.
 - A plan made before this piece is not changed: its "Start to exam" keeps
   its dates until he sets its Follows to Whole plan (the column is added).
 - "Study days in no Study phase" is said only when the plan has a Study
