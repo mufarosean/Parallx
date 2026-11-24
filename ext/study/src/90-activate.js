@@ -81,6 +81,7 @@ export async function activate(api, context) {
   registerPlans(owned, token);
   registerProgress(owned, 0, token);
   registerUnits(owned, token);
+  registerWork(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -121,6 +122,7 @@ export async function deactivate() {
   stSubjectsReset();
   stPlansReset();
   stProgressReset();
+  stWorkReset();
   stUnitsReset();
   _stUnitFocusFor = '';
   _stSubjectSheet = null;
@@ -264,7 +266,10 @@ export const __testables = {
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
   ST_PLAN_FOLLOWS, ST_PLAN_WORDS, stPlanFollow, stPlanFollowSettled, stPlanDaysOff, stPlanDoneWords,
   stUnitHolds, stUnitWords, stSubjectUnitsFromFolder, stRemoveUnit, stSubjectBankUnits,
-  ST_CLOCK_IDLE_MS, stClockState, stClockAdvance, stPlanFormTotals,
+  stPlanFormTotals,
+  // 16-work-model, 32-work: the Work Log's rows from the tools' reports and Study's own clocks
+  ST_WORK_CELLS, ST_WORK_READING, ST_WORK_DISCUSSION, stWorkUnitIndex, stWorkMinutes, stWorkWanted, stWorkRowValues, stWorkCellKey, stWorkSame, stWorkDecide, stWorkTimeWords, stWorkBreakdown,
+  stWorkSources, stWorkSyncSubject, stWorkSync, stWorkTouch, stWorkKeep, stReadingTargets, stReadingLook, stChatLook, stWorkTieChat, stWorkUnitOfQuestion, stDiscussUnitPrompt, stCmdDiscussUnit, registerWork, stWorkReset,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,

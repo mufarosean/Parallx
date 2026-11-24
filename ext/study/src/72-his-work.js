@@ -180,5 +180,8 @@ async function stDiscussInChat(q, item) {
     } catch { /* the prompt still names the source and quotes it */ }
   }
   await _api.commands.executeCommand('chat.stagePrompt', { text: stDiscussPrompt(m, { right: item.status === 'right' }) });
+  // A question of a subject's unit: the chat it is discussed in is the unit's, and the time in it counts for the unit.
+  const of = stWorkUnitOfQuestion(q);
+  if (of) await stWorkTieChat(of.subjectId, of.unitRow).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] the chat could not be tied to the unit:', err && err.message); });
   return true;
 }

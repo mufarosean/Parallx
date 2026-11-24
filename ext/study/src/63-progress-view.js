@@ -72,6 +72,39 @@ function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, 
   });
 }
 
+/**
+ * Where the minutes came from: a table of the Work Log's minutes by kind, for
+ * today and for this week (Monday to Sunday), each time with its unit. It is
+ * read from the Work Log's rows alone, so a row he changes changes it.
+ */
+function stProgressTimeWorked(into, worked, subject) {
+  const ui = _api.ui;
+  const head = ui.createBlock(into, 'div', { className: 'st-prog__timehd' });
+  ui.createSectionLabel(head, 'Time worked');
+  ui.createBlock(head, 'span', { className: 'st-sp' });
+  ui.createButton(head, { id: 'study.progress.openWorkLog', label: 'Open Work Log', icon: 'database', kind: 'ghost', size: 'sm', command: 'canvas.openPage', args: [subject.logDb] });
+  if (!worked.rows.length) {
+    ui.createBlock(into, 'div', { className: 'st-prog__timenone', text: 'No time in the Work Log this week. Minutes from sessions, problems, cards, reading and discussion show here by kind.' });
+    return;
+  }
+  const table = ui.createBlock(into, 'table', { className: 'st-prog__timetable' });
+  ui.createBlock(table, 'caption', { className: 'px-visually-hidden', text: 'Time worked by kind' });
+  const top = ui.createBlock(ui.createBlock(table, 'thead'), 'tr');
+  ui.createBlock(top, 'th', { text: 'Kind', attrs: { scope: 'col' } });
+  ui.createBlock(top, 'th', { text: 'Today', attrs: { scope: 'col' } });
+  ui.createBlock(top, 'th', { text: 'This week', attrs: { scope: 'col' } });
+  const rows = ui.createBlock(table, 'tbody');
+  const line = (name, today, week, className = '') => {
+    const tr = ui.createBlock(rows, 'tr', className ? { className } : {});
+    ui.createBlock(tr, 'th', { text: name, attrs: { scope: 'row' } });
+    ui.createBlock(tr, 'td', { text: stWorkTimeWords(today) });
+    ui.createBlock(tr, 'td', { text: stWorkTimeWords(week) });
+  };
+  for (const r of worked.rows) line(r.name, r.today, r.week);
+  line('Total', worked.today, worked.week, 'st-prog__timesum');
+  ui.createBlock(into, 'div', { className: 'st-prog__timenote', text: 'From the Work Log, Monday to Sunday. The plan counts the same minutes as Done.' });
+}
+
 async function renderProgress(host, route, ctx) {
   const subjectId = Number(route.subjectId) || 0;
   const ui = _api.ui;
@@ -100,6 +133,8 @@ async function renderProgress(host, route, ctx) {
   });
   const body = ui.createBlock(inner, 'div', { className: 'st-prog__body' });
   const top = ui.createBlock(body, 'div', { className: 'st-prog__top' });
+  // Where the subject's minutes came from, today and this week, read from its Work Log.
+  const time = ui.createBlock(body, 'section', { className: 'st-prog__time', attrs: { 'aria-label': 'Time worked' } });
   const bar = ui.createBlock(body, 'div', { className: 'st-prog__bar' });
   ui.createSectionLabel(bar, 'Units');
   ui.createBlock(bar, 'span', { className: 'st-sp' });
@@ -119,7 +154,7 @@ async function renderProgress(host, route, ctx) {
   let kinds = 0;
   const fit = () => { const w = list.clientWidth; list.classList.toggle('st-prog__list--stacked', w > 0 && w < 200 * (kinds + 1)); };
   if (typeof ResizeObserver === 'function') { const seen = new ResizeObserver(fit); seen.observe(list); ctx.add({ dispose: () => seen.disconnect() }); }
-  const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
+  const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); time.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
   const stacked = (into, options) => { const b = ui.createStackedBar(into, options); bars.push(b); return b; };
   /** One kind's bar with its "N of M": the cell of a row, or a line of the totals. */
   const cell = (into, kindName, options, counts) => {
@@ -140,7 +175,9 @@ async function renderProgress(host, route, ctx) {
     const s = shownNow();
     if (!s) { ctx.rerender(); return; }
     const view = s.problem || !s.ready ? null : stProgressOfSubject(subjectId);
-    const key = JSON.stringify([s.problem, s.ready, sort, view]);
+    const live = _stSubjects.get(subjectId);
+    const worked = view && live && subject.logDb ? stWorkBreakdown(live.logRows || [], stPlanToday(), stPlanLocalDate) : null;
+    const key = JSON.stringify([s.problem, s.ready, sort, view, worked]);
     if (key === drawn) return;
     drawn = key;
     const focused = body.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
@@ -173,6 +210,8 @@ async function renderProgress(host, route, ctx) {
       ui.createBlock(item, 'span', { className: 'px-stacked-bar-key st-prog__sw', attrs: { 'data-state': state, 'aria-hidden': 'true' } });
       ui.createBlock(item, 'span', { text: ST_PROGRESS_WORDS[state] });
     }
+
+    if (worked) stProgressTimeWorked(time, worked, subject);
 
     // A row per unit: its name (the unit's setup, as in the sidebar), then one bar per kind.
     list.style.setProperty('--st-prog-kinds', String(view.kinds.length));

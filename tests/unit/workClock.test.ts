@@ -89,6 +89,45 @@ describe('lookAtWorkClock', () => {
   });
 });
 
+describe("a session's clock, as Study's own tests held it", () => {
+  const MIN = 60_000;
+  /** Run the clock a second at a time from `from` to `to` (after T0); `inputs` are the moments he touched the app, `hidden` the spans its tab was not showing. */
+  function run(state: ReturnType<typeof workClockState>, from: number, to: number, inputs: number[] = [], hidden: [number, number][] = []) {
+    let total = 0; let last = Math.max(from, ...inputs.filter((t) => t <= from), state.inputSeen - T0);
+    for (let t = from + 1000; t <= to; t += 1000) {
+      for (const i of inputs) if (i <= t && i > last) last = i;
+      total += sum(lookAtWorkClock(state, T0 + t, !hidden.some(([a, b]) => t > a && t <= b), T0 + last, IDLE));
+    }
+    return total;
+  }
+  it('counts while the tab is showing and he is there', () => {
+    expect(run(workClockState(T0), 0, 6 * MIN, [1, 2, 3, 4, 5, 6].map((m) => m * MIN))).toBe(6 * MIN);
+  });
+  it('takes a stretch that ends idle back, once, and keeps what came before it', () => {
+    const s = workClockState(T0);
+    // Six minutes at the desk, then thirty with no input: the ten counted after the last key come back.
+    expect(run(s, 0, 36 * MIN, [1, 2, 3, 4, 5, 6].map((m) => m * MIN))).toBe(6 * MIN);
+    expect(s.idle).toBe(true);
+    // Back at the desk: it counts again from that input (half a second into the look that sees it).
+    expect(run(s, 36 * MIN, 40 * MIN, [36 * MIN + 500, 38 * MIN])).toBe(4 * MIN - 500);
+  });
+  it('writes no hour for an hour with no input', () => {
+    expect(run(workClockState(T0), 0, 61 * MIN)).toBe(0);
+  });
+  it('draws the line at the idle time: an input every 11 minutes counts nothing, one every 9 counts everything', () => {
+    expect(run(workClockState(T0), 0, 33 * MIN, [11, 22, 33].map((m) => m * MIN))).toBe(0);
+    expect(run(workClockState(T0), 0, 36 * MIN, [9, 18, 27, 36].map((m) => m * MIN))).toBe(36 * MIN);
+  });
+  it('counts nothing while the tab is not showing, whatever he does elsewhere in the app', () => {
+    const inputs = Array.from({ length: 14 }, (_, i) => (i + 1) * MIN);
+    expect(run(workClockState(T0), 0, 14 * MIN, inputs, [[1 * MIN, 13 * MIN]])).toBe(2 * MIN);
+  });
+  it('credits at most five seconds for one look, so a machine asleep does not count its nap', () => {
+    const s = workClockState(T0);
+    expect(sum(lookAtWorkClock(s, T0 + 8 * 60 * MIN, true, T0 + 8 * 60 * MIN, IDLE))).toBe(5000);
+  });
+});
+
 describe('the idle setting', () => {
   it('is one of 5, 10, 15 and 30 minutes, 10 when nothing or anything else is stored', () => {
     expect(IDLE_MINUTES_CHOICES).toEqual([5, 10, 15, 30]);

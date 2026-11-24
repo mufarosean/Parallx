@@ -244,7 +244,8 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
   }
   st.problem = '';
   const names = stSubjectNames(subject);
-  const [rows, unitRows] = await Promise.all([door.listRows(subject.questionsDb).then((r) => r.slice()), door.listRows(subject.unitsDb).then((r) => r.slice())]);
+  // The Work Log's rows too: where the subject's minutes came from is read from them (16-work-model.js), never from a tool.
+  const [rows, unitRows, logRows] = await Promise.all([door.listRows(subject.questionsDb).then((r) => r.slice()), door.listRows(subject.unitsDb).then((r) => r.slice()), logInfo ? door.listRows(subject.logDb).then((r) => r.slice(), () => []) : []]);
   const unitColumn = qInfo.columns.find((c) => stSubjectSameName(c.name, names.unit));
   const relation = !!unitColumn && unitColumn.type === 'relation';
   const titleById = new Map(unitRows.map((r) => [r.pageId, r.title]));
@@ -320,6 +321,7 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
   st.names = names;
   st.columns = qInfo.columns;
   st.logColumns = logInfo ? logInfo.columns.map((c) => c.name) : [];
+  st.logRows = logRows;
   st.synced = true;
 }
 

@@ -939,6 +939,7 @@ async function renderSession(host, route, ctx) {
     meta: `${ST_MODE_LABELS[session.mode] || session.mode} · ${ST_ANSWER_LABELS[answerFormat] || answerFormat}`,
     strand: true, closeTitle: 'End Session', onClose: () => endSession(),
   });
+  const clockLine = stBlock(sess, 'div', 'st-sess-clock');
   const main = stBlock(sess, 'div', 'st-sess-main');
   const qwrap = stBlock(main, 'div', 'st-qwrap');
   // An answered question he went back to (Previous) shows here, the live card kept as it was.
@@ -953,7 +954,7 @@ async function renderSession(host, route, ctx) {
   // The tab closed, or Study went off, while the reads above ran: nothing below is set up (what it adds to the
   // window would never be taken away).
   if (ctx.disposed()) return;
-  // ── Timing: seconds while this tab is showing and he is at the desk (16-clock-model.js), stored every 30 s and on close ──
+  // ── Timing: seconds while this tab is showing and he is at the desk (the app's clock), stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
   // The timer belongs to this activation: once Study goes off it stops, and
   // a save that lands after that is dropped quietly.
@@ -962,32 +963,27 @@ async function renderSession(host, route, ctx) {
     if (!stIsCurrent(timerToken)) return;
     stUpdateSession(session.id, { seconds }).catch((err) => { if (stIsCurrent(timerToken) && !stIsStopped(err)) console.warn('[Study] session time not saved:', err); });
   };
-  // He is at the desk when he pressed a key, clicked, tapped or scrolled anywhere in the app within the last ten
-  // minutes. A finger's scroll is its moves; a scroll the app makes by itself is not his.
-  let inputAt = Date.now();
-  const noteInput = () => { inputAt = Date.now(); };
-  const heard = ['keydown', 'pointerdown', 'wheel', 'touchmove'];
-  for (const type of heard) window.addEventListener(type, noteInput, { capture: true, passive: true });
+  // The app's clock (api.work): he is at the desk when he pressed a key, clicked, tapped or scrolled anywhere in the
+  // app within the idle time, one setting for the whole app; a stretch that ends idle is taken back.
   /** Is this tab the one showing: drawn at some size, in a window that is not hidden? */
-  const showing = () => !ctx.disposed() && host.isConnected && host.getClientRects().length > 0
-    && !(typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
-  const clock = stClockState(Date.now(), inputAt);
-  let carryMs = 0;
-  const look = () => {
-    carryMs += stClockAdvance(clock, Date.now(), showing(), inputAt);
-    const whole = Math.trunc(carryMs / 1000);
-    if (!whole) return;
-    carryMs -= whole * 1000;
+  const showing = () => {
+    const on = !ctx.disposed() && host.isConnected && host.getClientRects().length > 0
+      && !(typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
+    // A session showing is what the seconds count for: a unit's PDF or a chat beside it adds nothing of its own (32-work.js).
+    if (on) _stSessionShownAt = Date.now();
+    return on;
+  };
+  const count = (whole) => {
     const before = seconds;
     seconds = Math.max(0, seconds + whole);
     if (Math.floor(seconds / 30) !== Math.floor(before / 30)) saveSeconds();
   };
-  const tick = setInterval(() => {
-    if (!stIsCurrent(timerToken)) { clearInterval(tick); return; }
-    look();
-  }, 1000);
+  const work = stWorkApi();
+  const clock = work ? work.createClock({ showing, onCount: (whole) => { if (stIsCurrent(timerToken)) count(whole); } }) : null;
+  // The stop for idleness, and the return, said in a line under the session's bar.
+  const clockStatus = clock ? work.createClockStatus(clockLine, clock, { bar: true }) : null;
   // The tab closing is told too, with the time as it stands (a subject's Work Log row follows it).
-  ctx.add({ dispose: () => { clearInterval(tick); for (const type of heard) window.removeEventListener(type, noteInput, { capture: true }); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
+  ctx.add({ dispose: () => { if (clockStatus) clockStatus.dispose(); if (clock) clock.dispose(); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
 
   // ── Strand ──
   const segs = new Map();

@@ -3602,58 +3602,168 @@ function stUnitCountsLine(counts, words) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 16: THE SESSION CLOCK — the pure part
+// SECTION 16: THE WORK LOG'S ROWS FROM OTHER WORK — the pure part
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// A session's seconds are time with its tab showing and the person at the
-// desk. The clock cannot tell reading from a break: it sees only input (a
-// key, a click, a tap, a scroll). So it counts while the tab is showing and
-// the last input is less than ten minutes old, and when ten minutes pass
-// with none it takes the whole stretch since that input back, once: a break
-// with the tab up counts for nothing, and an hour left open writes no hour
-// to the Work Log. This is the rule of Worksheets' study clock, written
-// here again because an extension shares no code with a built-in tool. Time
-// is the wall time between two looks, capped, never a count of looks.
-// 60-pane.js runs it; this part has no timer, no DOM and no clock of its own.
+// A subject's Work Log is the one record of the work done on it, and the
+// plan's Done is the sum of its Minutes by day. A session writes its own row
+// (27-subjects.js). Everything else reaches the Work Log from a report: the
+// tools in which he works say what each day's work came to through the core's
+// work providers (api.work: minutes, items and right, by local day and group),
+// and Study's own clocks say what he read and discussed. This part is the
+// arithmetic of turning a report into rows, with no database and no DOM:
+// which unit a report's group is (the matching Progress uses: the unit's name,
+// then Also Called), the one row a tool, a unit and a day come to, the cells
+// Study writes for it, whether a row is still as Study wrote it (a row he
+// changed is his from then on), and where a subject's minutes came from for
+// today and the week. 32-work.js reads the reports and writes the rows.
 
-/** Ten minutes without input: where a stretch stops being study. */
-const ST_CLOCK_IDLE_MS = 10 * 60 * 1000;
-/** The most one look may count: a machine asleep, or a stalled tab, does not count its nap. */
-const ST_CLOCK_LOOK_MS = 5000;
+/** The cells of a Work Log row that Study writes from a report, in the table's order. */
+const ST_WORK_CELLS = ['Date', 'Minutes', 'Unit', 'Tool', 'Kind', 'Items', 'Right', 'Confirmed', 'Origin'];
+/** Study's own two kinds of work that are not a session, each counted by a clock of its own. */
+const ST_WORK_READING = 'Reading';
+const ST_WORK_DISCUSSION = 'Discussion';
 
-/** A clock that starts at `now`; `inputAt` is when he last touched the app. */
-function stClockState(now, inputAt = now) {
-  return { at: now, inputSeen: inputAt, stretchMs: 0, idle: false };
+/**
+ * Which unit a piece of work belongs to: the unit that claims the first of
+ * its groups any unit claims (a card's tags come before its deck, so a tag's
+ * unit wins over the deck's). `units` are [{ name, also }] in the Units
+ * order. Returns the unit's place in `units`, or -1 when no unit claims any.
+ */
+function stWorkUnitIndex(units, groups) {
+  const list = (Array.isArray(groups) ? groups : []).filter((g) => g && typeof g === 'object');
+  const { matched } = stProgressMatch(units, list);
+  let best = -1;
+  let at = Infinity;
+  matched.forEach((mine, i) => { for (const g of mine) { const k = list.indexOf(g); if (k < at) { at = k; best = i; } } });
+  return best;
+}
+
+/** Minutes as the Work Log holds them: whole, to the nearest. */
+const stWorkMinutes = (minutes) => { const n = Math.round(Number(minutes) || 0); return n > 0 ? n : 0; };
+
+/**
+ * What a source's report comes to for a subject: one row per unit and local
+ * day. `source` is { id, tool, kind }; `entries` are the report ({ day,
+ * groups, minutes, items, right? }, or { day, unitRow, minutes } for Study's
+ * own clocks, which know the unit); `units` are [{ name, rowId, also }].
+ * Work for a group no unit claims is in no row. Returns
+ * [{ key, source, tool, kind, unitRow, unit, day, minutes, items, right }]
+ * (`right` null when the source never says), a row that would hold no minute
+ * and no item left out.
+ */
+function stWorkWanted(source, entries, units) {
+  const by = new Map();
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(String(e.day || ''))) continue;
+    const unit = e.unitRow !== undefined ? units.find((u) => u.rowId === e.unitRow) : units[stWorkUnitIndex(units, e.groups)];
+    if (!unit) continue;
+    const key = `${source.id}\u0000${unit.rowId}\u0000${e.day}`;
+    let w = by.get(key);
+    if (!w) { w = { key, source: source.id, tool: source.tool, kind: source.kind, unitRow: unit.rowId, unit: unit.name, day: e.day, minutes: 0, items: 0, right: null }; by.set(key, w); }
+    w.minutes += Math.max(0, Number(e.minutes) || 0);
+    w.items += Math.max(0, Math.floor(Number(e.items) || 0));
+    if (e.right !== undefined && e.right !== null) w.right = (w.right || 0) + Math.max(0, Math.floor(Number(e.right) || 0));
+  }
+  return [...by.values()].map((w) => ({ ...w, minutes: stWorkMinutes(w.minutes) })).filter((w) => w.minutes > 0 || w.items > 0);
+}
+
+/** The row Study writes for one tool, unit and day: its title and its cells by column name. */
+function stWorkRowValues(want) {
+  return {
+    title: `${want.tool} · ${want.unit}`,
+    values: {
+      Date: `${want.day}T00:00`,
+      Minutes: want.minutes,
+      Unit: [want.unitRow],
+      Tool: want.tool,
+      Kind: want.kind,
+      Items: want.items,
+      Right: want.right === null || want.right === undefined ? null : want.right,
+      Confirmed: true,
+      Origin: 'App',
+    },
+  };
+}
+
+/** A cell as Study compares it: what he sees, whatever way the table stores it. */
+function stWorkCellKey(name, value) {
+  if (name === 'Date') return typeof value === 'string' ? value.trim().slice(0, 16) : '';
+  if (name === 'Minutes' || name === 'Items' || name === 'Right') return value === null || value === undefined || value === '' ? null : Number(value);
+  if (name === 'Unit') return (Array.isArray(value) ? value : value ? [value] : []).map((v) => (v && typeof v === 'object' ? String(v.id ?? v.pageId ?? '') : String(v))).sort();
+  if (name === 'Confirmed') return value === true || value === 1;
+  return String(Array.isArray(value) ? value.join(', ') : value ?? '').trim();
+}
+
+/** Do two sets of cells say the same, over the cells named in `a`? */
+function stWorkSame(a, b) {
+  return Object.keys(a || {}).every((name) => JSON.stringify(stWorkCellKey(name, (a || {})[name])) === JSON.stringify(stWorkCellKey(name, stPlanCell(b, name))));
 }
 
 /**
- * One look at the clock. Returns the milliseconds to add to the session:
- * above zero while its tab is `showing` and he is there, below zero once
- * when the stretch since his last input is found idle (what it counted comes
- * back), zero otherwise. `inputAt` is when he last touched the app.
+ * What to do with one row Study wants, given what it remembers of the row
+ * (`rec`: { rowId, written, pending, his }, or null when it never wrote one)
+ * and the row as the table has it now (`row`, or null when it is not there):
+ *   'add'     no row was ever written for this tool, unit and day
+ *   'none'    the row says what the tool says, or the row is his
+ *   'update'  the row is as Study wrote it and the tool says something new:
+ *             `values` are the cells to write
+ *   'his'     he changed the row, or took it out: it is never touched again
+ *             and no second row is made
+ * `values` are the cells Study would write (stWorkRowValues, the columns the
+ * table has).
  */
-function stClockAdvance(state, now, showing, inputAt, idleMs = ST_CLOCK_IDLE_MS) {
-  const passed = Math.min(ST_CLOCK_LOOK_MS, Math.max(0, now - state.at));
-  state.at = now;
-  if (inputAt > state.inputSeen) {
-    // He is back, or still here: a new stretch starts at this input. What passed up to it belongs to the stretch
-    // before, which stands (nothing, when that one had gone idle).
-    const wasIdle = state.idle;
-    state.inputSeen = inputAt;
-    state.stretchMs = 0;
-    state.idle = false;
-    return showing && !wasIdle ? passed : 0;
+function stWorkDecide(values, rec, row) {
+  if (!rec) return { act: 'add' };
+  if (rec.his) return { act: 'none' };
+  if (stWorkSame(values, rec.written)) return { act: 'none' };
+  if (!row) return { act: 'his' };
+  // As Study wrote it, or as it was about to write it when a write was cut short: still Study's.
+  const untouched = stWorkSame(rec.written, row.values) || (rec.pending && stWorkSame(rec.pending, row.values));
+  if (!untouched) return { act: 'his' };
+  const changed = Object.fromEntries(Object.entries(values).filter(([name, v]) => JSON.stringify(stWorkCellKey(name, v)) !== JSON.stringify(stWorkCellKey(name, stPlanCell(row.values, name)))));
+  return Object.keys(changed).length ? { act: 'update', values: changed } : { act: 'none', settle: true };
+}
+
+/** Minutes as a person reads them: "25 min", "1 h", "1 h 5 min". */
+function stWorkTimeWords(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  if (m < 60) return `${m} min`;
+  return m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`;
+}
+
+/**
+ * Where a subject's minutes came from, from its Work Log's rows: for today
+ * and for the week of today (Monday to Sunday, as the plan counts weeks), by
+ * the row's Kind (its Tool when it has no Kind, "Other" when it has
+ * neither). `localDate` turns a moment with a zone into the person's date.
+ * Returns { rows: [{ name, today, week }] (the kinds with minutes this week,
+ * the table's own kinds first, in its order), today, week } in minutes.
+ */
+function stWorkBreakdown(logRows, today, localDate = null) {
+  const monday = stPlanAddDays(today, -stPlanWeekdayIndex(today));
+  const sunday = stPlanAddDays(monday, 6);
+  const by = new Map();
+  let allToday = 0;
+  let allWeek = 0;
+  for (const r of logRows || []) {
+    const v = (r && r.values) || {};
+    const raw = stPlanCell(v, 'Date');
+    const zoned = typeof raw === 'string' && /T.*(Z|[+-]\d{2}:?\d{2})$/.test(raw);
+    const date = zoned && localDate ? localDate(raw) : stPlanDateOf(raw);
+    const minutes = stPlanHours(stPlanCell(v, 'Minutes'));
+    if (!date || !minutes || date < monday || date > sunday) continue;
+    const name = stWorkCellKey('Kind', stPlanCell(v, 'Kind')) || stWorkCellKey('Tool', stPlanCell(v, 'Tool')) || 'Other';
+    let k = by.get(name.toLowerCase());
+    if (!k) { k = { name, today: 0, week: 0 }; by.set(name.toLowerCase(), k); }
+    k.week += minutes;
+    allWeek += minutes;
+    if (date === today) { k.today += minutes; allToday += minutes; }
   }
-  if (state.idle) return 0;
-  if (now - inputAt >= idleMs) {
-    state.idle = true;
-    const back = state.stretchMs;
-    state.stretchMs = 0;
-    return back ? -back : 0;
-  }
-  if (!showing) return 0;
-  state.stretchMs += passed;
-  return passed;
+  const order = ['questions', 'problems', 'cards', 'reading', 'discussion', 'notes'];
+  const place = (k) => { const i = order.indexOf(k.name.toLowerCase()); return i < 0 ? order.length : i; };
+  const rows = [...by.values()].sort((a, b) => (place(a) - place(b)) || a.name.localeCompare(b.name));
+  return { rows, today: allToday, week: allWeek, monday, sunday };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5502,7 +5612,8 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
   }
   st.problem = '';
   const names = stSubjectNames(subject);
-  const [rows, unitRows] = await Promise.all([door.listRows(subject.questionsDb).then((r) => r.slice()), door.listRows(subject.unitsDb).then((r) => r.slice())]);
+  // The Work Log's rows too: where the subject's minutes came from is read from them (16-work-model.js), never from a tool.
+  const [rows, unitRows, logRows] = await Promise.all([door.listRows(subject.questionsDb).then((r) => r.slice()), door.listRows(subject.unitsDb).then((r) => r.slice()), logInfo ? door.listRows(subject.logDb).then((r) => r.slice(), () => []) : []]);
   const unitColumn = qInfo.columns.find((c) => stSubjectSameName(c.name, names.unit));
   const relation = !!unitColumn && unitColumn.type === 'relation';
   const titleById = new Map(unitRows.map((r) => [r.pageId, r.title]));
@@ -5578,6 +5689,7 @@ async function stSubjectSyncNow(st, { ensure = false } = {}) {
   st.names = names;
   st.columns = qInfo.columns;
   st.logColumns = logInfo ? logInfo.columns.map((c) => c.name) : [];
+  st.logRows = logRows;
   st.synced = true;
 }
 
@@ -8973,6 +9085,364 @@ function stUnitsReset() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 32: THE WORK LOG FROM OTHER WORK — the reports read, the rows written
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A subject's Work Log is the one record; the plan's Done is its sum. Besides
+// a session's own row (27-subjects.js), a day's work reaches it from reports:
+//
+//   the tools   whatever is registered with the core's work providers
+//               (api.work). Study names no tool: it lists the providers and
+//               reads each one's days. A tool turned off takes its provider
+//               away; the rows it led to stay, and carry on when it is back.
+//   reading     time with a PDF of a unit's Material showing, counted here by
+//               the app's clock (only Study knows which file is a unit's)
+//   discussion  time in a chat he opened from a unit (Discuss in Chat on the
+//               unit's tab, or on a question of a session), counted the same
+//               way; any other chat counts for nothing
+//
+// One row per source, unit and local day, which grows with the day's work
+// (st_work_rows remembers which, and what was written). A row he changed, or
+// took out, is his: never written again, and no second row is made. A row he
+// did not touch follows its source. Nothing is written when nothing changed.
+// Seconds are counted once: a session showing counts for the session, a PDF
+// showing beside the chat counts as reading.
+//
+// Everything here belongs to the activation: Study off, no provider is heard,
+// no clock runs, nothing is written. The pure part is 16-work-model.js.
+
+/** The core's work point and clock, or null on a host without them. */
+function stWorkApi() {
+  return _api && _api.work && typeof _api.work.providers === 'function' && typeof _api.work.createClock === 'function' ? _api.work : null;
+}
+
+let _stWorkTimer = 0;
+let _stWorkRunning = false;
+let _stWorkAgain = false;
+/** A work provider → what Study hears it with. */
+const _stWorkSubs = new Map();
+/** Study's own seconds on their way to st_work_time, in order. */
+let _stWorkKeeping = Promise.resolve();
+
+/** Something a row depends on changed (a report, a unit, the tools that are on): follow it shortly. */
+function stWorkTouch(token = stActivation()) {
+  if (!stIsCurrent(token) || !stWorkApi()) return;
+  clearTimeout(_stWorkTimer);
+  _stWorkTimer = setTimeout(() => { void stWorkSync(token); }, 400);
+}
+
+/** Every source as it reports now: the tools' providers, then Study's own two clocks. A tool that cannot say now is left out, so its rows stay as they are. */
+async function stWorkSources() {
+  const work = stWorkApi();
+  const out = [];
+  let providers = [];
+  try { providers = (work.providers() || []).filter((p) => p && typeof p.id === 'string' && p.id && typeof p.work === 'function'); } catch { providers = []; }
+  for (const p of providers) {
+    try { out.push({ id: `tool:${p.id}`, tool: String(p.displayName || p.id), kind: String(p.kind || ''), entries: (await p.work()) || [] }); } catch (err) { console.warn(`[Study] the work of ${p.id} could not be read:`, err && err.message); }
+  }
+  const own = await db.all('SELECT day, subject_id, unit_row, kind, seconds FROM st_work_time WHERE seconds > 0');
+  for (const kind of [ST_WORK_READING, ST_WORK_DISCUSSION]) {
+    out.push({ id: `study:${kind.toLowerCase()}`, tool: 'Study', kind, own: true, entries: own.filter((r) => r.kind === kind).map((r) => ({ day: r.day, subjectId: Number(r.subject_id), unitRow: String(r.unit_row), minutes: Number(r.seconds) / 60, items: 0 })) });
+  }
+  return out;
+}
+
+/** Make one subject's Work Log say what the sources say, row by row; returns how many rows were written. Runs in the subject's own order of work. */
+async function stWorkSyncSubject(st, sources) {
+  const door = stSubjectDoor();
+  const subject = st.subject;
+  if (!door || !subject.logDb || !st.synced || st.problem) return 0;
+  const has = (name) => (st.logColumns || []).some((c) => stSubjectSameName(c, name));
+  // A Work Log without its Date or its Minutes is not one Study can add a day's work to.
+  if (!has('Date') || !has('Minutes')) return 0;
+  const units = stProgressUnitsOf(st);
+  const wanted = [];
+  for (const s of sources) wanted.push(...stWorkWanted(s, s.own ? s.entries.filter((e) => e.subjectId === Number(subject.id)) : s.entries, units));
+  if (!wanted.length) return 0;
+  const where = 'subject_id = ? AND source = ? AND unit_row = ? AND day = ?';
+  const recs = new Map((await db.all('SELECT * FROM st_work_rows WHERE subject_id = ?', [subject.id])).map((r) => [`${r.source}\u0000${r.unit_row}\u0000${r.day}`, {
+    rowId: r.row_id, written: stParseJson(r.written_json, {}) || {}, pending: r.pending_json ? stParseJson(r.pending_json, null) : null, his: !!r.his,
+  }]));
+  const todo = [];
+  for (const w of wanted) {
+    const full = stWorkRowValues(w);
+    const values = Object.fromEntries(Object.entries(full.values).filter(([name]) => has(name)));
+    const rec = recs.get(w.key) || null;
+    if (rec && (rec.his || stWorkSame(values, rec.written))) continue;
+    todo.push({ w, title: full.title, values, rec, at: [subject.id, w.source, w.unitRow, w.day] });
+  }
+  if (!todo.length) return 0;
+  stSubjectLive(st);
+  const rows = new Map((await door.listRows(subject.logDb)).map((r) => [r.pageId, r]));
+  // A select takes only a word it has: a new tool's name, a new kind, is made one of its options first. A column he
+  // deleted is not put back for it.
+  const adds = todo.filter((t) => !t.rec);
+  const options = [['Tool', [...new Set(adds.map((t) => t.w.tool))]], ['Kind', [...new Set(adds.map((t) => t.w.kind))]]].filter(([name, list]) => has(name) && list.some(Boolean));
+  if (options.length) {
+    stSubjectLive(st);
+    await door.ensureColumns(subject.logDb, options.map(([name, list]) => ({ name, type: 'select', config: { options: list.filter(Boolean) } })));
+  }
+  let written = 0;
+  // The rows never written before go in together: one write and one change, however many days a tool reports the first time.
+  if (adds.length) {
+    stSubjectLive(st);
+    const made = await door.addRows(subject.logDb, adds.map((t) => ({ title: t.title, values: t.values })));
+    for (let i = 0; i < adds.length; i++) {
+      const row = made && made[i];
+      if (!row || !row.pageId) continue;
+      await db.run('INSERT OR REPLACE INTO st_work_rows (subject_id, source, unit_row, day, row_id, written_json, pending_json, his) VALUES (?, ?, ?, ?, ?, ?, \'\', 0)', [...adds[i].at, row.pageId, stJsonCol(adds[i].values, '{}')]);
+      written += 1;
+    }
+  }
+  for (const t of todo) {
+    if (!t.rec) continue;
+    stSubjectLive(st);
+    const d = stWorkDecide(t.values, t.rec, rows.get(t.rec.rowId) || null);
+    if (d.act === 'his') { await db.run(`UPDATE st_work_rows SET his = 1, pending_json = '' WHERE ${where}`, t.at); continue; }
+    if (d.act === 'update') {
+      // What is about to be written is remembered first: a write that stops half way is not read as his edit.
+      await db.run(`UPDATE st_work_rows SET pending_json = ? WHERE ${where}`, [stJsonCol(t.values, '{}'), ...t.at]);
+      stSubjectLive(st);
+      await door.updateRow(subject.logDb, t.rec.rowId, { values: d.values });
+      written += 1;
+    }
+    if (d.act === 'update' || d.settle) await db.run(`UPDATE st_work_rows SET written_json = ?, pending_json = '' WHERE ${where}`, [stJsonCol(t.values, '{}'), ...t.at]);
+  }
+  return written;
+}
+
+/** Every subject's Work Log follows the sources, one run at a time; a touch during a run asks for one more. */
+async function stWorkSync(token = stActivation()) {
+  if (!stIsCurrent(token) || !stWorkApi()) return;
+  if (_stWorkRunning) { _stWorkAgain = true; return; }
+  _stWorkRunning = true;
+  try {
+    do {
+      _stWorkAgain = false;
+      await _stWorkKeeping;
+      const sources = await stWorkSources();
+      for (const st of [..._stSubjects.values()]) {
+        if (!stIsCurrent(token)) return;
+        try { await stSubjectEnqueue(st, () => stWorkSyncSubject(st, sources)); } catch (err) {
+          if (stIsStopped(err) || !stIsCurrent(token)) return;
+          console.warn(`[Study] ${st.subject.name}: its Work Log could not follow the day's work:`, err && err.message);
+        }
+      }
+    } while (_stWorkAgain && stIsCurrent(token));
+  } catch (err) {
+    if (!stIsStopped(err) && stIsCurrent(token)) console.warn('[Study] the day\'s work could not be read:', err && err.message);
+  } finally {
+    _stWorkRunning = false;
+  }
+}
+
+/** Hear the providers that are registered now, and stop hearing the ones that went. */
+function stWorkHear(context, token) {
+  const work = stWorkApi();
+  if (!work || !stIsCurrent(token)) return;
+  let listed = [];
+  try { listed = (work.providers() || []).filter((p) => p && typeof p.onDidChange === 'function'); } catch { listed = []; }
+  for (const [p, sub] of [..._stWorkSubs]) { if (!listed.includes(p)) { sub.dispose(); _stWorkSubs.delete(p); } }
+  for (const p of listed) {
+    if (_stWorkSubs.has(p)) continue;
+    let raw = null;
+    try { raw = p.onDidChange(() => stWorkTouch(token)); } catch { raw = null; }
+    _stWorkSubs.set(p, stOwn(context, token, { dispose() { try { if (raw && typeof raw.dispose === 'function') raw.dispose(); } catch { /* the provider's own */ } } }));
+  }
+  stWorkTouch(token);
+}
+
+// ── Study's own clocks: reading and discussion ──────────────────────────────
+
+/** When a session's tab, and a unit's PDF, was last seen showing: what keeps one second from being counted twice. */
+let _stSessionShownAt = 0;
+let _stReadingShownAt = 0;
+const stShownJust = (at) => Date.now() - at < 1500;
+const stWindowShown = () => !(typeof document !== 'undefined' && typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
+
+/** A clock's seconds kept for the unit they were counted for ('subjectId|unitRow', several joined by ';'), then the rows follow. */
+function stWorkKeep(kind, credits, token) {
+  const rows = [];
+  for (const c of credits || []) {
+    if (!c || !c.seconds) continue;
+    for (const part of String(c.bucket || '').split(';')) {
+      const [subjectId, unitRow] = part.split('|');
+      if (Number(subjectId) > 0 && unitRow) rows.push([c.day, Number(subjectId), unitRow, kind, c.seconds, c.seconds]);
+    }
+  }
+  if (!rows.length) return;
+  _stWorkKeeping = _stWorkKeeping.then(async () => {
+    for (const r of rows) {
+      await db.run('INSERT INTO st_work_time (day, subject_id, unit_row, kind, seconds) VALUES (?, ?, ?, ?, MAX(0, ?)) ON CONFLICT(day, subject_id, unit_row, kind) DO UPDATE SET seconds = MAX(0, seconds + ?)', r);
+    }
+    stWorkTouch(token);
+  }).catch((err) => { if (!stIsStopped(err) && stIsCurrent(token)) console.warn('[Study] time not kept:', err && err.message); });
+}
+
+/** Two paths to the same file: slashes aside, and letter case aside where the path has a drive letter. */
+function stWorkSamePath(a, b) {
+  const x = stUnitSlashes(a);
+  const y = stUnitSlashes(b);
+  return /^[a-zA-Z]:\//.test(x) ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+
+/**
+ * The units a PDF that is showing belongs to: for the PDF in front (the
+ * active group's first, then any other group's), the first unit of each
+ * subject whose Material holds that file. Empty when no PDF of a unit shows.
+ */
+function stReadingTargets() {
+  let editors = [];
+  try { editors = (_api.editors && _api.editors.openEditors) || []; } catch { editors = []; }
+  const shown = editors.filter((e) => e && e.isShowing && e.typeId === 'parallx.editor.pdf' && e.filePath).sort((a, b) => Number(!!b.isActive) - Number(!!a.isActive));
+  const root = stUnitRoot();
+  for (const e of shown) {
+    const hits = [];
+    for (const st of _stSubjects.values()) {
+      if (!st.synced || st.problem) continue;
+      const row = (st.unitRows || []).find((r) => stUnitItems(stUnitCell(r), root).some((i) => i.kind === 'file' && stWorkSamePath(stUnitAbs(i), e.filePath)));
+      if (row) hits.push(`${st.subject.id}|${row.pageId}`);
+    }
+    if (hits.length) return hits;
+  }
+  return [];
+}
+
+let _stReadingClock = null;
+let _stReadingTargets = [];
+
+/** The editors, or a unit's Material, changed: the reading clock runs only while a unit's PDF is in front somewhere. */
+function stReadingLook(token = stActivation()) {
+  const work = stWorkApi();
+  if (!work || !stIsCurrent(token)) return;
+  _stReadingTargets = stReadingTargets();
+  if (_stReadingTargets.length && !_stReadingClock) {
+    _stReadingClock = work.createClock({
+      showing: () => {
+        const on = _stReadingTargets.length > 0 && stWindowShown() && !stShownJust(_stSessionShownAt);
+        if (on) _stReadingShownAt = Date.now();
+        return on;
+      },
+      bucket: () => _stReadingTargets.join(';'),
+      credit: (credits) => stWorkKeep(ST_WORK_READING, credits, token),
+    });
+  } else if (!_stReadingTargets.length && _stReadingClock) {
+    const clock = _stReadingClock;
+    _stReadingClock = null;
+    clock.dispose();
+  }
+}
+
+let _stChatClock = null;
+/** The chat conversation that is open now and the unit it was opened from: { sessionId, bucket }, or null. */
+let _stChatTarget = null;
+
+/** The chat opened another conversation, or one was just tied to a unit: the discussion clock runs only while the chat is on one opened from a unit. */
+async function stChatLook(token = stActivation()) {
+  const work = stWorkApi();
+  const chat = _api && _api.chat;
+  if (!work || !chat || typeof chat.shownSession !== 'function' || !stIsCurrent(token)) return;
+  let shown = null;
+  try { shown = chat.shownSession() || null; } catch { shown = null; }
+  const tie = shown && shown.id ? await db.get('SELECT subject_id, unit_row FROM st_unit_chats WHERE session_id = ?', [String(shown.id)]).catch(() => null) : null;
+  if (!stIsCurrent(token)) return;
+  _stChatTarget = tie ? { sessionId: String(shown.id), bucket: `${tie.subject_id}|${tie.unit_row}` } : null;
+  if (_stChatTarget && !_stChatClock) {
+    _stChatClock = work.createClock({
+      showing: () => {
+        if (!_stChatTarget || !stWindowShown() || stShownJust(_stSessionShownAt) || stShownJust(_stReadingShownAt)) return false;
+        let now = null;
+        try { now = chat.shownSession() || null; } catch { now = null; }
+        return !!now && now.showing === true && String(now.id) === _stChatTarget.sessionId;
+      },
+      bucket: () => (_stChatTarget ? _stChatTarget.bucket : ''),
+      credit: (credits) => stWorkKeep(ST_WORK_DISCUSSION, credits, token),
+    });
+  } else if (!_stChatTarget && _stChatClock) {
+    const clock = _stChatClock;
+    _stChatClock = null;
+    clock.dispose();
+  }
+}
+
+/** The conversation the chat has open now was opened from this unit: its time counts for the unit from here on. */
+async function stWorkTieChat(subjectId, unitRow, token = stActivation()) {
+  const chat = _api && _api.chat;
+  if (!stWorkApi() || !chat || typeof chat.shownSession !== 'function' || !(Number(subjectId) > 0) || !unitRow) return false;
+  let shown = null;
+  try { shown = chat.shownSession() || null; } catch { shown = null; }
+  if (!shown || !shown.id) return false;
+  await db.run('INSERT OR REPLACE INTO st_unit_chats (session_id, subject_id, unit_row, at) VALUES (?, ?, ?, ?)', [String(shown.id), Number(subjectId), String(unitRow), Date.now()]);
+  await stChatLook(token);
+  return true;
+}
+
+/** The subject and the unit's row a question belongs to, when it is a question of a subject's unit. */
+function stWorkUnitOfQuestion(q) {
+  const m = /^subject:(\d+)$/.exec(String((q && q.providerId) || ''));
+  const st = m ? _stSubjects.get(Number(m[1])) : null;
+  const unit = st ? String(stQuestionMeta(q).paper || '') : '';
+  const row = unit ? (st.unitRows || []).find((r) => stSubjectSameName(r.title, unit)) : null;
+  return row ? { subjectId: st.subject.id, unitRow: row.pageId } : null;
+}
+
+/** The prompt staged in the chat for a unit: what to talk through, and from what. */
+function stDiscussUnitPrompt(subjectName, unitName, material) {
+  const lines = [`I want to talk through ${unitName} (${subjectName}).`, ''];
+  if (material.length) lines.push(`Its material in my workspace: ${material.join('; ')}.`);
+  lines.push(
+    'Start by asking me what I find hardest in it, then explain from its material and what is around it in my workspace, not from memory.',
+    'You can see what I got wrong with study_weak_spots and study_results; tie what you explain to those misses.',
+    'End with one question that checks I have it.',
+  );
+  return lines.join('\n');
+}
+
+/** Discuss in Chat on a unit's tab: the chat opens with a prompt about the unit staged, and the time in that chat counts for the unit. */
+async function stCmdDiscussUnit(subjectId, rowId) {
+  const { st, row } = stUnitRowOf(subjectId, rowId);
+  if (!st || !row) return false;
+  if (!(await stChatAvailable())) {
+    await _api.window.showInformationMessage('The chat is not available.');
+    return false;
+  }
+  const material = stUnitItems(stUnitCell(row), stUnitRoot()).map((i) => String(i.name || '')).filter(Boolean).slice(0, 12);
+  await _api.commands.executeCommand('chat.stagePrompt', { text: stDiscussUnitPrompt(st.subject.name, String(row.title || '').trim(), material) });
+  await stWorkTieChat(st.subject.id, row.pageId).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] the chat could not be tied to the unit:', err && err.message); });
+  return true;
+}
+
+/** Hear the work providers, the editors and the chat for this activation. */
+function registerWork(context, token = stActivation()) {
+  const work = stWorkApi();
+  if (!work) return;
+  context.subscriptions.push(work.onDidChangeProviders(() => stWorkHear(context, token)));
+  stWorkHear(context, token);
+  // A unit read, renamed or given another name; a file put in a unit's Material: the rows and the reading clock follow.
+  context.subscriptions.push(onDataChanged(() => { stWorkTouch(token); stReadingLook(token); }));
+  if (_api.editors && typeof _api.editors.onDidChangeOpenEditors === 'function') context.subscriptions.push(_api.editors.onDidChangeOpenEditors(() => stReadingLook(token)));
+  stReadingLook(token);
+  if (_api.chat && typeof _api.chat.onDidChangeShownSession === 'function') context.subscriptions.push(_api.chat.onDidChangeShownSession(() => { void stChatLook(token); }));
+  void stChatLook(token);
+}
+
+/** Stop it all (deactivate): no timer left, no clock, nothing heard. */
+function stWorkReset() {
+  clearTimeout(_stWorkTimer);
+  _stWorkTimer = 0;
+  _stWorkAgain = false;
+  for (const sub of _stWorkSubs.values()) sub.dispose();
+  _stWorkSubs.clear();
+  for (const clock of [_stReadingClock, _stChatClock]) { try { if (clock) clock.dispose(); } catch { /* gone with the host */ } }
+  _stReadingClock = null;
+  _stChatClock = null;
+  _stReadingTargets = [];
+  _stChatTarget = null;
+  _stSessionShownAt = 0;
+  _stReadingShownAt = 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 35: MAKING — a reply asked again, the concept map, a session filled as questions arrive
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -10050,6 +10520,16 @@ function injectStyles() {
 .st-prog__totals .st-prog__cell { flex-wrap: wrap; row-gap: var(--px-space-1); }
 .st-prog__words { flex: 0 0 100%; box-sizing: border-box; padding-left: calc(6rem + var(--px-space-3)); color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; line-height: 1.4; }
 .st-prog__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-4); padding: 0 var(--px-space-5); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-prog__time { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.st-prog__timehd { display: flex; align-items: center; gap: var(--px-space-2); }
+.st-prog__timetable { border-collapse: collapse; width: 100%; max-width: 32rem; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-prog__timetable th, .st-prog__timetable td { padding: var(--px-space-1) var(--px-space-3) var(--px-space-1) 0; text-align: left; border-bottom: 1px solid var(--px-divider); }
+.st-prog__timetable thead th { color: var(--px-text-secondary); font-weight: 500; }
+.st-prog__timetable tbody th { color: var(--px-text); font-weight: 500; }
+.st-prog__timetable td { color: var(--px-text); }
+.st-prog__timesum th, .st-prog__timesum td { font-weight: 600; border-bottom: none; }
+.st-prog__timenone, .st-prog__timenote { color: var(--px-text-secondary); font-size: var(--px-text-xs); line-height: 1.4; }
+.st-prog__time:empty { display: none; }
 .st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-2); }
 .st-prog__bar { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .st-prog__bar .px-section-label { padding: 0; }
@@ -12459,6 +12939,7 @@ async function renderSession(host, route, ctx) {
     meta: `${ST_MODE_LABELS[session.mode] || session.mode} · ${ST_ANSWER_LABELS[answerFormat] || answerFormat}`,
     strand: true, closeTitle: 'End Session', onClose: () => endSession(),
   });
+  const clockLine = stBlock(sess, 'div', 'st-sess-clock');
   const main = stBlock(sess, 'div', 'st-sess-main');
   const qwrap = stBlock(main, 'div', 'st-qwrap');
   // An answered question he went back to (Previous) shows here, the live card kept as it was.
@@ -12473,7 +12954,7 @@ async function renderSession(host, route, ctx) {
   // The tab closed, or Study went off, while the reads above ran: nothing below is set up (what it adds to the
   // window would never be taken away).
   if (ctx.disposed()) return;
-  // ── Timing: seconds while this tab is showing and he is at the desk (16-clock-model.js), stored every 30 s and on close ──
+  // ── Timing: seconds while this tab is showing and he is at the desk (the app's clock), stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
   // The timer belongs to this activation: once Study goes off it stops, and
   // a save that lands after that is dropped quietly.
@@ -12482,32 +12963,27 @@ async function renderSession(host, route, ctx) {
     if (!stIsCurrent(timerToken)) return;
     stUpdateSession(session.id, { seconds }).catch((err) => { if (stIsCurrent(timerToken) && !stIsStopped(err)) console.warn('[Study] session time not saved:', err); });
   };
-  // He is at the desk when he pressed a key, clicked, tapped or scrolled anywhere in the app within the last ten
-  // minutes. A finger's scroll is its moves; a scroll the app makes by itself is not his.
-  let inputAt = Date.now();
-  const noteInput = () => { inputAt = Date.now(); };
-  const heard = ['keydown', 'pointerdown', 'wheel', 'touchmove'];
-  for (const type of heard) window.addEventListener(type, noteInput, { capture: true, passive: true });
+  // The app's clock (api.work): he is at the desk when he pressed a key, clicked, tapped or scrolled anywhere in the
+  // app within the idle time, one setting for the whole app; a stretch that ends idle is taken back.
   /** Is this tab the one showing: drawn at some size, in a window that is not hidden? */
-  const showing = () => !ctx.disposed() && host.isConnected && host.getClientRects().length > 0
-    && !(typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
-  const clock = stClockState(Date.now(), inputAt);
-  let carryMs = 0;
-  const look = () => {
-    carryMs += stClockAdvance(clock, Date.now(), showing(), inputAt);
-    const whole = Math.trunc(carryMs / 1000);
-    if (!whole) return;
-    carryMs -= whole * 1000;
+  const showing = () => {
+    const on = !ctx.disposed() && host.isConnected && host.getClientRects().length > 0
+      && !(typeof document.visibilityState === 'string' && document.visibilityState !== 'visible');
+    // A session showing is what the seconds count for: a unit's PDF or a chat beside it adds nothing of its own (32-work.js).
+    if (on) _stSessionShownAt = Date.now();
+    return on;
+  };
+  const count = (whole) => {
     const before = seconds;
     seconds = Math.max(0, seconds + whole);
     if (Math.floor(seconds / 30) !== Math.floor(before / 30)) saveSeconds();
   };
-  const tick = setInterval(() => {
-    if (!stIsCurrent(timerToken)) { clearInterval(tick); return; }
-    look();
-  }, 1000);
+  const work = stWorkApi();
+  const clock = work ? work.createClock({ showing, onCount: (whole) => { if (stIsCurrent(timerToken)) count(whole); } }) : null;
+  // The stop for idleness, and the return, said in a line under the session's bar.
+  const clockStatus = clock ? work.createClockStatus(clockLine, clock, { bar: true }) : null;
   // The tab closing is told too, with the time as it stands (a subject's Work Log row follows it).
-  ctx.add({ dispose: () => { clearInterval(tick); for (const type of heard) window.removeEventListener(type, noteInput, { capture: true }); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
+  ctx.add({ dispose: () => { if (clockStatus) clockStatus.dispose(); if (clock) clock.dispose(); saveSeconds(); if (stIsCurrent(timerToken)) bus.emit('session', { sessionId: session.id, seconds }); } });
 
   // ── Strand ──
   const segs = new Map();
@@ -13745,6 +14221,7 @@ function registerSubjectCommands(context) {
     ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
     ['study.openUnit', (subject, unit) => stCmdOpenUnit(subject, unit)],
+    ['study.discussUnit', (subject, unit) => stCmdDiscussUnit(subject, unit)],
     ['study.unitActions', (subject, unit) => stCmdUnitActions(subject, unit)],
     ['study.addNotesOrFiles', (subject, unit) => stCmdAddNotesOrFiles(subject, unit)],
     ['study.openUnitItem', (subject, unit, key) => stCmdOpenUnitItem(subject, unit, key)],
@@ -13973,6 +14450,39 @@ function stProgressParts(owner, kind, counts, words, { idBase = '', act = null, 
   });
 }
 
+/**
+ * Where the minutes came from: a table of the Work Log's minutes by kind, for
+ * today and for this week (Monday to Sunday), each time with its unit. It is
+ * read from the Work Log's rows alone, so a row he changes changes it.
+ */
+function stProgressTimeWorked(into, worked, subject) {
+  const ui = _api.ui;
+  const head = ui.createBlock(into, 'div', { className: 'st-prog__timehd' });
+  ui.createSectionLabel(head, 'Time worked');
+  ui.createBlock(head, 'span', { className: 'st-sp' });
+  ui.createButton(head, { id: 'study.progress.openWorkLog', label: 'Open Work Log', icon: 'database', kind: 'ghost', size: 'sm', command: 'canvas.openPage', args: [subject.logDb] });
+  if (!worked.rows.length) {
+    ui.createBlock(into, 'div', { className: 'st-prog__timenone', text: 'No time in the Work Log this week. Minutes from sessions, problems, cards, reading and discussion show here by kind.' });
+    return;
+  }
+  const table = ui.createBlock(into, 'table', { className: 'st-prog__timetable' });
+  ui.createBlock(table, 'caption', { className: 'px-visually-hidden', text: 'Time worked by kind' });
+  const top = ui.createBlock(ui.createBlock(table, 'thead'), 'tr');
+  ui.createBlock(top, 'th', { text: 'Kind', attrs: { scope: 'col' } });
+  ui.createBlock(top, 'th', { text: 'Today', attrs: { scope: 'col' } });
+  ui.createBlock(top, 'th', { text: 'This week', attrs: { scope: 'col' } });
+  const rows = ui.createBlock(table, 'tbody');
+  const line = (name, today, week, className = '') => {
+    const tr = ui.createBlock(rows, 'tr', className ? { className } : {});
+    ui.createBlock(tr, 'th', { text: name, attrs: { scope: 'row' } });
+    ui.createBlock(tr, 'td', { text: stWorkTimeWords(today) });
+    ui.createBlock(tr, 'td', { text: stWorkTimeWords(week) });
+  };
+  for (const r of worked.rows) line(r.name, r.today, r.week);
+  line('Total', worked.today, worked.week, 'st-prog__timesum');
+  ui.createBlock(into, 'div', { className: 'st-prog__timenote', text: 'From the Work Log, Monday to Sunday. The plan counts the same minutes as Done.' });
+}
+
 async function renderProgress(host, route, ctx) {
   const subjectId = Number(route.subjectId) || 0;
   const ui = _api.ui;
@@ -14001,6 +14511,8 @@ async function renderProgress(host, route, ctx) {
   });
   const body = ui.createBlock(inner, 'div', { className: 'st-prog__body' });
   const top = ui.createBlock(body, 'div', { className: 'st-prog__top' });
+  // Where the subject's minutes came from, today and this week, read from its Work Log.
+  const time = ui.createBlock(body, 'section', { className: 'st-prog__time', attrs: { 'aria-label': 'Time worked' } });
   const bar = ui.createBlock(body, 'div', { className: 'st-prog__bar' });
   ui.createSectionLabel(bar, 'Units');
   ui.createBlock(bar, 'span', { className: 'st-sp' });
@@ -14020,7 +14532,7 @@ async function renderProgress(host, route, ctx) {
   let kinds = 0;
   const fit = () => { const w = list.clientWidth; list.classList.toggle('st-prog__list--stacked', w > 0 && w < 200 * (kinds + 1)); };
   if (typeof ResizeObserver === 'function') { const seen = new ResizeObserver(fit); seen.observe(list); ctx.add({ dispose: () => seen.disconnect() }); }
-  const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
+  const clear = () => { for (const b of bars) b.dispose(); bars = []; top.replaceChildren(); time.replaceChildren(); list.replaceChildren(); under.replaceChildren(); };
   const stacked = (into, options) => { const b = ui.createStackedBar(into, options); bars.push(b); return b; };
   /** One kind's bar with its "N of M": the cell of a row, or a line of the totals. */
   const cell = (into, kindName, options, counts) => {
@@ -14041,7 +14553,9 @@ async function renderProgress(host, route, ctx) {
     const s = shownNow();
     if (!s) { ctx.rerender(); return; }
     const view = s.problem || !s.ready ? null : stProgressOfSubject(subjectId);
-    const key = JSON.stringify([s.problem, s.ready, sort, view]);
+    const live = _stSubjects.get(subjectId);
+    const worked = view && live && subject.logDb ? stWorkBreakdown(live.logRows || [], stPlanToday(), stPlanLocalDate) : null;
+    const key = JSON.stringify([s.problem, s.ready, sort, view, worked]);
     if (key === drawn) return;
     drawn = key;
     const focused = body.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
@@ -14074,6 +14588,8 @@ async function renderProgress(host, route, ctx) {
       ui.createBlock(item, 'span', { className: 'px-stacked-bar-key st-prog__sw', attrs: { 'data-state': state, 'aria-hidden': 'true' } });
       ui.createBlock(item, 'span', { text: ST_PROGRESS_WORDS[state] });
     }
+
+    if (worked) stProgressTimeWorked(time, worked, subject);
 
     // A row per unit: its name (the unit's setup, as in the sidebar), then one bar per kind.
     list.style.setProperty('--st-prog-kinds', String(view.kinds.length));
@@ -15046,6 +15562,8 @@ async function renderUnit(host, route, ctx) {
   const header = ui.createPageHeader(inner, {
     title: `${subject.name} · ${unitName}`,
     primary: { id: 'study.unit.study', label: 'Study…', icon: 'px-study', title: `Study ${unitName}`, command: 'study.studySubject', args: [subjectId, rowId] },
+    // The chat opened from here is the unit's: the time in it counts for the unit as Discussion (32-work.js).
+    secondary: [{ id: 'study.unit.discuss', label: 'Discuss in Chat', icon: 'messages-square', title: `Opens the chat with a prompt about ${unitName} for you to edit and send. Time in that chat counts for ${unitName}.`, command: 'study.discussUnit', args: [subjectId, rowId] }],
     more: [
       { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(subjectId) },
       { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(subject.unitsDb) },
@@ -16572,6 +17090,9 @@ async function stDiscussInChat(q, item) {
     } catch { /* the prompt still names the source and quotes it */ }
   }
   await _api.commands.executeCommand('chat.stagePrompt', { text: stDiscussPrompt(m, { right: item.status === 'right' }) });
+  // A question of a subject's unit: the chat it is discussed in is the unit's, and the time in it counts for the unit.
+  const of = stWorkUnitOfQuestion(q);
+  if (of) await stWorkTieChat(of.subjectId, of.unitRow).catch((err) => { if (!stIsStopped(err)) console.warn('[Study] the chat could not be tied to the unit:', err && err.message); });
   return true;
 }
 
@@ -16658,6 +17179,7 @@ export async function activate(api, context) {
   registerPlans(owned, token);
   registerProgress(owned, 0, token);
   registerUnits(owned, token);
+  registerWork(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
   registerLinks(owned);
@@ -16698,6 +17220,7 @@ export async function deactivate() {
   stSubjectsReset();
   stPlansReset();
   stProgressReset();
+  stWorkReset();
   stUnitsReset();
   _stUnitFocusFor = '';
   _stSubjectSheet = null;
@@ -16841,7 +17364,10 @@ export const __testables = {
   ST_PLAN_WEEKDAYS, ST_PLAN_PLANS, ST_PLAN_KINDS, ST_PLAN_RULE_CELLS,
   ST_PLAN_FOLLOWS, ST_PLAN_WORDS, stPlanFollow, stPlanFollowSettled, stPlanDaysOff, stPlanDoneWords,
   stUnitHolds, stUnitWords, stSubjectUnitsFromFolder, stRemoveUnit, stSubjectBankUnits,
-  ST_CLOCK_IDLE_MS, stClockState, stClockAdvance, stPlanFormTotals,
+  stPlanFormTotals,
+  // 16-work-model, 32-work: the Work Log's rows from the tools' reports and Study's own clocks
+  ST_WORK_CELLS, ST_WORK_READING, ST_WORK_DISCUSSION, stWorkUnitIndex, stWorkMinutes, stWorkWanted, stWorkRowValues, stWorkCellKey, stWorkSame, stWorkDecide, stWorkTimeWords, stWorkBreakdown,
+  stWorkSources, stWorkSyncSubject, stWorkSync, stWorkTouch, stWorkKeep, stReadingTargets, stReadingLook, stChatLook, stWorkTieChat, stWorkUnitOfQuestion, stDiscussUnitPrompt, stCmdDiscussUnit, registerWork, stWorkReset,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
   stPlanContradictions, stPlanReconcile, stPlanWrittenOfAdds, stPlanDoneByDate, stPlanView, stPlanDayTitle,

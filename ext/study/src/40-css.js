@@ -432,6 +432,16 @@ function injectStyles() {
 .st-prog__totals .st-prog__cell { flex-wrap: wrap; row-gap: var(--px-space-1); }
 .st-prog__words { flex: 0 0 100%; box-sizing: border-box; padding-left: calc(6rem + var(--px-space-3)); color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; line-height: 1.4; }
 .st-prog__legend { display: flex; flex-wrap: wrap; gap: var(--px-space-4); padding: 0 var(--px-space-5); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-prog__time { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.st-prog__timehd { display: flex; align-items: center; gap: var(--px-space-2); }
+.st-prog__timetable { border-collapse: collapse; width: 100%; max-width: 32rem; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.st-prog__timetable th, .st-prog__timetable td { padding: var(--px-space-1) var(--px-space-3) var(--px-space-1) 0; text-align: left; border-bottom: 1px solid var(--px-divider); }
+.st-prog__timetable thead th { color: var(--px-text-secondary); font-weight: 500; }
+.st-prog__timetable tbody th { color: var(--px-text); font-weight: 500; }
+.st-prog__timetable td { color: var(--px-text); }
+.st-prog__timesum th, .st-prog__timesum td { font-weight: 600; border-bottom: none; }
+.st-prog__timenone, .st-prog__timenote { color: var(--px-text-secondary); font-size: var(--px-text-xs); line-height: 1.4; }
+.st-prog__time:empty { display: none; }
 .st-prog__key { display: inline-flex; align-items: center; gap: var(--px-space-2); }
 .st-prog__bar { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .st-prog__bar .px-section-label { padding: 0; }

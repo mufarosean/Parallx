@@ -299,6 +299,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.addMaterial` | Add Material… | study | Study |  |  |
 | `study.addNotesOrFiles` | Add Notes or Files… | study | Study |  |  |
 | `study.discussInChat` | Discuss in Chat | study | Study |  |  |
+| `study.discussUnit` | Discuss a Unit in Chat | study | Study |  |  |
 | `study.editQuestion` | Edit Question… | study | Study |  |  |
 | `study.findMatches` | Find Matches… | study | Study |  |  |
 | `study.gradeAgain` | Grade Answer Again | study | Study |  |  |

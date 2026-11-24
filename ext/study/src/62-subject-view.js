@@ -143,6 +143,7 @@ function registerSubjectCommands(context) {
     ['study.openProgress', (subject, where) => stCmdOpenProgress(subject, where)],
     ['study.subjectActions', (subject) => stCmdSubjectActions(subject)],
     ['study.openUnit', (subject, unit) => stCmdOpenUnit(subject, unit)],
+    ['study.discussUnit', (subject, unit) => stCmdDiscussUnit(subject, unit)],
     ['study.unitActions', (subject, unit) => stCmdUnitActions(subject, unit)],
     ['study.addNotesOrFiles', (subject, unit) => stCmdAddNotesOrFiles(subject, unit)],
     ['study.openUnitItem', (subject, unit, key) => stCmdOpenUnitItem(subject, unit, key)],

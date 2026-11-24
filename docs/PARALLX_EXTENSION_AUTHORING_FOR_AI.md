@@ -327,7 +327,9 @@ api.editors.openFileEditor(uri, { pinned?, reveal?, side? })     // open a file 
 // reveal: { page?, quote? } (PDF), { line?, endLine? } (text), { sheet?, cell? } (spreadsheet, A1 cell);
 // applied once the file has loaded. side: true opens it beside the active editor (the group to
 // its right, split when there is none); a file already open is shown where it is
-api.editors.openEditors                                          // readonly array of descriptors
+api.editors.openEditors                                          // readonly array of descriptors: { id, name, description, isDirty, isActive, groupId,
+                                                                 //   isShowing, typeId, filePath? }. isShowing: it is the editor in front in its
+                                                                 //   group (what a person sees there; one per group). filePath: the file it shows
 api.editors.onDidChangeOpenEditors(listener)                     // → IDisposable
 ```
 
@@ -478,6 +480,8 @@ A registered chat tool is auto-discoverable by the agent in Agent mode. Declare 
 
 All of these are removed when the extension is turned off; still push them into `context.subscriptions`.
 
+`api.chat.shownSession()` is the conversation the chat has open and whether it is on screen now: `{ id, showing }`, or `undefined` when it has none. After you open the chat on something of yours (`chat.stagePrompt`), it says which conversation that was; later it says whether that conversation is the one the person is looking at (`showing` is false while the chat's panel is closed or behind another view). `api.chat.onDidChangeShownSession(listener)` fires when the chat opens another conversation. Whether the panel shows is asked when you read it, so nothing runs for it.
+
 ### 4.10 `api.mcp` (MCP tool calls — may be undefined)
 
 ```js
@@ -552,6 +556,94 @@ context.subscriptions.push(registry.register({
 ```
 
 `group` is your own key (it comes back in `count` and `open`, always as a list); `label` is the name a person reads. A reader matches a group to its own things by name, so name groups as the person names them. Counts are whole numbers; a reader clamps what does not add up. A reader may show several of your groups as one (two of them match one of its things): when your groups cannot share an item (a problem is in one paper), leave `count` out and the reader adds them; when they can (a card is in its deck and in each of its tags), give `count(groups)`, the same four numbers over those groups with each item once, because the sum would count an item twice. `open(groups, state)` gets every group behind the part that was pressed, so what opens is what the part counts. Leave `open` out when you have nowhere to show the items: a reader then draws the bar without buttons. A reader lists providers with `registry.list()`, reads `groups()` again on the provider's `onDidChange`, and re-lists on `registry.onDidChange` (a tool turned off takes its provider with it, at once). The command may be missing on an older host: retry a few times, then give up quietly. Study's Progress consumes this seam; Worksheets (`worksheets.problems`) and Flashcards (`flashcards.cards`) provide into it.
+
+### 4.11d `api.work`: time worked, and work providers
+
+Two things the core owns so every tool counts time one way and no tool reads
+another's tables: **the clock**, and **work providers**.
+
+**The clock.** Time worked is time with your surface showing and the person
+at the desk. The core's clock counts while `showing()` is true and the person
+pressed a key, clicked, tapped or scrolled anywhere in the app within the
+idle time; when the idle time passes with none, it takes the whole stretch
+since that input back, once. Moving the mouse alone is not being there. The
+idle time is one setting for the whole app (Idle Time under General in
+Settings: 5, 10, 15 or 30 minutes, 10 to begin with); a running clock follows
+a change at once. A look that crosses local midnight gives each side to its
+own day. Never write your own timer for time worked, and never measure it as
+the gap between two events (a card shown and a card graded): a break with the
+tab up would count.
+
+```js
+const clock = api.work.createClock({
+  showing: () => root.isConnected && root.getClientRects().length > 0 && document.visibilityState === 'visible',
+  bucket: () => String(currentItemId),          // optional: what is showing now, when one clock serves several things
+  onCount: (seconds) => { shown += seconds; },  // optional: a clock on screen moves by this many whole seconds (below zero: taken back)
+  credit: (credits, final) => {                 // whole seconds to keep: [{ day: 'YYYY-MM-DD', bucket, seconds }], seconds below zero when taken back
+    for (const c of credits) addSeconds(c.day, c.bucket, c.seconds);   // every half minute, when the surface stops showing, at dispose (final)
+  },
+});
+api.work.createClockStatus(headerEl, clock);    // the line that says "Paused: no input for 10 minutes. That time is not counted." and "Counting again"
+clock.dispose();                                // when the surface closes: its last seconds go to credit first
+```
+
+Wherever a clock is shown or a session is running, put `createClockStatus`
+there too (`{ bar: true }` for a line of its own across a pane): the person
+sees when the clock stopped and when it goes on, and a screen reader is told
+politely. `api.work.idleMinutes` is the idle time now; `api.work.dayOf(ms)` is
+the local day the clock would credit a moment to (use it for anything you
+count beside the time, so both land on the same day). Clocks and status lines
+are disposed for you when your extension is turned off.
+
+**Work providers.** A tool in which a person works reports what each day's
+work came to; a tool that keeps a record of work reads every provider and
+writes its own record. Neither names the other. A work provider reports, for
+each local **day** and each **group** of its items (a paper, a tag, a deck):
+the **minutes** worked (from the clock above), the **items** worked, and how
+many were **right** when it can say.
+
+```js
+context.subscriptions.push(api.work.registerProvider({
+  id: 'myExt.drills',                  // '<tool>.<store>', unique
+  displayName: 'Drills',               // your tool's name, as a person reads it
+  kind: 'Problems',                    // the kind of work: 'Problems', 'Cards', …
+  async work(since) {                  // every day's work as it stands now; with `since` ('YYYY-MM-DD'), the days from then on are enough
+    return [{
+      day: '2026-11-23',               // the local day the work was done on
+      groups: [{ group: 'tag:mack', label: 'Mack' }, { group: 'deck:3', label: 'Exam 7' }],   // every group the items are in, the most particular first
+      minutes: 12.5,                   // may carry a fraction; a reader rounds
+      items: 4,                        // items worked that day
+      right: 3,                        // leave it out when you cannot say
+    }];
+  },
+  onDidChange(listener) { … return { dispose() { … } }; },   // call listener() when any day's numbers may have changed
+}));
+
+api.work.providers()                   // every tool's provider, as registered now: [{ id, displayName, kind, toolId, work, onDidChange }]
+api.work.onDidChangeProviders(listener)   // a tool was turned on or off
+```
+
+Rules for a provider: report whole days, each as it stands now (the same
+call later may say more for today, and less when an idle stretch was taken
+back), never increments. An entry is one piece of work: when an item is in
+several groups at once, name them all in `groups` and report the work once;
+a reader counts an entry once, never once per group. Name groups as the
+person names them: a reader matches `label` to its own things by name. Keep
+your own store (the seconds by day): the reader keeps only its record, so
+your past is still yours to report after you were off. Report only time the
+clock counted while your own surface was showing, so two tools never report
+the same seconds.
+
+Rules for a reader: read `work()` when a provider's `onDidChange` fires and
+when the list changes; write nothing when nothing changed; never write into
+a provider's data. A provider that goes (its tool was turned off) says
+nothing about its past: keep what you recorded from it.
+
+Study reads this point: each subject's Work Log gets one row per tool, unit
+and local day (the group matched to a unit by its name or its Also Called),
+which grows with the day's work; a row the person changed is theirs from then
+on. Worksheets (`worksheets.problems`, by paper) and Flashcards
+(`flashcards.cards`, by tag and deck) provide into it.
 
 ### 4.12 `api.context`
 
@@ -1624,8 +1716,10 @@ api.tools.{getAll, getById, isEnabled, setEnabled, onDidChangeEnablement,
            installFromFile, uninstall, onDidInstallTool, onDidUninstallTool, onDidChangeTools}
 api.env.{appName, appVersion, toolPath, timeZone}
 api.canvas.databases.{list, get, create, createPage, ensureColumns, listRows, addRow, updateRow, removeRow, onDidChange, open}
+api.work.{createClock, createClockStatus, idleMinutes, dayOf, registerProvider, providers, onDidChangeProviders}
 api.lm?.{getModels, sendChatRequest, registerProvider, onDidChangeModels, parseJson} // may be undefined
-api.chat?.{createChatParticipant, registerTool, registerDropHandler}                 // may be undefined
+api.chat?.{createChatParticipant, registerTool, registerDropHandler,
+           shownSession, onDidChangeShownSession}                                      // may be undefined
 api.mcp?.{invokeTool, listTools}                                                     // may be undefined
 api.cron?.{upsertJob, removeJob}                                                     // may be undefined
 api.database?.{open, close, migrate, run, get, all, runTransaction, isOpen}          // external extensions only

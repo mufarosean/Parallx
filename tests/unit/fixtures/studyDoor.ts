@@ -10,6 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 const MIGRATIONS = join(__dirname, '../../../ext/study/db/migrations');
 
 import { fakeDoor } from './studyFakeDoor';
+import { createWorkApi } from '../../../src/api/bridges/workBridge';
 export { fakeDoor, type Row } from './studyFakeDoor';
 
 export type Study = Record<string, any>;
@@ -34,6 +35,8 @@ export function studyHarness(names: readonly string[]) {
     },
     workspace: { getConfiguration: () => ({ get: (_k: string, f: unknown) => f }), workspaceFolders: [{ uri: 'file:///ws', name: 'ws' }], fs: { readdir: async () => [] } },
     canvas: { databases: fake.door },
+    // The core's own clock and work-provider point, as a tool receives them.
+    work: createWorkApi('parallx-community.study', []),
   };
   S.__testables.__setApi(api);
   const one = (q: string, ...p: unknown[]) => sql.prepare(q).get(...(p as any[])) as any;

@@ -217,6 +217,8 @@ async function renderUnit(host, route, ctx) {
   const header = ui.createPageHeader(inner, {
     title: `${subject.name} · ${unitName}`,
     primary: { id: 'study.unit.study', label: 'Study…', icon: 'px-study', title: `Study ${unitName}`, command: 'study.studySubject', args: [subjectId, rowId] },
+    // The chat opened from here is the unit's: the time in it counts for the unit as Discussion (32-work.js).
+    secondary: [{ id: 'study.unit.discuss', label: 'Discuss in Chat', icon: 'messages-square', title: `Opens the chat with a prompt about ${unitName} for you to edit and send. Time in that chat counts for ${unitName}.`, command: 'study.discussUnit', args: [subjectId, rowId] }],
     more: [
       { label: 'Open Progress', icon: 'chart-column', onSelect: () => void stOpenProgress(subjectId) },
       { label: 'Open Units', icon: 'database', onSelect: () => void stOpenSubjectDatabase(subject.unitsDb) },

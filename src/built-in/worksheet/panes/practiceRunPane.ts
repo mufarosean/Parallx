@@ -9,6 +9,7 @@ import { examClockFor } from './planPane.js';
 import { itemTags, nextMarkedIndex } from '../practiceSession.js';
 import { mountTagEditor } from './tagEditor.js';
 import { createWorkClock } from '../../../services/workClock.js';
+import { createClockStatus } from '../../../ui/clockStatus.js';
 import { creditStudyTime } from '../workProvider.js';
 import { appDateTimeString } from '../../../services/localTime.js';
 import { fmtStudy, gradeLabel, when } from '../labels.js';
@@ -82,10 +83,14 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
       paint();
       clockTimer = setInterval(paint, 1000);
     });
-    quizTicker = createWorkClock({
+    const quizClock = createWorkClock({
       showing: () => !disposed && paneOnScreen(root) && (view === 'overview' || session.index >= session.ids.length),
       credit: creditStudyTime(0, () => session.id),
     });
+    // The stop for idleness on the quiz's own screens is said under its bar (a problem's sheet says its own).
+    const quizClockStatus = createClockStatus(null, quizClock, { bar: true });
+    root.insertBefore(quizClockStatus.element, playerHost);
+    quizTicker = { dispose: () => { quizClockStatus.dispose(); quizClock.dispose(); } };
 
     // The quiz's lifecycle, one action each (one button
     // used to start, finish and replace). Complete Quiz is the only way a

@@ -384,59 +384,8 @@ describe('Find Matches, after the walk-through', () => {
   });
 });
 
-describe('the session clock', () => {
-  const { stClockState, stClockAdvance, ST_CLOCK_IDLE_MS } = T;
-  const MIN = 60_000;
-  /** Run the clock a second at a time from `from` to `to`; `inputs` are the moments he touched the app, `hidden` the spans its tab was not showing. */
-  function run(state: any, from: number, to: number, inputs: number[] = [], hidden: [number, number][] = [], start = 0) {
-    let total = start; let last = Math.max(from, ...inputs.filter((t) => t <= from), state.inputSeen);
-    for (let t = from + 1000; t <= to; t += 1000) {
-      for (const i of inputs) if (i <= t && i > last) last = i;
-      total += stClockAdvance(state, t, !hidden.some(([a, b]) => t > a && t <= b), last);
-    }
-    return total;
-  }
-
-  it('is ten minutes without input before a stretch stops being study', () => {
-    expect(ST_CLOCK_IDLE_MS).toBe(10 * MIN);
-  });
-
-  it('counts while the tab is showing and he is there', () => {
-    const s = stClockState(0);
-    expect(run(s, 0, 6 * MIN, [1, 2, 3, 4, 5, 6].map((m) => m * MIN))).toBe(6 * MIN);
-  });
-
-  it('takes a stretch that ends idle back, once, and keeps what came before it', () => {
-    const s = stClockState(0);
-    const inputs = [1, 2, 3, 4, 5, 6].map((m) => m * MIN);
-    // Six minutes at the desk, then thirty with no input: the ten counted after the last key come back.
-    expect(run(s, 0, 36 * MIN, inputs)).toBe(6 * MIN);
-    expect(s.idle).toBe(true);
-    // Back at the desk: it counts again from there.
-    expect(run(s, 36 * MIN, 40 * MIN, [36 * MIN + 500, 38 * MIN])).toBe(4 * MIN - 1000);
-  });
-
-  it('writes no hour for an hour with no input', () => {
-    const s = stClockState(0);
-    expect(run(s, 0, 61 * MIN)).toBe(0);
-  });
-
-  it('draws the line at ten minutes: an input every 11 counts nothing, one every 9 counts everything', () => {
-    expect(run(stClockState(0), 0, 33 * MIN, [11, 22, 33].map((m) => m * MIN))).toBe(0);
-    expect(run(stClockState(0), 0, 36 * MIN, [9, 18, 27, 36].map((m) => m * MIN))).toBe(36 * MIN);
-  });
-
-  it('counts nothing while the tab is not showing, whatever he does elsewhere in the app', () => {
-    const s = stClockState(0);
-    const inputs = Array.from({ length: 14 }, (_, i) => (i + 1) * MIN);
-    expect(run(s, 0, 14 * MIN, inputs, [[1 * MIN, 13 * MIN]])).toBe(2 * MIN);
-  });
-
-  it('credits at most five seconds for one look, so a machine asleep does not count its nap', () => {
-    const s = stClockState(0);
-    expect(stClockAdvance(s, 8 * 60 * MIN, true, 8 * 60 * MIN)).toBe(5000);
-  });
-});
+// The session's clock is the app's now (src/services/workClock.ts): its cases are in tests/unit/workClock.test.ts,
+// under "a session's clock, as Study's own tests held it".
 
 describe('the New Plan sheet\'s sum, with days off', () => {
   it('counts the days off before the exam at no hours', () => {

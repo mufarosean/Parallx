@@ -25,6 +25,7 @@
       { "id": "study.markAnswerWrong", "title": "Mark Answer as Wrong", "category": "Study" },
       { "id": "study.gradeAgain", "title": "Grade Answer Again", "category": "Study" },
       { "id": "study.discussInChat", "title": "Discuss in Chat", "category": "Study" },
+      { "id": "study.discussUnit", "title": "Discuss a Unit in Chat", "category": "Study" },
       { "id": "study.newSubject", "title": "New Subject…", "category": "Study" },
       { "id": "study.studySubject", "title": "Study a Subject…", "category": "Study" },
       { "id": "study.subjectActions", "title": "Subject Actions…", "category": "Study" },

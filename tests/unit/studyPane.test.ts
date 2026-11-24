@@ -21,6 +21,7 @@
 // animationend, mastery is predicted from the stored answer times).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createWorkApi } from '../../src/api/bridges/workBridge';
 // Node's built-in SQLite, not better-sqlite3: the repo's better-sqlite3 is
 // built for Electron's ABI and plain-node vitest cannot load it. The wrapper
 // adds the two better-sqlite3 calls the bridge below uses.
@@ -614,6 +615,8 @@ function makeEnv(): Env {
         return { dispose: () => { if (tools.get(name) === def) tools.delete(name); } };
       },
     },
+    // The core's own clock and work-provider point, as a tool receives them: what Study starts there goes with its subscriptions.
+    get work() { const e = env as AnyRec; if (e.workOf !== env.context) { e.workOf = env.context; e.workApi = createWorkApi('parallx-community.study', env.context.subscriptions); } return e.workApi; },
     dashboard: {
       registerWidgetType(def: AnyRec) {
         widgets.push(def);
@@ -901,13 +904,13 @@ describe('Study end to end', () => {
     await boot();
     await waitFor(() => one("SELECT COUNT(*) AS n FROM st_banks WHERE kind = 'provider'").n === 1, 'the provider bank');
     expect(env.db.migratedFrom).toBe(join(STUDY_DIR, 'db', 'migrations'));
-    expect(one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name LIKE 'st_%'").n).toBe(14); // study_004 adds st_subjects, st_subject_marks, st_subject_logs; study_006 st_plans
+    expect(one("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name LIKE 'st_%'").n).toBe(17); // study_004 adds st_subjects, st_subject_marks, st_subject_logs; study_006 st_plans; study_009 st_work_rows, st_work_time, st_unit_chats
     expect(one('PRAGMA foreign_keys').foreign_keys).toBe(1);
 
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(31); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), a subject's four (New Subject…, Study a Subject…, Subject Actions…, Open Progress…), a unit's six (Open Unit…, Find Matches…, Unit Actions…, Add Notes or Files…, Open an Attached Item, Remove an Attached Item), and a plan's two (New Plan…, Open Plan…)
+    expect(MANIFEST_COMMANDS.length).toBe(32); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), a subject's four (New Subject…, Study a Subject…, Subject Actions…, Open Progress…), a unit's seven (Open Unit…, Find Matches…, Unit Actions…, Add Notes or Files…, Open an Attached Item, Remove an Attached Item, Discuss a Unit in Chat), and a plan's two (New Plan…, Open Plan…)
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.
