@@ -206,7 +206,7 @@ async function renderPlan(host, route, ctx) {
     // What Edited means, in words on the tab, and each edited day's row described by it.
     const hourWords = ui.createBlock(box, 'div', { className: 'st-plan__words' });
     for (const line of ST_PLAN_WORDS.accounts) ui.createBlock(hourWords, 'div', { text: line });
-    if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited there and it follows the rules again.', attrs: { id: editedNoteId } });
+    if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited on a day still to come and it follows the rules again. A day gone by stays as it is.', attrs: { id: editedNoteId } });
     const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
     ui.createBlock(table, 'caption', { className: 'st-plan__cap', text: `Every day of ${plan.name}, ${stPlanSpanWords(view.start, stPlanAddDays(view.exam, -1))}, in the ${view.following} plan, by week` });

@@ -129,6 +129,39 @@ describe('days gone by', () => {
     expect(dayOf(later.rows, '2027-01-16').values).toMatchObject({ Work: 0, Standard: 5 });
   });
 
+  it('a day gone by he unticked Edited on stays as he left it, and Study does not tick it again', () => {
+    let s = sync(rulesOf(), { rows: [], written: {} });
+    dayOf(s.rows, '2027-01-10').values.Standard = 5;
+    s = sync(rulesOf(), s);
+    expect(dayOf(s.rows, '2027-01-10').values.Edited).toBe(true);
+    dayOf(s.rows, '2027-01-10').values.Edited = false;
+    for (let i = 0; i < 3; i++) {
+      s = sync(rulesOf(), s);
+      expect([i, dayOf(s.rows, '2027-01-10').values.Standard, dayOf(s.rows, '2027-01-10').values.Edited, s.r.updates]).toEqual([i, 5, false, []]);
+    }
+    // And a change he makes there afterwards is still seen as his.
+    dayOf(s.rows, '2027-01-10').values.Standard = 6;
+    s = sync(rulesOf(), s);
+    expect(dayOf(s.rows, '2027-01-10').values.Edited).toBe(true);
+  });
+
+  it('a day whose last write never landed, then gone by, is not marked Edited at a later run', () => {
+    const s = sync(rulesOf(), { rows: [], written: {} });
+    const rules2 = rulesOf({ week: [wk('Every day', ALL, 'Personal', 1, 4, 5)] });
+    const r = stPlanReconcile({ rules: rules2, rows: s.rows, written: s.written, today: TODAY });
+    // The record as it is kept before the writes (29-plans.js): the new cells, with what was there before.
+    const attempt: any = {};
+    for (const [id, w] of Object.entries<any>(r.written)) {
+      const { prev: _p, ...was } = s.written[id] || {};
+      attempt[id] = s.written[id] && JSON.stringify(was) !== JSON.stringify(w) ? { ...w, prev: was } : w;
+    }
+    let t: any = { rows: s.rows, written: attempt };   // the Days write did not land
+    for (let i = 0; i < 3; i++) {
+      t = sync(rules2, t, '2027-01-15');
+      expect([i, dayOf(t.rows, TODAY).values.Standard, dayOf(t.rows, TODAY).values.Edited === true]).toEqual([i, 2, false]);
+    }
+  });
+
   it('with no today given, nothing is held back (the plan as the rules give it)', () => {
     const s = sync(rulesOf(), { rows: [], written: {} }, '');
     const later = sync(rulesOf({ week: [wk('Every day', ALL, 'Personal', 4, 5, 6)] }), s, '');

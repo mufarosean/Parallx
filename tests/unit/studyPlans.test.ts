@@ -10,13 +10,16 @@
 // is the Work Log's; a database in the Trash or gone stops every write and is
 // said; and once Study is off nothing is written, on again the days catch up.
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { studyHarness, type Study } from './fixtures/studyDoor';
 
 const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stRouteInstanceId', 'stRouteFromInstanceId', 'stSubjectMenuItems', 'stSubjectsShown', 'stCreateSubject', 'stCreatePlan', 'stPlanEnqueue', 'stPlanFlush', 'stPlansOfSubject', 'stPlanSetFollowing', 'stSubjectsReset', 'stPlansReset', 'stAtEachNewDay', 'registerPlans', 'deactivate', 'stRemoveSubject'];
 
 let live: Study | null = null;
-afterEach(() => { live?.stPlansReset(); live?.stSubjectsReset(); live = null; });
+// The plans here run from 2027-01-04 to 2027-03-01, and Study keeps the days gone by as they are. So the date is
+// held, before the plan starts: these tests then say the same on any day they are run. Only Date is faked; timers run.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 10, 23, 12, 0, 0) }); });
+afterEach(() => { live?.stPlansReset(); live?.stSubjectsReset(); live = null; vi.useRealTimers(); });
 
 const week7 = (monThu: number, fri: number, sat: number, sun: number) => ({ Mon: monThu, Tue: monThu, Wed: monThu, Thu: monThu, Fri: fri, Sat: sat, Sun: sun });
 const BASIC = { name: 'Winter Block', start: '2027-01-04', exam: '2027-03-01', goal: 200, personal: week7(2, 0, 4, 0), work: week7(1, 2, 0, 0) };

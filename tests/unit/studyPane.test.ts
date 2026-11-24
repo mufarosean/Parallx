@@ -1807,6 +1807,39 @@ describe('Study end to end', () => {
     await settle();
   });
 
+  it('a session tab closed while it is still loading leaves nothing listening on the window', async () => {
+    await boot();
+    const { sessionId } = await startChapterSession();
+    const tab = `session-${sessionId}`;
+    const e = env.editors.open.get(tab);
+    e.pane.dispose();
+    await settle(60);
+    const heard = ['keydown', 'pointerdown', 'wheel', 'touchmove'];
+    const log: string[] = [];
+    const add = window.addEventListener; const remove = window.removeEventListener;
+    (window as any).addEventListener = function (t: string, ...x: any[]) { if (heard.includes(t) && x[1] && x[1].capture) log.push('+' + t); return (add as any).call(window, t, ...x); };
+    (window as any).removeEventListener = function (t: string, ...x: any[]) { if (heard.includes(t) && x[1] && x[1].capture) log.push('-' + t); return (remove as any).call(window, t, ...x); };
+    try {
+      const make = () => env.editors.providers.get('study')!.createEditorPane(e.host, { id: e.id, instanceId: tab, title: e.title });
+      // Opened, drawn, closed: all four are put on and taken off.
+      e.pane = make();
+      await settle(60);
+      e.pane.dispose();
+      await settle(60);
+      expect(log.slice().sort()).toEqual([...heard.map((t) => '+' + t), ...heard.map((t) => '-' + t)].sort());
+      // Closed before its reads finish: none is put on at all.
+      log.length = 0;
+      e.pane = make();
+      e.pane.dispose();
+      await settle(60);
+      expect(log).toEqual([]);
+    } finally {
+      (window as any).addEventListener = add; (window as any).removeEventListener = remove;
+    }
+    e.pane = env.editors.providers.get('study')!.createEditorPane(e.host, { id: e.id, instanceId: tab, title: e.title });
+    await settle(60);
+  });
+
   it('5b. without flashcards.addCards there is no Send Missed; Refresh stays', async () => {
     env.flashcardsOn = false;
     await boot();

@@ -527,10 +527,13 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     }
     if (Object.keys(values).length) updates.push({ pageId: s.row.pageId, values });
     const { prev: _prev, ...was } = s.w || s.cells;
-    // A day gone by keeps its record too: what stands there is what Study last wrote, so a later change by him shows.
+    // A day gone by stands as it is, and its record is what stands there, so a later change by him shows. (Not the
+    // record from before: a day he unticked Edited on, or one whose last write never landed, would read as a fresh
+    // change at the next run and be ticked Edited by Study.)
+    const { Type, Phase, Work, Floor, Standard, Stretch } = s.cells;
     next[s.row.pageId] = d.kept
       ? { ...was, Edited: true }
-      : d.frozen ? { ...was, Edited: false }
+      : d.frozen ? { Type, Phase, Work, Floor, Standard, Stretch, Edited: false }
         : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
   }
   return { days, adds, updates, removes, written: next, outside };

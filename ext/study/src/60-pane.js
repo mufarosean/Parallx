@@ -950,6 +950,9 @@ async function renderSession(host, route, ctx) {
   pastWrap.hidden = true;
   pastCtl.hidden = true;
 
+  // The tab closed, or Study went off, while the reads above ran: nothing below is set up (what it adds to the
+  // window would never be taken away).
+  if (ctx.disposed()) return;
   // ── Timing: seconds while this tab is showing and he is at the desk (16-clock-model.js), stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
   // The timer belongs to this activation: once Study goes off it stops, and

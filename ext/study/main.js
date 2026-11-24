@@ -2982,10 +2982,13 @@ function stPlanReconcile({ rules, rows, written = {}, done = null, absent = [], 
     }
     if (Object.keys(values).length) updates.push({ pageId: s.row.pageId, values });
     const { prev: _prev, ...was } = s.w || s.cells;
-    // A day gone by keeps its record too: what stands there is what Study last wrote, so a later change by him shows.
+    // A day gone by stands as it is, and its record is what stands there, so a later change by him shows. (Not the
+    // record from before: a day he unticked Edited on, or one whose last write never landed, would read as a fresh
+    // change at the next run and be ticked Edited by Study.)
+    const { Type, Phase, Work, Floor, Standard, Stretch } = s.cells;
     next[s.row.pageId] = d.kept
       ? { ...was, Edited: true }
-      : d.frozen ? { ...was, Edited: false }
+      : d.frozen ? { Type, Phase, Work, Floor, Standard, Stretch, Edited: false }
         : { Type: d.type, Phase: d.phase, Work: d.work, Floor: d.floor, Standard: d.standard, Stretch: d.stretch, Edited: false };
   }
   return { days, adds, updates, removes, written: next, outside };
@@ -12467,6 +12470,9 @@ async function renderSession(host, route, ctx) {
   pastWrap.hidden = true;
   pastCtl.hidden = true;
 
+  // The tab closed, or Study went off, while the reads above ran: nothing below is set up (what it adds to the
+  // window would never be taken away).
+  if (ctx.disposed()) return;
   // ── Timing: seconds while this tab is showing and he is at the desk (16-clock-model.js), stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
   // The timer belongs to this activation: once Study goes off it stops, and
@@ -14760,7 +14766,7 @@ async function renderPlan(host, route, ctx) {
     // What Edited means, in words on the tab, and each edited day's row described by it.
     const hourWords = ui.createBlock(box, 'div', { className: 'st-plan__words' });
     for (const line of ST_PLAN_WORDS.accounts) ui.createBlock(hourWords, 'div', { text: line });
-    if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited there and it follows the rules again.', attrs: { id: editedNoteId } });
+    if (view.weeks.some((w) => w.days.some((d) => d.kept))) ui.createBlock(box, 'div', { className: 'st-plan__note', text: 'Edited: a day you changed in Days. It keeps what you gave it; untick Edited on a day still to come and it follows the rules again. A day gone by stays as it is.', attrs: { id: editedNoteId } });
     const scroller = ui.createBlock(box, 'div', { className: 'st-plan__scroll', attrs: { role: 'group', 'aria-label': 'Every day, by week' } });
     const table = ui.createBlock(scroller, 'table', { className: 'st-plan__table' });
     ui.createBlock(table, 'caption', { className: 'st-plan__cap', text: `Every day of ${plan.name}, ${stPlanSpanWords(view.start, stPlanAddDays(view.exam, -1))}, in the ${view.following} plan, by week` });
