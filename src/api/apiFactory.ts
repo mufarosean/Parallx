@@ -57,6 +57,8 @@ import {
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { registerHomeSource, type HomeSource } from '../services/homeSources.js';
 import { CanvasBlocksBridge, createCanvasApi, type CanvasApi } from './bridges/canvasBlocksBridge.js';
+import { createWorkApi, type WorkApi } from './bridges/workBridge.js';
+import { shownChatApi, type ShownChatApi } from '../services/shownChat.js';
 import { createCanvasDatabasesApi } from './bridges/canvasDatabasesBridge.js';
 import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js'; import { registerAnswerForm, type AnswerForm } from '../ui/answerForms.js'; import { callToolAsApp } from '../services/appConnections.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
@@ -214,7 +216,7 @@ export interface ParallxApiObject {
     closeEditor(editorId: string): Promise<boolean>;
     focusEditor(editorId: string): Promise<boolean>;
     openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void>;
-    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
+    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; isShowing: boolean; typeId: string; filePath?: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
   readonly links: {
@@ -251,6 +253,8 @@ export interface ParallxApiObject {
   /** Home: a tool's recent items and how to search and open them (services/homeSources.ts). Gone when the tool stops. */
   readonly home: { registerSource(source: HomeSource): IDisposable };
   readonly canvas: CanvasApi;
+  /** Time worked: the core's clock, and the providers that report work by day and group (bridges/workBridge.ts). */
+  readonly work: WorkApi;
   readonly tools: {
     /** Fires when a tool starts or stops (turned on or off). */
     onDidChange(listener: () => void): IDisposable;
@@ -323,7 +327,7 @@ export interface ParallxApiObject {
     registerAnswerForm(form: Omit<AnswerForm, 'ownerToolId'>): IDisposable;
     /** Use another tool (its chat tool name), with the person's permission: resolves { content, data } or rejects with why not. */
     invokeTool(name: string, args?: Record<string, unknown>): Promise<{ content: string; data?: unknown }>;
-  } | undefined;
+  } & ShownChatApi | undefined;
   /** Per-extension isolated database (external extensions only). */
   readonly database: {
     open(): Promise<{ error: null; dbPath: string } | { error: { code: string; message: string } }>;
@@ -827,11 +831,8 @@ export function createToolApi(
     home: Object.freeze({
       registerSource: (source: HomeSource) => { const d = registerHomeSource({ ...source, id: `${toolId}:${source.id}` }); subscriptions.push(d); return d; },
     }),
-    dashboard: Object.freeze({
-      registerWidgetType: <TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>) =>
-        dashboardBridge.registerWidgetType(registration),
-      listWidgetTypes: () => dashboardBridge.listWidgetTypes(),
-    }),
+    dashboard: dashboardBridge.api(),
+    work: createWorkApi(toolId, subscriptions),
 
     canvas: createCanvasApi(canvasBlocksBridge, createCanvasDatabasesApi(toolId, subscriptions)),
 
@@ -1003,6 +1004,7 @@ export function createToolApi(
             keep(registerChatDropHandler({ mimeType: handler?.mimeType, resolve: (data: string) => handler.resolve(data), ownerToolId: toolId })),
           // Another tool, used with the person's permission (services/appConnections; chat asks them).
           invokeTool: (name: string, args?: Record<string, unknown>) => callToolAsApp({ id: toolId, title: toolDescription.manifest.name, kind: 'extension' }, String(name), args ?? {}),
+          ...shownChatApi(keep),
         })
       : undefined,
 

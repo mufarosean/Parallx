@@ -70,6 +70,12 @@ export interface OpenEditorDescriptor {
   readonly isDirty: boolean;
   readonly isActive: boolean;
   readonly groupId: string;
+  /** It is the editor in front in its group: with the window showing, what a person sees there. Several can be, one per group. */
+  readonly isShowing: boolean;
+  /** The kind of editor ('parallx.editor.pdf', a tool's own type). */
+  readonly typeId: string;
+  /** The file it shows, when it shows one. */
+  readonly filePath?: string;
   /**
    * Pre-rendered SVG/HTML for the editor's icon when the input opted to
    * provide one. Empty / undefined means consumers should fall back to

@@ -476,15 +476,22 @@ attempt clocks only reached the database with a cell change or a rating, so
 a morning of four hours showed 2h 35m. The rule now:
 
 - A STUDY LEDGER (`ws_study_time`, migration 012; backfilled from the attempt
-  clocks) holds seconds per day, per problem and per quiz. The clock in
-  studyClock.ts credits elapsed time (never tick counts) while the surface is
-  on screen and the student active; the quiz's overview and summary count
-  under item 0. Credits reach the ledger every half minute and at teardown.
+  clocks) holds seconds per day, per problem and per quiz. The clock is the
+  core's (src/services/workClock.ts, the one every tool counts with): it
+  credits elapsed time (never tick counts) while the surface is on screen and
+  the student at the desk; the quiz's overview and summary count under item 0.
+  Credits reach the ledger every half minute, when the sheet stops showing,
+  and at teardown; a look that crosses midnight gives each side to its own day.
 - IDLE: the clock cannot tell reading from a break, it only sees input. After
-  `worksheet.idleMinutes` (5/10/15/30, default 10; Study Clock in Worksheets
-  Settings) without any key, click, wheel or pointer movement, the stretch is
-  taken back, so a break with the tab up counts for nothing; reading keeps
-  it running through the odd scroll.
+  the idle time (5/10/15/30 minutes, default 10; Idle Time under General in
+  the app's Settings, one setting for every tool) without a key, a click, a
+  tap or a scroll, the stretch is taken back, so a break with the tab up
+  counts for nothing; reading keeps it running through the odd scroll. Moving
+  the mouse alone is not being there. The stop and the return are said under
+  the problem's title, and to a screen reader politely.
+- The ledger is what Worksheets reports to any tool that keeps a record of
+  work (workProvider.ts, the core's work-provider point): minutes and problems
+  rated, by day and paper.
 - Every time shown reads the ledger: the header clock on a problem (every
   sitting), bank rows and paper heads, quiz overview rows (this quiz), the
   Dashboard's Today and This Week chips and the Time Studied tile (problems

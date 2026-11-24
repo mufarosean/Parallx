@@ -387,7 +387,7 @@ describe('activation', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'fc_%' ORDER BY name")
       .all()
       .map((r: { name: string }) => r.name);
-    expect(tables).toEqual(['fc_cards', 'fc_custom_decks', 'fc_decks', 'fc_reviews']);
+    expect(tables).toEqual(['fc_cards', 'fc_custom_decks', 'fc_decks', 'fc_reviews', 'fc_work_time']);
   });
 
   it('registers chat tools, dashboard widget, and links contract', () => {

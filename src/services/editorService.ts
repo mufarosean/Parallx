@@ -128,6 +128,9 @@ export class EditorService extends Disposable implements IEditorService {
           isDirty: editor.isDirty,
           isActive: editor === activeGroupEditor && group === this._editorPart.activeGroup,
           groupId: group.model.id,
+          isShowing: editor === group.model.activeEditor,
+          typeId: editor.typeId,
+          filePath: editor.uri?.fsPath,
           iconHtml: editor.iconHtml,
         });
       }

@@ -18,6 +18,7 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry } from './settingsRegistryService.js';
 import { createSecretStorageService } from './secretStorageService.js';
 import { registerManifestConfiguration } from './manifestSettings.js';
+import { registerWorkClockSetting } from './workClock.js';
 import { ToolState } from '../tools/toolRegistry.js';
 import type { ServiceCollection } from './serviceCollection.js';
 import {
@@ -56,6 +57,9 @@ export function bootstrapSettingsRegistry(services: ServiceCollection): IDisposa
     // row on the General page every user opened Settings to.
     hidden: true,
   });
+
+  // The idle time of the clock that counts time worked: one setting, whatever tools are on.
+  registerWorkClockSetting(registry);
 
   services.registerInstance(ISettingsRegistryService, registry);
   setGlobalSettingsRegistry(registry);

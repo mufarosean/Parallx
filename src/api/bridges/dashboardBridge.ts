@@ -365,6 +365,15 @@ export class DashboardBridge {
     private readonly _subscriptions: IDisposable[],
   ) {}
 
+  /** The `parallx.dashboard` namespace this bridge backs, as a tool receives it. */
+  api() {
+    const bridge = this;
+    return Object.freeze({
+      registerWidgetType: <TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>) => bridge.registerWidgetType(registration),
+      listWidgetTypes: () => bridge.listWidgetTypes(),
+    });
+  }
+
   /**
    * Register a dashboard widget type. Validated at this boundary: typeId
    * namespacing under the tool id, required fields, sane sizes, refresh

@@ -4,20 +4,21 @@ import type { IWorkbookData } from '@univerjs/core';
 import type { IWorksheetHost, SheetViewState } from '../univerHost.js';
 import { renderMarkdown } from '../../../ui/renderMarkdown.js';
 import { declareControl } from '../../../ui/kit.js';
-import { createButton, createIconButton, createSegmented } from '../../../ui/kit.js';
-import { listItems, getItem, getOpenAttempt, getLatestWork, saveAttemptCells, discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged, getProblemNotes, setProblemNote, getStarred, addStudySeconds, getStudySecondsForItem, type WorksheetItem, getItemSheetAt } from '../worksheetData.js';
+import { createBlock, createButton, createIconButton, createSegmented } from '../../../ui/kit.js';
+import { listItems, getItem, getOpenAttempt, getLatestWork, saveAttemptCells, discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged, getProblemNotes, setProblemNote, getStarred, getStudySecondsForItem, type WorksheetItem, getItemSheetAt } from '../worksheetData.js';
 import { normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS } from '../problemImport.js';
 import { indexPristine, solutionSegments as pureSolutionSegments, applySolutionVisibility as pureApplySolutionVisibility, type PristineIndex } from '../solutionVisibility.js';
-import { dayKey } from '../progressInsights.js';
 import { workbookHasOnSheetQuestion } from '../itemFormat.js';
 import { reviewAttempt } from '../worksheetAi.js';
-import { createStudyTicker } from '../studyClock.js';
+import { createWorkClock } from '../../../services/workClock.js';
+import { createClockStatus } from '../../../ui/clockStatus.js';
+import { creditStudyTime } from '../workProvider.js';
 import { mountTagEditor } from './tagEditor.js';
 import { setAttemptAside, workForQuiz } from '../quizSheet.js';
 import { fmtSeconds } from '../labels.js';
 import { openWorksheet, showMenu } from '../actions.js';
 import { reviewInChat } from '../chatReview.js';
-import { AUTOSAVE_MS, appearanceListeners, decimalsListeners, scratchCache, workingCache, appIsDark, getDisplayDecimals, getIdleMinutes, getSheetAppearance, loadUniverModule, paneOnScreen, parseWorkbook, quizSessionIdFor, resolveSheetDark, setSheetAppearance, state, type SheetAppearance } from '../state.js';
+import { AUTOSAVE_MS, appearanceListeners, decimalsListeners, scratchCache, workingCache, appIsDark, getDisplayDecimals, getSheetAppearance, loadUniverModule, paneOnScreen, parseWorkbook, quizSessionIdFor, resolveSheetDark, setSheetAppearance, state, type SheetAppearance } from '../state.js';
 import { el, iconBtn, makeSheetThemeButton, markBtn, paintSheetThemeButton, starBtn } from '../widgets.js';
 
 // ── Sheet panes (scratch + item player) ─────────────────────────────────────
@@ -411,7 +412,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     };
     await refreshRating();
     const timerEl = el('span', 'ws-problem__timer', fmtSeconds(problemSeconds));
-    timerEl.title = 'Study time on this problem, every sitting. Counts while it is on screen and you are active; idle stretches are taken back.';
+    timerEl.title = 'Study time on this problem, every sitting. Counts while it is on screen and you are at the desk (a key, a click, a tap, a scroll); an idle stretch is taken back.';
     // The note on this problem, taken where the work is (
     // it lived only on the quiz overview, a screen away). One button on the
     // header opens the editor under it; saved on blur, kept across quizzes.
@@ -435,6 +436,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     mountTagEditor(noteHost, problem.id);
     const header = el('div', 'ws-item__header');
     const titleRow = el('div', 'ws-item__titlerow');
+    const clockLine = createBlock(null, 'div', { className: 'ws-problem__clockline' });
     const paintHeader = () => {
       titleRow.replaceChildren();
       titleRow.appendChild(el('div', 'ws-item__title', problem.title));
@@ -564,7 +566,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
           { label: 'Reset Work…', icon: 'rotate-ccw', danger: true, tooltip: 'Clears your work and the timer; the problem returns to the sheet as imported. Ratings stay.', onSelect: () => void resetWork() },
         ]);
       });
-      header.replaceChildren(titleRow, noteHost);
+      header.replaceChildren(titleRow, clockLine, noteHost);
       if (revealed && state.api?.lm) {
         const reviewWrap = el('div', 'ws-item__review');
         const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', icon: 'message-square', title: 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.' });
@@ -657,12 +659,14 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     // cells do; flushed to the ledger every half minute and at teardown,
     // which announces the change so the dashboard's day catches up.
     studyTicker?.dispose();
-    studyTicker = createStudyTicker({
-      visible: () => !disposed && paneOnScreen(root),
-      idleMs: getIdleMinutes() * 60_000,
-      credit: (secs, final) => { void addStudySeconds(dayKey(Date.now()), problem.id, quizSessionIdFor(problem.id) ?? '', secs, final).catch(() => {}); },
-      onTotal: (delta) => { problemSeconds = Math.max(0, problemSeconds + delta); timerEl.textContent = fmtSeconds(problemSeconds); },
+    const clock = createWorkClock({
+      showing: () => !disposed && paneOnScreen(root),
+      credit: creditStudyTime(problem.id, () => quizSessionIdFor(problem.id) ?? ''),
+      onCount: (delta) => { problemSeconds = Math.max(0, problemSeconds + delta); timerEl.textContent = fmtSeconds(problemSeconds); },
     });
+    // The stop for idleness, and the return, said under the title where the clock is.
+    const clockStatus = createClockStatus(clockLine, clock);
+    studyTicker = { dispose: () => { clockStatus.dispose(); clock.dispose(); } };
   };
 
   void (async () => {

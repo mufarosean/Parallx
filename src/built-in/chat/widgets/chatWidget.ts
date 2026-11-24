@@ -8,6 +8,7 @@
 //   src/vs/workbench/contrib/chat/browser/widget/chatWidget.ts
 
 import './chatWidget.css';
+import { noteShownChat } from '../../../services/shownChat.js';
 
 import { Disposable, DisposableStore, toDisposable } from '../../../platform/lifecycle.js';
 import { EMPTY_STATES } from '../../../ui/emptyStates.js';
@@ -492,6 +493,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   setSession(session: IChatSession): void {
     this._sessionDisposables.clear();
     this._session = session;
+    noteShownChat(() => (this._session ? { id: this._session.id, showing: this._root.isConnected && this._root.getClientRects().length > 0 && document.visibilityState !== 'hidden' } : undefined));
 
     // Deferred restore: message bodies stay in SQLite until a session is
     // actually opened. Fire-and-forget — the service fires onDidChangeSession

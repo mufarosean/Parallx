@@ -1,0 +1,20 @@
+/* clockStatus.css — the kit's clock status (clockStatus.ts): one line that
+   says a clock has stopped for idleness, and that it goes on again. Empty, it
+   takes no room, and stays where a screen reader hears it fill. */
+
+.px-clock-status {
+  font-size: var(--px-text-sm);
+  line-height: 1.4;
+  color: var(--px-text);
+}
+.px-clock-status--stopped { font-weight: 600; }
+
+/* A line of its own across the top of a pane that has no header row to put it in. */
+.px-clock-status--bar:not(:empty) {
+  display: block;
+  flex: 0 0 auto;
+  padding: var(--px-space-1) var(--px-space-4);
+  text-align: center;
+  background: var(--px-bg-inset);
+  border-bottom: 1px solid var(--px-divider);
+}

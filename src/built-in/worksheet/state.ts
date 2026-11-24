@@ -8,7 +8,8 @@ import type { IWorksheetHost } from './univerHost.js';
 import { getOpenQuizSession, saveQuizSession } from './worksheetData.js';
 import { parseDisplayDecimals, DISPLAY_DECIMALS_CHOICES, DEFAULT_DISPLAY_DECIMALS } from './displayNumbers.js';
 import type { LmApiLike } from './worksheetAi.js';
-import { DEFAULT_IDLE_MINUTES } from './studyClock.js';
+import { DEFAULT_IDLE_MINUTES, IDLE_MINUTES_CHOICES, IDLE_MINUTES_SETTING } from '../../services/workClock.js';
+import { ISettingsRegistryService } from '../../services/serviceTypes.js';
 import { defaultQuizName, newQuizId } from './labels.js';
 
 export interface ParallxApiLike {
@@ -150,26 +151,24 @@ export async function setSheetAppearance(value: SheetAppearance): Promise<void> 
   for (const fn of appearanceListeners) { try { fn(value); } catch { /* pane torn down */ } }
 }
 
-// ── Study clock idle threshold (worksheet.idleMinutes) ─────────────────────
+// ── The idle time: the app's own setting now ───────────────────────────────
 //
-// The clock counts while a problem or the quiz is on screen and the student
-// is active; after this many minutes without input the stretch is taken back
-// (studyClock.ts). Reading keeps it running through the odd scroll; a break
-// with the tab up counts for nothing.
-export const IDLE_MINUTES_CHOICES = [5, 10, 15, 30] as const;
-export function getIdleMinutes(): number {
+// Worksheets had an idle time of its own (worksheet.idleMinutes). The clock is
+// the core's now (services/workClock.ts) and its idle time is one setting for
+// the whole app, in Settings. A value set here before is carried over once
+// (when the app's is still as it came), then forgotten here.
+export async function carryIdleMinutes(): Promise<void> {
   try {
-    const v = Number(state.api?.workspace?.getConfiguration('worksheet').get<number>('idleMinutes', DEFAULT_IDLE_MINUTES) ?? DEFAULT_IDLE_MINUTES);
-    return (IDLE_MINUTES_CHOICES as readonly number[]).includes(v) ? v : DEFAULT_IDLE_MINUTES;
-  } catch {
-    return DEFAULT_IDLE_MINUTES;
-  }
-}
-export async function setIdleMinutes(value: number): Promise<void> {
-  try {
-    await state.api?.workspace?.getConfiguration('worksheet').update('idleMinutes', value);
+    const config = state.api?.workspace?.getConfiguration('worksheet');
+    const old = config?.get<number>('idleMinutes');
+    if (old === undefined || old === null) return;
+    const settings = state.api?.services?.has(ISettingsRegistryService) ? state.api.services.get<ISettingsRegistryService>(ISettingsRegistryService) : null;
+    if (settings && IDLE_MINUTES_CHOICES.includes(Number(old)) && Number(old) !== DEFAULT_IDLE_MINUTES && settings.getValue<string>(IDLE_MINUTES_SETTING) === String(DEFAULT_IDLE_MINUTES)) {
+      await settings.setValue(IDLE_MINUTES_SETTING, String(old));
+    }
+    await config?.update('idleMinutes', undefined);
   } catch (err) {
-    console.warn('[Worksheet] idleMinutes persist failed:', err);
+    console.warn('[Worksheet] the idle time could not be carried over:', err);
   }
 }
 /** The pane is on screen: connected, laid out, and the window not hidden. */

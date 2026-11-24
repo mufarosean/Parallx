@@ -36,6 +36,8 @@ import { worksheetQuestionProvider } from './questionProvider.js';
 import { registerQuestionProvider } from '../../services/questionProviders.js';
 import { worksheetProgressProvider } from './progressProvider.js';
 import { registerProgressProvider } from '../../services/progressProviders.js';
+import { registerWorkProvider } from '../../services/workProviders.js';
+import { worksheetWorkProvider } from './workProvider.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
 import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
 import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilderWith, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
@@ -50,7 +52,7 @@ import { createReviewPane } from './panes/reviewPane.js';
 import { createSettingsPane } from './panes/settingsPane.js';
 import { createSheetPane } from './panes/sheetPane.js';
 import { createSidebarView } from './panes/sidebarView.js';
-import { scratchCache, getExamDate, getXpCashRate, state, type ParallxApiLike, type ToolContextLike } from './state.js';
+import { carryIdleMinutes, scratchCache, getExamDate, getXpCashRate, state, type ParallxApiLike, type ToolContextLike } from './state.js';
 import './worksheet.css';
 
 // ── Activation ──────────────────────────────────────────────────────────────
@@ -263,6 +265,11 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     onDidChange: (listener) => onWorksheetDataChanged(listener),
     openQuiz: (ids, name) => openBuilderWith({ ids, name }),
   })));
+
+  // The time and the problems of each day and paper, for any tool that keeps a record of work (the core's
+  // work-provider point); it goes with the tool when Worksheets is off, and the ledger stays.
+  context.subscriptions.push(registerWorkProvider(worksheetWorkProvider()));
+  void carryIdleMinutes();
 
   // The AI's read surface: bank/progress + the user's actual sheet work.
   registerWorksheetChatTools(api, context.subscriptions);

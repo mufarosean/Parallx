@@ -8,8 +8,9 @@ import { DISPLAY_DECIMALS_CHOICES } from '../displayNumbers.js';
 import { dayKey } from '../progressInsights.js';
 import { fmtShortDay } from '../labels.js';
 import { BACK_TO_HOME } from '../actions.js';
-import { IDLE_MINUTES_CHOICES, getDisplayDecimalsSetting, getExamDate, getIdleMinutes, getSheetAppearance, getXpCashRate, setDisplayDecimalsSetting, setExamDate, setIdleMinutes, setSheetAppearance, setXpCashRate, state, type SheetAppearance } from '../state.js';
+import { getDisplayDecimalsSetting, getExamDate, getSheetAppearance, getXpCashRate, setDisplayDecimalsSetting, setExamDate, setSheetAppearance, setXpCashRate, state, type SheetAppearance } from '../state.js';
 import { el } from '../widgets.js';
+import { getIdleMinutes } from '../../../services/workClock.js';
 import { getRoster, saveRoster, clearRoster } from '../rosterData.js';
 
 // ── Settings (instanceId 'settings') ────────────────────────────────────────
@@ -189,10 +190,11 @@ export function createSettingsPane(container: HTMLElement) {
     row(sheet, 'Decimals shown', 'A cell without a number format shows at most this many. The value and the cell editor keep full precision, and a format set on a cell always wins.',
       switchOf('worksheet.settings.displayDecimals', 'Decimals shown', DISPLAY_DECIMALS_CHOICES.map((v) => ({ value: v, label: v === 'full' ? 'Full' : v })), getDisplayDecimalsSetting(), (v) => { void setDisplayDecimalsSetting(v); }));
 
-    // The study clock: when a stretch without input stops being study.
+    // The study clock is the app's: its idle time is one setting for every tool, in Settings.
     const clock = card('Study clock');
-    row(clock, 'Stop counting after', 'Time counts while a problem or quiz is on screen and you are active. After this long with no input, the stretch is taken back, so a break with the tab up counts for nothing.',
-      switchOf('worksheet.settings.idleMinutes', 'Stop counting after', IDLE_MINUTES_CHOICES.map((v) => ({ value: String(v), label: `${v} min` })), String(getIdleMinutes()), (v) => { void setIdleMinutes(Number(v)); }));
+    const idle = getIdleMinutes();
+    const open = createButton(null, { id: 'worksheet.settings.openIdleTime', label: 'Open Settings…', icon: 'settings', title: 'Idle Time is under General in Settings.', command: 'settings.open' });
+    row(clock, 'Idle time', `Time counts while a problem or quiz is on screen and you are at the desk. After ${idle} minutes with no key, click, tap or scroll, the stretch is taken back, so a break with the tab up counts for nothing. Idle Time is one setting for the whole app.`, open);
   };
 
   void render();

@@ -166,8 +166,31 @@ describe('ext/flashcards/main.js', () => {
   it('registers the provider through the core command, into its subscriptions', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
+    // The registration lives in work.js now (fcRegisterProviders registers this provider and the work provider together);
+    // main.js calls it with its own api, context and database.
     const main = readFileSync(resolve(__dirname, '../../ext/flashcards/main.js'), 'utf8');
-    expect(main).toMatch(/fcWithRegistry\(_api, 'progress\.getRegistry'/);
-    expect(main).toMatch(/context\.subscriptions\.push\(registry\.register\(fcProgressProvider\(/);
+    const work = readFileSync(resolve(__dirname, '../../ext/flashcards/work.js'), 'utf8');
+    expect(main).toMatch(/fcRegisterProviders\(_api, context, \{ db, isLive: \(\) => !!_dbBridge/);
+    expect(work).toMatch(/fcWithRegistry\(api, 'progress\.getRegistry'/);
+    expect(work).toMatch(/context\.subscriptions\.push\(registry\.register\(fcProgressProvider\(/);
+  });
+
+  it('fcRegisterProviders puts both providers into the subscriptions: progress through the core command, work through api.work', async () => {
+    // @ts-expect-error — JS module with no types
+    const { fcRegisterProviders } = await import('../../ext/flashcards/work.js');
+    const registered: { id: string }[] = [];
+    const registry = { register: (p: { id: string }) => { registered.push(p); return { dispose() {} }; } };
+    const work: { id: string; kind: string }[] = [];
+    const api = {
+      commands: { executeCommand: vi.fn(async () => registry) },
+      work: { registerProvider: (p: { id: string; kind: string }) => { work.push(p); return { dispose() {} }; } },
+    };
+    const context = { subscriptions: [] as unknown[] };
+    fcRegisterProviders(api, context, { db: { all: async () => [] }, isLive: () => true, onData: () => ({ dispose() {} }) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.commands.executeCommand).toHaveBeenCalledWith('progress.getRegistry');
+    expect(registered.map((p) => p.id)).toEqual(['flashcards.cards']);
+    expect(work.map((p) => [p.id, p.kind])).toEqual([['flashcards.cards', 'Cards']]);
+    expect(context.subscriptions).toHaveLength(2);
   });
 });

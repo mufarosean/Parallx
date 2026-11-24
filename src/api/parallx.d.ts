@@ -1284,6 +1284,12 @@ export interface OpenEditorDescriptor {
   readonly isDirty: boolean;
   readonly isActive: boolean;
   readonly groupId: string;
+  /** It is the editor in front in its group: with the window showing, what a person sees there. Several can be, one per group. */
+  readonly isShowing: boolean;
+  /** The kind of editor ('parallx.editor.pdf', a tool's own type). */
+  readonly typeId: string;
+  /** The file it shows, when it shows one. */
+  readonly filePath?: string;
 }
 
 /**
@@ -1648,6 +1654,90 @@ export namespace dashboard {
 
   /** Metadata snapshot of every contributed widget type, across all tools. */
   export function listWidgetTypes(): readonly WidgetTypeDescriptor[];
+}
+
+/**
+ * Work: time worked, counted one way, and reported to whoever keeps a record.
+ * The clock is the core's: it counts while your surface is showing and the
+ * person pressed a key, clicked, tapped or scrolled within the idle time (one
+ * setting for the whole app), and takes back a stretch that ends idle. A
+ * tool in which a person works reports its work by day and group through a
+ * work provider; a tool that keeps a record reads every provider. Everything
+ * started here stops when your tool is turned off.
+ */
+export namespace work {
+  /** Whole seconds for one local day and one bucket; below zero when a stretch is taken back. */
+  export interface ClockCredit {
+    readonly day: string;
+    readonly bucket: string;
+    readonly seconds: number;
+  }
+  export interface ClockOptions {
+    /** Your surface is on screen now: its pane laid out, the window not hidden. */
+    showing(): boolean;
+    /** What is showing now, when one clock serves several things (a card of a session). Time is taken back from the bucket it was counted in. */
+    bucket?(): string;
+    /** Seconds to keep, by local day and bucket: every half minute, when the surface stops showing or a stretch is taken back, and at dispose (`final`). */
+    credit?(credits: readonly ClockCredit[], final: boolean): void;
+    /** The running total moved by this many whole seconds (for a clock on screen). */
+    onCount?(seconds: number): void;
+  }
+  export interface Clock extends IDisposable {
+    /** The stretch since the last input was found idle and taken back; false again at the next input. */
+    readonly idle: boolean;
+    /** How long the idle time was when the clock last stopped, in minutes. */
+    readonly idleMinutes: number;
+    /** Fires with true when the clock stops for idleness while its surface shows, with false when it goes on. */
+    readonly onDidChangeIdle: Event<boolean>;
+    /** Hand what is counted so far to `credit` now. */
+    flush(): void;
+  }
+  /** The idle time as it is set now, in minutes. */
+  export const idleMinutes: number;
+  /** The person's local day of a moment (now, when none is given), 'YYYY-MM-DD': the day the clock credits time to. */
+  export function dayOf(ms?: number): string;
+  /** Run the core's clock against a surface of yours until disposed. */
+  export function createClock(options: ClockOptions): Clock;
+  /** The line that says a clock stopped for idleness and that it goes on again: seen, and spoken politely. Put it where the clock or the session is shown; `bar` makes it a line of its own across a pane. */
+  export function createClockStatus(container: HTMLElement | null, clock: Clock, options?: { readonly bar?: boolean }): { readonly element: HTMLElement } & IDisposable;
+
+  /** A group of your items: `group` is your own key, `label` the name a person reads. */
+  export interface WorkGroup {
+    readonly group: string;
+    readonly label: string;
+  }
+  /** One local day's work on the items of one set of groups. A reader counts an entry once, never once per group. */
+  export interface WorkEntry {
+    /** The local day the work was done on, 'YYYY-MM-DD'. */
+    readonly day: string;
+    /** Every group the items are in, the most particular first. */
+    readonly groups: readonly WorkGroup[];
+    /** Minutes worked, by the clock; may carry a fraction. */
+    readonly minutes: number;
+    /** Items worked that day. */
+    readonly items: number;
+    /** How many were right; leave it out when you cannot say. */
+    readonly right?: number;
+  }
+  export interface WorkProvider {
+    /** Stable, unique across tools: `<tool>.<store>`. */
+    readonly id: string;
+    /** Your tool's name as a person reads it. */
+    readonly displayName: string;
+    /** The kind of work: "Problems", "Cards". */
+    readonly kind: string;
+    /** The tool that registered it (filled in for you). */
+    readonly toolId: string;
+    /** Every day's work as it stands now. With `since`, the days from that local day on are enough. */
+    work(since?: string): Promise<readonly WorkEntry[]> | readonly WorkEntry[];
+    /** Fires when any day's numbers may have changed. */
+    onDidChange(listener: () => void): IDisposable;
+  }
+  /** Report your tool's work by day and group. Gone when your tool stops. */
+  export function registerProvider(provider: Omit<WorkProvider, 'toolId'>): IDisposable;
+  /** Every tool's provider, as registered now. */
+  export function providers(): readonly WorkProvider[];
+  export function onDidChangeProviders(listener: () => void): IDisposable;
 }
 
 /**
@@ -2288,6 +2378,21 @@ export namespace icons {
  * VS Code reference: `vscode.chat` namespace
  */
 export namespace chat {
+  /** The conversation the chat has open; `showing` is false while its panel is closed, behind another view, or the window hidden. */
+  export interface ShownSession {
+    readonly id: string;
+    readonly showing: boolean;
+  }
+  /**
+   * The conversation the chat has open and whether it is on screen now;
+   * undefined when it has none. After you open the chat on something of yours
+   * (`chat.stagePrompt`), this says which conversation that was; later it says
+   * whether that conversation is the one a person is looking at.
+   */
+  export function shownSession(): ShownSession | undefined;
+  /** Fires when the chat opens another conversation. */
+  export function onDidChangeShownSession(listener: () => void): IDisposable;
+
   /**
    * Create and register a chat participant.
    *

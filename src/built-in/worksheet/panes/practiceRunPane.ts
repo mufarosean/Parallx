@@ -3,18 +3,18 @@
 import { stateClass } from '../bankFilters.js';
 import { createButton, createEmptyState, createIconButton, createPageHeader } from '../../../ui/kit.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
-import { listItems, onWorksheetDataChanged, getSessionGrades, finishQuizSession, renameQuizSession, reopenQuizSession, getSessionItemStates, getProblemNotes, setProblemNote, addStudySeconds, getPlanBlockBySession } from '../worksheetData.js';
+import { listItems, onWorksheetDataChanged, getSessionGrades, finishQuizSession, renameQuizSession, reopenQuizSession, getSessionItemStates, getProblemNotes, setProblemNote, getPlanBlockBySession } from '../worksheetData.js';
 import { normalizeRating, paperLabel } from '../problemImport.js';
 import { examClockFor } from './planPane.js';
-import { dayKey } from '../progressInsights.js';
 import { itemTags, nextMarkedIndex } from '../practiceSession.js';
 import { mountTagEditor } from './tagEditor.js';
-import { createStudyTicker } from '../studyClock.js';
+import { createWorkClock } from '../../../services/workClock.js';
+import { creditStudyTime } from '../workProvider.js';
 import { appDateTimeString } from '../../../services/localTime.js';
 import { fmtStudy, gradeLabel, when } from '../labels.js';
 import { openBuilder, openWorksheet, startQuizWith } from '../actions.js';
 import { createSheetPane } from './sheetPane.js';
-import { markListeners, practiceListeners, getIdleMinutes, paneOnScreen, persistPractice, restorePractice, state, type RunningPractice } from '../state.js';
+import { markListeners, practiceListeners, paneOnScreen, persistPractice, restorePractice, state, type RunningPractice } from '../state.js';
 import { el, iconBtn, markBtn, paintIconBtn, starBtn } from '../widgets.js';
 
 export function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: string): void }) {
@@ -82,10 +82,9 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
       paint();
       clockTimer = setInterval(paint, 1000);
     });
-    quizTicker = createStudyTicker({
-      visible: () => !disposed && paneOnScreen(root) && (view === 'overview' || session.index >= session.ids.length),
-      idleMs: getIdleMinutes() * 60_000,
-      credit: (secs, final) => { void addStudySeconds(dayKey(Date.now()), 0, session.id, secs, final).catch(() => {}); },
+    quizTicker = createWorkClock({
+      showing: () => !disposed && paneOnScreen(root) && (view === 'overview' || session.index >= session.ids.length),
+      credit: creditStudyTime(0, () => session.id),
     });
 
     // The quiz's lifecycle, one action each (one button

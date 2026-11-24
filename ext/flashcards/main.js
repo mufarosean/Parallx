@@ -33,7 +33,7 @@
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
 import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js'; import { fcFitWide } from './fitWide.js';
-import { fcProgressProvider, fcWithRegistry } from './progress.js';
+import { fcWithRegistry } from './progress.js'; import { fcRegisterProviders, fcStudyWork } from './work.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -1252,6 +1252,7 @@ let _activated = false;
 let _pendingRoute = null; // consumed by the editor pane on first render
 const _routeListeners = new Set();
 const _dataListeners = new Set();
+const fcOnData = (listener) => { _dataListeners.add(listener); return { dispose: () => { _dataListeners.delete(listener); } }; }; // hear every data change until disposed
 
 function _setRoute(route) {
   _pendingRoute = route;
@@ -3197,7 +3198,6 @@ async function fcListAllCards(deckId = null) {
   return rows.map(rowToCard);
 }
 
-/** Apply a grading: schedule + persist + log. Returns the updated card. */
 /**
  * Revert one grade: restore the card's pre-grade scheduling columns and
  * delete the review row it wrote. The review LOG must stay truthful — FSRS
@@ -9262,6 +9262,8 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   _fcStudySessions.set(sessionKey, session);
   if (custom) fcPruneCustomSessions(sessionKey);
   paneState.session = session;
+  // The app's clock counts the time on each card (work.js); the stop for idleness is said above the card.
+  fcStudyWork({ api: _api, db, pane: paneState, host: body, view: study, session, deckNames, onData: fcOnData });
 
   // Render card text through the shared Markdown + KaTeX renderer; fall
   // back to plain text if the host is too old to provide it.
@@ -9798,7 +9800,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       // still on screen after its grade landed, so 1-4 must no longer fire.
       if (session.grading || session.settled) return;
       session.grading = true;
-      const msTaken = Date.now() - session.cardShownAt;
+      const msTaken = paneState.work ? paneState.work.takeCardMs() : Date.now() - session.cardShownAt; // the clock's time on the card, not the gap
       // Stashed so an override can re-apply with the SAME answering time.
       // Recomputing it later would fold the marking wait and your reading of
       // the verdict into how long you took to answer.
@@ -11952,12 +11954,9 @@ function registerQuestionProvider(context) {
   })));
 }
 
-/** The cards by tag and by deck, for any tool that shows progress (progress.js); the provider leaves with the extension. */
+/** The cards by tag and by deck for any tool that shows progress (progress.js), and the time on them for any tool that keeps a record of work (work.js). */
 function registerProgressProvider(context) {
-  fcWithRegistry(_api, 'progress.getRegistry', () => !!_dbBridge, (registry) => context.subscriptions.push(registry.register(fcProgressProvider({
-    all: (sql) => db.all(sql),
-    onDidChange: (listener) => { _dataListeners.add(listener); return { dispose: () => { _dataListeners.delete(listener); } }; },
-  }))));
+  fcRegisterProviders(_api, context, { db, isLive: () => !!_dbBridge, onData: fcOnData });
 }
 
 /**
