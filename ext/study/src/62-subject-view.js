@@ -92,10 +92,6 @@ async function stCmdSubjectActions(arg) {
 }
 
 /** With no material to open the sheet on: the first subject, else Study's empty home. */
-function stOpenHome() {
-  const subject = stSubjectsShown()[0];
-  return subject ? stOpenSetup({ bankIds: [subject.subject.bankId] }) : stOpenPane({ view: 'setup', materialIds: [] });
-}
 
 /** The New Subject sheet on screen: its form, and what its Create does. */
 let _stSubjectSheet = null;

@@ -10706,6 +10706,91 @@ function injectStyles() {
   transition-duration: 0.001ms !important;
   transition-delay: 0ms !important;
 }
+
+/* ── Home: today, where he stands, the plan of every subject ────────────── */
+.st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.st-sb__home { display: flex; align-items: center; gap: var(--px-space-2); width: calc(100% - 2 * var(--px-space-2)); margin: var(--px-space-2) var(--px-space-2) var(--px-space-1); padding: 0 var(--px-space-2); height: var(--px-control-h); border: 0; border-radius: var(--px-radius-md); background: none; color: var(--px-text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.st-sb__home:hover { background: var(--px-surface-hover); }
+.st-sb__home:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
+.st-home { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); font-size: var(--px-text-read); line-height: var(--px-leading-base); }
+.st-home__in { max-width: 66rem; margin: 0 auto; padding: var(--px-space-8) var(--px-space-8) calc(2 * var(--px-space-8)); display: grid; gap: var(--px-space-8); container-type: inline-size; container-name: st-home; }
+.st-home__head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--px-space-6); flex-wrap: wrap; }
+.st-home__meta { font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.st-home__title { margin: var(--px-space-1) 0 0; font: 500 var(--px-text-2xl)/1.1 var(--px-font-display); letter-spacing: -0.015em; text-wrap: balance; }
+.st-home__title em { font-style: italic; font-weight: 400; }
+.st-home__sub { margin-top: var(--px-space-2); color: var(--px-text-secondary); }
+.st-home__count { display: flex; align-items: baseline; gap: var(--px-space-2); }
+.st-home__countn { font: 500 var(--px-text-3xl)/1 var(--px-font-display); letter-spacing: -0.02em; }
+.st-home__countw { color: var(--px-text-secondary); }
+
+.st-home__today { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: var(--px-space-4); }
+.st-home__card { --st-hue: var(--px-viz-1); display: grid; align-content: start; gap: var(--px-space-3); padding: var(--px-space-5); border-radius: var(--px-radius-xl); background: var(--px-bg-elevated); box-shadow: var(--px-edge-light), var(--px-ring), var(--px-shadow-sm); min-width: 0; }
+.st-home__cardtop { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--px-space-3); }
+.st-home__cardnames { min-width: 0; }
+.st-home__cardname { margin: 0; font: 500 var(--px-text-xl)/var(--px-leading-tight) var(--px-font-display); display: flex; align-items: center; gap: var(--px-space-2); }
+.st-home__cardname::before { content: ""; flex: none; width: var(--px-space-2); height: var(--px-space-2); border-radius: var(--px-radius-full); background: rgb(var(--st-hue)); }
+.st-home__cardline { margin-top: var(--px-space-1); color: var(--px-text-secondary); font-size: var(--px-text-base); }
+.st-home__where { flex: none; font-family: var(--px-font-mono); font-size: var(--px-text-sm); padding: 0 var(--px-space-2); line-height: var(--px-control-h-xs); border-radius: var(--px-radius-full); white-space: nowrap; }
+.st-home__where--on, .st-home__where--ahead { color: var(--px-success); background: rgba(var(--px-green-rgb), 0.14); }
+.st-home__where--behind { color: var(--px-warning); background: var(--px-warning-soft); }
+.st-home__bar { height: var(--px-space-1); border-radius: var(--px-radius-full); background: var(--px-bg-inset); overflow: hidden; }
+.st-home__bar span { display: block; height: 100%; border-radius: inherit; background: var(--px-success); }
+.st-home__work { display: grid; gap: 1px; }
+.st-home__worklabel { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-bottom: var(--px-space-1); }
+.st-home__unit { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2); margin: 0 calc(-1 * var(--px-space-2)); border: 0; border-radius: var(--px-radius-md); background: none; color: var(--px-text); font: inherit; text-align: left; cursor: pointer; }
+.st-home__unit:hover { background: var(--px-surface-hover); }
+.st-home__unit:focus-visible, .st-home__chip:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
+.st-home__unitname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-home__unitwords { font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; }
+.st-home__unit .svg-icon { color: var(--px-text-faint); }
+.st-home__acts { display: flex; flex-wrap: wrap; gap: var(--px-space-2); margin-top: var(--px-space-1); }
+
+.st-home__cal { display: grid; gap: var(--px-space-3); min-width: 0; }
+.st-home__calbar { display: flex; align-items: center; gap: var(--px-space-3); flex-wrap: wrap; }
+.st-home__calh { margin: 0; flex: 1; min-width: 12rem; font: 500 var(--px-text-xl)/var(--px-leading-tight) var(--px-font-display); }
+.st-home__calnav { display: flex; align-items: center; gap: var(--px-space-1); }
+.st-home__grid { display: grid; gap: var(--px-space-2); min-width: 0; }
+.st-home__row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--px-space-2); }
+.st-home__dayname { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: 0 var(--px-space-2); }
+.st-home__cell { display: flex; flex-direction: column; gap: var(--px-space-1); min-width: 0; min-height: 5.5rem; padding: var(--px-space-2); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); box-shadow: var(--px-ring); transition: box-shadow var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease); }
+.st-home__grid--week .st-home__cell { min-height: 15rem; }
+.st-home__cell--today { box-shadow: 0 0 0 2px var(--px-text); }
+.st-home__cell--past { background: none; }
+.st-home__cell--outside { opacity: 0.45; }
+.st-home__cell--drop { box-shadow: 0 0 0 2px var(--px-accent); background: var(--px-accent-faint); }
+.st-home__celltop { display: flex; justify-content: space-between; align-items: baseline; gap: var(--px-space-2); }
+.st-home__date { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); white-space: nowrap; }
+.st-home__cell--today .st-home__date { color: var(--px-text); }
+.st-home__sum { font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
+.st-home__col { position: relative; height: 4.5rem; border-radius: var(--px-radius-md); background: var(--px-bg-inset); overflow: hidden; margin-bottom: var(--px-space-1); }
+.st-home__col span { position: absolute; left: 0; right: 0; bottom: 0; border-radius: var(--px-radius-md); background: var(--px-success); }
+.st-home__cell--today .st-home__col span { background: var(--px-accent); }
+.st-home__col--rest { background: repeating-linear-gradient(-45deg, var(--px-bg-inset) 0 6px, transparent 6px 12px); }
+.st-home__chip { --st-hue: var(--px-viz-1); display: flex; align-items: center; gap: var(--px-space-2); width: 100%; min-width: 0; min-height: var(--px-control-h-sm); padding: var(--px-space-1) var(--px-space-2); border: 0; border-radius: var(--px-radius-md); background: rgba(var(--st-hue), 0.14); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; touch-action: pan-y; }
+.st-home__chip:hover { background: rgba(var(--st-hue), 0.24); }
+.st-home__chip--off { background: none; color: var(--px-text-muted); }
+.st-home__chip--off:hover { background: var(--px-surface-hover); }
+.st-home__chip--past { cursor: default; }
+.st-home__chip--drag { opacity: 0.5; cursor: grabbing; }
+.st-home__chipdot { flex: none; width: 6px; height: 6px; border-radius: var(--px-radius-full); background: rgb(var(--st-hue)); }
+.st-home__chiptext { flex: 1; min-width: 0; display: grid; }
+.st-home__chipname, .st-home__chipphase { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-home__chipphase { color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.st-home__chiphours { flex: none; font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text-secondary); white-space: nowrap; }
+.st-home__grid--month .st-home__chipname { display: none; }
+.st-home__grid--month .st-home__chiphours { flex: 1; text-align: left; }
+.st-home__exam { --st-hue: var(--px-viz-1); font-size: var(--px-text-xs); font-weight: 600; padding: var(--px-space-1) var(--px-space-2); border-radius: var(--px-radius-md); color: var(--px-bg); background: rgb(var(--st-hue)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-home__card--h1, .st-home__chip--h1 { --st-hue: var(--px-viz-1); } .st-home__card--h2, .st-home__chip--h2 { --st-hue: var(--px-viz-2); }
+.st-home__card--h3, .st-home__chip--h3 { --st-hue: var(--px-viz-3); } .st-home__card--h4, .st-home__chip--h4 { --st-hue: var(--px-viz-4); }
+.st-home__card--h5, .st-home__chip--h5 { --st-hue: var(--px-viz-5); } .st-home__card--h6, .st-home__chip--h6 { --st-hue: var(--px-viz-6); }
+.st-home__hint { margin: 0; color: var(--px-text-muted); font-size: var(--px-text-base); }
+@container st-home (max-width: 44rem) {
+  .st-home__grid--week .st-home__row { grid-template-columns: 1fr; }
+  .st-home__grid--week .st-home__row--head { display: none; }
+  .st-home__grid--week .st-home__cell { min-height: 0; }
+  .st-home__grid--week .st-home__col { display: none; }
+  .st-home__chipphase { display: none; }
+}
 `;
   document.head.appendChild(style);
 }
@@ -11183,6 +11268,17 @@ function createSidebarView(container) {
       return;
     }
 
+    // Home first: today, where he stands, and the plan of every subject.
+    {
+      const home = el('button', 'st-sb__home');
+      home.type = 'button';
+      home.innerHTML = icon('home', 14);
+      home.appendChild(el('span', '', 'Home'));
+      stDeclare(home, 'study.side.home', 'Home: today and the plan');
+      home.addEventListener('click', () => void stOpenHome());
+      body.appendChild(home);
+    }
+
     // The pick bar, while selecting.
     if (state.selecting) {
       const bar = el('div', 'st-sb__bar');
@@ -11274,6 +11370,8 @@ function createSidebarView(container) {
     void paint();
   });
 
+  // Study opens on Home: its sidebar shown with no Study tab open brings Home up.
+  try { if (!(_api.editors.openEditors || []).some((e) => typeof e?.id === 'string' && e.id.includes(':study:'))) void stOpenHome(); } catch { /* noop */ }
   void paint();
 
   return {
@@ -12024,6 +12122,7 @@ function _stTakePendingRoute() {
 function stRouteInstanceId(route) {
   if (!route) return 'setup';
   if (route.view === 'setup') return 'setup';
+  if (route.view === 'home') return 'home';
   if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
@@ -12042,6 +12141,7 @@ function stRouteFromInstanceId(instanceId) {
   if (m) return { view: 'session', sessionId: Number(m[1]) };
   m = /^learn-(\d+)-(\d+)$/.exec(id);
   if (m) return { view: 'learn', materialId: Number(m[1]), sectionId: Number(m[2]) };
+  if (id === 'home') return { view: 'home' };
   if (id === 'new-subject') return { view: 'newSubject' };
   m = /^progress-(\d+)$/.exec(id);
   if (m) return { view: 'progress', subjectId: Number(m[1]) };
@@ -12056,7 +12156,8 @@ function stRouteFromInstanceId(instanceId) {
 
 async function stRouteTitle(route) {
   try {
-    if (route.view === 'setup') return 'Study';
+    if (route.view === 'home') return 'Study';
+    if (route.view === 'setup') return 'New Session';
     if (route.view === 'newSubject') return 'New Subject';
     if (route.view === 'progress') {
       const st = _stSubjects.get(Number(route.subjectId));
@@ -12387,7 +12488,8 @@ function createEditorPane(container, input) {
         root.innerHTML = '';
         const route = state.route;
         try {
-          if (route.view === 'setup') await renderSetup(root, route, ctx);
+          if (route.view === 'home') await renderHome(root, route, ctx);
+          else if (route.view === 'setup') await renderSetup(root, route, ctx);
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'progress') await renderProgress(root, route, ctx);
           else if (route.view === 'unit') await renderUnit(root, route, ctx);
@@ -14077,6 +14179,421 @@ async function renderLearn(host, route, ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 61: HOME — what Study opens on
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// One tab ('home', titled "Study"), the first thing he sees: what to do today
+// across every subject (each line opens the thing to work on), where he
+// stands (the days to each exam, this week done against planned), and the
+// plan as a calendar of every subject, read by week or by month and changed
+// in place: a day's work moved to another day (dragged, or from the day's
+// menu by keys or a finger), a day taken off, the work pushed on to the next
+// free day, its hours set. Every change is written to the plan's own Days
+// database, where a day he changed is his from then on (13-plan-model.js).
+// Nothing here is stored by Study: the page is drawn from the plans and the
+// subjects as they are, and again whenever they change.
+
+const ST_HOME_CELLS = ['Type', 'Phase', 'Work', 'Floor', 'Standard', 'Stretch'];
+const ST_HOME_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ST_HOME_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** Hours in words: "2.5 h", under a tenth of an hour in minutes. */
+function stHomeHours(h) {
+  const n = Number(h) || 0;
+  if (n > 0 && n < 0.1) return `${Math.max(1, Math.round(n * 60))} min`;
+  return `${stPlanH(n)} h`;
+}
+
+const stHomeMonday = (iso) => stPlanAddDays(iso, -stPlanWeekdayIndex(iso));
+const stHomeMonthStart = (iso) => `${iso.slice(0, 8)}01`;
+function stHomeAddMonths(iso, n) {
+  const y = Number(iso.slice(0, 4)); const m = Number(iso.slice(5, 7)) - 1 + n;
+  const yy = y + Math.floor(m / 12); const mm = ((m % 12) + 12) % 12;
+  return `${String(yy).padStart(4, '0')}-${String(mm + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * Everything the page draws, from the subjects and plans as they are: a
+ * subject per entry with its plan (the one whose exam is still to come), its
+ * day today, how far it is ahead or behind, and its weakest units; and the
+ * days of every plan by date.
+ */
+function stHomeModel(today) {
+  const subjects = stSubjectsShown().map((s, i) => {
+    const { shown } = stPlansOfSubject(s.id, today);
+    const st = shown && shown.synced && !shown.problem && shown.rules && Array.isArray(shown.days) ? shown : null;
+    const out = { id: s.id, name: s.name, bankId: s.subject.bankId, hue: (i % 6) + 1, plan: null, waiting: !!shown && !st && !shown.problem, units: [] };
+    const progress = stProgressOfSubject(s.id);
+    if (progress) {
+      out.units = stProgressWeakestFirst(progress.rows).slice(0, 3).map((r) => {
+        const c = r.all || [0, 0, 0, 0];
+        const total = c[0] + c[1] + c[2] + c[3];
+        return { name: r.name, rowId: r.rowId, words: total ? `${c[0]} of ${total} right` : 'not started' };
+      });
+    } else out.units = s.units.slice(0, 3).map((u) => ({ name: u.name, rowId: u.rowId, words: u.total ? `${u.answered} of ${u.total} answered` : 'not started' }));
+    if (st) {
+      const done = st.done || new Map();
+      const day = st.days.find((d) => d.date === today) || null;
+      let plannedSoFar = 0; let doneSoFar = 0;
+      for (const d of st.days) {
+        if (d.date < today) plannedSoFar += d.planned;
+        if (d.date <= today) doneSoFar += Number(done.get(d.date)) || 0;
+      }
+      out.plan = {
+        id: st.plan.id, name: st.plan.name, exam: st.rules.exam, following: st.rules.following,
+        daysLeft: stPlanDaysBetween(today, st.rules.exam),
+        today: day ? { type: day.type, phase: day.phase, planned: day.planned, done: stPlanRound(Number(done.get(today)) || 0) } : null,
+        behind: stPlanRound(plannedSoFar - (doneSoFar - (Number(done.get(today)) || 0))),
+      };
+    }
+    return out;
+  });
+  const byDate = new Map();
+  for (const s of subjects) {
+    if (!s.plan) continue;
+    const st = _stPlans.get(s.plan.id);
+    for (const d of st.days) {
+      const list = byDate.get(d.date) || [];
+      list.push({ subject: s, planId: s.plan.id, date: d.date, type: d.type, phase: d.phase, planned: d.planned, done: st.done ? stPlanRound(Number(st.done.get(d.date)) || 0) : 0, edited: !!d.kept, past: d.date < today });
+      byDate.set(d.date, list);
+    }
+  }
+  return { today, subjects, byDate };
+}
+
+// ── Changing a day ──────────────────────────────────────────────────────────
+
+/** A plan's Days rows by date, read now. */
+async function stHomeDayRows(st) {
+  const door = stSubjectDoor();
+  if (!door) return null;
+  const rows = await door.listRows(st.plan.daysDb);
+  const map = new Map();
+  for (const r of rows) { const date = stPlanDateOf(stPlanCell(r.values, 'Date')); if (date) map.set(date, r); }
+  return { door, map };
+}
+
+const stHomeCellsOf = (row) => Object.fromEntries(ST_HOME_CELLS.map((c) => { const v = stPlanCell(row.values, c); return [c, v === undefined || v === '' ? null : v]; }));
+const stHomeRestCells = () => ({ Type: 'Rest', Phase: null, Work: 0, Floor: 0, Standard: 0, Stretch: 0 });
+
+/** Run a change to a plan's days after whatever the plan is doing; false when it could not be made. */
+async function stHomeChange(planId, change) {
+  const st = _stPlans.get(Number(planId));
+  if (!st || st.problem || !st.synced) return false;
+  let ok = false;
+  await stPlanEnqueue(st, async () => {
+    const got = await stHomeDayRows(st);
+    if (!got) return;
+    const updates = change(got.map, st) || [];
+    if (!updates.length) return;
+    stPlanLive(st);
+    await got.door.updateRows(st.plan.daysDb, updates);
+    ok = true;
+  });
+  return ok;
+}
+
+/** Two days change places: each takes the other's Type, Phase and hours. */
+function stHomeMoveDay(planId, from, to) {
+  if (from === to) return Promise.resolve(false);
+  return stHomeChange(planId, (rows) => {
+    const a = rows.get(from); const b = rows.get(to);
+    if (!a || !b) return [];
+    return [{ pageId: a.pageId, values: stHomeCellsOf(b) }, { pageId: b.pageId, values: stHomeCellsOf(a) }];
+  });
+}
+
+/** The day is a rest day: its work is dropped. */
+function stHomeDayOff(planId, date) {
+  return stHomeChange(planId, (rows) => { const r = rows.get(date); return r ? [{ pageId: r.pageId, values: stHomeRestCells() }] : []; });
+}
+
+/**
+ * The day is taken off and its work pushed on: each day after it takes the
+ * work of the day before, up to the next day with no hours, which takes the
+ * last of it. With no free day before the exam, nothing is changed.
+ */
+function stHomePushDay(planId, date) {
+  return stHomeChange(planId, (rows, st) => {
+    const days = st.days.filter((d) => d.date >= date);
+    const free = days.findIndex((d, i) => i > 0 && !(d.planned > 0));
+    if (free < 1) return [];
+    const span = days.slice(0, free + 1).map((d) => rows.get(d.date));
+    if (span.some((r) => !r)) return [];
+    const updates = [{ pageId: span[0].pageId, values: stHomeRestCells() }];
+    for (let i = 1; i < span.length; i++) updates.push({ pageId: span[i].pageId, values: stHomeCellsOf(span[i - 1]) });
+    return updates;
+  });
+}
+
+/** The day's hours in the plan he follows are set to `hours` (study time at work first, as the day had it). */
+function stHomeSetHours(planId, date, hours) {
+  const want = Math.max(0, Math.round((Number(hours) || 0) * 100) / 100);
+  return stHomeChange(planId, (rows, st) => {
+    const r = rows.get(date);
+    if (!r) return [];
+    const cells = stHomeCellsOf(r);
+    const work = Math.min(stPlanHours(cells.Work), want);
+    const values = { ...cells, Work: work, [st.rules.following]: stPlanRound(want - work) };
+    if (want > 0 && (!values.Type || values.Type === 'Rest')) values.Type = 'Study';
+    if (!(want > 0)) values.Type = 'Rest';
+    return [{ pageId: r.pageId, values }];
+  });
+}
+
+/** Whether a day's work can be pushed on: a free day lies between it and the exam. */
+function stHomeCanPush(planId, date) {
+  const st = _stPlans.get(Number(planId));
+  if (!st || !Array.isArray(st.days)) return false;
+  return st.days.filter((d) => d.date >= date).findIndex((d, i) => i > 0 && !(d.planned > 0)) >= 1;
+}
+
+// ── The page ────────────────────────────────────────────────────────────────
+
+function stOpenHome() {
+  return stOpenPane({ view: 'home' });
+}
+
+async function renderHome(host, route, ctx) {
+  const ui = _api.ui;
+  const page = ui.createBlock(host, 'div', { className: 'st-home' });
+  const inner = ui.createBlock(page, 'div', { className: 'st-home__in' });
+  const view = { mode: 'week', anchor: '' };
+  let parts = [];
+  let drawn = '';
+  let first = true;
+  stProgressWant();
+
+  const say = ui.createBlock(page, 'div', { className: 'st-sr', attrs: { role: 'status', 'aria-live': 'polite' } });
+  const tell = (text) => { say.textContent = ''; say.textContent = text; };
+
+  const act = async (run, done) => {
+    try {
+      const ok = await run();
+      tell(ok ? done : 'Nothing was changed.');
+    } catch (err) {
+      if (!stIsStopped(err)) { console.warn('[Study] the day could not be changed:', err && err.message); tell('The day could not be changed.'); }
+    }
+  };
+
+  const dayMenu = (anchor, item) => {
+    const words = stPlanDateWords(item.date);
+    const items = [
+      { label: 'Move One Day Earlier', icon: 'arrow-left', disabled: item.past || stPlanAddDays(item.date, -1) < stPlanToday(), onSelect: () => void act(() => stHomeMoveDay(item.planId, item.date, stPlanAddDays(item.date, -1)), `${item.subject.name}: ${words} and the day before changed places.`) },
+      { label: 'Move One Day Later', icon: 'arrow-right', disabled: item.past, onSelect: () => void act(() => stHomeMoveDay(item.planId, item.date, stPlanAddDays(item.date, 1)), `${item.subject.name}: ${words} and the day after changed places.`) },
+      { label: 'Push to the Next Free Day', icon: 'chevrons-right', disabled: item.past || !(item.planned > 0) || !stHomeCanPush(item.planId, item.date), tooltip: 'This day is taken off and its work, and the work of the days after it, moves on a day, up to the next day with no hours.', onSelect: () => void act(() => stHomePushDay(item.planId, item.date), `${item.subject.name}: ${words} is a rest day and its work moved on.`) },
+      { label: 'Take the Day Off', icon: 'moon', disabled: item.past || !(item.planned > 0), onSelect: () => void act(() => stHomeDayOff(item.planId, item.date), `${item.subject.name}: ${words} is a rest day.`) },
+      { label: 'Set Hours…', icon: 'clock', disabled: item.past, onSelect: async () => {
+        const typed = await _api.window.showInputBox({ title: `${item.subject.name}, ${words}`, prompt: `Hours in the ${_stPlans.get(item.planId)?.rules?.following || 'Standard'} plan`, value: String(item.planned || 0) });
+        if (typed === undefined) return;
+        const n = Number(String(typed).replace(',', '.'));
+        if (!Number.isFinite(n) || n < 0 || n > 24) { tell('Hours are a number from 0 to 24.'); return; }
+        await act(() => stHomeSetHours(item.planId, item.date, n), `${item.subject.name}: ${words} is ${stHomeHours(n)}.`);
+      } },
+      { separator: true },
+      { label: 'Open Plan', icon: 'calendar', onSelect: () => void stOpenPlan(item.planId) },
+    ];
+    ui.showContextMenu(anchor, items, { anchorPosition: 'below' });
+  };
+
+  /** One subject's work on one day: a button (its menu), and something to drag to another day. */
+  const chip = (cell, item, { detail }) => {
+    const off = !(item.planned > 0);
+    const hours = off ? (item.type && item.type !== 'Study' ? item.type : 'Rest') : stHomeHours(item.planned);
+    const btn = el('button', `st-home__chip st-home__chip--h${item.subject.hue}${off ? ' st-home__chip--off' : ''}${item.past ? ' st-home__chip--past' : ''}`);
+    btn.type = 'button';
+    cell.appendChild(btn);
+    const name = [item.subject.name, stPlanDateWords(item.date), off ? hours : `${hours} planned`, item.phase || '', item.done > 0 ? `${stHomeHours(item.done)} done` : '', item.edited ? 'changed by you' : ''].filter(Boolean).join(', ');
+    stDeclare(btn, `study.home.day.${item.planId}.${item.date}`, name);
+    btn.setAttribute('aria-haspopup', 'menu');
+    ui.createBlock(btn, 'span', { className: 'st-home__chipdot' });
+    const text = ui.createBlock(btn, 'span', { className: 'st-home__chiptext' });
+    ui.createBlock(text, 'span', { className: 'st-home__chipname', text: item.subject.name });
+    if (detail && item.phase && !off) ui.createBlock(text, 'span', { className: 'st-home__chipphase', text: item.phase });
+    const right = ui.createBlock(btn, 'span', { className: 'st-home__chiphours', text: hours });
+    if (item.done > 0) right.textContent = `${stHomeHours(item.done)} of ${stPlanH(item.planned)}`;
+    let dragged = false;
+    btn.addEventListener('click', (e) => { if (dragged) { dragged = false; e.preventDefault(); return; } dayMenu(btn, item); });
+    if (!item.past) {
+      parts.push(ui.onDragPress(btn, (down) => {
+        if (down.button) return;
+        const x0 = down.clientX; const y0 = down.clientY;
+        let over = null; let moving = false;
+        const cellAt = (x, y) => { const n = document.elementFromPoint(x, y); const c = n && n.closest ? n.closest('.st-home__cell') : null; return c && page.contains(c) && c.dataset.date && c.dataset.date >= stPlanToday() ? c : null; };
+        const move = (e) => {
+          if (!moving && Math.hypot(e.clientX - x0, e.clientY - y0) < 6) return;
+          moving = true; btn.classList.add('st-home__chip--drag');
+          const c = cellAt(e.clientX, e.clientY);
+          if (c !== over) { if (over) over.classList.remove('st-home__cell--drop'); over = c; if (over) over.classList.add('st-home__cell--drop'); }
+        };
+        const up = () => {
+          document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+          btn.classList.remove('st-home__chip--drag');
+          if (over) over.classList.remove('st-home__cell--drop');
+          if (!moving) return;
+          dragged = true; setTimeout(() => { dragged = false; }, 0);
+          const to = over ? over.dataset.date : '';
+          if (to && to !== item.date) void act(() => stHomeMoveDay(item.planId, item.date, to), `${item.subject.name}: ${stPlanDateWords(item.date)} and ${stPlanDateWords(to)} changed places.`);
+        };
+        document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+      }, { hold: true }));
+    }
+    return btn;
+  };
+
+  function paint() {
+    if (ctx.disposed()) return;
+    const today = stPlanToday();
+    const m = stHomeModel(today);
+    if (!view.anchor) view.anchor = today;
+    const key = JSON.stringify([today, view, m.subjects, [...m.byDate]]);
+    if (key === drawn) return;
+    drawn = key;
+    const active = document.activeElement;
+    const focusedId = inner.contains(active) ? (active.closest('[data-px-id]') || active).getAttribute('data-px-id') : '';
+    const scroll = page.scrollTop;
+    for (const p of parts) { try { p.dispose(); } catch { /* noop */ } }
+    parts = [];
+    inner.replaceChildren();
+    let order = 0;
+    const settle = (node) => { if (first) { node.classList.add('px-settle'); node.style.setProperty('--px-i', String(order++)); } return node; };
+
+    if (!m.subjects.length) {
+      ui.createPageHeader(inner, { title: 'Study' });
+      ui.createEmptyState(inner, { icon: 'px-study', headline: 'No subject yet.', hint: 'A subject holds what you study for one exam: its units, its questions, its plan and the record of your work.', action: { id: 'study.home.newSubject', label: 'New Subject…', command: 'study.newSubject' } });
+      first = false;
+      return;
+    }
+
+    // ── The head: the day, the hours it asks for, and the exam nearest.
+    const planned = m.subjects.reduce((t, s) => t + (s.plan && s.plan.today ? s.plan.today.planned : 0), 0);
+    const doneToday = m.subjects.reduce((t, s) => t + (s.plan && s.plan.today ? s.plan.today.done : 0), 0);
+    const head = settle(ui.createBlock(inner, 'header', { className: 'st-home__head' }));
+    const left = ui.createBlock(head, 'div', { className: 'st-home__headl' });
+    ui.createBlock(left, 'div', { className: 'st-home__meta', text: stPlanDateWords(today, { year: true, long: true }) });
+    const title = ui.createBlock(left, 'div', { className: 'st-home__title', attrs: { role: 'heading', 'aria-level': '1' } });
+    title.append('Today, ');
+    ui.createBlock(title, 'em', { text: planned > 0 ? `${stHomeHours(planned).replace(' h', planned === 1 ? ' hour' : ' hours')}` : 'a free day' });
+    if (planned > 0) ui.createBlock(left, 'div', { className: 'st-home__sub', text: doneToday > 0 ? `${stHomeHours(doneToday)} done so far.` : 'Nothing done yet today.' });
+    const exams = m.subjects.filter((s) => s.plan && s.plan.daysLeft >= 0).sort((a, b) => a.plan.daysLeft - b.plan.daysLeft);
+    if (exams.length) {
+      const next = exams[0];
+      const count = ui.createBlock(head, 'div', { className: 'st-home__count', attrs: { role: 'group', 'aria-label': `${next.plan.daysLeft} ${next.plan.daysLeft === 1 ? 'day' : 'days'} to the ${next.name} exam` } });
+      ui.createBlock(count, 'span', { className: 'st-home__countn', text: String(next.plan.daysLeft) });
+      ui.createBlock(count, 'span', { className: 'st-home__countw', text: `${next.plan.daysLeft === 1 ? 'day' : 'days'} to ${next.name}` });
+    }
+
+    // ── Today: a card per subject, each line opening the thing to work on.
+    const todaySec = settle(ui.createBlock(inner, 'section', { className: 'st-home__today', attrs: { 'aria-label': 'Today' } }));
+    for (const s of m.subjects) {
+      const card = ui.createBlock(todaySec, 'section', { className: `st-home__card st-home__card--h${s.hue}`, attrs: { 'aria-label': s.name } });
+      const top = ui.createBlock(card, 'div', { className: 'st-home__cardtop' });
+      const names = ui.createBlock(top, 'div', { className: 'st-home__cardnames' });
+      ui.createBlock(names, 'div', { className: 'st-home__cardname', text: s.name, attrs: { role: 'heading', 'aria-level': '2' } });
+      let line = '';
+      if (s.plan && s.plan.today) {
+        const t = s.plan.today;
+        line = t.planned > 0 ? [`${stHomeHours(t.planned)} planned`, t.phase, t.done > 0 ? `${stHomeHours(t.done)} done` : ''].filter(Boolean).join(' · ') : `${t.type && t.type !== 'Study' ? t.type : 'Rest'} day`;
+      } else if (s.plan) line = s.plan.daysLeft < 0 ? 'The exam has passed.' : 'The plan has not started yet.';
+      else if (s.waiting) line = 'Working out the plan…';
+      else line = 'No plan yet.';
+      ui.createBlock(names, 'div', { className: 'st-home__cardline', text: line });
+      if (s.plan) {
+        const b = s.plan.behind;
+        const where = b > 0.25 ? { text: `${stHomeHours(b)} behind`, cls: 'behind' } : b < -0.25 ? { text: `${stHomeHours(-b)} ahead`, cls: 'ahead' } : { text: 'On track', cls: 'on' };
+        ui.createBlock(top, 'span', { className: `st-home__where st-home__where--${where.cls}`, text: where.text, attrs: { title: `Hours done against the ${s.plan.following} plan, up to yesterday.` } });
+      }
+      if (s.plan && s.plan.today && s.plan.today.planned > 0) {
+        const t = s.plan.today;
+        const bar = ui.createBlock(card, 'div', { className: 'st-home__bar', attrs: { role: 'img', 'aria-label': `${stHomeHours(t.done)} of ${stHomeHours(t.planned)} done today` } });
+        const fill = ui.createBlock(bar, 'span', { className: first ? 'px-fill-x' : '' });
+        fill.style.width = `${Math.min(100, Math.round((t.done / t.planned) * 100))}%`;
+      }
+      const list = ui.createBlock(card, 'div', { className: 'st-home__work', attrs: { role: 'group', 'aria-label': `Work on, ${s.name}` } });
+      if (s.units.length) ui.createBlock(list, 'div', { className: 'st-home__worklabel', text: 'Weakest first' });
+      for (const u of s.units) {
+        const row = el('button', 'st-home__unit');
+        row.type = 'button';
+        list.appendChild(row);
+        stDeclare(row, `study.home.unit.${s.id}.${u.rowId}`, `Open ${u.name}, ${u.words}`);
+        ui.createBlock(row, 'span', { className: 'st-home__unitname', text: u.name });
+        ui.createBlock(row, 'span', { className: 'st-home__unitwords', text: u.words });
+        row.insertAdjacentHTML('beforeend', icon('chevron-right', 14));
+        row.addEventListener('click', () => void stOpenUnit(s.id, u.rowId));
+      }
+      const acts = ui.createBlock(card, 'div', { className: 'st-home__acts' });
+      ui.createButton(acts, { id: `study.home.study.${s.id}`, label: 'Study', icon: 'play', kind: 'primary', title: `Start a session on ${s.name}.`, onClick: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [s.bankId] }); } });
+      ui.createButton(acts, { id: `study.home.progress.${s.id}`, label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', title: `What you know of ${s.name}, unit by unit.`, onClick: () => void stOpenProgress(s.id) });
+      if (s.plan) ui.createButton(acts, { id: `study.home.plan.${s.id}`, label: 'Plan', icon: 'calendar', kind: 'ghost', title: `The rules of ${s.plan.name}: its week, its phases, the three plans.`, onClick: () => void stOpenPlan(s.plan.id) });
+      else if (!s.waiting) ui.createButton(acts, { id: `study.home.newPlan.${s.id}`, label: 'New Plan…', icon: 'calendar-plus', kind: 'ghost', command: 'study.newPlan', args: [s.id] });
+    }
+
+    // ── The plan, every subject on one calendar.
+    if (m.byDate.size) {
+      const cal = settle(ui.createBlock(inner, 'section', { className: 'st-home__cal', attrs: { 'aria-label': 'The plan' } }));
+      const bar = ui.createBlock(cal, 'div', { className: 'st-home__calbar' });
+      const week = view.mode === 'week';
+      const start = week ? stHomeMonday(view.anchor) : stHomeMonthStart(view.anchor);
+      const label = week
+        ? stPlanSpanWords(start, stPlanAddDays(start, 6))
+        : `${ST_HOME_MONTHS[Number(start.slice(5, 7)) - 1]} ${start.slice(0, 4)}`;
+      ui.createBlock(bar, 'div', { className: 'st-home__calh', text: label, attrs: { role: 'heading', 'aria-level': '2', 'aria-live': 'polite' } });
+      const nav = ui.createBlock(bar, 'div', { className: 'st-home__calnav' });
+      const step = (n) => { view.anchor = week ? stPlanAddDays(start, 7 * n) : stHomeAddMonths(start, n); paint(); };
+      ui.createIconButton(nav, { id: 'study.home.prev', icon: 'chevron-left', title: week ? 'The Week Before' : 'The Month Before', size: 'sm', onClick: () => step(-1) });
+      ui.createButton(nav, { id: 'study.home.today', label: 'Today', kind: 'ghost', size: 'sm', onClick: () => { view.anchor = today; paint(); } });
+      ui.createIconButton(nav, { id: 'study.home.next', icon: 'chevron-right', title: week ? 'The Week After' : 'The Month After', size: 'sm', onClick: () => step(1) });
+      parts.push(ui.createSegmented(bar, { id: 'study.home.mode', ariaLabel: 'Show the plan by', value: view.mode, items: [{ value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }], onChange: (value) => { view.mode = value; paint(); } }));
+
+      const first1 = week ? start : stHomeMonday(start);
+      const monthEnd = week ? '' : stPlanAddDays(stHomeAddMonths(start, 1), -1);
+      const weeks = week ? 1 : Math.ceil((stPlanDaysBetween(first1, monthEnd) + 1) / 7);
+      const grid = ui.createBlock(cal, 'div', { className: `st-home__grid st-home__grid--${view.mode}`, attrs: { role: 'grid', 'aria-label': label } });
+      const heads = ui.createBlock(grid, 'div', { className: 'st-home__row st-home__row--head', attrs: { role: 'row' } });
+      for (const d of ST_HOME_DAYS) ui.createBlock(heads, 'div', { className: 'st-home__dayname', text: d, attrs: { role: 'columnheader' } });
+      let col = 0;
+      for (let w = 0; w < weeks; w++) {
+        const row = ui.createBlock(grid, 'div', { className: 'st-home__row', attrs: { role: 'row' } });
+        for (let i = 0; i < 7; i++) {
+          const date = stPlanAddDays(first1, w * 7 + i);
+          const items = m.byDate.get(date) || [];
+          const outside = !week && (date < start || date > monthEnd);
+          const total = items.reduce((t, x) => t + x.planned, 0);
+          const done = items.reduce((t, x) => t + x.done, 0);
+          const exam = m.subjects.filter((s) => s.plan && s.plan.exam === date);
+          const cell = ui.createBlock(row, 'div', { className: `st-home__cell${date === today ? ' st-home__cell--today' : ''}${date < today ? ' st-home__cell--past' : ''}${outside ? ' st-home__cell--outside' : ''}`, attrs: { role: 'gridcell', 'data-date': date, ...(date === today ? { 'aria-current': 'date' } : {}) } });
+          const top = ui.createBlock(cell, 'div', { className: 'st-home__celltop' });
+          ui.createBlock(top, 'span', { className: 'st-home__date', text: date === today ? `Today ${Number(date.slice(8))}` : String(Number(date.slice(8))), attrs: { 'aria-label': stPlanDateWords(date, { long: true }) } });
+          if (total > 0 || done > 0) ui.createBlock(top, 'span', { className: 'st-home__sum', text: done > 0 ? `${stPlanH(done)} / ${stPlanH(total)} h` : `${stPlanH(total)} h` });
+          if (week) {
+            // The week's moment: a column of the day's hours done, filling against what was planned.
+            const colBox = ui.createBlock(cell, 'div', { className: `st-home__col${total > 0 ? '' : ' st-home__col--rest'}`, attrs: { 'aria-hidden': 'true' } });
+            if (total > 0 && done > 0) {
+              const fill = ui.createBlock(colBox, 'span', { className: first ? 'px-fill-y' : '' });
+              fill.style.height = `${Math.min(100, Math.round((done / total) * 100))}%`;
+              fill.style.setProperty('--px-i', String(col));
+            }
+          }
+          for (const s of exam) ui.createBlock(cell, 'div', { className: `st-home__exam st-home__chip--h${s.hue}`, text: `${s.name} exam` });
+          for (const item of items) chip(cell, item, { detail: week });
+          col++;
+        }
+      }
+      ui.createBlock(cal, 'p', { className: 'st-home__hint', text: 'Press a day\'s work to move it, take the day off, push it on or set its hours. Drag it to another day to change places. A day you change stays as you left it.' });
+    }
+
+    first = false;
+    page.scrollTop = scroll;
+    if (focusedId) { const again = Array.from(inner.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === focusedId); if (again) again.focus(); }
+  }
+
+  paint();
+  ctx.add(onDataChanged(() => paint()));
+  ctx.add(stAtEachNewDay(() => paint()));
+  ctx.add({ dispose() { for (const p of parts) { try { p.dispose(); } catch { /* noop */ } } parts = []; } });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 62: NEW SUBJECT — the sheet that makes a subject
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -14170,10 +14687,6 @@ async function stCmdSubjectActions(arg) {
 }
 
 /** With no material to open the sheet on: the first subject, else Study's empty home. */
-function stOpenHome() {
-  const subject = stSubjectsShown()[0];
-  return subject ? stOpenSetup({ bankIds: [subject.subject.bankId] }) : stOpenPane({ view: 'setup', materialIds: [] });
-}
 
 /** The New Subject sheet on screen: its form, and what its Create does. */
 let _stSubjectSheet = null;
@@ -16408,8 +16921,6 @@ async function stCmdOpen(arg) {
   if (arg && typeof arg === 'object') return stOpenSetup(arg); // the sheet on a given scope: { materialIds, sectionId } or { bankIds }
   const picked = stPicked();
   if (picked.length) return stOpenSetup({ materialIds: picked });
-  const materials = await stListMaterials();
-  if (materials.length) return stOpenSetup({ materialIds: [materials[0].id] });
   return stOpenHome();
 }
 

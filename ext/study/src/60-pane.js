@@ -24,6 +24,7 @@ function _stTakePendingRoute() {
 function stRouteInstanceId(route) {
   if (!route) return 'setup';
   if (route.view === 'setup') return 'setup';
+  if (route.view === 'home') return 'home';
   if (route.view === 'newSubject') return 'new-subject';
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
@@ -42,6 +43,7 @@ function stRouteFromInstanceId(instanceId) {
   if (m) return { view: 'session', sessionId: Number(m[1]) };
   m = /^learn-(\d+)-(\d+)$/.exec(id);
   if (m) return { view: 'learn', materialId: Number(m[1]), sectionId: Number(m[2]) };
+  if (id === 'home') return { view: 'home' };
   if (id === 'new-subject') return { view: 'newSubject' };
   m = /^progress-(\d+)$/.exec(id);
   if (m) return { view: 'progress', subjectId: Number(m[1]) };
@@ -56,7 +58,8 @@ function stRouteFromInstanceId(instanceId) {
 
 async function stRouteTitle(route) {
   try {
-    if (route.view === 'setup') return 'Study';
+    if (route.view === 'home') return 'Study';
+    if (route.view === 'setup') return 'New Session';
     if (route.view === 'newSubject') return 'New Subject';
     if (route.view === 'progress') {
       const st = _stSubjects.get(Number(route.subjectId));
@@ -387,7 +390,8 @@ function createEditorPane(container, input) {
         root.innerHTML = '';
         const route = state.route;
         try {
-          if (route.view === 'setup') await renderSetup(root, route, ctx);
+          if (route.view === 'home') await renderHome(root, route, ctx);
+          else if (route.view === 'setup') await renderSetup(root, route, ctx);
           else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
           else if (route.view === 'progress') await renderProgress(root, route, ctx);
           else if (route.view === 'unit') await renderUnit(root, route, ctx);

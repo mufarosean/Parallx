@@ -700,8 +700,6 @@ async function stCmdOpen(arg) {
   if (arg && typeof arg === 'object') return stOpenSetup(arg); // the sheet on a given scope: { materialIds, sectionId } or { bankIds }
   const picked = stPicked();
   if (picked.length) return stOpenSetup({ materialIds: picked });
-  const materials = await stListMaterials();
-  if (materials.length) return stOpenSetup({ materialIds: [materials[0].id] });
   return stOpenHome();
 }
 

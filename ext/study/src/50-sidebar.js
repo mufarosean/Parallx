@@ -471,6 +471,17 @@ function createSidebarView(container) {
       return;
     }
 
+    // Home first: today, where he stands, and the plan of every subject.
+    {
+      const home = el('button', 'st-sb__home');
+      home.type = 'button';
+      home.innerHTML = icon('home', 14);
+      home.appendChild(el('span', '', 'Home'));
+      stDeclare(home, 'study.side.home', 'Home: today and the plan');
+      home.addEventListener('click', () => void stOpenHome());
+      body.appendChild(home);
+    }
+
     // The pick bar, while selecting.
     if (state.selecting) {
       const bar = el('div', 'st-sb__bar');
@@ -562,6 +573,8 @@ function createSidebarView(container) {
     void paint();
   });
 
+  // Study opens on Home: its sidebar shown with no Study tab open brings Home up.
+  try { if (!(_api.editors.openEditors || []).some((e) => typeof e?.id === 'string' && e.id.includes(':study:'))) void stOpenHome(); } catch { /* noop */ }
   void paint();
 
   return {
