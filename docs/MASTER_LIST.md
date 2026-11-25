@@ -2143,8 +2143,14 @@ frame: "I have made my picks, except for 1. The frame. I did not like
 the given options." A second round for the frame is on the same page,
 changing how he finds his way, not the surfaces: 1D a rail that names
 its tools, 1E one column (the tools by name, then the open tool's own
-list), 1F a dock at the foot, 1C today's frame restyled. Not picked
-yet. Nothing of this group is built.
+list), 1F a dock at the foot, 1C today's frame restyled. On 1E
+(2026-11-25): "1E seems interesting to me. Feels sleeker, but I am
+unsure. Can we do more variations of 1E." A third round, on the same
+page, is six ways to do the one column: 1E1 tools on top and the tool's
+list under, 1E2 a switcher at the head (1E3 shows it open), 1E4 a strip
+of icons then the tool by name, 1E5 the open tool unfolding in the
+list, 1E6 the tool's list on top and the tools at the foot. Claude's
+pick is 1E2. Not picked yet. Nothing of this group is built.
 Claude's first picks were 1A 2A 3A 4A 5A 6A. They rest on what the app measures
 today (equal-width tabs, six before the strip scrolls; 22 px Open
 Editors rows; Settings as a dialog over what it changes) and on
