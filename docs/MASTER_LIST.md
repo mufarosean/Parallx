@@ -1930,7 +1930,11 @@ Claude's picks, not yet his:
 - *4 Motion:* 4A quiet settle, or 4B settle plus one moment per tool
   (the card turns, the week fills, attempts land on the spine).
 
-**Open:** his letters. Nothing is agreed or built. The foundations
+**His picks (2026-11-25, sent as a screenshot of the page's bar, in
+Dark):** **1A 2B 3B 4B.** Linen and indigo with Payne's grey for dark;
+Newsreader, Hanken Grotesk and IBM Plex Mono; today's frame kept and
+restyled (not the stage layout); settle plus one moment per tool.
+Nothing is built yet. The foundations
 discussed the same days (a typed contract for extensions, a view layer
 in the kit, writes that tell views) are what list motion and per-tool
 redesigns stand on; they are not on this list until he says.
