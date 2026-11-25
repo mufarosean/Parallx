@@ -5294,29 +5294,29 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-btn--icon svg { width: 15px; height: 15px; }
 .fc-study__edit { width: 100%; max-width: min(100%, 920px); }
 
-/* Preserve the existing white paper / serif card surface in both themes.
-   On reveal, question and answer form one sheet with a dividing rule. */
+/* The card is a sheet of the theme's paper, lifted off the page, its text in the display face.
+   On reveal the answer turns down from the question's lower edge and the two are one sheet. */
 .fc-card {
   width: 100%; max-width: min(100%, 920px);
-  background: #ffffff;
-  border: 1px solid #e2e2e2;
-  border-radius: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  background: var(--px-bg-elevated);
+  border: 0;
+  border-radius: var(--px-radius-xl);
+  box-shadow: var(--px-edge-light), var(--px-ring), var(--px-shadow-lg);
   box-sizing: border-box;
-  padding: var(--px-space-5) var(--px-space-6);
+  padding: var(--px-space-6) var(--px-space-8);
   display: flex; flex-direction: column;
 }
-.fc-card--q { min-height: 260px; animation: fc-card-in var(--px-dur-base) var(--px-ease-out); }
-.fc-card--a { min-height: 0; margin-top: 0; border-top: 0; animation: fc-reveal-in var(--px-dur-base) var(--px-ease); }
-.fc-study__col.is-revealed .fc-card--q { min-height: 0; box-shadow: none; }
-.fc-study__col.is-revealed .fc-card--q .fc-card__body { font-size: var(--px-text-lg); font-weight: 600; }
-.fc-study__col.is-revealed .fc-card--a { box-shadow: none; }
+.fc-card--q { min-height: 238px; animation: fc-card-in var(--px-dur-settle) var(--px-ease-out); }
+.fc-card--a { min-height: 0; margin-top: 1px; border-radius: 0 0 var(--px-radius-xl) var(--px-radius-xl); transform-origin: top center; animation: fc-reveal-in 700ms var(--px-ease-fill); }
+.fc-study__col.is-revealed .fc-card--q { min-height: 0; border-radius: var(--px-radius-xl) var(--px-radius-xl) 0 0; box-shadow: var(--px-edge-light), var(--px-ring), var(--px-shadow-sm); }
+.fc-study__col.is-revealed .fc-card--q .fc-card__body { font-size: var(--px-text-lg); }
+.fc-study__col.is-revealed .fc-card--a { box-shadow: var(--px-ring), var(--px-shadow-md); }
 /* The AI mark sits in the answer card's head row, surfacing on hover — and on
    focus-within, because a hover-only control does not exist for the keyboard.
    Hidden with opacity rather than display so it holds its space and revealing
-   it never reflows the head. It rides the card's fixed WHITE stock, so it has
-   to read against white in both themes; px-ai-btn is alpha-over-surface
-   accent, which does. */
+   it never reflows the head. It rides the card's sheet, so it has
+   to read against the theme's paper in both modes; px-ai-btn is
+   alpha-over-surface accent, which does. */
 .fc-card__ai {
   display: inline-flex; flex: 0 0 auto;
   opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease);
@@ -5329,48 +5329,48 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 /* The face centers vertically like writing on an index card. */
 .fc-card__body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 @keyframes fc-card-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes fc-reveal-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.99); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: perspective(1400px) rotateX(-88deg); }
+  to   { opacity: 1; transform: perspective(1400px) rotateX(0); }
 }
 .fc-card__head {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: var(--px-text-xs); font-weight: 700; text-transform: none; letter-spacing: normal;
-  color: #9a9a9a; font-variant-numeric: tabular-nums;
+  font-family: var(--px-font-mono); font-size: var(--px-text-xs); font-weight: 400; text-transform: none; letter-spacing: normal;
+  color: var(--px-text-muted); font-variant-numeric: tabular-nums;
   margin-bottom: var(--px-space-4);
 }
-/* M98 leech loop — chip + action live in the answer card's head row.
-   Hex is CORRECT here: the card face is a fixed WHITE physical card in both
-   app modes (deliberate design), so its inks never follow the theme. */
+/* The leech chip and its action live in the answer card's head row. The
+   card is the theme's paper, so the chip's inks are the theme's warning
+   pair, as everywhere else. */
 .fc-card__leech {
   margin-left: auto; margin-right: var(--px-space-2); padding: 1px 7px;
   font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.05em;
-  color: #a05a00; background: #fff3e0; border: 1px solid #f0ddc0;
+  color: var(--px-warning); background: var(--px-warning-soft); border: 1px solid transparent;
   border-radius: var(--px-radius-full, 999px); text-transform: none;
 }
 .fc-btn--small { padding: 2px 9px; font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; font-weight: 500; }
 .fc-meta-leech { color: var(--px-warning); font-weight: 600; }
-/* Card ink is a book serif: printed-card text, not UI chrome. It matches
+/* Card ink is the display serif: printed-card text, not UI chrome. It matches
    KaTeX's serif math, so "the estimate $L(x)$" reads as ONE sentence instead
-   of sans colliding with serif math. The question keeps its bold, but bold
-   SERIF carries stroke contrast — emphasis without the slab-blocky mass the
-   old 650-weight sans had. */
+   of sans colliding with serif math. The question is larger, not bolder:
+   the size carries it.
+   The ink is the theme's text colour on the theme's paper. */
 .fc-card__body {
-  font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, 'Times New Roman', serif;
-  font-size: var(--px-text-md); line-height: var(--px-leading-base); color: #111111;
+  font-family: var(--px-font-display);
+  font-size: var(--px-text-read); line-height: var(--px-leading-base); color: var(--px-text);
 }
-.fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 700; line-height: 1.35; }
-.fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid #ececec; font-size: var(--px-text-2xs); color: #9a9a9a; }
-.fc-card__source--link { cursor: pointer; text-decoration: underline; text-decoration-color: #d5d5d5; text-underline-offset: 2px; }
-.fc-card__source--link:hover { color: #555555; text-decoration-color: #9a9a9a; }
-/* Light-surface treatments for markdown furniture on the white card. */
-.fc-card .px-markdown code { background: #f2f2f2; color: #111111; }
-.fc-card .px-markdown pre { background: #f6f6f6; border-color: #e2e2e2; color: #111111; }
-.fc-card .px-markdown blockquote { border-left-color: #d9d9d9; color: #4a4a4a; }
-.fc-card .px-markdown a { color: #1d4ed8; }
+.fc-card--q .fc-card__body { font-size: var(--px-text-xl); font-weight: 400; line-height: 1.4; text-wrap: pretty; }
+.fc-card__source { margin-top: var(--px-space-4); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.fc-card__source--link { cursor: pointer; text-decoration: underline; text-decoration-color: var(--px-border-strong); text-underline-offset: 2px; }
+.fc-card__source--link:hover { color: var(--px-text); text-decoration-color: var(--px-text-muted); }
+/* Markdown furniture on the card, in the theme's own surfaces. */
+.fc-card .px-markdown code { background: var(--px-bg-inset); color: var(--px-text); }
+.fc-card .px-markdown pre { background: var(--px-bg-inset); border-color: var(--px-border); color: var(--px-text); }
+.fc-card .px-markdown blockquote { border-left-color: var(--px-border-strong); color: var(--px-text-secondary); }
+.fc-card .px-markdown a { color: var(--px-accent-text); }
 .fc-study__answer-host { width: 100%; max-width: min(100%, 920px); }
 
 .fc-study__controls { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-3); justify-content: center; width: 100%; max-width: min(100%, 920px); position: sticky; bottom: calc(var(--px-space-4) * -1); z-index: 2; background: var(--px-window); padding-block: var(--px-space-2); }
@@ -5378,19 +5378,19 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 /* Grade buttons — borderless columns with a signal dot; the colour fills on hover. */
 .fc-grade {
   position: relative;
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: var(--px-space-2) 0;
-  border: 1px solid var(--px-border); border-radius: var(--px-radius-sm);
-  background: transparent; color: var(--px-text-secondary);
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: var(--px-space-3) var(--px-space-4);
+  border: 0; border-radius: var(--px-radius-xl); box-shadow: var(--px-edge-light), var(--px-ring);
+  background: var(--px-bg-elevated); color: var(--px-text);
   font: inherit; font-size: var(--px-text-sm); font-weight: 650; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
 .fc-grade:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-grade:active { transform: var(--px-press); }
-.fc-grade__dot { width: 6px; height: 6px; border-radius: var(--px-radius-full); margin-bottom: 1px; }
-.fc-grade__ivl { font-size: var(--px-text-xs); font-weight: 500; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.fc-grade__dot { width: 9px; height: 9px; border-radius: var(--px-radius-full); margin-bottom: var(--px-space-1); }
+.fc-grade__ivl { font-family: var(--px-font-mono); font-size: var(--px-text-xs); font-weight: 400; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .fc-grade:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 2px; }
-.fc-grade__key { position: absolute; top: 6px; right: 8px; color: var(--px-text-faint); font-size: var(--px-text-xs); font-weight: 400; }
+.fc-grade__key { position: absolute; top: var(--px-space-3); right: var(--px-space-4); color: var(--px-text-faint); font-family: var(--px-font-mono); font-size: var(--px-text-xs); font-weight: 400; }
 .fc-grade--again .fc-grade__dot { background: var(--px-danger); }
 .fc-grade--hard  .fc-grade__dot { background: var(--px-warning); }
 .fc-grade--good  .fc-grade__dot { background: var(--px-success); }
