@@ -2180,6 +2180,32 @@ judgment; no other product was read for the page (the session's network
 is limited to the app's build). The groups after this one, in his
 order: core tools, built-in tools, extensions.
 
+**The core tools: mock-ups (2026-11-25).** The second group, after his
+"okay, I am aligned now" on the window. The page:
+https://claude.ai/artifact/4z5oKg22MsdMJafYViGJ8i (every window in the
+settled frame, 1E6). Six choices, Claude's picks marked, none his yet:
+- *1 Chat:* 1A a reading column (his message a small bubble, the answer
+  plain reading text with numbered source marks, one mono line for
+  thought, source and speed, the question box one lifted sheet) or 1B a
+  transcript (no bubbles, mono labels, hairlines).
+- *2 Canvas pages:* 2A the reading face for title and body at 17 px in
+  a column of about 66 characters, or 2B a display title with the
+  interface face for the body.
+- *3 Canvas databases:* 3A a quiet table (34 px rows, lines between
+  rows only, a choice as a chip in the pigment that means it) or 3B a
+  ledger (a full grid, 28 px rows, plain text).
+- *4 PDF viewer:* 4A the page lifted on a darker ground with its
+  controls in one floating pill at the foot, or 4B the toolbar on top,
+  restyled. The page keeps its own colours in both.
+- *5 Markdown and code files:* 5A a .md file opens as a page with Edit
+  Source, 5B source and page side by side, or 5C source only as now.
+- *6 Tools and Extensions:* 6A a shelf of cards or 6B the list grouped
+  On and Off with each tool's own icon and its switch.
+Claude's picks: 1A 2A 3A 4A 5A 6B. Find is not in it: its one-surface
+shape is his from 2026-11-10 and only takes the new colours and type.
+The picks rest on screenshots of the app taken for the page and on
+judgment; no other product was read.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
