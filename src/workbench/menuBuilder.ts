@@ -230,7 +230,7 @@ export class MenuBuilder extends Disposable {
       { id: 'column.toolsAndExtensions', label: 'Tools and Extensions', icon: 'blocks', command: 'tools.showInstalled' },
       { id: 'column.settings', label: 'Settings', icon: 'settings', command: 'settings.open' },
     ]) {
-      createButton(bottom, { ...row, kind: 'ghost' }).classList.add('column-foot-row');
+      createButton(bottom, { id: row.id, label: row.label, icon: row.icon, command: row.command, kind: 'ghost' }).classList.add('column-foot-row');
     }
   }
 }

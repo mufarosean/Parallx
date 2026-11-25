@@ -59,7 +59,7 @@ const frame = () => page.evaluate(() => {
     sidebar: sidebar ? rect(sidebar) : null,
     listInColumn: !!(list && sidebar && sidebar.contains(list)),
     head: document.querySelector('.sidebar-header-label')?.textContent ?? null,
-    headFont: getComputedStyle(document.querySelector('.sidebar-header-label')).fontFamily.split(',')[0].replace(/["']/g, ''),
+    headFont: (() => { const l = document.querySelector('.sidebar-header-label'); return l ? getComputedStyle(l).fontFamily.split(',')[0].replace(/["']/g, '') : ''; })(),
     rows: rows.map((b) => ({ id: b.dataset.iconId, name: b.getAttribute('aria-label'), shown: b.querySelector('.activity-bar-item-name')?.textContent ?? '', nameVisible: !!b.querySelector('.activity-bar-item-name')?.getClientRects().length, selected: b.getAttribute('aria-selected'), tab: b.tabIndex, ...rect(b) })),
     foot: foot.map((b) => ({ name: b.textContent.trim(), tab: b.tabIndex, ...rect(b) })),
     viewsBottom: views ? Math.round(views.getBoundingClientRect().bottom) : null,

@@ -2262,16 +2262,8 @@ export class Workbench extends Layout {
       sidebarContent.appendChild(defaultContainer.element);
     }
 
-    // The foot grows and shrinks with the tools that are on; the open
-    // tool's list takes the rest of the column each time.
-    {
-      const foot = (this._sidebar as SidebarPart).footSlot;
-      if (foot && typeof ResizeObserver !== 'undefined') {
-        const observer = new ResizeObserver(() => this._layoutViewContainers());
-        observer.observe(foot);
-        this._register(toDisposable(() => observer.disconnect()));
-      }
-    }
+    // The foot grows with the tools that are on; the open tool's list takes the rest.
+    this._register((this._sidebar as SidebarPart).onDidChangeChrome(() => this._layoutViewContainers()));
 
     // Right-click on either ribbon: hide icons, or show them again.
     this._register(wireRibbonMenu(this._activityBarPart, PART_ICON_PREFIX));
@@ -2304,11 +2296,6 @@ export class Workbench extends Layout {
 
       this._contributionHandler.switchSidebarContainer(event.iconId);
     }));
-
-    // The icon context menu once offered a "Hide <View>" item that was never
-    // wired to anything (its onDidSelect was discarded) — a dead affordance
-    // the integrity audit flagged. Removed until icon hiding EXISTS as an
-    // operation with an inverse; a menu that lies is worse than no menu.
 
     // No active-container seeding here: the first sidebar container to
     // arrive (Explorer — required, activates first) becomes active in the
@@ -4211,8 +4198,6 @@ export class Workbench extends Layout {
 
     // Delegate sidebar switching + contributed container layout to handler
     this._contributionHandler.layoutContainers(
-      // The column's head is taller than a plain part header and its foot
-      // holds the tools list: the open tool's list gets what is left.
       { visible: this._sidebar.visible, width: this._sidebar.width, height: this._sidebar.height - (this._sidebar as SidebarPart).chromeBeyond(PART_HEADER_HEIGHT_PX) },
       { visible: this._panel.visible, width: this._panel.width, height: this._panel.height },
       { visible: this._auxBarVisible, width: this._auxiliaryBar.width, height: this._auxiliaryBar.height },

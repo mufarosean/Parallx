@@ -31,7 +31,6 @@ import type { WorkbenchContextManager } from '../context/workbenchContext.js';
 import type { Part } from '../parts/part.js';
 import type { Orientation } from '../layout/layoutTypes.js';
 import { resolveLegacyContainerId } from './legacyContainerIds.js';
-import { setToolTabIcon, removeToolTabIcon, clearToolTabIcons } from '../editor/toolTabIcons.js';
 export { resolveLegacyContainerId } from './legacyContainerIds.js';
 
 // ─── Rails ───────────────────────────────────────────────────────────────────
@@ -542,7 +541,6 @@ export class WorkbenchContributionHandler extends Disposable {
       this._auxHeaderWiring.delete(containerId);
       this._host.rightActivityBar?.removeIcon(containerId);
       this._containerIcons.delete(containerId);
-      removeToolTabIcon(containerId);
       this._railAssignments.delete(containerId);
       // If no more contributed aux bar containers, restore the generic one
       if (this._contributedAuxBarContainers.size === 0) {
@@ -632,8 +630,6 @@ export class WorkbenchContributionHandler extends Disposable {
 
   private _containerIconDescriptor(info: IContributedContainer): ActivityBarIconDescriptor {
     const svgIcon = info.icon ? getIcon(info.icon) || undefined : undefined;
-    // The same icon goes on the tool's tabs that bring none of their own.
-    if (svgIcon) setToolTabIcon(info.id, info.toolId, svgIcon);
     return {
       id: info.id,
       icon: svgIcon ?? info.icon ?? info.title.charAt(0).toUpperCase(),
@@ -652,7 +648,6 @@ export class WorkbenchContributionHandler extends Disposable {
   /** A removed container's icon and rail are forgotten; the rails changed. */
   private _forgetContainer(containerId: string): void {
     this._containerIcons.delete(containerId);
-    removeToolTabIcon(containerId);
     this._railAssignments.delete(containerId);
     this._onDidChangeRails.fire();
   }
@@ -918,7 +913,6 @@ export class WorkbenchContributionHandler extends Disposable {
     for (const d of this._auxHeaderWiring.values()) d.dispose();
     this._auxHeaderWiring.clear();
     this._containerIcons.clear();
-    clearToolTabIcons();
     this._railAssignments.clear();
     this._pendingRailAssignments.clear();
   }

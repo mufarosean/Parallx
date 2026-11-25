@@ -15,6 +15,7 @@ import {
 } from '../../editor/editorInputDeserializer.js';
 import { requestFileReveal, hasRevealTarget, type IFileRevealTarget } from '../../editor/fileReveal.js';
 import { URI } from '../../platform/uri.js';
+import { getIcon, hasIcon } from '../../ui/iconRegistry.js';
 import { createToolEditorPane, whenClosedPanesSettle } from '../../editor/editorPane.js';
 import { EditorResolverPriority, type EditorResolverRegistration } from '../../services/editorResolverService.js';
 
@@ -588,7 +589,10 @@ export class ToolEditorInput extends EditorInput {
     return this.instanceId?.startsWith(FILE_INSTANCE_PREFIX) ? this.instanceId.slice(FILE_INSTANCE_PREFIX.length) : `Tool editor: ${this.typeId}`;
   }
 
-  get iconHtml(): string | undefined { return this._iconHtml; }
+  /** The editor's own drawing, or the registry icon it named when it opened. */
+  get iconHtml(): string | undefined {
+    return this._iconHtml ?? (this._icon && hasIcon(this._icon) ? getIcon(this._icon) : undefined);
+  }
 
   /**
    * Update the editor's pre-rendered icon HTML and notify listeners

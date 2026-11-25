@@ -140,6 +140,7 @@ function openWelcome(api: ParallxApi): void {
   api.editors.openEditor({
     typeId: EDITOR_TYPE_ID,
     title: 'Welcome',
+    icon: 'home',
     // One Welcome tab, ever: a fixed instance id dedupes a second open into a
     // refocus instead of a duplicate tab (the bridge mints a fresh id otherwise).
     instanceId: 'main',

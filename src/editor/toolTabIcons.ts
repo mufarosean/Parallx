@@ -7,6 +7,7 @@
 // forgets it when the container goes; nothing here names a tool.
 
 import { Emitter, type Event } from '../platform/events.js';
+import { getFileTypeIcon } from '../ui/iconRegistry.js';
 
 const _byContainer = new Map<string, { toolId: string; iconHtml: string }>();
 const _onDidChange = new Emitter<void>();
@@ -27,15 +28,19 @@ export function removeToolTabIcon(containerId: string): void {
   if (_byContainer.delete(containerId)) _onDidChange.fire();
 }
 
-export function clearToolTabIcons(): void {
-  if (_byContainer.size === 0) return;
-  _byContainer.clear();
-  _onDidChange.fire();
-}
-
 /** The icon for a tool's tabs: its first container's, or none. */
 export function toolTabIcon(toolId: string | undefined): string | undefined {
   if (!toolId) return undefined;
   for (const entry of _byContainer.values()) if (entry.toolId === toolId) return entry.iconHtml;
   return undefined;
+}
+
+/**
+ * The icon a tab shows: the editor's own first (a page's, a sheet's, the
+ * registry icon it named), then its file type's, then its tool's.
+ */
+export function tabIconOf(editor: { readonly name: string; readonly iconHtml?: string; readonly ownerToolId?: string }): string | undefined {
+  if (editor.iconHtml) return editor.iconHtml;
+  const ext = editor.name.match(/\.([a-zA-Z0-9]+)$/);
+  return ext ? getFileTypeIcon(ext[1]) : toolTabIcon(editor.ownerToolId);
 }

@@ -5,6 +5,7 @@
 import './theme/px-tokens.css';   // design-token foundation (load first)
 import './theme/px-fonts.css';    // the bundled UI typeface (Inter)
 import './workbench.css';
+import './workbench/frame.css';    // the window's frame: the column, the bell, the tabs
 import './theme/px-base.css';     // global presentation layer (load after workbench)
 import './theme/px-controls.css'; // tactile control primitives
 import './theme/px-motion.css';   // purposeful motion for overlays

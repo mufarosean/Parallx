@@ -623,12 +623,6 @@ export class ActivityBarPart extends Part {
     // Track badge elements for efficient updates
     this._badgeElements.set(descriptor.id, { badge, content: badgeContent });
 
-    // Active item indicator (VS Code: .active-item-indicator with ::before border-left)
-    const indicator = $('div');
-    indicator.classList.add('activity-bar-active-indicator');
-    btn.appendChild(indicator);
-
-    // Custom themed tooltip (replaces native title attribute)
     // A row that shows its name needs no tooltip repeating it.
     if (this.id !== PartId.ActivityBar) setupTooltip(btn, descriptor.label, { placement: this._tooltipPlacement });
     // In the scene as the tab it is: pressed while its view container is the active one.

@@ -27,6 +27,10 @@ export class SidebarPart extends Part {
   private readonly _onDidChangeActiveView = this._register(new Emitter<string | undefined>());
   readonly onDidChangeActiveView: Event<string | undefined> = this._onDidChangeActiveView.event;
 
+  /** The head or the foot changed height (a tool came or went): the open tool's list has other room. */
+  private readonly _onDidChangeChrome = this._register(new Emitter<void>());
+  readonly onDidChangeChrome: Event<void> = this._onDidChangeChrome.event;
+
   private _activeViewId: string | undefined;
 
   constructor() {
@@ -82,6 +86,11 @@ export class SidebarPart extends Part {
     this._footSlot = $('div');
     this._footSlot.classList.add('sidebar-foot');
     container.appendChild(this._footSlot);
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => this._onDidChangeChrome.fire());
+      observer.observe(this._footSlot);
+      this._register({ dispose: () => observer.disconnect() });
+    }
   }
 
   protected override savePartData(): Record<string, unknown> | undefined {

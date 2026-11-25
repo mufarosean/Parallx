@@ -14,6 +14,8 @@ import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js'
 import { Emitter, Event } from '../platform/events.js';
 import { $ } from '../ui/dom.js';
 import { createSurface } from '../ui/kit.js';
+import { getIcon } from '../ui/iconRegistry.js';
+import { setToolTabIcon, removeToolTabIcon } from '../editor/toolTabIcons.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -219,6 +221,9 @@ export class ViewContributionProcessor extends Disposable implements IContributi
 
         this._containers.set(vc.id, contributed);
         containers.push(contributed);
+        // The tool's tabs that bring no icon of their own carry this one.
+        const tabIcon = !vc.hidden && vc.icon ? getIcon(vc.icon) : '';
+        if (tabIcon) setToolTabIcon(vc.id, toolId, tabIcon);
         this._onDidAddContainer.fire(contributed);
       }
 
@@ -297,6 +302,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
     if (containers) {
       for (const c of containers) {
         this._containers.delete(c.id);
+        removeToolTabIcon(c.id);
         this._onDidRemoveContainer.fire(c.id);
       }
       this._toolContainers.delete(toolId);

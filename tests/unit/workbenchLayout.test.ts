@@ -20,7 +20,6 @@ import {
   DEFAULT_AUX_BAR_WIDTH,
   TITLE_HEIGHT,
   STATUS_HEIGHT,
-  ACTIVITY_BAR_WIDTH,
 } from '../../src/workbench/layout';
 import type { Part } from '../../src/parts/part';
 import type { TitlebarPart } from '../../src/parts/titlebarPart';
@@ -93,7 +92,7 @@ function fakePart(id: string, visible = true): FakePart {
 
 const WIDTH = 1400;
 const HEIGHT = 852;
-const BODY_W = WIDTH - ACTIVITY_BAR_WIDTH;      // 1352
+const BODY_W = WIDTH;      // 1400: the tools list sits in the column, so the grid has the whole width
 const BODY_H = HEIGHT - TITLE_HEIGHT - STATUS_HEIGHT; // 800
 
 class TestLayout extends Layout {
