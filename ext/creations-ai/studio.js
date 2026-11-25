@@ -64,7 +64,7 @@ export function injectStudioStyles() {
 .cs-try-thread { display: flex; flex-direction: column; gap: var(--px-space-2); }
 @container (max-width: 860px) { .cs-cols { grid-template-columns: minmax(0, 1fr); } .cs-side { position: static; } }
 .cs-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
-.cs-title { flex: 1 1 220px; min-width: 0; font-size: var(--px-text-xl); letter-spacing: -.01em; font-weight: 600; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: var(--px-space-1) 0; outline: none; font-family: inherit; }
+.cs-title { flex: 1 1 220px; min-width: 0; font-family: var(--px-font-display); font-size: var(--px-text-xl); letter-spacing: -.01em; font-weight: 500; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: var(--px-space-1) 0; outline: none; }
 .cs-title:hover { border-bottom-color: var(--px-border); }
 .cs-title:focus { border-bottom-color: var(--px-accent); }
 .cs-title::placeholder { color: var(--px-text-faint); font-weight: 500; }

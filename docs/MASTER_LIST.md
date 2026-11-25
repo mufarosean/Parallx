@@ -2057,6 +2057,20 @@ acceptance probe before, no reviewer agents unless he asks):
   pace, D), only the current phase's units, tomorrow's questions made
   overnight, the weekly look back.
 
+- *Atelier and Creations, a pass each* (his word, 2026-11-25: "I would
+  give those a pass each before moving forward"). Every page of both
+  was screenshotted in dark and light (13 of Atelier's, 9 of
+  Creations'); none showed a surface or text off the palette. Changed:
+  the page titles they draw themselves take the display face (Atelier's
+  Colour Study, Painting Plans, Practice Session, Tag Review and a
+  colour sheet's name; Creations' character, story, chapter and table
+  titles); the library and Creations' home are front pages (34 px);
+  Atelier's photo tiles and Creations' start and cast cards settle in,
+  and those cards are lifted sheets without icon tiles. Not changed:
+  the layouts of the image editor, clip editor, plan tools, colour
+  bench, character studio and story page; the hard-coded colours in
+  both tools' code, none of which was seen on screen.
+
 *Checked:* typecheck; the unit suite; every ratchet and compliance
 test; the keyboard audit on Study's Home and plan (0, contrast in dark
 and light included); the visual probe on Study, Flashcards and

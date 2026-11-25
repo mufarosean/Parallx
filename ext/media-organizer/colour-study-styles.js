@@ -72,7 +72,7 @@ export const MO_COLOUR_CSS = `
 .mo-cs-card-acts { margin-left: auto; display: flex; align-items: center; gap: 2px; flex: none; align-self: flex-start; }
 .mo-cs-parts-bar { display: flex; height: 14px; max-width: 320px; border-radius: var(--px-radius-xs); overflow: hidden; box-shadow: var(--px-ring); }
 .mo-cs-chip-role { min-height: 1.4em; font-size: var(--px-text-xs); }
-.mo-cs-name { font-size: var(--px-text-lg); font-weight: 600; line-height: var(--px-leading-tight); }
+.mo-cs-name { font-family: var(--px-font-display); font-size: var(--px-text-lg); font-weight: 500; line-height: var(--px-leading-tight); }
 .mo-cs-sub { font-variant-numeric: tabular-nums; }
 .mo-cs-chips { display: flex; flex-wrap: wrap; gap: var(--px-space-1); }
 .mo-cs-chips .px-btn.mo-cs-chip { height: auto; gap: 5px; padding: 2px var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-full); font-size: var(--px-text-xs); }

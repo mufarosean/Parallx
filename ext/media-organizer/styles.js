@@ -25,7 +25,7 @@ export const MO_CSS_MORE = `
 .mo-dupf-actions { display: flex; align-items: center; gap: var(--px-space-1); }
 
 /* ═══ Home feed (Section 26B) ═══ */
-.mo-home-title { font-size: 15px; font-weight: 600; }
+.mo-home-title { font-family: var(--px-font-display); font-size: var(--px-text-xl); font-weight: 500; letter-spacing: -0.01em; line-height: var(--px-leading-tight); }
 .mo-home-sub { font-size: 11px; opacity: 0.7; }
 .mo-home-chips { display: flex; gap: 4px; }
 .mo-home-chip { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: 999px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
@@ -102,7 +102,7 @@ export const MO_CSS_MORE = `
 .mo-tr-page { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); }
 .mo-tr-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); flex-wrap: wrap; }
 .mo-tr-title-wrap { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
-.mo-tr-title { font-size: 15px; font-weight: 600; }
+.mo-tr-title { font-family: var(--px-font-display); font-size: var(--px-text-xl); font-weight: 500; letter-spacing: -0.01em; line-height: var(--px-leading-tight); }
 .mo-tr-sub { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-tr-sub.is-error { color: var(--vscode-errorForeground, var(--px-text)); }
 .mo-tr-actions-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

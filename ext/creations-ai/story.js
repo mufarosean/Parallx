@@ -52,7 +52,7 @@ export function injectStoryStyles() {
 .st-cast .cs-icon-btn { width: 18px; height: 18px; }
 .st-chapter { padding-top: var(--px-space-2); }
 .st-chapter-head { display: flex; align-items: center; gap: var(--px-space-2); }
-.st-chapter-title { flex: 1; min-width: 0; font-size: var(--px-text-xl); letter-spacing: -.01em; font-weight: 600; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: 2px 0; outline: none; font-family: inherit; }
+.st-chapter-title { flex: 1; min-width: 0; font-family: var(--px-font-display); font-size: var(--px-text-xl); letter-spacing: -.01em; font-weight: 500; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: 2px 0; outline: none; }
 .st-chapter-title:hover { border-bottom-color: var(--px-border); }
 .st-chapter-title:focus { border-bottom-color: var(--px-accent); }
 .st-chapter-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }

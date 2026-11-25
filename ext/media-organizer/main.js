@@ -5261,7 +5261,7 @@ const MO_CSS = `
   cursor: pointer;
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border, var(--px-bg-elevated, #333));
-  transition: border-color 0.15s;
+  transition: border-color 0.15s; animation: px-settle var(--px-dur-settle) var(--px-ease-out) backwards;
   /* Prevent shift+click from triggering native text selection across cards.
      Without this, browsers select the text under the pointer instead of
      dispatching a clean click event for our range-select handler. */
@@ -11426,7 +11426,7 @@ function renderGridBrowser(container, api, input) {
   // The kit's page header: what this view is and how much is in it, the one
   // main action (Add Folder…) and the rarer library actions behind ⋯.
   const pageHeader = api.ui.createPageHeader(root, {
-    title: moScopeTitle(filterType),
+    title: moScopeTitle(filterType), front: true,
     subtitle: '\u00a0',
     // In Trash the one main action is to empty it; everywhere else, Add Folder….
     primary: filterType === 'trash'
