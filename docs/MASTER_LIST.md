@@ -2150,7 +2150,23 @@ page, is six ways to do the one column: 1E1 tools on top and the tool's
 list under, 1E2 a switcher at the head (1E3 shows it open), 1E4 a strip
 of icons then the tool by name, 1E5 the open tool unfolding in the
 list, 1E6 the tool's list on top and the tools at the foot. Claude's
-pick is 1E2. Not picked yet. Nothing of this group is built.
+pick was 1E2.
+**His pick for the frame (2026-11-25): 1E6**, with notes: "I like 1E6,
+but did not see the settings icon. Also your mock-ups did not show the
+buttons in the top ribbon to show or hide panels/sidebars. And also,
+where do notifications go? Also, the command thing, I want it kept as
+is for now. It does not need to be in the middle. Maybe we make a
+setting eventually that allows the user to choose if they want it
+expanded and centered or kept as is." So: one column, the open tool
+named at its head with its own list first, the tools by name at the
+foot, then Tools and Extensions and Settings; the title bar keeps the
+menu words and, at the right, the search button, the three panel
+buttons (sidebar, bottom panel, chat) and the bell; a notice arrives as
+a sheet at the bottom right of the editor (4A) and the bell counts and
+lists them; the command palette stays as it is (this replaces his 3A
+for the palette; the centred one may come later as a setting). Open:
+whether menus get 3A's icons and shortcuts. Redrawn on the same page
+for his yes. Nothing of this group is built.
 Claude's first picks were 1A 2A 3A 4A 5A 6A. They rest on what the app measures
 today (equal-width tabs, six before the strip scrolls; 22 px Open
 Editors rows; Settings as a dialog over what it changes) and on
