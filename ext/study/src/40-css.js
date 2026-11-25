@@ -646,6 +646,9 @@ function injectStyles() {
 .st-home__worklabel { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-bottom: var(--px-space-1); }
 .st-home__unit { display: flex; justify-content: flex-start; gap: var(--px-space-3); width: calc(100% + 2 * var(--px-space-2)); height: var(--px-control-h-lg); margin: 0 calc(-1 * var(--px-space-2)); padding: var(--px-space-1) var(--px-space-2); font-size: inherit; text-align: left; }
 .st-home__unit .px-btn__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-home__unit--poor .svg-icon, .st-home__unit--poor svg { color: var(--px-danger); }
+.st-home__unit--middling .svg-icon, .st-home__unit--middling svg { color: var(--px-warning); }
+.st-home__unit--rest .svg-icon, .st-home__unit--rest svg { color: var(--px-info); }
 .st-home__unitwords { font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; }
 .st-home__acts { display: flex; flex-wrap: wrap; gap: var(--px-space-2); margin-top: var(--px-space-1); }
 

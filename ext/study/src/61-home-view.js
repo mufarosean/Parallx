@@ -24,6 +24,40 @@ function stHomeHours(h) {
   return `${stPlanH(n)} h`;
 }
 
+/** How a state of a kind is said on Home: the tool's own word for it, lower case. */
+const ST_HOME_STATE_ORDER = ['poor', 'middling', 'rest'];
+
+/**
+ * What to work on today in a subject, from what he knows of it: every unit's
+ * items that are wrong, then the ones half known, then the ones not worked
+ * yet, the kinds (questions, problems, cards) mixed so the day is not one
+ * tool. Each block names the unit, the kind, how many and in which state,
+ * and what opens them. At most `max`.
+ */
+function stHomeBlocks(progress, max = 5) {
+  if (!progress) return [];
+  const all = [];
+  for (const row of progress.rows) {
+    for (const k of row.kinds) {
+      ST_HOME_STATE_ORDER.forEach((state, rank) => {
+        const n = k.counts[ST_PROGRESS_STATES.indexOf(state)] || 0;
+        if (!n) return;
+        const word = String((k.words && k.words[state]) || ST_PROGRESS_PLAIN[state]).toLowerCase();
+        all.push({ unit: row.name, rowId: row.rowId, kindId: k.id, kind: k.kind, state, rank, n, word, canOpen: !!k.canOpen, groups: (k.groups || []).map((g) => g.group) });
+      });
+    }
+  }
+  // Worst state first; within a state the kinds take turns, each with its largest block first.
+  const out = [];
+  for (let rank = 0; rank < ST_HOME_STATE_ORDER.length && out.length < max; rank++) {
+    const byKind = new Map();
+    for (const b of all.filter((x) => x.rank === rank).sort((a, b) => b.n - a.n)) { const l = byKind.get(b.kindId) || []; l.push(b); byKind.set(b.kindId, l); }
+    const lists = [...byKind.values()];
+    for (let i = 0; lists.some((l) => l[i]) && out.length < max; i++) for (const l of lists) if (l[i] && out.length < max) out.push(l[i]);
+  }
+  return out;
+}
+
 const stHomeMonday = (iso) => stPlanAddDays(iso, -stPlanWeekdayIndex(iso));
 const stHomeMonthStart = (iso) => `${iso.slice(0, 8)}01`;
 function stHomeAddMonths(iso, n) {
@@ -44,6 +78,7 @@ function stHomeModel(today) {
     const st = shown && shown.synced && !shown.problem && shown.rules && Array.isArray(shown.days) ? shown : null;
     const out = { id: s.id, name: s.name, bankId: s.subject.bankId, hue: (i % 6) + 1, plan: null, waiting: !!shown && !st && !shown.problem, units: [] };
     const progress = stProgressOfSubject(s.id);
+    out.blocks = stHomeBlocks(progress);
     if (progress) {
       out.units = stProgressWeakestFirst(progress.rows).slice(0, 3).map((r) => {
         const c = r.all || [0, 0, 0, 0];
@@ -341,11 +376,26 @@ async function renderHome(host, route, ctx) {
         fill.style.width = `${Math.min(100, Math.round((t.done / t.planned) * 100))}%`;
       }
       const list = ui.createBlock(card, 'div', { className: 'st-home__work', attrs: { role: 'group', 'aria-label': `Work on, ${s.name}` } });
-      if (s.units.length) ui.createBlock(list, 'div', { className: 'st-home__worklabel', text: 'Weakest first' });
-      for (const u of s.units) {
-        const row = ui.createButton(list, { id: `study.home.unit.${s.id}.${u.rowId}`, label: u.name, icon: 'book-open', kind: 'ghost', title: `Open ${u.name}: ${u.words}.`, command: 'study.openUnit', args: [s.id, u.rowId] });
-        row.classList.add('st-home__unit');
-        ui.createBlock(row, 'span', { className: 'st-home__unitwords', text: u.words });
+      if (s.blocks.length) {
+        ui.createBlock(list, 'div', { className: 'st-home__worklabel', text: 'Work on today, the weakest first' });
+        s.blocks.forEach((b, n) => {
+          const kindWord = b.kind.toLowerCase();
+          const what = `${b.n} ${b.n === 1 ? kindWord.replace(/s$/, '') : kindWord} ${b.word}`;
+          const mine = b.kindId === ST_PROGRESS_QUESTIONS;
+          const run = mine ? { command: 'study.studySubject', args: [s.id, b.unit, b.state] }
+            : b.canOpen ? { command: 'study.openProgress', args: [s.id, { provider: b.kindId, groups: b.groups, state: b.state }] }
+              : { command: 'study.openUnit', args: [s.id, b.rowId] };
+          const row = ui.createButton(list, { id: `study.home.block.${s.id}.${n}`, label: b.unit, icon: 'play', kind: 'ghost', title: `Start: ${b.unit}, ${what}.`, ...run });
+          row.classList.add('st-home__unit', `st-home__unit--${b.state}`);
+          ui.createBlock(row, 'span', { className: 'st-home__unitwords', text: what });
+        });
+      } else {
+        if (s.units.length) ui.createBlock(list, 'div', { className: 'st-home__worklabel', text: 'Nothing is wrong or waiting. Open a unit to go on.' });
+        for (const u of s.units) {
+          const row = ui.createButton(list, { id: `study.home.unit.${s.id}.${u.rowId}`, label: u.name, icon: 'book-open', kind: 'ghost', title: `Open ${u.name}: ${u.words}.`, command: 'study.openUnit', args: [s.id, u.rowId] });
+          row.classList.add('st-home__unit');
+          ui.createBlock(row, 'span', { className: 'st-home__unitwords', text: u.words });
+        }
       }
       const acts = ui.createBlock(card, 'div', { className: 'st-home__acts' });
       ui.createButton(acts, { id: `study.home.study.${s.id}`, label: 'Study', icon: 'play', kind: 'primary', title: `Start a session on ${s.name}.`, command: 'study.open', args: [{ bankIds: [s.bankId] }] });

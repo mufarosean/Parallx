@@ -2048,6 +2048,15 @@ acceptance probe before, no reviewer agents unless he asks):
   the answer turns down, the grades are cards. Worksheets' launcher
   (`8b0297dc`): front header, lifted sheets, no icon tiles.
 
+- *C, its first part, on Home:* each subject's card lists what to work
+  on today from what he knows: every unit's items that are wrong, then
+  half known, then not worked yet, the kinds (questions, problems,
+  cards) taking turns, at most five; each line starts that work in its
+  tool (a Study session on those questions, or the tool's own items).
+  Not built of C: hours given to each block (it waits on his measured
+  pace, D), only the current phase's units, tomorrow's questions made
+  overnight, the weekly look back.
+
 *Checked:* typecheck; the unit suite; every ratchet and compliance
 test; the keyboard audit on Study's Home and plan (0, contrast in dark
 and light included); the visual probe on Study, Flashcards and
