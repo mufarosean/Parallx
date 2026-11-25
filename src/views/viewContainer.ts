@@ -1,6 +1,7 @@
 // viewContainer.ts — container that hosts multiple views with tabbed UI
 
 import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.js';
+import { splitBodies, watchFit } from './fitSection.js';
 import { Emitter, Event } from '../platform/events.js';
 import { CONTAINER_DRAG_TYPE, VIEW_TAB_DRAG_TYPE } from '../platform/dragTypes.js';
 import { Orientation } from '../layout/layoutTypes.js';
@@ -858,15 +859,14 @@ export class ViewContainer extends Disposable implements IGridView {
         for (const id of expandedIds) bodyHeights.set(id, Math.max(minH, perH));
       }
     } else {
-      // No custom heights — equal split
-      const perH = expandedCount > 0 ? Math.floor(availableForBodies / expandedCount) : 0;
-      for (const id of expandedIds) bodyHeights.set(id, Math.max(minH, perH));
+      for (const [id, h] of splitBodies(expandedIds, availableForBodies, minH, (id) => this._views.get(id)?.element)) bodyHeights.set(id, h); // fitted sections by content, the rest equal
     }
 
     for (const viewId of viewIds) {
       const section = this._sectionElements.get(viewId);
       const view = this._views.get(viewId);
       if (!section || !view) continue;
+      watchFit(view.element, () => this._layoutStacked());
 
       if (!section.header.classList.contains('hidden')) {
         section.header.style.height = `${headerH}px`;

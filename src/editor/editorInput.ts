@@ -40,6 +40,12 @@ export interface IEditorInput extends IDisposable {
    */
   readonly iconHtml?: string;
 
+  /**
+   * A live word about what is open, shown where open editors are listed
+   * ("p. 214", "24 due"). Set by the editor itself; nothing by default.
+   */
+  readonly status?: string;
+
   /** Whether this input has unsaved changes. */
   readonly isDirty: boolean;
   /** The AI is writing into this editor right now (tab shows a dot). */
@@ -135,6 +141,21 @@ export abstract class EditorInput extends Disposable implements IEditorInput {
   setAiWriting(on: boolean): void {
     if (this._isAiWriting === on) return;
     this._isAiWriting = on;
+    this._onDidChangeLabel.fire();
+  }
+
+  // ── Status: the live word beside this editor where open editors are listed ──
+
+  private _status: string | undefined;
+
+  get status(): string | undefined {
+    return this._status;
+  }
+
+  setStatus(status: string | undefined): void {
+    const next = status?.trim() ? status.trim().slice(0, 24) : undefined;
+    if (this._status === next) return;
+    this._status = next;
     this._onDidChangeLabel.fire();
   }
 

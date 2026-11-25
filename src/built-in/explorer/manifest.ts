@@ -64,12 +64,12 @@ export const EXPLORER_MANIFEST: IToolManifest = {
         { command: 'explorer.refresh', title: 'Refresh', group: '1_actions', when: "activeViewContainer == 'explorer-container'" },
       ],
     },
-    // Manifest order IS stacked-section order (Retirement 4a: views seat in
-    // contribution order). Files first, Open Editors below — the layout the
-    // old builtin boot loop produced by accident and users rely on.
+    // Manifest order IS stacked-section order (views seat in contribution
+    // order). What is open first, each with its live word, then the files:
+    // the owner's pick 2B (2026-11-25), which turned the older order round.
     views: [
-      { id: 'view.explorer', name: 'Explorer', defaultContainerId: 'explorer-container' },
-      { id: 'view.openEditors', name: 'Open Editors', defaultContainerId: 'explorer-container' },
+      { id: 'view.openEditors', name: 'Open', defaultContainerId: 'explorer-container' },
+      { id: 'view.explorer', name: 'Files', defaultContainerId: 'explorer-container' },
     ],
   },
 };

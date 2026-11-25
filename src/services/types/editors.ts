@@ -83,6 +83,8 @@ export interface OpenEditorDescriptor {
    * file-backed editors).
    */
   readonly iconHtml?: string;
+  /** The editor's live word ("p. 214", "24 due"), when it has set one. */
+  readonly status?: string;
 }
 
 /**
@@ -110,6 +112,8 @@ export interface IEditorService extends IDisposable {
    * the given id is currently open.
    */
   focusEditor(editorId: string): Promise<boolean>;
+  /** Set or clear an open editor's live word. False when no open editor has that id. */
+  setEditorStatus?(editorId: string, status: string | undefined): boolean;
 
   /** Close the active editor (or a specific one). */
   closeEditor(input?: IEditorInput, groupId?: string, force?: boolean): Promise<boolean>;

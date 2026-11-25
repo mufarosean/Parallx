@@ -173,6 +173,7 @@ try {
   await shot('dark-chat.png');
   await cmd(page, 'workbench.action.showCommands'); await page.waitForTimeout(700);
   await shot('dark-palette.png');
+  await page.evaluate(() => document.querySelector('[data-px-id="quickAccess.input"]')?.focus());
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   await mode('light');
   await page.evaluate(() => document.querySelector('.activity-bar-item[data-icon-id="study-container"]')?.click());

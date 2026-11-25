@@ -12,8 +12,13 @@ export class PdfEditorInput extends EditorInput {
 
   private readonly _uri: URI;
 
-  /** Current page number — updated by the pane on every page change. */
-  page = 1;
+  /** Current page number — updated by the pane on every page change. Its live word is that page. */
+  private _page = 1;
+  get page(): number { return this._page; }
+  set page(page: number) {
+    this._page = page;
+    this.setStatus(page > 1 ? `p. ${page}` : undefined);
+  }
   /** Current scale value — updated by the pane on every scale change. */
   scaleValue: string | undefined;
 

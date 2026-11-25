@@ -1326,6 +1326,15 @@ export namespace editors {
   export function closeEditor(editorId: string): Promise<boolean>;
 
   /**
+   * Set or clear the live word of one of your own open editors: a few
+   * characters that say where it stands ("p. 214", "24 due", "3 of 12"),
+   * shown beside it where open editors are listed. Name the editor by the
+   * id its pane was given, or by the type and instance you opened it with.
+   * Returns false when that editor is not open. Pass undefined to clear.
+   */
+  export function setEditorStatus(editor: string | { typeId: string; instanceId: string }, status: string | undefined): boolean;
+
+  /**
    * Update the display title for an already-open editor input by id.
    */
   export function setEditorTitle(inputId: string, title: string): boolean;

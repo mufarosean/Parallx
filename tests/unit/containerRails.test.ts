@@ -220,14 +220,15 @@ describe('container rails (one contributed sidebar path)', () => {
     expect(handler.railOf('explorer-container')).toBe('right');
   });
 
-  it('keeps files above Open Editors — manifest order IS stacked-section order', async () => {
-    // Field regression after the 4a cut: the manifest listed Open Editors
-    // first, so the Explorer sidebar flipped. Views seat in contribution
-    // order; the explorer manifest must keep the files view first.
+  it('keeps what is open above the files — manifest order IS stacked-section order', async () => {
+    // Views seat in contribution order, so the manifest decides which is on
+    // top. The owner's pick 2B (2026-11-25) is open tabs first, then files;
+    // before it the files were first, and a flip by accident was a field
+    // regression. Either way the order is the manifest's and is pinned here.
     const { EXPLORER_MANIFEST } = await import('../../src/workbench/builtinManifests');
     const viewIds = EXPLORER_MANIFEST.contributes?.views?.map((v) => v.id) ?? [];
-    expect(viewIds.indexOf('view.explorer')).toBeGreaterThanOrEqual(0);
-    expect(viewIds.indexOf('view.explorer')).toBeLessThan(viewIds.indexOf('view.openEditors'));
+    expect(viewIds.indexOf('view.openEditors')).toBeGreaterThanOrEqual(0);
+    expect(viewIds.indexOf('view.openEditors')).toBeLessThan(viewIds.indexOf('view.explorer'));
   });
 
   it('fires the rails-changed event on every move', () => {

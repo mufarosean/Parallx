@@ -1,5 +1,7 @@
-// openEditorsView.ts — the Open Editors view: the editors that are open, by
-// group, each a row that opens it, with a close button.
+// openEditorsView.ts — the Open view: the editors that are open, by group,
+// first in the Files list. Each row opens its editor and carries its icon,
+// its name, the live word its editor set ("p. 214", "24 due"), a dot while
+// it is unsaved, and a close button. The section is as tall as its rows.
 //
 // From the keyboard the rows are one list: the active row (or the first) is
 // in the Tab order, Up/Down and Home/End move along it, Enter or Space opens
@@ -7,9 +9,9 @@
 // row. docs/ACCESSIBILITY.md, section 2.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { createList } from '../../ui/kit.js';
+import { createIconButton, createList } from '../../ui/kit.js';
 import { $ } from '../../ui/dom.js';
-import { getFileTypeIcon } from '../../ui/iconRegistry.js';
+import { createIconElement, getFileTypeIcon } from '../../ui/iconRegistry.js';
 
 interface OpenEditor {
   readonly id: string;
@@ -19,6 +21,8 @@ interface OpenEditor {
   readonly isActive: boolean;
   readonly groupId: string;
   readonly iconHtml?: string;
+  /** The editor's live word, when it set one. */
+  readonly status?: string;
 }
 
 /** What the view needs from the editors API. */
@@ -31,6 +35,7 @@ export interface IOpenEditorsHost {
 
 export function createOpenEditorsView(container: HTMLElement, editors: IOpenEditorsHost, setCount: (count: number) => void): IDisposable {
   container.classList.add('open-editors-view');
+  container.setAttribute('data-section-fit', ''); // its section is as tall as its rows (views/fitSection.ts)
   const rows = () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item'));
   // The open editors as one scene entry: the active one is its selection.
   const entry = createList(container, { id: 'explorer.openEditors', label: 'Open Editors', rows, selected: () => rows().filter((r) => r.classList.contains('open-editors-item--active')).map((r) => r.textContent?.trim() ?? '') });
@@ -113,14 +118,6 @@ function createOpenEditorRow(editor: OpenEditor, indented: boolean, editors: IOp
   row.dataset.editorId = editor.id;
   row.tabIndex = -1;
 
-  // Dirty indicator
-  if (editor.isDirty) {
-    const dot = $('span');
-    dot.className = 'open-editors-dirty';
-    dot.title = 'Unsaved changes';
-    row.appendChild(dot);
-  }
-
   // Icon: prefer the editor's own pre-rendered icon (canvas pages,
   // databases, etc.); otherwise derive from filename extension (PDFs,
   // text files, …) and fall through to the generic file icon.
@@ -141,16 +138,26 @@ function createOpenEditorRow(editor: OpenEditor, indented: boolean, editors: IOp
   if (editor.description) label.title = editor.description;
   row.appendChild(label);
 
+  // Its live word, then the unsaved dot: what the tab strip cannot say.
+  if (editor.status) {
+    const status = $('span');
+    status.className = 'open-editors-status';
+    status.textContent = editor.status;
+    row.appendChild(status);
+  }
+  if (editor.isDirty) {
+    const dot = createIconElement('circle', 8);
+    dot.classList.add('open-editors-dirty');
+    dot.setAttribute('role', 'img');
+    dot.setAttribute('aria-label', 'Unsaved changes');
+    row.appendChild(dot);
+  }
+
   // Close button: this row's editor (it used to close whichever was active).
-  const closeBtn = $('span');
-  closeBtn.className = 'open-editors-close';
-  closeBtn.textContent = '×';
-  closeBtn.title = 'Close';
-  closeBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    void editors.closeEditor(editor.id);
-  });
-  row.appendChild(closeBtn);
+  // Out of the Tab order: Delete on the row closes it from the keyboard.
+  const closeBtn = createIconButton(row, { id: null, icon: 'x', title: 'Close', size: 'sm', onClick: (e) => { e.stopPropagation(); void editors.closeEditor(editor.id); } });
+  closeBtn.classList.add('open-editors-close');
+  closeBtn.tabIndex = -1;
 
   // Click → focus that editor by id (it is already open), not by
   // re-resolving a URI: a non-file editor's description is not a URI, and

@@ -132,6 +132,7 @@ export class EditorService extends Disposable implements IEditorService {
           typeId: editor.typeId,
           filePath: editor.uri?.fsPath,
           iconHtml: editor.iconHtml,
+          status: editor.status,
         });
       }
     }
@@ -141,6 +142,18 @@ export class EditorService extends Disposable implements IEditorService {
   async openEditor(input: IEditorInput, options?: EditorOpenOptions, groupId?: string): Promise<void> {
     await this._editorPart.openEditor(input, options, groupId);
     // Note: onDidActiveEditorChange is fired by the group model listener.
+  }
+
+  setEditorStatus(editorId: string, status: string | undefined): boolean {
+    let found = false;
+    for (const group of this._editorPart.groups) {
+      for (const editor of group.model.editors) {
+        if (editor.id !== editorId) continue;
+        (editor as { setStatus?: (s: string | undefined) => void }).setStatus?.(status);
+        found = true;
+      }
+    }
+    return found;
   }
 
   async focusEditor(editorId: string): Promise<boolean> {

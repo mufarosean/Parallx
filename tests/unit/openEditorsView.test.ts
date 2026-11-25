@@ -51,4 +51,25 @@ describe('Open Editors from the keyboard', () => {
     expect(document.activeElement).toBe(row('e3'));
     view.dispose();
   });
+
+  it('shows an editor\'s live word and an unsaved dot, and nothing where there is neither', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const h = host();
+    (h as { openEditors: unknown }).openEditors = [
+      { id: 'e1', name: 'Mack 1994.pdf', description: '', isDirty: false, isActive: true, groupId: 'g1', status: 'p. 214' },
+      { id: 'e2', name: 'Clark Notes', description: '', isDirty: true, isActive: false, groupId: 'g1' },
+      { id: 'e3', name: 'Study', description: '', isDirty: false, isActive: false, groupId: 'g1' },
+    ];
+    const view = createOpenEditorsView(container, h, vi.fn());
+    const row = (id: string) => container.querySelector(`[data-editor-id="${id}"]`) as HTMLElement;
+    expect(row('e1').querySelector('.open-editors-status')?.textContent).toBe('p. 214');
+    expect(row('e1').querySelector('.open-editors-dirty')).toBeNull();
+    expect(row('e2').querySelector('.open-editors-dirty')?.getAttribute('aria-label')).toBe('Unsaved changes');
+    expect(row('e2').querySelector('.open-editors-status')).toBeNull();
+    expect(row('e3').querySelector('.open-editors-status, .open-editors-dirty')).toBeNull();
+    // The section is as tall as its rows: the view says so to its container.
+    expect(container.hasAttribute('data-section-fit')).toBe(true);
+    view.dispose();
+  });
 });

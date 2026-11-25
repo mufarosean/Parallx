@@ -354,6 +354,7 @@ export class EditorsBridge {
       openEditor: (options: OpenEditorOptions) => bridge.openEditor(options),
       closeEditor: (editorId: string) => bridge.closeEditor(editorId),
       focusEditor: (editorId: string) => bridge.focusEditor(editorId),
+      setEditorStatus: (editor: string | { typeId: string; instanceId: string }, status: string | undefined) => bridge.setEditorStatus(editor, status),
       openFileEditor: (uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget; side?: boolean }) => bridge.openFileEditor(uri, options),
       get openEditors() { return bridge.getOpenEditors(); },
       onDidChangeOpenEditors: (listener: () => void) => bridge.onDidChangeOpenEditors(listener),
@@ -401,6 +402,17 @@ export class EditorsBridge {
     this._throwIfDisposed();
     if (!this._editorService) return false;
     return this._editorService.focusEditor(editorId);
+  }
+
+  /**
+   * Set or clear the live word of one of this tool's own open editors: by
+   * the id its pane was given, or by the type and instance it opened with.
+   */
+  setEditorStatus(editor: string | { typeId: string; instanceId: string }, status: string | undefined): boolean {
+    this._throwIfDisposed();
+    const id = typeof editor === 'string' ? editor : `${this._toolId}:${editor.typeId}:${editor.instanceId}`;
+    if (!id.startsWith(`${this._toolId}:`)) return false; // a tool speaks for its own editors only
+    return this._editorService?.setEditorStatus?.(id, status) ?? false;
   }
 
   /**
