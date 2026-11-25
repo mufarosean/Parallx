@@ -373,19 +373,18 @@
   --px-canvas-z-dialog:   9000;     /* templates, shortcuts, version history  */
 
   /* ── Tier 3 · Component — Card stock ────────────────────────────────────
-     A printed card: white paper stock with dark ink, the same in both
-     themes and modes (a flashcard or a quiz card is a physical object on
-     the desk, not a surface of the app). Every card-like face reads
-     from these, never raw white or raw black. Not redefined under light
-     mode on purpose. */
-  --px-stock:             #ffffff;  /* the paper                             */
-  --px-stock-edge:        #e2e2e2;  /* its border                            */
-  --px-stock-line:        #ececec;  /* rules printed on it                   */
-  --px-stock-well:        #fbfbfb;  /* a recessed area: an answer box        */
-  --px-stock-ink:         #111111;  /* body text                             */
-  --px-stock-ink-soft:    #4a4a4a;  /* secondary text                        */
-  --px-stock-ink-faint:   #9a9a9a;  /* hints, counts, sources                */
-  --px-stock-shadow:      0 2px 8px rgba(0, 0, 0, 0.14);  /* its lift off the desk */
+     A card to read and answer on (a flashcard, a quiz card): a sheet of
+     the theme's own paper, lifted off the page, with the theme's ink.
+     Every card-like face reads from these, so the cards follow the
+     palette and the mode with everything else. */
+  --px-stock:             var(--px-bg-elevated);   /* the paper                     */
+  --px-stock-edge:        var(--px-border);        /* its border                    */
+  --px-stock-line:        var(--px-divider);       /* rules printed on it           */
+  --px-stock-well:        var(--px-bg-inset);      /* a recessed area: an answer box */
+  --px-stock-ink:         var(--px-text);          /* body text                     */
+  --px-stock-ink-soft:    var(--px-text-secondary); /* secondary text               */
+  --px-stock-ink-faint:   var(--px-text-muted);    /* hints, counts, sources        */
+  --px-stock-shadow:      var(--px-edge-light), var(--px-shadow-md);  /* its lift off the page */
 }
 
 /* ============================================================================

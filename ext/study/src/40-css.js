@@ -4,7 +4,7 @@
 //
 // Every st-* rule the sidebar, the pane and the dashboard widget use, written
 // once into one <style id="study-styles">. The look is docs/mockups/study.html
-// on the app's tokens: the card is the Flashcards white serif stock (the
+// on the app's tokens: the card is the Flashcards serif stock (the
 // --px-stock-* tokens), everything around it is the workbench's own chrome.
 // Motion only through --px-dur-* and --px-ease*; reduced motion collapses it
 // all (the core stills everything in px-motion.css, and the same two
@@ -60,20 +60,20 @@ function injectStyles() {
 .st-eyebrow__acts .px-btn { color: var(--px-text-muted); }
 .st-eyebrow__acts .px-btn.st-mark--on { color: var(--px-accent-text); }
 
-/* ── The card: the Flashcards stock, white paper and dark ink in every
-   theme (the --px-stock-* tokens are the same in light and dark). ───────── */
-.st-card { background: var(--px-stock); border: 1px solid var(--px-stock-edge); box-shadow: var(--px-stock-shadow); padding: var(--px-space-5) var(--px-space-6) var(--px-space-2); color: var(--px-stock-ink); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
+/* ── The card: the Flashcards stock, a sheet of the theme's paper with
+   its ink (the --px-stock-* tokens follow the palette and the mode). ────── */
+.st-card { background: var(--px-stock); border: 1px solid transparent; border-radius: var(--px-radius-xl); box-shadow: var(--px-ring), var(--px-stock-shadow); padding: var(--px-space-5) var(--px-space-6) var(--px-space-2); color: var(--px-stock-ink); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
 .st-card--leaving { animation: st-card-out var(--px-dur-fast) var(--px-ease) forwards; }
-@keyframes st-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes st-card-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: none; } }
 @keyframes st-card-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-14px); } }
 /* Card ink is a book serif, as the Flashcards card: printed-card text, not
    UI chrome. It matches KaTeX's serif math, so a formula in a stem reads as
    one sentence instead of sans colliding with serif math. The one deliberate
    font-family in the extension; the keycaps and hints inherit the UI face. */
-.st-card__q, .st-opt__text, .st-ta__field, .st-ta__line, .st-ta__num, .st-past__typed, .st-quote__text, .st-full__text, .st-learn__pt, .st-review__stem, .st-review__ans { font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, Georgia, 'Times New Roman', serif; }
-.st-card__q { font-size: var(--px-text-xl); font-weight: 700; line-height: var(--px-leading-tight); margin: 0 0 var(--px-space-4); transition: font-size var(--px-dur-base) var(--px-ease); }
+.st-card__q, .st-opt__text, .st-ta__field, .st-ta__line, .st-ta__num, .st-past__typed, .st-quote__text, .st-full__text, .st-learn__pt, .st-review__stem, .st-review__ans { font-family: var(--px-font-display); }
+.st-card__q { font-size: var(--px-text-xl); font-weight: 400; line-height: 1.4; margin: 0 0 var(--px-space-4); transition: font-size var(--px-dur-base) var(--px-ease); }
 /* Answered: the question steps back so the verdict under the card is the first thing read. */
-.st-card--answered .st-card__q { font-size: var(--px-text-lg); font-weight: 600; }
+.st-card--answered .st-card__q { font-size: var(--px-text-lg); }
 .st-card__q .px-markdown p { margin: 0; }
 .st-card .px-markdown code { background: var(--px-stock-well); color: var(--px-stock-ink); }
 .st-card .px-markdown pre { background: var(--px-stock-well); border-color: var(--px-stock-edge); color: var(--px-stock-ink); }
