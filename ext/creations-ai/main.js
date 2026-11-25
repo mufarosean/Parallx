@@ -2075,7 +2075,7 @@ ${CREATIONS_PARTS_CSS}
 .cr-home { container-type: inline-size; max-width: 1180px; margin: 0 auto; padding: var(--px-space-6) var(--px-space-6) var(--px-space-8); display: flex; flex-direction: column; gap: var(--px-space-6); color: var(--px-text); font-family: var(--px-font-ui); box-sizing: border-box; }
 .cr-hero { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--px-space-6); align-items: start; }
 .cr-hero:has(.cr-roll[style*="none"]) { grid-template-columns: minmax(0, 1fr); }
-.cr-hero-title { margin: 0 0 var(--px-space-3); font-size: var(--px-text-xl); font-weight: 600; line-height: var(--px-leading-tight); letter-spacing: -.01em; }
+.cr-hero-title { margin: 0 0 var(--px-space-3); font-family: var(--px-font-display); font-size: var(--px-text-xl); font-weight: 500; line-height: var(--px-leading-tight); letter-spacing: -.01em; }
 .cr-prompt { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-2) var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
 .cr-prompt:focus-within { border-color: var(--px-accent); }
 .cr-prompt-icon { display: inline-flex; color: var(--px-text-muted); }
