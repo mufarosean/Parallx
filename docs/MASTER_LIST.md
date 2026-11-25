@@ -2134,7 +2134,18 @@ marked, none his yet:
 - *6 Welcome and Home:* 6A one page that opens with the workspace,
   "pick up where you left off", fed by the tools that are on through
   the Home source point, or 6B a plain Welcome and Home designed later.
-Claude's picks: 1A 2A 3A 4A 5A 6A. They rest on what the app measures
+**His picks (2026-11-25, a screenshot of the page's bar, in Dark):
+2B 3A 4A 5B 6A.** Open tabs first with a live word each, then files; a
+centred, grouped palette and menus with icons; notices and dialogs as
+lifted sheets with one pigment dot; Settings stays a dialog, restyled;
+Welcome and Home become one page that opens with the workspace. On the
+frame: "I have made my picks, except for 1. The frame. I did not like
+the given options." A second round for the frame is on the same page,
+changing how he finds his way, not the surfaces: 1D a rail that names
+its tools, 1E one column (the tools by name, then the open tool's own
+list), 1F a dock at the foot, 1C today's frame restyled. Not picked
+yet. Nothing of this group is built.
+Claude's first picks were 1A 2A 3A 4A 5A 6A. They rest on what the app measures
 today (equal-width tabs, six before the strip scrolls; 22 px Open
 Editors rows; Settings as a dialog over what it changes) and on
 judgment; no other product was read for the page (the session's network
