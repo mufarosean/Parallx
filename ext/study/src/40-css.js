@@ -642,6 +642,9 @@ function injectStyles() {
 .st-home__where--behind { color: var(--px-warning); background: var(--px-warning-soft); }
 .st-home__bar { height: var(--px-space-1); border-radius: var(--px-radius-full); background: var(--px-bg-inset); overflow: hidden; }
 .st-home__bar span { display: block; height: 100%; border-radius: inherit; background: var(--px-success); }
+.st-home__look { display: grid; gap: var(--px-space-2); padding: var(--px-space-3); border-radius: var(--px-radius-lg); background: var(--px-warning-soft); }
+.st-home__looktext { font-size: var(--px-text-base); color: var(--px-text); }
+.st-home__look .st-home__acts { margin-top: 0; }
 .st-home__work { display: grid; gap: 1px; }
 .st-home__worklabel { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-bottom: var(--px-space-1); }
 .st-home__unit { display: flex; justify-content: flex-start; gap: var(--px-space-3); width: calc(100% + 2 * var(--px-space-2)); height: var(--px-control-h-lg); margin: 0 calc(-1 * var(--px-space-2)); padding: var(--px-space-1) var(--px-space-2); font-size: inherit; text-align: left; }

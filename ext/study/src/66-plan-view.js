@@ -99,7 +99,7 @@ async function renderPlan(host, route, ctx) {
     const st = _stPlans.get(planId);
     if (!st) { ctx.rerender(); return; }
     const today = stPlanToday();
-    const view = st.rules ? stPlanView(st.rules, st.days, { today, outside: st.outside, done: st.done }) : null;
+    const view = st.rules ? stPlanView(st.rules, st.days, { today, outside: st.outside, done: st.done, pace: st.pace }) : null;
     const key = JSON.stringify([today, st.problem, st.synced, view, [...expanded]]);
     if (key === drawn) return;
     drawn = key;
@@ -176,6 +176,8 @@ async function renderPlan(host, route, ctx) {
         const all = ui.createBlock(li, 'div', { className: 'st-plan__all' });
         for (const pl of ST_PLAN_PLANS) ui.createBlock(all, 'span', { text: `${pl} ${stPlanFitWords(p.fit, p.per[pl])}` });
       }
+      // His measured pace from the Work Log, beside the minutes per item he gave the phase.
+      if (p.fit.measured) ui.createBlock(li, 'div', { className: `st-plan__pace ${p.fit.measured.short.includes(view.following) ? 'st-plan__needs' : 'st-plan__fits'}`, text: stPlanPaceWords(p.fit.measured, p.per[view.following]) });
     }
 
     // The rules that disagree, each named.

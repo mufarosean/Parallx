@@ -25,7 +25,7 @@ function stRowToPlan(row) {
   return {
     id: row.id, subjectId: row.subject_id, name: row.name, pageId: row.page_id || '',
     planDb: row.plan_db || '', weekDb: row.week_db || '', phasesDb: row.phases_db || '', daysDb: row.days_db || '',
-    createdAt: row.created_at || 0,
+    createdAt: row.created_at || 0, lookbackWeek: row.lookback_week || '',
   };
 }
 
@@ -288,6 +288,7 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
   st.days = r.days;
   st.outside = r.outside;
   st.done = done;
+  st.pace = logRows ? stPlanPace(logRows) : null;
   st.planRowId = planRows[0] ? planRows[0].pageId : '';
   st.synced = true;
 }
@@ -300,7 +301,7 @@ function stPlanEnqueue(st, fn) {
 }
 
 /** What the tab and the sidebar show of a plan, as one key: a redraw only when it differs. */
-const stPlanShownKey = (st) => JSON.stringify([st.problem, st.synced, st.rules, st.days, st.outside, st.done ? [...st.done] : null]);
+const stPlanShownKey = (st) => JSON.stringify([st.problem, st.synced, st.rules, st.days, st.outside, st.done ? [...st.done] : null, st.pace || null]);
 
 async function stPlanFlush(st) {
   if (!st.dirty && st.synced) return;

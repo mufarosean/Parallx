@@ -812,6 +812,7 @@ function registerCommands(context) {
     ['study.openHome', () => stOpenHome()],
     ['study.home.show', (what) => stCmdHomeShow(what)],
     ['study.home.day', (planId, date) => stCmdHomeDay(planId, date)],
+    ['study.home.absorb', (planId, how) => stCmdHomeAbsorb(planId, how)],
     ['study.stopMaking', (sessionId) => stStopRun(sessionId)],
     ['study.makeAgain', (sessionId) => stMakeAgain(sessionId)],
     ['study.studyDocument', (arg) => stCmdStudyDocument(arg)],

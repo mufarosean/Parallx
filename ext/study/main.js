@@ -2790,7 +2790,34 @@ function stPlanHoursPerDay(days) {
  * what that work needs (`fit`: { needs, short: plans whose hours are less }).
  * A phase without valid dates comes last, with nothing counted.
  */
-function stPlanPhases(rules, days) {
+/** How many items the record must hold before its pace is said: fewer is one sitting, not a pace. */
+const ST_PLAN_PACE_MIN_ITEMS = 5;
+
+/**
+ * His measured pace from the Work Log's rows: minutes per item, over the rows
+ * that hold both Minutes and Items, for every Kind (by its name, lower case)
+ * and over all of them. A pace is given once the record holds enough items.
+ * Returns { all: { per, items, minutes } | null, kinds: { [kind]: { per, items, minutes } } }.
+ */
+function stPlanPace(logRows) {
+  const sums = new Map();
+  let items = 0; let minutes = 0;
+  for (const r of logRows || []) {
+    const v = r.values || {};
+    const m = stPlanHours(stPlanCell(v, 'Minutes'));
+    const n = stPlanHours(stPlanCell(v, 'Items'));
+    if (!(m > 0) || !(n > 0)) continue;
+    const kind = String(stPlanCell(v, 'Kind') ?? '').trim().toLowerCase();
+    items += n; minutes += m;
+    if (kind) { const s = sums.get(kind) || { items: 0, minutes: 0 }; s.items += n; s.minutes += m; sums.set(kind, s); }
+  }
+  const pace = (s) => (s.items >= ST_PLAN_PACE_MIN_ITEMS ? { per: stPlanRound(s.minutes / s.items), items: s.items, minutes: stPlanRound(s.minutes) } : null);
+  const kinds = {};
+  for (const [k, s] of sums) { const p = pace(s); if (p) kinds[k] = p; }
+  return { all: pace({ items, minutes }), kinds };
+}
+
+function stPlanPhases(rules, days, pace = null) {
   return rules.phases.slice().sort((a, b) => {
     const av = stPlanSpanValid(a); const bv = stPlanSpanValid(b);
     return av !== bv ? (av ? -1 : 1) : av ? stPlanByStart(a, b) : a.order - b.order;
@@ -2799,12 +2826,22 @@ function stPlanPhases(rules, days) {
     const inside = valid ? days.filter((d) => stPlanInSpan(d.date, s)) : [];
     const per = { Floor: 0, Standard: 0, Stretch: 0 };
     for (const d of inside) for (const p of ST_PLAN_PLANS) per[p] = stPlanRound(per[p] + d.per[p]);
-    const needs = s.kind === 'Study' && s.items > 0 && s.minutes > 0 ? stPlanRound((s.items * s.minutes) / 60) : 0;
+    // The work a phase holds: his own minutes per item where he gave them, else his measured pace.
+    const measured = s.kind === 'Study' && s.items > 0 && pace && pace.all ? { per: pace.all.per, items: pace.all.items, needs: stPlanRound((s.items * pace.all.per) / 60) } : null;
+    const needs = s.kind === 'Study' && s.items > 0 && s.minutes > 0 ? stPlanRound((s.items * s.minutes) / 60) : measured ? measured.needs : 0;
+    if (measured) measured.short = ST_PLAN_PLANS.filter((p) => measured.needs > per[p] + 1e-9);
     return {
       id: s.id, name: s.name, kind: s.kind, start: s.start, end: s.end, follows: s.follows || '', valid, days: inside.length, per, hours: per[rules.following],
-      fit: needs ? { needs, short: ST_PLAN_PLANS.filter((p) => needs > per[p] + 1e-9) } : null,
+      fit: needs ? { needs, short: ST_PLAN_PLANS.filter((p) => needs > per[p] + 1e-9), given: s.minutes > 0, measured } : null,
     };
   });
+}
+
+/** The measured pace beside a phase's fit: "At your pace (7.5 min an item, over 120 items) it needs 105 h, has 72 h." */
+function stPlanPaceWords(measured, has) {
+  if (!measured) return '';
+  const said = `At your pace (${stPlanH(measured.per)} min an item, over ${measured.items} items)`;
+  return measured.needs > has + 1e-9 ? `${said} it needs ${stPlanH(measured.needs)} h, has ${stPlanH(has)} h.` : `${said} it fits: ${stPlanH(measured.needs)} h of work in ${stPlanH(has)} h.`;
 }
 
 /** "needs 84 h, has 72 h" for one plan, or "fits: 71.7 h of work in 72 h". */
@@ -3028,7 +3065,7 @@ function stPlanDoneByDate(logRows, localDate = null) {
  * hours per day, the phases, the days by week (Monday to Sunday), the days
  * left and the contradictions. `today` is the person's local date.
  */
-function stPlanView(rules, days, { today = '', outside = [], done = null } = {}) {
+function stPlanView(rules, days, { today = '', outside = [], done = null, pace = null } = {}) {
   const totals = stPlanTotals(days);
   const weeks = [];
   for (const d of days) {
@@ -3046,7 +3083,7 @@ function stPlanView(rules, days, { today = '', outside = [], done = null } = {})
     perDay: stPlanHoursPerDay(days),
     studyDays: days.filter((d) => d.planned > 0).length,
     allDays: days.length,
-    phases: stPlanPhases(rules, days),
+    phases: stPlanPhases(rules, days, pace),
     weeks,
     outside: outside.slice().sort((a, b) => (a.date < b.date ? -1 : 1)),
     contradictions: stPlanContradictions(rules, { days, today }),
@@ -6365,7 +6402,7 @@ function stRowToPlan(row) {
   return {
     id: row.id, subjectId: row.subject_id, name: row.name, pageId: row.page_id || '',
     planDb: row.plan_db || '', weekDb: row.week_db || '', phasesDb: row.phases_db || '', daysDb: row.days_db || '',
-    createdAt: row.created_at || 0,
+    createdAt: row.created_at || 0, lookbackWeek: row.lookback_week || '',
   };
 }
 
@@ -6628,6 +6665,7 @@ async function stPlanSyncNow(st, { ensure = false } = {}) {
   st.days = r.days;
   st.outside = r.outside;
   st.done = done;
+  st.pace = logRows ? stPlanPace(logRows) : null;
   st.planRowId = planRows[0] ? planRows[0].pageId : '';
   st.synced = true;
 }
@@ -6640,7 +6678,7 @@ function stPlanEnqueue(st, fn) {
 }
 
 /** What the tab and the sidebar show of a plan, as one key: a redraw only when it differs. */
-const stPlanShownKey = (st) => JSON.stringify([st.problem, st.synced, st.rules, st.days, st.outside, st.done ? [...st.done] : null]);
+const stPlanShownKey = (st) => JSON.stringify([st.problem, st.synced, st.rules, st.days, st.outside, st.done ? [...st.done] : null, st.pace || null]);
 
 async function stPlanFlush(st) {
   if (!st.dirty && st.synced) return;
@@ -10730,6 +10768,9 @@ function injectStyles() {
 .st-home__where--behind { color: var(--px-warning); background: var(--px-warning-soft); }
 .st-home__bar { height: var(--px-space-1); border-radius: var(--px-radius-full); background: var(--px-bg-inset); overflow: hidden; }
 .st-home__bar span { display: block; height: 100%; border-radius: inherit; background: var(--px-success); }
+.st-home__look { display: grid; gap: var(--px-space-2); padding: var(--px-space-3); border-radius: var(--px-radius-lg); background: var(--px-warning-soft); }
+.st-home__looktext { font-size: var(--px-text-base); color: var(--px-text); }
+.st-home__look .st-home__acts { margin-top: 0; }
 .st-home__work { display: grid; gap: 1px; }
 .st-home__worklabel { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-bottom: var(--px-space-1); }
 .st-home__unit { display: flex; justify-content: flex-start; gap: var(--px-space-3); width: calc(100% + 2 * var(--px-space-2)); height: var(--px-control-h-lg); margin: 0 calc(-1 * var(--px-space-2)); padding: var(--px-space-1) var(--px-space-2); font-size: inherit; text-align: left; }
@@ -14224,6 +14265,25 @@ function stHomeBlocks(progress, max = 5) {
   return out;
 }
 
+/**
+ * The week before the one `today` is in, against the plan: the hours planned
+ * and done in it and what slipped; this week's study days still to come
+ * (today among them) and the next day with no hours, where it could go.
+ * Null when the plan has no day in that week.
+ */
+function stHomeLookBack(days, done, today) {
+  const thisMonday = stPlanAddDays(today, -stPlanWeekdayIndex(today));
+  const monday = stPlanAddDays(thisMonday, -7);
+  const last = (days || []).filter((d) => d.date >= monday && d.date < thisMonday);
+  if (!last.length) return null;
+  const planned = stPlanRound(last.reduce((t, d) => t + d.planned, 0));
+  const did = stPlanRound(last.reduce((t, d) => t + (Number(done && done.get(d.date)) || 0), 0));
+  const slipped = Math.round(Math.max(0, planned - did) * 10) / 10;
+  const ahead = days.filter((d) => d.date >= today);
+  const free = ahead.find((d) => !(d.planned > 0) && d.type !== 'Holiday');
+  return { monday, planned, done: did, slipped, spread: ahead.filter((d) => d.date < stPlanAddDays(thisMonday, 7) && d.planned > 0).map((d) => d.date), free: free ? free.date : '' };
+}
+
 const stHomeMonday = (iso) => stPlanAddDays(iso, -stPlanWeekdayIndex(iso));
 const stHomeMonthStart = (iso) => `${iso.slice(0, 8)}01`;
 function stHomeAddMonths(iso, n) {
@@ -14245,6 +14305,9 @@ function stHomeModel(today) {
     const out = { id: s.id, name: s.name, bankId: s.subject.bankId, hue: (i % 6) + 1, plan: null, waiting: !!shown && !st && !shown.problem, units: [] };
     const progress = stProgressOfSubject(s.id);
     out.blocks = stHomeBlocks(progress);
+    // Each block's time at his measured pace for its kind, once the Work Log holds one.
+    const pace = shown && shown.pace ? shown.pace.kinds : null;
+    for (const b of out.blocks) { const p = pace ? pace[b.kind.toLowerCase()] : null; b.minutes = p ? Math.max(1, Math.round(b.n * p.per)) : 0; }
     if (progress) {
       out.units = stProgressWeakestFirst(progress.rows).slice(0, 3).map((r) => {
         const c = r.all || [0, 0, 0, 0];
@@ -14265,6 +14328,7 @@ function stHomeModel(today) {
         daysLeft: stPlanDaysBetween(today, st.rules.exam),
         today: day ? { type: day.type, phase: day.phase, planned: day.planned, done: stPlanRound(Number(done.get(today)) || 0) } : null,
         behind: stPlanRound(plannedSoFar - (doneSoFar - (Number(done.get(today)) || 0))),
+        lookBack: st.plan.lookbackWeek === stPlanAddDays(stHomeMonday(today), -7) ? null : stHomeLookBack(st.days, done, today),
       };
     }
     return out;
@@ -14360,6 +14424,33 @@ function stHomeSetHours(planId, date, hours) {
     if (!(want > 0)) values.Type = 'Rest';
     return [{ pageId: r.pageId, values }];
   });
+}
+
+/**
+ * Last week's slipped hours, absorbed as he chose: 'spread' adds them in
+ * equal parts to this week's study days still to come, 'free' puts them on
+ * the next day with no hours as a catch-up day, 'none' changes nothing. The
+ * week is then answered: the offer is not made for it again.
+ */
+async function stCmdHomeAbsorb(planId, how) {
+  const st = _stPlans.get(Number(planId));
+  if (!st || !Array.isArray(st.days) || !st.rules) return false;
+  const today = stPlanToday();
+  const look = stHomeLookBack(st.days, st.done, today);
+  if (!look) return false;
+  let ok = true;
+  if (how === 'spread' && look.slipped > 0 && look.spread.length) {
+    const each = Math.round((look.slipped / look.spread.length) * 4) / 4;
+    ok = await stHomeChange(planId, (rows) => look.spread.map((date) => rows.get(date)).filter(Boolean).map((r) => { const c = stHomeCellsOf(r); return { pageId: r.pageId, values: { ...c, [st.rules.following]: stPlanRound(stPlanHours(c[st.rules.following]) + each) } }; }));
+  } else if (how === 'free' && look.slipped > 0 && look.free) {
+    ok = await stHomeChange(planId, (rows) => { const r = rows.get(look.free); return r ? [{ pageId: r.pageId, values: { ...stHomeCellsOf(r), Type: 'Catch-up', Work: 0, [st.rules.following]: look.slipped } }] : []; });
+  } else if (how !== 'none') return false;
+  if (!ok) return false;
+  stPlanLive(st);
+  await db.run('UPDATE st_plans SET lookback_week = ? WHERE id = ?', [look.monday, st.plan.id]);
+  st.plan.lookbackWeek = look.monday;
+  _emitDataChanged();
+  return true;
 }
 
 /** Whether a day's work can be pushed on: a free day lies between it and the exam. */
@@ -14541,12 +14632,22 @@ async function renderHome(host, route, ctx) {
         const fill = ui.createBlock(bar, 'span', { className: first ? 'px-fill-x' : '' });
         fill.style.width = `${Math.min(100, Math.round((t.done / t.planned) * 100))}%`;
       }
+      // The weekly look back: what slipped last week, and his choice of what to do with it. Nothing moves by itself.
+      const look = s.plan ? s.plan.lookBack : null;
+      if (look && look.slipped >= 0.5) {
+        const box = ui.createBlock(card, 'div', { className: 'st-home__look', attrs: { role: 'group', 'aria-label': `Last week, ${s.name}` } });
+        ui.createBlock(box, 'div', { className: 'st-home__looktext', text: `Last week: ${stHomeHours(look.done)} done of ${stHomeHours(look.planned)} planned. ${stHomeHours(look.slipped)} slipped.` });
+        const offers = ui.createBlock(box, 'div', { className: 'st-home__acts' });
+        if (look.spread.length) ui.createButton(offers, { id: `study.home.absorb.spread.${s.id}`, label: 'Spread Over This Week', icon: 'chevrons-right', kind: 'ghost', size: 'sm', title: `Adds ${stHomeHours(look.slipped)} in equal parts to this week's ${look.spread.length} study ${look.spread.length === 1 ? 'day' : 'days'} still to come.`, command: 'study.home.absorb', args: [s.plan.id, 'spread'] });
+        if (look.free) ui.createButton(offers, { id: `study.home.absorb.free.${s.id}`, label: 'Put on the Next Free Day', icon: 'calendar-plus', kind: 'ghost', size: 'sm', title: `Makes ${stPlanDateWords(look.free)} a catch-up day of ${stHomeHours(look.slipped)}.`, command: 'study.home.absorb', args: [s.plan.id, 'free'] });
+        ui.createButton(offers, { id: `study.home.absorb.none.${s.id}`, label: 'Let It Go', icon: 'x', kind: 'ghost', size: 'sm', title: 'Changes nothing in the plan. The hours stay counted as behind.', command: 'study.home.absorb', args: [s.plan.id, 'none'] });
+      }
       const list = ui.createBlock(card, 'div', { className: 'st-home__work', attrs: { role: 'group', 'aria-label': `Work on, ${s.name}` } });
       if (s.blocks.length) {
         ui.createBlock(list, 'div', { className: 'st-home__worklabel', text: 'Work on today, the weakest first' });
         s.blocks.forEach((b, n) => {
           const kindWord = b.kind.toLowerCase();
-          const what = `${b.n} ${b.n === 1 ? kindWord.replace(/s$/, '') : kindWord} ${b.word}`;
+          const what = `${b.n} ${b.n === 1 ? kindWord.replace(/s$/, '') : kindWord} ${b.word}${b.minutes ? `, about ${b.minutes} min` : ''}`;
           const mine = b.kindId === ST_PROGRESS_QUESTIONS;
           const run = mine ? { command: 'study.studySubject', args: [s.id, b.unit, b.state] }
             : b.canOpen ? { command: 'study.openProgress', args: [s.id, { provider: b.kindId, groups: b.groups, state: b.state }] }
@@ -15748,7 +15849,7 @@ async function renderPlan(host, route, ctx) {
     const st = _stPlans.get(planId);
     if (!st) { ctx.rerender(); return; }
     const today = stPlanToday();
-    const view = st.rules ? stPlanView(st.rules, st.days, { today, outside: st.outside, done: st.done }) : null;
+    const view = st.rules ? stPlanView(st.rules, st.days, { today, outside: st.outside, done: st.done, pace: st.pace }) : null;
     const key = JSON.stringify([today, st.problem, st.synced, view, [...expanded]]);
     if (key === drawn) return;
     drawn = key;
@@ -15825,6 +15926,8 @@ async function renderPlan(host, route, ctx) {
         const all = ui.createBlock(li, 'div', { className: 'st-plan__all' });
         for (const pl of ST_PLAN_PLANS) ui.createBlock(all, 'span', { text: `${pl} ${stPlanFitWords(p.fit, p.per[pl])}` });
       }
+      // His measured pace from the Work Log, beside the minutes per item he gave the phase.
+      if (p.fit.measured) ui.createBlock(li, 'div', { className: `st-plan__pace ${p.fit.measured.short.includes(view.following) ? 'st-plan__needs' : 'st-plan__fits'}`, text: stPlanPaceWords(p.fit.measured, p.per[view.following]) });
     }
 
     // The rules that disagree, each named.
@@ -17093,6 +17196,7 @@ function registerCommands(context) {
     ['study.openHome', () => stOpenHome()],
     ['study.home.show', (what) => stCmdHomeShow(what)],
     ['study.home.day', (planId, date) => stCmdHomeDay(planId, date)],
+    ['study.home.absorb', (planId, how) => stCmdHomeAbsorb(planId, how)],
     ['study.stopMaking', (sessionId) => stStopRun(sessionId)],
     ['study.makeAgain', (sessionId) => stMakeAgain(sessionId)],
     ['study.studyDocument', (arg) => stCmdStudyDocument(arg)],
@@ -17929,7 +18033,7 @@ export const __testables = {
   // 14-progress-model: Progress, the pure part
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
-  stHomeBlocks, stHomeAddMonths, stHomeHours,
+  stHomeBlocks, stHomeAddMonths, stHomeHours, stHomeLookBack, stPlanPace, stPlanPaceWords,
   stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
   // 15-unit-model, 31-unit-material, 67-unit-view: a unit's material
   ST_UNIT_MATERIAL, stUnitRelative, stUnitPageSrc, stUnitFileSrc, stUnitParse, stUnitKey, stUnitItems, stUnitEntry, stUnitAdd, stUnitRemove,

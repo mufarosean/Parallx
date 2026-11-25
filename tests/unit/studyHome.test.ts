@@ -60,3 +60,70 @@ describe('Home\'s words and months', () => {
     expect(stHomeAddMonths('2026-11-01', 14)).toBe('2028-01-01');
   });
 });
+
+describe('his measured pace', () => {
+  const { stPlanPace, stPlanPaceWords, stPlanRules, stPlanDays, stPlanPhases } = T;
+  const log = (Kind: string, Minutes: unknown, Items: unknown) => ({ pageId: 'r', title: '', values: { Kind, Minutes, Items } });
+
+  it('is minutes per item by kind and over all, from the rows that hold both', () => {
+    const p = stPlanPace([log('Problems', 60, 6), log('Problems', 30, 4), log('Cards', 10, 20), log('Reading', 45, null), log('Questions', 0, 5)]);
+    expect(p.kinds.problems).toEqual({ per: 9, items: 10, minutes: 90 });
+    expect(p.kinds.cards).toEqual({ per: 0.5, items: 20, minutes: 10 });
+    expect(p.kinds.reading).toBeUndefined();
+    expect(p.kinds.questions).toBeUndefined();
+    expect(p.all).toEqual({ per: 3.33, items: 30, minutes: 100 });
+  });
+  it('gives no pace from fewer than five items: that is one sitting, not a pace', () => {
+    const p = stPlanPace([log('Problems', 40, 4)]);
+    expect(p.all).toBeNull();
+    expect(p.kinds).toEqual({});
+    expect(stPlanPace(null)).toEqual({ all: null, kinds: {} });
+  });
+  it('is set beside the minutes per item he gave a phase, and stands in for them when he gave none', () => {
+    let n = 0;
+    const row = (title: string, values: Record<string, unknown>) => ({ pageId: `p-${++n}`, title, values });
+    const rules = (minutes: unknown) => stPlanRules({
+      plan: { 'Exam Date': '2027-02-01', 'Start Date': '2027-01-04', 'Hours Goal': 0, Following: 'Standard' },
+      week: [row('Every day', { Days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], Account: 'Personal', Floor: 1, Standard: 2, Stretch: 3 })],
+      phases: [row('Problems', { Kind: 'Study', Start: '2027-01-04', End: '2027-01-31', Items: 600, 'Minutes per Item': minutes })],
+    });
+    const pace = stPlanPace([log('Problems', 900, 100)]);          // 9 min an item
+    const given = rules(5);
+    const [a] = stPlanPhases(given, stPlanDays(given), pace);      // 28 days at 2 h is 56 h
+    expect(a.fit).toMatchObject({ needs: 50, short: ['Floor'], given: true, measured: { per: 9, items: 100, needs: 90, short: ['Floor', 'Standard', 'Stretch'] } });
+    const none = rules(null);
+    const [b] = stPlanPhases(none, stPlanDays(none), pace);
+    expect(b.fit).toMatchObject({ needs: 90, given: false });
+    const [c] = stPlanPhases(none, stPlanDays(none));
+    expect(c.fit).toBeNull();
+  });
+  it('is said with what it rests on', () => {
+    expect(stPlanPaceWords({ per: 9, items: 100, needs: 90 }, 56)).toBe('At your pace (9 min an item, over 100 items) it needs 90 h, has 56 h.');
+    expect(stPlanPaceWords({ per: 4, items: 30, needs: 40 }, 56)).toBe('At your pace (4 min an item, over 30 items) it fits: 40 h of work in 56 h.');
+    expect(stPlanPaceWords(null, 56)).toBe('');
+  });
+});
+
+describe('the weekly look back', () => {
+  const { stHomeLookBack } = T;
+  // Wednesday 2027-01-13; last week is Mon 4 to Sun 10, this week Mon 11 to Sun 17.
+  const day = (date: string, planned: number, type = planned > 0 ? 'Study' : 'Rest') => ({ date, planned, type });
+  const days = [
+    day('2027-01-04', 2), day('2027-01-05', 2), day('2027-01-06', 2), day('2027-01-07', 2), day('2027-01-08', 2), day('2027-01-09', 4), day('2027-01-10', 0),
+    day('2027-01-11', 2), day('2027-01-12', 2), day('2027-01-13', 2), day('2027-01-14', 2), day('2027-01-15', 0, 'Holiday'), day('2027-01-16', 4), day('2027-01-17', 0),
+    day('2027-01-18', 2),
+  ];
+  it('says what last week planned, what was done and what slipped', () => {
+    const done = new Map([['2027-01-04', 2], ['2027-01-06', 1.5], ['2027-01-09', 3], ['2027-01-12', 9]]);
+    expect(stHomeLookBack(days, done, '2027-01-13')).toMatchObject({ monday: '2027-01-04', planned: 14, done: 6.5, slipped: 7.5 });
+  });
+  it('offers this week\'s study days still to come, today among them, and the next free day that is no holiday', () => {
+    const look = stHomeLookBack(days, new Map(), '2027-01-13');
+    expect(look.spread).toEqual(['2027-01-13', '2027-01-14', '2027-01-16']);
+    expect(look.free).toBe('2027-01-17');
+  });
+  it('has nothing slipped when more was done than planned, and nothing at all in a plan\'s first week', () => {
+    expect(stHomeLookBack(days, new Map([['2027-01-05', 20]]), '2027-01-13').slipped).toBe(0);
+    expect(stHomeLookBack(days, new Map(), '2027-01-06')).toBeNull();
+  });
+});

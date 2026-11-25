@@ -303,6 +303,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.editQuestion` | Edit Question… | study | Study |  |  |
 | `study.findMatches` | Find Matches… | study | Study |  |  |
 | `study.gradeAgain` | Grade Answer Again | study | Study |  |  |
+| `study.home.absorb` | Absorb Last Week's Slipped Hours | study | Study |  |  |
 | `study.home.day` | Change a Day of the Plan | study | Study |  |  |
 | `study.home.show` | Show Another Week or Month of the Plan | study | Study |  |  |
 | `study.importQuestions` | Import Questions… | study | Study |  |  |

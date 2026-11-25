@@ -15,6 +15,7 @@
       { "id": "study.openHome", "title": "Open Home", "category": "Study" },
       { "id": "study.home.show", "title": "Show Another Week or Month of the Plan", "category": "Study" },
       { "id": "study.home.day", "title": "Change a Day of the Plan", "category": "Study" },
+      { "id": "study.home.absorb", "title": "Absorb Last Week's Slipped Hours", "category": "Study" },
       { "id": "study.studyDocument", "title": "Study This Document…", "category": "Study" },
       { "id": "study.quizSelection", "title": "Quiz This Selection", "category": "Study" },
       { "id": "study.studyTogether", "title": "Study Materials Together…", "category": "Study" },

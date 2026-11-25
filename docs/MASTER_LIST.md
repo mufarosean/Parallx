@@ -2053,9 +2053,24 @@ acceptance probe before, no reviewer agents unless he asks):
   half known, then not worked yet, the kinds (questions, problems,
   cards) taking turns, at most five; each line starts that work in its
   tool (a Study session on those questions, or the tool's own items).
-  Not built of C: hours given to each block (it waits on his measured
-  pace, D), only the current phase's units, tomorrow's questions made
-  overnight, the weekly look back.
+  Each block says about how long it takes at his measured pace for
+  its kind, once the Work Log holds one.
+- *C, the weekly look back:* on a subject's card, while last week has
+  half an hour or more slipped: "Last week: 9 h done of 14 h planned.
+  5 h slipped." and three choices, Spread Over This Week (equal parts
+  on this week's study days still to come), Put on the Next Free Day (a
+  catch-up day), Let It Go. Nothing moves by itself; the week answered
+  is kept (`st_plans.lookback_week`, migration `study_010`) and not
+  asked again. Command `study.home.absorb`.
+- *D, the plan corrected by his pace:* `stPlanPace` reads minutes per
+  item from the Work Log (rows holding both Minutes and Items), by kind
+  and over all, once it holds five items or more. A study phase with
+  Items says beside its fit "At your pace (9 min an item, over 100
+  items) it needs 90 h, has 56 h."; a phase with Items and no Minutes
+  per Item is worked out from the pace. The pace is over all kinds:
+  a phase does not say which kind its items are.
+  Not built of C: only the current phase's units (a phase names no
+  units), tomorrow's questions made overnight.
 
 - *Atelier and Creations, a pass each* (his word, 2026-11-25: "I would
   give those a pass each before moving forward"). Every page of both

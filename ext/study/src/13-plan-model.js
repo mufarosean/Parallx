@@ -335,7 +335,34 @@ function stPlanHoursPerDay(days) {
  * what that work needs (`fit`: { needs, short: plans whose hours are less }).
  * A phase without valid dates comes last, with nothing counted.
  */
-function stPlanPhases(rules, days) {
+/** How many items the record must hold before its pace is said: fewer is one sitting, not a pace. */
+const ST_PLAN_PACE_MIN_ITEMS = 5;
+
+/**
+ * His measured pace from the Work Log's rows: minutes per item, over the rows
+ * that hold both Minutes and Items, for every Kind (by its name, lower case)
+ * and over all of them. A pace is given once the record holds enough items.
+ * Returns { all: { per, items, minutes } | null, kinds: { [kind]: { per, items, minutes } } }.
+ */
+function stPlanPace(logRows) {
+  const sums = new Map();
+  let items = 0; let minutes = 0;
+  for (const r of logRows || []) {
+    const v = r.values || {};
+    const m = stPlanHours(stPlanCell(v, 'Minutes'));
+    const n = stPlanHours(stPlanCell(v, 'Items'));
+    if (!(m > 0) || !(n > 0)) continue;
+    const kind = String(stPlanCell(v, 'Kind') ?? '').trim().toLowerCase();
+    items += n; minutes += m;
+    if (kind) { const s = sums.get(kind) || { items: 0, minutes: 0 }; s.items += n; s.minutes += m; sums.set(kind, s); }
+  }
+  const pace = (s) => (s.items >= ST_PLAN_PACE_MIN_ITEMS ? { per: stPlanRound(s.minutes / s.items), items: s.items, minutes: stPlanRound(s.minutes) } : null);
+  const kinds = {};
+  for (const [k, s] of sums) { const p = pace(s); if (p) kinds[k] = p; }
+  return { all: pace({ items, minutes }), kinds };
+}
+
+function stPlanPhases(rules, days, pace = null) {
   return rules.phases.slice().sort((a, b) => {
     const av = stPlanSpanValid(a); const bv = stPlanSpanValid(b);
     return av !== bv ? (av ? -1 : 1) : av ? stPlanByStart(a, b) : a.order - b.order;
@@ -344,12 +371,22 @@ function stPlanPhases(rules, days) {
     const inside = valid ? days.filter((d) => stPlanInSpan(d.date, s)) : [];
     const per = { Floor: 0, Standard: 0, Stretch: 0 };
     for (const d of inside) for (const p of ST_PLAN_PLANS) per[p] = stPlanRound(per[p] + d.per[p]);
-    const needs = s.kind === 'Study' && s.items > 0 && s.minutes > 0 ? stPlanRound((s.items * s.minutes) / 60) : 0;
+    // The work a phase holds: his own minutes per item where he gave them, else his measured pace.
+    const measured = s.kind === 'Study' && s.items > 0 && pace && pace.all ? { per: pace.all.per, items: pace.all.items, needs: stPlanRound((s.items * pace.all.per) / 60) } : null;
+    const needs = s.kind === 'Study' && s.items > 0 && s.minutes > 0 ? stPlanRound((s.items * s.minutes) / 60) : measured ? measured.needs : 0;
+    if (measured) measured.short = ST_PLAN_PLANS.filter((p) => measured.needs > per[p] + 1e-9);
     return {
       id: s.id, name: s.name, kind: s.kind, start: s.start, end: s.end, follows: s.follows || '', valid, days: inside.length, per, hours: per[rules.following],
-      fit: needs ? { needs, short: ST_PLAN_PLANS.filter((p) => needs > per[p] + 1e-9) } : null,
+      fit: needs ? { needs, short: ST_PLAN_PLANS.filter((p) => needs > per[p] + 1e-9), given: s.minutes > 0, measured } : null,
     };
   });
+}
+
+/** The measured pace beside a phase's fit: "At your pace (7.5 min an item, over 120 items) it needs 105 h, has 72 h." */
+function stPlanPaceWords(measured, has) {
+  if (!measured) return '';
+  const said = `At your pace (${stPlanH(measured.per)} min an item, over ${measured.items} items)`;
+  return measured.needs > has + 1e-9 ? `${said} it needs ${stPlanH(measured.needs)} h, has ${stPlanH(has)} h.` : `${said} it fits: ${stPlanH(measured.needs)} h of work in ${stPlanH(has)} h.`;
 }
 
 /** "needs 84 h, has 72 h" for one plan, or "fits: 71.7 h of work in 72 h". */
@@ -573,7 +610,7 @@ function stPlanDoneByDate(logRows, localDate = null) {
  * hours per day, the phases, the days by week (Monday to Sunday), the days
  * left and the contradictions. `today` is the person's local date.
  */
-function stPlanView(rules, days, { today = '', outside = [], done = null } = {}) {
+function stPlanView(rules, days, { today = '', outside = [], done = null, pace = null } = {}) {
   const totals = stPlanTotals(days);
   const weeks = [];
   for (const d of days) {
@@ -591,7 +628,7 @@ function stPlanView(rules, days, { today = '', outside = [], done = null } = {})
     perDay: stPlanHoursPerDay(days),
     studyDays: days.filter((d) => d.planned > 0).length,
     allDays: days.length,
-    phases: stPlanPhases(rules, days),
+    phases: stPlanPhases(rules, days, pace),
     weeks,
     outside: outside.slice().sort((a, b) => (a.date < b.date ? -1 : 1)),
     contradictions: stPlanContradictions(rules, { days, today }),

@@ -184,7 +184,7 @@ describe('a phase that does not fit', () => {
     const rules = basic({ phases: phases(9) });
     const [first, second] = stPlanPhases(rules, stPlanDays(rules));
     expect(first.per).toEqual({ Floor: 52, Standard: 72, Stretch: 92 });
-    expect(first.fit).toEqual({ needs: 84, short: ['Floor', 'Standard'] });
+    expect(first.fit).toEqual({ needs: 84, short: ['Floor', 'Standard'], given: true, measured: null });
     expect(['Floor', 'Standard', 'Stretch'].map((p) => stPlanFitWords(first.fit, first.per[p]))).toEqual(['needs 84 h, has 52 h', 'needs 84 h, has 72 h', 'fits: 84 h of work in 92 h']);
     expect(second.fit).toBe(null);
   });
