@@ -2015,8 +2015,10 @@ colours; piece B's remainder.
 *Decided, for him to overrule:* Flashcards' card follows the theme (the
 mock-up he picked shows it so) where it had been white by an earlier
 decision; the session sheet's tab is "New Session" so Home can be the
-tab named "Study"; showing Study's sidebar with no Study tab open
-brings Home up; a day pushed or moved is marked Edited like any day he
+tab named "Study"; Home is opened by the sidebar's first row and by Open Study, not by
+itself when the sidebar shows (opening it by itself broke two older
+acceptance checks, study-usable 6.3 and study-unit 10.7, which count
+Study's tabs and close one; changing them is his call); a day pushed or moved is marked Edited like any day he
 changes, so later rule changes leave it alone.
 
 ### Home: a redesign, not yet designed

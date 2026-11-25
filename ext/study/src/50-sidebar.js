@@ -567,8 +567,6 @@ function createSidebarView(container) {
     void paint();
   });
 
-  // Study opens on Home: its sidebar shown with no Study tab open brings Home up.
-  try { if (!(_api.editors.openEditors || []).some((e) => typeof e?.id === 'string' && e.id.includes(':study:'))) void stOpenHome(); } catch { /* noop */ }
   void paint();
 
   return {
