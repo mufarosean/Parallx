@@ -2265,6 +2265,31 @@ https://claude.ai/artifact/BjoGr6AY17wjp7iWF5fFSG . **His answer
 (2026-11-25): "I am aligned with all proposals."** Planner's three
 views are settled as proposed. Nothing of it is built.
 
+**The extensions: what is there beside what is proposed (2026-11-25).**
+The same form as Planner's page, to be published with this entry. Every
+extension's main screen was screenshotted first (Budget, Workspace
+Graph, Concept Lab, Flashcards' Decks, Stats and Create, Study's
+Progress, a unit and a plan). Three views have a proposal:
+- *Flashcards, Decks:* the page opens on how many cards are due and
+  about how long, with one Study button; each deck a row with its counts
+  in words and one thin bar of new, learning and review; the five
+  making-and-importing buttons fold into one Add menu; Stats, Make
+  Cards and Import sit in Flashcards' column with the decks under them.
+- *Flashcards, Stats:* four large numbers with their unit in words
+  (reviews today, time today, days in a row, share right), then two bar
+  charts (reviews done, cards coming due); Cards by stage leaves the
+  page.
+- *Study, a plan's tab:* the page for the plan's rules, since Home
+  shows and moves the days: the days left as the one large number, the
+  three plans as cards, the phases as one strip to the exam, hours a
+  day, the three rule buttons; the table of every day leaves the tab
+  (Open Days and Home's calendar have it).
+Nothing proposed for: Study's Progress and unit tab, Concept Lab,
+Workspace Graph (they take the look as they are); Budget (seen only
+empty; its own redesign document is from October); Atelier and
+Creations (their pass was 2026-11-25). Not looked at: the Browser, and
+Flashcards' Import, Browse and Custom Study. Not picked yet.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
