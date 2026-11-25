@@ -2288,7 +2288,51 @@ Nothing proposed for: Study's Progress and unit tab, Concept Lab,
 Workspace Graph (they take the look as they are); Budget (seen only
 empty; its own redesign document is from October); Atelier and
 Creations (their pass was 2026-11-25). Not looked at: the Browser, and
-Flashcards' Import, Browse and Custom Study. Not picked yet.
+Flashcards' Import, Browse and Custom Study. The page:
+https://claude.ai/artifact/RyEQXyrzBzPunoKHoUaJwV . **His answer
+(2026-11-25): "Aligned with all proposed."** The three are settled.
+
+**Everything settled across the four groups, in the order to build it
+(nothing of it is built; each line is one piece, one to a session):**
+1. *The frame, 1E6.* One column in place of the icon rail and the
+   sidebar: the open tool named at its head with its own list, the
+   tools by name at the foot, then Tools and Extensions and Settings.
+   The title bar keeps the menu words, the search button, the three
+   panel buttons and the bell. Tabs as wide as their names, with the
+   tool's icon. Everything below sits inside it, so it is first. The
+   probes and tests that find the activity bar and the sidebar by
+   their parts will need to follow it.
+2. *Each tool's list in the column:* Files (open tabs first with a
+   live word each, then files: his 2B, which needs a small
+   contribution point for the word), Planner (Today, Calendar, Tasks
+   with its six lists, the small month, the calendars), Flashcards
+   (Decks, Stats, Make Cards, Import, the decks), Study (Home, the
+   subjects and units, the plan, Progress).
+3. *The window's floating parts:* menus with icons and shortcuts;
+   notices as lifted sheets with one pigment dot and one action, and
+   the bell's list restyled (4A); the Settings dialog restyled (5B).
+   The command palette stays as it is.
+4. *Home and Welcome as one page* that opens with the workspace (6A),
+   fed through the Home source point by the tools that are on.
+5. *Chat (1A):* the answer as reading text with numbered source marks,
+   one mono line for thought, source and speed, the question box as
+   one sheet.
+6. *Pages and files:* a page's Default font follows the app's face and
+   Newsreader joins the page font list; a .md file opens as a page,
+   and Edit shows the source beside the live page (the Obsidian style
+   looked at afterwards).
+7. *The PDF viewer (4A):* the page lifted on a darker ground, its
+   controls in one pill at the foot.
+8. *Tools and Extensions (6B):* the list grouped On and Off, each tool
+   with its own icon and its switch.
+9. *Planner's three pages* as proposed (no behaviour changes).
+10. *Flashcards' Decks and Stats* as proposed.
+11. *Study's plan tab* as the page for the plan's rules.
+The Dashboard's large numbers take the display face with whichever of
+these touches it. Still open with him, unrelated to the look: his
+approval for three acceptance-probe corrections (study-work 2.4 and
+5.7; study-walk 1.5 and 1.7; study-usable 6.3 and study-unit 10.7 if
+Home is to open with Study's icon), and piece E.
 
 ### Home: a redesign, not yet designed
 
