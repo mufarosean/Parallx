@@ -2247,6 +2247,20 @@ below and waits on him ("for now, we focus on home"); Worksheets'
 redesign is its own entry above, with its mock-ups drawn 2026-11-15.
 Proposed to him: no redesign for this group; the Dashboard's large
 numbers take the display face, and nothing else.
+His answer (2026-11-25): "I still want you to do planner. Do a view of
+what you are proposing vs what's there." The page, to be published
+with this entry, shows Today, Tasks and Calendar each as a screenshot
+of the app as it is (two seeded events, two captured tasks) beside a
+drawing of the proposal in the settled frame. The proposal: the view
+switch (shown twice today, in Planner's sidebar and as tabs across the
+page), the small month and the calendars list live in Planner's column;
+Today gets the front-page title, the captured tasks as plain rows
+beside the schedule, events as chips in their calendar's colour; Tasks'
+six lists hang under Tasks in the column and the page is one list;
+Calendar's days are small sheets with today ringed in ink, as on
+Study's Home. No behaviour changes (capture, the Review Queue's day
+buttons, drag to create and move, the shortcuts). Not looked at: the
+week and day views, a crowded day, the popovers. Not picked yet.
 
 ### Home: a redesign, not yet designed
 
