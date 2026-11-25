@@ -2236,6 +2236,18 @@ pages' Default font follows the app and Newsreader joins the page font
 list, databases unchanged, PDF 4A, Markdown as above, Tools and
 Extensions 6B. Nothing of it is built.
 
+**The built-in tools: looked at, no mock-ups drawn (2026-11-25).**
+Planner (Today, Tasks, Calendar), Agents (Now, Routines, History, Mind,
+in the side panel) and the Dashboard were screenshotted in the look
+before drawing anything, after two of the core tools' drawings turned
+out to redesign what needed none. Found: Planner and Agents were each
+designed on purpose (Planner's calendar from its own research in May)
+and sit well in the look; the Dashboard's reimagining is its own entry
+below and waits on him ("for now, we focus on home"); Worksheets'
+redesign is its own entry above, with its mock-ups drawn 2026-11-15.
+Proposed to him: no redesign for this group; the Dashboard's large
+numbers take the display face, and nothing else.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
