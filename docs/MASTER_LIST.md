@@ -2109,6 +2109,38 @@ acceptance checks, study-usable 6.3 and study-unit 10.7, which count
 Study's tabs and close one; changing them is his call); a day pushed or moved is marked Edited like any day he
 changes, so later rule changes leave it alone.
 
+**The window itself: mock-ups (2026-11-25).** His words: "We can start
+with the window itself. Mock up some ideas for each of the places you
+listed. Then we go down each grouping." The page:
+https://claude.ai/artifact/Szge5KKuNZjW7N2VRXNzjH (letters switch each
+window live; drawn in his picked look). Six choices, Claude's picks
+marked, none his yet:
+- *1 Frame:* 1A the editor is the sheet (rail, sidebar and bars step
+  back with no lines; tabs as wide as their names, with icons; the
+  title bar says where he is and holds the search field; the menu words
+  go behind the mark), 1B one desk (sidebar, editor and chat as three
+  sheets with gaps, tabs as pills, no status bar), or 1C today's frame
+  restyled only.
+- *2 Sidebar:* 2A files only in 28 px rows, Open Editors gone and a
+  "5 open" list on the tab strip, or 2B open tabs first with a live
+  word each (page 214, 24 due), then files.
+- *3 Palette and menus:* 3A a centred palette with grouped results and
+  menus with icons and shortcuts, or 3B a slim palette dropping from
+  the search field.
+- *4 Notifications and dialogs:* 4A lifted sheets with one pigment dot
+  and at most one action, or 4B a quiet tray in the status bar and
+  dialogs sliding from under the tab strip.
+- *5 Settings:* 5A a tab like any tool, or 5B the dialog restyled.
+- *6 Welcome and Home:* 6A one page that opens with the workspace,
+  "pick up where you left off", fed by the tools that are on through
+  the Home source point, or 6B a plain Welcome and Home designed later.
+Claude's picks: 1A 2A 3A 4A 5A 6A. They rest on what the app measures
+today (equal-width tabs, six before the strip scrolls; 22 px Open
+Editors rows; Settings as a dialog over what it changes) and on
+judgment; no other product was read for the page (the session's network
+is limited to the app's build). The groups after this one, in his
+order: core tools, built-in tools, extensions.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
