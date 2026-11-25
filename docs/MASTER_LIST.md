@@ -2206,6 +2206,25 @@ shape is his from 2026-11-10 and only takes the new colours and type.
 The picks rest on screenshots of the app taken for the page and on
 judgment; no other product was read.
 
+**His answers (2026-11-25):** 1A; 4A; 6B ("aligned with this one"); 5
+"a combination of A and B, A is default, B is when user hits edit. The
+idea here is that if I am editing, I want to see what the rendered
+version looks like as I edit. You could do something like the Obsidian
+style too, but I do not know if that is harder." On 2: "I am not sure
+what the point is. Is the issue with the page title? Canvas has its own
+styling settings right? Like a page has its own styling settings for
+font, could we use that instead?" On 3: "Not sure what the point here
+is as well. Yes, I like a redesign for the overall look, but does the
+table require a redesign?"
+He is right on 2, and Claude's drawing missed it: a page already has
+its own font (the font registry, eleven built-in faces and custom ones,
+chosen from the page's menu), Full Width and Small Text. 2A and 2B are
+withdrawn. What is left to propose for pages, not yet agreed: the
+page's Default font is pinned to Inter in `fontRegistry.ts`, so pages
+did not follow the look; make Default follow the app's interface face
+and add Newsreader to the page's font list. 3 is withdrawn: the table
+takes the palette and nothing else.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
