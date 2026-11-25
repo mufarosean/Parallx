@@ -34,6 +34,9 @@ const shot = async (name) => {
     if (!d) { d = document.createElement('div'); d.id = '__probe_repaint'; d.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:2147483647'; document.body.appendChild(d); }
     d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01';
   }).catch(() => {});
+  // No focus ring or tooltip left over from the checks above.
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur()).catch(() => {});
+  await page.mouse.move(700, 500); await page.waitForTimeout(250);
   const file = path.join(shots, name);
   if (await page.screenshot({ path: file, timeout: 8_000 }).then(() => true, () => false)) return;
   const b64 = await app.evaluate(async ({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return w ? (await w.webContents.capturePage()).toPNG().toString('base64') : null; }).catch(() => null);
@@ -172,6 +175,8 @@ try {
   await shot('dark-palette.png');
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   await mode('light');
+  await page.evaluate(() => document.querySelector('.activity-bar-item[data-icon-id="study-container"]')?.click());
+  await page.waitForTimeout(600);
   await shot('light-chat.png');
   await cmd(page, 'workbench.action.toggleAuxiliaryBar').catch(() => {}); await page.waitForTimeout(800);
   await shot('light.png');

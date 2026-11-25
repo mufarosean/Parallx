@@ -2293,15 +2293,15 @@ https://claude.ai/artifact/RyEQXyrzBzPunoKHoUaJwV . **His answer
 (2026-11-25): "Aligned with all proposed."** The three are settled.
 
 **Everything settled across the four groups, in the order to build it
-(nothing of it is built; each line is one piece, one to a session):**
-1. *The frame, 1E6.* One column in place of the icon rail and the
+(piece 1 is built, 2026-11-25; the rest is not; each line is one piece,
+one to a session):**
+1. *The frame, 1E6.* **Built 2026-11-25, see "The frame as built"
+   under this list.** One column in place of the icon rail and the
    sidebar: the open tool named at its head with its own list, the
    tools by name at the foot, then Tools and Extensions and Settings.
    The title bar keeps the menu words, the search button, the three
    panel buttons and the bell. Tabs as wide as their names, with the
-   tool's icon. Everything below sits inside it, so it is first. The
-   probes and tests that find the activity bar and the sidebar by
-   their parts will need to follow it.
+   tool's icon. Everything below sits inside it, so it is first.
 2. *Each tool's list in the column:* Files (open tabs first with a
    live word each, then files: his 2B, which needs a small
    contribution point for the word), Planner (Today, Calendar, Tasks
@@ -2332,7 +2332,113 @@ The Dashboard's large numbers take the display face with whichever of
 these touches it. Still open with him, unrelated to the look: his
 approval for three acceptance-probe corrections (study-work 2.4 and
 5.7; study-walk 1.5 and 1.7; study-usable 6.3 and study-unit 10.7 if
-Home is to open with Study's icon), and piece E.
+Home is to open with Study's icon), and piece E. A fourth, from the
+frame: study-record's `point()` (see "The frame as built").
+
+**The frame as built (2026-11-25, piece 1, on `dev`).** His words for
+the session: "Build first, test after. Get to something I can see
+quickly. Build it yourself." Built by one hand, the checks after; no
+acceptance probe before it and no reviewer agents.
+
+- *The column.* The icon rail is gone from the window's left edge. The
+  tools list (still `ActivityBarPart`, with the names its tests and
+  probes find: `button.activity-bar-item[data-icon-id]`,
+  `data-px-id="activitybar.<id>"`) sits at the foot of the sidebar part
+  (`SidebarPart.footSlot`), one 28 px row a tool with its icon and its
+  name, the open one in ink. The head names the open tool in the
+  display face (44 px, `.sidebar-header-label`), with More Actions
+  beside it. Each tool's existing sidebar contents sit between the two,
+  unchanged: piece 2 replaces them. The foot never takes more than 55%
+  of the column and scrolls inside itself past that. Default width 224.
+- *The last rows.* Tools and Extensions (`tools.showInstalled`) and
+  Settings (`settings.open`) under the tools, as kit buttons
+  (`column.toolsAndExtensions`, `column.settings`).
+- *Nothing names a tool.* The rows are the view containers the tools
+  that are on contributed; a tool turned off loses its row at once
+  (checked on the app). Order, Hide (right-click), drag to reorder and
+  badges are the rail's, carried over.
+- *Keys and touch.* One Tab stop for the tools (arrows, Home and End
+  walk them, Enter or Space opens one, Ctrl+Shift+Up and Down move
+  one), then Tools and Extensions, then Settings. The arrows now skip
+  rows the user hid. Every row has its name and a focus ring; a finger
+  gets 36 px rows.
+- *Pressing the open tool again* leaves the column open (on the rail it
+  hid the sidebar; in the column it would hide the tools too). The
+  title bar's button and Ctrl+B hide and show the whole column.
+- *The title bar.* Unchanged but for the bell, which moved from the
+  rail's foot to the right of the three area buttons, keeping its id
+  (`activitybar.notifications`); its list opens under it.
+- *Tabs.* As wide as their names (76 to 240 px), the name at the left,
+  the icon before it. A tab shows its editor's own icon, else its file
+  type's, else the icon of the tool that opened it
+  (`src/editor/toolTabIcons.ts`, fed by the view contributions); an
+  editor that named a registry icon when it opened (Tools and
+  Extensions did, and no tab showed it) now shows that. Welcome names
+  `home`.
+- *The command palette* is untouched.
+- *Files:* `src/workbench/frame.css` (all of the frame's CSS),
+  `src/parts/sidebarPart.ts`, `src/parts/activityBarPart.ts`,
+  `src/workbench/layout.ts`, `src/workbench/menuBuilder.ts`,
+  `tests/probes/frame-probe.mjs` (25 checks on the real app, and the
+  screenshots).
+
+*Left as it was, for him to say:* the right-hand ribbon (the icons for
+chat and the other right-side containers) is still an icon strip; the
+mock-up drew none. The rows carry each container's own title, so the
+pages tool reads "Canvas" and the files tool "Explorer" where the
+mock-up wrote "Pages" and "Files"; renaming them is the tools' own.
+The status bar is untouched.
+
+*Checked (2026-11-25, in the cloud, on the built app run hidden):*
+typecheck; the unit suite (9,924 pass, every ratchet and compliance
+test, no baseline changed); `frame-probe.mjs` (25 of 25); the visual
+probe on every screen; the keyboard audit on all 118 screens (keys,
+names, focus rings, contrast in dark), its dialogs, and the touch and
+popup passes on the first screen and its 57 sub-screens; all eight
+acceptance probes. The frame's own controls came back with nothing.
+What the checks found was compared with the app as it was before the
+frame (`01d15be9`, built beside it) and was there already:
+- the terminal's input has no focus ring (seen on every screen once
+  the bottom panel is open);
+- the command palette's rows are not Tab stops (5 counted);
+- Atelier's New Tags dialog lets Tab leave it and Escape does not
+  close it;
+- the visual probe's "window frame: small targets" stands at 16
+  against a baseline of 11 (17 before the frame): Open Editors' 22 px
+  rows, which piece 2 replaces. "Creations: title size 0 to 1" is its
+  front page title from the look pass.
+None of these is fixed here (his word for the session: only this
+piece).
+
+*Not checked:* the keyboard audit's light-mode contrast pass and its
+touch and popup passes beyond the first screen (the full audit takes
+more than the 50 minutes it was given and was cut off there; the frame
+was seen in light in the screenshots); `touch-drag-probe.mjs`; a
+finger's drag to reorder the rows (the rows use the browser's own drag,
+as the rail did); a column with more tools than fit (the foot's scroll
+is written, not driven); the rest of the e2e specs (of the three files
+that find these parts, 8 tests fail the same way before and after the
+frame, on parts older work moved; the one test about pressing a tool
+was rewritten for the column and passes).
+
+*Changed tests, none an acceptance probe:* `workbenchLayout.test.ts`
+(the grid has the whole window width, where it had the width less the
+48 px rail); `06-views-shortcuts.spec.ts` (pressing the open tool
+leaves the column open).
+
+*For his approval, an acceptance-probe correction the frame makes
+necessary (not made):* `study-record-acceptance.mjs`, its `point()`
+helper (lines 356 to 360). It scrolls a table cell into view only when
+the cell is past the window's edge. With the rail gone the questions
+table sits about 20 px further left, so the Times Attempted cell is
+inside the window but still cut off by the table, and the click lands
+outside it: checks 6.2 to 6.7, 9.2 and 9.4 fail (72 of 72 before the
+frame). With `point()` also scrolling when the cell is cut off by its
+own scroller, a copy of the probe passed 72 of 72 on the frame; the
+copy was deleted and the probe is as it was. The other seven
+acceptance probes read as before the frame: the two with corrections
+already waiting on him (study-walk 1.5 and 1.7; study-work 2.4 and
+5.7, with the checks that follow 5.7) and five that pass.
 
 ### Home: a redesign, not yet designed
 

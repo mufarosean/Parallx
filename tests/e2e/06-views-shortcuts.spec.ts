@@ -80,30 +80,30 @@ test.describe('View Toggle Commands', () => {
 });
 
 test.describe('Activity Bar Interaction', () => {
-  test('clicking an activity bar icon toggles the sidebar view', async ({ window }) => {
-    const icons = window.locator('button.activity-bar-item');
-    const count = await icons.count();
+  test('pressing a tool in the column opens its list; pressing the open tool leaves the column open', async ({ window }) => {
+    const sidebar = window.locator('[data-part-id="workbench.parts.sidebar"]');
+    // The tools are the rows inside the column (the right-hand ribbon has icons of its own).
+    const rows = sidebar.locator('button.activity-bar-item');
+    const head = window.locator('.sidebar-header-label');
 
-    if (count > 0) {
-      const firstIcon = icons.first();
-      const sidebar = window.locator('[data-part-id="workbench.parts.sidebar"]');
+    // The column starts open on the first tool, and the tools are inside it.
+    await expect(sidebar).toBeVisible({ timeout: 3000 });
+    await expect(rows.nth(1)).toBeVisible({ timeout: 10000 });
 
-      // The sidebar starts visible (explorer is active by default).
-      // Clicking the active icon should toggle the sidebar off.
-      await expect(sidebar).toBeVisible({ timeout: 3000 });
-      await firstIcon.click();
-      await window.waitForTimeout(300);
+    // The open tool's row again: the column stays (on the old rail this hid the sidebar,
+    // which in a column would hide the tools with it).
+    const open = sidebar.locator('button.activity-bar-item[aria-selected="true"]');
+    await open.click();
+    await window.waitForTimeout(300);
+    await expect(sidebar).toBeVisible();
 
-      // Sidebar should now be hidden
-      const hiddenAfterFirstClick = !(await sidebar.isVisible().catch(() => false));
-      expect(hiddenAfterFirstClick).toBe(true);
-
-      // Click the same icon again — should toggle sidebar back on
-      await firstIcon.click();
-      await window.waitForTimeout(300);
-
-      await expect(sidebar).toBeVisible({ timeout: 3000 });
-    }
+    // Another tool's row: the head names it and its row is the selected one.
+    const otherId = await sidebar.locator('button.activity-bar-item[aria-selected="false"]').first().getAttribute('data-icon-id');
+    const other = sidebar.locator(`button.activity-bar-item[data-icon-id="${otherId}"]`);
+    const name = await other.getAttribute('aria-label');
+    await other.click();
+    await expect(head).toHaveText(name ?? '');
+    await expect(other).toHaveAttribute('aria-selected', 'true');
   });
 });
 
