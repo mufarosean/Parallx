@@ -2166,7 +2166,13 @@ a sheet at the bottom right of the editor (4A) and the bell counts and
 lists them; the command palette stays as it is (this replaces his 3A
 for the palette; the centred one may come later as a setting). Open:
 whether menus get 3A's icons and shortcuts. Redrawn on the same page
-for his yes. Nothing of this group is built.
+for his yes. **His yes (2026-11-25): "okay, I am aligned now."** The
+window group is settled: 1E6 as redrawn, 2B, the palette as it is, 4A,
+5B, 6A. Decided by Claude where he did not say, for him to overrule:
+menus get the icons and shortcuts of his 3A pick (he kept only "the
+command thing" as it is); with the icon rail gone, 2B's "open tabs
+first, then files" is the Files tool's own list in the column. Nothing
+of this group is built.
 Claude's first picks were 1A 2A 3A 4A 5A 6A. They rest on what the app measures
 today (equal-width tabs, six before the strip scrolls; 22 px Open
 Editors rows; Settings as a dialog over what it changes) and on
