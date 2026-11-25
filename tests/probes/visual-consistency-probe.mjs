@@ -16,7 +16,7 @@
 //                 gives the whole of it
 //   twoPrimaries  more than one primary button in one view (the kit's rule)
 //   noHeader      a tool's home screen with no page header from the kit
-//   titleSize     a page title in a size other than the one most screens use
+//   titleSize     a page title in a size other than the one most screens use (a kit front page apart)
 //
 // The spreadsheet engine, code editors, PDFs, the web view and what a person
 // wrote on a page are content or third-party UI and are not measured.
@@ -203,6 +203,7 @@ function measure(where) {
     // The page's title, and whether it is the kit's header.
     const header = Array.from(area.querySelectorAll('.px-page-header')).find((h) => onScreen(h));
     out.header = !!header;
+    out.front = !!header && header.classList.contains('px-page-header--front');
     const h1 = (header && header.querySelector('.px-page-header__title')) || Array.from(area.querySelectorAll('h1')).find((h) => !h.closest(SKIP) && onScreen(h));
     if (h1) { const s = getComputedStyle(h1); out.title = `${Math.round(parseFloat(s.fontSize) * 10) / 10}px / ${s.fontWeight}`; }
   }
@@ -253,8 +254,9 @@ try {
   await app.close().catch(() => {});
 }
 
-// The title size most screens use; the others are the outliers.
-const titles = report.filter((r) => r.title);
+// The title size most screens use; the others are the outliers. A tool's front page declared as one (the kit
+// header's `front`) has the larger title by the kit's own rule and is not compared with the inner pages.
+const titles = report.filter((r) => r.title && !r.front);
 const tally = new Map();
 for (const r of titles) tally.set(r.title, (tally.get(r.title) ?? 0) + 1);
 const usual = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];

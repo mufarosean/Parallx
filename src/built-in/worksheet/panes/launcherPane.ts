@@ -59,6 +59,7 @@ export function createLauncherPane(container: HTMLElement) {
     const col = el('div', 'ws-home__col');
     root.appendChild(col);
     const header = createPageHeader(col, {
+      front: true,
       title: 'Worksheets',
       subtitle: problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'The bank is empty. Import a workbook to begin.',
       secondary: [{ id: 'worksheet.home.addProblems', label: 'Add Problems', icon: 'plus', onClick: () => {} }],
