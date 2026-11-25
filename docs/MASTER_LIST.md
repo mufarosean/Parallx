@@ -2224,6 +2224,17 @@ page's Default font is pinned to Inter in `fontRegistry.ts`, so pages
 did not follow the look; make Default follow the app's interface face
 and add Newsreader to the page's font list. 3 is withdrawn: the table
 takes the palette and nothing else.
+**Settled (2026-11-25):** on the two page-font changes, "I am aligned
+with this"; on 3, "No need for taller rows, but don't tags already
+automatically get colors, you can verify this" (verified: a new option
+of a select or tags column takes the next of nine colours,
+`NEW_OPTION_COLORS` in `database/bulkRows.ts`, and is drawn as a pill
+by `cellRender.ts`; nothing to do); on 5, "Aligned": a .md file opens
+as a page, and Edit shows the source beside the live page; the
+Obsidian style is looked at afterwards. The core tools group: chat 1A,
+pages' Default font follows the app and Newsreader joins the page font
+list, databases unchanged, PDF 4A, Markdown as above, Tools and
+Extensions 6B. Nothing of it is built.
 
 ### Home: a redesign, not yet designed
 
