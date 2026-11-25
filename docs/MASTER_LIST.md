@@ -1728,6 +1728,56 @@ approve: his conceptual database adopted rather than copied, and a work
 row per session, not per review. It makes subjects only; campaign as a
 second level is not built.
 
+**B built (2026-11-24/25): one record of study work for every tool.**
+His words on the order: "fix all. execute." Built by a builder agent in
+two commits (`ef741159`, `0957c62b`), then checked by Claude directly
+after his word of 2026-11-25 ("Build first, test after"): no reviewer
+agents, no skeptic, no claim check were run on it.
+
+- *The core:* one idle-aware clock (`src/services/workClock.ts`), one
+  setting for the whole app (`clock.idleMinutes`: 5, 10, 15, 30; 10 to
+  begin with; its description is the rule), a work-provider point
+  (`src/services/workProviders.ts`, `api.work`), a line that says a
+  clock stopped and went on again (`src/ui/clockStatus.ts`), and what
+  is showing for any tool (`isShowing` on open editors,
+  `api.chat.shownSession`). The core names no tool.
+- *Worksheets and Flashcards* count on that clock and report their work
+  by day and paper or tag. Worksheets' own clock file and setting are
+  gone; Flashcards keeps its time in `fc_work_time`, not the gap
+  between showing and grading a card.
+- *Study* writes one Work Log row per tool, unit and local day (Kind
+  Problems, Cards, Reading, Discussion), which grows with the day; a
+  row he changes or adds is his. Reading counts for a PDF of a unit's
+  Material while it shows; a chat opened from a unit (Discuss in Chat on
+  the unit's tab) counts as Discussion. Study's own clock copy is gone.
+  The subject's Progress tab has Time worked by kind, today and this
+  week.
+
+*Checked (2026-11-25, on `dev` after the look and Home):* the
+acceptance probe `study-work-acceptance.mjs`, unedited: 71 of 79. The
+eight that fail (2.4, 5.7 and the six that wait on 5.7) fail on two
+errors in the probe, read in its code: 2.4 looks for the class
+`ws-sessionbar__dot--cur`, and the app's class is, and was before the
+probe, `ws-sessionbar__dot--current`; 5.7 reads every visible list
+option in the window as the setting's choices, so the Explorer's Open
+Editors row ("Welcome ×") is counted as a fifth choice. With those two
+lines corrected in a copy (kept in the session's scratchpad, not in the
+repository), phases 2 and 5 are 22 of 22. Correcting the probe is his
+call. Also: typecheck, the unit suite (9,910), the keyboard audit on
+Study's Home, Progress, unit and plan (0, but for one run in two where
+Escape did not close what a Progress bar's part opened; not reproduced
+alone).
+
+*Decided, for him to overrule:* mouse movement alone is not being
+there (Worksheets counted it before); time Worksheets had already
+counted on past days appears as rows of those days; work for a paper or
+tag that matches no unit is in no Work Log; the Dashboard timer stays
+out.
+
+*Not checked:* a Flashcards deck matched by name (only tags were
+driven); a Worksheets paper matched through Also Called; a chat beside
+a PDF of the same unit; Windows; his model.
+
 ### AI chat: message times, model speed, dates on old chats
 
 **His words (2026-11-12, spelling corrected):** "currently AI chat does
