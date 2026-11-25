@@ -1976,6 +1976,49 @@ acceptance probe before, no reviewer agents unless he asks):
    remaining work (the record of time across tools, half built on `dev`
    at `0957c62b`, unreviewed).
 
+**Built so far (2026-11-25), on `dev`, by one hand, the checks after:**
+
+- *Step 1, the look* (`fd3effac`): the Studio palette as the default in
+  `px-tokens.css`, dark and light; the three faces vendored;
+  `--px-font-display`, `--px-text-read`, `2xl`, `3xl`; `.px-settle` and
+  the fills. A saved appearance moves to Studio once (`look: 2`).
+  The kit's page header is in the display face, with `front` for a
+  tool's front page (34 px).
+- *Step 2, Study's Home* (`84f4b147`, `b834b6ef`):
+  `ext/study/src/61-home-view.js`. Study opens on it; the sidebar has
+  Home first. Today across subjects (hours, phase, done, ahead or
+  behind, the three weakest units), the days to the nearest exam, and
+  every subject's plan on one calendar by week or month. A day's work
+  is a button: move it a day, push it to the next free day, take the
+  day off, set its hours; a drag swaps two days. Each change is written
+  to the plan's Days database and is his from then on. Commands:
+  `study.openHome`, `study.home.show`, `study.home.day`.
+- *Step 3, begun:* Flashcards review (`2d22de4c`): the card is the
+  theme's paper in the display face (it was fixed white in both modes),
+  the answer turns down, the grades are cards. Worksheets' launcher
+  (`8b0297dc`): front header, lifted sheets, no icon tiles.
+
+*Checked:* typecheck; the unit suite; every ratchet and compliance
+test; the keyboard audit on Study's Home and plan (0, contrast in dark
+and light included); the visual probe on Study, Flashcards and
+Worksheets (nothing rose). Seen on the real app, hidden, with one
+seeded subject: Home in dark and light, Take the Day Off and a drag
+written and announced; the Flashcards question, answer and next card.
+
+*Not checked or not done:* several subjects on Home (the seed has one);
+Push to the Next Free Day and Set Hours… driven on the app; a finger's
+drag on Home (its menu works by touch); Study's own session card, still
+the white stock; Worksheets' inner pages and a new Worksheets home with
+data (its redesign is its own entry above); the other tools' hard-coded
+colours; piece B's remainder.
+
+*Decided, for him to overrule:* Flashcards' card follows the theme (the
+mock-up he picked shows it so) where it had been white by an earlier
+decision; the session sheet's tab is "New Session" so Home can be the
+tab named "Study"; showing Study's sidebar with no Study tab open
+brings Home up; a day pushed or moved is marked Edited like any day he
+changes, so later rule changes leave it alone.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
