@@ -103,6 +103,31 @@
   animation-delay: calc(var(--unfold-i, 0) * 18ms);
 }
 
+/* ── Settle: content arriving on a tool's page ─────────────────────────────
+   A part of a page fades and rises 8px into place as it appears, each a
+   beat after the one before (set --px-i to its place in the order). And the
+   one moment a tool may have: a bar or column filling from its base
+   (.px-fill-y / .px-fill-x). Stilled by Reduce Motion like everything here. */
+@keyframes px-settle {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+}
+@keyframes px-fill-y { from { transform: scaleY(0); } }
+@keyframes px-fill-x { from { transform: scaleX(0); } }
+.px-settle {
+  animation: px-settle var(--px-dur-settle) var(--px-ease-out) backwards;
+  animation-delay: calc(var(--px-i, 0) * 45ms);
+}
+.px-fill-y {
+  transform-origin: bottom;
+  animation: px-fill-y 800ms var(--px-ease-fill) backwards;
+  animation-delay: calc(var(--px-i, 0) * 60ms + 200ms);
+}
+.px-fill-x {
+  transform-origin: left;
+  animation: px-fill-x 900ms var(--px-ease-out) backwards;
+  animation-delay: calc(var(--px-i, 0) * 60ms + 200ms);
+}
+
 /* ── Reduced motion — honor the OS setting completely ────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

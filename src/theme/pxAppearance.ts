@@ -12,7 +12,7 @@
 const STORAGE_KEY = 'px-appearance';
 const PRESETS_KEY = 'px-appearance-presets';
 
-export type PxBaseTheme = 'slate' | 'warm' | 'ember';
+export type PxBaseTheme = 'studio' | 'slate' | 'warm' | 'ember';
 export type PxMode = 'light' | 'dark';
 
 export interface PxAccent {
@@ -56,6 +56,12 @@ export interface PxAppearanceState {
    * The computer's own setting applies either way. A comfort setting.
    */
   reduceMotion?: boolean;
+  /**
+   * Which of Parallx's own looks this state was saved under. 2 is Studio
+   * (2026-11-25). A state saved before it is moved to Studio once, keeping
+   * the mode and the comfort settings; after that the choice is his.
+   */
+  look?: number;
 }
 
 /** The text sizes on offer (Settings › Appearance › Text size, Ctrl+= / Ctrl+-). */
@@ -78,6 +84,7 @@ export interface PxFont {
 }
 
 export const PX_FONTS: readonly PxFont[] = [
+  { id: 'hanken',  label: 'Hanken Grotesk', stack: "'Hanken Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif" },
   { id: 'inter',   label: 'Inter',    stack: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif" },
   { id: 'system',  label: 'System',   stack: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', sans-serif" },
   { id: 'segoe',   label: 'Segoe UI', stack: "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif" },
@@ -86,13 +93,14 @@ export const PX_FONTS: readonly PxFont[] = [
   { id: 'mono',    label: 'Mono',     stack: "'JetBrains Mono', 'Cascadia Code', Consolas, 'Courier New', monospace" },
 ];
 
-export const DEFAULT_FONT_ID = 'inter';
+export const DEFAULT_FONT_ID = 'hanken';
 
 export function resolveFontStack(id: string | undefined): string {
   return (PX_FONTS.find(f => f.id === id) ?? PX_FONTS[0]).stack;
 }
 
 export const PX_BASE_THEMES: { id: PxBaseTheme; label: string; desc: string; swatch: string }[] = [
+  { id: 'studio', label: 'Studio', desc: 'Linen and indigo, Payne\'s grey at night', swatch: '#161a21' },
   { id: 'slate', label: 'Slate', desc: 'Cool graphite, calm and neutral', swatch: '#16171a' },
   { id: 'warm',  label: 'Warm',  desc: 'Warm charcoal, soft and inviting', swatch: '#1b1a17' },
   { id: 'ember', label: 'Ember', desc: 'Warm graphite, the most distinctive', swatch: '#1a1815' },
@@ -109,17 +117,25 @@ export const PX_ACCENTS: PxAccent[] = [
   { id: 'mono',   label: 'Graphite', h: 220, s: 8, l: 62, rgb: '150, 156, 168' },
 ];
 
-const DEFAULT_STATE: PxAppearanceState = { mode: 'dark', base: 'slate', accent: 'steel' };
+/** The look's own accent: nothing set inline, the palette's block decides
+ *  (Studio's ultramarine differs between light and dark). */
+export const THEME_ACCENT_ID = 'theme';
+export const CURRENT_LOOK = 2;
+
+const DEFAULT_STATE: PxAppearanceState = { mode: 'dark', base: 'studio', accent: THEME_ACCENT_ID, look: CURRENT_LOOK };
 
 function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefined): PxAppearanceState {
   if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_STATE };
+  const moved = typeof parsed.look === 'number' && parsed.look >= CURRENT_LOOK;
   return {
     mode: parsed.mode === 'light' ? 'light' : 'dark',
     followSystem: parsed.followSystem === true ? true : undefined,
-    base: (parsed.base === 'warm' || parsed.base === 'ember') ? parsed.base : 'slate',
-    accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
-    customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
-    font: PX_FONTS.some(f => f.id === parsed.font) ? parsed.font : undefined,
+    // A state from before Studio moves to it once: palette, accent and face.
+    base: !moved ? 'studio' : (parsed.base === 'warm' || parsed.base === 'ember' || parsed.base === 'slate') ? parsed.base : 'studio',
+    accent: !moved ? THEME_ACCENT_ID : typeof parsed.accent === 'string' ? parsed.accent : THEME_ACCENT_ID,
+    customHue: moved && typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
+    font: moved && PX_FONTS.some(f => f.id === parsed.font) ? parsed.font : undefined,
+    look: CURRENT_LOOK,
     textSize: typeof parsed.textSize === 'number' && PX_TEXT_SIZES.includes(parsed.textSize) && parsed.textSize !== DEFAULT_TEXT_SIZE ? parsed.textSize : undefined,
     increaseContrast: parsed.increaseContrast === true ? true : undefined,
     reduceMotion: parsed.reduceMotion === true ? true : undefined,
@@ -404,6 +420,8 @@ export function applyAppearance(input: PxAppearanceState): void {
   else root.removeAttribute('data-px-motion');
 
   // Base palette — slate is the :root default (no attribute).
+  // Slate is the bare :root block (no attribute); every other palette,
+  // Studio the default among them, is named.
   if (state.base === 'slate') root.removeAttribute('data-px-theme');
   else root.setAttribute('data-px-theme', state.base);
 

@@ -28,8 +28,10 @@
      surfaces drew Segoe instead of Inter). Aliasing them here re-homes
      every stray declaration onto the one vocabulary; the compliance test
      bans NEW uses of the legacy namespaces. */
-  --px-font-ui: var(--parallx-fontFamily-ui, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif);
-  --px-font-mono: var(--parallx-fontFamily-mono, 'Cascadia Code', 'Fira Code', Consolas, ui-monospace, monospace);
+  --px-font-ui: var(--parallx-fontFamily-ui, 'Hanken Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif);
+  --px-font-mono: var(--parallx-fontFamily-mono, 'IBM Plex Mono', 'Cascadia Code', 'Fira Code', Consolas, ui-monospace, monospace);
+  /* The display face: titles and the large numbers, never controls or body. */
+  --px-font-display: 'Newsreader', 'Iowan Old Style', Georgia, serif;
   --vscode-font-family: var(--px-font-ui);
   /* VS Code's "editor font" is its CODE font — the mono token, not the
      prose editor face. Every referencing site here is a code context. */
@@ -222,6 +224,9 @@
   --px-text-md:   15px;   /* emphasized labels, focal text   */
   --px-text-lg:   18px;   /* section titles                  */
   --px-text-xl:   22px;   /* page titles                     */
+  --px-text-2xl:  34px;   /* a tool's front-page title (display face)  */
+  --px-text-3xl:  52px;   /* the one large number on a page (display)  */
+  --px-text-read: 15px;   /* reading text on a tool's own page         */
   --px-leading-tight: 1.25;
   --px-leading-base:  1.5;
 
@@ -278,6 +283,8 @@
   --px-ease:        cubic-bezier(0.22, 1, 0.36, 1);     /* settle (default)   */
   --px-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);      /* enter              */
   --px-ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);    /* press / pop (subtle overshoot) */
+  --px-dur-settle:  420ms;                              /* content settling in as it appears */
+  --px-ease-fill:   linear(0, .22 8%, .63 20%, .9 32%, 1.03 44%, 1.06 52%, 1.03 64%, 1 78%, 1);  /* a bar or column filling */
 
   /* Layers — the order surfaces stack in. A popup (menu, dropdown list)
      belongs to whatever opened it, so it sits above every modal that can
@@ -435,6 +442,40 @@
   --px-accent-rgb: 224, 158, 70;
 }
 
+/* "Studio" — Parallx's own look (the owner's picks 1A 2B 3B 4B, 2026-11-25),
+   the default. Dark is Payne's grey, the painter's neutral, with a warm
+   white ink; light (below, after the light block) is grey-green linen with
+   indigo ink. Four pigments carry meaning everywhere: viridian right, ochre
+   half right, vermilion wrong, ultramarine new or now. */
+:root[data-px-theme="studio"] {
+  --px-base-00: #161a21;
+  --px-base-05: #1a1f27;
+  --px-base-10: #1d222b;
+  --px-base-15: #222834;
+  --px-base-20: #2a303c;
+  --px-base-25: #2e3542;
+  --px-base-30: #414a5a;
+  --px-base-35: #4d5768;
+  --px-base-40: #8f95a0;
+  --px-base-50: #8f95a0;
+  --px-base-60: #a2a7b0;
+  --px-base-70: #b4b8c0;
+  --px-base-100: #ebe9e2;
+  --px-accent-h: 226;
+  --px-accent-s: 71%;
+  --px-accent-l: 74%;
+  --px-accent-rgb: 143, 165, 236;
+  --px-text-on-accent: #12151c;
+  --px-red-rgb:    238, 138, 108;   /* vermilion   */
+  --px-green-rgb:  108, 192, 162;   /* viridian    */
+  --px-yellow-rgb: 220, 174, 90;    /* ochre       */
+  --px-blue-rgb:   143, 165, 236;   /* ultramarine */
+  --px-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.30);
+  --px-shadow-md: 0 1px 2px rgb(0 0 0 / 0.30), 0 8px 24px -8px rgb(0 0 0 / 0.55);
+  --px-shadow-lg: 0 2px 4px rgb(0 0 0 / 0.35), 0 20px 44px -12px rgb(0 0 0 / 0.70);
+  --px-edge-light: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
 /* ============================================================================
    LIGHT MODE — opt-in via data-px-mode="light" on :root (set by pxAppearance).
    ----------------------------------------------------------------------------
@@ -539,6 +580,38 @@
   --px-base-60: #5b5142;
   --px-base-70: #423a2e;
   --px-base-100: #221d15;
+}
+
+/* Light Studio — linen and indigo. Shadows are tinted with the ink, never
+   black; the accent is a deep ultramarine with paper-coloured text on it. */
+:root[data-px-mode="light"][data-px-theme="studio"] {
+  --px-base-00: #eceee8;
+  --px-base-05: #e6e9e1;
+  --px-base-10: #f7f8f4;
+  --px-base-15: #e3e6de;
+  --px-base-20: #dde0d7;
+  --px-base-25: #d3d7cd;
+  --px-base-30: #b9beb2;
+  --px-base-35: #a9afa2;
+  --px-base-40: #5f6673;
+  --px-base-50: #636a77;
+  --px-base-60: #555c69;
+  --px-base-70: #434a58;
+  --px-base-100: #1c2230;
+  --px-accent-h: 226;
+  --px-accent-s: 56%;
+  --px-accent-l: 42%;
+  --px-accent-rgb: 47, 75, 168;
+  --px-accent-text-l: 38%;
+  --px-text-on-accent: #f7f8f4;
+  --px-red-rgb:    178, 66, 38;     /* vermilion   */
+  --px-green-rgb:  38, 112, 90;     /* viridian    */
+  --px-yellow-rgb: 135, 94, 20;     /* ochre       */
+  --px-blue-rgb:   47, 75, 168;     /* ultramarine */
+  --px-shadow-sm: 0 1px 2px rgb(28 34 48 / 0.06);
+  --px-shadow-md: 0 1px 2px rgb(28 34 48 / 0.06), 0 6px 20px -6px rgb(28 34 48 / 0.14);
+  --px-shadow-lg: 0 2px 4px rgb(28 34 48 / 0.06), 0 18px 40px -12px rgb(28 34 48 / 0.24);
+  --px-edge-light: inset 0 1px 0 rgb(255 255 255 / 0.7);
 }
 
 /* ── Increase Contrast (Settings › Appearance) ───────────────────────────────

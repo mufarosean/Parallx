@@ -1939,6 +1939,43 @@ discussed the same days (a typed contract for extensions, a view layer
 in the kit, writes that tell views) are what list motion and per-tool
 redesigns stand on; they are not on this list until he says.
 
+**The plan (2026-11-25).** His words: "plan it all including study. Then
+you execute. Build first, test after. Maximize getting to an output
+first. we need to move efficiently and cost effectively, while providing
+something good at the end of it all." And on Study as built: "there is
+no home page or anything"; "where does the user actually see their study
+plan? Where can they edit it and shift it as needed? What if they have
+several subjects. How do they see what work to do on what day, what
+week, what month"; "if I click the extension and have no idea what to
+click then this is badly designed."
+
+So the order is the screen first, then the checks, built directly (no
+acceptance probe before, no reviewer agents unless he asks):
+
+1. *The look, in the tokens, for the whole app at once.* A Studio
+   palette (linen and indigo by day, Payne's grey by night, the four
+   pigments as the signal colours, shadows tinted with the ink), the
+   default, with Slate, Warm and Ember kept as choices; a state saved
+   before it moves to Studio once. Newsreader, Hanken Grotesk and IBM
+   Plex Mono vendored; `--px-font-display` for titles and large numbers;
+   reading text on a tool's page at 15 px, chrome at 13. Settle
+   (`.px-settle`) and fill (`.px-fill-y`, `.px-fill-x`) in px-motion.
+2. *Study's front page.* Study opens on Home, not on a list of subjects:
+   Today (the work due across every subject, each line opening its tool
+   set up), where he stands (days to each exam, this week done against
+   planned, the week filling), and the plan as a calendar he can read by
+   week and by month with every subject on it and edit in place (move a
+   day's work, take a day off, push what follows), by mouse, keys and
+   touch. The sidebar keeps the subjects, under Home and Plan.
+3. *The tools in the look, one at a time:* Flashcards review (the card
+   turns), Worksheets home (attempts land on the spine), then the
+   others as he uses them. Hard-coded greens and reds move to the four
+   meanings.
+4. *Then the checks:* the unit tests and ratchets put right, the
+   keyboard, touch and visual probes on what changed, and piece B's
+   remaining work (the record of time across tools, half built on `dev`
+   at `0957c62b`, unreviewed).
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
