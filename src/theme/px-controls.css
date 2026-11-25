@@ -246,14 +246,18 @@ select:disabled {
 .px-page-header__titles { min-width: 0; }
 .px-page-header__title {
   margin: 0;
+  font-family: var(--px-font-display);
   font-size: var(--px-text-xl);
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: var(--px-leading-tight);
   color: var(--px-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.px-page-header--front .px-page-header__title { font-size: var(--px-text-2xl); letter-spacing: -0.015em; line-height: 1.1; }
+.px-page-header--front .px-page-header__subtitle { margin-top: var(--px-space-2); font-size: var(--px-text-read); color: var(--px-text-secondary); }
 .px-page-header__subtitle {
   margin-top: 2px;
   font-size: var(--px-text-sm);

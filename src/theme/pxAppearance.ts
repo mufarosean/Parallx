@@ -57,8 +57,8 @@ export interface PxAppearanceState {
    */
   reduceMotion?: boolean;
   /**
-   * Which of Parallx's own looks this state was saved under. 2 is Studio
-   * (2026-11-25). A state saved before it is moved to Studio once, keeping
+   * Which of Parallx's own looks this state was saved under: 2 is Studio.
+   * A state saved under an earlier one is moved to Studio once, keeping
    * the mode and the comfort settings; after that the choice is his.
    */
   look?: number;
@@ -179,7 +179,8 @@ function durableTarget(): { bridge: StorageBridgeShape; file: string } | null {
 export const APPEARANCE_CHANGED_EVENT = 'px-appearance-changed';
 
 export function writeAppearance(state: PxAppearanceState): void {
-  const stamped = { ...state, savedAt: Date.now() };
+  // What the app writes now is of the current look, whatever built the state.
+  const stamped = { ...state, look: CURRENT_LOOK, savedAt: Date.now() };
   try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped)); } catch { /* ignore */ }
   const t = durableTarget();
   if (t) { void t.bridge.writeJson(t.file, stamped).catch(() => { /* fast layer still holds */ }); }

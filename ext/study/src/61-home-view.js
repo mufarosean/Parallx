@@ -174,6 +174,22 @@ function stOpenHome() {
   return stOpenPane({ view: 'home' });
 }
 
+/** The Home page on screen: what its commands reach (null while none is drawn). */
+let _stHome = null;
+
+/** Home's calendar: 'prev', 'next' or 'today'. */
+function stCmdHomeShow(what) {
+  if (!_stHome) return false;
+  _stHome.show(String(what || ''));
+  return true;
+}
+
+/** The menu of one subject's work on one day, opened at its button on Home. */
+function stCmdHomeDay(planId, date) {
+  if (!_stHome) return false;
+  return _stHome.day(Number(planId) || 0, String(date || ''));
+}
+
 async function renderHome(host, route, ctx) {
   const ui = _api.ui;
   const page = ui.createBlock(host, 'div', { className: 'st-home' });
@@ -182,6 +198,8 @@ async function renderHome(host, route, ctx) {
   let parts = [];
   let drawn = '';
   let first = true;
+  let dragged = false;
+  const chips = new Map();
   stProgressWant();
 
   const say = ui.createBlock(page, 'div', { className: 'st-sr', attrs: { role: 'status', 'aria-live': 'polite' } });
@@ -220,20 +238,16 @@ async function renderHome(host, route, ctx) {
   const chip = (cell, item, { detail }) => {
     const off = !(item.planned > 0);
     const hours = off ? (item.type && item.type !== 'Study' ? item.type : 'Rest') : stHomeHours(item.planned);
-    const btn = el('button', `st-home__chip st-home__chip--h${item.subject.hue}${off ? ' st-home__chip--off' : ''}${item.past ? ' st-home__chip--past' : ''}`);
-    btn.type = 'button';
-    cell.appendChild(btn);
     const name = [item.subject.name, stPlanDateWords(item.date), off ? hours : `${hours} planned`, item.phase || '', item.done > 0 ? `${stHomeHours(item.done)} done` : '', item.edited ? 'changed by you' : ''].filter(Boolean).join(', ');
-    stDeclare(btn, `study.home.day.${item.planId}.${item.date}`, name);
+    const btn = ui.createButton(cell, { id: `study.home.day.${item.planId}.${item.date}`, label: item.subject.name, icon: 'circle', kind: 'ghost', size: 'sm', title: name, command: 'study.home.day', args: [item.planId, item.date] });
+    btn.classList.add('st-home__chip', `st-home__chip--h${item.subject.hue}`);
+    if (off) btn.classList.add('st-home__chip--off');
+    if (item.past) btn.classList.add('st-home__chip--past');
+    btn.setAttribute('aria-label', name);
     btn.setAttribute('aria-haspopup', 'menu');
-    ui.createBlock(btn, 'span', { className: 'st-home__chipdot' });
-    const text = ui.createBlock(btn, 'span', { className: 'st-home__chiptext' });
-    ui.createBlock(text, 'span', { className: 'st-home__chipname', text: item.subject.name });
-    if (detail && item.phase && !off) ui.createBlock(text, 'span', { className: 'st-home__chipphase', text: item.phase });
-    const right = ui.createBlock(btn, 'span', { className: 'st-home__chiphours', text: hours });
-    if (item.done > 0) right.textContent = `${stHomeHours(item.done)} of ${stPlanH(item.planned)}`;
-    let dragged = false;
-    btn.addEventListener('click', (e) => { if (dragged) { dragged = false; e.preventDefault(); return; } dayMenu(btn, item); });
+    ui.createBlock(btn, 'span', { className: 'st-home__chiphours', text: item.done > 0 ? `${stHomeHours(item.done)} of ${stPlanH(item.planned)}` : hours });
+    chips.set(`${item.planId}.${item.date}`, { btn, item });
+    if (detail && item.phase && !off) ui.createBlock(cell, 'div', { className: 'st-home__chipphase', text: item.phase });
     if (!item.past) {
       parts.push(ui.onDragPress(btn, (down) => {
         if (down.button) return;
@@ -251,7 +265,7 @@ async function renderHome(host, route, ctx) {
           btn.classList.remove('st-home__chip--drag');
           if (over) over.classList.remove('st-home__cell--drop');
           if (!moving) return;
-          dragged = true; setTimeout(() => { dragged = false; }, 0);
+          dragged = true; setTimeout(() => { dragged = false; }, 0);  // the press that ended a drag opens no menu
           const to = over ? over.dataset.date : '';
           if (to && to !== item.date) void act(() => stHomeMoveDay(item.planId, item.date, to), `${item.subject.name}: ${stPlanDateWords(item.date)} and ${stPlanDateWords(to)} changed places.`);
         };
@@ -274,12 +288,13 @@ async function renderHome(host, route, ctx) {
     const scroll = page.scrollTop;
     for (const p of parts) { try { p.dispose(); } catch { /* noop */ } }
     parts = [];
+    chips.clear();
     inner.replaceChildren();
     let order = 0;
     const settle = (node) => { if (first) { node.classList.add('px-settle'); node.style.setProperty('--px-i', String(order++)); } return node; };
 
     if (!m.subjects.length) {
-      ui.createPageHeader(inner, { title: 'Study' });
+      ui.createPageHeader(inner, { front: true, title: 'Study' });
       ui.createEmptyState(inner, { icon: 'px-study', headline: 'No subject yet.', hint: 'A subject holds what you study for one exam: its units, its questions, its plan and the record of your work.', action: { id: 'study.home.newSubject', label: 'New Subject…', command: 'study.newSubject' } });
       first = false;
       return;
@@ -289,12 +304,8 @@ async function renderHome(host, route, ctx) {
     const planned = m.subjects.reduce((t, s) => t + (s.plan && s.plan.today ? s.plan.today.planned : 0), 0);
     const doneToday = m.subjects.reduce((t, s) => t + (s.plan && s.plan.today ? s.plan.today.done : 0), 0);
     const head = settle(ui.createBlock(inner, 'header', { className: 'st-home__head' }));
-    const left = ui.createBlock(head, 'div', { className: 'st-home__headl' });
-    ui.createBlock(left, 'div', { className: 'st-home__meta', text: stPlanDateWords(today, { year: true, long: true }) });
-    const title = ui.createBlock(left, 'div', { className: 'st-home__title', attrs: { role: 'heading', 'aria-level': '1' } });
-    title.append('Today, ');
-    ui.createBlock(title, 'em', { text: planned > 0 ? `${stHomeHours(planned).replace(' h', planned === 1 ? ' hour' : ' hours')}` : 'a free day' });
-    if (planned > 0) ui.createBlock(left, 'div', { className: 'st-home__sub', text: doneToday > 0 ? `${stHomeHours(doneToday)} done so far.` : 'Nothing done yet today.' });
+    const hours = planned > 0 ? stHomeHours(planned).replace(' h', planned === 1 ? ' hour' : ' hours') : 'a free day';
+    ui.createPageHeader(head, { front: true, title: `Today, ${hours}`, subtitle: [stPlanDateWords(today, { year: true, long: true }), planned > 0 ? (doneToday > 0 ? `${stHomeHours(doneToday)} done so far` : 'nothing done yet') : ''].filter(Boolean).join(' · ') });
     const exams = m.subjects.filter((s) => s.plan && s.plan.daysLeft >= 0).sort((a, b) => a.plan.daysLeft - b.plan.daysLeft);
     if (exams.length) {
       const next = exams[0];
@@ -332,19 +343,14 @@ async function renderHome(host, route, ctx) {
       const list = ui.createBlock(card, 'div', { className: 'st-home__work', attrs: { role: 'group', 'aria-label': `Work on, ${s.name}` } });
       if (s.units.length) ui.createBlock(list, 'div', { className: 'st-home__worklabel', text: 'Weakest first' });
       for (const u of s.units) {
-        const row = el('button', 'st-home__unit');
-        row.type = 'button';
-        list.appendChild(row);
-        stDeclare(row, `study.home.unit.${s.id}.${u.rowId}`, `Open ${u.name}, ${u.words}`);
-        ui.createBlock(row, 'span', { className: 'st-home__unitname', text: u.name });
+        const row = ui.createButton(list, { id: `study.home.unit.${s.id}.${u.rowId}`, label: u.name, icon: 'book-open', kind: 'ghost', title: `Open ${u.name}: ${u.words}.`, command: 'study.openUnit', args: [s.id, u.rowId] });
+        row.classList.add('st-home__unit');
         ui.createBlock(row, 'span', { className: 'st-home__unitwords', text: u.words });
-        row.insertAdjacentHTML('beforeend', icon('chevron-right', 14));
-        row.addEventListener('click', () => void stOpenUnit(s.id, u.rowId));
       }
       const acts = ui.createBlock(card, 'div', { className: 'st-home__acts' });
-      ui.createButton(acts, { id: `study.home.study.${s.id}`, label: 'Study', icon: 'play', kind: 'primary', title: `Start a session on ${s.name}.`, onClick: () => { stNoteSheetOpener(); void stOpenSetup({ bankIds: [s.bankId] }); } });
-      ui.createButton(acts, { id: `study.home.progress.${s.id}`, label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', title: `What you know of ${s.name}, unit by unit.`, onClick: () => void stOpenProgress(s.id) });
-      if (s.plan) ui.createButton(acts, { id: `study.home.plan.${s.id}`, label: 'Plan', icon: 'calendar', kind: 'ghost', title: `The rules of ${s.plan.name}: its week, its phases, the three plans.`, onClick: () => void stOpenPlan(s.plan.id) });
+      ui.createButton(acts, { id: `study.home.study.${s.id}`, label: 'Study', icon: 'play', kind: 'primary', title: `Start a session on ${s.name}.`, command: 'study.open', args: [{ bankIds: [s.bankId] }] });
+      ui.createButton(acts, { id: `study.home.progress.${s.id}`, label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', title: `What you know of ${s.name}, unit by unit.`, command: 'study.openProgress', args: [s.id] });
+      if (s.plan) ui.createButton(acts, { id: `study.home.plan.${s.id}`, label: 'Plan', icon: 'calendar', kind: 'ghost', title: `The rules of ${s.plan.name}: its week, its phases, the three plans.`, command: 'study.openPlan', args: [{ planId: s.plan.id }] });
       else if (!s.waiting) ui.createButton(acts, { id: `study.home.newPlan.${s.id}`, label: 'New Plan…', icon: 'calendar-plus', kind: 'ghost', command: 'study.newPlan', args: [s.id] });
     }
 
@@ -359,10 +365,9 @@ async function renderHome(host, route, ctx) {
         : `${ST_HOME_MONTHS[Number(start.slice(5, 7)) - 1]} ${start.slice(0, 4)}`;
       ui.createBlock(bar, 'div', { className: 'st-home__calh', text: label, attrs: { role: 'heading', 'aria-level': '2', 'aria-live': 'polite' } });
       const nav = ui.createBlock(bar, 'div', { className: 'st-home__calnav' });
-      const step = (n) => { view.anchor = week ? stPlanAddDays(start, 7 * n) : stHomeAddMonths(start, n); paint(); };
-      ui.createIconButton(nav, { id: 'study.home.prev', icon: 'chevron-left', title: week ? 'The Week Before' : 'The Month Before', size: 'sm', onClick: () => step(-1) });
-      ui.createButton(nav, { id: 'study.home.today', label: 'Today', kind: 'ghost', size: 'sm', onClick: () => { view.anchor = today; paint(); } });
-      ui.createIconButton(nav, { id: 'study.home.next', icon: 'chevron-right', title: week ? 'The Week After' : 'The Month After', size: 'sm', onClick: () => step(1) });
+      ui.createIconButton(nav, { id: 'study.home.prev', icon: 'chevron-left', title: week ? 'The Week Before' : 'The Month Before', size: 'sm', command: 'study.home.show', args: ['prev'] });
+      ui.createButton(nav, { id: 'study.home.today', label: 'Today', icon: 'calendar-check', kind: 'ghost', size: 'sm', title: 'Back to this week or month.', command: 'study.home.show', args: ['today'] });
+      ui.createIconButton(nav, { id: 'study.home.next', icon: 'chevron-right', title: week ? 'The Week After' : 'The Month After', size: 'sm', command: 'study.home.show', args: ['next'] });
       parts.push(ui.createSegmented(bar, { id: 'study.home.mode', ariaLabel: 'Show the plan by', value: view.mode, items: [{ value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }], onChange: (value) => { view.mode = value; paint(); } }));
 
       const first1 = week ? start : stHomeMonday(start);
@@ -407,6 +412,25 @@ async function renderHome(host, route, ctx) {
     if (focusedId) { const again = Array.from(inner.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === focusedId); if (again) again.focus(); }
   }
 
+  const home = {
+    show(what) {
+      const today = stPlanToday();
+      const week = view.mode === 'week';
+      const start = week ? stHomeMonday(view.anchor || today) : stHomeMonthStart(view.anchor || today);
+      const n = what === 'prev' ? -1 : what === 'next' ? 1 : 0;
+      view.anchor = n ? (week ? stPlanAddDays(start, 7 * n) : stHomeAddMonths(start, n)) : today;
+      paint();
+    },
+    day(planId, date) {
+      if (dragged) { dragged = false; return false; }
+      const c = chips.get(`${planId}.${date}`);
+      if (!c || !c.btn.isConnected) return false;
+      dayMenu(c.btn, c.item);
+      return true;
+    },
+  };
+  _stHome = home;
+  ctx.add({ dispose() { if (_stHome === home) _stHome = null; } });
   paint();
   ctx.add(onDataChanged(() => paint()));
   ctx.add(stAtEachNewDay(() => paint()));

@@ -303,6 +303,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.editQuestion` | Edit Question… | study | Study |  |  |
 | `study.findMatches` | Find Matches… | study | Study |  |  |
 | `study.gradeAgain` | Grade Answer Again | study | Study |  |  |
+| `study.home.day` | Change a Day of the Plan | study | Study |  |  |
+| `study.home.show` | Show Another Week or Month of the Plan | study | Study |  |  |
 | `study.importQuestions` | Import Questions… | study | Study |  |  |
 | `study.importReport` | Import Examiner's Report… | study | Study |  |  |
 | `study.makeAgain` | Make Questions Again | study | Study |  |  |
@@ -313,6 +315,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.newSubject` | New Subject… | study | Study |  |  |
 | `study.nextQuestion` | Next Question | study | Study |  |  |
 | `study.open` | Open Study | study | Study |  |  |
+| `study.openHome` | Open Home | study | Study |  |  |
 | `study.openPlan` | Open Plan… | study | Study |  |  |
 | `study.openProgress` | Open Progress… | study | Study |  |  |
 | `study.openUnit` | Open Unit… | study | Study |  |  |

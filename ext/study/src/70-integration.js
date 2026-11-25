@@ -809,6 +809,9 @@ async function stCmdImportReport(arg) {
 function registerCommands(context) {
   const cmds = [
     ['study.open', (arg) => stCmdOpen(arg)],
+    ['study.openHome', () => stOpenHome()],
+    ['study.home.show', (what) => stCmdHomeShow(what)],
+    ['study.home.day', (planId, date) => stCmdHomeDay(planId, date)],
     ['study.stopMaking', (sessionId) => stStopRun(sessionId)],
     ['study.makeAgain', (sessionId) => stMakeAgain(sessionId)],
     ['study.studyDocument', (arg) => stCmdStudyDocument(arg)],

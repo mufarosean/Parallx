@@ -173,8 +173,8 @@ export interface IKitPageHeaderOptions {
   readonly title: string;
   /** A link above the title back to the page this one belongs to ("Worksheets ›"). */
   readonly back?: IKitAction;
-  /** One quiet line under the title. */
-  readonly subtitle?: string;
+  /** `subtitle`: one quiet line under the title. `front`: a tool's front page, the title in the larger display size. */
+  readonly subtitle?: string; readonly front?: boolean;
   /** The one main action of the page. */
   readonly primary?: IKitAction;
   /** Up to two; anything beyond moves into the ⋯ menu. */
@@ -403,7 +403,7 @@ export function createEmptyState(container: HTMLElement | null | undefined, opti
  */
 export function createPageHeader(container: HTMLElement | null | undefined, options: IKitPageHeaderOptions): HTMLElement {
   const header = document.createElement('header');
-  header.className = 'px-page-header';
+  header.className = options.front ? 'px-page-header px-page-header--front' : 'px-page-header';
 
   const titles = document.createElement('div');
   titles.className = 'px-page-header__titles';

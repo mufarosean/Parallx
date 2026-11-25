@@ -8,7 +8,7 @@
 //   smallTarget   a control under 24 by 24 CSS px with another control inside
 //                 the 24 px it should own (WCAG 2.2, 2.5.8)
 //   offScaleType  text in a size that is not on the app's type scale
-//   offFont       text in a family that is neither the UI font nor the mono one
+//   offFont       text in a family that is not the UI font, the mono one or the display one
 //   offRadius     a corner radius that is not one of the app's radii
 //   offHeight     a button or field whose height is not a control height
 //   uppercase     a label set in capitals by CSS (the copy rule: none)
@@ -89,7 +89,7 @@ function measure(where) {
   const root = document.documentElement;
   const cs = getComputedStyle(root);
   const px = (name) => { const v = cs.getPropertyValue(name).trim(); const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
-  const scale = ['--px-text-2xs', '--px-text-xs', '--px-text-sm', '--px-text-base', '--px-text-md', '--px-text-lg', '--px-text-xl'].map(px).filter((n) => n !== null);
+  const scale = ['--px-text-2xs', '--px-text-xs', '--px-text-sm', '--px-text-base', '--px-text-md', '--px-text-lg', '--px-text-xl', '--px-text-2xl', '--px-text-3xl', '--px-text-read'].map(px).filter((n) => n !== null);
   const radii = ['--px-radius-xs', '--px-radius-sm', '--px-radius-md', '--px-radius-lg', '--px-radius-xl'].map(px).filter((n) => n !== null);
   const heights = ['--px-control-h-xs', '--px-control-h-sm', '--px-control-h', '--px-control-h-lg'].map(px).filter((n) => n !== null);
   const firstFamily = (v) => v.split(',')[0].trim().replace(/^["']|["']$/g, '').toLowerCase();
@@ -98,6 +98,8 @@ function measure(where) {
   const uiFont = firstFamily(getComputedStyle(probe).fontFamily);
   probe.style.fontFamily = 'var(--px-font-mono)';
   const monoFont = firstFamily(getComputedStyle(probe).fontFamily);
+  probe.style.fontFamily = 'var(--px-font-display)';
+  const displayFont = firstFamily(getComputedStyle(probe).fontFamily);
   probe.remove();
 
   // Not ours to measure: third-party surfaces and what a person wrote.
@@ -148,7 +150,7 @@ function measure(where) {
         const size = parseFloat(s.fontSize);
         if (!near(size, scale, 0.26)) add(seen.type, `${Math.round(size * 10) / 10}px`, el);
         const fam = firstFamily(s.fontFamily);
-        if (fam !== uiFont && fam !== monoFont) add(seen.font, fam, el);
+        if (fam !== uiFont && fam !== monoFont && fam !== displayFont) add(seen.font, fam, el);
         if (s.textTransform === 'uppercase' && el.textContent.trim().length > 1) out.uppercase.push(name(el));
         if (el.scrollWidth > el.clientWidth + 1 && (s.overflowX === 'hidden' || s.overflowX === 'clip') && s.whiteSpace.includes('nowrap')) {
           // The whole text, from the element or the control it is in. A part of the window names itself too; that is not this text.
@@ -204,7 +206,7 @@ function measure(where) {
     const h1 = (header && header.querySelector('.px-page-header__title')) || Array.from(area.querySelectorAll('h1')).find((h) => !h.closest(SKIP) && onScreen(h));
     if (h1) { const s = getComputedStyle(h1); out.title = `${Math.round(parseFloat(s.fontSize) * 10) / 10}px / ${s.fontWeight}`; }
   }
-  out.scale = scale; out.radii = radii; out.heights = heights; out.fonts = [uiFont, monoFont];
+  out.scale = scale; out.radii = radii; out.heights = heights; out.fonts = [uiFont, monoFont, displayFont];
   return out;
 }
 

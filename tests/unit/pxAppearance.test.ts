@@ -50,6 +50,15 @@ describe('readAppearance — mode axis', () => {
     expect(read.accent).toBe('amber');
   });
 
+  it('moves a state saved before Studio to Studio once, keeping the mode and comfort settings; after that the choice stands', () => {
+    window.localStorage.setItem('px-appearance', JSON.stringify({ mode: 'light', base: 'slate', accent: 'steel', font: 'georgia', textSize: 1.25, reduceMotion: true }));
+    const moved = readAppearance();
+    expect(moved).toMatchObject({ mode: 'light', base: 'studio', accent: 'theme', textSize: 1.25, reduceMotion: true, look: 2 });
+    expect(moved.font).toBeUndefined();
+    writeAppearance({ ...moved, base: 'slate', accent: 'steel' });
+    expect(readAppearance()).toMatchObject({ base: 'slate', accent: 'steel' });
+  });
+
   it('falls back to dark for an unknown/invalid mode', () => {
     window.localStorage.setItem('px-appearance', JSON.stringify({ mode: 'sepia', base: 'slate' }));
     expect(readAppearance().mode).toBe('dark');
@@ -91,7 +100,7 @@ describe('savePreset — carries mode', () => {
   // A saved look dropped the font, so applying it put the app back on Inter.
   it('persists the font into the saved look, the default stated as such', () => {
     expect(savePreset('Serif', { mode: 'dark', base: 'slate', accent: 'steel', font: 'georgia' }).font).toBe('georgia');
-    expect(savePreset('Plain', { mode: 'dark', base: 'slate', accent: 'steel' }).font).toBe('inter');
+    expect(savePreset('Plain', { mode: 'dark', base: 'slate', accent: 'steel' }).font).toBe('hanken');
   });
 });
 
@@ -118,16 +127,16 @@ describe('appearance durable layer', () => {
 
   it('heal applies the durable state when it is newer (the lost-flush case)', async () => {
     window.localStorage.setItem('px-appearance',
-      JSON.stringify({ mode: 'dark', base: 'slate', accent: 'steel', savedAt: 100 }));
-    installStorageBridge({ mode: 'dark', base: 'slate', accent: 'amber', savedAt: 200 });
+      JSON.stringify({ mode: 'dark', base: 'slate', accent: 'steel', look: 2, savedAt: 100 }));
+    installStorageBridge({ mode: 'dark', base: 'slate', accent: 'amber', look: 2, savedAt: 200 });
     await healAppearanceFromDurable();
     expect(readAppearance().accent).toBe('amber');
   });
 
   it('heal re-seeds the file when the fast layer is newer (kill mid-IPC)', async () => {
     window.localStorage.setItem('px-appearance',
-      JSON.stringify({ mode: 'dark', base: 'slate', accent: 'coral', savedAt: 300 }));
-    const { writes } = installStorageBridge({ mode: 'dark', base: 'slate', accent: 'steel', savedAt: 100 });
+      JSON.stringify({ mode: 'dark', base: 'slate', accent: 'coral', look: 2, savedAt: 300 }));
+    const { writes } = installStorageBridge({ mode: 'dark', base: 'slate', accent: 'steel', look: 2, savedAt: 100 });
     await healAppearanceFromDurable();
     expect(readAppearance().accent).toBe('coral');
     expect(writes).toHaveLength(1);
@@ -136,7 +145,7 @@ describe('appearance durable layer', () => {
 
   it('heal seeds the durable file on first run and leaves the applied state alone', async () => {
     window.localStorage.setItem('px-appearance',
-      JSON.stringify({ mode: 'light', base: 'warm', accent: 'moss', savedAt: 400 }));
+      JSON.stringify({ mode: 'light', base: 'warm', accent: 'moss', look: 2, savedAt: 400 }));
     const { writes } = installStorageBridge(null);
     await healAppearanceFromDurable();
     expect(readAppearance().accent).toBe('moss');

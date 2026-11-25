@@ -910,7 +910,7 @@ describe('Study end to end', () => {
     expect([...env.views.keys()]).toEqual(['study.materials']);
     expect([...env.editors.providers.keys()]).toEqual(['study']);
     expect([...env.commandHandlers.keys()].sort()).toEqual([...MANIFEST_COMMANDS].sort());
-    expect(MANIFEST_COMMANDS.length).toBe(32); // the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), a subject's four (New Subject…, Study a Subject…, Subject Actions…, Open Progress…), a unit's seven (Open Unit…, Find Matches…, Unit Actions…, Add Notes or Files…, Open an Attached Item, Remove an Attached Item, Discuss a Unit in Chat), and a plan's two (New Plan…, Open Plan…)
+    expect(MANIFEST_COMMANDS.length).toBe(35); // Home's three (Open Home, Show Another Week or Month of the Plan, Change a Day of the Plan), the eight, Stop Making Questions, Make Questions Again, Study Marked Questions, the session screen's eight (Previous, Next, Mark, Edit, Mark as Right, Mark as Wrong, Grade Again, Discuss in Chat), a subject's four (New Subject…, Study a Subject…, Subject Actions…, Open Progress…), a unit's seven (Open Unit…, Find Matches…, Unit Actions…, Add Notes or Files…, Open an Attached Item, Remove an Attached Item, Discuss a Unit in Chat), and a plan's two (New Plan…, Open Plan…)
     expect(env.selectionHandlers.map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }))).toEqual([{ actionId: 'quiz-selection', label: 'Quiz This Selection', icon: 'px-study' }]);
 
     // Provider sync (bug 2): the core registry is { register, list, onDidChange }.
@@ -1044,7 +1044,7 @@ describe('Study end to end', () => {
     ]);
     const ch3 = one('SELECT id FROM st_sections WHERE title = ?', CH3).id;
 
-    expect(env.calls.openEditor.at(-1)).toMatchObject({ typeId: 'study', instanceId: 'setup', title: 'Study' });
+    expect(env.calls.openEditor.at(-1)).toMatchObject({ typeId: 'study', instanceId: 'setup', title: 'New Session' });
     const setup = await waitFor(() => paneHost('setup'), 'the setup tab');
     await waitFor(() => q(setup, '.st-outline__o--on'), 'the chosen chapter');
     expect(q(setup, '.st-outline__o--on')!.dataset.sectionId).toBe(String(ch3));

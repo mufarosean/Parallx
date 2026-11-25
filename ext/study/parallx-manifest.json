@@ -12,6 +12,9 @@
     "icons": [{ "id": "px-study", "svg": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5\"/><path d=\"M4 19.5A1.5 1.5 0 0 0 5.5 21H20\"/><path d=\"M9 9h6M9 13h4\"/></svg>" }],
     "commands": [
       { "id": "study.open", "title": "Open Study", "category": "Study" },
+      { "id": "study.openHome", "title": "Open Home", "category": "Study" },
+      { "id": "study.home.show", "title": "Show Another Week or Month of the Plan", "category": "Study" },
+      { "id": "study.home.day", "title": "Change a Day of the Plan", "category": "Study" },
       { "id": "study.studyDocument", "title": "Study This Document…", "category": "Study" },
       { "id": "study.quizSelection", "title": "Quiz This Selection", "category": "Study" },
       { "id": "study.studyTogether", "title": "Study Materials Together…", "category": "Study" },

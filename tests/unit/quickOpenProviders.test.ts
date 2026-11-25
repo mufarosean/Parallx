@@ -105,7 +105,7 @@ describe('themes source', () => {
     const apply = vi.fn();
     const items = themeQuickOpenItems(state, [preset], false, apply);
     items.find((i) => i.label === 'Evening')!.open();
-    expect(apply).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'light', base: 'warm', accent: 'rose', font: undefined, textSize: 1.25 }));
+    expect(apply).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'light', base: 'warm', accent: 'rose', font: 'inter', textSize: 1.25 }));
     items.find((i) => i.label === 'Match System')!.open();
     expect(apply).toHaveBeenLastCalledWith(expect.objectContaining({ followSystem: true, mode: 'light', base: 'slate' }));
     items.find((i) => i.label === 'Amber')!.open();

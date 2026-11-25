@@ -473,13 +473,7 @@ function createSidebarView(container) {
 
     // Home first: today, where he stands, and the plan of every subject.
     {
-      const home = el('button', 'st-sb__home');
-      home.type = 'button';
-      home.innerHTML = icon('home', 14);
-      home.appendChild(el('span', '', 'Home'));
-      stDeclare(home, 'study.side.home', 'Home: today and the plan');
-      home.addEventListener('click', () => void stOpenHome());
-      body.appendChild(home);
+      _api.ui.createButton(body, { id: 'study.side.home', label: 'Home', icon: 'home', kind: 'ghost', size: 'sm', title: 'Today, where you stand, and the plan of every subject.', command: 'study.openHome' }).classList.add('st-sb__home');
     }
 
     // The pick bar, while selecting.

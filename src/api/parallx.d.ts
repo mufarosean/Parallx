@@ -697,6 +697,8 @@ export namespace ui {
     /** A link above the title back to the page this one belongs to. */
     readonly back?: Action;
     readonly subtitle?: string;
+    /** A tool's front page: the title in the larger display size. */
+    readonly front?: boolean;
     /** The page's one main action. */
     readonly primary?: Action;
     /** Shown up to two; the rest move into the ⋯ menu automatically. */
