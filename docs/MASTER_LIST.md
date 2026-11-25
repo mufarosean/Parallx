@@ -2260,7 +2260,10 @@ six lists hang under Tasks in the column and the page is one list;
 Calendar's days are small sheets with today ringed in ink, as on
 Study's Home. No behaviour changes (capture, the Review Queue's day
 buttons, drag to create and move, the shortcuts). Not looked at: the
-week and day views, a crowded day, the popovers. Not picked yet.
+week and day views, a crowded day, the popovers. The page:
+https://claude.ai/artifact/BjoGr6AY17wjp7iWF5fFSG . **His answer
+(2026-11-25): "I am aligned with all proposals."** Planner's three
+views are settled as proposed. Nothing of it is built.
 
 ### Home: a redesign, not yet designed
 
