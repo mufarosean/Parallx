@@ -1884,6 +1884,57 @@ and its tests; nothing more is queued on them):
   extensions). Pages and files feed it today. He judged it short of the
   idea; the redesign is the next entry.
 
+### Parallx's own look: a studio, not an editor
+
+**His words (2026-11-24/25):** "I see this cool ui with animation, not
+static these other apps are using and feel like parallx falls way short.
+even stuff from claude devs feels premium, my app doesn't. It's hard for
+me to put my finger on it." Then: "It's not about tokens bro. its abotu
+the aesthetic, and that you cannot learn from the existing app. you need
+reference." His reference: Open CoDesign
+(github.com/OpenCoworkAI/open-codesign), four screenshots ("it feels
+good, unique"). Of three directions offered (A close to the reference,
+B Parallx's own, C warm dark first) he chose **B**.
+
+**What the reference is, read from its source.** Its token file opens
+"Anthropic Claude Design aesthetic: warm cream surfaces, serif display
+type, terracotta accent": a copy of Claude's look, which is also the
+first cluster Anthropic's frontend-design skill names as generated. So
+its qualities are taken, not its palette: warm-tinted everything,
+three faces with one job each (serif display, sans interface, mono
+meta), 15 px body, air, colour only with meaning, small motion when
+something appears (fade, 8 px rise, 0.98 to 1), a frame that steps back.
+Its repository (MIT) also holds 26 written brand references (Linear,
+Raycast, Notion, Apple, Stripe...) and design guides, readable from a
+cloud session.
+
+**What Parallx is today, measured 2026-11-25** (screenshots from
+`tests/probes/visual-consistency-probe.mjs`, the tokens, the CSS):
+cool blue-grey surfaces a few percent apart, black shadows, Inter 13 px
+for every word, 476 transitions nearly all hover tints, no view
+transitions or `.animate()`, a tool in about 600 px of a 1400 px window.
+It matches several marks the references name as undesigned: Inter for
+everything, near-black with one bright accent, icon tiles above
+headings, meta joined with middle dots.
+
+**Mock-ups (2026-11-25):** https://claude.ai/artifact/YBHRWdaBctZmYFiYLtNCWs
+(Flashcards review, Study plan, Worksheets home; letters switch live).
+Claude's picks, not yet his:
+- *1 Paper:* 1A linen and indigo (grey-green paper, indigo ink, Payne's
+  grey for dark; viridian right, ochre half right, vermilion wrong,
+  ultramarine new or now) or 1B sketchbook and graphite.
+- *2 Type:* 2A Literata, Atkinson Hyperlegible Next, JetBrains Mono, or
+  2B Newsreader, Hanken Grotesk, IBM Plex Mono.
+- *3 Frame:* 3A the tool gets the stage (Explorer, tabs and chat step
+  back while a tool is open) or 3B today's frame restyled.
+- *4 Motion:* 4A quiet settle, or 4B settle plus one moment per tool
+  (the card turns, the week fills, attempts land on the spine).
+
+**Open:** his letters. Nothing is agreed or built. The foundations
+discussed the same days (a typed contract for extensions, a view layer
+in the kit, writes that tell views) are what list motion and per-tool
+redesigns stand on; they are not on this list until he says.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
