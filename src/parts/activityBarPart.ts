@@ -1,8 +1,10 @@
-// activityBarPart.ts — primary activity bar (M3 Capability 0.2 + Cap 2)
+// activityBarPart.ts — the tools list (and the right-hand ribbon)
 //
-// Vertical icon strip on the far left of the workbench.
-// Replaces the ad-hoc `div.activity-bar` created inline in workbench.ts.
-// Participates in the horizontal grid with fixed 48px width.
+// The left one is the list of the tools that are on, by name, seated at the
+// foot of the column (the sidebar part): one row a tool, the open one marked.
+// The right one is still an icon strip beside the grid, for containers docked
+// on the right. Same part, same behaviour; only where it sits and whether a
+// row shows its name differ (CSS, by the part's id).
 //
 // VS Code reference: src/vs/workbench/browser/parts/activitybar/activitybarPart.ts
 // VS Code CSS: src/vs/workbench/browser/parts/activitybar/media/activitybarpart.css
@@ -298,6 +300,7 @@ export class ActivityBarPart extends Part {
     if (hidden) this._hiddenIcons.add(iconId); else this._hiddenIcons.delete(iconId);
     const btn = [...this._iconSection.querySelectorAll<HTMLElement>('[data-icon-id]')].find((b) => b.dataset.iconId === iconId);
     btn?.classList.toggle('activity-bar-item--user-hidden', hidden);
+    this._syncRovingTabindex();
     this._onDidChangeHiddenIcons.fire();
   }
 
@@ -363,14 +366,14 @@ export class ActivityBarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('activity-bar');
-    // VS Code: .monaco-action-bar [role=tablist] on the vertical action bar
-    container.setAttribute('role', 'tablist');
-    container.setAttribute('aria-orientation', 'vertical');
-    container.setAttribute('aria-label', 'Active View Switcher');
 
-    // Unified icons section (builtin + contributed in one list)
+    // The tools, one list (builtin + contributed). The list is the tablist:
+    // the rows under it (bottom section) are plain buttons, not tabs.
     this._iconSection = $('div');
     this._iconSection.classList.add('activity-bar-icons');
+    this._iconSection.setAttribute('role', 'tablist');
+    this._iconSection.setAttribute('aria-orientation', 'vertical');
+    this._iconSection.setAttribute('aria-label', 'Tools');
     container.appendChild(this._iconSection);
 
     // Accept drops anywhere in the icon section to suppress the 🚫 cursor
@@ -450,6 +453,7 @@ export class ActivityBarPart extends Part {
       for (const btn of this._iconSection.querySelectorAll<HTMLElement>('[data-icon-id]')) {
         btn.classList.toggle('activity-bar-item--user-hidden', this._hiddenIcons.has(btn.dataset.iconId ?? ''));
       }
+      this._syncRovingTabindex();
     }
 
     // Restore icon order first, then active icon
@@ -481,8 +485,11 @@ export class ActivityBarPart extends Part {
    * Handle keydown on the activity-bar container.
    */
   private _onKeyDown(e: KeyboardEvent): void {
-    const buttons = this._getAllButtons();
+    const buttons = this._walkable();
     if (buttons.length === 0) return;
+    // The rows under the tools (bottom section) are ordinary buttons: the
+    // arrows walk the tools only, and Enter and Space are theirs already.
+    if (!(e.target instanceof HTMLElement) || !e.target.classList.contains('activity-bar-item')) return;
 
     let handled = true;
 
@@ -493,7 +500,7 @@ export class ActivityBarPart extends Part {
       if (btn.parentElement === this._iconSection && sib?.classList.contains('activity-bar-item')) {
         this._iconSection.insertBefore(btn, e.key === 'ArrowUp' ? sib : sib.nextSibling);
         this._persistIconOrder();
-        this._focusedIndex = this._getAllButtons().indexOf(btn);
+        this._focusedIndex = this._walkable().indexOf(btn);
         this._syncRovingTabindex();
         btn.focus();
       }
@@ -560,14 +567,20 @@ export class ActivityBarPart extends Part {
    * Ensures exactly one button has tabIndex=0.
    */
   private _syncRovingTabindex(): void {
-    const buttons = this._getAllButtons();
+    const buttons = this._walkable();
     // Clamp index
     if (this._focusedIndex >= buttons.length) {
       this._focusedIndex = Math.max(0, buttons.length - 1);
     }
+    for (const btn of this._getAllButtons()) btn.tabIndex = -1;
     buttons.forEach((btn, i) => {
       btn.tabIndex = i === this._focusedIndex ? 0 : -1;
     });
+  }
+
+  /** The rows the keys walk: every tool the user has not hidden. */
+  private _walkable(): HTMLButtonElement[] {
+    return this._getAllButtons().filter((b) => !b.classList.contains('activity-bar-item--user-hidden'));
   }
 
   // ── DOM helpers ──
@@ -592,6 +605,13 @@ export class ActivityBarPart extends Part {
     }
     btn.appendChild(iconLabel);
 
+    // The tool's name: shown where the list is the column's foot, not on a ribbon.
+    const name = $('span');
+    name.classList.add('activity-bar-item-name');
+    name.textContent = descriptor.label;
+    name.setAttribute('aria-hidden', 'true'); // the button is already named
+    btn.appendChild(name);
+
     // Badge element (VS Code: .badge > .badge-content, absolute top-right)
     const badge = $('div');
     badge.classList.add('activity-bar-badge', 'badge-hidden'); // hidden until setBadge is called
@@ -609,7 +629,8 @@ export class ActivityBarPart extends Part {
     btn.appendChild(indicator);
 
     // Custom themed tooltip (replaces native title attribute)
-    setupTooltip(btn, descriptor.label, { placement: this._tooltipPlacement });
+    // A row that shows its name needs no tooltip repeating it.
+    if (this.id !== PartId.ActivityBar) setupTooltip(btn, descriptor.label, { placement: this._tooltipPlacement });
     // In the scene as the tab it is: pressed while its view container is the active one.
     declareControl(btn, { id: `activitybar.${descriptor.id}`, label: descriptor.label, kind: 'iconButton', state: () => ({ kind: 'pressed', value: btn.getAttribute('aria-selected') === 'true' }) });
 

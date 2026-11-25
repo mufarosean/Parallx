@@ -40,7 +40,7 @@ import type { PartDropZone } from './partDrag.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { TitlebarPart, titlebarPartDescriptor } from '../parts/titlebarPart.js';
 import { ActivityBarPart, activityBarPartDescriptor } from '../parts/activityBarPart.js';
-import { sidebarPartDescriptor } from '../parts/sidebarPart.js';
+import { sidebarPartDescriptor, type SidebarPart } from '../parts/sidebarPart.js';
 import { editorPartDescriptor } from '../parts/editorPart.js';
 import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
 import { panelPartDescriptor } from '../parts/panelPart.js';
@@ -52,9 +52,10 @@ import { ContextMenu } from '../ui/contextMenu.js';
 
 export const TITLE_HEIGHT = 30;
 export const STATUS_HEIGHT = 22;
+/** The right-hand ribbon's width. The left tools list has none: it sits in the column. */
 export const ACTIVITY_BAR_WIDTH = 48;
 export const PART_HEADER_HEIGHT_PX = 35;
-export const DEFAULT_SIDEBAR_WIDTH = 202;
+export const DEFAULT_SIDEBAR_WIDTH = 224;
 export const DEFAULT_PANEL_HEIGHT = 200;
 export const DEFAULT_AUX_BAR_WIDTH = 480;
 export const MIN_EDITOR_WIDTH = 200;
@@ -426,6 +427,10 @@ export abstract class Layout extends Disposable {
     this._panel.create(tempDiv);
     this._statusBar.create(tempDiv);
 
+    // The tools list is seated at the foot of the column, under the open
+    // tool's own list: one column in place of an icon rail and a sidebar.
+    (this._sidebar as SidebarPart).footSlot?.appendChild(this._activityBarPart.element);
+
     // 4. Build the body: activity bar (chrome) + the one grid
     const w = this._container.clientWidth;
     const h = this._container.clientHeight;
@@ -454,7 +459,9 @@ export abstract class Layout extends Disposable {
    */
   protected _mountBody(width: number, height: number): void {
     const bodyH = height - TITLE_HEIGHT - STATUS_HEIGHT;
-    const bodyW = width - ACTIVITY_BAR_WIDTH;
+    // The tools list sits at the foot of the column (the sidebar part), so
+    // it takes no width of its own from the body row.
+    const bodyW = width;
 
     this._grid = new Grid(Orientation.Horizontal, bodyW, bodyH);
     this._grid.restoreFrom(
@@ -464,9 +471,6 @@ export abstract class Layout extends Disposable {
 
     this._bodyRow = $('div');
     this._bodyRow.classList.add('workbench-middle');
-
-    this._bodyRow.appendChild(this._activityBarPart.element);
-    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, bodyH, Orientation.Vertical);
 
     this._bodyRow.appendChild(this._grid.element);
     this._grid.element.classList.add('workbench-grid');
@@ -481,10 +485,7 @@ export abstract class Layout extends Disposable {
 
   /** Combined width of the visible ribbons flanking the grid. */
   protected _chromeBarsWidth(): number {
-    const left = this._activityBarPart.element.classList.contains('hidden')
-      ? 0 : ACTIVITY_BAR_WIDTH;
-    const right = this._activityBarRight?.visible ? ACTIVITY_BAR_WIDTH : 0;
-    return left + right;
+    return this._activityBarRight?.visible ? ACTIVITY_BAR_WIDTH : 0;
   }
 
   /**
@@ -656,9 +657,6 @@ export abstract class Layout extends Disposable {
     }
 
     // Re-layout the ribbons (chrome, outside the grid)
-    if (!this._activityBarPart.element.classList.contains('hidden')) {
-      this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
-    }
     if (this._activityBarRight?.visible) {
       this._activityBarRight.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
     }
@@ -1583,7 +1581,7 @@ export abstract class Layout extends Disposable {
     const rw = this._container.clientWidth;
     const rh = this._container.clientHeight;
     const bodyH = rh - TITLE_HEIGHT - STATUS_HEIGHT;
-    const bodyW = rw - ACTIVITY_BAR_WIDTH;
+    const bodyW = rw;
     this._withTrackingSuspended(() => {
       this._grid.restoreFrom(
         this._currentDefaultState(bodyW, bodyH),

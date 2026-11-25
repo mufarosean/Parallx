@@ -3,14 +3,14 @@
 // Extracted from workbench.ts (Fix 2.1) to reduce god-object line count.
 // Owns:
 //   - Default menu bar item registration (File, Edit, View, Go, Tools, Help)
-//   - Manage gear icon in activity bar
-//   - Manage menu (Settings, Themes, Keyboard Shortcuts, etc.)
+//   - The bell in the title bar
+//   - The column's last rows (Tools and Extensions, Settings)
 
 import { Disposable, type IDisposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IKeybindingService } from '../services/serviceTypes.js';
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
-import { declareControl } from '../ui/kit.js';
+import { createButton, declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';
 import type { ActivityBarPart } from '../parts/activityBarPart.js';
@@ -168,32 +168,27 @@ export class MenuBuilder extends Disposable {
   // ── Notifications bell ─────────────────────────────────────────────────
 
   /**
-   * The bell at the foot of the activity bar: it opens the notifications
-   * panel beside it, and its badge counts what arrived since it was last
-   * opened. (Settings and Keyboard Shortcuts are in the View menu.)
+   * The bell in the title bar, after the three area buttons: it opens the
+   * notifications panel under it, and its badge counts what arrived since
+   * it was last opened. (It keeps the scene id it had on the old icon rail,
+   * so everything that finds it still does.)
    */
   addNotificationsButton(center: NotificationCenter): void {
-    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
-    if (!bottomSection) return;
-
     const bell = $('button');
-    bell.classList.add('activity-bar-item', 'activity-bar-notifications');
+    bell.type = 'button';
+    bell.classList.add('titlebar-layout-btn', 'titlebar-bell', 'activity-bar-notifications');
     bell.dataset.iconId = 'notifications';
     bell.title = 'Notifications';
-    const iconLabel = $('span');
-    iconLabel.classList.add('activity-bar-icon-label');
-    iconLabel.innerHTML = getIcon('bell');
+    bell.innerHTML = getIcon('bell');
     const badge = $('span');
-    badge.className = 'activity-bar-badge activity-bar-badge--count badge-hidden';
-    const badgeContent = $('span');
-    badgeContent.className = 'activity-bar-badge-content';
-    badge.appendChild(badgeContent);
-    bell.append(iconLabel, badge);
-    declareControl(bell, { id: 'activitybar.notifications', label: 'Notifications', kind: 'iconButton', hint: 'Opens what the app and your tools have told you.', command: 'workbench.action.toggleNotificationCenter' });
+    badge.className = 'titlebar-bell-badge badge-hidden';
+    badge.setAttribute('aria-hidden', 'true');
+    bell.appendChild(badge);
+    this._register(declareControl(bell, { id: 'activitybar.notifications', label: 'Notifications', kind: 'iconButton', hint: 'Opens what the app and your tools have told you.', command: 'workbench.action.toggleNotificationCenter' }));
 
     const paint = (unread: number): void => {
       badge.classList.toggle('badge-hidden', unread === 0);
-      badgeContent.textContent = unread > 99 ? '99+' : String(unread);
+      badge.textContent = unread > 99 ? '99+' : String(unread);
       const name = unread ? `Notifications, ${unread} new` : 'Notifications';
       bell.setAttribute('aria-label', name);
       bell.title = name;
@@ -208,6 +203,34 @@ export class MenuBuilder extends Disposable {
       center.toggle(bell);
     });
 
-    bottomSection.appendChild(bell);
+    // The title bar's right slot can be built after this runs: wait for it,
+    // then sit just left of the window's own buttons, after the area buttons.
+    const seat = (attempt = 0): void => {
+      const slot = this._titlebar.rightSlot;
+      if (!slot) {
+        if (attempt < 60) requestAnimationFrame(() => seat(attempt + 1));
+        return;
+      }
+      slot.insertBefore(bell, slot.querySelector('.window-controls'));
+    };
+    seat();
+  }
+
+  // ── The column's last rows ─────────────────────────────────────────────
+
+  /**
+   * Under the tools at the foot of the column: where tools are turned on
+   * and off, and Settings. Both are the app's own, so they are there
+   * whatever is turned on.
+   */
+  addColumnFootRows(): void {
+    const bottom = this._activityBarPart.contentElement.querySelector<HTMLElement>('.activity-bar-bottom');
+    if (!bottom) return;
+    for (const row of [
+      { id: 'column.toolsAndExtensions', label: 'Tools and Extensions', icon: 'blocks', command: 'tools.showInstalled' },
+      { id: 'column.settings', label: 'Settings', icon: 'settings', command: 'settings.open' },
+    ]) {
+      createButton(bottom, { ...row, kind: 'ghost' }).classList.add('column-foot-row');
+    }
   }
 }

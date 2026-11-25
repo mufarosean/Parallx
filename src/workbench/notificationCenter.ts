@@ -65,8 +65,9 @@ export class NotificationCenter extends Disposable {
     document.body.appendChild(panel);
     this._render();
     const at = anchor?.getBoundingClientRect();
-    if (at && (at.width || at.height)) layoutPopup(panel, at, { position: 'right-end', gap: 6 });
-    else layoutPopup(panel, { x: 56, y: window.innerHeight - panel.offsetHeight - 32 });
+    // Under the bell in the title bar; without one, the top right corner.
+    if (at && (at.width || at.height)) layoutPopup(panel, at, { position: 'below', gap: 6 });
+    else layoutPopup(panel, { x: window.innerWidth - panel.offsetWidth - 12, y: 36 });
     this._detach = attachPopupDismiss(anchor ? [panel, anchor] : [panel], () => this.hide());
     panel.focus();
     anchor?.classList.add('active');

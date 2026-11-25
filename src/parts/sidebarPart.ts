@@ -14,12 +14,13 @@ const SIDEBAR_CONSTRAINTS: SizeConstraints = {
 };
 
 /**
- * Primary sidebar — hosts the activity bar icons and view containers
- * (explorer, search, source control, etc.).
+ * The column: the open tool named at its head, that tool's own list under
+ * it, and at the foot the tools that are on, by name. The foot is a slot;
+ * the workbench seats the tools list there and the part knows no tool.
  */
 export class SidebarPart extends Part {
 
-  private _activityBarSlot: HTMLElement | undefined;
+  private _footSlot: HTMLElement | undefined;
   private _viewContainerSlot: HTMLElement | undefined;
   private _headerSlot: HTMLElement | undefined;
 
@@ -39,7 +40,18 @@ export class SidebarPart extends Part {
     );
   }
 
-  get activityBarSlot(): HTMLElement | undefined { return this._activityBarSlot; }
+  /** Where the tools list sits, under the open tool's own list. */
+  get footSlot(): HTMLElement | undefined { return this._footSlot; }
+
+  /**
+   * How much of the column's height the head and the foot take beyond a
+   * plain part header of `plainHeader` px: what the open tool's list loses.
+   */
+  chromeBeyond(plainHeader: number): number {
+    const head = this._headerSlot?.offsetHeight ?? 0;
+    const foot = this._footSlot?.offsetHeight ?? 0;
+    return Math.max(0, (head || plainHeader) - plainHeader) + foot;
+  }
   get viewContainerSlot(): HTMLElement | undefined { return this._viewContainerSlot; }
   get headerSlot(): HTMLElement | undefined { return this._headerSlot; }
   get activeViewId(): string | undefined { return this._activeViewId; }
@@ -61,15 +73,15 @@ export class SidebarPart extends Part {
   protected override createContent(container: HTMLElement): void {
     container.classList.add('sidebar-content');
 
-    // Activity bar (icon strip)
-    this._activityBarSlot = $('div');
-    this._activityBarSlot.classList.add('sidebar-activity-bar');
-    container.appendChild(this._activityBarSlot);
-
-    // View container area
+    // The open tool's own list
     this._viewContainerSlot = $('div');
     this._viewContainerSlot.classList.add('sidebar-views');
     container.appendChild(this._viewContainerSlot);
+
+    // The foot: the tools by name, then what manages them
+    this._footSlot = $('div');
+    this._footSlot.classList.add('sidebar-foot');
+    container.appendChild(this._footSlot);
   }
 
   protected override savePartData(): Record<string, unknown> | undefined {

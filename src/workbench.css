@@ -153,7 +153,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 1px;
-  margin-right: 8px;
+  margin-right: 2px;
 }
 .titlebar-layout-btn {
   display: flex;
@@ -174,6 +174,31 @@ html, body {
   color: var(--px-text);
 }
 .titlebar-layout-btn.is-on { color: var(--px-text); }
+/* The bell, after the area buttons: its count sits on its top right corner. */
+.titlebar-bell {
+  -webkit-app-region: no-drag;
+  position: relative;
+  margin-right: 8px;
+}
+.titlebar-bell svg { width: 15px; height: 15px; }
+.titlebar-bell.active { background: var(--px-surface-active); color: var(--px-text); }
+.titlebar-bell:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
+.titlebar-bell-badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+  color: var(--px-text-on-accent);
+  font: 600 var(--px-text-2xs)/14px var(--px-font-ui);
+  text-align: center;
+  pointer-events: none;
+}
+.titlebar-bell-badge.badge-hidden { display: none; }
 /* A little air between Search Commands and the area toggles. */
 .titlebar-layout-gap { width: 6px; flex: none; }
 /* The filled pane region only shows when that pane is visible. */
@@ -300,26 +325,153 @@ html, body {
    nothing hugs the card border. Header padding + a tiny action-button trim land
    the title (left) and the action glyphs (right) at the same distance in. */
 .sidebar-header {
-  height: 35px;
-  padding: 0 var(--px-sidebar-inset, 10px);
+  /* The column's head: the open tool, named in the display face. */
+  height: 44px;
+  flex: none;
+  padding: 0 var(--px-sidebar-inset, 10px) 0 calc(var(--px-sidebar-inset, 10px) + 6px);
   display: flex;
   align-items: center;
 }
 
 .sidebar-content {
   display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .sidebar-views {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: hidden;
 }
 
 .sidebar-header-label {
-  font-size: var(--px-text-sm);
-  font-weight: 600;
-  color: var(--px-text-secondary);
+  font-family: var(--px-font-display);
+  font-size: var(--px-text-xl);
+  font-weight: 500;
+  line-height: var(--px-leading-tight);
+  letter-spacing: -0.01em;
+  color: var(--px-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+/* ── The column's foot: the tools that are on, by name ──
+   The tools list (the left activity bar part) is seated here, under the open
+   tool's own list. One row a tool, the open one in ink; then where tools are
+   managed, and Settings. A long list scrolls inside the foot, never past
+   half the column. */
+.sidebar-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 55%;
+  min-height: 0;
+  border-top: 1px solid var(--px-chrome-line);
+  background: var(--px-bg);
+}
+.sidebar-foot > .part-workbench-parts-activitybar {
+  /* A part sized by the grid no longer: it takes the column's width and its
+     own rows' height. */
+  width: auto !important;
+  height: auto !important;
+  contain: none;
+  flex: 0 1 auto;
+  min-height: 0;
+  border-right: 0;
+  align-self: stretch;
+}
+.sidebar-foot .part-content {
+  background: transparent;
+  overflow-y: auto;
+  min-height: 0;
+}
+.sidebar-foot .activity-bar {
+  width: auto;
+  background: transparent;
+  box-shadow: none;
+  align-items: stretch;
+  padding: 6px 8px;
+  gap: 1px;
+}
+.sidebar-foot .activity-bar-icons,
+.sidebar-foot .activity-bar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sidebar-foot .activity-bar-spacer { display: none; }
+.sidebar-foot .activity-bar-bottom {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--px-chrome-line);
+}
+.sidebar-foot .activity-bar-item,
+.sidebar-foot .column-foot-row {
+  width: auto;
+  height: 28px;
+  flex: none;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--px-radius-md);
+  background: none;
+  color: var(--px-text-secondary);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+  min-width: 0;
+}
+.sidebar-foot .column-foot-row { color: var(--px-text-muted); }
+.sidebar-foot .activity-bar-item::after,
+.sidebar-foot .activity-bar-item.active::before { content: none; }
+.sidebar-foot .activity-bar-item:hover,
+.sidebar-foot .column-foot-row:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+.sidebar-foot .activity-bar-item.active,
+.sidebar-foot .activity-bar-item.active:hover {
+  background: var(--px-text);
+  color: var(--px-bg);
+}
+.sidebar-foot .activity-bar-item:focus-visible,
+.sidebar-foot .column-foot-row:focus-visible {
+  outline: none;
+  box-shadow: var(--px-ring-accent);
+}
+.sidebar-foot .activity-bar-icon-label { flex: none; }
+.sidebar-foot .activity-bar-icon-label svg,
+.sidebar-foot .column-foot-row svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.sidebar-foot .activity-bar-item-name,
+.sidebar-foot .column-foot-row .px-btn__label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-foot .activity-bar-badge {
+  position: static;
+  margin-left: auto;
+  flex: none;
+}
+.sidebar-foot .activity-bar-item.active .activity-bar-badge--count .activity-bar-badge-content,
+.sidebar-foot .activity-bar-item.active .activity-bar-badge--dot .activity-bar-badge-content {
+  background: var(--px-bg);
+  color: var(--px-text);
+}
+/* A finger gets a taller row. */
+[data-input-modality="touch"] .sidebar-foot .activity-bar-item,
+[data-input-modality="touch"] .sidebar-foot .column-foot-row { height: 36px; }
 
 /* Sidebar header actions (VS Code: .title-actions in composite title) */
 .sidebar-header-actions {
@@ -456,9 +608,8 @@ html, body {
   gap: 0;
 }
 
-.sidebar-activity-bar {
-  display: none; /* hidden — we use the standalone activity bar */
-}
+/* A row's name: drawn in the column's foot only; a ribbon shows the icon. */
+.activity-bar-item-name { display: none; }
 
 .activity-bar-item.activity-bar-item--user-hidden {
   display: none;
@@ -1721,6 +1872,31 @@ html, body {
 .editor-tab-bar .ui-tab-bar {
   flex: 1;
   height: 100%;
+}
+
+/* An editor tab is as wide as its name, between a floor and a ceiling, with
+   its icon before the name. The close button keeps its place at the right,
+   out of flow; the name starts at the left. */
+.editor-tab-bar .ui-tab {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 76px;
+  max-width: 240px;
+  padding: 0 28px 0 12px;
+}
+.editor-tab-bar .ui-tab-label {
+  flex: 0 1 auto;
+  text-align: left;
+}
+.editor-tab-bar .ui-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-right: 0;
+}
+.editor-tab-bar .ui-tab-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Editor group toolbar buttons live in the TabBar actions slot */

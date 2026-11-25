@@ -29,6 +29,7 @@ import { createSurface, createTabs } from '../ui/kit.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 import { $, addDisposableListener } from '../ui/dom.js';
 import { getIcon, getFileTypeIcon } from '../ui/iconRegistry.js';
+import { toolTabIcon, onDidChangeToolTabIcons } from './toolTabIcons.js';
 import { setupTooltip } from '../ui/tooltip.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -386,6 +387,8 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._paneContainer.appendChild(this._emptyMessage);
 
     this._renderTabs();
+    // A tool's icon can arrive after its tabs were restored, or go with it.
+    this._register(onDidChangeToolTabIcons(() => this._renderTabs()));
     this._updateRibbon(this.model.activeEditor);
     this._updateEmptyState();
   }
@@ -578,7 +581,11 @@ export class EditorGroupView extends Disposable implements IGridView {
         // Editor-supplied icon first (canvas pages, planner, dashboards);
         // extension-derived only as the fallback — same order the Open
         // Editors view uses (2026-07-20 icon fix).
-        icon: editor.iconHtml ?? (extMatch ? getFileTypeIcon(extMatch[1]) : undefined),
+        // An editor with neither (a tool's home, a session) carries the
+        // icon of the tool that opened it.
+        icon: editor.iconHtml
+          ?? (extMatch ? getFileTypeIcon(extMatch[1]) : undefined)
+          ?? toolTabIcon((editor as { ownerToolId?: string }).ownerToolId),
         tooltip: editor.description || editor.name,
         italic: this.model.isPreview(i),
         stickyContent: this.model.isSticky(i) ? 'pinned' : undefined,

@@ -11,6 +11,7 @@
 
 import { createIconElement } from '../ui/iconRegistry.js';
 import { wireRibbonMenu } from './ribbonMenu.js';
+import type { SidebarPart } from '../parts/sidebarPart.js';
 import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { appDateTimeString } from '../services/localTime.js';
 import { addDisposableListener } from '../ui/dom.js';
@@ -1243,9 +1244,10 @@ export class Workbench extends Layout {
     // 4. Status bar entries
     this._statusBarController.setupStatusBar();
 
-    // 4c. The notifications bell at the foot of the activity bar.
+    // 4c. The bell in the title bar, and the column's last rows.
     const notificationCenter = this._statusBarController.notificationCenter;
     if (notificationCenter) this._menuBuilder.addNotificationsButton(notificationCenter);
+    this._menuBuilder.addColumnFootRows();
 
     // 4d. The right rail's ribbon: clicks, cross-ribbon icon drops, and
     // visibility following the rail's population.
@@ -2260,6 +2262,17 @@ export class Workbench extends Layout {
       sidebarContent.appendChild(defaultContainer.element);
     }
 
+    // The foot grows and shrinks with the tools that are on; the open
+    // tool's list takes the rest of the column each time.
+    {
+      const foot = (this._sidebar as SidebarPart).footSlot;
+      if (foot && typeof ResizeObserver !== 'undefined') {
+        const observer = new ResizeObserver(() => this._layoutViewContainers());
+        observer.observe(foot);
+        this._register(toDisposable(() => observer.disconnect()));
+      }
+    }
+
     // Right-click on either ribbon: hide icons, or show them again.
     this._register(wireRibbonMenu(this._activityBarPart, PART_ICON_PREFIX));
     if (this._activityBarRight) this._register(wireRibbonMenu(this._activityBarRight, PART_ICON_PREFIX));
@@ -2280,12 +2293,10 @@ export class Workbench extends Layout {
         return;
       }
 
-      const isAlreadyActive = event.iconId === this._activityBarPart.activeIconId;
-
-      if (isAlreadyActive) {
-        this.toggleSidebar();
-        return;
-      }
+      // The open tool's row sits in the column it would hide, so pressing
+      // it again leaves the column as it is (the title bar's button and
+      // its shortcut hide the column).
+      if (event.iconId === this._activityBarPart.activeIconId && this._sidebar.visible) return;
 
       if (!this._sidebar.visible) {
         this.toggleSidebar();
@@ -4200,7 +4211,9 @@ export class Workbench extends Layout {
 
     // Delegate sidebar switching + contributed container layout to handler
     this._contributionHandler.layoutContainers(
-      { visible: this._sidebar.visible, width: this._sidebar.width, height: this._sidebar.height },
+      // The column's head is taller than a plain part header and its foot
+      // holds the tools list: the open tool's list gets what is left.
+      { visible: this._sidebar.visible, width: this._sidebar.width, height: this._sidebar.height - (this._sidebar as SidebarPart).chromeBeyond(PART_HEADER_HEIGHT_PX) },
       { visible: this._panel.visible, width: this._panel.width, height: this._panel.height },
       { visible: this._auxBarVisible, width: this._auxiliaryBar.width, height: this._auxiliaryBar.height },
       PART_HEADER_HEIGHT_PX,
