@@ -23,7 +23,7 @@ const menu = () => page.evaluate(() => {
   const m = [...document.querySelectorAll('.context-menu')].filter((e) => e.getClientRects().length).pop();
   if (!m) return null;
   const cs = getComputedStyle(m); const r = m.getBoundingClientRect();
-  const items = [...m.querySelectorAll('.context-menu-item')].map((i) => { const q = i.getBoundingClientRect(); const kb = i.querySelector('.context-menu-item-keybinding'); const arrow = i.querySelector('.context-menu-submenu-arrow'); return { text: i.querySelector('.context-menu-item-label')?.textContent, h: Math.round(q.height), radius: parseFloat(getComputedStyle(i).borderTopLeftRadius), inside: q.left >= r.left && q.right <= r.right, kb: kb ? { text: kb.textContent, font: getComputedStyle(kb).fontFamily.split(',')[0].replace(/['"]/g, '') } : null, arrow: arrow ? { svg: !!arrow.querySelector('svg'), text: arrow.textContent.trim() } : null }; });
+  const items = [...m.querySelectorAll('.context-menu-item')].map((i) => { const q = i.getBoundingClientRect(); const kb = i.querySelector('.context-menu-item-keybinding'); const arrow = i.querySelector('.context-menu-submenu-arrow'); return { text: i.querySelector('.context-menu-item-label')?.textContent, icon: i.querySelector('.context-menu-item-icon svg')?.innerHTML ?? '', iconLeftOfText: (() => { const a = i.querySelector('.context-menu-item-icon')?.getBoundingClientRect(); const b = i.querySelector('.context-menu-item-label')?.getBoundingClientRect(); return !!a && !!b && a.width >= 12 && a.right <= b.left; })(), h: Math.round(q.height), radius: parseFloat(getComputedStyle(i).borderTopLeftRadius), inside: q.left >= r.left && q.right <= r.right, kb: kb ? { text: kb.textContent, font: getComputedStyle(kb).fontFamily.split(',')[0].replace(/['"]/g, '') } : null, arrow: arrow ? { svg: !!arrow.querySelector('svg'), text: arrow.textContent.trim() } : null }; });
   return { radius: parseFloat(cs.borderTopLeftRadius), shadow: cs.boxShadow !== 'none', pad: parseFloat(cs.paddingLeft), inWindow: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth, items, selected: m.querySelector('.context-menu-item--selected .context-menu-item-label')?.textContent ?? null };
 });
 try {
@@ -43,6 +43,26 @@ try {
   await screenshot(app, page, path.join(shots, 'menu-file.png'), { keepFocus: true });
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   check('Escape closes it', !(await menu()));
+  // Every entry of every menu of the menu bar has an icon in front of its words (his 3A).
+  const bar = await page.evaluate(() => [...document.querySelectorAll('[role="menubar"] [role="menuitem"]')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim()));
+  check('the menu bar has its five menus', bar.join(' ') === 'File Edit View Tools Help', bar);
+  const perMenu = {};
+  for (const name of bar) {
+    await page.evaluate((name) => [...document.querySelectorAll('[role="menubar"] [role="menuitem"]')].find((e) => e.textContent.trim() === name)?.click(), name);
+    await page.waitForTimeout(450);
+    const mm = await menu();
+    perMenu[name] = mm?.items ?? [];
+    const bare = (mm?.items ?? []).filter((i) => !i.icon || !i.iconLeftOfText).map((i) => i.text);
+    check(`${name}: every entry has an icon in front of its words (${mm?.items.length ?? 0} entries)`, !!mm && mm.items.length > 0 && bare.length === 0, bare);
+    const kinds = new Set((mm?.items ?? []).map((i) => i.icon)).size;
+    check(`${name}: no two entries share an icon`, kinds === (mm?.items.length ?? -1), [kinds, mm?.items.length]);
+    if (name === 'View' || name === 'Tools') await screenshot(app, page, path.join(shots, `menu-${name.toLowerCase()}.png`), { keepFocus: true });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(250);
+  }
+  // A tool that is on puts itself in Tools, with the icon its own sidebar row shows.
+  const plannerRow = await page.evaluate(() => { const b = [...document.querySelectorAll('button.activity-bar-item')].find((x) => x.getClientRects().length && /Planner/.test(x.getAttribute('aria-label') || x.textContent || '')); return b?.querySelector('svg')?.innerHTML ?? null; });
+  const plannerEntry = perMenu.Tools.find((i) => i.text === 'Planner');
+  check('Planner is in Tools with the icon of its own sidebar row', !!plannerEntry && !!plannerRow && plannerEntry.icon === plannerRow, [plannerEntry?.icon?.slice(0, 60), plannerRow?.slice(0, 60)]);
   // A context menu on a file, and a menu with a submenu (a page's own).
   const f = await page.evaluate(() => { const b = [...document.querySelectorAll('[role="treeitem"]')].find((e) => /notes\.md/.test(e.textContent)); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.x + 40, y: r.y + r.height / 2 }; });
   await page.mouse.click(f.x, f.y, { button: 'right' }); await page.waitForTimeout(500);

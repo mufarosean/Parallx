@@ -14,7 +14,23 @@ import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';
 import type { NotificationCenter } from './notificationCenter.js';
 import type { KeybindingService } from '../services/keybindingService.js';
-import { getIcon } from '../ui/iconRegistry.js';
+import { getIcon, hasIcon } from '../ui/iconRegistry.js';
+
+/** The parts of a tool's manifest that name its icon. */
+export interface ToolIconSource {
+  readonly viewContainers?: readonly { readonly icon?: string }[];
+  readonly views?: readonly { readonly icon?: string }[];
+}
+
+/**
+ * The icon a running tool's entry takes in the Tools menu: the one its own
+ * sidebar row shows (its container's, else its view's), else the mark for
+ * any tool.
+ */
+export function toolMenuIcon(contributes: ToolIconSource | undefined): string {
+  const ids = [...(contributes?.viewContainers ?? []), ...(contributes?.views ?? [])].map((v) => v.icon);
+  return ids.find((id): id is string => !!id && hasIcon(id)) ?? 'puzzle';
+}
 
 // ─── Dependencies ────────────────────────────────────────────────────────────
 
@@ -76,23 +92,23 @@ export class MenuBuilder extends Disposable {
 
     // Register dropdown items for View menu — delegates to structural commands
     this._register(this._titlebar.registerMenuBarDropdownItems('view', [
-      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
-      { commandId: 'settings.open', title: 'Settings', group: '1_settings', order: 1 },
-      { commandId: 'tools.showInstalled', title: 'Tools and Extensions', group: '1_settings', order: 1.5 },
-      { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', group: '1_settings', order: 2 },
-      { commandId: 'settings.openAppearance', title: 'Appearance…', group: '1_settings', order: 3 },
+      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', icon: 'search', group: '1_nav', order: 1 },
+      { commandId: 'settings.open', title: 'Settings', icon: 'settings', group: '1_settings', order: 1 },
+      { commandId: 'tools.showInstalled', title: 'Tools and Extensions', icon: 'blocks', group: '1_settings', order: 1.5 },
+      { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', icon: 'keyboard', group: '1_settings', order: 2 },
+      { commandId: 'settings.openAppearance', title: 'Appearance…', icon: 'palette', group: '1_settings', order: 3 },
       // Same names as the commands and the title-bar buttons: the toggles act
       // on screen AREAS (parts are movable), see viewCommands.ts.
-      { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Left Area', group: '2_appearance', order: 1 },
-      { commandId: 'workbench.action.togglePanel', title: 'Toggle Bottom Area', group: '2_appearance', order: 2 },
-      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Bottom Area', group: '2_appearance', order: 2.5 },
-      { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Right Area', group: '2_appearance', order: 3 },
-      { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
-      { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },
-      { commandId: 'workbench.action.increaseTextSize', title: 'Increase Text Size', group: '2_textsize', order: 1 },
-      { commandId: 'workbench.action.decreaseTextSize', title: 'Decrease Text Size', group: '2_textsize', order: 2 },
-      { commandId: 'workbench.action.resetTextSize', title: 'Reset Text Size', group: '2_textsize', order: 3 },
-      { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
+      { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Left Area', icon: 'panel-left', group: '2_appearance', order: 1 },
+      { commandId: 'workbench.action.togglePanel', title: 'Toggle Bottom Area', icon: 'panel-bottom', group: '2_appearance', order: 2 },
+      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Bottom Area', icon: 'maximize-2', group: '2_appearance', order: 2.5 },
+      { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Right Area', icon: 'panel-right', group: '2_appearance', order: 3 },
+      { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', icon: 'rectangle-horizontal', group: '2_appearance', order: 4 },
+      { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', icon: 'focus', group: '2_appearance', order: 5 },
+      { commandId: 'workbench.action.increaseTextSize', title: 'Increase Text Size', icon: 'a-arrow-up', group: '2_textsize', order: 1 },
+      { commandId: 'workbench.action.decreaseTextSize', title: 'Decrease Text Size', icon: 'a-arrow-down', group: '2_textsize', order: 2 },
+      { commandId: 'workbench.action.resetTextSize', title: 'Reset Text Size', icon: 'rotate-ccw', group: '2_textsize', order: 3 },
+      { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', icon: 'wrap-text', group: '3_editor', order: 1, when: 'activeEditor' },
     ]));
 
     // Register dropdown items for File menu
@@ -100,34 +116,34 @@ export class MenuBuilder extends Disposable {
       // A page is the app's own document, so it leads; a text file is second.
       // Its Ctrl+N only applies with the pages sidebar focused; the global
       // Ctrl+N is New Text File, so no hint here rather than a wrong one.
-      { commandId: 'canvas.newPage', title: 'New Page', group: '1_new', order: 0, keybinding: '' },
-      { commandId: 'file.newTextFile', title: 'New Text File', group: '1_new', order: 1 },
-      { commandId: 'workbench.action.quickOpen', title: 'Go to File…', group: '2_open', order: 0 },
-      { commandId: 'file.openFile', title: 'Open File…', group: '2_open', order: 1 },
-      { commandId: 'workspace.openFolder', title: 'Open Folder…', group: '2_open', order: 2 },
-      { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '2_open', order: 3 },
-      { commandId: 'workspace.addFolderToWorkspace', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
-      { commandId: 'workspace.saveAs', title: 'Save Workspace As…', group: '3_workspace', order: 2 },
-      { commandId: 'workspace.rename', title: 'Rename Workspace…', group: '3_workspace', order: 3 },
-      { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', group: '3_workspace', order: 4 },
-      { commandId: 'file.save', title: 'Save', group: '4_save', order: 1, when: 'activeEditor' },
-      { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2, when: 'activeEditor' },
-      { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3, when: 'activeEditor' },
-      { commandId: 'file.revert', title: 'Revert File', group: '5_close', order: 1, when: 'activeEditorIsDirty' },
-      { commandId: 'workbench.action.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2, when: 'activeEditor' },
-      { commandId: 'workspace.closeFolder', title: 'Close Folder', group: '5_close', order: 3, when: 'workspaceFolderCount > 0' },
-      { commandId: 'workspace.closeWindow', title: 'Close Window', group: '5_close', order: 4 },
+      { commandId: 'canvas.newPage', title: 'New Page', icon: 'file-plus', group: '1_new', order: 0, keybinding: '' },
+      { commandId: 'file.newTextFile', title: 'New Text File', icon: 'file-text', group: '1_new', order: 1 },
+      { commandId: 'workbench.action.quickOpen', title: 'Go to File…', icon: 'search', group: '2_open', order: 0 },
+      { commandId: 'file.openFile', title: 'Open File…', icon: 'file', group: '2_open', order: 1 },
+      { commandId: 'workspace.openFolder', title: 'Open Folder…', icon: 'folder-open', group: '2_open', order: 2 },
+      { commandId: 'workspace.openRecent', title: 'Open Recent…', icon: 'history', group: '2_open', order: 3 },
+      { commandId: 'workspace.addFolderToWorkspace', title: 'Add Folder to Workspace…', icon: 'folder-plus', group: '3_workspace', order: 1 },
+      { commandId: 'workspace.saveAs', title: 'Save Workspace As…', icon: 'folder-pen', group: '3_workspace', order: 2 },
+      { commandId: 'workspace.rename', title: 'Rename Workspace…', icon: 'pencil', group: '3_workspace', order: 3 },
+      { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', icon: 'copy', group: '3_workspace', order: 4 },
+      { commandId: 'file.save', title: 'Save', icon: 'save', group: '4_save', order: 1, when: 'activeEditor' },
+      { commandId: 'file.saveAs', title: 'Save As…', icon: 'file-pen', group: '4_save', order: 2, when: 'activeEditor' },
+      { commandId: 'file.saveAll', title: 'Save All', icon: 'save-all', group: '4_save', order: 3, when: 'activeEditor' },
+      { commandId: 'file.revert', title: 'Revert File', icon: 'rotate-ccw', group: '5_close', order: 1, when: 'activeEditorIsDirty' },
+      { commandId: 'workbench.action.closeActiveEditor', title: 'Close Editor', icon: 'x', group: '5_close', order: 2, when: 'activeEditor' },
+      { commandId: 'workspace.closeFolder', title: 'Close Folder', icon: 'folder-x', group: '5_close', order: 3, when: 'workspaceFolderCount > 0' },
+      { commandId: 'workspace.closeWindow', title: 'Close Window', icon: 'square-x', group: '5_close', order: 4 },
     ]));
 
     // Register dropdown items for Edit menu
     this._register(this._titlebar.registerMenuBarDropdownItems('edit', [
-      { commandId: 'edit.undo', title: 'Undo', group: '1_undo', order: 1, when: 'activeEditor' },
-      { commandId: 'edit.redo', title: 'Redo', group: '1_undo', order: 2, when: 'activeEditor' },
-      { commandId: 'edit.cut', title: 'Cut', group: '2_clipboard', order: 1, when: 'activeEditor' },
-      { commandId: 'edit.copy', title: 'Copy', group: '2_clipboard', order: 2, when: 'activeEditor' },
-      { commandId: 'edit.paste', title: 'Paste', group: '2_clipboard', order: 3, when: 'activeEditor' },
-      { commandId: 'edit.find', title: 'Find', group: '3_find', order: 1, when: 'activeEditor' },
-      { commandId: 'edit.replace', title: 'Replace', group: '3_find', order: 2, when: 'activeEditor' },
+      { commandId: 'edit.undo', title: 'Undo', icon: 'undo-2', group: '1_undo', order: 1, when: 'activeEditor' },
+      { commandId: 'edit.redo', title: 'Redo', icon: 'redo-2', group: '1_undo', order: 2, when: 'activeEditor' },
+      { commandId: 'edit.cut', title: 'Cut', icon: 'scissors', group: '2_clipboard', order: 1, when: 'activeEditor' },
+      { commandId: 'edit.copy', title: 'Copy', icon: 'copy', group: '2_clipboard', order: 2, when: 'activeEditor' },
+      { commandId: 'edit.paste', title: 'Paste', icon: 'clipboard', group: '2_clipboard', order: 3, when: 'activeEditor' },
+      { commandId: 'edit.find', title: 'Find', icon: 'search', group: '3_find', order: 1, when: 'activeEditor' },
+      { commandId: 'edit.replace', title: 'Replace', icon: 'replace', group: '3_find', order: 2, when: 'activeEditor' },
     ]));
 
     // Register dropdown items for Tools menu
@@ -135,28 +151,29 @@ export class MenuBuilder extends Disposable {
       // A launcher for the tools, then the place to manage them. Optional
       // tools add themselves while they run (contributes.menus
       // "menubar/tools", setToolsMenuItems): none is listed here.
-      { commandId: 'dashboard.open', title: 'Dashboard', group: '1_open', order: 0 },
-      { commandId: 'tools.showInstalled', title: 'Tools and Extensions', group: '9_manage', order: 1 },
+      { commandId: 'dashboard.open', title: 'Dashboard', icon: 'layout-dashboard', group: '1_open', order: 0 },
+      { commandId: 'tools.showInstalled', title: 'Tools and Extensions', icon: 'blocks', group: '9_manage', order: 1 },
     ]));
 
     // Register dropdown items for Help menu
     this._register(this._titlebar.registerMenuBarDropdownItems('help', [
-      { commandId: 'welcome.openWelcome', title: 'Welcome', group: '1_welcome', order: 1 },
-      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '2_commands', order: 1 },
-      { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', group: '2_commands', order: 2 },
+      { commandId: 'welcome.openWelcome', title: 'Welcome', icon: 'home', group: '1_welcome', order: 1 },
+      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', icon: 'search', group: '2_commands', order: 1 },
+      { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', icon: 'keyboard', group: '2_commands', order: 2 },
       // Versions, tools on, the model and recent errors, scrubbed of paths and keys.
-      { commandId: 'workbench.action.copyDiagnostics', title: 'Copy Diagnostics', group: '3_report', order: 1 },
+      { commandId: 'workbench.action.copyDiagnostics', title: 'Copy Diagnostics', icon: 'clipboard-list', group: '3_report', order: 1 },
     ]));
 
     console.log('[MenuBuilder] Default menu bar items registered (%d menus)', defaultMenus.length);
   }
 
   /** The Tools menu entries running tools contributed; replaces the last set. */
-  setToolsMenuItems(items: readonly { commandId: string; title: string }[]): void {
+  setToolsMenuItems(items: readonly { commandId: string; title?: string; manifest?: { readonly name: string; readonly contributes?: ToolIconSource } }[]): void {
     this._toolsMenuItems?.dispose();
-    const sorted = [...items].sort((a, b) => a.title.localeCompare(b.title));
+    const named = items.map((it) => ({ commandId: it.commandId, title: it.title ?? it.manifest?.name ?? it.commandId, icon: toolMenuIcon(it.manifest?.contributes) }));
+    named.sort((a, b) => a.title.localeCompare(b.title));
     this._toolsMenuItems = this._titlebar.registerMenuBarDropdownItems('tools',
-      sorted.map((it, i) => ({ commandId: it.commandId, title: it.title, group: '1_open', order: i + 1 })));
+      named.map((it, i) => ({ ...it, group: '1_open', order: i + 1 })));
   }
   private _toolsMenuItems: IDisposable | undefined;
 

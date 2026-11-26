@@ -3215,8 +3215,8 @@ export class Workbench extends Layout {
     // (contributes.menus "menubar/tools"); a tool turned off leaves it.
     const syncToolsMenu = (): void => {
       this._menuBuilder?.setToolsMenuItems(menuContribution.getMenuItems('menubar/tools').map((m) => ({
-        commandId: m.commandId,
-        title: m.title ?? registry.getById(m.toolId)?.description.manifest.name ?? m.commandId,
+        commandId: m.commandId, title: m.title,
+        manifest: registry.getById(m.toolId)?.description.manifest,
       })));
     };
     this._register(menuContribution.onDidChangeMenu((loc) => { if (loc === 'menubar/tools') syncToolsMenu(); }));

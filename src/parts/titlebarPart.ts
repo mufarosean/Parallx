@@ -42,6 +42,8 @@ export interface MenuBarItem {
 export interface MenuBarDropdownItem {
   readonly commandId: string;
   readonly title: string;
+  /** Registry icon id drawn in front of the title. */
+  readonly icon?: string;
   readonly keybinding?: string;
   readonly group?: string;
   readonly order?: number;
@@ -324,6 +326,7 @@ export class TitlebarPart extends Part {
         group: item.group,
         order: item.order,
         disabled,
+        renderIcon: item.icon ? (seat: HTMLElement) => { seat.appendChild(createIconElement(item.icon!, 14)); } : undefined,
       };
     });
 
