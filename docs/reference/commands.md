@@ -340,10 +340,12 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `tools.showInstalled` | Tools: Show Tools and Extensions | tool-gallery |  |  |  |
 | `welcome.openWelcome` | Welcome: Show Welcome Page | welcome |  |  |  |
 | `worksheet.addTag` | Worksheets: Add Tag to Problem | worksheet |  |  |  |
+| `worksheet.askAboutSelection` | Worksheets: Ask About the Selected Cells | worksheet |  |  |  |
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |
 | `worksheet.bringSheetForward` | Worksheets: Work on This Sheet | worksheet |  |  |  |
 | `worksheet.dashboard` | Worksheets: Open Dashboard | worksheet |  |  |  |
 | `worksheet.exportSheet` | Worksheets: Export Sheet to Excel | worksheet |  |  |  |
+| `worksheet.formatCells` | Worksheets: Format the Selected Cells | worksheet |  |  |  |
 | `worksheet.generate` | Worksheets: Generate Items | worksheet |  |  |  |
 | `worksheet.generateFromFile` | Worksheets: Generate Items From a File… | worksheet |  |  |  |
 | `worksheet.importExcel` | Worksheets: Import from Excel | worksheet |  |  |  |
@@ -359,6 +361,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `worksheet.removeTag` | Worksheets: Remove Tag From Problem | worksheet |  |  |  |
 | `worksheet.reviewPaper` | Worksheets: Review a Paper | worksheet |  |  |  |
 | `worksheet.settings` | Worksheets: Settings | worksheet |  |  |  |
+| `worksheet.showSheetMenu` | Worksheets: Open a Toolbar Menu | worksheet |  |  |  |
 | `worksheet.startRoster` | Worksheets: Start Today's Roster | worksheet |  |  |  |
 | `workspaceGraph.open` | Open Full Graph | workspace-graph | Workspace Graph |  |  |
 | `workspaceGraph.rebuildConceptualLinks` | Rebuild Conceptual Links | workspace-graph | Workspace Graph |  |  |

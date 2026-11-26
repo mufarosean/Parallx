@@ -34,6 +34,7 @@ const NOT_COUNTED = [
   'src/ui/kit.ts', 'src/ui/block.ts', 'src/ui/choiceGrid.ts', 'src/ui/stackedBar.ts', 'src/ui/scene.ts', 'src/ui/toggle.ts', 'src/ui/inputBox.ts', 'src/ui/dropdown.ts',
   'src/ui/slider.ts', 'src/ui/tabBar.ts', 'src/ui/segmentedControl.ts', 'src/ui/contextMenu.ts',
   'src/ui/dateTimeField.ts', 'src/ui/undoToast.ts', 'src/ui/link.ts',
+  'src/ui/toolbar.ts', // the kit's toolbar (2026-11-26): a row's container, separators and spacer; its controls are kit buttons
   'src/ui/externalLinks.ts', // the window's link guard, not a control
 ];
 

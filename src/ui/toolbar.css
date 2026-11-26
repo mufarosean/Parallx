@@ -1,0 +1,59 @@
+/* toolbar.css — the kit's toolbar (toolbar.ts): one row of a surface's controls. */
+
+.px-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: var(--px-space-1) var(--px-space-2);
+  background: var(--px-bg);
+  border-bottom: 1px solid var(--px-part-border);
+  /* A row too narrow for its controls goes on to a second line: none is ever hidden or out of reach. */
+  flex-wrap: wrap;
+  row-gap: 2px;
+  font-family: var(--px-font-ui);
+}
+.px-toolbar[hidden] { display: none; }
+
+.px-toolbar > * { flex: 0 0 auto; }
+
+/* A lifted bar that comes to a selection: the same sheet a menu is. */
+.px-toolbar--float {
+  position: absolute;
+  z-index: var(--px-z-popup);
+  max-width: calc(100% - 2 * var(--px-space-2));
+  padding: var(--px-space-1);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg);
+}
+
+/* What the toolbar works on takes the rest of the column. */
+.px-toolbar-body { flex: 1 1 auto; min-width: 0; min-height: 0; }
+
+.px-toolbar__sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--px-space-1);
+  background: var(--px-border);
+}
+
+.px-toolbar__spacer { flex: 1 1 auto; }
+
+/* On: the control's own state, said with the accent as a pressed chip is. */
+.px-toolbar .px-btn[aria-pressed="true"] {
+  background: var(--px-accent-soft);
+  color: var(--px-accent-text);
+}
+.px-toolbar .px-btn[aria-pressed="true"]:hover:not(:disabled) { background: var(--px-accent-soft); }
+
+/* A button that opens a menu: its chevron sits close, and quieter than its words. */
+.px-toolbar .px-toolbar__menu { gap: 2px; }
+.px-toolbar .px-toolbar__menu.px-btn--icon { width: auto; padding: 0 var(--px-space-1); }
+.px-toolbar__chevron { opacity: 0.7; }
+
+/* A finger gets the larger control: 32 px each way. */
+[data-input-modality="touch"] .px-toolbar .px-btn { min-height: var(--px-control-h-lg); }
+[data-input-modality="touch"] .px-toolbar .px-btn--icon:not(.px-toolbar__menu) { width: var(--px-control-h-lg); }

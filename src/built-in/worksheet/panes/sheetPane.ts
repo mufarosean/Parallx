@@ -19,6 +19,7 @@ import { fmtSeconds } from '../labels.js';
 import { openWorksheet, showMenu } from '../actions.js';
 import { reviewInChat } from '../chatReview.js';
 import { AUTOSAVE_MS, appearanceListeners, decimalsListeners, scratchCache, workingCache, appIsDark, getDisplayDecimals, getSheetAppearance, loadUniverModule, paneOnScreen, parseWorkbook, quizSessionIdFor, resolveSheetDark, setSheetAppearance, state, type SheetAppearance } from '../state.js';
+import { mountSheetToolbar, type ISheetToolbar } from './sheetToolbar.js';
 import { el, iconBtn, makeSheetThemeButton, markBtn, paintSheetThemeButton, starBtn } from '../widgets.js';
 
 // ── Sheet panes (scratch + item player) ─────────────────────────────────────
@@ -37,6 +38,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
   container.appendChild(root);
 
   let host: IWorksheetHost | null = null;
+  let toolbar: ISheetToolbar | null = null;
   /** Where the user was when the tab was switched away; applied once the engine has painted. */
   let pendingView: SheetViewState | null = null;
   const applyPendingView = (): void => {
@@ -117,6 +119,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     const mod = await loadUniverModule();
     if (disposed) return;
     loading.remove();
+    toolbar?.dispose(); toolbar = null;
     host?.dispose();
     sheetHost.replaceChildren();
     host = mod.createWorksheetHost({
@@ -127,6 +130,8 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     });
     // Probe hook (tests/probes): the live host, reachable from the DOM.
     (sheetHost as unknown as { __wsHost?: unknown }).__wsHost = host;
+    // The app's toolbar over the sheet. A practice sheet is held to the exam's limits, so it has no Sort or Filter.
+    toolbar = mountSheetToolbar(sheetHost, host.format, { free: false, title: item?.title ?? 'Scratch Sheet' });
     void host.whenRendered().then(() => { readyResolve(); applyPendingView(); });
     // Unhiding the solution columns by hand is the same act as Reveal
     // Solution: the button follows the sheet, whichever way the columns moved.
@@ -760,6 +765,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       editedSub?.dispose();
       changedSub?.dispose();
       modeObserver.disconnect();
+      toolbar?.dispose(); toolbar = null;
       host?.dispose();
       host = null;
       root.remove();

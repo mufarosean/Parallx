@@ -431,9 +431,9 @@ Decided by Claude for this piece, for him to overrule:
   name.
 - A new sheet goes in the workspace's first folder. Choosing the folder
   (New Sheet on a folder in the Explorer) is not built.
-- The sheet still wears the engine's ribbon; the toolbar of 2B is the
-  next piece. The keys that do nothing and the formula bar are not fixed
-  yet either.
+- The toolbar of 2B is built (2026-11-26, item 21 under "Done from this
+  order"): the engine's ribbon is gone. The keys that do nothing and
+  the formula bar are not fixed yet.
 - Not handled yet: the file changed by something else while it is open
   (the tab goes on showing its own version; an untouched tab leaves the
   other program's version alone, an edited one saves over it); a text
@@ -4032,7 +4032,8 @@ tab now.
 | 18 | Home and Welcome as one page | Not started: the bar's site cannot be read from the cloud environment |
 | 19 | Study piece B's review | Done |
 | 20 | Study piece C's remainder | Waiting on him: how a phase names its units |
-| 21 | Worksheets' toolbar, then its list | Not started |
+| 21 | Worksheets' toolbar, and the checks left open on 2026-11-16 | Done |
+| 21, after | The rest of Worksheets' list, a piece each (named under item 21) | Not started |
 | 22 | Generative edits | Not started: needs his machine (his photos, his card) |
 | 23 | Where tools look unlike each other, measured | Done |
 
@@ -4115,7 +4116,7 @@ checks, the builds stay one to a session):**
     questions made overnight). **Waiting on him.**
 21. Worksheets: the toolbar, then the rest of its list, a piece each;
     and the checks left open when its session stopped on 2026-11-16.
-    **Not started.**
+    **The toolbar and the checks: done. The rest: not started.**
 22. Generative edits: Recipes, Beyond The Edges, the two proposals;
     and the image editor probe's 34 failures. **Not started.**
 23. "Where tools look unlike each other": measure again now that the
@@ -4661,14 +4662,122 @@ his to open.**
   machine" is in its own words; nothing here can show it working. It is
   with "Needs him or his machine".
 
-**Item 21, Worksheets: the toolbar, then the rest of its list. Not
-started.** The toolbar (his 2B: one toolbar built from the kit in place
-of the spreadsheet engine's ribbon, with what it does not show under
-More, and 2C's bar for touch) is a build of its own size: every control
-has to be wired to the engine's commands and its state read back, and
-the keyboard audit's one standing exception hangs on it. This run was
-already carrying seventeen items; it was not begun half-way. The checks
-left open on 2026-11-16 were not looked at either.
+**Item 21, Worksheets: the toolbar. Done. The rest of its list is not
+started (each is its own piece, named at the end).**
+- *What was there:* every sheet wore the spreadsheet engine's own ribbon:
+  four tabs (Start, Insert, Formulas, Data), white with Arial whatever
+  the app's theme, its controls the engine's. The keyboard audit's one
+  standing exception was a control of that ribbon Tab did not reach.
+- *Built, his 2B:* one row over the grid, the app's own, on every sheet
+  (a sheet file, the Scratch Sheet, a practice problem, a quiz). In the
+  drawing's order: Undo, Redo; the number format (named for the format
+  the cell has) and Percent; Bold, Italic, Underline, Text Colour, Fill
+  Colour, Borders; Alignment, Wrap Text, Merge Cells; Sum (with
+  Average, Count, Largest, Smallest and All Functions…), Sort, Filter,
+  Freeze; at the far end Ask and More. A control that is on says so
+  (Bold on a bold cell, Wrap, Merge, Filter), read back from the engine
+  after every change. The row follows the app's light or dark. Too
+  narrow for its controls, it goes on to a second line; nothing is
+  hidden. The engine's ribbon is switched off.
+- *Nothing the ribbon had is gone.* Its menu table was read entry by
+  entry against the new menus. Under More: font, size (with Larger and
+  Smaller), strikethrough, currency, vertical alignment, rotation (and
+  stacked), what a long text does (runs over, wraps, is cut), the three
+  merges and Unmerge, format painter, the two clears, Text to Number,
+  an image over the cells or in a cell, Protect Cells. Borders also
+  offers the line (six) and its colour. The formula bar, the sheet's
+  tabs and the zoom are still the engine's.
+- *New with it:* Sort (smallest or largest first by the column the cell
+  is in, over the selection or the block of data around the cell, a
+  heading row staying on top; Custom Sort… for more) and Filter, on a
+  sheet of one's own. The engine's parts for both were installed and
+  never switched on. A practice sheet has neither, as the exam tool has
+  neither; its right-click menu is as it was. A sheet of one's own also
+  shows the sum, average and count of the selection in its bottom row.
+- *Ask* attaches the selected cells to the chat as text (their range
+  and the sheet's name on the chip) and sends nothing.
+- *His 2C, for a finger:* a short bar comes to the selection when a
+  finger is used (number format, Bold, Italic, Fill, Sum, Sort, Filter,
+  Ask, More), each control 32 px, and goes when the mouse or the keys
+  are used again. The row on top stays.
+- *How it is made:* a toolbar is new in the kit (`src/ui/toolbar.ts`: a
+  named row whose buttons are kit buttons and Tab stops, with Left,
+  Right, Home and End walking it). Each control runs one of three
+  commands (`worksheet.formatCells`, `worksheet.showSheetMenu`,
+  `worksheet.askAboutSelection`), so none has a handler of its own. The
+  engine's side is one small bridge (`univerFormat.ts`) that uses the
+  engine's own commands, so an act is the same act the ribbon did.
+- **A check changed, with the reason:** `tests/unit/rawDomRatchet.test.ts`
+  lists the kit's components, the one place hand-built DOM belongs;
+  `src/ui/toolbar.ts` is added to that list beside the segmented
+  switch, the toggle and the rest. No baseline was raised.
+- *Decided, for him to overrule:* a practice sheet gets the whole row
+  but Sort and Filter. The colours in the two colour menus are seven
+  named ones (a sheet's colours are saved in the file and go to Excel,
+  so they are fixed values, not theme colours); the engine's free
+  colour picker is not offered. On a narrow pane the engine's own
+  bottom row crowds its sum, average and count over the sheet tabs; that
+  row is the engine's and was left.
+- *Seen and left:* the engine's function to find "the block of data
+  around a cell" reaches one row and column out, no further (a sort
+  left the last row behind); the engine's own block finder is used
+  instead. A total row directly under a block is sorted with it, as in
+  Excel.
+- *Checked:* `tests/probes/sheet-toolbar-probe.mjs` (new, 76 of 76 on
+  the built app, run twice: every control worked with the mouse, the
+  row walked and pressed by keys, a finger for the bar, each result
+  read from the engine's saved workbook and then from the file on
+  disk); `tests/unit/sheetToolbar.test.ts` (new, 9); the keyboard audit
+  on the three Worksheets screens with its finger and popup passes: 0
+  of every kind, so the standing exception is gone; and what is listed
+  under "Checks" just below.
+
+- *Checks, on the built app.* The touch-drag probe: all ok. The visual
+  probe on Worksheets: nothing rose. `worksheet-screens-probe.mjs` (the
+  quiz's sheet under the new row): 0 failed. `sheet-cells-probe.mjs`
+  (the sheet beside Excel, 121 checks): its part that reads what the
+  toolbar offers read the engine's ribbon, so it now reads the app's
+  row and its menus; 85 the same as Excel, 14 differ, 16 missing (79,
+  14 and 22 against the dead ribbon). Typecheck; the unit suite.
+- *The checks left open on 2026-11-16.* `sheet-file-verify-probe.mjs`
+  was to be run alone: it showed 10 failures then. Run alone now:
+  100 of 100. (One check failed until the Ctrl+B fault under it was
+  fixed, next.) The keyboard and touch audits on the newest build are
+  the ones above; the last keyboard run also took a page: 0.
+- *Found by that probe, a fault of the app's (fixed, its own commit):*
+  Ctrl+B. In a sheet it made the cell bold and also hid the sidebar; in
+  a page it hid the sidebar and made nothing bold. The app's own
+  binding (Toggle Left Area) took the key before the page or the sheet
+  saw it. A surface that has bold, italic and underline now keeps those
+  three keys while the keys are in it (`keybindingService.ts`; the page
+  editor and the sheet say so with one attribute; three unit tests; in
+  the toolbar probe for a sheet and for a page). Outside a page or a
+  sheet Ctrl+B toggles the left area as before; inside one, the title
+  bar's button and View do.
+- *Two older checks that do not describe the app, measured, not
+  changed:* `sheet-file-fixes-probe.mjs` (written for the first fix
+  commit; the list said on 2026-11-16 that it no longer describes the
+  app) fails 29 of 248 on this build and 33 on the commit before the
+  toolbar, with the same three page errors on both (a sheet file with
+  no sheets in it, older than this piece). The two differ in a few
+  checks that depend on where its typed entry lands; no failure is the
+  toolbar's. `tests/e2e/97-worksheet.spec.ts` fails all 12 of its tests
+  on both builds, the first at "the activity bar has a Worksheets
+  entry": it was written for the frame before the sidebar was
+  restacked. **For him:** whether these two are brought up to date (a
+  piece of their own) or retired.
+
+- *The rest of Worksheets' list, not started, a piece each:* the keys
+  that do nothing (Home, Ctrl+Home, Ctrl+End, Page Up and Down,
+  Shift+Space, Ctrl+Space, F5, the number-format keys, Ctrl+1); typing
+  in the formula bar; find and replace on a sheet; conditional
+  formatting, dropdown lists, tables, notes and links (engine parts
+  installed, not on); a sheet in a page (his 3A, then 3C); the problem
+  program made generic and moved (his 4i, 4A); working an item (5B, and
+  5C for timed sessions); and what the first piece left: a file changed
+  by another program while open, growing by scrolling, the chat and the
+  search index reading a sheet's cells, an icon of its own, Edit As
+  Sheet on an .xlsx, New Sheet on a folder.
 
 **Item 22, Generative edits: Recipes, Beyond The Edges, the two
 proposals, and the image editor probe's 34 failures. Not started: it

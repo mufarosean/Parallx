@@ -40,6 +40,7 @@ import { registerWorkProvider } from '../../services/workProviders.js';
 import { worksheetWorkProvider } from './workProvider.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
 import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
+import { ASK_COMMAND, FORMAT_COMMAND, MENU_COMMAND, askAboutSelection, formatCells, showSheetMenu } from './panes/sheetToolbar.js';
 import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilderWith, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
 import { createBankPane, readPendingRecipes } from './panes/bankPane.js';
 import { createExcelImportPane } from './panes/excelImportPane.js';
@@ -156,6 +157,10 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.bringSheetForward', (paneId?: unknown) => bringSheetForward(paneId)),
   );
+  // The sheet's toolbar (panes/sheetToolbar.ts): each of its controls runs one of these three.
+  context.subscriptions.push(api.commands.registerCommand(FORMAT_COMMAND, (action?: unknown) => formatCells(action)));
+  context.subscriptions.push(api.commands.registerCommand(MENU_COMMAND, (name?: unknown) => showSheetMenu(name)));
+  context.subscriptions.push(api.commands.registerCommand(ASK_COMMAND, () => askAboutSelection()));
 
   context.subscriptions.push(
     api.views.registerViewProvider('view.worksheet', {

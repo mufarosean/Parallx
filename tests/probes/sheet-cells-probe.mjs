@@ -378,19 +378,22 @@ try {
     await key('Escape');
     await shot('format-decimals.png');
     record('A long decimal is shown short and kept whole', 'General shows up to about ten digits', 'see format-decimals.png (the app shows four decimals by its own setting)', 'note');
-    // What the ribbon offers, read from the engine's own command ids on each tab.
-    const tabs = await page.evaluate(() => [...document.querySelectorAll('.ws-pane__sheet [role="tab"], .ws-pane__sheet .univer-ribbon-group-btn, .ws-pane__sheet [class*="ribbon"] button')].map((e) => (e.textContent ?? '').trim()).filter(Boolean).slice(0, 12));
-    const ribbon = {};
-    for (const label of ['Start', 'Insert', 'Formulas', 'Data', 'View', 'Others']) {
-      const hit = await page.evaluate((label) => { const el = [...document.querySelectorAll('.ws-pane__sheet *')].find((e) => e.childElementCount === 0 && (e.textContent ?? '').trim() === label && e.getBoundingClientRect().top < 160 && e.getBoundingClientRect().top > 100); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, label);
-      if (!hit) continue;
-      await page.mouse.click(hit.x, hit.y); await wait(500);
-      ribbon[label] = await page.evaluate(() => [...new Set([...document.querySelectorAll('.ws-pane__sheet [data-u-command]')].map((e) => e.getAttribute('data-u-command')))]);
-      await shot(`format-ribbon-${label.toLowerCase()}.png`);
+    // What the toolbar offers. It is the app's own row now (panes/sheetToolbar.ts; the engine's ribbon
+    // is switched off): the names of its controls, then the entries of each of its menus, opened by
+    // the command its button runs.
+    const controlNames = () => page.evaluate(() => [...document.querySelectorAll('.ws-toolbar button')].filter((b) => b.getClientRects().length).map((b) => b.title || b.getAttribute('data-parallx-title') || b.getAttribute('aria-label') || ''));
+    const offered = { controls: await controlNames() };
+    for (const name of ['number', 'textColor', 'fill', 'borders', 'align', 'sum', 'sort', 'freeze', 'more']) {
+      const opened = await run('worksheet.showSheetMenu', name).catch(() => false);
+      await wait(350);
+      if (!opened) continue;
+      offered[name] = await page.evaluate(() => [...document.querySelectorAll('.context-menu .context-menu-item-label')].map((e) => (e.textContent ?? '').trim()).filter(Boolean));
+      if (name === 'more') await shot('format-toolbar-more.png');
+      await key('Escape'); await wait(200);
     }
-    record('What the toolbar offers, tab by tab', 'n/a', JSON.stringify(ribbon), 'note', `Tabs seen: ${tabs.join(', ')}`);
-    const all = Object.values(ribbon).flat().join(' ');
-    for (const [name, re] of [['Sort', /sort/], ['Filter', /filter/], ['Find and replace', /find|replace/], ['Conditional formatting', /conditional/], ['Data validation (dropdown lists)', /validation/], ['Freeze rows or columns', /freeze/], ['Tables', /table/], ['Charts', /chart/], ['Comments or notes', /note|comment/], ['Links', /link/], ['Merge cells', /merge/], ['Wrap text', /wrap/], ['Number formats', /numfmt|currency|percent/], ['Borders', /border/], ['Images', /image/]]) {
+    record('What the toolbar offers, control by control and menu by menu', 'n/a', JSON.stringify(offered), 'note', `Controls: ${offered.controls.join(', ')}`);
+    const all = Object.values(offered).flat().join(' ').toLowerCase();
+    for (const [name, re] of [['Sort', /sort/], ['Filter', /filter/], ['Find and replace', /find|replace/], ['Conditional formatting', /conditional/], ['Data validation (dropdown lists)', /validation/], ['Freeze rows or columns', /freeze/], ['Tables', /table/], ['Charts', /chart/], ['Comments or notes', /note|comment/], ['Links', /link/], ['Merge cells', /merge/], ['Wrap text', /wrap/], ['Number formats', /number format|currency|percent/], ['Borders', /border/], ['Images', /image/]]) {
       record(`${name} in the toolbar`, 'present', re.test(all) ? 'present' : 'absent', re.test(all) ? 'same' : 'missing');
     }
   }

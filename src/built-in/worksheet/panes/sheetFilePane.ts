@@ -10,6 +10,8 @@
 
 import type { IWorksheetHost, SheetViewState } from '../univerHost.js';
 import { createEmptyState } from '../../../ui/kit.js';
+import { createToolbarBody } from '../../../ui/toolbar.js';
+import { mountSheetToolbar, type ISheetToolbar } from './sheetToolbar.js';
 import { readSheetText, saveSheetCopy, sheetFileExists, writeSheetText } from '../actions.js';
 import { parseSheetFile, serializeSheetFile, sheetTitle } from '../sheetFile.js';
 import { FREE_SHEET_LIMITS, SHEET_ON_SCREEN_KEY } from '../worksheetConstants.js';
@@ -107,9 +109,12 @@ export async function settleSheetFiles(): Promise<void> {
 
 export function createSheetFilePane(container: HTMLElement, filePath: string) {
   const title = sheetTitle(filePath);
-  // The engine mounts straight into the pane. `ws-pane__sheet` is the class its styles and the
-  // probes know a live sheet by, so the pane wears it only once the engine is in it.
+  // The pane is a column: the app's toolbar, then the element the engine mounts into.
+  // `ws-pane__sheet` is the class the engine's styles and the probes know a live sheet by, so
+  // that element is only there while the engine is in it.
   container.classList.add('ws-pane');
+  let sheetEl: HTMLElement | null = null;
+  let toolbar: ISheetToolbar | null = null;
 
   let host: IWorksheetHost | null = null;
   let disposed = false;
@@ -280,12 +285,15 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
     if (liveFilePane === self) liveFilePane = null;
     changedSub?.dispose();
     changedSub = null;
+    toolbar?.dispose();
+    toolbar = null;
     delete (container as unknown as { __wsHost?: unknown }).__wsHost;
-    container.classList.remove('ws-pane__sheet');
     const going = host;
     host = null;
     // Last: this frees the engine, and a waiting pane starts to open on that call.
     going?.dispose();
+    sheetEl?.remove();
+    sheetEl = null;
     return lastSave;
   };
 
@@ -339,15 +347,18 @@ export function createSheetFilePane(container: HTMLElement, filePath: string) {
       engineWatch?.dispose();
       notice?.remove();
       notice = null;
-      container.classList.add('ws-pane__sheet');
+      sheetEl = createToolbarBody(container, 'ws-pane__sheet');
       host = mod.createWorksheetHost({
-        container, snapshot: parsed.workbook, darkMode: appIsDark(), displayDecimals: getDisplayDecimals(), limits: FREE_SHEET_LIMITS,
+        container: sheetEl, snapshot: parsed.workbook, darkMode: appIsDark(), displayDecimals: getDisplayDecimals(), limits: FREE_SHEET_LIMITS,
         onFormulaError: (summary, detail) => { try { state.api?.activity?.note('formula error', `${title}: ${summary}`, detail); } catch { /* no journal */ } },
         onEngineFault: (summary, detail) => { try { state.api?.activity?.note('engine fault', `${title}: ${summary}`, detail); } catch { /* no journal */ } },
       });
       const mounted = host;
       // Probe hook (tests/probes): the live host, reachable from the DOM.
+      // On the sheet's element, and on the pane as before the pane had a toolbar of its own.
+      (sheetEl as unknown as { __wsHost?: unknown }).__wsHost = host;
       (container as unknown as { __wsHost?: unknown }).__wsHost = host;
+      toolbar = mountSheetToolbar(sheetEl, host.format, { free: true, title });
       liveSheets.push({ host, filePath });
       noteLiveSheets();
       liveFilePane = self;

@@ -1,6 +1,6 @@
 /* Worksheets — pane chrome around the Univer engine. */
 
-/* The spreadsheet in a Worksheets pane (ribbon, formula bar, sheet tabs and
+/* The spreadsheet in a Worksheets pane (formula bar, sheet tabs and
    the sheet's own menus) stands in for the exam's sheet, so it keeps one
    face whatever font the user picks in Appearance, as it keeps its own
    light look. Cells draw in their cell font (Arial, as on the exam). The
@@ -20,6 +20,12 @@
 
 .ws-pane__headerhost { flex: 0 0 auto; }
 
+/* The app's toolbar over the sheet (panes/sheetToolbar.ts). It follows the
+   app's light or dark, whatever the sheet under it wears. The bar that comes
+   to a finger's selection is placed against the pane. */
+.ws-pane { position: relative; }
+.ws-toolbar { flex: 0 0 auto; }
+
 .ws-pane__sheet {
   flex: 1;
   min-height: 0;
@@ -29,12 +35,6 @@
    above); its menus portal to the popup root, so it too. */
 .ws-pane__sheet,
 #ws-univer-popup-root { font-family: var(--px-worksheet-sheet-font); }
-
-/* Athena/Excel left-align the ribbon; Univer's classic ribbon centers both
-   the tab row and the icon row (univer-justify-center utilities). Scoped
-   overrides win on specificity. (User report: "why is everything centered?") */
-.ws-pane [data-u-comp="ribbon-header-menu"] [role="tablist"] { justify-content: flex-start; }
-.ws-pane [data-u-comp="ribbon-toolbar"] { justify-content: flex-start; }
 
 /* Neutral form-control baseline inside the engine. The app's bare-element
    input skin (px-controls, now :where-scoped) still applies wherever Univer

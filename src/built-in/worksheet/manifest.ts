@@ -20,7 +20,11 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
     menus: {
       'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }],
       // The palette offers the export only while there is a sheet file to export.
-      commandPalette: [{ command: 'worksheet.exportSheet', when: SHEET_ON_SCREEN_WHEN }, { command: 'worksheet.bringSheetForward', when: 'false' }],
+      commandPalette: [
+        { command: 'worksheet.exportSheet', when: SHEET_ON_SCREEN_WHEN }, { command: 'worksheet.bringSheetForward', when: 'false' },
+        // The toolbar's own: each needs the control it was pressed from (which act, which menu), so the palette does not list them.
+        { command: 'worksheet.formatCells', when: 'false' }, { command: 'worksheet.showSheetMenu', when: 'false' },
+      ],
       // Its sidebar's More Actions menu.
       'viewContainer/title': [
         { command: 'worksheet.newSheet', title: 'New Sheet…', group: '0_sheet', when: "activeViewContainer == 'worksheet-container'" },
@@ -44,6 +48,12 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: false, aiDescription: 'The button on a sheet file that is waiting for another sheet: the other saves and waits, and this one becomes the live sheet. Not run by hand.' },
       { id: 'worksheet.exportSheet', title: 'Worksheets: Export Sheet to Excel',
         aiInvocable: false, aiDescription: 'Save a copy of the sheet file on screen as .xlsx, values and formulas. The system asks where to save it.' },
+      { id: 'worksheet.formatCells', title: 'Worksheets: Format the Selected Cells',
+        aiInvocable: false, aiDescription: 'One act on the selected cells of the sheet on screen, as its toolbar does it. Argument: an object naming the act, such as { do: "bold" }, { do: "numberFormat", pattern: "0.00%" }, { do: "fill", color: "#fcf3bf" }, { do: "sort", ascending: true } or { do: "freeze", what: "row" }.' },
+      { id: 'worksheet.showSheetMenu', title: 'Worksheets: Open a Toolbar Menu',
+        aiInvocable: false, aiDescription: 'Opens one of the sheet toolbar\'s menus under its button. Argument: number, textColor, fill, borders, align, sum, sort, freeze or more.' },
+      { id: 'worksheet.askAboutSelection', title: 'Worksheets: Ask About the Selected Cells',
+        aiInvocable: false, aiDescription: 'Attaches the selected cells of the sheet on screen to the chat, with nothing sent, so a question can be asked about them.' },
       { id: 'worksheet.generate', title: 'Worksheets: Generate Items',
         aiInvocable: true, aiDescription: 'Generate practice items from study material.' },
       { id: 'worksheet.generateFromFile', title: 'Worksheets: Generate Items From a File…',

@@ -31,6 +31,8 @@ import { writeSnapshotXlsx } from './xlsxExport.js';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
 import { roundForDisplay } from './displayNumbers.js';
+import { createSheetFormat, freeSheetParts } from './univerFormat.js';
+import type { ISheetFormat } from './sheetFormat.js';
 import { restoreAbsoluteMarkers } from './formulaRefs.js';
 import { applyFormulaEngineGuards } from './formulaEngineGuards.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
@@ -127,6 +129,8 @@ function withUnitId<T extends Partial<IWorkbookData>>(data: T, from: string, to:
 }
 
 export interface IWorksheetHost {
+  /** What the sheet's toolbar reads and asks (sheetFormat.ts). */
+  readonly format: ISheetFormat;
   /** Serializable full-workbook state (cells, formats, formulas). */
   getSnapshot(): IWorkbookData | null;
   /** Keep what is being typed in a cell (as clicking elsewhere would); false when no cell is being edited. */
@@ -234,6 +238,7 @@ function ensurePopupRoot(): void {
 }
 
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
+  const free = (opts.limits ?? EXAM_LIMITS).functions === null; const parts = freeSheetParts(free);
   ensurePopupRoot(); ensureUniverEditorExits();
   // Ctrl+= / - / 0 zoom the cells (as Excel does): the app's Text size keys step aside
   // while focus is in it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
@@ -245,12 +250,14 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     // sheet-tab footer is ON. (Athena itself has no tabs — deliberate
     // deviation, settled 2026-08-11.)
     footer: true,
-    // No selection-statistics strip (not part of the exam surface).
-    statusBarStatistic: false,
-    // Real formula bar + ribbon ARE part of the exam surface.
+    // The sum, average and count of the selection, in the bottom row: on a
+    // sheet of one's own. Not part of the exam surface.
+    statusBarStatistic: free,
+    // The formula bar is the engine's. The toolbar is the app's own
+    // (panes/sheetToolbar.ts, through `format` below), so the engine's ribbon is off.
     formulaBar: true,
     header: true,
-    toolbar: true,
+    toolbar: false,
     contextMenu: true,
     // Reaches the UI plugin (IUniverUIConfig.popupRootId) even though the
     // preset's Pick<> doesn't re-export it — hence the cast. Toolbar menus
@@ -261,14 +268,14 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   const created: { univer: Univer; univerAPI: FUniver } = createUniver({
     locale: LocaleType.EN_US,
     locales: {
-      [LocaleType.EN_US]: mergeLocales(UniverPresetSheetsCoreEnUS as Record<string, unknown>, UniverPresetSheetsDrawingEnUS as Record<string, unknown>),
+      [LocaleType.EN_US]: mergeLocales(UniverPresetSheetsCoreEnUS as Record<string, unknown>, UniverPresetSheetsDrawingEnUS as Record<string, unknown>, ...parts.locales),
     },
     // Default LIGHT: the real Athena sheet is always white, so exam fidelity
     // wins unless the pane's sheet-appearance setting says otherwise.
     darkMode: opts.darkMode ?? false,
     presets: [
       UniverSheetsCorePreset(sheetsPresetConfig as unknown as Parameters<typeof UniverSheetsCorePreset>[0]),
-      UniverSheetsDrawingPreset(),
+      UniverSheetsDrawingPreset(), ...(parts.presets as ReturnType<typeof UniverSheetsDrawingPreset>[]),
     ],
   });
 
@@ -395,6 +402,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // (probe, 2026-09-08). The shortcut service runs the highest-priority match
   // for a binding, so a plain move steps in front of it.
   const engineRegistrations: { dispose(): void }[] = [];
+  const format = createSheetFormat(univer, univerAPI, () => disposed); engineRegistrations.push(format);
   if (limits.functions) engineRegistrations.push(holdToFunctions(univer, limits.functions));
 
   // A formula that points at another cell (=B7) came back wearing that
@@ -951,6 +959,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     }
   };
   return {
+    format,
     getSnapshot,
     commitEdit: () => { try { return !disposed && endEdit(); } catch { return false; } },
     setCellText,
