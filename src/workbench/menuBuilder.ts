@@ -4,16 +4,14 @@
 // Owns:
 //   - Default menu bar item registration (File, Edit, View, Go, Tools, Help)
 //   - The bell in the title bar
-//   - The column's last rows (Tools and Extensions, Settings)
 
 import { Disposable, type IDisposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IKeybindingService } from '../services/serviceTypes.js';
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
-import { createButton, declareControl } from '../ui/kit.js';
+import { declareControl } from '../ui/kit.js';
 import { $ } from '../ui/dom.js';
 import type { TitlebarPart } from '../parts/titlebarPart.js';
-import type { ActivityBarPart } from '../parts/activityBarPart.js';
 import type { NotificationCenter } from './notificationCenter.js';
 import type { KeybindingService } from '../services/keybindingService.js';
 import { getIcon } from '../ui/iconRegistry.js';
@@ -22,7 +20,6 @@ import { getIcon } from '../ui/iconRegistry.js';
 
 export interface MenuBuilderDeps {
   readonly titlebar: TitlebarPart;
-  readonly activityBarPart: ActivityBarPart;
   readonly services: ServiceCollection;
 }
 
@@ -30,13 +27,11 @@ export interface MenuBuilderDeps {
 
 export class MenuBuilder extends Disposable {
   private readonly _titlebar: TitlebarPart;
-  private readonly _activityBarPart: ActivityBarPart;
   private readonly _services: ServiceCollection;
 
   constructor(deps: MenuBuilderDeps) {
     super();
     this._titlebar = deps.titlebar;
-    this._activityBarPart = deps.activityBarPart;
     this._services = deps.services;
   }
 
@@ -214,23 +209,5 @@ export class MenuBuilder extends Disposable {
       slot.insertBefore(bell, slot.querySelector('.window-controls'));
     };
     seat();
-  }
-
-  // ── The column's last rows ─────────────────────────────────────────────
-
-  /**
-   * Under the tools at the foot of the column: where tools are turned on
-   * and off, and Settings. Both are the app's own, so they are there
-   * whatever is turned on.
-   */
-  addColumnFootRows(): void {
-    const bottom = this._activityBarPart.contentElement.querySelector<HTMLElement>('.activity-bar-bottom');
-    if (!bottom) return;
-    for (const row of [
-      { id: 'column.toolsAndExtensions', label: 'Tools and Extensions', icon: 'blocks', command: 'tools.showInstalled' },
-      { id: 'column.settings', label: 'Settings', icon: 'settings', command: 'settings.open' },
-    ]) {
-      createButton(bottom, { id: row.id, label: row.label, icon: row.icon, command: row.command, kind: 'ghost' }).classList.add('column-foot-row');
-    }
   }
 }

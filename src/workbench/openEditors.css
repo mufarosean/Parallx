@@ -1,0 +1,126 @@
+/* openEditors.css — Open: the rows of what is open, in the column (openEditorsView.ts). */
+
+.open-editors-view {
+  overflow: auto;
+  user-select: none;
+  /* As tall as its rows, up to six; past that it scrolls inside itself. */
+  max-height: 162px;
+}
+
+.open-editors-placeholder {
+  padding: 8px 16px;
+  color: var(--vscode-descriptionForeground);
+  font-size: var(--px-text-base);
+  font-style: italic;
+}
+
+/* Group header shown when multiple editor groups exist (VS Code parity) */
+.open-editors-group-header {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 10px;
+  height: 22px;
+  line-height: 22px;
+  font-size: var(--px-text-sm);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.open-editors-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 26 px: a row a finger can hit (24 px is the floor). */
+  height: 26px;
+  line-height: 26px;
+  margin: 0 8px 1px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--px-radius-md);
+  cursor: pointer;
+  font-size: var(--px-text-base);
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--px-text-secondary);
+}
+
+/* Extra indent when showing group headers */
+.open-editors-item--grouped {
+  padding-left: 16px;
+}
+
+.open-editors-item:hover {
+  background: var(--px-surface-hover);
+  color: var(--px-text);
+}
+
+.open-editors-item--active {
+  background: var(--px-surface-selected);
+  color: var(--px-text);
+}
+
+.open-editors-item:focus-visible {
+  outline: none;
+  box-shadow: var(--px-ring-accent);
+}
+
+.open-editors-icon {
+  flex-shrink: 0;
+  width: var(--parallx-icon-size-sm, 16px);
+  height: var(--parallx-icon-size-sm, 16px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.open-editors-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The editor's live word: meta, so the mono face. */
+.open-editors-status {
+  flex: none;
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+}
+
+/* Unsaved: one small dot in the heads-up colour, where the eye ends the row. */
+.open-editors-dirty {
+  flex: none;
+  display: inline-flex;
+  color: var(--px-warning);
+}
+.open-editors-dirty svg { fill: currentColor; }
+
+/* The close button takes the place of the word and the dot while the row is
+   pointed at, focused or touched, so the row never grows. */
+.open-editors-item .open-editors-close {
+  flex: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-md);
+  line-height: 1;
+}
+.open-editors-item .open-editors-close:hover { background: var(--px-surface-active); color: var(--px-text); }
+.open-editors-item:hover .open-editors-close, .open-editors-item:focus-within .open-editors-close, [data-input-modality="touch"] .open-editors-item .open-editors-close {
+  display: inline-flex;
+}
+.open-editors-item:hover .open-editors-status, .open-editors-item:focus-within .open-editors-status, [data-input-modality="touch"] .open-editors-item .open-editors-status,
+.open-editors-item:hover .open-editors-dirty, .open-editors-item:focus-within .open-editors-dirty, [data-input-modality="touch"] .open-editors-item .open-editors-dirty {
+  display: none;
+}
+

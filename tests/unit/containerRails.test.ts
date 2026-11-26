@@ -220,15 +220,12 @@ describe('container rails (one contributed sidebar path)', () => {
     expect(handler.railOf('explorer-container')).toBe('right');
   });
 
-  it('keeps what is open above the files — manifest order IS stacked-section order', async () => {
-    // Views seat in contribution order, so the manifest decides which is on
-    // top. The owner's pick 2B (2026-11-25) is open tabs first, then files;
-    // before it the files were first, and a flip by accident was a field
-    // regression. Either way the order is the manifest's and is pinned here.
+  it('the Explorer\'s list is the file tree alone: what is open belongs to the column', async () => {
+    // Open sits in the column under the tools whatever tool is showing
+    // (workbench/columnChrome.ts), so the Explorer contributes one view.
     const { EXPLORER_MANIFEST } = await import('../../src/workbench/builtinManifests');
     const viewIds = EXPLORER_MANIFEST.contributes?.views?.map((v) => v.id) ?? [];
-    expect(viewIds.indexOf('view.openEditors')).toBeGreaterThanOrEqual(0);
-    expect(viewIds.indexOf('view.openEditors')).toBeLessThan(viewIds.indexOf('view.explorer'));
+    expect(viewIds).toEqual(['view.explorer']);
   });
 
   it('fires the rails-changed event on every move', () => {

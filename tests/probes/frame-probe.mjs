@@ -1,5 +1,6 @@
-// frame-probe.mjs — the window's frame (1E6): one column, the bell and the
-// panel buttons in the title bar, tabs as wide as their names.
+// frame-probe.mjs — the window's frame: one column (Home and the tools, what
+// is open, the open tool's name and list, two rows pinned at the foot), the
+// bell and the panel buttons in the title bar, tabs as wide as their names.
 //
 // Boots the built app hidden on a seeded workspace with the extensions on,
 // opens a few tools, and reads the frame back from the app: where the tools
@@ -65,6 +66,12 @@ const frame = () => page.evaluate(() => {
     headFont: (() => { const l = document.querySelector('.sidebar-header-label'); return l ? getComputedStyle(l).fontFamily.split(',')[0].replace(/["']/g, '') : ''; })(),
     rows: rows.map((b) => ({ id: b.dataset.iconId, name: b.getAttribute('aria-label'), shown: b.querySelector('.activity-bar-item-name')?.textContent ?? '', nameVisible: !!b.querySelector('.activity-bar-item-name')?.getClientRects().length, selected: b.getAttribute('aria-selected'), tab: b.tabIndex, ...rect(b) })),
     foot: foot.map((b) => ({ name: b.textContent.trim(), tab: b.tabIndex, ...rect(b) })),
+    home: (() => { const h = document.querySelector('[data-px-id="column.home"]'); return h ? { name: h.textContent.trim(), ...rect(h) } : null; })(),
+    open: (() => { const o = document.querySelector('.sidebar-open'); const l = document.querySelector('[data-px-id="column.open"]'); const rows = [...document.querySelectorAll('.sidebar-open .open-editors-item')]; return o && l ? { ...rect(o), label: l.getAttribute('aria-label'), expanded: l.getAttribute('aria-expanded'), count: l.dataset.count, rows: rows.length, shown: rows.filter((r) => r.getClientRects().length).length, listH: Math.round(document.querySelector('.sidebar-open .open-editors-view')?.getBoundingClientRect().height ?? 0), activeInView: (() => { const a = o.querySelector('.open-editors-item--active'); const v = o.querySelector('.open-editors-view'); if (!a || !v) return null; const ar = a.getBoundingClientRect(), vr = v.getBoundingClientRect(); return ar.top >= vr.top - 1 && ar.bottom <= vr.bottom + 1; })() } : null; })(),
+    headBox: (() => { const h = document.querySelector('.sidebar-header'); return h ? rect(h) : null; })(),
+    headSize: (() => { const l = document.querySelector('.sidebar-header-label'); return l ? parseFloat(getComputedStyle(l).fontSize) : 0; })(),
+    viewsTop: views ? Math.round(views.getBoundingClientRect().top) : null,
+    windowH: window.innerHeight,
     viewsBottom: views ? Math.round(views.getBoundingClientRect().bottom) : null,
     footTop: footBox ? Math.round(footBox.getBoundingClientRect().top) : null,
     activeViewBottom: (() => { const vc = Array.from(document.querySelectorAll('.sidebar-views > *')).find((e) => e.getClientRects().length); return vc ? Math.round(vc.getBoundingClientRect().bottom) : null; })(),
@@ -91,10 +98,12 @@ try {
   check('every tool that is on has a row', f.rows.length >= 6, f.rows.length);
   check('every row shows its name', f.rows.every((r) => r.nameVisible && r.shown === r.name && r.name), f.rows.filter((r) => !r.nameVisible || r.shown !== r.name));
   check('a row is at least 24 px tall and as wide as the column allows', f.rows.every((r) => r.h >= 24 && r.w > 120), f.rows.map((r) => [r.h, r.w]));
-  check('the foot ends with Tools and Extensions, then Settings', f.foot.map((r) => r.name).join('|') === 'Tools and Extensions|Settings', f.foot);
-  check('the last rows are under the tools', f.foot.length === 2 && f.foot[0].y > Math.max(...f.rows.map((r) => r.y)), f.foot);
-  check('the open tool\'s list ends where the foot begins', f.activeViewBottom !== null && f.activeViewBottom <= f.footTop + 1, { view: f.activeViewBottom, foot: f.footTop });
-  check('the head names the open tool in the display face', !!f.head && /newsreader/i.test(f.headFont), { head: f.head, font: f.headFont });
+  check('Home is the first row, over the tools', !!f.home && f.home.name === 'Home' && f.home.y < Math.min(...f.rows.map((r) => r.y)) && f.home.h === f.rows[0].h, f.home);
+  check('Open is under the tools, with every open editor and its count', !!f.open && f.open.y > Math.max(...f.rows.map((r) => r.y)) && f.open.rows === f.tabs.length && Number(f.open.count) === f.tabs.length && f.open.label === `Open, ${f.tabs.length} editors`, f.open);
+  check('Open shows six rows at most and keeps the tab in front in view', !!f.open && f.open.listH <= 6 * 27 + 2 && f.open.activeInView === true, f.open);
+  check('the open tool\'s name is under Open, a small label in the interface face', !!f.head && !!f.headBox && f.headBox.y >= f.open.y + f.open.h - 1 && f.headSize <= 13 && !/newsreader/i.test(f.headFont), { head: f.head, box: f.headBox, size: f.headSize, font: f.headFont });
+  check('the open tool\'s list is under its name and ends where the foot begins', f.viewsTop >= f.headBox.y + f.headBox.h - 1 && f.activeViewBottom !== null && f.activeViewBottom <= f.footTop + 1 && f.activeViewBottom - f.viewsTop > 120, { top: f.viewsTop, bottom: f.activeViewBottom, foot: f.footTop });
+  check('Tools and Extensions and Settings are pinned at the foot of the column', f.foot.map((r) => r.name).join('|') === 'Tools and Extensions|Settings' && f.foot[1].y + f.foot[1].h > f.windowH - 70, f.foot);
   check('the bell is in the title bar', f.bellInTitlebar, f.bell);
   check('the title bar has search, the three area buttons and the bell', ['Search Commands', 'Toggle Left Area', 'Toggle Bottom Area', 'Toggle Right Area'].every((n) => f.titlebarButtons.includes(n)) && f.titlebarButtons.some((n) => /^Notifications/.test(n)), f.titlebarButtons);
   check('the title bar keeps the menu words', ['File', 'Edit', 'View', 'Help'].every((m) => f.menus.includes(m)), f.menus);
@@ -131,16 +140,35 @@ try {
   await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter'); await page.waitForTimeout(400);
   let g = await frame();
   check('Enter on a row opens that tool', g.head === f.rows[1].name, { head: g.head, want: f.rows[1].name });
-  // Tab from the tools goes to the last two rows, each a stop of its own.
+  // Shift+Tab from the tools is Home; Tab from the tools is Open's label, then its rows.
+  await page.keyboard.press('Shift+Tab'); await page.waitForTimeout(100);
+  const stopHome = (await frame()).focus;
+  check('Shift+Tab from the tools reaches Home, with a ring', stopHome?.id === 'column.home' && !!stopHome?.ring, stopHome);
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.waitForTimeout(100);
+  const stopOpen = (await frame()).focus;
+  check('Tab from the tools reaches Open\'s label', stopOpen?.id === 'column.open', stopOpen);
+  await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+  let o = (await frame()).open;
+  check('Enter on the label folds Open: its rows go, its count stays', o.expanded === 'false' && o.shown === 0 && Number(o.count) > 0, o);
+  await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+  o = (await frame()).open;
+  check('and unfolds it again', o.expanded === 'true' && o.shown > 0, o);
   await page.keyboard.press('Tab'); await page.waitForTimeout(100);
-  const stop1 = (await frame()).focus;
+  check('Tab goes on into the open rows', await page.evaluate(() => !!document.activeElement?.classList.contains('open-editors-item')), null);
+  // The two pinned rows by keys.
+  await page.evaluate(() => document.querySelector('[data-px-id="column.toolsAndExtensions"]')?.focus());
   await page.keyboard.press('Tab'); await page.waitForTimeout(100);
   const stop2 = (await frame()).focus;
-  check('Tab reaches Tools and Extensions, then Settings', stop1?.id === 'column.toolsAndExtensions' && stop2?.id === 'column.settings', [stop1, stop2]);
-  check('the focused row shows a ring', !!stop2?.ring, stop2);
+  check('Tab from Tools and Extensions reaches Settings, with a ring', stop2?.id === 'column.settings' && !!stop2?.ring, stop2);
   await page.keyboard.press('Enter'); await page.waitForTimeout(900);
   check('Enter on Settings opens Settings', await page.evaluate(() => !!document.querySelector('[data-px-surface="settings"]')), null);
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  // Home opens the Home tab and leaves the column as it was.
+  const was = await frame();
+  await page.mouse.click(was.home.x + 30, was.home.y + was.home.h / 2); await page.waitForTimeout(900);
+  const atHome = await frame();
+  check('pressing Home opens the Home tab', await page.evaluate(() => document.querySelector('.editor-tab-bar .ui-tab--active .ui-tab-label')?.textContent) === 'Home', null);
+  check('and the column stays: the same tool is lit, with its list', atHome.head === was.head && atHome.rows.find((r) => r.selected === 'true')?.name === was.rows.find((r) => r.selected === 'true')?.name, { was: was.head, now: atHome.head });
 
   // The bell opens the list of notices under it.
   f = await frame();

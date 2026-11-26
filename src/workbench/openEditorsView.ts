@@ -1,17 +1,17 @@
-// openEditorsView.ts — the Open view: the editors that are open, by group,
-// first in the Files list. Each row opens its editor and carries its icon,
-// its name, the live word its editor set ("p. 214", "24 due"), a dot while
-// it is unsaved, and a close button. The section is as tall as its rows.
+// openEditorsView.ts — Open: the editors that are open, by group, a fixture
+// of the column under the tools whatever tool is open. Each row opens its
+// editor and carries its icon, its name, the live word its editor set
+// ("p. 214", "24 due"), a dot while it is unsaved, and a close mark.
 //
 // From the keyboard the rows are one list: the active row (or the first) is
 // in the Tab order, Up/Down and Home/End move along it, Enter or Space opens
 // a row's editor and Delete closes it. A re-render keeps focus on the same
 // row. docs/ACCESSIBILITY.md, section 2.
 
-import type { IDisposable } from '../../platform/lifecycle.js';
-import { createList } from '../../ui/kit.js';
-import { $ } from '../../ui/dom.js';
-import { createIconElement, getFileTypeIcon } from '../../ui/iconRegistry.js';
+import type { IDisposable } from '../platform/lifecycle.js';
+import { createList } from '../ui/kit.js';
+import { $ } from '../ui/dom.js';
+import { createIconElement, getFileTypeIcon } from '../ui/iconRegistry.js';
 
 interface OpenEditor {
   readonly id: string;
@@ -35,7 +35,6 @@ export interface IOpenEditorsHost {
 
 export function createOpenEditorsView(container: HTMLElement, editors: IOpenEditorsHost, setCount: (count: number) => void): IDisposable {
   container.classList.add('open-editors-view');
-  container.setAttribute('data-section-fit', ''); // its section is as tall as its rows (views/fitSection.ts)
   const rows = () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item'));
   // The open editors as one scene entry: the active one is its selection.
   const entry = createList(container, { id: 'explorer.openEditors', label: 'Open Editors', rows, selected: () => rows().filter((r) => r.classList.contains('open-editors-item--active')).map((r) => r.textContent?.trim() ?? '') });
@@ -59,6 +58,8 @@ export function createOpenEditorsView(container: HTMLElement, editors: IOpenEdit
     const all = rows();
     const stop = all.find((r) => r.classList.contains('open-editors-item--active')) ?? all[0];
     if (stop) stop.tabIndex = 0;
+    // The list shows six rows: the editor in front is always among them.
+    all.find((r) => r.classList.contains('open-editors-item--active'))?.scrollIntoView?.({ block: 'nearest' });
     if (hadFocus) all.find((r) => r.dataset.editorId === hadFocus)?.focus();
   };
   render();
@@ -171,7 +172,7 @@ function createOpenEditorRow(editor: OpenEditor, indented: boolean, editors: IOp
   // that path opened a blank text editor after a restart.
   row.addEventListener('click', () => {
     editors.focusEditor(editor.id).catch((err) => {
-      console.warn('[Explorer] focusEditor failed for', editor.name, err);
+      console.warn('[Open] focusEditor failed for', editor.name, err);
     });
   });
 

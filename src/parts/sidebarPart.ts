@@ -1,10 +1,9 @@
-// sidebarPart.ts — primary collapsible sidebar (typically left)
+// sidebarPart.ts — the column
 
 import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $ } from '../ui/dom.js';
 
 const SIDEBAR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 170,
@@ -14,20 +13,25 @@ const SIDEBAR_CONSTRAINTS: SizeConstraints = {
 };
 
 /**
- * The column: the open tool named at its head, that tool's own list under
- * it, and at the foot the tools that are on, by name. The foot is a slot;
- * the workbench seats the tools list there and the part knows no tool.
+ * The column, top to bottom: the tools that are on, by name, under a Home
+ * row; what is open; the open tool's name and its own list, which takes the
+ * height that is left; and at the foot, pinned, where tools are managed and
+ * Settings. The part makes the slots and knows no tool: the workbench seats
+ * what goes in each.
  */
 export class SidebarPart extends Part {
 
-  private _footSlot: HTMLElement | undefined;
+  private _toolsSlot: HTMLElement | undefined;
+  private _openSlot: HTMLElement | undefined;
+  private _openListSlot: HTMLElement | undefined;
   private _viewContainerSlot: HTMLElement | undefined;
+  private _footSlot: HTMLElement | undefined;
   private _headerSlot: HTMLElement | undefined;
 
   private readonly _onDidChangeActiveView = this._register(new Emitter<string | undefined>());
   readonly onDidChangeActiveView: Event<string | undefined> = this._onDidChangeActiveView.event;
 
-  /** The head or the foot changed height (a tool came or went): the open tool's list has other room. */
+  /** A slot changed height (a tool came or went, a tab opened): the open tool's list has other room. */
   private readonly _onDidChangeChrome = this._register(new Emitter<void>());
   readonly onDidChangeChrome: Event<void> = this._onDidChangeChrome.event;
 
@@ -44,21 +48,26 @@ export class SidebarPart extends Part {
     );
   }
 
-  /** Where the tools list sits, under the open tool's own list. */
-  get footSlot(): HTMLElement | undefined { return this._footSlot; }
-
-  /**
-   * How much of the column's height the head and the foot take beyond a
-   * plain part header of `plainHeader` px: what the open tool's list loses.
-   */
-  chromeBeyond(plainHeader: number): number {
-    const head = this._headerSlot?.offsetHeight ?? 0;
-    const foot = this._footSlot?.offsetHeight ?? 0;
-    return Math.max(0, (head || plainHeader) - plainHeader) + foot;
-  }
+  /** Home and the tools, at the top. */
+  get toolsSlot(): HTMLElement | undefined { return this._toolsSlot; }
+  /** What is open, under the tools. */
+  get openSlot(): HTMLElement | undefined { return this._openSlot; }
+  /** Inside it, under its label: the rows. */
+  get openListSlot(): HTMLElement | undefined { return this._openListSlot; }
   get viewContainerSlot(): HTMLElement | undefined { return this._viewContainerSlot; }
+  /** Pinned at the bottom: where tools are managed, and Settings. */
+  get footSlot(): HTMLElement | undefined { return this._footSlot; }
   get headerSlot(): HTMLElement | undefined { return this._headerSlot; }
   get activeViewId(): string | undefined { return this._activeViewId; }
+
+  /**
+   * How much of the column's height everything but the open tool's list
+   * takes, beyond a plain part header of `plainHeader` px: what that list loses.
+   */
+  chromeBeyond(plainHeader: number): number {
+    const taken = [this._toolsSlot, this._openSlot, this._headerSlot, this._footSlot].reduce((sum, el) => sum + (el?.offsetHeight ?? 0), 0);
+    return Math.max(0, taken - plainHeader);
+  }
 
   setActiveView(viewId: string | undefined): void {
     if (this._activeViewId !== viewId) {
@@ -76,31 +85,39 @@ export class SidebarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('sidebar-content');
+    const slot = (className: string, parent: HTMLElement = container): HTMLElement => {
+      const el = document.createElement('div');
+      el.classList.add(className);
+      parent.appendChild(el);
+      return el;
+    };
 
-    // The open tool's own list
-    this._viewContainerSlot = $('div');
-    this._viewContainerSlot.classList.add('sidebar-views');
-    container.appendChild(this._viewContainerSlot);
+    this._toolsSlot = slot('sidebar-tools');
+    this._openSlot = slot('sidebar-open');
+    this._openListSlot = slot('sidebar-open-list', this._openSlot);
+    // The open tool's name sits over its list, under what is open: the
+    // part's title area, moved into the run of the column.
+    if (this._headerSlot) container.appendChild(this._headerSlot);
+    this._viewContainerSlot = slot('sidebar-views');
+    this._footSlot = slot('sidebar-foot');
 
-    // The foot: the tools by name, then what manages them
-    this._footSlot = $('div');
-    this._footSlot.classList.add('sidebar-foot');
-    container.appendChild(this._footSlot);
     if (typeof ResizeObserver !== 'undefined') {
       const observer = new ResizeObserver(() => this._onDidChangeChrome.fire());
-      observer.observe(this._footSlot);
+      for (const el of [this._toolsSlot, this._openSlot, this._footSlot]) observer.observe(el);
       this._register({ dispose: () => observer.disconnect() });
     }
   }
 
   protected override savePartData(): Record<string, unknown> | undefined {
-    return this._activeViewId ? { activeViewId: this._activeViewId } : undefined;
+    const openFolded = this._openSlot?.classList.contains('sidebar-open--folded') ?? false;
+    return this._activeViewId || openFolded ? { activeViewId: this._activeViewId, openFolded } : undefined;
   }
 
   protected override restorePartData(data: Record<string, unknown>): void {
     if (typeof data.activeViewId === 'string') {
       this.setActiveView(data.activeViewId);
     }
+    this._openSlot?.classList.toggle('sidebar-open--folded', data.openFolded === true);
   }
 }
 

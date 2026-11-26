@@ -1,9 +1,9 @@
 // column-lists-probe.mjs — each tool's own list in the column: Files, Planner,
-// Flashcards, Study.
+// Flashcards, Study, and Open above them all.
 //
 // Boots the built app hidden on a seeded workspace, opens each tool's list
-// and uses it as a person would: Files lists what is open first with each
-// editor's live word, then the files; Planner has Today, Calendar, Tasks with
+// and uses it as a person would: Open lists every open editor with its live
+// word whatever tool is showing; Files is the file tree; Planner has Today, Calendar, Tasks with
 // its six lists and their counts, a small month that opens the calendar on
 // the day pressed, the calendars and Settings; Flashcards has a named row a
 // destination; Study has Home, the subject, its plan, Progress and its units.
@@ -45,7 +45,7 @@ const mode = async (m) => {
 };
 /** Open a tool's list by pressing its row at the foot of the column. */
 const tool = async (name) => {
-  const at = await page.evaluate((name) => { const b = [...document.querySelectorAll('.sidebar-foot .activity-bar-item')].find((x) => x.getAttribute('aria-label') === name); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, name);
+  const at = await page.evaluate((name) => { const b = [...document.querySelectorAll('.sidebar-tools .activity-bar-item')].find((x) => x.getAttribute('aria-label') === name); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, name);
   if (!at) return false;
   await page.mouse.click(at.x, at.y); await wait(900);
   return true;
@@ -65,7 +65,7 @@ try {
   await wait(3_000);
   await seedAfterLaunch(page, seedPre);
 
-  // ── Files: what is open first, each with its live word, then the files ──
+  // ── Open, in the column whatever tool is showing; then Files, the tree alone ──
   await cmd(page, 'welcome.openWelcome'); await wait(600);
   check('Files: its row opens its list', await tool('Explorer') && (await head()) === 'Explorer', await head());
   // A live word, set the way an editor sets its own.
@@ -75,23 +75,27 @@ try {
     return { set: svc.setEditorStatus(open[0].id, 'p. 214'), name: open[0].name, missing: svc.setEditorStatus('no-such-editor', 'x') };
   });
   await wait(400);
-  const files = await page.evaluate(() => {
-    const sections = [...document.querySelectorAll('.sidebar-views .view-section')].filter((s) => s.getClientRects().length).map((s) => ({ id: s.dataset.viewId, title: s.querySelector('.view-section-title')?.textContent?.trim(), top: Math.round(s.getBoundingClientRect().top), h: Math.round(s.getBoundingClientRect().height) }));
-    const rows = [...document.querySelectorAll('.open-editors-item')].map((r) => ({ name: r.querySelector('.open-editors-label')?.textContent, word: r.querySelector('.open-editors-status')?.textContent ?? null, h: Math.round(r.getBoundingClientRect().height), icon: !!r.querySelector('.open-editors-icon svg'), tab: r.tabIndex, role: r.getAttribute('role') }));
-    const list = document.querySelector('.open-editors-view');
-    return { sections, rows, listH: Math.round(list.getBoundingClientRect().height), rowsH: rows.reduce((t, r) => t + r.h, 0), tree: document.querySelectorAll('.sidebar-views [role="treeitem"]').length };
-  });
-  check('Files: Open is the first section, Files the second', files.sections.map((s) => s.id).join('|') === 'view.openEditors|view.explorer' && files.sections[0].top < files.sections[1].top, files.sections);
-  // The files section carries the workspace's own name, as the tree's root does.
-  check('Files: the first section is named Open, the second by the workspace', files.sections[0].title === 'Open' && !!files.sections[1].title && files.sections[1].title !== 'Open', files.sections);
-  check('Files: every open editor has a row with its icon, 26 px tall', files.rows.length >= 3 && files.rows.every((r) => r.icon && r.h === 26), files.rows.slice(0, 4));
-  check('Files: an editor\'s live word shows on its row, and on no other', word.set === true && word.missing === false && files.rows.filter((r) => r.word).length === 1 && files.rows.find((r) => r.name === word.name)?.word === 'p. 214', { word, rows: files.rows.filter((r) => r.word) });
-  check('Files: the Open section is as tall as its rows, or two fifths of the list at most', files.listH <= files.rowsH + 8 && files.sections[0].h < files.sections[0].h + files.sections[1].h, { listH: files.listH, rowsH: files.rowsH, sections: files.sections });
-  check('Files: the file tree is under it', files.tree > 0 && files.sections[1].h > 80, { tree: files.tree, h: files.sections[1].h });
-  check('Files: one row is the Tab stop and the arrows walk the rows', files.rows.filter((r) => r.tab === 0).length === 1, files.rows.map((r) => r.tab));
-  await page.evaluate(() => document.querySelector('.open-editors-item[tabindex="0"]')?.focus());
+  const openRows = () => page.evaluate(() => [...document.querySelectorAll('.sidebar-open .open-editors-item')].map((r) => ({ name: r.querySelector('.open-editors-label')?.textContent, word: r.querySelector('.open-editors-status')?.textContent ?? null, h: Math.round(r.getBoundingClientRect().height), icon: !!r.querySelector('.open-editors-icon svg'), tab: r.tabIndex, shown: r.getClientRects().length > 0 })));
+  const files = await page.evaluate(() => ({
+    sections: [...document.querySelectorAll('.sidebar-views .view-section')].filter((s) => s.getClientRects().length).map((s) => s.dataset.viewId),
+    openInExplorer: !!document.querySelector('.sidebar-views .open-editors-view'),
+    tree: document.querySelectorAll('.sidebar-views [role="treeitem"]').length,
+  }));
+  let rows = await openRows();
+  check('Open: every open editor has a row with its icon, 26 px tall', rows.length >= 3 && rows.every((r) => r.icon && r.h === 26), rows.slice(0, 4));
+  check('Open: an editor\'s live word shows on its row, and on no other', word.set === true && word.missing === false && rows.filter((r) => r.word).length === 1 && rows.find((r) => r.name === word.name)?.word === 'p. 214', { word, rows: rows.filter((r) => r.word) });
+  check('Open: one row is the Tab stop and the arrows walk the rows', rows.filter((r) => r.tab === 0).length === 1, rows.map((r) => r.tab));
+  await page.evaluate(() => document.querySelector('.sidebar-open .open-editors-item[tabindex="0"]')?.focus());
   await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter'); await wait(500);
-  check('Files: Enter on a row brings its editor to the front', (await activeTab()) === files.rows[1].name, { tab: await activeTab(), want: files.rows[1].name });
+  check('Open: Enter on a row brings its editor to the front', (await activeTab()) === rows[1].name, { tab: await activeTab(), want: rows[1].name });
+  check('Files: the Explorer\'s list is the file tree alone', files.sections.join('|') === 'view.explorer' && !files.openInExplorer && files.tree > 0, files);
+  const names = rows.map((r) => r.name).join('|');
+  for (const name of ['Planner', 'Study']) {
+    await tool(name);
+    rows = await openRows();
+    check(`Open: the same rows are there with ${name}'s list showing`, rows.map((r) => r.name).join('|') === names && rows.some((r) => r.shown), rows.map((r) => r.name));
+  }
+  await tool('Explorer');
   await shot('dark-files.png');
 
   // ── Planner ──

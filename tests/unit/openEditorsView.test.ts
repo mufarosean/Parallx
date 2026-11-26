@@ -5,7 +5,7 @@
 // docs/ACCESSIBILITY.md, section 2.
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createOpenEditorsView, type IOpenEditorsHost } from '../../src/built-in/explorer/openEditorsView.js';
+import { createOpenEditorsView, type IOpenEditorsHost } from '../../src/workbench/openEditorsView.js';
 import { scene } from '../../src/ui/scene.js';
 
 const key = (k: string) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
@@ -68,8 +68,6 @@ describe('Open Editors from the keyboard', () => {
     expect(row('e2').querySelector('.open-editors-dirty')?.getAttribute('aria-label')).toBe('Unsaved changes');
     expect(row('e2').querySelector('.open-editors-status')).toBeNull();
     expect(row('e3').querySelector('.open-editors-status, .open-editors-dirty')).toBeNull();
-    // The section is as tall as its rows: the view says so to its container.
-    expect(container.hasAttribute('data-section-fit')).toBe(true);
     view.dispose();
   });
 });

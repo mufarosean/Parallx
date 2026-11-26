@@ -1,97 +1,60 @@
-/* frame.css — the window's frame (1E6)
+/* frame.css — the window's frame
  *
- * One column in place of the icon rail and the sidebar: the open tool named
- * at its head, its own list under it, the tools that are on by name at the
- * foot, then Tools and Extensions and Settings. The bell sits in the title
+ * One column in place of the icon rail and the sidebar: Home and the tools
+ * that are on by name, what is open, the open tool's name and its own list,
+ * and Tools and Extensions and Settings pinned at the foot. The bell sits in the title
  * bar after the three area buttons. An editor tab is as wide as its name.
  * Loaded after workbench.css, whose rules for the same parts it replaces.
  */
 
-/* ── The column's head: the open tool, named in the display face ── */
-.sidebar-header {
-  height: 44px;
-  flex: none;
-  padding: 0 var(--px-sidebar-inset, 10px) 0 calc(var(--px-sidebar-inset, 10px) + 6px);
-}
-
+/* ── The column, top to bottom ──
+   Home and the tools that are on, by name; what is open; the open tool's
+   name and its own list, which takes the height that is left; and pinned at
+   the foot, where tools are managed and Settings. */
 .sidebar-content {
   flex-direction: column;
   min-height: 0;
 }
 
-.sidebar-views {
-  flex: 1 1 0;
+/* Home and the tools. A long list of tools scrolls here, never past half the column. */
+.sidebar-tools {
+  flex: 0 1 auto;
   min-height: 0;
-}
-
-.sidebar-header-label {
-  font-family: var(--px-font-display);
-  font-size: var(--px-text-xl);
-  font-weight: 500;
-  line-height: var(--px-leading-tight);
-  letter-spacing: -0.01em;
-  color: var(--px-text);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* A row's name: drawn in the column's foot only; a ribbon shows the icon. */
-.activity-bar-item-name { display: none; }
-
-/* ── The column's foot: the tools that are on, by name ──
-   The tools list (the left activity bar part) is seated here, under the open
-   tool's own list. One row a tool, the open one in ink; then where tools are
-   managed, and Settings. A long list scrolls inside the foot, never past
-   half the column. */
-.sidebar-foot {
-  flex: none;
+  max-height: 50%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  max-height: 55%;
-  min-height: 0;
-  border-top: 1px solid var(--px-chrome-line);
-  background: var(--px-bg);
+  gap: 1px;
+  padding: 8px 8px 6px;
 }
-.sidebar-foot > .part-workbench-parts-activitybar {
-  /* A part sized by the grid no longer: it takes the column's width and its
-     own rows' height. */
+.sidebar-tools > .part-workbench-parts-activitybar {
+  /* A part the grid no longer sizes: the column's width, its own rows' height. */
   width: auto !important;
   height: auto !important;
   contain: none;
-  flex: 0 1 auto;
-  min-height: 0;
+  flex: none;
   border-right: 0;
-  align-self: stretch;
 }
-.sidebar-foot .part-content {
-  background: transparent;
-  overflow-y: auto;
-  min-height: 0;
-}
-.sidebar-foot .activity-bar {
+.sidebar-tools .part-content { background: transparent; overflow: visible; }
+.sidebar-tools .activity-bar {
   width: auto;
   background: transparent;
   box-shadow: none;
   align-items: stretch;
-  padding: 6px 8px;
+  padding: 0;
   gap: 1px;
 }
-.sidebar-foot .activity-bar-icons,
-.sidebar-foot .activity-bar-bottom {
+.sidebar-tools .activity-bar-icons {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-.sidebar-foot .activity-bar-spacer { display: none; }
-.sidebar-foot .activity-bar-bottom {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--px-chrome-line);
-}
-.sidebar-foot .activity-bar-item,
-.sidebar-foot .column-foot-row {
+.sidebar-tools .activity-bar-spacer,
+.sidebar-tools .activity-bar-bottom { display: none; }
+
+/* One row: a tool, Home, or one of the two at the foot. */
+.sidebar-tools .activity-bar-item,
+.column-row.px-btn {
   width: auto;
   height: 28px;
   flex: none;
@@ -109,52 +72,119 @@
   white-space: nowrap;
   min-width: 0;
 }
-.sidebar-foot .column-foot-row { color: var(--px-text-muted); }
-.sidebar-foot .activity-bar-item::after,
-.sidebar-foot .activity-bar-item.active::before { content: none; }
-.sidebar-foot .activity-bar-item:hover,
-.sidebar-foot .column-foot-row:hover {
+.column-foot-row.px-btn { color: var(--px-text-muted); }
+.sidebar-tools .activity-bar-item::after,
+.sidebar-tools .activity-bar-item.active::before { content: none; }
+.sidebar-tools .activity-bar-item:hover,
+.column-row.px-btn:hover {
   background: var(--px-surface-hover);
   color: var(--px-text);
 }
-.sidebar-foot .activity-bar-item.active,
-.sidebar-foot .activity-bar-item.active:hover {
+.sidebar-tools .activity-bar-item.active,
+.sidebar-tools .activity-bar-item.active:hover {
   background: var(--px-text);
   color: var(--px-bg);
 }
-.sidebar-foot .activity-bar-item:focus-visible,
-.sidebar-foot .column-foot-row:focus-visible {
+.sidebar-tools .activity-bar-item:focus-visible,
+.column-row.px-btn:focus-visible,
+.column-open-label.px-btn:focus-visible {
   outline: none;
   box-shadow: var(--px-ring-accent);
 }
-.sidebar-foot .activity-bar-icon-label { flex: none; }
-.sidebar-foot .activity-bar-icon-label svg,
-.sidebar-foot .column-foot-row svg {
+.sidebar-tools .activity-bar-icon-label { flex: none; }
+.sidebar-tools .activity-bar-icon-label svg,
+.column-row.px-btn svg {
   width: 16px;
   height: 16px;
   flex: none;
 }
-.sidebar-foot .activity-bar-item-name,
-.sidebar-foot .column-foot-row .px-btn__label {
+.sidebar-tools .activity-bar-item-name,
+.column-row.px-btn .px-btn__label {
   display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.sidebar-foot .activity-bar-badge {
+.sidebar-tools .activity-bar-badge {
   position: static;
   margin-left: auto;
   flex: none;
 }
-.sidebar-foot .activity-bar-item.active .activity-bar-badge--count .activity-bar-badge-content,
-.sidebar-foot .activity-bar-item.active .activity-bar-badge--dot .activity-bar-badge-content {
+.sidebar-tools .activity-bar-item.active .activity-bar-badge--count .activity-bar-badge-content,
+.sidebar-tools .activity-bar-item.active .activity-bar-badge--dot .activity-bar-badge-content {
   background: var(--px-bg);
   color: var(--px-text);
 }
 /* A finger gets a taller row. */
-[data-input-modality="touch"] .sidebar-foot .activity-bar-item,
-[data-input-modality="touch"] .sidebar-foot .column-foot-row { height: 36px; }
+[data-input-modality="touch"] .sidebar-tools .activity-bar-item,
+[data-input-modality="touch"] .column-row.px-btn { height: 36px; }
 
+/* What is open, under the tools, whatever tool is showing. */
+.sidebar-open {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--px-chrome-line);
+  padding: 6px 0;
+}
+/* A section's label: Open, and the open tool's name under it, read alike. */
+.column-open-label.px-btn,
+.sidebar-header-label {
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text-muted);
+}
+.column-open-label.px-btn {
+  justify-content: flex-start;
+  gap: 6px;
+  height: 24px;
+  margin: 0 8px 2px;
+  padding: 0 8px;
+  border: 0;
+}
+.column-open-label.px-btn svg { width: 12px; height: 12px; transition: transform var(--px-dur-fast) var(--px-ease); }
+.column-open-label.px-btn::after {
+  content: attr(data-count);
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-xs);
+  font-weight: 400;
+}
+.sidebar-open--folded .sidebar-open-list { display: none; }
+.sidebar-open--folded .column-open-label.px-btn svg { transform: rotate(-90deg); }
+
+/* The open tool's name, then its list. */
+.sidebar-header {
+  height: 30px;
+  flex: none;
+  border-top: 1px solid var(--px-chrome-line);
+  padding: 4px var(--px-sidebar-inset, 10px) 0 calc(var(--px-sidebar-inset, 10px) + 6px);
+}
+.sidebar-header-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-views {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* Pinned at the foot. */
+.sidebar-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--px-chrome-line);
+  background: var(--px-bg);
+}
+
+/* A row's name: drawn in the column only; a ribbon shows the icon. */
+.activity-bar-item-name { display: none; }
+.sidebar-tools .activity-bar-item-name { display: block; }
 
 /* ── The title bar: the bell after the area buttons ── */
 .titlebar-layout-controls { margin-right: 2px; }

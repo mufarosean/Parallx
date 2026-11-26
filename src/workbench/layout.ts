@@ -427,9 +427,9 @@ export abstract class Layout extends Disposable {
     this._panel.create(tempDiv);
     this._statusBar.create(tempDiv);
 
-    // The tools list is seated at the foot of the column, under the open
-    // tool's own list: one column in place of an icon rail and a sidebar.
-    (this._sidebar as SidebarPart).footSlot?.appendChild(this._activityBarPart.element);
+    // The tools list is seated at the top of the column, over what is open
+    // and the open tool's own list: one column for an icon rail and a sidebar.
+    (this._sidebar as SidebarPart).toolsSlot?.appendChild(this._activityBarPart.element);
 
     // 4. Build the body: activity bar (chrome) + the one grid
     const w = this._container.clientWidth;

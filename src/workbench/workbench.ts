@@ -12,6 +12,7 @@
 import { createIconElement } from '../ui/iconRegistry.js';
 import { wireRibbonMenu } from './ribbonMenu.js';
 import type { SidebarPart } from '../parts/sidebarPart.js';
+import { seatColumnChrome } from './columnChrome.js';
 import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { appDateTimeString } from '../services/localTime.js';
 import { addDisposableListener } from '../ui/dom.js';
@@ -1087,7 +1088,6 @@ export class Workbench extends Layout {
     // 0. Create extracted controllers
     this._menuBuilder = this._register(new MenuBuilder({
       titlebar: this._titlebar,
-      activityBarPart: this._activityBarPart,
       services: this._services,
     }));
     this._statusBarController = this._register(new StatusBarController({
@@ -1247,7 +1247,7 @@ export class Workbench extends Layout {
     // 4c. The bell in the title bar, and the column's last rows.
     const notificationCenter = this._statusBarController.notificationCenter;
     if (notificationCenter) this._menuBuilder.addNotificationsButton(notificationCenter);
-    this._menuBuilder.addColumnFootRows();
+    this._register(seatColumnChrome(this._sidebar as SidebarPart, this._services, () => this._workspaceSaver?.requestSave()));
 
     // 4d. The right rail's ribbon: clicks, cross-ribbon icon drops, and
     // visibility following the rail's population.

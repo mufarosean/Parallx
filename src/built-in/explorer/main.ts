@@ -29,7 +29,6 @@ import { URI } from '../../platform/uri.js';
 import type { IFileLocateResult } from '../../services/fileLocator.js';
 import type { IFileRevealTarget } from '../../editor/fileReveal.js';
 import { checkFileLink, findLinkedFile, revealTargetOf, type IFileLinkHost } from './fileLink.js';
-import { createOpenEditorsView } from './openEditorsView.js';
 import { moveOnDisk, withOpenFilesFollowing } from './openFilesFollow.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
@@ -134,7 +133,6 @@ const _sel = new ExplorerSelection<TreeNode>();
 let _rowSeq = 0; // row ids, for the tree's aria-activedescendant (focus stays on the tree)
 let _roots: TreeNode[] = [];
 let _treeContainer: HTMLElement | null = null;
-let _openEditorsCountKey: ReturnType<ParallxApi['context']['createContextKey']>;
 let _activeContextMenu: ContextMenu | null = null;
 let _inlineEditActive = false;
 
@@ -158,22 +156,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   _api = api;
   _context = context;
 
-  // Context key for open editors count
-  _openEditorsCountKey = api.context.createContextKey('openEditorsCount', 0);
 
   // Register view providers
   context.subscriptions.push(
     api.views.registerViewProvider('view.explorer', {
       createView(container: HTMLElement): IDisposable {
         return createExplorerView(container);
-      },
-    }),
-  );
-
-  context.subscriptions.push(
-    api.views.registerViewProvider('view.openEditors', {
-      createView(container: HTMLElement): IDisposable {
-        return createOpenEditorsView(container, api.editors, (count) => _openEditorsCountKey.set(count));
       },
     }),
   );

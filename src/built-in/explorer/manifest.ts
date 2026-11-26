@@ -64,10 +64,9 @@ export const EXPLORER_MANIFEST: IToolManifest = {
         { command: 'explorer.refresh', title: 'Refresh', group: '1_actions', when: "activeViewContainer == 'explorer-container'" },
       ],
     },
-    // Manifest order IS stacked-section order (views seat in contribution
-    // order). What is open first, each with its live word, then the files.
+    // The file tree is the Explorer's whole list: what is open is a fixture
+    // of the column itself, shown whatever tool is open.
     views: [
-      { id: 'view.openEditors', name: 'Open', defaultContainerId: 'explorer-container' },
       { id: 'view.explorer', name: 'Files', defaultContainerId: 'explorer-container' },
     ],
   },
