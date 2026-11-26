@@ -3988,7 +3988,13 @@ needed for that one job; which runtime (diffusers in the app's Python,
 or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 (decided earlier, do not re-raise).
 
-## Order of work (proposed 2026-11-26; nothing here is agreed until he says)
+## Order of work (proposed 2026-11-26; items 4 to 23 agreed the same day)
+
+**His go (2026-11-26):** "I agree to that order. Treat items 4 to 23 as
+go." One run, one item after another, each its own commit; he set aside
+"one piece to a session" for this run. Items 1 to 3 and "Needs him or
+his machine" still wait on him. What each item came to is under "Done
+from this order", after the list.
 
 His words: "fix findings then propose plan of action to address all
 items, prioritize quick wins while maintaining standards."
@@ -4030,7 +4036,7 @@ after; no check weakened; the master list updated; pushed.
 checks, the builds stay one to a session):**
 4. The checks owed since the sidebar was restacked: the full keyboard
    audit, the visual probe, the touch-drag probe, a finger on the new
-   drags. Fix what they find.
+   drags. Fix what they find. **Done.**
 5. Find why the audit miscounts the palette's rows, and put it right in
    the place that is wrong (the palette, or the audit with his say).
 6. Piece 8, Tools and Extensions as one list grouped On and Off.
@@ -4074,6 +4080,36 @@ Study plan's three questions (the 14 hours, the week off, the phase
 lengths); piece E (XP); the Study notebook shape (mock-ups first);
 Dashboards (three answers owed); Voice (gated); Predict From This
 Table (never started).
+
+### Done from this order (2026-11-26)
+
+**Item 4, the checks owed since the sidebar was restacked. Done.**
+- *The full keyboard audit* (427 screens and sub-screens, the dialogs,
+  the touch, popup and light-contrast passes; 65 minutes): nothing from
+  the sidebar. Its totals: not focusable 11, every other count 0, and
+  48 "stuck dialogs". The 11 were the command palette's rows (10, the
+  same 5 on its two screens) and one control of Atelier's Colour Study
+  (the wheel's "Screen" choice, on two of its screens), which read 0
+  when that screen was audited again alone and is left as a run that
+  differed. The palette's rows and the stuck dialogs were real faults
+  of the app, older than the restack; they are item 5.
+- *The visual probe:* nothing rose but "Creations: title size 0 to 1",
+  there before. The window frame's small targets stand at 1 (the tab
+  strip's scroll button) against a baseline of 11.
+- *The touch-drag probe:* one failure, and a real one: a finger could
+  not resize a Dashboard widget by its edge. The widget clips at its
+  border and each edge handle was centred on that border, so the outer
+  half of every handle was cut off and a press on its centre landed on
+  the border. The handles now lie inside the edge (`dashboard.css`);
+  the mark shown on hover is the outer 4 px, as it was drawn. Not from
+  the restack: the geometry was the same before it, and which side of
+  the border the press fell on turned on a fraction of a pixel.
+- *A finger on the new drags:* three checks added to
+  `touch-drag-probe.mjs` (14 of 14 now): a tool's row, held then moved,
+  to another place in the tools; Open taken by its label to under the
+  foot rows; Open taken out of the sidebar into a box of its own, and
+  Restore Sidebar Sections after.
+- *Not run:* the e2e specs.
 
 ## Verification owed
 

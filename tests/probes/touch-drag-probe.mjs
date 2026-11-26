@@ -11,6 +11,8 @@
 // + A dashboard widget's corner: a claimed pointer drag (resize).
 // + The image editor's Straighten dial: a claimed pointer drag.
 // + A swipe on a page scrolls it and starts nothing (the hold is not up).
+// + The sidebar: a tool's row to another place in the tools, a section to
+//   another place in the sidebar, and a section out of it into its own box.
 //
 // Usage: node tests/probes/touch-drag-probe.mjs   (after npm run build)
 
@@ -167,6 +169,35 @@ try {
   const sc1 = await scrollOf();
   const marquee = await page.evaluate(() => !!Array.from(document.querySelectorAll('.block-marquee, [class*="marquee"]')).find((x) => x.getClientRects().length && x.getBoundingClientRect().width > 4));
   check('a swipe on a page scrolls it and draws no selection box', sc0 !== null && sc1 !== sc0 && !marquee, `scroll ${sc0} -> ${sc1}, box ${marquee}`);
+
+  // 10. The sidebar's own drags (the browser's drag and drop, held then moved), as built on 2026-11-26.
+  // A tool's row to another place in the tools: the list reorders.
+  const toolRows = () => page.evaluate(() => [...document.querySelectorAll('.sidebar-tools .activity-bar-item')].filter((b) => b.getClientRects().length).map((b) => { const r = b.getBoundingClientRect(); return { id: b.dataset.iconId, x: r.x + r.width / 2, y: r.y + r.height / 2 }; }));
+  const tr0 = await toolRows();
+  const lastTool = tr0[tr0.length - 1];
+  if (tr0.length > 2) await finger(lastTool, 0, tr0[1].y - 6 - lastTool.y, { hold: 500 });
+  const tr1 = await toolRows();
+  check('a finger, held then moved, moves a tool to another place in the tools', tr0.length > 2 && tr1[1]?.id === lastTool.id && tr1.length === tr0.length, `${tr0.map((t) => t.id).join(' ')} -> ${tr1.map((t) => t.id).join(' ')}`);
+
+  // 11. A section of the sidebar, taken by its own top, to another place in the sidebar.
+  const sectionOrder = () => page.evaluate(() => [['tools', '.sidebar-tools'], ['open', '.sidebar-open'], ['view', '.sidebar-header'], ['foot', '.sidebar-foot']].filter(([, sel]) => document.querySelector(sel)?.closest('[data-part-id="workbench.parts.sidebar"]')).map(([n, sel]) => [n, Math.round(document.querySelector(sel).getBoundingClientRect().y)]).sort((a, b) => a[1] - b[1]).map((x) => x[0]).join(' '));
+  const openLabel = () => page.evaluate(() => { const e = document.querySelector('.column-open-label'); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + 50, y: r.y + r.height / 2 }; });
+  const so0 = await sectionOrder();
+  const lab = await openLabel();
+  const foot = await page.evaluate(() => { const r = document.querySelector('.sidebar-foot').getBoundingClientRect(); return { x: r.x + 80, y: r.bottom - 8 }; });
+  if (lab) await finger(lab, foot.x - lab.x, foot.y - lab.y, { hold: 500 });
+  const so1 = await sectionOrder();
+  check('a finger, held then moved, takes Open by its label to under the foot rows', !!lab && so0 === 'tools open view foot' && so1 === 'tools view foot open', `${so0} -> ${so1}`);
+
+  // 12. The same section out of the sidebar: it becomes a box of its own beside the editor.
+  const lab2 = await openLabel();
+  const vw = await page.evaluate(() => innerWidth);
+  if (lab2) await finger(lab2, vw - 120 - lab2.x, 420 - lab2.y, { hold: 500 });
+  const out = await page.evaluate(() => { const e = document.querySelector('.sidebar-open'); return { inSidebar: !!e?.closest('[data-part-id="workbench.parts.sidebar"]'), x: e ? Math.round(e.getBoundingClientRect().x) : null }; });
+  check('a finger takes Open out of the sidebar, where it becomes a box of its own', !!lab2 && !out.inSidebar && out.x > vw / 2, JSON.stringify(out));
+  await cmd(page, 'workbench.action.resetSidebarSections');
+  await page.waitForTimeout(900);
+  check('Restore Sidebar Sections puts every section back', (await sectionOrder()) === 'tools open view foot', await sectionOrder());
   console.log(`[probe] renderer errors: ${errors.length ? errors.join(' | ') : 'none'}`);
 } catch (err) {
   check('the run', false, err && err.message);
