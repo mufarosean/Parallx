@@ -4692,6 +4692,18 @@ skeptic then tried to refute each finding, by reading and by running.
   sidebar's Open rows are tabs now, not list options, so the probe no
   longer counts one as a fifth choice.
 
+**The eight acceptance probes at the end of this run (2026-11-26, each
+run alone on the built app, none edited):**
+- pass: study-plan (92 of 92), study-unit (74 of 74), study-progress
+  (87 of 87), colour-study (97 of 97);
+- study-work 78 of 79: 2.4, which waits on him;
+- study-walk 70 of 74: 0.9, 1.5, 1.7 and 9.3, which wait on him;
+- study-record 61 of 72: 6.2 to 6.7, 7.3 to 7.5, 9.2 and 9.4, which
+  wait on him (`point()`, and the session row below the fold);
+- study-usable 57 of 59: 19.1 and 19.2, new from item 17 and listed
+  there for him.
+Nothing else failed that was not failing before the run.
+
 ## Verification owed
 
 Shipped work he has not yet judged, and measurements not yet taken.
