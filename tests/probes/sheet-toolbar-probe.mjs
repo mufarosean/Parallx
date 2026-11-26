@@ -90,6 +90,15 @@ try {
   await press('Bold');
   check('Bold, pressed with the mouse, makes the cell bold (read from the saved workbook)', (await cell(1, 1)).s.bl === 1, (await cell(1, 1)).s);
   check('and the button says it is on', (await button('Bold')).pressed === 'true', await button('Bold'));
+  // The press was with the mouse: the keys are back in the grid, so typing goes on in the cell.
+  await select(16, 5);
+  await press('Italic');
+  await page.keyboard.type('Zed'); await page.keyboard.press('Enter'); await wait(400);
+  const zed = await cell(16, 5);
+  check('after a press with the mouse the keys are back in the grid: what is typed lands in the cell, italic', zed.v === 'Zed' && zed.s.it === 1, zed);
+  await fromMenu('Fill Colour', 'Green');
+  await page.keyboard.type('Go'); await page.keyboard.press('Enter'); await wait(400);
+  check('and after a choice from a menu', (await cell(17, 5)).v === 'Go', await cell(17, 5));
   await select(2, 1);
   await wait(200);
   check('on a cell that is not bold the button is off', (await button('Bold')).pressed === 'false', await button('Bold'));

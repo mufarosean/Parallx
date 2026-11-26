@@ -178,8 +178,11 @@ try {
     await key('Control+a'); await type('D10'); await key('Enter'); await wait(300);
     expect('Typing a cell name in the Name Box goes there', 'D10', await active(), 'D10');
     await top(); await click(0, 0); await key('F5'); await wait(400);
-    const goTo = await page.evaluate(() => !!document.querySelector('[role="dialog"]'));
-    record('F5 or Ctrl+G opens Go To', 'a Go To dialog', goTo ? 'a dialog opened' : 'nothing', goTo ? 'same' : 'missing');
+    // Go To here is the name box: F5 puts the keys in it, and a cell's name and Enter goes there. No dialog.
+    const goTo = await page.evaluate(() => (document.querySelector('[role="dialog"]') ? 'a dialog opened' : document.activeElement?.closest('[data-u-comp="defined-name"]') ? 'the name box took the keys' : ''));
+    let went = '';
+    if (goTo === 'the name box took the keys') { await page.keyboard.type('G7'); await key('Enter'); await wait(300); went = await active(); }
+    record('F5 or Ctrl+G opens Go To', 'a Go To dialog', goTo ? `${goTo}${went ? `; G7 typed there went to ${went}` : ''}` : 'nothing', goTo === 'a dialog opened' || went === 'G7' ? 'same' : goTo ? 'differs' : 'missing', 'Excel asks in a dialog; here the name box is the place to type a cell to go to.');
     await key('Escape');
     await top(); await click(0, 4); await key('Control+ArrowDown'); await key('ArrowDown'); const endRow = await active();
     await top(); await click(0, 4); await key('Control+ArrowRight'); await key('ArrowRight'); const endCol = await active();
@@ -430,7 +433,7 @@ try {
       record('The sheet grows when a row is inserted', 'n/a (Excel has a fixed 1,048,576 rows)', `rows: ${rc}`, 'note'); }
     // Keys for rows and columns.
     await click(6, 3); await key('Control+Shift+Equal'); await wait(500);
-    { const dlg = await page.evaluate(() => { const d = document.querySelector('[role="dialog"], [role="menu"]'); return d ? (d.textContent ?? '').slice(0, 60) : ''; }); record('Ctrl+Shift+Plus inserts cells, rows or columns', 'an Insert choice', dlg || 'nothing', dlg ? 'same' : 'missing'); await key('Escape'); }
+    { const dlg = await page.evaluate(() => { const d = [...document.querySelectorAll('[role="dialog"], [role="menu"], .context-menu')].filter((e) => e.getClientRects().length && (e.textContent ?? '').trim()).pop(); return d ? [...d.querySelectorAll('.context-menu-item-label')].map((e) => e.textContent).join(' | ').slice(0, 90) || (d.textContent ?? '').slice(0, 60) : ''; }); record('Ctrl+Shift+Plus inserts cells, rows or columns', 'an Insert choice', dlg || 'nothing', dlg ? 'same' : 'missing'); await key('Escape'); }
     // Sheet tabs: rename by double-click.
     await page.mouse.dblclick(G.x + 126, G.y + G.h + 19); await wait(400); await key('Control+a'); await type('Budget'); await key('Enter'); await wait(400);
     record('A double-click on a sheet tab renames it', 'Budget', (await sheetMeta()).order, (await sheetMeta()).order[0] === 'Budget' ? 'same' : 'differs');

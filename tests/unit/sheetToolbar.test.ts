@@ -16,14 +16,16 @@ function fakeSheet(start: Partial<SheetFormatState> = {}) {
   let state: SheetFormatState = { ...BLANK, ...start };
   const ran: SheetFormatAction[] = [];
   const listeners = new Set<() => void>();
+  const focused = { n: 0 };
   const format: ISheetFormat = {
     state: () => state,
     run: (action) => { ran.push(action); return true; },
     onChange: (l) => { listeners.add(l); return { dispose: () => { listeners.delete(l); } }; },
     selectionText: () => ({ range: state.range, text: '1\t2', cells: 2 }),
     selectionRect: () => null,
+    focusGrid: () => { focused.n++; },
   };
-  return { format, ran, set: (next: Partial<SheetFormatState>) => { state = { ...state, ...next }; for (const l of [...listeners]) l(); }, listeners };
+  return { format, ran, focused, set: (next: Partial<SheetFormatState>) => { state = { ...state, ...next }; for (const l of [...listeners]) l(); }, listeners };
 }
 
 function mount(free: boolean, start: Partial<SheetFormatState> = {}) {
@@ -96,6 +98,19 @@ describe('the sheet toolbar', () => {
     expect(open.sheet.ran).toHaveLength(2);
     open.toolbar.dispose();
     expect(formatCells({ do: 'bold' })).toBe(false);
+  });
+
+  it('after a press with the mouse the keys go back to the grid; a person on the keys stays on the toolbar', () => {
+    open = mount(true);
+    document.documentElement.dataset.inputModality = 'pointer';
+    open.button('bold').focus();
+    formatCells({ do: 'bold' });
+    expect(open.sheet.focused.n).toBe(1);
+    document.documentElement.dataset.inputModality = 'keyboard';
+    open.button('bold').focus();
+    formatCells({ do: 'bold' });
+    expect(open.sheet.focused.n).toBe(1);
+    delete document.documentElement.dataset.inputModality;
   });
 
   it('taken down, it leaves nothing: no row, no bar at the selection, no listener, no colour icons', () => {

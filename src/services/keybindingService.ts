@@ -70,15 +70,15 @@ const NATIVE_EDIT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Bold, italic and underline. In a surface that has them (a page, a sheet)
- * these three keys are the surface's own while the keys are in it: the
- * surface marks its element with `data-px-owns-format-keys`, and a binding
- * of the app's on one of them (Ctrl+B is Toggle Left Area) steps aside
- * there. Without this a Ctrl+B in a page hid the sidebar and made nothing
- * bold; in a sheet it did both.
+ * Keys a surface keeps for itself. A page and a sheet have bold, italic and
+ * underline on Ctrl+B, Ctrl+I and Ctrl+U; a sheet has Go To on Ctrl+G. The
+ * surface names the keys on its element (`data-px-owns-keys="ctrl+b ctrl+i"`,
+ * in the form `keyFromEvent` gives), and a binding of the app's on one of them
+ * steps aside while the keys are in that element. Without this a Ctrl+B in a
+ * page hid the sidebar (Toggle Left Area) and made nothing bold; in a sheet
+ * it did both.
  */
-export const DATA_OWNS_FORMAT_KEYS = 'data-px-owns-format-keys';
-const FORMAT_KEYS: ReadonlySet<string> = new Set(['ctrl+b', 'ctrl+i', 'ctrl+u', 'meta+b', 'meta+i', 'meta+u']);
+export const DATA_OWNS_KEYS = 'data-px-owns-keys';
 
 // ─── KeybindingService ───────────────────────────────────────────────────────
 
@@ -335,8 +335,9 @@ export class KeybindingService extends Disposable implements IKeybindingService 
       return;
     }
 
-    // Bold, italic and underline stay with a surface that has them.
-    if (FORMAT_KEYS.has(normalizedKey) && target?.closest?.(`[${DATA_OWNS_FORMAT_KEYS}]`)) {
+    // A key the surface under the keys keeps for itself.
+    const owner = target?.closest?.(`[${DATA_OWNS_KEYS}]`);
+    if (owner && (owner.getAttribute(DATA_OWNS_KEYS) ?? '').split(/\s+/).includes(normalizedKey)) {
       return;
     }
 

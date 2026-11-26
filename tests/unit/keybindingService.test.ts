@@ -162,10 +162,10 @@ describe('KeybindingService', () => {
 
   // Found on the built app (2026-11-26): Ctrl+B in a page hid the sidebar and made nothing bold; in a
   // sheet it did both. The app's binding fired from the capture phase before the surface saw the key.
-  describe('bold, italic and underline stay with a surface that has them', () => {
+  describe('a surface keeps the keys it names', () => {
     function surface(owns: boolean): HTMLElement {
       const el = document.createElement('div');
-      if (owns) el.setAttribute('data-px-owns-format-keys', '');
+      if (owns) el.setAttribute('data-px-owns-keys', 'ctrl+b ctrl+i ctrl+u');
       const inner = document.createElement('p');
       el.appendChild(inner);
       document.body.appendChild(el);
@@ -190,7 +190,7 @@ describe('KeybindingService', () => {
       expect(commandService.getExecuted()).toEqual(['cmd.toggleLeft', 'cmd.toggleLeft']);
     });
 
-    it('other keys of the app still work inside it', () => {
+    it('a key it does not name still runs the app\'s binding inside it', () => {
       commandService.addCommand('cmd.palette');
       service.registerKeybinding('Ctrl+J', 'cmd.palette');
       fireKeydown('j', { ctrlKey: true, target: surface(true) });

@@ -32,6 +32,7 @@ import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
 import { roundForDisplay } from './displayNumbers.js';
 import { createSheetFormat, freeSheetParts } from './univerFormat.js';
+import { installSheetKeys } from './univerKeys.js';
 import type { ISheetFormat } from './sheetFormat.js';
 import { restoreAbsoluteMarkers } from './formulaRefs.js';
 import { applyFormulaEngineGuards } from './formulaEngineGuards.js';
@@ -242,7 +243,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   ensurePopupRoot(); ensureUniverEditorExits();
   // Ctrl+= / - / 0 zoom the cells (as Excel does): the app's Text size keys step aside
   // while focus is in it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
-  opts.container.setAttribute('data-px-owns-zoom', ''); opts.container.setAttribute('data-px-owns-format-keys', ''); // and Ctrl+B, Ctrl+I, Ctrl+U are the sheet's (keybindingService.ts)
+  opts.container.setAttribute('data-px-owns-zoom', ''); opts.container.setAttribute('data-px-owns-keys', 'ctrl+b ctrl+i ctrl+u ctrl+g'); // and these keys are the sheet's (keybindingService.ts)
   opts.container.setAttribute('role', 'region'); opts.container.setAttribute('aria-keyshortcuts', 'F6'); opts.container.setAttribute('aria-label', 'Spreadsheet. Tab moves between cells; F6 moves to the next area.'); // Tab moves cells, as in Excel: say how to leave (WCAG 2.1.2)
   const sheetsPresetConfig = {
     container: opts.container,
@@ -403,6 +404,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // for a binding, so a plain move steps in front of it.
   const engineRegistrations: { dispose(): void }[] = [];
   const format = createSheetFormat(univer, univerAPI, () => disposed); engineRegistrations.push(format);
+  engineRegistrations.push(...installSheetKeys(univer, univerAPI, { container: opts.container, run: format.run })); // the keys the engine lacks (univerKeys.ts)
   if (limits.functions) engineRegistrations.push(holdToFunctions(univer, limits.functions));
 
   // A formula that points at another cell (=B7) came back wearing that
@@ -645,8 +647,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     engineRegistrations.push(injector.get(ICommandService).registerCommand({
       id: REVERSE_MOVE_ID,
       type: CommandType.COMMAND,
-      handler: (accessor, params?: { direction?: Direction }) =>
-        accessor.get(ICommandService).syncExecuteCommand(MoveSelectionCommand.id, { direction: params?.direction ?? Direction.LEFT }),
+      // The engine's move answers later (a promise): run as one that answers at once it threw "Command handler should not return a promise" on every Shift+Tab and Shift+Enter.
+      handler: (accessor, params?: { direction?: Direction }) => { void accessor.get(ICommandService).executeCommand(MoveSelectionCommand.id, { direction: params?.direction ?? Direction.LEFT }); return true; },
     }));
     const idleSheet = (ctx: { getContextValue(key: string): boolean }) =>
       ctx.getContextValue(FOCUSING_SHEET) && ctx.getContextValue(FOCUSING_UNIVER_EDITOR) && !ctx.getContextValue(EDITOR_ACTIVATED);
@@ -997,7 +999,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       if (disposed) return;
       disposed = true;
       renderedResolve();
-      opts.container.removeAttribute('data-px-owns-zoom'); opts.container.removeAttribute('data-px-owns-format-keys');
+      opts.container.removeAttribute('data-px-owns-zoom'); opts.container.removeAttribute('data-px-owns-keys');
       liveEngines.set(_hostsAlive = Math.max(0, _hostsAlive - 1));
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);

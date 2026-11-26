@@ -13,7 +13,7 @@ import { createToolbar, markToolbarMenu, setToolbarPressed, type IKitToolbar } f
 import { registerIcon, unregisterIcon } from '../../../ui/iconRegistry.js';
 import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 import {
-  NUMBER_FORMATS, SHEET_BORDER_BLACK, SHEET_BORDER_LINES, SHEET_COLORS, SHEET_FONTS, SHEET_FONT_SIZES, SHEET_ROTATIONS, numberFormatLabel,
+  NUMBER_FORMATS, SHEET_BORDER_BLACK, SHEET_BORDER_LINES, SHEET_MENU_EVENT, SHEET_COLORS, SHEET_FONTS, SHEET_FONT_SIZES, SHEET_ROTATIONS, numberFormatLabel,
   type ISheetFormat, type SheetBorderLine, type SheetBorders, type SheetFormatAction, type SheetFormatState,
 } from '../sheetFormat.js';
 import { state } from '../state.js';
@@ -22,7 +22,7 @@ export const FORMAT_COMMAND = 'worksheet.formatCells';
 export const MENU_COMMAND = 'worksheet.showSheetMenu';
 export const ASK_COMMAND = 'worksheet.askAboutSelection';
 
-export type SheetMenuName = 'number' | 'textColor' | 'fill' | 'borders' | 'align' | 'sum' | 'sort' | 'freeze' | 'more';
+export type SheetMenuName = 'number' | 'textColor' | 'fill' | 'borders' | 'align' | 'sum' | 'sort' | 'freeze' | 'more' | 'insert';
 
 export interface ISheetToolbarOptions {
   /** A sheet of one's own: it has Sort and Filter. A sheet held to the exam's limits has neither, as the exam tool has neither. */
@@ -58,7 +58,20 @@ let live: Live | null = null;
 /** worksheet.formatCells: one act on the live sheet's selection. False when no sheet is live or it was refused. */
 export function formatCells(action: unknown): boolean {
   if (!live || !action || typeof action !== 'object' || typeof (action as { do?: unknown }).do !== 'string') return false;
-  return live.format.run(action as SheetFormatAction);
+  const done = live.format.run(action as SheetFormatAction);
+  keysBackToGrid(live);
+  return done;
+}
+
+/**
+ * After a press on the toolbar with the mouse or a finger the keys go back to
+ * the grid, so the next thing typed lands in the cell, as it did before the
+ * press. A person working the toolbar by keys stays on it.
+ */
+function keysBackToGrid(on: Live, always = false): void {
+  if (!always && document.documentElement.dataset.inputModality === 'keyboard') return;
+  const within = document.activeElement?.closest?.('.px-toolbar, .context-menu');
+  if (always || within || document.activeElement === document.body) on.format.focusGrid();
 }
 
 /** worksheet.showSheetMenu: opens one of the toolbar's menus under its button. */
@@ -68,9 +81,18 @@ export function showSheetMenu(name: unknown): boolean {
   if (!items) return false;
   // Under the button that was pressed: the bar at the selection has the same menus as the row on top.
   const buttons = Array.from(document.querySelectorAll<HTMLElement>(`[data-ws-menu="${name}"]`)).filter((b) => b.getClientRects().length > 0);
-  const anchor = buttons.find((b) => b === document.activeElement) ?? buttons[0];
+  // A menu with no button of its own (Insert, asked for by its key) opens at the selection.
+  const cell = buttons.length ? null : live.format.selectionRect();
+  const anchor = buttons.find((b) => b === document.activeElement) ?? buttons[0] ?? (cell ? new DOMRect(cell.left, cell.top, cell.right - cell.left, cell.bottom - cell.top) : null);
   if (!anchor) return false;
-  createMenu(anchor, { id: `worksheet.toolbar.menu.${name}`, label: MENU_LABELS[name as SheetMenuName], items, menu: { anchorPosition: 'below' } });
+  // Opened by a key (its own, or Enter on its button), the first entry is highlighted, so Enter takes it.
+  const fromGrid = !buttons.length;
+  const byKey = fromGrid || document.documentElement.dataset.inputModality === 'keyboard';
+  // A menu that came to the selection takes the keys out of the grid while it is open (the grid would act on
+  // each arrow and Enter as well), and gives them back when it closes.
+  const on = live;
+  if (fromGrid) on.bars[0]?.kit.element.focus({ preventScroll: true });
+  createMenu(anchor, { id: `worksheet.toolbar.menu.${name}`, label: MENU_LABELS[name as SheetMenuName], items, menu: { anchorPosition: 'below', autoSelectFirst: byKey, onClose: () => { if (live === on) setTimeout(() => keysBackToGrid(on, fromGrid), 0); } } });
   return true;
 }
 
@@ -101,7 +123,7 @@ export async function askAboutSelection(): Promise<boolean> {
 
 const MENU_LABELS: Record<SheetMenuName, string> = {
   number: 'Number Format', textColor: 'Text Colour', fill: 'Fill Colour', borders: 'Borders', align: 'Alignment',
-  sum: 'Functions', sort: 'Sort', freeze: 'Freeze', more: 'More Actions',
+  sum: 'Functions', sort: 'Sort', freeze: 'Freeze', more: 'More Actions', insert: 'Insert',
 };
 
 const SEP: IExtensionMenuItem = { separator: true };
@@ -179,6 +201,15 @@ function menuItems(name: SheetMenuName, on: Live): IExtensionMenuItem[] | null {
       { label: 'Freeze Above and Left of This Cell', icon: 'snowflake', tooltip: 'Rows above the selected cell and columns to its left stay in view.', onSelect: act({ do: 'freeze', what: 'here' }) },
       SEP,
       { label: 'Unfreeze', icon: 'x', disabled: !s || (s.frozenRows === 0 && s.frozenColumns === 0), onSelect: act({ do: 'freeze', what: 'none' }) },
+    ];
+    case 'insert': return [
+      { label: 'Insert Row Above', icon: 'arrow-up-to-line', onSelect: act({ do: 'insert', what: 'rowAbove' }) },
+      { label: 'Insert Row Below', icon: 'arrow-down-to-line', onSelect: act({ do: 'insert', what: 'rowBelow' }) },
+      { label: 'Insert Column Left', icon: 'arrow-left-to-line', onSelect: act({ do: 'insert', what: 'columnLeft' }) },
+      { label: 'Insert Column Right', icon: 'arrow-right-to-line', onSelect: act({ do: 'insert', what: 'columnRight' }) },
+      SEP,
+      { label: 'Insert Cells, Shifting Right', icon: 'move-right', onSelect: act({ do: 'insert', what: 'cellsRight' }) },
+      { label: 'Insert Cells, Shifting Down', icon: 'move-down', onSelect: act({ do: 'insert', what: 'cellsDown' }) },
     ];
     case 'more': return [
       { label: 'Font', icon: 'type', submenu: SHEET_FONTS.map((family) => ({ label: family, checked: s?.fontFamily === family, onSelect: act({ do: 'font', family }) })) },
@@ -367,6 +398,10 @@ export function mountSheetToolbar(sheetEl: HTMLElement, format: ISheetFormat, op
     placeTouchBar();
   };
   const sub = format.onChange(refresh);
+  // A key in the sheet that asks for one of these menus (Ctrl+Shift+Plus: Insert).
+  // Opened once the key is done with: the engine takes the keys back to the grid as it finishes one, and the menu must have them after that.
+  const onMenuKey = (e: Event): void => { const name = (e as CustomEvent).detail; setTimeout(() => { if (live === mine) showSheetMenu(name); }, 0); };
+  sheetEl.addEventListener(SHEET_MENU_EVENT, onMenuKey);
   const modality = new MutationObserver(placeTouchBar);
   modality.observe(document.documentElement, { attributes: true, attributeFilter: ['data-input-modality'] });
   refresh();
@@ -377,6 +412,7 @@ export function mountSheetToolbar(sheetEl: HTMLElement, format: ISheetFormat, op
       if (gone) return;
       gone = true;
       sub.dispose();
+      sheetEl.removeEventListener(SHEET_MENU_EVENT, onMenuKey);
       modality.disconnect();
       if (live === mine) live = null;
       row.dispose();

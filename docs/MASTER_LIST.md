@@ -4033,6 +4033,7 @@ tab now.
 | 19 | Study piece B's review | Done |
 | 20 | Study piece C's remainder | Waiting on him: how a phase names its units |
 | 21 | Worksheets' toolbar, and the checks left open on 2026-11-16 | Done |
+| 21, keys | The keys that did nothing in a sheet | Done |
 | 21, after | The rest of Worksheets' list, a piece each (named under item 21) | Not started |
 | 22 | Generative edits | Not started: needs his machine (his photos, his card) |
 | 23 | Where tools look unlike each other, measured | Done |
@@ -4767,10 +4768,9 @@ started (each is its own piece, named at the end).**
   restacked. **For him:** whether these two are brought up to date (a
   piece of their own) or retired.
 
-- *The rest of Worksheets' list, not started, a piece each:* the keys
-  that do nothing (Home, Ctrl+Home, Ctrl+End, Page Up and Down,
-  Shift+Space, Ctrl+Space, F5, the number-format keys, Ctrl+1); typing
-  in the formula bar; find and replace on a sheet; conditional
+- *The rest of Worksheets' list, a piece each.* Done: the keys that do
+  nothing (next entry). Not started: typing in the formula bar; find
+  and replace on a sheet; conditional
   formatting, dropdown lists, tables, notes and links (engine parts
   installed, not on); a sheet in a page (his 3A, then 3C); the problem
   program made generic and moved (his 4i, 4A); working an item (5B, and
@@ -4778,6 +4778,58 @@ started (each is its own piece, named at the end).**
   by another program while open, growing by scrolling, the chat and the
   search index reading a sheet's cells, an icon of its own, Edit As
   Sheet on an .xlsx, New Sheet on a folder.
+
+**Item 21, next piece: the keys that did nothing in a sheet. Done.**
+- *What was there:* in a sheet Home, Ctrl+Home, Ctrl+End, Page Up, Page
+  Down, Shift+Space, Ctrl+Space, F5, Ctrl+Shift+Plus, Ctrl+Shift+% $ !
+  and Ctrl+1 did nothing (the engine's shortcut table has no entry for
+  them); an arrow at the sheet's edge wrapped (Up from A1 landed on the
+  last cell); and Shift+Tab and Shift+Enter threw an error in the page
+  each time.
+- *Built* (`univerKeys.ts`, in the engine's own shortcut table, so each
+  acts only while the keys are in the grid and no cell is being typed
+  in): Home goes to the row's first cell; Ctrl+Home to the sheet's
+  first cell (under and right of what is frozen); Ctrl+End to the last
+  cell in use; Page Down and Page Up a screen; Shift+Space selects the
+  row and Ctrl+Space the column; F5 and Ctrl+G put the keys in the name
+  box, where a cell's name and Enter goes there; Ctrl+Shift+1, 4 and 5
+  set two decimals with thousands, currency and percent; Ctrl+1 opens
+  the number format choices; Ctrl+Shift+Plus brings Insert to the
+  selection (row above or below, column left or right, cells shifting
+  right or down), as many rows or columns as are selected. An arrow at
+  the edge stays put. The view scrolls only as far as it takes to see
+  the cell gone to.
+- *Fixed with it:* Shift+Tab and Shift+Enter no longer throw (the
+  engine's move answers later and was run as one that answers at once).
+- *Found with it, about the toolbar of the piece before (fixed):* a press
+  on the toolbar with the mouse left the keys on the button, so what
+  was typed next went nowhere; the keys go back to the grid after a
+  press with the mouse or a finger, and after a choice from a menu (a
+  person working the toolbar by keys stays on it). A menu that comes
+  to the selection takes the keys while it is open: its arrows and
+  Enter used to move the sheet's selection as well. A menu opened by a
+  key has its first entry highlighted, so Enter takes it. The
+  selection's place on screen was wrong for column A and row 1 when
+  nothing was frozen (the bar for a finger did not come to those
+  cells).
+- *The app's keys and a sheet's:* the rule from the Ctrl+B fix is
+  general now: a surface names the keys it keeps
+  (`data-px-owns-keys`), and the sheet names Ctrl+G with its three
+  (the app's Ctrl+G is Go to Line, for a text file).
+- *Decided, for him to overrule:* Go To is the name box, not a dialog.
+  Home while a cell is being typed in is left to the engine's editor,
+  which does not move the caret; the entry is not lost.
+- *Checked:* `tests/probes/sheet-keys-probe.mjs` (new, 62 of 62 on the
+  built app: each key pressed on the practice sheet and on a sheet
+  file, the selection and the cells read from the engine);
+  `sheet-toolbar-probe.mjs` (83 of 83, with the keys going back to the
+  grid); `sheet-cells-probe.mjs`, the sheet beside Excel: 97 the same,
+  8 differ, 10 missing (85, 14 and 16 before the keys), and no page
+  errors (two before; two of its readings looked for a dialog and now
+  read the name box and the menu); `sheet-file-verify-probe.mjs`, which
+  types with Tab, Enter and the arrows: 100 of 100; the keyboard audit
+  on the Worksheets screens and a page: 0; `sheetToolbar.test.ts` (10)
+  and `keybindingService.test.ts`; typecheck; the unit suite.
 
 **Item 22, Generative edits: Recipes, Beyond The Edges, the two
 proposals, and the image editor probe's 34 failures. Not started: it

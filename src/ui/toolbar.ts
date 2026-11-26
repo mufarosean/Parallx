@@ -35,6 +35,8 @@ export function createToolbar(container: HTMLElement | null | undefined, options
   bar.setAttribute('role', 'toolbar');
   bar.setAttribute('aria-label', options.label);
   bar.setAttribute('aria-orientation', 'horizontal');
+  // It can hold the keys itself (never by Tab): what a menu that belongs to the surface, not to a button, opens from.
+  bar.tabIndex = -1;
 
   const onKey = (e: KeyboardEvent): void => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;

@@ -39,6 +39,7 @@ export interface SheetFormatState {
 
 export type SheetAlign = 'left' | 'center' | 'right';
 export type SheetVAlign = 'top' | 'middle' | 'bottom';
+export type SheetInsert = 'rowAbove' | 'rowBelow' | 'columnLeft' | 'columnRight' | 'cellsRight' | 'cellsDown';
 export type SheetOverflow = 'overflow' | 'wrap' | 'clip';
 export type SheetBorderLine = 'thin' | 'medium' | 'thick' | 'dashed' | 'dotted' | 'double';
 export type SheetBorders = 'all' | 'outside' | 'inside' | 'top' | 'bottom' | 'left' | 'right' | 'none';
@@ -50,6 +51,7 @@ export type SheetFormatAction =
   | { readonly do: 'undo' | 'redo' | 'bold' | 'italic' | 'underline' | 'strike' | 'wrap' | 'merge' | 'percent' | 'currency' | 'moreDecimals' | 'fewerDecimals' | 'filter' | 'painter' | 'textToNumber' | 'insertImage' | 'functions' | 'numberFormats' | 'protect' | 'clearFormat' }
   | { readonly do: 'clearAll' | 'largerText' | 'smallerText' | 'mergeAcross' | 'mergeDown' | 'unmerge' | 'insertCellImage' | 'customSort' | 'clearFilter' | 'reapplyFilter' | 'stackText' }
   | { readonly do: 'overflow'; readonly to: SheetOverflow }
+  | { readonly do: 'insert'; readonly what: SheetInsert }
   | { readonly do: 'numberFormat'; readonly pattern: string }
   | { readonly do: 'textColor' | 'fill'; readonly color: string | null }
   | { readonly do: 'borders'; readonly kind: SheetBorders; readonly line?: SheetBorderLine; readonly color?: string }
@@ -72,6 +74,8 @@ export interface ISheetFormat {
   onChange(listener: () => void): { dispose(): void };
   /** Where the selection's first cell is in the window, for a bar that comes to it; null when it is not on screen. */
   selectionRect(): { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number } | null;
+  /** Puts the keys back in the grid (after a press on the toolbar with the mouse, or a menu that came to the selection). */
+  focusGrid(): void;
   /** The selection as text for another tool: its range and its cells, tab-separated, a row a line. */
   selectionText(maxCells?: number): { readonly range: string; readonly text: string; readonly cells: number } | null;
 }
@@ -123,3 +127,9 @@ export const SHEET_BORDER_LINES: ReadonlyArray<{ readonly id: SheetBorderLine; r
 ];
 /** A border's colour when none was chosen. */
 export const SHEET_BORDER_BLACK = '#000000';
+
+/**
+ * The event the sheet's element sends when a key asks for a menu the app
+ * draws (Ctrl+Shift+Plus: the insert choices). Its detail is the menu's name.
+ */
+export const SHEET_MENU_EVENT = 'px-sheet-menu';

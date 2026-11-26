@@ -11,6 +11,7 @@ import type { FUniver } from '@univerjs/core/lib/facade';
 import { FormatPainterStatus, IFormatPainterService, SheetSkeletonManagerService } from '@univerjs/sheets-ui';
 import { IRenderManagerService } from '@univerjs/engine-render';
 import { expandToContinuousRange } from '@univerjs/sheets';
+import { ILayoutService } from '@univerjs/ui';
 import { UniverSheetsSortPreset } from '@univerjs/presets/preset-sheets-sort';
 import UniverPresetSheetsSortEnUS from '@univerjs/presets/preset-sheets-sort/locales/en-US';
 import { UniverSheetsFilterPreset } from '@univerjs/presets/preset-sheets-filter';
@@ -18,7 +19,7 @@ import UniverPresetSheetsFilterEnUS from '@univerjs/presets/preset-sheets-filter
 import '@univerjs/presets/lib/styles/preset-sheets-sort.css';
 import '@univerjs/presets/lib/styles/preset-sheets-filter.css';
 import { SHEET_BORDER_BLACK } from './sheetFormat.js';
-import type { ISheetFormat, SheetAlign, SheetBorderLine, SheetBorders, SheetFormatAction, SheetFormatState, SheetOverflow, SheetVAlign } from './sheetFormat.js';
+import type { ISheetFormat, SheetAlign, SheetBorderLine, SheetBorders, SheetFormatAction, SheetFormatState, SheetInsert, SheetOverflow, SheetVAlign } from './sheetFormat.js';
 
 /** The engine's commands for the acts that are one command each. */
 const COMMANDS: Partial<Record<SheetFormatAction['do'], string>> = {
@@ -56,6 +57,11 @@ const H_ALIGN: Record<SheetAlign, number> = { left: 1, center: 2, right: 3 };
 const V_ALIGN: Record<SheetVAlign, number> = { top: 1, middle: 2, bottom: 3 };
 const WRAP_ON = 3;
 const WRAP_OFF = 1;
+const INSERTS: Record<SheetInsert, string> = {
+  rowAbove: 'sheet.command.insert-row-before', rowBelow: 'sheet.command.insert-row-after',
+  columnLeft: 'sheet.command.insert-col-before', columnRight: 'sheet.command.insert-col-after',
+  cellsRight: 'sheet.command.insert-range-move-right', cellsDown: 'sheet.command.insert-range-move-down',
+};
 const OVERFLOW: Record<SheetOverflow, number> = { overflow: 1, clip: 2, wrap: 3 };
 const LINES: Record<SheetBorderLine, BorderStyleTypes> = {
   thin: BorderStyleTypes.THIN, medium: BorderStyleTypes.MEDIUM, thick: BorderStyleTypes.THICK,
@@ -204,6 +210,12 @@ export function createSheetFormat(univer: Univer, univerAPI: FUniver, isDisposed
         case 'textColor': return action.color ? exec('sheet.command.set-range-text-color', { value: action.color }) : exec('sheet.command.reset-range-text-color');
         case 'fill': return action.color ? exec('sheet.command.set-background-color', { value: action.color }) : exec('sheet.command.reset-background-color');
         case 'borders': if (!range) return false; range.setBorder(BORDERS[action.kind], LINES[action.line ?? 'thin'], action.color ?? SHEET_BORDER_BLACK); return true;
+        case 'insert': {
+          if (!range) return false;
+          // As many rows or columns as are selected, as Excel does; cells shift by the selection itself.
+          const count = action.what === 'rowAbove' || action.what === 'rowBelow' ? range.getHeight() : action.what === 'columnLeft' || action.what === 'columnRight' ? range.getWidth() : 0;
+          return exec(INSERTS[action.what], count ? { value: count } : undefined);
+        }
         case 'overflow': return exec('sheet.command.set-text-wrap', { value: OVERFLOW[action.to] });
         case 'stackText': return exec('sheet.command.set-text-rotation', { value: 'v' });
         case 'align': return exec('sheet.command.set-horizontal-text-align', { value: H_ALIGN[action.to] });
@@ -270,16 +282,21 @@ export function createSheetFormat(univer: Univer, univerAPI: FUniver, isDisposed
       const cell = skeleton.getCellWithCoordByIndex(range.getRow(), range.getColumn());
       const { scaleX, scaleY } = scene.getAncestorScale();
       const freeze = s.getFreeze();
-      const from = skeleton.getNoMergeCellWithCoordByIndex(freeze.startRow - freeze.ySplit, freeze.startColumn - freeze.xSplit, false);
-      const to = skeleton.getNoMergeCellWithCoordByIndex(freeze.startRow, freeze.startColumn, false);
-      const x = (v: number): number => (v > view.left ? v - view.viewportScrollX : to.startX - from.startX + skeleton.rowHeaderWidth - (view.left - v)) * scaleX;
-      const y = (v: number): number => (v > view.top ? v - view.viewportScrollY : to.startY - from.startY + skeleton.columnHeaderHeight - (view.top - v)) * scaleY;
+      // How wide and tall the frozen part is: nothing when nothing is frozen (the engine then has no cell to measure from).
+      const frozen = freeze.xSplit > 0 || freeze.ySplit > 0;
+      const from = frozen ? skeleton.getNoMergeCellWithCoordByIndex(Math.max(0, freeze.startRow - freeze.ySplit), Math.max(0, freeze.startColumn - freeze.xSplit), false) : null;
+      const to = frozen ? skeleton.getNoMergeCellWithCoordByIndex(Math.max(0, freeze.startRow), Math.max(0, freeze.startColumn), false) : null;
+      const frozenWidth = from && to ? to.startX - from.startX : 0;
+      const frozenHeight = from && to ? to.startY - from.startY : 0;
+      const x = (v: number): number => (v > view.left ? v - view.viewportScrollX : frozenWidth + skeleton.rowHeaderWidth - (view.left - v)) * scaleX;
+      const y = (v: number): number => (v > view.top ? v - view.viewportScrollY : frozenHeight + skeleton.columnHeaderHeight - (view.top - v)) * scaleY;
       const box = canvas.getBoundingClientRect();
       const cssWidth = Number.parseInt(canvas.style.width, 10);
       const k = cssWidth > 0 ? box.width / cssWidth : 1;
       const rect = { left: box.left + x(cell.startX) * k, top: box.top + y(cell.startY) * k, right: box.left + x(cell.endX) * k, bottom: box.top + y(cell.endY) * k };
       return rect.right > rect.left && rect.bottom > rect.top ? rect : null;
-    } catch {
+    } catch (err) {
+      console.warn('[SheetFormat] the selection\'s place was not found:', err);
       return null;
     }
   }
@@ -289,6 +306,7 @@ export function createSheetFormat(univer: Univer, univerAPI: FUniver, isDisposed
     run,
     selectionText,
     selectionRect,
+    focusGrid: () => { if (!isDisposed()) { try { injector.get(ILayoutService).focus(); } catch { /* engine going */ } } },
     onChange: (listener) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; },
     dispose: () => { if (pending) clearTimeout(pending); listeners.clear(); for (const d of subs) { try { d.dispose(); } catch { /* engine gone */ } } },
   };

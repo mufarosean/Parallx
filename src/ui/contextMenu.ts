@@ -612,6 +612,8 @@ export interface IExtensionMenuOptions {
   readonly onClose?: () => void;
   /** Placement relative to a rect or element anchor. Default: below. */
   readonly anchorPosition?: 'below' | 'above' | 'right' | 'right-end' | 'left';
+  /** The first entry is highlighted as the menu opens: for a menu opened by a key, so Enter takes it. */
+  readonly autoSelectFirst?: boolean;
 }
 
 export function showExtensionContextMenu(
@@ -651,7 +653,7 @@ export function showExtensionContextMenu(
     return out;
   };
   const rect: IContextMenuAnchor | DOMRect = 'getBoundingClientRect' in anchor ? (anchor as HTMLElement).getBoundingClientRect() : anchor;
-  const menu = ContextMenu.show({ items: toCore(items), anchor: rect, anchorPosition: options?.anchorPosition });
+  const menu = ContextMenu.show({ items: toCore(items), anchor: rect, anchorPosition: options?.anchorPosition, autoSelectFirst: options?.autoSelectFirst });
   menu.onDidSelect((e) => { handlers.get(e.item.id)?.(); });
   if (options?.onClose) menu.onDidDismiss(options.onClose);
   return {
