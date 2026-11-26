@@ -432,8 +432,14 @@ describe('editor pane', () => {
     await settle();
     const pane = document.querySelector('.fc-pane')!;
     expect(pane).toBeTruthy();
-    // The home leads with what the collection IS, then the decks in it.
-    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');
+    // The home leads with the day's work (the look's piece 10: the page opens on what is due), over what the collection is.
+    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('2 cards due today');
+    expect(pane.querySelector('.fc-home__due')?.textContent).toBe('2 new, 0 learning, 0 to review.');
+    // The five making-and-importing buttons are one Add menu.
+    const buttons = [...pane.querySelectorAll('.fc-home__head button')].map((b) => b.textContent);
+    expect(buttons).toEqual(['Stats', 'Custom Study…', 'Add', 'Study 2 Cards']);
+    expect([...pane.querySelectorAll('.fc-home__head button')][2].getAttribute('aria-haspopup')).toBe('menu');
+    expect([...pane.querySelectorAll('button')].some((b) => b.textContent === 'Import Cards')).toBe(false);
     expect(pane.querySelector('.fc-home__sub')?.textContent).toContain('1 deck');
     expect(pane.querySelector('.fc-home__sub')?.textContent).toContain('2 cards');
     expect(pane.querySelector('.fc-deck-card__name')?.textContent).toBe('Reserving');
@@ -449,9 +455,9 @@ describe('editor pane', () => {
     expect(pane.querySelectorAll('.fc-pane__tab')).toHaveLength(0);
     expect([...sidebar.querySelectorAll('.fc-sb__nav-item')].map((n) => n.textContent))
       .toEqual(['Decks', 'Study', 'Stats', 'Make Cards', 'Import']);
-    // The pane says where you are instead: at the top level its heading does,
-    // and a one-word breadcrumb repeating it is hidden.
-    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');
+    // At the top level the pane's heading is the day's work, and a one-word
+    // breadcrumb is hidden; the sidebar's lit row says where you are.
+    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('2 cards due today');
     expect((pane.querySelector('.fc-pane__header') as HTMLElement).style.display).toBe('none');
     expect(sidebar.querySelector('.fc-sb__nav-item--active')?.getAttribute('data-view')).toBe('decks');
   });
@@ -560,7 +566,7 @@ describe('navigation reaches the pane', () => {
     fake.rebuildPane();
     await settle();
     const pane = document.querySelector('.fc-pane')!;
-    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');
+    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('3 cards due today'); // the decks home, by its heading
   });
 });
 

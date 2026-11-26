@@ -4060,7 +4060,7 @@ checks, the builds stay one to a session):**
 11. Piece 11, Study's plan tab as the page for the plan's rules. **Part
     built; the rest waits on his word about an acceptance probe.**
 12. Piece 10, Flashcards' Decks and Stats (this also settles its Study
-    row).
+    row). **Done; the Study row is his to say.**
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
     and filters off the page).
 14. Piece 7, the PDF viewer.
@@ -4284,7 +4284,13 @@ waits on him, because an acceptance probe reads what it would remove.**
   not fit edged in the danger colour with "needs 60 h, has 33 h" in it.
   A piece is a button, named for a screen reader with its kind, dates,
   days and hours; a press, or Enter, goes to that phase's facts in the
-  list below.
+  list below. Each piece leads with its kind as an icon (a book for
+  Study, a moon for Rest, a turning arrow for Catch-up, a sun for
+  Holiday), so a piece too narrow for its name still says what it is.
+  The press is the command Open Plan with a phase, not a handler of the
+  tab's own (two ratchets, missed when this was first committed and put
+  right in the next commit: a kit button's local handler, and a button
+  of words with no icon).
 - *Not built, and why:* the drawing takes the table of every day off
   the tab, turns the list of phases into the strip alone, and replaces
   the four Open buttons with Week, Phases, Dates and Goal.
@@ -4311,6 +4317,51 @@ waits on him, because an acceptance probe reads what it would remove.**
   92); the keyboard audit on the plan tab and the New Plan sheet (0);
   the visual probe on Study's four screens (nothing found); Study's
   unit tests; the screenshot.
+
+**Item 12, the look's piece 10: Flashcards' Decks and Stats. Done; its
+Study row is still his to settle.**
+- *What was there:* Decks was titled "Decks", with three small counts
+  beside Study and Custom Study, a row of five buttons (New Deck, New
+  Custom Deck, Generate Cards, Import Cards, Exam Dates) and a table of
+  decks with three number columns. Stats had ten numbers of one size,
+  four of them "Cards by stage", and two charts.
+- *Decks, built:* the page's title is the day's work ("30 cards due
+  today", or "Nothing due right now") in the display face, with the
+  decks and cards counted in the mono face over it and the split in
+  words under it ("About 15 min. 3 new, 6 learning, 21 to review."; the
+  minutes come from his own pace over the last 30 days and are left
+  out until 20 answers have been timed). At its right: Stats, Custom
+  Study…, one Add menu holding the five making-and-importing actions,
+  and the one primary button, Study N Cards. Each deck is a row: its
+  name, its counts in words in the colours they have everywhere in the
+  tool, one thin bar of new, learning and review (named for a screen
+  reader), and Study with the number due. The bar's colours are named
+  under the list. An empty shelf keeps "Decks" and its three ways to a
+  first deck in the open.
+- *Stats, built:* the title, then four numbers in the display face,
+  each with its unit in words (reviews today, minutes today, days in a
+  row, share right over 30 days), then the two bar charts with their
+  totals, reviews done in the success colour and cards coming due in
+  the accent. Cards by stage is off the page (each deck's row on Decks
+  has it). The answer mix and the table by deck stay below.
+- *Differs from the drawing:* a Stats button stays in the masthead (the
+  drawing has none: the page must not be a dead end when the sidebar
+  shows another tool's list). Custom decks keep their own three-number
+  rows.
+- **For him (his item 2):** the sidebar still has its Study row. The
+  reason it was kept (the Decks page did not open on what is due) is
+  gone; dropping it changes one unit test and one probe, and is a line.
+- *Changed tests, none an acceptance probe:* `flashcardsBehavior.test.ts`
+  held the Decks page's heading to the word "Decks" in three places;
+  the heading is the day's work now, and the test holds it to that, to
+  the line under it and to the four buttons of the masthead.
+- *Checked:* `tests/probes/flashcards-pages-probe.mjs` (new, 15 of 15
+  on the built app, on a deck made through Flashcards' own command);
+  the keyboard audit on Flashcards (0); the visual probe (nothing
+  rose; "no kit header" on its front page was there before); typecheck
+  and the unit suite (9,933); the screenshots.
+- *Not seen:* the page with learning and review cards due (the probe's
+  deck has three new cards), the minutes line, a long list of decks.
 
 ## Verification owed
 

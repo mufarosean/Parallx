@@ -1545,9 +1545,10 @@ async function fcListDecks() {
     SELECT deck_id,
       SUM(CASE WHEN suspended = 0 AND state = 'new' THEN 1 ELSE 0 END) AS new_count,
       SUM(CASE WHEN suspended = 0 AND state != 'new' AND due_at <= ? THEN 1 ELSE 0 END) AS due_count,
+      SUM(CASE WHEN suspended = 0 AND state IN ('learning','relearning') AND due_at <= ? THEN 1 ELSE 0 END) AS learn_count,
       COUNT(*) AS total
     FROM fc_cards GROUP BY deck_id
-  `, [Date.now()]);
+  `, [Date.now(), Date.now()]);
   const byDeck = new Map(counts.map((c) => [c.deck_id, c]));
   return rows.map((r) => ({
     id: r.id,
@@ -1559,8 +1560,22 @@ async function fcListDecks() {
     studyApart: !!r.study_apart,
     newCount: byDeck.get(r.id)?.new_count || 0,
     dueCount: byDeck.get(r.id)?.due_count || 0,
+    learnCount: byDeck.get(r.id)?.learn_count || 0,
     total: byDeck.get(r.id)?.total || 0,
   }));
+}
+
+/**
+ * About how many minutes `cards` reviews take him: his own pace over the
+ * last 30 days (an answer capped at a minute, as Stats caps it). Null until
+ * 20 answers have been timed.
+ */
+async function fcMinutesFor(cards) {
+  if (!(cards > 0)) return null;
+  try {
+    const row = await db.get('SELECT AVG(MIN(ms_taken, 60000)) AS ms, COUNT(*) AS n FROM fc_reviews WHERE reviewed_at >= ? AND ms_taken > 0', [Date.now() - 30 * DAY]);
+    return row && row.n >= 20 && row.ms > 0 ? Math.max(1, Math.round((cards * row.ms) / 60_000)) : null;
+  } catch { return null; }
 }
 
 // Today's workload across ALL decks, split Anki-style into new / learning /
@@ -4909,7 +4924,7 @@ function injectStyles() {
    that start work, then the decks. Same editorial voice as the rest of the
    tool: space and weight carry hierarchy, signal hues only on counts. ── */
 .fc-home__head {
-  display: flex; align-items: flex-end; gap: var(--px-space-3);
+  display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--px-space-3);
   padding-bottom: var(--px-space-3); border-bottom: 1px solid var(--px-divider);
 }
 .fc-home__head-text { flex: 1; min-width: 0; }
@@ -4919,30 +4934,21 @@ function injectStyles() {
   line-height: 1.15; color: var(--px-text);
 }
 .fc-home__sub {
-  margin-top: 3px; font-size: var(--px-text-sm); color: var(--px-text-muted);
-  font-variant-numeric: tabular-nums;
+  margin-bottom: var(--px-space-1); font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted);
 }
-.fc-home__today {
-  display: flex; align-items: center; gap: var(--px-space-6); flex-wrap: wrap;
-  padding: var(--px-space-4) 0; border-bottom: 1px solid var(--px-divider);
-}
-.fc-home__stats { display: flex; align-items: stretch; gap: var(--px-space-5); }
-.fc-home__stat { display: flex; flex-direction: row; align-items: baseline; gap: 6px; }
-.fc-home__num {
-  font-size: var(--px-text-lg); font-weight: 650; line-height: 1;
-  letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--px-text);
-}
-.fc-home__num--zero { color: var(--px-text-faint); }
-.fc-home__num--new { color: var(--px-accent-text); }
-.fc-home__num--learn { color: var(--px-warning); }
-.fc-home__num--due { color: var(--px-success); }
-.fc-home__stat-lbl {
-  font-size: var(--px-text-sm);
-  color: var(--px-text-muted);
-}
+.fc-home__due { margin-top: var(--px-space-1); font-size: var(--px-text-md); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+.fc-home__title:has(+ .fc-home__due) { font-size: var(--px-text-2xl); line-height: 1.1; }
+.fc-deck-card__words .fc-deck-count__n { font-size: inherit; font-weight: 600; }
+.fc-deck-count__n--learn { color: var(--px-warning); }
+.fc-deck-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--px-surface-hover); }
+.fc-deck-bar__seg { display: block; height: 100%; }
+.fc-deck-bar__seg--new { background: var(--px-accent-text); }
+.fc-deck-bar__seg--learn { background: var(--px-warning); }
+.fc-deck-bar__seg--due { background: var(--px-success); }
+.fc-home__legend { display: flex; gap: var(--px-space-4); margin-top: var(--px-space-3); font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.fc-home__legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
 .fc-home__cta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
 .fc-home__cta .fc-btn { height: 32px; }
-.fc-home__behind { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .fc-home__actions { margin-block: var(--px-space-5) var(--px-space-4); gap: var(--px-space-2); }
 .fc-home__search { display: flex; align-items: center; gap: var(--px-space-2); flex: 1 1 180px; min-width: 140px; color: var(--px-text-muted); }
 .fc-home__search svg { width: 14px; height: 14px; flex: 0 0 auto; }
@@ -4998,7 +5004,7 @@ function injectStyles() {
 .fc-deck-count__l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .fc-deck-card {
-  display: grid; grid-template-columns: minmax(0, 1fr) 156px 178px; align-items: center; gap: var(--px-space-4);
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-4);
   min-height: 64px; padding: var(--px-space-3) var(--px-space-1); box-sizing: border-box;
   border-bottom: 1px solid var(--px-divider);
 }
@@ -5097,7 +5103,6 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   .fc-deck-card { grid-template-columns: minmax(0, 1fr); }
   .fc-deck-card__counts { display: flex; gap: var(--px-space-4); }
   .fc-deck-count__l { position: static; width: auto; height: auto; clip-path: none; font-size: var(--px-text-xs); color: var(--px-text-muted); }
-  .fc-home__today { gap: var(--px-space-3); }
 }
 .fc-view__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
 
@@ -5604,15 +5609,19 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 /* ── Stats — typographic, not boxed. Big tabular numerals over faint eyebrows,
    separated by whitespace; one restrained review histogram on a baseline. ── */
 .fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--px-space-5) var(--px-space-4); margin-bottom: var(--px-space-6); }
-.fc-stat__value { font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
-.fc-stat__label { font-size: var(--px-text-xs); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-faint); margin-top: 3px; }
+.fc-stat__value { font-family: var(--px-font-display); font-size: var(--px-text-2xl); font-weight: 500; line-height: 1; letter-spacing: -0.01em; color: var(--px-text); font-variant-numeric: lining-nums tabular-nums; }
+.fc-stats__title { margin-bottom: var(--px-space-4); }
+.fc-chart-head { display: flex; justify-content: space-between; align-items: baseline; }
+.fc-chart-head__n { font-family: var(--px-font-mono); font-weight: 400; color: var(--px-text-muted); }
+.fc-chart__bar--done { background: var(--px-success); }
+.fc-stat__label { font-size: var(--px-text-base); color: var(--px-text-secondary); margin-top: var(--px-space-1); }
 .fc-chart { display: flex; align-items: flex-end; gap: 3px; height: 96px; margin: var(--px-space-2) 0 var(--px-space-1); padding-bottom: var(--px-space-2); border-bottom: 1px solid var(--px-divider); }
 .fc-chart__bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--px-surface-active); transition: background var(--px-dur-fast) var(--px-ease); }
 .fc-chart__bar:hover { background: var(--px-accent); }
-.fc-chart__bar--empty { background: var(--px-divider); height: 2px !important; }
-.fc-chart__bar--today { background: var(--px-accent); }
+.fc-chart__bar.fc-chart__bar--empty { background: var(--px-divider); height: 2px !important; }
+.fc-chart__bar--today { box-shadow: inset 0 3px 0 var(--px-text); }
 .fc-chart-caption { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; margin-top: var(--px-space-1); }
-.fc-chart__bar--forecast { background: var(--px-accent-soft); }
+.fc-chart__bar--forecast { background: var(--px-accent); }
 .fc-answermix { display: flex; height: 10px; border-radius: var(--px-radius-full); overflow: hidden; gap: 1px; }
 .fc-answermix__seg--again { background: var(--px-danger); }
 .fc-answermix__seg--hard { background: var(--px-warning); }
@@ -6639,11 +6648,10 @@ async function renderDecks(body, setRoute) {
   const [decks, today] = await Promise.all([fcListDecks(), fcTodayCounts()]);
   const paceSettings = fcPaceSettings();
 
-  // ── Masthead ──
+  // ── Masthead: what there is to do, how long it takes, and the button that starts it ──
   const head = el('div', 'fc-home__head');
   const headText = el('div', 'fc-home__head-text');
   head.appendChild(headText);
-  headText.appendChild(el('h1', 'fc-home__title', 'Decks'));
   const totals = decks.reduce((acc, d) => {
     acc.cards += d.total;
     if (d.examDate > now && (acc.exam === 0 || d.examDate < acc.exam)) acc.exam = d.examDate;
@@ -6657,46 +6665,56 @@ async function renderDecks(body, setRoute) {
     summary.push(`next exam in ${Math.max(1, Math.ceil((totals.exam - now) / DAY))} days`);
   }
   headText.appendChild(el('div', 'fc-home__sub', summary.join(' · ')));
-  // The sidebar rail owns navigation, but the pane must not become a dead end
-  // when the sidebar is showing another container: home is one breadcrumb
-  // click from anywhere, and every destination is reachable from home.
+  const pace = fcNewAllowances(decks, now, paceSettings);
+  const served = decks.length === 0 ? 0 : fcCountServedToday(today, {
+    newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total),
+    reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+  });
+  const behind = Math.max(0, today.dueTotal - served);
+  // The page's title is the day's work; an empty shelf is still "Decks".
+  headText.appendChild(el('h1', 'fc-home__title', decks.length === 0 ? 'Decks' : served > 0 ? `${served} ${served === 1 ? 'card' : 'cards'} due today` : 'Nothing due right now'));
+  const cta = el('div', 'fc-home__cta');
+  // The sidebar's list owns navigation, but the pane must not become a dead
+  // end when the sidebar shows another tool: Stats is one press from here.
   const statsBtn = el('button', 'fc-btn');
   statsBtn.textContent = 'Stats';
   statsBtn.title = 'Retention, workload, and review history.';
   fcDeclare(statsBtn, 'flashcards.decks.stats'); statsBtn.addEventListener('click', () => setRoute({ view: 'stats' }));
-  head.appendChild(statsBtn);
-  view.appendChild(head);
-
-  // ── Today ──
+  cta.appendChild(statsBtn);
   if (decks.length > 0) {
-    const pace = fcNewAllowances(decks, now, paceSettings);
-    const served = fcCountServedToday(today, {
-      newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total),
-      reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+    const minutes = await fcMinutesFor(served);
+    const words = [
+      ...(minutes ? [`About ${minutes} min.`] : []),
+      `${today.newCount} new, ${today.learnCount} learning, ${today.reviewCount} to review.`,
+      ...(behind > 0 ? [`${behind} more behind today's batch.`] : []),
+    ];
+    headText.appendChild(el('div', 'fc-home__due', words.join(' ')));
+
+    const customAll = el('button', 'fc-btn');
+    customAll.textContent = 'Custom Study…';
+    customAll.title = behind > 0
+      ? `${behind} more cards sit behind today's batch. Custom Study reaches them.`
+      : 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
+    fcDeclare(customAll, 'flashcards.decks.custom'); customAll.addEventListener('click', () => setRoute({ view: 'custom' }));
+    cta.appendChild(customAll);
+    // One Add menu holds what makes or brings in cards (it was five buttons of equal weight over the list).
+    const addBtn = el('button', 'fc-btn');
+    addBtn.innerHTML = `${icon('plus', 12)}<span>Add</span>${icon('chevron-down', 12)}`;
+    addBtn.title = 'New Deck, New Custom Deck, Generate Cards, Import Cards, Exam Dates';
+    addBtn.setAttribute('aria-haspopup', 'menu');
+    fcDeclare(addBtn, 'flashcards.decks.add'); addBtn.addEventListener('click', () => {
+      const r = addBtn.getBoundingClientRect();
+      _api.ui.showContextMenu?.({ x: r.left, y: r.bottom + 2 }, [
+        { label: 'New Deck…', icon: 'plus', onSelect: () => void _cmdNewDeck() },
+        { label: 'New Custom Deck…', icon: 'plus', onSelect: () => { void _newCustomDeckFlow().then((id) => { if (id != null) setRoute({ view: 'customDeck', customId: id }); }); } },
+        { separator: true },
+        { label: 'Generate Cards', icon: 'px-ai-mark', onSelect: () => setRoute({ view: 'create' }) },
+        { label: 'Import Cards', icon: 'folder', onSelect: () => setRoute({ view: 'import' }) },
+        { separator: true },
+        { label: 'Exam Dates…', icon: 'calendar', onSelect: () => void _setExamDatesBulkFlow() },
+      ]);
     });
-    const behind = Math.max(0, today.dueTotal - served);
-
-    const panel = el('div', 'fc-home__today');
-    const stats = el('div', 'fc-home__stats');
-    const stat = (num, cls, label) => {
-      const box = el('div', 'fc-home__stat');
-      box.appendChild(el('div', `fc-home__num fc-home__num--${num > 0 ? cls : 'zero'}`, String(num)));
-      box.appendChild(el('div', 'fc-home__stat-lbl', label));
-      return box;
-    };
-    stats.appendChild(stat(today.newCount, 'new', 'New'));
-    stats.appendChild(stat(today.learnCount, 'learn', 'Learning'));
-    stats.appendChild(stat(today.reviewCount, 'due', 'Review'));
-    panel.appendChild(stats);
-
-    const cta = el('div', 'fc-home__cta');
-    const studyAll = el('button', 'fc-btn fc-btn--primary');
-    const studyLabel = served > 0 ? `Study ${served} ${served === 1 ? 'Card' : 'Cards'}` : 'Nothing Due Right Now';
-    studyAll.innerHTML = `${icon('play', 12)}<span>${studyLabel}</span>`;
-    // A zeroed daily limit still leaves work reachable — through Custom Study.
-    studyAll.disabled = served === 0;
-    fcDeclare(studyAll, 'flashcards.decks.study'); studyAll.addEventListener('click', () => setRoute({ view: 'study' }));
-    cta.appendChild(studyAll);
+    cta.appendChild(addBtn);
     const memo = await fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null);
     if (memo && memo.total > 0) {
       const memorize = el('button', 'fc-btn');
@@ -6705,19 +6723,16 @@ async function renderDecks(body, setRoute) {
       fcDeclare(memorize, 'flashcards.decks.memorize'); memorize.addEventListener('click', () => setRoute({ view: 'study', tag: FC_MEMORIZE_TAG }));
       cta.appendChild(memorize);
     }
-    const customAll = el('button', 'fc-btn');
-    customAll.textContent = 'Custom Study';
-    customAll.title = behind > 0
-      ? `${behind} more cards sit behind today's batch. Custom Study reaches them.`
-      : 'Work ahead: extra new cards, review ahead, difficult cards, or cram.';
-    fcDeclare(customAll, 'flashcards.decks.custom'); customAll.addEventListener('click', () => setRoute({ view: 'custom' }));
-    cta.appendChild(customAll);
-    if (behind > 0) {
-      cta.appendChild(el('span', 'fc-home__behind', `${behind} more behind today's batch`));
-    }
-    panel.appendChild(cta);
-    view.appendChild(panel);
+    const studyAll = el('button', 'fc-btn fc-btn--primary');
+    const studyLabel = served > 0 ? `Study ${served} ${served === 1 ? 'Card' : 'Cards'}` : 'Nothing Due Right Now';
+    studyAll.innerHTML = `${icon('play', 12)}<span>${studyLabel}</span>`;
+    // A zeroed daily limit still leaves work reachable — through Custom Study.
+    studyAll.disabled = served === 0;
+    fcDeclare(studyAll, 'flashcards.decks.study'); studyAll.addEventListener('click', () => setRoute({ view: 'study' }));
+    cta.appendChild(studyAll);
   }
+  head.appendChild(cta);
+  view.appendChild(head);
 
   // ── Actions ──
   const actions = el('div', 'fc-row fc-home__actions');
@@ -6732,34 +6747,23 @@ async function renderDecks(body, setRoute) {
     search.appendChild(filterInput);
     actions.appendChild(search);
   }
-  const newDeckBtn = el('button', decks.length === 0 ? 'fc-btn fc-btn--primary' : 'fc-btn');
-  newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New Deck</span>`;
-  fcDeclare(newDeckBtn, 'flashcards.newDeck', { command: 'flashcards.newDeck' }); newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
-  actions.appendChild(newDeckBtn);
-  if (decks.length) {
-    const newCustomBtn = el('button', 'fc-btn');
-    newCustomBtn.innerHTML = `${icon('plus', 12)}<span>New Custom Deck</span>`;
-    newCustomBtn.title = 'A custom deck gathers cards from any deck. The cards stay in their own decks and keep one schedule.';
-    fcDeclare(newCustomBtn, 'flashcards.decks.newCustom'); newCustomBtn.addEventListener('click', () => { void _newCustomDeckFlow().then((id) => { if (id != null) setRoute({ view: 'customDeck', customId: id }); }); });
-    actions.appendChild(newCustomBtn);
+  if (decks.length === 0) {
+    // An empty shelf: the three ways to a first deck, in the open.
+    const newDeckBtn = el('button', 'fc-btn fc-btn--primary');
+    newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New Deck</span>`;
+    fcDeclare(newDeckBtn, 'flashcards.newDeck', { command: 'flashcards.newDeck' }); newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
+    actions.appendChild(newDeckBtn);
+    const genBtn = _api.ui.createAiButton
+      ? _api.ui.createAiButton(actions, { id: 'flashcards.decks.generate', label: 'Generate Cards' })
+      : el('button', 'fc-btn');
+    if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; actions.appendChild(genBtn); }
+    genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
+    const importBtn = el('button', 'fc-btn');
+    importBtn.textContent = 'Import Cards';
+    importBtn.title = 'Bring in an Anki export, a front/back PDF, or pasted rows.';
+    fcDeclare(importBtn, 'flashcards.decks.import'); importBtn.addEventListener('click', () => setRoute({ view: 'import' }));
+    actions.appendChild(importBtn);
   }
-  const genBtn = _api.ui.createAiButton
-    ? _api.ui.createAiButton(actions, { id: 'flashcards.decks.generate', label: 'Generate Cards' })
-    : el('button', 'fc-btn');
-  if (!genBtn.parentElement) { genBtn.textContent = 'Generate Cards'; actions.appendChild(genBtn); }
-  genBtn.addEventListener('click', () => setRoute({ view: 'create' }));
-  const importBtn = el('button', 'fc-btn');
-  importBtn.textContent = 'Import Cards';
-  importBtn.title = 'Bring in an Anki export, a front/back PDF, or pasted rows.';
-  fcDeclare(importBtn, 'flashcards.decks.import'); importBtn.addEventListener('click', () => setRoute({ view: 'import' }));
-  actions.appendChild(importBtn);
-  const datesBtn = el('button', 'fc-btn');
-  datesBtn.textContent = 'Exam Dates';
-  datesBtn.title = 'Set or clear the exam date on several decks at once.';
-  // Nothing to date on an empty shelf: show the button once a deck exists.
-  if (decks.length === 0) datesBtn.style.display = 'none';
-  fcDeclare(datesBtn, 'flashcards.decks.examDates'); datesBtn.addEventListener('click', () => void _setExamDatesBulkFlow());
-  actions.appendChild(datesBtn);
   view.appendChild(actions);
 
   if (decks.length === 0) {
@@ -6841,13 +6845,6 @@ async function renderDecks(body, setRoute) {
     customHead = head;
   }
 
-  const columns = el('div', 'fc-home__columns');
-  columns.appendChild(el('span', '', 'Deck'));
-  const columnCounts = el('div', 'fc-home__columns-counts');
-  for (const label of ['New', 'Due', 'Cards']) columnCounts.appendChild(el('span', '', label));
-  columns.appendChild(columnCounts);
-  columns.setAttribute('aria-hidden', 'true');
-  view.appendChild(columns);
   const list = el('div', 'fc-home__decks');
   view.appendChild(list);
 
@@ -6869,18 +6866,28 @@ async function renderDecks(body, setRoute) {
     }
     info.appendChild(nameRow);
 
-    // Counts carry the Anki colour language the sidebar already uses: new =
-    // accent, due = success. Two grey numbers were indistinguishable.
-    const counts = el('div', 'fc-deck-card__counts');
-    const count = (n, cls, label) => {
-      const box = el('span', 'fc-deck-count');
-      box.appendChild(el('span', `fc-deck-count__n fc-deck-count__n--${n > 0 ? cls : 'zero'}`, String(n)));
-      box.appendChild(el('span', 'fc-deck-count__l', label));
-      return box;
+    // The deck's counts in words, each number in the colour its state has
+    // everywhere in the tool (new accent, learning warning, review success).
+    const review = Math.max(0, deck.dueCount - deck.learnCount);
+    const words = el('div', 'fc-deck-card__meta fc-deck-card__words');
+    const word = (n, cls, label, last) => {
+      words.appendChild(el('span', `fc-deck-count__n fc-deck-count__n--${n > 0 ? cls : 'zero'}`, String(n)));
+      words.appendChild(document.createTextNode(` ${label}${last ? '' : ' · '}`));
     };
-    counts.appendChild(count(deck.newCount, 'new', 'new'));
-    counts.appendChild(count(deck.dueCount, 'due', 'due'));
-    counts.appendChild(count(deck.total, 'total', 'total'));
+    if (deck.newCount + deck.dueCount === 0) words.appendChild(document.createTextNode('nothing due · '));
+    else { word(deck.newCount, 'new', 'new'); word(deck.learnCount, 'learn', 'learning'); word(review, 'due', 'review'); }
+    word(deck.total, 'total', deck.total === 1 ? 'card' : 'cards', true);
+    info.appendChild(words);
+    // One thin bar: the share of the deck that is new, in learning, and up for review.
+    const counts = el('div', 'fc-deck-bar');
+    counts.setAttribute('role', 'img');
+    counts.setAttribute('aria-label', `${deck.name}: ${deck.newCount} new, ${deck.learnCount} learning, ${review} to review, of ${deck.total} cards`);
+    for (const [n, cls] of [[deck.newCount, 'new'], [deck.learnCount, 'learn'], [review, 'due']]) {
+      if (!(n > 0) || !(deck.total > 0)) continue;
+      const seg = el('i', `fc-deck-bar__seg fc-deck-bar__seg--${cls}`);
+      seg.style.width = `${Math.max(2, (n / deck.total) * 100)}%`;
+      counts.appendChild(seg);
+    }
 
     // The pace line: what the deadline math actually plans for this
     // deck, so the new-card backlog reads as a schedule instead of a dread
@@ -6915,7 +6922,7 @@ async function renderDecks(body, setRoute) {
 
     const btns = el('div', 'fc-deck-card__actions');
     const studyBtn = el('button', 'fc-btn');
-    studyBtn.textContent = 'Study';
+    studyBtn.innerHTML = `${icon('play', 12)}<span>${deck.dueCount > 0 ? `Study ${deck.dueCount}` : 'Study'}</span>`;
     // A live session (learning card pending its 1m step) must stay
     // reachable even when the due badges read zero.
     studyBtn.disabled = deck.dueCount === 0 && deck.newCount === 0 && !_fcStudySessions.has(String(deck.id));
@@ -6950,6 +6957,10 @@ async function renderDecks(body, setRoute) {
     list.appendChild(card);
   }
 
+  // What the bar's three colours are, in words.
+  const legend = el('div', 'fc-home__legend');
+  for (const [cls, label] of [['new', 'new'], ['learn', 'learning'], ['due', 'review']]) { const key = el('span', ''); key.append(el('i', `fc-deck-bar__seg--${cls}`), label); legend.appendChild(key); }
+  view.appendChild(legend);
   const noMatch = el('div', 'fc-home__no-match', 'No decks match your search.');
   noMatch.hidden = true;
   noMatch.setAttribute('role', 'status');
@@ -6967,7 +6978,6 @@ async function renderDecks(body, setRoute) {
       if (!c.row.hidden) customVisible++;
     }
     if (customHead) customHead.hidden = customVisible === 0;
-    columns.hidden = visible === 0 && customVisible > 0;
     noMatch.hidden = visible + customVisible > 0;
   });
 
@@ -10928,6 +10938,8 @@ async function renderStats(body) {
   const view = el('div', 'fc-view');
   const stats = await fcLoadStats();
 
+  view.appendChild(el('h1', 'fc-home__title fc-stats__title', 'Stats'));
+  // Four numbers that say something at a glance, each with its unit in words.
   const grid = el('div', 'fc-stats-grid');
   const stat = (value, label) => {
     const box = el('div', 'fc-stat');
@@ -10935,27 +10947,19 @@ async function renderStats(body) {
     box.appendChild(el('div', 'fc-stat__label', label));
     return box;
   };
-  grid.appendChild(stat(String(stats.today.reviews), 'Reviews today'));
-  grid.appendChild(stat(stats.today.reviews > 0 ? `${stats.today.minutes}m` : '—', 'Time today'));
-  grid.appendChild(stat(stats.streak > 0 ? `${stats.streak}d` : '—', 'Streak'));
-  grid.appendChild(stat(stats.today.correctPct === null ? '—' : `${stats.today.correctPct}%`, 'Correct today'));
-  grid.appendChild(stat(stats.retention30 === null ? '—' : `${stats.retention30}%`, 'Retention (30d)'));
-  grid.appendChild(stat(String(stats.counts.total), 'Total cards'));
+  const days = (n) => `${n} ${n === 1 ? 'day' : 'days'}`;
+  grid.appendChild(stat(String(stats.today.reviews), stats.today.reviews === 1 ? 'review today' : 'reviews today'));
+  grid.appendChild(stat(`${stats.today.reviews > 0 ? stats.today.minutes : 0} min`, 'today'));
+  grid.appendChild(stat(days(stats.streak > 0 ? stats.streak : 0), 'in a row'));
+  grid.appendChild(stat(stats.retention30 === null ? '–' : `${stats.retention30}%`, stats.retention30 === null ? 'right, last 30 days: no reviews yet' : 'right, last 30 days'));
   view.appendChild(grid);
 
-  view.appendChild(el('div', 'fc-label', 'Cards by stage'));
-  const stageGrid = el('div', 'fc-stats-grid');
-  stageGrid.appendChild(stat(String(stats.counts.new), 'New'));
-  stageGrid.appendChild(stat(String(stats.counts.learning + stats.counts.relearning), 'Learning'));
-  stageGrid.appendChild(stat(String(stats.counts.review), 'Reviewing'));
-  stageGrid.appendChild(stat(String(stats.counts.suspended), 'Suspended'));
-  view.appendChild(stageGrid);
-
-  view.appendChild(el('div', 'fc-label', 'Reviews, last 30 days'));
+  const chartHead = (label, total) => { const h = el('div', 'fc-label fc-chart-head'); h.append(el('span', '', label), el('span', 'fc-chart-head__n', String(total))); return h; };
+  view.appendChild(chartHead('Reviews, last 30 days', stats.last30.reduce((n, d) => n + d.count, 0)));
   const chart = el('div', 'fc-chart');
   const max = Math.max(1, ...stats.last30.map((d) => d.count));
   stats.last30.forEach((day, i) => {
-    const bar = el('div', 'fc-chart__bar');
+    const bar = el('div', 'fc-chart__bar fc-chart__bar--done');
     if (day.count === 0) bar.classList.add('fc-chart__bar--empty');
     else {
       bar.style.height = `${Math.max(6, Math.round((day.count / max) * 100))}%`;
@@ -10972,7 +10976,7 @@ async function renderStats(body) {
     : 'No reviews in the last 30 days.'));
 
   // ── Scheduled load, next 14 days ──
-  view.appendChild(el('div', 'fc-label', 'Scheduled, next 14 days'));
+  view.appendChild(chartHead('Due, next 14 days', stats.forecast14.reduce((n, d) => n + d.count, 0)));
   const fchart = el('div', 'fc-chart');
   const fmax = Math.max(1, ...stats.forecast14.map((d) => d.count));
   stats.forecast14.forEach((day, i) => {
