@@ -89,10 +89,10 @@ async function main() {
     await page.waitForSelector('.planner-pane', { timeout: 10_000 });
     await page.waitForTimeout(1_200);
     const tab = async (label) => {
-      await page.evaluate((l) => Array.from(document.querySelectorAll('.planner-pane__tab')).find((t) => t.textContent.trim().startsWith(l))?.click(), label);
+      await cmd(page, 'planner.show', label.toLowerCase());
       await page.waitForTimeout(900);
     };
-    const tabs = await page.evaluate(() => Array.from(document.querySelectorAll('.planner-pane__tab')).map((t) => t.textContent.trim()).join(' | '));
+    const tabs = await page.evaluate(() => Array.from(document.querySelectorAll('.planner-sidebar .planner-sidebar__row[data-key]')).map((t) => t.textContent.trim()).join(' | '));
     log('tabs', tabs);
 
     // Today.
@@ -102,7 +102,7 @@ async function main() {
 
     // Tasks: the filters, the rows, a row's menu, the task popover.
     await tab('Tasks');
-    log('tasks nav', await page.evaluate(() => Array.from(document.querySelectorAll('.planner-tasks__navitem')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).join(' | ')));
+    log('tasks page', await page.evaluate(() => document.querySelector('.planner-tasks .px-page-header__title')?.textContent ?? ''));
     log('tasks rows', await page.evaluate(() => Array.from(document.querySelectorAll('.planner-task .planner-task__title')).map((t) => t.textContent.trim()).join(' | ')));
     log('task sections', await page.evaluate(() => Array.from(document.querySelectorAll('.planner-section__title')).map((t) => t.textContent.trim()).join(' | ')));
     await page.evaluate(() => document.querySelector('.planner-task .planner-task__more')?.click());

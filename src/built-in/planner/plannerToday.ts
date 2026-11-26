@@ -8,7 +8,7 @@
 
 import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { createButton, createIconButton, createList, createPageHeader, createSectionLabel } from '../../ui/kit.js';
+import { createButton, createPageHeader, createSectionLabel } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerEvent, PlannerTask } from './plannerTypes.js';
@@ -246,8 +246,6 @@ const timeFmt = (ms: number): string => appTimeString(ms, { hour: 'numeric', min
 const dayFmt = (ms: number): string => appDateString(ms, { weekday: 'short', month: 'short', day: 'numeric' });
 
 export class PlannerTodayView implements IDisposable {
-  /** Months away from the current one in the mini calendar. */
-  private _monthOffset = 0;
 
   constructor(private readonly _deps: PlannerTodayDeps) {}
 
@@ -277,7 +275,6 @@ export class PlannerTodayView implements IDisposable {
     main.appendChild(this._schedule(model, ctx.colorOf, now));
     if (model.anytime.length) main.appendChild(this._anytime(model.anytime));
 
-    side.appendChild(await this._month(now, ctx.isVisible));
     if (model.review.length) side.appendChild(this._review(model.review, now));
     if (model.overdue.length) side.appendChild(this._overdue(model.overdue, dayStart));
 
@@ -430,67 +427,6 @@ export class PlannerTodayView implements IDisposable {
   }
 
   // ── Side column ──────────────────────────────────────────────────────
-
-  private async _month(now: number, isVisible: IsVisible): Promise<HTMLElement> {
-    const card = el('section', 'planner-today__card planner-today__month');
-    const nowParts = appDateParts(now);
-    const first = appTime(nowParts.year, nowParts.month + this._monthOffset, 1);
-    const firstMonth = appDateParts(first).month;
-    const gridStart = addLocalDays(first, -appDateParts(first).weekday);
-    const gridEnd = addLocalDays(gridStart, 42);
-
-    const head = el('div', 'planner-today__card-head');
-    const title = el('h2', 'planner-today__card-title', appDateString(first, { month: 'long', year: 'numeric' }));
-    card.setAttribute('aria-label', title.textContent ?? '');
-    head.appendChild(title);
-    const nav = el('div', 'planner-today__month-nav');
-    const repaint = () => void this._repaintMonth(card, now, isVisible);
-    createIconButton(nav, { id: 'planner.today.previousMonth', icon: 'chevron-left', title: 'Previous Month', size: 'sm', onClick: () => { this._monthOffset--; repaint(); } });
-    createIconButton(nav, { id: 'planner.today.nextMonth', icon: 'chevron-right', title: 'Next Month', size: 'sm', onClick: () => { this._monthOffset++; repaint(); } });
-    head.appendChild(nav);
-    card.appendChild(head);
-
-    const [events, tasks] = await Promise.all([
-      this._deps.data.listEvents({ from: gridStart, to: gridEnd }),
-      this._deps.data.listTasks({ status: ['planned', 'done'], dueFrom: gridStart, dueTo: gridEnd, limit: 1000 }),
-    ]);
-    const load = new Map<number, number>();
-    const bump = (ms: number) => { const k = startOfLocalDay(ms); load.set(k, (load.get(k) ?? 0) + 1); };
-    for (const ev of events) if (isVisible(ev.calendarId)) bump(ev.startAt);
-    for (const t of tasks) if (t.dueAt != null && isVisible(t.calendarId)) bump(t.dueAt);
-
-    const grid = el('div', 'planner-today__month-grid');
-    // The month's days are rows of one list in the scene; each names itself by its aria-label.
-    createList(grid, { id: 'planner.today.month', label: 'Month', rows: () => Array.from(grid.querySelectorAll<HTMLElement>('.planner-today__day')), selected: () => [] });
-    for (let i = 0; i < 7; i++) {
-      const dow = appDateString(addLocalDays(gridStart, i), { weekday: 'narrow' });
-      grid.appendChild(el('span', 'planner-today__dow', dow));
-    }
-    const today = startOfLocalDay(now);
-    for (let i = 0; i < 42; i++) {
-      const day = addLocalDays(gridStart, i);
-      const d = appDateParts(day);
-      const btn = el('button', 'planner-today__day');
-      btn.type = 'button';
-      if (d.month !== firstMonth) btn.classList.add('planner-today__day--out');
-      if (day === today) btn.classList.add('planner-today__day--today');
-      const count = load.get(day) ?? 0;
-      btn.setAttribute('aria-label', `${dayFmt(day)}${count ? `, ${plural(count, 'item', 'items')}` : ''}`);
-      btn.appendChild(el('span', 'planner-today__day-num', String(d.day)));
-      const dots = el('span', 'planner-today__dots');
-      for (let k = 0; k < Math.min(count, 3); k++) dots.appendChild(el('span', 'planner-today__dot'));
-      btn.appendChild(dots);
-      btn.addEventListener('click', () => this._deps.openDay(day));
-      grid.appendChild(btn);
-    }
-    card.appendChild(grid);
-    return card;
-  }
-
-  private async _repaintMonth(card: HTMLElement, now: number, isVisible: IsVisible): Promise<void> {
-    const next = await this._month(now, isVisible);
-    if (card.isConnected) card.replaceWith(next);
-  }
 
   private _review(review: readonly PlannerTask[], now: number): HTMLElement {
     const card = el('section', 'planner-today__card planner-today__review');

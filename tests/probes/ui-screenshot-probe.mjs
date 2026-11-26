@@ -1608,7 +1608,7 @@ async function main() {
         if (!ok) throw new Error('planner.open not available');
         await page.waitForTimeout(1_200);
         await shot(page, 'planner');
-        await click(page, 'planner.tab.tasks', { timeout: 5_000 });
+        await runCommand(page, [['planner.show', 'tasks']]);
         await page.waitForTimeout(900);
         await shot(page, 'planner-tasks');
       });

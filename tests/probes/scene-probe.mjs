@@ -35,7 +35,7 @@ const BUILTIN_IDS = {
   dashboard: ['dashboard.addWidget', 'dashboard.refreshAll', 'dashboard.schedule', 'dashboard.hideHeader', 'dashboard.side.new', 'dashboard.side.pages'],
   explorer: ['explorer.tree', 'explorer.openEditors'],
   search: ['search.query', 'search.replace', 'search.toggleReplace', 'search.match-case', 'search.results'],
-  planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
+  planner: ['planner.today.capture', 'planner.newEvent', 'planner.side.today', 'planner.side.calendar', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
   agents: ['agents.newRoutine', 'agents.openSettings', 'agents.tab', 'agents.showHistory'],
   chat: ['chat.input', 'chat.send', 'chat.addContext', 'chat.mode', 'chat.engine', 'chat.context', 'chat.newSession', 'chat.empty.commands'],

@@ -107,7 +107,7 @@ try {
     return {
       rows, month: month ? { title: month.querySelector('.px-datepicker__title')?.textContent, days: month.querySelectorAll('.px-datepicker__day').length, today: month.querySelector('.px-datepicker__day--today')?.textContent ?? null, stops: month.querySelectorAll('.px-datepicker__day[tabindex="0"]').length } : null,
       calendars: [...document.querySelectorAll('.planner-sidebar__cal')].map((c) => c.textContent.trim()),
-      page: { tab: document.querySelector('.planner-tab--active, [data-px-id^="planner.tab."][aria-selected="true"]')?.textContent?.trim() ?? null, tasksNav: document.querySelector('.planner-tasks__navitem--active')?.dataset.key ?? null, title: document.querySelector('.planner-cal__title, .planner-calendar__title, .planner-toolbar__title')?.textContent ?? null, text: (document.querySelector('.planner-pane, .planner-root, .planner')?.innerText ?? '').slice(0, 400) },
+      page: { tab: document.querySelector('.planner-pane')?.dataset.tab ?? null, pageTabs: document.querySelectorAll('.planner-pane__tab').length, pageLists: document.querySelectorAll('.planner-tasks__navitem').length, pageMonth: document.querySelectorAll('.planner-today__month').length, tasksTitle: document.querySelector('.planner-tasks .px-page-header__title')?.textContent ?? null, title: document.querySelector('.planner-cal__title, .planner-calendar__title, .planner-toolbar__title')?.textContent ?? null, text: (document.querySelector('.planner-pane, .planner-root, .planner')?.innerText ?? '').slice(0, 400) },
     };
   });
   let p = await planner();
@@ -123,8 +123,10 @@ try {
   if (await cap.count()) { await cap.click(); await page.keyboard.type('Probe task for the column'); await page.keyboard.press('Enter'); await wait(1_200); }
   p = await planner();
   check('Planner: a captured task raises All Tasks and the Review Queue at once', Number(p.rows.find((r) => r.key === 'tasks.all')?.count) === before + 1 && Number(p.rows.find((r) => r.key === 'tasks.review')?.count) >= 1, p.rows.filter((r) => r.key.startsWith('tasks.')));
-  check('Planner: pressing Overdue opens Tasks on that list and lights the row', await press('planner.side.tasks.overdue') && (p = await planner()).page.tasksNav === 'overdue' && p.rows.find((r) => r.key === 'tasks.overdue')?.active === true && p.rows.filter((r) => r.active).length === 1, { nav: p.page.tasksNav, active: p.rows.filter((r) => r.active).map((r) => r.key) });
-  check('Planner: pressing Review Queue changes the list on the page already open', await press('planner.side.tasks.review') && (p = await planner()).page.tasksNav === 'review', p.page.tasksNav);
+  check('Planner: pressing Overdue opens Tasks on that list and lights the row', await press('planner.side.tasks.overdue') && (p = await planner()).page.tab === 'tasks' && p.page.tasksTitle === 'Overdue' && p.rows.find((r) => r.key === 'tasks.overdue')?.active === true && p.rows.filter((r) => r.active).length === 1, { page: p.page, active: p.rows.filter((r) => r.active).map((r) => r.key) });
+  check('Planner: pressing Review Queue changes the list on the page already open', await press('planner.side.tasks.review') && (p = await planner()).page.tasksTitle === 'Review Queue', p.page);
+  // The look's piece 9: what the sidebar's list has, the page no longer has a second copy of.
+  check('Planner: the page has no tabs, no list of lists and no month of its own', p.page.pageTabs === 0 && p.page.pageLists === 0 && p.page.pageMonth === 0, p.page);
   check('Planner: pressing Calendar lights Calendar', await press('planner.side.calendar') && (p = await planner()).rows.find((r) => r.key === 'calendar')?.active === true, p.rows.filter((r) => r.active).map((r) => r.key));
   // The small month by keys: Page Down goes to next month, Enter opens the calendar on that day.
   await page.evaluate(() => document.querySelector('.planner-sidebar .px-smallmonth .px-datepicker__day[tabindex="0"]')?.focus());

@@ -113,7 +113,7 @@ try {
   const events = () => page.evaluate(async () => { const reg = await window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('planner.getRegistry'); const d = new Date(); const list = await reg.data.listEvents({ from: d.getTime() - 40 * 86_400_000, to: d.getTime() + 40 * 86_400_000 }); return Object.fromEntries(list.map((e) => [e.title, e.startAt])); });
   await cmd(page, 'planner.open');
   await page.waitForTimeout(800);
-  await page.evaluate(() => Array.from(document.querySelectorAll('[data-px-id="planner.tab.calendar"]')).find((x) => x.getClientRects().length)?.click());
+  await cmd(page, 'planner.show', 'calendar'); // the page's own tabs are gone: the sidebar's list and this command choose the page
   await page.waitForTimeout(1_200);
   const e0 = await events();
   const chip = await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.planner-month__chip')).find((x) => x.getClientRects().length && x.textContent.includes('Seeded meeting')); if (!c) return null; const cellEl = c.closest('.planner-month__cell') || c.parentElement; const r = c.getBoundingClientRect(), cell = cellEl.getBoundingClientRect(); const grid = cellEl.parentElement.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, cellW: cell.width, lastOfWeek: cell.right + cell.width / 2 > grid.right }; });

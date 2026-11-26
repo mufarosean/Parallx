@@ -223,36 +223,6 @@
 
 /* Tabs — underline tabs. The underline is a real border-bottom pulled
    1px down onto the header's own border. */
-.planner-pane__tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-}
-.planner-pane__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--px-space-2);
-  padding: 0 var(--px-space-3);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  background: transparent;
-  color: var(--px-text-muted);
-  font: inherit;
-  font-size: var(--px-text-base);
-  font-weight: 400;
-  cursor: pointer;
-  transition: color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
-}
-.planner-pane__tab:hover { color: var(--px-text); }
-.planner-pane__tab:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
-.planner-pane__tab--active {
-  color: var(--px-text);
-  font-weight: 600;
-  border-bottom-color: var(--px-accent);
-}
-.planner-pane__tab--active .svg-icon { color: var(--px-accent-text); }
-
 /* The tab's toolbar takes the rest of the header, so a tab can lay its
    controls out across the full width: the calendar puts its spacer between
    the date navigation and the view controls, and on every tab the trailing
@@ -265,6 +235,8 @@
   min-width: 0;
 }
 .planner-pane__actions > :is(.planner-cta, .planner-btn):last-child { margin-left: auto; }
+/* With one control alone (Today's New Event), it is still at the right edge. */
+.planner-pane__actions > :only-child { margin-left: auto; }
 
 .planner-pane__body {
   flex: 1 1 auto;
@@ -527,100 +499,10 @@
 
 /* ── Tasks ────────────────────────────────────────────────────────────── */
 
-/* Tasks tab — two-column layout: left filter nav, right content. The
-   filter rail mirrors the workbench's sidebar-list idiom (label + count,
-   list-selection treatment on active) so it reads as "navigate within
-   tasks" rather than a separate UI dialect. */
-.planner-tasks {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 24px;
-  align-items: start;
-}
-.planner-tasks__nav {
-  position: sticky;
-  top: 60px; /* clear the sticky header */
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 4px 0;
-}
-
-.planner-tasks__navitem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 28px;
-  padding: 0 10px 0 12px;
-  border: 0;
-  border-radius: var(--px-radius-sm);
-  background: transparent;
-  color: var(--px-text);
-  font: inherit;
-  font-size: var(--px-text-base);
-  cursor: pointer;
-  user-select: none;
-  position: relative;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.planner-tasks__navitem:hover { background: var(--px-surface-hover); }
-.planner-tasks__navitem--active { background: var(--px-surface-selected); font-weight: 600; }
-.planner-tasks__navitem[data-key="review"] {
-  padding-left: 16px;
-}
-.planner-tasks__navitem[data-key="review"]::before {
-  content: '';
-  position: absolute;
-  left: 6px; top: 7px; bottom: 7px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--px-warning);
-}
-
-.planner-tasks__navlabel {
-  flex: 1 1 auto;
-  text-align: left; /* a <button> centres its text; list labels read from the left */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.planner-tasks__navcount {
-  font-size: var(--px-text-xs);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, currentColor 60%, transparent);
-  flex: 0 0 auto;
-}
-.planner-tasks__navsep {
-  height: 1px;
-  margin: 6px 8px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-}
-
-/* Medium and compact panes: the filter list becomes a row of pills above
-   the tasks (it scrolls sideways if it has to). */
-@container planner (max-width: 1023px) {
-  .planner-tasks { grid-template-columns: minmax(0, 1fr); gap: var(--px-space-4); }
-  .planner-tasks__nav {
-    position: static;
-    flex-direction: row;
-    gap: var(--px-space-1);
-    padding: 0 0 var(--px-space-1);
-    overflow-x: auto;
-  }
-  .planner-tasks__navsep { display: none; }
-  .planner-tasks__navitem {
-    flex: 0 0 auto;
-    gap: var(--px-space-2);
-    border: 1px solid var(--px-border);
-    border-radius: var(--px-radius-full);
-  }
-  .planner-tasks__navitem[data-key="review"] { padding-left: 10px; }
-  .planner-tasks__navitem[data-key="review"]::before { display: none; }
-}
-
-
+/* The Tasks page is the chosen list in one reading column; the six lists
+   are in Planner's list in the sidebar. */
+.planner-tasks { display: block; max-width: 760px; }
+.planner-tasks .px-page-header { padding-inline: 0; padding-top: 0; }
 .planner-tasks__content {
   display: flex;
   flex-direction: column;

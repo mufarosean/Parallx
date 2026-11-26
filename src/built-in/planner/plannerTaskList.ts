@@ -3,13 +3,12 @@
 // sections, each task's row (done check, due date, quick plan, its menu),
 // and capturing a new task.
 
-import { declareControl } from '../../ui/kit.js';
 import { renderEmptyStateEntry } from '../../ui/emptyStates.js';
 import { PLANNER_EMPTY_STATES } from './plannerEmptyStates.js';
 import type { PlannerTask, TaskStatus } from './plannerTypes.js';
 import { isLate, isOverdue, quickPlanOptions } from './plannerToday.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
-import { createButton } from '../../ui/kit.js';
+import { createButton, createPageHeader } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 import { appDateString, isSameAppDay } from '../../services/localTime.js';
 import { endOfDay, formatDateShort } from './plannerDates.js';
@@ -29,28 +28,28 @@ export class PlannerTaskList {
     const all = await this._pane._data.listTasks(PLANNER_TASK_LIST_QUERY);
 
     if (all.length === 0) {
+      // No task anywhere yet: the page still says which list it is.
+      createPageHeader(body, { title: (PLANNER_TASK_FILTERS.find((f) => f.key === this._pane._tasksFilter) ?? PLANNER_TASK_FILTERS[PLANNER_TASK_FILTERS.length - 1]).label, subtitle: '0 tasks' });
       body.appendChild(renderEmptyStateEntry(PLANNER_EMPTY_STATES.day));
       return;
     }
 
-    // Two-column layout: left filter nav, right filtered content.
+    // The page is the chosen list. The six lists themselves hang under
+    // Tasks in Planner's sidebar list (it had a second copy of them here).
     const layout = el('div', 'planner-tasks');
     body.appendChild(layout);
-
-    const nav = el('nav', 'planner-tasks__nav');
-    nav.setAttribute('aria-label', 'Filter tasks');
     const content = el('div', 'planner-tasks__content');
-    layout.appendChild(nav);
     layout.appendChild(content);
 
     const filters = PLANNER_TASK_FILTERS;
 
-    let activeKey = this._pane._tasksFilter;
+    const activeKey = this._pane._tasksFilter;
 
     const renderContent = () => {
       content.innerHTML = '';
       const filter = filters.find(f => f.key === activeKey) ?? filters[filters.length - 1];
       const matching = all.filter(filter.match);
+      createPageHeader(content, { title: filter.label, subtitle: `${matching.length} ${matching.length === 1 ? 'task' : 'tasks'}` });
 
       if (activeKey === 'all') {
         // "All tasks" uses the grouped section view so the user has the
@@ -81,38 +80,6 @@ export class PlannerTaskList {
         content.appendChild(this._renderTaskSection(filter.label, rows, { accent }));
       }
     };
-
-    // Build the nav.
-    let lastPinned: boolean | undefined;
-    for (const f of filters) {
-      if (lastPinned !== undefined && !!f.pinned !== !!lastPinned) {
-        nav.appendChild(el('div', 'planner-tasks__navsep'));
-      }
-      lastPinned = !!f.pinned;
-      const item = el('button', 'planner-tasks__navitem');
-      item.type = 'button';
-      item.dataset.key = f.key;
-      declareControl(item, { id: `planner.tasks.nav.${f.key}`, label: f.label, state: () => ({ kind: 'pressed', value: item.classList.contains('planner-tasks__navitem--active') }) });
-      const label = el('span', 'planner-tasks__navlabel');
-      label.textContent = f.label;
-      const count = el('span', 'planner-tasks__navcount');
-      count.textContent = String(all.filter(f.match).length);
-      item.appendChild(label);
-      item.appendChild(count);
-      item.addEventListener('click', () => {
-        activeKey = f.key;
-        this._pane._tasksFilter = activeKey;
-        this._pane._saveViewState();
-        for (const sibling of Array.from(nav.children)) {
-          if (sibling instanceof HTMLElement && sibling.classList.contains('planner-tasks__navitem')) {
-            sibling.classList.toggle('planner-tasks__navitem--active', sibling.dataset.key === activeKey);
-          }
-        }
-        renderContent();
-      });
-      if (f.key === activeKey) item.classList.add('planner-tasks__navitem--active');
-      nav.appendChild(item);
-    }
 
     renderContent();
   }

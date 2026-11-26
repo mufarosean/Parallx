@@ -4062,7 +4062,8 @@ checks, the builds stay one to a session):**
 12. Piece 10, Flashcards' Decks and Stats (this also settles its Study
     row). **Done; the Study row is his to say.**
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
-    and filters off the page).
+    and filters off the page). **The doubles are off; the pages'
+    redrawing is left.**
 14. Piece 7, the PDF viewer.
 15. Piece 3, menus, notices and the Settings dialog.
 16. Piece 5, chat.
@@ -4362,6 +4363,53 @@ Study row is still his to settle.**
   and the unit suite (9,933); the screenshots.
 - *Not seen:* the page with learning and review cards due (the probe's
   deck has three new cards), the minutes line, a long list of decks.
+
+**Item 13, the look's piece 9: Planner's three pages. The doubled
+tabs, month and list of lists are off the page; the redrawing of each
+page is not done.**
+- *What was there:* since piece 2, Planner's sidebar list held Today,
+  Calendar, Tasks with its six lists, the small month and the
+  calendars, and the page still had its own copy of three of those:
+  tabs across its head, a month beside Today, and the six lists as a
+  column inside Tasks.
+- *Built:* the page's tabs are gone; a page is chosen in the sidebar's
+  list or by the command Planner: Show (palette, keys, the model), and
+  New Event or New Task stays at the head's right. Today has no month
+  of its own. Tasks is the chosen list in one reading column, titled
+  with the list's name in the display face and its count under it (an
+  empty Tasks page is titled too). No behaviour of capture, the Review
+  Queue's day buttons, drag to create and move, or the shortcuts was
+  touched.
+- *Not built of the drawing:* the capture field as a lifted sheet, the
+  schedule starting near now, events as chips in their calendar's
+  colour; the Review Queue as a soft band and every task a 36 px row;
+  Calendar's days as small sheets with today ringed in ink, and Month,
+  Week, Day as one switch. Each is a redrawing of one page and wants
+  its own session with the drag checks on the new cells.
+- *A cost he agreed to, now real:* with another tool's list in the
+  sidebar, Planner's pages are two presses apart (Planner in the tools,
+  then the page) or one command. And Planner's list is long: in a 900
+  px window its month is cut off above the two foot rows until the
+  list is scrolled.
+- *Checks changed because what they pressed is gone, none an acceptance
+  probe and none to get a pass:* `column-lists-probe.mjs` read the
+  page's lit tab and lit list (it reads the page shown and its title
+  now, and gains a check that the page has no tabs, list of lists or
+  month); `touch-drag-probe.mjs`, `ui-screenshot-probe.mjs` and
+  `planner-probe.mjs` pressed a page tab to change page (they run
+  Planner: Show); `scene-probe.mjs` listed the three tab ids among
+  Planner's controls (it lists the sidebar's three rows). The keyboard
+  audit reached Tasks and Calendar as sub-screens through the tabs, so
+  the two are named in its list of screens now and are still audited.
+- *Checked:* `tests/probes/planner-pages-probe.mjs` (new, 10 of 10 on
+  the built app: each page reached by mouse and by keys from the
+  sidebar, and by the command with another tool's list showing);
+  `column-lists-probe.mjs` (no problem); the keyboard audit on Today,
+  Tasks and Calendar (0); the visual probe on Planner (nothing found);
+  the touch-drag probe (14 of 14, a planner event moved by finger);
+  typecheck; the unit suite (9,933); the screenshots.
+- *Left in the stylesheet:* the rules of the page's old month
+  (`planner-today__month…`), now unused.
 
 ## Verification owed
 

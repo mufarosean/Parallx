@@ -40,7 +40,7 @@ const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-k
 const only = process.argv.slice(3);
 
 const SCREENS = [
-  ['boot'], ['start'], ['welcome.openWelcome'], ['home.open'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'],
+  ['boot'], ['start'], ['welcome.openWelcome'], ['home.open'], ['explorer.open'], ['search.findInFiles'], ['worksheet.open'], ['planner.open'], ['planner.show', 'tasks'], ['planner.show', 'calendar'], // Planner's pages are chosen in its sidebar list now, not by tabs on the page: named here so each is still audited
   ['dashboard.open'], ['agents.show'], ['agents.showRoutines'], ['tools.showInstalled'], ['chat.show'], ['workflows.new'],
   ['settings.open'], ['settings.open', 'ai'], ['settings.open', 'document-reader'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],

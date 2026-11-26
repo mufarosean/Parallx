@@ -7,13 +7,11 @@
 // plannerEventPopover (the dialogs), plannerNotes, plannerCalendarsMenu, and
 // plannerUi (what they share). Pure DOM + CSS Grid; no layout engine.
 
-import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import { plannerDayFrom, takePendingPlannerNewEvent, takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
 import { PlannerTodayView } from './plannerToday.js';
-import { createIconElement } from '../../ui/iconRegistry.js';
 import { appDateParts } from '../../services/localTime.js';
 import { startOfDay, atTime } from './plannerDates.js';
 import { PLANNER_ICON_SVG, el, type PlannerEditorInput, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
@@ -314,30 +312,10 @@ export class PlannerEditorPane implements IDisposable {
     const root = el('div', 'planner-pane');
     this._root = root;
 
-    // Header — tab toggles + contextual actions
+    // Header: the page's own actions. The three pages (Today, Tasks, Calendar)
+    // are chosen in Planner's list in the sidebar and by the command
+    // planner.show; the page had a second copy of that switch as tabs.
     const header = el('header', 'planner-pane__header');
-
-    const tabs = el('div', 'planner-pane__tabs');
-    const tabsConfig: { key: Tab; label: string; icon: string }[] = [
-      { key: 'today',     label: 'Today',     icon: 'sun' },
-      { key: 'tasks',     label: 'Tasks',     icon: 'list-checks' },
-      { key: 'calendar',  label: 'Calendar',  icon: 'calendar' },
-    ];
-    for (const t of tabsConfig) {
-      const tab = el('button', 'planner-pane__tab');
-      tab.type = 'button';
-      tab.dataset.tab = t.key;
-      tab.title = t.label;
-      tab.setAttribute('aria-label', t.label);
-      tab.appendChild(createIconElement(t.icon, 14));
-      const label = el('span', 'planner-pane__tab-label');
-      label.textContent = t.label;
-      tab.appendChild(label);
-      tab.addEventListener('click', () => this._setTab(t.key));
-      declareControl(tab, { id: `planner.tab.${t.key}`, label: t.label, state: () => ({ kind: 'pressed', value: tab.dataset.tab === this._activeTab }) });
-      tabs.appendChild(tab);
-    }
-    header.appendChild(tabs);
 
     const actions = el('div', 'planner-pane__actions');
     actions.dataset.role = 'tab-actions';
@@ -380,13 +358,9 @@ export class PlannerEditorPane implements IDisposable {
     vs.set('planner.cursorSavedAt', Date.now());
   }
 
+  /** The page shown, on the pane's root: its styles and whoever reads the app find it there. */
   private _syncTabClass(): void {
-    const tabsEl = this._root?.querySelectorAll('.planner-pane__tab');
-    if (!tabsEl) return;
-    for (const t of Array.from(tabsEl)) {
-      if (!(t instanceof HTMLElement)) continue;
-      t.classList.toggle('planner-pane__tab--active', t.dataset.tab === this._activeTab);
-    }
+    if (this._root) this._root.dataset.tab = this._activeTab;
   }
 
   /**
