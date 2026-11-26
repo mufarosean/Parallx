@@ -26,7 +26,9 @@ generalize, improve it quite a bit, etc."
 
 **Status (2026-11-10):** agreed, it will be done. His words: "Worksheets
 full redesign we will do, but we will not start with it today." Started
-2026-11-15: tested, bars read, mock-ups drawn; nothing built.
+2026-11-15: tested, bars read, mock-ups drawn. The first piece (a sheet
+of one's own, kept as a file) is built, see "Built 2026-11-15" below;
+what is left of the redesign is listed under it.
 
 **His go (2026-11-15):** "let's run worksheets redesign, need several
 mockups. need you to test cell interaction logic? etc". The same day, on
@@ -1984,7 +1986,8 @@ Claude's picks, not yet his:
 Dark):** **1A 2B 3B 4B.** Linen and indigo with Payne's grey for dark;
 Newsreader, Hanken Grotesk and IBM Plex Mono; today's frame kept and
 restyled (not the stage layout); settle plus one moment per tool.
-Nothing is built yet. The foundations
+Nothing was built at that point (the look, Study's Home, the frame and
+the tools' lists have been built since, see below). The foundations
 discussed the same days (a typed contract for extensions, a view layer
 in the kit, writes that tell views) are what list motion and per-tool
 redesigns stand on; they are not on this list until he says.
@@ -2024,7 +2027,8 @@ acceptance probe before, no reviewer agents unless he asks):
 4. *Then the checks:* the unit tests and ratchets put right, the
    keyboard, touch and visual probes on what changed, and piece B's
    remaining work (the record of time across tools, half built on `dev`
-   at `0957c62b`, unreviewed).
+   at `0957c62b`, unreviewed; it was finished since, see "B built"
+   under Study, and is still unreviewed).
 
 **Built so far (2026-11-25), on `dev`, by one hand, the checks after:**
 
@@ -2172,7 +2176,9 @@ window group is settled: 1E6 as redrawn, 2B, the palette as it is, 4A,
 menus get the icons and shortcuts of his 3A pick (he kept only "the
 command thing" as it is); with the icon rail gone, 2B's "open tabs
 first, then files" is the Files tool's own list in the column. Nothing
-of this group is built.
+of this group was built at that point (the frame, 1E6, has been built
+since and then restacked, see "The frame as built" and "The column
+restacked"; the rest of the group has not).
 Claude's first picks were 1A 2A 3A 4A 5A 6A. They rest on what the app measures
 today (equal-width tabs, six before the strip scrolls; 22 px Open
 Editors rows; Settings as a dialog over what it changes) and on
@@ -2774,6 +2780,12 @@ header as a whole.
 
 ### Home: a redesign, not yet designed
 
+**Status (2026-11-26):** the look's piece 4 settles Home and Welcome as
+one page that opens with the workspace (his pick 6A, under "The window
+itself"), fed through the Home source point; it is not built. A Home
+row that opens the present page is in the sidebar. What follows is the
+earlier record.
+
 **Where it stands (2026-11-10).** A first version shipped the same day
 (the Parallx icon opens it; pages and files feed it through
 `registerHomeSource`). His verdict: "all you built was a recent files
@@ -3011,7 +3023,12 @@ Completely new tools, each its own extension in `ext/`, on or off by the
 user. All four came from the Papers With Code read of 2026-11-09.
 Licences are not checked for any of them; that is the first step of each.
 
-### Build plan for the three (proposed 2026-11-12; his go owed on each)
+### Build plan for the three (proposed 2026-11-12)
+
+**Status (2026-11-26):** his go was owed on each when this was
+proposed. Since then Read Anything was built on his go except two
+items, Generative edits is partly built, and Voice is gated; each
+part below says where it stands.
 
 Each extension starts with a test on his own files outside the app, and
 nothing is built before he has seen the result. Each surface is drawn
@@ -3441,6 +3458,12 @@ cause in any check read. Bringing that probe up to date is owed.
 
 ### Read Anything: a better local reader for scans and photos of pages
 
+**Status (2026-11-26):** built through the build plan above, except
+formulas as LaTeX and the page's picture to the model, which wait on
+his word about the card. This entry is the earlier record: its "his
+yes owed" recommendations and its first step of twenty of his own
+pages were overtaken by what shipped.
+
 **His question:** how is this different from nomic? **Answer:**
 nomic-embed-text embeds text that already exists so it can be searched;
 it cannot read a scan. Reading a scan is extraction, which Parallx does
@@ -3793,6 +3816,11 @@ dates and text columns.
 
 ### Generative edits in the Image Editor
 
+**Status (2026-11-26):** partly built, on Qwen-Image-2.1, through the
+build plan above (the Generate tab; Recipes, Beyond The Edges, the sky
+selector and keeping the engine loaded are not). This entry is the
+earlier record: its "No go to build yet" was overtaken.
+
 **His words:** "I like the idea of generative edits."
 
 **What it is.** Qwen-Image-2.1 unifies text-to-image and instruction
@@ -3959,6 +3987,93 @@ an instruction editor extends a canvas well (Expand) or FLUX.1 Fill is
 needed for that one job; which runtime (diffusers in the app's Python,
 or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 (decided earlier, do not re-raise).
+
+## Order of work (proposed 2026-11-26; nothing here is agreed until he says)
+
+His words: "fix findings then propose plan of action to address all
+items, prioritize quick wins while maintaining standards."
+
+**Fixed the same day (the four the audits had found and left):**
+- The terminal's input: the line it sits in shows a mark while the keys
+  are in it. The audit's "no focus ring" there is 0.
+- Atelier's New Tags dialog keeps Tab inside it, closes on Escape from
+  anywhere in it, and gives focus back to what opened it. The audit's
+  popup pass on it is 0.
+- Atelier's grid captions sit on the viewer's own scrim and ink
+  (`--px-viewer-scrim`, `--px-viewer-ink`) in place of white on a fading
+  gradient. The light-mode contrast pass on the grid is 0. The caption
+  is a solid bar now where it was a fade; his to overrule.
+- The command palette's rows: not a fault in the app. Driven by hand on
+  the app, the arrows walk every row from the field and from a row.
+  The audit still counts 5 rows as not reached; why it does is not
+  found, and the audit was not changed.
+Also brought up to date: the entries of this list that said "nothing
+built" of things since built (Worksheets, the look, the window group,
+Home, the build plan for the three, Read Anything, Generative edits).
+
+**The standard for every step below:** one piece to a session; built
+on the app and driven by a probe that reads the result back; the
+typecheck, the unit suite, the keyboard audit and the visual probe
+after; no check weakened; the master list updated; pushed.
+
+**First, his answers (minutes of his time, and they unblock checks):**
+1. The acceptance-probe corrections: study-record's `point()` (it does
+   not scroll a clipped row into view; this one correction is expected
+   to clear 6.2 to 6.7, 7.3 to 7.5, 9.2 and 9.4), study-walk 0.9, 1.5,
+   1.7 and 9.3, study-work 2.4 and 5.7, study-usable 6.3 and study-unit
+   10.7.
+2. Flashcards' Study row (keep until piece 10, or drop now).
+3. The two sidebar points left: rows of Open and the foot rows move
+   their whole section; the list's menu is under More Actions.
+
+**Quick wins (each an hour or two; one session can take several of the
+checks, the builds stay one to a session):**
+4. The checks owed since the sidebar was restacked: the full keyboard
+   audit, the visual probe, the touch-drag probe, a finger on the new
+   drags. Fix what they find.
+5. Find why the audit miscounts the palette's rows, and put it right in
+   the place that is wrong (the palette, or the audit with his say).
+6. Piece 8, Tools and Extensions as one list grouped On and Off.
+7. Piece 6, first half: a page's Default font follows the app's face,
+   and Newsreader joins the page font list.
+8. The Dashboard's large numbers in the display face.
+9. A live word from more tools in Open (Study's session, Worksheets'
+   paper), through the point built in piece 2.
+10. Text arrows elsewhere: check whether any are left, then close the
+    entry or fix them.
+
+**Then the settled pieces of the look, smallest first (a session each):**
+11. Piece 11, Study's plan tab as the page for the plan's rules.
+12. Piece 10, Flashcards' Decks and Stats (this also settles its Study
+    row).
+13. Piece 9, Planner's three pages (this takes the doubled tabs, month
+    and filters off the page).
+14. Piece 7, the PDF viewer.
+15. Piece 3, menus, notices and the Settings dialog.
+16. Piece 5, chat.
+17. Piece 6, second half: a .md file opens as a page.
+18. Piece 4, Home and Welcome as one page (the largest; it has missed
+    twice, so it gets the bar read first).
+
+**Then what is half done elsewhere:**
+19. Study piece B: one review pass by agents that did not write it (it
+    shipped unreviewed), and name its "remainder" or strike the word.
+20. Study piece C's remainder (the current phase's units; tomorrow's
+    questions made overnight).
+21. Worksheets: the toolbar, then the rest of its list, a piece each;
+    and the checks left open when its session stopped on 2026-11-16.
+22. Generative edits: Recipes, Beyond The Edges, the two proposals;
+    and the image editor probe's 34 failures.
+23. "Where tools look unlike each other": measure again now that the
+    frame and the look have changed, then raise what is left with him.
+
+**Needs him or his machine, so not scheduled:** his verdicts on chat,
+Enhance, the real edits and Style Text on his own model and card;
+Read Anything's two items that wait on his word about the card; the
+Study plan's three questions (the 14 hours, the week off, the phase
+lengths); piece E (XP); the Study notebook shape (mock-ups first);
+Dashboards (three answers owed); Voice (gated); Predict From This
+Table (never started).
 
 ## Verification owed
 

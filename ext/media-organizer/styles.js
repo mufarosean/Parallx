@@ -56,7 +56,7 @@ export const MO_CSS_MORE = `
 .mo-feed-card--loading { background: linear-gradient(100deg, var(--px-bg-inset, rgba(128,128,128,0.10)) 30%, var(--px-bg, rgba(128,128,128,0.20)) 50%, var(--px-bg-inset, rgba(128,128,128,0.10)) 70%); background-size: 200% 100%; animation: mo-skeleton-shimmer 1.3s ease-in-out infinite; }
 .mo-feed-card--missing { display: flex; align-items: center; justify-content: center; opacity: 0.6; }
 .mo-feed-badge { position: absolute; top: 6px; right: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; background: rgba(0,0,0,0.6); color: #fff; pointer-events: none; }
-.mo-feed-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; background: linear-gradient(to top, rgba(0,0,0,0.65), rgba(0,0,0,0)); color: #fff; opacity: 0; transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease); pointer-events: none; }
+.mo-feed-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px; background: var(--px-viewer-scrim); color: var(--px-viewer-ink); opacity: 0; transition: opacity var(--px-dur-fast, 120ms) var(--px-ease, ease); pointer-events: none; }
 .mo-feed-card:hover .mo-feed-cap, .mo-feed-card:focus-within .mo-feed-cap, [data-input-modality="touch"] .mo-feed-card .mo-feed-cap { opacity: 1; }
 .mo-feed-cap-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-feed-cap-sub { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

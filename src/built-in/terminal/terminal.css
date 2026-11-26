@@ -53,6 +53,10 @@
 .parallx-terminal-input-line:focus-within .parallx-terminal-prompt__glyph {
   color: var(--px-text);
 }
+/* The field itself draws no box, so the line it sits in shows where the keys go. */
+.parallx-terminal-input-line:focus-within {
+  box-shadow: inset 2px 0 0 var(--px-accent);
+}
 
 /* input[type="text"] prefix: the global form-control skin (px-controls.css)
    targets that attribute selector and would otherwise out-rank a bare class,

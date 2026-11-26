@@ -18041,9 +18041,11 @@ function showCreateTagDialog(api, onComplete, opts = {}) {
   const heading = parent ? `New Tags Under ${parent.name}` : 'New Tags';
   dialog.setAttribute('aria-label', heading);
   overlay.appendChild(dialog);
-
+  // A modal: Tab stays inside it, Escape closes it from anywhere in it, and focus goes back to what opened it.
+  const opener = document.activeElement;
+  const trap = api.ui?.keepTabInside?.(dialog);
+  const close = () => { trap?.dispose?.(); overlay.remove(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
   dialog.appendChild(moEl('h3', null, { textContent: heading }));
-
   const section = moEl('div', 'mo-bulk-dialog-section');
   section.appendChild(moEl('label', null, { textContent: 'Names' }));
   const input = moEl('textarea', 'mo-bulk-tag-search mo-tag-name-input', { sceneId: 'media-organizer.createTag.names', sceneLabel: 'Tag names',
@@ -18140,7 +18142,7 @@ function showCreateTagDialog(api, onComplete, opts = {}) {
       if (created > 0) parts.push(`Created ${created} tag${created === 1 ? '' : 's'}`);
       if (reused > 0) parts.push(`reused ${reused} existing`);
       api.statusBar?.setMessage?.(parts.join(' \u00b7 ') || 'No tags created', 3000);
-      overlay.remove();
+      close();
       try { onComplete?.(); } catch {}
       return;
     }
@@ -18157,13 +18159,10 @@ function showCreateTagDialog(api, onComplete, opts = {}) {
   }
 
   createBtn.addEventListener('click', submit);
-  cancelBtn.addEventListener('click', () => overlay.remove());
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-    else if (e.key === 'Escape') { e.preventDefault(); overlay.remove(); }
-  });
-
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  cancelBtn.addEventListener('click', close);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
+  dialog.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   document.body.appendChild(overlay);
   setTimeout(() => input.focus(), 0);
 }
