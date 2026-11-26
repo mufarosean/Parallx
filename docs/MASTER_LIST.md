@@ -4074,7 +4074,8 @@ checks, the builds stay one to a session):**
 17. Piece 6, second half: a .md file opens as a page. **Done; one acceptance
     check needs his word.**
 18. Piece 4, Home and Welcome as one page (the largest; it has missed
-    twice, so it gets the bar read first).
+    twice, so it gets the bar read first). **Skipped: the bar cannot
+    be read from this environment.**
 
 **Then what is half done elsewhere:**
 19. Study piece B: one review pass by agents that did not write it (it
@@ -4545,6 +4546,19 @@ acceptance check needs his word.**
   file open is still suggested to chat); typecheck; the unit suite
   (9,933); `docs/reference/commands.md` regenerated for the new
   command.
+
+**Item 18, the look's piece 4: Home and Welcome as one page. Not
+started: skipped, with the reason.**
+- The order says this one "gets the bar read first", and the entry on
+  Home says why it has missed twice: the bar is paperswithcode.co, and
+  neither mock-up was drawn from the real pages because the cloud
+  could not reach them. This run is in the same place: the site is
+  refused by this environment's network (asked on 2026-11-26, the
+  proxy answered 403). Building it from the drawing alone would be the
+  third try made the same way.
+- **For him:** either a session in the Default environment (which can
+  read the site), or his screenshots of the pages he means. The Home
+  source point and `api.home` are in the code and wait for it.
 
 ## Verification owed
 
