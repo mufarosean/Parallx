@@ -12,10 +12,18 @@ import { DisposableStore, type IDisposable } from '../platform/lifecycle.js';
 import type { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, IEditorService } from '../services/serviceTypes.js';
 import type { CommandService } from '../commands/commandRegistry.js';
-import type { SidebarPart } from '../parts/sidebarPart.js';
-import { createButton } from '../ui/kit.js';
+import { DEFAULT_SECTION_ORDER, type ColumnSection, type SidebarPart } from '../parts/sidebarPart.js';
+import { createButton, createIconButton, createMenu } from '../ui/kit.js';
 import { whenClosedPanesSettle } from '../editor/editorPane.js';
 import { createOpenEditorsView, type IOpenEditorsHost } from './openEditorsView.js';
+
+/** Opens a section's menu (Move Up, Move Down, Restore Default Places); what each section's three dots run. */
+export const SECTION_MENU_COMMAND = 'workbench.action.sidebarSectionMenu';
+/** Every section of the column back in its default place. */
+export const RESET_SECTIONS_COMMAND = 'workbench.action.resetSidebarSections';
+/** What a section's grip carries while it is dragged. */
+const SECTION_DRAG_TYPE = 'application/x-parallx-column-section';
+const SECTION_NAMES: Record<ColumnSection, string> = { tools: 'Tools', open: 'Open', view: 'Tool List', foot: 'Settings Rows' };
 
 /** Folds and unfolds Open; in the palette as View: Fold Open Editors. */
 export const TOGGLE_OPEN_COMMAND = 'workbench.action.toggleOpenEditors';
@@ -78,5 +86,111 @@ export function seatColumnChrome(sidebar: SidebarPart, services: ServiceCollecti
   ]) {
     createButton(footSlot, { id: row.id, label: row.label, icon: row.icon, command: row.command, kind: 'ghost' }).classList.add('column-row', 'column-foot-row');
   }
+  seatSectionMoves(sidebar, services, requestSave, store);
   return store;
+}
+
+/**
+ * Each section of the column can be put elsewhere in it: dragged by the grip
+ * that shows at its top while it is pointed at, or moved a place up or down
+ * from the three dots beside the grip. The open tool's list keeps its own
+ * header and moves as the others move round it. The order is the sidebar
+ * part's, kept with the workspace's layout; every section stays inside the
+ * primary sidebar, so hiding the sidebar hides them all.
+ */
+function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, requestSave: () => void, store: DisposableStore): void {
+  const bars = new Map<ColumnSection, HTMLElement>();
+  for (const section of ['tools', 'open', 'foot'] as const) {
+    const host = sidebar.sectionElements(section)[0];
+    if (!host) continue;
+    const grip = createIconButton(null, { id: `column.section.${section}.grip`, icon: 'grip-horizontal', title: `Drag to Move ${SECTION_NAMES[section]}`, size: 'sm', command: SECTION_MENU_COMMAND, args: [section] });
+    grip.classList.add('column-section-grip');
+    grip.draggable = true;
+    grip.dataset.section = section;
+    grip.tabIndex = -1; // a handle for the pointer; the keys move a section from the three dots
+    const more = createIconButton(null, { id: `column.section.${section}.more`, icon: 'ellipsis', title: `${SECTION_NAMES[section]}: Move…`, size: 'sm', command: SECTION_MENU_COMMAND, args: [section] });
+    more.classList.add('column-section-more');
+    // First in the section, so the keys reach its three dots before what it holds.
+    host.prepend(more, grip);
+    bars.set(section, more);
+  }
+
+  // The drag: a grip carries its section; the section under the pointer shows
+  // on which side it would land; the drop places it there.
+  const column = sidebar.element;
+  let dragged: ColumnSection | undefined;
+  const clearMarks = (): void => { for (const el of column.querySelectorAll('.column-drop-before, .column-drop-after')) el.classList.remove('column-drop-before', 'column-drop-after'); };
+  const targetAt = (e: DragEvent): { section: ColumnSection; before: boolean } | undefined => {
+    const section = sidebar.sectionOf(e.target instanceof Element ? e.target : null);
+    if (!section || section === dragged) return undefined;
+    const els = sidebar.sectionElements(section);
+    const top = els[0].getBoundingClientRect().top;
+    const bottom = els[els.length - 1].getBoundingClientRect().bottom;
+    return { section, before: e.clientY < (top + bottom) / 2 };
+  };
+  const onDragStart = (e: DragEvent): void => {
+    const grip = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('.column-section-grip') : null;
+    if (!grip || !e.dataTransfer) return;
+    dragged = grip.dataset.section as ColumnSection;
+    e.dataTransfer.setData(SECTION_DRAG_TYPE, dragged);
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation(); // not a move of the whole column
+  };
+  const onDragOver = (e: DragEvent): void => {
+    if (!dragged || !e.dataTransfer?.types.includes(SECTION_DRAG_TYPE)) return;
+    clearMarks();
+    const at = targetAt(e);
+    if (!at) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const els = sidebar.sectionElements(at.section);
+    (at.before ? els[0] : els[els.length - 1]).classList.add(at.before ? 'column-drop-before' : 'column-drop-after');
+  };
+  const onDrop = (e: DragEvent): void => {
+    if (!dragged) return;
+    const at = targetAt(e);
+    clearMarks();
+    if (!at) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const order = sidebar.sectionOrder;
+    sidebar.placeSection(dragged, at.before ? at.section : order[order.indexOf(at.section) + 1]);
+    requestSave();
+  };
+  const onDragEnd = (): void => { dragged = undefined; clearMarks(); };
+  column.addEventListener('dragstart', onDragStart);
+  column.addEventListener('dragover', onDragOver);
+  column.addEventListener('drop', onDrop);
+  document.addEventListener('dragend', onDragEnd);
+  store.add({ dispose: () => {
+    column.removeEventListener('dragstart', onDragStart);
+    column.removeEventListener('dragover', onDragOver);
+    column.removeEventListener('drop', onDrop);
+    document.removeEventListener('dragend', onDragEnd);
+  } });
+
+  if (!services.has(ICommandService)) return;
+  const commands = services.get(ICommandService) as unknown as CommandService;
+  store.add(commands.registerCommand({
+    id: SECTION_MENU_COMMAND,
+    title: 'Move a Sidebar Section…',
+    category: 'View',
+    handler: (_ctx, which?: unknown) => {
+      const section = DEFAULT_SECTION_ORDER.find((id) => id === which) ?? 'tools';
+      const anchor = bars.get(section) ?? sidebar.element;
+      const at = sidebar.sectionOrder.indexOf(section);
+      createMenu(anchor, { id: 'column.section.menu', label: `${SECTION_NAMES[section]}: Move`, items: [
+        { label: 'Move Up', icon: 'arrow-up', disabled: at <= 0, onSelect: () => { sidebar.moveSection(section, -1); requestSave(); } },
+        { label: 'Move Down', icon: 'arrow-down', disabled: at >= sidebar.sectionOrder.length - 1, onSelect: () => { sidebar.moveSection(section, 1); requestSave(); } },
+        { separator: true },
+        { label: 'Restore Default Places', icon: 'rotate-ccw', disabled: sidebar.sectionOrder.join() === DEFAULT_SECTION_ORDER.join(), onSelect: () => { sidebar.resetSections(); requestSave(); } },
+      ] });
+    },
+  }));
+  store.add(commands.registerCommand({
+    id: RESET_SECTIONS_COMMAND,
+    title: 'Restore Sidebar Sections',
+    category: 'View',
+    handler: () => { sidebar.resetSections(); requestSave(); },
+  }));
 }

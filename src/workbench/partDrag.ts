@@ -255,9 +255,17 @@ export class PartDragController extends Disposable {
       this._position(x, y, eventTarget, kind);
     });
 
+    // A tool dragged over a tools list is that list's business (it reorders
+    // its rows, or takes a tool from the other list): the grid shows no zone
+    // there and leaves the drop to it. The list sits inside the column, which
+    // is in the grid, so without this both would answer the same drag.
+    const overToolsList = (e: DragEvent): boolean =>
+      e.target instanceof Element && e.target.closest('.activity-bar') !== null;
+
     const onDragOver = (e: DragEvent): void => {
       const kind = this._dragKindOf(e);
       if (!kind) return;
+      if (kind === 'container' && overToolsList(e)) { position.flush(); this._clearOverlay(); return; }
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       position(e.clientX, e.clientY, e.target, kind);
@@ -266,6 +274,7 @@ export class PartDragController extends Disposable {
     const onDrop = (e: DragEvent): void => {
       const kind = this._dragKindOf(e);
       if (!kind) return;
+      if (kind === 'container' && overToolsList(e)) { this._teardown(); return; }
       e.preventDefault();
       e.stopPropagation();
       position.flush();

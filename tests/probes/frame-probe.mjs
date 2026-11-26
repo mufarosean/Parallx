@@ -145,8 +145,10 @@ try {
   const stopHome = (await frame()).focus;
   check('Shift+Tab from the tools reaches Home, with a ring', stopHome?.id === 'column.home' && !!stopHome?.ring, stopHome);
   await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await page.waitForTimeout(100);
+  const stopMore = (await frame()).focus;
+  await page.keyboard.press('Tab'); await page.waitForTimeout(100);
   const stopOpen = (await frame()).focus;
-  check('Tab from the tools reaches Open\'s label', stopOpen?.id === 'column.open', stopOpen);
+  check('Tab from the tools reaches Open\'s three dots, then its label', stopMore?.id === 'column.section.open.more' && stopOpen?.id === 'column.open', [stopMore, stopOpen]);
   await page.keyboard.press('Enter'); await page.waitForTimeout(300);
   let o = (await frame()).open;
   check('Enter on the label folds Open: its rows go, its count stays', o.expanded === 'false' && o.shown === 0 && Number(o.count) > 0, o);
@@ -197,6 +199,46 @@ try {
   await page.evaluate(() => { const b = document.querySelector('.activity-bar-item[data-icon-id="study-container"]'); b?.click(); });
   await page.waitForTimeout(600);
   await shot('dark.png');
+
+  // A tool's row is dragged to another place in its list: the list reorders, and the layout shows no drop zone of its own.
+  const toolIds = () => page.evaluate(() => [...document.querySelectorAll('.sidebar-tools .activity-bar-item')].filter((b) => b.getClientRects().length).map((b) => { const r = b.getBoundingClientRect(); return { id: b.dataset.iconId, x: r.x + r.width / 2, y: r.y + r.height / 2 }; }));
+  let t = await toolIds();
+  const last = t[t.length - 1];
+  await page.mouse.move(last.x, last.y); await page.mouse.down();
+  for (let i = 1; i <= 12; i++) { await page.mouse.move(last.x, last.y + (t[1].y - 6 - last.y) * i / 12); await page.waitForTimeout(40); }
+  const clash = await page.evaluate(() => ({ grid: document.querySelector('.workbench-grid').classList.contains('part-dragging'), zones: [...document.querySelectorAll('[class*="part-drop"], [class*="drop-overlay"]')].filter((e) => e.getClientRects().length && getComputedStyle(e).opacity !== '0').length, bar: !!document.querySelector('.activity-bar--drop-target') }));
+  await page.mouse.up(); await page.waitForTimeout(700);
+  const reordered = await toolIds();
+  check('a tool dragged within the list moves to where it was dropped', reordered[1].id === last.id && reordered.length === t.length, reordered.map((x) => x.id));
+  check('and nothing else answers that drag (no layout drop zone over the column)', !clash.grid && clash.zones === 0 && !clash.bar, clash);
+  await page.mouse.move(reordered[1].x, reordered[1].y); await page.mouse.down();
+  for (let i = 1; i <= 12; i++) { await page.mouse.move(last.x, reordered[1].y + (last.y + 10 - reordered[1].y) * i / 12); await page.waitForTimeout(40); }
+  await page.mouse.up(); await page.waitForTimeout(700);
+  check('dragged back, the list is as it was', (await toolIds()).map((x) => x.id).join() === t.map((x) => x.id).join(), (await toolIds()).map((x) => x.id));
+
+  // The sections of the column: each can be put elsewhere in it, by its grip or its three dots.
+  const sections = () => page.evaluate(() => [['tools', '.sidebar-tools'], ['open', '.sidebar-open'], ['view', '.sidebar-header'], ['foot', '.sidebar-foot']].map(([n, sel]) => [n, Math.round(document.querySelector(sel).getBoundingClientRect().top)]).sort((a, b) => a[1] - b[1]).map((x) => x[0]).join(' '));
+  check('the sections start in their default places', (await sections()) === 'tools open view foot', await sections());
+  const openBox = await page.evaluate(() => { const r = document.querySelector('.sidebar-open').getBoundingClientRect(); return { x: r.x + 60, y: r.y + 14 }; });
+  await page.mouse.move(openBox.x, openBox.y); await page.waitForTimeout(400);
+  const sGrip = await page.evaluate(() => { const g = document.querySelector('.sidebar-open > .column-section-grip'); const m = document.querySelector('.sidebar-open > .column-section-more'); const r = g.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, grip: getComputedStyle(g).pointerEvents, more: getComputedStyle(m).pointerEvents, away: getComputedStyle(document.querySelector('.sidebar-foot > .column-section-more')).pointerEvents, names: [g.getAttribute('aria-label'), m.getAttribute('aria-label')] }; });
+  // (They fade in; a hidden window draws no frame to fade on, so what is read is whether they take the pointer.)
+  check('pointing at a section brings up its grip and its three dots, each named, and no other section\'s', sGrip.grip === 'auto' && sGrip.more === 'auto' && sGrip.away === 'none' && sGrip.names.every((n) => !!n), sGrip);
+  const footBox = await page.evaluate(() => { const r = document.querySelector('.sidebar-foot').getBoundingClientRect(); return { x: r.x + 80, y: r.bottom - 8 }; });
+  await page.mouse.move(sGrip.x, sGrip.y); await page.mouse.down();
+  for (let i = 1; i <= 16; i++) { await page.mouse.move(sGrip.x + (footBox.x - sGrip.x) * i / 16, sGrip.y + (footBox.y - sGrip.y) * i / 16); await page.waitForTimeout(40); }
+  await page.mouse.up(); await page.waitForTimeout(600);
+  check('Open dragged by its grip under the two foot rows lands there', (await sections()) === 'tools view foot open', await sections());
+  check('the open tool\'s list still has room after the move', await page.evaluate(() => document.querySelector('.sidebar-views').getBoundingClientRect().height > 120), null);
+  await page.evaluate(() => document.querySelector('.sidebar-tools > .column-section-more').focus());
+  await page.keyboard.press('Enter'); await page.waitForTimeout(400);
+  const menu = await page.evaluate(() => [...document.querySelectorAll('.context-menu .context-menu-item, .context-menu [role="menuitem"]')].map((e) => e.textContent.trim()));
+  check('a section\'s three dots, by keys, offer Move Up, Move Down and Restore Default Places', ['Move Up', 'Move Down', 'Restore Default Places'].every((n) => menu.some((m) => m.startsWith(n))), menu);
+  await page.keyboard.press('Enter'); await page.waitForTimeout(500);
+  check('Move Down on the tools, by keys, puts them under the next section', (await sections()) === 'view tools foot open', await sections());
+  await shot('dark-sections-moved.png');
+  await cmd(page, 'workbench.action.resetSidebarSections'); await page.waitForTimeout(400);
+  check('Restore Sidebar Sections puts every section back', (await sections()) === 'tools open view foot', await sections());
 
   // The column is grabbed at its top and moved: dragged to the right edge it lands there, and back again.
   const grab = async (toX) => {

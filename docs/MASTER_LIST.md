@@ -2669,6 +2669,50 @@ title bar's left button hides once the boxes can be apart; whether a
 box can be closed and where it comes back from; how a box is moved by
 keys and by touch (the parts have a placement menu today).
 
+**His answers, and the first step built (2026-11-26).** His words,
+spelling corrected. On what the left button hides: "it hides that
+whole panel. Like it currently does. The idea is not to get rid of the
+idea of a primary sidebar, it's to modularize what's in it; whatever
+sits within the primary sidebar is what gets hidden or unhidden." On
+closing a box: "No it can't be closed. In the current system it can't,
+so we shouldn't invent logic for it." On moving: "touch is easy, touch,
+hold, move, place. Same logic as any other move we have." "You could
+have each box have these three dots, but only have them appear when
+someone hovers over that section, then that can be used like we
+already have items that have options to be moved to certain places."
+"We can always restore things to their original place or default
+place." "Make sure you are understanding the overall objective so you
+don't overcomplicate. The idea is to have modularity." And a fault he
+found the same hour: dragging a tool within the list, "there are two
+systems clashing" (the layout's dock zone lit over the list).
+So the primary sidebar stays one part, hidden and shown as one; what
+changed is that its sections can be put in another order inside it.
+Built:
+- *The clash.* A tool dragged over a tools list is that list's
+  business; the layout's drop zones step aside there (`partDrag.ts`).
+  Driven on the app: a row dragged within the list reorders it with no
+  zone shown, and a row dragged out to the editor's side becomes its
+  own box beside the editor, with the first tool's list still showing
+  (his "two tools at once"; this was already in the app).
+- *Sections that move.* The tools, Open and the two foot rows each
+  show, while pointed at, focused in or touched, a grip and three dots
+  at their top right. The grip is dragged to another place in the
+  column (a line shows where it would land). The dots open Move Up,
+  Move Down and Restore Default Places, which is how the keys do it.
+  The open tool's list keeps its own header and moves as the others
+  move round it. The order is the sidebar part's
+  (`SidebarPart.sectionOrder`), kept with the workspace's layout, and
+  View: Restore Sidebar Sections puts all four back. Nothing can be
+  closed.
+- `frame-probe.mjs` drives all of it on the app (46 checks, no
+  problem): the reorder with no clash, a section dragged by its grip,
+  the menu by keys, the restore, the column moved by its top.
+*Not built, the next step if he wants it:* a section leaving the
+primary sidebar for another place (the right side, an edge), as a
+tool's own box can. *Not checked:* a finger on a grip (the grips use
+the browser's own drag, as every other move in the app does);
+the keyboard audit and the visual probe since the restack.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
