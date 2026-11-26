@@ -1202,3 +1202,21 @@ describe('deck deletion via sidebar context menu', () => {
     expect(decksAfter.n).toBe(decksBefore.n - 1);
   });
 });
+
+// Last in the file: it adds cards, and the tests above count what the earlier ones made.
+describe('sidebar: refreshes that overlap', () => {
+  // What must hold. The fault was a race seen once in four runs on the built app (study-app-probe,
+  // 2026-11-26, which fails on any page error): the page said a control was registered twice. The
+  // sidebar's refresh waited for a count in the middle of drawing Today, so a second refresh that began
+  // meanwhile drew its own Today panel beside the first. Here the reads answer at once, so this test
+  // passed before the fix too; it keeps the one panel from coming back by another road.
+  it('draws one Today panel, with one Study button, however many refreshes ran at once', async () => {
+    const tool = fake.chatTools.get('flashcards.edit')!;
+    await Promise.all([1, 2, 3, 4].map((n) => tool.handler({ action: 'create', deckName: 'Reserving', cards: [{ front: `Overlap ${n}?`, back: 'One panel.' }] })));
+    await settle();
+    await settle();
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    expect(sidebar.querySelectorAll('.fc-today')).toHaveLength(1);
+    expect(sidebar.querySelectorAll('.fc-today__study')).toHaveLength(1);
+  });
+});

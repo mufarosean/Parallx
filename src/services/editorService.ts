@@ -25,22 +25,26 @@ export class EditorService extends Disposable implements IEditorService {
   /** Per-group model listener disposables (tracked for cleanup). */
   private readonly _groupListeners = this._register(new DisposableStore());
 
-  /** Per-editor label-change listener disposables, keyed by editor id. */
-  private readonly _editorLabelListeners = this._register(new DisposableStore());
-  private readonly _editorLabelListenerIds = new Map<string, import('../platform/lifecycle.js').IDisposable>();
+  /**
+   * Per-editor label-change listeners, one for each editor that is open
+   * somewhere. Kept by the editor itself, not by its id: the same editor can
+   * be in two groups (a tab shown beside itself), and two editors can share
+   * an id. A listener kept by id was dropped when either one closed, and the
+   * one still open then changed its name or its live word unheard (its row
+   * in the list of open editors stayed as it was).
+   */
+  private readonly _editorLabelListeners = new Map<IEditorInput, import('../platform/lifecycle.js').IDisposable>();
 
   private _attachLabelListener(editor: IEditorInput): void {
-    if (this._editorLabelListenerIds.has(editor.id)) return;
-    const sub = editor.onDidChangeLabel(() => this._onDidChangeOpenEditors.fire());
-    this._editorLabelListeners.add(sub);
-    this._editorLabelListenerIds.set(editor.id, sub);
+    if (this._editorLabelListeners.has(editor)) return;
+    this._editorLabelListeners.set(editor, editor.onDidChangeLabel(() => this._onDidChangeOpenEditors.fire()));
   }
 
+  /** Stops listening to an editor, once no group holds it any more. */
   private _detachLabelListener(editor: IEditorInput): void {
-    const sub = this._editorLabelListenerIds.get(editor.id);
-    if (!sub) return;
-    sub.dispose();
-    this._editorLabelListenerIds.delete(editor.id);
+    if (this._editorPart.groups.some((group) => group.model.editors.includes(editor))) return;
+    this._editorLabelListeners.get(editor)?.dispose();
+    this._editorLabelListeners.delete(editor);
   }
 
   constructor(private readonly _editorPart: EditorPart) {
@@ -58,6 +62,7 @@ export class EditorService extends Disposable implements IEditorService {
       this._wireGroupListeners();
       this._onDidChangeOpenEditors.fire();
     }));
+    this._register({ dispose: () => { for (const sub of this._editorLabelListeners.values()) sub.dispose(); this._editorLabelListeners.clear(); } });
   }
 
   /**

@@ -164,6 +164,8 @@ async function main() {
   const app = await electron.launch({ executablePath: ELECTRON, args, cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = []; let failures = 0; let n = 0;
   const check = (label, ok, detail) => { console.log(`[probe] ${ok ? 'ok  ' : 'FAIL'} ${label}${detail !== undefined ? ' :: ' + String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 400) : ''}`); if (!ok) failures++; };
+  // The live word a session's tab says where open editors are listed ("3 of 12"), read from the row whose name matches.
+  const tabWord = (page, name) => page.evaluate((src) => { const re = new RegExp(src); const rows = [...document.querySelectorAll('.sidebar-open .open-editors-item')].filter((r) => re.test(r.querySelector('.open-editors-label')?.textContent ?? '')); return rows.map((r) => r.querySelector('.open-editors-status')?.textContent ?? ''); }, name.source);
   const shot = async (page, name) => { const f = path.join(outDir, `${String(++n).padStart(2, '0')}-${name}.png`); await page.screenshot({ path: f }); console.log(`[probe] screenshot -> ${path.basename(f)}`); };
   const run = (page, commandId, ...args) => page.evaluate(async ({ commandId, args }) => {
     const svc = window.__parallx_workbench__?._services?.get?.({ id: 'ICommandService' });
@@ -294,6 +296,10 @@ async function main() {
     await page.waitForTimeout(800);
     check('Refresh brings the next draw', !!(await page.evaluate(() => !!window.__vq('.st-card'))));
     await shot(page, 'refresh');
+    // The row speaks for the draw on screen. (Found here: the view the results replaced went on speaking, and the row said "8 of 20" beside a draw nobody had answered.)
+    await page.waitForTimeout(1_500);
+    const wRefresh = await tabWord(page, /^Study · Clark/);
+    check('after Refresh the session\'s row under Open says nothing is answered of the new draw', wRefresh.length === 1 && /^0 of [1-9]\d*$/.test(wRefresh[0]), wRefresh);
 
     // ── C. Sidebar ──
     await showStudy(page);
@@ -314,17 +320,24 @@ async function main() {
     await page.waitForTimeout(800);
     const testCard = await page.evaluate(() => ({ format: window.__vq('.st-card')?.dataset.format, hasTa: !!window.__vq('.st-card textarea, .st-card input') }));
     check('Test mode asks for typed answers', testCard.hasTa, testCard);
+    const w0 = await tabWord(page, /^Study · Mack/);
+    check('the new session\'s row under Open says how far it is: nothing answered of the draw', w0.length === 1 && /^0 of [1-9]\d*$/.test(w0[0]), w0);
     await shot(page, 'test-card');
     // In Test, no verdict after an answer.
     await page.evaluate(() => { const ta = window.__vq('.st-card textarea, .st-card input'); if (ta) { ta.value = 'The development factor depends only on the age and the accident years are independent.'; ta.dispatchEvent(new Event('input', { bubbles: true })); } });
     await click(page, '.st-root button', '^Check|^Next|^Submit');
     await page.waitForTimeout(1_000);
     check('Test mode shows no verdict after an answer', !(await page.evaluate(() => !!window.__vq('.st-fb--show .st-fb__text'))), await text(page, '.st-fb__text'));
+    const w1 = await tabWord(page, /^Study · Mack/);
+    check('one answer in, the row says "1 of" the same draw', w1.length === 1 && w1[0] === w0[0]?.replace(/^0/, '1'), [w0, w1]);
     await shot(page, 'test-after-answer');
     const endB = await workSession(page, { typed: 'The expected cumulative loss is the current loss times a factor that depends only on the age, accident years are independent, and the variance is proportional to the current loss.', label: 'test' });
     await page.waitForTimeout(3_000);
     const tres = await page.evaluate(() => ({ big: window.__vq('.st-res__big')?.textContent?.replace(/\s+/g, ' ').trim(), points: window.__vqa('.st-res .st-rub__pt, .st-res [class*="rub"]').length, items: window.__vqa('.st-res .st-review__item, .st-res [class*="item"]').length }));
     check('Test results list every item with per-point feedback', !endB.stuck && tres.points > 0, tres);
+    const w2 = await tabWord(page, /^Study · Mack/);
+    const wOther = await tabWord(page, /^Study · Clark/);
+    check('at the results the row says no more than its name, and the other session\'s row still speaks for its own draw', w2.length === 1 && w2[0] === '' && wOther.length === 1 && /^0 of [1-9]\d*$/.test(wOther[0]), [w2, wOther]);
     await shot(page, 'test-results');
 
     // ── E. Study Together ──

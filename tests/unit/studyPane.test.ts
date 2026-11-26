@@ -1733,6 +1733,27 @@ describe('Study end to end', () => {
     expect(words().at(-1)).toBeUndefined();
   });
 
+  it('5b. after Refresh the tab speaks for the new draw, with nothing answered', async () => {
+    // (On the built app the row once said "8 of 20" beside a new draw: the list of open editors had stopped
+    // hearing the tab, a fault of the app's own, fixed there and tested in openEditorsNonFile.test.ts.
+    // This holds Study's side: what it says after Refresh is about the new draw.)
+    await boot();
+    const { h, sessionId } = await startChapterSession();
+    const tab = `study:session-${sessionId}`;
+    const words = () => (env.calls.editorStatus as [string, string | undefined][]).filter(([id]) => id === tab).map(([, w]) => w);
+    await answerDraw(h);
+    await waitFor(() => q(h, '.st-res'), 'results');
+    expect(words().at(-1)).toBeUndefined();
+    const before = words().length;
+    btn(h, 'Refresh')!.click();
+    await waitFor(() => q(h, '.st-card'), 'the next draw');
+    await new Promise((r) => setTimeout(r, 50));
+    // Everything said since the results is about a draw with nothing answered yet.
+    const since = words().slice(before).filter((w): w is string => !!w);
+    expect(since.length).toBeGreaterThanOrEqual(1);
+    expect(since.every((w) => /^0 of \d+$/.test(w))).toBe(true);
+  });
+
   it('5c. Stop on a Refresh before its first question sticks: a rebuilt tab or a restart starts no making; it opens on the results', async () => {
     // Review finding 3 (read only): renderGenerating starts a run for a
     // session holding no pending item, so a pane rebuilt on the generating

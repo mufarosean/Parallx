@@ -12,6 +12,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { screenshot } from './scene.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -129,7 +130,12 @@ async function main() {
       await page.evaluate(() => { const d = document.getElementById('__probe_repaint') || document.body.appendChild(Object.assign(document.createElement('div'), { id: '__probe_repaint', style: 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none' })); d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01'; }).catch(() => {});
       try { await page.screenshot({ path: f, timeout: 15_000, animations: 'disabled', ...opts }); console.log(`[probe] screenshot -> ${f}`); return; }
       catch (e) {
-        if (attempt === 2) { console.log(`[probe] screenshot FAILED ${name}: ${String(e).split('\n')[0]}`); break; }
+        if (attempt === 2) {
+          // The window's own capture, where the page's screenshot never gets a frame.
+          if (await screenshot(app, page, f)) console.log(`[probe] screenshot -> ${f} (the window's capture)`);
+          else console.log(`[probe] screenshot FAILED ${name}: ${String(e).split('\n')[0]}`);
+          break;
+        }
         // Still no frame: a 1 px resize forces layout and a new frame.
         const vp = page.viewportSize();
         if (vp) { await page.setViewportSize({ width: vp.width + 1, height: vp.height }).catch(() => {}); await page.waitForTimeout(300); await page.setViewportSize(vp).catch(() => {}); }
@@ -211,6 +217,16 @@ async function main() {
       console.log('[probe] sheet header: ' + await page.evaluate(() => [...document.querySelectorAll('.ws-item__titlerow button')].filter((b) => b.offsetParent).map((b) => b.textContent.trim() || b.getAttribute('aria-label')).join(' | ')));
       console.log('[probe] quiz dots: ' + await page.evaluate(() => [...document.querySelectorAll('.ws-sessionbar__dot')].map((d) => d.getAttribute('aria-label')).join(' | ')));
       await shot('08-sheet.png');
+      // The quiz's row under Open says the problem it is on, and follows a move to another.
+      const tabWords = () => page.evaluate(() => [...document.querySelectorAll('.sidebar-open .open-editors-item')].map((r) => r.querySelector('.open-editors-status')?.textContent ?? '').filter(Boolean));
+      const dots = () => page.evaluate(() => { const d = [...document.querySelectorAll('.ws-sessionbar__dot')]; return { n: d.length, at: d.findIndex((x) => x.classList.contains('ws-sessionbar__dot--current')) }; });
+      const d0 = await dots(); const w0 = await tabWords();
+      check('the quiz\'s row under Open says the problem it is on', w0.length === 1 && w0[0] === `${d0.at + 1} of ${d0.n}`, [w0, d0]);
+      const to = d0.at + 1 < d0.n ? d0.at + 1 : d0.at - 1;
+      await page.locator('.ws-sessionbar__dot').nth(to).click();
+      await page.waitForTimeout(3_000);
+      const d1 = await dots(); const w1 = await tabWords();
+      check('moved to another problem, the row follows', d1.at === to && w1.length === 1 && w1[0] === `${to + 1} of ${d1.n}`, [w1, d1]);
       const noteBtn = page.locator('.ws-item__titlerow [aria-label="Add Note"], .ws-item__titlerow [aria-label="Edit Note"]').first();
       if (await noteBtn.count()) { await noteBtn.click(); await page.waitForTimeout(500); await shot('09-sheet-note.png'); await noteBtn.click(); }
       const sheetMore = page.locator('.ws-item__titlerow [aria-label="More Actions"]').first();
@@ -232,7 +248,10 @@ async function main() {
         const editNote = page.locator('.ws-quiz__row [aria-label="Edit Note"], .ws-quiz__row [aria-label="Add Note"]').first();
         if (await editNote.count()) { await editNote.click(); await page.waitForTimeout(400); await shot('11-overview-note.png'); }
         const summary = page.locator('.px-page-header .px-btn--primary', { hasText: 'Quiz Summary' }).first();
-        if (await summary.count()) { await summary.click(); await page.waitForTimeout(1_500); await describe(page, 'summary'); await shot('12-summary.png'); }
+        const hasSummary = (await summary.count()) > 0;
+        if (hasSummary) { await summary.click(); await page.waitForTimeout(1_500); await describe(page, 'summary'); await shot('12-summary.png'); }
+        const w2 = await page.evaluate(() => [...document.querySelectorAll('.sidebar-open .open-editors-item')].map((r) => r.querySelector('.open-editors-status')?.textContent ?? '').filter(Boolean));
+        check('on the quiz\'s summary the row says no more than its name', hasSummary && w2.length === 0, [hasSummary, w2]);
       }
     } else {
       console.log('[probe] no Resume on Home');
@@ -288,4 +307,6 @@ async function main() {
     await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
   }
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+let failures = 0;
+function check(label, ok, detail) { console.log(`[probe] ${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : ' :: ' + JSON.stringify(detail)}`); if (!ok) failures++; }
+main().then(() => { console.log(`[probe] ${failures} failed checks`); if (failures) process.exitCode = 1; }).catch((e) => { console.error(e); process.exit(1); });

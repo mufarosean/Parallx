@@ -5908,14 +5908,18 @@ function createSidebarView(container) {
     }
   };
 
-  let disposed = false;
+  let disposed = false, refreshSeq = 0;
   const refresh = async () => {
     if (disposed) return;
     let decks = [];
     let today = { newCount: 0, learnCount: 0, reviewCount: 0, dueTotal: 0 };
-    let customDecks = [];
-    try { [decks, today, customDecks] = await Promise.all([fcListDecks(), fcTodayCounts(), fcListCustomDecks()]); } catch { /* db not ready */ }
-    if (disposed) return;
+    let customDecks = [], memo = null;
+    // Everything the paint needs is read first, the Memorize count with the rest, so the paint below never waits:
+    // a wait in its middle let two refreshes each add a Today panel (and the app said so: a control registered twice).
+    const mine = ++refreshSeq;
+    try { [decks, today, customDecks, memo] = await Promise.all([fcListDecks(), fcTodayCounts(), fcListCustomDecks(), fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null)]); } catch { /* db not ready */ }
+    // Only the newest refresh paints: one that was overtaken while it read has older counts.
+    if (disposed || mine !== refreshSeq) return;
 
     // The tab's live word: what is due, where open editors are listed.
     try { _api.editors.setEditorStatus?.({ typeId: 'flashcards', instanceId: 'main' }, today.dueTotal > 0 ? `${today.dueTotal} due` : undefined); } catch { /* an older app */ }
@@ -5952,7 +5956,6 @@ function createSidebarView(container) {
       studyBtn.disabled = served === 0; // a zeroed daily limit — Custom Study is the way through
       fcDeclare(studyBtn, 'flashcards.side.today.study'); studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
       panel.appendChild(studyBtn);
-      const memo = await fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null);
       if (memo && memo.total > 0) {
         const memoBtn = el('button', 'fc-today__more fc-today__memorize');
         memoBtn.type = 'button';

@@ -4007,6 +4007,40 @@ from this order", after the list.
 His words: "fix findings then propose plan of action to address all
 items, prioritize quick wins while maintaining standards."
 
+**Where each item stands (one state each; kept current, read this
+first).** Done means built as asked, driven on the built app, checked
+and pushed. Nothing in this table is half done: an item that is not
+Done has not changed the app, except 11, whose row says what is on the
+tab now.
+
+| Item | What | State |
+|---|---|---|
+| 4 | Checks owed since the sidebar was restacked | Done |
+| 5 | The palette's rows the audit could not reach | Done |
+| 6 | Tools and Extensions as one list | Done |
+| 7 | A page's Default font; Newsreader in the list | Done |
+| 8 | The Dashboard's large numbers | Done |
+| 9 | A live word in Open from Study and Worksheets | Done |
+| 10 | Text arrows | Done |
+| 11 | Study's plan tab | Waiting on him: one yes (may `study-plan-acceptance.mjs` follow the drawing). Until then the tab has the days-left number and the phase strip, over the old list and table |
+| 12 | Flashcards' Decks and Stats | Done |
+| 13 | Planner's three pages | Done |
+| 14 | The PDF viewer | Done |
+| 15 | Menus, notices, Settings | Done |
+| 16 | Chat | Done |
+| 17 | A .md file opens as a page | Done |
+| 18 | Home and Welcome as one page | Not started: the bar's site cannot be read from the cloud environment |
+| 19 | Study piece B's review | Done |
+| 20 | Study piece C's remainder | Waiting on him: how a phase names its units |
+| 21 | Worksheets' toolbar, then its list | Not started |
+| 22 | Generative edits | Not started: needs his machine (his photos, his card) |
+| 23 | Where tools look unlike each other, measured | Done |
+
+Three acceptance probes need his word before they can follow a change
+(they are not edited without it): the plan's (item 11), study-usable
+19.1 and 19.2 (item 17: they wait for the text editor where a .md file
+is now a page), and the corrections listed under "First, his answers".
+
 **Fixed the same day (the four the audits had found and left):**
 - The terminal's input: the line it sits in shows a mark while the keys
   are in it. The audit's "no focus ring" there is 0.
@@ -4049,49 +4083,44 @@ checks, the builds stay one to a session):**
    audit, the visual probe, the touch-drag probe, a finger on the new
    drags. Fix what they find. **Done.**
 5. Find why the audit miscounts the palette's rows, and put it right in
-   the place that is wrong (the palette, or the audit with his say). **Done:
-   the palette was wrong, not the audit.**
+   the place that is wrong (the palette, or the audit with his say). **Done.**
 6. Piece 8, Tools and Extensions as one list grouped On and Off. **Done.**
 7. Piece 6, first half: a page's Default font follows the app's face,
    and Newsreader joins the page font list. **Done.**
 8. The Dashboard's large numbers in the display face. **Done.**
 9. A live word from more tools in Open (Study's session, Worksheets'
-   paper), through the point built in piece 2. **Built; not driven on
-   the app, see below.**
+   paper), through the point built in piece 2. **Done.**
 10. Text arrows elsewhere: check whether any are left, then close the
-    entry or fix them. **Done: nine places were left; fixed.**
+    entry or fix them. **Done.**
 
 **Then the settled pieces of the look, smallest first (a session each):**
-11. Piece 11, Study's plan tab as the page for the plan's rules. **Part
-    built; the rest waits on his word about an acceptance probe.**
+11. Piece 11, Study's plan tab as the page for the plan's rules. 
+    **Waiting on him (one yes about an acceptance probe).**
 12. Piece 10, Flashcards' Decks and Stats (this also settles its Study
-    row). **Done; the Study row is his to say.**
+    row). **Done.**
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
     and filters off the page). **Done.**
 14. Piece 7, the PDF viewer. **Done.**
 15. Piece 3, menus, notices and the Settings dialog. **Done.**
 16. Piece 5, chat. **Done.**
-17. Piece 6, second half: a .md file opens as a page. **Done; one acceptance
-    check needs his word.**
+17. Piece 6, second half: a .md file opens as a page. **Done.**
 18. Piece 4, Home and Welcome as one page (the largest; it has missed
-    twice, so it gets the bar read first). **Skipped: the bar cannot
-    be read from this environment.**
+    twice, so it gets the bar read first). **Not started.**
 
 **Then what is half done elsewhere:**
 19. Study piece B: one review pass by agents that did not write it (it
     shipped unreviewed), and name its "remainder" or strike the word.
-    **Done: two faults fixed, two for him, the word struck.**
+    **Done.**
 20. Study piece C's remainder (the current phase's units; tomorrow's
-    questions made overnight). **Not started: two questions for him.**
+    questions made overnight). **Waiting on him.**
 21. Worksheets: the toolbar, then the rest of its list, a piece each;
     and the checks left open when its session stopped on 2026-11-16.
     **Not started.**
 22. Generative edits: Recipes, Beyond The Edges, the two proposals;
-    and the image editor probe's 34 failures. **Not started: needs his
-    machine.**
+    and the image editor probe's 34 failures. **Not started.**
 23. "Where tools look unlike each other": measure again now that the
     frame and the look have changed, then raise what is left with him.
-    **Measured; what is left is listed for him.**
+    **Done.**
 
 **Needs him or his machine, so not scheduled:** his verdicts on chat,
 Enhance, the real edits and Style Text on his own model and card;
@@ -4233,25 +4262,48 @@ the app's face, and Newsreader is in the page font list. Done.**
   the four, the seeded Dashboard shows only the timer; the other three
   share its rule and were not on screen.
 
-**Item 9, a live word from more tools in Open. Built for Study's
-session and Worksheets' quiz; one of the two driven only in a test.**
+**Item 9, a live word from more tools in Open: Study's session and
+Worksheets' quiz. Done.**
+(First committed built but not driven; driven on the built app the same
+day, which found two faults of the app's own, fixed here.)
 - *What was there:* the point from piece 2 (`api.editors.setEditorStatus`),
   used by the PDF viewer and Flashcards and by nothing else.
 - *Built:* a Study session's tab says how far it is ("3 of 12", the
-  answered of the draw, as its row in Study's list does) and says
-  nothing once the session is finished. A Worksheets quiz's tab says
-  the problem it is on ("4 of 12") and says nothing on its summary or
-  once the quiz is completed. Each tool speaks for its own tab through
-  the point; the core names neither.
-- *Checked:* Study's in its real bundle (`studyPane.test.ts` 5a: the
-  word counts up one answer at a time, never past the draw, and is
-  cleared at the results). Typecheck and the unit suite.
-- *Not driven on the built app, either of them.* A Study session needs
-  questions a model wrote, and a quiz needs a problem bank; no probe in
-  the repository seeds either without his own database or a model
-  stand-in of several hundred lines. The Open row drawing a word a tool
-  set was driven in piece 2. On his machine: start a quiz or a Study
-  session and look at its row under Open.
+  answered of the draw) and says nothing once the session is finished.
+  A Worksheets quiz's tab says the problem it is on ("4 of 12") and says
+  nothing on its summary or once the quiz is completed. Each tool speaks
+  for its own tab through the point; the core names neither.
+- *Driven on the built app.* The record first said no probe could seed
+  a session or a quiz. That was wrong: `tests/probes/study-app-probe.mjs`
+  runs whole sessions on a scripted model and
+  `tests/probes/worksheet-screens-probe.mjs` seeds a problem bank. Both
+  now read the row under Open: Study's row says "0 of 20", then "1 of
+  20" after one answer, nothing at the results, and "0 of 20" for the
+  new draw after Refresh; the quiz's row says "2 of 6", follows a move
+  to another problem, and says nothing on the summary (7 checks, all
+  pass; `worksheet-screens-probe.mjs` had no checks before, only
+  screenshots, and 16 of its 28 screenshots used to time out: they come
+  out now).
+- *Found by driving it, a fault of the app's (fixed):* a tab's row under
+  Open could go deaf. The editor service kept one listener for a tab's
+  name and live word per editor id, and dropped it when any tab with
+  that id closed. A Study session shown beside its source (Show Source
+  opens the PDF in a second group, where the PDF was already open in
+  the first) left the session's row saying "8 of 20" beside a draw
+  nobody had answered, until something else redrew the list. The
+  listeners are kept by the editor itself now, and dropped only when no
+  group holds it (`editorService.ts`; three unit tests in
+  `openEditorsNonFile.test.ts`, two of which fail on the old code). This
+  was true of every tab's name, dirty mark and live word, not Study's
+  alone.
+- *Found by driving it, a second fault (fixed):* once in four runs the
+  page said "flashcards.side.today.study is registered twice". The
+  Flashcards sidebar waited for a count in the middle of drawing its
+  Today panel, so a second refresh that began meanwhile drew a second
+  panel beside the first. Everything is read before the drawing starts
+  now, and only the newest refresh draws (`ext/flashcards/main.js`). The
+  unit test added for it passes on the old code too (the test's reads
+  answer at once), and says so; the probe is what fails on a page error.
 - *Not built:* a word from pages. "Worksheets' paper" was read as the
   quiz in progress; if he meant a sheet file's own tab, that is not
   done.
