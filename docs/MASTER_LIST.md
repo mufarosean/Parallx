@@ -4047,7 +4047,8 @@ checks, the builds stay one to a session):**
    and Newsreader joins the page font list. **Done.**
 8. The Dashboard's large numbers in the display face. **Done.**
 9. A live word from more tools in Open (Study's session, Worksheets'
-   paper), through the point built in piece 2.
+   paper), through the point built in piece 2. **Built; not driven on
+   the app, see below.**
 10. Text arrows elsewhere: check whether any are left, then close the
     entry or fix them.
 
@@ -4215,6 +4216,29 @@ the app's face, and Newsreader is in the page font list. Done.**
   counts did not move); the keyboard audit on the Dashboard (0). Of
   the four, the seeded Dashboard shows only the timer; the other three
   share its rule and were not on screen.
+
+**Item 9, a live word from more tools in Open. Built for Study's
+session and Worksheets' quiz; one of the two driven only in a test.**
+- *What was there:* the point from piece 2 (`api.editors.setEditorStatus`),
+  used by the PDF viewer and Flashcards and by nothing else.
+- *Built:* a Study session's tab says how far it is ("3 of 12", the
+  answered of the draw, as its row in Study's list does) and says
+  nothing once the session is finished. A Worksheets quiz's tab says
+  the problem it is on ("4 of 12") and says nothing on its summary or
+  once the quiz is completed. Each tool speaks for its own tab through
+  the point; the core names neither.
+- *Checked:* Study's in its real bundle (`studyPane.test.ts` 5a: the
+  word counts up one answer at a time, never past the draw, and is
+  cleared at the results). Typecheck and the unit suite.
+- *Not driven on the built app, either of them.* A Study session needs
+  questions a model wrote, and a quiz needs a problem bank; no probe in
+  the repository seeds either without his own database or a model
+  stand-in of several hundred lines. The Open row drawing a word a tool
+  set was driven in piece 2. On his machine: start a quiz or a Study
+  session and look at its row under Open.
+- *Not built:* a word from pages. "Worksheets' paper" was read as the
+  quiz in progress; if he meant a sheet file's own tab, that is not
+  done.
 
 ## Verification owed
 

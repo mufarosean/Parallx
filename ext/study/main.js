@@ -13044,6 +13044,11 @@ async function stSheetStartFailed(sheet, err, retry) {
 
 // ── Session screen ──────────────────────────────────────────────────────────
 
+/** Sets or clears the live word of a session's tab (the app lists it beside the tab's name). */
+function stSessionWord(sessionId, word) {
+  try { if (_api.editors && typeof _api.editors.setEditorStatus === 'function') _api.editors.setEditorStatus({ typeId: 'study', instanceId: `session-${sessionId}` }, word); } catch { /* the tab is gone */ }
+}
+
 async function renderSession(host, route, ctx) {
   const session = await stGetSession(route.sessionId);
   // Gone: a making that ended with nothing says so; a tab restored for a session that no longer exists closes.
@@ -13141,6 +13146,8 @@ async function renderSession(host, route, ctx) {
     }
     const answered = drawItems.filter((i) => stItemAnswered(i)).length;
     strand.setAttribute('aria-label', `${answered} of ${drawItems.length} answered`);
+    // The tab's live word, where open editors are listed: how far the session is.
+    stSessionWord(session.id, drawItems.length ? `${answered} of ${drawItems.length}` : undefined);
   }
   function pulseSeg(itemId, cls) {
     const i = segs.get(itemId);
@@ -13915,6 +13922,7 @@ async function renderResults(host, route, ctx) {
   const now = stNow();
   const session = await stGetSession(route.sessionId);
   if (!session) throw new Error('This session no longer exists.');
+  stSessionWord(session.id, undefined); // finished: the tab says no more than its name
   const scope = stSessionScope(session);
   const isBank = scope.kind === 'bank';
   const isTest = session.mode === 'test';

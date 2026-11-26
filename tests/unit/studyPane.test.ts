@@ -366,7 +366,7 @@ interface Env {
 
 function makeEnv(): Env {
   const calls: AnyRec = {
-    openEditor: [], focusEditor: [], closeEditor: [], openFileEditor: [], executeCommand: [], quickPicks: [],
+    openEditor: [], focusEditor: [], closeEditor: [], editorStatus: [], openFileEditor: [], executeCommand: [], quickPicks: [],
     confirms: [], info: [], warnings: [], errors: [], menus: [], addCards: [], extract: [], providerOpen: [],
   };
   const lmCalls: AnyRec[] = [];
@@ -440,6 +440,11 @@ function makeEnv(): Env {
       kit.createSurface(host, { id: o.typeId, owner: 'study', label: o.title || 'Study', instance: id });
       const pane = editorProviders.get(o.typeId)?.createEditorPane(host, { id, instanceId: o.instanceId, title: o.title });
       open.set(o.instanceId, { id, instanceId: o.instanceId, title: o.title, host, pane, order: ++order });
+    },
+    // The live word of one of the tool's own tabs, as the app's bridge takes it.
+    setEditorStatus(editor: { typeId: string; instanceId: string }, word: string | undefined) {
+      calls.editorStatus.push([`${editor.typeId}:${editor.instanceId}`, word]);
+      return true;
     },
     async focusEditor(id: string) {
       calls.focusEditor.push(id);
@@ -1703,6 +1708,29 @@ describe('Study end to end', () => {
     btn(h, 'Send Missed to Flashcards')!.click();
     await waitFor(() => env.calls.addCards.length === 2, 'the second send');
     expect(env.calls.addCards[1].cards.map((c: AnyRec) => c.tags[1]).sort()).toEqual(missed1.map((id) => `study:c:${id}`).sort());
+  });
+
+  it('5a. the session\'s tab carries a live word: how many of the draw are answered, and nothing once it is finished', async () => {
+    await boot();
+    const { h, sessionId } = await startChapterSession();
+    const tab = `study:session-${sessionId}`;
+    const words = () => (env.calls.editorStatus as [string, string | undefined][]).filter(([id]) => id === tab).map(([, w]) => w);
+    const size = one('SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?', sessionId).n;
+    expect(size).toBeGreaterThanOrEqual(1);
+    expect(words().at(-1)).toMatch(/^0 of \d+$/);
+    // No other tab is spoken for.
+    expect((env.calls.editorStatus as [string, unknown][]).every(([id]) => id === tab)).toBe(true);
+    await answerDraw(h, { wrongFirstMc: true });
+    await waitFor(() => q(h, '.st-res'), 'results');
+    // It counted up one answer at a time, never past the draw, and the finished session says no more than its name.
+    const finalSize = one('SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?', sessionId).n;
+    const said = words().filter((w): w is string => !!w).map((w) => Number(w.split(' of ')[0]));
+    expect(said.every((n, i) => i === 0 || n >= said[i - 1])).toBe(true);
+    // (Questions still being written join the draw while it is open, so the total can grow to the draw's size, never past it.)
+    expect(words().filter(Boolean).every((w) => /^\d+ of \d+$/.test(w!) && Number(w!.split(' of ')[1]) <= finalSize && w!.length <= 24)).toBe(true);
+    // The last answer goes straight to the results, so the last word said is at least all but one.
+    expect(Math.max(...said)).toBeGreaterThanOrEqual(finalSize - 1);
+    expect(words().at(-1)).toBeUndefined();
   });
 
   it('5c. Stop on a Refresh before its first question sticks: a rebuilt tab or a restart starts no making; it opens on the results', async () => {

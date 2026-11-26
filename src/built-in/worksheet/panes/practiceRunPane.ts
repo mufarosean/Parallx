@@ -535,6 +535,9 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
     const serve = () => {
       if (disposed) return;
       const seq = ++serveSeq;
+      // The tab's live word, where open editors are listed: the problem the quiz is on. None on its summary or once it is completed.
+      const onProblem = session.index < session.ids.length && !session.finishedAt;
+      try { state.api?.editors.setEditorStatus?.({ typeId: 'worksheet', instanceId: 'practice-run' }, onProblem ? `${session.index + 1} of ${session.ids.length}` : undefined); } catch { /* the tab is gone */ }
       if (session.index >= session.ids.length) { void renderSummary(); return; }
       bar.style.display = '';
       paintBar();

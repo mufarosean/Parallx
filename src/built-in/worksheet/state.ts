@@ -25,6 +25,7 @@ export interface ParallxApiLike {
     openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void>;
     closeEditor?(editorId: string): Promise<boolean>;
     readonly openEditors?: readonly { id: string; description: string }[];
+    setEditorStatus?(editor: string | { typeId: string; instanceId: string }, status: string | undefined): boolean;
   };
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): { dispose(): void };
