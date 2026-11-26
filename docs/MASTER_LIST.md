@@ -4081,11 +4081,13 @@ checks, the builds stay one to a session):**
 19. Study piece B: one review pass by agents that did not write it (it
     shipped unreviewed), and name its "remainder" or strike the word.
 20. Study piece C's remainder (the current phase's units; tomorrow's
-    questions made overnight).
+    questions made overnight). **Not started: two questions for him.**
 21. Worksheets: the toolbar, then the rest of its list, a piece each;
     and the checks left open when its session stopped on 2026-11-16.
+    **Not started.**
 22. Generative edits: Recipes, Beyond The Edges, the two proposals;
-    and the image editor probe's 34 failures.
+    and the image editor probe's 34 failures. **Not started: needs his
+    machine.**
 23. "Where tools look unlike each other": measure again now that the
     frame and the look have changed, then raise what is left with him.
     **Measured; what is left is listed for him.**
@@ -4566,7 +4568,7 @@ started: skipped, with the reason.**
 The visual probe on its 26 screens, against the first measurement:
 - *Gone since then:* the rows under the target size (eleven in the
   frame; one is left, the tab strip's scroll button, 20 px wide); the
-  two cut-off labels in Tools and Extensions; three of the eight front
+  two cut-off labels in Tools and Extensions; two of the eight front
   pages with no kit header (Tools and Extensions and Study have it;
   eight were counted, six are left).
 - *Left, by kind:*
@@ -4596,6 +4598,36 @@ The visual probe on its 26 screens, against the first measurement:
   hierarchy and whether a row or a toolbar has one form across tools
   (the `visual-evaluator` agent's part, not run), and full screens (the
   seeded workspace is nearly empty).
+
+**Item 20, Study piece C's remainder. Not started: both halves are
+his to open.**
+- *Only the current phase's units.* A phase names no units: Phases has
+  no column for them. Giving it one changes the plan's databases, and
+  `study-plan-acceptance.mjs` 1.6 holds the four databases to the
+  model's columns by name and kind. **For him:** how does a phase say
+  which units are its own (a tags column "Units" on Phases, a relation
+  to the subject's units, or the unit naming its phase), and may the
+  plan's acceptance probe follow?
+- *Tomorrow's questions made overnight.* It needs a model, and "on his
+  machine" is in its own words; nothing here can show it working. It is
+  with "Needs him or his machine".
+
+**Item 21, Worksheets: the toolbar, then the rest of its list. Not
+started.** The toolbar (his 2B: one toolbar built from the kit in place
+of the spreadsheet engine's ribbon, with what it does not show under
+More, and 2C's bar for touch) is a build of its own size: every control
+has to be wired to the engine's commands and its state read back, and
+the keyboard audit's one standing exception hangs on it. This run was
+already carrying seventeen items; it was not begun half-way. The checks
+left open on 2026-11-16 were not looked at either.
+
+**Item 22, Generative edits: Recipes, Beyond The Edges, the two
+proposals, and the image editor probe's 34 failures. Not started: it
+needs his machine.** `image-editor-probe.mjs` copies its photos from
+`data/dashboard-assets/`, which is his data and not in the repository;
+run here it stops before it opens the app (ENOENT on the first photo),
+so its 34 failures cannot be seen, let alone traced. Recipes and Beyond
+The Edges generate with his card.
 
 ## Verification owed
 
