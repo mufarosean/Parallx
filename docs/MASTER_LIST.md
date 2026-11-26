@@ -2331,7 +2331,8 @@ to a session):**
 7. *The PDF viewer (4A):* the page lifted on a darker ground, its
    controls in one pill at the foot.
 8. *Tools and Extensions (6B):* the list grouped On and Off, each tool
-   with its own icon and its switch.
+   with its own icon and its switch. **Built 2026-11-26, see item 6
+   under "Done from this order".**
 9. *Planner's three pages* as proposed (no behaviour changes).
 10. *Flashcards' Decks and Stats* as proposed.
 11. *Study's plan tab* as the page for the plan's rules.
@@ -4041,7 +4042,7 @@ checks, the builds stay one to a session):**
 5. Find why the audit miscounts the palette's rows, and put it right in
    the place that is wrong (the palette, or the audit with his say). **Done:
    the palette was wrong, not the audit.**
-6. Piece 8, Tools and Extensions as one list grouped On and Off.
+6. Piece 8, Tools and Extensions as one list grouped On and Off. **Done.**
 7. Piece 6, first half: a page's Default font follows the app's face,
    and Newsreader joins the page font list.
 8. The Dashboard's large numbers in the display face.
@@ -4141,6 +4142,35 @@ fault was in the app, three of them, and the audit was right.**
   the keyboard audit on the palette's two screens and Settings and its
   34 sub-screens (not focusable 0, stuck dialogs 0, every count 0).
   The audit itself is unchanged.
+
+**Item 6, the look's piece 8: Tools and Extensions as one list grouped
+On and Off (his 6B). Done.**
+- *What was there:* the list was already grouped (Enabled, Disabled)
+  and already drew each tool's own icon; the mock-up's "one icon for
+  all" was an older state. Missing were the title, the group names, what
+  a tool adds, and the switch: a tool was turned off by a Disable button
+  that showed only on hover.
+- *Built:* the page has its title in the display face (the kit's page
+  header); the groups read "On, 19" and "Off, 9" in the mono face and
+  still fold on a press; each row is the tool's icon, its name, one line
+  of description (the whole of it on hover), what it adds counted from
+  its manifest in the mono face ("18 commands · 1 view · 5 settings"),
+  and a kit switch. A tool the app requires has no switch, as it had no
+  button. The switch is named for a screen reader ("Planner: on"), is a
+  Tab stop with a focus ring, and its press does not open the tool's
+  page. `toolFacts.ts` holds the icon and the count.
+- *Differs from the drawing, for him to overrule:* the mock-up counted
+  "widgets" and "pages"; a manifest lists commands, views and settings,
+  so those are what is counted. The column's list for this page
+  (Installed, On, Off with counts) is not built: Tools and Extensions
+  is a tab, not a tool with a sidebar list, and the search field's
+  `@enabled` and `@disabled` already filter.
+- *Checked:* `tests/probes/tools-list-probe.mjs` (new, 18 of 18 on the
+  built app: a tool turned off with the mouse and on with Space, read
+  back from the app's own services; its row leaves the sidebar's tools
+  at once); the visual probe (this screen: clipped 1 and no header 1
+  before, nothing found now); the keyboard audit on it (every count 0);
+  typecheck; the unit suite.
 
 ## Verification owed
 

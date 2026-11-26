@@ -252,3 +252,25 @@ export function tinyPdf(text = 'Hello from Parallx') {
   out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(out, 'latin1');
 }
+
+/**
+ * A screenshot of the hidden window, written to `file`. The window is made
+ * to repaint first (a hidden window does not draw until asked), any focus
+ * ring or tooltip left by the checks before is cleared, and when the
+ * browser's own capture times out the window's is used.
+ */
+export async function screenshot(app, page, file, { keepFocus = false } = {}) {
+  await page.evaluate(() => {
+    let d = document.getElementById('__probe_repaint');
+    if (!d) { d = document.createElement('div'); d.id = '__probe_repaint'; d.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:2147483647'; document.body.appendChild(d); }
+    d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01';
+  }).catch(() => {});
+  if (!keepFocus) await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur()).catch(() => {});
+  await page.waitForTimeout(250);
+  if (await page.screenshot({ path: file, timeout: 8_000 }).then(() => true, () => false)) return true;
+  const b64 = await app.evaluate(async ({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return w ? (await w.webContents.capturePage()).toPNG().toString('base64') : null; }).catch(() => null);
+  if (!b64) return false;
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(file, Buffer.from(b64, 'base64'));
+  return true;
+}

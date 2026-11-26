@@ -11,18 +11,19 @@
 import { renderDetailsTab, renderStatusTab } from './toolEditorTabs.js';
 import { pressable } from './pressable.js';
 import { registerToolQuickOpen } from './toolQuickOpen.js';
-import { declareControl } from '../../ui/kit.js';
+import { declareControl, createPageHeader, createToggle } from '../../ui/kit.js';
 import './toolGallery.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
-import { getIcon, hasIcon } from '../../ui/iconRegistry.js';
+import { getIcon, createIconElement } from '../../ui/iconRegistry.js';
+import { toolIconSvg, whatItAdds } from './toolFacts.js';
 import { renderEmptyState } from '../../ui/emptyStates.js';
 import { IIntrospectionService } from '../../services/introspectionService.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ToolContributions {
+export interface ToolContributions {
   commands?: { id: string; title: string; category?: string; icon?: string; keybinding?: string; when?: string }[];
   views?: { id: string; name: string; icon?: string; defaultContainerId?: string; when?: string }[];
   viewContainers?: { id: string; title: string; icon?: string; location?: string; hidden?: boolean }[];
@@ -89,30 +90,6 @@ interface ParallxApi {
   };
 }
 
-// ─── SVG Icon Constants — from the central Lucide icon registry ──────────────
-
-/** Built-in tool icon — package/cube. */
-const SVG_ICON_BUILTIN = getIcon('package')!;
-
-/** External tool icon — plug connector. */
-const SVG_ICON_EXTERNAL = getIcon('plug')!;
-
-
-/** A tool's own icon: the one it shows in the activity bar, else the generic mark. */
-function toolIconSvg(tool: { isBuiltin: boolean; contributes?: ToolContributions }): string {
-  const c = tool.contributes ?? {};
-  const ids = [...(c.viewContainers ?? []).map((v) => v.icon), ...(c.views ?? []).map((v) => v.icon)];
-  for (const id of ids) {
-    if (!id) continue;
-    if (hasIcon(id)) return getIcon(id);
-    // A tool that is off has not registered its own icons; its manifest
-    // still carries the drawing.
-    const own = c.icons?.find((i) => i.id === id);
-    if (own) return own.svg;
-  }
-  return tool.isBuiltin ? SVG_ICON_BUILTIN : SVG_ICON_EXTERNAL;
-}
-
 /** Install/download icon for the install button. */
 const SVG_ICON_INSTALL = getIcon('export')!;
 
@@ -171,6 +148,8 @@ type FilterMode = 'installed' | 'enabled' | 'disabled' | 'builtin' | 'search';
 
 function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable {
   container.classList.add('tool-gallery-container');
+
+  createPageHeader(container, { title: 'Tools and Extensions' });
 
   // ── Search bar with install action ──
   const searchWrap = $('div');
@@ -302,33 +281,32 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     // Description
     const descEl = $('div');
     descEl.classList.add('tool-gallery-row-desc');
-    descEl.textContent = tool.description || 'No description';
+    descEl.textContent = tool.description || 'No description'; descEl.title = descEl.textContent; // one line in the list; the whole of it on hover
     info.appendChild(descEl);
 
     row.appendChild(info);
 
-    // Enable/Disable toggle
-    const toggle = $('button');
-    toggle.classList.add('tool-gallery-toggle');
+    // What it adds, in the mono face ("36 commands · 2 views").
+    const adds = whatItAdds(tool);
+    if (adds) {
+      const meta = $('span');
+      meta.classList.add('tool-gallery-row-meta');
+      meta.textContent = adds;
+      row.appendChild(meta);
+    }
+
+    // The switch. A tool the app requires has none: there is nothing to turn.
     if (!api.tools.canChangeEnablement(tool.id)) {
-      // Required by the app: nothing to toggle, so no button. A permanently
-      // disabled "Disable" on every core tool was most of the list's noise.
       row.title = `${tool.name} is part of Parallx and is always on.`;
     } else {
-      toggle.textContent = enabled ? 'Disable' : 'Enable';
-      toggle.title = enabled ? `Disable ${tool.name}` : `Enable ${tool.name}`;
-      if (!enabled) toggle.classList.add('tool-gallery-toggle-enable');
-      toggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggle.disabled = true;
-        toggle.textContent = '…';
-        api.tools.setEnabled(tool.id, !enabled).catch((err: unknown) => {
+      const sw = createToggle(row, { id: null, label: `${tool.name}: on`, checked: enabled, onChange: (on) => {
+        api.tools.setEnabled(tool.id, on).catch((err: unknown) => {
           console.error(`[ToolGallery] Toggle failed for "${tool.id}":`, err);
-          toggle.disabled = false;
-          toggle.textContent = enabled ? 'Disable' : 'Enable';
+          sw.checked = !on;
         });
-      });
-      row.appendChild(toggle);
+      } });
+      // The switch is inside a row that opens the tool's page: its press is its own.
+      sw.element.addEventListener('click', (e) => e.stopPropagation());
     }
 
     // Click → open editor
@@ -357,12 +335,12 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     const arrow = $('span');
     arrow.classList.add('tool-gallery-group-arrow');
     // Registered Lucide glyphs, never text symbols.
-    arrow.innerHTML = getIcon(collapsed ? 'chevron-right' : 'chevron-down');
+    arrow.replaceChildren(createIconElement(collapsed ? 'chevron-right' : 'chevron-down', 12));
     header.appendChild(arrow);
 
     const text = $('span');
     text.classList.add('tool-gallery-group-label');
-    text.textContent = `${label} (${count})`;
+    text.textContent = `${label}, ${count}`;
     header.appendChild(text);
 
     header.addEventListener('click', () => {
@@ -397,7 +375,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       const disabled = tools.filter(t => !api.tools.isEnabled(t.id));
 
       if (enabled.length > 0) {
-        list.appendChild(createGroupHeader('Enabled', enabled.length, 'enabled'));
+        list.appendChild(createGroupHeader('On', enabled.length, 'enabled'));
         if (!collapsedGroups.has('enabled')) {
           for (const tool of enabled) {
             list.appendChild(createToolRow(tool));
@@ -406,7 +384,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       }
 
       if (disabled.length > 0) {
-        list.appendChild(createGroupHeader('Disabled', disabled.length, 'disabled'));
+        list.appendChild(createGroupHeader('Off', disabled.length, 'disabled'));
         if (!collapsedGroups.has('disabled')) {
           for (const tool of disabled) {
             list.appendChild(createToolRow(tool));

@@ -35,9 +35,8 @@
 .tool-gallery-search {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border, #333);
+  gap: var(--px-space-1);
+  padding: var(--px-space-2) 0;
   flex-shrink: 0;
 }
 
@@ -108,32 +107,28 @@
   font-size: var(--px-text-base);
 }
 
-/* ── Group headers ── */
+/* ── Group labels: "On, 19" and "Off, 3" in the mono face; a press folds the group ── */
 .tool-gallery-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: var(--px-space-1);
+  padding: var(--px-space-3) 0 var(--px-space-1);
   cursor: pointer;
   user-select: none;
+  font-family: var(--px-font-mono);
   font-size: var(--px-text-sm);
-  font-weight: 600;
-  text-transform: none;
-  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
-  background: var(--vscode-sideBarSectionHeader-background, rgba(255,255,255,0.04));
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  color: var(--px-text-muted);
+  border-bottom: 1px solid var(--px-border);
 }
-
-.tool-gallery-group-header:hover {
-  background: var(--vscode-list-hoverBackground);
-}
+.tool-gallery-group-header:hover { color: var(--px-text); }
 
 .tool-gallery-group-arrow {
-  font-size: 9px;
   width: 12px;
-  text-align: center;
-  color: var(--vscode-descriptionForeground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.tool-gallery-group-arrow svg { width: 12px; height: 12px; display: block; }
 
 .tool-gallery-group-label {
   flex: 1;
@@ -144,10 +139,10 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: var(--px-space-3);
+  padding: var(--px-space-2) 0;
   cursor: pointer;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  border-bottom: 1px solid var(--px-border);
   transition: background var(--px-dur-instant) var(--px-ease);
 }
 
@@ -184,8 +179,18 @@
 .tool-gallery-row-name {
   color: var(--vscode-foreground);
   font-size: var(--px-text-base);
-  font-weight: 500;
+  font-weight: 600;
 }
+
+/* What the tool adds, at the right before its switch. */
+.tool-gallery-row-meta {
+  flex-shrink: 0;
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  white-space: nowrap;
+}
+.tool-gallery-row > .ui-toggle { flex-shrink: 0; }
 
 .tool-gallery-row-version {
   color: var(--vscode-descriptionForeground);
@@ -220,52 +225,9 @@
   margin-top: 2px;
 }
 
-/* Disabled row */
-.tool-gallery-row-disabled {
-  opacity: 0.55;
-}
-
-.tool-gallery-row-disabled:hover {
-  opacity: 0.75;
-}
-
-/* ── Toggle button (sidebar) ── */
-.tool-gallery-toggle {
-  flex-shrink: 0;
-  align-self: center;
-  background: none;
-  border: 1px solid var(--vscode-input-border, #555);
-  color: var(--vscode-foreground);
-  font-size: var(--px-text-sm);
-  padding: 3px 8px;
-  cursor: pointer;
-  border-radius: var(--px-radius-sm);
-  transition: background var(--px-dur-instant) var(--px-ease), border-color var(--px-dur-instant) var(--px-ease);
-}
-
-.tool-gallery-toggle:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
-
-.tool-gallery-toggle:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tool-gallery-toggle-enable {
-  color: var(--vscode-textLink-foreground, #569cd6);
-  border-color: var(--vscode-textLink-foreground, #569cd6);
-}
-
-.tool-gallery-toggle-enable:hover {
-  background: var(--vscode-badge-background, rgba(86, 156, 214, 0.15));
-}
-
-/* Built-in tool toggle (greyed out) */
-.tool-gallery-toggle-builtin {
-  opacity: 0.4;
-  cursor: default;
-}
+/* A tool that is off: its icon and words step back; its switch stays whole. */
+.tool-gallery-row-disabled .tool-gallery-row-icon,
+.tool-gallery-row-disabled .tool-gallery-row-name { color: var(--px-text-muted); }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* TOOL EDITOR PANE — detail page in the editor area                         */
@@ -701,20 +663,5 @@
 .tool-editor-row-action:hover { border-color: var(--px-accent); color: var(--px-text); }
 .tool-editor-row-action:active { transform: var(--px-press, translateY(0.5px)); }
 
-/* Row actions appear on hover (Linear): an always-visible Disable on every
-   row squeezed each name and description in a 200px sidebar. A disabled
-   tool keeps its Enable visible — that is the action you came for. */
-.tool-gallery-row .tool-gallery-toggle:not(.tool-gallery-toggle-enable) {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-  background: var(--px-bg-elevated);
-}
-.tool-gallery-row:hover .tool-gallery-toggle,
-.tool-gallery-row:focus-within .tool-gallery-toggle, [data-input-modality="touch"] .tool-gallery-row .tool-gallery-toggle {
-  opacity: 1;
-  pointer-events: auto;
-}
+/* The page's title lines up with the search field and the rows under it. */
+.tool-gallery-page > .px-page-header { padding-inline: 0; }
