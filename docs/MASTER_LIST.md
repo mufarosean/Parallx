@@ -4769,7 +4769,8 @@ started (each is its own piece, named at the end).**
   piece of their own) or retired.
 
 - *The rest of Worksheets' list, a piece each.* Done: the keys that do
-  nothing (next entry). Not started: typing in the formula bar; find
+  nothing (next entry). Not started: typing in the formula bar (looked
+  into, nothing shipped, what was found is under the keys entry); find
   and replace on a sheet; conditional
   formatting, dropdown lists, tables, notes and links (engine parts
   installed, not on); a sheet in a page (his 3A, then 3C); the problem
@@ -4816,6 +4817,21 @@ started (each is its own piece, named at the end).**
   general now: a surface names the keys it keeps
   (`data-px-owns-keys`), and the sheet names Ctrl+G with its three
   (the app's Ctrl+G is Go to Line, for a text file).
+- *Typing in the formula bar, looked into and not built (the next
+  piece starts here):* it is a fault of the engine (0.25.1), in two
+  parts. First, a press in the bar opens the cell for editing, and the
+  engine then puts the keys in the in-cell editor, at once and again on
+  the next two frames, whichever editor was pressed
+  (`EditorContainer`'s `focusEditor`), so the keys leave the bar; a
+  press made as a hand makes it (down, frames, up) ends the same way.
+  Second, with the keys held in the bar's own editor (a guard was
+  written that hands them back for as long as the edit is open), what
+  is typed still reaches neither the bar nor the cell, and Enter
+  commits the old text. The second part is not understood yet: where
+  the bar editor's input goes was not traced. The guard alone fixes
+  nothing a person would see, so it was taken out and the app is as it
+  was. Until this is fixed a formula is edited in the cell (F2 or a
+  double-click), which works.
 - *Decided, for him to overrule:* Go To is the name box, not a dialog.
   Home while a cell is being typed in is left to the engine's editor,
   which does not move the caret; the entry is not lost.
