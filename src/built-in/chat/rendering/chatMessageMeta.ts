@@ -132,7 +132,8 @@ const TOGGLE_COMMAND = 'chat.toggleAnswerTiming';
 export function registerAnswerTimingCommand(commands: { registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable }): IDisposable {
   return commands.registerCommand(TOGGLE_COMMAND, (id: unknown) => {
     const details = typeof id === 'string' ? document.getElementById(id) : null;
-    const button = Array.from(document.querySelectorAll<HTMLElement>('.parallx-chat-meta')).find((b) => b.getAttribute('aria-controls') === id);
+    // Any of the line's three (thought, sources, time and speed): each opens its own part under the line.
+    const button = Array.from(document.querySelectorAll<HTMLElement>('.parallx-chat-message-footer [aria-controls]')).find((b) => b.getAttribute('aria-controls') === id);
     if (!details || !button || !details.classList.contains('parallx-chat-meta-details')) return false;
     const open = button.getAttribute('aria-expanded') !== 'true';
     button.setAttribute('aria-expanded', String(open));
@@ -141,19 +142,66 @@ export function registerAnswerTimingCommand(commands: { registerCommand(id: stri
   });
 }
 
-/**
- * Under an answer, in its row of actions: the line of time and speed, a
- * button that opens to where the time went.
- */
-export function appendAnswerMeta(actions: HTMLElement, request: IChatUserMessage, response: IChatAssistantResponse): void {
-  const meta = answerMeta(request, response);
+/** What the answer's reasoning said, burst after burst, and what it drew on (each source once). */
+export function thoughtOf(response: IChatAssistantResponse): { text: string; ms: number; sources: IThoughtSource[] } {
+  const texts: string[] = [];
+  const sources: IThoughtSource[] = [];
+  const seen = new Set<string>();
+  for (const part of response.parts) {
+    if (part.kind !== ChatContentPartKind.Thinking) continue;
+    const t = part as IChatThinkingContent;
+    if (t.content) texts.push(t.content.trim());
+    for (const src of t.provenance ?? []) {
+      const key = `${src.uri ?? ''}\u0000${src.label}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sources.push(src);
+    }
+  }
+  return { text: texts.filter(Boolean).join('\n\n'), ms: reasoningOf(response).ms, sources };
+}
+type IThoughtSource = NonNullable<IChatThinkingContent['provenance']>[number];
+
+/** One of the line's buttons and the part it opens under the line. */
+function metaFold(actions: HTMLElement, opts: { label: string; spoken: string; title: string; className: string }): { button: HTMLButtonElement; details: HTMLElement } {
   const detailsId = `parallx-chat-meta-${++seq}`;
+  const button = createButton(actions, { id: null, label: opts.label, kind: 'ghost', size: 'sm', icon: 'chevron-right', title: opts.title, command: TOGGLE_COMMAND, args: [detailsId] });
+  button.classList.add('parallx-chat-meta', opts.className);
+  button.setAttribute('aria-expanded', 'false');
+  button.setAttribute('aria-controls', detailsId);
+  button.setAttribute('aria-label', opts.spoken);
+  const details = createBlock(actions, 'div', { className: 'parallx-chat-meta-details', attrs: { id: detailsId } });
+  details.hidden = true;
+  return { button, details };
+}
+
+/**
+ * Under an answer: one quiet line for everything about how it was made
+ * (his 1A). The thought, with how long it took; what it drew on; the time
+ * and speed. Each is a button that opens its own part under the line.
+ * `pills` draws the sources (the renderer of the answer's parts gives it).
+ */
+export function appendAnswerMeta(actions: HTMLElement, request: IChatUserMessage, response: IChatAssistantResponse, pills?: (sources: readonly IThoughtSource[]) => HTMLElement): void {
+  const meta = answerMeta(request, response);
   actions.classList.add('parallx-chat-message-footer');
+  const thought = thoughtOf(response);
+  if (thought.text) {
+    const took = thought.ms >= 500 ? ` ${durationLabel(thought.ms)}` : '';
+    const fold = metaFold(actions, { label: `Thought${took}`, spoken: `The reasoning behind this answer${took ? `, ${took.trim()}` : ''}`, title: 'The Reasoning', className: 'parallx-chat-meta--thought' });
+    createBlock(fold.details, 'div', { className: 'parallx-chat-thought-text', text: thought.text });
+  }
+  if (thought.sources.length && pills) {
+    const n = thought.sources.length;
+    const label = n === 1 ? thought.sources[0].label : `${n} sources`;
+    const fold = metaFold(actions, { label, spoken: n === 1 ? `Source: ${thought.sources[0].label}` : `${n} sources this answer drew on`, title: 'Sources Considered', className: 'parallx-chat-meta--sources' });
+    fold.details.appendChild(pills(thought.sources));
+  }
+  const detailsId = `parallx-chat-meta-${++seq}`;
   const button = createButton(actions, {
     id: null, label: meta.line, kind: 'ghost', size: 'sm', icon: 'chevron-right', title: 'Where The Time Went',
     command: TOGGLE_COMMAND, args: [detailsId],
   });
-  button.classList.add('parallx-chat-meta');
+  button.classList.add('parallx-chat-meta', 'parallx-chat-meta--speed');
   button.setAttribute('aria-expanded', 'false');
   button.setAttribute('aria-controls', detailsId);
   button.setAttribute('aria-label', meta.spoken);

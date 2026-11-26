@@ -13,7 +13,7 @@
 
 import { Disposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
-import { renderContentPart, createAgentPresence } from './chatContentParts.js';
+import { renderContentPart, createAgentPresence, renderSourcePills } from './chatContentParts.js';
 import type { ChatPartElement } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
 import { getFileTypeIcon } from '../../../ui/iconRegistry.js';
@@ -825,6 +825,8 @@ export class ChatListRenderer extends Disposable {
     if (root.querySelector('.parallx-chat-message-actions')) { return; }
 
     const actions = $('div.parallx-chat-message-actions');
+    // The line about how the answer was made comes first; Regenerate and Copy sit at its right.
+    appendAnswerMeta(actions, request, response, renderSourcePills);
 
     if (canRegenerate) {
       const regenerateBtn = document.createElement('button');
@@ -853,7 +855,6 @@ export class ChatListRenderer extends Disposable {
       });
     });
     actions.appendChild(copyBtn);
-    appendAnswerMeta(actions, request, response);
 
     root.appendChild(actions);
   }

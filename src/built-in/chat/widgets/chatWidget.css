@@ -1612,7 +1612,8 @@
   text-decoration: none;
 }
 
-.parallx-citation-badge:hover { background: var(--px-accent-soft); border-color: var(--px-accent-text); }
+.parallx-citation-badge:hover, .parallx-citation-badge:focus-visible { background: var(--px-accent-soft); border-color: var(--px-accent-text); }
+.parallx-citation-badge:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 
 /* ── Auto-Linked Source Mentions (M15 Change 5 — Cursor-pattern) ── */
 

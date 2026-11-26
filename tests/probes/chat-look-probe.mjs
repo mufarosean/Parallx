@@ -24,22 +24,26 @@ const style = (sel) => page.evaluate((sel) => { const e = [...document.querySele
 try {
   const screens = await seedAfterLaunch(page, pre);
   await screens['seed:chat.timing'](); await page.waitForTimeout(1_500);
-  const thought = await style('.parallx-chat-thinking-toggle');
-  const speed = await style('.parallx-chat-meta');
+  const thought = await style('.parallx-chat-meta--thought');
+  const speed = await style('.parallx-chat-meta--speed');
   const answer = await style('.parallx-chat-message--assistant .parallx-chat-markdown p, .parallx-chat-message-assistant p, .parallx-chat-markdown p');
-  check('the thought line is in the mono face', !!thought && /Mono/.test(thought.font) && /Thought/.test(thought.text), thought);
-  check('the speed line is in the mono face', !!speed && /Mono/.test(speed.font) && /tokens\/s/.test(speed.text), speed);
+  check('the thought is in the line under the answer, in the mono face, with its time', !!thought && /Mono/.test(thought.font) && /^Thought \d+ s$/.test(thought.text), thought);
+  check('time and speed are in the same line, in the mono face', !!speed && /Mono/.test(speed.font) && /tokens\/s/.test(speed.text), speed);
+  const line = await page.evaluate(() => { const f = [...document.querySelectorAll('.parallx-chat-message-footer')].find((e) => e.getClientRects().length); if (!f) return null; const btns = [...f.querySelectorAll(':scope > button')].filter((b) => b.getClientRects().length).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') || b.title, top: Math.round(r.top + r.height / 2), left: Math.round(r.left) }; }); const above = [...document.querySelectorAll('.parallx-chat-thinking')].filter((e) => e.getClientRects().length).length; return { btns, above }; });
+  check('it is one line: the thought, the time and speed, then Regenerate and Copy at the right, all on one row', !!line && line.btns.length === 4 && Math.max(...line.btns.map((b) => b.top)) - Math.min(...line.btns.map((b) => b.top)) <= 3 && line.btns.map((b) => b.left).join() === [...line.btns.map((b) => b.left)].sort((a, b) => a - b).join() && /reasoning/.test(line.btns[0].name) && /Regenerate/.test(line.btns[2].name) && /Copy/.test(line.btns[3].name), line);
+  check('no thought row is drawn over the finished answer', line.above === 0, line.above);
   check('the answer itself is reading text in the interface face, not mono', !!answer && !/Mono/.test(answer.font) && parseFloat(answer.size) >= 13, answer);
   const box = await style('.parallx-chat-input-container, .parallx-chat-input, .parallx-chat-composer');
   check('the question box is one rounded sheet', !!box && box.radius >= 8, box);
   await screenshot(app, page, path.join(shots, 'chat-timing.png'));
   // The thought line still opens by keys.
-  await page.evaluate(() => [...document.querySelectorAll('.parallx-chat-thinking-toggle')].find((e) => e.getClientRects().length)?.focus());
-  const before = await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded'));
+  await page.evaluate(() => [...document.querySelectorAll('.parallx-chat-meta--thought')].find((e) => e.getClientRects().length)?.focus());
+  await page.keyboard.press('Enter'); await page.waitForTimeout(400);
+  const opened = await page.evaluate(() => { const b = document.activeElement; const d = document.getElementById(b?.getAttribute('aria-controls') ?? ''); const f = b?.closest('.parallx-chat-message-footer'); const btnBottom = Math.max(...[...f.querySelectorAll(':scope > button')].map((x) => x.getBoundingClientRect().bottom)); return { expanded: b?.getAttribute('aria-expanded'), text: d?.textContent ?? null, shown: !!d?.getClientRects().length, under: d ? d.getBoundingClientRect().top >= btnBottom - 1 : false }; });
+  check('Enter on Thought opens the reasoning under the whole line', opened.expanded === 'true' && opened.shown && opened.under && (opened.text ?? '').length > 5, opened);
+  await screenshot(app, page, path.join(shots, 'chat-thought-open.png'), { keepFocus: true });
   await page.keyboard.press('Enter'); await page.waitForTimeout(300);
-  const after = await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded'));
-  check('Enter on the thought line opens and closes it', before !== after && after !== null, [before, after]);
-  await page.keyboard.press('Enter');
+  check('Enter again closes it', await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded') === 'false'));
   // A numbered source mark.
   await screens['seed:chat.citation'](); await page.waitForTimeout(1_500);
   const mark = await style('.parallx-citation-badge');

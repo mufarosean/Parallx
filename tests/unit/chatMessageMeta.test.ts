@@ -180,6 +180,59 @@ describe('on the page', () => {
     expect(details.hidden).toBe(true);
   });
 
+  it('one line under an answer: the thought with its time, what it drew on, then time and speed; each opens its own part', async () => {
+    vi.useFakeTimers({ now: NOW() });
+    const c = commands();
+    registerAnswerTimingCommand(c);
+    const asked = at(2026, 11, 13, 21, 14, 7);
+    const { request, response } = pair({ firstWordAt: asked + 1400, completedAt: asked + 20300, calls: 1, writtenTokens: 1040, timedTokens: 1040, writingMs: 16730 });
+    const source = { label: 'Mack 1994, p. 214', kind: 'rag' as const, uri: 'file:///w/mack.pdf', index: 1 };
+    const withThought: IChatAssistantResponse = { ...response, parts: [
+      { kind: ChatContentPartKind.Thinking, content: 'First the variance.', isCollapsed: true, startTime: asked + 100, endTime: asked + 8100, provenance: [source] },
+      { kind: ChatContentPartKind.Thinking, content: '', isCollapsed: true, startTime: asked + 8100, endTime: asked + 8200 },   // a burst that only carried a status line
+      { kind: ChatContentPartKind.Thinking, content: 'Then the weights.', isCollapsed: true, startTime: asked + 9000, endTime: asked + 13000, provenance: [source] },
+      ...response.parts,
+    ] as IChatAssistantResponse['parts'] };
+    const actions = document.createElement('div');
+    document.body.appendChild(actions);
+    const pills = (sources: readonly { label: string }[]) => { const row = document.createElement('div'); row.textContent = sources.map((x) => x.label).join('|'); return row; };
+    appendAnswerMeta(actions, request, withThought, pills);
+
+    const buttons = [...actions.querySelectorAll<HTMLButtonElement>('button.parallx-chat-meta')];
+    expect(buttons.map((b) => plain(b.textContent))).toEqual(['Thought 12 s', 'Mack 1994, p. 214', '9:14 PM · 20 s · 62.2 tokens/s']);
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['The reasoning behind this answer, 12 s', 'Source: Mack 1994, p. 214', expect.stringContaining('took 20 s')]);
+    const part = (b: HTMLButtonElement) => document.getElementById(b.getAttribute('aria-controls')!) as HTMLElement;
+    expect(buttons.every((b) => b.getAttribute('aria-expanded') === 'false' && part(b).hidden)).toBe(true);
+    // The thought holds both bursts in order; the source is said once though two bursts drew on it.
+    expect(part(buttons[0]).textContent).toBe('First the variance.\n\nThen the weights.');
+    expect(part(buttons[1]).textContent).toBe('Mack 1994, p. 214');
+    // Each opens its own part and no other.
+    buttons[0].click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(buttons.map((b) => b.getAttribute('aria-expanded'))).toEqual(['true', 'false', 'false']);
+    expect([part(buttons[0]).hidden, part(buttons[1]).hidden, part(buttons[2]).hidden]).toEqual([false, true, true]);
+    buttons[1].click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect([part(buttons[0]).hidden, part(buttons[1]).hidden]).toEqual([false, false]);
+  });
+
+  it('an answer with no reasoning and no sources has the time and speed alone, and several sources are counted', () => {
+    vi.useFakeTimers({ now: NOW() });
+    const asked = at(2026, 11, 13, 21, 14, 7);
+    const { request, response } = pair({ completedAt: asked + 20300, calls: 1, writtenTokens: 1040, timedTokens: 1040, writingMs: 16730 });
+    const bare = document.createElement('div');
+    appendAnswerMeta(bare, request, response, () => document.createElement('div'));
+    expect(bare.querySelectorAll('button.parallx-chat-meta')).toHaveLength(1);
+    const two: IChatAssistantResponse = { ...response, parts: [
+      { kind: ChatContentPartKind.Thinking, content: 'Hm.', isCollapsed: true, startTime: asked, endTime: asked + 200, provenance: [{ label: 'A', kind: 'rag' as const, uri: 'file:///a' }, { label: 'B', kind: 'page' as const }] },
+      ...response.parts,
+    ] as IChatAssistantResponse['parts'] };
+    const row = document.createElement('div');
+    appendAnswerMeta(row, request, two, () => document.createElement('div'));
+    // A thought too short to time says "Thought" alone.
+    expect([...row.querySelectorAll('button.parallx-chat-meta')].map((b) => plain(b.textContent)).slice(0, 2)).toEqual(['Thought', '2 sources']);
+  });
+
   it('the command opens only an answer\'s details, nothing else on the page', () => {
     const c = commands();
     registerAnswerTimingCommand(c);

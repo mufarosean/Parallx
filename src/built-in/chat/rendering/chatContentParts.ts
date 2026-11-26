@@ -595,8 +595,10 @@ function _postProcessCitations(
           // Create a clickable superscript citation badge
           const badge = document.createElement('sup');
           badge.className = 'parallx-citation-badge';
-          badge.textContent = `[${idx}]`;
-          badge.title = citation.label;
+          badge.textContent = String(idx); // the number alone: its outlined box is the stylesheet's
+          badge.title = citation.label; badge.setAttribute('aria-label', `Source ${idx}: ${citation.label}`);
+          // Pressed to go to its source, by the keys too (it was a mouse-only press).
+          badge.tabIndex = 0; badge.setAttribute('role', 'link'); badge.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); badge.click(); } });
           badge.setAttribute('data-citation-index', String(idx));
           badge.setAttribute('data-citation-uri', citation.uri);
           badge.addEventListener('click', () => {
@@ -1134,7 +1136,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     const sourcesMeta = $('span.parallx-chat-thinking-sources-meta', `${sourcesCount} source${sourcesCount !== 1 ? 's' : ''}`);
     sourcesToggle.appendChild(sourcesMeta);
 
-    const pillsRow = $('div.parallx-chat-thinking-sources-pills');
+    const pillsRow = renderSourcePills(sourceEntries);
 
     const updateSourcesState = (): void => {
       sourcesSection.classList.toggle('parallx-chat-thinking-sources--collapsed', areSourcesCollapsed);
@@ -1148,16 +1150,6 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
     sourcesSection.appendChild(sourcesToggle);
 
-    for (const ref of sourceEntries) {
-      const pill = ref.uri
-        ? _renderReference({
-            kind: ChatContentPartKind.Reference,
-            uri: ref.uri,
-            label: ref.index != null ? `[${ref.index}] ${ref.label}` : ref.label,
-          })
-        : _renderStaticProvenancePill(ref);
-      pillsRow.appendChild(pill);
-    }
     sourcesSection.appendChild(pillsRow);
     updateSourcesState();
 
@@ -1267,6 +1259,13 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
       : `Open file: ${part.label}`;
 
   return root;
+}
+
+/** The sources an answer drew on, as a row of pills: a link where the source has a place, a plain pill where it has none. */
+export function renderSourcePills(sources: ReadonlyArray<NonNullable<IChatThinkingContent['provenance']>[number]>): HTMLElement {
+  const row = $('div.parallx-chat-thinking-sources-pills');
+  for (const ref of sources) row.appendChild(ref.uri ? _renderReference({ kind: ChatContentPartKind.Reference, uri: ref.uri, label: ref.index != null ? `[${ref.index}] ${ref.label}` : ref.label }) : _renderStaticProvenancePill(ref));
+  return row;
 }
 
 function _renderStaticProvenancePill(entry: { label: string; kind: 'attachment' | 'page' | 'rag' | 'system' | 'rule' | 'memory' | 'transcript' | 'concept' }): HTMLElement {

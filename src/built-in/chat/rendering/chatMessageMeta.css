@@ -60,3 +60,16 @@
 @media (prefers-reduced-motion: reduce) {
   .parallx-chat-meta.px-btn .svg-icon svg { transition: none; }
 }
+
+/* One line under an answer (his 1A): thought, sources, time and speed, then
+   Regenerate and Copy at the right. What each opens goes under the whole
+   line, not between its buttons. */
+.parallx-chat-message-footer > .parallx-chat-meta { order: 0; }
+.parallx-chat-message-footer > .parallx-chat-action-btn { order: 1; }
+.parallx-chat-message-footer > .parallx-chat-meta--speed { margin-right: auto; }
+.parallx-chat-message-footer > .parallx-chat-meta-details { order: 2; }
+.parallx-chat-thought-text { white-space: pre-wrap; line-height: var(--px-leading-base); color: var(--px-text-secondary); max-height: 320px; overflow: auto; }
+.parallx-chat-meta--sources.px-btn { max-width: 16rem; }
+.parallx-chat-meta--sources.px-btn > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Once an answer is finished its thought is in the line under it: the row over the answer, which showed it arriving, is not drawn a second time. */
+.parallx-chat-message:has(> .parallx-chat-message-footer) .parallx-chat-thinking:not(.parallx-chat-thinking--streaming) { display: none; }

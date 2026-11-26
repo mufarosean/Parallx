@@ -4067,12 +4067,11 @@ checks, the builds stay one to a session):**
 12. Piece 10, Flashcards' Decks and Stats (this also settles its Study
     row). **Done; the Study row is his to say.**
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
-    and filters off the page). **The doubles are off; the pages'
-    redrawing is left.**
+    and filters off the page). **Done.**
 14. Piece 7, the PDF viewer. **Done.**
 15. Piece 3, menus, notices and the Settings dialog. **Done, but for icons on
     the menu bar's entries.**
-16. Piece 5, chat. **The type is done; one meta line is left.**
+16. Piece 5, chat. **Done.**
 17. Piece 6, second half: a .md file opens as a page. **Done; one acceptance
     check needs his word.**
 18. Piece 4, Home and Welcome as one page (the largest; it has missed
@@ -4376,52 +4375,42 @@ Study row is still his to settle.**
 - *Not seen:* the page with learning and review cards due (the probe's
   deck has three new cards), the minutes line, a long list of decks.
 
-**Item 13, the look's piece 9: Planner's three pages. The doubled
-tabs, month and list of lists are off the page; the redrawing of each
-page is not done.**
-- *What was there:* since piece 2, Planner's sidebar list held Today,
-  Calendar, Tasks with its six lists, the small month and the
-  calendars, and the page still had its own copy of three of those:
-  tabs across its head, a month beside Today, and the six lists as a
-  column inside Tasks.
-- *Built:* the page's tabs are gone; a page is chosen in the sidebar's
-  list or by the command Planner: Show (palette, keys, the model), and
-  New Event or New Task stays at the head's right. Today has no month
-  of its own. Tasks is the chosen list in one reading column, titled
-  with the list's name in the display face and its count under it (an
-  empty Tasks page is titled too). No behaviour of capture, the Review
-  Queue's day buttons, drag to create and move, or the shortcuts was
-  touched.
-- *Not built of the drawing:* the capture field as a lifted sheet, the
-  schedule starting near now, events as chips in their calendar's
-  colour; the Review Queue as a soft band and every task a 36 px row;
-  Calendar's days as small sheets with today ringed in ink, and Month,
-  Week, Day as one switch. Each is a redrawing of one page and wants
-  its own session with the drag checks on the new cells.
-- *A cost he agreed to, now real:* with another tool's list in the
-  sidebar, Planner's pages are two presses apart (Planner in the tools,
-  then the page) or one command. And Planner's list is long: in a 900
-  px window its month is cut off above the two foot rows until the
-  list is scrolled.
+**Item 13, the look's piece 9: Planner's three pages. Done, as drawn.**
+(First committed with only the doubles taken off the page; finished the
+same day after his word that a piece is finished or not started.)
+- *Today:* the date is the front-page title with New Event beside it;
+  the capture field is one lifted sheet across the page with a plus
+  and its Enter key; the schedule's hours are in the mono face with
+  the day's all-day events on the Schedule line; at the right, plain
+  sections with a count each: To review (each task with Today,
+  Tomorrow, Next Week), Due today, and Overdue when there is any. No
+  cards, no month, no tabs.
+- *Tasks:* the page is the chosen list, titled with its name, one line
+  under it, New Task at its right. The Review Queue stands on a soft
+  band of the warning colour; every other task is a row of 36 px on a
+  hairline with its day in the mono face.
+- *Calendar:* the month is the title in the display face; then the
+  arrows, Today, one switch for Month, Week and Day (it was a menu
+  behind a button), and New Event. Each day is its own small sheet with
+  a gap round it; today is ringed in ink and says "Today 26"; days of
+  other months step back; an event is a soft chip in its calendar's
+  colour, with its time in front when it has one.
+- *Not changed:* capture, the day buttons, drag to create and move,
+  the shortcuts, the week and day views' own grids.
 - *Checks changed because what they pressed is gone, none an acceptance
-  probe and none to get a pass:* `column-lists-probe.mjs` read the
-  page's lit tab and lit list (it reads the page shown and its title
-  now, and gains a check that the page has no tabs, list of lists or
-  month); `touch-drag-probe.mjs`, `ui-screenshot-probe.mjs` and
-  `planner-probe.mjs` pressed a page tab to change page (they run
-  Planner: Show); `scene-probe.mjs` listed the three tab ids among
-  Planner's controls (it lists the sidebar's three rows). The keyboard
-  audit reached Tasks and Calendar as sub-screens through the tabs, so
-  the two are named in its list of screens now and are still audited.
-- *Checked:* `tests/probes/planner-pages-probe.mjs` (new, 10 of 10 on
-  the built app: each page reached by mouse and by keys from the
-  sidebar, and by the command with another tool's list showing);
-  `column-lists-probe.mjs` (no problem); the keyboard audit on Today,
-  Tasks and Calendar (0); the visual probe on Planner (nothing found);
-  the touch-drag probe (14 of 14, a planner event moved by finger);
-  typecheck; the unit suite (9,933); the screenshots.
-- *Left in the stylesheet:* the rules of the page's old month
-  (`planner-today__month…`), now unused.
+  probe:* `column-lists-probe`, `touch-drag-probe`,
+  `ui-screenshot-probe`, `planner-probe` (they changed page by a page
+  tab; they run Planner: Show), `scene-probe` (it listed the tab ids),
+  and the keyboard audit names Tasks and Calendar as screens.
+- *Checked:* `tests/probes/planner-pages-probe.mjs` (21 of 21 on the
+  built app: each page read back, by mouse and keys, a task given a day
+  from the queue); the keyboard audit on the three pages and New Task,
+  dark and light, with touch (0); the visual probe on Planner (nothing
+  found); `column-lists-probe` (no problem); the touch-drag probe (a
+  planner event moved by finger in the new month); typecheck; the unit
+  suite; the screenshots of all three.
+- *One cost he agreed to:* with another tool's list in the sidebar,
+  Planner's pages are chosen by the command or by two presses.
 
 **Item 14, the look's piece 7: the PDF viewer (his 4A). Done.**
 - *What was there:* a row of small controls across the top of the
@@ -4482,31 +4471,29 @@ icons on the menu bar's entries are not chosen.**
   popup and dialog passes (0, ten dialogs); the visual probe on the
   frame and Settings (nothing rose); typecheck; the unit suite.
 
-**Item 16, the look's piece 5: chat (his 1A). The type is done; the
-one meta line is not.**
-- *What was there, against 1A:* his message is already a small bubble
-  at the right, the answer already plain reading text, the question
-  box already one lifted sheet, and sources already numbered marks.
-  What differed: thought, source and speed were three lines in the
-  interface face, and a source mark was a filled grey badge.
-- *Built (styles only):* the thought line and the time-and-speed line
-  are in the mono face, as meta; a numbered source mark is a small
-  mono number in an outlined box in the accent's ink.
-- *Not built:* thought, source and speed as ONE line. They are three
-  controls today (the thought opens the reasoning, Sources Considered
-  opens its list, the speed opens where the time went), each above or
-  below the answer; making them one line is a change to how an answer
-  is put together, with its tests, and wants its own session on his
-  model. A mark still reads "[1]" with its brackets, not "1".
-- *Checked:* `tests/probes/chat-look-probe.mjs` (new, 5 of 5 on the
-  built app's seeded conversation; the thought line still opens by
-  Enter); the keyboard audit on the three seeded chat screens (0); the
-  visual probe on chat (nothing found); chat's unit tests and the
-  ratchets.
-- *Not seen:* a numbered source mark on screen (the seeded conversation
-  has none; its rule was changed and is unseen), a streaming answer, a
-  long answer. His verdict on chat on his own model is still owed
-  ("Needs him or his machine").
+**Item 16, the look's piece 5: chat (his 1A). Done.**
+(First committed with only the type changed; finished the same day.)
+- *One line under an answer* for how it was made: Thought with its
+  time, what it drew on (the source's name, or "3 sources"), then the
+  time and speed; Regenerate and Copy at the line's right. Each of the
+  three is a button that opens its own part under the whole line: the
+  reasoning, the sources as pills, where the time went. The row over a
+  finished answer that showed the thought arriving is not drawn a
+  second time (it still shows while the answer is being written).
+- *A source mark* is the number alone in an outlined box in the
+  accent's ink, named for a screen reader ("Source 1: Mack notes"), a
+  Tab stop, and pressed by Enter or Space as by the mouse (it was
+  mouse-only).
+- *Already so:* his message a small bubble, the answer plain reading
+  text, the question box one lifted sheet.
+- *Checked:* `tests/probes/chat-look-probe.mjs` (8 of 8 on the seeded
+  conversation: the line is one row, Thought opens under it by Enter);
+  `chatMessageMeta.test.ts` and `chatSourceMarks.test.ts` (new cases
+  for the line and the marks); chat's unit tests; the keyboard audit on
+  the seeded chat screens; the visual probe on chat (nothing found).
+- *Not seen here:* a source mark and the sources' part on screen (the
+  seeded conversation cites nothing that resolves), a streaming answer.
+  His verdict on his own model is still owed.
 
 **Item 17, the look's piece 6, second half: a .md file opens as a
 page, and Edit shows the source beside the live page. Done; one
