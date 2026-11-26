@@ -34,9 +34,15 @@ function stPlanTakeFocus(planId, root) {
   if (!root.contains(document.activeElement)) root.focus();
 }
 
-/** Open Plan: a plan ({ planId }); given a subject (its id or name, or nothing), the subject's plan shown in the sidebar, else his pick of its plans. */
+/** Open Plan: a plan ({ planId }, and { phaseId } to go to one of its phases); given a subject (its id or name, or nothing), the subject's plan shown in the sidebar, else his pick of its plans. */
 async function stCmdOpenPlan(arg) {
-  if (arg && typeof arg === 'object' && arg.planId) return stOpenPlan(arg.planId);
+  if (arg && typeof arg === 'object' && arg.planId) {
+    const opened = await stOpenPlan(arg.planId);
+    // With a phase too: its facts in the plan's list, in view and with the focus (a piece of the strip asks for this).
+    const row = arg.phaseId == null ? null : Array.from(document.querySelectorAll('.st-plan')).filter((n) => n.dataset.planId === String(arg.planId)).flatMap((n) => Array.from(n.querySelectorAll('.st-plan__phase'))).find((n) => n.getAttribute('data-phase-id') === String(arg.phaseId));
+    if (row) { row.scrollIntoView({ block: 'center' }); row.focus(); }
+    return opened;
+  }
   const named = arg != null && arg !== '' && typeof arg !== 'object';
   const subject = named ? stSubjectsShown().find((s) => s.id === Number(arg) || stSubjectSameName(s.name, arg)) : null;
   if (named && !subject) { await _api.window.showInformationMessage('That subject is not in Study.'); return null; }
@@ -50,6 +56,8 @@ async function stCmdOpenPlan(arg) {
 
 /** The words of a Type, and its class. */
 const stPlanTypeClass = (type) => `st-plan__type--${String(type || 'none').toLowerCase().replace(/[^a-z]+/g, '')}`;
+/** A phase's kind as an icon, on the strip. */
+const ST_PLAN_KIND_ICONS = { Study: 'book-open', Rest: 'moon', 'Catch-up': 'rotate-ccw', Holiday: 'sun' };
 /** Hours in a cell: a quiet dash for none. */
 const stPlanCellHours = (n) => (n ? stPlanH(n) : '–');
 
@@ -223,10 +231,8 @@ async function renderPlan(host, route, ctx) {
       const now = today >= p.start && today <= p.end;
       const facts = `${stPlanSpanWords(p.start, p.end)} · ${p.days} ${p.days === 1 ? 'day' : 'days'} · ${stPlanH(p.hours)} h`;
       const said = [p.name || 'A row with no name', p.kind || 'No kind', facts, ...(now ? ['Today is in it'] : []), ...(short ? [stPlanFitWords(p.fit, p.per[view.following])] : [])].join(', ');
-      const b = ui.createButton(strip, { id: null, label: p.name || 'No name', kind: 'ghost', title: said, onClick: () => {
-        const row = Array.from(body.querySelectorAll('.st-plan__phase')).find((n) => n.getAttribute('data-phase-id') === String(p.id));
-        if (row) { row.scrollIntoView({ block: 'center' }); row.focus(); }
-      } });
+      // Its kind as an icon, so a piece too narrow for its name still says what it is.
+      const b = ui.createButton(strip, { id: null, label: p.name || 'No name', icon: ST_PLAN_KIND_ICONS[p.kind] || 'calendar', kind: 'ghost', title: said, command: 'study.openPlan', args: [{ planId, phaseId: p.id }] });
       b.classList.add('st-plan__sphase', stPlanTypeClass(p.kind).replace('st-plan__type--', 'st-plan__sphase--'));
       if (now) b.classList.add('st-plan__sphase--now');
       if (short) b.classList.add('st-plan__sphase--short');

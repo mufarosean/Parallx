@@ -524,7 +524,9 @@ function injectStyles() {
 .st-plan__leftn { font-family: var(--px-font-display); font-size: var(--px-text-3xl); font-weight: 500; line-height: 1; letter-spacing: -0.01em; color: var(--px-text); font-variant-numeric: lining-nums; }
 .st-plan__strip { display: grid; gap: var(--px-space-1); margin-top: var(--px-space-2); }
 .st-plan__sphase.px-btn { display: flex; align-items: baseline; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h-lg); line-height: calc(var(--px-control-h-lg) - 2px); min-width: 0; padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text); font-weight: 600; text-align: left; overflow: hidden; white-space: nowrap; }
+.st-plan__sphase.px-btn { align-items: center; }
 .st-plan__sphase.px-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-plan__sphase.px-btn > .svg-icon { flex: none; overflow: visible; }
 .st-plan__sphase.px-btn > .st-plan__sfacts { flex: 1 1 0; }
 .st-plan__sfacts { font-family: var(--px-font-mono); font-size: var(--px-text-xs); font-weight: 400; color: var(--px-text-muted); }
 .st-plan__sphase--now.px-btn { background: var(--px-accent-soft); border-color: transparent; }
