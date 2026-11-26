@@ -4069,8 +4069,7 @@ checks, the builds stay one to a session):**
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
     and filters off the page). **Done.**
 14. Piece 7, the PDF viewer. **Done.**
-15. Piece 3, menus, notices and the Settings dialog. **Done, but for icons on
-    the menu bar's entries.**
+15. Piece 3, menus, notices and the Settings dialog. **Done.**
 16. Piece 5, chat. **Done.**
 17. Piece 6, second half: a .md file opens as a page. **Done; one acceptance
     check needs his word.**
@@ -4437,8 +4436,9 @@ same day after his word that a piece is finished or not started.)
   then centred in its own half).
 
 **Item 15, the look's piece 3: menus, notices and the Settings dialog.
-Menus, notices and the bell's list are restyled; Settings already was;
-icons on the menu bar's entries are not chosen.**
+Done.**
+(First committed without icons on the menu bar's entries; finished the
+same day.)
 - *What was there:* a menu was a square-cornered box of flush rows,
   its submenu mark the character "❯". A notice was already a lifted
   rounded sheet, with its kind as an icon in a tinted tile; the bell's
@@ -4453,21 +4453,28 @@ icons on the menu bar's entries are not chosen.**
   colour for done or told, the warning colour for a heads-up, the
   danger colour for failed); the bell's list draws the same dot and
   its time in the mono face.
-- *Not built:* an icon on each entry of the menu bar. A menu shows an
-  icon wherever its caller gives one (the page's and the tools' menus
-  do); the menu bar's entries come from commands, seven of which name
-  an icon. Which icon each of some sixty entries takes is a choice for
-  him or a drawing, not a guess. "At most one action" on a notice is
-  the caller's: nothing enforces it.
+- *Icons on the menu bar's entries, built:* every entry of File, Edit,
+  View, Tools and Help has an icon in front of its words (47 entries,
+  no two alike within a menu). An area toggle takes the icon of its
+  title-bar button; Settings and Tools and Extensions take the icons of
+  their rows at the sidebar's foot; a tool that puts itself in Tools
+  takes the icon of its own sidebar row, read from its manifest, so the
+  core names no tool (one with no icon gets the mark for any tool).
+  The icons are Claude's choice from the registry, his to change:
+  the table is in `src/workbench/menuBuilder.ts`.
+- *Left as it is:* "at most one action" on a notice is the caller's:
+  nothing enforces it.
 - *Decided, for him to overrule:* a plain "information" notice takes
   the success colour (the drawing's "viridian done"); the app has no
   separate kind for "done".
 - *Seen and left:* notices stack at the window's bottom left, over the
   sidebar's two foot rows.
-- *Checked:* `tests/probes/floating-parts-probe.mjs` (new, 16 of 16 on
-  the built app: a menu opened and walked by keys, a context menu, a
-  submenu's mark, three notices and the bell's list read back, the
-  Settings sheet); the keyboard audit's first screen with its touch,
+- *Checked:* `tests/probes/floating-parts-probe.mjs` (28 of 28 on
+  the built app: a menu opened and walked by keys, each of the five
+  menus opened and every entry's icon read back, Planner's entry
+  against its sidebar row, a context menu, a submenu's mark, three
+  notices and the bell's list read back, the Settings sheet);
+  `tests/unit/menuBarIcons.test.ts` (new); the keyboard audit's first screen with its touch,
   popup and dialog passes (0, ten dialogs); the visual probe on the
   frame and Settings (nothing rose); typecheck; the unit suite.
 
