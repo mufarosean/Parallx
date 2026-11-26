@@ -4057,7 +4057,8 @@ checks, the builds stay one to a session):**
     entry or fix them. **Done: nine places were left; fixed.**
 
 **Then the settled pieces of the look, smallest first (a session each):**
-11. Piece 11, Study's plan tab as the page for the plan's rules.
+11. Piece 11, Study's plan tab as the page for the plan's rules. **Part
+    built; the rest waits on his word about an acceptance probe.**
 12. Piece 10, Flashcards' Decks and Stats (this also settles its Study
     row).
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
@@ -4268,6 +4269,48 @@ the entry is closed but for one mark.**
 - *One mark left, for piece 3:* a menu's submenu mark is the character
   "❯" (seen on the page's menu beside Font and Export). Piece 3 redraws
   the menus with icons and shortcuts, so it goes there.
+
+**Item 11, the look's piece 11: Study's plan tab as the page for the
+plan's rules. The part that adds is built; the part that takes away
+waits on him, because an acceptance probe reads what it would remove.**
+- *What was there:* the tab as its header says: the name, four Open
+  buttons, the three plans as cards, hours per day, the phases as a
+  list, then every day as a table by week.
+- *Built:* the days left are the one large number of the page, in the
+  display face at the title's right (the line under the title no
+  longer says them a second time). Under the three plans, the phases
+  as one strip from the start to the exam: each piece as wide as its
+  share of the days, the one today is in filled, one whose work does
+  not fit edged in the danger colour with "needs 60 h, has 33 h" in it.
+  A piece is a button, named for a screen reader with its kind, dates,
+  days and hours; a press, or Enter, goes to that phase's facts in the
+  list below.
+- *Not built, and why:* the drawing takes the table of every day off
+  the tab, turns the list of phases into the strip alone, and replaces
+  the four Open buttons with Week, Phases, Dates and Goal.
+  `study-plan-acceptance.mjs` reads exactly those: the table (2.6, 2.7,
+  2.9, 2.12, 2.13, 3.1 to 3.9, 4.2 to 4.8, 7.8), the list's rows (2.8,
+  5.1 to 5.5) and the four buttons by name (2.10). Built as drawn, about
+  thirty of its 92 checks fail. So the strip stands over the list for
+  now, and both are on the tab.
+- **For him:** may the plan's acceptance probe follow the drawing (read
+  the days from Open Days or Home's calendar, the phases from the strip
+  and a press on a piece, and the buttons by their new names)? With
+  that yes, the table, the list and the four buttons leave the tab.
+- *Differs from the drawing:* the strip's part is named "To the exam,
+  by phase", not "Phases to the exam": the acceptance probe finds the
+  list by a part whose name begins "Phases", and found the strip
+  instead (seven checks failed until the name changed; the probe was
+  not touched). A piece is one line at a control height (32 px), the
+  facts beside the name, where the drawing had two lines: the visual
+  probe holds a button to the app's control heights. The cards'
+  numbers are still the interface face (they are the kit's segmented
+  cards; the drawing has them in the display face).
+- *Checked:* `tests/probes/study-plan-tab-probe.mjs` (new, 13 of 13 on
+  the built app, mouse and keys); `study-plan-acceptance.mjs` (92 of
+  92); the keyboard audit on the plan tab and the New Plan sheet (0);
+  the visual probe on Study's four screens (nothing found); Study's
+  unit tests; the screenshot.
 
 ## Verification owed
 

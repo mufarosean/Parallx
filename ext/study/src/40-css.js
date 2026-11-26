@@ -518,6 +518,19 @@ function injectStyles() {
 .st-plan__bard { color: var(--px-text-secondary); }
 .st-plan__track { display: block; height: 6px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; }
 .st-plan__fill { display: block; height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); }
+.st-plan__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--px-space-4); }
+.st-plan__head > .px-page-header { flex: 1 1 auto; min-width: 0; }
+.st-plan__left { flex: none; padding: 0 var(--px-space-6) var(--px-space-4) 0; color: var(--px-text-secondary); font-size: var(--px-text-md); white-space: nowrap; }
+.st-plan__leftn { font-family: var(--px-font-display); font-size: var(--px-text-3xl); font-weight: 500; line-height: 1; letter-spacing: -0.01em; color: var(--px-text); font-variant-numeric: lining-nums; }
+.st-plan__strip { display: grid; gap: var(--px-space-1); margin-top: var(--px-space-2); }
+.st-plan__sphase.px-btn { display: flex; align-items: baseline; justify-content: flex-start; gap: var(--px-space-2); height: var(--px-control-h-lg); line-height: calc(var(--px-control-h-lg) - 2px); min-width: 0; padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text); font-weight: 600; text-align: left; overflow: hidden; white-space: nowrap; }
+.st-plan__sphase.px-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-plan__sphase.px-btn > .st-plan__sfacts { flex: 1 1 0; }
+.st-plan__sfacts { font-family: var(--px-font-mono); font-size: var(--px-text-xs); font-weight: 400; color: var(--px-text-muted); }
+.st-plan__sphase--now.px-btn { background: var(--px-accent-soft); border-color: transparent; }
+.st-plan__sphase--short.px-btn { border-color: var(--px-danger); }
+.st-plan__sphase--short .st-plan__sfacts { color: var(--px-danger); }
+.st-plan__phase:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); }
 .st-plan__plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .st-plan__phase { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); }
 .st-plan__phase:first-child { border-top: 0; padding-top: 0; }

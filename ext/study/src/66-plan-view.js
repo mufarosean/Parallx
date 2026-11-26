@@ -83,9 +83,16 @@ async function renderPlan(host, route, ctx) {
   const header = (st, view) => {
     head.replaceChildren();
     const subject = stSubjectsShown().find((s) => s.id === Number(plan.subjectId));
-    const left = view && view.daysLeft !== null ? (view.daysLeft > 0 ? `${view.daysLeft} ${view.daysLeft === 1 ? 'day' : 'days'} left` : view.daysLeft === 0 ? 'the exam is today' : 'the exam has passed') : '';
-    const sub = view && view.exam ? [subject ? subject.name : '', `Exam ${stPlanDateWords(view.exam, { year: true, long: true })}`, left].filter(Boolean).join(' · ') : (subject ? subject.name : '');
+    const sub = view && view.exam ? [subject ? subject.name : '', `Exam ${stPlanDateWords(view.exam, { year: true, long: true })}`].filter(Boolean).join(' · ') : (subject ? subject.name : '');
     ui.createPageHeader(head, { title: plan.name, ...(sub ? { subtitle: sub } : {}) });
+    // The days left: the one large number of the page, at the title's right.
+    if (!view || view.daysLeft === null) return;
+    const left = ui.createBlock(head, 'div', { className: 'st-plan__left' });
+    if (view.daysLeft > 0) {
+      ui.createBlock(left, 'span', { className: 'st-plan__leftn', text: String(view.daysLeft) });
+      left.appendChild(document.createTextNode(' '));
+      ui.createBlock(left, 'span', { className: 'st-plan__leftw', text: `${view.daysLeft === 1 ? 'day' : 'days'} left` });
+    } else ui.createBlock(left, 'span', { className: 'st-plan__leftw', text: view.daysLeft === 0 ? 'The exam is today' : 'The exam has passed' });
   };
 
   const section = (label, className) => {
@@ -130,6 +137,7 @@ async function renderPlan(host, route, ctx) {
     const planWords = ui.createBlock(plans, 'div', { className: 'st-plan__words' });
     for (const line of ST_PLAN_WORDS.plans) ui.createBlock(planWords, 'div', { text: line });
 
+    phaseStrip(view, today);
     const pair = ui.createBlock(body, 'div', { className: 'st-plan__pair' });
     // Hours per day for the plan he follows, as a small bar each.
     const perDay = ui.createBlock(pair, 'section', { className: 'st-plan__sec st-plan__perday', attrs: { 'aria-label': 'Hours per day' } });
@@ -154,7 +162,7 @@ async function renderPlan(host, route, ctx) {
     const ol = ui.createBlock(phases, 'ol', { className: 'st-plan__plist' });
     if (!view.phases.length) ui.createBlock(phases, 'div', { className: 'st-plan__note', text: 'No phases yet. Add rows to Phases: study spans, rest, catch-up days, holidays.' });
     for (const p of view.phases) {
-      const li = ui.createBlock(ol, 'li', { className: `st-plan__phase${p.fit && p.fit.short.includes(view.following) ? ' st-plan__phase--short' : ''}` });
+      const li = ui.createBlock(ol, 'li', { className: `st-plan__phase${p.fit && p.fit.short.includes(view.following) ? ' st-plan__phase--short' : ''}`, attrs: { 'data-phase-id': String(p.id), tabindex: '-1' } });
       const line = ui.createBlock(li, 'div', { className: 'st-plan__pline' });
       ui.createBlock(line, 'span', { className: 'st-plan__pname', text: p.name || 'A row with no name' });
       ui.createBlock(line, 'span', { className: `st-plan__kind ${stPlanTypeClass(p.kind)}`, text: p.kind || 'No kind' });
@@ -196,6 +204,34 @@ async function renderPlan(host, route, ctx) {
       const target = again && focusedValue ? again.querySelector(`[data-value="${CSS.escape(focusedValue)}"]`) || again : again;
       const checked = again && !focusedValue ? null : again && again.querySelector('[aria-checked="true"]');
       if (target && typeof target.focus === 'function') (checked && focusedValue && !again.querySelector(`[data-value="${CSS.escape(focusedValue)}"]`) ? checked : target).focus();
+    }
+  }
+
+  /**
+   * The phases as one strip from the start to the exam: each as wide as its
+   * share of the days, the one today is in filled, one whose work does not
+   * fit edged in the danger colour. A press goes to that phase's facts below.
+   */
+  function phaseStrip(view, today) {
+    const dated = view.phases.filter((p) => p.valid && p.days > 0);
+    if (!dated.length) return;
+    const box = ui.createBlock(body, 'section', { className: 'st-plan__sec st-plan__stripsec', attrs: { 'aria-label': 'To the exam, by phase' } });
+    ui.createBlock(box, 'div', { className: 'st-plan__h', text: 'To the exam, by phase', attrs: { role: 'heading', 'aria-level': '2' } });
+    const strip = ui.createBlock(box, 'div', { className: 'st-plan__strip', attrs: { style: `grid-template-columns: ${dated.map((p) => `minmax(2.25rem, ${p.days}fr)`).join(' ')}` } });
+    for (const p of dated) {
+      const short = !!(p.fit && p.fit.short.includes(view.following));
+      const now = today >= p.start && today <= p.end;
+      const facts = `${stPlanSpanWords(p.start, p.end)} · ${p.days} ${p.days === 1 ? 'day' : 'days'} · ${stPlanH(p.hours)} h`;
+      const said = [p.name || 'A row with no name', p.kind || 'No kind', facts, ...(now ? ['Today is in it'] : []), ...(short ? [stPlanFitWords(p.fit, p.per[view.following])] : [])].join(', ');
+      const b = ui.createButton(strip, { id: null, label: p.name || 'No name', kind: 'ghost', title: said, onClick: () => {
+        const row = Array.from(body.querySelectorAll('.st-plan__phase')).find((n) => n.getAttribute('data-phase-id') === String(p.id));
+        if (row) { row.scrollIntoView({ block: 'center' }); row.focus(); }
+      } });
+      b.classList.add('st-plan__sphase', stPlanTypeClass(p.kind).replace('st-plan__type--', 'st-plan__sphase--'));
+      if (now) b.classList.add('st-plan__sphase--now');
+      if (short) b.classList.add('st-plan__sphase--short');
+      b.setAttribute('aria-label', said);
+      ui.createBlock(b, 'span', { className: 'st-plan__sfacts', text: short ? stPlanFitWords(p.fit, p.per[view.following]) : facts, attrs: { 'aria-hidden': 'true' } });
     }
   }
 
