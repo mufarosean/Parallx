@@ -45,7 +45,7 @@ const SCREENS = [
   ['settings.open'], ['settings.open', 'ai'], ['settings.open', 'document-reader'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],
   ['workbench.view.show', 'view.indexingLog'], ['workbench.view.show', 'view.diagnostics'],
-  ['pdf'], ['pdf.reading'], ['worksheet.openScratch'], ['worksheet.newSheet', 'Audit Sheet'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
+  ['pdf'], ['pdf.reading'], ['markdown'], ['worksheet.openScratch'], ['worksheet.newSheet', 'Audit Sheet'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
@@ -224,6 +224,8 @@ await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.strin
 try { await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction'); } catch { /* ok */ }
 await fs.writeFile(path.join(ws, 'alpha.md'), '# Alpha\n\nA note.\n');
 await fs.writeFile(path.join(ws, 'reading.pdf'), tinyPdf());
+// A Markdown file, which opens as its page (with Edit Source and the tools' More Actions at its head).
+await fs.writeFile(path.join(ws, 'audit-notes.md'), '# Audit notes\n\nA paragraph with a [link](https://example.com).\n\n- One\n- Two\n');
 // What the document reader would have kept for it, so the PDF view's Reading side has facts and a found table to show.
 await createRequire(import.meta.url)('../../electron/doclingReadings.cjs').keep(appRoot, path.join(ws, 'reading.pdf'), { reading: {
   version: 1, ocr: false, pages: [{ page: 1, width: 612, height: 792, lines: [] }],
@@ -692,6 +694,7 @@ async function open(first, args) {
     await page.keyboard.press('Escape');
   }
   if (first === 'pdf') return openFile(page, 'reading.pdf');
+  if (first === 'markdown') return openFile(page, 'audit-notes.md');
   // The PDF view's panel on its Reading side: how the document was read, and what was found.
   if (first === 'pdf.reading') {
     await openFile(page, 'reading.pdf');

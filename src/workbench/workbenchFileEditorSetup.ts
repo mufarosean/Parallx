@@ -227,6 +227,17 @@ function _initFileEditorResolver(
     createPane: () => new NotebookEditorPane(getKernelService(), getNotebookGenerateProvider, getPythonService()),
   }));
 
+  // A Markdown file opens as the page it describes (the look's piece 6);
+  // Edit Source on that page opens the text beside it.
+  disposables.add(resolver.registerEditor({
+    id: MarkdownPreviewInput.TYPE_ID,
+    name: 'Markdown Page',
+    extensions: ['.md', '.markdown'],
+    priority: EditorResolverPriority.Default,
+    createInput: (uri) => MarkdownPreviewInput.create(FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri))),
+    createPane: () => new MarkdownEditorPane(),
+  }));
+
   // Text editor (fallback — matches everything)
   disposables.add(resolver.registerEditor({
     id: FileEditorInput.TYPE_ID,

@@ -29,7 +29,7 @@ export class MarkdownPreviewInput extends EditorInput {
 
   private constructor(sourceInput: FileEditorInput) {
     // Unique ID per source URI + preview suffix
-    super(sourceInput.uri.toKey() + '#preview');
+    super('page:' + sourceInput.uri.toKey()); // not the file's own id (both can be open); ends with the file's name, as a file's tab id does
     this._sourceInput = sourceInput;
   }
 
@@ -40,7 +40,7 @@ export class MarkdownPreviewInput extends EditorInput {
   }
 
   get name(): string {
-    return `Preview ${this._sourceInput.name}`;
+    return this._sourceInput.name; // the page is how the file opens: it carries the file's own name
   }
 
   get description(): string {

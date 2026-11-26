@@ -4030,7 +4030,9 @@ typecheck, the unit suite, the keyboard audit and the visual probe
 after; no check weakened; the master list updated; pushed.
 
 **First, his answers (minutes of his time, and they unblock checks):**
-1. The acceptance-probe corrections: study-record's `point()` (it does
+1. The acceptance-probe corrections (two more from this run: the plan
+   tab's table and list, under item 11, and study-usable 19.1's wait
+   for the text editor, under item 17): study-record's `point()` (it does
    not scroll a clipped row into view; this one correction is expected
    to clear 6.2 to 6.7, 7.3 to 7.5, 9.2 and 9.4), study-walk 0.9, 1.5,
    1.7 and 9.3, study-work 2.4 and 5.7, study-usable 6.3 and study-unit
@@ -4069,7 +4071,8 @@ checks, the builds stay one to a session):**
 15. Piece 3, menus, notices and the Settings dialog. **Done, but for icons on
     the menu bar's entries.**
 16. Piece 5, chat. **The type is done; one meta line is left.**
-17. Piece 6, second half: a .md file opens as a page.
+17. Piece 6, second half: a .md file opens as a page. **Done; one acceptance
+    check needs his word.**
 18. Piece 4, Home and Welcome as one page (the largest; it has missed
     twice, so it gets the bar read first).
 
@@ -4497,6 +4500,51 @@ one meta line is not.**
   has none; its rule was changed and is unseen), a streaming answer, a
   long answer. His verdict on chat on his own model is still owed
   ("Needs him or his machine").
+
+**Item 17, the look's piece 6, second half: a .md file opens as a
+page, and Edit shows the source beside the live page. Done; one
+acceptance check needs his word.**
+- *What was there:* a .md file opened as its text; a button on that
+  text's toolbar opened a rendered preview beside it, which followed
+  the typing. The parts existed, the other way round.
+- *Built:* a `.md` or `.markdown` file opens as the page it describes
+  (Explorer, Quick Open, a link, a tool's open). Its tab carries the
+  file's name. The page's head has the file and its folder in the mono
+  face, Edit Source, and More Actions. Edit Source (a button, and the
+  command Markdown: Edit Source) opens the file's text beside the page;
+  the page follows what is typed, before any save; asked again it
+  brings the text forward and makes no second copy. The text's own
+  toolbar keeps Open Preview to the Side.
+- *Two things the page had to keep, found by the Study acceptance
+  probe and built:* (1) a passage asked for (a citation, Study's Show
+  Source) is brought into view and marked on the page: each block of
+  the page knows the line of the file it starts on. (2) What a tool
+  offers for the open file (Study This Document…) is offered on the
+  page too: its head carries the editor's More Actions, asking as the
+  file.
+- **For him, an acceptance-probe correction (not made):**
+  `study-usable-acceptance.mjs` 19.1 opens a .md and waits for the
+  text editor (`.cm-content, .editor-pane textarea`) before it looks
+  for Study This Document…; the file opens as its page now, so it
+  stops there, and 19.2 (the .txt, unaffected) is "not reached" behind
+  it. With the page accepted as the file's editor in that wait
+  (`.markdown-content`), both run. The offer itself was driven on the
+  page by `markdown-page-probe.mjs`. 18.3 (Show Source opens the .md
+  at the passage) passes on the page; 6.3, which waited on him, passes.
+- *Differs from the drawing:* the page is in the interface face, as
+  the preview was; the drawing set it in the reading face. A page's
+  own font setting does not reach a file.
+- *Not done:* the Obsidian style (typing in the page itself), which he
+  said to look at afterwards. `.mdx` still opens as text.
+- *Will fail, not run here:* the e2e spec `03-file-editor.spec.ts`
+  opens README.md and expects the text editor.
+- *Checked:* `tests/probes/markdown-page-probe.mjs` (new, 10 of 10 on
+  the built app, Edit Source by keys); the keyboard audit on a Markdown
+  page, which is a new screen of the audit (0); `study-usable-acceptance`
+  (57 of 59, the two above); `chat-suggested-file-probe` (a Markdown
+  file open is still suggested to chat); typecheck; the unit suite
+  (9,933); `docs/reference/commands.md` regenerated for the new
+  command.
 
 ## Verification owed
 

@@ -326,3 +326,15 @@
 .markdown-content .hljs-strong {
   font-weight: bold;
 }
+
+/* ── The page's head (a Markdown file opens as its page): the file in the
+   mono face, and Edit Source at the right ── */
+.markdown-page-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3);
+  max-width: 860px; margin: 0 auto; padding: var(--px-space-4) 32px 0; box-sizing: border-box;
+}
+.markdown-page-head:empty { display: none; }
+.markdown-page-head__file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.markdown-page-head__acts { display: inline-flex; align-items: center; gap: var(--px-space-1); flex: none; }
+/* A passage that was asked for (a citation, Show Source): marked for a few seconds. */
+.markdown-content .markdown-revealed { background: var(--px-accent-soft); border-radius: var(--px-radius-sm); transition: background var(--px-dur-base) var(--px-ease); }

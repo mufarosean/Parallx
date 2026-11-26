@@ -220,6 +220,31 @@ export const markdownOpenPreviewToSide: CommandDescriptor = {
   },
 };
 
+export const markdownEditSource: CommandDescriptor = {
+  id: 'markdown.editSource',
+  title: 'Markdown: Edit Source',
+  category: 'Markdown',
+  aiInvocable: true,
+  aiDescription: 'Open the text of the Markdown page in front beside it, to edit; the page follows what is typed.',
+  async handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    const activeGroup = editorGroupService?.activeGroup;
+    const page = activeGroup?.model.activeEditor as { typeId: string; sourceInput?: unknown } | undefined;
+    if (!editorGroupService || !activeGroup || !page || page.typeId !== 'parallx.editor.markdownPreview' || !page.sourceInput) return;
+    const source = page.sourceInput as Parameters<typeof activeGroup.openEditor>[0];
+    // Already open somewhere: bring it forward, no second copy.
+    for (const group of editorGroupService.groups) {
+      const at = group.model.editors.indexOf(source);
+      if (at >= 0) { group.model.setActive(at); group.focus?.(); return; }
+    }
+    const newGroup = editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
+    if (!newGroup) return;
+    // The split copies the page into the new group: the source takes its place there.
+    if (newGroup.model.count > 0) newGroup.model.closeEditor(0, true);
+    newGroup.openEditor(source, { pinned: true });
+  },
+};
+
 export const markdownOpenPreview: CommandDescriptor = {
   id: 'markdown.showPreview',
   title: 'Markdown: Open Preview',

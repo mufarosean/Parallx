@@ -629,7 +629,8 @@ export class EditorGroupView extends Disposable implements IGridView {
     const activeEditor = this.model.activeEditor;
     if (activeEditor) {
       const name = activeEditor.name.toLowerCase();
-      if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.mdx')) {
+      // On the file's text only: the page itself (which carries the file's name too) has Edit Source instead.
+      if (activeEditor.typeId === 'parallx.editor.file' && (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.mdx'))) {
         const previewBtn = this._createToolbarButton(
           getIcon('markdown-preview')!,
           'Open Markdown Preview to the Side (Ctrl+K V)',

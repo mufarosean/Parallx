@@ -116,6 +116,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `layout.resetAuxBarPosition` | Reset Secondary Sidebar To Default Position | core | Layout |  |  |
 | `layout.resetPanelPosition` | Reset Panel To Default Position | core | Layout |  |  |
 | `layout.resetSidebarPosition` | Reset Primary Sidebar To Default Position | core | Layout |  |  |
+| `markdown.editSource` | Markdown: Edit Source | core | Markdown |  |  |
 | `markdown.showPreview` | Markdown: Open Preview | core | Markdown |  |  |
 | `markdown.showPreviewToSide` | Markdown: Open Preview to the Side | core | Markdown | Ctrl+K V |  |
 | `parallx.installDocling` | Set Up Document Reader… | core | Parallx |  |  |

@@ -26,6 +26,10 @@ import { FileEditorInput } from './fileEditorInput.js';
 import { MarkdownPreviewInput } from './markdownPreviewInput.js';
 import { ReadonlyMarkdownInput } from './readonlyMarkdownInput.js';
 import { $ } from '../../ui/dom.js';
+import { createButton } from '../../ui/kit.js';
+import { createBlock } from '../../ui/block.js';
+import { takeFileReveal, revealLinesIn } from '../fileReveal.js';
+import { mountEditorMoreActions, editorTitleTargetOf, type IEditorMoreActions } from '../editorMoreActions.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
 import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
 
@@ -40,6 +44,9 @@ export class MarkdownEditorPane extends EditorPane {
 
   private _scrollContainer!: HTMLElement;
   private _contentEl!: HTMLElement;
+  private _headEl!: HTMLElement;
+  private _source = '';
+  private _moreActions: IEditorMoreActions | undefined;
   private _inputListeners = new DisposableStore();
   private _activeContextMenu: ReturnType<typeof ContextMenu.show> | null = null;
   private readonly _md: MarkdownIt;
@@ -60,6 +67,9 @@ export class MarkdownEditorPane extends EditorPane {
 
     this._contentEl = $('div');
     this._contentEl.classList.add('markdown-content');
+
+    // The page's head: which file this is, and the way to its text.
+    this._headEl = createBlock(this._scrollContainer, 'div', { className: 'markdown-page-head' });
 
     this._scrollContainer.appendChild(this._contentEl);
     container.appendChild(this._scrollContainer);
@@ -110,6 +120,17 @@ export class MarkdownEditorPane extends EditorPane {
       return;
     }
 
+    // The head: the file's name and folder in the mono face, and Edit Source (the text opens beside this page).
+    this._headEl.replaceChildren();
+    if (input instanceof MarkdownPreviewInput) {
+      createBlock(this._headEl, 'span', { className: 'markdown-page-head__file', text: [fileInput.name, String(fileInput.description ?? '').split(/[\\/]/).slice(0, -1).join('/')].filter(Boolean).join(' · ') });
+      const acts = createBlock(this._headEl, 'span', { className: 'markdown-page-head__acts' });
+      createButton(acts, { id: 'markdown.editSource', label: 'Edit Source', icon: 'pencil', kind: 'secondary', size: 'sm', title: 'Open this file\'s text beside the page. The page follows what you type.', command: 'markdown.editSource' });
+      // What the tools that are on offer for this file (Study This Document…): the page is the file, so it asks as the file.
+      this._moreActions?.dispose();
+      this._moreActions = mountEditorMoreActions(acts, () => (this.input instanceof MarkdownPreviewInput ? editorTitleTargetOf(FileEditorInput.TYPE_ID, this.input.uri) : undefined));
+    }
+
     try {
       const model = await fileInput.resolve();
       this._renderMarkdown(model.content);
@@ -130,6 +151,8 @@ export class MarkdownEditorPane extends EditorPane {
     if (this._contentEl) {
       this._contentEl.innerHTML = '';
     }
+    this._moreActions?.dispose(); this._moreActions = undefined;
+    this._headEl?.replaceChildren();
   }
 
   protected override layoutPaneContent(width: number, height: number): void {
@@ -142,7 +165,23 @@ export class MarkdownEditorPane extends EditorPane {
   // ── Markdown Rendering ─────────────────────────────────────────────────
 
   private _renderMarkdown(source: string): void {
+    this._source = source;
     this._contentEl.innerHTML = this._md.render(source);
+  }
+
+  /** Shown and laid out: the tools' More Actions for this file; a passage asked for (a citation, Show Source), brought into view and marked. */
+  protected override onDidShow(): void {
+    this._moreActions?.refresh();
+    const input = this.input;
+    if (!(input instanceof MarkdownPreviewInput)) return;
+    const lines = revealLinesIn(this._source, takeFileReveal(input.uri.fsPath));
+    if (!lines) return;
+    const blocks = Array.from(this._contentEl.querySelectorAll<HTMLElement>('[data-line]'));
+    const at = blocks.filter((b) => Number(b.dataset.line) <= lines.first).pop() ?? blocks[0];
+    if (!at) return;
+    at.scrollIntoView({ block: 'center' });
+    at.classList.add('markdown-revealed');
+    setTimeout(() => at.classList.remove('markdown-revealed'), 4_000);
   }
 
   // ── M48: Selection API & Context Menu ──────────────────────────────
@@ -252,6 +291,16 @@ function ensureHighlighter(): Promise<void> {
 }
 
 function _createPreviewRenderer(): MarkdownIt {
+  const md = _newRenderer();
+  // Each block carries the line of the file it starts on (1-based), so a
+  // passage asked for by line or by quote can be found on the page.
+  md.core.ruler.push('px_source_lines', (state) => {
+    for (const t of state.tokens) if (t.map && (t.nesting === 1 || t.type === 'fence' || t.type === 'code_block')) t.attrSet('data-line', String(t.map[0] + 1));
+  });
+  return md;
+}
+
+function _newRenderer(): MarkdownIt {
   const md = new MarkdownIt({
     html: false,
     breaks: true,

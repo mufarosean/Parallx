@@ -35,7 +35,7 @@ import {
 import {
   toggleWordWrap, changeEncoding,
   splitEditor, splitEditorOrthogonal, moveEditorToNextGroup, moveEditorToPreviousGroup, closeActiveEditor, nextEditor, previousEditor,
-  markdownOpenPreviewToSide, markdownOpenPreview,
+  markdownOpenPreviewToSide, markdownOpenPreview, markdownEditSource,
   addSelectionToChat,
 } from './editorCommands.js';
 import {
@@ -348,6 +348,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   closeActiveEditor,
   // Markdown
   markdownOpenPreviewToSide,
+  markdownEditSource,
   markdownOpenPreview,
   nextEditor,
   previousEditor,
