@@ -249,9 +249,7 @@ export class PlannerTodayView implements IDisposable {
 
   constructor(private readonly _deps: PlannerTodayDeps) {}
 
-  async render(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    createButton(actions, { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus', kind: 'primary' });
-
+  async render(body: HTMLElement, _actions: HTMLElement): Promise<void> {
     const now = Date.now();
     const dayStart = startOfLocalDay(now);
     const [ctx, tasks, events] = await Promise.all([
@@ -262,20 +260,22 @@ export class PlannerTodayView implements IDisposable {
     const model = buildTodayModel({ tasks, events, isVisible: ctx.isVisible, now });
 
     const root = el('div', 'planner-today');
-    const main = el('div', 'planner-today__main');
-    const side = el('aside', 'planner-today__side');
-    side.setAttribute('aria-label', 'Plan ahead');
-    root.append(main, side);
-
-    createPageHeader(main, {
+    // The day is the page: its date is the front-page title, New Event beside it.
+    createPageHeader(root, {
       title: appDateString(now, { weekday: 'long', month: 'long', day: 'numeric' }),
       subtitle: todaySummary(model),
+      front: true,
+      primary: { id: 'planner.newEvent', command: 'planner.newEvent', label: 'New Event', icon: 'plus' },
     });
-    main.appendChild(this._capture());
-    main.appendChild(this._schedule(model, ctx.colorOf, now));
-    if (model.anytime.length) main.appendChild(this._anytime(model.anytime));
+    root.appendChild(this._capture());
+    const main = el('div', 'planner-today__main');
+    const side = el('aside', 'planner-today__side');
+    side.setAttribute('aria-label', 'What needs a day');
+    root.append(main, side);
 
-    if (model.review.length) side.appendChild(this._review(model.review, now));
+    main.appendChild(this._schedule(model, ctx.colorOf, now));
+    side.appendChild(this._review(model.review, now));
+    side.appendChild(this._dueToday(model.anytime));
     if (model.overdue.length) side.appendChild(this._overdue(model.overdue, dayStart));
 
     body.appendChild(root);
@@ -284,13 +284,14 @@ export class PlannerTodayView implements IDisposable {
   // ── Capture ──────────────────────────────────────────────────────────
 
   private _capture(): HTMLElement {
-    const wrap = el('div', 'planner-today__capture');
-    const input = el('input', 'planner-today__capture-input');
+    const wrap = el('label', 'planner-today__capture');
+    wrap.appendChild(createIconElement('plus', 14));
+    const input = el('input', 'planner-today__capture-input px-input-bare');
     input.type = 'text';
     input.placeholder = 'Capture a task, like “Call Priya about the trip”';
     input.setAttribute('aria-label', 'Capture a task');
-    declareControl(input, { id: 'planner.today.capture', label: 'Capture a task', kind: 'input', hint: 'Enter adds it to the Review Queue.', state: () => ({ kind: 'value', value: input.value }) });
-    const hint = el('p', 'planner-today__hint', 'Press Enter to add it to the Review Queue. Give it a day when you are ready.');
+    declareControl(input, { id: 'planner.today.capture', label: 'Capture a task', kind: 'input', hint: 'Enter adds it to the Review Queue. Give it a day when you are ready.', state: () => ({ kind: 'value', value: input.value }) });
+    input.title = 'Enter adds it to the Review Queue. Give it a day when you are ready.';
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const title = input.value.trim();
@@ -298,7 +299,9 @@ export class PlannerTodayView implements IDisposable {
       input.value = '';
       void this._deps.data.createTask({ title, status: 'reviewing' }).then((t) => this._deps.note('captured', `task "${t.title}"`, t.id));
     });
-    wrap.append(input, hint);
+    const key = el('kbd', 'planner-today__key', 'Enter');
+    key.setAttribute('aria-hidden', 'true');
+    wrap.append(input, key);
     return wrap;
   }
 
@@ -306,7 +309,9 @@ export class PlannerTodayView implements IDisposable {
 
   private _schedule(model: TodayModel, colorOf: ColorOf, now: number): HTMLElement {
     const section = el('section', 'planner-today__section');
-    createSectionLabel(section, 'Schedule');
+    const head = el('div', 'planner-today__head');
+    createSectionLabel(head, 'Schedule');
+    section.appendChild(head);
 
     if (model.allDay.length) {
       const band = el('div', 'planner-today__allday');
@@ -319,7 +324,7 @@ export class PlannerTodayView implements IDisposable {
         chip.addEventListener('click', () => this._deps.openEvent(ev, chip.getBoundingClientRect()));
         band.appendChild(chip);
       }
-      section.appendChild(band);
+      head.appendChild(band);
     }
 
     if (!model.schedule.length) {
@@ -413,36 +418,33 @@ export class PlannerTodayView implements IDisposable {
     return box;
   }
 
-  private _anytime(tasks: readonly PlannerTask[]): HTMLElement {
-    const section = el('section', 'planner-today__section');
-    createSectionLabel(section, 'Anytime today');
-    const list = el('div', 'planner-today__list');
-    for (const t of tasks) {
-      const line = el('div', 'planner-today__task-line');
-      line.appendChild(this._taskBox(t));
-      list.appendChild(line);
-    }
-    section.appendChild(list);
-    return section;
+  /** A side section's head: its name, and its count in the mono face. */
+  private _sideHead(section: HTMLElement, label: string, count: number): HTMLElement {
+    const head = el('div', 'planner-today__head');
+    createSectionLabel(head, label);
+    head.appendChild(el('span', 'planner-today__count', String(count)));
+    section.appendChild(head);
+    return head;
   }
 
   // ── Side column ──────────────────────────────────────────────────────
 
+  /** Captured without a day: each a plain row with its three day buttons. */
   private _review(review: readonly PlannerTask[], now: number): HTMLElement {
-    const card = el('section', 'planner-today__card planner-today__review');
-    const head = el('div', 'planner-today__card-head');
-    const title = el('h2', 'planner-today__card-title');
-    title.append(createIconElement('inbox', 16), el('span', undefined, 'Review Queue'));
-    head.append(title, el('span', 'planner-today__count', String(review.length)));
-    card.append(head, el('p', 'planner-today__hint', 'Captured without a date. Pick a day for each.'));
-
+    const section = el('section', 'planner-today__section planner-today__review');
+    this._sideHead(section, 'To review', review.length);
+    if (!review.length) {
+      section.appendChild(el('p', 'planner-today__empty', 'Nothing waiting. What you capture above lands here until it has a day.'));
+      return section;
+    }
     const options = quickPlanOptions(now);
     for (const task of review.slice(0, REVIEW_PREVIEW)) {
       const item = el('div', 'planner-today__review-item');
       const name = el('button', 'planner-today__task-title', task.title);
       name.type = 'button';
+      name.title = `Captured ${dayFmt(task.createdAt)}`;
       name.addEventListener('click', () => this._deps.openTask(task, name.getBoundingClientRect()));
-      item.append(name, el('span', 'planner-today__meta', `Captured ${dayFmt(task.createdAt)}`));
+      item.appendChild(name);
       const row = el('div', 'planner-today__plan');
       row.setAttribute('role', 'group');
       row.setAttribute('aria-label', `Plan “${task.title}”`);
@@ -458,29 +460,46 @@ export class PlannerTodayView implements IDisposable {
         });
       }
       item.appendChild(row);
-      card.appendChild(item);
+      section.appendChild(item);
     }
-    createButton(card, {
-      id: 'planner.today.openReviewQueue',
-      label: review.length > REVIEW_PREVIEW ? `Open Review Queue (${review.length})` : 'Open Review Queue',
-      icon: 'chevron-right', kind: 'ghost', size: 'sm',
-      onClick: () => this._deps.openReviewQueue(),
-    }).classList.add('planner-today__more');
-    return card;
+    // More than fit here: the rest are one press away, on Tasks.
+    if (review.length > REVIEW_PREVIEW) {
+      createButton(section, {
+        id: 'planner.today.openReviewQueue', command: 'planner.show', args: ['tasks', 'review'],
+        label: `${review.length - REVIEW_PREVIEW} More in Review Queue`, icon: 'chevron-right', kind: 'ghost', size: 'sm',
+      }).classList.add('planner-today__more');
+    }
+    return section;
+  }
+
+  /** Today's tasks with no time of day (the timed ones are on the schedule). */
+  private _dueToday(tasks: readonly PlannerTask[]): HTMLElement {
+    const section = el('section', 'planner-today__section');
+    this._sideHead(section, 'Due today', tasks.filter((t) => t.status !== 'done').length);
+    if (!tasks.length) {
+      section.appendChild(el('p', 'planner-today__empty', 'Nothing due. Give a captured task a day and it shows here.'));
+      return section;
+    }
+    const list = el('div', 'planner-today__list');
+    for (const t of tasks) {
+      const line = el('div', 'planner-today__task-line');
+      line.appendChild(this._taskBox(t));
+      list.appendChild(line);
+    }
+    section.appendChild(list);
+    return section;
   }
 
   private _overdue(overdue: readonly PlannerTask[], dayStart: number): HTMLElement {
-    const card = el('section', 'planner-today__card planner-today__overdue');
-    const head = el('div', 'planner-today__card-head');
-    const title = el('h2', 'planner-today__card-title');
-    title.append(createIconElement('circle-alert', 16), el('span', undefined, 'Overdue'));
-    head.appendChild(title);
-    // The count opens the full list: the card shows the oldest few.
+    const section = el('section', 'planner-today__section planner-today__overdue');
+    const head = el('div', 'planner-today__head');
+    createSectionLabel(head, 'Overdue');
+    // The count opens the full list: this shows the oldest few.
     createButton(head, {
-      id: 'planner.today.showOverdue', command: 'planner.showOverdue', label: String(overdue.length), size: 'sm', kind: 'ghost',
+      id: 'planner.today.showOverdue', command: 'planner.showOverdue', label: String(overdue.length), size: 'sm', kind: 'ghost', icon: 'chevron-right',
       title: `Show all ${plural(overdue.length, 'overdue task', 'overdue tasks')}`,
     }).classList.add('planner-today__count');
-    card.appendChild(head);
+    section.appendChild(head);
     for (const task of overdue.slice(0, REVIEW_PREVIEW)) {
       const item = el('div', 'planner-today__overdue-item');
       const text = el('div', 'planner-today__overdue-text');
@@ -500,15 +519,9 @@ export class PlannerTodayView implements IDisposable {
           this._deps.note('rescheduled', `task "${task.title}"`, task.id, 'to today');
         },
       });
-      card.appendChild(item);
+      section.appendChild(item);
     }
-    if (overdue.length > REVIEW_PREVIEW) {
-      createButton(card, {
-        id: 'planner.today.showAllOverdue', command: 'planner.showOverdue',
-        label: `Show All ${overdue.length} Overdue`, icon: 'chevron-right', kind: 'ghost', size: 'sm',
-      }).classList.add('planner-today__more');
-    }
-    return card;
+    return section;
   }
 
   dispose(): void { /* nothing held beyond the DOM the pane replaces */ }

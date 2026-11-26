@@ -8,8 +8,7 @@ import { onDragPress } from '../../ui/touchDrag.js';
 import { declareControl } from '../../ui/kit.js';
 import type { PlannerCalendar, PlannerTask } from './plannerTypes.js';
 import { googleSync } from './sync/googleClient.js';
-import { createButton } from '../../ui/kit.js';
-import { showExtensionContextMenu } from '../../ui/contextMenu.js';
+import { createButton, createIconButton, createSegmented } from '../../ui/kit.js';
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, sameDay, formatHour, formatTimeShort, formatTimeRange } from './plannerDates.js';
 import { type CalendarView, PANE_COMPACT_MAX, SYNC_SVG, el } from './plannerUi.js';
@@ -19,13 +18,20 @@ export class PlannerCalendarViews {
   constructor(private readonly _pane: PlannerEditorPane) {}
 
   async renderCalendarTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    // Clean layout: one tight cluster of calendar controls on the left
-    // (Today, prev/next, big date label, view dropdown), Create button on
-    // the far right. No search/settings clutter — Settings lives in the
-    // sidebar where it belongs. Every control sits on the same 28px
-    // baseline so the chrome reads as one row of equal-weight elements.
+    // The head, as drawn: the month (or week, or day) is the title; then the
+    // arrows, Today, one switch for Month, Week and Day, and New Event.
+    const dateLabel = el('h1', 'planner-cdate');
+    dateLabel.textContent = this._calendarRangeLabel();
+    actions.appendChild(dateLabel);
 
-    // Today — outlined sharp button, distinct from the arrow pair.
+    // Prev / Next — connected icon pair.
+    const nav = el('div', 'planner-cnav');
+    const prev = createIconButton(nav, { id: 'planner.calendar.previous', icon: 'chevron-left', title: 'Previous (←)', size: 'sm' });
+    prev.addEventListener('click', () => { this.navigateCalendar(-1); void this._pane._renderTab(); });
+    const next = createIconButton(nav, { id: 'planner.calendar.next', icon: 'chevron-right', title: 'Next (→)', size: 'sm' });
+    next.addEventListener('click', () => { this.navigateCalendar(1); void this._pane._renderTab(); });
+    actions.appendChild(nav);
+
     const today = el('button', 'planner-todaybtn');
     today.type = 'button';
     today.textContent = 'Today';
@@ -34,43 +40,12 @@ export class PlannerCalendarViews {
     today.addEventListener('click', () => { this._pane._cursorDate = startOfDay(new Date()); void this._pane._renderTab(); });
     actions.appendChild(today);
 
-    // Prev / Next — connected icon pair.
-    const nav = el('div', 'planner-cnav');
-    const prev = el('button', 'planner-iconbtn');
-    prev.type = 'button';
-    prev.title = 'Previous (←)';
-    declareControl(prev, { id: 'planner.calendar.previous', label: 'Previous', kind: 'iconButton' });
-    prev.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
-    prev.addEventListener('click', () => { this.navigateCalendar(-1); void this._pane._renderTab(); });
-    nav.appendChild(prev);
-    const next = el('button', 'planner-iconbtn');
-    next.type = 'button';
-    next.title = 'Next (→)';
-    declareControl(next, { id: 'planner.calendar.next', label: 'Next', kind: 'iconButton' });
-    next.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
-    next.addEventListener('click', () => { this.navigateCalendar(1); void this._pane._renderTab(); });
-    nav.appendChild(next);
-    actions.appendChild(nav);
-
-    // Big inline date label — focal element of the left cluster.
-    const dateLabel = el('span', 'planner-cdate');
-    dateLabel.textContent = this._calendarRangeLabel();
-    actions.appendChild(dateLabel);
-
-    // Spacer pushes the view dropdown + Create to the far right, so the
-    // header reads as two distinct clusters (navigation left, action right)
-    // rather than one bunched-up row.
-    const spacer = el('span', 'planner-pane__spacer');
-    actions.appendChild(spacer);
-
-    // View dropdown — right cluster.
-    const viewBtn = el('button', 'planner-viewdrop');
-    viewBtn.type = 'button';
-    const label = this._viewLabel(this._pane._calendarView);
-    viewBtn.innerHTML = `<span>${label}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>`;
-    viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
-    declareControl(viewBtn, { id: 'planner.calendar.view', label: 'View', kind: 'select', state: () => ({ kind: 'value', value: this._pane._calendarView }) });
-    actions.appendChild(viewBtn);
+    // Month, Week, Day: one switch (it was a menu behind a button).
+    createSegmented(actions, {
+      id: 'planner.calendar.view', ariaLabel: 'Calendar view', value: this._pane._calendarView,
+      items: (['month', 'week', 'day'] as CalendarView[]).map((v) => ({ value: v, label: this._viewLabel(v) })),
+      onChange: (v) => { this.setCalendarView(v as CalendarView); void this._pane._renderTab(); },
+    });
 
     // Sync — pull/push Google Calendar right from the planner (no trip to Settings).
     if (this._pane._sync) {
@@ -164,14 +139,6 @@ export class PlannerCalendarViews {
   }
 
   /** Month / Week / Day: the app's menu, with the current view checked. */
-  private _openViewMenu(anchorBtn: HTMLElement): void {
-    showExtensionContextMenu(anchorBtn, (['month', 'week', 'day'] as CalendarView[]).map((v) => ({
-      label: this._viewLabel(v),
-      checked: v === this._pane._calendarView,
-      onSelect: () => { this.setCalendarView(v); void this._pane._renderTab(); },
-    })), { anchorPosition: 'below' });
-  }
-
   isCompact(): boolean {
     const w = this._pane._container.clientWidth;
     return w > 0 && w <= PANE_COMPACT_MAX;
@@ -341,7 +308,8 @@ export class PlannerCalendarViews {
       cell.tabIndex = sameDay(day, this._pane._cursorDate) ? 0 : -1;
 
       const number = el('span', 'planner-month__cellnum');
-      number.textContent = String(appDateParts(day).day);
+      // Today says so in words beside its number, and is ringed in ink.
+      number.textContent = sameDay(day, new Date()) ? `Today ${appDateParts(day).day}` : String(appDateParts(day).day);
       cell.appendChild(number);
 
       // provider day-load badge ("38 cards"), a decoration, not a row.
@@ -362,8 +330,8 @@ export class PlannerCalendarViews {
         const chip = el('button', 'planner-month__chip');
         chip.type = 'button';
         chip.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
-        const dot = el('span', 'planner-month__chipdot');
-        chip.appendChild(dot);
+        // A soft chip in its calendar's colour; an event at a time of day carries the time in front.
+        if (!ev.allDay && ev.startAt >= dayStart) { const at = el('span', 'planner-month__chiptime'); at.textContent = formatTimeShort(ev.startAt); chip.appendChild(at); }
         const label = el('span', 'planner-month__chiptext');
         label.textContent = ev.title;
         chip.appendChild(label);

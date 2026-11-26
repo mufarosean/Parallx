@@ -211,13 +211,11 @@
   display: flex;
   /* Stretch so the tabs span the full header height and their underline
      sits on the header's own bottom border. */
-  align-items: stretch;
-  gap: var(--px-space-4);
-  padding: 0 var(--px-space-4);
-  min-height: 48px;
+  align-items: center;
+  gap: var(--px-space-3);
+  padding: var(--px-space-5) var(--px-space-6) 0;
   box-sizing: border-box;
   background: var(--px-bg);
-  border-bottom: 1px solid var(--px-divider);
 }
 .planner-pane__spacer { flex: 1 1 auto; min-width: var(--px-space-3); align-self: center; }
 
@@ -271,24 +269,31 @@
    Compact: one column. */
 .planner-today {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: var(--px-space-8);
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--px-space-5) var(--px-space-8);
   align-items: start;
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
 }
 .planner-today__main { display: flex; flex-direction: column; gap: var(--px-space-6); min-width: 0; }
-.planner-today__main > .px-page-header { padding: 0; }
+.planner-today > .px-page-header { grid-column: 1 / -1; padding: 0; align-items: flex-end; }
+.planner-today__head { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); min-height: var(--px-control-h); }
 .planner-today__side { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
 .planner-today__section { display: flex; flex-direction: column; gap: var(--px-space-2); }
 
-.planner-today__capture { display: flex; flex-direction: column; gap: var(--px-space-1); }
-.planner-today__capture-input {
-  height: var(--px-control-h-lg);
-  box-sizing: border-box;
-  width: 100%;
+/* Capture: one lifted sheet across the page, a plus, the field, the key that adds. */
+.planner-today__capture {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: var(--px-space-3);
+  padding: var(--px-space-1) var(--px-space-3);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated); box-shadow: var(--px-edge-light), var(--px-shadow-sm);
+  color: var(--px-text-muted); cursor: text;
 }
+.planner-today__capture:focus-within { border-color: var(--px-accent); box-shadow: var(--px-edge-light), var(--px-ring-accent); }
+.planner-today__capture-input { flex: 1 1 auto; min-width: 0; height: var(--px-control-h-lg); box-sizing: border-box; font-size: var(--px-text-md); color: var(--px-text); }
+.planner-today__key { flex: none; padding: 1px 6px; border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .planner-today__hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .planner-today__empty { margin: 0; font-size: var(--px-text-base); color: var(--px-text-muted); }
 
@@ -299,7 +304,7 @@
 /* The hour (and now's time) sit in the gutter, drawn from data-label. */
 .planner-today__hour::before, .planner-today__now::before {
   content: attr(data-label); position: absolute; top: -0.7em; left: 0; width: calc(var(--planner-today-gutter) - var(--px-space-3)); padding-right: var(--px-space-2);
-  background: var(--px-bg); text-align: right; font-size: var(--px-text-sm); color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: var(--px-bg); text-align: right; font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap;
 }
 .planner-today__lanes { position: absolute; inset: 0 0 0 var(--planner-today-gutter); }
 .planner-today__slot { position: absolute; box-sizing: border-box; padding: 1px 2px; }
@@ -410,40 +415,17 @@
 .planner-today__tag { font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
 
 /* Side cards. */
-.planner-today__card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--px-space-2);
-  padding: var(--px-space-4);
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-xl);
-  background: var(--px-bg-elevated);
-}
-.planner-today__card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); }
-.planner-today__card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--px-space-2);
-  margin: 0;
-  font-size: var(--px-text-md);
-  font-weight: 600;
-}
-.planner-today__review .planner-today__card-title .svg-icon { color: var(--px-accent-text); }
-.planner-today__overdue { border-color: color-mix(in srgb, var(--px-danger) 45%, var(--px-border)); }
-.planner-today__overdue .planner-today__card-title .svg-icon { color: var(--px-danger); }
-.planner-today__count {
-  min-width: 18px; padding: 1px var(--px-space-2); border-radius: var(--px-radius-full); background: var(--px-accent-soft);
-  color: var(--px-accent-text); font-size: var(--px-text-xs); font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
-}
-.planner-today__overdue .planner-today__count { background: var(--px-danger-soft); color: var(--px-danger);  height: 20px; border-radius: var(--px-radius-full); }
-.planner-today__overdue .planner-today__count:hover { background: color-mix(in srgb, var(--px-danger) 24%, transparent); color: var(--px-danger); }
+/* The side column: plain sections, each a label with its count in the mono
+   face, then rows on hairlines. No cards. */
+.planner-today__count { font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.planner-today__overdue .px-section-label, .planner-today__overdue .planner-today__count { color: var(--px-danger); }
 
 .planner-today__review-item,
 .planner-today__overdue-item {
   display: flex;
   flex-direction: column;
   gap: var(--px-space-1);
-  padding-top: var(--px-space-3);
+  padding: var(--px-space-2) 0;
   border-top: 1px solid var(--px-divider);
   transition: opacity var(--px-dur-base) var(--px-ease);
 }
@@ -454,43 +436,9 @@
 .planner-today__more { align-self: flex-start; }
 
 /* Mini month: day number with up to three load dots. */
-.planner-today__month-nav { display: flex; gap: 2px; }
-.planner-today__month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px; }
-.planner-today__dow { padding-bottom: var(--px-space-1); font-size: var(--px-text-2xs); font-weight: 600; text-align: center; color: var(--px-text-muted); }
-.planner-today__day {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  height: 36px;
-  padding: 3px 0 0;
-  border: 0;
-  border-radius: var(--px-radius-md);
-  background: transparent;
-  color: var(--px-text);
-  font: inherit;
-  cursor: pointer;
-}
-.planner-today__day:hover { background: var(--px-surface-hover); }
-.planner-today__day--out { color: var(--px-text-faint); }
-.planner-today__day-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--px-radius-full);
-  font-size: var(--px-text-sm);
-  font-variant-numeric: tabular-nums;
-}
-.planner-today__day--today .planner-today__day-num { background: var(--px-accent); color: var(--px-text-on-accent); font-weight: 600; }
-.planner-today__dots { display: flex; gap: 2px; height: 4px; }
-.planner-today__dot { width: 4px; height: 4px; border-radius: var(--px-radius-full); background: var(--px-text-muted); }
-
 @container planner (max-width: 1023px) {
   .planner-today { grid-template-columns: minmax(0, 1fr); }
   .planner-today__side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .planner-today__overdue { grid-column: 1 / -1; }
 }
 @container planner (max-width: 719px) {
   .planner-today__side { display: flex; align-items: stretch; }
@@ -502,7 +450,9 @@
 /* The Tasks page is the chosen list in one reading column; the six lists
    are in Planner's list in the sidebar. */
 .planner-tasks { display: block; max-width: 760px; }
-.planner-tasks .px-page-header { padding-inline: 0; padding-top: 0; }
+.planner-tasks .px-page-header { padding-inline: 0; padding-top: 0; align-items: flex-end; }
+/* With nothing in the pane's own bar (Today and Tasks carry their actions in the page's head), the bar is not drawn. */
+.planner-pane__header:has(> .planner-pane__actions:empty) { display: none; }
 .planner-tasks__content {
   display: flex;
   flex-direction: column;
@@ -519,10 +469,13 @@
 .planner-empty h2 { margin: 0 0 8px; font-size: var(--px-text-lg); font-weight: 600; color: var(--vscode-editor-foreground, #f3f3f3); }
 .planner-empty p { margin: 0; font-size: var(--px-text-base); line-height: 1.55; }
 
-.planner-section { border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 94%, white); overflow: hidden; }
-.planner-section--review { border-color: color-mix(in srgb, var(--px-warning) 38%, transparent); background: color-mix(in srgb, var(--px-warning) 8%, transparent); }
-.planner-section--overdue { border-color: color-mix(in srgb, var(--px-danger) 38%, transparent); }
-.planner-section--today { border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent); }
+/* A list of tasks is plain: its name and count on one line, then rows on
+   hairlines. The Review Queue alone stands on a soft band of the warning
+   colour: it is what still needs a decision. */
+.planner-section { min-width: 0; }
+.planner-section--review { padding: var(--px-space-2) var(--px-space-4); border-radius: var(--px-radius-lg); background: var(--px-warning-soft); }
+.planner-section--review .planner-task:last-child { border-bottom: 0; }
+.planner-section--overdue .planner-section__title { color: var(--px-danger); }
 .planner-section--collapsed .planner-section__list { display: none; }
 
 .planner-section__head--toggle { cursor: pointer; }
@@ -540,30 +493,31 @@
 .planner-section__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px 8px;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) 0 var(--px-space-1);
 }
-.planner-section__title { margin: 0; font-size: var(--px-text-base); font-weight: 600; letter-spacing: -0.01em; text-transform: none; }
+.planner-section__title { margin: 0; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-muted); text-transform: none; }
 .planner-section__count {
-  font-size: var(--px-text-xs);
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  color: var(--vscode-editor-foreground, #d4d4d4);
-}
-.planner-section__hint {
-  margin: 0 0 0 auto;
+  margin-left: auto;
+  font-family: var(--px-font-mono);
   font-size: var(--px-text-sm);
   color: var(--px-text-muted);
 }
-.planner-section__list { display: flex; flex-direction: column; padding: 4px 6px 10px; }
+.planner-section__hint {
+  order: 3; margin: 0 0 0 var(--px-space-3);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+}
+.planner-section__list { display: flex; flex-direction: column; }
 
 .planner-task {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 7px;
+  gap: var(--px-space-3);
+  min-height: 36px;
+  padding: var(--px-space-1) 0;
+  border-bottom: 1px solid var(--px-divider);
+  font-size: var(--px-text-md);
   transition: background var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-base) var(--px-ease);
 }
 .planner-task:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
@@ -604,20 +558,20 @@
 .planner-task__due {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
-  border-radius: 999px;
+  height: var(--px-control-h-sm);
+  padding: 0 var(--px-space-2);
+  border: 0;
+  border-radius: var(--px-radius-sm);
   background: transparent;
-  color: var(--px-text-secondary);
-  font: inherit;
-  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-sm);
   cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-task__due:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent); color: var(--vscode-button-background, #0e639c); border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 38%, transparent); }
 .planner-task__due--empty { color: var(--px-text-muted); }
-.planner-task__due--overdue { color: var(--px-danger); border-color: color-mix(in srgb, var(--px-danger) 40%, transparent); }
+.planner-task__due--overdue { color: var(--px-danger); }
 
 .planner-task__plan,
 .planner-task__more {
@@ -741,9 +695,9 @@
 /* "Today" — outlined sharp button, header baseline 13px / 28px */
 .planner-todaybtn {
   height: var(--px-control-h);
-  padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
-  border-radius: 4px;
+  padding: 0 var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
   background: transparent;
   color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
@@ -784,93 +738,61 @@
    from the 13px baseline so it reads as the heading; weight + color
    carry the rest. */
 .planner-cdate {
-  font-size: var(--px-text-md);
-  font-weight: 600;
+  flex: 1 1 auto; min-width: 0; margin: 0;
+  font-family: var(--px-font-display); font-size: var(--px-text-xl); font-weight: 500; line-height: 1.2;
   letter-spacing: -0.01em;
-  color: var(--vscode-editor-foreground, #f3f3f3);
-  white-space: nowrap;
+  color: var(--px-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-
-/* View dropdown — header-baseline 13px / 28px, matches Today + Create */
-.planner-viewdrop {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 8px 0 12px;
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 18%, transparent);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font: inherit;
-  font-size: var(--px-text-base);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
-}
-.planner-viewdrop:hover {
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 28%, transparent);
-}
-.planner-viewdrop svg { opacity: 0.55; flex: 0 0 auto; }
 
 /* Primary CTA — 13px header baseline */
 /* .planner-cta is only a hook now (the new-item command anchors its popover
    to it); the button itself is the kit's primary button. */
 
-.planner-month {
-  /* Sharp grid with full outer border — calendar reads as a contained frame */
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  background: var(--vscode-editor-background, #1e1e1e);
-}
-.planner-month__weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent); }
+/* The month: each day is its own small sheet with a gap round it. Today is
+   ringed in ink and says so; days of other months step back. */
+.planner-month { background: transparent; }
+.planner-month__weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .planner-month__weekday {
-  padding: 8px 10px;
-  font-size: var(--px-text-xs);
-  font-weight: 600;
+  padding: 0 var(--px-space-2) var(--px-space-1);
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted);
 }
-.planner-month__cells { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(90px, auto); }
+.planner-month__cells { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(90px, auto); gap: 6px; }
 .planner-month__cell {
   position: relative;
-  padding: 6px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  min-width: 0;
+  min-height: 84px;
+  padding: 6px var(--px-space-2);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  box-shadow: 0 0 0 1px var(--px-border);
   cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease);
-  min-height: 84px;
 }
-.planner-month__cell:nth-child(7n) { border-right: 0; }
-.planner-month__cell:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 5%, transparent); }
+.planner-month__cell:hover { background: var(--px-surface-hover); }
 .planner-month__cell:hover .planner-month__cellplus, .planner-month__cell:focus-within .planner-month__cellplus, [data-input-modality="touch"] .planner-month__cell .planner-month__cellplus { opacity: 1; }
-.planner-month__cell--other-month .planner-month__cellnum { color: var(--px-text-faint); }
-/* Today — Apple Calendar / Things 3 pattern: subtle cell tint, the
-   number itself slightly stronger. No filled circle around the
-   number; the chunky pill was AI-template chrome. */
-.planner-month__cell--today {
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent);
-}
-.planner-month__cell--today .planner-month__cellnum {
-  color: var(--vscode-editor-foreground, #f3f3f3);
-  font-weight: 700;
-}
+.planner-month__cell--other-month { background: transparent; }
+.planner-month__cell--other-month > * { opacity: 0.55; }
+.planner-month__cell--today { box-shadow: 0 0 0 2px var(--px-text); }
+.planner-month__cell--today .planner-month__cellnum { color: var(--px-text); }
 .planner-month__cellnum {
   display: inline-flex;
   font-size: var(--px-text-sm);
   font-weight: 600;
   margin-bottom: 4px;
   padding: 0;
-  color: var(--px-text);
+  color: var(--px-text-secondary);
 }
 .planner-month__cellevents { display: flex; flex-direction: column; gap: 2px; }
 .planner-month__chip {
   display: block;
   width: 100%;
-  padding: 2px 6px;
+  padding: 1px 6px;
   border: 0;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--cal-color, var(--vscode-button-background, #0e639c)) 22%, transparent);
-  color: var(--vscode-editor-foreground, #f3f3f3);
+  border-radius: var(--px-radius-md);
+  background: color-mix(in srgb, var(--cal-color, var(--px-accent)) var(--px-planner-event-tint), var(--px-bg-elevated));
+  color: var(--px-text);
   font: inherit;
   font-size: var(--px-text-xs);
   text-align: left;
@@ -882,7 +804,8 @@
   align-items: center;
   gap: 5px;
 }
-.planner-month__chip:hover { background: color-mix(in srgb, var(--cal-color, var(--vscode-button-background, #0e639c)) 42%, transparent); color: var(--vscode-button-foreground, #fff); }
+.planner-month__chip:hover { background: color-mix(in srgb, var(--cal-color, var(--px-accent)) calc(var(--px-planner-event-tint) + 10%), var(--px-bg-elevated)); }
+.planner-month__chiptime { flex: none; font-family: var(--px-font-mono); font-size: var(--px-text-2xs); color: var(--px-text-secondary); }
 .planner-month__chiptext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
 .planner-month__chipdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--cal-color, #4c8bf5); }
 .planner-month__chipcheck { flex: 0 0 auto; display: inline-flex; width: 11px; height: 11px; color: var(--cal-color, #4c8bf5); }

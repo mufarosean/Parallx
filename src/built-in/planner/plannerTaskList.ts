@@ -19,17 +19,22 @@ import { PLANNER_TASK_FILTERS, PLANNER_TASK_LIST_QUERY } from './plannerTaskFilt
 export class PlannerTaskList {
   constructor(private readonly _pane: PlannerEditorPane) {}
 
-  async renderTasksTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
+  async renderTasksTab(body: HTMLElement, _actions: HTMLElement): Promise<void> {
     const addBtn = createButton(null, { id: 'planner.newTask', command: 'planner.newTask', label: 'New Task', icon: 'plus', kind: 'primary', title: 'New Task (C)' });
     addBtn.classList.add('planner-cta');
     addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
-    actions.appendChild(addBtn);
+    // The page's head: the chosen list's name, one line under it, New Task at its right.
+    const head = (into: HTMLElement, title: string, subtitle: string): void => {
+      const header = createPageHeader(into, { title, subtitle });
+      header.classList.add('planner-tasks__head');
+      header.appendChild(addBtn);
+    };
 
     const all = await this._pane._data.listTasks(PLANNER_TASK_LIST_QUERY);
 
     if (all.length === 0) {
       // No task anywhere yet: the page still says which list it is.
-      createPageHeader(body, { title: (PLANNER_TASK_FILTERS.find((f) => f.key === this._pane._tasksFilter) ?? PLANNER_TASK_FILTERS[PLANNER_TASK_FILTERS.length - 1]).label, subtitle: '0 tasks' });
+      head(body, (PLANNER_TASK_FILTERS.find((f) => f.key === this._pane._tasksFilter) ?? PLANNER_TASK_FILTERS[PLANNER_TASK_FILTERS.length - 1]).label, '0 tasks');
       body.appendChild(renderEmptyStateEntry(PLANNER_EMPTY_STATES.day));
       return;
     }
@@ -49,7 +54,7 @@ export class PlannerTaskList {
       content.innerHTML = '';
       const filter = filters.find(f => f.key === activeKey) ?? filters[filters.length - 1];
       const matching = all.filter(filter.match);
-      createPageHeader(content, { title: filter.label, subtitle: `${matching.length} ${matching.length === 1 ? 'task' : 'tasks'}` });
+      head(content, filter.label, activeKey === 'review' && matching.length ? 'Captured without a date. Pick a day for each.' : `${matching.length} ${matching.length === 1 ? 'task' : 'tasks'}`);
 
       if (activeKey === 'all') {
         // "All tasks" uses the grouped section view so the user has the
@@ -77,14 +82,14 @@ export class PlannerTaskList {
           ? [...matching].sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
           : matching;
         const accent = activeKey === 'review' ? 'review' : activeKey === 'overdue' ? 'overdue' : activeKey === 'today' ? 'today' : undefined;
-        content.appendChild(this._renderTaskSection(filter.label, rows, { accent }));
+        content.appendChild(this._renderTaskSection(filter.label, rows, { accent, bare: true }));
       }
     };
 
     renderContent();
   }
 
-  private _renderTaskSection(title: string, tasks: readonly PlannerTask[], opts: { accent?: string; hint?: string; collapsed?: boolean } = {}): HTMLElement {
+  private _renderTaskSection(title: string, tasks: readonly PlannerTask[], opts: { accent?: string; hint?: string; collapsed?: boolean; bare?: boolean } = {}): HTMLElement {
     const section = el('section', 'planner-section');
     if (opts.accent) section.classList.add(`planner-section--${opts.accent}`);
     if (opts.collapsed) section.classList.add('planner-section--collapsed');
@@ -118,7 +123,8 @@ export class PlannerTaskList {
       hint.textContent = opts.hint;
       head.appendChild(hint);
     }
-    section.appendChild(head);
+    // On a page that is this one list, the page's title already names it.
+    if (!opts.bare) section.appendChild(head);
 
     const list = el('div', 'planner-section__list');
     for (const t of tasks) list.appendChild(this._renderTaskRow(t));
