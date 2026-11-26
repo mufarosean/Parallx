@@ -2596,6 +2596,15 @@ foot Tools and Extensions and Settings.
 - `tests/unit/raw-dom-baseline.json`: the entry for
   `openEditorsView.ts` follows the file to its new path, its count
   (12) unchanged. No other baseline changed.
+- Checks changed because what they checked is gone, none to get a
+  pass: `containerRails.test.ts` pinned the order of the Explorer's
+  two views with two assertions; the Explorer has one view now, and
+  one assertion says exactly that. `column-lists-probe.mjs` (written
+  in piece 2, not an acceptance probe) lost its checks that the
+  Explorer's Open section is named, fitted to its rows and over the
+  tree; in their place it checks Open in the column, the same rows
+  under three tools' lists, and that the Explorer is the tree alone,
+  and `frame-probe.mjs` holds Open to six rows.
 
 *Checked:* typecheck; the unit suite (9,925); `frame-probe.mjs` and
 `column-lists-probe.mjs` rewritten for the new order, both with no
