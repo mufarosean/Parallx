@@ -4012,7 +4012,8 @@ items, prioritize quick wins while maintaining standards."
 - The command palette's rows: not a fault in the app. Driven by hand on
   the app, the arrows walk every row from the field and from a row.
   The audit still counts 5 rows as not reached; why it does is not
-  found, and the audit was not changed.
+  found, and the audit was not changed. (Found since, item 5 under
+  "Done from this order": the hand run had not gone past the tenth row.)
 Also brought up to date: the entries of this list that said "nothing
 built" of things since built (Worksheets, the look, the window group,
 Home, the build plan for the three, Read Anything, Generative edits).
@@ -4038,7 +4039,8 @@ checks, the builds stay one to a session):**
    audit, the visual probe, the touch-drag probe, a finger on the new
    drags. Fix what they find. **Done.**
 5. Find why the audit miscounts the palette's rows, and put it right in
-   the place that is wrong (the palette, or the audit with his say).
+   the place that is wrong (the palette, or the audit with his say). **Done:
+   the palette was wrong, not the audit.**
 6. Piece 8, Tools and Extensions as one list grouped On and Off.
 7. Piece 6, first half: a page's Default font follows the app's face,
    and Newsreader joins the page font list.
@@ -4110,6 +4112,35 @@ Table (never started).
   foot rows; Open taken out of the sidebar into a box of its own, and
   Restore Sidebar Sections after.
 - *Not run:* the e2e specs.
+
+**Item 5, the palette's rows the audit could not reach. Done: the
+fault was in the app, three of them, and the audit was right.**
+- *The palette did not keep its highlighted row in view.* It shows ten
+  rows of fifteen; Arrow Down past the tenth moved the highlight under
+  the fold with the list standing still. The audit counts a row it
+  cannot see as not reached, which is where its 5 came from. The list
+  now scrolls to the highlighted row.
+- *With the pointer resting over the list the arrows jumped back.* Once
+  the list scrolled, the row that slid under a still pointer took the
+  highlight (11, then 6 again). Only a pointer that itself moved chooses
+  a row now.
+- *A dialog could lose the keyboard.* The audit's "stuck dialogs" (48:
+  Settings 44, the palette 4): with the focus fallen to the window,
+  Escape closed nothing and Tab walked the page behind. A person got
+  there by one mouse press on a section in Settings' list (the list is
+  redrawn, and the pressed entry with it), or by a press on plain words
+  in the palette. Fixed in one place for every dialog built on the
+  overlay, and for the palette (`keysBackToModal`, `ui/dom.ts`): a key
+  pressed while a dialog is in front and nothing has the focus goes
+  back into it, and Escape closes it. Settings also keeps the focus on
+  the section pressed, and the palette puts the focus back when late
+  results redraw a focused row.
+- *Checked:* `tests/probes/dialog-keys-probe.mjs` (new, 19 of 19: the
+  arrows with the pointer away and resting over the list, each row in
+  view, Tab and Escape from the window in the palette and in Settings);
+  the keyboard audit on the palette's two screens and Settings and its
+  34 sub-screens (not focusable 0, stuck dialogs 0, every count 0).
+  The audit itself is unchanged.
 
 ## Verification owed
 

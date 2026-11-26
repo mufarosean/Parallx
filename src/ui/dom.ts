@@ -379,6 +379,25 @@ export function keepTabInside(within: HTMLElement, listenOn: HTMLElement = withi
 
 
 /**
+ * The keyboard never leaves an open dialog. When what had the focus is taken
+ * away (a list redrawn under a press, a press on words that take no focus),
+ * the focus falls to the window and the dialog's own listeners hear nothing:
+ * Escape did not close it and Tab walked the page behind. A key pressed then,
+ * while `dialog` is the one in front, goes to `home` (the dialog's field, or
+ * the dialog) first; Escape runs `onEscape`.
+ */
+export function keysBackToModal(dialog: HTMLElement, home: () => HTMLElement | null | undefined, onEscape?: () => void): IDisposable {
+  return addDisposableListener(document, 'keydown', (e) => {
+    const a = document.activeElement;
+    if (!dialog.isConnected || dialog.contains(a) || modalOnTop() !== dialog) return;
+    if (a && a !== document.body && a !== document.documentElement) return; // something in front of the dialog has it (a menu, a picker)
+    home()?.focus();
+    if (e.key === 'Escape' && onEscape) { e.preventDefault(); e.stopPropagation(); onEscape(); }
+    else if (e.key === 'Tab') e.preventDefault(); // the focus is back in the dialog; Tab from there next
+  }, true);
+}
+
+/**
  * The dialog that has the window: the last one open that stands in front of
  * everything else (Settings, a confirm, an input box). A notice with buttons
  * in the corner calls itself a dialog too, but the window behind it is still

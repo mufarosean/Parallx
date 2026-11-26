@@ -423,6 +423,8 @@ export class SettingsEditor extends Disposable {
         this._searchValue = '';
         this._renderNav();
         this._renderContent();
+        // The list was redrawn, and the entry pressed with it: the focus stays on the entry now chosen.
+        this._navEl.querySelector<HTMLElement>('.settings-editor__nav-item--active')?.focus();
       }));
       this._navEl.appendChild(item);
     };

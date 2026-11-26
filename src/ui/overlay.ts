@@ -8,7 +8,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $, addDisposableListener, keepTabInside, toggleClass } from './dom.js';
+import { $, addDisposableListener, keepTabInside, keysBackToModal, toggleClass } from './dom.js';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -107,6 +107,9 @@ export class Overlay extends Disposable {
 
     // A modal dialog keeps Tab inside it.
     this._register(keepTabInside(this.contentElement, this.element));
+
+    // The keyboard never leaves an open dialog (keysBackToModal).
+    this._register(keysBackToModal(this.contentElement, () => this.contentElement.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? this.element, closeOnEscape ? () => this.hide() : undefined));
   }
 
   // ─── Public API ────────────────────────────────────────────────────────

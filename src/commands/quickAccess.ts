@@ -31,7 +31,7 @@ import type { IRecentsServiceShape } from '../services/recentsService.js';
 import { getQuickOpenSources } from '../services/quickOpenSources.js';
 import { collectSourceRows, matchEntry, rankQuickOpenRows } from './quickOpenRanking.js';
 import { createSurface, createList, declareControl } from '../ui/kit.js';
-import { $ } from '../ui/dom.js';
+import { $, keysBackToModal } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -599,6 +599,7 @@ export class QuickAccessWidget extends Disposable {
   private _visible = false;
   private _items: QuickAccessItem[] = [];
   private _selectedIndex = 0;
+  private _mouseAt: [number, number] = [-1, -1]; private _keysBack: { dispose(): void } | undefined;
   private _activeProvider: IQuickAccessProvider | undefined;
   /** Monotonic token used to discard stale async results from `_updateItems`. */
   private _updateToken = 0;
@@ -827,9 +828,8 @@ export class QuickAccessWidget extends Disposable {
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', 'Quick Access');
-    overlay.addEventListener('mousedown', (e) => {
-      if (e.target === overlay) this.hide();
-    });
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) this.hide(); });
+    this._keysBack?.dispose(); this._keysBack = keysBackToModal(overlay, () => this._input, () => this.hide());
 
     // Palette container
     const palette = $('div');
@@ -898,7 +898,7 @@ export class QuickAccessWidget extends Disposable {
 
   private _destroyDOM(): void {
     if (this._overlay) {
-      this._overlay.remove();
+      this._keysBack?.dispose(); this._overlay.remove();
       this._overlay = null;
       this._input = null;
       this._listEl = null;
@@ -942,10 +942,10 @@ export class QuickAccessWidget extends Disposable {
 
   // ── List rendering ─────────────────────────────────────────────────────
 
-  private _renderItems(): void {
-    const list = this._listEl;
-    if (!list) return;
+  // Results that arrive late redraw the rows; a row that had the focus is gone then, so the focus is put back (it fell to the window, where Escape and the arrows went nowhere).
+  private _renderItems(): void { const l = this._listEl; if (!l) return; const had = l.contains(document.activeElement); this._drawItems(l); if (had && !l.contains(document.activeElement)) (l.querySelector<HTMLElement>('.command-palette-item.selected') ?? this._input)?.focus(); }
 
+  private _drawItems(list: HTMLElement): void {
     list.innerHTML = '';
 
     if (this._items.length === 0) {
@@ -1030,10 +1030,8 @@ export class QuickAccessWidget extends Disposable {
       }
 
       // Mouse events
-      row.addEventListener('mouseenter', () => {
-        this._selectedIndex = i;
-        this._updateSelection();
-      });
+      // Only a pointer that itself moved chooses a row: a list scrolling under a resting pointer sends the same events, and the arrows then jumped back to the row under it.
+      row.addEventListener('mousemove', (e) => { if (e.screenX === this._mouseAt[0] && e.screenY === this._mouseAt[1]) return; this._mouseAt = [e.screenX, e.screenY]; if (this._selectedIndex !== i) { this._selectedIndex = i; this._updateSelection(); } });
       row.addEventListener('click', (e) => {
         e.preventDefault();
         this._selectedIndex = i;
@@ -1071,7 +1069,7 @@ export class QuickAccessWidget extends Disposable {
       row.classList.toggle('selected', i === this._selectedIndex);
       row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false'); if (i === this._selectedIndex) this._input?.setAttribute('aria-activedescendant', (row as HTMLElement).id);
     });
-    if (this._listEl.contains(document.activeElement)) to?.focus(); // focus in the list follows the highlight
+    if (this._listEl.contains(document.activeElement)) to?.focus(); to?.scrollIntoView({ block: 'nearest' }); // focus in the list follows the highlight, and the highlighted row is always in view (past the tenth it was not)
   }
 
   // ── Acceptance / execution ─────────────────────────────────────────────
