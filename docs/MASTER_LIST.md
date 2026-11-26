@@ -2534,6 +2534,40 @@ list with two editor groups; Planner's column with many calendars.
 order and Make Cards). New: `fitSection.test.ts`, and a case in
 `openEditorsView.test.ts` for the live word and the dot.
 
+**The column restacked: his notes on the frame as built, and mock-ups
+(2026-11-26).** His words, spelling corrected: "I have an issue with
+the stacking of the primary sidebar. I think the tools down to settings
+should show first. We also should add a home row that shows up above
+all of these things. This home row essentially shows the same page that
+gets shown when you hit the Parallx logo." "Underneath the first
+section, I think we need to move open editors out of explorer, so they
+become a permanent fixture in primary sidebar. They really are an easy
+navigational point, and they show all open editors and should not be
+limited to just the explorer view." "The name of the extension you are
+on, and the sidebar view for that, is then what gets set. I would make
+the name smaller than it is now, because the current size looks out of
+place and makes it seem like that is the name of the app." "I could
+also see a world where tools and extensions, and settings stay fixed
+at the bottom. Mock it up for me and we can iterate."
+The page: https://claude.ai/artifact/5CUGBe5wsdRH9eLdFa1DfR (one
+window that redraws for the letters pressed). Three choices, Claude's
+picks marked, none his yet:
+- *1 Stacking:* 1A everything in one run (Home, tools, Tools and
+  Extensions, Settings, then Open, then the tool's name and list), 1B
+  the same with Tools and Extensions and Settings pinned at the foot,
+  or 1C 1B with the tools foldable to one strip of icons.
+- *2 The tool's name:* 2A a section label like "Open", 2B the display
+  face at 16 px, or 2C no name (the lit tool row says it).
+- *3 What Home does:* 3A it opens the Home tab and the column stays as
+  it was, or 3B Home lights as a place and the tool list steps away.
+Claude's picks: 1B 2A 3A. Drawn the same in every option: Open leaves
+the Explorer and is one fixture for every tool, as tall as its tabs up
+to six rows, folding by its label, with its count. They rest on his
+notes, the built app's measured heights (the column is 848 px in a
+900 px window; Home and eight tools take 252) and judgment; no other
+product was read. Nothing of it is built; it changes pieces 1 and 2
+as built.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
