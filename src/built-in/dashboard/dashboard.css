@@ -765,10 +765,10 @@
   color: var(--px-text-secondary);
   letter-spacing: -0.01em;
 }
-.clw__time {
-  font-size: 36px;
-  font-weight: 600;
-  letter-spacing: -0.04em;
+.clw__time { /* the large numbers (this, .cdw__num, .dtimer__face, .ypw__stat-n) are in the display face */
+  font-family: var(--px-font-display); font-size: 36px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: var(--vscode-editor-foreground, #f3f3f3);
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -1715,9 +1715,9 @@ video.vw__fill { object-fit: contain; background: #000; }
   gap: 1px;
 }
 .cdw__num {
-  font-size: 30px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-family: var(--px-font-display); font-size: 30px; font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1;
   color: var(--vscode-editor-foreground, #f3f3f3);
   font-variant-numeric: tabular-nums;
@@ -1805,7 +1805,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .dtimer__mode:hover { color: var(--px-text); }
 .dtimer__mode.is-active { color: var(--px-text); background: color-mix(in srgb, var(--dtimer-accent) 22%, transparent); }
-.dtimer__face { font-size: 52px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; text-align: center; color: var(--px-text); flex: 0 0 auto; }
+.dtimer__face { font-family: var(--px-font-display); font-size: 52px; font-weight: 500; font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.01em; line-height: 1; text-align: center; color: var(--px-text); flex: 0 0 auto; }
 .dtimer__controls { display: flex; justify-content: center; align-items: center; gap: 6px; flex: 0 0 auto; }
 .dtimer__btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -2033,9 +2033,9 @@ video.vw__fill { object-fit: contain; background: #000; }
   border-left: none;
 }
 .ypw__stat-n {
-  font-size: var(--px-text-xl);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--px-font-display); font-size: var(--px-text-xl);
+  font-weight: 500;
+  font-variant-numeric: lining-nums tabular-nums;
   line-height: 1.2;
   color: var(--vscode-editor-foreground, #f3f3f3);
 }

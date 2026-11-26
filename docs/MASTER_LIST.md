@@ -4045,7 +4045,7 @@ checks, the builds stay one to a session):**
 6. Piece 8, Tools and Extensions as one list grouped On and Off. **Done.**
 7. Piece 6, first half: a page's Default font follows the app's face,
    and Newsreader joins the page font list. **Done.**
-8. The Dashboard's large numbers in the display face.
+8. The Dashboard's large numbers in the display face. **Done.**
 9. A live word from more tools in Open (Study's session, Worksheets'
    paper), through the point built in piece 2.
 10. Text arrows elsewhere: check whether any are left, then close the
@@ -4198,6 +4198,23 @@ the app's face, and Newsreader is in the page font list. Done.**
   the document; the file was not printed here). The app's face was
   changed by setting the one variable Appearance sets, not through the
   Appearance panel.
+
+**Item 8, the Dashboard's large numbers in the display face. Done.**
+- *What was there:* four large numbers in the Dashboard's own widgets,
+  all in the interface face at weight 600 or 700: the clock's time
+  (36 px), the countdown's figures (30), the timer's face (52), the
+  year's counts (22).
+- *Built:* the four take the display face at weight 500, the sizes as
+  they were, with figures of one width so a running clock or timer
+  does not shift as its digits change.
+- *Left:* the countdown's "done" words (28 px) are words, not a number,
+  and stay. Widgets other tools add are theirs.
+- *Checked:* `look-details-probe.mjs` part B on the built app (the
+  timer's face is Newsreader at 500; "11:11", "00:00" and "88:88" take
+  the same room); the screenshot; the visual probe (the Dashboard's
+  counts did not move); the keyboard audit on the Dashboard (0). Of
+  the four, the seeded Dashboard shows only the timer; the other three
+  share its rule and were not on screen.
 
 ## Verification owed
 
