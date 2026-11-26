@@ -21,6 +21,8 @@ import { CONTAINER_DRAG_TYPE, type ContainerDragData } from '../platform/dragTyp
 
 /** Opens a section's menu (Move Up, Move Down, Restore Default Places); what each section's three dots run. */
 export const SECTION_MENU_COMMAND = 'workbench.action.sidebarSectionMenu';
+/** The same menu for the open tool's list, from its More Actions. */
+export const MOVE_LIST_SECTION_COMMAND = 'workbench.action.moveToolListSection';
 /** Every section of the column back in its default place. */
 export const RESET_SECTIONS_COMMAND = 'workbench.action.resetSidebarSections';
 /** Marks a drag as a section's, so the sidebar can tell it from a tool's while it is over it. */
@@ -92,19 +94,24 @@ export function seatColumnChrome(sidebar: SidebarPart, services: ServiceCollecti
 }
 
 /**
- * Each section of the column (the tools, Open, the two rows at the foot) is
- * moved by taking hold of it: dragged from its own top, or from anywhere in
- * it that is not itself something to drag. Dropped elsewhere in the sidebar
- * it takes that place; dropped outside, it becomes a box of its own there,
- * as a tool's list does, and docking that box brings it back. The three
- * dots that show at a section's top right while it is pointed at, focused in
- * or touched do the same from a menu, which is how the keys do it. The open
- * tool's list is the sidebar's own: its name strip moves the whole sidebar.
- * Nothing can be closed; Restore Default Places puts every section back.
+ * Every section of the sidebar moves the same way: the tools, Open, the open
+ * tool's list, the two rows at the foot. A section is taken hold of by its
+ * own top (the list by its name strip), or anywhere in it that is not itself
+ * something to drag. Dropped elsewhere in the sidebar it takes that place;
+ * dropped outside, it becomes a box of its own there. For the open tool's
+ * list that box is the tool's own, the one its row dragged out of the tools
+ * makes; the other three leave as `section:<name>`. Each section's three
+ * dots carry the same moves as a menu, which is how the keys do it, and the
+ * moves of the sidebar as a whole. Nothing can be closed; Restore Default
+ * Places puts every section back.
  */
 function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, requestSave: () => void, store: DisposableStore): void {
-  const movable = ['tools', 'open', 'foot'] as const;
-  const boxId = (section: ColumnSection): string => `${SECTION_BOX_PREFIX}${section}`;
+  const movable = DEFAULT_SECTION_ORDER;
+  /** The three that leave as a box of their own; the list leaves as its tool's. */
+  const own = ['tools', 'open', 'foot'] as const;
+  /** The tool whose list is showing, read from the lit row of the tools. */
+  const openTool = (): string | undefined => sidebar.sectionElements('tools')[0]?.querySelector<HTMLElement>('.activity-bar-item.active')?.dataset.iconId;
+  const boxId = (section: ColumnSection): string | undefined => section === 'view' ? openTool() : `${SECTION_BOX_PREFIX}${section}`;
   const run = (id: string, ...args: unknown[]): void => {
     if (services.has(ICommandService)) void services.get(ICommandService).executeCommand(id, ...args);
   };
@@ -114,6 +121,8 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
     if (!host) continue;
     host.draggable = true;
     host.dataset.section = section;
+    // The list's name strip has its three dots already (More Actions, which opens this menu from Move This Section…).
+    if (section === 'view') { const its = host.querySelector<HTMLElement>('.sidebar-header-action-btn'); if (its) dots.set(section, its); continue; }
     const more = createIconButton(null, { id: `column.section.${section}.more`, icon: 'ellipsis', title: `${SECTION_NAMES[section]}: Move…`, size: 'sm', command: SECTION_MENU_COMMAND, args: [section] });
     more.classList.add('column-section-more');
     // First in the section, so the keys reach its three dots before what it holds.
@@ -139,10 +148,11 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
     // Only a drag that starts on the section itself: a tool's row inside it is its own drag.
     const origin = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[draggable="true"]') : null;
     const section = origin?.dataset.section as ColumnSection | undefined;
-    if (!origin || !section || !movable.includes(section as typeof movable[number]) || !e.dataTransfer) return;
+    const id = section ? boxId(section) : undefined;
+    if (!origin || !section || !movable.includes(section) || !e.dataTransfer) return;
     dragged = section;
     e.dataTransfer.setData(SECTION_DRAG_TYPE, section);
-    e.dataTransfer.setData(CONTAINER_DRAG_TYPE, JSON.stringify({ containerId: boxId(section) } satisfies ContainerDragData));
+    if (id) e.dataTransfer.setData(CONTAINER_DRAG_TYPE, JSON.stringify({ containerId: id } satisfies ContainerDragData));
     e.dataTransfer.effectAllowed = 'move';
   };
   const onDragOver = (e: DragEvent): void => {
@@ -183,7 +193,7 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
   if (!services.has(ICommandService)) return;
   const commands = services.get(ICommandService) as unknown as CommandService;
   const restore = (): void => {
-    for (const section of movable) if (!sidebar.hasSection(section)) run('workbench.action.container.dock', boxId(section), 'left');
+    for (const section of own) if (!sidebar.hasSection(section)) run('workbench.action.container.dock', boxId(section), 'left');
     sidebar.resetSections();
     requestSave();
   };
@@ -196,23 +206,37 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
       const anchor = dots.get(section) ?? sidebar.element;
       const here = sidebar.hasSection(section);
       const at = sidebar.sectionOrder.indexOf(section);
-      const out = (edge: 'left' | 'right' | 'bottom') => (): void => { run('workbench.action.container.float', boxId(section)); run('workbench.action.container.moveToEdge', boxId(section), edge); };
-      const atDefault = sidebar.sectionOrder.join() === DEFAULT_SECTION_ORDER.join() && movable.every((id) => sidebar.hasSection(id));
+      const id = boxId(section);
+      const out = (edge: 'left' | 'right' | 'bottom') => (): void => { if (!id) return; run('workbench.action.container.float', id); run('workbench.action.container.moveToEdge', id, edge); };
+      const whole = (edge: 'left' | 'right' | 'bottom') => (): void => run('workbench.action.movePartToEdge', sidebar.id, edge);
+      const atDefault = sidebar.sectionOrder.join() === DEFAULT_SECTION_ORDER.join() && own.every((s) => sidebar.hasSection(s));
       createMenu(anchor, { id: 'column.section.menu', label: `${SECTION_NAMES[section]}: Move`, items: [
         ...(here ? [
           { label: 'Move Up', icon: 'arrow-up', disabled: at <= 0, onSelect: () => { sidebar.moveSection(section, -1); requestSave(); } },
           { label: 'Move Down', icon: 'arrow-down', disabled: at >= sidebar.sectionOrder.length - 1, onSelect: () => { sidebar.moveSection(section, 1); requestSave(); } },
         ] : [
-          { label: 'Return To Sidebar', icon: 'panel-left', onSelect: () => run('workbench.action.container.dock', boxId(section), 'left') },
+          { label: 'Return To Sidebar', icon: 'panel-left', onSelect: () => run('workbench.action.container.dock', id, 'left') },
         ]),
         { separator: true },
-        { label: 'Move To Left Edge', onSelect: out('left') },
-        { label: 'Move To Right Edge', onSelect: out('right') },
-        { label: 'Move To Bottom Edge', onSelect: out('bottom') },
+        { label: 'Move To Left Edge', disabled: !id, onSelect: out('left') },
+        { label: 'Move To Right Edge', disabled: !id, onSelect: out('right') },
+        { label: 'Move To Bottom Edge', disabled: !id, onSelect: out('bottom') },
+        { separator: true },
+        { label: 'Whole Sidebar', submenu: [
+          { label: 'Move To Left Edge', onSelect: whole('left') },
+          { label: 'Move To Right Edge', onSelect: whole('right') },
+          { label: 'Move To Bottom Edge', onSelect: whole('bottom') },
+        ] },
         { separator: true },
         { label: 'Restore Default Places', icon: 'rotate-ccw', disabled: atDefault, onSelect: restore },
       ] });
     },
+  }));
+  store.add(commands.registerCommand({
+    id: MOVE_LIST_SECTION_COMMAND,
+    title: 'Move the Tool List Section…',
+    category: 'View',
+    handler: () => run(SECTION_MENU_COMMAND, 'view'),
   }));
   store.add(commands.registerCommand({
     id: RESET_SECTIONS_COMMAND,

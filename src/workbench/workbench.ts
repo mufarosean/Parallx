@@ -2342,7 +2342,7 @@ export class Workbench extends Layout {
           }));
         // Every container's menu ends with what the area itself can do, so
         // no tool's More Actions is ever a button that does nothing.
-        items.push({ id: 'workbench.action.toggleSidebar', label: 'Hide Left Area', group: '9_area', keybinding: this._keybindingHint('workbench.action.toggleSidebar') });
+        items.push({ id: 'workbench.action.moveToolListSection', label: 'Move This Section…', group: '8_section', keybinding: undefined }, { id: 'workbench.action.toggleSidebar', label: 'Hide Left Area', group: '9_area', keybinding: this._keybindingHint('workbench.action.toggleSidebar') });
         const menu = ContextMenu.show({
           items,
           anchor: { x: rect.left, y: rect.bottom + 2 },

@@ -781,7 +781,8 @@ export abstract class Layout extends Disposable {
         this._partDrag!.armHandle(part.id, handle);
       }
     };
-    arm(this._sidebar, '.part-title');
+    // The primary sidebar has no grip of its own: each of its sections is
+    // taken hold of by itself (columnChrome.ts), the open tool's list among them.
     arm(this._auxiliaryBar, '.part-title');
     arm(this._panel, '.view-container-tabs');
 
@@ -789,7 +790,6 @@ export abstract class Layout extends Disposable {
     // palette carries these commands too, but a grip you can already drag
     // is where the hand goes looking — palette-only recovery does not
     // exist for someone who rarely opens the palette.
-    this._armPlacementMenu(this._sidebar, '.part-title');
     this._armPlacementMenu(this._auxiliaryBar, '.part-title');
     this._armPlacementMenu(this._panel, '.view-container-tabs');
   }

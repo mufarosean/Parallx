@@ -100,7 +100,10 @@ export class SidebarPart extends Part {
     return this.sectionElements(section).every((el) => el.parentElement === this.contentElement);
   }
 
-  /** Hand a section's element over to a box; the open tool's list never leaves. */
+  /**
+   * Hand a section's element over to a box. The open tool's list is not
+   * handed over this way: it leaves as that tool's own box, as it always could.
+   */
   takeSection(section: ColumnSection): HTMLElement | undefined {
     if (section === 'view' || !this.hasSection(section)) return undefined;
     const el = this.sectionElements(section)[0];

@@ -262,22 +262,38 @@ try {
   await cmd(page, 'workbench.action.resetSidebarSections'); await page.waitForTimeout(400);
   check('Restore Sidebar Sections puts every section back', (await sections()) === 'tools open view foot', await sections());
 
-  // The whole sidebar is moved by the open tool's name strip, with everything in it.
-  const grab = async (toX) => {
-    const g = await page.evaluate(() => { const e = document.querySelector('.sidebar-header'); const r = e.getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2, draggable: e.draggable }; });
-    await page.mouse.move(g.x, g.y); await page.mouse.down();
-    for (let i = 1; i <= 16; i++) { await page.mouse.move(g.x + (toX - g.x) * i / 16, g.y + 120 * i / 16); await page.waitForTimeout(40); }
-    await page.waitForTimeout(200); await page.mouse.up(); await page.waitForTimeout(900);
-    return g;
-  };
+  // The open tool's list is a section like the others: its name strip moves it, not the whole sidebar.
+  const strip = () => page.evaluate(() => { const e = document.querySelector('.sidebar-header'); const r = e.getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2, draggable: e.draggable }; });
+  const side0 = (await frame()).sidebar;
+  const s0 = await strip();
+  await dragFrom(s0, await page.evaluate(() => { const r = document.querySelector('.sidebar-tools').getBoundingClientRect(); return { x: r.x + 100, y: r.y + 20 }; }));
+  let side1 = (await frame()).sidebar;
+  check('the tool\'s list, taken by its name strip and dropped over the tools, becomes the first section', s0.draggable === true && (await sections()) === 'view tools open foot', await sections());
+  check('and the sidebar itself has not moved', side1.x === side0.x && side1.w === side0.w, { was: side0, now: side1 });
+  await cmd(page, 'workbench.action.resetSidebarSections'); await page.waitForTimeout(500);
+  // Taken out of the sidebar, the list leaves as its tool's own box, and the next tool's list takes its place.
+  const toolWas = (await frame()).head;
   const vw = await page.evaluate(() => window.innerWidth);
-  const strip = await grab(vw - 60);
+  await dragFrom(await strip(), { x: vw - 120, y: 420 });
+  const outNow = await page.evaluate((name) => ({ box: [...document.querySelectorAll('.container-box-title')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim()), head: document.querySelector('.sidebar-header-label')?.textContent, x: Math.round(document.querySelector('[data-part-id="workbench.parts.sidebar"]').getBoundingClientRect().x) }), toolWas);
+  check('the tool\'s list dragged out of the sidebar is that tool\'s own box; the sidebar stays and shows another tool', outNow.box.includes(toolWas) && outNow.head !== toolWas && outNow.x === side0.x, { toolWas, outNow });
+  await shot('dark-tool-list-in-its-own-box.png');
+  await cmd(page, 'workbench.action.container.dock', await page.evaluate((name) => [...document.querySelectorAll('.activity-bar-item')].find((b) => b.getAttribute('aria-label') === name)?.dataset.iconId, toolWas), 'left'); await page.waitForTimeout(800);
+  // The sidebar as a whole moves from any section's three dots (Whole Sidebar), which runs this.
+  await cmd(page, 'workbench.action.movePartToEdge', 'workbench.parts.sidebar', 'right'); await page.waitForTimeout(900);
   let moved = (await frame()).sidebar;
-  check('dragged by the tool\'s name strip to the right edge, the whole sidebar lands on the right with its sections', strip.draggable === true && !!moved && moved.x > vw / 2 && await page.evaluate(() => !!document.querySelector('[data-part-id="workbench.parts.sidebar"] .sidebar-tools') && !!document.querySelector('[data-part-id="workbench.parts.sidebar"] .sidebar-foot')), moved);
+  check('Whole Sidebar, Move To Right Edge puts the sidebar on the right with its sections in it', !!moved && moved.x > vw / 2 && await page.evaluate(() => !!document.querySelector('[data-part-id="workbench.parts.sidebar"] .sidebar-tools') && !!document.querySelector('[data-part-id="workbench.parts.sidebar"] .sidebar-foot')), moved);
   await shot('dark-column-right.png');
-  await grab(8);
+  await cmd(page, 'workbench.action.movePartToEdge', 'workbench.parts.sidebar', 'left'); await page.waitForTimeout(900);
   moved = (await frame()).sidebar;
-  check('and dragged back, it is on the left again', !!moved && moved.x === 0, moved);
+  check('and Move To Left Edge puts it back', !!moved && moved.x === 0, moved);
+  await page.evaluate(() => document.querySelector('.sidebar-open > .column-section-more')?.focus());
+  await page.keyboard.press('Enter'); await page.waitForTimeout(400);
+  const menu2 = await page.evaluate(() => [...document.querySelectorAll('.context-menu .context-menu-item, .context-menu [role="menuitem"]')].map((e) => e.textContent.trim()));
+  check('every section\'s three dots offer the edges and the Whole Sidebar moves', ['Move To Right Edge', 'Whole Sidebar', 'Restore Default Places'].every((n) => menu2.some((m) => m.startsWith(n))), menu2);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  await page.evaluate(() => { const b = document.querySelector('.activity-bar-item[data-icon-id="study-container"]'); b?.click(); }); await page.waitForTimeout(500);
+
   await cmd(page, 'chat.show'); await page.waitForTimeout(1_000);
   await shot('dark-chat.png');
   await cmd(page, 'workbench.action.showCommands'); await page.waitForTimeout(700);

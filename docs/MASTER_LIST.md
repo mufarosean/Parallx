@@ -2744,6 +2744,34 @@ and the visual probe since the restack; the two foot rows in a box.
 One thing a person will meet: dragging a row of Open, or a foot row,
 moves its whole section, since those rows are not themselves dragged.
 
+**His next reply, and the rule made one (2026-11-26).** His words,
+spelling corrected: "there is inconsistency. Why does dragging the
+explorer section move the whole sidebar, not just that viewable
+section. Really think about the system. There are inconsistencies
+everywhere." He was right: the open tool's list was the one section
+whose top moved something else. Now all four sections follow one rule:
+taken hold of by its top, a section moves; inside the sidebar it takes
+the place it is dropped on, outside it becomes a box of its own.
+- The list's name strip moves the list. Dropped outside the sidebar it
+  leaves as its tool's own box (the box that tool's row dragged out of
+  the tools has always made), and the sidebar shows another tool's
+  list in its place.
+- The sidebar as a whole has no grip. It is moved from any section's
+  menu, Whole Sidebar, Move To Left, Right or Bottom Edge (the command
+  Move Part to Edge, which was there).
+- The list's menu is its More Actions, which gains Move This Section…
+  and opens the same menu the other three sections' dots open.
+- `frame-probe.mjs` drives it: the name strip dropped over the tools
+  makes the list the first section and the sidebar does not move; the
+  strip dropped beside the editor makes the tool's own box; the whole
+  sidebar goes right and back by the command the menu runs.
+*What is still not one rule, for him to say:* a tool's row reorders in
+its list, while a row of Open or a foot row moves its whole section
+(they have no order of their own to change); the list's menu is
+reached through More Actions, the others' through dots that show on
+hover; the right-hand side (chat) is one box and still moves by its
+header as a whole.
+
 ### Home: a redesign, not yet designed
 
 **Where it stands (2026-11-10).** A first version shipped the same day
