@@ -13,14 +13,15 @@ const SIDEBAR_CONSTRAINTS: SizeConstraints = {
 };
 
 /**
- * The column, top to bottom: the tools that are on, by name, under a Home
- * row; what is open; the open tool's name and its own list, which takes the
+ * The column, top to bottom: a grip to move it by; the tools that are on,
+ * by name, under a Home row; what is open; the open tool's name and its own list, which takes the
  * height that is left; and at the foot, pinned, where tools are managed and
  * Settings. The part makes the slots and knows no tool: the workbench seats
  * what goes in each.
  */
 export class SidebarPart extends Part {
 
+  private _gripSlot: HTMLElement | undefined;
   private _toolsSlot: HTMLElement | undefined;
   private _openSlot: HTMLElement | undefined;
   private _openListSlot: HTMLElement | undefined;
@@ -65,7 +66,7 @@ export class SidebarPart extends Part {
    * takes, beyond a plain part header of `plainHeader` px: what that list loses.
    */
   chromeBeyond(plainHeader: number): number {
-    const taken = [this._toolsSlot, this._openSlot, this._headerSlot, this._footSlot].reduce((sum, el) => sum + (el?.offsetHeight ?? 0), 0);
+    const taken = [this._gripSlot, this._toolsSlot, this._openSlot, this._headerSlot, this._footSlot].reduce((sum, el) => sum + (el?.offsetHeight ?? 0), 0);
     return Math.max(0, taken - plainHeader);
   }
 
@@ -92,6 +93,8 @@ export class SidebarPart extends Part {
       return el;
     };
 
+    // The grip: the column is grabbed here, at its top, to move it.
+    this._gripSlot = slot('sidebar-grip');
     this._toolsSlot = slot('sidebar-tools');
     this._openSlot = slot('sidebar-open');
     this._openListSlot = slot('sidebar-open-list', this._openSlot);

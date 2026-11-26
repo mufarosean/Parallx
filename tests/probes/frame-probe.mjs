@@ -197,6 +197,24 @@ try {
   await page.evaluate(() => { const b = document.querySelector('.activity-bar-item[data-icon-id="study-container"]'); b?.click(); });
   await page.waitForTimeout(600);
   await shot('dark.png');
+
+  // The column is grabbed at its top and moved: dragged to the right edge it lands there, and back again.
+  const grab = async (toX) => {
+    const g = await page.evaluate(() => { const e = document.querySelector('.sidebar-grip'); const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, h: Math.round(r.height), draggable: e.draggable }; });
+    await page.mouse.move(g.x, g.y); await page.mouse.down();
+    for (let i = 1; i <= 16; i++) { await page.mouse.move(g.x + (toX - g.x) * i / 16, g.y + 200 * i / 16); await page.waitForTimeout(40); }
+    await page.waitForTimeout(200); await page.mouse.up(); await page.waitForTimeout(900);
+    return g;
+  };
+  const vw = await page.evaluate(() => window.innerWidth);
+  const grip = await grab(vw - 60);
+  let moved = (await frame()).sidebar;
+  check('the column has a grip at its top', grip.draggable === true && grip.h >= 8, grip);
+  check('dragged by its top to the right edge, the column lands on the right', !!moved && moved.x > vw / 2, moved);
+  await shot('dark-column-right.png');
+  await grab(8);
+  moved = (await frame()).sidebar;
+  check('and dragged back, it is on the left again', !!moved && moved.x === 0, moved);
   await cmd(page, 'chat.show'); await page.waitForTimeout(1_000);
   await shot('dark-chat.png');
   await cmd(page, 'workbench.action.showCommands'); await page.waitForTimeout(700);

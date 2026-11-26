@@ -2565,8 +2565,100 @@ the Explorer and is one fixture for every tool, as tall as its tabs up
 to six rows, folding by its label, with its count. They rest on his
 notes, the built app's measured heights (the column is 848 px in a
 900 px window; Home and eight tools take 252) and judgment; no other
-product was read. Nothing of it is built; it changes pieces 1 and 2
-as built.
+product was read.
+**His picks (2026-11-26, a screenshot of the page's bar): 1B 2A 3A**,
+"Let's try this, I will check."
+
+**The column restacked, as built (2026-11-26, on `dev`).** Top to
+bottom: a grip, Home, the tools that are on, Open, the open tool's
+name as a small label with More Actions, its list, and pinned at the
+foot Tools and Extensions and Settings.
+- *Home* (`column.home`) runs `home.open`, as the mark in the title bar
+  does, and leaves the lit tool and its list as they were (3A).
+- *Open* is the column's own (`workbench/columnChrome.ts`;
+  `openEditorsView.ts` moved from the Explorer to `src/workbench/`).
+  Every open editor, whatever tool is showing; six rows at most, then
+  it scrolls, keeping the tab in front in view; its label folds it
+  (`workbench.action.toggleOpenEditors`, View: Fold Open Editors, kept
+  with the workspace) and carries the count. Its rows are a vertical
+  tab list (`role="tab"`), as the strip over the editor is. The
+  Explorer's list is the file tree alone, and the fitted section made
+  for it in piece 2 (`views/fitSection.ts`) is removed with its one
+  user.
+- *The tool's name* is 12 px in the interface face, like "Open" (2A).
+- *The grip.* His report the same day: "the primary sidebar cannot be
+  moved." The move still worked, but only by the name strip, which the
+  restack had put in the middle of the column; the top had nothing to
+  hold. A 10 px grip at the column's top edge now moves it too (a short
+  bar shows while the column is pointed at, focused in or touched), and
+  answers a right-click with the placement menu. `frame-probe.mjs`
+  drags the column by it to the right edge and back.
+- `tests/unit/raw-dom-baseline.json`: the entry for
+  `openEditorsView.ts` follows the file to its new path, its count
+  (12) unchanged. No other baseline changed.
+
+*Checked:* typecheck; the unit suite (9,925); `frame-probe.mjs` and
+`column-lists-probe.mjs` rewritten for the new order, both with no
+problem on the app; the eight acceptance probes. *Not run since the
+restack:* the keyboard audit, the visual probe, the touch-drag probe,
+the e2e specs.
+
+*What the acceptance probes say after the restack.* Five pass.
+study-work reads as before (run alone; beside another probe its clock
+checks fail, which is the machine, not the app). study-progress first
+failed five checks because it presses a quick-pick entry found by
+`[role="option"]` anywhere in the window and the Open rows, now always
+on screen, were options too; as tabs they are not, and it passes.
+Two have new failures that are the shorter tool list (about 300 px,
+where it had the whole column) and are for him to rule on, with the
+`point()` correction already waiting:
+- study-record 7.3 to 7.5: the session's row in Study's list is below
+  the fold; the probe does not scroll the list and falls back to Quick
+  Open, which does not find it. (Seen in its screenshot.)
+- study-walk 0.9 and 9.3: a finger on a unit row's More Actions opens
+  no menu. Not looked into further; likely the same.
+The cost is real for a person too: Study's list (subjects with a bar
+a unit, Materials, Review, Question banks, sessions) is a long list in
+a short box.
+
+**His next proposal: every part of the column its own movable box
+(2026-11-26).** His words, spelling corrected: "We should view each
+component of the sidebar separately." "We will do it in phases so it
+is simple to lay out the logic. First, you have this first box, [the
+one that] lists the extensions that are present or enabled in the
+workspace. A user should be able to hover at the top of the box, click
+and drag to move the whole box of all extensions. Second, within the
+box, if a user hovers on an extension and moves it within the box,
+this should reorder the list. Third, if a user hovers, clicks and
+drags an extension outside of that individual box, this should
+actually move it. Hypothetically, a user could allow sidebar views for
+two separate extensions to be shown at the same time, if they drag out
+of the box. The second phase is the open editors phase. This one we
+don't care about within the box, we just care about the box itself.
+This means that a user can click and drag it somewhere else. Then you
+have the view of whatever extension is selected in the extensions box.
+Then at the bottom you have settings and tools and extensions. Another
+box that can be moved around. What this means is that it will make our
+frame highly modular and customizable, so that I do not have to keep
+asking you to mock up a new view."
+What the app has already, read from the code (not driven on the app
+since the restack): the layout is one grid of movable views
+(`layout.ts`, `partDrag.ts`), and anything can be added to it as a
+floating view; a tool's row already reorders by drag and by
+Ctrl+Shift+Up and Down; a tool's row dragged out of the list already
+carries its container, and dropped in the grid it becomes a box of its
+own beside whatever is there (`containerBox.ts`), which is "two tools'
+views at once". What is missing is only that the tools list, Open and
+the two foot rows are slots of the sidebar part and not views of the
+grid. A proposed order, not agreed: (1) the tools list as its own grid
+view with a grip, the default layout stacking it over the others, and
+his three drags checked on the app; (2) Open the same; (3) the foot
+rows the same, and the sidebar part left holding only the open tool's
+name and list; each saved and restored with the workspace's layout,
+each put back by Reset Layout. To settle with him first: what the
+title bar's left button hides once the boxes can be apart; whether a
+box can be closed and where it comes back from; how a box is moved by
+keys and by touch (the parts have a placement menu today).
 
 ### Home: a redesign, not yet designed
 

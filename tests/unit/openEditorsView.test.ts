@@ -37,7 +37,8 @@ describe('Open Editors from the keyboard', () => {
     expect(count).toHaveBeenCalledWith(3);
     const row = (id: string) => container.querySelector(`[data-editor-id="${id}"]`) as HTMLElement;
     expect(row('e2').tabIndex).toBe(0);
-    expect(row('e2').getAttribute('role')).toBe('option');
+    expect(row('e2').getAttribute('role')).toBe('tab');
+    expect(container.getAttribute('role')).toBe('tablist');
     row('e2').focus();
     key('ArrowDown');
     expect(document.activeElement).toBe(row('e3'));

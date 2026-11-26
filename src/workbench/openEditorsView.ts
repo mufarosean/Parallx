@@ -35,6 +35,10 @@ export interface IOpenEditorsHost {
 
 export function createOpenEditorsView(container: HTMLElement, editors: IOpenEditorsHost, setCount: (count: number) => void): IDisposable {
   container.classList.add('open-editors-view');
+  // The rows are the open tabs again, down the column: a tab list, like the
+  // strip over the editor, so each row is a tab and the one in front is selected.
+  container.setAttribute('role', 'tablist');
+  container.setAttribute('aria-orientation', 'vertical');
   const rows = () => Array.from(container.querySelectorAll<HTMLElement>('.open-editors-item'));
   // The open editors as one scene entry: the active one is its selection.
   const entry = createList(container, { id: 'explorer.openEditors', label: 'Open Editors', rows, selected: () => rows().filter((r) => r.classList.contains('open-editors-item--active')).map((r) => r.textContent?.trim() ?? '') });
@@ -108,13 +112,13 @@ function renderOpenEditors(container: HTMLElement, editors: IOpenEditorsHost, se
   }
 }
 
-/** One row: an option of the list that opens its editor; its close button closes that editor. */
+/** One row: a tab of the list that opens its editor; its close mark closes that editor. */
 function createOpenEditorRow(editor: OpenEditor, indented: boolean, editors: IOpenEditorsHost): HTMLElement {
   const row = $('div');
   row.className = 'open-editors-item';
   if (indented) row.classList.add('open-editors-item--grouped');
   if (editor.isActive) row.classList.add('open-editors-item--active');
-  row.setAttribute('role', 'option');
+  row.setAttribute('role', 'tab');
   row.setAttribute('aria-selected', String(editor.isActive));
   row.dataset.editorId = editor.id;
   row.tabIndex = -1;

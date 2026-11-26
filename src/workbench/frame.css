@@ -16,6 +16,30 @@
   min-height: 0;
 }
 
+/* The grip: the column's top edge. It is grabbed to move the whole column,
+   and shows a short bar while the column is pointed at, focused in or touched. */
+.sidebar-grip {
+  flex: none;
+  height: 10px;
+  position: relative;
+}
+.sidebar-grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 32px;
+  height: 3px;
+  margin-left: -16px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-border-strong);
+  opacity: 0;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+.part-workbench-parts-sidebar:hover .sidebar-grip::after,
+.part-workbench-parts-sidebar:focus-within .sidebar-grip::after,
+[data-input-modality="touch"] .sidebar-grip::after { opacity: 1; }
+
 /* Home and the tools. A long list of tools scrolls here, never past half the column. */
 .sidebar-tools {
   flex: 0 1 auto;
@@ -25,7 +49,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 8px 8px 6px;
+  padding: 0 8px 6px;
 }
 .sidebar-tools > .part-workbench-parts-activitybar {
   /* A part the grid no longer sizes: the column's width, its own rows' height. */
