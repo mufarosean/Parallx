@@ -817,7 +817,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       editorProps: {
         attributes: {
           class: 'canvas-tiptap-editor', 'aria-label': 'Page content', role: 'textbox', 'aria-multiline': 'true',
-          spellcheck: 'true',
+          spellcheck: 'true', 'data-px-owns-format-keys': '', // Ctrl+B, Ctrl+I and Ctrl+U are the page's here (keybindingService.ts)
         },
         handleDOMEvents: {
           mousedown: (_view, event) => {

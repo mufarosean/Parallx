@@ -167,7 +167,7 @@ export class CanvasEditorView implements CanvasMenuHost, PaneMirrorTarget {
         live: this._deps.live,
       }),
       content: '',
-      editorProps: { attributes: { class: 'canvas-tiptap-editor', spellcheck: 'true' } },
+      editorProps: { attributes: { class: 'canvas-tiptap-editor', spellcheck: 'true', 'data-px-owns-format-keys': '' } },
       onUpdate: ({ editor, transaction }) => {
         if (this._suppressUpdate || !this._initialContentLoaded) return;
         // setEditable() emits `update` too; only a document change is an edit.

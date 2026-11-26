@@ -69,6 +69,17 @@ const NATIVE_EDIT_KEYS: ReadonlySet<string> = new Set([
   'shift+insert', 'shift+delete', 'ctrl+insert',
 ]);
 
+/**
+ * Bold, italic and underline. In a surface that has them (a page, a sheet)
+ * these three keys are the surface's own while the keys are in it: the
+ * surface marks its element with `data-px-owns-format-keys`, and a binding
+ * of the app's on one of them (Ctrl+B is Toggle Left Area) steps aside
+ * there. Without this a Ctrl+B in a page hid the sidebar and made nothing
+ * bold; in a sheet it did both.
+ */
+export const DATA_OWNS_FORMAT_KEYS = 'data-px-owns-format-keys';
+const FORMAT_KEYS: ReadonlySet<string> = new Set(['ctrl+b', 'ctrl+i', 'ctrl+u', 'meta+b', 'meta+i', 'meta+u']);
+
 // ─── KeybindingService ───────────────────────────────────────────────────────
 
 export class KeybindingService extends Disposable implements IKeybindingService {
@@ -321,6 +332,11 @@ export class KeybindingService extends Disposable implements IKeybindingService 
     // disabled by Chromium and our keybinding wrapper preventDefaults the
     // event before the native input ever sees it.
     if (NATIVE_EDIT_KEYS.has(normalizedKey) && this._isEditableTarget(target)) {
+      return;
+    }
+
+    // Bold, italic and underline stay with a surface that has them.
+    if (FORMAT_KEYS.has(normalizedKey) && target?.closest?.(`[${DATA_OWNS_FORMAT_KEYS}]`)) {
       return;
     }
 

@@ -237,7 +237,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   ensurePopupRoot(); ensureUniverEditorExits();
   // Ctrl+= / - / 0 zoom the cells (as Excel does): the app's Text size keys step aside
   // while focus is in it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
-  opts.container.setAttribute('data-px-owns-zoom', '');
+  opts.container.setAttribute('data-px-owns-zoom', ''); opts.container.setAttribute('data-px-owns-format-keys', ''); // and Ctrl+B, Ctrl+I, Ctrl+U are the sheet's (keybindingService.ts)
   opts.container.setAttribute('role', 'region'); opts.container.setAttribute('aria-keyshortcuts', 'F6'); opts.container.setAttribute('aria-label', 'Spreadsheet. Tab moves between cells; F6 moves to the next area.'); // Tab moves cells, as in Excel: say how to leave (WCAG 2.1.2)
   const sheetsPresetConfig = {
     container: opts.container,
@@ -988,7 +988,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       if (disposed) return;
       disposed = true;
       renderedResolve();
-      opts.container.removeAttribute('data-px-owns-zoom');
+      opts.container.removeAttribute('data-px-owns-zoom'); opts.container.removeAttribute('data-px-owns-format-keys');
       liveEngines.set(_hostsAlive = Math.max(0, _hostsAlive - 1));
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);

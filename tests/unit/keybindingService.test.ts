@@ -160,6 +160,44 @@ describe('KeybindingService', () => {
 
   // ── Last-wins priority ──
 
+  // Found on the built app (2026-11-26): Ctrl+B in a page hid the sidebar and made nothing bold; in a
+  // sheet it did both. The app's binding fired from the capture phase before the surface saw the key.
+  describe('bold, italic and underline stay with a surface that has them', () => {
+    function surface(owns: boolean): HTMLElement {
+      const el = document.createElement('div');
+      if (owns) el.setAttribute('data-px-owns-format-keys', '');
+      const inner = document.createElement('p');
+      el.appendChild(inner);
+      document.body.appendChild(el);
+      return inner;
+    }
+
+    it('Ctrl+B, Ctrl+I and Ctrl+U inside it do not run the app\'s binding, and the key is left to the surface', () => {
+      for (const [key, cmd] of [['b', 'cmd.toggleLeft'], ['i', 'cmd.i'], ['u', 'cmd.u']] as const) {
+        commandService.addCommand(cmd);
+        service.registerKeybinding(`Ctrl+${key.toUpperCase()}`, cmd);
+        const event = fireKeydown(key, { ctrlKey: true, target: surface(true) });
+        expect(event.defaultPrevented).toBe(false);
+      }
+      expect(commandService.getExecuted()).toEqual([]);
+    });
+
+    it('outside such a surface the binding runs as before', () => {
+      commandService.addCommand('cmd.toggleLeft');
+      service.registerKeybinding('Ctrl+B', 'cmd.toggleLeft');
+      fireKeydown('b', { ctrlKey: true, target: surface(false) });
+      fireKeydown('b', { ctrlKey: true });
+      expect(commandService.getExecuted()).toEqual(['cmd.toggleLeft', 'cmd.toggleLeft']);
+    });
+
+    it('other keys of the app still work inside it', () => {
+      commandService.addCommand('cmd.palette');
+      service.registerKeybinding('Ctrl+J', 'cmd.palette');
+      fireKeydown('j', { ctrlKey: true, target: surface(true) });
+      expect(commandService.getExecuted()).toEqual(['cmd.palette']);
+    });
+  });
+
   describe('last-wins priority', () => {
     it('last registered binding wins for same key', async () => {
       commandService.addCommand('cmd.first');
