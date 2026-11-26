@@ -4088,6 +4088,7 @@ checks, the builds stay one to a session):**
     and the image editor probe's 34 failures.
 23. "Where tools look unlike each other": measure again now that the
     frame and the look have changed, then raise what is left with him.
+    **Measured; what is left is listed for him.**
 
 **Needs him or his machine, so not scheduled:** his verdicts on chat,
 Enhance, the real edits and Style Text on his own model and card;
@@ -4559,6 +4560,42 @@ started: skipped, with the reason.**
 - **For him:** either a session in the Default environment (which can
   read the site), or his screenshots of the pages he means. The Home
   source point and `api.home` are in the code and wait for it.
+
+**Item 23, "Where tools look unlike each other": measured again
+(2026-11-26, after this run's work). What is left is for him.**
+The visual probe on its 26 screens, against the first measurement:
+- *Gone since then:* the rows under the target size (eleven in the
+  frame; one is left, the tab strip's scroll button, 20 px wide); the
+  two cut-off labels in Tools and Extensions; three of the eight front
+  pages with no kit header (Tools and Extensions and Study have it;
+  eight were counted, six are left).
+- *Left, by kind:*
+  - six front pages draw their own header or none: Home, Dashboard,
+    Workspace Graph, Flashcards, Concept Lab, Creations;
+  - two titles off the common size (22 px at 500 on 13 of 15 screens):
+    Welcome (28 px at 300) and Creations (34 px, its front page from
+    the look pass, which the baseline does not hold);
+  - four radii off the scale: the Dashboard timer's widget (8 px and
+    2 px), a 3 px badge in Atelier, a 13.2 px portrait in Creations;
+  - four field heights off the control heights: Home's search (40 px),
+    Settings' search (31 px), five fields of Worksheets' Settings (30
+    and 31 px);
+  - one label cut off with nothing that gives the whole of it, on
+    Worksheets' home;
+  - two type sizes off the scale: Welcome's title and Creations'
+    portrait letters.
+  Nothing off the three faces, nothing in capitals, no view with two
+  primary buttons.
+- **For him:** the six front pages are the part a person sees. Home
+  and Welcome go with piece 4. For the other four, either the kit's
+  header (as Study and Tools and Extensions took in this run) or the
+  probe told that a front page may draw its own; Flashcards' is now
+  the day's work as its title, which is a header in all but name. The
+  rest are a line each and can be done in one sitting on his word.
+- *Still not measured,* as the entry says: spacing, alignment,
+  hierarchy and whether a row or a toolbar has one form across tools
+  (the `visual-evaluator` agent's part, not run), and full screens (the
+  seeded workspace is nearly empty).
 
 ## Verification owed
 
