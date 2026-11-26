@@ -11,11 +11,9 @@ import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, type Event } from '../platform/events.js';
 import { $, attachPopupDismiss, layoutPopup } from '../ui/dom.js';
 import { createButton, createEmptyState, createIconButton, createSectionLabel, createSurface } from '../ui/kit.js';
-import { createIconElement } from '../ui/iconRegistry.js';
 import { formatRelativeTime } from '../ui/relativeTime.js';
 import type { INotification, NotificationService } from '../api/notificationService.js';
 
-const SEVERITY_ICON: Record<string, string> = { information: 'info', warning: 'triangle-alert', error: 'octagon-alert' };
 
 export class NotificationCenter extends Disposable {
   private readonly _arrived = new Map<string, number>();
@@ -125,9 +123,7 @@ export class NotificationCenter extends Disposable {
   private _renderRow(n: INotification, arrived: number | undefined): HTMLElement {
     const row = $('div.parallx-notification-center-item');
     row.dataset.severity = n.severity;
-    const icon = createIconElement(SEVERITY_ICON[n.severity] ?? 'info', 16);
-    icon.classList.add('parallx-notification-center-icon');
-    row.appendChild(icon);
+    // The kind is one pigment dot, drawn by the stylesheet from data-severity (as on the notice itself).
     const body = $('div.parallx-notification-center-body');
     const msg = $('div.parallx-notification-center-message');
     msg.textContent = n.message;

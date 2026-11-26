@@ -74,43 +74,26 @@
   flex: 1;
 }
 
-/* Severity icon — a tinted rounded tile carrying the level's hue. */
+/* The kind of a notice is one pigment dot (the look's piece 3, his 4A):
+   done or told, a heads-up, failed. The level is also in the notice's role
+   and words; the drawing inside the dot's element is not shown. */
 .parallx-notification-icon {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--px-radius-md);
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: var(--px-radius-full);
+  background-color: var(--px-success);
 }
-
-.parallx-notification-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.parallx-notification-information .parallx-notification-icon {
-  color: var(--px-info);
-  background-color: rgba(var(--px-blue-rgb), 0.14);
-}
-
-.parallx-notification-warning .parallx-notification-icon {
-  color: var(--px-warning);
-  background-color: var(--px-warning-soft);
-}
-
-.parallx-notification-error .parallx-notification-icon {
-  color: var(--px-danger);
-  background-color: var(--px-danger-soft);
-}
+.parallx-notification-icon svg { display: none; }
+.parallx-notification-warning .parallx-notification-icon { background-color: var(--px-warning); }
+.parallx-notification-error .parallx-notification-icon { background-color: var(--px-danger); }
 
 /* Message text */
 .parallx-notification-message {
   flex: 1;
   line-height: var(--px-leading-base);
   word-break: break-word;
-  padding-top: 3px; /* optical-centre against the icon tile */
 }
 
 /* ── Prompt-shaped dialog (actions present) ───────────────────────────────── */

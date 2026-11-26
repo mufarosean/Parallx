@@ -2254,12 +2254,12 @@ html, body {
 .parallx-notification-center-group { padding: var(--px-space-3) var(--px-space-2) var(--px-space-1); }
 .parallx-notification-center-item { display: flex; align-items: flex-start; gap: var(--px-space-3); padding: var(--px-space-2); border-radius: var(--px-radius-md); }
 .parallx-notification-center-item:hover, .parallx-notification-center-item:focus-within { background: var(--px-surface-hover); }
-.parallx-notification-center-icon { flex-shrink: 0; margin-top: 2px; color: var(--px-info, var(--px-accent)); }
-.parallx-notification-center-item[data-severity="warning"] .parallx-notification-center-icon { color: var(--px-warning); }
-.parallx-notification-center-item[data-severity="error"] .parallx-notification-center-icon { color: var(--px-danger); }
+.parallx-notification-center-item::before { content: ''; flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: var(--px-radius-full); background: var(--px-success); } /* one pigment dot for a notice's kind, as on the notice itself */
+.parallx-notification-center-item[data-severity="warning"]::before { background: var(--px-warning); }
+.parallx-notification-center-item[data-severity="error"]::before { background: var(--px-danger); }
 .parallx-notification-center-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .parallx-notification-center-message { font-size: var(--px-text-base); line-height: var(--px-leading-base); word-break: break-word; }
-.parallx-notification-center-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.parallx-notification-center-meta { font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .parallx-notification-center-dismiss { flex-shrink: 0; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .parallx-notification-center-item:hover .parallx-notification-center-dismiss,
 .parallx-notification-center-item:focus-within .parallx-notification-center-dismiss,

@@ -369,12 +369,13 @@
      height cap. */
   min-width: var(--px-menu-w-sm);
   max-width: var(--px-menu-w-lg);
-  padding: 4px 0;
-  background: var(--vscode-menu-background);
+  /* A menu is a rounded sheet lifted off the window (the look's piece 3). */
+  padding: 6px;
+  background: var(--px-bg-elevated);
   color: var(--vscode-menu-foreground);
-  border: 1px solid var(--vscode-menu-border);
-  border-radius: 4px;
-  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg);
   font-size: var(--px-text-base);
   outline: none;
   overflow-y: auto;
@@ -388,7 +389,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 24px 4px 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: var(--px-radius-md);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -455,21 +458,22 @@
 
 .context-menu-item-keybinding {
   margin-left: 24px;
-  font-size: var(--px-text-base);
+  font-family: var(--px-font-mono);
+  font-size: var(--px-text-xs);
   opacity: 0.7;
   flex-shrink: 0;
 }
 
 .context-menu-separator {
   height: 1px;
-  margin: 4px 8px;
+  margin: 5px 4px;
   background: var(--vscode-menu-separatorBackground);
 }
 
 /* Submenu arrow indicator */
 .context-menu-submenu-arrow {
   margin-left: 24px;
-  font-size: var(--px-text-xs);
+  display: inline-flex;
   opacity: 0.7;
   flex-shrink: 0;
 }

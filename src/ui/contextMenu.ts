@@ -12,6 +12,7 @@
 import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { layoutPopup } from './dom.js';
+import { createIconElement } from './iconRegistry.js';
 import { scene } from './scene.js';
 import { enterMode, type ModeHandle } from './interactionMode.js';
 
@@ -406,7 +407,7 @@ export class ContextMenu extends Disposable {
         row.setAttribute('aria-haspopup', 'menu');
         const arrow = document.createElement('span');
         arrow.classList.add('context-menu-submenu-arrow');
-        arrow.textContent = '\u276F'; // ❯
+        arrow.appendChild(createIconElement('chevron-right', 12)); // the app's chevron, not a text arrow
         row.appendChild(arrow);
       } else if (item.keybinding) {
         // Keybinding (only when no submenu)

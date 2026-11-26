@@ -4066,7 +4066,8 @@ checks, the builds stay one to a session):**
     and filters off the page). **The doubles are off; the pages'
     redrawing is left.**
 14. Piece 7, the PDF viewer. **Done.**
-15. Piece 3, menus, notices and the Settings dialog.
+15. Piece 3, menus, notices and the Settings dialog. **Done, but for icons on
+    the menu bar's entries.**
 16. Piece 5, chat.
 17. Piece 6, second half: a .md file opens as a page.
 18. Piece 4, Home and Welcome as one page (the largest; it has missed
@@ -4435,6 +4436,41 @@ page is not done.**
   panels were not looked at with the pill.
 - *Not checked:* a long PDF; a PDF beside a Study session (the pill is
   then centred in its own half).
+
+**Item 15, the look's piece 3: menus, notices and the Settings dialog.
+Menus, notices and the bell's list are restyled; Settings already was;
+icons on the menu bar's entries are not chosen.**
+- *What was there:* a menu was a square-cornered box of flush rows,
+  its submenu mark the character "❯". A notice was already a lifted
+  rounded sheet, with its kind as an icon in a tinted tile; the bell's
+  list drew the same icons. Settings was already a wide rounded sheet
+  (980 px) with its title in the display face: his 5B asks no more of
+  it, and nothing was changed there.
+- *Menus, built:* every menu (the menu bar's, context menus, a tool's)
+  is a rounded sheet lifted off the window, its rows inset, rounded
+  and at least 28 px, shortcuts in the mono face, a submenu marked by
+  the chevron icon. This closes the one mark item 10 left.
+- *Notices, built:* a notice's kind is one pigment dot (the success
+  colour for done or told, the warning colour for a heads-up, the
+  danger colour for failed); the bell's list draws the same dot and
+  its time in the mono face.
+- *Not built:* an icon on each entry of the menu bar. A menu shows an
+  icon wherever its caller gives one (the page's and the tools' menus
+  do); the menu bar's entries come from commands, seven of which name
+  an icon. Which icon each of some sixty entries takes is a choice for
+  him or a drawing, not a guess. "At most one action" on a notice is
+  the caller's: nothing enforces it.
+- *Decided, for him to overrule:* a plain "information" notice takes
+  the success colour (the drawing's "viridian done"); the app has no
+  separate kind for "done".
+- *Seen and left:* notices stack at the window's bottom left, over the
+  sidebar's two foot rows.
+- *Checked:* `tests/probes/floating-parts-probe.mjs` (new, 16 of 16 on
+  the built app: a menu opened and walked by keys, a context menu, a
+  submenu's mark, three notices and the bell's list read back, the
+  Settings sheet); the keyboard audit's first screen with its touch,
+  popup and dialog passes (0, ten dialogs); the visual probe on the
+  frame and Settings (nothing rose); typecheck; the unit suite.
 
 ## Verification owed
 
