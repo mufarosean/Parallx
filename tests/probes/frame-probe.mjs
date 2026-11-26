@@ -219,17 +219,39 @@ try {
   // The sections of the column: each can be put elsewhere in it, by its grip or its three dots.
   const sections = () => page.evaluate(() => [['tools', '.sidebar-tools'], ['open', '.sidebar-open'], ['view', '.sidebar-header'], ['foot', '.sidebar-foot']].map(([n, sel]) => [n, Math.round(document.querySelector(sel).getBoundingClientRect().top)]).sort((a, b) => a[1] - b[1]).map((x) => x[0]).join(' '));
   check('the sections start in their default places', (await sections()) === 'tools open view foot', await sections());
-  const openBox = await page.evaluate(() => { const r = document.querySelector('.sidebar-open').getBoundingClientRect(); return { x: r.x + 60, y: r.y + 14 }; });
+  const openBox = await page.evaluate(() => { const r = document.querySelector('.column-open-label').getBoundingClientRect(); return { x: r.x + 50, y: r.y + r.height / 2 }; });
   await page.mouse.move(openBox.x, openBox.y); await page.waitForTimeout(400);
-  const sGrip = await page.evaluate(() => { const g = document.querySelector('.sidebar-open > .column-section-grip'); const m = document.querySelector('.sidebar-open > .column-section-more'); const r = g.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, grip: getComputedStyle(g).pointerEvents, more: getComputedStyle(m).pointerEvents, away: getComputedStyle(document.querySelector('.sidebar-foot > .column-section-more')).pointerEvents, names: [g.getAttribute('aria-label'), m.getAttribute('aria-label')] }; });
-  // (They fade in; a hidden window draws no frame to fade on, so what is read is whether they take the pointer.)
-  check('pointing at a section brings up its grip and its three dots, each named, and no other section\'s', sGrip.grip === 'auto' && sGrip.more === 'auto' && sGrip.away === 'none' && sGrip.names.every((n) => !!n), sGrip);
+  const dots = await page.evaluate(() => { const m = document.querySelector('.sidebar-open > .column-section-more'); return { more: getComputedStyle(m).pointerEvents, away: getComputedStyle(document.querySelector('.sidebar-foot > .column-section-more')).pointerEvents, name: m.getAttribute('aria-label'), grips: document.querySelectorAll('.column-section-grip, .sidebar-grip').length }; });
+  // (The dots fade in; a hidden window draws no frame to fade on, so what is read is whether they take the pointer.)
+  check('pointing at a section brings up its three dots, named, and no other section\'s; there is no separate handle', dots.more === 'auto' && dots.away === 'none' && !!dots.name && dots.grips === 0, dots);
+  const dragFrom = async (from, to) => {
+    await page.mouse.move(from.x, from.y); await page.mouse.down();
+    for (let i = 1; i <= 18; i++) { await page.mouse.move(from.x + (to.x - from.x) * i / 18, from.y + (to.y - from.y) * i / 18); await page.waitForTimeout(40); }
+    await page.waitForTimeout(150); await page.mouse.up(); await page.waitForTimeout(900);
+  };
   const footBox = await page.evaluate(() => { const r = document.querySelector('.sidebar-foot').getBoundingClientRect(); return { x: r.x + 80, y: r.bottom - 8 }; });
-  await page.mouse.move(sGrip.x, sGrip.y); await page.mouse.down();
-  for (let i = 1; i <= 16; i++) { await page.mouse.move(sGrip.x + (footBox.x - sGrip.x) * i / 16, sGrip.y + (footBox.y - sGrip.y) * i / 16); await page.waitForTimeout(40); }
-  await page.mouse.up(); await page.waitForTimeout(600);
-  check('Open dragged by its grip under the two foot rows lands there', (await sections()) === 'tools view foot open', await sections());
+  await dragFrom(openBox, footBox);
+  check('Open, taken by its own label and dropped under the two foot rows, lands there', (await sections()) === 'tools view foot open', await sections());
   check('the open tool\'s list still has room after the move', await page.evaluate(() => document.querySelector('.sidebar-views').getBoundingClientRect().height > 120), null);
+  // Taken out of the sidebar: dropped beside the editor it is a box of its own, as a tool's list would be.
+  const inBox = () => page.evaluate(() => Object.fromEntries([['tools', '.sidebar-tools'], ['open', '.sidebar-open'], ['foot', '.sidebar-foot']].map(([n, sel]) => { const e = document.querySelector(sel); return [n, e.closest('[data-part-id="workbench.parts.sidebar"]') ? 'sidebar' : e.closest('.container-box-card, .container-box') ? 'box' : 'nowhere']; })));
+  const label2 = await page.evaluate(() => { const r = document.querySelector('.column-open-label').getBoundingClientRect(); return { x: r.x + 50, y: r.y + r.height / 2 }; });
+  const vw0 = await page.evaluate(() => window.innerWidth);
+  await dragFrom(label2, { x: vw0 - 120, y: 420 });
+  let places = await inBox();
+  const openRect = await page.evaluate(() => { const r = document.querySelector('.sidebar-open').getBoundingClientRect(); return { x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height), rows: [...document.querySelectorAll('.sidebar-open .open-editors-item')].filter((x) => x.getClientRects().length).length }; });
+  check('Open dragged out of the sidebar becomes a box of its own beside the editor', places.open === 'box' && places.tools === 'sidebar' && places.foot === 'sidebar' && openRect.x > vw0 / 2 && openRect.rows > 0, { places, openRect });
+  check('and the sidebar keeps its other sections, the list taking the room', (await sections()).replace(' open', '').replace('open ', '') === 'tools view foot' && await page.evaluate(() => document.querySelector('.sidebar-views').getBoundingClientRect().height > 200), await sections());
+  await shot('dark-open-in-its-own-box.png');
+  await page.evaluate(() => document.querySelector('.sidebar-open .open-editors-item')?.click()); await page.waitForTimeout(500);
+  check('Open still works from its box: a row brings its editor to the front', await page.evaluate(() => document.querySelector('.editor-tab-bar .ui-tab--active .ui-tab-label')?.textContent === document.querySelector('.sidebar-open .open-editors-item .open-editors-label')?.textContent), null);
+  await cmd(page, 'workbench.action.toggleSidebar'); await page.waitForTimeout(700);
+  check('hiding the sidebar hides what is in it, and leaves the box that left it', await page.evaluate(() => !(document.querySelector('.sidebar-tools')?.getClientRects().length) && (document.querySelector('.sidebar-open')?.getClientRects().length ?? 0) > 0), null);
+  await cmd(page, 'workbench.action.toggleSidebar'); await page.waitForTimeout(700);
+  await cmd(page, 'workbench.action.resetSidebarSections'); await page.waitForTimeout(900);
+  places = await inBox();
+  check('Restore Sidebar Sections brings it back, every section in its default place', places.open === 'sidebar' && (await sections()) === 'tools open view foot', { places, order: await sections() });
+  await dragFrom(await page.evaluate(() => { const r = document.querySelector('.column-open-label').getBoundingClientRect(); return { x: r.x + 50, y: r.y + r.height / 2 }; }), await page.evaluate(() => { const r = document.querySelector('.sidebar-foot').getBoundingClientRect(); return { x: r.x + 80, y: r.bottom - 8 }; }));
   await page.evaluate(() => document.querySelector('.sidebar-tools > .column-section-more').focus());
   await page.keyboard.press('Enter'); await page.waitForTimeout(400);
   const menu = await page.evaluate(() => [...document.querySelectorAll('.context-menu .context-menu-item, .context-menu [role="menuitem"]')].map((e) => e.textContent.trim()));
@@ -240,19 +262,18 @@ try {
   await cmd(page, 'workbench.action.resetSidebarSections'); await page.waitForTimeout(400);
   check('Restore Sidebar Sections puts every section back', (await sections()) === 'tools open view foot', await sections());
 
-  // The column is grabbed at its top and moved: dragged to the right edge it lands there, and back again.
+  // The whole sidebar is moved by the open tool's name strip, with everything in it.
   const grab = async (toX) => {
-    const g = await page.evaluate(() => { const e = document.querySelector('.sidebar-grip'); const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, h: Math.round(r.height), draggable: e.draggable }; });
+    const g = await page.evaluate(() => { const e = document.querySelector('.sidebar-header'); const r = e.getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2, draggable: e.draggable }; });
     await page.mouse.move(g.x, g.y); await page.mouse.down();
-    for (let i = 1; i <= 16; i++) { await page.mouse.move(g.x + (toX - g.x) * i / 16, g.y + 200 * i / 16); await page.waitForTimeout(40); }
+    for (let i = 1; i <= 16; i++) { await page.mouse.move(g.x + (toX - g.x) * i / 16, g.y + 120 * i / 16); await page.waitForTimeout(40); }
     await page.waitForTimeout(200); await page.mouse.up(); await page.waitForTimeout(900);
     return g;
   };
   const vw = await page.evaluate(() => window.innerWidth);
-  const grip = await grab(vw - 60);
+  const strip = await grab(vw - 60);
   let moved = (await frame()).sidebar;
-  check('the column has a grip at its top', grip.draggable === true && grip.h >= 8, grip);
-  check('dragged by its top to the right edge, the column lands on the right', !!moved && moved.x > vw / 2, moved);
+  check('dragged by the tool\'s name strip to the right edge, the whole sidebar lands on the right with its sections', strip.draggable === true && !!moved && moved.x > vw / 2 && await page.evaluate(() => !!document.querySelector('[data-part-id="workbench.parts.sidebar"] .sidebar-tools') && !!document.querySelector('[data-part-id="workbench.parts.sidebar"] .sidebar-foot')), moved);
   await shot('dark-column-right.png');
   await grab(8);
   moved = (await frame()).sidebar;

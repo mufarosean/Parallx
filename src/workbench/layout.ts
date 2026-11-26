@@ -782,7 +782,6 @@ export abstract class Layout extends Disposable {
       }
     };
     arm(this._sidebar, '.part-title');
-    arm(this._sidebar, '.sidebar-grip'); // the column's top, where the hand goes to move it
     arm(this._auxiliaryBar, '.part-title');
     arm(this._panel, '.view-container-tabs');
 
@@ -791,7 +790,6 @@ export abstract class Layout extends Disposable {
     // is where the hand goes looking — palette-only recovery does not
     // exist for someone who rarely opens the palette.
     this._armPlacementMenu(this._sidebar, '.part-title');
-    this._armPlacementMenu(this._sidebar, '.sidebar-grip');
     this._armPlacementMenu(this._auxiliaryBar, '.part-title');
     this._armPlacementMenu(this._panel, '.view-container-tabs');
   }

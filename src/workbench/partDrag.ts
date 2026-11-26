@@ -259,8 +259,11 @@ export class PartDragController extends Disposable {
     // its rows, or takes a tool from the other list): the grid shows no zone
     // there and leaves the drop to it. The list sits inside the column, which
     // is in the grid, so without this both would answer the same drag.
+    // The same for a section of the sidebar dragged over the sidebar: there
+    // it is being put in another place in the order, which the sidebar marks.
     const overToolsList = (e: DragEvent): boolean =>
-      e.target instanceof Element && e.target.closest('.activity-bar') !== null;
+      e.target instanceof Element && (e.target.closest('.activity-bar') !== null
+        || (!!e.dataTransfer?.types.includes('application/x-parallx-column-section') && e.target.closest('.part-workbench-parts-sidebar') !== null));
 
     const onDragOver = (e: DragEvent): void => {
       const kind = this._dragKindOf(e);

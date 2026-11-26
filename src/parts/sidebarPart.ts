@@ -17,7 +17,7 @@ export type ColumnSection = 'tools' | 'open' | 'view' | 'foot';
 export const DEFAULT_SECTION_ORDER: readonly ColumnSection[] = ['tools', 'open', 'view', 'foot'];
 
 /**
- * The column, in its default order, top to bottom: a grip to move it by; the tools that are on,
+ * The column, in its default order, top to bottom: the tools that are on,
  * by name, under a Home row; what is open; the open tool's name and its own list, which takes the
  * height that is left; and at the foot, pinned, where tools are managed and
  * Settings. The part makes the slots and knows no tool: the workbench seats
@@ -25,7 +25,6 @@ export const DEFAULT_SECTION_ORDER: readonly ColumnSection[] = ['tools', 'open',
  */
 export class SidebarPart extends Part {
 
-  private _gripSlot: HTMLElement | undefined;
   private _toolsSlot: HTMLElement | undefined;
   private _openSlot: HTMLElement | undefined;
   private _openListSlot: HTMLElement | undefined;
@@ -73,7 +72,9 @@ export class SidebarPart extends Part {
    * takes, beyond a plain part header of `plainHeader` px: what that list loses.
    */
   chromeBeyond(plainHeader: number): number {
-    const taken = [this._gripSlot, this._toolsSlot, this._openSlot, this._headerSlot, this._footSlot].reduce((sum, el) => sum + (el?.offsetHeight ?? 0), 0);
+    // A section that left for a box of its own takes no room here.
+    const here = [this._toolsSlot, this._openSlot, this._headerSlot, this._footSlot].filter((el) => el?.parentElement === this.contentElement);
+    const taken = here.reduce((sum, el) => sum + (el?.offsetHeight ?? 0), 0);
     return Math.max(0, taken - plainHeader);
   }
 
@@ -92,6 +93,28 @@ export class SidebarPart extends Part {
   /** Which section an element of the column belongs to, if any. */
   sectionOf(target: Element | null): ColumnSection | undefined {
     return DEFAULT_SECTION_ORDER.find((id) => this.sectionElements(id).some((el) => el.contains(target)));
+  }
+
+  /** Whether the section is in the sidebar (true) or out in a box of its own. */
+  hasSection(section: ColumnSection): boolean {
+    return this.sectionElements(section).every((el) => el.parentElement === this.contentElement);
+  }
+
+  /** Hand a section's element over to a box; the open tool's list never leaves. */
+  takeSection(section: ColumnSection): HTMLElement | undefined {
+    if (section === 'view' || !this.hasSection(section)) return undefined;
+    const el = this.sectionElements(section)[0];
+    el?.remove();
+    this._onDidChangeChrome.fire();
+    return el;
+  }
+
+  /** Take a section back from its box, into the place it holds in the order. */
+  returnSection(section: ColumnSection): void {
+    const el = this.sectionElements(section)[0];
+    if (!el || this.hasSection(section)) return;
+    this.contentElement.appendChild(el);
+    this._onDidChangeChrome.fire();
   }
 
   /** Put `section` just before `before` (or last, when there is none). */
@@ -152,8 +175,6 @@ export class SidebarPart extends Part {
       return el;
     };
 
-    // The grip: the column is grabbed here, at its top, to move it.
-    this._gripSlot = slot('sidebar-grip');
     this._toolsSlot = slot('sidebar-tools');
     this._openSlot = slot('sidebar-open');
     this._openListSlot = slot('sidebar-open-list', this._openSlot);

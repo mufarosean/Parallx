@@ -398,9 +398,10 @@ export class ContainerBoxManager extends Disposable {
     // home first, then the rails, then the edges. A detached panel view's
     // home is the panel; a container's home is a rail.
     this._register(box.onDidRequestMenu(({ x, y }) => {
-      const isPanelView = containerId.startsWith('panelview:');
-      const items = isPanelView
-        ? [{ id: 'dock-left', label: 'Return To Panel', group: '1_dock' }]
+      // A panel view's home is the panel, a section of the sidebar's is the sidebar.
+      const home = containerId.startsWith('panelview:') ? 'Return To Panel' : containerId.startsWith('section:') ? 'Return To Sidebar' : undefined;
+      const items = home
+        ? [{ id: 'dock-left', label: home, group: '1_dock' }]
         : [
             { id: 'dock-left', label: 'Dock To Left Rail', group: '1_dock', order: 1 },
             { id: 'dock-right', label: 'Dock To Right Rail', group: '1_dock', order: 2 },

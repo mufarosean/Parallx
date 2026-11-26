@@ -13,6 +13,7 @@ import { createIconElement } from '../ui/iconRegistry.js';
 import { wireRibbonMenu } from './ribbonMenu.js';
 import type { SidebarPart } from '../parts/sidebarPart.js';
 import { seatColumnChrome } from './columnChrome.js';
+import { SECTION_BOX_PREFIX, dockSection, undockSection } from './columnSections.js';
 import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { appDateTimeString } from '../services/localTime.js';
 import { addDisposableListener } from '../ui/dom.js';
@@ -1129,6 +1130,7 @@ export class Workbench extends Layout {
         if (id.startsWith('panelview:')) {
           return this._undockPanelView(id.slice('panelview:'.length));
         }
+        if (id.startsWith(SECTION_BOX_PREFIX)) return undockSection(this._sidebar as SidebarPart, id);
         return this._contributionHandler.undockContainer(id);
       },
       dockContainer: (id, vc, rail) => {
@@ -1136,6 +1138,7 @@ export class Workbench extends Layout {
           this._redockPanelView(id.slice('panelview:'.length), vc);
           return;
         }
+        if (id.startsWith(SECTION_BOX_PREFIX)) return dockSection(this._sidebar as SidebarPart, id, vc);
         this._contributionHandler.dockContainer(id, vc, rail);
       },
       addFloatingView: (view, zone) => this.addFloatingView(view, zone),
@@ -2262,8 +2265,7 @@ export class Workbench extends Layout {
       sidebarContent.appendChild(defaultContainer.element);
     }
 
-    // The foot grows with the tools that are on; the open tool's list takes the rest.
-    this._register((this._sidebar as SidebarPart).onDidChangeChrome(() => this._layoutViewContainers()));
+    this._register((this._sidebar as SidebarPart).onDidChangeChrome(() => this._layoutViewContainers())); // the open tool's list takes what the sections leave
 
     // Right-click on either ribbon: hide icons, or show them again.
     this._register(wireRibbonMenu(this._activityBarPart, PART_ICON_PREFIX));
@@ -3655,7 +3657,7 @@ export class Workbench extends Layout {
     // Every tool that is on has contributed its containers by now: a floating
     // box saved for a container nobody contributes (its tool is off) goes,
     // rather than waiting forever with "This view is loading".
-    this._containerBoxes.dropOrphans((id) => !!this._viewContribution.getContainer(id));
+    this._containerBoxes.dropOrphans((id) => id.startsWith(SECTION_BOX_PREFIX) || !!this._viewContribution.getContainer(id));
 
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();

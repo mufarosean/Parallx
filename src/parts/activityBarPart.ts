@@ -384,8 +384,11 @@ export class ActivityBarPart extends Part {
     // FOREIGN container drags — an icon from the other ribbon, a detached
     // box's header — dock into this bar's rail on drop. Internal reorders
     // (_draggedIconId set) keep their own per-button handling above.
+    // (A section of the sidebar carries the container payload too, to reach
+    // the layout's places; it is no tool, and a tools list does not take it.)
     const isForeignContainerDrag = (e: DragEvent): boolean =>
-      !this._draggedIconId && (e.dataTransfer?.types.includes(CONTAINER_DRAG_TYPE) ?? false);
+      !this._draggedIconId && (e.dataTransfer?.types.includes(CONTAINER_DRAG_TYPE) ?? false)
+      && !e.dataTransfer?.types.includes('application/x-parallx-column-section');
 
     container.addEventListener('dragover', (e) => {
       if (!isForeignContainerDrag(e)) return;

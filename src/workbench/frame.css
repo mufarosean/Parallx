@@ -16,42 +16,17 @@
   min-height: 0;
 }
 
-/* The grip: the column's top edge. It is grabbed to move the whole column,
-   and shows a short bar while the column is pointed at, focused in or touched. */
-.sidebar-grip {
-  flex: none;
-  height: 10px;
-  position: relative;
-}
-.sidebar-grip::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 4px;
-  width: 32px;
-  height: 3px;
-  margin-left: -16px;
-  border-radius: var(--px-radius-full);
-  background: var(--px-border-strong);
-  opacity: 0;
-  transition: opacity var(--px-dur-fast) var(--px-ease);
-}
-.part-workbench-parts-sidebar:hover .sidebar-grip::after,
-.part-workbench-parts-sidebar:focus-within .sidebar-grip::after,
-[data-input-modality="touch"] .sidebar-grip::after { opacity: 1; }
-
-.sidebar-grip { order: -1; }
-
-/* ── Sections of the column that can be put elsewhere in it ──
-   Each of the tools, Open and the two rows at the foot shows a grip and
-   three dots at its top right while it is pointed at, focused in or touched:
-   the grip is dragged to another place in the column, the dots open Move Up,
-   Move Down and Restore Default Places. */
+/* ── Sections of the column: each is moved by taking hold of it ──
+   The tools, Open and the two rows at the foot are dragged from their own
+   top (or anywhere in them that is not itself dragged): to another place in
+   the sidebar, or out of it to a box of their own. Three dots show at a
+   section's top right while it is pointed at, focused in or touched, with
+   the same moves as a menu. */
 .sidebar-tools, .sidebar-open, .sidebar-foot { position: relative; }
-.column-section-grip.px-btn,
 .column-section-more.px-btn {
   position: absolute;
   top: 2px;
+  right: 8px;
   z-index: 2;
   width: 22px;
   height: 22px;
@@ -64,22 +39,25 @@
   pointer-events: none;
   transition: opacity var(--px-dur-fast) var(--px-ease);
 }
-.column-section-more.px-btn { right: 8px; }
-.column-section-grip.px-btn { right: 34px; cursor: grab; }
-.column-section-grip.px-btn:active { cursor: grabbing; }
-.sidebar-tools:hover > .column-section-grip, .sidebar-tools:focus-within > .column-section-grip, [data-input-modality="touch"] .sidebar-tools > .column-section-grip,
 .sidebar-tools:hover > .column-section-more, .sidebar-tools:focus-within > .column-section-more, [data-input-modality="touch"] .sidebar-tools > .column-section-more,
-.sidebar-open:hover > .column-section-grip, .sidebar-open:focus-within > .column-section-grip, [data-input-modality="touch"] .sidebar-open > .column-section-grip,
 .sidebar-open:hover > .column-section-more, .sidebar-open:focus-within > .column-section-more, [data-input-modality="touch"] .sidebar-open > .column-section-more,
-.sidebar-foot:hover > .column-section-grip, .sidebar-foot:focus-within > .column-section-grip, [data-input-modality="touch"] .sidebar-foot > .column-section-grip,
 .sidebar-foot:hover > .column-section-more, .sidebar-foot:focus-within > .column-section-more, [data-input-modality="touch"] .sidebar-foot > .column-section-more {
   opacity: 1;
   pointer-events: auto;
 }
-.column-section-grip.px-btn:hover, .column-section-more.px-btn:hover { color: var(--px-text); }
+.column-section-more.px-btn:hover { color: var(--px-text); }
 /* Where a dragged section would land. */
 .column-drop-before { box-shadow: inset 0 2px 0 0 var(--px-accent); }
 .column-drop-after { box-shadow: inset 0 -2px 0 0 var(--px-accent); }
+/* A section out in a box of its own fills that box. */
+.container-box .sidebar-tools, .container-box .sidebar-open, .container-box .sidebar-foot {
+  max-height: none;
+  height: 100%;
+  box-sizing: border-box;
+  border-top: 0;
+  overflow-y: auto;
+}
+.container-box .sidebar-open .open-editors-view { max-height: none; }
 
 /* Home and the tools. A long list of tools scrolls here, never past half the column. */
 .sidebar-tools {
@@ -90,7 +68,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 0 8px 6px;
+  padding: 8px 8px 6px;
 }
 .sidebar-tools > .part-workbench-parts-activitybar {
   /* A part the grid no longer sizes: the column's width, its own rows' height. */

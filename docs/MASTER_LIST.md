@@ -2707,11 +2707,42 @@ Built:
 - `frame-probe.mjs` drives all of it on the app (46 checks, no
   problem): the reorder with no clash, a section dragged by its grip,
   the menu by keys, the restore, the column moved by its top.
-*Not built, the next step if he wants it:* a section leaving the
-primary sidebar for another place (the right side, an edge), as a
-tool's own box can. *Not checked:* a finger on a grip (the grips use
-the browser's own drag, as every other move in the app does);
-the keyboard audit and the visual probe since the restack.
+**His reply, and what changed (2026-11-26).** His words, spelling
+corrected: "why is that not built yet? also, why do we need two
+different ways of dragging? Like why do we have a handle, why can't we
+just drag the window physically from the top like we had before? It is
+more intuitive and less clunky than adding a new icon that shows on
+hover."
+- *One way to drag.* The hover grip icon is gone, and so is the thin
+  grip that had been put at the sidebar's top. A section (the tools,
+  Open, the two foot rows) is taken hold of itself: by its own top, or
+  anywhere in it that is not itself something dragged (a tool's row
+  still reorders in its list). The open tool's name strip moves the
+  whole sidebar with everything in it, as it did before the frame.
+- *Out of the sidebar.* A section dropped outside the sidebar becomes
+  a box of its own there, through the pipeline a tool's box already
+  uses (`containerBox.ts`, under `section:<name>`;
+  `workbench/columnSections.ts`). Its box has the box's usual header
+  and menu, with Return To Sidebar; dropped back on the sidebar it
+  returns to its place in the order. Hiding the sidebar hides what is
+  in it and leaves a box that left it. A restart keeps each section
+  where it was put.
+- *The three dots* stay, on a section while it is pointed at, focused
+  in or touched: Move Up, Move Down, Move To Left, Right or Bottom
+  Edge, Restore Default Places (or Return To Sidebar, from a box).
+  That is the keyboard's way.
+- Driven on the app by `frame-probe.mjs` (no problem): Open taken by
+  its label to another place in the sidebar, then out beside the
+  editor as a box that still opens its tabs, the sidebar hidden and
+  shown around it, Restore bringing it back, the whole sidebar moved
+  by the name strip. Seen once by hand-written script and not kept as
+  a check: the tools section moved by its top edge, and both places
+  kept across a restart.
+*Not checked:* a finger on any of these drags (they use the browser's
+own drag, as every other move in the app does); the keyboard audit
+and the visual probe since the restack; the two foot rows in a box.
+One thing a person will meet: dragging a row of Open, or a foot row,
+moves its whole section, since those rows are not themselves dragged.
 
 ### Home: a redesign, not yet designed
 

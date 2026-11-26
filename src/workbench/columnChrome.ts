@@ -16,14 +16,15 @@ import { DEFAULT_SECTION_ORDER, type ColumnSection, type SidebarPart } from '../
 import { createButton, createIconButton, createMenu } from '../ui/kit.js';
 import { whenClosedPanesSettle } from '../editor/editorPane.js';
 import { createOpenEditorsView, type IOpenEditorsHost } from './openEditorsView.js';
+import { SECTION_BOX_PREFIX, SECTION_NAMES } from './columnSections.js';
+import { CONTAINER_DRAG_TYPE, type ContainerDragData } from '../platform/dragTypes.js';
 
 /** Opens a section's menu (Move Up, Move Down, Restore Default Places); what each section's three dots run. */
 export const SECTION_MENU_COMMAND = 'workbench.action.sidebarSectionMenu';
 /** Every section of the column back in its default place. */
 export const RESET_SECTIONS_COMMAND = 'workbench.action.resetSidebarSections';
-/** What a section's grip carries while it is dragged. */
-const SECTION_DRAG_TYPE = 'application/x-parallx-column-section';
-const SECTION_NAMES: Record<ColumnSection, string> = { tools: 'Tools', open: 'Open', view: 'Tool List', foot: 'Settings Rows' };
+/** Marks a drag as a section's, so the sidebar can tell it from a tool's while it is over it. */
+export const SECTION_DRAG_TYPE = 'application/x-parallx-column-section';
 
 /** Folds and unfolds Open; in the palette as View: Fold Open Editors. */
 export const TOGGLE_OPEN_COMMAND = 'workbench.action.toggleOpenEditors';
@@ -91,32 +92,38 @@ export function seatColumnChrome(sidebar: SidebarPart, services: ServiceCollecti
 }
 
 /**
- * Each section of the column can be put elsewhere in it: dragged by the grip
- * that shows at its top while it is pointed at, or moved a place up or down
- * from the three dots beside the grip. The open tool's list keeps its own
- * header and moves as the others move round it. The order is the sidebar
- * part's, kept with the workspace's layout; every section stays inside the
- * primary sidebar, so hiding the sidebar hides them all.
+ * Each section of the column (the tools, Open, the two rows at the foot) is
+ * moved by taking hold of it: dragged from its own top, or from anywhere in
+ * it that is not itself something to drag. Dropped elsewhere in the sidebar
+ * it takes that place; dropped outside, it becomes a box of its own there,
+ * as a tool's list does, and docking that box brings it back. The three
+ * dots that show at a section's top right while it is pointed at, focused in
+ * or touched do the same from a menu, which is how the keys do it. The open
+ * tool's list is the sidebar's own: its name strip moves the whole sidebar.
+ * Nothing can be closed; Restore Default Places puts every section back.
  */
 function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, requestSave: () => void, store: DisposableStore): void {
-  const bars = new Map<ColumnSection, HTMLElement>();
-  for (const section of ['tools', 'open', 'foot'] as const) {
+  const movable = ['tools', 'open', 'foot'] as const;
+  const boxId = (section: ColumnSection): string => `${SECTION_BOX_PREFIX}${section}`;
+  const run = (id: string, ...args: unknown[]): void => {
+    if (services.has(ICommandService)) void services.get(ICommandService).executeCommand(id, ...args);
+  };
+  const dots = new Map<ColumnSection, HTMLElement>();
+  for (const section of movable) {
     const host = sidebar.sectionElements(section)[0];
     if (!host) continue;
-    const grip = createIconButton(null, { id: `column.section.${section}.grip`, icon: 'grip-horizontal', title: `Drag to Move ${SECTION_NAMES[section]}`, size: 'sm', command: SECTION_MENU_COMMAND, args: [section] });
-    grip.classList.add('column-section-grip');
-    grip.draggable = true;
-    grip.dataset.section = section;
-    grip.tabIndex = -1; // a handle for the pointer; the keys move a section from the three dots
+    host.draggable = true;
+    host.dataset.section = section;
     const more = createIconButton(null, { id: `column.section.${section}.more`, icon: 'ellipsis', title: `${SECTION_NAMES[section]}: Move…`, size: 'sm', command: SECTION_MENU_COMMAND, args: [section] });
     more.classList.add('column-section-more');
     // First in the section, so the keys reach its three dots before what it holds.
-    host.prepend(more, grip);
-    bars.set(section, more);
+    host.prepend(more);
+    dots.set(section, more);
   }
 
-  // The drag: a grip carries its section; the section under the pointer shows
-  // on which side it would land; the drop places it there.
+  // The drag. A section carries the same payload a tool's list does, so the
+  // layout offers it the same places outside the sidebar; inside the sidebar
+  // the drop is a new place in the order, marked by a line.
   const column = sidebar.element;
   let dragged: ColumnSection | undefined;
   const clearMarks = (): void => { for (const el of column.querySelectorAll('.column-drop-before, .column-drop-after')) el.classList.remove('column-drop-before', 'column-drop-after'); };
@@ -129,12 +136,14 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
     return { section, before: e.clientY < (top + bottom) / 2 };
   };
   const onDragStart = (e: DragEvent): void => {
-    const grip = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('.column-section-grip') : null;
-    if (!grip || !e.dataTransfer) return;
-    dragged = grip.dataset.section as ColumnSection;
-    e.dataTransfer.setData(SECTION_DRAG_TYPE, dragged);
+    // Only a drag that starts on the section itself: a tool's row inside it is its own drag.
+    const origin = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[draggable="true"]') : null;
+    const section = origin?.dataset.section as ColumnSection | undefined;
+    if (!origin || !section || !movable.includes(section as typeof movable[number]) || !e.dataTransfer) return;
+    dragged = section;
+    e.dataTransfer.setData(SECTION_DRAG_TYPE, section);
+    e.dataTransfer.setData(CONTAINER_DRAG_TYPE, JSON.stringify({ containerId: boxId(section) } satisfies ContainerDragData));
     e.dataTransfer.effectAllowed = 'move';
-    e.stopPropagation(); // not a move of the whole column
   };
   const onDragOver = (e: DragEvent): void => {
     if (!dragged || !e.dataTransfer?.types.includes(SECTION_DRAG_TYPE)) return;
@@ -158,12 +167,14 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
     requestSave();
   };
   const onDragEnd = (): void => { dragged = undefined; clearMarks(); };
-  column.addEventListener('dragstart', onDragStart);
+  // The sections' own elements hear the start wherever they are (in the sidebar or in a box).
+  const hosts = movable.map((section) => sidebar.sectionElements(section)[0]).filter((el): el is HTMLElement => !!el);
+  for (const host of hosts) host.addEventListener('dragstart', onDragStart);
   column.addEventListener('dragover', onDragOver);
   column.addEventListener('drop', onDrop);
   document.addEventListener('dragend', onDragEnd);
   store.add({ dispose: () => {
-    column.removeEventListener('dragstart', onDragStart);
+    for (const host of hosts) { host.removeEventListener('dragstart', onDragStart); host.draggable = false; }
     column.removeEventListener('dragover', onDragOver);
     column.removeEventListener('drop', onDrop);
     document.removeEventListener('dragend', onDragEnd);
@@ -171,19 +182,35 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
 
   if (!services.has(ICommandService)) return;
   const commands = services.get(ICommandService) as unknown as CommandService;
+  const restore = (): void => {
+    for (const section of movable) if (!sidebar.hasSection(section)) run('workbench.action.container.dock', boxId(section), 'left');
+    sidebar.resetSections();
+    requestSave();
+  };
   store.add(commands.registerCommand({
     id: SECTION_MENU_COMMAND,
     title: 'Move a Sidebar Section…',
     category: 'View',
     handler: (_ctx, which?: unknown) => {
-      const section = DEFAULT_SECTION_ORDER.find((id) => id === which) ?? 'tools';
-      const anchor = bars.get(section) ?? sidebar.element;
+      const section = movable.find((id) => id === which) ?? 'tools';
+      const anchor = dots.get(section) ?? sidebar.element;
+      const here = sidebar.hasSection(section);
       const at = sidebar.sectionOrder.indexOf(section);
+      const out = (edge: 'left' | 'right' | 'bottom') => (): void => { run('workbench.action.container.float', boxId(section)); run('workbench.action.container.moveToEdge', boxId(section), edge); };
+      const atDefault = sidebar.sectionOrder.join() === DEFAULT_SECTION_ORDER.join() && movable.every((id) => sidebar.hasSection(id));
       createMenu(anchor, { id: 'column.section.menu', label: `${SECTION_NAMES[section]}: Move`, items: [
-        { label: 'Move Up', icon: 'arrow-up', disabled: at <= 0, onSelect: () => { sidebar.moveSection(section, -1); requestSave(); } },
-        { label: 'Move Down', icon: 'arrow-down', disabled: at >= sidebar.sectionOrder.length - 1, onSelect: () => { sidebar.moveSection(section, 1); requestSave(); } },
+        ...(here ? [
+          { label: 'Move Up', icon: 'arrow-up', disabled: at <= 0, onSelect: () => { sidebar.moveSection(section, -1); requestSave(); } },
+          { label: 'Move Down', icon: 'arrow-down', disabled: at >= sidebar.sectionOrder.length - 1, onSelect: () => { sidebar.moveSection(section, 1); requestSave(); } },
+        ] : [
+          { label: 'Return To Sidebar', icon: 'panel-left', onSelect: () => run('workbench.action.container.dock', boxId(section), 'left') },
+        ]),
         { separator: true },
-        { label: 'Restore Default Places', icon: 'rotate-ccw', disabled: sidebar.sectionOrder.join() === DEFAULT_SECTION_ORDER.join(), onSelect: () => { sidebar.resetSections(); requestSave(); } },
+        { label: 'Move To Left Edge', onSelect: out('left') },
+        { label: 'Move To Right Edge', onSelect: out('right') },
+        { label: 'Move To Bottom Edge', onSelect: out('bottom') },
+        { separator: true },
+        { label: 'Restore Default Places', icon: 'rotate-ccw', disabled: atDefault, onSelect: restore },
       ] });
     },
   }));
@@ -191,6 +218,6 @@ function seatSectionMoves(sidebar: SidebarPart, services: ServiceCollection, req
     id: RESET_SECTIONS_COMMAND,
     title: 'Restore Sidebar Sections',
     category: 'View',
-    handler: () => { sidebar.resetSections(); requestSave(); },
+    handler: restore,
   }));
 }
