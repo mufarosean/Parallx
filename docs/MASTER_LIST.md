@@ -4068,7 +4068,7 @@ checks, the builds stay one to a session):**
 14. Piece 7, the PDF viewer. **Done.**
 15. Piece 3, menus, notices and the Settings dialog. **Done, but for icons on
     the menu bar's entries.**
-16. Piece 5, chat.
+16. Piece 5, chat. **The type is done; one meta line is left.**
 17. Piece 6, second half: a .md file opens as a page.
 18. Piece 4, Home and Welcome as one page (the largest; it has missed
     twice, so it gets the bar read first).
@@ -4471,6 +4471,32 @@ icons on the menu bar's entries are not chosen.**
   Settings sheet); the keyboard audit's first screen with its touch,
   popup and dialog passes (0, ten dialogs); the visual probe on the
   frame and Settings (nothing rose); typecheck; the unit suite.
+
+**Item 16, the look's piece 5: chat (his 1A). The type is done; the
+one meta line is not.**
+- *What was there, against 1A:* his message is already a small bubble
+  at the right, the answer already plain reading text, the question
+  box already one lifted sheet, and sources already numbered marks.
+  What differed: thought, source and speed were three lines in the
+  interface face, and a source mark was a filled grey badge.
+- *Built (styles only):* the thought line and the time-and-speed line
+  are in the mono face, as meta; a numbered source mark is a small
+  mono number in an outlined box in the accent's ink.
+- *Not built:* thought, source and speed as ONE line. They are three
+  controls today (the thought opens the reasoning, Sources Considered
+  opens its list, the speed opens where the time went), each above or
+  below the answer; making them one line is a change to how an answer
+  is put together, with its tests, and wants its own session on his
+  model. A mark still reads "[1]" with its brackets, not "1".
+- *Checked:* `tests/probes/chat-look-probe.mjs` (new, 5 of 5 on the
+  built app's seeded conversation; the thought line still opens by
+  Enter); the keyboard audit on the three seeded chat screens (0); the
+  visual probe on chat (nothing found); chat's unit tests and the
+  ratchets.
+- *Not seen:* a numbered source mark on screen (the seeded conversation
+  has none; its rule was changed and is unseen), a streaming answer, a
+  long answer. His verdict on chat on his own model is still owed
+  ("Needs him or his machine").
 
 ## Verification owed
 

@@ -18,7 +18,7 @@
 
 .parallx-chat-meta.px-btn {
   padding: 0 var(--px-space-2) 0 var(--px-space-1);
-  font-size: var(--px-text-xs);
+  font-family: var(--px-font-mono); font-size: var(--px-text-xs);
   color: var(--px-text-muted);
   font-variant-numeric: tabular-nums;
 }

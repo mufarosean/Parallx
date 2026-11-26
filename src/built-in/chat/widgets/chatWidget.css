@@ -1357,7 +1357,7 @@
 
 .parallx-chat-thinking-toggle {
   cursor: pointer;
-  font-size: var(--px-text-sm, 12px);
+  font-family: var(--px-font-mono); font-size: var(--px-text-xs); /* thought, source and speed are meta: the mono face */
   color: var(--px-text-muted, var(--vscode-descriptionForeground, #868686));
   user-select: none;
   padding: 3px 0;
@@ -1599,21 +1599,20 @@
   height: 16px;
   padding: 0 4px;
   margin: 0 1px;
-  border-radius: var(--px-radius-lg);
-  background: var(--vscode-badge-background, #4d4d4d);
-  color: var(--vscode-badge-foreground, #ffffff);
-  font-size: var(--px-text-xs);
-  font-weight: 600;
-  line-height: 16px;
+  /* A numbered source mark (the look's piece 5, his 1A): a small mono number in an outlined box, in the accent's ink. */
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-accent-text);
+  font-family: var(--px-font-mono); font-size: var(--px-text-2xs);
+  font-weight: 500;
+  line-height: 14px;
   cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease);
   vertical-align: super;
   text-decoration: none;
 }
 
-.parallx-citation-badge:hover {
-  background: var(--vscode-focusBorder, #007fd4);
-}
+.parallx-citation-badge:hover { background: var(--px-accent-soft); border-color: var(--px-accent-text); }
 
 /* ── Auto-Linked Source Mentions (M15 Change 5 — Cursor-pattern) ── */
 
