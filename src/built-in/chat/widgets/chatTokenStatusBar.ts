@@ -18,6 +18,7 @@
 // which calls Ollama's /api/show endpoint to read the model's native context_length.
 
 import { Disposable, toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
+import { createIconElement } from '../../../ui/iconRegistry.js';
 import { Emitter } from '../../../platform/events.js';
 import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { $ } from '../../../ui/dom.js';
@@ -515,7 +516,7 @@ export class ChatTokenStatusBar extends Disposable {
         // Expandable row
         row.classList.add('parallx-token-popup-row-expandable');
         const chevron = $('span.parallx-token-popup-chevron');
-        chevron.textContent = '▸';
+        chevron.appendChild(createIconElement('chevron-right', 10));
         rowLabel.appendChild(chevron);
         const labelText = document.createTextNode(` ${item.label}`);
         rowLabel.appendChild(labelText);
@@ -540,7 +541,7 @@ export class ChatTokenStatusBar extends Disposable {
           e.stopPropagation();
           const expanded = subContainer.style.display !== 'none';
           subContainer.style.display = expanded ? 'none' : 'block';
-          chevron.textContent = expanded ? '▸' : '▾';
+          chevron.replaceChildren(createIconElement(expanded ? 'chevron-right' : 'chevron-down', 10));
           this._relayoutPopup();
         });
 

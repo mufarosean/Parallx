@@ -453,11 +453,12 @@
 }
 
 .tool-editor-contrib-arrow {
-  font-size: var(--px-text-xs);
   width: 14px;
-  text-align: center;
+  display: flex;
+  justify-content: center;
   color: var(--vscode-descriptionForeground);
 }
+.tool-editor-contrib-arrow svg { width: 12px; height: 12px; display: block; }
 
 .tool-editor-contrib-label {
   flex: 1;

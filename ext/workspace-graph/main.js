@@ -1487,7 +1487,7 @@ function createGraphEditor(container, api) {
       </button>
       <div style="margin:6px 0">
         <button id="__gs_refresh_history_toggle" style="background:none;border:none;color:var(--vscode-textLink-foreground,#3794ff);cursor:pointer;font-size:11px;padding:0;">
-          History ▸
+          History <span data-role="fold" style="display:inline-flex;vertical-align:middle;">${api.icons.createIconHtml('chevron-right', 12)}</span>
         </button>
       </div>
       <div id="__gs_refresh_history" style="display:none;margin:4px 0 12px;font-size:11px;color:var(--vscode-descriptionForeground,#999);"></div>
@@ -1689,11 +1689,11 @@ function createGraphEditor(container, api) {
           const isHidden = historyEl.style.display === 'none';
           if (!isHidden) {
             historyEl.style.display = 'none';
-            historyToggle.textContent = 'History ▸';
+            historyToggle.querySelector('[data-role="fold"]').style.transform = ''; // the app's chevron, turned a quarter when open
             return;
           }
           historyEl.style.display = 'block';
-          historyToggle.textContent = 'History ▾';
+          historyToggle.querySelector('[data-role="fold"]').style.transform = 'rotate(90deg)';
           historyEl.innerHTML = 'Loading…';
           try {
             const rows = await _orch.getRefreshHistory(10);
@@ -1789,7 +1789,7 @@ function createGraphEditor(container, api) {
               ${_esc(c.label)}${renameMark}
             </span>
             <span style="color:var(--vscode-descriptionForeground,#888);font-size:10px;">${c.memberCount}</span>
-            <span data-role="chevron" style="color:var(--vscode-descriptionForeground,#666);font-size:10px;">▸</span>
+            <span data-role="chevron" style="color:var(--vscode-descriptionForeground,#666);display:inline-flex;">${api.icons.createIconHtml('chevron-right', 12)}</span>
           </div>
           <div data-role="actions" style="display:none;padding:4px 4px 6px;background:var(--vscode-input-background,#1c1c1c);border-radius:2px;margin-top:2px;">
             <div style="display:flex;gap:4px;margin-bottom:4px;">
@@ -1819,7 +1819,7 @@ function createGraphEditor(container, api) {
       header.addEventListener('click', () => {
         const open = actions.style.display !== 'none';
         actions.style.display = open ? 'none' : 'block';
-        chevron.textContent = open ? '▸' : '▾';
+        chevron.style.transform = open ? '' : 'rotate(90deg)';
       });
 
       const renameInput = row.querySelector('[data-role="rename-input"]');

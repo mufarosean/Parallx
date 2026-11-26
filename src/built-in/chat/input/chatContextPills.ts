@@ -17,6 +17,7 @@
 //   Our implementation shows them ABOVE the input for pre-send transparency.
 
 import { createSurface, declareControl } from '../../../ui/kit.js';
+import { createIconElement } from '../../../ui/iconRegistry.js';
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
@@ -245,7 +246,7 @@ export class ChatContextPills extends Disposable {
     // Toggle button label
     const sourceLabel = activePills.length === 1 ? '1 source' : `${activePills.length} sources`;
     const excludeLabel = excludedCount > 0 ? ` (${excludedCount} excluded)` : '';
-    const arrow = this._expanded ? '▴' : '▾';
+    const arrow = this._expanded ? 'chevron-up' : 'chevron-down';
 
     this._toggleBtn.textContent = '';
     this._toggleBtn.setAttribute('aria-expanded', this._expanded ? 'true' : 'false');
@@ -264,7 +265,7 @@ export class ChatContextPills extends Disposable {
 
     const arrowSpan = document.createElement('span');
     arrowSpan.className = 'parallx-chat-context-pills-arrow';
-    arrowSpan.textContent = arrow;
+    arrowSpan.appendChild(createIconElement(arrow, 12));
     this._toggleBtn.appendChild(arrowSpan);
 
     this._menuHeader.innerHTML = '';

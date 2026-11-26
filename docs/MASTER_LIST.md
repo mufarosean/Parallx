@@ -3012,6 +3012,10 @@ full screens (a real bank, a real library) are not measured either.
 
 ### Text arrows elsewhere
 
+**Closed (2026-11-26):** every place below, and three more, draws the
+app's chevron icon now; see item 10 under "Done from this order". One
+mark is left for the look's piece 3: a menu's submenu mark, "❯".
+
 Found while replacing the explorer's: the same dated text glyphs (▾ ▸ ▼
 ▶) remain in the dropdown component, the chat's tool-result caret, its
 context pills and token bar, the tool detail page's sections and two
@@ -4050,7 +4054,7 @@ checks, the builds stay one to a session):**
    paper), through the point built in piece 2. **Built; not driven on
    the app, see below.**
 10. Text arrows elsewhere: check whether any are left, then close the
-    entry or fix them.
+    entry or fix them. **Done: nine places were left; fixed.**
 
 **Then the settled pieces of the look, smallest first (a session each):**
 11. Piece 11, Study's plan tab as the page for the plan's rules.
@@ -4239,6 +4243,31 @@ session and Worksheets' quiz; one of the two driven only in a test.**
 - *Not built:* a word from pages. "Worksheets' paper" was read as the
   quiz in progress; if he meant a sheet file's own tab, that is not
   done.
+
+**Item 10, text arrows elsewhere. Some were left; they are fixed, and
+the entry is closed but for one mark.**
+- *Found left* (triangle characters drawn as text): the kit's dropdown,
+  chat's tool-result caret, its Sources Considered toggle, its context
+  button and its token bar, the tool page's sections, AI Settings' tool
+  groups, a page property's type picker and its calendar's two month
+  buttons, and Workspace Graph's History and community rows.
+- *Fixed:* each is the app's chevron icon from the icon registry (an
+  extension asks for it through `api.icons`). The calendar's two
+  buttons, which had only a triangle for a name, are named Previous
+  Month and Next Month.
+- *Checked:* `tests/probes/look-details-probe.mjs` part C on the built
+  app: no triangle character is drawn as text (in an element or by its
+  stylesheet) on the Dashboard, Settings, AI Settings' tools, a tool's
+  page, the seeded chat and its timing view, a database, a page and
+  Workspace Graph; the dropdown's, the tool groups' and the tool page's
+  marks are icons. The keyboard audit on those screens (0). The whole
+  probe is 13 of 13.
+- *Not seen on screen:* chat's tool-result caret and token bar rows,
+  the property type picker and the calendar (none is open on the seeded
+  screens); they were changed and typechecked.
+- *One mark left, for piece 3:* a menu's submenu mark is the character
+  "❯" (seen on the page's menu beside Font and Export). Piece 3 redraws
+  the menus with icons and shortcuts, so it goes there.
 
 ## Verification owed
 

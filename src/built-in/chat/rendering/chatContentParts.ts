@@ -26,7 +26,7 @@ import { registerCoreAnswerForms } from '../../../ui/answerFormsCore.js';
 import { citationMarks, markParallxLinks } from './chatCitationMarks.js';
 export { markParallxLinks, setChatLinkChecker, type ChatLinkCheck } from './chatCitationMarks.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
-import { getFileTypeIcon, getPageIcon } from '../../../ui/iconRegistry.js';
+import { getFileTypeIcon, getPageIcon, createIconElement } from '../../../ui/iconRegistry.js';
 import type {
   IChatContentPart,
   IChatMarkdownContent,
@@ -1124,7 +1124,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     sourcesToggle.type = 'button';
     sourcesToggle.className = 'parallx-chat-thinking-sources-toggle';
 
-    const sourcesArrow = $('span.parallx-chat-thinking-sources-arrow', '\u25B6');
+    const sourcesArrow = $('span.parallx-chat-thinking-sources-arrow'); sourcesArrow.appendChild(createIconElement('chevron-right', 12));
     sourcesToggle.appendChild(sourcesArrow);
 
     const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources Considered');
@@ -1380,7 +1380,7 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'parallx-chat-tool-result-toggle';
-      const caret = $('span.parallx-chat-tool-result-caret', '▸');
+      const caret = $('span.parallx-chat-tool-result-caret');
       const label = $('span.parallx-chat-tool-result-label',
         isErr ? 'Error output' : `Output · ${lineCount} line${lineCount !== 1 ? 's' : ''}`);
       toggle.appendChild(caret);
@@ -1391,7 +1391,7 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
       out.textContent = resultText;
 
       let open = isErr;
-      const sync = (): void => { out.style.display = open ? 'block' : 'none'; caret.textContent = open ? '▾' : '▸'; };
+      const sync = (): void => { out.style.display = open ? 'block' : 'none'; caret.replaceChildren(createIconElement(open ? 'chevron-down' : 'chevron-right', 12)); };
       sync();
       toggle.addEventListener('click', () => { open = !open; sync(); });
 

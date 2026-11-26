@@ -143,7 +143,7 @@ export function showPropertyPicker(
       typeBtn.appendChild(lbl);
       const chevron = document.createElement('span');
       chevron.className = 'canvas-property-picker__type-chevron';
-      chevron.textContent = '▾';
+      chevron.appendChild(createIconElement('chevron-down', 12));
       typeBtn.appendChild(chevron);
     };
     _updateTypeBtn();

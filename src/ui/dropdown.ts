@@ -6,6 +6,7 @@
 // VS Code reference: `src/vs/base/browser/ui/dropdown/dropdown.ts`
 
 import { Disposable, toDisposable, type IDisposable } from '../platform/lifecycle.js';
+import { createIconElement } from './iconRegistry.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $, addDisposableListener, layoutPopup } from './dom.js';
 import { enterMode, type ModeHandle } from './interactionMode.js';
@@ -125,11 +126,12 @@ export class Dropdown extends Disposable {
     // anything before the text (a colour swatch) impossible without breaking it.
     this._label = $('span.ui-dropdown__label');
     this._button.appendChild(this._label);
-    // Drawn by the stylesheet (▾), so the trigger's words are the chosen
+    // An icon with no text, so the trigger's words are the chosen
     // option and nothing else: a screen reader names it by them, and code
     // reading its text gets the value.
     const chevron = $('span.ui-dropdown__chevron');
     chevron.setAttribute('aria-hidden', 'true');
+    chevron.appendChild(createIconElement('chevron-down', 12));
     this._button.appendChild(chevron);
     this.element.appendChild(this._button);
     this._updateButtonText();

@@ -11,6 +11,7 @@
 //   - Individual tool checkboxes
 
 import { declareControl, sceneSlug } from '../../../ui/kit.js';
+import { createIconElement } from '../../../ui/iconRegistry.js';
 import { $ } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
 import type { IToolPickerServices, ToolCategory as ToolCategoryKind } from '../../../services/chatTypes.js';
@@ -59,7 +60,7 @@ function foldButton(label: string, collapsed: boolean, id: string): HTMLButtonEl
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'ai-settings-tools-chevron';
-  btn.textContent = collapsed ? '\u25B6' : '\u25BC';
+  btn.appendChild(createIconElement(collapsed ? 'chevron-right' : 'chevron-down', 12));
   btn.setAttribute('aria-expanded', String(!collapsed));
   declareControl(btn, { id, label: `${collapsed ? 'Expand' : 'Collapse'} ${label}`, kind: 'toggle', state: () => ({ kind: 'pressed', value: !collapsed }) });
   return btn;

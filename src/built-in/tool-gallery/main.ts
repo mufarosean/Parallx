@@ -846,7 +846,7 @@ function renderContributionSection(
 
   const arrow = $('span');
   arrow.classList.add('tool-editor-contrib-arrow');
-  arrow.textContent = '▼';
+  arrow.appendChild(createIconElement('chevron-down', 12));
   header.appendChild(arrow);
 
   const label = $('span');
@@ -875,7 +875,7 @@ function renderContributionSection(
   let collapsed = false;
   header.addEventListener('click', () => {
     collapsed = !collapsed;
-    arrow.textContent = collapsed ? '▶' : '▼';
+    arrow.replaceChildren(createIconElement(collapsed ? 'chevron-right' : 'chevron-down', 12));
     body.style.display = collapsed ? 'none' : '';
   });
 

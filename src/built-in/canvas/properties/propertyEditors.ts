@@ -609,13 +609,13 @@ function _buildCalendar(
   const render = () => {
     el.innerHTML = '';
 
-    // ── Header: ◂ Month Year ▸
+    // ── Header: previous, Month Year, next
     const header = document.createElement('div');
     header.className = 'canvas-prop-calendar__header';
 
     const prevBtn = document.createElement('button');
     prevBtn.className = 'canvas-prop-calendar__nav';
-    prevBtn.textContent = '◂';
+    prevBtn.appendChild(createIconElement('chevron-left', 14)); prevBtn.setAttribute('aria-label', 'Previous Month');
     prevBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       viewMonth--;
@@ -629,7 +629,7 @@ function _buildCalendar(
 
     const nextBtn = document.createElement('button');
     nextBtn.className = 'canvas-prop-calendar__nav';
-    nextBtn.textContent = '▸';
+    nextBtn.appendChild(createIconElement('chevron-right', 14)); nextBtn.setAttribute('aria-label', 'Next Month');
     nextBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       viewMonth++;
