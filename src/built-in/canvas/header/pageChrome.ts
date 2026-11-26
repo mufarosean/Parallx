@@ -15,7 +15,7 @@ import { onDragPress } from '../../../ui/touchDrag.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
-import { resolveFontStack } from '../config/fontRegistry.js';
+import { pageFontCss } from '../config/fontRegistry.js';
 import { fontMenuItems } from './pageFontMenu.js';
 import type { IExtensionMenuHandle, IExtensionMenuItem } from '../../../ui/contextMenu.js';
 import { createMenu, declareControl, showUndoToast } from '../../../ui/kit.js';
@@ -195,7 +195,7 @@ export class PageChromeController {
     // Font family — resolve the page's font id to a concrete stack and expose
     // it as a CSS variable the editor + title read. Open-ended: any registry
     // id (built-in or custom) works without per-font CSS.
-    ec.style.setProperty('--canvas-page-font', resolveFontStack(page?.fontFamily));
+    ec.style.setProperty('--canvas-page-font', pageFontCss(page?.fontFamily));
 
     // Full width
     ec.classList.toggle('canvas-full-width', !!page?.fullWidth);

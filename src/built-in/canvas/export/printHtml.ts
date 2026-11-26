@@ -458,6 +458,41 @@ export interface BuildPrintHtmlInput {
   readonly appPath?: string;
 }
 
+/** The faces the app ships (src/theme/px-fonts.css): family, folder, file stem, weights. */
+const BUNDLED_FACES: readonly (readonly [string, string, string, string])[] = [
+  ['Newsreader', 'newsreader', 'opsz', '200 800'],
+  ['Hanken Grotesk', 'hanken-grotesk', 'wght', '100 900'],
+  ['Inter', 'inter', 'wght', '100 900'],
+];
+
+/** The two files each face comes in, and the characters each holds (as in px-fonts.css). */
+const BUNDLED_SCRIPTS: readonly (readonly [string, string])[] = [
+  ['latin', 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD'],
+  ['latin-ext', 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF'],
+];
+
+/**
+ * `@font-face` rules for the bundled faces a page's stack names, read from
+ * the app's own font files. The printed document has none of the app's
+ * styles, so without these a page set in the app's face prints in whatever
+ * the machine falls back to.
+ */
+export function bundledFontFaceCss(fontStack: string, appPath: string | undefined): string {
+  if (!appPath) return '';
+  const base = `${appPath.replace(/[\\/]+$/, '')}/dist/renderer/fonts`;
+  let css = '';
+  for (const [family, dir, axis, weights] of BUNDLED_FACES) {
+    if (!fontStack.includes(family)) continue;
+    for (const [script, range] of BUNDLED_SCRIPTS) {
+      for (const style of ['normal', 'italic']) {
+        css += `@font-face { font-family: '${family}'; font-style: ${style}; font-weight: ${weights}; `
+          + `src: url("${toFileUrl(`${base}/${dir}-${script}-${axis}-${style}.woff2`)}") format("woff2"); unicode-range: ${range}; }\n`;
+      }
+    }
+  }
+  return css;
+}
+
 function toFileUrl(absPath: string): string {
   let p = absPath.replace(/\\/g, '/');
   if (!p.startsWith('/')) p = '/' + p;
@@ -472,7 +507,7 @@ export function buildPrintHtml(input: BuildPrintHtmlInput): string {
   const fontStack = input.fontStack
     ?? FONT_STACKS[input.fontFamily ?? 'default']
     ?? FONT_STACKS.default;
-  const fontFaceCss = input.fontFaceCss ?? '';
+  const fontFaceCss = (input.fontFaceCss ?? '') + bundledFontFaceCss(fontStack, input.appPath);
 
   const assetLinks: string[] = [];
   if (input.appPath) {

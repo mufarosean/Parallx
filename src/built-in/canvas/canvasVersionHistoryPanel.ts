@@ -17,7 +17,7 @@ import { parseStoredTime } from '../../platform/storedTime.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { decodeCanvasContent } from './contentSchema.js';
 import { createEditorExtensions } from './config/tiptapExtensions.js';
-import { resolveFontStack } from './config/fontRegistry.js';
+import { pageFontCss } from './config/fontRegistry.js';
 import { wrapUnknownContent } from './unknownContent.js';
 import { diffBlocks, summarize, summaryChip, summarySentence, type DocNode } from './canvasVersionDiff.js';
 import type { ICanvasDataService, IPageRevision, RevisionSource } from './canvasTypes.js';
@@ -102,7 +102,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
       editorProps: { attributes: { class: 'canvas-tiptap-editor canvas-vh-doc', 'aria-label': 'The page at this version', 'aria-readonly': 'true' } },
     });
     void dataService.getPage(pageId).then((p) => {
-      if (p?.fontFamily) pageHost.style.setProperty('--canvas-page-font', resolveFontStack(p.fontFamily));
+      if (p?.fontFamily) pageHost.style.setProperty('--canvas-page-font', pageFontCss(p.fontFamily));
     }).catch(() => undefined);
 
     let revisions: IPageRevision[] = [];

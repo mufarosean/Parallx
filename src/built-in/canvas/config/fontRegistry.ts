@@ -61,7 +61,11 @@ interface PersistedCustomFonts {
 const SANS_FALLBACK = `-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif`;
 
 export const BUILTIN_FONTS: readonly CanvasFont[] = [
-  { id: 'default',   label: 'Default',    source: 'builtin', stack: `'Inter', ${SANS_FALLBACK}` },
+  // Default is the app's own interface face: on screen it follows whatever
+  // face Appearance has set (pageFontCss), and this stack is what it falls to.
+  { id: 'default',   label: 'Default',    source: 'builtin', stack: `'Hanken Grotesk', 'Inter', ${SANS_FALLBACK}` },
+  // The app's reading face (its display face), bundled with the app.
+  { id: 'newsreader', label: 'Newsreader', source: 'builtin', stack: `'Newsreader', 'Iowan Old Style', Georgia, ui-serif, serif` },
   { id: 'serif',     label: 'Serif',      source: 'builtin', stack: `Georgia, 'Times New Roman', ui-serif, serif` },
   { id: 'mono',      label: 'Mono',       source: 'builtin', stack: `'Cascadia Code', 'Cascadia Mono', Consolas, 'Courier New', ui-monospace, monospace` },
   { id: 'system',    label: 'System UI',  source: 'builtin', stack: SANS_FALLBACK },
@@ -178,9 +182,27 @@ export function getFont(id: string | null | undefined): CanvasFont {
   return BUILTIN_BY_ID.get(FALLBACK_FONT_ID)!;
 }
 
-/** Concrete CSS font-family stack for a font id (falls back to default). */
+/**
+ * Concrete CSS font-family stack for a font id (falls back to default), for
+ * a document that has none of the app's variables: an export. Default is the
+ * app's interface face as it stands now.
+ */
 export function resolveFontStack(id: string | null | undefined): string {
-  return getFont(id).stack;
+  const font = getFont(id);
+  if (font.id === FALLBACK_FONT_ID && typeof document !== 'undefined') {
+    const app = getComputedStyle(document.documentElement).getPropertyValue('--px-font-ui').trim();
+    if (app && !app.includes('var(')) return app;
+  }
+  return font.stack;
+}
+
+/**
+ * The font-family a page shows on screen. Default is the app's interface
+ * face by its variable, so a page follows a change of the app's font at once.
+ */
+export function pageFontCss(id: string | null | undefined): string {
+  const font = getFont(id);
+  return font.id === FALLBACK_FONT_ID ? `var(--px-font-ui, ${font.stack})` : font.stack;
 }
 
 /** `@font-face` CSS for a font id if it is a custom font, else '' (for export). */

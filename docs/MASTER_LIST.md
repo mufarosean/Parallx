@@ -4044,7 +4044,7 @@ checks, the builds stay one to a session):**
    the palette was wrong, not the audit.**
 6. Piece 8, Tools and Extensions as one list grouped On and Off. **Done.**
 7. Piece 6, first half: a page's Default font follows the app's face,
-   and Newsreader joins the page font list.
+   and Newsreader joins the page font list. **Done.**
 8. The Dashboard's large numbers in the display face.
 9. A live word from more tools in Open (Study's session, Worksheets'
    paper), through the point built in piece 2.
@@ -4171,6 +4171,33 @@ On and Off (his 6B). Done.**
   at once); the visual probe (this screen: clipped 1 and no header 1
   before, nothing found now); the keyboard audit on it (every count 0);
   typecheck; the unit suite.
+
+**Item 7, the look's piece 6, first half: a page's Default font follows
+the app's face, and Newsreader is in the page font list. Done.**
+- *What was there:* `fontRegistry.ts` pinned Default to Inter, so every
+  page stayed in Inter under the new look. Eleven built-in faces, none
+  of them the app's own.
+- *Built:* Default is the app's interface face by its variable
+  (`pageFontCss`), so a page follows the app's font at once when
+  Appearance changes it, and falls to Hanken Grotesk, then Inter.
+  Newsreader is second in the page's Font menu. Every other id and
+  stack is as it was, so no page changes but those on Default.
+- *Export, which the item did not name but would have broken:* a
+  printed page has none of the app's styles, so a page in Newsreader
+  would have printed in Georgia. The print document now carries the
+  bundled faces its stack names, from the app's own font files
+  (`bundledFontFaceCss`, `printHtml.ts`); Default prints in the app's
+  face as it stands when exported.
+- *Checked:* `tests/probes/look-details-probe.mjs` part A on the built
+  app (a page on Default is in Hanken Grotesk; it changes with the
+  app's face without being reopened; Newsreader chosen from the page's
+  own menu draws the page in it; a new page is still on Default);
+  `pageFonts.test.ts` (7, the list, the fallback and the export's
+  rules); the keyboard audit on a page (0); the screenshots.
+- *Not checked:* an exported PDF opened and looked at (the rules are in
+  the document; the file was not printed here). The app's face was
+  changed by setting the one variable Appearance sets, not through the
+  Appearance panel.
 
 ## Verification owed
 
