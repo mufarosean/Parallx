@@ -153,10 +153,12 @@ function createOpenEditorRow(editor: OpenEditor, indented: boolean, editors: IOp
     row.appendChild(dot);
   }
 
-  // Close button: this row's editor. Delete on the row closes it from the keyboard.
+  // Close button: this row's editor. Delete on the row closes it from the
+  // keyboard, so the mark is kept out of the row's spoken name.
   const closeBtn = $('span');
   closeBtn.className = 'open-editors-close';
-  closeBtn.appendChild(createIconElement('x', 14));
+  closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-hidden', 'true');
   closeBtn.title = 'Close';
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();

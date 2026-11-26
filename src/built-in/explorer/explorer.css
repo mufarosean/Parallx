@@ -370,6 +370,8 @@
   height: 20px;
   border-radius: var(--px-radius-sm);
   color: var(--px-text-muted);
+  font-size: var(--px-text-md);
+  line-height: 1;
 }
 .open-editors-item .open-editors-close:hover { background: var(--px-surface-active); color: var(--px-text); }
 .open-editors-item:hover .open-editors-close, .open-editors-item:focus-within .open-editors-close, [data-input-modality="touch"] .open-editors-item .open-editors-close {

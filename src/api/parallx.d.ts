@@ -1292,6 +1292,8 @@ export interface OpenEditorDescriptor {
   readonly typeId: string;
   /** The file it shows, when it shows one. */
   readonly filePath?: string;
+  /** Its live word ("p. 214", "24 due"), when its editor set one with `setEditorStatus`. */
+  readonly status?: string;
 }
 
 /**

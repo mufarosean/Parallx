@@ -328,9 +328,12 @@ api.editors.openFileEditor(uri, { pinned?, reveal?, side? })     // open a file 
 // applied once the file has loaded. side: true opens it beside the active editor (the group to
 // its right, split when there is none); a file already open is shown where it is
 api.editors.openEditors                                          // readonly array of descriptors: { id, name, description, isDirty, isActive, groupId,
-                                                                 //   isShowing, typeId, filePath? }. isShowing: it is the editor in front in its
+                                                                 //   isShowing, typeId, filePath?, status? }. isShowing: it is the editor in front in its
                                                                  //   group (what a person sees there; one per group). filePath: the file it shows
 api.editors.onDidChangeOpenEditors(listener)                     // → IDisposable
+api.editors.setEditorStatus({ typeId, instanceId }, 'p. 214')    // → boolean. Your open editor's live word (up to 24 characters:
+                                                                 //   "24 due", "3 of 12"), shown beside it where open editors are
+                                                                 //   listed. Yours only; undefined clears it; false if it is not open.
 ```
 
 `instanceId` lets you open multiple panes of the same `typeId`. Same `typeId+instanceId` means the existing tab is focused, not duplicated. The id is namespaced per tool and type under the hood, so `'main'` is safe even though every other extension also uses `'main'` — you can never collide with (or be blocked by) another tool's tabs.
@@ -1703,7 +1706,7 @@ If any box is unchecked, fix the code before responding.
 ```
 api.commands.{registerCommand, executeCommand, getCommands}
 api.views.{registerViewProvider, setBadge}
-api.editors.{registerEditorProvider, openEditor, closeEditor, openFileEditor, openEditors, onDidChangeOpenEditors}
+api.editors.{registerEditorProvider, openEditor, closeEditor, openFileEditor, setEditorStatus, openEditors, onDidChangeOpenEditors}
 api.window.{showInformationMessage, showWarningMessage, showErrorMessage, showInputBox, showQuickPick,
             createOutputChannel, createStatusBarItem, activeColorTheme, onDidChangeActiveColorTheme, startDrag}
 api.workspace.{getConfiguration, onDidChangeConfiguration, workspaceFolders, getWorkspaceFolder,

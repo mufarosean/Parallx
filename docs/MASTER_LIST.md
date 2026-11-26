@@ -2293,8 +2293,8 @@ https://claude.ai/artifact/RyEQXyrzBzPunoKHoUaJwV . **His answer
 (2026-11-25): "Aligned with all proposed."** The three are settled.
 
 **Everything settled across the four groups, in the order to build it
-(piece 1 is built, 2026-11-25; the rest is not; each line is one piece,
-one to a session):**
+(pieces 1 and 2 are built; the rest is not; each line is one piece, one
+to a session):**
 1. *The frame, 1E6.* **Built 2026-11-25, see "The frame as built"
    under this list.** One column in place of the icon rail and the
    sidebar: the open tool named at its head with its own list, the
@@ -2302,7 +2302,8 @@ one to a session):**
    The title bar keeps the menu words, the search button, the three
    panel buttons and the bell. Tabs as wide as their names, with the
    tool's icon. Everything below sits inside it, so it is first.
-2. *Each tool's list in the column:* Files (open tabs first with a
+2. *Each tool's list in the column.* **Built 2026-11-26, see "The
+   lists as built" under this list.** Files (open tabs first with a
    live word each, then files: his 2B, which needs a small
    contribution point for the word), Planner (Today, Calendar, Tasks
    with its six lists, the small month, the calendars), Flashcards
@@ -2439,6 +2440,99 @@ copy was deleted and the probe is as it was. The other seven
 acceptance probes read as before the frame: the two with corrections
 already waiting on him (study-walk 1.5 and 1.7; study-work 2.4 and
 5.7, with the checks that follow 5.7) and five that pass.
+
+**The lists as built (2026-11-26, piece 2, on `dev`).** His word after
+piece 1: "Continue", so it was built in the same session as the frame
+(the house rule is one piece to a session; he can say if that was
+wrong). Built by one hand, the checks after.
+
+- *The live word, a new contribution point.* `api.editors.setEditorStatus(editor, word)`
+  for a tool's own editors (by the id its pane was given, or by the
+  type and instance it opened with), and `EditorInput.setStatus` for
+  the app's own. Up to 24 characters that say where an open editor
+  stands; `openEditors[].status` carries it. The PDF viewer sets its
+  page past the first ("p. 214"); Flashcards sets "24 due" on its tab
+  while its list is shown. No other tool sets one yet.
+- *Files.* The Explorer's list is Open first, then the files (his 2B;
+  it turns round the older order, and the unit test that pinned files
+  first now pins Open first). An Open row is 26 px: icon, name, the
+  editor's live word in the mono face, an ochre dot while unsaved; the
+  close mark takes their place while the row is pointed at, focused or
+  touched. The Open section is as tall as its rows, up to two fifths
+  of the list (`views/fitSection.ts`: any view can mark its element
+  `data-section-fit`), and the tree has the rest; a section sized by
+  hand with the sash keeps the size given. The tree is unchanged.
+- *Planner.* Today, Calendar, Tasks; under Tasks its six lists
+  (Review Queue, Today, This Week, Overdue, All Tasks, Completed),
+  each with its live count, each opening Tasks on that list; a small
+  month (today ringed; arrows, Page Up and Down, Enter) whose day
+  opens the calendar on it; the calendars; Settings. The rows are kit
+  buttons that run a new command, `planner.show` (a page, a list, a
+  day), so the row lit follows the page whoever asked. The six lists
+  have one definition (`plannerTaskFilters.ts`) read by the page and
+  the column. The month grid of the kit's date field is now one
+  function, and `createSmallMonth` (`ui/dateTimeField.ts`) is the
+  second thing built on it.
+- *Flashcards.* The strip of five tabs at the head of its sidebar is a
+  list of named rows with icons: Decks, Study, Stats, Make Cards,
+  Import (Up and Down walk them), with Today and the decks under them.
+  "Create" is called Make Cards, on the row and as the page's name.
+- *Study.* Its list had Home, the subjects, each one's plan and its
+  units. Added: a Progress row under each subject's plan.
+- *Files:* `src/built-in/explorer/openEditorsView.ts`,
+  `src/views/fitSection.ts`, `src/built-in/planner/plannerSidebar.ts`,
+  `plannerTaskFilters.ts`, `plannerColumn.css`, `src/ui/dateTimeField.ts`,
+  `ext/flashcards/main.js`, `ext/study/src/50-sidebar.js`,
+  `tests/probes/column-lists-probe.mjs`.
+
+*Decided, for him to overrule:* Flashcards keeps a Study row (the
+settled list has four rows, but until its Decks page opens on what is
+due, piece 10, the row is the way to a session beside Today's button);
+Planner's page still has its own Today, Tasks, Calendar tabs, its own
+month beside Today and its own list of filters on Tasks, so those are
+on screen twice until piece 9 takes them off the page; the files
+section is titled by the workspace's name, as before, not "Files";
+the Open section has no count beside its name.
+
+*Not built of piece 2:* a live word from the other tools (Study,
+Worksheets, pages); the count "Open 5" the mock-up drew.
+
+*Checked (2026-11-26, in the cloud, on the built app run hidden):*
+typecheck; the unit suite (9,930 pass, every ratchet, no baseline
+changed); `column-lists-probe.mjs` (30 of 30: each list used with the
+mouse and the keys) and `frame-probe.mjs` again (25 of 25); the visual
+probe on every screen (the frame's small targets fell from 16 to 3,
+under the baseline of 11, the Open rows being 26 px; nothing rose but
+"Creations: title size", there before); the keyboard audit on Files,
+Planner and its three pages, Flashcards and Study (keys, names, focus
+rings, contrast, touch, popups: 0 from these lists), and its light-mode
+contrast pass on 73 screens, which piece 1 had not reached (0 from the
+frame or the lists); all eight acceptance probes (as after piece 1:
+five pass, study-walk and study-work fail what waits on him,
+study-record fails the eight that wait on its `point()`).
+Found by the audit in Atelier, in files neither piece touched, and
+left: its New Tags dialog (as under piece 1), and in light the names
+under the pictures of its grid at 1.26 to 1 (`.mo-feed-cap-title`).
+
+*Caught by an acceptance probe and put right:* the Open row's close
+mark was drawn as an icon, so a row's text became the bare name and
+study-record's "choose Big Bank" pressed the row in place of the
+dropdown's entry (10.1 to 10.3). The mark is the "×" character again,
+hidden from screen readers, and the probe passes those as before.
+
+*Not checked:* Flashcards' "24 due" on its tab and the PDF's page word
+on the app (the seed has no deck with cards due and no PDF of more
+than one page; the word itself was shown by setting one, and the unit
+tests cover the row); a finger on the small month (it is the date
+field's grid, whose days are buttons); `touch-drag-probe.mjs`; a Files
+list with two editor groups; Planner's column with many calendars.
+
+*Changed tests, none an acceptance probe:* `containerRails.test.ts`
+(Open above the files, where it pinned the files above);
+`plannerNavState.test.ts` (a pending request carries its day);
+`flashcards.test.ts` and `flashcardsBehavior.test.ts` (the rows'
+order and Make Cards). New: `fitSection.test.ts`, and a case in
+`openEditorsView.test.ts` for the live word and the dot.
 
 ### Home: a redesign, not yet designed
 
