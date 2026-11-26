@@ -30,6 +30,7 @@ type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
 // ── CSS ─────────────────────────────────────────────────────────────────
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdfEditorPane.css';
+import './pdfPill.css';
 
 // ── App imports ─────────────────────────────────────────────────────────
 import { EditorPane } from '../../../editor/editorPane.js';

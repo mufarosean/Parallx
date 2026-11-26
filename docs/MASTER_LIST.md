@@ -2329,7 +2329,8 @@ to a session):**
    and Edit shows the source beside the live page (the Obsidian style
    looked at afterwards).
 7. *The PDF viewer (4A):* the page lifted on a darker ground, its
-   controls in one pill at the foot.
+   controls in one pill at the foot. **Built 2026-11-26, item 14 under
+   "Done from this order".**
 8. *Tools and Extensions (6B):* the list grouped On and Off, each tool
    with its own icon and its switch. **Built 2026-11-26, see item 6
    under "Done from this order".**
@@ -4064,7 +4065,7 @@ checks, the builds stay one to a session):**
 13. Piece 9, Planner's three pages (this takes the doubled tabs, month
     and filters off the page). **The doubles are off; the pages'
     redrawing is left.**
-14. Piece 7, the PDF viewer.
+14. Piece 7, the PDF viewer. **Done.**
 15. Piece 3, menus, notices and the Settings dialog.
 16. Piece 5, chat.
 17. Piece 6, second half: a .md file opens as a page.
@@ -4410,6 +4411,30 @@ page is not done.**
   typecheck; the unit suite (9,933); the screenshots.
 - *Left in the stylesheet:* the rules of the page's old month
   (`planner-today__month…`), now unused.
+
+**Item 14, the look's piece 7: the PDF viewer (his 4A). Done.**
+- *What was there:* a row of small controls across the top of the
+  pane, and the page on the same ground as the rest of the app.
+- *Built:* the ground is the window's recessed tone (`--px-window`), so
+  the sheet stands off it with a deeper shadow; the page itself stays
+  white, as its author made it. The controls are one pill floating at
+  the foot of the pane, centred. They are still first in the pane's
+  order, so Tab comes to them before the page. The last page scrolls
+  clear of the pill; in a pane narrower than the pill, the pill scrolls
+  inside itself and never passes the pane. Styles only
+  (`pdf/pdfPill.css`); no control or behaviour changed.
+- *Checked:* `tests/probes/pdf-viewer-probe.mjs` (new, 10 of 10 on the
+  built app: the pill at the foot and centred, every control inside the
+  pane, the ground darker than the paper in dark and in light, a focus
+  ring by Tab, the zoom menu whole inside the window, Find clear of the
+  pill, the end of the document clear of it, a 620 px window); the
+  keyboard audit on the PDF and its reading view (0); typecheck; the
+  ratchets; the screenshots.
+- *Seen and left:* a menu opened from the pill opens upward over the
+  pill's other controls (it has no room below). The outline and reading
+  panels were not looked at with the pill.
+- *Not checked:* a long PDF; a PDF beside a Study session (the pill is
+  then centred in its own half).
 
 ## Verification owed
 

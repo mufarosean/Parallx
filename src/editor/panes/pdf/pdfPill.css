@@ -1,0 +1,33 @@
+/* pdfPill.css — the PDF viewer's look: the page lifted on a darker ground,
+   its controls in one pill at the foot. Loaded after pdfEditorPane.css. */
+
+/* ── The look's piece 7 (his 4A): the page lifted on a darker ground, its
+   controls in one pill at the foot ─────────────────────────────────────── */
+/* The ground is the window's recessed tone, so the sheet stands off it. A
+   PDF's own page is never tinted: it stays as its author made it. */
+.pdf-editor-pane,
+.pdf-viewer-container { background: var(--px-window); }
+.pdf-editor-pane .pdfViewer .page .canvasWrapper { box-shadow: 0 0 0 1px var(--px-divider), var(--px-shadow-lg); }
+/* The controls float over the foot of the pane, centred. They are first in
+   the pane's order, so Tab still comes to them before the page. */
+.pdf-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--px-space-4);
+  transform: translateX(-50%);
+  max-width: calc(100% - 2 * var(--px-space-3));
+  /* A pane narrower than the pill (a PDF beside something else): the pill
+     scrolls sideways inside itself, never past the pane. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 var(--px-space-4);
+  border: 0;
+  border-radius: var(--px-radius-full);
+  background: color-mix(in srgb, var(--px-bg-elevated) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--px-shadow-lg), 0 0 0 1px var(--px-border);
+}
+/* The last page scrolls clear of the pill. */
+.pdf-editor-pane .pdfViewer { padding-bottom: 72px; --pdfViewer-padding-bottom: 72px; }
