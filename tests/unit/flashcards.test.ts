@@ -1380,7 +1380,7 @@ describe('fcExtractCardsJson + LaTeX', () => {
 describe('navigation model', () => {
   it('every rail destination has a label and an icon', () => {
     expect(FC_NAV_DEFS.map((d: { view: string }) => d.view))
-      .toEqual(['decks', 'study', 'create', 'import', 'stats']);
+      .toEqual(['decks', 'study', 'stats', 'create', 'import']);
     for (const def of FC_NAV_DEFS) {
       expect(FC_VIEW_LABELS[def.view]).toBe(def.label);
       expect(def.iconName).toBeTruthy();

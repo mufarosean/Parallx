@@ -15,20 +15,31 @@ export type PlannerTab = 'today' | 'tasks' | 'calendar';
 let _pendingTab: PlannerTab | null = null;
 /** With the Tasks tab, the list to show (a Tasks filter key, e.g. 'overdue'). */
 let _pendingFilter: string | null = null;
+/** With the Calendar tab, the day to show (YYYY-MM-DD), from the column's small month. */
+let _pendingDate: string | null = null;
 
-/** Sidebar: record the tab (and, for Tasks, the list) to open before invoking openEditor. */
-export function setPendingPlannerTab(tab: PlannerTab, tasksFilter: string | null = null): void {
+/** Sidebar: record the tab (and, for Tasks, the list; for Calendar, the day) to open before invoking openEditor. */
+export function setPendingPlannerTab(tab: PlannerTab, tasksFilter: string | null = null, date: string | null = null): void {
   _pendingTab = tab;
   _pendingFilter = tasksFilter;
+  _pendingDate = date;
 }
 
-/** Pane: consume the requested tab and list (one-shot). Returns null if none pending. */
-export function takePendingPlannerTab(): { tab: PlannerTab; tasksFilter: string | null } | null {
+/** Pane: consume the requested tab, list and day (one-shot). Returns null if none pending. */
+export function takePendingPlannerTab(): { tab: PlannerTab; tasksFilter: string | null; date: string | null } | null {
   const tab = _pendingTab;
   const tasksFilter = _pendingFilter;
+  const date = _pendingDate;
   _pendingTab = null;
   _pendingFilter = null;
-  return tab ? { tab, tasksFilter } : null;
+  _pendingDate = null;
+  return tab ? { tab, tasksFilter, date } : null;
+}
+
+/** A YYYY-MM-DD day as the local date it names, or null. */
+export function plannerDayFrom(date: string | null | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date ?? '');
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
 
 // planner.newTask has the same race: it opens the editor and then dispatches

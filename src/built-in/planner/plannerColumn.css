@@ -1,0 +1,24 @@
+/* plannerColumn.css — Planner's own list in the column: what is added to the
+   sidebar rows of planner.css for the six lists under Tasks, the small month
+   and the row at the foot. */
+
+/* A row is a kit button laid out as a list row. */
+.planner-sidebar__row.px-btn { justify-content: flex-start; width: 100%; height: var(--px-control-h); font-weight: 400; }
+.planner-sidebar__row.px-btn .px-btn__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.planner-sidebar__row.px-btn .svg-icon { color: var(--px-text-secondary); }
+.planner-sidebar__row--active.px-btn .svg-icon { color: var(--px-accent-text); }
+
+/* The list scrolls when it is longer than the column: nothing in it is squeezed. */
+.planner-sidebar__list > *, .planner-sidebar__row { flex: none; }
+
+/* The six lists under Tasks: indented to the row's name, counts in quiet figures. */
+.planner-sidebar__sublist { display: flex; flex-direction: column; gap: 1px; }
+.planner-sidebar__row--sub { padding-left: calc(var(--px-space-2) + 16px + var(--px-space-2)); color: var(--px-text-secondary); }
+.planner-sidebar__row--sub .planner-sidebar__row-count { background: transparent; color: var(--px-text-muted); font-family: var(--px-font-mono); font-weight: 400; padding: 0; }
+.planner-sidebar__row--active.planner-sidebar__row--sub { color: var(--px-text); }
+.planner-sidebar__row-count[hidden] { display: none; }
+
+/* The small month: the day pressed opens the calendar on it. */
+.planner-sidebar__month { margin-top: var(--px-space-4); padding: 0 var(--px-space-2); }
+.planner-sidebar__foot { margin-top: var(--px-space-4); display: flex; flex-direction: column; }
+

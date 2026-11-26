@@ -65,8 +65,7 @@ export const EXPLORER_MANIFEST: IToolManifest = {
       ],
     },
     // Manifest order IS stacked-section order (views seat in contribution
-    // order). What is open first, each with its live word, then the files:
-    // the owner's pick 2B (2026-11-25), which turned the older order round.
+    // order). What is open first, each with its live word, then the files.
     views: [
       { id: 'view.openEditors', name: 'Open', defaultContainerId: 'explorer-container' },
       { id: 'view.explorer', name: 'Files', defaultContainerId: 'explorer-container' },

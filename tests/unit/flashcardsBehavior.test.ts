@@ -448,7 +448,7 @@ describe('editor pane', () => {
     // inside the thing it mapped.
     expect(pane.querySelectorAll('.fc-pane__tab')).toHaveLength(0);
     expect([...sidebar.querySelectorAll('.fc-sb__nav-item')].map((n) => n.textContent))
-      .toEqual(['Decks', 'Study', 'Create', 'Import', 'Stats']);
+      .toEqual(['Decks', 'Study', 'Stats', 'Make Cards', 'Import']);
     // The pane says where you are instead: at the top level its heading does,
     // and a one-word breadcrumb repeating it is hidden.
     expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');

@@ -325,6 +325,7 @@ function createSidebarView(container) {
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
     });
     planRow(host, s);
+    progressRow(host, s);
     if (s.folded) return;
     // Each unit's thin bar is over every kind of work together, with that "N of M".
     for (const u of s.units) {
@@ -368,6 +369,15 @@ function createSidebarView(container) {
       title: `Open the plan ${shown.plan.name}${exam}${words ? `: ${words}` : ''}.`, command: 'study.openPlan', args: [{ planId: shown.plan.id }] });
     btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
     if (words) _api.ui.createBlock(btn, 'span', { className: 'st-sb__r', text: words });
+  };
+
+  // What he knows of the subject, unit by unit: its Progress tab (63-progress-view.js), under the plan and over the units.
+  const progressRow = (host, s) => {
+    if (s.problem || !s.ready) return;
+    const line = _api.ui.createBlock(host, 'div', { className: 'st-sb__plan' });
+    const btn = _api.ui.createButton(line, { id: `study.side.progress.${s.id}`, label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', size: 'sm',
+      title: `What you know of ${s.name}, unit by unit.`, command: 'study.openProgress', args: [s.id] });
+    btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
   };
 
   // ── Destructive flows, each behind the app's confirm modal ──

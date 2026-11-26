@@ -214,8 +214,7 @@ export interface ParallxApiObject {
     registerFileEditor(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
-    focusEditor(editorId: string): Promise<boolean>;
-    setEditorStatus(editor: string | { typeId: string; instanceId: string }, status: string | undefined): boolean;
+    focusEditor(editorId: string): Promise<boolean>; setEditorStatus(editor: string | { typeId: string; instanceId: string }, status: string | undefined): boolean;
     openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; isShowing: boolean; typeId: string; filePath?: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;

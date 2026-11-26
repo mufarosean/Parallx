@@ -1,17 +1,18 @@
 // plannerSidebar.ts — workbench sidebar view for the planner.
 //
-// Navigation (Today, Calendar, Tasks, Scheduled, Settings) and the Calendars
-// toggles. Same list-row idiom every other Parallx sidebar uses (Explorer
-// file tree, Canvas page tree, Dashboards list): plain monochrome icon +
-// label, the shared hover and selection surfaces. The task list and filter
-// groupings live inside the editor pane's Tasks tab; the sidebar is the way in.
+// Planner's own list in the column: Today, Calendar, Tasks with its six
+// lists under it (each with its count), a small month that opens the
+// calendar on the day pressed, the Calendars toggles, and Settings. Same
+// list-row idiom every other Parallx sidebar uses: plain monochrome icon +
+// label, the shared hover and selection surfaces.
 
-import { declareControl } from '../../ui/kit.js';
+import './plannerColumn.css';
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
-import { setPendingPlannerTab } from './plannerNavState.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
-import { createSectionLabel } from '../../ui/kit.js';
+import { createButton, createSectionLabel } from '../../ui/kit.js';
+import { createSmallMonth } from '../../ui/dateTimeField.js';
+import { PLANNER_TASK_FILTERS, PLANNER_TASK_LIST_QUERY } from './plannerTaskFilters.js';
 
 interface SidebarApi {
   editors: {
@@ -44,7 +45,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
 
 export class PlannerSidebar implements IDisposable {
   private _root: HTMLElement | null = null;
-  private _activeKey: NavKey = 'today';
+  private _activeKey: string = 'today';
   private _disposed = false;
   private readonly _disposables: IDisposable[] = [];
 
@@ -62,62 +63,37 @@ export class PlannerSidebar implements IDisposable {
     const list = el('div', 'planner-sidebar__list');
     root.appendChild(list);
 
-    const rows: { key: NavKey; label: string; onClick: () => void }[] = [
-      {
-        key: 'today',
-        label: 'Today',
-        onClick: () => void this._openTab('today'),
-      },
-      {
-        key: 'calendar',
-        label: 'Calendar',
-        onClick: () => void this._openTab('calendar'),
-      },
-      {
-        key: 'tasks',
-        label: 'Tasks',
-        onClick: () => void this._openTab('tasks'),
-      },
-      {
-        key: 'settings',
-        label: 'Settings',
-        onClick: () => {
-          this._setActive('settings');
-          // Deep-link the Settings hub straight to the planner panel
-          // (registered in main.ts via settingsPanelRegistry).
-          this._api.commands.executeCommand('settings.open', 'planner').catch(() =>
-            this._api.window.showInformationMessage('Could not open Planner settings.'),
-          );
-        },
-      },
-    ];
+    /**
+     * One row of the list: a kit button that runs a command. With an icon it
+     * is one of the pages; without, a list under Tasks, indented to the name.
+     */
+    const addRow = (parent: HTMLElement, key: string, label: string, icon: string | undefined, command: string, args: readonly unknown[]): HTMLElement => {
+      const row = createButton(parent, { id: `planner.side.${key}`, label, icon, kind: 'ghost', size: 'sm', command, args });
+      row.classList.add('planner-sidebar__row');
+      if (!icon) row.classList.add('planner-sidebar__row--sub');
+      row.dataset.key = key;
+      const count = el('span', 'planner-sidebar__row-count');
+      count.dataset.role = 'count';
+      count.hidden = true;
+      row.appendChild(count);
+      return row;
+    };
 
-    for (const r of rows) {
-      const row = el('button', 'planner-sidebar__row');
-      row.type = 'button';
-      row.dataset.key = r.key;
-      row.setAttribute('role', 'option');
-      row.tabIndex = 0;
-      declareControl(row, { id: `planner.side.${r.key}`, label: r.label });
-
-      const icon = el('span', 'planner-sidebar__row-icon');
-      icon.appendChild(createIconElement(ICONS[r.key], 14));
-      row.appendChild(icon);
-
-      const label = el('span', 'planner-sidebar__row-label');
-      label.textContent = r.label;
-      row.appendChild(label);
-
-      if (r.key === 'tasks') {
-        const count = el('span', 'planner-sidebar__row-count');
-        count.dataset.role = 'review-count';
-        count.style.display = 'none';
-        row.appendChild(count);
-      }
-
-      row.addEventListener('click', r.onClick);
-      list.appendChild(row);
+    for (const [key, label] of [['today', 'Today'], ['calendar', 'Calendar'], ['tasks', 'Tasks']] as const) {
+      addRow(list, key, label, ICONS[key], 'planner.show', [key]);
+      if (key !== 'tasks') continue;
+      // Tasks' six lists hang under it: the same lists, counted the same way, as on its page.
+      const lists = el('div', 'planner-sidebar__sublist');
+      lists.setAttribute('role', 'group');
+      lists.setAttribute('aria-label', 'Task lists');
+      for (const f of PLANNER_TASK_FILTERS) addRow(lists, `tasks.${f.key}`, f.label, undefined, 'planner.show', ['tasks', f.key]);
+      list.appendChild(lists);
     }
+
+    // A small month: the day pressed opens the calendar on it.
+    const month = el('div', 'planner-sidebar__month');
+    createSmallMonth(month, { ariaLabel: 'Go to a day', onPick: (date) => void this._api.commands.executeCommand('planner.show', 'calendar', null, date) });
+    list.appendChild(month);
 
     // Calendars — which ones the calendar and Today draw. The same toggle the
     // calendar toolbar's Calendars menu flips, kept in view here.
@@ -152,31 +128,40 @@ export class PlannerSidebar implements IDisposable {
       if (e.kind === 'calendar-changed') void renderCalendars();
     }));
 
+    // Planner's own panel in Settings.
+    const foot = el('div', 'planner-sidebar__foot');
+    addRow(foot, 'settings', 'Settings', ICONS.settings, 'settings.open', ['planner']);
+    list.appendChild(foot);
+
+    // The row lit is the page the pane was last asked for, whoever asked (a row here, a command, the palette).
+    const onShown = (e: Event) => {
+      const { tab, tasksFilter } = (e as CustomEvent<{ tab?: string; tasksFilter?: string }>).detail ?? {};
+      if (tab) this._setActive(tab === 'tasks' && tasksFilter ? `tasks.${tasksFilter}` : tab);
+    };
+    document.addEventListener('parallx.planner.focusTab', onShown);
+    this._disposables.push(toDisposable(() => document.removeEventListener('parallx.planner.focusTab', onShown)));
+
     container.appendChild(root);
     this._syncActive();
 
-    // Live review-queue count on the Tasks row.
-    const updateReviewBadge = async () => {
+    // Live counts: on each list under Tasks, and on Tasks itself what waits in the Review Queue.
+    const updateCounts = async () => {
       if (this._disposed || !this._root) return;
-      let count = 0;
-      try {
-        const pending = await this._data.listTasks({ status: 'reviewing', includeUndated: true });
-        count = pending.length;
-      } catch { /* keep hidden */ }
-      const badge = this._root.querySelector('[data-role="review-count"]') as HTMLElement | null;
-      if (!badge) return;
-      if (count > 0) {
-        badge.textContent = String(count);
-        badge.style.display = '';
-      } else {
-        badge.style.display = 'none';
-      }
+      let all: Awaited<ReturnType<PlannerDataService['listTasks']>> = [];
+      try { all = await this._data.listTasks(PLANNER_TASK_LIST_QUERY); } catch { return; /* keep the last counts */ }
+      if (this._disposed || !this._root) return;
+      const show = (key: string, n: number, always: boolean) => {
+        const badge = this._root?.querySelector<HTMLElement>(`[data-key="${key}"] [data-role="count"]`);
+        if (!badge) return;
+        badge.textContent = String(n);
+        badge.hidden = !always && n === 0;
+      };
+      for (const f of PLANNER_TASK_FILTERS) show(`tasks.${f.key}`, all.filter((t) => f.match(t)).length, true);
+      show('tasks', all.filter((t) => t.status === 'reviewing').length, false);
     };
-    void updateReviewBadge();
+    void updateCounts();
     this._disposables.push(this._data.onDidChange((e) => {
-      if (e.kind === 'task-created' || e.kind === 'task-updated' || e.kind === 'task-removed') {
-        void updateReviewBadge();
-      }
+      if (e.kind === 'task-created' || e.kind === 'task-updated' || e.kind === 'task-removed') void updateCounts();
     }));
 
     return toDisposable(() => {
@@ -185,36 +170,14 @@ export class PlannerSidebar implements IDisposable {
     });
   }
 
-  private async _openTab(tab: 'today' | 'calendar' | 'tasks'): Promise<void> {
-    try {
-      this._setActive(tab);
-      // Record the target tab BEFORE opening so a first-open pane initialises to
-      // it deterministically (the focusTab event below only catches panes that
-      // already exist — on first open it races pane creation and was lost).
-      setPendingPlannerTab(tab);
-      await this._api.editors.openEditor({
-        typeId: 'planner',
-        title: 'Planner',
-        instanceId: 'main',
-      });
-      document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab } }));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await this._api.window.showErrorMessage(`Could not open Planner: ${msg}`);
-    }
-  }
-
-  private _setActive(key: NavKey): void {
+  private _setActive(key: string): void {
     this._activeKey = key;
     this._syncActive();
   }
 
   private _syncActive(): void {
-    const list = this._root?.querySelector('.planner-sidebar__list');
-    if (!list) return;
-    for (const child of Array.from(list.children)) {
-      if (!(child instanceof HTMLElement)) continue;
-      child.classList.toggle('planner-sidebar__row--active', child.dataset.key === this._activeKey);
+    for (const row of Array.from(this._root?.querySelectorAll<HTMLElement>('.planner-sidebar__row[data-key]') ?? [])) {
+      row.classList.toggle('planner-sidebar__row--active', row.dataset.key === this._activeKey);
     }
   }
 

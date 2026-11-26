@@ -9,7 +9,7 @@
 // row. docs/ACCESSIBILITY.md, section 2.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { createIconButton, createList } from '../../ui/kit.js';
+import { createList } from '../../ui/kit.js';
 import { $ } from '../../ui/dom.js';
 import { createIconElement, getFileTypeIcon } from '../../ui/iconRegistry.js';
 
@@ -153,11 +153,16 @@ function createOpenEditorRow(editor: OpenEditor, indented: boolean, editors: IOp
     row.appendChild(dot);
   }
 
-  // Close button: this row's editor (it used to close whichever was active).
-  // Out of the Tab order: Delete on the row closes it from the keyboard.
-  const closeBtn = createIconButton(row, { id: null, icon: 'x', title: 'Close', size: 'sm', onClick: (e) => { e.stopPropagation(); void editors.closeEditor(editor.id); } });
-  closeBtn.classList.add('open-editors-close');
-  closeBtn.tabIndex = -1;
+  // Close button: this row's editor. Delete on the row closes it from the keyboard.
+  const closeBtn = $('span');
+  closeBtn.className = 'open-editors-close';
+  closeBtn.appendChild(createIconElement('x', 14));
+  closeBtn.title = 'Close';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void editors.closeEditor(editor.id);
+  });
+  row.appendChild(closeBtn);
 
   // Click → focus that editor by id (it is already open), not by
   // re-resolving a URI: a non-file editor's description is not a URI, and

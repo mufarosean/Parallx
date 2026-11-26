@@ -4711,36 +4711,25 @@ function injectStyles() {
 .fc-sb__icon-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-sb__icon-btn:active { transform: var(--px-press); }
 
-/* Compact section tabs stay pinned above the scrolling deck list. */
+/* The destinations, one named row each, pinned above the scrolling deck list. */
 .fc-sb__nav {
-  display: flex; flex-direction: row; flex: 0 0 auto; gap: 2px;
-  padding: 0 var(--px-space-2);
-  border-bottom: 1px solid var(--px-divider);
+  display: flex; flex-direction: column; flex: 0 0 auto; gap: 1px;
+  padding: var(--px-space-1) var(--px-space-2) var(--px-space-2);
 }
 .fc-sb__nav-item {
-  position: relative;
-  display: flex; align-items: center; flex: 0 1 auto; min-width: 0;
-  height: 36px; padding: 0 5px; border: 0; border-radius: 0;
+  display: flex; align-items: center; gap: var(--px-space-2); flex: none; min-width: 0;
+  height: var(--px-control-h); padding: 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-md);
   background: transparent; color: var(--px-text-secondary);
-  font: inherit; font-size: var(--px-text-sm); font-weight: 500;
+  font: inherit; font-size: var(--px-text-base); font-weight: 400;
   text-align: left; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .fc-sb__nav-item:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-sb__nav-item:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
-.fc-sb__nav-item--active { color: var(--px-text); font-weight: 650; }
-.fc-sb__nav-item--active::before {
-  content: ''; position: absolute; left: 5px; right: 5px; bottom: 0; height: 2px;
-  background: var(--px-accent);
-}
-.fc-sb__nav-icon { display: none; }
-.fc-sb__nav-item--active .fc-sb__nav-icon { color: var(--px-accent-text); }
+.fc-sb__nav-item--active { background: var(--px-surface-selected); color: var(--px-text); }
+.fc-sb__nav-icon { display: inline-flex; flex: none; width: 16px; height: 16px; }
 .fc-sb__nav-icon svg { width: 100%; height: 100%; }
 .fc-sb__nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@container (max-width: 280px) {
-  .fc-sb__nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
-  .fc-sb__nav-item { height: 28px; }
-}
 
 .fc-sb__scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--px-space-3); }
 
@@ -5729,9 +5718,9 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 const FC_NAV_DEFS = [
   { view: 'decks', label: 'Decks', iconName: 'layers' },
   { view: 'study', label: 'Study', iconName: 'play' },
-  { view: 'create', label: 'Create', iconName: 'px-ai-mark' },
-  { view: 'import', label: 'Import', iconName: 'inbox' },
   { view: 'stats', label: 'Stats', iconName: 'chart-column' },
+  { view: 'create', label: 'Make Cards', iconName: 'px-ai-mark' },
+  { view: 'import', label: 'Import', iconName: 'inbox' },
 ];
 
 /** Human names for EVERY route, including the ones that are not destinations
@@ -5739,7 +5728,7 @@ const FC_NAV_DEFS = [
 const FC_VIEW_LABELS = {
   decks: 'Decks',
   study: 'Study',
-  create: 'Create',
+  create: 'Make Cards',
   import: 'Import',
   stats: 'Stats',
   browse: 'Browse Cards',
@@ -5786,12 +5775,13 @@ function createSidebarView(container) {
   // repeating it read as sloppy duplication (user report). Actions live on
   // the section heads instead.
 
-  // ── Navigation rail ──
+  // ── Navigation: one named row a destination, the decks under them ──
   // Fixed above the scroller: navigation must not scroll away under a long
   // deck list, and it must work with zero decks (which is exactly when
-  // Create and Import matter most).
+  // Make Cards and Import matter most).
   const nav = el('div', 'fc-sb__nav');
   nav.setAttribute('role', 'tablist');
+  nav.setAttribute('aria-orientation', 'vertical');
   nav.setAttribute('aria-label', 'Flashcards sections');
   const navItems = new Map();
   for (const def of FC_NAV_DEFS) {
@@ -5808,8 +5798,8 @@ function createSidebarView(container) {
     item.addEventListener('keydown', (event) => {
       const buttons = [...navItems.values()];
       const index = buttons.indexOf(item);
-      const next = event.key === 'ArrowRight' ? (index + 1) % buttons.length
-        : event.key === 'ArrowLeft' ? (index + buttons.length - 1) % buttons.length
+      const next = event.key === 'ArrowDown' ? (index + 1) % buttons.length
+        : event.key === 'ArrowUp' ? (index + buttons.length - 1) % buttons.length
         : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : -1;
       if (next < 0) return;
       event.preventDefault();
@@ -5918,6 +5908,9 @@ function createSidebarView(container) {
     try { [decks, today, customDecks] = await Promise.all([fcListDecks(), fcTodayCounts(), fcListCustomDecks()]); } catch { /* db not ready */ }
     if (disposed) return;
 
+    // The tab's live word: what is due, where open editors are listed.
+    try { _api.editors.setEditorStatus?.({ typeId: 'flashcards', instanceId: 'main' }, today.dueTotal > 0 ? `${today.dueTotal} due` : undefined); } catch { /* an older app */ }
+
     // Today panel.
     todayHost.innerHTML = '';
     const panel = el('div', 'fc-today');
@@ -5988,7 +5981,7 @@ function createSidebarView(container) {
     deckList.innerHTML = '';
     if (decks.length === 0) {
       deckList.appendChild(el('div', 'fc-sb__empty',
-        'Your decks live here. Use + for a new deck, or Create to turn a page or PDF into cards.'));
+        'Your decks live here. Use + for a new deck, or Make Cards to turn a page or PDF into cards.'));
     } else {
       for (const deck of customDecks) {
         const row = el('div', 'fc-deck-row fc-deck-row--custom'); fcSurface(row, 'flashcards.side.customDeck', deck.name, deck.id);

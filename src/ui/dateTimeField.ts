@@ -197,103 +197,155 @@ export class DateField extends PickerField {
 
   /** Draw the month holding the cursor; returns the day button to focus. */
   private _paint(popup: HTMLElement): HTMLElement {
-    popup.replaceChildren();
-    const c = this._cursor;
-    const head = document.createElement('div');
-    head.className = 'px-datepicker__head';
-    const title = document.createElement('span');
-    title.className = 'px-datepicker__title';
-    title.setAttribute('aria-live', 'polite');
-    title.textContent = utcFmt({ month: 'long', year: 'numeric' }).format(Date.UTC(c.y, c.m, 1));
-    const nav = (icon: string, label: string, n: number): HTMLButtonElement => {
+    const field = this;
+    return paintMonth(popup, { get cursor() { return field._cursor; }, set cursor(d: Ymd) { field._cursor = d; }, get value() { return field._value; } }, (d) => this._pick(d));
+  }
+}
+
+/** What a painted month reads and moves: the day the keys are on, and the day chosen (if any). */
+interface MonthState { cursor: Ymd; readonly value: Ymd | null }
+
+/**
+ * Draw the month holding the cursor into `popup` (the date field's popup, or
+ * a small month set in a page); returns the day button to focus. Pressing a
+ * day calls `pick`; moving by the keys or the month buttons draws it again.
+ */
+function paintMonth(popup: HTMLElement, s: MonthState, pick: (d: Ymd) => void): HTMLElement {
+  popup.replaceChildren();
+  const c = s.cursor;
+  const head = document.createElement('div');
+  head.className = 'px-datepicker__head';
+  const title = document.createElement('span');
+  title.className = 'px-datepicker__title';
+  title.setAttribute('aria-live', 'polite');
+  title.textContent = utcFmt({ month: 'long', year: 'numeric' }).format(Date.UTC(c.y, c.m, 1));
+  const nav = (icon: string, label: string, n: number): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'px-btn px-btn--ghost px-btn--icon px-btn--sm';
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.appendChild(createIconElement(icon, 14));
+    // The month is drawn again, so focus goes to the new copy of this button.
+    b.addEventListener('click', () => { s.cursor = addMonths(s.cursor, n); paintMonth(popup, s, pick); popup.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.focus(); });
+    return b;
+  };
+  head.append(nav('chevron-left', 'Previous Month', -1), title, nav('chevron-right', 'Next Month', 1));
+  popup.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'px-datepicker__grid';
+  grid.setAttribute('role', 'grid');
+  grid.setAttribute('aria-label', title.textContent ?? '');
+  const first = { y: c.y, m: c.m, d: 1 };
+  const start = addDays(first, -weekday(first));
+  const headRow = document.createElement('div');
+  headRow.setAttribute('role', 'row');
+  headRow.className = 'px-datepicker__row';
+  for (let i = 0; i < 7; i++) {
+    const h = document.createElement('span');
+    h.setAttribute('role', 'columnheader');
+    h.className = 'px-datepicker__dow';
+    const day = addDays(start, i);
+    h.textContent = dateWords(day, { weekday: 'narrow' });
+    h.setAttribute('aria-label', dateWords(day, { weekday: 'long' }));
+    headRow.appendChild(h);
+  }
+  grid.appendChild(headRow);
+  const now = today();
+  let focus: HTMLButtonElement | null = null;
+  for (let w = 0; w < 6; w++) {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row');
+    row.className = 'px-datepicker__row';
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(start, w * 7 + i);
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'px-btn px-btn--ghost px-btn--icon px-btn--sm';
-      b.setAttribute('aria-label', label);
-      b.title = label;
-      b.appendChild(createIconElement(icon, 14));
-      // The month is drawn again, so focus goes to the new copy of this button.
-      b.addEventListener('click', () => { this._cursor = addMonths(this._cursor, n); this._paint(popup); popup.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.focus(); });
-      return b;
-    };
-    head.append(nav('chevron-left', 'Previous Month', -1), title, nav('chevron-right', 'Next Month', 1));
-    popup.appendChild(head);
-
-    const grid = document.createElement('div');
-    grid.className = 'px-datepicker__grid';
-    grid.setAttribute('role', 'grid');
-    grid.setAttribute('aria-label', title.textContent ?? '');
-    const first = { y: c.y, m: c.m, d: 1 };
-    const start = addDays(first, -weekday(first));
-    const headRow = document.createElement('div');
-    headRow.setAttribute('role', 'row');
-    headRow.className = 'px-datepicker__row';
-    for (let i = 0; i < 7; i++) {
-      const h = document.createElement('span');
-      h.setAttribute('role', 'columnheader');
-      h.className = 'px-datepicker__dow';
-      const day = addDays(start, i);
-      h.textContent = dateWords(day, { weekday: 'narrow' });
-      h.setAttribute('aria-label', dateWords(day, { weekday: 'long' }));
-      headRow.appendChild(h);
+      b.setAttribute('role', 'gridcell');
+      b.className = 'px-datepicker__day';
+      b.textContent = String(d.d);
+      b.setAttribute('aria-label', dateWords(d, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
+      if (d.m !== c.m) b.classList.add('px-datepicker__day--out');
+      if (sameDay(d, now)) { b.classList.add('px-datepicker__day--today'); b.setAttribute('aria-current', 'date'); }
+      b.setAttribute('aria-selected', String((!!s.value && sameDay(d, s.value))));
+      const isCursor = sameDay(d, c);
+      b.tabIndex = isCursor ? 0 : -1;
+      if (isCursor) focus = b;
+      b.addEventListener('click', () => pick(d));
+      row.appendChild(b);
     }
-    grid.appendChild(headRow);
-    const now = today();
-    let focus: HTMLButtonElement | null = null;
-    for (let w = 0; w < 6; w++) {
-      const row = document.createElement('div');
-      row.setAttribute('role', 'row');
-      row.className = 'px-datepicker__row';
-      for (let i = 0; i < 7; i++) {
-        const d = addDays(start, w * 7 + i);
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.setAttribute('role', 'gridcell');
-        b.className = 'px-datepicker__day';
-        b.textContent = String(d.d);
-        b.setAttribute('aria-label', dateWords(d, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
-        if (d.m !== c.m) b.classList.add('px-datepicker__day--out');
-        if (sameDay(d, now)) { b.classList.add('px-datepicker__day--today'); b.setAttribute('aria-current', 'date'); }
-        b.setAttribute('aria-selected', String(sameDay(d, this._value)));
-        const isCursor = sameDay(d, c);
-        b.tabIndex = isCursor ? 0 : -1;
-        if (isCursor) focus = b;
-        b.addEventListener('click', () => this._pick(d));
-        row.appendChild(b);
-      }
-      grid.appendChild(row);
-    }
-    grid.addEventListener('keydown', (e) => {
-      const step: Record<string, () => Ymd> = {
-        ArrowLeft: () => addDays(this._cursor, -1), ArrowRight: () => addDays(this._cursor, 1),
-        ArrowUp: () => addDays(this._cursor, -7), ArrowDown: () => addDays(this._cursor, 7),
-        PageUp: () => addMonths(this._cursor, e.shiftKey ? -12 : -1), PageDown: () => addMonths(this._cursor, e.shiftKey ? 12 : 1),
-        Home: () => addDays(this._cursor, -weekday(this._cursor)), End: () => addDays(this._cursor, 6 - weekday(this._cursor)),
-      };
-      if (step[e.key]) {
-        e.preventDefault();
-        e.stopPropagation();
-        this._cursor = step[e.key]();
-        this._paint(popup).focus();
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        e.stopPropagation();
-        this._pick(this._cursor);
-      }
-    });
-    popup.appendChild(grid);
-
-    const foot = document.createElement('div');
-    foot.className = 'px-datepicker__foot';
-    const todayBtn = document.createElement('button');
-    todayBtn.type = 'button';
-    todayBtn.className = 'px-btn px-btn--ghost px-btn--sm';
-    todayBtn.textContent = 'Today';
-    todayBtn.addEventListener('click', () => this._pick(today()));
-    foot.appendChild(todayBtn);
-    popup.appendChild(foot);
-    return focus ?? todayBtn;
+    grid.appendChild(row);
   }
+  grid.addEventListener('keydown', (e) => {
+    const step: Record<string, () => Ymd> = {
+      ArrowLeft: () => addDays(s.cursor, -1), ArrowRight: () => addDays(s.cursor, 1),
+      ArrowUp: () => addDays(s.cursor, -7), ArrowDown: () => addDays(s.cursor, 7),
+      PageUp: () => addMonths(s.cursor, e.shiftKey ? -12 : -1), PageDown: () => addMonths(s.cursor, e.shiftKey ? 12 : 1),
+      Home: () => addDays(s.cursor, -weekday(s.cursor)), End: () => addDays(s.cursor, 6 - weekday(s.cursor)),
+    };
+    if (step[e.key]) {
+      e.preventDefault();
+      e.stopPropagation();
+      s.cursor = step[e.key]();
+      paintMonth(popup, s, pick).focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      pick(s.cursor);
+    }
+  });
+  popup.appendChild(grid);
+
+  const foot = document.createElement('div');
+  foot.className = 'px-datepicker__foot';
+  const todayBtn = document.createElement('button');
+  todayBtn.type = 'button';
+  todayBtn.className = 'px-btn px-btn--ghost px-btn--sm';
+  todayBtn.textContent = 'Today';
+  todayBtn.addEventListener('click', () => pick(today()));
+  foot.appendChild(todayBtn);
+  popup.appendChild(foot);
+  return focus ?? todayBtn;
+}
+
+/** A month set in a page (not a popup): the day pressed is the one marked. */
+export interface ISmallMonth {
+  readonly element: HTMLElement;
+  /** Mark another day (and show its month), without calling `onPick`. */
+  setValue(value: string): void;
+}
+
+/**
+ * A small month to find a day by: arrows walk the days, Page Up and Down the
+ * months, Enter or a press picks. `onPick` gets the day as YYYY-MM-DD.
+ */
+export function createSmallMonth(container: HTMLElement | null, options: { ariaLabel: string; value?: string; onPick: (value: string) => void }): ISmallMonth {
+  const element = document.createElement('div');
+  element.className = 'px-datepicker px-smallmonth';
+  element.setAttribute('role', 'group');
+  element.setAttribute('aria-label', options.ariaLabel);
+  const state = { cursor: parseYmd(options.value ?? '') ?? today(), value: parseYmd(options.value ?? '') as Ymd | null };
+  const pick = (d: Ymd): void => {
+    state.value = d;
+    state.cursor = d;
+    const hadFocus = element.contains(document.activeElement);
+    const day = paintMonth(element, state, pick);
+    if (hadFocus) day.focus();
+    options.onPick(formatYmd(d));
+  };
+  paintMonth(element, state, pick);
+  container?.appendChild(element);
+  return {
+    element,
+    setValue(value: string) {
+      const d = parseYmd(value);
+      if (!d) return;
+      state.value = d;
+      state.cursor = d;
+      paintMonth(element, state, pick);
+    },
+  };
 }
 
 function today(): Ymd {

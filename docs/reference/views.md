@@ -37,8 +37,8 @@ The view containers (an activity bar icon, a panel tab) and the views tools cont
 | `textGenerator.home` | Creations AI | creations-ai | text-generator-container |  |
 | `view.dashboard` | Dashboards | dashboard | dashboard-container |  |
 | `view.diagnostics` | AI Diagnostics | diagnostics | panel |  |
-| `view.explorer` | Explorer | explorer | explorer-container |  |
-| `view.openEditors` | Open Editors | explorer | explorer-container |  |
+| `view.explorer` | Files | explorer | explorer-container |  |
+| `view.openEditors` | Open | explorer | explorer-container |  |
 | `flashcards.decks` | Decks | flashcards | flashcards-container |  |
 | `view.indexingLog` | Indexing | indexing-log | panel |  |
 | `mediaOrganizer.browser` | Atelier | media-organizer | media-organizer-container |  |

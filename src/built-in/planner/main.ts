@@ -423,6 +423,20 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // One of Planner's pages: Today (when run bare), Calendar on a day, or Tasks on one of its lists.
+  // What the rows of Planner's column run.
+  context.subscriptions.push(
+    api.commands.registerCommand('planner.show', async (tab?: unknown, tasksFilter?: unknown, date?: unknown) => {
+      const to = tab === 'calendar' || tab === 'tasks' ? tab : 'today';
+      const list = to === 'tasks' && typeof tasksFilter === 'string' ? tasksFilter : null;
+      const day = to === 'calendar' && typeof date === 'string' ? date : null;
+      setPendingPlannerTab(to, list, day);
+      await api.editors.openEditor({ typeId: 'planner', title: 'Planner', iconHtml: PLANNER_ICON_HTML, instanceId: 'main' });
+      // An open pane takes the event; one still building took the pending request.
+      document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab: to, tasksFilter: list ?? undefined, date: day ?? undefined } }));
+    }),
+  );
+
   // Tasks › Overdue: every open task whose day has passed (Today's Overdue count opens it).
   context.subscriptions.push(
     api.commands.registerCommand('planner.showOverdue', async () => {

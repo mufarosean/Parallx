@@ -287,6 +287,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `planner.newEvent` | Planner: New Event… | planner |  |  |  |
 | `planner.newTask` | Planner: New Task… | planner |  |  |  |
 | `planner.open` | Planner: Open | planner |  |  |  |
+| `planner.show` | Planner: Show Today | planner |  |  |  |
 | `planner.showOverdue` | Planner: Show Overdue Tasks | planner |  |  |  |
 | `search.clearResults` | Search: Clear Results | search |  |  |  |
 | `search.collapseAll` | Search: Collapse All Results | search |  |  |  |

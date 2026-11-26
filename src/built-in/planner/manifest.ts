@@ -34,6 +34,7 @@ export const PLANNER_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Open the Planner\'s new task form.' },
       { id: 'planner.newEvent', title: 'Planner: New Event…',
         aiInvocable: true, aiDescription: 'Open the Planner\'s new event form.' },
+      { id: 'planner.show', title: 'Planner: Show Today' },
       { id: 'planner.showOverdue', title: 'Planner: Show Overdue Tasks',
         aiInvocable: true, aiDescription: 'Open the Planner on the list of every overdue task.' },
     ],

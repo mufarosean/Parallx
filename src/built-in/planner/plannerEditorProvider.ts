@@ -11,7 +11,7 @@ import { declareControl } from '../../ui/kit.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
-import { takePendingPlannerNewEvent, takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
+import { plannerDayFrom, takePendingPlannerNewEvent, takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { appDateParts } from '../../services/localTime.js';
@@ -114,6 +114,7 @@ export class PlannerEditorPane implements IDisposable {
     const pending = takePendingPlannerTab();
     if (pending) this._activeTab = pending.tab;
     if (pending?.tasksFilter) this._tasksFilter = pending.tasksFilter;
+    this._cursorDate = plannerDayFrom(pending?.date) ?? this._cursorDate;
     this._input?.setName?.('Planner');
     this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
@@ -156,8 +157,9 @@ export class PlannerEditorPane implements IDisposable {
     const onFocusTab = (e: Event) => {
       if (!this._root?.isConnected) return;
       takePendingPlannerTab(); // handled here, so it must not also steer the next pane
-      const { tab, tasksFilter } = (e as CustomEvent<{ tab?: Tab; tasksFilter?: string }>).detail ?? {};
+      const { tab, tasksFilter, date } = (e as CustomEvent<{ tab?: Tab; tasksFilter?: string; date?: string }>).detail ?? {};
       if (tasksFilter) this._tasksFilter = tasksFilter;
+      this._cursorDate = plannerDayFrom(date) ?? this._cursorDate; // a day from the column's small month
       if (tab === 'today' || tab === 'tasks' || tab === 'calendar') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);

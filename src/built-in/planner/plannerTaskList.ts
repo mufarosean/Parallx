@@ -12,9 +12,10 @@ import { createIconElement } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 import { appDateString, isSameAppDay } from '../../services/localTime.js';
-import { endOfDay, startOfDayMs, formatDateShort } from './plannerDates.js';
+import { endOfDay, formatDateShort } from './plannerDates.js';
 import { el } from './plannerUi.js';
 import type { PlannerEditorPane } from './plannerEditorProvider.js';
+import { PLANNER_TASK_FILTERS, PLANNER_TASK_LIST_QUERY } from './plannerTaskFilters.js';
 
 export class PlannerTaskList {
   constructor(private readonly _pane: PlannerEditorPane) {}
@@ -25,11 +26,7 @@ export class PlannerTaskList {
     addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
     actions.appendChild(addBtn);
 
-    const all = await this._pane._data.listTasks({
-      status: ['reviewing', 'planned', 'done'],
-      includeUndated: true,
-      limit: 500,
-    });
+    const all = await this._pane._data.listTasks(PLANNER_TASK_LIST_QUERY);
 
     if (all.length === 0) {
       body.appendChild(renderEmptyStateEntry(PLANNER_EMPTY_STATES.day));
@@ -46,15 +43,7 @@ export class PlannerTaskList {
     layout.appendChild(nav);
     layout.appendChild(content);
 
-    type Filter = { key: string; label: string; pinned?: boolean; match: (t: typeof all[number]) => boolean };
-    const filters: Filter[] = [
-      { key: 'review',  label: 'Review Queue', pinned: true, match: t => t.status === 'reviewing' },
-      { key: 'today',   label: 'Today',     match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && isSameAppDay(t.dueAt, Date.now()) },
-      { key: 'week',    label: 'This Week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
-      { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && isOverdue(t, Date.now()) },
-      { key: 'all',     label: 'All Tasks', match: t => t.status !== 'cancelled' },
-      { key: 'completed', label: 'Completed', match: t => t.status === 'done' },
-    ];
+    const filters = PLANNER_TASK_FILTERS;
 
     let activeKey = this._pane._tasksFilter;
 
