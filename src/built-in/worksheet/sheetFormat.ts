@@ -49,7 +49,7 @@ export type SheetFreeze = 'row' | 'column' | 'here' | 'none';
 /** One act on the selection. A plain object, so a command can carry it. */
 export type SheetFormatAction =
   | { readonly do: 'undo' | 'redo' | 'bold' | 'italic' | 'underline' | 'strike' | 'wrap' | 'merge' | 'percent' | 'currency' | 'moreDecimals' | 'fewerDecimals' | 'filter' | 'painter' | 'textToNumber' | 'insertImage' | 'functions' | 'numberFormats' | 'protect' | 'clearFormat' }
-  | { readonly do: 'clearAll' | 'largerText' | 'smallerText' | 'mergeAcross' | 'mergeDown' | 'unmerge' | 'insertCellImage' | 'customSort' | 'clearFilter' | 'reapplyFilter' | 'stackText' }
+  | { readonly do: 'clearAll' | 'largerText' | 'smallerText' | 'mergeAcross' | 'mergeDown' | 'unmerge' | 'insertCellImage' | 'customSort' | 'clearFilter' | 'reapplyFilter' | 'stackText' | 'find' | 'replace' }
   | { readonly do: 'overflow'; readonly to: SheetOverflow }
   | { readonly do: 'insert'; readonly what: SheetInsert }
   | { readonly do: 'numberFormat'; readonly pattern: string }

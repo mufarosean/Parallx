@@ -4034,6 +4034,7 @@ tab now.
 | 20 | Study piece C's remainder | Waiting on him: how a phase names its units |
 | 21 | Worksheets' toolbar, and the checks left open on 2026-11-16 | Done |
 | 21, keys | The keys that did nothing in a sheet | Done |
+| 21, find | Find and replace on a sheet | Done |
 | 21, after | The rest of Worksheets' list, a piece each (named under item 21) | Not started |
 | 22 | Generative edits | Not started: needs his machine (his photos, his card) |
 | 23 | Where tools look unlike each other, measured | Done |
@@ -4769,9 +4770,9 @@ started (each is its own piece, named at the end).**
   piece of their own) or retired.
 
 - *The rest of Worksheets' list, a piece each.* Done: the keys that do
-  nothing (next entry). Not started: typing in the formula bar (looked
-  into, nothing shipped, what was found is under the keys entry); find
-  and replace on a sheet; conditional
+  nothing, and find and replace on a sheet (the next two entries). Not
+  started: typing in the formula bar (looked into, nothing shipped,
+  what was found is under the keys entry); conditional
   formatting, dropdown lists, tables, notes and links (engine parts
   installed, not on); a sheet in a page (his 3A, then 3C); the problem
   program made generic and moved (his 4i, 4A); working an item (5B, and
@@ -4846,6 +4847,30 @@ started (each is its own piece, named at the end).**
   types with Tab, Enter and the arrows: 100 of 100; the keyboard audit
   on the Worksheets screens and a page: 0; `sheetToolbar.test.ts` (10)
   and `keybindingService.test.ts`; typecheck; the unit suite.
+
+**Item 21, next piece: find and replace on a sheet. Done.**
+- *What was there:* nothing. Ctrl+F in a sheet opened the app's search
+  of files, which finds nothing on a sheet. The engine's own part for
+  it was installed and never switched on.
+- *Built:* the part is on for every sheet. Ctrl+F opens the sheet's
+  Find with the keys in its field; it counts the cells that hold the
+  word ("2/2") and marks them on the sheet, Enter going to the next.
+  Ctrl+H opens Find and Replace (by row or column, this sheet or all,
+  by value or formula, case, whole cell; Replace and Replace All, which
+  asks first). Both are also under More on the toolbar, with their
+  keys shown. Escape closes it and the keys are back in the grid. The
+  sheet names Ctrl+F and Ctrl+H as its own, so the app's bindings step
+  aside there and nowhere else.
+- *Decided, for him to overrule:* the dialog is the engine's own (it
+  follows the sheet's light or dark), not one rebuilt from the kit. A
+  match is marked, and the selection does not move to it until the
+  cell is pressed (the engine's way; Excel moves the selection).
+- *Checked:* `sheet-keys-probe.mjs` (74 of 74 with find, replace and
+  Replace All on the practice sheet and on a sheet file, the replaced
+  cell read from the engine); `sheet-toolbar-probe.mjs` (83 of 83);
+  `sheet-cells-probe.mjs`: 99 the same as Excel, 7 differ, 9 missing,
+  no page errors; the keyboard audit on the Worksheets screens: 0;
+  typecheck; the unit suite.
 
 **Item 22, Generative edits: Recipes, Beyond The Edges, the two
 proposals, and the image editor probe's 34 failures. Not started: it

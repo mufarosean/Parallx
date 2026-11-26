@@ -243,7 +243,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   ensurePopupRoot(); ensureUniverEditorExits();
   // Ctrl+= / - / 0 zoom the cells (as Excel does): the app's Text size keys step aside
   // while focus is in it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
-  opts.container.setAttribute('data-px-owns-zoom', ''); opts.container.setAttribute('data-px-owns-keys', 'ctrl+b ctrl+i ctrl+u ctrl+g'); // and these keys are the sheet's (keybindingService.ts)
+  opts.container.setAttribute('data-px-owns-zoom', ''); opts.container.setAttribute('data-px-owns-keys', 'ctrl+b ctrl+i ctrl+u ctrl+g ctrl+f ctrl+h'); // and these keys are the sheet's (keybindingService.ts)
   opts.container.setAttribute('role', 'region'); opts.container.setAttribute('aria-keyshortcuts', 'F6'); opts.container.setAttribute('aria-label', 'Spreadsheet. Tab moves between cells; F6 moves to the next area.'); // Tab moves cells, as in Excel: say how to leave (WCAG 2.1.2)
   const sheetsPresetConfig = {
     container: opts.container,

@@ -146,6 +146,45 @@ async function theKeys(label, { rows, columns }) {
   check(`${label}: after the menu the keys are back in the grid`, (await cell(10, 0)).v === 'new', await cell(10, 0));
   check(`${label}: and the formula under it follows`, /^=SUM\(A10:A12\)$/i.test(moved[2].f ?? '') || /^=SUM\(A10:A11\)$/i.test(moved[2].f ?? ''), moved[2]);
 
+  // Find and replace: the sheet's own. (Ctrl+F used to open the app's search of files, which finds nothing on a sheet.)
+  await host('setCellText', 20, 0, 'needle'); await host('setCellText', 22, 2, 'another needle here'); await host('setCellText', 24, 0, 'pear');
+  await wait(300);
+  await stand(18, 0);
+  await key('Control+f'); await wait(700);
+  const findUp = await page.evaluate(() => { const dlg = [...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).pop(); return { title: (dlg?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40), keysInIt: !!dlg && dlg.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? '') }; });
+  check(`${label}: Ctrl+F opens the sheet's Find with the keys in its field`, /^Find/.test(findUp.title) && findUp.keysInIt, findUp);
+  await page.keyboard.type('needle', { delay: 40 }); await wait(1_000);
+  const found = await page.evaluate(() => ([...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).pop()?.textContent ?? '').replace(/\s+/g, ' '));
+  check(`${label}: it counts the cells that hold the word`, /[12]\s*\/\s*2/.test(found), found.slice(0, 80));
+  await screenshot(app, page, path.join(shots, `${label.replace(/\W+/g, '-')}-find.png`), { keepFocus: true });
+  await key('Escape'); await wait(500);
+  check(`${label}: Escape closes it`, (await page.evaluate(() => [...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).length)) === 0);
+  check(`${label}: and the keys are back in the grid`, await page.evaluate(() => (document.activeElement?.id ?? '').endsWith('__INTERNAL_EDITOR__DOCS_NORMAL')), await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 100)));
+  // Replace.
+  await stand(18, 1);
+  await key('Control+h'); await wait(800);
+  const fields = await page.evaluate(() => { const dlg = [...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).pop(); return { text: (dlg?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 160), inputs: dlg ? [...dlg.querySelectorAll('input')].filter((i) => i.getClientRects().length).length : 0 }; });
+  check(`${label}: Ctrl+H opens Find and Replace, with a field for each`, /Replace/.test(fields.text) && fields.inputs >= 2, fields);
+  // Each field is pressed, then typed in.
+  const field = async (i, text) => { const at = await page.evaluate((i) => { const dlg = [...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).pop(); const f = [...dlg.querySelectorAll('input')].filter((x) => x.getClientRects().length && x.type !== 'checkbox')[i]; const r = f.getBoundingClientRect(); return { x: r.x + 20, y: r.y + r.height / 2 }; }, i); await page.mouse.click(at.x, at.y); await wait(200); await page.keyboard.type(text, { delay: 40 }); await wait(500); };
+  await field(0, 'pear'); await field(1, 'peach');
+  await screenshot(app, page, path.join(shots, `${label.replace(/\W+/g, '-')}-replace.png`), { keepFocus: true });
+  // Find first (Replace All is off until something was found), then Replace All.
+  const dialogButton = (name) => page.evaluate((name) => { const dlg = [...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).pop(); const b = [...(dlg?.querySelectorAll('button') ?? [])].find((x) => (x.textContent ?? '').trim() === name); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, off: b.disabled }; }, name);
+  const findBtn = await dialogButton('Find');
+  if (findBtn) { await page.mouse.click(findBtn.x, findBtn.y); await wait(900); }
+  const replaceAll = await dialogButton('Replace All');
+  if (replaceAll) { await page.mouse.click(replaceAll.x, replaceAll.y); await wait(900); }
+  const afterAll = await page.evaluate(() => [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], .univer-confirm-dialog, [data-u-comp="confirm"], [data-u-comp="message"]')].filter((e) => e.getClientRects().length).map((e) => `${(e.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)} [${[...e.querySelectorAll('button')].filter((b) => b.getClientRects().length).map((b) => (b.textContent ?? '').trim()).join(',')}]`));
+  // The engine asks before it replaces everywhere: its OK is pressed.
+  const ok = await page.evaluate(() => { const b = [...document.querySelectorAll('[role="dialog"] button, [role="alertdialog"] button')].filter((x) => x.getClientRects().length).find((x) => /^(ok|confirm|yes)$/i.test((x.textContent ?? '').trim())); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  if (ok) { await page.mouse.click(ok.x, ok.y); await wait(900); }
+  check(`${label}: Replace All puts the new word in the cell`, (await cell(24, 0)).v === 'peach', [replaceAll, afterAll, ok, await cell(24, 0)]);
+  // A confirmation may be up; then the dialog itself.
+  for (let i = 0; i < 3; i++) { await key('Escape'); await wait(300); }
+  const stillUp = await page.evaluate(() => { const x = [...document.querySelectorAll('[role="dialog"] button')].filter((b) => b.getClientRects().length && /close|ok|confirm/i.test(`${b.textContent} ${b.getAttribute('aria-label') ?? ''}`)); for (const b of x) b.click(); return x.length; });
+  if (stillUp) await wait(500);
+
   // None of the keys is taken from an entry being typed: the entry stays whole, in its own cell.
   await stand(14, 4);
   await page.keyboard.type('abc'); await wait(200);

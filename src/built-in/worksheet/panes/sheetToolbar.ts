@@ -58,9 +58,19 @@ let live: Live | null = null;
 /** worksheet.formatCells: one act on the live sheet's selection. False when no sheet is live or it was refused. */
 export function formatCells(action: unknown): boolean {
   if (!live || !action || typeof action !== 'object' || typeof (action as { do?: unknown }).do !== 'string') return false;
-  const done = live.format.run(action as SheetFormatAction);
+  const done = runAct(live, action as SheetFormatAction);
   keysBackToGrid(live);
   return done;
+}
+
+/** The acts that open something of the engine's which takes the keys itself (a dialog, a panel, a file choice). */
+const OPENS_ITS_OWN: ReadonlySet<SheetFormatAction['do']> = new Set(['find', 'replace', 'numberFormats', 'functions', 'protect', 'customSort', 'insertImage', 'insertCellImage']);
+/** Set by such an act: the keys are not taken back to the grid after it. */
+let keysAreElsewhere = false;
+
+function runAct(on: Live, action: SheetFormatAction): boolean {
+  if (OPENS_ITS_OWN.has(action.do)) keysAreElsewhere = true;
+  return on.format.run(action);
 }
 
 /**
@@ -69,6 +79,7 @@ export function formatCells(action: unknown): boolean {
  * press. A person working the toolbar by keys stays on it.
  */
 function keysBackToGrid(on: Live, always = false): void {
+  if (keysAreElsewhere) { keysAreElsewhere = false; return; }
   if (!always && document.documentElement.dataset.inputModality === 'keyboard') return;
   const within = document.activeElement?.closest?.('.px-toolbar, .context-menu');
   if (always || within || document.activeElement === document.body) on.format.focusGrid();
@@ -130,7 +141,7 @@ const SEP: IExtensionMenuItem = { separator: true };
 
 function menuItems(name: SheetMenuName, on: Live): IExtensionMenuItem[] | null {
   const s = on.format.state();
-  const act = (action: SheetFormatAction) => () => { on.format.run(action); };
+  const act = (action: SheetFormatAction) => () => { runAct(on, action); };
   switch (name) {
     case 'number': return [
       ...NUMBER_FORMATS.map((f) => ({ label: f.label, tooltip: `Shown as ${f.sample}`, checked: (s?.numberFormat ?? '') === f.pattern, onSelect: act({ do: 'numberFormat', pattern: f.pattern }) })),
@@ -243,6 +254,9 @@ function menuItems(name: SheetMenuName, on: Live): IExtensionMenuItem[] | null {
         SEP,
         { label: 'Unmerge', onSelect: act({ do: 'unmerge' }) },
       ] },
+      SEP,
+      { label: 'Find…', icon: 'search', keybinding: 'Ctrl+F', onSelect: act({ do: 'find' }) },
+      { label: 'Find and Replace…', icon: 'replace', keybinding: 'Ctrl+H', onSelect: act({ do: 'replace' }) },
       SEP,
       { label: 'Format Painter', icon: 'paintbrush', checked: !!s?.painter, tooltip: 'Copies the selected cell\'s format; the next cells selected take it.', onSelect: act({ do: 'painter' }) },
       { label: 'Clear Formatting', icon: 'eraser', onSelect: act({ do: 'clearFormat' }) },

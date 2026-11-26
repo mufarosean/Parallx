@@ -441,10 +441,12 @@ try {
     await click(8, 3); await key('Control+Equal'); await wait(400);
     { const z = (await sheetMeta()).sheets[0].zoom; record('Ctrl+Plus zooms the cells', 'larger cells', z, z > 1 ? 'same' : 'differs'); }
     await key('Control+0'); await wait(300);
-    // Find: the app's own Find surface, on a sheet.
-    await click(8, 3); await key('Control+f'); await wait(700); await type('needle'); await wait(900); await shot('struct-find.png');
-    const find = await page.evaluate(() => { const el = document.querySelector('[class*="find"]'); const input = document.activeElement; return { activeTag: input?.tagName, activeCls: String(input?.className ?? '').slice(0, 60), text: [...document.querySelectorAll('[class*="find"]')].map((e) => (e.textContent ?? '').trim()).filter(Boolean).join(' ').slice(0, 160), any: !!el }; });
-    record('Ctrl+F finds a word in the sheet', 'the cell with "needle" is found and selected', find, /1 of 1|1\/1|1 result|1 match/i.test(find.text) ? 'same' : 'differs');
+    // Find on a sheet is the sheet's own (the engine's part, switched on): Ctrl+F opens it with the keys in its
+    // field, and it counts and marks the cells that hold the word. The selection itself does not move.
+    await click(8, 3); await key('Control+f'); await wait(900); await type('needle'); await wait(1100); await shot('struct-find.png');
+    const find = await page.evaluate(() => { const input = document.activeElement; const dlg = [...document.querySelectorAll('[role="dialog"]')].filter((e) => e.getClientRects().length).pop(); return { inFindField: !!input?.closest?.('[data-u-comp="search-input"]') || (!!dlg && dlg.contains(input)), text: (dlg?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) }; });
+    record('Ctrl+F finds a word in the sheet', 'the cell with "needle" is found and selected', find, find.inFindField && /(^|\D)1\s*\/\s*1(\D|$)|1 of 1|1 result|1 match/i.test(find.text) ? 'same' : 'differs', 'The match is counted and marked on the sheet; the selection stays where it was until the cell is pressed.');
+    await key('Escape'); await wait(400);
     await key('Escape');
     // A sum of the selection, somewhere on screen.
     await drag(2, 0, 3, 0); await wait(400);

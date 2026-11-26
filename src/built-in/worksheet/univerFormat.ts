@@ -16,6 +16,9 @@ import { UniverSheetsSortPreset } from '@univerjs/presets/preset-sheets-sort';
 import UniverPresetSheetsSortEnUS from '@univerjs/presets/preset-sheets-sort/locales/en-US';
 import { UniverSheetsFilterPreset } from '@univerjs/presets/preset-sheets-filter';
 import UniverPresetSheetsFilterEnUS from '@univerjs/presets/preset-sheets-filter/locales/en-US';
+import { UniverSheetsFindReplacePreset } from '@univerjs/presets/preset-sheets-find-replace';
+import UniverPresetSheetsFindReplaceEnUS from '@univerjs/presets/preset-sheets-find-replace/locales/en-US';
+import '@univerjs/presets/lib/styles/preset-sheets-find-replace.css';
 import '@univerjs/presets/lib/styles/preset-sheets-sort.css';
 import '@univerjs/presets/lib/styles/preset-sheets-filter.css';
 import { SHEET_BORDER_BLACK } from './sheetFormat.js';
@@ -50,6 +53,8 @@ const COMMANDS: Partial<Record<SheetFormatAction['do'], string>> = {
   customSort: 'sheet.command.sort-range-custom',
   clearFilter: 'sheet.command.clear-filter-criteria',
   reapplyFilter: 'sheet.command.re-calc-filter',
+  find: 'ui.operation.open-find-dialog',
+  replace: 'ui.operation.open-replace-dialog',
 };
 
 // The engine's numbers for alignment and wrapping (HorizontalAlign, VerticalAlign, WrapStrategy).
@@ -74,16 +79,19 @@ const BORDERS: Record<SheetBorders, BorderType> = {
 };
 
 /**
- * The engine parts a sheet of one's own has and an exam sheet does not: sort
- * and filter. The exam tool has neither, so a sheet held to its function list
- * is given neither (its right-click menu stays as it was).
+ * The engine parts that are switched on beside its core. Find and replace is
+ * on for every sheet. Sort and filter are a sheet of one's own's: the exam
+ * tool has neither, so a sheet held to its function list is given neither
+ * (its right-click menu stays as it was).
  */
 export function freeSheetParts(free: boolean): { presets: unknown[]; locales: Record<string, unknown>[] } {
-  if (!free) return { presets: [], locales: [] };
-  return {
-    presets: [UniverSheetsSortPreset(), UniverSheetsFilterPreset()],
-    locales: [UniverPresetSheetsSortEnUS as Record<string, unknown>, UniverPresetSheetsFilterEnUS as Record<string, unknown>],
-  };
+  const presets: unknown[] = [UniverSheetsFindReplacePreset()];
+  const locales: Record<string, unknown>[] = [UniverPresetSheetsFindReplaceEnUS as Record<string, unknown>];
+  if (free) {
+    presets.push(UniverSheetsSortPreset(), UniverSheetsFilterPreset());
+    locales.push(UniverPresetSheetsSortEnUS as Record<string, unknown>, UniverPresetSheetsFilterEnUS as Record<string, unknown>);
+  }
+  return { presets, locales };
 }
 
 interface CellStyle {
