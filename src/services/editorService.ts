@@ -130,7 +130,8 @@ export class EditorService extends Disposable implements IEditorService {
           groupId: group.model.id,
           isShowing: editor === group.model.activeEditor,
           typeId: editor.typeId,
-          filePath: editor.uri?.fsPath,
+          // A file's path only: an untitled file, a memory viewer or a data image has a URI of another scheme, whose fsPath throws (and took this whole list with it).
+          filePath: editor.uri?.scheme === 'file' ? editor.uri.fsPath : undefined,
           iconHtml: editor.iconHtml,
           status: editor.status,
         });
