@@ -65,6 +65,29 @@ function stWorkWanted(source, entries, units) {
   return [...by.values()].map((w) => ({ ...w, minutes: stWorkMinutes(w.minutes) })).filter((w) => w.minutes > 0 || w.items > 0);
 }
 
+/**
+ * Rows Study wrote today for a source that reports now, which that source no
+ * longer reports at all: each is wanted at nothing. Without this a row only
+ * ever followed its source up: a first reading of the day left on screen
+ * grew to the idle time, the clock took the stretch back, and the row kept
+ * it (and so did the plan's Done). Today's rows only: an older day a tool
+ * has stopped reporting stays as it was. A row that is his is never touched.
+ */
+function stWorkGone(sources, recs, wanted, units, today) {
+  const have = new Set(wanted.map((w) => w.key));
+  const out = [];
+  for (const [key, rec] of recs) {
+    if (!rec || rec.his || have.has(key)) continue;
+    const [source, unitRow, day] = String(key).split('\u0000');
+    if (day !== today) continue;
+    const from = sources.find((x) => x.id === source);
+    const unit = units.find((u) => String(u.rowId) === unitRow);
+    if (!from || !unit) continue;
+    out.push({ key, source, tool: from.tool, kind: from.kind, unitRow: unit.rowId, unit: unit.name, day, minutes: 0, items: 0, right: null });
+  }
+  return out;
+}
+
 /** The row Study writes for one tool, unit and day: its title and its cells by column name. */
 function stWorkRowValues(want) {
   return {

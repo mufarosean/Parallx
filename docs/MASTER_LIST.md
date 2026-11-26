@@ -2102,7 +2102,9 @@ Push to the Next Free Day and Set Hours… driven on the app; a finger's
 drag on Home (its menu works by touch); Study's own session card, still
 the white stock; Worksheets' inner pages and a new Worksheets home with
 data (its redesign is its own entry above); the other tools' hard-coded
-colours; piece B's remainder.
+colours. ("Piece B's remainder" stood here. The word is struck: piece B
+was finished, see "B built"; nothing of it was left to build. What its
+review found on 2026-11-26 is item 19 under "Done from this order".)
 
 *Decided, for him to overrule:* Flashcards' card follows the theme (the
 mock-up he picked shows it so) where it had been white by an earlier
@@ -4035,7 +4037,7 @@ after; no check weakened; the master list updated; pushed.
    for the text editor, under item 17): study-record's `point()` (it does
    not scroll a clipped row into view; this one correction is expected
    to clear 6.2 to 6.7, 7.3 to 7.5, 9.2 and 9.4), study-walk 0.9, 1.5,
-   1.7 and 9.3, study-work 2.4 and 5.7, study-usable 6.3 and study-unit
+   1.7 and 9.3, study-work 2.4 (5.7 passes now, see item 19), study-usable 6.3 and study-unit
    10.7.
 2. Flashcards' Study row (keep until piece 10, or drop now).
 3. The two sidebar points left: rows of Open and the foot rows move
@@ -4080,6 +4082,7 @@ checks, the builds stay one to a session):**
 **Then what is half done elsewhere:**
 19. Study piece B: one review pass by agents that did not write it (it
     shipped unreviewed), and name its "remainder" or strike the word.
+    **Done: two faults fixed, two for him, the word struck.**
 20. Study piece C's remainder (the current phase's units; tomorrow's
     questions made overnight). **Not started: two questions for him.**
 21. Worksheets: the toolbar, then the rest of its list, a piece each;
@@ -4628,6 +4631,66 @@ needs his machine.** `image-editor-probe.mjs` copies its photos from
 run here it stops before it opens the app (ENOENT on the first photo),
 so its 34 failures cannot be seen, let alone traced. Recipes and Beyond
 The Edges generate with his card.
+
+**Item 19, Study piece B: the review it never had. Done by agents that
+did not write it; two faults fixed, two for him to rule on, the word
+"remainder" struck.**
+Two reviewers read the two commits (`ef741159`, `0957c62b`) against the
+code as it stands, one for bugs and one against the first principle; a
+skeptic then tried to refute each finding, by reading and by running.
+- *The first principle holds.* The core names no tool; nothing runs
+  for a tool that is off; a provider goes with its tool at once and is
+  not registered twice on off and on; Study reaches no other tool's
+  tables or commands; a fourth tool could report work with no change
+  to the core.
+- *Fixed, reproduced and mattering:*
+  1. One tab that is not a file (File, New Text File; the chat's
+     Session Memory; a data image) made the list of open editors throw
+     for the whole app: `getOpenEditors()` asked every editor's URI for
+     a file path. The listeners after the first reader were skipped
+     (the workspace saver among them), `api.editors.openEditors` threw
+     for every tool, and Study counted no reading while such a tab was
+     open. Only a file's URI is asked now
+     (`openEditorsNonFile.test.ts` fails before, passes after).
+  2. Time away was kept in the Work Log. A first reading of the day
+     left on screen grew its row to the idle time; the clock took the
+     stretch back; the row stayed, and the plan's Done with it (run by
+     the skeptic: ledger 0 s, row 10 min). A row only ever followed its
+     source up. A row of today whose source reports it no more is
+     brought down to nothing now (`stWorkGone`); his own rows, older
+     days and a tool that cannot say are left alone.
+- **Confirmed, and his to rule on (each changes what counts as work):**
+  3. *Discuss in Chat ties whatever conversation is already open,* for
+     good, and Discussion then counts whenever the chat panel is merely
+     in view with that conversation, whatever he is doing. Should
+     Discuss in Chat start a conversation of its own for the unit, and
+     should Discussion count only while he is typing in or reading the
+     chat?
+  4. *Two surfaces side by side are both counted.* A Worksheets problem
+     with the unit's PDF beside it, worked for an hour, is two hours in
+     the Work Log and in Done. Study's "one second once" holds only
+     among its own clocks. The fix belongs in the core's clock (one
+     surface a second, the one with the last input); which surface wins
+     is his word.
+- *Confirmed, small, left:* Flashcards loses the part of a second on
+  every card (about half a second a card: 5 to 10% of Cards minutes at
+  5 to 10 s a card); a Worksheets problem's day moves if its attempt is
+  reviewed on a later day; Study turned off with a clock running loses
+  up to its last 30 s; every clock a tool makes stays referenced until
+  the tool is turned off (memory, not time).
+- *Read only, not reproduced, left:* rows added in a first batch could
+  be written twice if the app closed between the table's write and
+  Study's note of it.
+- *From the first-principle review, low, left:* the Idle Time setting
+  shows under General for someone with no tool that counts time; Study
+  orders Time worked by the kind words "Problems" and "Cards".
+- *Checked after the two fixes:* Study's work and pane unit tests, the
+  ratchets, and `study-work-acceptance.mjs` run alone: 78 of 79. The
+  one that fails is 2.4, the probe's own error that waits on him (it
+  looks for the class `ws-sessionbar__dot--cur`). 5.7 and the six
+  behind it, which also waited on him, pass without a correction: the
+  sidebar's Open rows are tabs now, not list options, so the probe no
+  longer counts one as a fifth choice.
 
 ## Verification owed
 

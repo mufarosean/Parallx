@@ -85,6 +85,30 @@ describe('the pure part', () => {
     expect(T.stWorkRowValues(w)).toEqual({ title: 'Drills · Mack', values: { Date: `${DAY}T00:00`, Minutes: 7, Unit: ['u1'], Tool: 'Drills', Kind: 'Problems', Items: 2, Right: null, Confirmed: true, Origin: 'App' } });
     expect(Object.keys(T.stWorkRowValues(w).values)).toEqual(T.ST_WORK_CELLS);
   });
+  it('brings a row of today down to nothing when its source reports it no more (time taken back for idleness), and only then', () => {
+    // Found by the review of piece B: a first reading of the day left on screen grew its row to the idle time; the clock took the stretch back; the row kept it.
+    const reading = { id: 'study:reading', tool: 'Study', kind: 'Reading' };
+    const drills = { id: 'tool:x', tool: 'Drills', kind: 'Problems' };
+    const key = (source: string, unit: string, day: string) => `${source}\u0000${unit}\u0000${day}`;
+    const rec = (his = false) => ({ rowId: 'r', written: { Minutes: 10 }, pending: null, his });
+    const recs = new Map([
+      [key('study:reading', 'u1', DAY), rec()],            // today, reported no more: down to nothing
+      [key('study:reading', 'u2', DAY), rec()],            // today, still reported: left to the usual path
+      [key('study:reading', 'u1', '2026-03-01'), rec()],   // an older day: left as it was
+      [key('tool:x', 'u1', DAY), rec(true)],               // his: never touched
+      [key('tool:gone', 'u1', DAY), rec()],                // a tool that cannot say now: its rows stay
+      [key('tool:x', 'u9', DAY), rec()],                   // a unit that is no longer there
+    ]);
+    const stillWanted = T.stWorkWanted(reading, [{ day: DAY, unitRow: 'u2', minutes: 12, items: 0 }], units);
+    const gone = T.stWorkGone([reading, drills], recs, stillWanted, units, DAY);
+    expect(gone).toEqual([{ key: key('study:reading', 'u1', DAY), source: 'study:reading', tool: 'Study', kind: 'Reading', unitRow: 'u1', unit: 'Mack', day: DAY, minutes: 0, items: 0, right: null }]);
+    // What is written for it is a row of no minutes, which differs from the ten it holds, so it is updated.
+    const values = T.stWorkRowValues(gone[0]).values;
+    expect(values.Minutes).toBe(0);
+    expect(T.stWorkDecide(values, rec(), { pageId: 'r', values: { Minutes: 10 } }).act).toBe('update');
+    // Once written, it is the same and nothing more is done.
+    expect(T.stWorkSame(values, values)).toBe(true);
+  });
   it('decides: add what was never written; leave what he changed or took out; update what is as it was written', () => {
     const values = { Minutes: 9, Items: 2 };
     const rec = { rowId: 'r', written: { Minutes: 7, Items: 2 }, pending: null, his: false };

@@ -269,7 +269,7 @@ export const __testables = {
   stUnitHolds, stUnitWords, stSubjectUnitsFromFolder, stRemoveUnit, stSubjectBankUnits,
   stPlanFormTotals,
   // 16-work-model, 32-work: the Work Log's rows from the tools' reports and Study's own clocks
-  ST_WORK_CELLS, ST_WORK_READING, ST_WORK_DISCUSSION, stWorkUnitIndex, stWorkMinutes, stWorkWanted, stWorkRowValues, stWorkCellKey, stWorkSame, stWorkDecide, stWorkTimeWords, stWorkBreakdown,
+  ST_WORK_CELLS, ST_WORK_READING, ST_WORK_DISCUSSION, stWorkUnitIndex, stWorkMinutes, stWorkWanted, stWorkGone, stWorkRowValues, stWorkCellKey, stWorkSame, stWorkDecide, stWorkTimeWords, stWorkBreakdown,
   stWorkSources, stWorkSyncSubject, stWorkSync, stWorkTouch, stWorkKeep, stReadingTargets, stReadingLook, stChatLook, stWorkTieChat, stWorkUnitOfQuestion, stDiscussUnitPrompt, stCmdDiscussUnit, registerWork, stWorkReset,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,

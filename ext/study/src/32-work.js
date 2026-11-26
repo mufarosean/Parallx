@@ -72,11 +72,13 @@ async function stWorkSyncSubject(st, sources) {
   const units = stProgressUnitsOf(st);
   const wanted = [];
   for (const s of sources) wanted.push(...stWorkWanted(s, s.own ? s.entries.filter((e) => e.subjectId === Number(subject.id)) : s.entries, units));
-  if (!wanted.length) return 0;
   const where = 'subject_id = ? AND source = ? AND unit_row = ? AND day = ?';
   const recs = new Map((await db.all('SELECT * FROM st_work_rows WHERE subject_id = ?', [subject.id])).map((r) => [`${r.source}\u0000${r.unit_row}\u0000${r.day}`, {
     rowId: r.row_id, written: stParseJson(r.written_json, {}) || {}, pending: r.pending_json ? stParseJson(r.pending_json, null) : null, his: !!r.his,
   }]));
+  // What a source reported earlier today and reports no more (time taken back for idleness) is brought down to nothing.
+  wanted.push(...stWorkGone(sources, recs, wanted, units, stPlanToday()));
+  if (!wanted.length) return 0;
   const todo = [];
   for (const w of wanted) {
     const full = stWorkRowValues(w);

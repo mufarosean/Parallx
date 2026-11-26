@@ -3705,6 +3705,29 @@ function stWorkWanted(source, entries, units) {
   return [...by.values()].map((w) => ({ ...w, minutes: stWorkMinutes(w.minutes) })).filter((w) => w.minutes > 0 || w.items > 0);
 }
 
+/**
+ * Rows Study wrote today for a source that reports now, which that source no
+ * longer reports at all: each is wanted at nothing. Without this a row only
+ * ever followed its source up: a first reading of the day left on screen
+ * grew to the idle time, the clock took the stretch back, and the row kept
+ * it (and so did the plan's Done). Today's rows only: an older day a tool
+ * has stopped reporting stays as it was. A row that is his is never touched.
+ */
+function stWorkGone(sources, recs, wanted, units, today) {
+  const have = new Set(wanted.map((w) => w.key));
+  const out = [];
+  for (const [key, rec] of recs) {
+    if (!rec || rec.his || have.has(key)) continue;
+    const [source, unitRow, day] = String(key).split('\u0000');
+    if (day !== today) continue;
+    const from = sources.find((x) => x.id === source);
+    const unit = units.find((u) => String(u.rowId) === unitRow);
+    if (!from || !unit) continue;
+    out.push({ key, source, tool: from.tool, kind: from.kind, unitRow: unit.rowId, unit: unit.name, day, minutes: 0, items: 0, right: null });
+  }
+  return out;
+}
+
 /** The row Study writes for one tool, unit and day: its title and its cells by column name. */
 function stWorkRowValues(want) {
   return {
@@ -9196,11 +9219,13 @@ async function stWorkSyncSubject(st, sources) {
   const units = stProgressUnitsOf(st);
   const wanted = [];
   for (const s of sources) wanted.push(...stWorkWanted(s, s.own ? s.entries.filter((e) => e.subjectId === Number(subject.id)) : s.entries, units));
-  if (!wanted.length) return 0;
   const where = 'subject_id = ? AND source = ? AND unit_row = ? AND day = ?';
   const recs = new Map((await db.all('SELECT * FROM st_work_rows WHERE subject_id = ?', [subject.id])).map((r) => [`${r.source}\u0000${r.unit_row}\u0000${r.day}`, {
     rowId: r.row_id, written: stParseJson(r.written_json, {}) || {}, pending: r.pending_json ? stParseJson(r.pending_json, null) : null, his: !!r.his,
   }]));
+  // What a source reported earlier today and reports no more (time taken back for idleness) is brought down to nothing.
+  wanted.push(...stWorkGone(sources, recs, wanted, units, stPlanToday()));
+  if (!wanted.length) return 0;
   const todo = [];
   for (const w of wanted) {
     const full = stWorkRowValues(w);
@@ -18120,7 +18145,7 @@ export const __testables = {
   stUnitHolds, stUnitWords, stSubjectUnitsFromFolder, stRemoveUnit, stSubjectBankUnits,
   stPlanFormTotals,
   // 16-work-model, 32-work: the Work Log's rows from the tools' reports and Study's own clocks
-  ST_WORK_CELLS, ST_WORK_READING, ST_WORK_DISCUSSION, stWorkUnitIndex, stWorkMinutes, stWorkWanted, stWorkRowValues, stWorkCellKey, stWorkSame, stWorkDecide, stWorkTimeWords, stWorkBreakdown,
+  ST_WORK_CELLS, ST_WORK_READING, ST_WORK_DISCUSSION, stWorkUnitIndex, stWorkMinutes, stWorkWanted, stWorkGone, stWorkRowValues, stWorkCellKey, stWorkSame, stWorkDecide, stWorkTimeWords, stWorkBreakdown,
   stWorkSources, stWorkSyncSubject, stWorkSync, stWorkTouch, stWorkKeep, stReadingTargets, stReadingLook, stChatLook, stWorkTieChat, stWorkUnitOfQuestion, stDiscussUnitPrompt, stCmdDiscussUnit, registerWork, stWorkReset,
   stPlanDayNumber, stPlanDateOfNumber, stPlanDateOf, stPlanAddDays, stPlanDaysBetween, stPlanWeekday, stPlanDateWords, stPlanSpanWords,
   stPlanHours, stPlanWeekdaysOf, stPlanRules, stPlanDays, stPlanTotals, stPlanGoalOf, stPlanGoalWords, stPlanHoursPerDay, stPlanPhases, stPlanFitWords,
