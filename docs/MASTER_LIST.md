@@ -2133,7 +2133,10 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   3 skipped), build, with
   `tests/unit/navigationHistory.test.ts` (its key-name test seen failing on
   the old code) and `tests/unit/canvasRibbonPlace.test.ts`. On the final
-  build: the keyboard audit (result recorded below when its run ends); the touch-drag probe all ok. The visual-consistency
+  build: the keyboard audit on Planner's screens and New Task, Home,
+  Dashboard, a canvas page, a PDF, markdown, the Browser, a seeded page and
+  database, Explorer, and ten dialogs (42 screens with sub-screens), 0 on
+  every count; the touch-drag probe all ok. The visual-consistency
   probe, on ee8b06ad (the arrows' last change), one rise, Creations' title
   size, the same as before the piece. Review by
   the correctness, modularity and access reviewers, each finding put to the
@@ -2161,8 +2164,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   Alt+Left/Right even after a rebind. The single crumb on a tab with no trail
   is one more Tab stop. Twice, in long keyboard-audit runs, a Planner popup
   check failed (once named: focus did not come back to the New Task button
-  after Escape); not seen in the later runs that included those screens
-  ; not traced to this piece.
+  after Escape); not seen in the later runs that included those screens,
+  the last on the final build (Planner's four screens, 0); not traced to this piece.
   *Decided for him to overrule:* the bar under the tabs on every tab (Home,
   Dashboard, a web page get it, with the tab's name); the canvas ribbon in
   that bar rather than at the page's top; on a Browser tab the app's arrows
