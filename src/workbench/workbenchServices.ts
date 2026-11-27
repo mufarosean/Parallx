@@ -3,6 +3,7 @@
 import { installKitCommands } from '../ui/kit.js';
 import { installPlaceOpener } from '../ui/link.js';
 import { places } from '../services/places.js';
+export { wireNavigation } from './navigationWiring.js'; // Back and Forward, wired once the editor area exists
 import { IFindService } from '../services/findService.js';
 import { FindSurface } from './findSurface.js';
 import { setAssistantTimeZone } from '../services/localTime.js';

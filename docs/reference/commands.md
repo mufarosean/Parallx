@@ -159,6 +159,8 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `workbench.action.moveEditorToPreviousGroup` | Move Editor to Previous Group | core | Editor |  |  |
 | `workbench.action.movePartBeside` | Move Part Beside Another | core | View |  |  |
 | `workbench.action.movePartToEdge` | Move Part to Edge | core | View |  |  |
+| `workbench.action.navigateBack` | Go Back | core | Go | Alt+Left |  |
+| `workbench.action.navigateForward` | Go Forward | core | Go | Alt+Right |  |
 | `workbench.action.nextEditor` | Open Next Editor | core | Editor | Ctrl+PageDown |  |
 | `workbench.action.openKeybindings` | Open Keyboard Shortcuts | core | Preferences | Ctrl+K Ctrl+S |  |
 | `workbench.action.openRecentItem` | Open Recent Item | core | File |  |  |

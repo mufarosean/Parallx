@@ -26,7 +26,6 @@ import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { markStartupDone } from '../services/startupDone.js';
-import { wireNavigation } from './navigationWiring.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
@@ -148,7 +147,7 @@ import { INotebookKernelService, type NotebookKernelService } from '../services/
 import { wireActivityTaps } from './activityTaps.js';
 
 // Contribution Processors (M2 Capability 5)
-import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
+import { registerContributionProcessors, registerViewContributionProcessor, wireNavigation } from './workbenchServices.js';
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 

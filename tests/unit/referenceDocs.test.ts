@@ -17,6 +17,7 @@ import * as editorCommands from '../../src/commands/editorCommands.js';
 import * as fileCommands from '../../src/commands/fileCommands.js';
 import * as focusCommands from '../../src/commands/focusCommands.js';
 import * as modelCallsCommands from '../../src/commands/modelCallsCommands.js';
+import * as navigationCommands from '../../src/commands/navigationCommands.js';
 import * as layoutCommands from '../../src/commands/layoutCommands.js';
 import * as questionCommands from '../../src/commands/questionCommands.js';
 import * as progressCommands from '../../src/commands/progressCommands.js';
@@ -39,6 +40,7 @@ const COMMAND_MODULES: Record<string, Record<string, unknown>> = {
   'focusCommands.ts': focusCommands,
   'layoutCommands.ts': layoutCommands,
   'modelCallsCommands.ts': modelCallsCommands,
+  'navigationCommands.ts': navigationCommands,
   'questionCommands.ts': questionCommands,
   'progressCommands.ts': progressCommands,
   'quickPickCommands.ts': quickPickCommands,

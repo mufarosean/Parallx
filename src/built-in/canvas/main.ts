@@ -601,9 +601,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(api.commands.registerCommand('canvas.openAppLink', (uri: unknown) => typeof uri === 'string' && uri.startsWith('parallx://') ? api.links.open(uri) : false)); // a parallx:// link clicked in a page
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
-      createEditorPane(container: HTMLElement, input?: any): IDisposable {
-        return editorProvider.createEditorPane(container, input);
-      },
+      createEditorPane: (container: HTMLElement, input?: any): IDisposable => editorProvider.createEditorPane(container, input),
       createRibbon: (container: HTMLElement, input?: any) => editorProvider.createRibbon(container, input), // its ribbon in the bar under the tabs, after Back and Forward
     }),
   );

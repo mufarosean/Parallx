@@ -131,14 +131,13 @@ export class ViewContainer extends Disposable implements IGridView {
 
       const focused = document.activeElement as HTMLElement;
       const currentIdx = tabs.indexOf(focused);
-      if (currentIdx < 0) return;
+      if (currentIdx < 0 || (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))) return; // Alt+Left/Right is Go Back/Forward
       // Ctrl+Shift+Left/Right moves the focused tab, the keyboard's drag (as editor tabs do).
       if (e.ctrlKey && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         const a = this._tabOrder.indexOf(focused.dataset.viewId ?? ''), b = this._tabOrder.indexOf(tabs[currentIdx + (e.key === 'ArrowLeft' ? -1 : 1)]?.dataset.viewId ?? '');
         if (a >= 0 && b >= 0) { [this._tabOrder[a], this._tabOrder[b]] = [this._tabOrder[b], this._tabOrder[a]]; this._rebuildTabBar(); focused.focus(); }
         e.preventDefault(); e.stopPropagation(); return;
       }
-      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
       let nextIdx = -1;
       switch (e.key) {
         case 'ArrowRight':

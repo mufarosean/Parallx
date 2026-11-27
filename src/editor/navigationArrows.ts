@@ -10,6 +10,7 @@ import { createIconButton } from '../ui/kit.js';
 import { createBlock } from '../ui/block.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import { navigationHistory } from '../services/navigationHistory.js';
+import { GO_BACK_COMMAND, GO_FORWARD_COMMAND } from '../commands/navigationCommands.js';
 
 /** How long a press is held before the list opens. */
 const HOLD_MS = 500;
@@ -19,6 +20,8 @@ type Direction = 'back' | 'forward';
 export class NavigationArrows extends Disposable {
   readonly domNode: HTMLElement;
   private readonly _buttons: Record<Direction, HTMLButtonElement>;
+  /** The list open now (a finger's long press sends both a hold and a contextmenu: one list). */
+  private _openList: ContextMenu | undefined;
 
   constructor(container: HTMLElement) {
     super();
@@ -47,16 +50,12 @@ export class NavigationArrows extends Disposable {
   }
 
   private _arrow(dir: Direction, icon: string): HTMLButtonElement {
-    let heldOpen = false;
     const btn = createIconButton(this.domNode, {
       id: `editor.navigation.${dir}`,
       icon,
       title: dir === 'back' ? 'Back' : 'Forward',
       size: 'sm',
-      onClick: (e) => {
-        if (heldOpen) { heldOpen = false; e.preventDefault(); return; }
-        void (dir === 'back' ? navigationHistory.back() : navigationHistory.forward());
-      },
+      command: dir === 'back' ? GO_BACK_COMMAND : GO_FORWARD_COMMAND,
     });
     btn.classList.add('editor-nav-arrow');
 
@@ -73,8 +72,8 @@ export class NavigationArrows extends Disposable {
     const onPress = (e: PointerEvent) => {
       if (e.button !== 0 || btn.disabled) return;
       cancel();
-      heldOpen = false;
-      timer = setTimeout(() => { timer = undefined; heldOpen = true; this._showList(dir, btn); }, HOLD_MS);
+      // Held: the list. The arrow is disabled while it is open, so letting go is not also a click (a step).
+      timer = setTimeout(() => { timer = undefined; if (this._showList(dir, btn)) btn.disabled = true; }, HOLD_MS);
     };
     btn.addEventListener('pointerdown', onPress);
     for (const type of ['pointerup', 'pointerleave', 'pointercancel'] as const) btn.addEventListener(type, cancel);
@@ -89,15 +88,21 @@ export class NavigationArrows extends Disposable {
     return btn;
   }
 
-  private _showList(dir: Direction, btn: HTMLButtonElement, at?: { x: number; y: number }): void {
+  /** Open the list of steps that way; false when there are none. */
+  private _showList(dir: Direction, btn: HTMLButtonElement, at?: { x: number; y: number }): boolean {
     const steps = navigationHistory.list(dir);
-    if (!steps.length) return;
+    if (!steps.length || this._openList) return false;
     const r = btn.getBoundingClientRect();
     const menu = ContextMenu.show({
       items: steps.map(({ step, offset }, i) => ({ id: String(offset), label: step.label, group: '1_steps', order: i })),
       anchor: at ?? { x: r.left, y: r.bottom },
+      label: dir === 'back' ? 'Back to' : 'Forward to',
+      autoSelectFirst: !at, // opened by the keyboard (the menu key): the keys on the nearest step
     });
+    this._openList = menu;
     menu.onDidSelect(({ item }) => { void navigationHistory.go(Number(item.id)); });
+    menu.onDidDismiss(() => { this._openList = undefined; this.update(); });
+    return true;
   }
 }
 
