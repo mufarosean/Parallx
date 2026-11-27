@@ -11,6 +11,7 @@ import { ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { registerQuickOpenSource } from '../../services/quickOpenSources.js';
 import { registerHomeSource, type HomeItem } from '../../services/homeSources.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import type { IRecentsServiceShape } from '../../services/recentsService.js';
 import { decodeCanvasContent } from './contentSchema.js';
 
 interface ServiceHost {
@@ -22,6 +23,7 @@ export function registerCanvasPageSources(
   subscriptions: IDisposable[],
   dataService: ICanvasDataService,
   openPage: (pageId: string) => Promise<void>,
+  recents?: IRecentsServiceShape,
 ): void {
   const pageQuery: ICanvasPageQueryService = {
     getRootPages: () => dataService.getRootPages(),
@@ -53,23 +55,37 @@ export function registerCanvasPageSources(
       }));
     },
   }));
-  // Home: recent pages with their opening words; a query finds any page by title.
+  // Home: the pages a person last opened, each with its opening words. What
+  // was opened comes from the core's record of it, not from when a page last
+  // changed: tools write pages too (a plan's days, a table's rows), and those
+  // are not what he was working on. A query finds any page by title.
   const texts = new Map<string, PageText>();
-  const toHome = async (page: IPageSummaryTreeNode | Awaited<ReturnType<ICanvasDataService['getRecentPages']>>[number], where?: string): Promise<HomeItem> => {
+  type Listed = Pick<IPageSummaryTreeNode, 'id' | 'title' | 'updatedAt'> & { readonly content?: string };
+  const toHome = async (page: Listed, where?: string, openedAt = 0): Promise<HomeItem> => {
     const stamp = `${page.id}@${page.updatedAt}`;
-    if (!texts.has(stamp)) texts.set(stamp, pageText((await dataService.getPage(page.id))?.content));
+    if (!texts.has(stamp)) texts.set(stamp, pageText(page.content ?? (await dataService.getPage(page.id))?.content));
     const text = texts.get(stamp)!;
     return {
       id: page.id, title: page.title || 'Untitled', kind: 'Page', icon: 'px-canvas', where,
-      summary: text.opening, preview: text.preview, touchedAt: Date.parse(page.updatedAt) || 0,
+      summary: text.opening, preview: text.preview, touchedAt: Math.max(openedAt, Date.parse(page.updatedAt) || 0),
       stat: text.words ? { value: String(text.words), unit: text.words === 1 ? 'word' : 'words' } : undefined,
       open: () => { void openPage(page.id); },
     };
   };
+  const listOpened = async (limit: number): Promise<HomeItem[]> => {
+    if (!recents) return Promise.all((await dataService.getRecentPages(limit)).map((p) => toHome(p)));
+    await recents.whenReady;
+    const opened = recents.getRecentOpens().filter((o) => o.kind === 'page').slice(0, limit);
+    const items = await Promise.all(opened.map(async (o) => {
+      const page = await dataService.getPage(o.target);
+      return page && !page.isArchived ? toHome(page, undefined, o.ts) : null; // gone or in Trash since it was opened
+    }));
+    return items.filter((item): item is HomeItem => !!item);
+  };
   subscriptions.push(registerHomeSource({
     id: 'canvas.pages',
     label: 'Canvas',
-    listRecent: async (limit) => Promise.all((await dataService.getRecentPages(limit)).map((p) => toHome(p))),
+    listRecent: listOpened,
     search: async (query, limit) => {
       const q = query.toLowerCase();
       const found: Promise<HomeItem>[] = [];
@@ -83,7 +99,11 @@ export function registerCanvasPageSources(
       walk(await dataService.getPageSummaryTree(), '');
       return Promise.all(found);
     },
-    onDidChange: (listener) => dataService.onDidChangePage(() => listener()),
+    onDidChange: (listener) => {
+      const page = dataService.onDidChangePage(() => listener());
+      const opens = recents?.onDidChangeOpens(() => listener());
+      return { dispose: () => { page.dispose(); opens?.dispose(); } };
+    },
   }));
 }
 

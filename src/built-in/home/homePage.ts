@@ -42,6 +42,7 @@ const PINS_KEY = 'home.pins';
 const RANGE_KEY = 'home.range';
 const NAME_SKIPPED_KEY = 'home.nameSkipped';
 const CHANGE_PAUSE_MS = 160;
+const CARD_PAUSE_MS = 60;
 const LABEL_ID = 'home-today-label';
 
 const STEPS: readonly HomeStep[] = [
@@ -141,6 +142,7 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
 
   let cardRun = 0;
   const loadCards = async (): Promise<void> => {
+    if (closing) return;
     const mine = ++cardRun;
     const cards = await collectHomeCards();
     if (mine !== cardRun) return; // a newer read is on its way
@@ -181,7 +183,10 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
 
   const applyWidth = (): void => { column.setAttribute('data-width', homeWidth(settings)); };
 
+  // The window is closing or changing workspace: the tools' data is going away, so nothing is read again.
+  let closing = false;
   const load = async (again = false): Promise<void> => {
+    if (closing) return;
     const mine = ++run;
     const [entries, commands] = await Promise.all([collectHomeEntries(''), deps.commands().catch((): readonly string[] => [])]);
     if (mine !== run) return; // a newer read is on its way
@@ -204,14 +209,21 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     for (const d of listeners.splice(0)) d.dispose();
     for (const s of getHomeSources()) { const d = s.onDidChange?.(soon); if (d) listeners.push(d); }
   };
+  // A tool going on or off changes several things in one breath (and every tool goes at once when the window closes): read once, after it.
+  let cardTimer: ReturnType<typeof setTimeout> | undefined;
+  const cardsSoon = (): void => { if (cardTimer) clearTimeout(cardTimer); cardTimer = setTimeout(() => void loadCards(), CARD_PAUSE_MS); };
   const cardListeners: IDisposable[] = [];
   const followCards = (): void => {
     for (const d of cardListeners.splice(0)) d.dispose();
-    for (const p of getHomeCardProviders()) { const d = p.onDidChange?.(() => void loadCards()); if (d) cardListeners.push(d); }
+    for (const p of getHomeCardProviders()) { const d = p.onDidChange?.(cardsSoon); if (d) cardListeners.push(d); }
   };
+  const stopReading = (): void => { closing = true; if (timer) clearTimeout(timer); if (cardTimer) clearTimeout(cardTimer); };
   const subscriptions: IDisposable[] = [
-    onDidChangeHomeSources(() => { followSources(); void load(); }),
-    onDidChangeHomeCards(() => { followCards(); void loadCards(); }),
+    // Two ways a window ends: a close or workspace change the person asked for, and the window unloading.
+    addDisposableListener(document, 'parallx:will-close' as keyof HTMLElementEventMap, stopReading),
+    addDisposableListener(window, 'beforeunload' as keyof HTMLElementEventMap, stopReading, true), // capture: before the listener that starts the teardown
+    onDidChangeHomeSources(() => { followSources(); soon(); }),
+    onDidChangeHomeCards(() => { followCards(); cardsSoon(); }),
     settings.onDidChange((e) => { if (e.key === HOME_NAME) drawHead(); else applyWidth(); }),
     addDisposableListener(askInput, 'keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); api.ask(); } }),
     addDisposableListener(nameHost, 'keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.target instanceof HTMLInputElement) { e.preventDefault(); api.keepName(); } }),
@@ -251,6 +263,7 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     },
     dispose() {
       if (timer) clearTimeout(timer);
+      if (cardTimer) clearTimeout(cardTimer);
       run++;
       cardRun++;
       for (const d of [...subscriptions, ...listeners, ...cardListeners]) d.dispose();

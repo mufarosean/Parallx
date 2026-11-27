@@ -37,10 +37,11 @@ function drawPicture(host: HTMLElement, item: HomeItem): void {
     return;
   }
   const thumb = createBlock(host, 'div', { className: 'home-thumb', attrs: { role: 'img', 'aria-hidden': 'true' } });
+  const sheet = createBlock(thumb, 'div', { className: 'home-thumb__sheet' });
   const text = (item.preview ?? item.summary ?? '').trim();
-  createBlock(thumb, 'div', { className: 'home-thumb__title', text: item.title });
-  if (text) createBlock(thumb, 'div', { className: 'home-thumb__text', text });
-  else createBlock(thumb, 'div', { className: 'home-thumb__kind' }).appendChild(createIconElement(item.icon ?? 'file', 26));
+  createBlock(sheet, 'div', { className: 'home-thumb__title', text: item.title });
+  if (text) createBlock(sheet, 'div', { className: 'home-thumb__text', text });
+  else createBlock(sheet, 'div', { className: 'home-thumb__kind' }).appendChild(createIconElement(item.icon ?? 'file', 48));
 }
 
 /** One thing last worked on: its picture, title, place, opening words, tags, and a figure or the time at the right. */

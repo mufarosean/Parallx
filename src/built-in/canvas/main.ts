@@ -355,7 +355,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }).catch((err) => console.warn('[Canvas] Single-home reconciliation failed:', err));
 
   // 2a. What other tools and Quick Open see of the pages (no bodies).
-  registerCanvasPageSources(api, context.subscriptions, _dataService, openPageInEditor); registerScanPages(api, context, _dataService, () => _editorProvider, openPageInEditor); // Open As Page: a document the reader read, as a page beside it
+  registerCanvasPageSources(api, context.subscriptions, _dataService, openPageInEditor, api.services.has(IRecentsService) ? api.services.get<IRecentsServiceShape>(IRecentsService) : undefined); registerScanPages(api, context, _dataService, () => _editorProvider, openPageInEditor); // Open As Page: a document the reader read, as a page beside it
   // Publish the FULL data service too, so the dashboard's notes widget can host
   // a real canvas page (create/get/save + live reload) via the shared editor view.
   api.services.registerInstance(ICanvasDataService, _dataService);

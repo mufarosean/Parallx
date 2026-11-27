@@ -239,3 +239,41 @@ describe('Worksheets\' card for the quiz left open', () => {
     expect(quizHomeCard({ id: 'q2', name: 'Empty', problems: 0, position: 0 })).toBeNull();
   });
 });
+
+describe('the pages on Home', () => {
+  const body = (text: string): string => JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] } });
+  const listener = () => ({ dispose() {} });
+
+  it('are the pages a person opened, by when, not the pages a tool wrote last; one in Trash is left out', async () => {
+    const { registerCanvasPageSources } = await import('../../src/built-in/canvas/pageSources');
+    const { getHomeSources } = await import('../../src/services/homeSources');
+    const pages: Record<string, { id: string; title: string; updatedAt: string; content: string; isArchived: boolean }> = {
+      notes: { id: 'notes', title: 'Reserving Notes', updatedAt: '2026-11-20T10:00:00.000Z', content: body('Fewer parameters.'), isArchived: false },
+      old: { id: 'old', title: 'Old Page', updatedAt: '2026-11-01T10:00:00.000Z', content: body('Old words.'), isArchived: false },
+      binned: { id: 'binned', title: 'Binned', updatedAt: '2026-11-26T10:00:00.000Z', content: body('Gone.'), isArchived: true },
+      // Written by a tool a minute ago and never opened: a plan's day.
+      day: { id: 'day', title: 'Fri, Nov 27, 2026', updatedAt: '2026-11-27T13:59:00.000Z', content: body(''), isArchived: false },
+    };
+    const getRecentPages = vi.fn(async () => []);
+    const data = { getPage: async (id: string) => pages[id] ?? null, getRecentPages, getPageSummaryTree: async () => [], getRootPages: async () => [], getChildren: async () => [], onDidChangePage: listener };
+    const opened = Date.parse('2026-11-27T09:00:00.000Z');
+    const recents = { whenReady: Promise.resolve(), onDidChangeOpens: listener, getRecentOpens: () => [
+      { key: 'page:old', kind: 'page', title: 'Old Page', target: 'old', ts: opened },
+      { key: 'file:x', kind: 'file', title: 'x.md', target: 'file:///x.md', ts: opened - 1 },
+      { key: 'page:binned', kind: 'page', title: 'Binned', target: 'binned', ts: opened - 2 },
+      { key: 'page:notes', kind: 'page', title: 'Reserving Notes', target: 'notes', ts: opened - 3 },
+      { key: 'page:deleted', kind: 'page', title: 'Deleted', target: 'deleted', ts: opened - 4 },
+    ] };
+    const subscriptions: { dispose(): void }[] = [];
+    registerCanvasPageSources({ services: { registerInstance: () => {} } }, subscriptions, data as never, async () => {}, recents as never);
+    const source = getHomeSources().find((s) => s.id === 'canvas.pages')!;
+    const items = await source.listRecent(10);
+    expect(items.map((i) => i.title)).toEqual(['Old Page', 'Reserving Notes']);
+    expect(items[0]).toMatchObject({ kind: 'Page', summary: 'Old words.', touchedAt: opened, stat: { value: '2', unit: 'words' } });
+    // Opened after its last edit: it goes by when it was opened.
+    expect(items[1].touchedAt).toBe(opened - 3);
+    expect(getRecentPages).not.toHaveBeenCalled();
+    for (const d of subscriptions) d.dispose();
+    expect(getHomeSources().some((s) => s.id === 'canvas.pages')).toBe(false);
+  });
+});

@@ -871,16 +871,6 @@ async function stWeakSpotRows(limit) {
   return { rows: stWeakRowsFrom(entries, limit), totalWeak, size: Number(cfg('sessionSize', 20)) || 20 };
 }
 
-/** The app's Home: Study's card for today, read when Home asks and when Study's data changed. */
-function registerHomeCard(context) {
-  if (typeof _api.home?.registerCardProvider !== 'function') return;
-  context.subscriptions.push(_api.home.registerCardProvider({
-    id: 'today',
-    read: async () => stHomeCard(stHomeModel(stPlanToday())),
-    onDidChange: (listener) => onDataChanged(() => listener()),
-  }));
-}
-
 function registerDashboardWidget(context) {
   if (!_api.dashboard?.registerWidgetType) return;
   try {

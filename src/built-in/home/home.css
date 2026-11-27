@@ -31,6 +31,7 @@
 .home-name { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; margin-top: calc(-1 * var(--px-space-2)); }
 .home-name__question { font-family: var(--px-font-display); font-size: var(--px-text-md); color: var(--px-text-secondary); margin-right: var(--px-space-1); }
 .home-name .ui-input-box { width: 200px; }
+.home-name .ui-input-box-input { height: var(--px-control-h); box-sizing: border-box; }
 
 /* The field to ask in: one wide row, lifted off the page. */
 .home-ask {
@@ -123,8 +124,11 @@
   text-align: left;
   cursor: pointer;
   border-radius: var(--px-radius-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-2);
 }
-.home-entry__title > svg, .home-entry__title > .px-icon { flex: none; margin-right: 6px; vertical-align: -1px; color: var(--px-text-muted); }
+.home-entry__title > :first-child:not(.px-btn__label) { flex: none; color: var(--px-text-muted); }
 .home-entry__title:hover { color: var(--px-accent-text); }
 .home-entry__title:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
 .home-entry__where { font-size: var(--px-text-sm); color: var(--px-text-muted); }
@@ -159,31 +163,39 @@
 .home-entry__pin[aria-pressed="true"], .home-entry__pin:hover, .home-entry__pin:focus-visible { color: var(--px-accent-text); }
 .home-feed__none { padding: var(--px-space-6) 0; border-top: 1px solid var(--px-divider); }
 
-/* The picture of a thing: a sheet of paper with its own opening text on it, or its image. */
+/* The picture of a thing: a sheet of paper with its own opening text on it, or its image.
+   The sheet is set at twice its size in the app's own type sizes and drawn at half, as a page seen small. */
 .home-thumb {
   width: 96px;
   height: 124px;
-  box-sizing: border-box;
-  padding: 9px 8px;
   overflow: hidden;
   border-radius: var(--px-radius-sm);
   background: var(--px-paper-0);
-  color: var(--px-paper-ink-soft);
   box-shadow: 0 0 0 1px var(--px-border-strong), var(--px-shadow-sm);
-  font-family: var(--px-font-display);
-  font-size: 5px;
-  line-height: 1.5;
   user-select: none;
 }
-.home-thumb__title { margin-bottom: 4px; font-size: 7px; font-weight: 600; line-height: 1.25; color: var(--px-paper-ink); overflow-wrap: anywhere; }
+.home-thumb__sheet {
+  width: 200%;
+  height: 200%;
+  box-sizing: border-box;
+  padding: var(--px-space-4);
+  transform: scale(0.5);
+  transform-origin: 0 0;
+  color: var(--px-paper-ink-soft);
+  font-family: var(--px-font-display);
+  font-size: var(--px-text-2xs);
+  line-height: 1.5;
+}
+.home-thumb__title { margin-bottom: var(--px-space-2); font-size: var(--px-text-base); font-weight: 600; line-height: 1.25; color: var(--px-paper-ink); overflow-wrap: anywhere; }
 .home-thumb__text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.home-thumb__kind { height: 70%; display: grid; place-items: center; opacity: 0.55; }
-.home-thumb--image { padding: 0; object-fit: cover; background: var(--px-bg-inset); }
+.home-thumb__kind { height: 60%; display: grid; place-items: center; opacity: 0.55; }
+.home-thumb--image { object-fit: cover; background: var(--px-bg-inset); }
 
 @media (max-width: 640px) {
   .home-column { padding: var(--px-space-5) var(--px-space-4); }
   .home-entry { grid-template-columns: 64px minmax(0, 1fr); }
   .home-thumb { width: 64px; height: 84px; }
+  .home-thumb__sheet { width: 300%; height: 300%; transform: scale(0.3334); }
   .home-entry__side { grid-column: 2; flex-direction: row; align-items: center; gap: var(--px-space-2); padding: 0; border: 0; }
   .home-entry__pin { margin: 0 0 0 auto; }
 }
