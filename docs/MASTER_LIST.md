@@ -2080,7 +2080,90 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   the column: his call); Tasks
   on All Tasks is named "Tasks". *Only his machine can show:* nothing
   specific; Windows was not run.
-- *Next:* piece 2, Back and Forward, in a new session.
+- **Piece 2 done (2026-11-27): Back and Forward for the whole app.**
+  *What shipped:* one record in the core of where he has been
+  (`src/services/navigationHistory.ts`, wired in
+  `src/workbench/navigationWiring.ts`): a step is the tab in front, and for a
+  tool's place tab the place too, so a move to another place, a switch to
+  another tab and the opening of one are each a step; the same step twice in
+  a row is one; a new step after going back drops the steps ahead; Back and
+  Forward's own moves are not steps; at most 50 steps, for the window's life
+  (not kept across a restart); the last session's tabs coming back at
+  startup are not a walk. Go Back and Go Forward
+  (`workbench.action.navigateBack` / `navigateForward`, category Go, in the
+  palette and Keyboard Shortcuts) on Alt+Left and Alt+Right; the mouse's side
+  buttons run what Alt+Left/Right run there; two arrows at the start of the
+  bar under the tabs (`src/editor/navigationArrows.ts`), named "Back to
+  Calendar" / "Forward to notes.txt", disabled when there is nowhere to go;
+  holding one (half a second) or right-clicking it or its menu key lists the
+  last ten steps that way, and choosing one jumps there. Going back to a place
+  reopens it in its tool's tab (through the places point); a closed thing
+  reopens from what its tab saved; a file deleted meanwhile, or a step that
+  cannot be opened, is skipped; a tool turned off takes its steps out of the
+  record at once (its names leave the arrows and the list). After a step the
+  keys land on the page's title (a place's kit title; otherwise the pane,
+  as when its tab is pressed). Settings, Chat and Agents are not tabs, so not
+  steps. The record names no tool.
+  *Changed on the way:* the bar under the tabs now shows on every tab (a tab
+  with no trail and no path shows its own name), so the arrows are everywhere;
+  the canvas page's ribbon (its trail, edited time, star, ⋯) now sits in that
+  bar after the arrows, where it was built in February to go (its
+  registration had lost the pass-through, so it drew inside the page); its
+  cover and title stay in the page, it comes back when the tab returns, and
+  a page split across two groups keeps one ribbon in each. Go Back's keys go
+  to the page first: a keyboard drag on Alt+arrows (a Planner event, a
+  dashboard widget, a node, Atelier's boxes) keeps them, and Back runs only
+  when nothing on the page took the press; the tab strip, segmented control,
+  trail, view tabs, PDF pane and outline, Explorer tree and database table no
+  longer treat Alt+Left/Right as plain arrows. The Browser's Alt+Left had not
+  worked on its own pages (its binding was read as "alt+arrowleft", a key
+  press as "alt+left"); fixed, and it keeps the keys while its tab is in
+  front.
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-back-acceptance.mjs`, written first by the
+  app-verifier, failed 30 of 30 on the app as it was; its author changed it
+  once, before the build commit, because its palette check read a row's text
+  as "Go BackAlt+←" and so never chose it (fb807d64; no check removed); it
+  passes 30/30 on the final build (seen on the real app, hidden). Piece 1's
+  probe 23/23. Typecheck, vitest (753 files passed, 3 skipped), build, with
+  `tests/unit/navigationHistory.test.ts` (its key-name test seen failing on
+  the old code) and `tests/unit/canvasRibbonPlace.test.ts`. On the final
+  build: the keyboard audit on ten screens (Planner, Home, Dashboard, a canvas
+  page, a PDF, markdown, the Browser, a seeded page and database, Explorer),
+  0 on every count; the touch-drag probe all ok; the visual-consistency probe
+  one rise, Creations' title size, the same as before the piece. Review by
+  the correctness, modularity and access reviewers, each finding put to the
+  skeptic; fixed what it reproduced and judged to matter (a canvas page
+  losing its title, cover and ribbon; Alt+Left taken by the Explorer tree
+  and table cells; a turned-off tool's steps staying in the record). The
+  app-verifier then drove those fixes on the real app: all held, in light
+  and dark, after a restart and across two groups, but a canvas page split
+  into two groups lost a ribbon; fixed and seen 11/11. The visual probe then
+  found the arrows under 24px (WCAG 2.5.8); they are the kit's 24px now.
+  *Checks changed:* `referenceDocs.test.ts` lists the new command module and
+  `gateCompliance.test.ts` lists `canvas/ribbonPlace.ts` as exempt (each test
+  requires every file be listed); `docs/reference/commands.md` regenerated.
+  No assertion removed, no baseline raised (the file-size ratchet was met by
+  moving lines, the raw-DOM ratchet by disabling a held arrow while its list
+  is open instead of a click interceptor).
+  *Reported and left:* if he resets or rebinds Go Back in Keyboard Shortcuts,
+  Go Back re-registers last and then beats the Browser's own Alt+Left (and
+  side buttons) until restart (reproduced in a unit test; needs a shortcut
+  change). A bar in a database's timeline view moves a day on Alt+Left, as
+  before (a keyboard drag keeps its keys). The arrows' tooltip names
+  Alt+Left/Right even after a rebind. The single crumb on a tab with no trail
+  is one more Tab stop. Once, in a long keyboard-audit run, focus did not come
+  back to Planner's New Task button after Escape;
+  not seen again in three later runs that included that screen; not traced
+  to this piece.
+  *Decided for him to overrule:* the bar under the tabs on every tab (Home,
+  Dashboard, a web page get it, with the tab's name); the canvas ribbon in
+  that bar rather than at the page's top; on a Browser tab the app's arrows
+  sit above the Browser's own; a held list opens after half a second; ten
+  steps in the list, fifty kept. *Only his machine can show:* the mouse's side
+  buttons on Windows (seen here through Chromium's own button events, which
+  Windows also sends; Windows was not run).
+- *Next:* piece 3, Worksheets onto the point, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4368,7 +4451,8 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 **Next (his picks of 2026-11-28 on getting around: 1A, 2A, 3A, the
 table):** twelve pieces, under UI improvements, "Getting around";
 piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
-Back and Forward, opens the next session.
+Back and Forward, done 2026-11-27; piece 3, Worksheets onto the point,
+opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
