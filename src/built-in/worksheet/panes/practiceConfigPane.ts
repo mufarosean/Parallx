@@ -5,7 +5,7 @@ import { createButton, createEmptyState, createFilterChip, createIconButton, cre
 import { listItems, type WorksheetItemSummary } from '../worksheetData.js';
 import { paperLabel, SOURCE_LABELS, KIND_LABELS } from '../problemImport.js';
 import { buildPracticeSet } from '../practiceSession.js';
-import { BACK_TO_HOME, openWorksheet, startQuizWith } from '../actions.js';
+import { openWorksheet, startQuizWith } from '../actions.js';
 import { quizPresetListeners, state } from '../state.js';
 import { STAR_HINT, el } from '../widgets.js';
 
@@ -19,7 +19,6 @@ export function createPracticeConfigPane(container: HTMLElement) {
   const disposables: { dispose(): void }[] = [];
 
   createPageHeader(root, {
-    back: BACK_TO_HOME,
     title: 'New Quiz',
     subtitle: 'Choose what to draw from. Every rating you give lands on the problem.',
   });

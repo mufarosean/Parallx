@@ -359,6 +359,10 @@ const reg = api.places.register({
     { id: 'home', title: 'Home' },
     { id: 'stats', title: 'Stats' },
   ],
+  formerTabs: {                       // optional: your older build opened a tab per screen under another editor type;
+    editorType: 'mytool.screen',      // each saved one whose instanceId names a place comes back as that place in
+    placeOf: (instanceId) => ({ place: instanceId }), // the one tab (two make one); undefined: restored as saved
+  },
   titleOf: (loc) => undefined,        // optional: the tab's name for a location (default: the place's title)
   trailOf: (loc) => [                 // optional: the steps after the tool, last = where the tab is
     { label: 'Stats', location: { place: 'stats' } },

@@ -22,9 +22,7 @@
 // border fences them visually and Reset Sheet is the recovery path. We match
 // that: no cell locking, a confirmed Reset, one sheet, no tabs.
 
-import { listItems, getItem, onWorksheetDataChanged, attachWorksheetDatabase, recordXpCashout, listQuestionRows } from './worksheetData.js';
-import { createDashboardPane } from './panes/dashboardPane.js';
-import { createPlanPane } from './panes/planPane.js';
+import { listItems, getItem, onWorksheetDataChanged, attachWorksheetDatabase, listQuestionRows } from './worksheetData.js';
 import { OPEN_QUIZ_COMMAND, START_ROSTER_COMMAND, startTodaysRoster } from './panes/rosterPane.js';
 import { ADD_TAG_COMMAND, REMOVE_TAG_COMMAND } from './panes/tagEditor.js';
 import { QUIZ_PAPER_COMMAND, REVIEW_PAPER_COMMAND, quizPaper, reviewPaper } from './panes/bankPane.js';
@@ -42,19 +40,14 @@ import { worksheetWorkProvider } from './workProvider.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
 import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
 import { ASK_COMMAND, FORMAT_COMMAND, MENU_COMMAND, askAboutSelection, formatCells, showSheetMenu } from './panes/sheetToolbar.js';
-import { newSheet, sheetFileIconHtml, BACK_TO_HOME, importPlanFromPath, openBuilderWith, openPastQuiz, openQuizTab, openWorksheet, pickAndImportPlan, planActions, refreshFlashcardsOn, startQuizWith, studyFlashcards } from './actions.js';
-import { createBankPane, readPendingRecipes } from './panes/bankPane.js';
-import { createExcelImportPane } from './panes/excelImportPane.js';
-import { createGeneratePane } from './panes/generatePane.js';
-import { createLauncherPane } from './panes/launcherPane.js';
-import { createPracticeConfigPane } from './panes/practiceConfigPane.js';
+import { newSheet, sheetFileIconHtml, importPlanFromPath, openBuilderWith, openPastQuiz, openWorksheet, pickAndImportPlan, refreshFlashcardsOn } from './actions.js';
+import { createPlacePane, isWorksheetPlace, worksheetPlacesContribution } from './worksheetPlaces.js';
+import { readPendingRecipes } from './panes/bankPane.js';
 import { createPracticeRunPane } from './panes/practiceRunPane.js';
-import { createQuizzesPane } from './panes/quizzesPane.js';
 import { createReviewPane } from './panes/reviewPane.js';
-import { createSettingsPane } from './panes/settingsPane.js';
 import { createSheetPane } from './panes/sheetPane.js';
 import { createSidebarView } from './panes/sidebarView.js';
-import { carryIdleMinutes, scratchCache, getExamDate, getXpCashRate, state, type ParallxApiLike, type ToolContextLike } from './state.js';
+import { carryIdleMinutes, scratchCache, state, type ParallxApiLike, type ToolContextLike } from './state.js';
 import './worksheet.css';
 
 // ── Activation ──────────────────────────────────────────────────────────────
@@ -101,49 +94,21 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         // Provenance contract: key on instanceId, never parse
         // the namespaced input.id.
         const instanceId = input?.instanceId ?? input?.id ?? 'home';
-        if (instanceId === 'home') return createLauncherPane(container);
-        if (instanceId === 'bank') return createBankPane(container);
-        if (instanceId === 'settings') return createSettingsPane(container);
-        if (instanceId === 'create') return createGeneratePane(container);
-        if (instanceId === 'excel-import') return createExcelImportPane(container);
-        if (instanceId === 'practice') return createPracticeConfigPane(container);
+        // A screen is a place, drawn in Worksheets' one tab (worksheetPlaces.ts); an older
+        // build's screen tab comes back there. One that still reaches here is drawn as it was.
+        if (isWorksheetPlace(instanceId)) return createPlacePane(container, instanceId);
         if (instanceId === 'practice-run') return createPracticeRunPane(container, input as { setName?(name: string): void } | undefined);
-        if (instanceId === 'quizzes') return createQuizzesPane(container);
         if (instanceId === 'review') return createReviewPane(container);
-        if (instanceId === 'plan') return createPlanPane(container, planActions());
-        if (instanceId === 'dashboard') {
-          return createDashboardPane(container, {
-            openItem: (id, title) => void openWorksheet(`item:${id}`, title),
-            startQuiz: (ids, startAt, name) => startQuizWith(ids, startAt, name),
-            resumeQuiz: () => openQuizTab(),
-            openQuiz: (id) => void openPastQuiz(id),
-            renderIcon: (id, size) => { try { return state.api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
-            configureQuiz: (preset) => openBuilderWith(preset),
-            importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
-            openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
-            openHome: () => BACK_TO_HOME.onClick?.(),
-            examDate: () => getExamDate(),
-            xpCashRate: () => getXpCashRate(),
-            cashOut: async (xp, cents) => {
-              const dollars = (cents / 100).toFixed(2);
-              const ok = await state.api?.window?.showConfirmModal?.({
-                message: `Cash out ${xp} XP for $${dollars}?`,
-                detail: 'Pay yourself, then this records it. The XP stays on your level; only what is left to cash out goes down.',
-                confirmLabel: 'Cash Out',
-              }) ?? true;
-              if (!ok) return;
-              await recordXpCashout(xp, cents);
-              state.api?.activity?.note('cashed out', `${xp} XP for $${dollars}`);
-            },
-            get studyFlashcards() { return studyFlashcards(); },
-          });
-        }
         const sheetFile = sheetFilePathOf(instanceId);
         if (sheetFile) return createSheetFilePane(container, sheetFile);
         return createSheetPane(container, instanceId);
       },
     }),
   );
+
+  // Home, Problem Bank, Study Dashboard, Campaign, Quizzes, New Quiz and the rest are places: one tab,
+  // named for the place, the trail under the tabs, an address each (parallx://place/worksheet/bank?filters=noted).
+  if (api.places) context.subscriptions.push(api.places.register(worksheetPlacesContribution()));
 
   // A `.sheet` file in the workspace opens as a sheet of one's own, while this tool runs.
   if (api.editors.registerFileEditor) {
@@ -170,7 +135,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
 
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.open', () => openWorksheet('home', 'Worksheets')),
+    api.commands.registerCommand('worksheet.open', () => openWorksheet('home', 'Home')),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.openScratch', () => openWorksheet('scratch', 'Scratch Sheet')),

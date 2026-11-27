@@ -13,6 +13,8 @@ import { ISettingsRegistryService } from '../../services/serviceTypes.js';
 import { defaultQuizName, newQuizId } from './labels.js';
 
 export interface ParallxApiLike {
+  /** The core's places (services/places.ts): Worksheets' screens share its one tab. */
+  places?: import('../../api/bridges/placesBridge.js').PlacesApi;
   home?: { registerCardProvider?(provider: import('../../api/homeApi.js').ToolHomeCardProvider): { dispose(): void } };
   views: {
     registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): { dispose(): void } }): { dispose(): void };

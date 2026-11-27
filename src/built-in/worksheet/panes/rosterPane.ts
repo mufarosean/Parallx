@@ -9,7 +9,7 @@ import { listItems, listAttemptHistory, listQuizSessions, type QuizSessionRow } 
 import { getRoster, listStarChanges } from '../rosterData.js';
 import { rosterProgress, rosterTitle, shuffled, type RosterSpec, type RosterProgress } from '../roster.js';
 import { paperLabel } from '../problemImport.js';
-import { BACK_TO_HOME, openPastQuiz, openWorksheet, startQuizWith } from '../actions.js';
+import { openPastQuiz, openWorksheet, startQuizWith } from '../actions.js';
 import { createButton, createPageHeader } from '../../../ui/kit.js';
 import { escapeHtml } from '../../../ui/format.js';
 import { htmlFragment } from '../../../ui/answerForms.js';
@@ -107,7 +107,7 @@ export async function renderRoster(root: HTMLElement, current: () => boolean): P
   if (!current()) return true;
   root.replaceChildren();
   createPageHeader(root, {
-    back: BACK_TO_HOME, title: rosterTitle(spec.tag), subtitle: subtitle(L),
+    title: rosterTitle(spec.tag), subtitle: subtitle(L),
     more: [{ label: 'Roster Settings', icon: 'settings', onSelect: () => void openWorksheet('settings', 'Worksheets Settings') }],
   });
   root.appendChild(htmlFragment(pageHtml(L)));

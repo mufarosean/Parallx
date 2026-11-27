@@ -38,7 +38,6 @@ export interface PlanActions {
   /** Everything the journal saw finished since `sinceTs`: object and detail. */
   journalFinished(sinceTs: number): Promise<{ object: string; detail: string; ts: number }[]>;
   renderIcon?(id: string, size: number): string;
-  openHome?(): void;
   importPlan(): void;
   removePlan(): void;
 }
@@ -241,9 +240,8 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     tip.hide();
     content.replaceChildren();
     const root = content;
-    const back = actions.openHome ? { id: 'worksheet.home', label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
     if (!L) {
-      createPageHeader(root, { back, title: 'Campaign' });
+      createPageHeader(root, { title: 'Campaign' });
       createEmptyState(root, {
         icon: 'calendar-check',
         headline: 'No plan yet.',
@@ -269,7 +267,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
       icon: 'play', onClick: () => { void startBlock(L, today, next.block, next); },
     } : undefined;
     createPageHeader(root, {
-      back, title: plan.title, subtitle: sub, primary,
+      title: plan.title, subtitle: sub, primary,
       more: [
         { label: 'Import Plan…', icon: 'folder-input', onSelect: () => actions.importPlan() },
         { label: 'Remove Plan', icon: 'trash', onSelect: () => actions.removePlan() },

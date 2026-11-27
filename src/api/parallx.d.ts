@@ -1598,6 +1598,13 @@ export interface PlacesContribution {
   readonly places: readonly PlaceDefinition[];
   /** The tab's editor type; defaults to `id`. A tool moving onto places keeps its old type so restored tabs still open. */
   readonly editorType?: string;
+  /**
+   * Tabs an older build of the tool saved under another of its editor types,
+   * one per screen: each whose `instanceId` names a place (`placeOf` returns
+   * it) comes back at startup as that place in the tool's one tab; two such
+   * tabs make one. Its other tabs of that type are left to it.
+   */
+  readonly formerTabs?: { readonly editorType: string; placeOf(instanceId: string): PlaceLocation | undefined };
   /** The tab's name for a location; defaults to the place's title. */
   titleOf?(location: PlaceLocation): string;
   /** The trail after the tool; defaults to the place alone. The last step is where the tab is. */

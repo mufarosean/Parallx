@@ -5,7 +5,7 @@ import { listItems, onWorksheetDataChanged, getSessionGrades, renameQuizSession,
 import { normalizeRating } from '../problemImport.js';
 import { appDateTimeString } from '../../../services/localTime.js';
 import { when } from '../labels.js';
-import { BACK_TO_HOME, openBuilder, openPastQuiz, showMenu, startQuizWith } from '../actions.js';
+import { openBuilder, openPastQuiz, showMenu, startQuizWith } from '../actions.js';
 import { practiceListeners, state } from '../state.js';
 import { el } from '../widgets.js';
 
@@ -20,7 +20,6 @@ export function createQuizzesPane(container: HTMLElement) {
   let disposed = false;
   let renderSeq = 0;
   createPageHeader(root, {
-    back: BACK_TO_HOME,
     title: 'Quizzes',
     subtitle: 'A quiz stays open until you complete it from its summary.',
     primary: { id: 'worksheet.newQuiz', label: 'New Quiz', icon: 'plus', title: 'The quiz builder: papers, sources, kinds, a rating band, a length, a name.', onClick: () => openBuilder() },

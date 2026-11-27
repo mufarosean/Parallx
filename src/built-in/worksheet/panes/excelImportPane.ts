@@ -7,7 +7,7 @@ import { listItems, createItem, recordImportedRating, upsertProgressSnapshot, ty
 import { openXlsx } from '../ooxml.js';
 import { detectProblems, readWorkbookTimeline, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from '../problemImport.js';
 import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from '../excelImport.js';
-import { BACK_TO_HOME, openWorksheet } from '../actions.js';
+import { openWorksheet } from '../actions.js';
 import { readPendingRecipes } from './bankPane.js';
 import { workingCache, state } from '../state.js';
 import { el } from '../widgets.js';
@@ -18,7 +18,6 @@ export function createExcelImportPane(container: HTMLElement) {
   let disposed = false;
 
   createPageHeader(root, {
-    back: BACK_TO_HOME,
     title: 'Import Workbook',
     subtitle: 'A practice workbook: one problem per sheet, named Paper.Source_NN.',
   });

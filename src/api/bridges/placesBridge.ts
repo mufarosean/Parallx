@@ -8,8 +8,8 @@
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import type { IEditorService } from '../../services/serviceTypes.js';
-import { places, type PlaceLocation, type PlaceMove, type PlacesContribution, type PlacesLinkRegistry, type PlaceTabInput } from '../../services/places.js';
-import type { EditorsBridge } from './editorsBridge.js';
+import { MAIN_INSTANCE, places, type PlaceLocation, type PlaceMove, type PlacesContribution, type PlacesLinkRegistry, type PlaceTabInput } from '../../services/places.js';
+import { registerToolEditorRestoreRedirect, type EditorsBridge } from './editorsBridge.js';
 
 export interface PlacesApi {
   register(contribution: PlacesContribution): IDisposable;
@@ -42,7 +42,19 @@ export function createPlacesApi(toolId: string, editors: EditorsBridge, editorSe
         registration.dispose();
         throw err;
       }
-      const both = toDisposable(() => { provider.dispose(); registration.dispose(); });
+      // The tool's older tabs, one per screen, come back as places in its one tab.
+      const former = contribution.formerTabs;
+      const redirect = former && former.editorType !== typeId
+        ? registerToolEditorRestoreRedirect(former.editorType, toolId, (instanceId) => {
+          const location = former.placeOf(instanceId);
+          if (!location) return undefined;
+          return {
+            typeId, instanceId: MAIN_INSTANCE, name: places.titleOf(contribution.id, location),
+            iconHtml: places.iconHtmlOf(contribution.id), place: places.addressOf(contribution.id, location),
+          };
+        })
+        : undefined;
+      const both = toDisposable(() => { redirect?.dispose(); provider.dispose(); registration.dispose(); });
       own.push(both);
       return both;
     },

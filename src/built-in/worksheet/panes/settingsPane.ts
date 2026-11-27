@@ -7,7 +7,6 @@ import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDay
 import { DISPLAY_DECIMALS_CHOICES } from '../displayNumbers.js';
 import { dayKey } from '../progressInsights.js';
 import { fmtShortDay } from '../labels.js';
-import { BACK_TO_HOME } from '../actions.js';
 import { getDisplayDecimalsSetting, getExamDate, getSheetAppearance, getXpCashRate, setDisplayDecimalsSetting, setExamDate, setSheetAppearance, setXpCashRate, state, type SheetAppearance } from '../state.js';
 import { el } from '../widgets.js';
 import { getIdleMinutes } from '../../../services/workClock.js';
@@ -31,7 +30,7 @@ export function createSettingsPane(container: HTMLElement) {
     if (disposed) return;
     for (const d of disposables.splice(0)) d.dispose();
     root.replaceChildren();
-    createPageHeader(root, { back: BACK_TO_HOME, title: 'Worksheets Settings' });
+    createPageHeader(root, { title: 'Worksheets Settings' });
     const body = el('div', 'ws-settings__body');
     root.appendChild(body);
 

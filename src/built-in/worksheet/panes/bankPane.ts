@@ -11,7 +11,7 @@ import { normalizeRating, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABEL
 import { recipeOfSheet, recipeGroups, recipeKey } from '../recipes.js';
 import { appDateString } from '../../../services/localTime.js';
 import { fmtStudy, gradeLabel } from '../labels.js';
-import { BACK_TO_HOME, beginReview, openBuilderWith, openWorksheet, showMenu, startQuizWith } from '../actions.js';
+import { beginReview, openBuilderWith, openWorksheet, showMenu, startQuizWith } from '../actions.js';
 import { discussNotesInChat } from '../chatReview.js';
 import { state } from '../state.js';
 import { el, starBtn } from '../widgets.js';
@@ -39,7 +39,43 @@ export async function quizPaper(paper: string): Promise<void> {
 /** Papers opened in the Problem Bank page; survives re-renders. */
 const _homeOpen = new Set<string>();
 
-export function createBankPane(container: HTMLElement) {
+/** The bank's filters as its place's address carries them (parallx://place/worksheet/bank?filters=noted&q=brosius). */
+function bankParams(paper: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (_bankFilters.size) out.filters = [..._bankFilters].sort().join(',');
+  if (_bankQuery) out.q = _bankQuery;
+  if (_bankRecipes.size) out.recipes = JSON.stringify([..._bankRecipes].sort());
+  if (paper) out.paper = paper;
+  return out;
+}
+/** The filters an address gives the bank: exactly those, nothing kept from before. */
+function applyBankParams(params: Readonly<Record<string, string>>): void {
+  _bankFilters.clear();
+  for (const f of (params.filters ?? '').split(',')) if (f && BANK_FILTERS.some(([value]) => value === f)) _bankFilters.add(f);
+  _bankQuery = (params.q ?? '').trim();
+  _bankRecipes.clear();
+  try { for (const r of JSON.parse(params.recipes || '[]') as unknown[]) if (typeof r === 'string') _bankRecipes.add(r); } catch { /* none */ }
+  if (params.paper) _homeOpen.add(params.paper);
+}
+
+/**
+ * The Problem Bank. As a place (`place` given) it starts from the filters
+ * its address names and says each change of them, so the address, Back and
+ * a link carry them.
+ */
+export function createBankPane(container: HTMLElement, place?: { readonly params: Readonly<Record<string, string>>; replace(params: Readonly<Record<string, string>>): void }) {
+  if (place) applyBankParams(place.params);
+  const paper = place?.params.paper || undefined;
+  let said = JSON.stringify(bankParams(paper));
+  /** Tell the core where the bank is now, when its filters changed. */
+  const sayWhere = () => {
+    if (!place) return;
+    const params = bankParams(paper);
+    const now = JSON.stringify(params);
+    if (now === said) return;
+    said = now;
+    place.replace(params);
+  };
   const root = el('div', 'ws-pane ws-home');
   container.appendChild(root);
   let disposed = false;
@@ -63,7 +99,6 @@ export function createBankPane(container: HTMLElement) {
     const generated = items.filter((it) => !it.paper);
     const shown = shownProblems();
     createPageHeader(headHost, {
-      back: BACK_TO_HOME,
       title: 'Problem Bank',
       subtitle: problems.length ? `${problems.length} problems · ${rated} rated · ${papers} ${papers === 1 ? 'paper' : 'papers'}` : undefined,
       secondary: [
@@ -135,6 +170,7 @@ export function createBankPane(container: HTMLElement) {
 
   const paintList = () => {
     listHost.replaceChildren();
+    sayWhere();
     paintHeader();
     const all = items.filter((it) => it.paper);
     const problems = shownProblems();
@@ -261,7 +297,7 @@ export function createBankPane(container: HTMLElement) {
     if (disposed) return;
     if (items.length === 0) {
       headHost.replaceChildren();
-      createPageHeader(headHost, { back: BACK_TO_HOME, title: 'Problem Bank' });
+      createPageHeader(headHost, { title: 'Problem Bank' });
       barHost.replaceChildren();
       listHost.replaceChildren();
       createEmptyState(listHost, {
@@ -396,11 +432,8 @@ export function renderBankSnapshot(root: HTMLElement, items: WorksheetItemSummar
   const problems = items.filter((it) => it.paper);
   const generated = items.filter((it) => !it.paper);
   const section = el('div', 'ws-side__section');
-  const title = el('button', 'ws-side__sectiontitle', 'Problem Bank') as HTMLButtonElement;
-  title.type = 'button';
-  title.title = 'Open the Problem Bank as a tab';
-  title.addEventListener('click', () => void openWorksheet('bank', 'Problem Bank'));
-  declareControl(title, { id: 'worksheet.side.bank', label: 'Problem Bank', hint: 'Opens the Problem Bank as a tab.' });
+  // The column's Problem Bank row opens the bank; this names the snapshot under it.
+  const title = el('span', 'ws-side__sectiontitle', 'Papers');
   section.appendChild(title);
   const ratedAll = problems.filter((it) => normalizeRating(it.attemptState)).length;
   section.appendChild(el('span', 'ws-side__sectioncount', `${ratedAll}/${problems.length}`));

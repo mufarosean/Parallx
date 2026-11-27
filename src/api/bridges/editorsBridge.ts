@@ -65,6 +65,42 @@ interface ToolEditorProviderEntry {
 
 const _toolEditorProviders = new Map<string, ToolEditorProviderEntry>();
 
+/** Where a tab saved under one editor type comes back instead: another type of the same tool, at an instance and a place. */
+export interface ToolEditorRestoreTarget {
+  readonly typeId: string;
+  readonly instanceId: string;
+  readonly name: string;
+  readonly iconHtml?: string;
+  /** The place's address the tab comes back at (read by the core's places). */
+  readonly place?: string;
+}
+
+/**
+ * Restore redirects, by the saved editor type: a tool that moved some of its
+ * tabs to another editor type (a screen per tab, now places in one tab) says
+ * where each saved one comes back. Undefined from the function: as saved.
+ */
+const _restoreRedirects = new Map<string, { readonly toolId: string; readonly redirect: (instanceId: string) => ToolEditorRestoreTarget | undefined }>();
+
+export function registerToolEditorRestoreRedirect(typeId: string, toolId: string, redirect: (instanceId: string) => ToolEditorRestoreTarget | undefined): IDisposable {
+  const holder = { toolId, redirect };
+  _restoreRedirects.set(typeId, holder);
+  return toDisposable(() => { if (_restoreRedirects.get(typeId) === holder) _restoreRedirects.delete(typeId); });
+}
+
+/** A saved tab's input as its tool now restores it elsewhere, or undefined to restore it as saved. */
+function redirectedRestore(typeId: string, toolId: string, instanceId: string | undefined, iconHtml: string | undefined): ToolEditorInput | undefined {
+  const holder = _restoreRedirects.get(typeId);
+  if (!holder || holder.toolId !== toolId || !instanceId) return undefined;
+  let target: ToolEditorRestoreTarget | undefined;
+  try { target = holder.redirect(instanceId); } catch { return undefined; }
+  const entry = target ? _toolEditorProviders.get(target.typeId) : undefined;
+  if (!target || !entry || entry.toolId !== toolId) return undefined;
+  const input = new ToolEditorInput(target.typeId, target.name, undefined, target.iconHtml ?? iconHtml, entry.provider, `${toolId}:${target.typeId}:${target.instanceId}`, toolId, target.instanceId);
+  if (target.place) input.place = target.place;
+  return input;
+}
+
 // ─── Tool File Editors ───────────────────────────────────────────────────────
 //
 // A running tool may claim file extensions for one of its editor types
@@ -236,6 +272,8 @@ export class EditorsBridge {
         const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
         const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
         const iconHtml = typeof data?.iconHtml === 'string' ? (data.iconHtml as string) : undefined;
+        const moved = redirectedRestore(typeId, entry.toolId, instanceId, iconHtml);
+        if (moved) return moved;
         const restored = new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId, instanceId);
         if (typeof data?.place === 'string') restored.place = data.place as string;
         return restored;

@@ -566,7 +566,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
             if (!host?.exportToXlsx(name)) void state.api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
           } },
           ...(instanceId.startsWith('item:') && state.practice?.ids.includes(problem.id) ? [{ label: 'Open Problem in Its Own Tab', icon: 'file-spreadsheet', onSelect: () => void openWorksheet(`item:${problem.id}`, problem.title) }] : []),
-          { label: 'Show in Problem Bank', icon: 'library', onSelect: () => void openWorksheet('bank', 'Problem Bank') },
+          { label: 'Show in Problem Bank', icon: 'library', onSelect: () => void openWorksheet('bank', 'Problem Bank', problem.paper ? { paper: problem.paper } : undefined) },
           { separator: true },
           { label: 'Reset Work…', icon: 'rotate-ccw', danger: true, tooltip: 'Clears your work and the timer; the problem returns to the sheet as imported. Ratings stay.', onSelect: () => void resetWork() },
         ]);

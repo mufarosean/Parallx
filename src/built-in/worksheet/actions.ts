@@ -3,7 +3,6 @@
 
 import { URI } from '../../platform/uri.js';
 import { serializeSheetFile, sheetTitle, uniqueSheetFileName } from './sheetFile.js';
-import type { IKitAction } from '../../ui/kit.js';
 import { showExtensionContextMenu, type IExtensionMenuItem } from '../../ui/contextMenu.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { notifyWorksheetViewsChanged, getQuizSession, savePlanJson, clearPlan } from './worksheetData.js';
@@ -12,6 +11,7 @@ import { parsePlan } from './plan.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { practiceListeners, quizPresetListeners, reviewListeners, beginPractice, sheetsToFocus, state } from './state.js';
 import { WS_ICON_SVG } from './widgets.js';
+import { WS_PLACES_ID, isWorksheetPlace } from './worksheetConstants.js';
 
 /** A past quiz reopened: the same player over the same problems, with the
  *  work and ratings as they are now. Finished ones review; an open one resumes. */
@@ -132,7 +132,17 @@ export async function newSheet(name?: unknown, folder?: unknown): Promise<string
   return target.fsPath;
 }
 
-export async function openWorksheet(instanceId: string, title: string): Promise<void> {
+/**
+ * Open a Worksheets screen or thing. A screen (Problem Bank, Quizzes) is a
+ * place: it goes in Worksheets' one tab, named for it (worksheetPlaces.ts),
+ * with `params` in its address. A thing (a quiz being taken, a problem's
+ * sheet, the Scratch Sheet) gets a tab of its own, named `title`.
+ */
+export async function openWorksheet(instanceId: string, title: string, params?: Readonly<Record<string, string>>): Promise<void> {
+  if (isWorksheetPlace(instanceId) && state.api?.places) {
+    await state.api.places.open({ tool: WS_PLACES_ID, place: instanceId, ...(params ? { params } : {}) });
+    return;
+  }
   await state.api?.editors.openEditor({
     typeId: 'worksheet',
     title,
@@ -215,7 +225,6 @@ export function planActions(): PlanActions {
       return events.filter((e) => e.source.startsWith('ext:')).map((e) => ({ object: e.object, detail: e.detail ?? '', ts: e.ts }));
     },
     renderIcon: (id, size) => { try { return state.api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
-    openHome: () => BACK_TO_HOME.onClick?.(),
     importPlan: () => void pickAndImportPlan(),
     removePlan: () => {
       void (async () => {
@@ -226,8 +235,6 @@ export function planActions(): PlanActions {
   };
 }
 
-/** The page every Worksheets tab links back to. */
-export const BACK_TO_HOME: IKitAction = { id: 'worksheet.home', label: 'Worksheets', onClick: () => void openWorksheet('home', 'Worksheets') };
 export const openBuilder = () => void openWorksheet('practice', 'New Quiz');
 /**
  * The quiz builder on a set handed over (a paper, the problems shown, a

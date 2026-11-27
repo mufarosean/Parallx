@@ -42,7 +42,6 @@ export interface DashboardActions {
   /** Worksheets Settings: where a campaign is set up and ended. */
   openSettings(): void;
   /** Worksheets Home, the page every Worksheets tab belongs to. */
-  openHome?(): void;
 }
 
 export function el(tag: string, className?: string, text?: string): HTMLElement {
@@ -540,10 +539,9 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     // actions on the right. Drawn once the plan is known.
     const headHost = el('div', 'ws-dash__head');
     root.appendChild(headHost);
-    const back = actions.openHome ? { id: 'worksheet.home', label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
 
     if (ins.totalProblems === 0) {
-      createPageHeader(headHost, { back, title: 'Study Dashboard' });
+      createPageHeader(headHost, { title: 'Study Dashboard' });
       createEmptyState(root, {
         icon: 'gauge',
         headline: 'No problems in the bank yet.',
@@ -571,7 +569,6 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const p = plan.progress;
     const sub = p ? [p.finished ? 'Campaign complete' : `Day ${p.dayIndex} of ${plan.campaign!.days}`, p.restToday && !p.finished ? 'rest day' : '', examLine].filter(Boolean).join(' · ') : `No campaign running · ${examLine}`;
     createPageHeader(headHost, {
-      back,
       title: 'Study Dashboard',
       subtitle: sub,
       primary: plan.actions.primary,

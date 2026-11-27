@@ -33,3 +33,9 @@ export const GROW_STEP_COLUMNS = 26;
 export const SHEET_ON_SCREEN_KEY = 'sheetFileOnScreen';
 /** The same key as a menu entry's `when` reads it: the app puts the tool's id before a tool's key. */
 export const SHEET_ON_SCREEN_WHEN = `parallx.worksheet.${SHEET_ON_SCREEN_KEY}`;
+
+/** Worksheets' segment in a place's address: parallx://place/worksheet/<place>. */
+export const WS_PLACES_ID = 'worksheet';
+/** The instance ids of Worksheets' screens: its places (worksheetPlaces.ts). Anything else opens as a thing, in a tab of its own. */
+const WS_PLACE_IDS = new Set(['home', 'bank', 'dashboard', 'plan', 'quizzes', 'practice', 'excel-import', 'create', 'settings']);
+export function isWorksheetPlace(instanceId: string): boolean { return WS_PLACE_IDS.has(instanceId); }

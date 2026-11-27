@@ -6,7 +6,7 @@ import { createIconElement } from '../../../ui/iconRegistry.js';
 import { createItem } from '../worksheetData.js';
 import { itemToWorkbooks, type GeneratedItem } from '../itemFormat.js';
 import { generateItems } from '../worksheetAi.js';
-import { BACK_TO_HOME, openWorksheet } from '../actions.js';
+import { openWorksheet } from '../actions.js';
 import { state } from '../state.js';
 import { el } from '../widgets.js';
 
@@ -18,7 +18,6 @@ export function createGeneratePane(container: HTMLElement) {
   let disposed = false;
 
   createPageHeader(root, {
-    back: BACK_TO_HOME,
     title: 'Generate Items',
     subtitle: 'Practice items with givens and a worked model answer, from a PDF or pasted material. Kept apart from the workbook.',
   });

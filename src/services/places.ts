@@ -67,6 +67,12 @@ export interface PlacesContribution {
   readonly places: readonly PlaceDefinition[];
   /** The tab's editor type; defaults to the id. A tool moving onto places keeps its old type so restored tabs still open. */
   readonly editorType?: string;
+  /**
+   * Tabs an older build of the tool saved under another of its editor types,
+   * one per screen: each whose instance names a place comes back, at
+   * startup, as that place in the tool's one tab (two such tabs, one tab).
+   */
+  readonly formerTabs?: { readonly editorType: string; placeOf(instanceId: string): PlaceLocation | undefined };
   /** The tab's name for a location; defaults to the place's title. */
   titleOf?(location: PlaceLocation): string;
   /** The trail after the tool; defaults to the place alone. The last step is where the tab is. */
@@ -116,7 +122,8 @@ export interface PlacesLinkRegistry {
 }
 
 export const PLACE_SEGMENT = 'place';
-const MAIN_INSTANCE = 'main';
+/** The instance of a tool's first place tab (the next ones get their own). */
+export const MAIN_INSTANCE = 'main';
 
 interface Entry {
   readonly toolId: string;
@@ -322,6 +329,18 @@ export class PlacesService {
     const location = pending ?? tab?.going ?? tab?.location;
     if (!location) return undefined;
     return { address: placeAddress(toolKey, location), title: this._titleOf(entry, location) };
+  }
+
+  /** The name a tool's tab has at a location. */
+  titleOf(tool: string, location: PlaceLocation): string {
+    const entry = this._entries.get(tool);
+    return entry ? this._titleOf(entry, this._normalize(entry, location)) : location.place;
+  }
+
+  /** The icon a tool's tabs carry (its registry icon, else a generic one). */
+  iconHtmlOf(tool: string): string | undefined {
+    const entry = this._entries.get(tool);
+    return entry ? this._toolIconHtml(entry) : undefined;
   }
 
   /** The address of a location in a tool. */
