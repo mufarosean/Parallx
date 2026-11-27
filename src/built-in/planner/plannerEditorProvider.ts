@@ -151,9 +151,12 @@ export class PlannerEditorPane implements IDisposable {
 
     // planner.newTask command dispatches this; the active pane opens
     // the dedicated task popover.
+    // One form at a time: a pane drawn by the command itself took the request, and the event after it finds the form open.
+    const formOpen = () => !!document.querySelector('.planner-popover-overlay');
     const onNewTask = () => {
       if (!this._root?.isConnected) return;
       takePendingPlannerNewTask();
+      if (formOpen()) return;
       this._moveInPlace('tasks');
       // Open beside the Create button it stands for (the body's top-left
       // corner put the popover over the menu bar); centred if it is hidden.
@@ -170,6 +173,7 @@ export class PlannerEditorPane implements IDisposable {
     const onNewEvent = () => {
       if (!this._root?.isConnected) return;
       takePendingPlannerNewEvent();
+      if (formOpen()) return;
       if (this._activeTab === 'tasks') this._moveInPlace('today');
       const start = this._activeTab === 'calendar' ? atTime(this._cursorDate, 9) : atTime(Date.now(), appDateParts(Date.now()).hour + 1);
       const btn = this._root.querySelector<HTMLElement>('[data-px-id="planner.newEvent"]');
@@ -329,6 +333,8 @@ export class PlannerEditorPane implements IDisposable {
     if (tab === 'calendar') {
       this._cursorDate = plannerDayFrom(params.date) ?? this._cursorDate;
       if (params.view === 'month' || params.view === 'week' || params.view === 'day') this._calendarView = params.view;
+      // A day or a view asked for once: after it, the calendar goes where it is moved, so the tab's address is the calendar alone.
+      if (params.date || params.view) this._host.replace({ place: 'calendar' });
     }
     this._shown = true;
     this._activeTab = tab;

@@ -307,7 +307,9 @@ export class BreadcrumbsWidget extends Disposable {
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault();
-        this.focusPrev();
+        // From the list itself (nothing focused yet): the last crumb, where you are.
+        if (this._focusedItemIdx < 0) this._focus(this._items.length - 1, e);
+        else this.focusPrev();
         break;
       case 'ArrowRight':
         e.preventDefault();

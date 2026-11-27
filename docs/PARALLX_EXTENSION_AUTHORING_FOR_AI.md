@@ -354,7 +354,7 @@ router, tab names or trail.
 const reg = api.places.register({
   id: 'mytool',                       // the address segment: lower-case letters, digits, dashes
   title: 'My Tool',                   // the trail's first crumb
-  icon: 'calendar',                   // registry icon id (yours via api.icons): the tab's icon and the first crumb's
+  icon: 'calendar',                   // registry icon id (yours from the manifest's contributes.icons): the tab's icon and the first crumb's
   places: [                           // the first is where the tool opens
     { id: 'home', title: 'Home' },
     { id: 'stats', title: 'Stats' },

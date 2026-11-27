@@ -125,6 +125,30 @@ describe('places', () => {
     }
   });
 
+  it('another of the tool\'s tabs coming to the front says the tool moved (the column follows it)', async () => {
+    await svc.open('demo', { place: 'stats' });
+    const first = [...h.tabs.keys()][0];
+    await svc.open('demo', { place: 'home' }, { newTab: true });
+    const moves: string[] = [];
+    svc.onDidMove((m) => moves.push(m.location.place));
+    await h.host.focusEditor(first); // the editor area puts it in front, then says so
+    svc.noteActiveEditor(first);
+    expect(moves).toEqual(['stats']);
+    expect(svc.current('demo')).toEqual({ place: 'stats' });
+  });
+
+  it('a view that moves itself while it is being made keeps that place', async () => {
+    const svc2 = new PlacesService();
+    const h2 = makeHost(() => svc2);
+    svc2.register('tool', {
+      id: 'demo', title: 'Demo', icon: 'calendar',
+      places: [{ id: 'home', title: 'Home' }, { id: 'stats', title: 'Stats' }],
+      createView: (_c, host) => { host.replace({ place: 'stats' }); return { show() { /* drawn */ }, dispose() { /* nothing */ } }; },
+    }, h2.host);
+    await svc2.open('demo');
+    expect([...h2.tabs.values()][0].input.name).toBe('Stats');
+  });
+
   it('an unknown place opens the tool\'s first, and a tool that went opens nothing', async () => {
     expect(await svc.openAddress('parallx://place/demo/nowhere')).toBe(true);
     expect([...h.tabs.values()][0].input.name).toBe('Home');

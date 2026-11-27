@@ -374,12 +374,16 @@ select:disabled {
 /* A finger needs a bigger target than a pointer. */
 [data-input-modality="touch"] .px-toast > .px-btn { height: var(--px-control-h-lg); min-width: var(--px-control-h-lg); }
 
-/* ── Places (src/ui/placeLink.ts, src/services/places.ts) ─────────────────── */
+/* ── Places (src/ui/link.ts, src/services/places.ts) ─────────────────── */
 /* After a move the keys land on the page's title (tabindex -1, so not in the
    Tab order): it is where you are, not a control, so no ring; a screen reader
    says it and Tab carries on from it. */
 .px-page-header__title:focus { outline: none; }
 /* The one mark for "where you are" in a tool's column: the row of the place
-   the tool's tab is on (aria-current="page" says it to a screen reader). */
-.px-current { background: var(--px-surface-selected); color: var(--px-text); }
-.px-current .svg-icon { color: var(--px-accent-text); }
+   the tool's tab is on (aria-current="page" says it to a screen reader).
+   Paired with the attribute markCurrent sets, so a tool's own row class
+   (often `background: transparent`) does not hide it. */
+.px-current[aria-current] { background: var(--px-surface-selected); color: var(--px-text); }
+.px-current[aria-current] .svg-icon { color: var(--px-accent-text); }
+/* A finger needs a taller crumb than a pointer (the bar under the tabs). */
+[data-input-modality="touch"] .parallx-breadcrumb-item.trail { min-height: 24px; padding-inline: var(--px-space-1); }

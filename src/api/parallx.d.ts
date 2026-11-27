@@ -1592,7 +1592,7 @@ export interface PlacesContribution {
   readonly id: string;
   /** The tool's name, the trail's first crumb (`'Planner'`). */
   readonly title: string;
-  /** Registry icon id of the tool (yours through `parallx.icons`): the tab's icon and the first crumb's. A tab never has no icon. */
+  /** Registry icon id of the tool (an extension's own comes from its manifest's `contributes.icons`): the tab's icon and the first crumb's. A tab never has no icon. */
   readonly icon: string;
   /** Its places; the first is where the tool opens. */
   readonly places: readonly PlaceDefinition[];

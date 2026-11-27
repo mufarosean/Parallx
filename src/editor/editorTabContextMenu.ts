@@ -34,7 +34,7 @@ export function showEditorTabContextMenu(host: IEditorTabMenuHost, editor: IEdit
 
   // Group 0: a tool's place pulled out into a tab of its own (editorTrail.ts)
   const openInOwnTab = trailSourceOf(editor)?.openInOwnTab;
-  if (openInOwnTab) items.push({ id: 'openInOwnTab', label: 'Open in Its Own Tab', keybinding: 'Ctrl+Click', group: '0_open', order: 10 });
+  if (openInOwnTab) items.push({ id: 'openInOwnTab', label: 'Open in Its Own Tab', group: '0_open', order: 10 });
 
   // Group 1: Close operations
   items.push({ id: 'close', label: 'Close', keybinding: 'Ctrl+W', group: '1_close', order: 10 });

@@ -203,6 +203,8 @@ export class PlacesService {
   /** Last time each tab was in front, to find the tool's tab when none of its is. */
   private readonly _lastActive = new Map<string, number>();
   private _activeClock = 0;
+  /** The tab each tool's column last heard about as current. */
+  private readonly _currentByTool = new Map<string, string>();
   private _instanceCounter = 0;
   private _links: PlacesLinkRegistry | undefined;
   private _linkContract: IDisposable | undefined;
@@ -311,9 +313,12 @@ export class PlacesService {
     const tab = this._tabs.get(id);
     const known = tab || this._isPlaceEditorId(id);
     if (!known) return;
-    const before = tab ? this._currentTab(tab.toolKey) : undefined;
     this._lastActive.set(id, ++this._activeClock);
-    if (tab && before !== tab) this._onDidMove.fire({ tool: tab.toolKey, location: tab.location });
+    // The editor area has already put this tab in front, so compare with the tab that was current before it.
+    if (tab && this._currentByTool.get(tab.toolKey) !== id) {
+      this._currentByTool.set(tab.toolKey, id);
+      this._onDidMove.fire({ tool: tab.toolKey, location: tab.location });
+    }
   }
 
   // ── Moving ───────────────────────────────────────────────────────────
@@ -386,8 +391,10 @@ export class PlacesService {
       go: (loc) => { void this._move(theTab, this._normalize(entry, loc), true); },
       replace: (loc) => { this._record(theTab, this._normalize(entry, loc)); },
     };
+    theTab.location = location;
     theTab.view = entry.contribution.createView(container, host);
-    void this._move(theTab, location, pending?.focus ?? false, true);
+    // A view that moved itself while being made (a form it opened on the way) keeps that place.
+    void this._move(theTab, theTab.location, pending?.focus ?? false, true);
     const view = theTab.view;
     return toDisposable(() => {
       if (theTab.view === view) { theTab.view = undefined; theTab.container = undefined; }
@@ -419,7 +426,10 @@ export class PlacesService {
     tab.input.place = placeAddress(tab.toolKey, location);
     tab.input.setName(this._titleOf(entry, location));
     tab.input.setTrail(this._trailOf(entry, tab));
-    if ((changed || force) && this._currentTab(tab.toolKey) === tab) this._onDidMove.fire({ tool: tab.toolKey, location });
+    if ((changed || force) && this._currentTab(tab.toolKey) === tab) {
+      this._currentByTool.set(tab.toolKey, tab.input.id);
+      this._onDidMove.fire({ tool: tab.toolKey, location });
+    }
   }
 
   private _trailOf(entry: Entry, tab: Tab): IEditorTrailCrumb[] {
@@ -439,6 +449,8 @@ export class PlacesService {
   }
 
   private _dropTab(id: string): void {
+    const tab = this._tabs.get(id);
+    if (tab && this._currentByTool.get(tab.toolKey) === id) this._currentByTool.delete(tab.toolKey);
     this._tabs.delete(id);
     this._pending.delete(id);
     this._lastActive.delete(id);
