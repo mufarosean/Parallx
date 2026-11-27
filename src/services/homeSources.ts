@@ -103,12 +103,13 @@ export function getHomeCardProviders(): readonly HomeCardProvider[] {
 /** Fires when a card or a provider comes, is replaced or goes. */
 export const onDidChangeHomeCards: Event<void> = cards.onDidChange;
 
-/** Every tool's card for today, in the order the tools registered; a provider that fails is left out, never the row. */
+/** Every tool's card for today, in one order every time; a provider that fails is left out, never the row. */
 export async function collectHomeCards(): Promise<HomeCard[]> {
   const read = await Promise.all(getHomeCardProviders().map(async (provider) => {
     try { return await provider.read(); } catch (err) { console.error(`[Home] card "${provider.id}" failed:`, err); return null; }
   }));
-  return read.filter((card): card is HomeCard => !!card);
+  // By the tool's name, then the card's id: the order tools happen to start in changes from one launch to the next.
+  return read.filter((card): card is HomeCard => !!card).sort((a, b) => a.from.localeCompare(b.from) || a.id.localeCompare(b.id));
 }
 
 export function registerHomeSource(source: HomeSource): IDisposable {

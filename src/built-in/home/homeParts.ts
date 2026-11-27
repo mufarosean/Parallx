@@ -54,6 +54,7 @@ export function drawEntry(list: HTMLElement, entry: HomeEntry, pinned: boolean):
   const body = createBlock(li, 'div', { className: 'home-entry__body' });
   const open = createButton(body, { id: null, label: title, icon: item.icon ?? 'file', kind: 'ghost', command: 'home.openItem', args: [source.id, item.id] });
   open.className = 'home-entry__title';
+  open.firstElementChild?.setAttribute('aria-hidden', 'true'); // the kind's icon (some are lettered, "MD"): the kind is said in the line under the title
   const where = [item.kind, item.where].filter(Boolean).join(' · ');
   if (where) createBlock(body, 'div', { className: 'home-entry__where', text: where });
   if (item.summary) createBlock(body, 'p', { className: 'home-entry__opening', text: item.summary });
