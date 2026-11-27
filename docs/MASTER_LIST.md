@@ -2878,6 +2878,23 @@ corrected below.
      would have no ellipsis. The label is his and the probe fixes it.
   3. The filter words are lower case and in the mono face, from the
      drawing; no other tool's chips are. The probe fixes the words.
+  4. Should Home follow the clock while it is left in front (the
+     greeting, the "5m ago" times, the Planner's next thing)? Today it
+     reads again only when come back to or when a tool's data changes.
+  5. Should the AI User Guide and "Introduce This Workspace To The AI"
+     get a button back? Both went with Welcome. The second bears on the
+     workspace setup he is thinking about.
+  6. Should the Planner, Study and Worksheets also put their things in
+     the feed (pick 3B)? Today only Flashcards does (its decks).
+  7. A picture of a PDF's first page, a sheet's corner, a deck: wanted,
+     or is the paper with an icon enough? And an image over about 2 MB.
+  His words, 2026-11-28: "save all those questions." Saved here; none
+  is answered.
+- *Owed after Home, not started (each its own session):* Study's short
+  plan tab (his yes, item 11); the two stale Worksheets checks (his yes,
+  "21, checks"); running the seven older probes that now open Home in
+  place of Welcome; the Worksheets "registered twice" errors seen on
+  returning to a quiz's tab.
 - *How it was checked.* Three reviewers (correctness, modularity, UI
   and access) read the change and a verifier drove the app; a skeptic
   tried the reviewers' findings. Their reports were not kept as files,
@@ -4176,6 +4193,14 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 (decided earlier, do not re-raise).
 
 ## Order of work (proposed 2026-11-26; items 4 to 23 agreed the same day)
+
+**Waiting for his word (saved 2026-11-28 at his asking):** the seven
+questions on Home, under "Home: the page the app opens on", "For him to
+say": two buttons or a switch for picked up / pinned; the ellipsis on
+Turn On Tools…; the lower-case filter words; Home and the clock; a
+button back for the AI User Guide and Introduce This Workspace To The
+AI; the other tools' things in the feed; pictures of PDFs, sheets and
+decks.
 
 **His go (2026-11-26):** "I agree to that order. Treat items 4 to 23 as
 go." One run, one item after another, each its own commit; he set aside
