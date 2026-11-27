@@ -2787,24 +2787,30 @@ header as a whole.
 **Built 2026-11-27, to his picks (1A, 2A, 3B, 4A titled "Welcome to
 Parallx").** The acceptance probe written before the build
 (`tests/probes/home-acceptance.mjs`, 76 checks, not edited since) passes
-76 of 76. `keyboard-audit-probe` on Home is all zero,
-`visual-consistency-probe` on Home has nothing risen against the
-baseline (one field off the control heights: the field to ask in, 46 px
-by the drawing, where the search field was before), `touch-drag-probe`
-reports all ok. Typecheck, the unit suite and the build pass.
-**The claim check on this record did not finish** (the checker stopped
-at a usage limit, 2026-11-27); it is owed before the record is relied on.
+76 of 76 on the last build. On that build `keyboard-audit-probe` on Home
+is all zero, `visual-consistency-probe` on Home has nothing risen
+against the baseline (one field off the control heights: the field to
+ask in, 46 px by the drawing, where the search field was before), and
+`touch-drag-probe` reports all ok. Typecheck and the build pass; the
+unit suite passed (9,999) at the review-fix commit and was not run in
+full after the last two small commits. A claim checker read this record
+against the code and the evidence; what it found overstated is
+corrected below.
 
 - *What is on it.* A greeting by the hour and by name, the date and "You
   left off on ..." under it. The name is asked once ("What should Home
   call you?", Keep or Not Now) and kept as the setting `home.name`. One
   wide field hands its words to the chat. "Today, from your tools": one
-  card a tool. The things last opened, each with a picture, its kind and
-  place, two lines of its own text, tags, and a word count or the time,
-  under the words picked up, pinned, this week, this month, all; a thing
-  can be pinned and stays under "pinned" after it stopped being recent
-  (pages and files). A workspace where nothing has been opened says
-  "Welcome to Parallx" with Open a Folder…, New Page, Turn On Tools….
+  card a tool (by convention; the point does not stop a tool giving
+  two). The things last opened, each with a picture, its kind, two
+  lines of its own text, and a word count and the time; a file also
+  says its folder. Tags and a place show when a tool gives them: no
+  tool in the app gives tags yet, and a page says no place. Over them
+  the words picked up, pinned, this week, this month, all; a thing can
+  be pinned and stays under "pinned" after it stopped being recent
+  (pages and files; a deck does not). The range applies under "pinned"
+  too. A workspace where nothing has been opened says "Welcome to
+  Parallx" with Open a Folder…, New Page, Turn On Tools….
 - *Opening.* The app opens on Home once the last session's tabs are
   back (`home.openOnStart`, per workspace, on to begin with).
   `home.width` sets the column: Narrow, Medium, Wide.
@@ -2817,29 +2823,40 @@ at a usage limit, 2026-11-27); it is owed before the record is relied on.
 - *Tools with a card:* Flashcards (the number its own page gives as due,
   Study), Planner (what today holds, what is next, Open Today), Study
   (the hours its plans give today, Start Session), Worksheets (the quiz
-  left open, Resume). Flashcards' decks are also things in the feed. A
-  verifier compared each card with the tool's own page on one workspace:
-  the numbers agreed, each action opened the right screen, and a card
-  followed a change in its data in about a tenth of a second.
-- *Welcome is removed* with its command, its Help entry and its
-  first-launch tab; a Welcome tab saved by an older build is dropped.
-  What it offered and where that is now: New Page and Open Folder… are
-  Home's first steps and in File; the list of tools is the Tools menu;
-  recent workspaces are File > Open Recent…; the key hints for the
-  palette, Settings and Keyboard Shortcuts are in the menus only.
+  left open, Resume). Only Flashcards also puts its things (its decks)
+  in the feed, so pick 3B is met in full by Flashcards alone. A
+  verifier compared each card with the tool's own page on one
+  workspace, on the build before the review's fixes: the numbers
+  agreed and each action opened the right screen. With Home in front,
+  the Planner's and Flashcards' cards followed a change in about a
+  tenth of a second; Study's was not tried; Worksheets' was seen only
+  on coming back to Home (0.75 to 1.6 s, in a hidden window). Not
+  compared again after the fixes.
+- *Welcome is removed* with its four commands (Show Welcome Page, the
+  two behind the AI rows below, and the one that opened the workspace's
+  AI config file), its Help entry and its first-launch tab. A Welcome
+  tab saved by an older build is dropped (by reading; not run). What it
+  offered and where that is now: New Page and Open Folder… are Home's
+  first steps and in File; the list of tools is the Tools menu; recent
+  workspaces are File > Open Recent…; recent files are Home's feed;
+  Open AI Chat is the chat's own button and Home's field; the key hints
+  for the palette, Settings and Keyboard Shortcuts are in the menus
+  only; New Dashboard is New Page in the dashboard's own menu.
   **Gone with no other button:** Introduce This Workspace To The AI
-  (typing `/init` in the chat still does it), AI User Guide (the file is
-  still there, by Go to File), New Dashboard (the dashboard's own menu),
-  and the footer that said where the work is saved.
+  (typing `/init` in the chat still does it); AI User Guide (no way to
+  it from the app now: the file is in the app's own folder, not in a
+  workspace); the footer that said where the work is saved.
 - *Different from the drawing, to know before looking:*
   - A picture is the thing's own text set small on paper (pages, text
-    files) or the image itself (PNG, JPG, GIF, WebP). A PDF, a sheet or a
-    deck gets a paper with its icon or a line of words, not its first
-    page, and one form for every kind.
+    files) or the image itself (PNG seen in the app; JPG, GIF and WebP
+    by reading; an image over about 2 MB gets the paper). A PDF, a
+    sheet or a deck gets a paper with its icon or a line of words, not
+    its first page, and one form for every kind.
   - The line under the title says the date and what he left off on, not
     "Three things are waiting".
   - The pages in the feed are the ones he opened, by when. Pages a tool
-    wrote and nobody opened (a plan's days, its databases) are left out.
+    wrote and nobody opened (a plan's days, its databases) are left
+    out. A page the chat's tool makes opens in a tab, so it counts.
   - Home has no search field; the field asks the chat. `search` on a
     source is accepted and nothing calls it.
   - Tags are plain (no coloured dots); the row label has no arrows (the
@@ -2848,43 +2865,51 @@ at a usage limit, 2026-11-27); it is owed before the record is relied on.
   - On a new workspace, the second row ("each tool that is on adds its
     own first step") is not there: the card point takes a card with no
     number, and no tool registers one yet.
+  - Home left in front does not follow the clock: the greeting, the
+    times and the Planner's next thing stay as read until Home is come
+    back to or a tool's data changes (by reading; not seen).
 - *For him to say:*
   1. "picked up" and "pinned" are two buttons, not one switch. The
      acceptance probe (check 9.1) requires the Tab key to land on
-     "pinned" itself; a switch takes the arrow keys for that. The UI
-     reviewer and the skeptic both read the probe as stricter there than
-     its own words ("a filter word"). A switch is the kit's form and
-     nearer the drawing; it needs his yes to change that check.
+     "pinned" itself; a switch takes the arrow keys for that. A switch
+     is the kit's form and nearer the drawing; it needs his yes to
+     change that check.
   2. "Turn On Tools…" opens a page, not a dialog, so by the copy rule it
      would have no ellipsis. The label is his and the probe fixes it.
   3. The filter words are lower case and in the mono face, from the
-     drawing; no other tool's chips are.
-- *How it was checked.* Three reviewers who did not see the build
-  (correctness, modularity, UI and access) and a verifier driving the
-  app; a skeptic then tried every finding. Modularity: no breach (the
-  core names no tool; every card and source leaves with its tool, at
-  once). The skeptic took the findings one by one: it reproduced most,
-  confirmed the rest by reading, found two forced by the acceptance
-  probe (points 1 and 2 above) and refuted one (empty-state headlines
-  take no full stop). Fixed, and the first five seen working in the
-  app afterwards, the rest by unit test or by reading: focus lost after Keep and after an unpin; image files never shown as
-  themselves (the file bridge labelled every file as text, which is
-  now right for every tool that reads files); pins lost after thirty
-  other opens; two Home tabs in a split sharing one set of commands;
-  cards in a different order each launch; then page times read as UTC
-  (an edited page said "now" for hours west of UTC); a text file's
-  words stale after an edit; focus lost after the last card left; the
-  Worksheets card hidden by a finished quiz in memory; Home reading
-  behind another tab; errors logged at close with every tool on; the
-  narrow layout following the window instead of the pane.
+     drawing; no other tool's chips are. The probe fixes the words.
+- *How it was checked.* Three reviewers (correctness, modularity, UI
+  and access) read the change and a verifier drove the app; a skeptic
+  tried the reviewers' findings. Their reports were not kept as files,
+  so no count is given. Modularity: no breach found (the core names no
+  tool; every card and source leaves with its tool). The skeptic
+  refuted one finding (empty-state headlines take no full stop).
+- *Fixed after the review.* Seen working afterwards by the builder, in
+  the app on a made-up workspace: focus after Keep and after an unpin;
+  a PNG shown as itself (the file bridge labelled every file as text;
+  it now gives every tool the real encoding, with no test of its own);
+  a pin kept after 33 other opens; two Home tabs in a split both
+  working. By unit test: page times (stored in UTC, read as local time
+  before, so an edited page said "now" for hours west of UTC), a text
+  file's words after an edit, pins found by id, a file's place. By
+  reading only: the order of the cards, focus after the last card
+  left, the Worksheets card behind a finished quiz, Home not reading
+  behind another tab, errors at close (seen quiet on one seeded
+  workspace), the narrow layout following the pane.
+- *Checks changed with Welcome's removal:* ten older probes opened
+  Welcome as a neutral tab or screen and open Home now. Three were run
+  since (keyboard-audit, visual-consistency, touch-drag); seven were
+  not (scene, scene-coverage, a11y-drags, column-lists, ui-screenshot,
+  sheet-file-verify, sheet-file-fixes). The visual baseline lost its
+  Welcome screen and two ratchet baselines lost Welcome's entries; no
+  count was raised. `.gitignore` gained `tests/.tmp-*/`.
 - *Seen and not part of this piece:* returning to an open quiz's tab
   twice raised "registered twice under worksheet" errors from the scene
   (12 page errors, 2 on the console; two other returns raised none). Not
   checked against the build before Home. With no model chosen the chat
   says "No active model selected" twice in one reply.
 - *Not checked:* an answer from his model (none runs in the cloud); a
-  window that is visible (the probes run hidden; there the Worksheets
-  card took about 0.8 s to follow on coming back to Home); Windows.
+  window that is visible (the probes run hidden); Windows.
 - *One small core piece with one user:* `services/startupDone.ts`, the
   moment the tabs are back. It names no tool and is not offered to
   extensions.
