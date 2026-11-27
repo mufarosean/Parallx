@@ -1316,7 +1316,7 @@ phase(19, 'Study This Document… on a .md or .txt in the editor', 'plain', {
   };
   await on('19.0', PDF, 'Clark', '.pdf-toolbar');
   // A .md opens as a page since 2026-11-26 (his yes of 2026-11-27 to this change): the page's surface is what is waited for, the text editor still counting should a build open it there.
-  await on('19.1', NOTES, 'reserving notes', '[data-px-surface="canvas"], .cm-content, .editor-pane textarea');
+  await on('19.1', NOTES, 'reserving notes', '.markdown-editor-pane, .cm-content, .editor-pane textarea');
   await on('19.2', TIPS, 'exam tips', '.cm-content, .editor-pane textarea');
 });
 

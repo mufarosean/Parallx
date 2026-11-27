@@ -4182,7 +4182,7 @@ tab now.
 | 14 | The PDF viewer | Done |
 | 15 | Menus, notices, Settings | Done |
 | 16 | Chat | Done |
-| 17 | A .md file opens as a page | Done. Its check 19.1 in `study-usable-acceptance.mjs` now waits for the page (his yes, 2026-11-27); not yet run, and 19.2 (.txt) not yet looked into |
+| 17 | A .md file opens as a page | Done. Check 19.1 in `study-usable-acceptance.mjs` waits for the page (his yes, 2026-11-27) and passes; 19.2 (.txt) passes too: it had only failed because 19.1 stopped the phase before it |
 | 18 | Home and Welcome as one page | Done 2026-11-27. Three points wait for his word (under "Home: the page the app opens on") |
 | 19 | Study piece B's review | Done |
 | 20 | Study piece C's remainder | Closed for the cloud: a phase does not need to name its units (his word, 2026-11-27); tomorrow's questions made overnight needs his machine |
