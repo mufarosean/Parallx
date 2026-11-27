@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { NavigationHistory, MAX_STEPS, type NavigationHost, type NavigationStep } from '../../src/services/navigationHistory.js';
 import { normalizeKeybinding } from '../../src/services/keybindingUtils.js';
+import { registerEditorInputDeserializer, canReopenEditorType } from '../../src/editor/editorInputDeserializer.js';
 
 /** A stand-in editor area: open tabs by id, one in front; a place tab carries its address. */
 function makeWorld() {
@@ -103,6 +104,26 @@ describe('NavigationHistory', () => {
     v.thing('a.txt'); v.thing('b.txt');
     v.history.start();
     expect(v.history.snapshot()).toEqual({ labels: ['b.txt'], index: 0 });
+  });
+});
+
+describe('a tool turned off', () => {
+  it('takes its steps out of the record, keeping where he is', () => {
+    const w = makeWorld(); w.history.start();
+    w.place('today'); w.place('calendar'); w.thing('a.txt');
+    w.history.prune((s) => !s.place);
+    expect(w.history.snapshot()).toEqual({ labels: ['a.txt'], index: 0 });
+    expect(w.history.canGoBack).toBe(false);
+    expect(w.history.previous).toBeUndefined();
+  });
+
+  it('makes its editor type one that cannot be opened again', () => {
+    let running = true;
+    registerEditorInputDeserializer('test.tool.page', () => null, () => running);
+    expect(canReopenEditorType('test.tool.page')).toBe(true);
+    running = false;
+    expect(canReopenEditorType('test.tool.page')).toBe(false);
+    expect(canReopenEditorType('test.none')).toBe(false);
   });
 });
 

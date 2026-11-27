@@ -892,6 +892,7 @@ async function fsRename(oldUri: string, newUri: string): Promise<void> {
 function handleTreeKeydown(e: KeyboardEvent): void {
   const allNodes = getAllVisibleNodes();
   const idx = _selectedNode ? allNodes.indexOf(_selectedNode) : -1;
+  if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
 
   switch (e.key) {
     case 'ArrowDown':

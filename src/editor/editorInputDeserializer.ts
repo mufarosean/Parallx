@@ -35,16 +35,24 @@ export interface EditorDeserializerContext {
 
 /** typeId → factory */
 const _deserializers = new Map<string, EditorInputDeserializer>();
+/** typeId → whether what makes it is running now (a tool's editor goes with the tool). */
+const _live = new Map<string, () => boolean>();
 
 /**
  * Register a deserializer for an editor input type.
  * Typically called by each editor input module at import time.
  */
-export function registerEditorInputDeserializer(typeId: string, factory: EditorInputDeserializer): void {
+export function registerEditorInputDeserializer(typeId: string, factory: EditorInputDeserializer, isLive?: () => boolean): void {
   if (_deserializers.has(typeId)) {
     console.warn(`[EditorInputDeserializer] Duplicate registration for "${typeId}" — overwriting.`);
   }
   _deserializers.set(typeId, factory);
+  if (isLive) _live.set(typeId, isLive); else _live.delete(typeId);
+}
+
+/** Whether an editor of this type can be opened again now: a factory, and what it needs running (Back to a closed tab). */
+export function canReopenEditorType(typeId: string): boolean {
+  return _deserializers.has(typeId) && (_live.get(typeId)?.() ?? true);
 }
 
 /**

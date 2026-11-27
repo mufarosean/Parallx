@@ -458,13 +458,12 @@ export class PageChromeController {
 
     this._topRibbon.appendChild(ribbonRight);
 
-    // Mount into the provided external container, or prepend in-pane
-    if (externalContainer) {
-      externalContainer.appendChild(this._topRibbon);
-    } else if (ec) {
-      ec.prepend(this._topRibbon);
-    }
+    // In the bar under the tabs (after Back and Forward) when given one, else at the page's top.
+    if (externalContainer) externalContainer.appendChild(this._topRibbon); else ec?.prepend(this._topRibbon);
   }
+
+  /** Put the ribbon back in the bar under the tabs: the page's tab came to the front again (its pane was kept). */
+  mountRibbon(container: HTMLElement): void { if (this._topRibbon && this._topRibbon.parentElement !== container) container.appendChild(this._topRibbon); }
 
   private _updateFavoriteIcon(): void {
     if (!this._ribbonFavoriteBtn) return;
@@ -749,7 +748,7 @@ export class PageChromeController {
     this._coverControls.appendChild(removeBtn);
     this._coverEl.appendChild(this._coverControls);
 
-    if (this._topRibbon) {
+    if (this._topRibbon && this._topRibbon.parentElement === ec) { // a ribbon in the bar under the tabs leaves the cover in the page
       this._topRibbon.after(this._coverEl);
     } else {
       ec.prepend(this._coverEl);

@@ -238,7 +238,7 @@ export class EditorsBridge {
         const restored = new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId, instanceId);
         if (typeof data?.place === 'string') restored.place = data.place as string;
         return restored;
-      });
+      }, () => _toolEditorProviders.has(typeId)); // live while its tool runs
     }
 
     console.log(`[EditorsBridge] Tool "${this._toolId}" registered editor provider: ${typeId}`);

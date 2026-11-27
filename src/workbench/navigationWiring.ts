@@ -7,8 +7,8 @@
 
 import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
 import { navigationHistory, type NavigationStep } from '../services/navigationHistory.js';
-import { places, focusPageTitle } from '../services/places.js';
-import { deserializeEditorInput } from '../editor/editorInputDeserializer.js';
+import { places, focusPageTitle, parsePlaceAddress } from '../services/places.js';
+import { deserializeEditorInput, canReopenEditorType } from '../editor/editorInputDeserializer.js';
 import { afterStartup } from '../services/startupDone.js';
 import { GO_BACK_COMMAND, GO_FORWARD_COMMAND } from '../commands/navigationCommands.js';
 import { yieldKeysToPage } from '../services/keybindingService.js';
@@ -74,6 +74,15 @@ export function wireNavigation(
   subs.push(editorService.onDidActiveEditorChange(() => navigationHistory.note()));
   subs.push(places.onDidMoveTab((id) => { if (editorPart.activeGroup?.model.activeEditor?.id === id) navigationHistory.note(); }));
   afterStartup(() => navigationHistory.start());
+
+  // A tool turned off: its places and tabs leave the record (not only once a press stumbles on them).
+  const isOpen = (id: string) => editorPart.groups.some((g) => g.model.editors.some((e) => e.id === id));
+  const prune = () => navigationHistory.prune((step) => {
+    if (isOpen(step.editorId) && !step.place) return true;
+    if (step.place) { const tool = parsePlaceAddress(step.place)?.tool; return !!tool && places.list().some((t) => t.id === tool); }
+    return !!step.reopen && canReopenEditorType(step.reopen.typeId);
+  });
+  subs.push(places.onDidChange(prune), editorService.onDidChangeOpenEditors(prune));
 
   // The side buttons do what Alt+Left and Alt+Right do here: Back and Forward,
   // or a tab's own Back (the Browser's) while it holds those keys.

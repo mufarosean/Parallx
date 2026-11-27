@@ -100,6 +100,20 @@ export class NavigationHistory {
     this._onDidChange.fire();
   }
 
+  /**
+   * Drop the steps that can no longer be reached (a tool turned off takes its
+   * places and tabs with it, and its names leave the arrows and the list).
+   * Where he is now stays.
+   */
+  prune(reachable: (step: NavigationStep) => boolean): void {
+    const at = this._steps[this._index];
+    const kept = this._steps.filter((s) => s === at || reachable(s));
+    if (kept.length === this._steps.length) return;
+    this._steps = kept;
+    this._index = at ? kept.indexOf(at) : kept.length - 1;
+    this._onDidChange.fire();
+  }
+
   get canGoBack(): boolean { return this._index > 0; }
   get canGoForward(): boolean { return this._index >= 0 && this._index < this._steps.length - 1; }
 

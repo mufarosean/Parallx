@@ -337,6 +337,7 @@ function wireGridKeys(table: HTMLElement, store: DisposableStore): void {
       c.tabIndex = 0;
       c.focus();
     };
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
     switch (e.key) {
       case 'ArrowRight': e.preventDefault(); focusCell(cells[col + 1]); break;
       case 'ArrowLeft': e.preventDefault(); focusCell(cells[col - 1]); break;

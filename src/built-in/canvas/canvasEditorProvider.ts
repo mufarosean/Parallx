@@ -147,6 +147,8 @@ export class CanvasEditorProvider {
    * The ribbon's ⋯ button invokes these to show the full PageChromeController menu.
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
+  /** A kept page's way to put its ribbon back in the bar under the tabs when its tab returns. */
+  private readonly _ribbonMounts = new Map<string, (container: HTMLElement) => void>();
   /** pageId → commit hook (flush + persist the editor's getJSON + checkpoint).
    *  Panes register these so a workspace switch / app close can save open pages
    *  even though the panes are never disposed on those paths (the renderer just
@@ -237,11 +239,11 @@ export class CanvasEditorProvider {
     // laid the pane out 4px too tall so its first rows slid under the sticky
     // ribbon until the ResizeObserver re-measured a frame later.
     container.style.minHeight = `${CANVAS_RIBBON_HEIGHT}px`;
+    this._ribbonMounts.get(pageId)?.(container); // a kept page's tab is back: its ribbon with it
 
     return {
       dispose: () => {
-        this._ribbonContainers.delete(pageId);
-        this._pageMenuHandlers.delete(pageId);
+        this._ribbonContainers.delete(pageId); // the page's menu handler stays with its pane (it goes when the pane does)
         container.style.minHeight = '';
         container.innerHTML = '';
       },
@@ -254,9 +256,10 @@ export class CanvasEditorProvider {
   }
 
   /** Register a page-menu handler (called by pane after init). */
-  registerPageMenuHandler(pageId: string, handler: () => void): IDisposable {
+  registerPageMenuHandler(pageId: string, handler: () => void, mountRibbon?: (container: HTMLElement) => void): IDisposable {
     this._pageMenuHandlers.set(pageId, handler);
-    return { dispose: () => { this._pageMenuHandlers.delete(pageId); } };
+    if (mountRibbon) this._ribbonMounts.set(pageId, mountRibbon);
+    return { dispose: () => { this._pageMenuHandlers.delete(pageId); if (this._ribbonMounts.get(pageId) === mountRibbon) this._ribbonMounts.delete(pageId); } };
   }
 
   /** pageId → open the PDF-export dialog for that pane's live editor.
@@ -1041,13 +1044,8 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     this._saveDisposables.add(
       this._provider.registerRevealer(this._pageId, (blockId) => this._revealBlock(blockId)),
     );
-    // Register page-menu handler so the external ribbon's ⋯ button can
-    // trigger the full page menu (which lives in PageChromeController).
-    this._saveDisposables.add(
-      this._provider.registerPageMenuHandler(this._pageId, () => {
-        this._pageChrome.showPageMenu();
-      }),
-    );
+    // The external ribbon's ⋯ opens the page menu (PageChromeController's); the ribbon goes back in the bar when the tab returns.
+    this._saveDisposables.add(this._provider.registerPageMenuHandler(this._pageId, () => this._pageChrome.showPageMenu(), (c) => this._pageChrome.mountRibbon(c)));
     // Ctrl+Alt+P / command-driven PDF export routes to the active pane.
     this._saveDisposables.add(
       this._provider.registerPdfExportHandler(this._pageId, () => {
