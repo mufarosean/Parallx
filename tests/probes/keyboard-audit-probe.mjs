@@ -45,7 +45,7 @@ const SCREENS = [
   ['settings.open'], ['settings.open', 'ai'], ['settings.open', 'document-reader'], ['theme-editor.open'], ['canvas.newPage'], ['planner.newTask'],
   ['workbench.view.show', 'view.terminal'], ['workbench.view.show', 'view.activityLog'], ['workbench.view.show', 'view.output'],
   ['workbench.view.show', 'view.indexingLog'], ['workbench.view.show', 'view.diagnostics'],
-  ['pdf'], ['pdf.reading'], ['markdown'], ['worksheet.openScratch'], ['worksheet.newSheet', 'Audit Sheet'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
+  ['pdf'], ['pdf.reading'], ['markdown'], ['worksheet.openScratch'], ['worksheet.bank'], ['worksheet.dashboard'], ['worksheet.plan'], ['worksheet.quizzes'], ['worksheet.practice'], ['worksheet.importExcel'], ['worksheet.generate'], ['worksheet.settings'], ['worksheet.newSheet', 'Audit Sheet'], ['workbench.action.quickOpen'], ['workbench.action.showCommands'],
   ['ext:workspaceGraph.open'], ['ext:budget.openTransactions'], ['ext:flashcards.open'], ['ext:conceptLab.open'],
   ['ext:media-organizer.openGrid'], ['ext:textGenerator.openHome'], ['ext:browser.newTab'], ['ext:study.open'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
