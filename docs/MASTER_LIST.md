@@ -2784,6 +2784,43 @@ header as a whole.
 
 ### Home: a redesign, not yet designed
 
+**Mock-ups drawn 2026-11-27, his picks owed:**
+https://claude.ai/artifact/DMdEPkKuWhW3z39q58YkVo
+
+- **His words (2026-11-27):** "I would redesign following the ui redesign
+  we did yesterday. Think of it as a home page, currently it shows up
+  like just a list of recently opened files. It does not feel personal
+  or anything. There is no title. Think of the place where a user can
+  open the app and the app goes to, this is the first thing the user
+  will see. This will replace welcome as well. It shouldn't be static,
+  extensions must be able to push things to it."
+- *Changed by that:* Welcome is replaced by Home (on 2026-11-10 it
+  stayed for new workspaces).
+- *The bar, read at last.* He allowed paperswithcode.co in the cloud
+  environment the same day; its front page was opened at desktop and
+  phone width, dark and light. Taken from it: a title that is a
+  sentence with one word in italic colour and one italic line under
+  it; one wide field in the middle to ask; a row of cards, each a
+  count, a line and one action; a feed where each entry shows a
+  picture of the thing itself, a serif title, two lines of its text,
+  coloured tags and one number; plain lists with small counts; small
+  mono words for filters (in sentence case here). Left: follower
+  counts, sign-in, "new" badges. Only the front page was read.
+- *Four choices, Claude's pick first:* 1, what is on the page: 1A the
+  desk (greeting, ask, today from the tools, then the work, each thing
+  shown as itself), 1B the library (the site's layout most literally),
+  1C the morning page (one quiet column, no pictures). 2, the title:
+  2A by the hour and by name, 2B the workspace, 2C what the day is for.
+  3, how tools put things on it: 3A one card a tool, 3B a card and the
+  tool's own things in the feed, 3C a section each tool draws itself.
+  4, a new workspace: 4A the same page with first steps, 4B three short
+  steps first. Picks offered: 1A, 2A, 3B, 4A.
+- *What the build would need:* a card point beside the Home source
+  point (`home.registerCard`: a number, a unit, a line, one action);
+  a picture of each recent thing (not measured yet whether it can be
+  made fast enough: 1A and 1B depend on it); a name asked once for 2A.
+- Nothing is built.
+
 **Status (2026-11-26):** the look's piece 4 settles Home and Welcome as
 one page that opens with the workspace (his pick 6A, under "The window
 itself"), fed through the Home source point; it is not built. A Home
@@ -4029,15 +4066,25 @@ tab now.
 | 15 | Menus, notices, Settings | Done |
 | 16 | Chat | Done |
 | 17 | A .md file opens as a page | Done |
-| 18 | Home and Welcome as one page | Not started: the bar's site cannot be read from the cloud environment |
+| 18 | Home and Welcome as one page | Waiting on him: four letters on the mock-ups of 2026-11-27 (link under "Home: a redesign") |
 | 19 | Study piece B's review | Done |
-| 20 | Study piece C's remainder | Waiting on him: how a phase names its units |
+| 20 | Study piece C's remainder | Closed for the cloud: a phase does not need to name its units (his word, 2026-11-27); tomorrow's questions made overnight needs his machine |
 | 21 | Worksheets' toolbar, and the checks left open on 2026-11-16 | Done |
 | 21, keys | The keys that did nothing in a sheet | Done |
 | 21, find | Find and replace on a sheet | Done |
 | 21, after | The rest of Worksheets' list, a piece each (named under item 21) | Not started |
 | 22 | Generative edits | Not started: needs his machine (his photos, his card) |
 | 23 | Where tools look unlike each other, measured | Done |
+
+**His answers, 2026-11-27.** On the plan tab (11): "Need visuals, I
+don't know what you are asking." On a phase naming its units (20):
+"Does not need to." On study-usable 19.1 and 19.2 (17): "What do you
+mean?" On the two stale checks (`sheet-file-fixes-probe.mjs`,
+`tests/e2e/97-worksheet.spec.ts`): "Yes bring up to date." On Home: his
+words are under "Home: a redesign". The plan tab and the notes-file
+question are shown with real screenshots at
+https://claude.ai/artifact/JNvAN3wUx8cakLANxXoUYx ; a yes or a no on
+each is owed.
 
 Three acceptance probes need his word before they can follow a change
 (they are not edited without it): the plan's (item 11), study-usable
@@ -4651,15 +4698,10 @@ The visual probe on its 26 screens, against the first measurement:
   (the `visual-evaluator` agent's part, not run), and full screens (the
   seeded workspace is nearly empty).
 
-**Item 20, Study piece C's remainder. Not started: both halves are
-his to open.**
-- *Only the current phase's units.* A phase names no units: Phases has
-  no column for them. Giving it one changes the plan's databases, and
-  `study-plan-acceptance.mjs` 1.6 holds the four databases to the
-  model's columns by name and kind. **For him:** how does a phase say
-  which units are its own (a tags column "Units" on Phases, a relation
-  to the subject's units, or the unit naming its phase), and may the
-  plan's acceptance probe follow?
+**Item 20, Study piece C's remainder. Closed for the cloud.**
+- *Only the current phase's units.* Asked how a phase names which units
+  are its own, he said (2026-11-27): "Does not need to." A phase names
+  no units; nothing is built and Phases keeps its columns.
 - *Tomorrow's questions made overnight.* It needs a model, and "on his
   machine" is in its own words; nothing here can show it working. It is
   with "Needs him or his machine".
