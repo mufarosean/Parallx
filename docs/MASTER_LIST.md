@@ -4073,6 +4073,7 @@ tab now.
 | 21, keys | The keys that did nothing in a sheet | Done |
 | 21, find | Find and replace on a sheet | Done |
 | 21, after | The rest of Worksheets' list, a piece each (named under item 21) | Not started |
+| 21, checks | Bring `tests/e2e/97-worksheet.spec.ts` and `sheet-file-fixes-probe.mjs` up to date (his yes, 2026-11-27) | Not started: read, sized, nothing changed (under item 21) |
 | 22 | Generative edits | Not started: needs his machine (his photos, his card) |
 | 23 | Where tools look unlike each other, measured | Done |
 
@@ -4913,6 +4914,41 @@ started (each is its own piece, named at the end).**
   `sheet-cells-probe.mjs`: 99 the same as Excel, 7 differ, 9 missing,
   no page errors; the keyboard audit on the Worksheets screens: 0;
   typecheck; the unit suite.
+
+**Item 21, next piece: the two stale Worksheets checks, brought up to
+date. Not started. His yes, 2026-11-27: "Yes bring up to date."**
+Read and sized the same day; no file was changed.
+- *`tests/e2e/97-worksheet.spec.ts` (12 tests, all fail).* It is not a
+  matter of names that moved. It tests screens that have since been
+  replaced: a sidebar with Generate Items, Scratch Sheet, Import from
+  Excel and Start Practice Session buttons (the sidebar is now Home,
+  Study Dashboard, Campaign, Quizzes, Settings); practice sessions with
+  "Nailed It" grades and a Session Summary (now quizzes, rated Easy,
+  Medium or Hard, with a Quiz Overview and Summary); a list of items
+  with a Practice button (now the Problem Bank's rows); a "Sheet
+  Theme: Light" text button (now an icon button named Dark Sheet or
+  Light Sheet). Four of its tests seed the old `ws_items` table by
+  hand, and one opens his own Excel file by its Windows path, so it can
+  only ever run on his machine.
+- *What bringing it up to date means:* the first eight tests (the
+  sidebar, the Scratch Sheet and its engine, the popup layer, the
+  right-click menu, the sheet's own light and dark, the palette, the
+  Generate pane, a file dragged from the Explorer) keep their purpose
+  and are re-pointed. The last four (a problem in parts, Excel import,
+  a session, a problem revealed and rated) are written again against
+  the Problem Bank and Quizzes, seeded as `worksheet-seed.cjs` seeds
+  them, with a workbook made by the test in place of his file.
+- *`tests/probes/sheet-file-fixes-probe.mjs` (29 of 248 fail).* Its
+  failures fall in four groups: a .md file opening as text (it is a
+  page since item 17); a file gone from under an open sheet, where it
+  expects a question with Save a Copy and Discard Changes (the app now
+  asks nothing: it keeps the work as a copy and says so); the Formulas
+  ribbon's lists (the ribbon is gone); and steps that find a menu
+  entry or a typed cell by where it used to be on screen.
+- *Why not started here:* each is a rewrite to be checked check by
+  check against what the app is meant to do now, and this session
+  already holds the whole order. It is one piece for a session of its
+  own.
 
 **Item 22, Generative edits: Recipes, Beyond The Edges, the two
 proposals, and the image editor probe's 34 failures. Not started: it
