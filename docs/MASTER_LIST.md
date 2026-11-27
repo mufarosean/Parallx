@@ -1912,7 +1912,7 @@ are the authors' unless marked measured; Claude ran nothing.
 
 ## UI improvements
 
-### Getting around: one way to move in every tool (assessed, not agreed)
+### Getting around: one way to move in every tool
 
 **His words (2026-11-28):** "something I want us to assess is ease of
 navigation and consistency across all tools in parallx. I know some
@@ -1975,7 +1975,43 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
 - *Not read:* other products' pages (the cloud environment reaches one
   outside site); the picks lean on conventions from memory. Offered to
   read them first from the Default environment.
-- Nothing is agreed and nothing is built.
+- **His picks (2026-11-28): 1A, 2A, 3A, and the places-and-things
+  table as proposed.** His words: "I am aligned with your picks". So:
+  one tab per tool whose name follows the place, a place pulled into
+  its own tab by Open in Its Own Tab or Ctrl+click; the trail in the
+  bar under the tabs; Back and Forward for the whole app; the table's
+  right-hand column as written. This reverses his 2 October call that
+  Worksheets keeps a tab per screen.
+- *The order of work* (one piece a session, each with its acceptance
+  probe written first by a verifier, as for every piece):
+  1. **The core point.** A tool declares its places and draws each;
+     the core keeps the tool's one tab and names it for the place, puts
+     the trail in the bar under the tabs (for tool tabs too, offered to
+     extensions), gives every place and thing an address, puts the keys
+     on the new page's title after a move, marks where you are in the
+     column with one shared mark, and offers Open in Its Own Tab and
+     Ctrl+click. Canvas's trail goes to a parent in the same tab.
+  2. **Back and Forward.** One record of where he has been, across
+     tools and tabs; Alt+Left, Alt+Right, the mouse's side buttons, the
+     two arrows at the trail's start, holding one lists the last few;
+     the Browser keeps Alt+Left for its own pages while its tab is in
+     front.
+  3. Worksheets onto the point (the most tabs today).
+  4. Atelier.
+  5. Study (units become places in their subject; a session stays a
+     thing).
+  6. Flashcards (its own trail goes; the core's takes its place).
+  7. Planner.
+  8. Budget.
+  9. Concept Lab (and a title on its pages).
+  10. Creations.
+  11. Tools and Extensions (a tool's page becomes a place, with a
+      title); Workspace Graph (a title and a tab icon); the Browser's
+      History row no longer opening a second History tab.
+  12. The authoring guide rewritten for the point, and a check that
+      fails when a tool opens a place in a tab of its own or a tab has
+      no icon or a screen has no title.
+- *Started:* nothing yet. Piece 1 opens the next session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4260,9 +4296,9 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 
 ## Order of work (proposed 2026-11-26; items 4 to 23 agreed the same day)
 
-**Waiting for his word (2026-11-28):** the four choices on getting
-around (under UI improvements, "Getting around"): 1A or 1B, 2A, 2B or
-2C, 3A or 3B, and the places-and-things table.
+**Next (his picks of 2026-11-28 on getting around: 1A, 2A, 3A, the
+table):** twelve pieces, under UI improvements, "Getting around";
+piece 1, the core point, opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
