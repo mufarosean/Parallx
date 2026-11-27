@@ -2100,15 +2100,19 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   reopens it in its tool's tab (through the places point); a closed thing
   reopens from what its tab saved; a file deleted meanwhile, or a step that
   cannot be opened, is skipped; a tool turned off takes its steps out of the
-  record at once (its names leave the arrows and the list). After a step the
+  record at once (its names leave the arrows and the list): seen for Planner
+  (places) and the Browser (tabs). After a step the
   keys land on the page's title (a place's kit title; otherwise the pane,
-  as when its tab is pressed). Settings, Chat and Agents are not tabs, so not
-  steps. The record names no tool.
+  as when its tab is pressed). Settings (a dialog) and the right side (Chat,
+  Agents) are not tabs, so not steps; a tab they open (a run, a workflow, a
+  viewer from the chat) is a step like any tab (the probe checked Settings
+  and Chat's side; Agents was not run). The record names no tool.
   *Changed on the way:* the bar under the tabs now shows on every tab (a tab
   with no trail and no path shows its own name), so the arrows are everywhere;
   the canvas page's ribbon (its trail, edited time, star, ⋯) now sits in that
-  bar after the arrows, where it was built in February to go (its
-  registration had lost the pass-through, so it drew inside the page); its
+  bar after the arrows, the place its February ribbon slot was made for (the
+  canvas's registration had never passed it through, so it drew inside the
+  page); its
   cover and title stay in the page, it comes back when the tab returns, and
   a page split across two groups keeps one ribbon in each. Go Back's keys go
   to the page first: a keyboard drag on Alt+arrows (a Planner event, a
@@ -2118,20 +2122,20 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   longer treat Alt+Left/Right as plain arrows. The Browser's Alt+Left had not
   worked on its own pages (its binding was read as "alt+arrowleft", a key
   press as "alt+left"); fixed, and it keeps the keys while its tab is in
-  front.
+  front. (The Alt-arrow drags were read in code, not driven.)
   *How it was checked:* the acceptance probe
   `tests/probes/getting-around-back-acceptance.mjs`, written first by the
   app-verifier, failed 30 of 30 on the app as it was; its author changed it
   once, before the build commit, because its palette check read a row's text
   as "Go BackAlt+←" and so never chose it (fb807d64; no check removed); it
-  passes 30/30 on the final build (seen on the real app, hidden). Piece 1's
-  probe 23/23. Typecheck, vitest (753 files passed, 3 skipped), build, with
+  passes 30/30 on the final build, 5e4a954e (seen on the real app, hidden).
+  Piece 1's probe 23/23 on that build. Typecheck, vitest (753 files passed,
+  3 skipped), build, with
   `tests/unit/navigationHistory.test.ts` (its key-name test seen failing on
   the old code) and `tests/unit/canvasRibbonPlace.test.ts`. On the final
-  build: the keyboard audit on ten screens (Planner, Home, Dashboard, a canvas
-  page, a PDF, markdown, the Browser, a seeded page and database, Explorer),
-  0 on every count; the touch-drag probe all ok; the visual-consistency probe
-  one rise, Creations' title size, the same as before the piece. Review by
+  build: the keyboard audit (result recorded below when its run ends); the touch-drag probe all ok. The visual-consistency
+  probe, on ee8b06ad (the arrows' last change), one rise, Creations' title
+  size, the same as before the piece. Review by
   the correctness, modularity and access reviewers, each finding put to the
   skeptic; fixed what it reproduced and judged to matter (a canvas page
   losing its title, cover and ribbon; Alt+Left taken by the Explorer tree
@@ -2139,7 +2143,10 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   app-verifier then drove those fixes on the real app: all held, in light
   and dark, after a restart and across two groups, but a canvas page split
   into two groups lost a ribbon; fixed and seen 11/11. The visual probe then
-  found the arrows under 24px (WCAG 2.5.8); they are the kit's 24px now.
+  found the arrows under 24px (WCAG 2.5.8); they are the kit's 24px now. The
+  claim-checker then found a tool without places (the Browser) left its
+  steps behind when turned off (only Planner had been tried); fixed and seen
+  on the real app (Browser 4/4, was 2/4).
   *Checks changed:* `referenceDocs.test.ts` lists the new command module and
   `gateCompliance.test.ts` lists `canvas/ribbonPlace.ts` as exempt (each test
   requires every file be listed); `docs/reference/commands.md` regenerated.
@@ -2148,21 +2155,22 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   is open instead of a click interceptor).
   *Reported and left:* if he resets or rebinds Go Back in Keyboard Shortcuts,
   Go Back re-registers last and then beats the Browser's own Alt+Left (and
-  side buttons) until restart (reproduced in a unit test; needs a shortcut
-  change). A bar in a database's timeline view moves a day on Alt+Left, as
+  side buttons) until restart (reproduced in a throwaway unit test by the
+  skeptic, not kept in the suite; needs a shortcut change). A bar in a database's timeline view moves a day on Alt+Left, as
   before (a keyboard drag keeps its keys). The arrows' tooltip names
   Alt+Left/Right even after a rebind. The single crumb on a tab with no trail
-  is one more Tab stop. Once, in a long keyboard-audit run, focus did not come
-  back to Planner's New Task button after Escape;
-  not seen again in three later runs that included that screen; not traced
-  to this piece.
+  is one more Tab stop. Twice, in long keyboard-audit runs, a Planner popup
+  check failed (once named: focus did not come back to the New Task button
+  after Escape); not seen in the later runs that included those screens
+  ; not traced to this piece.
   *Decided for him to overrule:* the bar under the tabs on every tab (Home,
   Dashboard, a web page get it, with the tab's name); the canvas ribbon in
   that bar rather than at the page's top; on a Browser tab the app's arrows
   sit above the Browser's own; a held list opens after half a second; ten
   steps in the list, fifty kept. *Only his machine can show:* the mouse's side
-  buttons on Windows (seen here through Chromium's own button events, which
-  Windows also sends; Windows was not run).
+  buttons on Windows (here the probe sent Chromium back and forward button
+  events through its debugging protocol on Linux, a stand-in; that Windows
+  sends the same events is assumed, not checked).
 - *Next:* piece 3, Worksheets onto the point, in a new session.
 
 
