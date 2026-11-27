@@ -2011,7 +2011,65 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   12. The authoring guide rewritten for the point, and a check that
       fails when a tool opens a place in a tab of its own or a tab has
       no icon or a screen has no title.
-- *Started:* nothing yet. Piece 1 opens the next session.
+- **Piece 1 done (2026-11-27): the core point, proved on Planner.**
+  *What shipped:* `parallx.places` (`src/services/places.ts`,
+  `src/api/bridges/placesBridge.ts`, declared in `src/api/parallx.d.ts`,
+  guide §4.3b). A tool registers its places and draws each; the core
+  keeps its one tab, named for the place with the tool's icon (a place
+  tab always has one: the tool's, else a generic one); the trail shows in the bar under the
+  tabs for tool tabs too (`src/editor/editorTrail.ts`, `breadcrumbsBar.ts`),
+  each crumb going there in the same tab, Ctrl+click or its menu a tab of
+  its own; every place has an address, `parallx://place/<tool>/<place>?<params>`,
+  one `place` link contract with a kind per running tool, so `api.links.open`
+  and a link in a page open it; after a move the keys land on the page
+  header's title (tabindex -1 set by the core; no ring on that title, it is
+  not a control); the tab's menu has Open in Its Own Tab; the kit's
+  `markCurrent` (aria-current="page" plus `px-current`) and `bindPlaceLink`
+  (`src/ui/link.ts`, `api.ui.*`) are the column's mark and place links.
+  Canvas's parent crumb goes to the parent in the same tab, through a new
+  `replace` option on `editors.openEditor` (Ctrl+click: its own tab), and is
+  now a link a keyboard reaches. Planner is on it: Today, Calendar, Tasks
+  (Tasks on a list is named for the list, `Planner › Tasks › Overdue`); its
+  own router (the pending-tab handoff and the `focusTab` event) is gone; a
+  calendar day asked for once (the small month) is not kept in the address.
+  The other tools are untouched (pieces 3 to 11).
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-core-acceptance.mjs`, written first by the
+  app-verifier, failed 22 of 23 on the app as it was and passes 23/23
+  unedited on the real build (seen on the real app, hidden); typecheck,
+  vitest (751 files, with `tests/unit/places.test.ts`, its two later tests
+  seen failing on the code before their fix), build; keyboard audit on the
+  Planner and Canvas screens (15 screens) 0 on every count; touch-drag probe
+  all ok; visual-consistency probe: one rise (Creations' title size), the
+  same on the build from before the piece, so not from it. Review by the
+  correctness, modularity and access reviewers, each finding put to the
+  skeptic; fixed what it reproduced and judged to matter (the column not
+  following a switch between two Planner tabs, two New Task forms when no
+  Planner pane was drawn, a calendar day sticking in the address, the shared
+  mark's background hidden by Planner's own row style, crumbs too small for a
+  finger, ArrowLeft from the trail list).
+  *Checks changed:* `tests/unit/plannerNavState.test.ts` lost its two tests
+  of `setPendingPlannerTab`, because that function is deleted (the core's
+  places now say which page a tab shows; tested in `places.test.ts`). No
+  ratchet baseline raised: the file-size and raw-DOM ratchets were met by
+  moving code (place links into the kit's `link.ts`, the wiring out of
+  `workbench.ts`, `apiFactory`'s editors type taken from the bridge).
+  *Reported and left* (the skeptic judged them not worth acting on, or
+  they are pre-existing): trail crumbs are list items to a screen reader,
+  not links (the bar's widget, also for files; the current crumb says
+  "current location"); a Canvas parent crumb has no menu, so a finger
+  cannot open it in its own tab (the page tree can); after a tool is
+  stopped for too many errors its open tab keeps a trail that does nothing
+  (the tab itself is dead until restart).
+  *Decided for him to overrule:* the tab carries Planner's own registered
+  icon now (`px-planner`), not the calendar-check drawing it had; pressing
+  a column row by Enter moves the keys to the page title, as the rule says,
+  so a keyboard walk down the column has to go back to the column each
+  time (the access reviewer asked whether a row press should keep them in
+  the column: his call); Tasks
+  on All Tasks is named "Tasks". *Only his machine can show:* nothing
+  specific; Windows was not run.
+- *Next:* piece 2, Back and Forward, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4298,7 +4356,8 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 
 **Next (his picks of 2026-11-28 on getting around: 1A, 2A, 3A, the
 table):** twelve pieces, under UI improvements, "Getting around";
-piece 1, the core point, opens the next session.
+piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
+Back and Forward, opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
