@@ -2174,7 +2174,88 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   buttons on Windows (here the probe sent Chromium back and forward button
   events through its debugging protocol on Linux, a stand-in; that Windows
   sends the same events is assumed, not checked).
-- *Next:* piece 3, Worksheets onto the point, in a new session.
+- **Piece 3 done (2026-11-27): Worksheets onto the places point.**
+  *What shipped:* Worksheets' screens are places in ONE tab named for the
+  place, with the tool's icon (`src/built-in/worksheet/worksheetPlaces.ts`):
+  Home, Problem Bank, Study Dashboard, Campaign, Quizzes, New Quiz, Import
+  Workbook, and also Generate Items and Worksheets Settings (screens of the
+  tool, not in the table; decided as places). A quiz being taken, a review,
+  a problem's sheet, a `.sheet` file and the Scratch Sheet keep tabs of their
+  own. `openWorksheet` sends a screen to `api.places.open`, so every way in
+  lands on the place in the one tab: the column, Home's cards, the commands
+  (`worksheet.open`, `.bank`, `.dashboard`, `.quizzes`, `.plan`, `.practice`,
+  `.importExcel`, `.generate`, `.settings`), a link in a page, Back and
+  Forward. The "Worksheets ›" back link is gone from the panes that had it
+  (Problem Bank, New Quiz, the roster, Study Dashboard, Import Workbook,
+  Campaign, Generate Items, Settings, Quizzes); the trail does that work.
+  The column has a Problem Bank row (its bank snapshot's heading, which
+  opened the bank, is now a label, "Papers"), marks the current place with
+  the shared mark, and each row is a place link (Ctrl+click, its menu). The
+  Problem Bank's filters, search, recipes and a paper ride in its address
+  (`parallx://place/worksheet/bank?filters=noted&q=Brosius`); a way in that
+  names none (the column's row, Home's card, the command) opens the bank as
+  it was left; "Show in Problem Bank" on a sheet adds the problem's paper.
+  The core gained one generic field: a places contribution may name
+  `formerTabs` (an older editor type and which of its instances are places),
+  and a tab of that type saved by the older build comes back at startup as
+  that place in the tool's one tab (`registerToolEditorRestoreRedirect` in
+  `editorsBridge.ts`; `src/workbench/restoreMerge.ts`): two such tabs in one
+  group make one, showing the one that was showing; one already brought back
+  in another group is not brought back twice. Declared in `parallx.d.ts`,
+  guide §4.3b.
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-worksheets-acceptance.mjs`, written first by
+  the app-verifier, reported 5/59 on the app as it was (the five are guards
+  and checks already true: things in their own tabs, the tool turned off
+  leaves nothing, Home had no back link, New Quiz has no row to mark); it
+  passes 59/59 unedited on the build commit and again on the final build,
+  8d3775af, 0 page errors (seen on the real app, hidden). Pieces 1 and 2's
+  probes 23/23 and 30/30 (on e22f269f). Worksheets' own probes on e22f269f:
+  `worksheet-screens-probe` 0 failed checks, `sheet-toolbar-probe`,
+  `sheet-keys-probe`, `sheet-file-verify-probe` exit 0 with no failed check
+  (not rerun on the two later commits, which touch only the restore and the
+  bank's filters). Typecheck, vitest (754 files passed, 3 skipped), build,
+  with `tests/unit/placesFormerTabs.test.ts` (seven tests; the first, merge
+  and two-group ones seen failing on the code before their fix; the split
+  copy one written with its fix, read, not seen failing). The keyboard audit
+  filtered to Worksheets, on 801e5df0, over its places (added to the audit's
+  screens) and the Scratch Sheet and a new sheet, 33 screens with
+  sub-screens: 0 on every count; the touch-drag probe all ok; the
+  visual-consistency probe one rise, Creations' title size, as before piece 1.
+  Review by the correctness, modularity and access reviewers, each finding
+  put to the skeptic; fixed what it reproduced and judged to matter: two
+  older tabs in one group coming back on the first one's place, older tabs in
+  two groups coming back as two tabs sharing one place, pressing Problem Bank
+  clearing its filters; also the current row's mark under hover and a stale
+  comment. The app-verifier then drove the fixes: all held (the filters kept
+  across Study Dashboard and back and from Home's card, the mark on hover in
+  light and dark, one tab from two groups in the saved grid) but one: a save
+  without the editor grid (written before 2026-09-15) splits by copying the
+  left tab into the new group, so two tabs came back; fixed, now one tab.
+  *Checks changed:* `keyboard-audit-probe.mjs` gained eight Worksheets
+  screens (they moved into one tab and had been audited only through Home);
+  no check removed, no baseline raised, the acceptance probe never edited.
+  *Reported and left:* in that pre-September save form, after the fix, a
+  column press brings the one tab forward still on Problem Bank instead of
+  moving it (seen by the verifier's script; no save written since has that
+  form). A quiz's, a problem's and the Scratch Sheet's tabs have no trail of
+  their own (the bar shows the tab's name), and the quiz summary keeps its
+  "Quizzes" back link (a thing's page, not a place's). The column marks
+  Quizzes while a quiz's own tab is in front (the place tab's place). A quiz
+  tab's tooltip reads "Tool editor: worksheet". The modularity reviewer found
+  no breach. From the access review, left as the skeptic judged them: the
+  column's rows are the tool's own buttons with a scene declaration, not kit
+  buttons with a command (as before; the row added uses the same helper);
+  "Papers" sits beside a count of rated problems and is the old style, not
+  the kit's section label. *"Registered twice" scene errors:* not seen on
+  returning to an open quiz's tab (the verifier listened on every console
+  level, twice round Quizzes and back).
+  *Decided for him to overrule:* Generate Items and Worksheets Settings are
+  places; Home's tab is "Home" while its page title stays "Worksheets" (the
+  trail reads "Worksheets › Home"); the bank opens with the filters it was
+  left with unless an address names others; the snapshot heading "Papers".
+  *Only his machine can show:* nothing specific; Windows was not run.
+- *Next:* piece 4, Atelier onto the point, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4463,7 +4544,7 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 table):** twelve pieces, under UI improvements, "Getting around";
 piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
 Back and Forward, done 2026-11-27; piece 3, Worksheets onto the point,
-opens the next session.
+done 2026-11-27; piece 4, Atelier, opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
