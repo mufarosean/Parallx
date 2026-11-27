@@ -858,6 +858,7 @@ export class PdfEditorPane extends EditorPane {
       return;
     }
 
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
     switch (e.key) {
       case 'ArrowRight': case 'PageDown':
         this._pdfViewer?.nextPage(); e.preventDefault(); break;

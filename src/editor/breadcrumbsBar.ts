@@ -164,7 +164,7 @@ export class BreadcrumbsBar extends Disposable {
   private _trailWatch: { dispose(): void } | undefined;
 
   /** `onTrailChange`: the group's ribbon redraws (and lays out) when the shown tab's trail changes. */
-  constructor(container: HTMLElement, private readonly _onTrailChange?: (input: IEditorInput) => void) {
+  constructor(private readonly _container: HTMLElement, private readonly _onTrailChange?: (input: IEditorInput) => void) {
     super();
     this._register({ dispose: () => this._trailWatch?.dispose() });
 
@@ -173,7 +173,7 @@ export class BreadcrumbsBar extends Disposable {
     this.domNode.classList.add('breadcrumbs-control');
     this.domNode.style.height = `${BREADCRUMBS_HEIGHT}px`;
     this.domNode.style.minHeight = `${BREADCRUMBS_HEIGHT}px`;
-    container.appendChild(this.domNode);
+    _container.appendChild(this.domNode);
 
     // Widget
     this._widget = this._register(new BreadcrumbsWidget(this.domNode));
@@ -248,7 +248,10 @@ export class BreadcrumbsBar extends Disposable {
     if (input !== this._watched) {
       this._trailWatch?.dispose();
       this._watched = input;
-      this._trailWatch = trailSourceOf(input)?.onDidChangeTrail(() => { if (this._watched === input) this._onTrailChange?.(input); });
+      const redraw = () => { if (this._watched === input) this._onTrailChange?.(input); };
+      const trailWatch = trailSourceOf(input)?.onDidChangeTrail(redraw);
+      const nameWatch = input.onDidChangeLabel(redraw);
+      this._trailWatch = { dispose: () => { trailWatch?.dispose(); nameWatch.dispose(); } };
     }
     const trail = trailSourceOf(input)?.trail;
     if (trail?.length) {
@@ -260,16 +263,13 @@ export class BreadcrumbsBar extends Disposable {
 
     // Extract URI from input — all concrete inputs have a .uri getter
     const uri = (input as any).uri as URI | undefined;
-    if (!uri || uri.scheme === 'untitled') {
-      this.hide();
-      return wasVisible !== this._isVisible;
-    }
+    const elements = uri && uri.scheme !== 'untitled' ? this._buildPathElements(uri) : [];
 
-    // Build path elements
-    const elements = this._buildPathElements(uri);
-
+    // Neither a trail nor a path (Home, a dashboard, a web page): the tab's
+    // name, so the bar (and Back and Forward at its start) is on every tab.
     if (elements.length === 0) {
-      this.hide();
+      this.show();
+      this._widget.setItems([new TrailBreadcrumbItem({ label: input.name, current: true })]);
       return wasVisible !== this._isVisible;
     }
 
@@ -284,6 +284,8 @@ export class BreadcrumbsBar extends Disposable {
   }
 
   show(): void {
+    // A page's own ribbon empties the bar's box when it goes: come back into it.
+    if (this.domNode.parentElement !== this._container) this._container.prepend(this.domNode);
     if (this._isVisible) return;
     this._isVisible = true;
     this.domNode.classList.remove('hidden');

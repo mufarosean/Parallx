@@ -387,3 +387,4 @@ select:disabled {
 .px-current[aria-current] .svg-icon { color: var(--px-accent-text); }
 /* A finger needs a taller crumb than a pointer (the bar under the tabs). */
 [data-input-modality="touch"] .parallx-breadcrumb-item.trail { min-height: 24px; padding-inline: var(--px-space-1); }
+[data-input-modality="touch"] .editor-nav-arrows .px-btn--icon.px-btn--sm { height: 26px; width: 30px; }

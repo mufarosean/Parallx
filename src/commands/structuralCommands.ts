@@ -59,6 +59,7 @@ import { quickPickAccept, quickPickCancel } from './quickPickCommands.js';
 import { copyDiagnostics } from './diagnosticsCommands.js';
 import { openRecentItem } from './startCommands.js';
 import { showModelCalls, clearModelCalls, closeModelCalls } from './modelCallsCommands.js';
+import { ALL_NAVIGATION_COMMANDS } from './navigationCommands.js';
 
 //  Layout Commands 
 
@@ -338,6 +339,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // (SYSTEM_INTEGRITY.md Phase B — every gesture has a command)
   ...ALL_LAYOUT_COMMANDS,
   // Editor
+  ...ALL_NAVIGATION_COMMANDS,
   toggleWordWrap,
   changeEncoding,
   ...ALL_EDITOR_MORE_ACTIONS_COMMANDS,

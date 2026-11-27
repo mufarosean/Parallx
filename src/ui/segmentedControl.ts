@@ -182,6 +182,7 @@ export class SegmentedControl extends Disposable {
     let nextIdx = currentIdx;
 
     // A radio group (WAI-ARIA): the arrows go round, Home and End jump.
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
     const n = this._segments.length;
     switch (e.key) {
       case 'ArrowRight':

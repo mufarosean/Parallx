@@ -133,6 +133,8 @@ interface Tab {
   container: HTMLElement | undefined;
   /** Bumped by each move, so an older move that finishes late does not take the keys. */
   seq: number;
+  /** Where a move under way is taking the tab, while its tab is brought to the front. */
+  going?: PlaceLocation;
 }
 
 export interface PlaceMove {
@@ -216,6 +218,10 @@ export class PlacesService {
   private readonly _onDidChange = new Emitter<void>();
   /** Fires when a tool's places are registered or go. */
   readonly onDidChange: Event<void> = this._onDidChange.event;
+
+  private readonly _onDidMoveTab = new Emitter<string>();
+  /** Fires with a tab's editor id when that tab is at another place (whether or not it is in front). */
+  readonly onDidMoveTab: Event<string> = this._onDidMoveTab.event;
 
   // ── Registration ─────────────────────────────────────────────────────
 
@@ -302,6 +308,22 @@ export class PlacesService {
     return tab?.location;
   }
 
+  /**
+   * Where a place tab is, by its editor id: its address and the place's name.
+   * A tab being opened or moved answers with where it is going. Undefined
+   * for a tab that is not a place's.
+   */
+  placeOfTab(editorId: string): { readonly address: string; readonly title: string } | undefined {
+    const tab = this._tabs.get(editorId);
+    const pending = this._pending.get(editorId)?.location;
+    const toolKey = tab?.toolKey ?? (pending ? this._toolOfEditorId(editorId) : undefined);
+    const entry = toolKey ? this._entries.get(toolKey) : undefined;
+    if (!entry || !toolKey) return undefined;
+    const location = pending ?? tab?.going ?? tab?.location;
+    if (!location) return undefined;
+    return { address: placeAddress(toolKey, location), title: this._titleOf(entry, location) };
+  }
+
   /** The address of a location in a tool. */
   addressOf(tool: string, location: PlaceLocation): string {
     return placeAddress(tool, location);
@@ -324,7 +346,7 @@ export class PlacesService {
   // ── Moving ───────────────────────────────────────────────────────────
 
   /** Open an address (`parallx://place/...`). False when it names no place of a running tool. */
-  openAddress(address: string, options: { readonly newTab?: boolean } = {}): Promise<boolean> {
+  openAddress(address: string, options: { readonly newTab?: boolean; readonly tabId?: string } = {}): Promise<boolean> {
     const parsed = parsePlaceAddress(address);
     return parsed ? this.open(parsed.tool, parsed.location, options) : Promise.resolve(false);
   }
@@ -346,10 +368,15 @@ export class PlacesService {
       const tab = this._tabs.get(targetId);
       const loc = location ? this._normalize(entry, location) : (tab?.location ?? this._storedLocation(entry, targetId));
       if (tab?.view) {
-        await entry.host.focusEditor(targetId);
-        // Shown again, its pane may have been made anew (and taken the move already).
-        if (tab.view) await this._move(tab, loc, true);
-        return true;
+        tab.going = loc; // brought to the front, it is already where it is going
+        try {
+          const shown = await entry.host.focusEditor(targetId);
+          // Shown again, its pane may have been made anew (and taken the move already).
+          if (tab.view) await this._move(tab, loc, true);
+          if (shown || tab.view) return true;
+        } finally {
+          if (tab.going === loc) tab.going = undefined;
+        }
       }
       this._pending.set(targetId, { location: loc, focus: true });
       const shown = await entry.host.focusEditor(targetId);
@@ -423,6 +450,7 @@ export class PlacesService {
     if (!entry) return;
     const changed = !sameLocation(tab.location, location);
     tab.location = location;
+    if (tab.going && sameLocation(tab.going, location)) tab.going = undefined;
     tab.input.place = placeAddress(tab.toolKey, location);
     tab.input.setName(this._titleOf(entry, location));
     tab.input.setTrail(this._trailOf(entry, tab));
@@ -430,6 +458,7 @@ export class PlacesService {
       this._currentByTool.set(tab.toolKey, tab.input.id);
       this._onDidMove.fire({ tool: tab.toolKey, location });
     }
+    if (changed || force) this._onDidMoveTab.fire(tab.input.id);
   }
 
   private _trailOf(entry: Entry, tab: Tab): IEditorTrailCrumb[] {
@@ -487,10 +516,14 @@ export class PlacesService {
   }
 
   private _isPlaceEditorId(id: string): boolean {
-    for (const entry of this._entries.values()) {
-      if (id.startsWith(`${entry.toolId}:${entry.typeId}:`)) return true;
+    return this._toolOfEditorId(id) !== undefined;
+  }
+
+  private _toolOfEditorId(id: string): string | undefined {
+    for (const [key, entry] of this._entries) {
+      if (id.startsWith(`${entry.toolId}:${entry.typeId}:`)) return key;
     }
-    return false;
+    return undefined;
   }
 
   /** The id of the tool's tab in front, else the one last in front, else any open one. */

@@ -26,6 +26,7 @@ import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { markStartupDone } from '../services/startupDone.js';
+import { wireNavigation } from './navigationWiring.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
@@ -3051,6 +3052,7 @@ export class Workbench extends Layout {
     this._register(editorService);
     this._services.registerInstance(IEditorGroupService, editorGroupService);
     this._services.registerInstance(IEditorService, editorService);
+    this._register(wireNavigation(editorPart, editorService, () => this._services.tryGet(ICommandService), () => this._services.tryGet(IKeybindingService), () => this._services.tryGet(IFileService))); // Back and Forward
 
     // Update context key when group count changes
     editorGroupService.onDidGroupCountChange((count) => {

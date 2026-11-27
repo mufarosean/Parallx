@@ -338,6 +338,7 @@ export class TabBar extends Disposable {
     const ids = this._items.map((i) => i.id);
     const at = ids.indexOf(id);
     const focusAt = (i: number) => { const el = this._tabElements.get(ids[i]); if (el) { el.focus(); el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); } };
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
     const move = e.ctrlKey && e.shiftKey;
     if (move && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       const to = ids[at + (e.key === 'ArrowLeft' ? -1 : 1)];

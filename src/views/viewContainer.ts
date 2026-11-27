@@ -138,6 +138,7 @@ export class ViewContainer extends Disposable implements IGridView {
         if (a >= 0 && b >= 0) { [this._tabOrder[a], this._tabOrder[b]] = [this._tabOrder[b], this._tabOrder[a]]; this._rebuildTabBar(); focused.focus(); }
         e.preventDefault(); e.stopPropagation(); return;
       }
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
       let nextIdx = -1;
       switch (e.key) {
         case 'ArrowRight':

@@ -208,6 +208,7 @@ export class PdfOutline {
   private _onKeyDown(e: KeyboardEvent): void {
     const current = document.activeElement as DestRow | null;
     if (!current || !current.classList.contains('pdf-outline-item')) return;
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
 
     switch (e.key) {
       case 'ArrowDown': {

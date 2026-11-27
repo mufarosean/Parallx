@@ -82,7 +82,7 @@ interface ParallxApi {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
   };
   editors: {
-    registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
+    registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable; createRibbon?(container: HTMLElement, input?: any): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string; side?: boolean }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
@@ -604,6 +604,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
         return editorProvider.createEditorPane(container, input);
       },
+      createRibbon: (container: HTMLElement, input?: any) => editorProvider.createRibbon(container, input), // its ribbon in the bar under the tabs, after Back and Forward
     }),
   );
 

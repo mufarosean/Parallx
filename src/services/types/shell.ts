@@ -162,6 +162,8 @@ export interface IKeybindingService extends IDisposable {
 
   /** Command ids currently triggered by `key` (single-key, normalized). */
   getCommandsForKey(key: string): string[];
+  /** The command `key` runs now (its when-clause read as for a key press), or undefined. */
+  commandForKey(key: string): string | undefined;
 
   /** User rebind: make `commandId` respond to `key` only (source 'user'). */
   setUserKeybinding(commandId: string, key: string): void;

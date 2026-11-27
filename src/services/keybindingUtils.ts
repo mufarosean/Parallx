@@ -39,6 +39,8 @@ export function reservedKeyOwner(key: string): string | undefined {
  * - 'Shift+Ctrl+P' → 'ctrl+shift+p'
  * - 'Cmd+S' → 'meta+s'
  */
+const ARROW_NAMES: Record<string, string> = { arrowleft: 'left', arrowright: 'right', arrowup: 'up', arrowdown: 'down' };
+
 export function normalizeKeybinding(key: string): string {
   const parts = key.toLowerCase().split('+').map(p => p.trim());
   const modifiers: string[] = [];
@@ -65,7 +67,8 @@ export function normalizeKeybinding(key: string): string {
         modifiers.push('meta');
         break;
       default:
-        mainKey = part;
+        // "ArrowLeft" (the event's own name) is the "left" keyFromEvent gives.
+        mainKey = ARROW_NAMES[part] ?? part;
         break;
     }
   }

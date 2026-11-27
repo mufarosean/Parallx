@@ -303,6 +303,7 @@ export class BreadcrumbsWidget extends Disposable {
 
   private _onKeyDown(e: KeyboardEvent): void {
     if (!this._enabled) return;
+    if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // Alt+Left/Right is Go Back/Forward, not a move along
 
     switch (e.key) {
       case 'ArrowLeft':

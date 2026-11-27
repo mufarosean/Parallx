@@ -80,6 +80,19 @@ const NATIVE_EDIT_KEYS: ReadonlySet<string> = new Set([
  */
 export const DATA_OWNS_KEYS = 'data-px-owns-keys';
 
+/**
+ * Commands whose keys go to the page under the keys first, as a browser's
+ * Back does: the binding runs once the press has gone through the page, and
+ * only when nothing there took it (preventDefault or stopPropagation). Go Back
+ * is on Alt+Left, which the keyboard's drags (a Planner event, a dashboard
+ * widget, a node) also use to move what has the keys.
+ */
+const AFTER_PAGE = new Set<string>();
+export function yieldKeysToPage(commandId: string): IDisposable {
+  AFTER_PAGE.add(commandId);
+  return toDisposable(() => AFTER_PAGE.delete(commandId));
+}
+
 // ─── KeybindingService ───────────────────────────────────────────────────────
 
 export class KeybindingService extends Disposable implements IKeybindingService {
@@ -197,6 +210,12 @@ export class KeybindingService extends Disposable implements IKeybindingService 
       when: e.when,
       source: e.source,
     }));
+  }
+
+  /** The command `key` runs now: the binding a press would pick, when-clauses read. */
+  commandForKey(key: string): string | undefined {
+    const bucket = this._firstPartMap.get(normalizeKeybinding(key.trim()));
+    return bucket ? this._findMatch(bucket, (e) => !e.isChord)?.commandId : undefined;
   }
 
   /** Command ids currently triggered by `key` (single-key match, normalized). */
@@ -392,6 +411,7 @@ export class KeybindingService extends Disposable implements IKeybindingService 
           return;
         }
 
+        if (AFTER_PAGE.has(singleMatch.commandId)) { this._executeAfterPage(e, singleMatch); return; }
         // Only single-key bindings — execute immediately
         e.preventDefault();
         e.stopPropagation();
@@ -475,6 +495,21 @@ export class KeybindingService extends Disposable implements IKeybindingService 
   }
 
   // ── Command execution ──
+
+  /** Run the binding when this press reaches the window untaken (AFTER_PAGE). */
+  private _executeAfterPage(e: KeyboardEvent, entry: KeybindingEntry): void {
+    const done = () => { window.removeEventListener('keydown', onBubble); clearTimeout(timer); };
+    const onBubble = (ev: KeyboardEvent) => {
+      if (ev !== e) return;
+      done();
+      if (ev.defaultPrevented) return;
+      ev.preventDefault();
+      this._executeBinding(entry);
+    };
+    window.addEventListener('keydown', onBubble);
+    // A press the page stopped never reaches the window: forget it.
+    const timer = setTimeout(done, 0);
+  }
 
   private _executeBinding(entry: KeybindingEntry): void {
     this._commandService.executeCommandFrom('keybinding', entry.commandId).then(

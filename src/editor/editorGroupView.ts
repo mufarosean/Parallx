@@ -23,6 +23,7 @@ import {
   GroupDirection,
 } from './editorTypes.js';
 import { BreadcrumbsBar } from './breadcrumbsBar.js';
+import { createEditorRibbon } from './navigationArrows.js';
 import { URI } from '../platform/uri.js';
 import { showEditorTabContextMenu, workspaceRelativePath, type IEditorTabMenuHost } from './editorTabContextMenu.js';
 import { createSurface, createTabs } from '../ui/kit.js';
@@ -65,6 +66,7 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _element!: HTMLElement;
   private _tabs!: TabBar;
   private _ribbonContainer!: HTMLElement;
+  private _ribbonContent!: HTMLElement; // what a tab puts in the ribbon, after Back and Forward
   private _breadcrumbsBar!: BreadcrumbsBar;
   private _ribbonDisposable: IDisposable | undefined;
   /** Cached custom-ribbon height, refreshed by a ResizeObserver. Reading
@@ -346,9 +348,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     // Unified ribbon container — between tab bar and pane.
     // Each editor type populates this: file editors get breadcrumbs,
     // canvas gets its own ribbon (breadcrumbs + timestamp + star + menu).
-    this._ribbonContainer = $('div');
-    this._ribbonContainer.classList.add('editor-ribbon');
-    this._element.appendChild(this._ribbonContainer);
+    ({ outer: this._ribbonContainer, content: this._ribbonContent } = createEditorRibbon(this._element, (d) => this._register(d)));
 
     // Keep the custom-ribbon height cached off the layout hot path. The
     // observer updates it asynchronously when the ribbon's box actually
@@ -369,7 +369,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     }
 
     // Default content: file-path breadcrumbs (hidden when custom ribbon is active)
-    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._ribbonContainer, (input) => { if (input === this.model.activeEditor) this._updateRibbon(input); }));
+    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._ribbonContent, (input) => { if (input === this.model.activeEditor) this._updateRibbon(input); }));
 
     // When a breadcrumb segment is clicked, reveal it in Explorer
     this._register(this._breadcrumbsBar.onDidSelectSegment((segment) => {
@@ -490,7 +490,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       // Hide default breadcrumbs
       this._breadcrumbsBar.hide();
       // Provider fills the ribbon container
-      this._ribbonDisposable = provider.createRibbon(this._ribbonContainer, input);
+      this._ribbonDisposable = provider.createRibbon(this._ribbonContent, input);
       this._ribbonContainer.classList.remove('hidden');
       this.layout(this._width, this._height, Orientation.Horizontal);
       return;

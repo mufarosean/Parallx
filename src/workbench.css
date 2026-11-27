@@ -1782,6 +1782,15 @@ html, body {
 .editor-ribbon.hidden {
   display: none;
 }
+/* Back and Forward first, then the tab's trail or its page's own ribbon. */
+.editor-ribbon:not(.hidden) { display: flex; align-items: stretch; }
+.editor-ribbon-content { flex: 1 1 auto; min-width: 0; }
+.editor-nav-arrows {
+  display: flex; align-items: center; gap: 1px; flex: none;
+  padding-inline: var(--px-space-1) 0;
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-border, transparent);
+}
+.editor-nav-arrows .px-btn--icon.px-btn--sm { height: 22px; width: 22px; }
 
 /* ── Breadcrumbs Bar (default ribbon content for file editors) ── */
 /* VS Code ref: breadcrumbsWidget.css + breadcrumbscontrol.css */
