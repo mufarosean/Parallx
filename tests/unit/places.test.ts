@@ -149,6 +149,15 @@ describe('places', () => {
     expect([...h2.tabs.values()][0].input.name).toBe('Stats');
   });
 
+  it('a place opens with what it was given (a list), carried in its address and the trail', async () => {
+    await svc.open('demo', { place: 'stats', params: { list: 'overdue' } });
+    const tab = [...h.tabs.values()][0].input;
+    expect(svc.current('demo')).toEqual({ place: 'stats', params: { list: 'overdue' } });
+    expect(shown.at(-1)).toEqual({ place: 'stats', params: { list: 'overdue' } });
+    expect(tab.place).toBe('parallx://place/demo/stats?list=overdue');
+    expect(tab.trail?.at(-1)?.address).toBe('parallx://place/demo/stats?list=overdue');
+  });
+
   it('an unknown place opens the tool\'s first, and a tool that went opens nothing', async () => {
     expect(await svc.openAddress('parallx://place/demo/nowhere')).toBe(true);
     expect([...h.tabs.values()][0].input.name).toBe('Home');

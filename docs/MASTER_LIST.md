@@ -2035,25 +2035,36 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   The other tools are untouched (pieces 3 to 11).
   *How it was checked:* the acceptance probe
   `tests/probes/getting-around-core-acceptance.mjs`, written first by the
-  app-verifier, failed 22 of 23 on the app as it was and passes 23/23
-  unedited on the real build (seen on the real app, hidden); typecheck,
-  vitest (751 files, with `tests/unit/places.test.ts`, its two later tests
-  seen failing on the code before their fix), build; keyboard audit on the
-  Planner and Canvas screens (15 screens) 0 on every count; touch-drag probe
-  all ok; visual-consistency probe: one rise (Creations' title size), the
-  same on the build from before the piece, so not from it. Review by the
+  app-verifier, failed 23 of 23 on the app as it was (22 of 23 once an
+  early edit of `parallx.d.ts` was in the tree) and passes 23/23 unedited on
+  the final build (seen on the real app, hidden; never edited since its
+  commit); typecheck, vitest (754 files: 751 passed, 3 skipped, with
+  `tests/unit/places.test.ts`, its two later tests seen failing on the code
+  before their fix), build. On the final build: the keyboard audit on 5
+  screens (Planner's Today, Tasks, Calendar and New Task, and a Canvas page),
+  by keyboard, touch and popups, 0 on every count; the touch-drag probe all
+  ok; the visual-consistency probe one rise, Creations' title size (34px
+  where 12 of 13 screens use 22px), the same on a build from before the
+  piece, so not from it (left: Creations is piece 10). Review by the
   correctness, modularity and access reviewers, each finding put to the
   skeptic; fixed what it reproduced and judged to matter (the column not
   following a switch between two Planner tabs, two New Task forms when no
   Planner pane was drawn, a calendar day sticking in the address, the shared
   mark's background hidden by Planner's own row style, crumbs too small for a
-  finger, ArrowLeft from the trail list).
+  finger, ArrowLeft from the trail list). The app-verifier then drove those
+  fixes on the real app: all held but one, two New Task (and New Event)
+  forms still opening when no Planner tab was open; fixed again and seen
+  as one form, cold and warm. It also saw the mark right in light and
+  dark (the row's colour change is a short transition; a hidden window
+  draws no frames, so only his screen shows it settle).
   *Checks changed:* `tests/unit/plannerNavState.test.ts` lost its two tests
   of `setPendingPlannerTab`, because that function is deleted (the core's
-  places now say which page a tab shows; tested in `places.test.ts`). No
+  places now say which page a tab shows; `places.test.ts` tests opening a
+  place, with what it was given, instead). No
   ratchet baseline raised: the file-size and raw-DOM ratchets were met by
-  moving code (place links into the kit's `link.ts`, the wiring out of
-  `workbench.ts`, `apiFactory`'s editors type taken from the bridge).
+  where the code went (place links in the kit's `link.ts`, the boot wiring
+  in `workbenchServices.ts` rather than `workbench.ts`, `apiFactory`'s
+  editors type taken from the bridge instead of a second copy).
   *Reported and left* (the skeptic judged them not worth acting on, or
   they are pre-existing): trail crumbs are list items to a screen reader,
   not links (the bar's widget, also for files; the current crumb says
