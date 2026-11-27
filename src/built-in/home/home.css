@@ -1,4 +1,4 @@
-/* home.css — Home: the search field, the chips, and the stream as cards or a list. */
+/* home.css — Home: the greeting, the field to ask in, the tools' cards, the feed. */
 
 .home {
   height: 100%;
@@ -9,174 +9,181 @@
   font-size: var(--px-text-base);
 }
 .home-column {
-  max-width: 1040px;
+  max-width: 920px;
   margin: 0 auto;
   padding: var(--px-space-8) var(--px-space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--px-space-4);
+  gap: var(--px-space-5);
   box-sizing: border-box;
 }
+.home-column[data-width="narrow"] { max-width: 720px; }
+.home-column[data-width="wide"] { max-width: 1180px; }
+.home-column > [hidden] { display: none; }
 
-.home-search .ui-input-box {
+/* The title: one sentence in the display face, its one italic word in the accent; the date under it. */
+.home-head:empty, .home-name:empty { display: none; }
+.home-head .px-page-header { padding: 0; border: 0; }
+.home-head .px-page-header__title { font-family: var(--px-font-display); font-weight: 500; }
+.home-head .px-page-header__title em { font-style: italic; font-weight: 400; color: var(--px-accent-text); }
+.home-head .px-page-header__subtitle { font-family: var(--px-font-display); font-style: italic; color: var(--px-text-secondary); }
+
+.home-name { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; margin-top: calc(-1 * var(--px-space-2)); }
+.home-name__question { font-family: var(--px-font-display); font-size: var(--px-text-md); color: var(--px-text-secondary); margin-right: var(--px-space-1); }
+.home-name .ui-input-box { width: 200px; }
+
+/* The field to ask in: one wide row, lifted off the page. */
+.home-ask {
   display: flex;
-  flex-direction: row;
   align-items: center;
   gap: var(--px-space-2);
-  padding: 0 var(--px-space-3);
+  padding: 0 var(--px-space-2) 0 var(--px-space-4);
   color: var(--px-text-muted);
   background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-lg);
+  border-radius: var(--px-radius-xl);
+  box-shadow: var(--px-shadow-sm);
 }
-.home-search .ui-input-box:focus-within {
-  border-color: var(--px-accent);
-}
-.home-search .ui-input-box-input {
-  flex: 1;
-  min-width: 0;
-  height: 40px;
+.home-ask:focus-within { border-color: var(--px-accent); }
+.home-ask .ui-input-box { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; padding: 0; }
+.home-ask .ui-input-box-input {
+  width: 100%;
+  height: 46px;
   border: 0;
   background: none;
   outline: none;
+  box-shadow: none;
   color: var(--px-text);
+  font-family: var(--px-font-display);
   font-size: var(--px-text-md);
 }
+.home-ask .ui-input-box-input::placeholder { color: var(--px-text-muted); }
 
-.home-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--px-space-2);
-}
-.home-chips:empty {
-  display: none;
-}
-.home-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--px-space-3);
-}
-.home-heading {
-  font-weight: 600;
-}
-
-.home-body--cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--px-space-3);
-}
-.home-body--list {
-  display: flex;
-  flex-direction: column;
-}
-
-/* One item: a button that opens it. */
-.home-card,
-.home-row {
-  font: inherit;
-  text-align: left;
-  color: var(--px-text-secondary);
-  cursor: pointer;
-  min-width: 0;
-}
-.home-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: 'kind when' 'title title' 'summary summary' 'tags tags' 'where where';
-  align-content: start;
-  gap: var(--px-space-2);
-  padding: var(--px-space-4);
-  background: var(--px-base-05);
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-lg);
-  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
-}
-.home-card:hover {
-  background: var(--px-bg-elevated);
-  border-color: var(--px-border-strong);
-}
-.home-row {
-  display: grid;
-  grid-template-columns: 16px minmax(140px, 1.1fr) minmax(0, 2fr) auto 64px;
-  grid-template-areas: 'kind title summary tags when';
-  align-items: center;
-  gap: var(--px-space-3);
-  min-height: 36px;
-  padding: 0 var(--px-space-2);
-  background: none;
-  border: 0;
-  border-radius: var(--px-radius-md);
-}
-.home-row:hover {
-  background: var(--px-surface-hover);
-}
-/* A row keeps the kind's icon and drops its words. */
-.home-row .home-item-kind span:not(.svg-icon),
-.home-row .home-item-where {
-  display: none;
-}
-
-.home-item-kind {
-  grid-area: kind;
-  display: flex;
-  align-items: center;
-  gap: var(--px-space-2);
+/* Today, from your tools: a row of cards, as many across as fit. */
+.home-today { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.home-today > .px-section-label, .home-filters .ui-segmented-control__segment, .home-filters .px-chip {
+  font-family: var(--px-font-mono);
   font-size: var(--px-text-xs);
-  color: var(--px-text-muted);
-}
-.home-item-title {
-  grid-area: title;
-  font-size: var(--px-text-md);
-  font-weight: 600;
-  color: var(--px-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.home-row .home-item-title {
-  font-size: var(--px-text-base);
   font-weight: 500;
 }
-.home-item-summary {
-  grid-area: summary;
-  font-size: var(--px-text-sm);
+.home-today > .px-section-label { padding: 0; color: var(--px-text-muted); }
+.home-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--px-space-3);
+}
+.home-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--px-space-1);
+  min-width: 0;
+  padding: var(--px-space-3) var(--px-space-4);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+}
+.home-card__from { display: flex; align-items: center; gap: 6px; font-family: var(--px-font-mono); font-size: var(--px-text-xs); font-weight: 500; color: var(--px-text-muted); }
+.home-card__number { display: flex; align-items: baseline; gap: 6px; font-family: var(--px-font-display); font-size: var(--px-text-2xl); font-weight: 500; line-height: 1.1; letter-spacing: -0.01em; }
+.home-card__number small { font-family: var(--px-font-ui); font-size: var(--px-text-base); font-weight: 400; letter-spacing: 0; color: var(--px-text-secondary); }
+.home-card__line { margin: 0 0 var(--px-space-2); flex: 1; color: var(--px-text-secondary); line-height: 1.4; }
+.home-card--step { gap: var(--px-space-2); }
+.home-card--step .home-card__line { margin: 0; }
+
+/* The filter words over the feed: what to show at the left, from when at the right. */
+.home-work { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.home-filters__show { display: flex; gap: var(--px-space-1); }
+.home-filters { display: flex; justify-content: space-between; align-items: center; gap: var(--px-space-3); flex-wrap: wrap; }
+
+/* The feed: each thing with its picture, its words, and a figure or the time at the right. */
+.home-feed { list-style: none; margin: 0; padding: 0; }
+.home-entry {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) minmax(84px, auto);
+  gap: var(--px-space-4);
+  padding: var(--px-space-4) 0;
+  border-top: 1px solid var(--px-divider);
+  align-items: start;
+}
+.home-entry__body { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.home-entry__title {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--px-text);
+  font-family: var(--px-font-display);
+  font-size: var(--px-text-lg);
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--px-radius-xs);
+}
+.home-entry__title > svg, .home-entry__title > .px-icon { flex: none; margin-right: 6px; vertical-align: -1px; color: var(--px-text-muted); }
+.home-entry__title:hover { color: var(--px-accent-text); }
+.home-entry__title:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
+.home-entry__where { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.home-entry__opening {
+  margin: var(--px-space-1) 0 0;
+  font-family: var(--px-font-display);
+  font-size: var(--px-text-md);
   line-height: 1.45;
+  color: var(--px-text-secondary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.home-row .home-item-summary {
-  -webkit-line-clamp: 1;
-  color: var(--px-text-muted);
-}
-.home-item-tags {
-  grid-area: tags;
+.home-entry__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--px-space-2); }
+.home-entry__tags span { padding: 1px 8px; border-radius: var(--px-radius-full); background: var(--px-bg-inset); font-size: var(--px-text-xs); color: var(--px-text-secondary); }
+.home-entry__side {
+  align-self: stretch;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--px-space-1);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-left: var(--px-space-4);
+  border-left: 1px solid var(--px-divider);
+  font-family: var(--px-font-mono);
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-}
-.home-item-tags:empty {
-  display: none;
-}
-.home-item-tags span {
-  padding: 0 var(--px-space-2);
-  background: var(--px-bg-inset);
-  border-radius: var(--px-radius-sm);
-}
-.home-item-where {
-  grid-area: where;
-  font-size: var(--px-text-xs);
-  color: var(--px-text-faint);
-}
-.home-item-when {
-  grid-area: when;
-  font-size: var(--px-text-xs);
-  color: var(--px-text-muted);
-  font-variant-numeric: tabular-nums;
   text-align: right;
-  white-space: nowrap;
+}
+.home-entry__side strong { font-family: var(--px-font-display); font-size: var(--px-text-lg); font-weight: 500; color: var(--px-text); }
+.home-entry__pin { margin-top: auto; color: var(--px-text-faint); }
+.home-entry__pin[aria-pressed="true"], .home-entry__pin:hover, .home-entry__pin:focus-visible { color: var(--px-accent-text); }
+.home-feed__none { padding: var(--px-space-6) 0; border-top: 1px solid var(--px-divider); }
+
+/* The picture of a thing: a sheet of paper with its own opening text on it, or its image. */
+.home-thumb {
+  width: 96px;
+  height: 124px;
+  box-sizing: border-box;
+  padding: 9px 8px;
+  overflow: hidden;
+  border-radius: var(--px-radius-sm);
+  background: var(--px-paper-0);
+  color: var(--px-paper-ink-soft);
+  box-shadow: 0 0 0 1px var(--px-border-strong), var(--px-shadow-sm);
+  font-family: var(--px-font-display);
+  font-size: 5px;
+  line-height: 1.5;
+  user-select: none;
+}
+.home-thumb__title { margin-bottom: 4px; font-size: 7px; font-weight: 600; line-height: 1.25; color: var(--px-paper-ink); overflow-wrap: anywhere; }
+.home-thumb__text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.home-thumb__kind { height: 70%; display: grid; place-items: center; opacity: 0.55; }
+.home-thumb--image { padding: 0; object-fit: cover; background: var(--px-bg-inset); }
+
+@media (max-width: 640px) {
+  .home-column { padding: var(--px-space-5) var(--px-space-4); }
+  .home-entry { grid-template-columns: 64px minmax(0, 1fr); }
+  .home-thumb { width: 64px; height: 84px; }
+  .home-entry__side { grid-column: 2; flex-direction: row; align-items: center; gap: var(--px-space-2); padding: 0; border: 0; }
+  .home-entry__pin { margin: 0 0 0 auto; }
 }

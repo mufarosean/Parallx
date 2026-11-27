@@ -1774,12 +1774,33 @@ export namespace home {
     readonly where?: string;
     /** When it was last touched, in milliseconds since the epoch. */
     readonly touchedAt: number;
+    /** More of its opening text than the summary, line breaks kept: Home draws it small, as a picture of the thing. */
+    readonly preview?: string;
+    /** A picture of the thing itself (a URL an image element can load), shown in place of the drawn one. */
+    readonly image?: string;
+    /** One figure about it, shown at the right: '412' with 'words'. */
+    readonly stat?: { readonly value: string; readonly unit?: string };
     readonly open: () => void;
+  }
+  /** What a tool has for today: one number, one line, one action. Home says which tool it is from. */
+  export interface HomeCard {
+    /** Stable within the tool. */
+    readonly id: string;
+    /** Registry icon id beside the tool's name. */
+    readonly icon?: string;
+    /** The figure the card is about: '30'. A card with none is a first step. */
+    readonly number?: string;
+    /** What the figure counts: 'cards due'. */
+    readonly unit?: string;
+    /** One sentence under it. */
+    readonly line: string;
+    /** The one thing to do about it: a command of the tool's. */
+    readonly action: { readonly label: string; readonly command: string; readonly args?: readonly unknown[]; readonly icon?: string };
   }
   export interface HomeSource {
     /** Stable within the tool. */
     readonly id: string;
-    /** The tool's name, as its filter chip says it. */
+    /** The tool's name. */
     readonly label: string;
     /** The most recently touched items, newest first. */
     listRecent(limit: number): Promise<readonly HomeItem[]>;
@@ -1789,6 +1810,8 @@ export namespace home {
     readonly onDidChange?: Event<void>;
   }
   export function registerSource(source: HomeSource): IDisposable;
+  /** One card in Home's "Today, from your tools". The same id again replaces it; disposing takes it back. It leaves with the tool. */
+  export function registerCard(card: HomeCard): IDisposable;
 }
 
 /**

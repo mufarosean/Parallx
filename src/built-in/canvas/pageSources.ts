@@ -11,6 +11,7 @@ import { ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { registerQuickOpenSource } from '../../services/quickOpenSources.js';
 import { registerHomeSource, type HomeItem } from '../../services/homeSources.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { decodeCanvasContent } from './contentSchema.js';
 
 interface ServiceHost {
   readonly services: { registerInstance<T>(id: unknown, instance: T): void };
@@ -53,13 +54,15 @@ export function registerCanvasPageSources(
     },
   }));
   // Home: recent pages with their opening words; a query finds any page by title.
-  const excerpts = new Map<string, string>();
+  const texts = new Map<string, PageText>();
   const toHome = async (page: IPageSummaryTreeNode | Awaited<ReturnType<ICanvasDataService['getRecentPages']>>[number], where?: string): Promise<HomeItem> => {
     const stamp = `${page.id}@${page.updatedAt}`;
-    if (!excerpts.has(stamp)) excerpts.set(stamp, openingWords((await dataService.getPage(page.id))?.content));
+    if (!texts.has(stamp)) texts.set(stamp, pageText((await dataService.getPage(page.id))?.content));
+    const text = texts.get(stamp)!;
     return {
       id: page.id, title: page.title || 'Untitled', kind: 'Page', icon: 'px-canvas', where,
-      summary: excerpts.get(stamp), touchedAt: Date.parse(page.updatedAt) || 0,
+      summary: text.opening, preview: text.preview, touchedAt: Date.parse(page.updatedAt) || 0,
+      stat: text.words ? { value: String(text.words), unit: text.words === 1 ? 'word' : 'words' } : undefined,
       open: () => { void openPage(page.id); },
     };
   };
@@ -84,20 +87,33 @@ export function registerCanvasPageSources(
   }));
 }
 
-/** The first words of a page's body (its stored document), for Home's one-line summary. */
-export function openingWords(content: string | undefined, max = 160): string {
-  if (!content) return '';
-  let doc: unknown;
-  try { doc = JSON.parse(content); } catch { return ''; }
-  const parts: string[] = [];
-  let length = 0;
-  const walk = (node: unknown): void => {
-    if (length >= max || !node || typeof node !== 'object') return;
+export interface PageText {
+  /** The first words, for the line under a page's title. */
+  readonly opening: string;
+  /** The first blocks, a line each, for a small picture of the page. */
+  readonly preview: string;
+  readonly words: number;
+}
+
+/** A page's body (as stored) read as words: how it opens, its first lines, and how many words it has. */
+export function pageText(content: string | undefined, max = 160): PageText {
+  if (!content) return { opening: '', preview: '', words: 0 };
+  const lines: string[] = [];
+  const textOf = (node: unknown, into: string[]): void => {
+    if (!node || typeof node !== 'object') return;
     const n = node as { text?: unknown; content?: unknown };
-    if (typeof n.text === 'string' && n.text.trim()) { parts.push(n.text.trim()); length += n.text.length + 1; }
-    if (Array.isArray(n.content)) for (const child of n.content) walk(child);
+    if (typeof n.text === 'string' && n.text.trim()) into.push(n.text.trim());
+    if (Array.isArray(n.content)) for (const child of n.content) textOf(child, into);
   };
-  walk(doc);
-  const text = parts.join(' ').replace(/\s+/g, ' ').trim();
-  return text.length > max ? `${text.slice(0, max).replace(/\s+\S*$/, '')}…` : text;
+  for (const block of decodeCanvasContent(content).doc?.content ?? []) {
+    const parts: string[] = [];
+    textOf(block, parts);
+    if (parts.length) lines.push(parts.join(' ').replace(/\s+/g, ' '));
+  }
+  const text = lines.join(' ');
+  return {
+    opening: text.length > max ? `${text.slice(0, max).replace(/\s+\S*$/, '')}…` : text,
+    preview: lines.join('\n').slice(0, 900),
+    words: text ? text.split(' ').length : 0,
+  };
 }

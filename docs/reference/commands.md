@@ -244,8 +244,12 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `flashcards.stats` | Show Progress & Stats | flashcards | Flashcards |  |  |
 | `flashcards.study` | Study Due Cards | flashcards | Flashcards |  |  |
 | `flashcards.studyTag` | Study One Tag | flashcards | Flashcards |  |  |
+| `home.ask` | Home: Send to Chat | home |  |  |  |
+| `home.keepName` | Home: Keep Name | home |  |  |  |
 | `home.open` | Home: Open Home | home |  |  |  |
 | `home.openItem` | Home: Open Item | home |  |  |  |
+| `home.pinItem` | Home: Pin or Unpin Item | home |  |  |  |
+| `home.skipName` | Home: Do Not Ask for a Name | home |  |  |  |
 | `indexingLog.clear` | Indexing: Clear Log | indexing-log |  |  |  |
 | `indexingLog.toggleErrorFilter` | Indexing: Toggle Error Filter | indexing-log |  |  |  |
 | `media-organizer.buildPHashes` | Build Perceptual Hashes (find near-duplicates) | media-organizer | Atelier |  |  |
@@ -338,7 +342,6 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `terminal.restart` | Terminal: Restart Shell | terminal |  |  |  |
 | `theme-editor.open` | Parallx: Appearance | theme-editor |  |  |  |
 | `tools.showInstalled` | Tools: Show Tools and Extensions | tool-gallery |  |  |  |
-| `welcome.openWelcome` | Welcome: Show Welcome Page | welcome |  |  |  |
 | `worksheet.addTag` | Worksheets: Add Tag to Problem | worksheet |  |  |  |
 | `worksheet.askAboutSelection` | Worksheets: Ask About the Selected Cells | worksheet |  |  |  |
 | `worksheet.bank` | Worksheets: Open Problem Bank | worksheet |  |  |  |

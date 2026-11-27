@@ -55,7 +55,7 @@ import {
   type GraphProvider,
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
-import { registerHomeSource, type HomeSource } from '../services/homeSources.js';
+import { createHomeApi } from './homeApi.js';
 import { CanvasBlocksBridge, createCanvasApi, type CanvasApi } from './bridges/canvasBlocksBridge.js';
 import { createWorkApi, type WorkApi } from './bridges/workBridge.js';
 import { shownChatApi, type ShownChatApi } from '../services/shownChat.js';
@@ -251,7 +251,7 @@ export interface ParallxApiObject {
     listWidgetTypes(): readonly import('./bridges/dashboardBridge.js').WidgetTypeDescriptor[];
   };
   /** Home: a tool's recent items and how to search and open them (services/homeSources.ts). Gone when the tool stops. */
-  readonly home: { registerSource(source: HomeSource): IDisposable };
+  readonly home: ReturnType<typeof createHomeApi>;
   readonly canvas: CanvasApi;
   /** Time worked: the core's clock, and the providers that report work by day and group (bridges/workBridge.ts). */
   readonly work: WorkApi;
@@ -828,9 +828,7 @@ export function createToolApi(
       getAll: () => workspaceGraphBridge.getAll(),
     }),
 
-    home: Object.freeze({
-      registerSource: (source: HomeSource) => { const d = registerHomeSource({ ...source, id: `${toolId}:${source.id}` }); subscriptions.push(d); return d; },
-    }),
+    home: createHomeApi(toolId, toolDescription.manifest.name || toolId, subscriptions),
     dashboard: dashboardBridge.api(),
     work: createWorkApi(toolId, subscriptions),
 

@@ -1,10 +1,11 @@
-// homeSources.ts — what Home shows: recent things from every tool that is on.
+// homeSources.ts — what Home shows: what every tool that is on has for it.
 //
-// Home is one page for everything a person comes back to. It knows no tool:
-// a tool that keeps things of its own (pages, files, characters, a ledger)
-// registers a source here while it runs, saying what is recent, how to
-// search it and how to open one. Turned off, the source goes and its items
-// leave Home with it. Extensions register through `parallx.home`.
+// Home is the page the app opens on. It knows no tool. A tool that keeps
+// things of its own (pages, files, decks, a ledger) registers a source here
+// while it runs, saying what was last worked on and how to open one; a tool
+// with something for today registers one card (a number, a line, one
+// action). Turned off, its source and its card go and leave Home with it.
+// Extensions register through `parallx.home`.
 
 import { createRegistry } from '../platform/registry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
@@ -26,6 +27,12 @@ export interface HomeItem {
   readonly where?: string;
   /** When it was last touched, in milliseconds since the epoch. */
   readonly touchedAt: number;
+  /** More of its opening text than the summary, line breaks kept: Home draws it small, as a picture of the thing. */
+  readonly preview?: string;
+  /** A picture of the thing itself (a URL an image element can load), shown in place of the drawn one. */
+  readonly image?: string;
+  /** One figure about it, shown at the right: '412' with 'words', 'p. 14' with 'of 38'. */
+  readonly stat?: { readonly value: string; readonly unit?: string };
   /** Open it. */
   readonly open: () => void;
 }
@@ -33,7 +40,7 @@ export interface HomeItem {
 export interface HomeSource {
   /** Stable id (the registering tool's). */
   readonly id: string;
-  /** The tool's name, as its filter chip says it: 'Canvas'. */
+  /** The tool's name: 'Canvas'. */
   readonly label: string;
   /** The most recently touched items, newest first. */
   listRecent(limit: number): Promise<readonly HomeItem[]>;
@@ -43,7 +50,38 @@ export interface HomeSource {
   readonly onDidChange?: Event<void>;
 }
 
+/** What a tool has for today: one number, one line, one action. */
+export interface HomeCard {
+  /** Stable id (the registering tool's, then the card's own). */
+  readonly id: string;
+  /** The tool's name, as the card says where it is from. */
+  readonly from: string;
+  /** Registry icon id beside the tool's name. */
+  readonly icon?: string;
+  /** The figure the card is about: '30'. A card with none is a first step. */
+  readonly number?: string;
+  /** What the figure counts: 'cards due'. */
+  readonly unit?: string;
+  /** One sentence under it. */
+  readonly line: string;
+  /** The one thing to do about it: a command of the tool's. */
+  readonly action: { readonly label: string; readonly command: string; readonly args?: readonly unknown[]; readonly icon?: string };
+}
+
 const registry = createRegistry<HomeSource>();
+const cards = createRegistry<HomeCard>();
+
+/** A card on Home; the same id again replaces it (the number changed). */
+export function registerHomeCard(card: HomeCard): IDisposable {
+  return cards.register(card.id, card);
+}
+
+export function getHomeCards(): readonly HomeCard[] {
+  return cards.list();
+}
+
+/** Fires when a card comes, changes or goes. */
+export const onDidChangeHomeCards: Event<void> = cards.onDidChange;
 
 export function registerHomeSource(source: HomeSource): IDisposable {
   return registry.register(source.id, source);

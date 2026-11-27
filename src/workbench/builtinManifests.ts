@@ -7,7 +7,6 @@
 
 export { EXPLORER_MANIFEST } from '../built-in/explorer/manifest.js';
 export { SEARCH_MANIFEST } from '../built-in/search/manifest.js';
-export { WELCOME_MANIFEST } from '../built-in/welcome/manifest.js';
 export { HOME_MANIFEST } from '../built-in/home/manifest.js';
 export { TERMINAL_MANIFEST } from '../built-in/terminal/manifest.js';
 export { OUTPUT_MANIFEST } from '../built-in/output/manifest.js';

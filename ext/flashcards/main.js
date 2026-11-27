@@ -33,7 +33,7 @@
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
 import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js'; import { fcFitWide } from './fitWide.js';
-import { fcWithRegistry } from './progress.js'; import { fcRegisterProviders, fcStudyWork } from './work.js';
+import { fcWithRegistry } from './progress.js'; import { fcRegisterProviders, fcStudyWork } from './work.js'; import { fcRegisterHome } from './home.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -631,6 +631,12 @@ function fcCountServedToday(counts, limits = {}) {
   return Math.min(counts.newCount || 0, newLimit)
     + (counts.learnCount || 0)
     + Math.min(counts.reviewCount || 0, reviewLimit);
+}
+
+/** What the next daily session hands over now: today's counts under the daily limits and each deck's pace. The sidebar, the front page and Home's card all say this number. */
+function fcServedNow(decks, today, now = Date.now()) {
+  const pace = fcNewAllowances(decks, now, fcPaceSettings());
+  return decks.length === 0 ? 0 : fcCountServedToday(today, { newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total), reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200 });
 }
 
 /** Custom-study modes, in the order the dialog lists them. */
@@ -5945,11 +5951,7 @@ function createSidebarView(container) {
       // Pacing shrinks the new batch further — the promise follows it.
       // Computed SYNCHRONOUSLY from the decks already fetched: an await here
       // would split the paint and let an overlapping stale refresh land last.
-      const pace = fcNewAllowances(decks, Date.now(), fcPaceSettings());
-      const served = fcCountServedToday(today, {
-        newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total),
-        reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
-      });
+      const served = fcServedNow(decks, today);
       const studyBtn = el('button', 'fc-today__study');
       studyBtn.type = 'button';
       studyBtn.innerHTML = `${icon('play', 13)}<span>Study ${served} ${served === 1 ? 'card' : 'cards'}</span>`;
@@ -6668,11 +6670,7 @@ async function renderDecks(body, setRoute) {
     summary.push(`next exam in ${Math.max(1, Math.ceil((totals.exam - now) / DAY))} days`);
   }
   headText.appendChild(el('div', 'fc-home__sub', summary.join(' · ')));
-  const pace = fcNewAllowances(decks, now, paceSettings);
-  const served = decks.length === 0 ? 0 : fcCountServedToday(today, {
-    newLimit: Math.min(Number(cfg('dailyNewLimit', 20)) || 20, pace.total),
-    reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
-  });
+  const served = fcServedNow(decks, today, now);
   const behind = Math.max(0, today.dueTotal - served);
   // The page's title is the day's work; an empty shelf is still "Decks".
   headText.appendChild(el('h1', 'fc-home__title', decks.length === 0 ? 'Decks' : served > 0 ? `${served} ${served === 1 ? 'card' : 'cards'} due today` : 'Nothing due right now'));
@@ -11957,6 +11955,7 @@ function registerQuestionProvider(context) {
 /** The cards by tag and by deck for any tool that shows progress (progress.js), and the time on them for any tool that keeps a record of work (work.js). */
 function registerProgressProvider(context) {
   fcRegisterProviders(_api, context, { db, isLive: () => !!_dbBridge, onData: fcOnData });
+  fcRegisterHome(_api, context, { all: (sql) => db.all(sql), onData: fcOnData, openDeck: (deckId) => openFlashcards({ view: 'browse', deckId }), today: async () => { const [decks, counts] = await Promise.all([fcListDecks(), fcTodayCounts()]); return { decks: decks.length, counts, served: fcServedNow(decks, counts) }; } });
 }
 
 /**

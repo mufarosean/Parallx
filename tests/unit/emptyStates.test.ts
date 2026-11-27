@@ -8,7 +8,6 @@ import { globSync } from 'glob';
 import { EMPTY_STATES, renderEmptyState, renderEmptyStateEntry, type EmptyStateEntry, type EmptyStateId } from '../../src/ui/emptyStates';
 import { PLANNER_EMPTY_STATES } from '../../src/built-in/planner/plannerEmptyStates';
 import { SEARCH_EMPTY_STATES } from '../../src/built-in/search/searchEmptyStates';
-import { WELCOME_EMPTY_STATES } from '../../src/built-in/welcome/welcomeEmptyStates';
 
 const ROOT = resolve(__dirname, '../..');
 // The core's lines and the ones optional tools keep themselves: one voice.
@@ -16,7 +15,6 @@ const entries: EmptyStateEntry[] = [
   ...Object.values(EMPTY_STATES),
   ...Object.values(PLANNER_EMPTY_STATES),
   ...Object.values(SEARCH_EMPTY_STATES),
-  ...Object.values(WELCOME_EMPTY_STATES),
 ];
 
 describe('empty-state voice rules (M89 S2)', () => {

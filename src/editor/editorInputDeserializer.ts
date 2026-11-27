@@ -142,7 +142,6 @@ export function registerBuiltinEditorDeserializers(ctx: EditorDeserializerContex
   // The old keybindings-editor tab type is retired the same way: the hub's
   // Keyboard Shortcuts panel (which can rebind) is the one surface.
 
-  // Note: 'parallx.welcome.editor' is a ToolEditorInput created by the Welcome tool.
-  // It re-registers its provider during tool activation. We skip it here because
-  // the Welcome page opens itself on first launch via the tool activation lifecycle.
+  // The Welcome page's tab type ('parallx.welcome.editor') is retired the same
+  // way: Home is the page the app opens on, and a restored Welcome tab is dropped.
 }

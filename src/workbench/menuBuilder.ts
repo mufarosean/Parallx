@@ -157,7 +157,6 @@ export class MenuBuilder extends Disposable {
 
     // Register dropdown items for Help menu
     this._register(this._titlebar.registerMenuBarDropdownItems('help', [
-      { commandId: 'welcome.openWelcome', title: 'Welcome', icon: 'home', group: '1_welcome', order: 1 },
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', icon: 'search', group: '2_commands', order: 1 },
       { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', icon: 'keyboard', group: '2_commands', order: 2 },
       // Versions, tools on, the model and recent errors, scrubbed of paths and keys.

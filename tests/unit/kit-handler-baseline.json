@@ -33,7 +33,6 @@
   "src/built-in/planner/plannerToday.ts": 5,
   "src/built-in/terminal/main.ts": 2,
   "src/built-in/tool-gallery/main.ts": 7,
-  "src/built-in/welcome/main.ts": 1,
   "src/built-in/worksheet/actions.ts": 1,
   "src/built-in/worksheet/panes/bankPane.ts": 6,
   "src/built-in/worksheet/panes/dashboardPane.ts": 5,

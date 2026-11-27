@@ -25,6 +25,7 @@ import { SurfaceRouterService } from '../services/surfaceRouterService.js';
 import { NotificationsSurfacePlugin } from './surfaces/notificationSurface.js';
 import { StatusSurfacePlugin } from './surfaces/statusSurface.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
+import { markStartupDone } from '../services/startupDone.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { consolidateOrphanedSessions } from '../services/chatSessionPersistence.js';
@@ -167,7 +168,6 @@ import type { WorkbenchWidgetHost } from '../built-in/dashboard/dashboardTypes.j
 // Built-in Tools (M2 Capability 7)
 import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as SearchTool from '../built-in/search/main.js';
-import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as HomeTool from '../built-in/home/main.js';
 import * as TerminalTool from '../built-in/terminal/main.js';
 import * as OutputTool from '../built-in/output/main.js';
@@ -188,7 +188,7 @@ import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
   SEARCH_MANIFEST,
-  WELCOME_MANIFEST, HOME_MANIFEST,
+  HOME_MANIFEST,
   TERMINAL_MANIFEST,
   OUTPUT_MANIFEST,
   INDEXING_LOG_MANIFEST,
@@ -979,7 +979,7 @@ export class Workbench extends Layout {
     this._services.registerInstance(IWorkspaceStorageService, this._storage);
 
     // Retirement 3.7: ONE owner for per-workspace recency (opened items +
-    // palette command MRU). The palette, dashboard widget, and Welcome all
+    // palette command MRU). The palette, the dashboard widget and Home all
     // read from here instead of keeping private lists.
     this._recentsService = new RecentsService(this._storage);
     this._services.registerInstance(IRecentsService, this._recentsService);
@@ -3682,9 +3682,8 @@ export class Workbench extends Layout {
     // reconstructed. _restoreEditors itself will
     // activate any owning tool that hasn't activated yet so editors backed by
     // lazy-activated tools also survive a relaunch.
-    if (this._restoredState?.editors) {
-      await this._restoreEditors(this._restoredState.editors);
-    }
+    if (this._restoredState?.editors) await this._restoreEditors(this._restoredState.editors);
+    markStartupDone(); // the tabs are back: a tool that opens its own page at startup does it now
 
     // ── Wire tool install/uninstall callbacks for the API (M6 Package Install) ──
     // These callbacks are invoked by api.tools.installFromFile() and api.tools.uninstall()
@@ -3983,7 +3982,7 @@ export class Workbench extends Layout {
     const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
       { manifest: EXPLORER_MANIFEST, module: ExplorerTool },
       { manifest: SEARCH_MANIFEST, module: SearchTool },
-      { manifest: WELCOME_MANIFEST, module: WelcomeTool }, { manifest: HOME_MANIFEST, module: HomeTool },
+      { manifest: HOME_MANIFEST, module: HomeTool },
       // Terminal before Output so the panel tab order reads
       // Terminal · Output · Indexing · AI Diagnostics.
       { manifest: TERMINAL_MANIFEST, module: TerminalTool },
