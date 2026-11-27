@@ -8,7 +8,7 @@
 import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
 import { navigationHistory, type NavigationStep } from '../services/navigationHistory.js';
 import { places, focusPageTitle, parsePlaceAddress } from '../services/places.js';
-import { deserializeEditorInput, canReopenEditorType } from '../editor/editorInputDeserializer.js';
+import { deserializeEditorInput, canReopenEditorType, onDidChangeEditorTypeLive } from '../editor/editorInputDeserializer.js';
 import { afterStartup } from '../services/startupDone.js';
 import { GO_BACK_COMMAND, GO_FORWARD_COMMAND } from '../commands/navigationCommands.js';
 import { yieldKeysToPage } from '../services/keybindingService.js';
@@ -82,7 +82,7 @@ export function wireNavigation(
     if (step.place) { const tool = parsePlaceAddress(step.place)?.tool; return !!tool && places.list().some((t) => t.id === tool); }
     return !!step.reopen && canReopenEditorType(step.reopen.typeId);
   });
-  subs.push(places.onDidChange(prune), editorService.onDidChangeOpenEditors(prune));
+  subs.push(places.onDidChange(prune), editorService.onDidChangeOpenEditors(prune), onDidChangeEditorTypeLive(prune));
 
   // The side buttons do what Alt+Left and Alt+Right do here: Back and Forward,
   // or a tab's own Back (the Browser's) while it holds those keys.

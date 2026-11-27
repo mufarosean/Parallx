@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { NavigationHistory, MAX_STEPS, type NavigationHost, type NavigationStep } from '../../src/services/navigationHistory.js';
 import { normalizeKeybinding } from '../../src/services/keybindingUtils.js';
-import { registerEditorInputDeserializer, canReopenEditorType } from '../../src/editor/editorInputDeserializer.js';
+import { registerEditorInputDeserializer, canReopenEditorType, onDidChangeEditorTypeLive, notifyEditorTypeLiveChanged } from '../../src/editor/editorInputDeserializer.js';
 
 /** A stand-in editor area: open tabs by id, one in front; a place tab carries its address. */
 function makeWorld() {
@@ -124,6 +124,14 @@ describe('a tool turned off', () => {
     running = false;
     expect(canReopenEditorType('test.tool.page')).toBe(false);
     expect(canReopenEditorType('test.none')).toBe(false);
+  });
+
+  it('says so when an editor type stops running, so Back drops its tabs then', () => {
+    let heard = 0;
+    const sub = onDidChangeEditorTypeLive(() => { heard += 1; });
+    notifyEditorTypeLiveChanged();
+    sub.dispose();
+    expect(heard).toBe(1);
   });
 });
 

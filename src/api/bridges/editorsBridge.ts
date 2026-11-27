@@ -11,6 +11,7 @@ import { GroupDirection, type SerializedEditorEntry } from '../../editor/editorT
 import type { IEditorService, IEditorGroupService, OpenEditorDescriptor } from '../../services/serviceTypes.js';
 import {
   registerEditorInputDeserializer,
+  notifyEditorTypeLiveChanged,
   hasEditorInputDeserializer,
 } from '../../editor/editorInputDeserializer.js';
 import { requestFileReveal, hasRevealTarget, type IFileRevealTarget } from '../../editor/fileReveal.js';
@@ -249,6 +250,7 @@ export class EditorsBridge {
       const current = _toolEditorProviders.get(typeId);
       if (current && current.provider === provider) {
         _toolEditorProviders.delete(typeId);
+        notifyEditorTypeLiveChanged(); // its closed tabs can no longer be opened again (Back drops them)
       }
     });
 

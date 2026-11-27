@@ -6,6 +6,7 @@
 // VS Code reference: EditorInputSerializer in src/vs/workbench/common/editor.ts
 
 import type { IEditorInput } from './editorInput.js';
+import { Emitter, type Event } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import { FileEditorInput } from '../editor/panes/fileEditorInput.js';
 import { PdfEditorInput } from '../editor/panes/pdf/pdfEditorInput.js';
@@ -49,6 +50,12 @@ export function registerEditorInputDeserializer(typeId: string, factory: EditorI
   _deserializers.set(typeId, factory);
   if (isLive) _live.set(typeId, isLive); else _live.delete(typeId);
 }
+
+const _onDidChangeLive = new Emitter<void>();
+/** Fires when what makes an editor type stops or starts running (a tool turned off or on). */
+export const onDidChangeEditorTypeLive: Event<void> = _onDidChangeLive.event;
+/** Said by whoever runs an editor type, once it has stopped or started. */
+export function notifyEditorTypeLiveChanged(): void { _onDidChangeLive.fire(); }
 
 /** Whether an editor of this type can be opened again now: a factory, and what it needs running (Back to a closed tab). */
 export function canReopenEditorType(typeId: string): boolean {
