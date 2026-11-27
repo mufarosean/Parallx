@@ -1790,7 +1790,6 @@ html, body {
   padding-inline: var(--px-space-1) 0;
   border-bottom: 1px solid var(--vscode-editorGroupHeader-border, transparent);
 }
-.editor-nav-arrows .px-btn--icon.px-btn--sm { height: 22px; width: 22px; }
 
 /* ── Breadcrumbs Bar (default ribbon content for file editors) ── */
 /* VS Code ref: breadcrumbsWidget.css + breadcrumbscontrol.css */
