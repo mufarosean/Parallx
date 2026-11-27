@@ -1912,6 +1912,72 @@ are the authors' unless marked measured; Claude ran nothing.
 
 ## UI improvements
 
+### Getting around: one way to move in every tool (assessed, not agreed)
+
+**His words (2026-11-28):** "something I want us to assess is ease of
+navigation and consistency across all tools in parallx. I know some
+tools open new editors, some reuse the same window. there is no
+consistency. a lot of them do not have any sort of breadcrumb to
+follow. So I want you to assess and propose some standardization for
+all tools and extension (except maybe a few that don't require it)."
+
+**Page of choices (2026-11-28):**
+https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
+
+- *Measured in the app* (17 tools, a seeded workspace, every column row
+  pressed, the moves inside each page tried, Alt+Left after each):
+  five different ways of moving between a tool's screens; Go Back did
+  nothing in any tool (none exists; only the Browser's own Back for web
+  pages); four tools keep one tab whose name never changes (Planner,
+  Flashcards, Budget, Concept Lab); three open a tab per screen
+  (Worksheets: ten tabs after a short walk; Atelier: a tab for each of
+  its ten column rows; Study); after a move inside the page the keys
+  fell to nothing in eight tools; six have no way back on their inner
+  screens; Canvas's trail opens a parent page in a new tab; Tools and
+  Extensions' tool pages, Concept Lab and Workspace Graph have no title
+  (Workspace Graph's tab has no icon); the Browser's History row pressed
+  twice made two History tabs. Settings, from every door, is the one
+  consistent surface.
+- *Read in the code:* six tools wrote their own router (Study's is
+  marked as copied from Flashcards); the bar under the tabs shows a
+  trail for files only (a tool can fill it only through an undocumented
+  hook Canvas uses); the kit's back link is one level and only
+  Worksheets, Budget and two Creations screens use it; nothing records
+  where he has been.
+- *The proposal rests on one idea:* a **thing** (a page, file, sheet, a
+  quiz being taken, a session, a chat, a web page) gets its own tab; a
+  **place** (a screen of a tool: Problem Bank, Calendar, Stats) shares
+  its tool's one tab, named for the place; both have an address, and
+  that address is the trail, what Back returns to, what links and the
+  chat can go to, and what Home's "you left off on" names.
+- *Four choices, Claude's pick first:* 1A one tab per tool, name follows
+  the place, Open in Its Own Tab or Ctrl+click for two side by side
+  (1B a tab per screen, as Worksheets now); 2A the trail in the bar
+  under the tabs, where files have theirs (2B inside the page over the
+  title, 2C one back link as the kit has now); 3A Back and Forward for
+  the whole app (Alt+Left, Alt+Right, mouse side buttons, arrows at the
+  trail's start; 3B the trail only); 4 a table of places and things
+  per tool, with the calls the rule leaves (a Study unit, a photo's
+  detail, a tool's page in Tools and Extensions, New Quiz: places).
+- *Rules every tab would follow:* nothing opens twice; the tab is named
+  for what is in it, always with an icon; one trail in one spot; Back
+  and Forward everywhere; every screen has the kit's page header; after
+  a move the keys land on the new page's title; one shared mark for
+  where you are in the column; a place can be pulled into its own tab.
+- *Left as they are:* Settings (a dialog, his 5B), Chat and Agents (the
+  right side), the Browser's own Back for web pages, the bottom panels.
+- *What it would take:* one contribution point in the core (a tool
+  declares its places and draws each; the core keeps the tab, its name,
+  the trail, history, the address, the column's mark, the focus), then
+  one tool a session onto it, Worksheets and Atelier first.
+- **1A reverses his 2 October call** that Worksheets keeps a tab per
+  screen; it needs his word.
+- *Not read:* other products' pages (the cloud environment reaches one
+  outside site); the picks lean on conventions from memory. Offered to
+  read them first from the Default environment.
+- Nothing is agreed and nothing is built.
+
+
 How the app looks and moves: new surfaces, polish of existing ones, the
 feel of browsing. His gate for Voice ("improve the surfaces a bit more,
 make the app feel more polished") is met by work in this section.
@@ -4193,6 +4259,10 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 (decided earlier, do not re-raise).
 
 ## Order of work (proposed 2026-11-26; items 4 to 23 agreed the same day)
+
+**Waiting for his word (2026-11-28):** the four choices on getting
+around (under UI improvements, "Getting around"): 1A or 1B, 2A, 2B or
+2C, 3A or 3B, and the places-and-things table.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
