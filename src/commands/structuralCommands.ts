@@ -289,7 +289,7 @@ const openSettings: CommandDescriptor = {
   aiInvocable: true,
   aiDescription: 'Open the workspace settings editor.',
   // Keybinding is owned by the `parallx.settings` manifest binding `settings.open`
-  // to `Ctrl+,`. This legacy id is kept as an alias so menus, the welcome card,
+  // to `Ctrl+,`. This legacy id is kept as an alias so menus
   // and any external command-palette muscle memory all route to the single,
   // schema-driven editor.
   async handler(ctx) {

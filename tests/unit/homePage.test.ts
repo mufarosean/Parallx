@@ -252,7 +252,7 @@ describe('the pages on Home', () => {
       old: { id: 'old', title: 'Old Page', updatedAt: '2026-11-01T10:00:00.000Z', content: body('Old words.'), isArchived: false },
       binned: { id: 'binned', title: 'Binned', updatedAt: '2026-11-26T10:00:00.000Z', content: body('Gone.'), isArchived: true },
       // Written by a tool a minute ago and never opened: a plan's day.
-      day: { id: 'day', title: 'Fri, Nov 27, 2026', updatedAt: '2026-11-27T13:59:00.000Z', content: body(''), isArchived: false },
+      day: { id: 'day', title: 'Fri, Nov 27, 2026', updatedAt: '2026-11-27 13:59:00', content: body(''), isArchived: false },
     };
     const getRecentPages = vi.fn(async () => []);
     const data = { getPage: async (id: string) => pages[id] ?? null, getRecentPages, getPageSummaryTree: async () => [], getRootPages: async () => [], getChildren: async () => [], onDidChangePage: listener };
@@ -273,7 +273,74 @@ describe('the pages on Home', () => {
     // Opened after its last edit: it goes by when it was opened.
     expect(items[1].touchedAt).toBe(opened - 3);
     expect(getRecentPages).not.toHaveBeenCalled();
+    // A pinned page that is no longer among the opened ones is found by id; one in Trash or deleted is not.
+    const found = await source.find!(['day', 'binned', 'deleted']);
+    expect(found.map((i) => i.title)).toEqual(['Fri, Nov 27, 2026']);
+    // Found that way it goes by when it last changed, read as the UTC time the canvas stores.
+    expect(found[0].touchedAt).toBe(Date.parse('2026-11-27T13:59:00.000Z'));
     for (const d of subscriptions) d.dispose();
     expect(getHomeSources().some((s) => s.id === 'canvas.pages')).toBe(false);
+  });
+});
+
+describe('the files on Home', () => {
+  const recentsOf = (opens: { target: string; title: string; ts: number }[]) => ({ whenReady: Promise.resolve(), onDidChangeOpens: () => ({ dispose() {} }), getRecentOpens: () => opens.map((o) => ({ ...o, key: `file:${o.target}`, kind: 'file' as const })) });
+
+  it('show an image as itself, a text file by its words, read again only when the file changed on disk', async () => {
+    const { registerExplorerHomeSource } = await import('../../src/built-in/explorer/homeSource');
+    const files: Record<string, { content: string; encoding: string; mtime: number }> = {
+      'file:///w/Readings/notes.md': { content: '# Clark\n\nThe Cape Cod method', encoding: 'utf-8', mtime: 100 },
+      'file:///w/photos/chart.png': { content: 'aGVsbG8=', encoding: 'base64', mtime: 50 },
+    };
+    const readFile = vi.fn(async (uri: string) => files[uri]);
+    const api = { workspace: { workspaceFolders: [{ uri: 'file:///w', name: 'w' }], fs: { readFile, stat: async (uri: string) => { if (!files[uri]) throw new Error('gone'); return { mtime: files[uri].mtime }; } } } };
+    let opens = [{ target: 'file:///w/Readings/notes.md', title: 'notes.md', ts: 1000 }, { target: 'file:///w/photos/chart.png', title: 'chart.png', ts: 900 }];
+    const reg = registerExplorerHomeSource(api, { ...recentsOf([]), getRecentOpens: () => recentsOf(opens).getRecentOpens() } as never);
+    const { getHomeSources } = await import('../../src/services/homeSources');
+    const source = getHomeSources().find((s) => s.id === 'explorer.files')!;
+    let items = await source.listRecent(10);
+    expect(items[0]).toMatchObject({ title: 'notes.md', where: 'Readings', summary: 'Clark The Cape Cod method', touchedAt: 1000, stat: { value: '5', unit: 'words' } });
+    expect(items[1]).toMatchObject({ title: 'chart.png', where: 'photos', image: 'data:image/png;base64,aGVsbG8=' });
+    expect(readFile).toHaveBeenCalledTimes(2);
+    // Its tab activated again (a new open time), the file unchanged: nothing is read again.
+    opens = opens.map((o) => ({ ...o, ts: o.ts + 5000 }));
+    await source.listRecent(10);
+    expect(readFile).toHaveBeenCalledTimes(2);
+    // Edited and saved, the open time the same: its new words are on Home.
+    files['file:///w/Readings/notes.md'] = { content: 'Mack assumes independence between accident years', encoding: 'utf-8', mtime: 200 };
+    items = await source.listRecent(10);
+    expect(items[0].summary).toBe('Mack assumes independence between accident years');
+    expect(readFile).toHaveBeenCalledTimes(3);
+    // A pinned file found by id goes by when it changed; one that is gone from disk is left out.
+    const found = await source.find!(['file:///w/Readings/notes.md', 'file:///w/gone.md']);
+    expect(found.map((i) => [i.title, i.touchedAt])).toEqual([['notes.md', 200]]);
+    reg.dispose();
+  });
+
+  it('place a file by the folder it is in, not by a folder whose name only starts the same', async () => {
+    const { registerExplorerHomeSource } = await import('../../src/built-in/explorer/homeSource');
+    const api = { workspace: { workspaceFolders: [{ uri: 'file:///C%3A/work', name: 'work' }], fs: { readFile: async () => ({ content: 'x', encoding: 'utf-8' }), stat: async () => ({ mtime: 1 }) } } };
+    const reg = registerExplorerHomeSource(api, recentsOf([{ target: 'file:///C%3A/work2/sub/b.md', title: 'b.md', ts: 2 }, { target: 'file:///C%3A/work/sub/a.md', title: 'a.md', ts: 1 }]) as never);
+    const { getHomeSources } = await import('../../src/services/homeSources');
+    const items = await getHomeSources().find((s) => s.id === 'explorer.files')!.listRecent(10);
+    expect(items.map((i) => [i.title, i.where])).toEqual([['b.md', undefined], ['a.md', 'sub']]);
+    reg.dispose();
+  });
+});
+
+describe('what Home reads from its sources', () => {
+  it('says how many could not be read, and finds pinned things by id from the sources that can', async () => {
+    const { registerHomeSource, readHomeEntries, findHomeEntries } = await import('../../src/services/homeSources');
+    const thing = (id: string) => ({ id, title: id, kind: 'Entry', touchedAt: 1, open: () => {} });
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const a = registerHomeSource({ id: 't:a', label: 'A', listRecent: async () => [thing('one')], find: async (ids) => ids.filter((id) => id !== 'gone').map(thing) });
+    const b = registerHomeSource({ id: 't:b', label: 'B', listRecent: async () => { throw new Error('no database'); } });
+    const read = await readHomeEntries('');
+    expect(read.entries.map((e) => e.item.id)).toEqual(['one']);
+    expect(read.failed).toBe(1);
+    const found = await findHomeEntries([{ sourceId: 't:a', itemId: 'old' }, { sourceId: 't:a', itemId: 'gone' }, { sourceId: 't:b', itemId: 'x' }]);
+    expect(found.map((e) => `${e.source.id}/${e.item.id}`)).toEqual(['t:a/old']);
+    quiet.mockRestore();
+    a.dispose(); b.dispose();
   });
 });

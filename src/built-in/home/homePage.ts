@@ -8,7 +8,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
-import { collectHomeCards, collectHomeEntries, getHomeCardProviders, getHomeSources, onDidChangeHomeCards, onDidChangeHomeSources, type HomeEntry } from '../../services/homeSources.js';
+import { collectHomeCards, findHomeEntries, readHomeEntries, getHomeCardProviders, getHomeSources, onDidChangeHomeCards, onDidChangeHomeSources, type HomeEntry } from '../../services/homeSources.js';
 import { addDisposableListener } from '../../ui/dom.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { createBlock, createButton, createEmptyState, createFilterChip, createIconButton, createInput, createPageHeader, createSectionLabel, createSegmented } from '../../ui/kit.js';
@@ -25,6 +25,8 @@ export interface HomePageDeps {
 
 /** What the commands of the page reach (they run on the Home that is open). */
 export interface HomePage extends IDisposable {
+  /** The page's own element: the commands go to the Home the keys or the pointer are in. */
+  readonly element: HTMLElement;
   openItem(sourceId: string, itemId: string): void;
   pinItem(sourceId: string, itemId: string): void;
   ask(): void;
@@ -67,6 +69,12 @@ export function inRange(touchedAt: number, range: Range, now: number): boolean {
   return now - touchedAt <= RANGE_DAYS[range] * DAY;
 }
 
+/** A section's label is its heading: the page has a level under its title for someone who moves by headings. */
+function asHeading(label: HTMLElement): void {
+  label.setAttribute('role', 'heading');
+  label.setAttribute('aria-level', '2');
+}
+
 export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage {
   const { context, settings } = deps;
   const page = createBlock(container, 'div', { className: 'home' });
@@ -83,12 +91,14 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
 
   // ── Today, from your tools ──
   const today = createBlock(column, 'section', { className: 'home-today' });
-  createSectionLabel(today, 'Today, from your tools').id = LABEL_ID;
+  const todayLabel = createSectionLabel(today, 'Today, from your tools');
+  todayLabel.id = LABEL_ID;
+  asHeading(todayLabel);
   const cardList = createBlock(today, 'ul', { className: 'home-cards', attrs: { 'aria-labelledby': LABEL_ID } });
 
   // ── The first steps of a new workspace ──
   const start = createBlock(column, 'section', { className: 'home-today' });
-  createSectionLabel(start, 'Start');
+  asHeading(createSectionLabel(start, 'Start'));
   const stepList = createBlock(start, 'ul', { className: 'home-cards', attrs: { 'aria-label': 'Start' } });
 
   // ── The feed, under its filter words ──
@@ -102,6 +112,8 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
   const setMode = (to: Mode): void => { mode = to; pickedChip.pressed = to === 'picked'; pinnedChip.pressed = to === 'pinned'; drawFeed(); };
   const pickedChip = createFilterChip(modes, { id: 'home.show.pickedUp', label: 'picked up', pressed: true, title: 'Everything you last worked on, newest first', onToggle: () => setMode('picked') });
   const pinnedChip = createFilterChip(modes, { id: 'home.show.pinned', label: 'pinned', title: 'Only the things you pinned', onToggle: () => setMode('pinned') });
+  // How many things the words chosen leave: said aloud when it changes, for someone who cannot see the list change.
+  const count = createBlock(filters, 'span', { className: 'home-filters__count', attrs: { role: 'status' } });
   const rangeSwitch = createSegmented(filters, {
     id: 'home.range', ariaLabel: 'From', value: range,
     items: [{ value: 'week', label: 'this week' }, { value: 'month', label: 'this month' }, { value: 'all', label: 'all' }],
@@ -110,11 +122,15 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
   const feed = createBlock(work, 'ul', { className: 'home-feed', attrs: { 'aria-label': 'Your work' } });
 
   let all: HomeEntry[] = [];
+  /** Pinned things that are no longer among the recent ones, found by id. */
+  let kept: HomeEntry[] = [];
+  let failed = 0;
   let loaded = false;
   let run = 0;
   let pins = new Set(context.workspaceState.get<string[]>(PINS_KEY) ?? []);
   let nameField: ReturnType<typeof createInput> | undefined;
-  const isNew = (): boolean => loaded && all.length === 0;
+  // Nothing opened here yet. Not said when a source could not be read: Home does not know then.
+  const isNew = (): boolean => loaded && all.length === 0 && kept.length === 0 && failed === 0;
 
   const drawHead = (): void => {
     head.replaceChildren();
@@ -126,7 +142,7 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     const name = homeName(settings);
     const fresh = isNew();
     const says = fresh ? 'Welcome to ' : name ? `${greetingFor(now)}, ` : greetingFor(now);
-    const sub = fresh ? 'This workspace is empty. Start with any of these; the page fills in as you work.'
+    const sub = fresh ? 'Nothing has been opened here yet. Start with any of these; the page fills in as you work.'
       : all.length ? `${dateLine(now)}. You left off on ${all[0].item.title || 'Untitled'}.` : `${dateLine(now)}.`;
     const header = createPageHeader(head, { title: says, subtitle: sub, front: true });
     const italic = fresh ? 'Parallx' : name;
@@ -151,12 +167,14 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     cardList.replaceChildren();
     cards.forEach((card, i) => drawCard(cardList, card, i === 0));
     today.hidden = cards.length === 0;
-    if (at >= 0) (cardList.children[Math.min(at, cards.length - 1)]?.querySelector('button') as HTMLElement | null)?.focus();
+    if (at >= 0) ((cardList.children[Math.min(at, cards.length - 1)]?.querySelector('button') as HTMLElement | null) ?? askInput).focus();
   };
 
+  const pinned = (): HomeEntry[] => [...all, ...kept].filter((e) => pins.has(entryKey(e))).sort((a, b) => b.item.touchedAt - a.item.touchedAt);
   const shown = (): HomeEntry[] => {
     const now = Date.now();
-    return all.filter((e) => inRange(e.item.touchedAt, range, now) && (mode === 'picked' || pins.has(entryKey(e))));
+    if (mode === 'picked') return all.filter((e) => inRange(e.item.touchedAt, range, now));
+    return pinned().filter((e) => inRange(e.item.touchedAt, range, now));
   };
 
   const drawFeed = (): void => {
@@ -167,17 +185,22 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     const at = document.activeElement instanceof HTMLElement && feed.contains(document.activeElement) ? document.activeElement : null;
     const atKey = at?.closest('[data-key]')?.getAttribute('data-key');
     const atPin = !!at?.classList.contains('home-entry__pin');
+    const atIndex = at ? Array.from(feed.children).indexOf(at.closest('li') as Element) : -1;
     feed.replaceChildren();
     const list = shown();
     for (const entry of list) drawEntry(feed, entry, pins.has(entryKey(entry)));
     if (!list.length && !fresh) {
-      createEmptyState(createBlock(feed, 'li', { className: 'home-feed__none' }), mode === 'pinned'
+      createEmptyState(createBlock(feed, 'li', { className: 'home-feed__none' }), mode === 'pinned' && !pinned().length
         ? { headline: 'Nothing pinned', hint: 'Pin a thing from its entry to keep it here.' }
         : { headline: 'Nothing in this range', hint: 'Choose a longer range to see older work.' });
     }
-    if (atKey) {
-      const li = Array.from(feed.children).find((c) => c.getAttribute('data-key') === atKey);
-      (li?.querySelector(atPin ? '.home-entry__pin' : '.home-entry__title') as HTMLElement | null)?.focus();
+    count.textContent = `${list.length} ${list.length === 1 ? 'thing' : 'things'}`;
+    if (at) {
+      // The same thing when it is still there; else the one that took its place; else the word that chose the list.
+      const control = atPin ? '.home-entry__pin' : '.home-entry__title';
+      const same = Array.from(feed.children).find((c) => c.getAttribute('data-key') === atKey);
+      const next = feed.children[Math.min(atIndex, list.length - 1)];
+      (((same ?? next)?.querySelector(control) as HTMLElement | null) ?? (mode === 'pinned' ? pinnedChip : pickedChip).element).focus();
     }
   };
 
@@ -188,21 +211,33 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
   const load = async (again = false): Promise<void> => {
     if (closing) return;
     const mine = ++run;
-    const [entries, commands] = await Promise.all([collectHomeEntries(''), deps.commands().catch((): readonly string[] => [])]);
+    const [read, commands] = await Promise.all([readHomeEntries(''), deps.commands().catch((): readonly string[] => [])]);
     if (mine !== run) return; // a newer read is on its way
+    // A pinned thing stays on Home after it stopped being recent: its source is asked for it by id.
+    const have = new Set(read.entries.map(entryKey));
+    const missing = [...pins].filter((key) => !have.has(key)).map((key) => { const cut = key.indexOf('\n'); return { sourceId: key.slice(0, cut), itemId: key.slice(cut + 1) }; });
+    const found = missing.length ? await findHomeEntries(missing) : [];
+    if (mine !== run) return;
+    const entries = read.entries;
     stepList.replaceChildren();
     for (const step of STEPS) if (commands.includes(step.command)) drawStep(stepList, step);
     const wasNew = isNew();
     const first = !loaded;
     const leftOff = all[0] ? entryKey(all[0]) : '';
     all = entries;
+    kept = found.filter((e) => !have.has(entryKey(e)));
+    failed = read.failed;
     loaded = true;
-    if (first || again || wasNew !== isNew() || leftOff !== (all[0] ? entryKey(all[0]) : '')) drawHead();
+    // Not while the name is being typed: the head is drawn again and would take the field with it.
+    const typing = !first && nameHost.contains(document.activeElement);
+    if (!typing && (first || again || wasNew !== isNew() || leftOff !== (all[0] ? entryKey(all[0]) : ''))) drawHead();
     drawFeed();
   };
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const soon = (): void => { if (timer) clearTimeout(timer); timer = setTimeout(() => void load(), CHANGE_PAUSE_MS); };
+  // Behind another tab Home reads nothing: it reads once when it is come back to (the watcher below).
+  const inView = (): boolean => page.isConnected && page.offsetParent !== null;
+  const soon = (): void => { if (timer) clearTimeout(timer); timer = setTimeout(() => { if (inView()) void load(); }, CHANGE_PAUSE_MS); };
   const listeners: IDisposable[] = [];
   // Sources come and go with their tools, and say when their things changed.
   const followSources = (): void => {
@@ -211,7 +246,7 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
   };
   // A tool going on or off changes several things in one breath (and every tool goes at once when the window closes): read once, after it.
   let cardTimer: ReturnType<typeof setTimeout> | undefined;
-  const cardsSoon = (): void => { if (cardTimer) clearTimeout(cardTimer); cardTimer = setTimeout(() => void loadCards(), CARD_PAUSE_MS); };
+  const cardsSoon = (): void => { if (cardTimer) clearTimeout(cardTimer); cardTimer = setTimeout(() => { if (inView()) void loadCards(); }, CARD_PAUSE_MS); };
   const cardListeners: IDisposable[] = [];
   const followCards = (): void => {
     for (const d of cardListeners.splice(0)) d.dispose();
@@ -230,8 +265,9 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
   ];
 
   const api: HomePage = {
+    element: page,
     openItem(sourceId, itemId) {
-      all.find((e) => e.source.id === sourceId && e.item.id === itemId)?.item.open();
+      [...all, ...kept].find((e) => e.source.id === sourceId && e.item.id === itemId)?.item.open();
     },
     pinItem(sourceId, itemId) {
       const key = `${sourceId}\n${itemId}`;
@@ -248,13 +284,13 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
       void deps.runCommand('chat.submitPrompt', { text }).catch(() => deps.runCommand('chat.stagePrompt', { text }).catch(() => { ask.value = text; }));
     },
     refresh() {
-      // Not while the name is being typed: the head is drawn again and would take the field with it.
-      void load(!nameHost.contains(document.activeElement));
+      void load(true);
       void loadCards();
     },
     keepName() {
       const name = nameField?.value.trim();
-      if (name) void settings.setValue(HOME_NAME, name);
+      // The question leaves with its field: the keys go on to the field to ask in.
+      if (name) void settings.setValue(HOME_NAME, name).then(() => askInput.focus());
     },
     skipName() {
       void context.globalState.update(NAME_SKIPPED_KEY, true);

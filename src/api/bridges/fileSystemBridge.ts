@@ -35,6 +35,14 @@ export class FileSystemBridge {
     return content.content;
   }
 
+  /** The file with how its content is encoded: text as it is, anything else (an image, a PDF) as base64. */
+  async read(uri: URI): Promise<{ content: string; encoding: string }> {
+    this._throwIfDisposed();
+    this._validateScope(uri);
+    const file = await this._fileService.readFile(uri);
+    return { content: file.content, encoding: file.encoding ?? 'utf-8' };
+  }
+
   async writeFile(uri: URI, content: string): Promise<void> {
     this._throwIfDisposed();
     this._validateScope(uri);

@@ -31,7 +31,7 @@ import { registerExplorerHomeSource } from './homeSource.js';
 // ─── Recency tracking (tap + read commands) ──────────────────────────────────
 //
 // Retirement 3.7: the LIST lives in core RecentsService (one owner for all
-// per-workspace recency — palette, Welcome, and this widget read the same
+// per-workspace recency — palette, Home, and this widget read the same
 // list). This module keeps only what is explorer-shaped: the editor-service
 // tap that knows the canvas editor-id convention, and the two frozen read
 // commands.
@@ -81,7 +81,7 @@ export function setupRecentItemsTracking(api: TrackerApi, context: ToolContext):
       return;
     }
     // Canvas editor ids look like `parallx.canvas:canvas:<pageId>` /
-    // `…:database:<pageId>`. Anything else (dashboard, welcome) is skipped.
+    // `…:database:<pageId>`. Anything else (dashboard, Home) is skipped.
     const parts = (input.id || '').split(':');
     if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
       const pageId = parts.slice(2).join(':');

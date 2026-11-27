@@ -46,6 +46,8 @@ export interface HomeSource {
   listRecent(limit: number): Promise<readonly HomeItem[]>;
   /** Items matching the query, beyond the recent ones. Without it, Home searches what is recent. */
   search?(query: string, limit: number): Promise<readonly HomeItem[]>;
+  /** These items by id, recent or not (ones that are gone left out). With it, a pinned thing stays on Home after it stopped being recent. */
+  find?(ids: readonly string[]): Promise<readonly HomeItem[]>;
   /** Fires when what is recent changed. */
   readonly onDidChange?: Event<void>;
 }
@@ -131,6 +133,12 @@ export interface HomeEntry {
  * fails is left out, never the page.
  */
 export async function collectHomeEntries(query: string, perSource = 24): Promise<HomeEntry[]> {
+  return (await readHomeEntries(query, perSource)).entries;
+}
+
+/** The same stream, with how many sources could not be read: a page that got nothing from a failed source does not know the workspace is empty. */
+export async function readHomeEntries(query: string, perSource = 24): Promise<{ entries: HomeEntry[]; failed: number }> {
+  let failed = 0;
   const q = query.trim().toLowerCase();
   const lists = await Promise.all(getHomeSources().map(async (source) => {
     try {
@@ -142,8 +150,19 @@ export async function collectHomeEntries(query: string, perSource = 24): Promise
       return found.filter((item) => !seen.has(item.id) && !!seen.add(item.id)).map((item) => ({ source, item }));
     } catch (err) {
       console.error(`[Home] source "${source.id}" failed:`, err);
+      failed++;
       return [];
     }
   }));
-  return lists.flat().sort((a, b) => b.item.touchedAt - a.item.touchedAt);
+  return { entries: lists.flat().sort((a, b) => b.item.touchedAt - a.item.touchedAt), failed };
+}
+
+/** The things under these keys (source id, item id) that `have` does not hold, asked of the sources that can find by id. */
+export async function findHomeEntries(wanted: readonly { readonly sourceId: string; readonly itemId: string }[]): Promise<HomeEntry[]> {
+  const found = await Promise.all(getHomeSources().map(async (source) => {
+    const ids = wanted.filter((w) => w.sourceId === source.id).map((w) => w.itemId);
+    if (!ids.length || !source.find) return [];
+    try { return (await source.find(ids)).map((item) => ({ source, item })); } catch (err) { console.error(`[Home] source "${source.id}" could not find its pinned things:`, err); return []; }
+  }));
+  return found.flat();
 }

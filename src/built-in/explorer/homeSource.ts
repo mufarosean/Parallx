@@ -13,7 +13,7 @@ interface HomeSourceApi {
   editors?: { openFileEditor?(uri: string, options?: { pinned?: boolean }): Promise<void> };
   workspace?: {
     readonly workspaceFolders?: readonly { uri: string; name: string }[];
-    readonly fs?: { readFile(uri: string): Promise<{ content: string; encoding: string }> };
+    readonly fs?: { readFile(uri: string): Promise<{ content: string; encoding: string }>; stat?(uri: string): Promise<{ mtime: number }> };
   };
 }
 
@@ -35,10 +35,9 @@ const IMAGE_MAX = 3_000_000;
 interface FileLook { summary?: string; preview?: string; words?: number; image?: string }
 
 export function registerExplorerHomeSource(api: HomeSourceApi, recents: IRecentsServiceShape): IDisposable {
-  const looks = new Map<string, FileLook>();
-  /** What a file shows of itself: a text file its opening words, an image itself. Read once per time it was opened. */
-  const lookAt = async (uri: string, ext: string): Promise<FileLook> => {
-    if (!TEXT_TYPES.has(ext) && !IMAGE_TYPES[ext]) return {};
+  /** What each file shows of itself, kept while the file on disk has not changed (one reading a file, so an image is held once). */
+  const looks = new Map<string, { mtime: number; look: FileLook }>();
+  const read = async (uri: string, ext: string): Promise<FileLook> => {
     try {
       const file = await api.workspace?.fs?.readFile(uri);
       if (!file) return {};
@@ -47,30 +46,44 @@ export function registerExplorerHomeSource(api: HomeSourceApi, recents: IRecents
       return { summary: fileOpeningWords(file.content), preview: file.content.slice(0, 900).replace(/^---[\s\S]*?---\s*/, '').replace(/[#>*_`|]+ ?/g, ''), words };
     } catch { return {}; }
   };
-  const toHome = async (uri: string, title: string, ts: number): Promise<HomeItem> => {
+  /** A text file's opening words, an image itself; nothing is read for other kinds. `at` is when the file last changed, 0 when it cannot be told. */
+  const lookAt = async (uri: string, ext: string): Promise<{ look: FileLook; at: number; gone: boolean }> => {
+    let mtime = 0;
+    let gone = false;
+    try { mtime = (await api.workspace?.fs?.stat?.(uri))?.mtime ?? 0; } catch { gone = true; }
+    if (gone || (!TEXT_TYPES.has(ext) && !IMAGE_TYPES[ext])) return { look: {}, at: mtime, gone };
+    const kept = looks.get(uri);
+    if (kept && mtime && kept.mtime === mtime) return { look: kept.look, at: mtime, gone };
+    const look = await read(uri, ext);
+    looks.set(uri, { mtime, look });
+    return { look, at: mtime, gone };
+  };
+  const toHome = async (uri: string, title: string, openedAt: number): Promise<HomeItem | null> => {
     const path = decoded(uri).replace(/\\/g, '/');
     const name = title || path.slice(path.lastIndexOf('/') + 1);
     const ext = (name.match(/\.([a-zA-Z0-9]+)$/)?.[1] ?? '').toLowerCase();
-    const folder = api.workspace?.workspaceFolders?.find((f) => path.startsWith(decoded(f.uri).replace(/\\/g, '/')));
-    const inside = folder ? path.slice(decoded(folder.uri).length).replace(/^\/+/, '') : '';
+    const inFolder = (f: { uri: string }): string => decoded(f.uri).replace(/\\/g, '/').replace(/\/+$/, '');
+    const folder = api.workspace?.workspaceFolders?.find((f) => path === inFolder(f) || path.startsWith(`${inFolder(f)}/`));
+    const inside = folder ? path.slice(inFolder(folder).length).replace(/^\/+/, '') : '';
     const where = inside.includes('/') ? inside.slice(0, inside.lastIndexOf('/')).split('/').join(' / ') : folder?.name;
-    const stamp = `${uri}@${ts}`;
-    if (!looks.has(stamp)) looks.set(stamp, await lookAt(uri, ext));
-    const look = looks.get(stamp)!;
+    const { look, at, gone } = await lookAt(uri, ext);
+    if (gone && !openedAt) return null; // asked for by id (a pin) and no longer on disk
     return {
       id: uri, title: name, kind: ext ? `${ext.toUpperCase()} file` : 'File', icon: FILE_TYPE_MAP[ext] ?? 'file',
-      where, summary: look.summary, preview: look.preview, image: look.image, touchedAt: ts,
+      where, summary: look.summary, preview: look.preview, image: look.image, touchedAt: openedAt || at,
       stat: look.words ? { value: String(look.words), unit: look.words === 1 ? 'word' : 'words' } : undefined,
       open: () => { void api.editors?.openFileEditor?.(uri, { pinned: true }); },
     };
   };
+  const present = (items: (HomeItem | null)[]): HomeItem[] => items.filter((item): item is HomeItem => !!item);
   return registerHomeSource({
     id: 'explorer.files',
     label: 'Files',
     listRecent: async (limit) => {
       await recents.whenReady;
-      return Promise.all(recents.getRecentOpens().filter((o) => o.kind === 'file').slice(0, limit).map((o) => toHome(o.target, o.title, o.ts)));
+      return present(await Promise.all(recents.getRecentOpens().filter((o) => o.kind === 'file').slice(0, limit).map((o) => toHome(o.target, o.title, o.ts))));
     },
+    find: async (ids) => present(await Promise.all(ids.map((uri) => toHome(uri, '', 0)))),
     onDidChange: (listener) => recents.onDidChangeOpens(() => listener()),
   });
 }

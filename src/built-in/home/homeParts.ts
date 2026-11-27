@@ -36,7 +36,7 @@ function drawPicture(host: HTMLElement, item: HomeItem): void {
     createBlock(host, 'img', { className: 'home-thumb home-thumb--image', attrs: { src: item.image, alt: '' } });
     return;
   }
-  const thumb = createBlock(host, 'div', { className: 'home-thumb', attrs: { role: 'img', 'aria-hidden': 'true' } });
+  const thumb = createBlock(host, 'div', { className: 'home-thumb', attrs: { role: 'img', 'aria-hidden': 'true' } }); // a picture, said to nobody: the words beside it say it all
   const sheet = createBlock(thumb, 'div', { className: 'home-thumb__sheet' });
   const text = (item.preview ?? item.summary ?? '').trim();
   createBlock(sheet, 'div', { className: 'home-thumb__title', text: item.title });
@@ -72,8 +72,9 @@ export function drawEntry(list: HTMLElement, entry: HomeEntry, pinned: boolean):
     id: null, icon: pinned ? 'pin-off' : 'pin', title: `${pinned ? 'Unpin' : 'Pin'} ${title}`, size: 'sm',
     command: 'home.pinItem', args: [source.id, item.id],
   });
+  // Its name says what a press does (Pin, Unpin); the look of a pinned one is a class, not a second state to be read out.
   pin.classList.add('home-entry__pin');
-  pin.setAttribute('aria-pressed', String(pinned));
+  pin.classList.toggle('home-entry__pin--on', pinned);
 }
 
 export interface HomeStep {

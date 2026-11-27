@@ -13,6 +13,7 @@ import { registerHomeSource, type HomeItem } from '../../services/homeSources.js
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IRecentsServiceShape } from '../../services/recentsService.js';
 import { decodeCanvasContent } from './contentSchema.js';
+import { parseStoredTime } from '../../platform/storedTime.js';
 
 interface ServiceHost {
   readonly services: { registerInstance<T>(id: unknown, instance: T): void };
@@ -59,15 +60,16 @@ export function registerCanvasPageSources(
   // was opened comes from the core's record of it, not from when a page last
   // changed: tools write pages too (a plan's days, a table's rows), and those
   // are not what he was working on. A query finds any page by title.
-  const texts = new Map<string, PageText>();
+  /** One reading per page, kept while the page has not changed since. */
+  const texts = new Map<string, { stamp: string; text: PageText }>();
   type Listed = Pick<IPageSummaryTreeNode, 'id' | 'title' | 'updatedAt'> & { readonly content?: string };
   const toHome = async (page: Listed, where?: string, openedAt = 0): Promise<HomeItem> => {
-    const stamp = `${page.id}@${page.updatedAt}`;
-    if (!texts.has(stamp)) texts.set(stamp, pageText(page.content ?? (await dataService.getPage(page.id))?.content));
-    const text = texts.get(stamp)!;
+    if (texts.get(page.id)?.stamp !== page.updatedAt) texts.set(page.id, { stamp: page.updatedAt, text: pageText(page.content ?? (await dataService.getPage(page.id))?.content) });
+    const text = texts.get(page.id)!.text;
     return {
       id: page.id, title: page.title || 'Untitled', kind: 'Page', icon: 'px-canvas', where,
-      summary: text.opening, preview: text.preview, touchedAt: Math.max(openedAt, Date.parse(page.updatedAt) || 0),
+      // Opened by him: that time. Found another way: when it last changed (stored in UTC with no zone mark).
+      summary: text.opening, preview: text.preview, touchedAt: openedAt || parseStoredTime(page.updatedAt) || 0,
       stat: text.words ? { value: String(text.words), unit: text.words === 1 ? 'word' : 'words' } : undefined,
       open: () => { void openPage(page.id); },
     };
@@ -86,6 +88,10 @@ export function registerCanvasPageSources(
     id: 'canvas.pages',
     label: 'Canvas',
     listRecent: listOpened,
+    find: async (ids) => {
+      const pages = await Promise.all(ids.map((id) => dataService.getPage(id)));
+      return Promise.all(pages.filter((p): p is NonNullable<typeof p> => !!p && !p.isArchived).map((p) => toHome(p)));
+    },
     search: async (query, limit) => {
       const q = query.toLowerCase();
       const found: Promise<HomeItem>[] = [];

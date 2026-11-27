@@ -1806,6 +1806,8 @@ export namespace home {
     listRecent(limit: number): Promise<readonly HomeItem[]>;
     /** Items matching the query, beyond the recent ones. */
     search?(query: string, limit: number): Promise<readonly HomeItem[]>;
+    /** These items by id, recent or not (ones that are gone left out). With it, a thing the person pinned stays on Home after it stopped being recent. */
+    find?(ids: readonly string[]): Promise<readonly HomeItem[]>;
     /** Fires when what is recent changed. */
     readonly onDidChange?: Event<void>;
   }

@@ -31,8 +31,9 @@ export function registerWorksheetHomeCard(api: HomeApi): IDisposable | undefined
     id: 'quiz',
     read: async () => {
       // The quiz in memory is ahead of the stored one by the step just taken.
+      // A finished quiz in memory (just completed, or opened to review) says nothing about the ones still open: those are in storage.
       const live = state.practice;
-      if (live) return live.finishedAt ? null : quizHomeCard({ id: live.id, name: live.name, problems: live.ids.length, position: live.index });
+      if (live && !live.finishedAt) return quizHomeCard({ id: live.id, name: live.name, problems: live.ids.length, position: live.index });
       const row = await getOpenQuizSession();
       return row ? quizHomeCard({ id: row.id, name: row.name, problems: row.itemIds.length, position: row.position }) : null;
     },

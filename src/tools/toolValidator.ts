@@ -14,9 +14,8 @@ export type { ValidationError, ValidationResult } from './toolTypes.js';
 
 /**
  * The current Parallx shell version: engine compatibility checks, and the
- * version Welcome and api.env show. It is package.json's version
- * (appVersion.test.ts keeps the two equal; Welcome said 0.2.0 while the app
- * was 0.1.0).
+ * version api.env shows. It is package.json's version
+ * (appVersion.test.ts keeps the two equal).
  */
 export const PARALLX_VERSION = '0.1.0';
 

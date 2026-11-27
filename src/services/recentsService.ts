@@ -3,11 +3,11 @@
 // Before this service, "what did I use recently" was tracked by four
 // independent systems: quickAccess kept a recent-commands MRU and a
 // recent-files list (each with its own storage key + parser), the explorer
-// kept a files+pages list in its tool workspaceState, and Welcome
+// kept a files+pages list in its tool workspaceState, and the old Welcome page
 // re-implemented raw reads of two of those keys — the duplicate-key drift
-// that made Welcome's recents permanently empty. Now: the lists live HERE,
+// that made that page's recents permanently empty. Now: the lists live HERE,
 // hydrated once from workspace storage, read synchronously from memory, and
-// every consumer (palette, dashboard widget, Welcome) asks this service.
+// every consumer (palette, dashboard widget, Home) asks this service.
 //
 // Recent WORKSPACES are global-scoped and stay with RecentWorkspaces /
 // IWorkspaceService.getRecentWorkspaces() — this service is per-workspace.
@@ -43,7 +43,7 @@ export interface IRecentsServiceShape {
   retitle(key: string, title: string): void;
   /** Drop an item that is gone (a page moved to Trash or deleted). */
   forget(key: string): void;
-  /** Just the file URIs, most recent first (palette ordering, Welcome). */
+  /** Just the file URIs, most recent first (palette ordering). */
   getRecentFileUris(): string[];
   /** Record a command execution in the palette MRU. */
   recordCommand(commandId: string): void;

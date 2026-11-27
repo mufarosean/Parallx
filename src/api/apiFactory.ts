@@ -778,8 +778,8 @@ export function createToolApi(
         }
         return {
           readFile: async (uriStr: string) => {
-            const content = await fileSystemBridge.readFile(URI.parse(uriStr));
-            return { content, encoding: 'utf-8' };
+            const file = await fileSystemBridge.read(URI.parse(uriStr));
+            return { content: file.content, encoding: file.encoding };
           },
           writeFile: async (uriStr: string, content: string) => {
             await fileSystemBridge.writeFile(URI.parse(uriStr), content);
