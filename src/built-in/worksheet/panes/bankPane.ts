@@ -48,6 +48,8 @@ function bankParams(paper: string | undefined): Record<string, string> {
   if (paper) out.paper = paper;
   return out;
 }
+/** The bank's filters as they are now, for a way in that names none (the column's row, Home's card): the bank as it was left. */
+export function currentBankParams(): Record<string, string> { return bankParams(undefined); }
 /** The filters an address gives the bank: exactly those, nothing kept from before. */
 function applyBankParams(params: Readonly<Record<string, string>>): void {
   _bankFilters.clear();

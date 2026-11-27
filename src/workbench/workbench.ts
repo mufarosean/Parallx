@@ -42,6 +42,7 @@ import { Part } from '../parts/part.js';
 import { PartId } from '../parts/partTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { GroupDirection, EditorActivation } from '../editor/editorTypes.js';
+import { admitRestoredEditor } from './restoreMerge.js';
 import { StatusBarPart } from '../parts/statusBarPart.js';
 
 // Layout
@@ -1889,6 +1890,7 @@ export class Workbench extends Layout {
       : undefined;
 
     const groupOpens: Promise<void>[] = [];
+    const mergedRestores = new Set<string>(); // saved tabs a tool now brings back as one (restoreMerge.ts)
 
     for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
       const groupSnap = nonEmptyGroups[gi];
@@ -1919,10 +1921,7 @@ export class Workbench extends Layout {
           const input = deserializeEditorInput(editorSnap.typeId, editorSnap.data);
           if (!input) continue;
 
-          group.model.openEditor(input, {
-            pinned: editorSnap.pinned,
-            activation: EditorActivation.Restore,
-          });
+          if (!admitRestoredEditor(group.model, input, { typeId: editorSnap.typeId, pinned: editorSnap.pinned, wasShowing: ei === groupSnap.activeEditorIndex }, mergedRestores)) continue;
 
           if (ei === groupSnap.activeEditorIndex) {
             activeRestore = { input, pinned: editorSnap.pinned, state: editorSnap.state };

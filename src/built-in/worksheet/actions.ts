@@ -12,6 +12,7 @@ import { IActivityJournalService } from '../../services/activityJournalService.j
 import { practiceListeners, quizPresetListeners, reviewListeners, beginPractice, sheetsToFocus, state } from './state.js';
 import { WS_ICON_SVG } from './widgets.js';
 import { WS_PLACES_ID, isWorksheetPlace } from './worksheetConstants.js';
+import { currentBankParams } from './panes/bankPane.js';
 
 /** A past quiz reopened: the same player over the same problems, with the
  *  work and ratings as they are now. Finished ones review; an open one resumes. */
@@ -135,11 +136,14 @@ export async function newSheet(name?: unknown, folder?: unknown): Promise<string
 /**
  * Open a Worksheets screen or thing. A screen (Problem Bank, Quizzes) is a
  * place: it goes in Worksheets' one tab, named for it (worksheetPlaces.ts),
- * with `params` in its address. A thing (a quiz being taken, a problem's
+ * with `params` in its address (the Problem Bank keeps the filters it was left
+ * with unless they are named). A thing (a quiz being taken, a problem's
  * sheet, the Scratch Sheet) gets a tab of its own, named `title`.
  */
 export async function openWorksheet(instanceId: string, title: string, params?: Readonly<Record<string, string>>): Promise<void> {
   if (isWorksheetPlace(instanceId) && state.api?.places) {
+    // The bank opens as it was left (its filters, search, recipes), with what was asked for on top (a paper).
+    if (instanceId === 'bank') params = { ...currentBankParams(), ...(params ?? {}) };
     await state.api.places.open({ tool: WS_PLACES_ID, place: instanceId, ...(params ? { params } : {}) });
     return;
   }

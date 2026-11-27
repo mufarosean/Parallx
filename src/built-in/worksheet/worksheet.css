@@ -436,6 +436,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-nav__item { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; padding: 5px var(--px-space-2); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; }
 .ws-nav__item:hover, .ws-nav__item:focus-visible { background: var(--px-surface-hover); outline: none; }
 .ws-nav__item svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--px-text-muted); }
+.ws-nav__item.px-current[aria-current] { background: var(--px-surface-selected); }
 .ws-nav__item.px-current svg { color: var(--px-accent-text); }
 .ws-side__section { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); margin-top: var(--px-space-3); padding: 0 var(--px-space-2); }
 .ws-side__sectiontitle { padding: 2px 0; font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-muted); }

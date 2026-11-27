@@ -41,7 +41,6 @@ export interface DashboardActions {
   readonly studyFlashcards?: () => void;
   /** Worksheets Settings: where a campaign is set up and ended. */
   openSettings(): void;
-  /** Worksheets Home, the page every Worksheets tab belongs to. */
 }
 
 export function el(tag: string, className?: string, text?: string): HTMLElement {
