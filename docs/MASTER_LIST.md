@@ -2784,8 +2784,18 @@ header as a whole.
 
 ### Home: a redesign, not yet designed
 
-**Mock-ups drawn 2026-11-27, his picks owed:**
+**Mock-ups drawn 2026-11-27:**
 https://claude.ai/artifact/DMdEPkKuWhW3z39q58YkVo
+
+**His picks (2026-11-27): 1A, 2A, 3B, 4A, with one change.** His words:
+"I am aligned with your picks for home except the last pick. I will
+take your pick, but change it to Welcome to Parallx. This is what home
+says in a new workspace. I'm actually considering how we can make the
+workspace setup process more robust. For now let's build home." So: the
+desk (1A); the title by the hour and by name (2A); a card and the
+tool's own things in the feed (3B); a new workspace sees the same page
+with first steps (4A), titled "Welcome to Parallx". The workspace setup
+process is his to think on; nothing is agreed on it.
 
 - **His words (2026-11-27):** "I would redesign following the ui redesign
   we did yesterday. Think of it as a home page, currently it shows up
@@ -4059,14 +4069,14 @@ tab now.
 | 8 | The Dashboard's large numbers | Done |
 | 9 | A live word in Open from Study and Worksheets | Done |
 | 10 | Text arrows | Done |
-| 11 | Study's plan tab | Waiting on him: one yes (may `study-plan-acceptance.mjs` follow the drawing). Until then the tab has the days-left number and the phase strip, over the old list and table |
+| 11 | Study's plan tab | Yes given 2026-11-27: the short tab, and its acceptance probe follows. Not yet done; until then the tab has the days-left number and the phase strip, over the old list and table |
 | 12 | Flashcards' Decks and Stats | Done |
 | 13 | Planner's three pages | Done |
 | 14 | The PDF viewer | Done |
 | 15 | Menus, notices, Settings | Done |
 | 16 | Chat | Done |
 | 17 | A .md file opens as a page | Done |
-| 18 | Home and Welcome as one page | Waiting on him: four letters on the mock-ups of 2026-11-27 (link under "Home: a redesign") |
+| 18 | Home and Welcome as one page | Go given 2026-11-27 (1A, 2A, 3B, 4A titled "Welcome to Parallx"): being built |
 | 19 | Study piece B's review | Done |
 | 20 | Study piece C's remainder | Closed for the cloud: a phase does not need to name its units (his word, 2026-11-27); tomorrow's questions made overnight needs his machine |
 | 21 | Worksheets' toolbar, and the checks left open on 2026-11-16 | Done |
@@ -4085,7 +4095,9 @@ mean?" On the two stale checks (`sheet-file-fixes-probe.mjs`,
 words are under "Home: a redesign". The plan tab and the notes-file
 question are shown with real screenshots at
 https://claude.ai/artifact/JNvAN3wUx8cakLANxXoUYx ; a yes or a no on
-each is owed.
+each is owed. **Answered the same day: "yes to 1 and 3."** The plan tab
+becomes the short one and `study-plan-acceptance.mjs` follows it;
+study-usable 19.1 waits for the page, and 19.2 is looked into.
 
 Three acceptance probes need his word before they can follow a change
 (they are not edited without it): the plan's (item 11), study-usable
