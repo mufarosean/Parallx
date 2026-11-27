@@ -51,3 +51,6 @@ ext/creations-ai/test/.*-ws-*/
 ext/creations-ai/test/.*-cache.json
 ext/creations-ai/test/.*-cache.judge/
 ext/creations-ai/test/.card-standard-sheets.json
+
+# Scratch folders of probes being written or run (scripts must sit under the repo to resolve playwright); never committed.
+tests/.tmp-*/
