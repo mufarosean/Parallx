@@ -168,11 +168,15 @@ const newPopupItems = () => page.evaluate(() => {
   return [...rows].map((r) => { const b = r.getBoundingClientRect(); return { text: (r.getAttribute('aria-label') || r.textContent || '').replace(/\s+/g, ' ').trim(), x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
 });
 
-/** The command palette searched by `q`: its rows as shown. Leaves the palette open. */
+/**
+ * The command palette searched by `q`: its rows as shown, each row's parts (the
+ * label, the key) joined by a space, so "Go Back" and "Alt+←" do not run together
+ * into "Go BackAlt+←". Leaves the palette open.
+ */
 async function palette(q) {
   await page.keyboard.press('Control+Shift+P'); await wait(800);
   await page.keyboard.type(q, { delay: 30 }); await wait(900);
-  return page.evaluate(() => [...document.querySelectorAll('.command-palette-item')].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return { text: (e.textContent ?? '').replace(/\s+/g, ' ').trim(), x: b.x + b.width / 2, y: b.y + b.height / 2 }; }));
+  return page.evaluate(() => [...document.querySelectorAll('.command-palette-item')].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); const parts = [...e.children].map((c) => (c.textContent ?? '').trim()).filter(Boolean); return { text: (parts.length ? parts.join(' ') : (e.textContent ?? '')).replace(/\s+/g, ' ').trim(), x: b.x + b.width / 2, y: b.y + b.height / 2 }; }));
 }
 const appRow = (rows, word) => rows.find((r) => new RegExp(`\\b${word}\\b`, 'i').test(r.text) && !/Browser/i.test(r.text));
 
