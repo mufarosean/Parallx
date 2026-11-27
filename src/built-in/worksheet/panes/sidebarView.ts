@@ -6,7 +6,7 @@ import type { PlaceLocation } from '../../../services/places.js';
 import { WS_PLACES_ID } from '../worksheetConstants.js';
 import { listItems, onWorksheetDataChanged } from '../worksheetData.js';
 import { openWorksheet } from '../actions.js';
-import { renderBankSnapshot } from './bankPane.js';
+import { currentBankParams, renderBankSnapshot } from './bankPane.js';
 import { state } from '../state.js';
 import { el } from '../widgets.js';
 
@@ -50,7 +50,8 @@ export function createSidebarView(container: HTMLElement) {
       nav.appendChild(b);
       declareControl(b, { id: `worksheet.side.${instanceId}`, label, hint: tip });
       // A row is a link to its place: Ctrl+click and its menu open it in a tab of its own.
-      if (places) links.push(bindPlaceLink(b, places.addressOf(WS_PLACES_ID, { place: instanceId })));
+      // The bank's row carries the filters the bank was left with, as a plain press does.
+      if (places) links.push(bindPlaceLink(b, () => places.addressOf(WS_PLACES_ID, instanceId === 'bank' ? { place: 'bank', params: currentBankParams() } : { place: instanceId })));
     };
     navItem('Home', 'home', 'home', 'Home', 'Quiz, dashboard, bank, import, generate, scratch sheet');
     navItem('Problem Bank', 'library', 'bank', 'Problem Bank', 'Every problem by paper, with filters and search');
