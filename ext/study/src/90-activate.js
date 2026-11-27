@@ -84,6 +84,7 @@ export async function activate(api, context) {
   registerWork(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
+  registerHomeCard(owned);
   registerLinks(owned);
   registerChatTools(owned);
   registerPlannerDayLoads(owned, 0, token);
@@ -257,7 +258,7 @@ export const __testables = {
   // 14-progress-model: Progress, the pure part
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
-  stHomeBlocks, stHomeAddMonths, stHomeHours, stHomeLookBack, stPlanPace, stPlanPaceWords,
+  stHomeBlocks, stHomeAddMonths, stHomeHours, stHomeLookBack, stHomeCard, stPlanPace, stPlanPaceWords,
   stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
   // 15-unit-model, 31-unit-material, 67-unit-view: a unit's material
   ST_UNIT_MATERIAL, stUnitRelative, stUnitPageSrc, stUnitFileSrc, stUnitParse, stUnitKey, stUnitItems, stUnitEntry, stUnitAdd, stUnitRemove,

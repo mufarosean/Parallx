@@ -65,9 +65,9 @@ try {
   // ── Editor tab to another group ──
   const groups = () => page.evaluate(() => window.__parallx_workbench__._services.get({ id: 'IEditorGroupService' }).groupCount);
   const g0 = await groups();
-  await cmd(page, 'welcome.openWelcome');
+  await cmd(page, 'home.open');
   await page.waitForTimeout(800);
-  await page.evaluate(() => { const t = Array.from(document.querySelectorAll('.editor-group .editor-tab-bar .ui-tab--active')).find((x) => x.getClientRects().length && x.textContent.includes('Welcome')); t?.focus(); });
+  await page.evaluate(() => { const t = Array.from(document.querySelectorAll('.editor-group .editor-tab-bar .ui-tab--active')).find((x) => x.getClientRects().length && x.textContent.includes('Home')); t?.focus(); });
   await page.keyboard.press('Shift+F10');
   await page.waitForTimeout(400);
   const rows = (await menuRows(page)) || [];
@@ -151,7 +151,7 @@ try {
   const linked = await page.evaluate(() => { const a = Array.from(document.querySelectorAll('[data-px-id="chat.offline.ollamaLink"]')).find((x) => x.getClientRects().length); if (!a) return false; a.focus(); return true; });
   if (linked) { await page.keyboard.press('Enter'); await page.waitForTimeout(1_500); }
   // The app stays and still works (a navigation that starts, even refused, shuts it down).
-  const stayed = await page.evaluate(async () => { try { const svc = window.__parallx_workbench__._services.get({ id: 'ICommandService' }); await svc.executeCommand('welcome.openWelcome'); return true; } catch { return false; } }).catch(() => false);
+  const stayed = await page.evaluate(async () => { try { const svc = window.__parallx_workbench__._services.get({ id: 'ICommandService' }); await svc.executeCommand('home.open'); return true; } catch { return false; } }).catch(() => false);
   const opened = await app.evaluate(() => globalThis.__opened);
   check('Enter on a web link opens it outside and the app stays', linked && stayed && opened.some((u) => /ollama\.com/.test(u)), `link ${linked}, app ${stayed}, opened ${JSON.stringify(opened)}`);
   console.log(`[probe] concept map page ${pageId}; renderer errors: ${errors.length ? errors.join(' | ') : 'none'}`);

@@ -20,7 +20,7 @@ const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-s
 /** One command per built-in that opens its main surface, in the design's step 5 order. */
 const OPENERS = [
   'worksheet.open', 'planner.open', 'explorer.open', 'search.findInFiles', 'dashboard.open', 'settings.open',
-  'welcome.openWelcome', 'agents.show', 'ai-settings.open', 'tools.showInstalled',
+  'home.open', 'agents.show', 'ai-settings.open', 'tools.showInstalled',
   'theme-editor.open', 'chat.show', 'workflows.new',
 ];
 
@@ -40,7 +40,7 @@ const BUILTIN_IDS = {
   agents: ['agents.newRoutine', 'agents.openSettings', 'agents.tab', 'agents.showHistory'],
   chat: ['chat.input', 'chat.send', 'chat.addContext', 'chat.mode', 'chat.engine', 'chat.context', 'chat.newSession', 'chat.empty.commands'],
   workflows: ['workflows.editor.name', 'workflows.editor.runNow', 'workflows.editor.enabled', 'workflows.editor.add.trigger-schedule'],
-  welcome: ['welcome.workbench.action.showCommands', 'welcome.settings.open', 'welcome.workbench.action.files.openFolder'],
+  home: ['home.ask', 'home.send', 'home.show.pickedUp', 'home.show.pinned', 'home.range'],
   tools: ['tools.search', 'tools.install'],
   appearance: ['appearance.mode.dark', 'appearance.hue', 'appearance.themeName', 'appearance.saveTheme'],
 };

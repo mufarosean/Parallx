@@ -13,6 +13,7 @@ import { ISettingsRegistryService } from '../../services/serviceTypes.js';
 import { defaultQuizName, newQuizId } from './labels.js';
 
 export interface ParallxApiLike {
+  home?: { registerCardProvider?(provider: import('../../api/homeApi.js').ToolHomeCardProvider): { dispose(): void } };
   views: {
     registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): { dispose(): void } }): { dispose(): void };
   };

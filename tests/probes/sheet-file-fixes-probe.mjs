@@ -159,10 +159,10 @@ const reset = async () => {
   await page.keyboard.press('Escape').catch(() => {});
   for (let i = 0; i < 40; i++) {
     const gs = await groups();
-    const gi = gs.findIndex((g) => g.tabs.some((t) => t !== 'Welcome' && t !== 'Dashboard'));
+    const gi = gs.findIndex((g) => g.tabs.some((t) => t !== 'Home' && t !== 'Dashboard'));
     if (gi < 0 && gs.length <= 1) break;
     const g = gs[gi < 0 ? gs.length - 1 : gi];
-    const label = g.tabs.find((t) => t !== 'Welcome' && t !== 'Dashboard') ?? g.tabs[0];
+    const label = g.tabs.find((t) => t !== 'Home' && t !== 'Dashboard') ?? g.tabs[0];
     if (!label) break;
     await clickTab(label, gi < 0 ? gs.length - 1 : gi); await wait(200);
     await run('workbench.action.closeActiveEditor').catch(() => {}); await wait(350);
@@ -372,7 +372,7 @@ try {
 
     // Renamed while another tab is the one shown.
     const cur = (await ls()).includes('Half.sheet') ? 'Half.sheet' : 'Fast.sheet';
-    await clickTab('Welcome'); await wait(900);
+    await clickTab('Home'); await wait(900);
     const how5 = await renameInExplorer(cur, 'Hidden.sheet', 'menu'); await wait(2500);
     const g5 = await group(0);
     note(`renamed while its tab was not the shown one: tabs ${JSON.stringify(g5?.tabs)}, shown ${JSON.stringify(g5?.active)}, files ${JSON.stringify(await ls())} (${how5})`);
@@ -631,7 +631,7 @@ try {
     note(`then a further entry in that tab and 4.5 seconds: ${JSON.stringify(after)}`);
     check('after Discard Changes the tab is not a dead end: it closes, or says again that it cannot save, or does not take a further entry', !after.tabs.includes('Gone Two.sheet') || after.prompts.some((p) => WORDS.test(p.words)) || after.said.some((m) => WORDS.test(m)) || after.a3 !== 'tres', after);
     // Leaving and closing it.
-    await clickTab('Welcome'); await wait(900);
+    await clickTab('Home'); await wait(900);
     if ((await allTabs()).includes('Gone Two.sheet')) { await clickTab('Gone Two.sheet'); await wait(3500); const gb = await group(0); await shot('gone-discarded-shown-again'); note(`that tab left and shown again: ${JSON.stringify({ live: gb?.live, words: gb?.words, a1: gb?.live ? await cell(0, 0) : null })}; Gone Two.sheet exists ${await exists(file2)}; said ${JSON.stringify(await messages())}`); await closeTabX('Gone Two.sheet'); await wait(800); }
     check('through all of it the old file was never brought back', !(await exists(file2)), await ls());
 
@@ -640,7 +640,7 @@ try {
     const file3 = await newSheet('Gone Three');
     await enter(0, 0, 'one'); await wait(2600);
     await fs.rename(file3, at('Elsewhere Three.sheet'));
-    await enter(1, 0, 'two'); await clickTab('Welcome');
+    await enter(1, 0, 'two'); await clickTab('Home');
     const back3 = await cameBack(file3, 4000);
     const said3 = [...(await prompts()).map((p) => p.words), ...(await messages())];
     check('renamed by another program, an entry, and the tab left at once: the old file is not brought back', back3 === -1, { cameBackAfterMs: back3, theFileThatCameBackHolds: { one: /"one"/.test(await fileText(file3)), two: /"two"/.test(await fileText(file3)) }, theRenamedFileHoldsTwo: /"two"/.test(await fileText(at('Elsewhere Three.sheet'))), files: await ls() });
@@ -746,7 +746,7 @@ try {
     await run('workbench.action.splitEditor'); await wait(3500);
     const liveG = await liveIndex('Twin.sheet');
     await enter(5, 0, 'six', liveG); // not yet saved when the tab is left
-    await clickTab('Welcome', liveG); await wait(4000);
+    await clickTab('Home', liveG); await wait(4000);
     st = await state();
     console.log(`       the live group switched to another tab: ${JSON.stringify(st)}`);
     const took = await liveIndex('Twin.sheet');
@@ -763,7 +763,7 @@ try {
     for (let i = 0; i < 5; i++) {
       const l = await liveIndex('Twin.sheet'); if (l < 0) { lost.push(`round ${i}: no live pane ${JSON.stringify(await state())}`); break; }
       await enter(10 + i, 1, `r${i}`, l);
-      await clickTab('Welcome', l); await wait(1800);
+      await clickTab('Home', l); await wait(1800);
       const s1 = await state(); if (s1.filter((s) => s.live).length !== 1) lost.push(`round ${i} away: ${JSON.stringify(s1)}`);
       await clickTab('Twin.sheet', l); await wait(1800);
       const s2 = await state(); if (s2.filter((s) => s.live).length !== 1) lost.push(`round ${i} back: ${JSON.stringify(s2)}`);
@@ -1082,7 +1082,7 @@ try {
     check('everything closed: gone', !(await sidebarMenu()).labels.includes(EXPORT), null);
 
     // The Welcome page.
-    await clickTab('Welcome'); await wait(1200);
+    await clickTab('Home'); await wait(1200);
     const welcome = await page.evaluate(() => { const g = window.__fx.groups()[0]; const pane = g.querySelector('.editor-pane-container'); return { text: (pane?.innerText ?? '').replace(/\n+/g, ' | ').slice(0, 900), rows: [...(pane?.querySelectorAll('button, a, [role="button"], li') ?? [])].filter((e) => e.getClientRects().length).map((e) => (e.textContent ?? '').trim()).filter(Boolean) }; });
     await shot('welcome');
     console.log(`       the Welcome page reads: ${welcome.text}`);
@@ -1142,7 +1142,7 @@ try {
       check(`${name}: no page errors`, errors.length === n, errors.slice(n, n + 3));
       // A person clicks into it and types, leaves, comes back, closes.
       await page.mouse.click(800, 450); await page.keyboard.type('x1', { delay: 20 }); await page.keyboard.press('Enter'); await wait(2200);
-      await clickTab('Welcome'); await wait(800); await clickTab(name); await wait(1500); await closeTabX(name); await wait(900);
+      await clickTab('Home'); await wait(800); await clickTab(name); await wait(1500); await closeTabX(name); await wait(900);
       check(`${name}: not written (same bytes, same time)`, sameFile(before[name], await stat(at(name))), { same: before[name].bytes === (await stat(at(name))).bytes });
     }
     // The control: the same shape with nothing missing opens, so the refusals above are about the missing sheet.

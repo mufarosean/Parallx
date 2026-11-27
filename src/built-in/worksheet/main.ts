@@ -37,6 +37,7 @@ import { registerQuestionProvider } from '../../services/questionProviders.js';
 import { worksheetProgressProvider } from './progressProvider.js';
 import { registerProgressProvider } from '../../services/progressProviders.js';
 import { registerWorkProvider } from '../../services/workProviders.js';
+import { registerWorksheetHomeCard } from './homeCard.js';
 import { worksheetWorkProvider } from './workProvider.js';
 import { SHEET_FILE_EXTENSION, sheetFilePathOf } from './sheetFile.js';
 import { bringSheetForward, createSheetFilePane, exportOpenSheetFile, settleSheetFiles } from './panes/sheetFilePane.js';
@@ -274,6 +275,9 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   // The time and the problems of each day and paper, for any tool that keeps a record of work (the core's
   // work-provider point); it goes with the tool when Worksheets is off, and the ledger stays.
   context.subscriptions.push(registerWorkProvider(worksheetWorkProvider()));
+  // Home: the quiz left open, as one card.
+  const homeCard = registerWorksheetHomeCard(api);
+  if (homeCard) context.subscriptions.push(homeCard);
   void carryIdleMinutes();
 
   // The AI's read surface: bank/progress + the user's actual sheet work.

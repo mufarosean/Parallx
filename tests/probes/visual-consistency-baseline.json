@@ -11,18 +11,6 @@
     "noHeader": 0,
     "titleSize": 0
   },
-  "Welcome": {
-    "smallTarget": 0,
-    "offScaleType": 1,
-    "offFont": 0,
-    "offRadius": 0,
-    "offHeight": 0,
-    "uppercase": 0,
-    "clipped": 0,
-    "twoPrimaries": 0,
-    "noHeader": 0,
-    "titleSize": 1
-  },
   "Home": {
     "smallTarget": 0,
     "offScaleType": 0,

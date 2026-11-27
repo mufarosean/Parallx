@@ -39,43 +39,23 @@ export function fcHomeDecks(rows, open) {
   }).sort((a, b) => b.touchedAt - a.touchedAt);
 }
 
-const RECOUNT_MS = 10 * 60 * 1000;
-
 /**
  * Registers both on a host that has Home's contribution points. `today()`
  * resolves { decks, served, counts }; `onData(listener)` hears every change
- * to Flashcards' data. Cards also come due as the clock runs, so the card is
- * counted again every ten minutes while the extension is on.
+ * to Flashcards' data. Home reads the card when it opens and when the data
+ * changed, so cards that came due while it was closed are counted then.
  */
 export function fcRegisterHome(api, context, { all, today, onData, openDeck }) {
   const home = api.home;
   if (!home) return;
-  const listeners = new Set();
-  let card = null;
-  let last = '';
-  let run = 0;
-  const recount = async () => {
-    const mine = ++run;
-    let next = null;
-    try { next = fcHomeCard(await today()); } catch { next = null; }
-    if (mine !== run) return;
-    const said = JSON.stringify(next);
-    if (said === last) return;
-    last = said;
-    if (next) card = home.registerCard(next);
-    else { card?.dispose(); card = null; }
-  };
-  if (typeof home.registerCard === 'function') {
-    const timer = setInterval(() => { void recount(); }, RECOUNT_MS);
-    context.subscriptions.push({ dispose: () => { clearInterval(timer); run++; card?.dispose(); } });
-    void recount();
+  if (typeof home.registerCardProvider === 'function') {
+    context.subscriptions.push(home.registerCardProvider({ id: 'today', read: async () => fcHomeCard(await today()), onDidChange: onData }));
   }
-  context.subscriptions.push(onData(() => { void recount(); for (const fn of listeners) fn(); }));
   if (typeof home.registerSource === 'function') {
     context.subscriptions.push(home.registerSource({
       id: 'decks', label: 'Flashcards',
       listRecent: async (limit) => fcHomeDecks(await all(FC_HOME_DECKS_SQL), openDeck).slice(0, limit),
-      onDidChange: (listener) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; },
+      onDidChange: onData,
     }));
   }
 }

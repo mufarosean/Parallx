@@ -192,7 +192,7 @@ try {
     await shot('practice-sheet');
     await host('scrollToCell', 0, 0); await wait(300);
     await clickCell(3, 0); await type('Half practice');
-    await clickTab('Welcome'); await wait(900); await clickTab('Scratch Sheet'); await sheetUp('Scratch Sheet');
+    await clickTab('Home'); await wait(900); await clickTab('Scratch Sheet'); await sheetUp('Scratch Sheet');
     note(`for comparison, on a practice sheet an entry still being typed when the tab is left comes back as ${JSON.stringify(await cell(3, 0))}`);
   });
 
@@ -262,7 +262,7 @@ try {
       await wait(pause);
       await clickCell(4 + i, 0); await type(`Leave${i}`);
       await page.keyboard.press('Enter'); const t = Date.now();
-      await clickTab('Welcome');
+      await clickTab('Home');
       left.push(await untilFile(budget, new RegExp(`Leave${i}`), 700, t));
       await clickTab('Budget 2026.sheet'); await sheetUp('Budget 2026.sheet');
     }
@@ -285,7 +285,7 @@ try {
 
     // An entry still being typed when the tab is left.
     await clickCell(8, 0); await type('Half typed');
-    await clickTab('Welcome'); await wait(900);
+    await clickTab('Home'); await wait(900);
     const half = /Half typed/.test(await fileText(budget));
     await clickTab('Budget 2026.sheet'); await sheetUp('Budget 2026.sheet');
     const halfCell = await cell(8, 0);
@@ -304,7 +304,7 @@ try {
     const before = await stat(budget);
     await run('file.openFile', budget); await sheetUp('Budget 2026.sheet'); await wait(4000);
     check('opened and left open 7 seconds: the file is byte for byte the same and was not written', sameFile(before, await stat(budget)), { sameBytes: before.bytes === (await stat(budget)).bytes, mtimeBefore: before.mtime, mtimeAfter: (await stat(budget)).mtime });
-    await clickTab('Welcome'); await wait(1200);
+    await clickTab('Home'); await wait(1200);
     check('and after leaving the tab', sameFile(before, await stat(budget)), { sameBytes: before.bytes === (await stat(budget)).bytes });
     await clickTab('Budget 2026.sheet'); await sheetUp('Budget 2026.sheet');
     await closeTab('Budget 2026.sheet'); await wait(1200);
@@ -312,7 +312,7 @@ try {
     // Looking around: a click and arrows, no entry.
     await run('file.openFile', budget); await sheetUp('Budget 2026.sheet');
     await clickCell(3, 4); await key('ArrowDown'); await key('ArrowRight'); await wait(2500);
-    await clickTab('Welcome'); await wait(1200);
+    await clickTab('Home'); await wait(1200);
     note(`clicking a cell and moving with arrows, no entry: the file was ${sameFile(before, await stat(budget)) ? 'not written' : 'written again'}`);
 
     // Something else rewrites the file while its tab is open and untouched (a sync, a pull).
@@ -321,17 +321,17 @@ try {
     const theirs = Buffer.from(mine.toString('utf8').replace('Rent', 'Lease'));
     await fs.writeFile(budget, theirs); await wait(4000);
     const shown = await cell(0, 0);
-    await clickTab('Welcome'); await wait(1200);
+    await clickTab('Home'); await wait(1200);
     const kept = (await fs.readFile(budget)).equals(theirs);
     await clickTab('Budget 2026.sheet'); await sheetUp('Budget 2026.sheet');
     note(`the file rewritten by another program while its tab is open and untouched: the open tab went on showing ${JSON.stringify(shown)}; after leaving the tab the other program's version was ${kept ? 'kept' : 'overwritten'}; shown again it reads ${JSON.stringify(await cell(0, 0))}`);
-    await clickTab('Welcome'); await wait(600);
+    await clickTab('Home'); await wait(600);
     await fs.writeFile(budget, mine); await wait(600);
 
 
     const untouched = await makeSheet('Untouched'); await sheetUp('Untouched.sheet');
     const made = await stat(untouched); await wait(4000);
-    await clickTab('Welcome'); await wait(1200);
+    await clickTab('Home'); await wait(1200);
     check('a new sheet opened and left without an entry is not written', sameFile(made, await stat(untouched)), { text: (await fileText(untouched)).slice(0, 90) });
   });
 
@@ -346,7 +346,7 @@ try {
     const took = await untilFile(quick, /Early/, 5000);
     check('the entry is on the sheet', onSheet === 'Early', onSheet);
     check('an entry made as soon as the sheet appears is in the file within 5 seconds', took >= 0, { ms: took, file: (await fileText(quick)).slice(0, 90) });
-    await clickTab('Welcome'); await wait(1000);
+    await clickTab('Home'); await wait(1000);
     check('and it is in the file after leaving the tab', /Early/.test(await fileText(quick)), (await fileText(quick)).slice(0, 90));
     await clickTab('Quick.sheet'); await sheetUp('Quick.sheet');
     check('and on the sheet when the tab is shown again', (await cell(0, 0)) === 'Early', await cell(0, 0));
@@ -437,7 +437,7 @@ try {
     await shot('explorer-open');
     await closeTab('Budget 2026.sheet');
     // Quick Open, by keys.
-    await clickTab('Welcome');
+    await clickTab('Home');
     await page.keyboard.press('Control+p');
     await page.waitForSelector('[data-px-id="quickAccess.input"]', { timeout: 5000 });
     await page.keyboard.type('Budget 2026.sheet', { delay: 20 }); await wait(900);
@@ -459,7 +459,7 @@ try {
     await ensureBudget();
     await messages();
     await closeSheetTabs();
-    await clickTab('Welcome'); await wait(600);
+    await clickTab('Home'); await wait(600);
     const none = await runSafe('worksheet.exportSheet'); await wait(600);
     const noneSaid = await messages();
     check('with no sheet file on screen it exports nothing and says so', none.value === false && noneSaid.some((m) => /sheet/i.test(m)) && (await app.evaluate(() => globalThis.__dl.length)) === 0, { none, noneSaid });
@@ -593,7 +593,7 @@ try {
       if (name === 'Words.sheet') await shot('sheet-refused');
       // A person tries to type into it anyway, then leaves.
       await page.mouse.click(800, 450); await page.keyboard.type('x1'); await page.keyboard.press('Enter'); await wait(2200);
-      await clickTab('Welcome'); await wait(900);
+      await clickTab('Home'); await wait(900);
     }
     for (const name of Object.keys(cases)) { await closeTab(name); }
     await wait(1500);
@@ -603,7 +603,7 @@ try {
     const empty = path.join(workspace, 'Empty.sheet'); await fs.writeFile(empty, ''); const emptyBefore = await stat(empty);
     await run('file.openFile', empty); await sheetUp('Empty.sheet').catch(() => {}); await wait(3000);
     const emptyShows = await editorShows();
-    await clickTab('Welcome'); await wait(1200);
+    await clickTab('Home'); await wait(1200);
     note(`an empty 0-byte .sheet file opens as ${emptyShows.sheet ? 'an empty sheet' : JSON.stringify(emptyShows)}; after opening and leaving it was ${sameFile(emptyBefore, await stat(empty)) ? 'not written' : 'written'}`);
     if (emptyShows.sheet) check('an empty .sheet file, opened and left, is not written', sameFile(emptyBefore, await stat(empty)), (await fileText(empty)).slice(0, 80));
 
@@ -612,7 +612,7 @@ try {
     const errorsBefore = errors.length;
     await run('file.openFile', hollow); await wait(5000);
     const hollowShows = await editorShows(); await shot('sheet-hollow');
-    await clickTab('Welcome'); await wait(1200); await closeTab('Hollow.sheet'); await wait(800);
+    await clickTab('Home'); await wait(1200); await closeTab('Hollow.sheet'); await wait(800);
     note(`a sheet-format file whose workbook lists a sheet it does not hold shows ${JSON.stringify(hollowShows)}; page errors while it was open: ${errors.length - errorsBefore}; on disk it was ${sameFile(hollowBefore, await stat(hollow)) ? 'not written' : `written: ${(await fileText(hollow)).slice(0, 100)}`}`);
   });
 
@@ -661,7 +661,7 @@ try {
     } else note('the sheet tab is not brought back when the app starts again');
     await run('file.openFile', budget); await sheetUp('Budget 2026.sheet');
     check('after the app was closed and opened, the sheet is as it was', (await cell(0, 0)) === 'Rent' && (await cell(2, 1)) === 2462.4 && (await cell(10, 0)) === 'Settled' && (await cell(1000, 3)) === 'deep' && (await grid()).rows > 1000, [await cell(0, 0), await cell(2, 1), await cell(10, 0), await cell(1000, 3), await grid()]);
-    await wait(3500); await clickTab('Welcome'); await wait(1200);
+    await wait(3500); await clickTab('Home'); await wait(1200);
     check('opening it in the new session wrote nothing', sameFile(before, await stat(budget)), { sameBytes: before.bytes === (await stat(budget)).bytes });
     const practiceAgain = await (async () => { await run('worksheet.openScratch'); await sheetUp(); return grid(); })();
     check('a practice sheet opened after a sheet file is still 150 by 40', practiceAgain.rows === 150 && practiceAgain.columns === 40, practiceAgain);

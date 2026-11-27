@@ -55,8 +55,7 @@ try { await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext')
  * bar, sidebar, tab strip, status bar), which is measured once, not on every screen.
  */
 const SCREENS = [
-  { label: 'The window frame', run: ['welcome.openWelcome'], where: 'chrome' },
-  { label: 'Welcome', run: ['welcome.openWelcome'] },
+  { label: 'The window frame', run: ['home.open'], where: 'chrome' },
   { label: 'Home', run: ['home.open'], home: true },
   { label: 'Worksheets', run: ['worksheet.open'], home: true },
   { label: 'Worksheets: Problem Bank', run: ['worksheet.bank'] },

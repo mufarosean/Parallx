@@ -1812,6 +1812,16 @@ export namespace home {
   export function registerSource(source: HomeSource): IDisposable;
   /** One card in Home's "Today, from your tools". The same id again replaces it; disposing takes it back. It leaves with the tool. */
   export function registerCard(card: HomeCard): IDisposable;
+  /** A card that is read each time Home asks: when Home opens, and when `onDidChange` fires. The tool keeps no timer for it. */
+  export interface HomeCardProvider {
+    /** Stable within the tool. */
+    readonly id: string;
+    /** Today's card, or null when there is nothing to say. Its own `id` is not used: the provider's is. */
+    read(): Promise<HomeCard | null>;
+    /** Fires when the card would read differently. */
+    readonly onDidChange?: Event<void>;
+  }
+  export function registerCardProvider(provider: HomeCardProvider): IDisposable;
 }
 
 /**

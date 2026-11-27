@@ -58,7 +58,7 @@ try {
   check('a finger drags the sidebar divider', Math.abs(s1 - s0 - 80) <= 2, `${s0} -> ${s1}`);
 
   // 2. An editor tab, held then moved past the next one.
-  await cmd(page, 'welcome.openWelcome');
+  await cmd(page, 'home.open');
   await cmd(page, 'dashboard.open');
   await page.waitForTimeout(1_200);
   const tabs = () => page.evaluate(() => Array.from(document.querySelectorAll('.editor-tab-bar .ui-tab')).filter((x) => x.getClientRects().length).map((x) => { const r = x.getBoundingClientRect(); const s = x.parentElement.getBoundingClientRect(); return { name: x.textContent.trim().replace('×', ''), x: r.x + r.width / 2, y: r.y + r.height / 2, right: r.right, whole: r.x >= s.x - 1 && r.right <= s.right + 1 }; }));

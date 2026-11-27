@@ -57,7 +57,7 @@ export function startOfLocalDay(ms: number): number {
   return startOfAppDay(ms);
 }
 
-function addLocalDays(dayStart: number, n: number): number {
+export function addLocalDays(dayStart: number, n: number): number {
   return addAppDays(dayStart, n);
 }
 

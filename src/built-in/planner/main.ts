@@ -23,6 +23,7 @@ import { setPendingPlannerNewEvent, setPendingPlannerNewTask, setPendingPlannerT
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
+import { registerPlannerHomeCard } from './plannerHomeCard.js';
 import { agendaBlock } from './plannerAgendaBlock.js';
 import { registerTaskSource } from '../../services/taskSources.js';
 import { registerScheduleSource } from '../../services/scheduleSources.js';
@@ -44,6 +45,7 @@ interface ParallxApi {
   canvas: {
     registerBlock(registration: import('../../api/bridges/canvasBlocksBridge.js').CanvasBlockRegistration): IDisposable;
   };
+  home?: { registerCardProvider?(provider: import('../../api/homeApi.js').ToolHomeCardProvider): IDisposable };
   dashboard: {
     registerWidgetType<TConfig = Record<string, unknown>>(
       registration: import('../../api/bridges/dashboardBridge.js').WidgetTypeRegistration<TConfig>,
@@ -349,6 +351,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // workaround is gone: register once, the dashboard picks it up whenever
   // it activates.
   context.subscriptions.push(registerPlannerDashboardWidgets(api.dashboard, _data));
+  // Home: one card for today, read when Home asks.
+  const homeCard = registerPlannerHomeCard(api, _data);
+  if (homeCard) context.subscriptions.push(homeCard);
   // The timer (and anything else that offers tasks to work on) lists the
   // Planner's open tasks while it runs.
   context.subscriptions.push(registerTaskSource({

@@ -8,7 +8,7 @@
 //
 // Usage:
 //   node tests/probes/ui-screenshot-probe.mjs <outDir> [scene ...]
-// Scenes: boot welcome watermark chat autonomy dashboard planner settings
+// Scenes: boot home watermark chat autonomy dashboard planner settings
 // (default: all). Requires `npm run build` first — the app loads dist/.
 //
 // It drives the app by scene id (docs/SELF_DESCRIBING_UI_DESIGN.md step 9):
@@ -29,7 +29,7 @@ import { PROJECT_ROOT, launchApp as launchHidden, cmd, click, openFile, setToolE
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'moart', 'pdf', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'home', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'moart', 'pdf', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 // Media Organizer's library, photo pages, image editor, practice and plans
@@ -1489,10 +1489,10 @@ async function main() {
   try {
     if (scenes.includes('boot')) await shot(page, 'boot');
 
-    if (scenes.includes('welcome')) {
-      await runCommand(page, ['welcome.openWelcome']);
+    if (scenes.includes('home')) {
+      await runCommand(page, ['home.open']);
       await page.waitForTimeout(800);
-      await shot(page, 'welcome');
+      await shot(page, 'home');
     }
 
     // The chrome at a glance: the empty editor's hints, the notifications

@@ -8,7 +8,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
-import { collectHomeEntries, getHomeCards, getHomeSources, onDidChangeHomeCards, onDidChangeHomeSources, type HomeEntry } from '../../services/homeSources.js';
+import { collectHomeCards, collectHomeEntries, getHomeCardProviders, getHomeSources, onDidChangeHomeCards, onDidChangeHomeSources, type HomeEntry } from '../../services/homeSources.js';
 import { addDisposableListener } from '../../ui/dom.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { createBlock, createButton, createEmptyState, createFilterChip, createIconButton, createInput, createPageHeader, createSectionLabel, createSegmented } from '../../ui/kit.js';
@@ -139,11 +139,17 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     createButton(nameHost, { id: 'home.skipName', label: 'Not Now', size: 'sm', kind: 'ghost', command: 'home.skipName' });
   };
 
-  const drawCards = (): void => {
-    const cards = getHomeCards();
+  let cardRun = 0;
+  const loadCards = async (): Promise<void> => {
+    const mine = ++cardRun;
+    const cards = await collectHomeCards();
+    if (mine !== cardRun) return; // a newer read is on its way
+    // The keys stay on the card's action when its number changes under them.
+    const at = document.activeElement instanceof HTMLElement && cardList.contains(document.activeElement) ? Array.from(cardList.children).indexOf(document.activeElement.closest('li') as Element) : -1;
     cardList.replaceChildren();
     cards.forEach((card, i) => drawCard(cardList, card, i === 0));
     today.hidden = cards.length === 0;
+    if (at >= 0) (cardList.children[Math.min(at, cards.length - 1)]?.querySelector('button') as HTMLElement | null)?.focus();
   };
 
   const shown = (): HomeEntry[] => {
@@ -198,9 +204,14 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     for (const d of listeners.splice(0)) d.dispose();
     for (const s of getHomeSources()) { const d = s.onDidChange?.(soon); if (d) listeners.push(d); }
   };
+  const cardListeners: IDisposable[] = [];
+  const followCards = (): void => {
+    for (const d of cardListeners.splice(0)) d.dispose();
+    for (const p of getHomeCardProviders()) { const d = p.onDidChange?.(() => void loadCards()); if (d) cardListeners.push(d); }
+  };
   const subscriptions: IDisposable[] = [
     onDidChangeHomeSources(() => { followSources(); void load(); }),
-    onDidChangeHomeCards(drawCards),
+    onDidChangeHomeCards(() => { followCards(); void loadCards(); }),
     settings.onDidChange((e) => { if (e.key === HOME_NAME) drawHead(); else applyWidth(); }),
     addDisposableListener(askInput, 'keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); api.ask(); } }),
     addDisposableListener(nameHost, 'keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.target instanceof HTMLInputElement) { e.preventDefault(); api.keepName(); } }),
@@ -227,6 +238,7 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     refresh() {
       // Not while the name is being typed: the head is drawn again and would take the field with it.
       void load(!nameHost.contains(document.activeElement));
+      void loadCards();
     },
     keepName() {
       const name = nameField?.value.trim();
@@ -240,7 +252,8 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
     dispose() {
       if (timer) clearTimeout(timer);
       run++;
-      for (const d of [...subscriptions, ...listeners]) d.dispose();
+      cardRun++;
+      for (const d of [...subscriptions, ...listeners, ...cardListeners]) d.dispose();
       nameField?.dispose();
       ask.dispose();
       rangeSwitch.dispose();
@@ -259,9 +272,11 @@ export function renderHome(container: HTMLElement, deps: HomePageDeps): HomePage
   subscriptions.push({ dispose: () => watcher.disconnect() });
 
   applyWidth();
-  drawCards();
+  today.hidden = true;
   drawFeed();
   followSources();
+  followCards();
+  void loadCards();
   void load();
   return api;
 }

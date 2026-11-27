@@ -14404,6 +14404,30 @@ function stHomeModel(today) {
   return { today, subjects, byDate };
 }
 
+/**
+ * What Study has for the app's Home: one card for today, from the same model
+ * its own front page draws. The number is the hours the plans give today
+ * (every subject's together), the line says the phase and what is done, and
+ * the action starts a session on the subject with the most hours today.
+ * Null when no plan gives today any hours.
+ */
+function stHomeCard(model) {
+  const withToday = model.subjects.filter((s) => s.plan && s.plan.today && s.plan.today.planned > 0);
+  if (!withToday.length) return null;
+  const planned = stPlanRound(withToday.reduce((sum, s) => sum + s.plan.today.planned, 0));
+  const done = stPlanRound(withToday.reduce((sum, s) => sum + (s.plan.today.done || 0), 0));
+  const lead = withToday.slice().sort((a, b) => b.plan.today.planned - a.plan.today.planned)[0];
+  const doneWords = done > 0 ? `${stHomeHours(done)} done.` : 'Not started.';
+  const where = withToday.length === 1
+    ? `${lead.name}${lead.plan.today.phase ? `, ${lead.plan.today.phase}` : ''}.`
+    : `${withToday.length} subjects.`;
+  return {
+    id: 'today', icon: 'px-study', number: String(planned), unit: planned === 1 ? 'hour planned' : 'hours planned',
+    line: `${where} ${doneWords}`,
+    action: { label: 'Start Session', icon: 'play', command: 'study.open', args: [{ bankIds: [lead.bankId] }] },
+  };
+}
+
 // ── Changing a day ──────────────────────────────────────────────────────────
 
 /** A plan's Days rows by date, read now. */
@@ -17355,6 +17379,16 @@ async function stWeakSpotRows(limit) {
   return { rows: stWeakRowsFrom(entries, limit), totalWeak, size: Number(cfg('sessionSize', 20)) || 20 };
 }
 
+/** The app's Home: Study's card for today, read when Home asks and when Study's data changed. */
+function registerHomeCard(context) {
+  if (typeof _api.home?.registerCardProvider !== 'function') return;
+  context.subscriptions.push(_api.home.registerCardProvider({
+    id: 'today',
+    read: async () => stHomeCard(stHomeModel(stPlanToday())),
+    onDidChange: (listener) => onDataChanged(() => listener()),
+  }));
+}
+
 function registerDashboardWidget(context) {
   if (!_api.dashboard?.registerWidgetType) return;
   try {
@@ -17960,6 +17994,7 @@ export async function activate(api, context) {
   registerWork(owned, token);
   registerRatingListener(owned, token);
   registerDashboardWidget(owned);
+  registerHomeCard(owned);
   registerLinks(owned);
   registerChatTools(owned);
   registerPlannerDayLoads(owned, 0, token);
@@ -18133,7 +18168,7 @@ export const __testables = {
   // 14-progress-model: Progress, the pure part
   ST_PROGRESS_STATES, ST_PROGRESS_WORDS, ST_PROGRESS_ALSO,
   stProgressFold, stProgressAliases, stProgressMatch, stProgressCountsOf, stProgressQuestionState, stProgressQuestions,
-  stHomeBlocks, stHomeAddMonths, stHomeHours, stHomeLookBack, stPlanPace, stPlanPaceWords,
+  stHomeBlocks, stHomeAddMonths, stHomeHours, stHomeLookBack, stHomeCard, stPlanPace, stPlanPaceWords,
   stProgressBuild, stProgressWeakestFirst, stProgressBarName, stProgressPartName, stProgressCountText, stProgressCountsLine, stProgressUnmatchedText, stProgressFilterByResult,
   // 15-unit-model, 31-unit-material, 67-unit-view: a unit's material
   ST_UNIT_MATERIAL, stUnitRelative, stUnitPageSrc, stUnitFileSrc, stUnitParse, stUnitKey, stUnitItems, stUnitEntry, stUnitAdd, stUnitRemove,

@@ -769,40 +769,76 @@ Design rules for widgets:
   `buildMtdSpendWidget`, for the reference implementation).
 - Guard for older shells: `if (api.dashboard?.registerWidgetType) { … }`.
 
-### 4.16 `api.home` — put your items on Home
+### 4.16 `api.home` — put your things and your card on Home
 
-Home is the page behind the Parallx icon: everything recent from every
-tool that is on, with search. If your extension keeps things a person
-comes back to (characters, decks, a ledger, an album), register a source
-while you run. Turned off, your items leave Home; nothing else changes.
+Home is the page the app opens on: a greeting, a field to ask the chat,
+"Today, from your tools" (one card a tool), and the things last worked on
+from every tool that is on. Two contribution points, both registered while
+you run. Turned off, your card and your things leave Home; nothing else
+changes.
+
+**Your things, in the feed.** If your extension keeps things a person comes
+back to (characters, decks, a ledger, an album), register a source:
 
 ```js
 _disposables.push(api.home.registerSource({
   id: 'decks',                 // stable within your extension
-  label: 'Flashcards',         // your name, as the filter chip says it
+  label: 'Flashcards',         // your name
   async listRecent(limit) {    // newest first
     return recentDecks(limit).map((d) => ({
       id: d.id,
       title: d.name,
       kind: 'Deck',            // singular
       icon: 'layers',          // registry icon id
-      summary: `${d.cards} cards, ${d.due} due today`,   // one line; you know your items
+      summary: d.description,  // its own opening words; Home shows two lines
+      preview: d.firstFronts,  // optional: more of its text, line breaks kept, drawn small as its picture
+      image: d.coverUrl,       // optional: a picture of the thing itself (a URL an <img> can load)
+      stat: { value: String(d.cards), unit: 'cards' },   // optional: one figure, shown at the right
       tags: d.tags,
       where: 'Decks',
-      touchedAt: d.updatedAt,  // milliseconds since the epoch
+      touchedAt: d.reviewedAt, // milliseconds since the epoch
       open: () => api.commands.executeCommand('flashcards.openDeck', d.id),
     }));
   },
-  async search(query, limit) { /* optional: items beyond the recent ones */ },
   onDidChange: onDecksChanged, // optional: (listener) => IDisposable
 }));
 ```
 
-- Guard for older shells: `if (api.home?.registerSource) { … }`.
-- Keep `listRecent` cheap: Home calls it when it opens and when you say
-  something changed. No timers.
-- Search is yours only for what is not recent; Home already filters the
-  recent items by title, summary, kind and tag.
+**Your card for today.** One number, one line, one action that runs a
+command of yours. Home says which tool it is from (your manifest's name).
+Register a provider and Home reads it when it opens and when you say your
+data changed, so you keep no timer:
+
+```js
+_disposables.push(api.home.registerCardProvider({
+  id: 'today',
+  async read() {               // null: nothing to say today, no card
+    const due = await countDue();
+    if (!due) return null;
+    return {
+      id: 'today',
+      icon: 'layers',          // optional, beside your name
+      number: String(due),     // optional: a card with no number is a first step
+      unit: 'cards due',
+      line: '6 are new, 24 to review.',
+      action: { label: 'Study', icon: 'play', command: 'flashcards.study' },
+    };
+  },
+  onDidChange: onDecksChanged, // optional: (listener) => IDisposable
+}));
+```
+
+`api.home.registerCard(card)` puts up a card that says the same until you
+register it again under its id (the same id replaces it); disposing takes
+it back.
+
+- Guard for older shells: `if (api.home?.registerCardProvider) { … }`.
+- Keep `listRecent` and `read` cheap: Home calls them when it opens, when
+  it is opened again, and when you say something changed. No timers.
+- One card a tool. Sentence case for `unit` and `line`, Title Case for the
+  action's label, as everywhere (section 6).
+- `search` on a source is still accepted, but Home has no search field of
+  its own now (the field on Home asks the chat), so nothing calls it.
 
 ### 4.17 `api.canvas.databases` — keep your record where the person can see it
 

@@ -66,7 +66,7 @@ try {
   await seedAfterLaunch(page, seedPre);
 
   // ── Open, in the column whatever tool is showing; then Files, the tree alone ──
-  await cmd(page, 'welcome.openWelcome'); await wait(600);
+  await cmd(page, 'home.open'); await wait(600);
   check('Files: its row opens its list', await tool('Explorer') && (await head()) === 'Explorer', await head());
   // A live word, set the way an editor sets its own.
   const word = await page.evaluate(() => {
@@ -176,7 +176,7 @@ try {
 
   // ── Light, and no page errors from any of it ──
   await mode('light');
-  for (const [name, open] of [['Explorer', 'welcome.openWelcome'], ['Planner', 'planner.open'], ['Flashcards', 'flashcards.open'], ['Study', 'study.open']]) {
+  for (const [name, open] of [['Explorer', 'home.open'], ['Planner', 'planner.open'], ['Flashcards', 'flashcards.open'], ['Study', 'study.open']]) {
     await cmd(page, open); await wait(900);
     await tool(name);
     await shot(`light-${name === 'Explorer' ? 'files' : name.toLowerCase()}.png`);

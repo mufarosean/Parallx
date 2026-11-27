@@ -127,3 +127,37 @@ describe('the weekly look back', () => {
     expect(stHomeLookBack(days, new Map(), '2027-01-06')).toBeNull();
   });
 });
+
+describe('stHomeCard: Study\'s card on the app\'s Home', () => {
+  const subject = (name: string, bankId: number, today: { phase: string; planned: number; done: number } | null) =>
+    ({ id: bankId, name, bankId, plan: today === undefined ? null : { today } });
+
+  it('has no card when no plan gives today any hours', () => {
+    expect(T.stHomeCard({ subjects: [] })).toBeNull();
+    expect(T.stHomeCard({ subjects: [{ id: 1, name: 'Exam 7', bankId: 4, plan: null }] })).toBeNull();
+    expect(T.stHomeCard({ subjects: [subject('Exam 7', 4, null)] })).toBeNull();
+    expect(T.stHomeCard({ subjects: [subject('Exam 7', 4, { phase: 'Reading', planned: 0, done: 0 })] })).toBeNull();
+  });
+
+  it('says the hours planned today, the subject and its phase, and starts a session on it', () => {
+    expect(T.stHomeCard({ subjects: [subject('Exam 7', 4, { phase: 'Reading', planned: 2, done: 0 })] })).toEqual({
+      id: 'today', icon: 'px-study', number: '2', unit: 'hours planned', line: 'Exam 7, Reading. Not started.',
+      action: { label: 'Start Session', icon: 'play', command: 'study.open', args: [{ bankIds: [4] }] },
+    });
+  });
+
+  it('says one hour in the singular and what is done', () => {
+    const card = T.stHomeCard({ subjects: [subject('Exam 7', 4, { phase: '', planned: 1, done: 0.5 })] });
+    expect(card).toMatchObject({ number: '1', unit: 'hour planned', line: 'Exam 7. 0.5 h done.' });
+  });
+
+  it('adds every subject\'s hours and starts on the one with the most today', () => {
+    const card = T.stHomeCard({ subjects: [
+      subject('Exam 7', 4, { phase: 'Reading', planned: 1.5, done: 0.25 }),
+      subject('Exam 8', 9, { phase: 'Practice', planned: 2, done: 0.5 }),
+      subject('Exam 9', 11, null),
+    ] });
+    expect(card).toMatchObject({ number: '3.5', line: '2 subjects. 0.8 h done.' });
+    expect(card.action.args).toEqual([{ bankIds: [9] }]);
+  });
+});

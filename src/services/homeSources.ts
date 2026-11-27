@@ -68,20 +68,46 @@ export interface HomeCard {
   readonly action: { readonly label: string; readonly command: string; readonly args?: readonly unknown[]; readonly icon?: string };
 }
 
-const registry = createRegistry<HomeSource>();
-const cards = createRegistry<HomeCard>();
-
-/** A card on Home; the same id again replaces it (the number changed). */
-export function registerHomeCard(card: HomeCard): IDisposable {
-  return cards.register(card.id, card);
+/**
+ * A card that is read when Home asks: the tool counts when Home opens and
+ * when it says its own data changed, and keeps no timer for it.
+ */
+export interface HomeCardProvider {
+  /** Stable id (the registering tool's, then the card's own). */
+  readonly id: string;
+  /** Today's card, or null when the tool has nothing to say. */
+  read(): Promise<HomeCard | null>;
+  /** Fires when the card would read differently. */
+  readonly onDidChange?: Event<void>;
 }
 
-export function getHomeCards(): readonly HomeCard[] {
+const registry = createRegistry<HomeSource>();
+const cards = createRegistry<HomeCardProvider>();
+
+/** A card that is read each time Home asks. The same id again replaces it. */
+export function registerHomeCardProvider(provider: HomeCardProvider): IDisposable {
+  return cards.register(provider.id, provider);
+}
+
+/** A card that says the same until it is registered again under its id. */
+export function registerHomeCard(card: HomeCard): IDisposable {
+  return cards.register(card.id, { id: card.id, read: async () => card });
+}
+
+export function getHomeCardProviders(): readonly HomeCardProvider[] {
   return cards.list();
 }
 
-/** Fires when a card comes, changes or goes. */
+/** Fires when a card or a provider comes, is replaced or goes. */
 export const onDidChangeHomeCards: Event<void> = cards.onDidChange;
+
+/** Every tool's card for today, in the order the tools registered; a provider that fails is left out, never the row. */
+export async function collectHomeCards(): Promise<HomeCard[]> {
+  const read = await Promise.all(getHomeCardProviders().map(async (provider) => {
+    try { return await provider.read(); } catch (err) { console.error(`[Home] card "${provider.id}" failed:`, err); return null; }
+  }));
+  return read.filter((card): card is HomeCard => !!card);
+}
 
 export function registerHomeSource(source: HomeSource): IDisposable {
   return registry.register(source.id, source);
