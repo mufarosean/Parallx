@@ -1890,7 +1890,7 @@ export class Workbench extends Layout {
       : undefined;
 
     const groupOpens: Promise<void>[] = [];
-    const mergedRestores = new Set<string>(); // saved tabs a tool now brings back as one (restoreMerge.ts)
+    const mergedRestores = new Map<string, string>(); // saved tabs a tool now brings back as one (restoreMerge.ts)
 
     for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
       const groupSnap = nonEmptyGroups[gi];

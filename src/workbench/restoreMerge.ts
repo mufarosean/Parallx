@@ -9,16 +9,25 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import type { EditorGroupModel } from '../editor/editorGroupModel.js';
 import { EditorActivation } from '../editor/editorTypes.js';
 
-/** Put a restored tab in its group's model. False when it is not put there (it came back in another group already). */
+/**
+ * Put a restored tab in its group's model. False when it is not put there:
+ * it came back in another group already. `merged` remembers which group took
+ * each such tab.
+ */
 export function admitRestoredEditor(
-  model: EditorGroupModel, input: IEditorInput, saved: { readonly typeId: string; readonly pinned: boolean; readonly wasShowing: boolean }, merged: Set<string>,
+  model: EditorGroupModel, input: IEditorInput, saved: { readonly typeId: string; readonly pinned: boolean; readonly wasShowing: boolean }, merged: Map<string, string>,
 ): boolean {
   if (input instanceof ToolEditorInput && input.typeId !== saved.typeId) {
     const here = model.indexOf(input);
-    if (here < 0 && merged.has(input.id)) return false;
+    const took = merged.get(input.id);
+    if (took !== undefined && took !== model.id) {
+      // An older save's split copies the left group's tab into the new group: that copy is the same tab, not a second one.
+      if (here >= 0) void model.closeEditor(here, true);
+      return false;
+    }
     // Two saved tabs are this one tab: the one that was showing says where it is.
     if (here >= 0 && saved.wasShowing) void model.closeEditor(here);
-    merged.add(input.id);
+    merged.set(input.id, model.id);
   }
   model.openEditor(input, { pinned: saved.pinned, activation: EditorActivation.Restore });
   return true;

@@ -67,14 +67,14 @@ describe('two saved screen tabs that come back as one tab', () => {
     formerTabs: { editorType: 'formermerge', placeOf: (instanceId) => ({ place: instanceId }) },
     createView: () => ({ show() {}, dispose() {} }),
   });
-  const restore = (model: EditorGroupModel, instanceId: string, wasShowing: boolean, merged: Set<string>) => {
+  const restore = (model: EditorGroupModel, instanceId: string, wasShowing: boolean, merged: Map<string, string>) => {
     const input = deserializeEditorInput('formermerge', { inputId: `${toolId}:formermerge:${instanceId}`, instanceId, name: instanceId, ownerToolId: toolId })!;
     return admitRestoredEditor(model, input, { typeId: 'formermerge', pinned: true, wasShowing }, merged);
   };
 
   it('the one that was showing says where the tab is', () => {
     const model = new EditorGroupModel();
-    const merged = new Set<string>();
+    const merged = new Map<string, string>();
     restore(model, 'home', false, merged);
     restore(model, 'bank', true, merged);
     expect(model.count).toBe(1);
@@ -84,10 +84,22 @@ describe('two saved screen tabs that come back as one tab', () => {
   it('a tab already brought back in one group is not brought back in another', () => {
     const left = new EditorGroupModel();
     const right = new EditorGroupModel();
-    const merged = new Set<string>();
+    const merged = new Map<string, string>();
     expect(restore(left, 'bank', true, merged)).toBe(true);
     expect(restore(right, 'dashboard', true, merged)).toBe(false);
     expect(left.count).toBe(1);
     expect(right.count).toBe(0);
+  });
+
+  it('an older save\'s split, which copies the left tab into the new group, still leaves one tab', () => {
+    const left = new EditorGroupModel('left');
+    const right = new EditorGroupModel('right');
+    const merged = new Map<string, string>();
+    restore(left, 'bank', true, merged);
+    right.openEditor(left.editors[0]); // what splitting a group does with its active tab
+    expect(restore(right, 'dashboard', true, merged)).toBe(false);
+    expect(left.count).toBe(1);
+    expect(right.count).toBe(0);
+    expect((left.editors[0] as ToolEditorInput).place).toBe('parallx://place/formermerge/bank');
   });
 });
