@@ -2227,7 +2227,13 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   it looks in the menu, a moved or renamed file's tab), and two page errors
   in the sheet engine (Univer: `getRenderAll` with the same file opened
   twice; `getActiveSheet is not a function` from the practice sheet's fx
-  button); on the build before the piece: being run. `tests/e2e/97-worksheet.spec.ts` (stale) was
+  button). On dc230a69, the build before the piece, the same
+  probe gave 220 ok, 28 FAIL and the same two page errors, so they are not
+  from this piece; the one FAIL more, run twice on b49f6080 with the same
+  result, is "an entry made just before the delete": the Explorer's menu on
+  a sheet made a moment before had no Delete (the probe already retries that
+  menu as a known race). This piece does not touch the Explorer or a sheet
+  file's tab; the cause was not found (open, with item 21). `tests/e2e/97-worksheet.spec.ts` (stale) was
   not run. Typecheck, vitest (754 files passed, 3 skipped, on b49f6080;
   output not kept), build,
   with `tests/unit/placesFormerTabs.test.ts` (seven tests; the first, merge
