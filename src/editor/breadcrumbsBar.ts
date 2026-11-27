@@ -215,8 +215,8 @@ export class BreadcrumbsBar extends Disposable {
     this._widget.domNode.addEventListener('contextmenu', onMenu);
     this._register({ dispose: () => this._widget.domNode.removeEventListener('contextmenu', onMenu) });
 
-    // Start hidden — shown when an editor with a resource is active
-    this.hide();
+    // Start hidden — shown when an editor with a resource is active (hide() returns early while not yet shown)
+    this.domNode.classList.add('hidden');
   }
 
   // ── Public API ─────────────────────────────────────────────────────────

@@ -55,6 +55,7 @@ const EXEMPT_FILES = new Set([
   'contentSchema.ts',              // Schema constants
   'unknownContent.ts',             // Unknown-node placeholders (pure JSON, like contentSchema)
   'paneMirror.ts',                 // Editors of one page share edits (no gate interaction)
+  'ribbonPlace.ts',                // Which group's ribbon goes with which pane (pure DOM, no gate interaction)
   'reloadMerge.ts',                // Reload keeps unsaved edits (pure JSON, no gate interaction)
   'externalDocApply.ts',           // Another writer's doc into an open editor (diff + one transaction)
   'pageLinks.ts',                  // In-app link hrefs (parallx-page:<page>#<block>)
