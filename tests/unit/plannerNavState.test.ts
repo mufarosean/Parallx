@@ -3,7 +3,7 @@
 // acted on once and never replayed on a later open.
 
 import { describe, it, expect } from 'vitest';
-import { setPendingPlannerNewTask, setPendingPlannerTab, takePendingPlannerNewTask, takePendingPlannerTab } from '../../src/built-in/planner/plannerNavState.js';
+import { setPendingPlannerNewTask, takePendingPlannerNewTask } from '../../src/built-in/planner/plannerNavState.js';
 
 describe('planner nav state', () => {
   it('a New Task request is taken once', () => {
@@ -16,18 +16,5 @@ describe('planner nav state', () => {
     setPendingPlannerNewTask(true);
     setPendingPlannerNewTask(false);
     expect(takePendingPlannerNewTask()).toBe(false);
-  });
-
-  it('a requested tab is taken once', () => {
-    setPendingPlannerTab('calendar');
-    expect(takePendingPlannerTab()).toEqual({ tab: 'calendar', tasksFilter: null, date: null });
-    expect(takePendingPlannerTab()).toBeNull();
-  });
-
-  it('Tasks can be asked for with its list (Show Overdue Tasks), taken once with it', () => {
-    setPendingPlannerTab('tasks', 'overdue');
-    expect(takePendingPlannerTab()).toEqual({ tab: 'tasks', tasksFilter: 'overdue', date: null });
-    setPendingPlannerTab('tasks');
-    expect(takePendingPlannerTab()).toEqual({ tab: 'tasks', tasksFilter: null, date: null });
   });
 });

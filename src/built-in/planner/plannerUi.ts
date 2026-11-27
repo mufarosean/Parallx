@@ -6,12 +6,6 @@
 import type { IDropdownItem } from '../../ui/dropdown.js';
 import type { PlannerCalendar } from './plannerTypes.js';
 
-export interface PlannerEditorInput {
-  readonly id: string;          // === instanceId; the Planner has one ('main')
-  setName?(name: string): void;
-  setIconHtml?(html: string | undefined): void;
-}
-
 export interface PlannerEditorApi {
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
@@ -60,8 +54,6 @@ export type CalendarView = 'month' | 'week' | 'day';
 /** Widest pane that gets the compact layout. Mirrors the `compact` step in
  *  the planner tokens block of planner.css (CSS can't share it with TS). */
 export const PANE_COMPACT_MAX = 719;
-
-export const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
 
 // Small task glyphs for calendar entries (open circle / filled check).
 export const TASK_DOT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/></svg>';

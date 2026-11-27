@@ -10,11 +10,12 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
-import { plannerDayFrom, takePendingPlannerNewEvent, takePendingPlannerNewTask, takePendingPlannerTab } from './plannerNavState.js';
+import { plannerDayFrom, takePendingPlannerNewEvent, takePendingPlannerNewTask } from './plannerNavState.js';
+import type { PlaceLocation, PlaceView, PlaceViewHost } from '../../services/places.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { appDateParts } from '../../services/localTime.js';
 import { startOfDay, atTime } from './plannerDates.js';
-import { PLANNER_ICON_SVG, el, type PlannerEditorInput, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
+import { el, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
 import { PlannerCalendarViews } from './plannerCalendarViews.js';
 import { PlannerAllDay } from './plannerAllDay.js';
 import { PlannerEventBars } from './plannerEventBars.js';
@@ -33,12 +34,23 @@ export class PlannerEditorProvider {
     private readonly _sync?: IPlannerSyncController,
   ) {}
 
-  createEditorPane(container: HTMLElement, input?: PlannerEditorInput): IDisposable {
-    const pane = new PlannerEditorPane(container, input, this._data, this._api, this._sync);
-    pane.init().catch(err => console.error('[PlannerEditorProvider] pane init failed:', err));
-    return pane;
+  /** Planner's places in one tab (services/places.ts): the core says where, the pane draws it. */
+  createView(container: HTMLElement, host: PlaceViewHost): PlaceView {
+    const pane = new PlannerEditorPane(container, host, this._data, this._api, this._sync);
+    const ready = pane.init().catch(err => console.error('[PlannerEditorProvider] pane init failed:', err));
+    return {
+      show: async (location) => { await ready; await pane.showLocation(location); },
+      dispose: () => pane.dispose(),
+    };
   }
 }
+
+/** Planner's places, as the core's places name them. */
+export const PLANNER_PLACES = [
+  { id: 'today', title: 'Today' },
+  { id: 'calendar', title: 'Calendar' },
+  { id: 'tasks', title: 'Tasks' },
+] as const;
 
 // ─── Pane ────────────────────────────────────────────────────────────────────
 
@@ -68,7 +80,7 @@ export class PlannerEditorPane implements IDisposable {
   readonly calendar = new PlannerCalendarViews(this);
   constructor(
     readonly _container: HTMLElement,
-    private readonly _input: PlannerEditorInput | undefined,
+    private readonly _host: PlaceViewHost,
     readonly _data: PlannerDataService,
     readonly _api: PlannerEditorApi,
     readonly _sync?: IPlannerSyncController,
@@ -76,18 +88,14 @@ export class PlannerEditorPane implements IDisposable {
 
   async init(): Promise<void> {
     if (this._disposed) return;
-    // Honour a tab the sidebar requested before this pane existed (deterministic
-    // first-open). The focusTab event below handles re-clicks while already open.
-    // restore the full view state for this workspace. The pane is
+    // Which page is the core's (services/places.ts): it calls showLocation.
+    // Restore the rest of the view state for this workspace. The pane is
     // rebuilt every time the user switches editor tabs away and back, so
     // anything not persisted silently resets to defaults ("why am I on
     // Tasks again?"). Restored: active tab, calendar view, tasks filter,
     // calendar cursor date.
     const vs = this._api.viewState;
     if (vs) {
-      const savedTab = vs.get<string>('planner.activeTab', 'today');
-      // 'scheduled' and 'automations' were retired tabs: routines live in Agents.
-      if (savedTab === 'today' || savedTab === 'tasks' || savedTab === 'calendar') this._activeTab = savedTab;
       const savedView = vs.get<string>('planner.calendarView', 'month');
       if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
         this._calendarView = savedView;
@@ -108,15 +116,7 @@ export class PlannerEditorPane implements IDisposable {
         if (!Number.isNaN(d.getTime())) this._cursorDate = startOfDay(d);
       }
     }
-    // An EXPLICIT tab request from the sidebar wins over restored state.
-    const pending = takePendingPlannerTab();
-    if (pending) this._activeTab = pending.tab;
-    if (pending?.tasksFilter) this._tasksFilter = pending.tasksFilter;
-    this._cursorDate = plannerDayFrom(pending?.date) ?? this._cursorDate;
-    this._input?.setName?.('Planner');
-    this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
-    await this._renderTab();
 
     // The week view shows 3 days in a compact pane and 7 otherwise; repaint
     // the calendar when the pane crosses that width (a split, a sidebar).
@@ -149,25 +149,12 @@ export class PlannerEditorPane implements IDisposable {
       } catch { /* provider misbehaving must not break the pane */ }
     }
 
-    // The sidebar dispatches a "focus tab" event when the user clicks
-    // Calendar / Tasks. The active pane responds by switching to that
-    // tab; non-active panes ignore it (root won't be connected).
-    const onFocusTab = (e: Event) => {
-      if (!this._root?.isConnected) return;
-      takePendingPlannerTab(); // handled here, so it must not also steer the next pane
-      const { tab, tasksFilter, date } = (e as CustomEvent<{ tab?: Tab; tasksFilter?: string; date?: string }>).detail ?? {};
-      if (tasksFilter) this._tasksFilter = tasksFilter;
-      this._cursorDate = plannerDayFrom(date) ?? this._cursorDate; // a day from the column's small month
-      if (tab === 'today' || tab === 'tasks' || tab === 'calendar') this._setTab(tab);
-    };
-    document.addEventListener('parallx.planner.focusTab', onFocusTab);
-
     // planner.newTask command dispatches this; the active pane opens
     // the dedicated task popover.
     const onNewTask = () => {
       if (!this._root?.isConnected) return;
       takePendingPlannerNewTask();
-      this._setTab('tasks');
+      this._moveInPlace('tasks');
       // Open beside the Create button it stands for (the body's top-left
       // corner put the popover over the menu bar); centred if it is hidden.
       const cta = this._root.querySelector<HTMLElement>('.planner-cta');
@@ -183,7 +170,7 @@ export class PlannerEditorPane implements IDisposable {
     const onNewEvent = () => {
       if (!this._root?.isConnected) return;
       takePendingPlannerNewEvent();
-      if (this._activeTab === 'tasks') this._setTab('today');
+      if (this._activeTab === 'tasks') this._moveInPlace('today');
       const start = this._activeTab === 'calendar' ? atTime(this._cursorDate, 9) : atTime(Date.now(), appDateParts(Date.now()).hour + 1);
       const btn = this._root.querySelector<HTMLElement>('[data-px-id="planner.newEvent"]');
       const r = btn?.getBoundingClientRect();
@@ -295,7 +282,6 @@ export class PlannerEditorPane implements IDisposable {
 
     this._disposables.push({
       dispose() {
-        document.removeEventListener('parallx.planner.focusTab', onFocusTab);
         document.removeEventListener('parallx.planner.newTask', onNewTask);
         document.removeEventListener('parallx.planner.newEvent', onNewEvent);
         document.removeEventListener('keydown', onKey);
@@ -332,9 +318,34 @@ export class PlannerEditorPane implements IDisposable {
     this._syncTabClass();
   }
 
-  private _setTab(tab: Tab): void {
+  private _shown = false;
+
+  /** The core moved this tab (services/places.ts): draw the place it names. */
+  async showLocation(location: PlaceLocation): Promise<void> {
+    if (this._disposed) return;
+    const tab: Tab = location.place === 'calendar' || location.place === 'tasks' ? location.place : 'today';
+    const params = location.params ?? {};
+    if (tab === 'tasks') this._tasksFilter = params.list || 'all';
+    if (tab === 'calendar') {
+      this._cursorDate = plannerDayFrom(params.date) ?? this._cursorDate;
+      if (params.view === 'month' || params.view === 'week' || params.view === 'day') this._calendarView = params.view;
+    }
+    this._shown = true;
     this._activeTab = tab;
     this._syncTabClass();
+    await this._renderTab();
+  }
+
+  /** Where this pane is, as a place's location. */
+  _location(tab: Tab = this._activeTab): PlaceLocation {
+    return tab === 'tasks' && this._tasksFilter !== 'all' ? { place: 'tasks', params: { list: this._tasksFilter } } : { place: tab };
+  }
+
+  /** A move the page makes on the way to something else (a form it opens): recorded, drawn, the keys left where they go. */
+  private _moveInPlace(tab: Tab): void {
+    this._activeTab = tab;
+    this._syncTabClass();
+    this._host.replace(this._location(tab));
     void this._renderTab();
   }
 
@@ -347,10 +358,9 @@ export class PlannerEditorPane implements IDisposable {
   _saveViewState(): void {
     const vs = this._api.viewState;
     if (!vs) return;
-    const sig = `${this._activeTab}|${this._calendarView}|${this._tasksFilter}|${this._cursorDate.getTime()}`;
+    const sig = `${this._calendarView}|${this._tasksFilter}|${this._cursorDate.getTime()}`;
     if (sig === this._lastViewStateSig) return;
     this._lastViewStateSig = sig;
-    vs.set('planner.activeTab', this._activeTab);
     vs.set('planner.calendarView', this._calendarView);
     vs.set('planner.tasksFilter', this._tasksFilter);
     vs.set('planner.cursorDate', this._cursorDate.toISOString());
@@ -371,6 +381,8 @@ export class PlannerEditorPane implements IDisposable {
    * and a call arriving mid-render coalesces into a single trailing re-render.
    */
   async _renderTab(): Promise<void> {
+    // Nothing is drawn before the core has said which page (a data change can come first).
+    if (!this._shown) return;
     // Every view-state mutation funnels through a render — one save hook
     // covers tab switches, calendar navigation, and view changes.
     this._saveViewState();
@@ -423,15 +435,13 @@ export class PlannerEditorPane implements IDisposable {
         loadCalCtx: () => this.calendar.loadCalCtx(),
         openEvent: (ev, anchor) => this.eventPopover.openEventPopover({ mode: 'edit', event: ev }, anchor),
         openTask: (task, anchor) => this.taskPopover.openTaskPopover({ mode: 'edit', task }, anchor),
+        // A day pressed: the calendar on that day, a move like any other.
         openDay: (dayStart) => {
-          this._cursorDate = startOfDay(new Date(dayStart));
-          this.calendar.setCalendarView('day');
-          this._setTab('calendar');
+          const d = new Date(dayStart);
+          const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          this._host.go({ place: 'calendar', params: { date, view: 'day' } });
         },
-        openReviewQueue: () => {
-          this._tasksFilter = 'review';
-          this._setTab('tasks');
-        },
+        openReviewQueue: () => { this._host.go({ place: 'tasks', params: { list: 'review' } }); },
         note: (verb, object, taskId, detail) => this._note(verb, object, taskId, detail),
       });
       this._disposables.push(this._today);

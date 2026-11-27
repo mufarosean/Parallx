@@ -76,7 +76,7 @@ const lowlight = createLowlight(common);
 const CANVAS_RIBBON_HEIGHT = 26;
 // ─── Canvas Editor Provider ─────────────────────────────────────────────────
 
-export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string; side?: boolean }) => Promise<void>;
+export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string; side?: boolean; replace?: string }) => Promise<void>;
 
 interface CanvasWindowApi {
   showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;

@@ -1,5 +1,6 @@
 // editorTabContextMenu.ts — the menu on an editor tab: close this one,
-// the others, those to the right, the saved ones or all; move it to the
+// the others, those to the right, the saved ones or all; open a tool's place
+// in a tab of its own; move it to the
 // group before or after (the keyboard's way for a tab drag); copy the path;
 // reveal in the explorer. The group view hands it its model and two
 // callbacks and nothing else.
@@ -8,6 +9,7 @@ import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import type { URI } from '../platform/uri.js';
 import type { IEditorInput } from './editorInput.js';
 import type { EditorGroupModel } from './editorGroupModel.js';
+import { trailSourceOf } from './editorTrail.js';
 
 export interface IEditorTabMenuHost {
   readonly model: Pick<EditorGroupModel, 'editors' | 'count' | 'closeEditor' | 'closeOthers' | 'closeToTheRight' | 'closeSaved' | 'closeAllEditors'>;
@@ -29,6 +31,10 @@ export function showEditorTabContextMenu(host: IEditorTabMenuHost, editor: IEdit
 
   // ── Build menu items ──
   const items: IContextMenuItem[] = [];
+
+  // Group 0: a tool's place pulled out into a tab of its own (editorTrail.ts)
+  const openInOwnTab = trailSourceOf(editor)?.openInOwnTab;
+  if (openInOwnTab) items.push({ id: 'openInOwnTab', label: 'Open in Its Own Tab', keybinding: 'Ctrl+Click', group: '0_open', order: 10 });
 
   // Group 1: Close operations
   items.push({ id: 'close', label: 'Close', keybinding: 'Ctrl+W', group: '1_close', order: 10 });
@@ -74,6 +80,9 @@ export function showEditorTabContextMenu(host: IEditorTabMenuHost, editor: IEdit
     if (idx < 0 && item.id !== 'closeAll' && item.id !== 'closeSaved') return;
 
     switch (item.id) {
+      case 'openInOwnTab':
+        openInOwnTab?.();
+        break;
       case 'close':
         host.model.closeEditor(idx);
         break;

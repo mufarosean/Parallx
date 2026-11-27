@@ -401,6 +401,12 @@ export interface OpenEditorOptions {
   readonly instanceId?: string;
   /** Open beside the active editor (the group to its right, split when there is none); an editor already open elsewhere is shown where it is. */
   readonly side?: boolean;
+  /**
+   * Open in place of this open editor (its id): the new editor takes that
+   * tab's spot and the old one closes, so a move (a page to its parent)
+   * stays in one tab. An editor that is open already is shown instead.
+   */
+  readonly replace?: string;
 }
 
 // ─── The Parallx API ─────────────────────────────────────────────────────────
@@ -886,6 +892,23 @@ export namespace ui {
    * Dispose when the dialog closes.
    */
   export function keepTabInside(within: HTMLElement, listenOn?: HTMLElement): IDisposable;
+
+  /**
+   * The one mark for "where you are" in a tool's column (see
+   * {@link places}): `aria-current="page"` and the shared `px-current`
+   * look. Call it on the row of the place the tool's tab is on, and with
+   * `false` on the others, from `places.onDidMove`.
+   */
+  export function markCurrent(element: HTMLElement, current: boolean): void;
+
+  /**
+   * Make an element (a column row, a card) a link to a place: Ctrl+click
+   * (Cmd+click) opens the place in a tab of its own instead of what the
+   * element does, and its context menu offers Open and Open in Its Own Tab.
+   * `address` is a place's address (`places.addressOf`), or a function read
+   * each time.
+   */
+  export function bindPlaceLink(element: HTMLElement, address: string | (() => string)): IDisposable;
 
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;
@@ -1524,6 +1547,98 @@ export namespace links {
 
   /** Fires when contracts are added or removed (extension load/unload). */
   export const onDidChangeContracts: Event<void>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Places: the screens of a tool, in its one tab
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Where in a tool: one of its places, with what it was given (a day, a list). */
+export interface PlaceLocation {
+  readonly place: string;
+  readonly params?: Readonly<Record<string, string>>;
+}
+
+export interface PlaceDefinition {
+  /** Stable, used in the address: `'calendar'`. */
+  readonly id: string;
+  /** What the tab and the trail call it: `'Calendar'`. */
+  readonly title: string;
+}
+
+/** A step of the trail after the tool: `Tasks`, then `Overdue`. */
+export interface PlaceStep {
+  readonly label: string;
+  readonly location: PlaceLocation;
+}
+
+/** What the core gives a tool's view of its places. */
+export interface PlaceViewHost {
+  /** Move this tab to another place (a link on the page): the tab is renamed, the trail redrawn, the column's mark moved, the keys put on the new title. */
+  go(location: PlaceLocation): void;
+  /** The page moved by itself (a list chosen on it): record where it is now without drawing it again. */
+  replace(location: PlaceLocation): void;
+}
+
+/** A tool's drawing of its places in one tab. */
+export interface PlaceView extends IDisposable {
+  /** Draw this place; resolve once it is on screen (the keys then go to its page header's title). */
+  show(location: PlaceLocation): void | Promise<void>;
+}
+
+/** What a tool registers with {@link places.register}. */
+export interface PlacesContribution {
+  /** The tool's segment in the address: lower-case letters, digits and dashes (`'planner'`). */
+  readonly id: string;
+  /** The tool's name, the trail's first crumb (`'Planner'`). */
+  readonly title: string;
+  /** Registry icon id of the tool (yours through `parallx.icons`): the tab's icon and the first crumb's. A tab never has no icon. */
+  readonly icon: string;
+  /** Its places; the first is where the tool opens. */
+  readonly places: readonly PlaceDefinition[];
+  /** The tab's editor type; defaults to `id`. A tool moving onto places keeps its old type so restored tabs still open. */
+  readonly editorType?: string;
+  /** The tab's name for a location; defaults to the place's title. */
+  titleOf?(location: PlaceLocation): string;
+  /** The trail after the tool; defaults to the place alone. The last step is where the tab is. */
+  trailOf?(location: PlaceLocation): readonly PlaceStep[];
+  /** Draw the tool's places into one tab's container. Called once per tab; `show` is then called for each move. */
+  createView(container: HTMLElement, host: PlaceViewHost): PlaceView;
+}
+
+/**
+ * `parallx.places`: the one way to move between a tool's screens.
+ *
+ * A *place* is a screen of a tool (a list, a calendar, a stats page); a
+ * *thing* (a page, a file, a quiz being taken) gets a tab of its own through
+ * `parallx.editors`. A tool declares its places and draws each; the core
+ * keeps the tool's ONE tab, named for the place with the tool's icon, shows
+ * the trail in the bar under the tabs (every crumb goes there in the same
+ * tab), gives every place an address (`parallx://place/<tool>/<place>?<params>`,
+ * opened by `parallx.links.open` and by a link in a page), puts the keys on
+ * the new page's title after a move, and offers Open in Its Own Tab on the
+ * tab's menu. Ctrl+click on a place link (`ui.bindPlaceLink`) does the same.
+ * Turned off, the tool's places, tabs and addresses go with it.
+ */
+export namespace places {
+  /** Declare a tool's places and how to draw them. Returns a disposable that takes them away. */
+  export function register(contribution: PlacesContribution): IDisposable;
+
+  /**
+   * Go to a place: an address, or a tool and a place (no place: the tool's
+   * tab as it is, or its first place). In the tool's tab, or with `newTab`
+   * in a tab of its own. False when no running tool has that place.
+   */
+  export function open(target: string | { readonly tool: string; readonly place?: string; readonly params?: Readonly<Record<string, string>> }, options?: { readonly newTab?: boolean }): Promise<boolean>;
+
+  /** Where the tool's tab in front (or last in front) is, for marking the column. */
+  export function current(tool: string): PlaceLocation | undefined;
+
+  /** A location's address: `parallx://place/<tool>/<place>?<params>`. */
+  export function addressOf(tool: string, location: PlaceLocation): string;
+
+  /** Fires when a tool's current place changes: a move, or another of its tabs came to the front. */
+  export const onDidMove: Event<{ readonly tool: string; readonly location: PlaceLocation }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -18,6 +18,8 @@ import { URI } from '../../platform/uri.js';
 import { getIcon, hasIcon } from '../../ui/iconRegistry.js';
 import { createToolEditorPane, whenClosedPanesSettle } from '../../editor/editorPane.js';
 import { EditorResolverPriority, type EditorResolverRegistration } from '../../services/editorResolverService.js';
+import { Emitter, type Event } from '../../platform/events.js';
+import type { IEditorTrailCrumb, IEditorTrailSource } from '../../editor/editorTrail.js';
 
 // ─── File Editor Resolver ────────────────────────────────────────────────────
 
@@ -165,6 +167,12 @@ export interface OpenEditorOptions {
   readonly instanceId?: string;
   /** Open beside the active editor (the group to its right, split when there is none). */
   readonly side?: boolean;
+  /**
+   * Open in place of this open editor (its id): the new one takes that tab's
+   * spot and the old one closes, so a move (a page to its parent) stays in
+   * one tab. When the new editor is open already, it is shown instead.
+   */
+  readonly replace?: string;
 }
 
 // ─── Editors Bridge ──────────────────────────────────────────────────────────
@@ -227,7 +235,9 @@ export class EditorsBridge {
         const name = typeof data?.name === 'string' ? (data.name as string) : typeId;
         const icon = typeof data?.icon === 'string' ? (data.icon as string) : undefined;
         const iconHtml = typeof data?.iconHtml === 'string' ? (data.iconHtml as string) : undefined;
-        return new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId, instanceId);
+        const restored = new ToolEditorInput(typeId, name, icon, iconHtml, entry.provider, inputId, entry.toolId, instanceId);
+        if (typeof data?.place === 'string') restored.place = data.place as string;
+        return restored;
       });
     }
 
@@ -336,6 +346,8 @@ export class EditorsBridge {
       options.instanceId,
     );
 
+    if (this._editorService && options.replace && options.replace !== inputId && await this._replaceEditor(options.replace, input)) return;
+
     if (this._editorService) {
       const sideGroup = options.side ? this._sideGroupFor(input) : undefined;
       await this._editorService.openEditor(input, { pinned: true }, sideGroup);
@@ -343,6 +355,27 @@ export class EditorsBridge {
     } else {
       console.warn(`[EditorsBridge] No editor service available — cannot open editor "${options.title}"`);
     }
+  }
+
+  /**
+   * Put `input` in the tab of the open editor `oldId` and close that one.
+   * False when `oldId` is not open (the caller then opens as usual). When
+   * `input` is open already, it is shown and the old tab is left as it is.
+   */
+  private async _replaceEditor(oldId: string, input: IEditorInput): Promise<boolean> {
+    const service = this._editorService;
+    if (!service) return false;
+    const open = service.getOpenEditors();
+    if (open.some((d) => d.id === input.id)) return service.focusEditor(input.id);
+    const old = open.find((d) => d.id === oldId);
+    const group = old ? this._editorGroupService?.getGroup(old.groupId) : undefined;
+    if (!old || !group) return false;
+    const at = group.model.editors.findIndex((e) => e.id === oldId);
+    if (at < 0) return false;
+    await service.openEditor(input, { pinned: true, index: at + 1 }, group.id);
+    const oldInput = group.model.editors.find((e) => e.id === oldId);
+    if (oldInput) await group.closeEditor(oldInput);
+    return true;
   }
 
   /** The `parallx.editors` namespace this bridge backs, as a tool receives it. */
@@ -549,8 +582,16 @@ function revealPathOf(uri: string): string | undefined {
 /**
  * An EditorInput backed by a tool's editor provider.
  */
-export class ToolEditorInput extends EditorInput {
+export class ToolEditorInput extends EditorInput implements IEditorTrailSource {
   readonly typeId: string;
+  /** Where in its tool the tab is (a place's address), kept across a restart. Set by the core's places. */
+  place: string | undefined;
+  /** Open what the tab shows in a tab of its own (the tab's menu offers it). Set by the core's places. */
+  openInOwnTab: (() => void) | undefined;
+  private _trail: readonly IEditorTrailCrumb[] | undefined;
+  private readonly _onDidChangeTrail = this._register(new Emitter<void>());
+  /** Fires when the tab's trail changes; the bar under the tabs redraws it. */
+  readonly onDidChangeTrail: Event<void> = this._onDidChangeTrail.event;
   private _name: string;
   private readonly _icon: string | undefined;
   private _iconHtml: string | undefined;
@@ -587,6 +628,15 @@ export class ToolEditorInput extends EditorInput {
   }
 
   get name(): string { return this._name; }
+
+  /** The tab's own trail for the bar under the tabs, when it has one. */
+  get trail(): readonly IEditorTrailCrumb[] | undefined { return this._trail; }
+
+  /** Set or clear the tab's trail. */
+  setTrail(trail: readonly IEditorTrailCrumb[] | undefined): void {
+    this._trail = trail;
+    this._onDidChangeTrail.fire();
+  }
 
   /**
    * Update the display name and notify listeners (tab bar, etc.).
@@ -647,6 +697,7 @@ export class ToolEditorInput extends EditorInput {
         // user-chosen icons self-correct.
         iconHtml: this._iconHtml,
         ownerToolId: this.ownerToolId,
+        ...(this.place ? { place: this.place } : {}),
       },
     };
   }

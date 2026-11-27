@@ -41,6 +41,7 @@ import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { FileSystemBridge } from './bridges/fileSystemBridge.js';
 import { CapabilityFsBridge, type FsCapabilityMode } from './bridges/capabilityFsBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
+import { createPlacesApi, type PlacesApi } from './bridges/placesBridge.js';
 import { LanguageModelBridge } from './bridges/languageModelBridge.js';
 import { ChatBridge } from './bridges/chatBridge.js';
 import { IconsBridge } from './bridges/iconsBridge.js';
@@ -64,7 +65,6 @@ import { registerContributedSlashCommand, registerContributedSkill, registerChat
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkCheck, type LinkCheckOptions, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
-import type { IFileRevealTarget } from '../editor/fileReveal.js';
 import type { IFileLocateResult } from '../services/fileLocator.js';
 import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
@@ -209,16 +209,8 @@ export interface ParallxApiObject {
       locate(uri: string, quote?: string): Promise<IFileLocateResult>;
     } | undefined;
   };
-  readonly editors: {
-    registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable | { dispose(): void; saveViewState?(): unknown; restoreViewState?(state: unknown): void } }): IDisposable;
-    registerFileEditor(typeId: string, options: { extensions: readonly string[]; iconHtml?: string }): IDisposable;
-    openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
-    closeEditor(editorId: string): Promise<boolean>;
-    focusEditor(editorId: string): Promise<boolean>; setEditorStatus(editor: string | { typeId: string; instanceId: string }, status: string | undefined): boolean;
-    openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void>;
-    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; isShowing: boolean; typeId: string; filePath?: string }[];
-    onDidChangeOpenEditors(listener: () => void): IDisposable;
-  };
+  readonly editors: ReturnType<EditorsBridge['api']>; // the bridge's own shape, declared once
+  readonly places: PlacesApi; // a tool's screens in its one tab (bridges/placesBridge.ts)
   readonly links: {
     register(contract: LinkContractInput): IDisposable;
     open(uri: string): Promise<boolean>;
@@ -808,6 +800,7 @@ export function createToolApi(
     }),
 
     editors: editorsBridge.api(),
+    places: createPlacesApi(toolId, editorsBridge, editorService, linkResolverService, subscriptions),
 
     links: Object.freeze({
       register: (contract: LinkContractInput) => linksBridge.register(contract),

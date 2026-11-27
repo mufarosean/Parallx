@@ -316,7 +316,8 @@ api.views.setBadge(containerId, { count: 3 })   // or { dot: true } or undefined
 
 ```js
 api.editors.registerEditorProvider(typeId, { createEditorPane(container, input) { /* return IDisposable */ } })
-api.editors.openEditor({ typeId, title, icon?, instanceId? })   // → Promise<void>
+api.editors.openEditor({ typeId, title, icon?, instanceId?, replace? })   // → Promise<void>; replace: an open editor's id
+                                                                 // whose tab the new one takes (a page to its parent, in one tab)
 api.editors.registerFileEditor(typeId, { extensions, iconHtml? }) // while your tool runs, files with these extensions open in your editor;
                                                                  // the pane's input.instanceId is 'file:' + the file's path
                                                                  // (the Explorer closes the tab when the file is deleted and reopens it
@@ -337,6 +338,67 @@ api.editors.setEditorStatus({ typeId, instanceId }, 'p. 214')    // → boolean.
 ```
 
 `instanceId` lets you open multiple panes of the same `typeId`. Same `typeId+instanceId` means the existing tab is focused, not duplicated. The id is namespaced per tool and type under the hood, so `'main'` is safe even though every other extension also uses `'main'` — you can never collide with (or be blocked by) another tool's tabs.
+
+### 4.3b `api.places` — a tool's screens share its one tab
+
+(`parallx.places.register` and the rest of the `places` namespace in
+`src/api/parallx.d.ts`.)
+
+A **place** is a screen of your tool (a list, a calendar, a stats page). A
+**thing** (a page, a file, a quiz being taken) gets a tab of its own through
+`api.editors`. Your places share ONE tab: you declare them and draw each, and
+the core does the rest the same way for every tool. Do not write your own
+router, tab names or trail.
+
+```js
+const reg = api.places.register({
+  id: 'mytool',                       // the address segment: lower-case letters, digits, dashes
+  title: 'My Tool',                   // the trail's first crumb
+  icon: 'calendar',                   // registry icon id (yours via api.icons): the tab's icon and the first crumb's
+  places: [                           // the first is where the tool opens
+    { id: 'home', title: 'Home' },
+    { id: 'stats', title: 'Stats' },
+  ],
+  titleOf: (loc) => undefined,        // optional: the tab's name for a location (default: the place's title)
+  trailOf: (loc) => [                 // optional: the steps after the tool, last = where the tab is
+    { label: 'Stats', location: { place: 'stats' } },
+  ],
+  createView(container, host) {       // once per tab; draw into container
+    return {
+      async show(loc) { /* draw loc.place with loc.params; resolve once on screen */ },
+      dispose() { /* remove listeners */ },
+    };
+    // host.go({ place, params })      a link on your page moves the tab (named, trailed, keys on the title)
+    // host.replace({ place, params }) your page changed where it is by itself: record it, no redraw
+  },
+});
+context.subscriptions.push(reg);
+
+api.places.open({ tool: 'mytool', place: 'stats', params: { year: '2026' } }); // → Promise<boolean>
+api.places.open('parallx://place/mytool/stats', { newTab: true });              // an address; newTab: a tab of its own
+api.places.addressOf('mytool', { place: 'stats' })   // → 'parallx://place/mytool/stats'
+api.places.current('mytool')                         // → where your tab in front is, { place, params } | undefined
+api.places.onDidMove(({ tool, location }) => { /* mark your column */ })
+```
+
+What the core does for you: the tab is named for the place (with your icon);
+the trail shows in the bar under the tabs (`My Tool › Stats`), each crumb going
+there in the same tab (Ctrl+click: a tab of its own); every place has an
+address, `parallx://place/<tool>/<place>?<params>`, that `api.links.open`, a
+link in a page and the chat all open; after a move the keys land on your page
+header's title (so every place starts with `api.ui.createPageHeader`); the
+tab's menu offers **Open in Its Own Tab**; your tab restores on the place it
+was on. Turned off, your places, their tabs and their addresses go.
+
+In your column, mark where you are with the one shared mark and make each row
+a place link:
+
+```js
+api.ui.bindPlaceLink(row, api.places.addressOf('mytool', { place: 'stats' })); // Ctrl+click and its menu: Open in Its Own Tab
+api.places.onDidMove(({ tool, location }) => {
+  if (tool === 'mytool') for (const r of rows) api.ui.markCurrent(r, r.dataset.place === location.place); // aria-current="page" + px-current
+});
+```
 
 ### 4.4 `api.window`
 

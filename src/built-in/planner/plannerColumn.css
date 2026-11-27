@@ -6,7 +6,7 @@
 .planner-sidebar__row.px-btn { justify-content: flex-start; width: 100%; height: var(--px-control-h); font-weight: 400; }
 .planner-sidebar__row.px-btn .px-btn__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .planner-sidebar__row.px-btn .svg-icon { color: var(--px-text-secondary); }
-.planner-sidebar__row--active.px-btn .svg-icon { color: var(--px-accent-text); }
+.planner-sidebar__row.px-current.px-btn .svg-icon { color: var(--px-accent-text); }
 
 /* The list scrolls when it is longer than the column: nothing in it is squeezed. */
 .planner-sidebar__list > *, .planner-sidebar__row { flex: none; }
@@ -15,7 +15,7 @@
 .planner-sidebar__sublist { display: flex; flex-direction: column; gap: 1px; }
 .planner-sidebar__row--sub { padding-left: calc(var(--px-space-2) + 16px + var(--px-space-2)); color: var(--px-text-secondary); }
 .planner-sidebar__row--sub .planner-sidebar__row-count { background: transparent; color: var(--px-text-muted); font-family: var(--px-font-mono); font-weight: 400; padding: 0; }
-.planner-sidebar__row--active.planner-sidebar__row--sub { color: var(--px-text); }
+.planner-sidebar__row.px-current.planner-sidebar__row--sub { color: var(--px-text); }
 .planner-sidebar__row-count[hidden] { display: none; }
 
 /* The small month: the day pressed opens the calendar on it. */

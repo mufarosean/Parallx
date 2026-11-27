@@ -58,6 +58,7 @@ import { showExtensionContextMenu, type ExtensionMenuAnchor, type IExtensionMenu
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { registerKeyboardResize, type IKeyboardResizable } from '../../ui/keyboardResize.js';
 import { onDragPress } from '../../ui/touchDrag.js';
+import { markCurrent, bindPlaceLink } from '../../ui/link.js';
 import { keepTabInside } from '../../ui/dom.js';
 
 /** What `api.ui` is: the object `createUiApi` builds, typed once here. */
@@ -149,6 +150,9 @@ export function createUiApi() {
     registerKeyboardResize: (element: HTMLElement, target: IKeyboardResizable) => registerKeyboardResize(element, target),
     onDragPress: (element: HTMLElement, handler: (e: MouseEvent) => void, opts?: { scrolls?: boolean; hold?: boolean; capture?: boolean; pointerEvents?: boolean }) => onDragPress(element, handler, opts),
     keepTabInside: (within: HTMLElement, listenOn?: HTMLElement) => keepTabInside(within, listenOn),
+    // Places (services/places.ts): the one mark for where you are in a column, and a link to a place.
+    markCurrent: (element: HTMLElement, current: boolean) => markCurrent(element, current),
+    bindPlaceLink: (element: HTMLElement, address: string | (() => string)) => bindPlaceLink(element, address),
     createToggle: (container: HTMLElement | null, options: IKitToggleOptions) => kitCreateToggle(container, options),
     createInput: (container: HTMLElement | null, options: IKitInputOptions) => kitCreateInput(container, options),
     createSelect: (container: HTMLElement | null, options: IKitSelectOptions) => kitCreateSelect(container, options),

@@ -119,8 +119,7 @@
   background: var(--px-surface-hover);
   box-shadow: inset 0 0 0 1px var(--px-accent);
 }
-.planner-sidebar__row--active { background: var(--px-surface-selected); }
-.planner-sidebar__row--active .planner-sidebar__row-icon { color: var(--px-accent-text); }
+.planner-sidebar__row.px-current .planner-sidebar__row-icon { color: var(--px-accent-text); }
 
 .planner-sidebar__row-icon {
   display: inline-flex;

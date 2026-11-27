@@ -18,8 +18,10 @@ import { PlannerDataService } from './plannerDataService.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
-import { PlannerEditorProvider } from './plannerEditorProvider.js';
-import { setPendingPlannerNewEvent, setPendingPlannerNewTask, setPendingPlannerTab } from './plannerNavState.js';
+import { PlannerEditorProvider, PLANNER_PLACES } from './plannerEditorProvider.js';
+import { PLANNER_TASK_FILTERS } from './plannerTaskFilters.js';
+import type { PlacesApi } from '../../api/bridges/placesBridge.js';
+import { setPendingPlannerNewEvent, setPendingPlannerNewTask } from './plannerNavState.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
@@ -62,6 +64,8 @@ interface ParallxApi {
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
+  places: PlacesApi;
+  ui?: unknown;
   window: {
     showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -289,6 +293,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const sidebar = new PlannerSidebar(_data, {
     editors: api.editors,
     commands: api.commands,
+    places: api.places,
     window: api.window,
   });
   context.subscriptions.push(sidebar);
@@ -317,11 +322,25 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     activity: activityJournal ? { note: (n) => activityJournal.note(n as never) } : undefined,
     dayLoads: { get: () => [..._dayLoadProviders.values()] },
   }, _orchestrator ?? undefined);
+  // Today, Calendar and Tasks are Planner's places (services/places.ts): one
+  // tab, named for the place; the trail in the bar under the tabs; an
+  // address each (parallx://place/planner/tasks?list=overdue).
+  const listLabel = (key: string | undefined) => PLANNER_TASK_FILTERS.find((f) => f.key === key)?.label;
   context.subscriptions.push(
-    api.editors.registerEditorProvider('planner', {
-      createEditorPane(container: HTMLElement, input?: unknown): IDisposable {
-        return editorProvider.createEditorPane(container, input as { id: string; setName?(n: string): void; setIconHtml?(h: string | undefined): void } | undefined);
+    api.places.register({
+      id: 'planner',
+      title: 'Planner',
+      icon: 'px-planner',
+      editorType: 'planner',
+      places: PLANNER_PLACES,
+      // Tasks on one of its lists is named for the list (as its page title is), All Tasks for Tasks.
+      titleOf: (loc) => (loc.place === 'tasks' && loc.params?.list && loc.params.list !== 'all' ? listLabel(loc.params.list) ?? 'Tasks' : PLANNER_PLACES.find((p) => p.id === loc.place)?.title ?? 'Today'),
+      trailOf: (loc) => {
+        const list = loc.place === 'tasks' ? loc.params?.list : undefined;
+        if (!list || list === 'all') return [{ label: PLANNER_PLACES.find((p) => p.id === loc.place)?.title ?? 'Today', location: { place: loc.place } }];
+        return [{ label: 'Tasks', location: { place: 'tasks' } }, { label: listLabel(list) ?? list, location: loc }];
       },
+      createView: (container, host) => editorProvider.createView(container, host),
     }),
   );
 
@@ -414,17 +433,12 @@ async function _runMigrations(): Promise<void> {
 
 // ─── Commands ───────────────────────────────────────────────────────────────
 
-const PLANNER_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
 
 function _registerCommands(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
+    // The Planner's tab as it is, or Today.
     api.commands.registerCommand('planner.open', async () => {
-      await api.editors.openEditor({
-        typeId: 'planner',
-        title: 'Planner',
-        iconHtml: PLANNER_ICON_HTML,
-        instanceId: 'main',
-      });
+      await api.places.open({ tool: 'planner' });
     }),
   );
 
@@ -435,20 +449,17 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       const to = tab === 'calendar' || tab === 'tasks' ? tab : 'today';
       const list = to === 'tasks' && typeof tasksFilter === 'string' ? tasksFilter : null;
       const day = to === 'calendar' && typeof date === 'string' ? date : null;
-      setPendingPlannerTab(to, list, day);
-      await api.editors.openEditor({ typeId: 'planner', title: 'Planner', iconHtml: PLANNER_ICON_HTML, instanceId: 'main' });
-      // An open pane takes the event; one still building took the pending request.
-      document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab: to, tasksFilter: list ?? undefined, date: day ?? undefined } }));
+      const params: Record<string, string> = {};
+      if (list && list !== 'all') params.list = list;
+      if (day) params.date = day;
+      await api.places.open({ tool: 'planner', place: to, params });
     }),
   );
 
   // Tasks › Overdue: every open task whose day has passed (Today's Overdue count opens it).
   context.subscriptions.push(
     api.commands.registerCommand('planner.showOverdue', async () => {
-      setPendingPlannerTab('tasks', 'overdue');
-      await api.editors.openEditor({ typeId: 'planner', title: 'Planner', iconHtml: PLANNER_ICON_HTML, instanceId: 'main' });
-      // An open pane takes the event; one still building took the pending request.
-      document.dispatchEvent(new CustomEvent('parallx.planner.focusTab', { detail: { tab: 'tasks', tasksFilter: 'overdue' } }));
+      await api.places.open({ tool: 'planner', place: 'tasks', params: { list: 'overdue' } });
     }),
   );
 
@@ -460,12 +471,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         // opens the full task popover with all fields wired up. A pane
         // still building misses the event; it takes the request once drawn.
         setPendingPlannerNewTask(true);
-        await api.editors.openEditor({
-          typeId: 'planner',
-          title: 'Planner',
-          iconHtml: PLANNER_ICON_HTML,
-          instanceId: 'main',
-        });
+        await api.places.open({ tool: 'planner' });
         document.dispatchEvent(new CustomEvent('parallx.planner.newTask'));
       } catch (err) {
         setPendingPlannerNewTask(false);
@@ -482,12 +488,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       // dialog (a pane still building takes the request once drawn).
       try {
         setPendingPlannerNewEvent(true);
-        await api.editors.openEditor({
-          typeId: 'planner',
-          title: 'Planner',
-          iconHtml: PLANNER_ICON_HTML,
-          instanceId: 'main',
-        });
+        await api.places.open({ tool: 'planner' });
         document.dispatchEvent(new CustomEvent('parallx.planner.newEvent'));
       } catch (err) {
         setPendingPlannerNewEvent(false);

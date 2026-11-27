@@ -11,6 +11,9 @@ import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
 import { createButton, createSectionLabel } from '../../ui/kit.js';
+import { bindPlaceLink, markCurrent } from '../../ui/link.js';
+import type { PlacesApi } from '../../api/bridges/placesBridge.js';
+import type { PlaceLocation } from '../../services/places.js';
 import { createSmallMonth } from '../../ui/dateTimeField.js';
 import { PLANNER_TASK_FILTERS, PLANNER_TASK_LIST_QUERY } from './plannerTaskFilters.js';
 
@@ -21,6 +24,7 @@ interface SidebarApi {
   commands: {
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
   };
+  places: Pick<PlacesApi, 'current' | 'onDidMove' | 'addressOf'>;
   window: {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -37,6 +41,21 @@ const ICONS: Record<NavKey, string> = {
   settings: 'settings',
 };
 
+/** The place a row of the column goes to: 'calendar', or 'tasks.overdue' for a list under Tasks. */
+function rowLocation(key: string): PlaceLocation {
+  if (key.startsWith('tasks.')) {
+    const list = key.slice('tasks.'.length);
+    return list === 'all' ? { place: 'tasks' } : { place: 'tasks', params: { list } };
+  }
+  return { place: key };
+}
+
+/** The row for where Planner's tab is: Tasks with no list (All Tasks) is the Tasks row. */
+function rowKeyOf(loc: PlaceLocation): string {
+  if (loc.place === 'tasks') return loc.params?.list ? `tasks.${loc.params.list}` : 'tasks';
+  return loc.place;
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -45,7 +64,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
 
 export class PlannerSidebar implements IDisposable {
   private _root: HTMLElement | null = null;
-  private _activeKey: string = 'today';
+  private _activeKey: string = '';
   private _disposed = false;
   private readonly _disposables: IDisposable[] = [];
 
@@ -72,6 +91,8 @@ export class PlannerSidebar implements IDisposable {
       row.classList.add('planner-sidebar__row');
       if (!icon) row.classList.add('planner-sidebar__row--sub');
       row.dataset.key = key;
+      // A page's row is a link to the place: Ctrl+click and its menu open it in a tab of its own.
+      if (command === 'planner.show') this._disposables.push(bindPlaceLink(row, this._api.places.addressOf('planner', rowLocation(key))));
       const count = el('span', 'planner-sidebar__row-count');
       count.dataset.role = 'count';
       count.hidden = true;
@@ -133,13 +154,10 @@ export class PlannerSidebar implements IDisposable {
     addRow(foot, 'settings', 'Settings', ICONS.settings, 'settings.open', ['planner']);
     list.appendChild(foot);
 
-    // The row lit is the page the pane was last asked for, whoever asked (a row here, a command, the palette).
-    const onShown = (e: Event) => {
-      const { tab, tasksFilter } = (e as CustomEvent<{ tab?: string; tasksFilter?: string }>).detail ?? {};
-      if (tab) this._setActive(tab === 'tasks' && tasksFilter ? `tasks.${tasksFilter}` : tab);
-    };
-    document.addEventListener('parallx.planner.focusTab', onShown);
-    this._disposables.push(toDisposable(() => document.removeEventListener('parallx.planner.focusTab', onShown)));
+    // The row marked is the place Planner's tab is on, whoever moved it (a row here, a crumb, a command, a link).
+    const follow = (loc: PlaceLocation | undefined) => { if (loc) this._setActive(rowKeyOf(loc)); };
+    follow(this._api.places.current('planner'));
+    this._disposables.push(this._api.places.onDidMove((e) => { if (e.tool === 'planner') follow(e.location); }));
 
     container.appendChild(root);
     this._syncActive();
@@ -177,7 +195,8 @@ export class PlannerSidebar implements IDisposable {
 
   private _syncActive(): void {
     for (const row of Array.from(this._root?.querySelectorAll<HTMLElement>('.planner-sidebar__row[data-key]') ?? [])) {
-      row.classList.toggle('planner-sidebar__row--active', row.dataset.key === this._activeKey);
+      if (row.dataset.key === 'settings') continue;
+      markCurrent(row, row.dataset.key === this._activeKey);
     }
   }
 

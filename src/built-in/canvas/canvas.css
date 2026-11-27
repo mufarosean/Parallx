@@ -2940,9 +2940,8 @@
   white-space: nowrap;
 }
 
-.canvas-breadcrumb:hover {
-  color: var(--px-text-secondary);
-}
+.canvas-breadcrumb:hover, .canvas-breadcrumb:focus-visible { color: var(--px-text-secondary); }
+.canvas-breadcrumb:focus-visible { outline: none; box-shadow: var(--px-ring-accent); border-radius: var(--px-radius-sm); }
 
 .canvas-breadcrumb-sep {
   color: var(--px-text-faint);

@@ -9,6 +9,8 @@
 //  - Shows the file path of the active editor as clickable segments
 //  - Each segment is a folder in the path from workspace root → file
 //  - Clicking a segment fires an event (for future: show picker dropdown)
+//  - A tab with a trail of its own (editorTrail.ts: a tool's place) shows
+//    that instead, each crumb going to its place in the same tab
 //  - Updates automatically when the active editor changes
 //
 // DOM structure:
@@ -23,7 +25,10 @@ import { BreadcrumbsWidget, BreadcrumbsItem } from '../ui/breadcrumbs.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import { $ } from '../ui/dom.js';
 import { createList } from '../ui/kit.js';
-import { getFileTypeIcon, getFolderIcon } from '../ui/iconRegistry.js';
+import { createIconElement, getFileTypeIcon, getFolderIcon } from '../ui/iconRegistry.js';
+import { createBlock } from '../ui/block.js';
+import { trailSourceOf, type IEditorTrailCrumb } from './editorTrail.js';
+import { ContextMenu } from '../ui/contextMenu.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -91,6 +96,35 @@ class FileBreadcrumbItem extends BreadcrumbsItem {
   }
 }
 
+// ─── TrailBreadcrumbItem ──────────────────────────────────────────────────────
+
+/**
+ * A crumb of a tab's own trail (editorTrail.ts): a tool's tab names the tool,
+ * then the place it is on. Pressing it goes there in the same tab.
+ */
+class TrailBreadcrumbItem extends BreadcrumbsItem {
+  constructor(readonly crumb: IEditorTrailCrumb) {
+    super();
+  }
+
+  dispose(): void { /* nothing held */ }
+
+  equals(other: BreadcrumbsItem): boolean {
+    return other instanceof TrailBreadcrumbItem && other.crumb.label === this.crumb.label && other.crumb.address === this.crumb.address;
+  }
+
+  render(container: HTMLElement): void {
+    if (this.crumb.icon) container.appendChild(createIconElement(this.crumb.icon, 14)).classList.add('breadcrumb-icon');
+    createBlock(container, 'span', { className: 'breadcrumb-label', text: this.crumb.label });
+    container.classList.add('trail');
+    if (this.crumb.address) container.dataset.address = this.crumb.address;
+    if (this.crumb.current) {
+      container.classList.add('current');
+      container.setAttribute('aria-current', 'location');
+    }
+  }
+}
+
 // ─── BreadcrumbsBar ──────────────────────────────────────────────────────────
 
 /**
@@ -125,8 +159,14 @@ export class BreadcrumbsBar extends Disposable {
   private readonly _onDidVisibilityChange = this._register(new Emitter<boolean>());
   readonly onDidVisibilityChange: Event<boolean> = this._onDidVisibilityChange.event;
 
-  constructor(container: HTMLElement) {
+  /** The input whose own trail is watched, and the watch: a move redraws the bar. */
+  private _watched: IEditorInput | undefined;
+  private _trailWatch: { dispose(): void } | undefined;
+
+  /** `onTrailChange`: the group's ribbon redraws (and lays out) when the shown tab's trail changes. */
+  constructor(container: HTMLElement, private readonly _onTrailChange?: (input: IEditorInput) => void) {
     super();
+    this._register({ dispose: () => this._trailWatch?.dispose() });
 
     // .breadcrumbs-control wrapper (matches VS Code's DOM class)
     this.domNode = $('div');
@@ -144,12 +184,36 @@ export class BreadcrumbsBar extends Disposable {
       selected: () => [],
     }));
 
-    // When a breadcrumb item is selected, fire our event
+    // When a breadcrumb item is selected, fire our event; a trail's crumb goes to its place
     this._register(this._widget.onDidSelectItem((e) => {
       if (e.item instanceof FileBreadcrumbItem) {
         this._onDidSelectSegment.fire(e.item.element);
+      } else if (e.item instanceof TrailBreadcrumbItem) {
+        const payload = e.payload as { ctrlKey?: boolean; metaKey?: boolean } | undefined;
+        e.item.crumb.open?.({ newTab: !!(payload?.ctrlKey || payload?.metaKey) });
       }
     }));
+
+    // A trail's crumb is a place link: its menu offers Open in Its Own Tab.
+    const onMenu = (e: MouseEvent) => {
+      const node = (e.target as HTMLElement | null)?.closest<HTMLElement>('.parallx-breadcrumb-item');
+      const items = this._widget.getItems();
+      const at = node ? Array.from(this._widget.domNode.children).indexOf(node) : -1;
+      const item = at >= 0 ? items[at] : undefined;
+      if (!(item instanceof TrailBreadcrumbItem) || !item.crumb.open) return;
+      e.preventDefault();
+      const r = node!.getBoundingClientRect();
+      const menu = ContextMenu.show({
+        items: [
+          { id: 'open', label: 'Open', group: '1_open', order: 10 },
+          { id: 'openInOwnTab', label: 'Open in Its Own Tab', keybinding: 'Ctrl+Click', group: '1_open', order: 20 },
+        ],
+        anchor: e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: r.left, y: r.bottom },
+      });
+      menu.onDidSelect(({ item: chosen }) => item.crumb.open?.({ newTab: chosen.id === 'openInOwnTab' }));
+    };
+    this._widget.domNode.addEventListener('contextmenu', onMenu);
+    this._register({ dispose: () => this._widget.domNode.removeEventListener('contextmenu', onMenu) });
 
     // Start hidden — shown when an editor with a resource is active
     this.hide();
@@ -177,6 +241,20 @@ export class BreadcrumbsBar extends Disposable {
 
     if (!input) {
       this.hide();
+      return wasVisible !== this._isVisible;
+    }
+
+    // A tab with its own trail (a tool's place) shows that, and follows it.
+    if (input !== this._watched) {
+      this._trailWatch?.dispose();
+      this._watched = input;
+      this._trailWatch = trailSourceOf(input)?.onDidChangeTrail(() => { if (this._watched === input) this._onTrailChange?.(input); });
+    }
+    const trail = trailSourceOf(input)?.trail;
+    if (trail?.length) {
+      this.show();
+      this._widget.setItems(trail.map((c) => new TrailBreadcrumbItem(c)));
+      this._widget.revealLast();
       return wasVisible !== this._isVisible;
     }
 

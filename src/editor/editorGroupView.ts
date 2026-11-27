@@ -369,7 +369,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     }
 
     // Default content: file-path breadcrumbs (hidden when custom ribbon is active)
-    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._ribbonContainer));
+    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._ribbonContainer, (input) => { if (input === this.model.activeEditor) this._updateRibbon(input); }));
 
     // When a breadcrumb segment is clicked, reveal it in Explorer
     this._register(this._breadcrumbsBar.onDidSelectSegment((segment) => {
@@ -514,7 +514,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     switch (e.kind) {
       case EditorGroupChangeKind.EditorOpen: {
         // Subscribe to label changes so tab updates when name changes
-        const editor = this.model.editors[this.model.editors.length - 1];
+        const editor = e.editor ?? this.model.editors[this.model.editors.length - 1];
         if (editor) {
           this._register(editor.onDidChangeLabel(() => this._renderTabs()));
         }

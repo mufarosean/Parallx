@@ -11,6 +11,7 @@ import type { IPage, ICanvasDataService, SaveStateEvent, PageChangeEvent, PageMu
 import { SaveStateKind, PageChangeKind } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $ } from '../../../ui/dom.js';
+import { bindLinkAction } from '../../../ui/link.js';
 import { onDragPress } from '../../../ui/touchDrag.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
@@ -672,14 +673,13 @@ export class PageChromeController {
         const crumbText = $('span.canvas-breadcrumb-label');
         crumbText.textContent = ancestors[i].title;
         crumb.appendChild(crumbText);
-        crumb.addEventListener('click', () => {
-          this._host.openEditor?.({
-            typeId: this._host.databaseService?.isDatabase(ancestors[i].id) ? 'database' : 'canvas',
-            title: ancestors[i].title,
-            icon: ancestors[i].icon ?? undefined,
-            instanceId: ancestors[i].id,
-          });
-        });
+        bindLinkAction(crumb, (newTab) => void this._host.openEditor?.({ // the parent, in this tab (Ctrl: a tab of its own)
+          typeId: this._host.databaseService?.isDatabase(ancestors[i].id) ? 'database' : 'canvas',
+          title: ancestors[i].title,
+          icon: ancestors[i].icon ?? undefined,
+          instanceId: ancestors[i].id,
+          ...(!newTab && this._host.input ? { replace: this._host.input.id } : {}),
+        }));
         this._breadcrumbsEl.appendChild(crumb);
 
         const sep = $('span.canvas-breadcrumb-sep');
