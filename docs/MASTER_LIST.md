@@ -2185,49 +2185,67 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   lands on the place in the one tab: the column, Home's cards, the commands
   (`worksheet.open`, `.bank`, `.dashboard`, `.quizzes`, `.plan`, `.practice`,
   `.importExcel`, `.generate`, `.settings`), a link in a page, Back and
-  Forward. The "Worksheets ›" back link is gone from the panes that had it
+  Forward (seen for the column, the commands up to `.importExcel`, a link in
+  a page, Back and Forward and Home's Resume; `.generate`, `.settings` and
+  Home's place cards read in code, all through `openWorksheet`). The
+  "Worksheets ›" back link is gone from the panes that had it
   (Problem Bank, New Quiz, the roster, Study Dashboard, Import Workbook,
   Campaign, Generate Items, Settings, Quizzes); the trail does that work.
   The column has a Problem Bank row (its bank snapshot's heading, which
   opened the bank, is now a label, "Papers"), marks the current place with
-  the shared mark, and each row is a place link (Ctrl+click, its menu). The
+  the shared mark, and each row is a place link (Ctrl+click, its menu; the
+  Problem Bank row's carries the bank's filters; Ctrl+click seen on the row
+  of the place showing, on another row and a row's own menu read in code). The
   Problem Bank's filters, search, recipes and a paper ride in its address
   (`parallx://place/worksheet/bank?filters=noted&q=Brosius`); a way in that
   names none (the column's row, Home's card, the command) opens the bank as
   it was left; "Show in Problem Bank" on a sheet adds the problem's paper.
-  The core gained one generic field: a places contribution may name
+  The core gained, all generic: a places contribution may name
   `formerTabs` (an older editor type and which of its instances are places),
   and a tab of that type saved by the older build comes back at startup as
   that place in the tool's one tab (`registerToolEditorRestoreRedirect` in
   `editorsBridge.ts`; `src/workbench/restoreMerge.ts`): two such tabs in one
   group make one, showing the one that was showing; one already brought back
   in another group is not brought back twice. Declared in `parallx.d.ts`,
-  guide §4.3b.
+  guide §4.3b. `admitRestoredEditor` runs for every restored tab and acts
+  only on one whose type changed; `places.titleOf`, `iconHtmlOf` and an
+  exported `MAIN_INSTANCE` came with it.
   *How it was checked:* the acceptance probe
   `tests/probes/getting-around-worksheets-acceptance.mjs`, written first by
   the app-verifier, reported 5/59 on the app as it was (the five are guards
   and checks already true: things in their own tabs, the tool turned off
   leaves nothing, Home had no back link, New Quiz has no row to mark); it
   passes 59/59 unedited on the build commit and again on the final build,
-  8d3775af, 0 page errors (seen on the real app, hidden). Pieces 1 and 2's
-  probes 23/23 and 30/30 (on e22f269f). Worksheets' own probes on e22f269f:
-  `worksheet-screens-probe` 0 failed checks, `sheet-toolbar-probe`,
-  `sheet-keys-probe`, `sheet-file-verify-probe` exit 0 with no failed check
-  (not rerun on the two later commits, which touch only the restore and the
-  bank's filters). Typecheck, vitest (754 files passed, 3 skipped), build,
+  b49f6080, 0 page errors (seen on the real app, hidden). Pieces 1 and 2's
+  probes 23/23 and 30/30 on e22f269f and again on b49f6080. Worksheets' own
+  probes, run between e22f269f and 801e5df0 (which build each ran on was not
+  logged; later commits change the restore, the bank's filters, the mark's
+  CSS and the bank row's link): `worksheet-screens-probe` 0 failed checks,
+  `sheet-toolbar-probe`, `sheet-keys-probe`, `sheet-file-verify-probe` exit
+  0 with no failed check. `sheet-file-fixes-probe` (stale, item 21) on
+  8d3775af: 219 ok, 29 FAIL (Explorer file operations: no Delete or Cut where
+  it looks in the menu, a moved or renamed file's tab), and two page errors
+  in the sheet engine (Univer: `getRenderAll` with the same file opened
+  twice; `getActiveSheet is not a function` from the practice sheet's fx
+  button); on the build before the piece: being run. `tests/e2e/97-worksheet.spec.ts` (stale) was
+  not run. Typecheck, vitest (754 files passed, 3 skipped, on b49f6080;
+  output not kept), build,
   with `tests/unit/placesFormerTabs.test.ts` (seven tests; the first, merge
   and two-group ones seen failing on the code before their fix; the split
   copy one written with its fix, read, not seen failing). The keyboard audit
   filtered to Worksheets, on 801e5df0, over its places (added to the audit's
   screens) and the Scratch Sheet and a new sheet, 33 screens with
   sub-screens: 0 on every count; the touch-drag probe all ok; the
-  visual-consistency probe one rise, Creations' title size, as before piece 1.
+  visual-consistency probe one rise, Creations' title size, as before piece 1 (its
+  seed has no problems, so Worksheets' places were measured empty: the bank's
+  list, chips and the column's snapshot were not).
   Review by the correctness, modularity and access reviewers, each finding
   put to the skeptic; fixed what it reproduced and judged to matter: two
   older tabs in one group coming back on the first one's place, older tabs in
   two groups coming back as two tabs sharing one place, pressing Problem Bank
   clearing its filters; also the current row's mark under hover and a stale
-  comment. The app-verifier then drove the fixes: all held (the filters kept
+  comment. The app-verifier then drove the fixes (its report; only the
+  two-group runs' log was kept): all held (the filters kept
   across Study Dashboard and back and from Home's card, the mark on hover in
   light and dark, one tab from two groups in the saved grid) but one: a save
   without the editor grid (written before 2026-09-15) splits by copying the
@@ -2236,9 +2254,10 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   screens (they moved into one tab and had been audited only through Home);
   no check removed, no baseline raised, the acceptance probe never edited.
   *Reported and left:* in that pre-September save form, after the fix, a
-  column press brings the one tab forward still on Problem Bank instead of
-  moving it (seen by the verifier's script; no save written since has that
-  form). A quiz's, a problem's and the Scratch Sheet's tabs have no trail of
+  press of Quizzes in the column did not go to Quizzes: the one tab came
+  forward still on Problem Bank (both such variants, one press each; later
+  presses not tried). Saves since 2026-09-15 carry the grid (read in code); a
+  save whose grid fails to restore takes the same route, not tried. A quiz's, a problem's and the Scratch Sheet's tabs have no trail of
   their own (the bar shows the tab's name), and the quiz summary keeps its
   "Quizzes" back link (a thing's page, not a place's). The column marks
   Quizzes while a quiz's own tab is in front (the place tab's place). A quiz
@@ -2248,8 +2267,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   buttons with a command (as before; the row added uses the same helper);
   "Papers" sits beside a count of rated problems and is the old style, not
   the kit's section label. *"Registered twice" scene errors:* not seen on
-  returning to an open quiz's tab (the verifier listened on every console
-  level, twice round Quizzes and back).
+  returning to an open quiz's tab (the verifier's report: every console level,
+  twice round Quizzes and back; no log kept).
   *Decided for him to overrule:* Generate Items and Worksheets Settings are
   places; Home's tab is "Home" while its page title stays "Worksheets" (the
   trail reads "Worksheets › Home"); the bank opens with the filters it was
