@@ -149,14 +149,14 @@ export class PlannerEditorPane implements IDisposable {
       } catch { /* provider misbehaving must not break the pane */ }
     }
 
-    // planner.newTask command dispatches this; the active pane opens
-    // the dedicated task popover.
-    // One form at a time: a pane drawn by the command itself took the request, and the event after it finds the form open.
-    const formOpen = () => !!document.querySelector('.planner-popover-overlay');
-    const onNewTask = () => {
-      if (!this._root?.isConnected) return;
-      takePendingPlannerNewTask();
-      if (formOpen()) return;
+    // planner.newTask sets its request, opens the Planner, then dispatches
+    // this. One form, opened by whichever shown pane takes the request first:
+    // a pane the command itself drew takes it while being made, and the event
+    // after it then finds nothing to take (two stacked forms otherwise).
+    const shown = () => !!this._root?.isConnected && this._root.getClientRects().length > 0;
+    const onNewTask = (fromEvent: boolean) => {
+      if (!this._root || (fromEvent && !shown())) return;
+      if (!takePendingPlannerNewTask()) return;
       this._moveInPlace('tasks');
       // Open beside the Create button it stands for (the body's top-left
       // corner put the popover over the menu bar); centred if it is hidden.
@@ -165,15 +165,15 @@ export class PlannerEditorPane implements IDisposable {
       const anchor = r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0);
       this.taskPopover.openTaskPopover({ mode: 'create' }, anchor);
     };
-    document.addEventListener('parallx.planner.newTask', onNewTask);
-    if (takePendingPlannerNewTask()) onNewTask();
+    const onNewTaskEvent = () => onNewTask(true);
+    document.addEventListener('parallx.planner.newTask', onNewTaskEvent);
+    onNewTask(false);
 
     // planner.newEvent (the New Event buttons run it too): on the calendar at
     // 9 on the day in view, elsewhere on Today at the next whole hour.
-    const onNewEvent = () => {
-      if (!this._root?.isConnected) return;
-      takePendingPlannerNewEvent();
-      if (formOpen()) return;
+    const onNewEvent = (fromEvent: boolean) => {
+      if (!this._root || (fromEvent && !shown())) return;
+      if (!takePendingPlannerNewEvent()) return;
       if (this._activeTab === 'tasks') this._moveInPlace('today');
       const start = this._activeTab === 'calendar' ? atTime(this._cursorDate, 9) : atTime(Date.now(), appDateParts(Date.now()).hour + 1);
       const btn = this._root.querySelector<HTMLElement>('[data-px-id="planner.newEvent"]');
@@ -181,8 +181,9 @@ export class PlannerEditorPane implements IDisposable {
       const anchor = r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - 230, 100, 0, 0);
       this.eventPopover.openEventPopover({ mode: 'create', startAt: start, endAt: start + 60 * 60 * 1000 }, anchor);
     };
-    document.addEventListener('parallx.planner.newEvent', onNewEvent);
-    if (takePendingPlannerNewEvent()) onNewEvent();
+    const onNewEventEvent = () => onNewEvent(true);
+    document.addEventListener('parallx.planner.newEvent', onNewEventEvent);
+    onNewEvent(false);
 
     // Keyboard shortcuts — Notion Calendar / Cron parity. Only fire when
     // the pane is connected and the user isn't typing in an input.
@@ -286,8 +287,8 @@ export class PlannerEditorPane implements IDisposable {
 
     this._disposables.push({
       dispose() {
-        document.removeEventListener('parallx.planner.newTask', onNewTask);
-        document.removeEventListener('parallx.planner.newEvent', onNewEvent);
+        document.removeEventListener('parallx.planner.newTask', onNewTaskEvent);
+        document.removeEventListener('parallx.planner.newEvent', onNewEventEvent);
         document.removeEventListener('keydown', onKey);
       },
     });
