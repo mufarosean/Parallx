@@ -54,6 +54,9 @@ const SCREENS = [
   ['ext:study.weakSpots'], ['ext:study.studyMarked'],
   // Flashcards' places share its one tab (getting around piece 6): Study, Stats, Make Cards and Custom Study, audited as screens too.
   ['ext:flashcards.study'], ['ext:flashcards.stats'], ['ext:flashcards.generate'], ['ext:flashcards.customStudy'],
+  // Budget's places share its one tab (getting around piece 8): Overview, Review, Plan (Limits, Bills, Trends, Reconcile), Net Worth and Goals, Merchants and Rules, Categories, Sync Log and Import / Export, audited as screens too.
+  ['ext:budget.openDashboard'], ['ext:budget.openReviewQueue'], ['ext:budget.openPlan'], ['ext:budget.openRecurring'], ['ext:budget.openCashFlow'], ['ext:budget.openReconcile'],
+  ['ext:budget.openAccounts'], ['ext:budget.openRules'], ['ext:budget.openCategories'], ['ext:budget.openSyncLog'], ['ext:budget.openImportExport'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
   ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:study.progress'], ['seed:study.subject'], ['seed:study.unit'], ['seed:study.unit.picker'], ['seed:study.unit.matches'], ['seed:study.plan'], ['seed:study.plan.sheet'], ['seed:flashcards.deck'], ['seed:flashcards.study'], ['seed:imageEditor'], ['seed:imageEditor.generate'], ['seed:imageEditor.masks'], ['seed:imageEditor.masks.subject'], ['seed:plan.masks'], ['seed:plan.masks.words'], ['seed:clipEditor'], ['seed:chat'], ['seed:chat.timing'], ['seed:chat.citation'],
   // Painting Plans (behind the art tools setting, which the seed turns on).
