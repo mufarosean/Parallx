@@ -2280,7 +2280,135 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   trail reads "Worksheets › Home"); the bank opens with the filters it was
   left with unless an address names others; the snapshot heading "Papers".
   *Only his machine can show:* nothing specific; Windows was not run.
-- *Next:* piece 4, Atelier onto the point, in a new session.
+- **Piece 4 done (2026-11-28): Atelier onto the places point.**
+  *What shipped:* Atelier's screens are places in ONE tab named for the
+  place, with Atelier's icon (`ext/media-organizer/atelier-places.js`,
+  through `api.places` only, editor type `media-organizer-place`): All
+  Media, Favorites, Recent, Untagged, Trash, a tag, a folder, a smart album,
+  Tag Review, Duplicates, Daily Study, Practice Session (its setup page),
+  Painting Plans, Colour Study, and a photo's or video's detail as a place
+  over the list it was opened from (trail `Atelier › All Media › card`; from
+  an album, `Atelier › Probe Album › card`, the album crumb opening the
+  album's own tab; with no list, All Media). Things keep their tabs: an album
+  (and New Album), a plan's board, a practice session being run, the clip
+  and image editors, Remove From Other Photos. Addresses carry the
+  parameters: `parallx://place/media-organizer/smart?id=1`, `/tag?path=5-12`,
+  `/folder?id=3`, `/detail?type=photo&id=2&in=grid%3Aall`,
+  `/daily?session=4`, `/plan?id=1&step=paints`. Tabs of the older build
+  (`media-organizer-grid` with `grid:…`, `detail:…`, `tag-review`,
+  `duplicates`, `practice:setup`, `plans:list`, `plans:edit:…`, `colour:list`,
+  `colour:sheet:…`) come back as the place in the one tab (`formerTabs`);
+  its other tabs (an album, a board, a run) come back as they were. Every
+  way in goes to the place: the column's rows, the manifest's commands
+  (Open Library, Painting Plans, Colour Study, Open Tag Review, Find
+  Duplicates, Practice Session, Daily Study, Open Smart Album, Reveal in
+  Atelier), the deep links `parallx://media-organizer/photo/<id>` and
+  `/video/<id>` (now the item's detail, where they opened the grid before),
+  the Media Gallery block's Open in Atelier, the All Media feed's Daily
+  Study card, a grid card, an album's card, the Duplicates page, a plan's
+  shelf and Open Source Photo, the image editor's photo. The column marks
+  where you are with the shared mark (a thing's tab in front marks its row;
+  a detail marks its list), and its fixed rows are place links (Ctrl+click,
+  their menu); a tag, folder or smart album row keeps its own menu and opens
+  its place in a tab of its own by Ctrl+click (and the tab's own menu, Open
+  in Its Own Tab, works for every place). The kit's page header is now the
+  title of Tag Review, Practice Session, Painting Plans, Colour Study, Daily
+  Study, a colour sheet and the detail; the grid places and Duplicates had
+  it. The grid no longer takes the keys back from the title after a move,
+  and no longer reads Alt+Left/Right as arrows (Back and Forward work from
+  a grid).
+  *The calls the rule left, decided for him to overrule:* a plan being worked
+  on and a colour sheet are **places** over Painting Plans and Colour Study
+  (the table names only the board as a plan's thing), so their inner panels
+  are trail steps: My Paints in a plan (`… › fractal › My Paints`), The Mix
+  and My Paints on a sheet; the hand-made **Back To Colours** and **Back to
+  Rows** buttons are gone, the crumb before and Back do that work (their
+  commands are kept for the palette). No back button inside a thing's page
+  was left as a step of that thing; none remained. Daily Study is a place
+  (today's run, under the kit's title "Daily Study"; Draw Again keeps it
+  there); a practice session started from Practice Session is a thing,
+  "Practice". Trash, tags, folders and smart albums are places (grid filters
+  like the fixed ones). Open Smart Album now opens the smart album's place
+  (it used to apply the saved search to whichever grid was open). A tab on
+  a place is named for it (a plan's tab by the plan's name, also on My
+  Paints). The in-page search and filter chips of a grid are not in the
+  address (they stay with the grid's session state, as before).
+  *The core gained, generic:* a trail step may give `open()` instead of a
+  location, for a thing a place sits over (the album crumb), and a place
+  tab passes its view's own `saveViewState`/`restoreViewState` to the
+  editor area (`src/services/places.ts`, declared in `parallx.d.ts`, guide
+  §4.3b; two tests in `tests/unit/places.test.ts`, both seen failing on the
+  core before). The modularity reviewer found no breach.
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-atelier-acceptance.mjs`, written first by the
+  app-verifier, gave 17/114 on the app as it was (eight guards and nine
+  checks already true); it passes 114/114 unedited on the build commit
+  981b00db and again on the final build 47c0b3a5, 0 page errors (seen on the
+  real app, hidden). Pieces 1 to 3's probes 23/23, 30/30, 59/59 on 981b00db
+  (not run again after the fixes, which touch only Atelier's files).
+  Typecheck, vitest (755 files passed, 3 skipped; with
+  `tests/unit/moPlaces.test.ts`, new), build. Atelier's own probes on
+  981b00db: `mo-keys-probe` and `a11y-drags-probe` exit 0;
+  `colour-study-acceptance` 87 ok, 7 FAIL, 3 not run, where it gave 97 ok on
+  26085309 (the build before the piece) — every failure read the active
+  tab's old instance id; see the changed check below; after its correction,
+  97 ok on 2c991b08 (one run of three had two pixel reads fail, 4.4 and
+  9.19, passing on the next; not traced to this piece).
+  `practice-probe`, `tag-review-probe`, `menus-probe` and
+  `mo-parent-tags-probe` could not run here: they copy his photos from
+  `data/dashboard-assets`, which is not in the cloud checkout;
+  `bulk-remove-probe` found no Remove model on disk and checked nothing.
+  The keyboard audit filtered to Atelier (its openGrid screen, the four
+  places with a command of their own, added to its screens, and the seeded
+  Painting Plans and Colour Study screens, 22 screens): 0 on every count but
+  three on 2c991b08 — Practice Session 4 mouse-only (the Neglected
+  thumbnails), Daily Study 1 without a focus ring (the player), the same on
+  26085309, so from before the piece, both fixed (47c0b3a5) and 0 on the
+  final build; a colour sheet with a picture 2 not focusable once, 0 on
+  both builds when run again. That first full run was stopped by my time
+  limit in its popups pass after 12 of its 22 screens' popups (0 problems on
+  those); the two screens fixed were run through all its passes, 0. Its
+  dialog pass was not run. The touch-drag probe all ok; the
+  visual-consistency probe one rise, Creations' title size, as before piece
+  1 (on 47c0b3a5).
+  Review by the correctness, modularity and access reviewers, each finding
+  put to the skeptic; fixed what it reproduced or judged real and worth
+  fixing: a plan left on another step and brought back to Colour redrew My
+  Paints with no crumb and no way back (leaving Colour now closes My
+  Paints); a colour sheet had no title for the keys (now the kit's); Daily
+  Study's title took the keys while the player's keys (Space, arrows) did
+  nothing (the title takes them now; Alt+Left/Right are left to Back). The
+  app-verifier then drove the three fixes on the real app with its own
+  probe, `tests/probes/atelier-review-fixes-probe.mjs`: 18 ok on 2c991b08,
+  10 ok and 8 FAIL on 981b00db.
+  *Checks changed:* `tests/probes/colour-study-acceptance.mjs` (an
+  acceptance probe of an earlier piece), by the app-verifier, not the
+  builder (369ab198): its `activeInstance()` read the active editor's
+  instance id (`colour:list`, `colour:sheet:<id>`, `plans:edit:<id>`); on a
+  place tab it now reads the trail's last crumb's address and names it the
+  same way, so each check still demands the same screen. No assertion
+  removed. `keyboard-audit-probe.mjs` gained four Atelier screens (Tag
+  Review, Duplicates, Practice Session, Daily Study). No baseline raised;
+  `main.js` is 68 lines shorter than before the piece; the raw-DOM ratchet
+  was met by moving a Ctrl+click into the rows' own click handlers.
+  *Reported and left* (the skeptic judged them not worth acting on): a
+  photo's Title or Description typed less than 800 ms before a keyboard
+  move (Alt+Left) may not be saved (the field saves on a timer or on blur,
+  and every move in the shared tab now closes the detail; whether Chromium
+  fires blur on removal was not tried); a step opened before a first name
+  read returns can drop from the trail (once per name, a single database
+  read); the detail header's size-and-length line is a hand-made subtitle
+  inside the kit header, and the New Plan / New Colour Study buttons sit
+  beside the kit header rather than in its primary slot (style); a
+  tag/folder/smart album row's own menu has no Open in Its Own Tab (the
+  tab's menu has); Alt+Left inside a practice run (a thing) still goes to
+  the previous picture, as before. A plan's address with `step=paints`
+  drawn afresh (Forward into it, a restore) lands on the plan's first
+  step, without My Paints.
+  *Only his machine can show:* his library at its real size (the probe's
+  has five items), his Daily Study photo (here "not on disk"), and the four
+  probes that need his photos; Windows was not run.
+- *Next:* piece 5, Study onto the point, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4569,7 +4697,8 @@ or stable-diffusion.cpp); Windows for each. ComfyUI stays off the table
 table):** twelve pieces, under UI improvements, "Getting around";
 piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
 Back and Forward, done 2026-11-27; piece 3, Worksheets onto the point,
-done 2026-11-27; piece 4, Atelier, opens the next session.
+done 2026-11-27; piece 4, Atelier onto the point, done 2026-11-28;
+piece 5, Study, opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
