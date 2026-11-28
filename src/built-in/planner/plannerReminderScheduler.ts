@@ -50,7 +50,8 @@ export class PlannerReminderScheduler implements IDisposable {
           { title: 'Open Planner' }, { title: 'Snooze 1h' }, { title: 'Dismiss' },
         );
         if (result?.title === 'Open Planner') {
-          await this._api.commands.executeCommand('planner.open');
+          // The task the reminder names, in detail over Tasks.
+          await this._api.commands.executeCommand('planner.openTask', task.id);
         } else if (result?.title === 'Snooze 1h') {
           await this._data.updateTask(task.id, {
             reminderAt: Date.now() + 60 * 60 * 1000,

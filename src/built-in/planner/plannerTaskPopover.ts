@@ -13,7 +13,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerTask, TaskStatus } from './plannerTypes.js';
 import { appDateParts } from '../../services/localTime.js';
 import { toDateInputValue, toTimeInputValue, fromDateTimeInputs } from './plannerDates.js';
-import { autoGrow, el, formRow } from './plannerUi.js';
+import { autoGrow, el, formRow, focusedOrNull } from './plannerUi.js';
 import type { PlannerEditorPane } from './plannerEditorProvider.js';
 
 const REMINDER_PRESETS: { label: string; offsetMin: number | null }[] = [
@@ -41,23 +41,24 @@ export class PlannerTaskPopover {
         | { mode: 'edit'; task: PlannerTask },
     anchor: DOMRect,
   ): void {
-    void this._open(init, anchor);
+    // Its opener, read now: the page may move the keys (to its title) while the form loads.
+    void this._open(init, anchor, focusedOrNull());
   }
 
   private async _open(
     init: { mode: 'create'; seedDueAt?: number; seedStatus?: TaskStatus; seedTitle?: string } | { mode: 'edit'; task: PlannerTask },
     anchor: DOMRect,
+    returnFocus: HTMLElement | null,
   ): Promise<void> {
     const cals = await this._pane._data.listCalendars().catch(() => []);
     const disposables: IDisposable[] = [];
-    // A modal dialog: focus goes back where it was when it closes.
-    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     const close = () => {
       for (const d of disposables) { try { d.dispose(); } catch { /* noop */ } }
       disposables.length = 0;
       overlay.remove();
       document.removeEventListener('keydown', onKey);
-      if (returnFocus?.isConnected && (!document.activeElement || document.activeElement === document.body)) returnFocus.focus();
+      // Back to the opener (or the same control drawn again), else the page's title: the keys never fall to nothing.
+      this._pane.returnFocus(returnFocus);
     };
 
     const overlay = el('div', 'planner-popover-overlay');

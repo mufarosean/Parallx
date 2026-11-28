@@ -8,7 +8,7 @@ import { onDragPress } from '../../ui/touchDrag.js';
 import { declareControl } from '../../ui/kit.js';
 import type { PlannerCalendar, PlannerTask } from './plannerTypes.js';
 import { googleSync } from './sync/googleClient.js';
-import { createButton, createIconButton, createSegmented } from '../../ui/kit.js';
+import { createButton, createIconButton, createPageHeader, createSegmented } from '../../ui/kit.js';
 import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, addDays, sameDay, formatHour, formatTimeShort, formatTimeRange } from './plannerDates.js';
 import { type CalendarView, PANE_COMPACT_MAX, SYNC_SVG, el } from './plannerUi.js';
@@ -18,11 +18,12 @@ export class PlannerCalendarViews {
   constructor(private readonly _pane: PlannerEditorPane) {}
 
   async renderCalendarTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    // The head, as drawn: the month (or week, or day) is the title; then the
-    // arrows, Today, one switch for Month, Week and Day, and New Event.
-    const dateLabel = el('h1', 'planner-cdate');
-    dateLabel.textContent = this._calendarRangeLabel();
-    actions.appendChild(dateLabel);
+    // The head, as drawn: the month (or week, or day) is the page's title, the
+    // kit's page header like every place's (the keys land on it after a move);
+    // then the arrows, Today, one switch for Month, Week and Day, and New Event.
+    const head = createPageHeader(actions, { title: this._calendarRangeLabel() });
+    head.classList.add('planner-calendar__head');
+    head.querySelector('.px-page-header__title')?.classList.add('planner-cdate');
 
     // Prev / Next — connected icon pair.
     const nav = el('div', 'planner-cnav');

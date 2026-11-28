@@ -161,3 +161,9 @@ export function autoGrow(area: HTMLTextAreaElement, max = 220): void {
   area.addEventListener('input', fit);
   requestAnimationFrame(fit);
 }
+
+/** The element with the keys, or null when nothing has them: a popover's opener, to give them back when it closes. */
+export function focusedOrNull(): HTMLElement | null {
+  const a = document.activeElement;
+  return a instanceof HTMLElement && a !== document.body ? a : null;
+}

@@ -10,11 +10,11 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
-import { plannerDayFrom, takePendingPlannerNewEvent, takePendingPlannerNewTask } from './plannerNavState.js';
+import { plannerDayFrom, takePlannerOver, type PlannerOver } from './plannerNavState.js';
 import type { PlaceLocation, PlaceView, PlaceViewHost } from '../../services/places.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { appDateParts } from '../../services/localTime.js';
-import { startOfDay, atTime } from './plannerDates.js';
+import { startOfDay, endOfDay, atTime } from './plannerDates.js';
 import { el, type PlannerEditorApi, type Tab, type CalendarView } from './plannerUi.js';
 import { PlannerCalendarViews } from './plannerCalendarViews.js';
 import { PlannerAllDay } from './plannerAllDay.js';
@@ -149,42 +149,6 @@ export class PlannerEditorPane implements IDisposable {
       } catch { /* provider misbehaving must not break the pane */ }
     }
 
-    // planner.newTask sets its request, opens the Planner, then dispatches
-    // this. One form, opened by whichever shown pane takes the request first:
-    // a pane the command itself drew takes it while being made, and the event
-    // after it then finds nothing to take (two stacked forms otherwise).
-    const shown = () => !!this._root?.isConnected && this._root.getClientRects().length > 0;
-    const onNewTask = (fromEvent: boolean) => {
-      if (!this._root || (fromEvent && !shown())) return;
-      if (!takePendingPlannerNewTask()) return;
-      this._moveInPlace('tasks');
-      // Open beside the Create button it stands for (the body's top-left
-      // corner put the popover over the menu bar); centred if it is hidden.
-      const cta = this._root.querySelector<HTMLElement>('.planner-cta');
-      const r = cta?.getBoundingClientRect();
-      const anchor = r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0);
-      this.taskPopover.openTaskPopover({ mode: 'create' }, anchor);
-    };
-    const onNewTaskEvent = () => onNewTask(true);
-    document.addEventListener('parallx.planner.newTask', onNewTaskEvent);
-    onNewTask(false);
-
-    // planner.newEvent (the New Event buttons run it too): on the calendar at
-    // 9 on the day in view, elsewhere on Today at the next whole hour.
-    const onNewEvent = (fromEvent: boolean) => {
-      if (!this._root || (fromEvent && !shown())) return;
-      if (!takePendingPlannerNewEvent()) return;
-      if (this._activeTab === 'tasks') this._moveInPlace('today');
-      const start = this._activeTab === 'calendar' ? atTime(this._cursorDate, 9) : atTime(Date.now(), appDateParts(Date.now()).hour + 1);
-      const btn = this._root.querySelector<HTMLElement>('[data-px-id="planner.newEvent"]');
-      const r = btn?.getBoundingClientRect();
-      const anchor = r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - 230, 100, 0, 0);
-      this.eventPopover.openEventPopover({ mode: 'create', startAt: start, endAt: start + 60 * 60 * 1000 }, anchor);
-    };
-    const onNewEventEvent = () => onNewEvent(true);
-    document.addEventListener('parallx.planner.newEvent', onNewEventEvent);
-    onNewEvent(false);
-
     // Keyboard shortcuts — Notion Calendar / Cron parity. Only fire when
     // the pane is connected and the user isn't typing in an input.
     const onKey = (e: KeyboardEvent) => {
@@ -287,8 +251,6 @@ export class PlannerEditorPane implements IDisposable {
 
     this._disposables.push({
       dispose() {
-        document.removeEventListener('parallx.planner.newTask', onNewTaskEvent);
-        document.removeEventListener('parallx.planner.newEvent', onNewEventEvent);
         document.removeEventListener('keydown', onKey);
       },
     });
@@ -325,9 +287,10 @@ export class PlannerEditorPane implements IDisposable {
 
   private _shown = false;
 
-  /** The core moved this tab (services/places.ts): draw the place it names. */
+  /** The core moved this tab (services/places.ts): draw the place it names, then what a command sent to open over it. */
   async showLocation(location: PlaceLocation): Promise<void> {
     if (this._disposed) return;
+    location = this._olderBuildPlace(location);
     const tab: Tab = location.place === 'calendar' || location.place === 'tasks' ? location.place : 'today';
     const params = location.params ?? {};
     if (tab === 'tasks') this._tasksFilter = params.list || 'all';
@@ -341,19 +304,75 @@ export class PlannerEditorPane implements IDisposable {
     this._activeTab = tab;
     this._syncTabClass();
     await this._renderTab();
+    const over = takePlannerOver(tab);
+    if (over && !this._disposed) await this._openOver(over);
+  }
+
+  /**
+   * A tab saved by a build before the places point carried no address, and its
+   * page was kept in Planner's workspace state: the first drawing after it
+   * goes to that page, once (the old key is then cleared).
+   */
+  private _olderBuildPlace(location: PlaceLocation): PlaceLocation {
+    const vs = this._api.viewState;
+    const older = vs?.get<string>('planner.activeTab', '');
+    if (!vs || !older) return location;
+    vs.set('planner.activeTab', undefined);
+    if (location.place !== 'today' || location.params || (older !== 'calendar' && older !== 'tasks')) return location;
+    this._host.replace({ place: older });
+    return { place: older };
+  }
+
+  /** A form, or an item in detail, as a popover over the place drawn; when it closes the keys go back to its opener or to the page's title. */
+  private async _openOver(over: PlannerOver): Promise<void> {
+    const root = this._root;
+    if (!root) return;
+    const near = (sel: string, w: number): DOMRect => {
+      const r = root.querySelector<HTMLElement>(sel)?.getBoundingClientRect();
+      return r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - w, 100, 0, 0);
+    };
+    if (over.form === 'newTask') {
+      this.taskPopover.openTaskPopover({ mode: 'create' }, near('.planner-cta', 180));
+    } else if (over.form === 'newEvent') {
+      // On the calendar at 9 on the day in view, on Today at the next whole hour.
+      const start = this._activeTab === 'calendar' ? atTime(this._cursorDate, 9) : atTime(Date.now(), appDateParts(Date.now()).hour + 1);
+      await this.eventPopover.openEventPopover({ mode: 'create', startAt: start, endAt: start + 60 * 60 * 1000 }, near('[data-px-id="planner.newEvent"]', 230));
+    } else if (over.form === 'task') {
+      const task = await this._data.getTask(over.id).catch(() => null);
+      if (task && !this._disposed) this.taskPopover.openTaskPopover({ mode: 'edit', task }, near(`[data-task-id="${CSS.escape(task.id)}"]`, 180));
+    } else {
+      // The occurrence drawn that day (one of a series has its own id), else the event itself.
+      const day = new Date(over.at);
+      const base = (id: string) => id.split('::')[0];
+      const events = await this._data.listEvents({ from: startOfDay(day).getTime(), to: endOfDay(day).getTime() }).catch(() => []);
+      const event = events.find((e) => e.id === over.id) ?? events.find((e) => base(e.id) === base(over.id) && e.startAt === over.at)
+        ?? events.find((e) => base(e.id) === base(over.id)) ?? await this._data.getEvent(over.id).catch(() => null);
+      if (event && !this._disposed) await this.eventPopover.openEventPopover({ mode: 'edit', event }, near(`[data-event-id="${CSS.escape(event.id)}"]`, 230));
+    }
+  }
+
+  /** The bar or chip this event is drawn as on the page, when it is. */
+  eventElement(id: string): HTMLElement | null {
+    return [...(this._root?.querySelectorAll<HTMLElement>(`[data-event-id="${CSS.escape(id)}"]`) ?? [])].find((e) => e.getClientRects().length) ?? null;
+  }
+
+  /** Where the keys go when a popover over the page closes: its opener when it is still on the page (or drawn again), else the page's title. */
+  returnFocus(opener: HTMLElement | null): void {
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const root = this._root;
+    if (opener?.isConnected) { opener.focus(); return; }
+    // Drawn again since (a data change, a move): the control with the same id, or the same event's bar or task's row.
+    const by = (['data-px-id', 'data-event-id', 'data-task-id'] as const).find((a) => opener?.hasAttribute(a));
+    const again = by && root ? root.querySelector<HTMLElement>(`[${by}="${CSS.escape(opener!.getAttribute(by)!)}"]`) : null;
+    if (again) { again.focus(); return; }
+    const title = root?.querySelector<HTMLElement>('.px-page-header__title');
+    if (title) { if (!title.hasAttribute('tabindex')) title.tabIndex = -1; title.focus({ preventScroll: true }); }
   }
 
   /** Where this pane is, as a place's location. */
   _location(tab: Tab = this._activeTab): PlaceLocation {
     return tab === 'tasks' && this._tasksFilter !== 'all' ? { place: 'tasks', params: { list: this._tasksFilter } } : { place: tab };
-  }
-
-  /** A move the page makes on the way to something else (a form it opens): recorded, drawn, the keys left where they go. */
-  private _moveInPlace(tab: Tab): void {
-    this._activeTab = tab;
-    this._syncTabClass();
-    this._host.replace(this._location(tab));
-    void this._renderTab();
   }
 
   /**
@@ -427,8 +446,21 @@ export class PlannerEditorPane implements IDisposable {
     }
     if (this._disposed) return;
 
+    // A control pressed (the calendar's arrows, Today, Month, Week and Day) is drawn
+    // again with the page: the keys stay on it rather than falling to nothing.
+    const on = this._root?.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+    const held = (on?.getAttribute('role') === 'radio' ? on.closest('[role="radiogroup"]') : on)?.getAttribute('data-px-id') ?? null;
     body.replaceChildren(...Array.from(nextBody.childNodes));
     actions.replaceChildren(...Array.from(nextActions.childNodes));
+    if (held && (!document.activeElement || document.activeElement === document.body)) this._refocus(held);
+  }
+
+  /** The control with this id on the page (for a switch, its chosen option), focused. */
+  private _refocus(id: string): void {
+    const el = this._root?.querySelector<HTMLElement>(`[data-px-id="${CSS.escape(id)}"]`);
+    if (!el) return;
+    const inner = el.matches('button, input, select, textarea, [tabindex]') ? el : el.querySelector<HTMLElement>('[aria-checked="true"], [tabindex="0"]');
+    (inner ?? el).focus({ preventScroll: true });
   }
 
   // ── Today tab ────────────────────────────────────────────────────────

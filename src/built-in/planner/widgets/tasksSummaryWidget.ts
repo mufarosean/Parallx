@@ -98,10 +98,10 @@ export function buildTasksSummaryWidget(data: PlannerDataService): WidgetTypeReg
       const openLink = document.createElement('button');
       openLink.type = 'button';
       openLink.className = 'pl-ts__openlink';
-      openLink.textContent = 'Open Planner →';
+      openLink.textContent = 'Open Tasks';
       openLink.addEventListener('click', () => {
-        const api = ctx.api as { commands?: { executeCommand(id: string): Promise<unknown> } };
-        api?.commands?.executeCommand?.('planner.open').catch(() => { /* noop */ });
+        const api = ctx.api as { commands?: { executeCommand(id: string, ...args: unknown[]): Promise<unknown> } };
+        api?.commands?.executeCommand?.('planner.show', 'tasks').catch(() => { /* noop */ });
       });
       container.appendChild(openLink);
 
@@ -157,9 +157,10 @@ export function buildTasksSummaryWidget(data: PlannerDataService): WidgetTypeReg
             meta.textContent = formatDue(task.dueAt);
             row.appendChild(titleEl);
             row.appendChild(meta);
+            // The task, in detail over Tasks.
             row.addEventListener('click', () => {
-              const api = ctx.api as { commands?: { executeCommand(id: string): Promise<unknown> } };
-              api?.commands?.executeCommand?.('planner.open').catch(() => {});
+              const api = ctx.api as { commands?: { executeCommand(id: string, ...args: unknown[]): Promise<unknown> } };
+              api?.commands?.executeCommand?.('planner.openTask', task.id).catch(() => {});
             });
             list.appendChild(row);
           }

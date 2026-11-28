@@ -102,9 +102,10 @@ export function buildCalendarViewWidget(data: PlannerDataService): WidgetTypeReg
         else if (view === 'week') paintWeek(surface, events);
         else paintDay(surface, events);
 
+        // The calendar it pictures: the Planner's Calendar.
         surface.addEventListener('click', () => {
-          const api = ctx.api as { commands?: { executeCommand(id: string): Promise<unknown> } };
-          api?.commands?.executeCommand?.('planner.open').catch(() => {});
+          const api = ctx.api as { commands?: { executeCommand(id: string, ...args: unknown[]): Promise<unknown> } };
+          api?.commands?.executeCommand?.('planner.show', 'calendar').catch(() => {});
         });
       }
 

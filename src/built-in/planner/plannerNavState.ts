@@ -1,6 +1,7 @@
-// plannerNavState.ts — handoffs between a Planner command and a Planner pane
-// that may still be building. Which page the pane shows is no longer one of
-// them: the core's places (services/places.ts) say where each tab is.
+// plannerNavState.ts — what a Planner command hands the pane that draws the
+// place it opens. Which page a tab shows is the core's (services/places.ts);
+// a form or an item to open over that page rides along once, read by the
+// drawing of that place and by no other (not kept in the address).
 
 /** A YYYY-MM-DD day as the local date it names, or null. */
 export function plannerDayFrom(date: string | null | undefined): Date | null {
@@ -8,36 +9,30 @@ export function plannerDayFrom(date: string | null | undefined): Date | null {
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
 
-// planner.newTask: it opens the editor and then dispatches
-// `newTask`, which a pane still building misses, so the Planner opened with no
-// form. The command records the request first; the pane that opens the form
-// (an open one on the event, a new one once it has drawn) takes it.
-let _pendingNewTask = false;
+/** A form, or an item in detail, opened over a place: a popover, not a place of its own. */
+export type PlannerOver =
+  | { readonly form: 'newTask' }
+  | { readonly form: 'newEvent' }
+  | { readonly form: 'task'; readonly id: string }
+  | { readonly form: 'event'; readonly id: string; readonly at: number };
 
-/** planner.newTask: record the request before invoking openEditor. */
-export function setPendingPlannerNewTask(pending: boolean): void {
-  _pendingNewTask = pending;
+let _carried: { readonly place: string; readonly over: PlannerOver } | null = null;
+
+/** A command, before it opens `place`: what the drawing of that place opens over it. */
+export function carryPlannerOver(place: string, over: PlannerOver | null): void {
+  _carried = over ? { place, over } : null;
 }
 
-/** Pane: consume the request (one-shot). */
-export function takePendingPlannerNewTask(): boolean {
-  const pending = _pendingNewTask;
-  _pendingNewTask = false;
-  return pending;
+/** The drawing of `place`: what to open over it, once (null when nothing rides along to this place). */
+export function takePlannerOver(place: string): PlannerOver | null {
+  if (!_carried || _carried.place !== place) return null;
+  const { over } = _carried;
+  _carried = null;
+  return over;
 }
 
-// planner.newEvent, the same way: the pane that draws takes the request and
-// opens the event dialog.
-let _pendingNewEvent = false;
-
-/** planner.newEvent: record the request before invoking openEditor. */
-export function setPendingPlannerNewEvent(pending: boolean): void {
-  _pendingNewEvent = pending;
-}
-
-/** Pane: consume the request (one-shot). */
-export function takePendingPlannerNewEvent(): boolean {
-  const pending = _pendingNewEvent;
-  _pendingNewEvent = false;
-  return pending;
+/** YYYY-MM-DD of a moment, in local time (as the calendar's address names a day). */
+export function plannerDayString(at: number): string {
+  const d = new Date(at);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

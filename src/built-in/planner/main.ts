@@ -21,7 +21,7 @@ import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider, PLANNER_PLACES } from './plannerEditorProvider.js';
 import { PLANNER_TASK_FILTERS } from './plannerTaskFilters.js';
 import type { PlacesApi } from '../../api/bridges/placesBridge.js';
-import { setPendingPlannerNewEvent, setPendingPlannerNewTask } from './plannerNavState.js';
+import { carryPlannerOver, plannerDayString, type PlannerOver } from './plannerNavState.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
@@ -383,7 +383,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     setDone: async (id, done) => { await _data!.updateTask(id, done ? { status: 'done', completedAt: Date.now() } : { status: 'planned', completedAt: null }); },
   }));
   // The Agenda block for pages: offered only while the Planner runs.
-  context.subscriptions.push(api.canvas.registerBlock(agendaBlock(_data, () => void api.commands.executeCommand('planner.open'))));
+  // An item's name opens it over its place; the block's Open Planner opens the Planner.
+  context.subscriptions.push(api.canvas.registerBlock(agendaBlock(_data, (item) => void api.commands.executeCommand(
+    item ? (item.kind === 'event' ? 'planner.openEvent' : 'planner.openTask') : 'planner.open', ...(item ? [item.id, item.at] : [])))));
   if (isDevMode) console.log('[Planner] dashboard widgets contributed');
 
   // 9. Commands.
@@ -463,38 +465,53 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  // A form, or an item in detail, opens as a popover over a place (the
+  // places-and-things table: Planner has no things): the command goes to the
+  // place, and what opens over it rides along to that place's drawing, once.
+  const openOver = async (to: { place: string; params?: Record<string, string> }, over: PlannerOver, what: string): Promise<void> => {
+    try {
+      carryPlannerOver(to.place, over);
+      await api.places.open({ tool: 'planner', place: to.place, ...(to.params ? { params: to.params } : {}) });
+    } catch (err) {
+      carryPlannerOver(to.place, null);
+      console.error(`[Planner] ${what} failed:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      await api.window.showErrorMessage(`Could not open ${what}: ${msg}`);
+    }
+  };
+
+  // New Task: its form over Tasks.
   context.subscriptions.push(
-    api.commands.registerCommand('planner.newTask', async () => {
-      try {
-        // Open the planner editor first (so the popover has a host pane to
-        // render against), then dispatch — the active pane catches it and
-        // opens the full task popover with all fields wired up. A pane
-        // still building misses the event; it takes the request once drawn.
-        setPendingPlannerNewTask(true);
-        await api.places.open({ tool: 'planner' });
-        document.dispatchEvent(new CustomEvent('parallx.planner.newTask'));
-      } catch (err) {
-        setPendingPlannerNewTask(false);
-        console.error('[Planner] newTask failed:', err);
-        const msg = err instanceof Error ? err.message : String(err);
-        await api.window.showErrorMessage(`Could not open new-task form: ${msg}`);
-      }
+    api.commands.registerCommand('planner.newTask', () => {
+      // On one of Tasks' lists already: it stays on that list.
+      const here = api.places.current('planner');
+      return openOver(here?.place === 'tasks' && here.params ? { place: 'tasks', params: { ...here.params } } : { place: 'tasks' }, { form: 'newTask' }, 'the new task form');
     }),
   );
 
+  // New Event: over the calendar (at 9 on the day in view) when the Planner is on it, else over Today (the next whole hour).
   context.subscriptions.push(
-    api.commands.registerCommand('planner.newEvent', async () => {
-      // As planner.newTask: the Planner opens, then its pane opens the event
-      // dialog (a pane still building takes the request once drawn).
-      try {
-        setPendingPlannerNewEvent(true);
-        await api.places.open({ tool: 'planner' });
-        document.dispatchEvent(new CustomEvent('parallx.planner.newEvent'));
-      } catch (err) {
-        setPendingPlannerNewEvent(false);
-        const msg = err instanceof Error ? err.message : String(err);
-        await api.window.showErrorMessage(`Could not open the new event form: ${msg}`);
-      }
+    api.commands.registerCommand('planner.newEvent', () => {
+      const onCalendar = api.places.current('planner')?.place === 'calendar';
+      return openOver({ place: onCalendar ? 'calendar' : 'today' }, { form: 'newEvent' }, 'the new event form');
+    }),
+  );
+
+  // A task in detail: its popover over Tasks (a widget's row, the Agenda block, a reminder).
+  context.subscriptions.push(
+    api.commands.registerCommand('planner.openTask', (id?: unknown) => (typeof id === 'string' && id
+      ? openOver({ place: 'tasks' }, { form: 'task', id }, 'the task')
+      : api.places.open({ tool: 'planner', place: 'tasks' }))),
+  );
+
+  // An event in detail: its popover over the calendar, on the event's day.
+  context.subscriptions.push(
+    // `at`: the occurrence's start, for one of a series (its day, not the series' first).
+    api.commands.registerCommand('planner.openEvent', async (id?: unknown, at?: unknown) => {
+      if (typeof id !== 'string' || !id) { await api.places.open({ tool: 'planner', place: 'calendar' }); return; }
+      const start = typeof at === 'number' && Number.isFinite(at) ? at : (await _data?.getEvent(id).catch(() => null))?.startAt;
+      if (start === undefined) { await api.places.open({ tool: 'planner', place: 'calendar' }); return; }
+      await openOver({ place: 'calendar', params: { date: plannerDayString(start), view: 'day' } }, { form: 'event', id, at: start }, 'the event');
     }),
   );
 }

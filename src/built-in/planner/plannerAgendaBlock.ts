@@ -2,7 +2,7 @@
 //
 // Shows events and tasks for today, tomorrow or the next seven days, kept
 // current as the planner changes. Tick a task to mark it done (untick to put
-// it back); click anything else to open the planner. Overdue tasks that are
+// it back); click a name to open it in the planner. Overdue tasks that are
 // not done show at the top of today.
 //
 // The Planner brings this block to the canvas while it runs
@@ -130,7 +130,8 @@ export interface AgendaData {
 }
 
 /** The registration the Planner hands to `api.canvas.registerBlock`. */
-export function agendaBlock(data: AgendaData, openPlanner: () => void): CanvasBlockRegistration {
+/** `open` with an item opens it in detail over its place; without one, the Planner. */
+export function agendaBlock(data: AgendaData, open: (item?: { kind: 'event' | 'task'; id: string; at?: number }) => void): CanvasBlockRegistration {
   return {
     typeId: 'parallx.planner.agenda',
     label: 'Agenda',
@@ -147,7 +148,7 @@ export function agendaBlock(data: AgendaData, openPlanner: () => void): CanvasBl
     readable: (config) => `[Agenda: ${AGENDA_RANGES.find((r) => r.value === config.range)?.label ?? 'Today'}]`,
     render(body, ctx) {
       body.classList.add('planner-agenda');
-      ctx.setActions([{ label: 'Open Planner', run: openPlanner }]);
+      ctx.setActions([{ label: 'Open Planner', run: () => open() }]);
       let config = ctx.config;
       let seq = 0;
       let disposed = false;
@@ -181,8 +182,8 @@ export function agendaBlock(data: AgendaData, openPlanner: () => void): CanvasBl
         name.type = 'button';
         name.className = 'planner-agenda__name';
         name.textContent = it.title || (it.kind === 'task' ? 'Untitled task' : 'Untitled event');
-        name.title = 'Open the planner';
-        name.addEventListener('click', openPlanner);
+        name.title = it.kind === 'task' ? 'Open the task in the planner' : 'Open the event in the planner';
+        name.addEventListener('click', () => open({ kind: it.kind, id: it.id, at: it.kind === 'event' ? it.startAt : undefined }));
         r.appendChild(name);
         const when = agendaTimeLabel(it);
         if (when) {

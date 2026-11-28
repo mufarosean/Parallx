@@ -20,9 +20,10 @@ export class PlannerTaskList {
   constructor(private readonly _pane: PlannerEditorPane) {}
 
   async renderTasksTab(body: HTMLElement, _actions: HTMLElement): Promise<void> {
+    // The button runs planner.newTask, which opens the one form over this list (a handler of its own as well
+    // opened a second form, and the page drawn again under them left Escape no button to give the keys back to).
     const addBtn = createButton(null, { id: 'planner.newTask', command: 'planner.newTask', label: 'New Task', icon: 'plus', kind: 'primary', title: 'New Task (C)' });
     addBtn.classList.add('planner-cta');
-    addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
     // The page's head: the chosen list's name, one line under it, New Task at its right.
     const head = (into: HTMLElement, title: string, subtitle: string): void => {
       const header = createPageHeader(into, { title, subtitle });
@@ -265,10 +266,6 @@ export class PlannerTaskList {
     this._pane._note('deleted', `task "${task.title}"`, task.id);
   }
 
-  private _captureNewTask(anchor?: DOMRect): void {
-    const fallback = anchor ?? new DOMRect(window.innerWidth / 2 - 180, 120, 0, 0);
-    this._pane.taskPopover.openTaskPopover({ mode: 'create' }, fallback);
-  }
 
   // ── Calendar tab ─────────────────────────────────────────────────────
 }

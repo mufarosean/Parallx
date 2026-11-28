@@ -10,7 +10,7 @@ import type { PlannerEvent, SeriesEditScope, UpdateEventInput } from './plannerT
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { appDateParts } from '../../services/localTime.js';
 import { toDateInputValue, toTimeInputValue, fromDateTimeInputs } from './plannerDates.js';
-import { WEEKDAY_NAMES, autoGrow, buildColorSwatches, el, eventCalendarItems, formRow } from './plannerUi.js';
+import { WEEKDAY_NAMES, autoGrow, buildColorSwatches, el, eventCalendarItems, formRow, focusedOrNull } from './plannerUi.js';
 import type { PlannerEditorPane } from './plannerEditorProvider.js';
 
 export class PlannerEventPopover {
@@ -86,12 +86,16 @@ export class PlannerEventPopover {
         | { mode: 'edit'; event: PlannerEvent },
     anchor: DOMRect,
   ): void {
-    void this._open(init, anchor);
+    // Its opener, read now (the page may move the keys while the form loads): an event's own bar or chip, which a
+    // mouse press does not focus (it starts a drag), else what has the keys.
+    const own = init.mode === 'edit' ? this._pane.eventElement(init.event.id) : null;
+    void this._open(init, anchor, own ?? focusedOrNull());
   }
 
   private async _open(
     init: { mode: 'create'; startAt: number; endAt: number; allDay?: boolean; pendingGhost?: HTMLElement | null } | { mode: 'edit'; event: PlannerEvent },
     anchor: DOMRect,
+    returnFocus: HTMLElement | null,
   ): Promise<void> {
     // The drag's ghost stays while the dialog is open, so the user sees what
     // they are creating; every way of closing removes it.
@@ -103,14 +107,13 @@ export class PlannerEventPopover {
     ]);
 
     const disposables: IDisposable[] = [];
-    // A modal dialog: focus goes back where it was when it closes.
-    const returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     const close = () => {
       for (const d of disposables) { try { d.dispose(); } catch { /* noop */ } }
       disposables.length = 0;
       overlay.remove();
       document.removeEventListener('keydown', onKey);
-      if (returnFocus?.isConnected && (!document.activeElement || document.activeElement === document.body)) returnFocus.focus();
+      // Back to the opener (or the same control drawn again), else the page's title: the keys never fall to nothing.
+      this._pane.returnFocus(returnFocus);
       pendingGhost?.remove();
     };
 

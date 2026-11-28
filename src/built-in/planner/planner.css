@@ -733,16 +733,9 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
-/* Inline date label — focal element of the left cluster. One step up
-   from the 13px baseline so it reads as the heading; weight + color
-   carry the rest. */
-.planner-cdate {
-  flex: 1 1 auto; min-width: 0; margin: 0;
-  font-family: var(--px-font-display); font-size: var(--px-text-xl); font-weight: 500; line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: var(--px-text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+/* The calendar's title: the kit's page header, in the toolbar row, taking the
+   room the controls leave (the kit sets its type, the month in view). */
+.planner-pane__actions > .planner-calendar__head { flex: 1 1 auto; min-width: 0; padding: 0; }
 
 /* Primary CTA — 13px header baseline */
 /* .planner-cta is only a hook now (the new-item command anchors its popover

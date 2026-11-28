@@ -123,9 +123,10 @@ export function buildCalendarAgendaWidget(data: PlannerDataService): WidgetTypeR
           }
           item.appendChild(time);
           item.appendChild(main);
+          // The event, in detail over the calendar on its day.
           item.addEventListener('click', () => {
-            const api = ctx.api as { commands?: { executeCommand(id: string): Promise<unknown> } };
-            api?.commands?.executeCommand?.('planner.open').catch(() => {});
+            const api = ctx.api as { commands?: { executeCommand(id: string, ...args: unknown[]): Promise<unknown> } };
+            api?.commands?.executeCommand?.('planner.openEvent', row.id, row.startAt).catch(() => {});
           });
           list.appendChild(item);
         }
