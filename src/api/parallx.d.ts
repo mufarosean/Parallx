@@ -906,9 +906,10 @@ export namespace ui {
    * (Cmd+click) opens the place in a tab of its own instead of what the
    * element does, and its context menu offers Open and Open in Its Own Tab.
    * `address` is a place's address (`places.addressOf`), or a function read
-   * each time.
+   * each time. With `menu: false` the element keeps a context menu of its
+   * own (a row with its own actions) and only Ctrl+click is added.
    */
-  export function bindPlaceLink(element: HTMLElement, address: string | (() => string)): IDisposable;
+  export function bindPlaceLink(element: HTMLElement, address: string | (() => string), options?: { readonly menu?: boolean }): IDisposable;
 
   export interface ToggleOptions extends ControlDeclaration {
     readonly label: string;

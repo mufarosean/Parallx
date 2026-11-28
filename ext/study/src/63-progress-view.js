@@ -41,6 +41,8 @@ let _stProgressFocusFor = 0;
 
 /** Open a subject's Progress tab and put the focus in it: whoever asked by keyboard (the palette, a menu) goes on from the tab, not from where they were. */
 async function stOpenProgress(subjectId) {
+  // A place: the core puts the keys on its title.
+  if (stPlacesOn()) return stOpenPane({ view: 'progress', subjectId });
   _stProgressFocusFor = Number(subjectId) || 0;
   const opened = await stOpenPane({ view: 'progress', subjectId });
   // A tab that was already open is not drawn again: it takes the focus here. A new one takes it when it is drawn.

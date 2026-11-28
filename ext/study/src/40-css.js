@@ -355,7 +355,8 @@ function injectStyles() {
 .st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: var(--px-space-1); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
 .st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
 .st-sb__it:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.st-sb__it--on { background: var(--px-surface-selected); color: var(--px-text); }
+/* Where he is (the one shared mark, px-current, 68-places.js): the column's own colours and hover do not hide it. */
+.st-sb .px-current[aria-current], .st-sb .px-current[aria-current]:hover { background: var(--px-surface-selected); color: var(--px-text); }
 .st-sb__it .svg-icon { color: var(--px-text-muted); display: inline-flex; }
 .st-sb__nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .st-mini { width: 48px; height: 3px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; display: flex; }
@@ -462,6 +463,11 @@ function injectStyles() {
    actions at the end of that line; under it one line per item (its icon, its title, where it lives, faint) whose press
    opens it, and its Remove; or the kinds' bars with their counts in words. ── */
 .st-unit { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-place { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-place__in { max-width: 52rem; margin: 0 auto; }
+.st-place__line { padding: var(--px-space-1) var(--px-space-2); min-height: var(--px-control-h); }
+.st-place__line:hover { background: transparent; }
+.st-place__text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--px-text); }
 .st-unit__in { max-width: 52rem; margin: 0 auto; }
 .st-unit__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
 .st-unit__tools { display: contents; }

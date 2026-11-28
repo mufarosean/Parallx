@@ -21,6 +21,8 @@ let _stPlanFocusFor = 0;
 
 /** Open a plan's tab and put the focus in it. */
 async function stOpenPlan(planId) {
+  // A place: the core puts the keys on its title.
+  if (stPlacesOn()) return stOpenPane({ view: 'plan', planId: Number(planId) || 0 });
   _stPlanFocusFor = Number(planId) || 0;
   const opened = await stOpenPane({ view: 'plan', planId: Number(planId) || 0 });
   const page = Array.from(document.querySelectorAll('.st-plan')).find((n) => n.isConnected && n.dataset.planId === String(planId));

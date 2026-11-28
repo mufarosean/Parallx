@@ -5417,7 +5417,9 @@ async function stFixedScopeQuestions(scope) {
 }
 
 /** Study the marked questions as a set: one Practice session over exactly those. */
-async function stStudyMarked() {
+async function stStudyMarked(arg) {
+  // Its place (what is marked, with Start Session); with { start: true }, the session at once.
+  if (!(arg && arg.start) && stPlacesOn()) return stOpenPane({ view: 'marked' });
   const marked = await stListMarkedQuestions();
   if (!marked.length) {
     await _api.window.showInformationMessage('Nothing is marked yet: mark a question on its card to come back to it.');
@@ -10506,7 +10508,8 @@ function injectStyles() {
 .st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: var(--px-space-1); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
 .st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: var(--px-control-h); padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
 .st-sb__it:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.st-sb__it--on { background: var(--px-surface-selected); color: var(--px-text); }
+/* Where he is (the one shared mark, px-current, 68-places.js): the column's own colours and hover do not hide it. */
+.st-sb .px-current[aria-current], .st-sb .px-current[aria-current]:hover { background: var(--px-surface-selected); color: var(--px-text); }
 .st-sb__it .svg-icon { color: var(--px-text-muted); display: inline-flex; }
 .st-sb__nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .st-mini { width: 48px; height: 3px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; display: flex; }
@@ -10613,6 +10616,11 @@ function injectStyles() {
    actions at the end of that line; under it one line per item (its icon, its title, where it lives, faint) whose press
    opens it, and its Remove; or the kinds' bars with their counts in words. ── */
 .st-unit { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-place { flex: 1; min-height: 0; overflow: auto; background: var(--px-bg); }
+.st-place__in { max-width: 52rem; margin: 0 auto; }
+.st-place__line { padding: var(--px-space-1) var(--px-space-2); min-height: var(--px-control-h); }
+.st-place__line:hover { background: transparent; }
+.st-place__text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--px-text); }
 .st-unit__in { max-width: 52rem; margin: 0 auto; }
 .st-unit__body { display: flex; flex-direction: column; gap: var(--px-space-6); padding: 0 var(--px-space-6) var(--px-space-8); }
 .st-unit__tools { display: contents; }
@@ -10983,7 +10991,6 @@ function createSidebarView(container) {
     picked: new Set(),
     expandedId: null,
     banksOpen: false,
-    activeSessionId: null,
   };
 
   // No header row of its own: the workbench's container header already
@@ -11059,7 +11066,6 @@ function createSidebarView(container) {
       const ic = el('span', '');
       ic.innerHTML = icon(stMaterialIcon(m.kind), 14);
       row.appendChild(ic);
-      if (state.expandedId === m.id) row.classList.add('st-sb__it--on');
     }
     const nm = el('span', 'st-sb__nm', m.label);
     nm.title = m.label;
@@ -11119,7 +11125,6 @@ function createSidebarView(container) {
       ic.innerHTML = icon('px-study', 14);
       row.appendChild(ic);
     }
-    if (state.activeSessionId === s.id) row.classList.add('st-sb__it--on');
     row.appendChild(el('span', 'st-sb__nm', name));
     const list = items || [];
     const lastDraw = list.reduce((m, i) => Math.max(m, i.draw || 0), 0);
@@ -11187,14 +11192,18 @@ function createSidebarView(container) {
       return { n, m, text: countText(n, m), done: m > 0 && n >= m, started: n > 0, says: (questions) => `${countText(n, m)} ${tools ? 'answered or rated' : questions ? 'questions answered' : 'answered'}.` };
     };
     const whole = shown(s.answered, s.total, others(progress && progress.totals));
+    // The subject's name goes to its place (its plan, Progress and units), Study… being in its actions; with no places point, to its setup.
+    const toPlace = stPlacesOn();
     const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
-      title: s.problem || `Study ${s.name}: ${whole.says(true)}`, command: 'study.studySubject', args: [s.id] });
+      title: s.problem || `${toPlace ? 'Open' : 'Study'} ${s.name}: ${whole.says(true)}`, command: toPlace ? 'study.openSubject' : 'study.studySubject', args: [s.id] });
     head.classList.add('st-sb__nav');
+    stPlaceLink(head, { view: 'subject', subjectId: s.id }, { menu: false });
     _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? whole.text : '' });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
+      const own = stPlaceMenuItem({ view: 'subject', subjectId: s.id });
+      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [...own, ...(own.length ? [{ separator: true }] : []), ...stSubjectMenuItems(s)]);
     });
     planRow(host, s);
     progressRow(host, s);
@@ -11208,6 +11217,7 @@ function createSidebarView(container) {
       const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: count.done ? 'circle-check' : count.started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
         title: `Open ${u.name}: ${count.says(false)}`, command: 'study.openUnit', args: [s.id, u.rowId] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
+      stPlaceLink(unit, { view: 'unit', subjectId: s.id, rowId: u.rowId }, { menu: false });
       if (count.done) unit.classList.add('st-sb__nav--done');
       const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
       // The unit's own actions (its setup, Study…): More Actions beside the row, and its context menu.
@@ -11215,7 +11225,8 @@ function createSidebarView(container) {
       more.classList.add('st-sb__unitmore');
       line.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stUnitMenuItems(s, u));
+        const own = stPlaceMenuItem({ view: 'unit', subjectId: s.id, rowId: u.rowId });
+        _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [...own, ...(own.length ? [{ separator: true }] : []), ...stUnitMenuItems(s, u)]);
       });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
@@ -11240,6 +11251,7 @@ function createSidebarView(container) {
     const btn = _api.ui.createButton(line, { id: `study.side.plan.${s.id}`, label: shown.plan.name, icon: 'calendar', kind: 'ghost', size: 'sm',
       title: `Open the plan ${shown.plan.name}${exam}${words ? `: ${words}` : ''}.`, command: 'study.openPlan', args: [{ planId: shown.plan.id }] });
     btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
+    stPlaceLink(btn, { view: 'plan', planId: shown.plan.id });
     if (words) _api.ui.createBlock(btn, 'span', { className: 'st-sb__r', text: words });
   };
 
@@ -11250,6 +11262,7 @@ function createSidebarView(container) {
     const btn = _api.ui.createButton(line, { id: `study.side.progress.${s.id}`, label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', size: 'sm',
       title: `What you know of ${s.name}, unit by unit.`, command: 'study.openProgress', args: [s.id] });
     btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
+    stPlaceLink(btn, { view: 'progress', subjectId: s.id });
   };
 
   // ── Destructive flows, each behind the app's confirm modal ──
@@ -11310,6 +11323,7 @@ function createSidebarView(container) {
   // A repaint rebuilds the rows: the control he was on (by keyboard) has the focus again after it.
   async function paintOnce() {
     await paintRows();
+    stMarkColumn(body);
     const id = state.refocus;
     state.refocus = '';
     if (!id || state.disposed || body.contains(document.activeElement)) return;
@@ -11355,7 +11369,9 @@ function createSidebarView(container) {
 
     // Home first: today, where he stands, and the plan of every subject.
     {
-      _api.ui.createButton(body, { id: 'study.side.home', label: 'Home', icon: 'home', kind: 'ghost', size: 'sm', title: 'Today, where you stand, and the plan of every subject.', command: 'study.openHome' }).classList.add('st-sb__home');
+      const home = _api.ui.createButton(body, { id: 'study.side.home', label: 'Home', icon: 'home', kind: 'ghost', size: 'sm', title: 'Today, where you stand, and the plan of every subject.', command: 'study.openHome' });
+      home.classList.add('st-sb__home');
+      stPlaceLink(home, { view: 'home' });
     }
 
     // The pick bar, while selecting.
@@ -11407,11 +11423,15 @@ function createSidebarView(container) {
     // Review: what to come back to, across every material.
     const revSec = _api.ui.createBlock(body, 'div', { className: 'st-sb__sec st-sb__sec--review' });
     sectionLabel(revSec, 'Review', null);
-    _api.ui.createButton(revSec, { id: 'study.side.weakSpots', label: 'Weak Spots', icon: 'target', kind: 'ghost', size: 'sm',
-      title: 'Study Weak Spots: one session over the weakest concepts across every material.', command: 'study.weakSpots' }).classList.add('st-sb__nav');
+    // Places: what is weak and what is marked, each with Start Session at its head.
+    const weakBtn = _api.ui.createButton(revSec, { id: 'study.side.weakSpots', label: 'Weak Spots', icon: 'target', kind: 'ghost', size: 'sm',
+      title: 'Weak Spots: the weakest concepts across every material, and a session over them.', command: 'study.weakSpots' });
+    weakBtn.classList.add('st-sb__nav');
+    stPlaceLink(weakBtn, { view: 'weak' });
     const markedBtn = _api.ui.createButton(revSec, { id: 'study.side.marked', label: 'Marked', icon: 'bookmark', kind: 'ghost', size: 'sm',
-      title: 'Study Marked Questions: the questions you marked to come back to, as one session.', command: 'study.studyMarked' });
+      title: 'Marked: the questions you marked to come back to, and a session over them.', command: 'study.studyMarked' });
     markedBtn.classList.add('st-sb__nav');
+    stPlaceLink(markedBtn, { view: 'marked' });
     markedBtn.setAttribute('aria-label', `Marked, ${marked.length} ${marked.length === 1 ? 'question' : 'questions'}`);
     _api.ui.createBlock(markedBtn, 'span', { className: 'st-sb__r', text: String(marked.length) });
 
@@ -11440,12 +11460,12 @@ function createSidebarView(container) {
   const offProgress = bus.on('progress', () => void paint());
   // A plan's days left move at local midnight.
   const newDay = stAtEachNewDay(() => void paint());
+  const marks = stFollowMarks(body);
   const offRoute = bus.on('route', (route) => {
     // The New Subject and New Plan sheets change nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
     if (!route || route.view === 'newSubject' || route.view === 'newPlan') return;
     if (Array.isArray(route.materialIds) && route.materialIds.length === 1) state.expandedId = route.materialIds[0];
     if (route.view === 'learn' && route.materialId) state.expandedId = route.materialId;
-    state.activeSessionId = route.sessionId != null ? route.sessionId : state.activeSessionId;
     void paint();
   });
 
@@ -11454,7 +11474,7 @@ function createSidebarView(container) {
   return {
     dispose() {
       state.disposed = true;
-      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute); newDay.dispose();
+      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute); newDay.dispose(); marks.dispose();
       root.remove();
     },
   };
@@ -12177,15 +12197,14 @@ async function stSheetModels() {
 // SECTION 60: EDITOR PANE — setup, generation, session, results, review, learn
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// One editor tab per session (instanceId 'session-<id>'), one for the setup
-// sheet ('setup'), one per Learn page ('learn-<materialId>-<sectionId>'). The
-// pane renders by route (spec §9) and nothing else; every screen is the
-// mockup's. The route reaches a pane the Flashcards way: stOpenPane stashes
-// it as the pending route, focuses the tab when it exists (the live pane
-// takes it from the 'parallx.study.route' document event) or opens the tab
-// (the new pane takes it at construction). Session state is in the database
-// after every answer, so a closed tab reopens where it was. The making of
-// questions (the run, its screen, its strip in the session) is 55-making-view.js.
+// A place (Home, a subject, its Progress and Plan, a unit, Weak Spots, Marked)
+// is drawn here for Study's one place tab (68-places.js); a thing keeps a tab
+// of its own: a session ('session-<id>'), a Learn page ('learn-<m>-<s>'), and
+// the setup sheet ('setup') and the other sheets, dialogs. The pane renders by
+// route (spec §9); stOpenPane sends a place to the places point and a thing to
+// its tab, focused when open (the live pane takes the 'parallx.study.route'
+// event) or opened with the route pending. Session state is in the database
+// after every answer, so a closed tab reopens where it was.
 
 let _stPendingRoute = null; // consumed by the editor pane on first render
 
@@ -12201,6 +12220,8 @@ function stRouteInstanceId(route) {
   if (route.view === 'setup') return 'setup';
   if (route.view === 'home') return 'home';
   if (route.view === 'newSubject') return 'new-subject';
+  if (route.view === 'subject') return `subject-${Number(route.subjectId) || 0}`;
+  if (route.view === 'weak' || route.view === 'marked') return route.view;
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
   if (route.view === 'newPlan') return `new-plan-${Number(route.subjectId) || 0}`;
@@ -12271,6 +12292,7 @@ async function stRouteTitle(route) {
  *  pane (the workbench builds panes lazily and drops them on restore). */
 async function stOpenPane(route) {
   if (!route || !route.view) return;
+  if (stPlaceOfRoute(route) && stPlacesOn()) return stOpenPlace(route);
   _stPendingRoute = route;
   const instanceId = stRouteInstanceId(route);
   try {
@@ -12521,7 +12543,7 @@ function stReviewItemEl(item, q, c, n) {
 
 function createEditorPane(container, input) {
   injectStyles();
-  const pendingRoute = _stTakePendingRoute();
+  const pendingRoute = (input && input.route) || _stTakePendingRoute();
   const instanceId = input && input.instanceId ? input.instanceId : stRouteInstanceId(pendingRoute);
   const state = {
     route: pendingRoute || stRouteFromInstanceId(instanceId),
@@ -12565,18 +12587,8 @@ function createEditorPane(container, input) {
         root.innerHTML = '';
         const route = state.route;
         try {
-          if (route.view === 'home') await renderHome(root, route, ctx);
-          else if (route.view === 'setup') await renderSetup(root, route, ctx);
-          else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
-          else if (route.view === 'progress') await renderProgress(root, route, ctx);
-          else if (route.view === 'unit') await renderUnit(root, route, ctx);
-          else if (route.view === 'newPlan') await renderNewPlan(root, route, ctx);
-          else if (route.view === 'plan') await renderPlan(root, route, ctx);
-          else if (route.view === 'generating') await renderGenerating(root, route, ctx);
-          else if (route.view === 'session') await renderSession(root, route, ctx);
-          else if (route.view === 'results') await renderResults(root, route, ctx);
-          else if (route.view === 'review') await renderReview(root, route, ctx);
-          else if (route.view === 'learn') await renderLearn(root, route, ctx);
+          const draw = stViewRenderer(route.view);
+          if (draw) await draw(root, route, ctx);
           else await renderSetup(root, { view: 'setup', materialIds: [] }, ctx);
         } catch (err) {
           if (state.disposed) return;
@@ -15185,6 +15197,8 @@ let _stProgressFocusFor = 0;
 
 /** Open a subject's Progress tab and put the focus in it: whoever asked by keyboard (the palette, a menu) goes on from the tab, not from where they were. */
 async function stOpenProgress(subjectId) {
+  // A place: the core puts the keys on its title.
+  if (stPlacesOn()) return stOpenPane({ view: 'progress', subjectId });
   _stProgressFocusFor = Number(subjectId) || 0;
   const opened = await stOpenPane({ view: 'progress', subjectId });
   // A tab that was already open is not drawn again: it takes the focus here. A new one takes it when it is drawn.
@@ -15642,7 +15656,7 @@ function stSessionAction(name, sessionId, ...args) {
 
 function registerSessionCommands(context) {
   const cmds = [
-    ['study.studyMarked', () => stStudyMarked()],
+    ['study.studyMarked', (arg) => stStudyMarked(arg)],
     ['study.previousQuestion', (id) => stSessionAction('previous', id)],
     ['study.nextQuestion', (id) => stSessionAction('next', id)],
     ['study.markQuestion', (id) => stSessionAction('mark', id)],
@@ -15863,6 +15877,8 @@ let _stPlanFocusFor = 0;
 
 /** Open a plan's tab and put the focus in it. */
 async function stOpenPlan(planId) {
+  // A place: the core puts the keys on its title.
+  if (stPlacesOn()) return stOpenPane({ view: 'plan', planId: Number(planId) || 0 });
   _stPlanFocusFor = Number(planId) || 0;
   const opened = await stOpenPane({ view: 'plan', planId: Number(planId) || 0 });
   const page = Array.from(document.querySelectorAll('.st-plan')).find((n) => n.isConnected && n.dataset.planId === String(planId));
@@ -16179,6 +16195,8 @@ let _stUnitFocusFor = '';
 
 /** Open a unit's tab (or bring it forward) and put the focus on its Study…: a press from the sidebar goes on from there. */
 async function stOpenUnit(subjectId, rowId) {
+  // A place: the core puts the keys on its title.
+  if (stPlacesOn()) return stOpenPane({ view: 'unit', subjectId: Number(subjectId) || 0, rowId: String(rowId) });
   const instanceId = stUnitInstanceId(subjectId, rowId);
   _stUnitFocusFor = instanceId;
   const opened = await stOpenPane({ view: 'unit', subjectId: Number(subjectId) || 0, rowId: String(rowId) });
@@ -16514,6 +16532,484 @@ async function renderUnit(host, route, ctx) {
   stUnitTakeFocus(instanceId, page);
   // The pages' titles and places, read once, then the list again.
   void stUnitPages().then(() => { if (!ctx.disposed()) later(); });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 68: THE PLACES' OWN PAGES — a subject, Weak Spots, Marked
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Three places that had no screen before (68-places.js). A subject: its
+// header (Study…, its actions), its plan and Progress, then its units, each a
+// link to the unit's place. Weak Spots and Marked: what they hold, listed,
+// with Start Session at the header (the commands Study Weak Spots and Study
+// Marked Questions, as before). They draw in the lists' quiet style of a
+// unit's page (40-css.js), and draw again only when what they show changed.
+
+/** A page of a place: the frame, its inner column, and the body under the header. */
+function stPlacePage(host, className) {
+  const ui = _api.ui;
+  const page = ui.createBlock(host, 'div', { className: `st-place ${className}` });
+  const inner = ui.createBlock(page, 'div', { className: 'st-place__in' });
+  return { page, inner };
+}
+
+/** A group: its heading with its count, then a list; as a unit's page draws its groups. */
+function stPlaceGroup(into, name, count) {
+  const ui = _api.ui;
+  const sec = ui.createBlock(into, 'section', { className: 'st-unit__sec' });
+  const hd = ui.createBlock(sec, 'div', { className: 'st-unit__hd' });
+  const h = ui.createBlock(hd, 'div', { className: 'st-unit__name', text: name, attrs: { role: 'heading', 'aria-level': '2' } });
+  h.id = `st-place-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  sec.setAttribute('aria-labelledby', h.id);
+  if (count != null) { h.appendChild(document.createTextNode(' ')); ui.createBlock(h, 'span', { className: 'st-unit__n', text: String(count) }); }
+  const acts = ui.createBlock(hd, 'div', { className: 'st-unit__acts' });
+  return { sec, acts, list: () => ui.createBlock(sec, 'div', { className: 'st-unit__list', attrs: { role: 'list' } }) };
+}
+
+/** One line of a list: its text and, faint after it, where it is from. */
+function stPlaceLine(list, text, where) {
+  const ui = _api.ui;
+  const line = ui.createBlock(list, 'div', { className: 'st-unit__item st-place__line', attrs: { role: 'listitem' } });
+  ui.createBlock(line, 'span', { className: 'st-place__text', text });
+  if (where) ui.createBlock(line, 'span', { className: 'st-unit__where', text: where });
+  return line;
+}
+
+/** Draw the page again when what it shows changed: `read()` gives what it shows, `draw(data)` draws it. */
+async function stPlaceRedrawn(ctx, read, draw) {
+  let drawn = '';
+  const paint = async () => {
+    const data = await read();
+    if (ctx.disposed()) return;
+    const key = JSON.stringify(data);
+    if (key === drawn) return;
+    drawn = key;
+    draw(data);
+  };
+  ctx.add(onDataChanged(() => void paint().catch(() => {})));
+  await paint();
+}
+
+/** A subject whose page came back with the app before Study read its subjects waits for it, and says so when it is gone. */
+async function stPlaceWaitForSubject(inner, subjectId, ctx) {
+  ctx.add(onDataChanged(() => { if (stPlaceSubject(subjectId)) ctx.rerender(); }));
+  const kept = await db.get('SELECT id FROM st_subjects WHERE id = ?', [subjectId]).catch(() => null);
+  if (!kept && !ctx.disposed()) _api.ui.createEmptyState(inner, { icon: 'graduation-cap', headline: 'This subject is no longer in Study.', hint: 'It was removed. Its page and its databases are where they were.', action: { label: 'Close', command: ST_CLOSE_TAB } });
+}
+
+// ── A subject ──────────────────────────────────────────────────────────────
+
+async function renderSubject(host, route, ctx) {
+  const ui = _api.ui;
+  const subjectId = Number(route.subjectId) || 0;
+  const { inner } = stPlacePage(host, 'st-subj');
+  if (!stPlaceSubject(subjectId)) { await stPlaceWaitForSubject(inner, subjectId, ctx); return; }
+  const head = ui.createBlock(inner, 'div', { className: 'st-place__head' });
+  const body = ui.createBlock(inner, 'div', { className: 'st-unit__body' });
+  let title = null;
+  await stPlaceRedrawn(ctx, async () => {
+    const s = stPlaceSubject(subjectId);
+    const { shown } = s ? stPlansOfSubject(s.id) : { shown: null };
+    return s ? {
+      name: s.name, answered: s.answered, total: s.total, problem: s.problem, ready: s.ready,
+      plan: shown ? { id: shown.plan.id, name: String(shown.plan.name), exam: (shown.rules && shown.rules.exam) || '' } : null,
+      units: s.units.map((u) => [u.rowId, u.name, u.answered, u.total]),
+    } : null;
+  }, (d) => {
+    if (!d) { ctx.rerender(); return; }
+    const s = stPlaceSubject(subjectId);
+    const focused = inner.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
+    const left = d.plan && d.plan.exam ? stPlanDaysBetween(stPlanToday(), d.plan.exam) : null;
+    const sub = [d.problem || (d.ready ? `${d.answered} of ${d.total} questions answered` : ''), d.plan && d.plan.exam ? `exam ${stPlanDateWords(d.plan.exam, { year: true, long: true })}` : ''].filter(Boolean).join(' · ');
+    if (!title) {
+      ui.createPageHeader(head, {
+        title: d.name,
+        ...(sub ? { subtitle: sub } : {}),
+        primary: { id: 'study.subject.study', label: 'Study…', icon: 'px-study', title: `Study ${d.name}`, command: 'study.studySubject', args: [subjectId] },
+        more: stSubjectMenuItems(s),
+      });
+      title = head.querySelector('.px-page-header__title');
+    } else {
+      if (title.textContent !== d.name) title.textContent = d.name;
+      const subEl = head.querySelector('.px-page-header__subtitle');
+      if (subEl && subEl.textContent !== sub) subEl.textContent = sub;
+    }
+    body.replaceChildren();
+
+    // Its plan and its Progress: the two places inside it besides its units.
+    const about = stPlaceGroup(body, 'Plan and progress', null);
+    const list = about.list();
+    if (d.plan) {
+      const words = left === null ? '' : left === 0 ? 'exam today' : `${left} ${left === 1 ? 'day' : 'days'} left`;
+      const line = ui.createBlock(list, 'div', { className: 'st-unit__item', attrs: { role: 'listitem' } });
+      const btn = ui.createButton(line, { id: 'study.subject.plan', label: d.plan.name, icon: 'calendar', kind: 'ghost', size: 'sm', title: `Open the plan ${d.plan.name}${words ? `: ${words}` : ''}.`, command: 'study.openPlan', args: [{ planId: d.plan.id }] });
+      btn.classList.add('st-unit__open');
+      stPlaceLink(btn, { view: 'plan', planId: d.plan.id });
+      if (words) ui.createBlock(line, 'span', { className: 'st-unit__where', text: words });
+    } else if (stSubjectDoor()) {
+      ui.createButton(about.acts, { id: 'study.subject.newPlan', label: 'New Plan…', icon: 'calendar-plus', kind: 'ghost', size: 'sm', title: `A plan for ${d.name}: its exam, its week and its phases.`, command: 'study.newPlan', args: [subjectId] });
+    }
+    if (!d.problem && d.ready) {
+      const line = ui.createBlock(list, 'div', { className: 'st-unit__item', attrs: { role: 'listitem' } });
+      const btn = ui.createButton(line, { id: 'study.subject.progress', label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', size: 'sm', title: `What you know of ${d.name}, unit by unit.`, command: 'study.openProgress', args: [subjectId] });
+      btn.classList.add('st-unit__open');
+      stPlaceLink(btn, { view: 'progress', subjectId });
+    }
+
+    // Its units, each a place inside it.
+    const units = stPlaceGroup(body, 'Units', d.units.length);
+    ui.createButton(units.acts, { id: 'study.subject.openUnits', label: 'Open Units', icon: 'database', kind: 'ghost', size: 'sm', command: 'canvas.openPage', args: [s.subject.unitsDb] });
+    if (!d.units.length) ui.createBlock(units.sec, 'div', { className: 'st-unit__none', text: 'No units yet. Add them in Open Units.' });
+    else {
+      const ul = units.list();
+      for (const [rowId, name, answered, total] of d.units) {
+        const line = ui.createBlock(ul, 'div', { className: 'st-unit__item', attrs: { role: 'listitem' } });
+        const btn = ui.createButton(line, { id: `study.subject.unit.${rowId}`, label: name, icon: total > 0 && answered >= total ? 'circle-check' : answered > 0 ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm', title: `Open ${name}: ${answered} of ${total} questions answered.`, command: 'study.openUnit', args: [subjectId, rowId] });
+        btn.classList.add('st-unit__open');
+        stPlaceLink(btn, { view: 'unit', subjectId, rowId });
+        ui.createBlock(line, 'span', { className: 'st-unit__where', text: `${answered} of ${total}` });
+      }
+    }
+    if (focused) { const again = Array.from(inner.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === focused); if (again) again.focus(); }
+  });
+}
+
+// ── Weak Spots ─────────────────────────────────────────────────────────────
+
+async function renderWeakSpots(host, route, ctx) {
+  const ui = _api.ui;
+  const { inner } = stPlacePage(host, 'st-weak');
+  const head = ui.createBlock(inner, 'div', { className: 'st-place__head' });
+  const body = ui.createBlock(inner, 'div', { className: 'st-unit__body' });
+  await stPlaceRedrawn(ctx, async () => {
+    const materials = (await stListMaterials()) || [];
+    const concepts = materials.length ? (await stScopeConcepts({ kind: 'weak', materialIds: materials.map((m) => m.id), label: 'All materials' })) || [] : [];
+    const labels = new Map(materials.map((m) => [Number(m.id), String(m.label || '')]));
+    return {
+      none: concepts.length ? '' : materials.length ? await stNoWeakSpotsText() : 'Add a material first: the concepts you miss in it show up here.',
+      rows: concepts.map((c) => [c.title, labels.get(Number(c.materialId)) || '', c.state, Number(c.misses) || 0, Number(c.answers) || 0]),
+    };
+  }, (d) => {
+    head.replaceChildren();
+    const n = d.rows.length;
+    ui.createPageHeader(head, {
+      title: 'Weak Spots',
+      subtitle: n ? `${n} ${n === 1 ? 'concept' : 'concepts'} weak or stale, across every material` : 'The concepts you miss, across every material',
+      ...(n ? { primary: { id: 'study.weak.start', label: 'Start Session', icon: 'play', title: 'Study Weak Spots: one session over these concepts.', command: 'study.weakSpots', args: [{ start: true }] } } : {}),
+    });
+    body.replaceChildren();
+    if (!n) { ui.createEmptyState(body, { icon: 'target', headline: 'No weak spots.', hint: d.none }); return; }
+    const group = stPlaceGroup(body, 'Concepts', n);
+    const list = group.list();
+    for (const [title, material, state, misses, answers] of d.rows) {
+      stPlaceLine(list, title, [material, state === 'stale' ? 'not answered lately' : `missed ${misses} of ${answers}`].filter(Boolean).join(' · '));
+    }
+  });
+}
+
+// ── Marked ─────────────────────────────────────────────────────────────────
+
+async function renderMarked(host, route, ctx) {
+  const ui = _api.ui;
+  const { inner } = stPlacePage(host, 'st-marked');
+  const head = ui.createBlock(inner, 'div', { className: 'st-place__head' });
+  const body = ui.createBlock(inner, 'div', { className: 'st-unit__body' });
+  await stPlaceRedrawn(ctx, async () => {
+    const marked = (await stListMarkedQuestions()) || [];
+    const materials = (await stListMaterials()) || [];
+    const labels = new Map(materials.map((m) => [Number(m.id), String(m.label || '')]));
+    return marked.map((q) => [stTruncate(String(q.stem || '').replace(/\s+/g, ' ').trim(), 160), labels.get(Number(q.materialId)) || q.originLabel || '', Number(q.sourcePage) || 0]);
+  }, (rows) => {
+    head.replaceChildren();
+    const n = rows.length;
+    ui.createPageHeader(head, {
+      title: 'Marked',
+      subtitle: n ? `${n} ${n === 1 ? 'question' : 'questions'} marked to come back to` : 'The questions you mark to come back to',
+      ...(n ? { primary: { id: 'study.marked.start', label: 'Start Session', icon: 'play', title: 'Study Marked Questions: one session over exactly these.', command: 'study.studyMarked', args: [{ start: true }] } } : {}),
+    });
+    body.replaceChildren();
+    if (!n) { ui.createEmptyState(body, { icon: 'bookmark', headline: 'Nothing is marked yet.', hint: 'Mark a question on its card to come back to it.' }); return; }
+    const group = stPlaceGroup(body, 'Questions', n);
+    const list = group.list();
+    for (const [stem, from, page] of rows) stPlaceLine(list, stem, [from, page ? `p. ${page}` : ''].filter(Boolean).join(' · '));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 68: PLACES — Study's screens in ONE tab (the core's api.places)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A place is a screen of Study: Home, a subject, its Progress, its Plan, a
+// unit (a place inside its subject), Weak Spots, Marked. They share ONE tab,
+// named for the place with Study's icon; the core keeps the tab, the trail in
+// the bar under the tabs (`Study › Exam 7 › Mack`), the address
+// (parallx://place/study/unit?subject=3&unit=r7), Back and Forward, and where
+// the keys land (the page header's title). A thing keeps a tab of its own: a
+// session (its making, its questions, results and review stay inside it) and
+// a chapter read in Learn. The sheets (New Session, New Subject, New Plan) are
+// dialogs, each in a tab of its own that closes when it is done, as before.
+//
+// Each place is drawn by the pane that drew its tab before (createEditorPane,
+// given the place's route), so a place and a tab an older build saved draw
+// alike; that build's tabs (editor type 'study', 'home', 'progress-3',
+// 'unit-3-r7', 'plan-2') come back as the place in the one tab (formerTabs).
+
+const ST_PLACES_ID = 'study';
+/** The editor type of the one place tab; the things keep 'study'. */
+const ST_PLACE_TYPE = 'study-place';
+
+/** Study's places; the first is where the tool opens. */
+const ST_PLACES = [
+  { id: 'home', title: 'Home' },
+  { id: 'subject', title: 'Subject' },
+  { id: 'progress', title: 'Progress' },
+  { id: 'plan', title: 'Plan' },
+  { id: 'unit', title: 'Unit' },
+  { id: 'weak', title: 'Weak Spots' },
+  { id: 'marked', title: 'Marked' },
+];
+
+/** The places are registered (Study runs on a host with the places point). */
+let _stPlacesOn = false;
+
+function stPlacesOn() {
+  return _stPlacesOn && !!(_api && _api.places && typeof _api.places.open === 'function');
+}
+
+const ST_PLACE_NUM = /^\d+$/;
+const stPlaceId = (v) => String(Number(v) || 0);
+
+/** The place a route is ({ place, params }), or null for a thing or a sheet. */
+function stPlaceOfRoute(route) {
+  if (!route) return null;
+  switch (route.view) {
+    case 'home': return { place: 'home' };
+    case 'weak': return { place: 'weak' };
+    case 'marked': return { place: 'marked' };
+    case 'subject': return { place: 'subject', params: { subject: stPlaceId(route.subjectId) } };
+    case 'progress': return { place: 'progress', params: { subject: stPlaceId(route.subjectId) } };
+    case 'plan': return { place: 'plan', params: { plan: stPlaceId(route.planId) } };
+    case 'unit': return { place: 'unit', params: { subject: stPlaceId(route.subjectId), unit: String(route.rowId || '') } };
+    default: return null;
+  }
+}
+
+/** The route the pane draws a place by (Home for an address it cannot read). */
+function stRouteOfPlace(location) {
+  const p = (location && location.params) || {};
+  const num = (v) => (ST_PLACE_NUM.test(String(v || '')) ? Number(v) : 0);
+  switch (location && location.place) {
+    case 'weak': return { view: 'weak' };
+    case 'marked': return { view: 'marked' };
+    case 'subject': return num(p.subject) ? { view: 'subject', subjectId: num(p.subject) } : { view: 'home' };
+    case 'progress': return num(p.subject) ? { view: 'progress', subjectId: num(p.subject) } : { view: 'home' };
+    case 'plan': return num(p.plan) ? { view: 'plan', planId: num(p.plan) } : { view: 'home' };
+    case 'unit': return num(p.subject) && p.unit ? { view: 'unit', subjectId: num(p.subject), rowId: String(p.unit) } : { view: 'home' };
+    default: return { view: 'home' };
+  }
+}
+
+/** The place an older build's tab named ('home', 'progress-3', 'unit-3-r7', 'plan-2'), or undefined for a thing or a sheet. */
+function stPlaceOfInstance(instanceId) {
+  const id = String(instanceId || '');
+  if (!/^(home|progress-\d+|unit-\d+-.+|plan-\d+)$/.test(id)) return undefined;
+  return stPlaceOfRoute(stRouteFromInstanceId(id)) || undefined;
+}
+
+// ── Names ──────────────────────────────────────────────────────────────────
+// Read from what Study holds (its subjects and plans): titleOf is asked synchronously.
+
+const stPlaceSubject = (id) => stSubjectsShown().find((s) => s.id === Number(id)) || null;
+const stPlacePlan = (id) => { const st = _stPlans.get(Number(id)); return st ? st.plan : null; };
+
+function stPlaceTitle(location) {
+  const p = (location && location.params) || {};
+  switch (location && location.place) {
+    case 'subject': { const s = stPlaceSubject(p.subject); return s ? s.name : 'Subject'; }
+    case 'unit': {
+      const s = stPlaceSubject(p.subject);
+      const u = s ? s.units.find((x) => x.rowId === String(p.unit)) : null;
+      return u ? u.name : 'Unit';
+    }
+    case 'plan': { const plan = stPlacePlan(p.plan); return plan ? String(plan.name) : 'Plan'; }
+    default: return (ST_PLACES.find((x) => x.id === (location && location.place)) || ST_PLACES[0]).title;
+  }
+}
+
+/** The trail after Study: the subject, then the place inside it (Progress, its plan, a unit). */
+function stPlaceTrail(location) {
+  const p = (location && location.params) || {};
+  const here = { label: stPlaceTitle(location), location };
+  const subjectStep = (id) => {
+    const s = stPlaceSubject(id);
+    return { label: s ? s.name : 'Subject', location: { place: 'subject', params: { subject: stPlaceId(id) } } };
+  };
+  switch (location && location.place) {
+    case 'progress': case 'unit': return [subjectStep(p.subject), here];
+    case 'plan': {
+      const plan = stPlacePlan(p.plan);
+      return plan && Number(plan.subjectId) ? [subjectStep(plan.subjectId), here] : [here];
+    }
+    default: return [here];
+  }
+}
+
+/** What the tab and the trail of a location say, to see when a name read later changed them. */
+const stPlaceWords = (location) => JSON.stringify([stPlaceTitle(location), stPlaceTrail(location).map((s) => s.label)]);
+
+// ── Going there ────────────────────────────────────────────────────────────
+
+/** A place's address, for a link or a row (Ctrl+click, its menu). */
+function stPlaceAddress(route) {
+  const location = stPlaceOfRoute(route);
+  return location && stPlacesOn() ? _api.places.addressOf(ST_PLACES_ID, location) : '';
+}
+
+/** Go to a place's route, in Study's one tab (with `newTab`, a tab of its own). */
+function stOpenPlace(route, options) {
+  const location = stPlaceOfRoute(route);
+  if (!location || !stPlacesOn()) return Promise.resolve(false);
+  return _api.places.open({ tool: ST_PLACES_ID, place: location.place, ...(location.params ? { params: location.params } : {}) }, options && options.newTab ? { newTab: true } : undefined);
+}
+
+/**
+ * A column row or a link that goes to a place: Ctrl+click (Cmd+click) opens
+ * it in a tab of its own. With `menu`, the row's context menu offers Open and
+ * Open in Its Own Tab (the kit's place link); a row with a menu of its own
+ * keeps it, and the menu adds Open in Its Own Tab (stPlaceMenuItem).
+ */
+function stPlaceLink(element, route, { menu = true } = {}) {
+  const address = stPlaceAddress(route);
+  if (!element || !address) return;
+  element.dataset.stPlace = JSON.stringify(stPlaceOfRoute(route));
+  if (typeof _api.ui.bindPlaceLink === 'function') _api.ui.bindPlaceLink(element, address, { menu });
+}
+
+/** Open in Its Own Tab, for a row's own menu (a subject's, a unit's). */
+function stPlaceMenuItem(route) {
+  return stPlacesOn() ? [{ label: 'Open in Its Own Tab', icon: 'external-link', onSelect: () => void stOpenPlace(route, { newTab: true }) }] : [];
+}
+
+/**
+ * The one mark for where he is, on the column's rows: a session's own tab in
+ * front marks its row; else the place of Study's tab marks its row.
+ */
+function stMarkColumn(root) {
+  if (!root || !_api || typeof _api.ui.markCurrent !== 'function') return;
+  let active = '';
+  try { const a = (_api.editors.openEditors || []).find((e) => e.isActive); active = a ? String(a.id || '') : ''; } catch { active = ''; }
+  const session = /:study:session-(\d+)$/.exec(active);
+  const here = !session && stPlacesOn() ? _api.places.current(ST_PLACES_ID) : undefined;
+  const key = here ? JSON.stringify(stPlaceOfRoute(stRouteOfPlace(here))) : '';
+  for (const row of root.querySelectorAll('[data-st-place]')) _api.ui.markCurrent(row, !!key && row.dataset.stPlace === key);
+  for (const row of root.querySelectorAll('[data-session-id]')) _api.ui.markCurrent(row, !!session && row.dataset.sessionId === session[1]);
+}
+
+/** Keep the column's mark where he is: on a move, and when another tab comes to the front. */
+function stFollowMarks(root) {
+  const subs = [];
+  if (stPlacesOn()) subs.push(_api.places.onDidMove((e) => { if (e.tool === ST_PLACES_ID) stMarkColumn(root); }));
+  if (_api.editors && typeof _api.editors.onDidChangeOpenEditors === 'function') subs.push(_api.editors.onDidChangeOpenEditors(() => stMarkColumn(root)));
+  return { dispose: () => { for (const s of subs) { try { s.dispose(); } catch { /* gone */ } } } };
+}
+
+// ── The view ───────────────────────────────────────────────────────────────
+
+/** Resolves once the page's kit title is drawn (a page drawn after its data loads), or after a while regardless. */
+function stPlaceTitleDrawn(container, isStillWanted) {
+  const has = () => !!container.querySelector('.px-page-header__title');
+  if (has()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => { observer.disconnect(); clearTimeout(timer); resolve(); };
+    const observer = new MutationObserver(() => { if (has() || !isStillWanted()) done(); });
+    observer.observe(container, { childList: true, subtree: true });
+    const timer = setTimeout(done, 4000);
+  });
+}
+
+class StudyPlaceView {
+  constructor(container, host) {
+    this._container = container;
+    this._host = host;
+    this._pane = null;
+    this._shown = '';
+    this._location = null;
+    this._words = '';
+    this._seq = 0;
+    // A name read after the tab was drawn (Study reads its subjects and plans at start) renames the tab and the trail.
+    this._offData = onDataChanged(() => {
+      const at = this._location;
+      if (!at || stPlaceWords(at) === this._words) return;
+      this._words = stPlaceWords(at);
+      this._host.replace(at);
+    });
+  }
+
+  async show(location) {
+    const seq = ++this._seq;
+    const route = stRouteOfPlace(location);
+    const key = JSON.stringify(route);
+    this._location = location;
+    this._words = stPlaceWords(location);
+    if (key !== this._shown || !this._pane) {
+      this._close();
+      this._shown = key;
+      this._pane = createEditorPane(this._container, { instanceId: stRouteInstanceId(route), route });
+    }
+    await stPlaceTitleDrawn(this._container, () => seq === this._seq);
+  }
+
+  _close() {
+    const pane = this._pane;
+    this._pane = null;
+    if (pane) { try { pane.dispose(); } catch (err) { console.warn('[Study] a place failed to close:', err); } }
+    this._container.replaceChildren();
+  }
+
+  dispose() {
+    this._seq++;
+    stOff(this._offData);
+    this._close();
+  }
+}
+
+/** Register Study's places with the core. */
+function registerPlaces(context) {
+  if (!_api.places || typeof _api.places.register !== 'function') return;
+  context.subscriptions.push(_api.places.register({
+    id: ST_PLACES_ID,
+    title: 'Study',
+    icon: 'px-study',
+    editorType: ST_PLACE_TYPE,
+    places: ST_PLACES,
+    // The older build opened a tab per screen, all of them 'study'; a session's and a sheet's stay theirs.
+    formerTabs: { editorType: 'study', placeOf: (instanceId) => stPlaceOfInstance(instanceId) },
+    titleOf: (location) => stPlaceTitle(location),
+    trailOf: (location) => stPlaceTrail(location),
+    createView: (container, host) => new StudyPlaceView(container, host),
+  }));
+  _stPlacesOn = true;
+  context.subscriptions.push({ dispose: () => { _stPlacesOn = false; } });
+}
+
+// ── The screens each view draws ────────────────────────────────────────────
+
+/** The drawing of a route's view (the pane's render), or null for none. */
+function stViewRenderer(view) {
+  const views = {
+    home: renderHome, setup: renderSetup, newSubject: renderNewSubject, progress: renderProgress, unit: renderUnit,
+    newPlan: renderNewPlan, plan: renderPlan, generating: renderGenerating, session: renderSession, results: renderResults,
+    review: renderReview, learn: renderLearn, subject: renderSubject, weak: renderWeakSpots, marked: renderMarked,
+  };
+  return Object.prototype.hasOwnProperty.call(views, view) ? views[view] : null;
+}
+
+/** Open Subject…: the subject's place (it had no screen before). */
+function registerPlaceCommands(context) {
+  const cmds = [
+    ['study.openSubject', async (subject) => { const s = await stPickSubject(subject, 'Open which subject?'); return s ? stOpenPane({ view: 'subject', subjectId: s.id }) : null; }],
+  ];
+  for (const [id, handler] of cmds) context.subscriptions.push(_api.commands.registerCommand(id, handler));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -17271,7 +17767,9 @@ async function stCmdStudyTogether(ids0) {
   return stOpenSetup({ materialIds: ids });
 }
 
-async function stCmdWeakSpots() {
+/** Study Weak Spots: its place (what is weak, with Start Session); with { start: true }, the session at once. */
+async function stCmdWeakSpots(arg) {
+  if (!(arg && arg.start) && stPlacesOn()) return stOpenPane({ view: 'weak' });
   const materials = await stListMaterials();
   if (!materials.length) {
     await _api.window.showInformationMessage('Add a material first.');
@@ -17345,7 +17843,7 @@ function registerCommands(context) {
     // Each takes an optional argument (material ids; a path or file URI) so
     // the chat and scripts can call them without the quick pick.
     ['study.studyTogether', (ids) => stCmdStudyTogether(ids)],
-    ['study.weakSpots', () => stCmdWeakSpots()],
+    ['study.weakSpots', (arg) => stCmdWeakSpots(arg)],
     ['study.addMaterial', (arg) => stCmdAddMaterial(arg)],
     ['study.importQuestions', (arg) => stCmdImportQuestions(arg)],
     ['study.importReport', (arg) => stCmdImportReport(arg)],
@@ -17445,10 +17943,10 @@ function registerDashboardWidget(context) {
             row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
             root.appendChild(row);
           }
-          const foot = _api.ui.createButton(root, { id: 'study.weakSpots', command: 'study.weakSpots',
+          const foot = _api.ui.createButton(root, { id: 'study.weakSpots', command: 'study.weakSpots', args: [{ start: true }],
             label: `Study the Weakest ${data.size || 20}`, kind: 'ghost', size: 'sm',
             title: 'One session over the weakest concepts across every material.',
-            onClick: () => void _api.commands.executeCommand('study.weakSpots'),
+            onClick: () => void _api.commands.executeCommand('study.weakSpots', { start: true }),
           });
           foot.classList.add('st-widget__foot');
         };
@@ -17982,7 +18480,9 @@ export async function activate(api, context) {
     }),
   );
 
+  registerPlaces(owned);
   registerCommands(owned);
+  registerPlaceCommands(owned);
   registerSessionCommands(owned);
   registerSelectionAction(owned, 0, token);
   registerQuestionProviders(owned, 0, token);

@@ -60,7 +60,9 @@ async function stFixedScopeQuestions(scope) {
 }
 
 /** Study the marked questions as a set: one Practice session over exactly those. */
-async function stStudyMarked() {
+async function stStudyMarked(arg) {
+  // Its place (what is marked, with Start Session); with { start: true }, the session at once.
+  if (!(arg && arg.start) && stPlacesOn()) return stOpenPane({ view: 'marked' });
   const marked = await stListMarkedQuestions();
   if (!marked.length) {
     await _api.window.showInformationMessage('Nothing is marked yet: mark a question on its card to come back to it.');

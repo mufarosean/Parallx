@@ -123,8 +123,10 @@ export function showPlaceLinkMenu(address: string, at: { readonly x: number; rea
  * the place in a tab of its own instead of what the element does, and its
  * context menu (right-click, Shift+F10, the menu key) offers Open and Open
  * in Its Own Tab. `address` is read each time, so a row can follow a change.
+ * With `menu: false` the element keeps a context menu of its own (a row with
+ * its own actions); only Ctrl+click is added.
  */
-export function bindPlaceLink(element: HTMLElement, address: string | (() => string)): IDisposable {
+export function bindPlaceLink(element: HTMLElement, address: string | (() => string), options: { readonly menu?: boolean } = {}): IDisposable {
   const addressOf = () => (typeof address === 'function' ? address() : address);
   element.dataset.placeAddress = addressOf();
   const onClick = (e: MouseEvent) => {
@@ -143,6 +145,7 @@ export function bindPlaceLink(element: HTMLElement, address: string | (() => str
   };
   // Capture: it runs before the element's own press, which it replaces with Ctrl.
   element.addEventListener('click', onClick, true);
-  element.addEventListener('contextmenu', onMenu);
-  return { dispose: () => { element.removeEventListener('click', onClick, true); element.removeEventListener('contextmenu', onMenu); } };
+  const withMenu = options.menu !== false;
+  if (withMenu) element.addEventListener('contextmenu', onMenu);
+  return { dispose: () => { element.removeEventListener('click', onClick, true); if (withMenu) element.removeEventListener('contextmenu', onMenu); } };
 }

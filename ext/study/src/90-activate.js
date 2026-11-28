@@ -72,7 +72,9 @@ export async function activate(api, context) {
     }),
   );
 
+  registerPlaces(owned);
   registerCommands(owned);
+  registerPlaceCommands(owned);
   registerSessionCommands(owned);
   registerSelectionAction(owned, 0, token);
   registerQuestionProviders(owned, 0, token);

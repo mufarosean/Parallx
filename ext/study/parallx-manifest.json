@@ -33,6 +33,7 @@
       { "id": "study.newSubject", "title": "New Subject…", "category": "Study" },
       { "id": "study.studySubject", "title": "Study a Subject…", "category": "Study" },
       { "id": "study.subjectActions", "title": "Subject Actions…", "category": "Study" },
+      { "id": "study.openSubject", "title": "Open Subject…", "category": "Study" },
       { "id": "study.openProgress", "title": "Open Progress…", "category": "Study" },
       { "id": "study.openUnit", "title": "Open Unit…", "category": "Study" },
       { "id": "study.newPlan", "title": "New Plan…", "category": "Study" },

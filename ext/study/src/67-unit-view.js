@@ -24,6 +24,8 @@ let _stUnitFocusFor = '';
 
 /** Open a unit's tab (or bring it forward) and put the focus on its Study…: a press from the sidebar goes on from there. */
 async function stOpenUnit(subjectId, rowId) {
+  // A place: the core puts the keys on its title.
+  if (stPlacesOn()) return stOpenPane({ view: 'unit', subjectId: Number(subjectId) || 0, rowId: String(rowId) });
   const instanceId = stUnitInstanceId(subjectId, rowId);
   _stUnitFocusFor = instanceId;
   const opened = await stOpenPane({ view: 'unit', subjectId: Number(subjectId) || 0, rowId: String(rowId) });

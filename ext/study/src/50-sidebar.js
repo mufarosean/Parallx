@@ -111,7 +111,6 @@ function createSidebarView(container) {
     picked: new Set(),
     expandedId: null,
     banksOpen: false,
-    activeSessionId: null,
   };
 
   // No header row of its own: the workbench's container header already
@@ -187,7 +186,6 @@ function createSidebarView(container) {
       const ic = el('span', '');
       ic.innerHTML = icon(stMaterialIcon(m.kind), 14);
       row.appendChild(ic);
-      if (state.expandedId === m.id) row.classList.add('st-sb__it--on');
     }
     const nm = el('span', 'st-sb__nm', m.label);
     nm.title = m.label;
@@ -247,7 +245,6 @@ function createSidebarView(container) {
       ic.innerHTML = icon('px-study', 14);
       row.appendChild(ic);
     }
-    if (state.activeSessionId === s.id) row.classList.add('st-sb__it--on');
     row.appendChild(el('span', 'st-sb__nm', name));
     const list = items || [];
     const lastDraw = list.reduce((m, i) => Math.max(m, i.draw || 0), 0);
@@ -315,14 +312,18 @@ function createSidebarView(container) {
       return { n, m, text: countText(n, m), done: m > 0 && n >= m, started: n > 0, says: (questions) => `${countText(n, m)} ${tools ? 'answered or rated' : questions ? 'questions answered' : 'answered'}.` };
     };
     const whole = shown(s.answered, s.total, others(progress && progress.totals));
+    // The subject's name goes to its place (its plan, Progress and units), Study… being in its actions; with no places point, to its setup.
+    const toPlace = stPlacesOn();
     const head = _api.ui.createButton(row, { id: `study.side.subject.${s.id}`, label: s.name, icon: 'graduation-cap', kind: 'ghost', size: 'sm',
-      title: s.problem || `Study ${s.name}: ${whole.says(true)}`, command: 'study.studySubject', args: [s.id] });
+      title: s.problem || `${toPlace ? 'Open' : 'Study'} ${s.name}: ${whole.says(true)}`, command: toPlace ? 'study.openSubject' : 'study.studySubject', args: [s.id] });
     head.classList.add('st-sb__nav');
+    stPlaceLink(head, { view: 'subject', subjectId: s.id }, { menu: false });
     _api.ui.createBlock(head, 'span', { className: 'st-sb__r' + (s.problem ? ' st-sb__r--weak' : ''), text: s.problem ? (s.problemTag || 'missing') : s.ready ? whole.text : '' });
     _api.ui.createIconButton(row, { id: `study.side.subject.${s.id}.more`, icon: 'ellipsis', title: 'More Actions', size: 'sm', command: 'study.subjectActions', args: [s.id] });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stSubjectMenuItems(s));
+      const own = stPlaceMenuItem({ view: 'subject', subjectId: s.id });
+      _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [...own, ...(own.length ? [{ separator: true }] : []), ...stSubjectMenuItems(s)]);
     });
     planRow(host, s);
     progressRow(host, s);
@@ -336,6 +337,7 @@ function createSidebarView(container) {
       const unit = _api.ui.createButton(line, { id: `study.side.unit.${s.id}.${u.rowId}`, label: u.name, icon: count.done ? 'circle-check' : count.started ? 'circle-dot' : 'circle', kind: 'ghost', size: 'sm',
         title: `Open ${u.name}: ${count.says(false)}`, command: 'study.openUnit', args: [s.id, u.rowId] });
       unit.classList.add('st-sb__nav', 'st-sb__nav--unit');
+      stPlaceLink(unit, { view: 'unit', subjectId: s.id, rowId: u.rowId }, { menu: false });
       if (count.done) unit.classList.add('st-sb__nav--done');
       const counted = _api.ui.createBlock(unit, 'span', { className: 'st-sb__r', text: count.text });
       // The unit's own actions (its setup, Study…): More Actions beside the row, and its context menu.
@@ -343,7 +345,8 @@ function createSidebarView(container) {
       more.classList.add('st-sb__unitmore');
       line.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, stUnitMenuItems(s, u));
+        const own = stPlaceMenuItem({ view: 'unit', subjectId: s.id, rowId: u.rowId });
+        _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [...own, ...(own.length ? [{ separator: true }] : []), ...stUnitMenuItems(s, u)]);
       });
       if (!all || all[0] + all[1] + all[2] + all[3] === 0) continue;
       // Beside the button, not inside it: a button's contents are not read one by one, and the bar has its own name.
@@ -368,6 +371,7 @@ function createSidebarView(container) {
     const btn = _api.ui.createButton(line, { id: `study.side.plan.${s.id}`, label: shown.plan.name, icon: 'calendar', kind: 'ghost', size: 'sm',
       title: `Open the plan ${shown.plan.name}${exam}${words ? `: ${words}` : ''}.`, command: 'study.openPlan', args: [{ planId: shown.plan.id }] });
     btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
+    stPlaceLink(btn, { view: 'plan', planId: shown.plan.id });
     if (words) _api.ui.createBlock(btn, 'span', { className: 'st-sb__r', text: words });
   };
 
@@ -378,6 +382,7 @@ function createSidebarView(container) {
     const btn = _api.ui.createButton(line, { id: `study.side.progress.${s.id}`, label: 'Progress', icon: 'bar-chart-3', kind: 'ghost', size: 'sm',
       title: `What you know of ${s.name}, unit by unit.`, command: 'study.openProgress', args: [s.id] });
     btn.classList.add('st-sb__nav', 'st-sb__nav--plan');
+    stPlaceLink(btn, { view: 'progress', subjectId: s.id });
   };
 
   // ── Destructive flows, each behind the app's confirm modal ──
@@ -438,6 +443,7 @@ function createSidebarView(container) {
   // A repaint rebuilds the rows: the control he was on (by keyboard) has the focus again after it.
   async function paintOnce() {
     await paintRows();
+    stMarkColumn(body);
     const id = state.refocus;
     state.refocus = '';
     if (!id || state.disposed || body.contains(document.activeElement)) return;
@@ -483,7 +489,9 @@ function createSidebarView(container) {
 
     // Home first: today, where he stands, and the plan of every subject.
     {
-      _api.ui.createButton(body, { id: 'study.side.home', label: 'Home', icon: 'home', kind: 'ghost', size: 'sm', title: 'Today, where you stand, and the plan of every subject.', command: 'study.openHome' }).classList.add('st-sb__home');
+      const home = _api.ui.createButton(body, { id: 'study.side.home', label: 'Home', icon: 'home', kind: 'ghost', size: 'sm', title: 'Today, where you stand, and the plan of every subject.', command: 'study.openHome' });
+      home.classList.add('st-sb__home');
+      stPlaceLink(home, { view: 'home' });
     }
 
     // The pick bar, while selecting.
@@ -535,11 +543,15 @@ function createSidebarView(container) {
     // Review: what to come back to, across every material.
     const revSec = _api.ui.createBlock(body, 'div', { className: 'st-sb__sec st-sb__sec--review' });
     sectionLabel(revSec, 'Review', null);
-    _api.ui.createButton(revSec, { id: 'study.side.weakSpots', label: 'Weak Spots', icon: 'target', kind: 'ghost', size: 'sm',
-      title: 'Study Weak Spots: one session over the weakest concepts across every material.', command: 'study.weakSpots' }).classList.add('st-sb__nav');
+    // Places: what is weak and what is marked, each with Start Session at its head.
+    const weakBtn = _api.ui.createButton(revSec, { id: 'study.side.weakSpots', label: 'Weak Spots', icon: 'target', kind: 'ghost', size: 'sm',
+      title: 'Weak Spots: the weakest concepts across every material, and a session over them.', command: 'study.weakSpots' });
+    weakBtn.classList.add('st-sb__nav');
+    stPlaceLink(weakBtn, { view: 'weak' });
     const markedBtn = _api.ui.createButton(revSec, { id: 'study.side.marked', label: 'Marked', icon: 'bookmark', kind: 'ghost', size: 'sm',
-      title: 'Study Marked Questions: the questions you marked to come back to, as one session.', command: 'study.studyMarked' });
+      title: 'Marked: the questions you marked to come back to, and a session over them.', command: 'study.studyMarked' });
     markedBtn.classList.add('st-sb__nav');
+    stPlaceLink(markedBtn, { view: 'marked' });
     markedBtn.setAttribute('aria-label', `Marked, ${marked.length} ${marked.length === 1 ? 'question' : 'questions'}`);
     _api.ui.createBlock(markedBtn, 'span', { className: 'st-sb__r', text: String(marked.length) });
 
@@ -568,12 +580,12 @@ function createSidebarView(container) {
   const offProgress = bus.on('progress', () => void paint());
   // A plan's days left move at local midnight.
   const newDay = stAtEachNewDay(() => void paint());
+  const marks = stFollowMarks(body);
   const offRoute = bus.on('route', (route) => {
     // The New Subject and New Plan sheets change nothing here: the rows stay as they are (and the button that opened it keeps the focus it gets back).
     if (!route || route.view === 'newSubject' || route.view === 'newPlan') return;
     if (Array.isArray(route.materialIds) && route.materialIds.length === 1) state.expandedId = route.materialIds[0];
     if (route.view === 'learn' && route.materialId) state.expandedId = route.materialId;
-    state.activeSessionId = route.sessionId != null ? route.sessionId : state.activeSessionId;
     void paint();
   });
 
@@ -582,7 +594,7 @@ function createSidebarView(container) {
   return {
     dispose() {
       state.disposed = true;
-      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute); newDay.dispose();
+      stOff(offData); stOff(offSession); stOff(offProgress); stOff(offRoute); newDay.dispose(); marks.dispose();
       root.remove();
     },
   };

@@ -152,7 +152,7 @@ export function createUiApi() {
     keepTabInside: (within: HTMLElement, listenOn?: HTMLElement) => keepTabInside(within, listenOn),
     // Places (services/places.ts): the one mark for where you are in a column, and a link to a place.
     markCurrent: (element: HTMLElement, current: boolean) => markCurrent(element, current),
-    bindPlaceLink: (element: HTMLElement, address: string | (() => string)) => bindPlaceLink(element, address),
+    bindPlaceLink: (element: HTMLElement, address: string | (() => string), options?: { readonly menu?: boolean }) => bindPlaceLink(element, address, options),
     createToggle: (container: HTMLElement | null, options: IKitToggleOptions) => kitCreateToggle(container, options),
     createInput: (container: HTMLElement | null, options: IKitInputOptions) => kitCreateInput(container, options),
     createSelect: (container: HTMLElement | null, options: IKitSelectOptions) => kitCreateSelect(container, options),

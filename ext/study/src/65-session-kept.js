@@ -47,7 +47,7 @@ function stSessionAction(name, sessionId, ...args) {
 
 function registerSessionCommands(context) {
   const cmds = [
-    ['study.studyMarked', () => stStudyMarked()],
+    ['study.studyMarked', (arg) => stStudyMarked(arg)],
     ['study.previousQuestion', (id) => stSessionAction('previous', id)],
     ['study.nextQuestion', (id) => stSessionAction('next', id)],
     ['study.markQuestion', (id) => stSessionAction('mark', id)],

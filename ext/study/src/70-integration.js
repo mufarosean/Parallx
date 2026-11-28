@@ -753,7 +753,9 @@ async function stCmdStudyTogether(ids0) {
   return stOpenSetup({ materialIds: ids });
 }
 
-async function stCmdWeakSpots() {
+/** Study Weak Spots: its place (what is weak, with Start Session); with { start: true }, the session at once. */
+async function stCmdWeakSpots(arg) {
+  if (!(arg && arg.start) && stPlacesOn()) return stOpenPane({ view: 'weak' });
   const materials = await stListMaterials();
   if (!materials.length) {
     await _api.window.showInformationMessage('Add a material first.');
@@ -827,7 +829,7 @@ function registerCommands(context) {
     // Each takes an optional argument (material ids; a path or file URI) so
     // the chat and scripts can call them without the quick pick.
     ['study.studyTogether', (ids) => stCmdStudyTogether(ids)],
-    ['study.weakSpots', () => stCmdWeakSpots()],
+    ['study.weakSpots', (arg) => stCmdWeakSpots(arg)],
     ['study.addMaterial', (arg) => stCmdAddMaterial(arg)],
     ['study.importQuestions', (arg) => stCmdImportQuestions(arg)],
     ['study.importReport', (arg) => stCmdImportReport(arg)],
@@ -927,10 +929,10 @@ function registerDashboardWidget(context) {
             row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
             root.appendChild(row);
           }
-          const foot = _api.ui.createButton(root, { id: 'study.weakSpots', command: 'study.weakSpots',
+          const foot = _api.ui.createButton(root, { id: 'study.weakSpots', command: 'study.weakSpots', args: [{ start: true }],
             label: `Study the Weakest ${data.size || 20}`, kind: 'ghost', size: 'sm',
             title: 'One session over the weakest concepts across every material.',
-            onClick: () => void _api.commands.executeCommand('study.weakSpots'),
+            onClick: () => void _api.commands.executeCommand('study.weakSpots', { start: true }),
           });
           foot.classList.add('st-widget__foot');
         };

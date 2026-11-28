@@ -291,6 +291,8 @@ export async function seedAfterLaunch(page, pre) {
     'seed:plan.myPaints': planTool('Colour', async () => { await page.locator('.mo-plan-panel button', { hasText: 'My Paints' }).first().click().catch(() => {}); await page.waitForTimeout(800); }),
     // Study's Progress tab on the seeded subject: bars with parts to press.
     'seed:study.progress': async () => { await run(page, 'study.openProgress', 'Seeded Subject'); },
+    // Study's places with no tab of their own before (getting around piece 5): the seeded subject's page.
+    'seed:study.subject': async () => { await run(page, 'study.openSubject', 'Seeded Subject'); await page.waitForTimeout(1_200); },
     // A unit's tab with notes attached (the picker's first two rows), its picker open, and Find Matches' list.
     'seed:study.unit': async () => {
       await run(page, 'study.openUnit', 'Seeded Subject', 'Mack');

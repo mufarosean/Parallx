@@ -327,6 +327,7 @@ Every command the app and its tools register, with the tool that owns it (`core`
 | `study.openHome` | Open Home | study | Study |  |  |
 | `study.openPlan` | Open Plan… | study | Study |  |  |
 | `study.openProgress` | Open Progress… | study | Study |  |  |
+| `study.openSubject` | Open Subject… | study | Study |  |  |
 | `study.openUnit` | Open Unit… | study | Study |  |  |
 | `study.openUnitItem` | Open an Attached Item | study | Study |  |  |
 | `study.previousQuestion` | Previous Question | study | Study |  |  |

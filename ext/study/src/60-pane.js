@@ -2,15 +2,14 @@
 // SECTION 60: EDITOR PANE — setup, generation, session, results, review, learn
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// One editor tab per session (instanceId 'session-<id>'), one for the setup
-// sheet ('setup'), one per Learn page ('learn-<materialId>-<sectionId>'). The
-// pane renders by route (spec §9) and nothing else; every screen is the
-// mockup's. The route reaches a pane the Flashcards way: stOpenPane stashes
-// it as the pending route, focuses the tab when it exists (the live pane
-// takes it from the 'parallx.study.route' document event) or opens the tab
-// (the new pane takes it at construction). Session state is in the database
-// after every answer, so a closed tab reopens where it was. The making of
-// questions (the run, its screen, its strip in the session) is 55-making-view.js.
+// A place (Home, a subject, its Progress and Plan, a unit, Weak Spots, Marked)
+// is drawn here for Study's one place tab (68-places.js); a thing keeps a tab
+// of its own: a session ('session-<id>'), a Learn page ('learn-<m>-<s>'), and
+// the setup sheet ('setup') and the other sheets, dialogs. The pane renders by
+// route (spec §9); stOpenPane sends a place to the places point and a thing to
+// its tab, focused when open (the live pane takes the 'parallx.study.route'
+// event) or opened with the route pending. Session state is in the database
+// after every answer, so a closed tab reopens where it was.
 
 let _stPendingRoute = null; // consumed by the editor pane on first render
 
@@ -26,6 +25,8 @@ function stRouteInstanceId(route) {
   if (route.view === 'setup') return 'setup';
   if (route.view === 'home') return 'home';
   if (route.view === 'newSubject') return 'new-subject';
+  if (route.view === 'subject') return `subject-${Number(route.subjectId) || 0}`;
+  if (route.view === 'weak' || route.view === 'marked') return route.view;
   if (route.view === 'progress') return `progress-${Number(route.subjectId) || 0}`;
   if (route.view === 'unit') return stUnitInstanceId(route.subjectId, route.rowId);
   if (route.view === 'newPlan') return `new-plan-${Number(route.subjectId) || 0}`;
@@ -96,6 +97,7 @@ async function stRouteTitle(route) {
  *  pane (the workbench builds panes lazily and drops them on restore). */
 async function stOpenPane(route) {
   if (!route || !route.view) return;
+  if (stPlaceOfRoute(route) && stPlacesOn()) return stOpenPlace(route);
   _stPendingRoute = route;
   const instanceId = stRouteInstanceId(route);
   try {
@@ -346,7 +348,7 @@ function stReviewItemEl(item, q, c, n) {
 
 function createEditorPane(container, input) {
   injectStyles();
-  const pendingRoute = _stTakePendingRoute();
+  const pendingRoute = (input && input.route) || _stTakePendingRoute();
   const instanceId = input && input.instanceId ? input.instanceId : stRouteInstanceId(pendingRoute);
   const state = {
     route: pendingRoute || stRouteFromInstanceId(instanceId),
@@ -390,18 +392,8 @@ function createEditorPane(container, input) {
         root.innerHTML = '';
         const route = state.route;
         try {
-          if (route.view === 'home') await renderHome(root, route, ctx);
-          else if (route.view === 'setup') await renderSetup(root, route, ctx);
-          else if (route.view === 'newSubject') await renderNewSubject(root, route, ctx);
-          else if (route.view === 'progress') await renderProgress(root, route, ctx);
-          else if (route.view === 'unit') await renderUnit(root, route, ctx);
-          else if (route.view === 'newPlan') await renderNewPlan(root, route, ctx);
-          else if (route.view === 'plan') await renderPlan(root, route, ctx);
-          else if (route.view === 'generating') await renderGenerating(root, route, ctx);
-          else if (route.view === 'session') await renderSession(root, route, ctx);
-          else if (route.view === 'results') await renderResults(root, route, ctx);
-          else if (route.view === 'review') await renderReview(root, route, ctx);
-          else if (route.view === 'learn') await renderLearn(root, route, ctx);
+          const draw = stViewRenderer(route.view);
+          if (draw) await draw(root, route, ctx);
           else await renderSetup(root, { view: 'setup', materialIds: [] }, ctx);
         } catch (err) {
           if (state.disposed) return;
