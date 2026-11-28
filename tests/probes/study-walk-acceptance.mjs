@@ -397,6 +397,30 @@ function installProbeModel() {
 // the canvas table, the active editor, focus and contrast.
 function installPageHelpers() {
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  // Study's screens became places in its one tab (editor type study-place, c3eebb8f): the tab is named for the
+  // place ("Progress", "Mack") and the trail under the tabs reads Study › Exam 7 › Progress. A place tab is named
+  // here by the screen it shows, read from the place (its address and its trail), as its own tab was named
+  // before: "Exam 7 Progress", "Exam 7 · Mack", the plan's name, "Study" for Home. Any other tab keeps its label.
+  const studyPlaceName = (id, label) => {
+    if (!/:study-place:/.test(id)) return label;
+    const groups = window.__parallx_workbench__?._services.get({ id: 'IEditorGroupService' })?.groups || [];
+    const e = groups.flatMap((g) => g.model?.editors || []).find((x) => x.id === id);
+    const m = /^parallx:\/\/place\/study\/([^?#/]+)/.exec(String(e?.place || ''));
+    if (!m) return label;
+    const trail = (e.trail || []).map((c) => norm(c.label));
+    const subject = trail.length >= 3 ? trail[trail.length - 2] : '';
+    const here = trail[trail.length - 1] || label;
+    if (m[1] === 'progress' && subject) return `${subject} Progress`;
+    if (m[1] === 'unit' && subject) return `${subject} · ${here}`;
+    if (m[1] === 'home') return 'Study';
+    return label;
+  };
+  /** The address of a Study place tab (parallx://place/study/…), '' for any other tab. */
+  const studyPlaceAddress = (id) => {
+    if (!/:study-place:/.test(id)) return '';
+    const groups = window.__parallx_workbench__?._services.get({ id: 'IEditorGroupService' })?.groups || [];
+    return String(groups.flatMap((g) => g.model?.editors || []).find((x) => x.id === id)?.place || '');
+  };
   const shown = (n) => !!n && n.getClientRects().length > 0 && n.getBoundingClientRect().width > 0 && getComputedStyle(n).visibility !== 'hidden';
   const CLICKABLE = 'button, [role="button"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="radio"], [role="tab"], [role="treeitem"], [role="checkbox"], [role="switch"], [role="link"], a[href], summary, input[type="checkbox"], input[type="radio"]';
   const FIELDS = 'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), textarea, select, [role="combobox"], [role="radiogroup"], [role="listbox"], [role="group"], button[aria-haspopup]';
@@ -583,7 +607,7 @@ function installPageHelpers() {
       return { stem: norm(c.querySelector('.st-card__q')?.innerText), options: Array.from(c.querySelectorAll('.st-opt')).filter(shown).length, field: field ? { ...point(field), value: field.value } : null, verdict: fb ? norm(fb.innerText).slice(0, 80) : '' };
     },
     results: () => { const r = scopeEl('root'); return !!r && Array.from(r.querySelectorAll('.st-res')).some(shown); },
-    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', probeTab: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: norm(t.querySelector('.ui-tab-label')?.textContent), ...point(l) }; }),
+    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', probeTab: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: studyPlaceName(t.getAttribute('data-tab-id') || '', norm(t.querySelector('.ui-tab-label')?.textContent)), place: studyPlaceAddress(t.getAttribute('data-tab-id') || ''), ...point(l) }; }),
     /** A tab's or a choice's point read again just before the press: reading the others may have scrolled the strip or the list since. */
     relocate(pt) {
       let n = null;
@@ -1035,7 +1059,19 @@ function makeSession({ dir, workspace }) {
     paneWords: async () => norm(await S.text('pane')),
     has: (scope, sel) => S.page.evaluate(({ scope, sel }) => window.__ap.has(scope, sel), { scope, sel }),
     card: () => S.page.evaluate(() => window.__ap.card()),
-    tabs: () => S.page.evaluate(() => window.__ap.tabs()),
+    // A unit's place tab whose name does not say the unit: one Study no longer finds (its row in the Trash) is named
+    // "Unit" by its place, and one brought back by a restart has no trail until it is shown (c3eebb8f). The screen is
+    // still that row's unit, whose address carries the row: it is named "<Subject> · <row's title>" from the workspace
+    // file (the subject is the page that holds the row's database), as its own tab kept the name before.
+    tabs: async () => (await S.page.evaluate(() => window.__ap.tabs())).map((t) => {
+      const m = /^parallx:\/\/place\/study\/unit\?(.*)$/.exec(t.place || '');
+      const row = m ? new URLSearchParams(m[1]).get('unit') : null;
+      const placeholder = / · Unit$/.test(t.label);
+      if (!row || (/ · /.test(t.label) && !placeholder)) return t;
+      const r = coreAll(S.workspace, 'SELECT p.title, sp.title AS subject FROM pages p LEFT JOIN database_pages dp ON dp.page_id = p.id LEFT JOIN pages dbp ON dbp.id = dp.database_id LEFT JOIN pages sp ON sp.id = dbp.parent_id WHERE p.id = ?', [row])[0];
+      const subject = placeholder ? t.label.slice(0, -' · Unit'.length) : r?.subject;
+      return r && r.title && subject ? { ...t, label: `${norm(subject)} · ${norm(r.title)}` } : t;
+    }),
     active: () => S.page.evaluate(() => window.__ap.active()),
     groups: () => S.page.evaluate((names) => window.__ap.groups(names), GROUP_NAMES),
     items: () => S.page.evaluate((names) => window.__ap.items(names), GROUP_NAMES),
@@ -1201,9 +1237,9 @@ async function showTab(S, title) {
   return true;
 }
 /** Where the × of the tab titled `title` is, read now: the strip may have scrolled, and a point beside the strip is another button. */
-const tabClosePoint = (S, title) => S.page.evaluate((title) => {
-  const norm = (x) => String(x ?? '').replace(/\s+/g, ' ').trim();
-  const t = Array.from(document.querySelectorAll('.ui-tab')).find((x) => norm(x.querySelector('.ui-tab-label')?.textContent) === title);
+// The tab is found by its title as S.tabs() reads it (a Study place tab by the screen it shows, c3eebb8f), then by its id.
+const tabClosePoint = async (S, title) => S.page.evaluate((id) => {
+  const t = id && Array.from(document.querySelectorAll('.ui-tab')).find((x) => x.getAttribute('data-tab-id') === id);
   if (!t) return null;
   t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const b = t.querySelector('.ui-tab-close');
@@ -1211,7 +1247,7 @@ const tabClosePoint = (S, title) => S.page.evaluate((title) => {
   const x = r.x + r.width / 2; const y = r.y + r.height / 2;
   const hit = document.elementFromPoint(x, y);
   return { x, y, onTab: !!hit && t.contains(hit), hasClose: !!b };
-}, title);
+}, (await tabTitled(S, title))[0]?.id ?? '');
 /** The tab titled `title` closed with the mouse, by its own ×. */
 async function closeTab(S, title) {
   if (!(await showTab(S, title))) return false;
@@ -1226,11 +1262,27 @@ async function closeTab(S, title) {
 }
 /** The tab in front closed by the workbench's own command (housekeeping between steps, never the thing under test). */
 const closeFront = async (S) => { await S.cmd('workbench.action.closeActiveEditor'); await sleep(350); };
+/**
+ * The press on a unit's row, made so the tabs stand as they did when a unit had a tab of its own. Since c3eebb8f a
+ * unit is a place in Study's one tab: a press moves that tab (off whatever it showed), Ctrl+click gives a tab of its
+ * own. So: with the unit's tab open, that tab forward and the press (it stays there, as the press brought it forward
+ * before); with no Study place tab open, the press (it opens the one tab); with one on another screen, Ctrl+click
+ * (that screen's tab stays, as it did). `plain`: the press alone, for a check of the press itself.
+ */
+async function pressUnit(S, unit, pt, { plain = false } = {}) {
+  if (plain) return S.click(pt);
+  const tabs = await S.tabs();
+  if (tabs.some((t) => t.label === tabTitle(unit))) { await showTab(S, tabTitle(unit)); return S.click(pt); }
+  if (!tabs.some((t) => /:study-place:/.test(t.id))) return S.click(pt);
+  await S.page.keyboard.down('Control');
+  await S.click(pt);
+  await S.page.keyboard.up('Control');
+}
 /** Press the unit in Study's sidebar; its tab in front, or a stop that says what came instead. Returns the time of the press. */
-async function openUnit(S, unit) {
+async function openUnit(S, unit, opts) {
   const pt = must(await subjectPoint(S, unit, { under: SUBJECT }), `the unit "${unit}" under "${SUBJECT}" in Study's sidebar`);
   const at = Date.now();
-  await S.click(pt);
+  await pressUnit(S, unit, pt, opts);
   const front = await until(async () => (await tabTitled(S, tabTitle(unit))).some((t) => t.active), 5000, 30);
   if (!front) {
     const tabs = (await S.tabs()).map((t) => `${t.label}${t.active ? ' (front)' : ''}`).join(' | ');
@@ -1449,6 +1501,13 @@ async function openPlan(S, name) {
   const item = items.find((i) => /^Open Plan$/.test(i.name));
   if (!item) { await S.page.keyboard.press('Escape'); throw new Error(`no "Open Plan" in the subject's More Actions (it has: ${items.map((i) => i.name).join(', ')})`); }
   await S.click(item);
+  // A plan had a tab of its own, kept open beside the others; now a plan is a place in Study's one tab (c3eebb8f), which
+  // the next plan or unit moves, and the subject's Open Plan opens the plan it shows. When that is another plan of the
+  // subject, the plan is reached by the command study.openPlan, which asks which plan, and its name is picked.
+  if (!(await until(async () => (await tabTitled(S, name)).some((t) => t.active), 3000, 50))) {
+    S.run('study.openPlan');
+    must(await until(() => S.press('body', new RegExp(`^${esc(name)}(?![A-Za-z0-9])`), '.parallx-quickpick-row, [role="option"]'), 5000, 80), `"${name}" offered by study.openPlan`);
+  }
   must(await until(async () => (await tabTitled(S, name)).some((t) => t.active), 8000, 50), `a tab titled "${name}" in front after Open Plan`);
 }
 /** The tab's table with `n` days in it. */
