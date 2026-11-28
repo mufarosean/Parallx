@@ -19,3 +19,23 @@ export function drawerField(api, scope, labelText, control, hint) {
   });
   return f;
 }
+
+/**
+ * A drawer is a popover over a place: when it closes the keys go back to what
+ * opened it, else the same control drawn again (its kit id, or the same
+ * transaction's row), else the page's title. Call when the drawer opens (the
+ * opener has the keys then); run what it returns when the drawer closes.
+ */
+export function keysBack(opener = document.activeElement) {
+  const by = ['data-px-id', 'data-tx-id'].find((a) => opener?.hasAttribute?.(a));
+  const key = by ? opener.getAttribute(by) : null;
+  return () => requestAnimationFrame(() => {
+    const now = document.activeElement;
+    if (now && now !== document.body && now.isConnected) return; // something else took them meanwhile
+    if (opener?.isConnected) { opener.focus(); return; }
+    const again = by ? document.querySelector(`.budget-editor [${by}="${CSS.escape(key)}"]`) : null;
+    if (again) { again.focus(); return; }
+    const title = document.querySelector('.budget-editor .px-page-header__title');
+    if (title) { if (!title.hasAttribute('tabindex')) title.tabIndex = -1; title.focus({ preventScroll: true }); }
+  });
+}

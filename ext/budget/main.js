@@ -7,16 +7,18 @@
 // UX shape:
 //   • The sidebar ('budget.nav') shows the month at a glance (what is left to
 //     spend), the sections, the review count, and the sync status.
-//   • Budget opens as ONE editor tab ('budget:main') whose content switches
-//     between Overview, Review, Transactions, Plan, Net Worth and Goals,
-//     Merchants and Rules, Categories, and (from ⋯) Sync Log and Import / Export.
+//   • Budget's screens are places (./places.js, the core's api.places) in ONE
+//     tab named for the screen: Overview, Review, Transactions, Plan, Net Worth
+//     and Goals, Merchants and Rules, Categories, and (from ⋯) Sync Log and
+//     Import / Export.
 //   • Every number about the month comes from readMonthPlan(), so the sidebar,
 //     Overview and Plan cannot disagree.
 
 import { BUDGET_SYNC_SKILL } from './skills/budget-sync.js';
-import { drawerField } from './drawer.js';
+import { drawerField, keysBack } from './drawer.js';
 import { normalizeMerchant, loadPastChoices, pastChoicesFor, pastChoicesPrompt, PAST_CHOICE_MODEL } from './past-choices.js';
 import { budgetStageSchema } from './ai-schemas.js';
+import { SECTIONS, PLAN_VIEWS, COMMAND_ROUTES, TX_VIEWS, txViewFor, txParamsOf, txFilterOf, monthParam, monthOfParams, openBudgetPlace, budgetPlaceAddress, onBudgetSection, budgetPlacesActivate } from './places.js';
 
 // ─── Module-level state ────────────────────────────────────────────────────
 let _activated = false;
@@ -24,12 +26,6 @@ let _api = null;
 let _dbBridge = null;
 let _toolPath = '';
 const _disposables = [];
-
-// Cross-view nav state — Dashboard sets this when the user clicks a category
-// slice; Transactions reads & clears it on next render. Cleared after consumption.
-// `section` / `planView` carry a deep link into a Budget editor that is not
-// open yet; an open one is switched directly (openBudgetSection).
-const _navState = { txFilter: null, section: null, planView: null };
 
 // ─── Cross-view sync event bus ────────────────────────────────────────────
 //
@@ -260,72 +256,14 @@ async function hideReviewedTransaction(txId, reason = '') {
   );
 }
 
-// ─── Sections of the one Budget editor ─────────────────────────────────────
-//
-// Budget opens as ONE editor tab ('budget:main') whose content switches; the
-// sidebar lists the `nav` sections. Sync Log and Import / Export are reached
-// from the page header's ⋯ menu. Every older `budget.open*` command still
-// works: COMMAND_ROUTES maps it to a section (and a Plan view).
-const SECTIONS = [
-  { id: 'overview',     title: 'Overview',            icon: 'layout-dashboard', nav: true },
-  { id: 'review',       title: 'Review',              icon: 'inbox',            nav: true },
-  { id: 'transactions', title: 'Transactions',        icon: 'list',             nav: true },
-  { id: 'plan',         title: 'Plan',                icon: 'target',           nav: true },
-  { id: 'worth',        title: 'Net Worth and Goals', icon: 'landmark',         nav: true },
-  { id: 'rules',        title: 'Merchants and Rules', icon: 'filter',           nav: true },
-  { id: 'categories',   title: 'Categories',          icon: 'tag',              nav: true },
-  { id: 'syncLog',      title: 'Sync Log',            icon: 'scroll-text',      nav: false },
-  { id: 'importExport', title: 'Import / Export',     icon: 'arrow-up-down',    nav: false },
-];
-
-// Command → [section, Plan view]. Kept for the palette, chat tools and deep links.
-const COMMAND_ROUTES = {
-  'budget.openDashboard':    ['overview'],
-  'budget.openReviewQueue':  ['review'],
-  'budget.openTransactions': ['transactions'],
-  'budget.openPlan':         ['plan'],
-  'budget.openBudgets':      ['plan', 'budgets'],
-  'budget.openRecurring':    ['plan', 'bills'],
-  'budget.openCashFlow':     ['plan', 'trends'],
-  'budget.openReports':      ['plan', 'trends'],
-  'budget.openReconcile':    ['plan', 'reconcile'],
-  'budget.openAccounts':     ['worth'],
-  'budget.openGoals':        ['worth'],
-  'budget.openRules':        ['rules'],
-  'budget.openCategories':   ['categories'],
-  'budget.openSyncLog':      ['syncLog'],
-  'budget.openImportExport': ['importExport'],
-};
-
-// Editors restored from before the one-editor change carry their old section id.
-const LEGACY_SECTION = {
-  dashboard: ['overview'], accounts: ['worth'], goals: ['worth'], settings: ['categories'],
-  budgets: ['plan', 'budgets'], recurring: ['plan', 'bills'], cashflow: ['plan', 'trends'],
-  reports: ['plan', 'trends'], reconcile: ['plan', 'reconcile'], reviewQueue: ['review'],
-};
-
-function routeForInstanceId(instanceId) {
-  const idx = (instanceId || '').lastIndexOf(':');
-  const id = idx >= 0 ? instanceId.slice(idx + 1) : instanceId || '';
-  if (SECTIONS.some(s => s.id === id)) return [id];
-  return LEGACY_SECTION[id] || ['overview'];
-}
-
-// The section the open Budget editor shows, and who wants to know (the sidebar).
-let _currentSection = 'overview';
-const _sectionListeners = new Set();
-// Every open Budget pane's show(); the newest still open is the one the
-// sidebar and the open commands drive. A list, not one slot: with the editor
-// split, closing either copy must leave the other in charge.
-const _livePanes = [];
-// Sets the open page's header actions ({ primary, secondary }); a no-op when no
-// Budget editor is open. Pages call it while they render.
+// Sets the open page's header actions ({ primary, secondary }), and records
+// what it shows (a filter, a month: `placeReporter`); no-ops when no Budget
+// tab is drawing. Pages call them while they render.
 let _setPageActions = null;
+let _reportPlace = null;
 function setPageActions(actions) { if (_setPageActions) _setPageActions(actions || {}); }
-function _setCurrentSection(id) {
-  _currentSection = id;
-  for (const fn of _sectionListeners) { try { fn(id); } catch { /* listener errors stay local */ } }
-}
+/** The drawing page's way to record what it shows in its address, taken while it renders (each tab keeps its own). */
+function placeReporter() { const report = _reportPlace; return (params) => { if (report) report(params); }; }
 
 // A page refresh that never runs twice at once: a call while one is running
 // asks for one more run after it, so the last paint always shows the latest
@@ -360,19 +298,8 @@ function notifyLedgerChanged() {
 }
 function onLedgerChanged(fn) { _ledgerListeners.add(fn); return () => _ledgerListeners.delete(fn); }
 
-async function openBudgetSection(api, sectionId, view) {
-  _navState.section = sectionId;
-  _navState.planView = view || null;
-  const pane = _livePanes[_livePanes.length - 1];
-  if (pane) {
-    pane(sectionId, view || null);
-    // Switched in place: nothing is left for a later mount to pick up.
-    _navState.section = null;
-    _navState.planView = null;
-  }
-  await api.editors.openEditor({ typeId: 'budget.editor', title: 'Budget', icon: 'wallet', instanceId: 'budget:main' });
-  // A freshly mounted editor consumed _navState; an open one was switched above.
-}
+// Go to a section's place in Budget's one tab (a Plan view, a filter for Transactions).
+function openBudgetSection(_api, sectionId, view, params) { return openBudgetPlace(sectionId, view, params); }
 
 // ─── Stylesheet (injected once) ────────────────────────────────────────────
 //
@@ -1252,8 +1179,10 @@ function renderSidebarNav(container, api) {
     row.addEventListener('click', () => {
       openBudgetSection(api, section.id).catch(err => console.error('[Budget] open section failed:', err));
     });
+    // A place link: Ctrl+click, or its menu's Open in Its Own Tab, opens the place in a tab of its own.
+    const link = api.ui.bindPlaceLink(row, () => budgetPlaceAddress(section.id));
     list.appendChild(row);
-    rows.set(section.id, { row, count });
+    rows.set(section.id, { row, count, link });
   }
 
   const footer = document.createElement('div');
@@ -1265,12 +1194,8 @@ function renderSidebarNav(container, api) {
   syncBtn.addEventListener('click', () => { api.commands.executeCommand('budget.sync').catch(err => console.error('[Budget] sync failed:', err)); });
   root.appendChild(footer);
 
-  const markCurrent = (id) => {
-    for (const [sid, r] of rows) {
-      if (sid === id) r.row.setAttribute('aria-current', 'page'); else r.row.removeAttribute('aria-current');
-    }
-  };
-  markCurrent(_currentSection);
+  // The shared mark on the row of the place Budget's tab shows (none on Sync Log or Import / Export).
+  const markCurrent = (id) => { for (const [sid, r] of rows) api.ui.markCurrent(r.row, sid === id); };
 
   let disposed = false;
   async function refresh() {
@@ -1294,14 +1219,14 @@ function renderSidebarNav(container, api) {
   refresh = serialRefresh(refresh);
   const offSync = onSyncEvent(onSync);
   const offLedger = onLedgerChanged(refresh);
-  _sectionListeners.add(markCurrent);
+  const offMove = onBudgetSection(markCurrent);
   refresh();
 
   container.appendChild(root);
   return {
     dispose() {
       disposed = true;
-      offSync(); offLedger(); _sectionListeners.delete(markCurrent);
+      offSync(); offLedger(); offMove.dispose(); for (const r of rows.values()) r.link.dispose();
       try { container.removeChild(root); } catch { /* container already gone */ }
     },
   };
@@ -1356,29 +1281,14 @@ async function readSyncStatus() {
   return same ? `Synced at ${time}` : `Synced ${d.toLocaleDateString('en-US', inTz({ month: 'short', day: 'numeric' }))}`;
 }
 
-// ─── The Budget editor ─────────────────────────────────────────────────────
+// ─── The Budget page ───────────────────────────────────────────────────────
 //
-// One tab. A page header per section (title, the section's one main action,
-// ⋯ with sync, logs, import and settings), then the section's content.
-function renderEditorPane(container, api, input) {
+// One place tab (./places.js). The kit's page header per section (its title,
+// the section's main action, ⋯ with sync, logs, import and settings), then the
+// section's content. `nav.go` moves the tab; `nav.replace` records what the
+// page shows now (a Plan view, a filter, a month) without moving the keys.
+function createBudgetPage(container, api, nav) {
   injectStyles();
-  const instanceId = String((input && (input.instanceId || input.id)) || '');
-  // A tab restored from before Budget became one tab ('budget:dashboard',
-  // 'budget:goals', …): open its section in the Budget tab, then close it.
-  if (instanceId && !instanceId.endsWith('budget:main')) {
-    const note = emptyState('Budget now opens in one tab.');
-    container.appendChild(note);
-    const [sid, view] = routeForInstanceId(instanceId);
-    const legacyKey = instanceId.slice(instanceId.lastIndexOf('budget:'));
-    setTimeout(async () => {
-      try {
-        await openBudgetSection(api, sid, view);
-        const old = (api.editors.openEditors || []).find(e => e.id.endsWith(legacyKey));
-        if (old) await api.editors.closeEditor(old.id);
-      } catch (err) { console.warn('[Budget] could not fold an old tab into Budget:', err); }
-    }, 0);
-    return { dispose() { try { container.removeChild(note); } catch { /* gone */ } } };
-  }
   const el = document.createElement('div');
   el.className = 'budget-editor';
   const pageEl = document.createElement('div');
@@ -1393,36 +1303,42 @@ function renderEditorPane(container, api, input) {
 
   let cleanup = null;
   let ownHeader = null;
-  function moreItems() {
-    return [
-      { label: 'Sync Now', icon: 'refresh-cw', onSelect: () => api.commands.executeCommand('budget.sync') },
-      { label: 'Sync Log', icon: 'scroll-text', onSelect: () => show('syncLog') },
-      { label: 'Import / Export', icon: 'arrow-up-down', onSelect: () => show('importExport') },
-      { label: 'Reprocess History…', onSelect: () => api.commands.executeCommand('budget.reprocessHistory') },
-      { separator: true },
-      { label: 'Budget Settings', icon: 'settings', onSelect: () => api.commands.executeCommand('settings.open', 'schema:Budget') },
-    ];
-  }
-  function show(sectionId, view) {
+  let ownReport = null;
+  const moreItems = () => [
+    { label: 'Sync Now', icon: 'refresh-cw', onSelect: () => api.commands.executeCommand('budget.sync') },
+    { label: 'Sync Log', icon: 'scroll-text', onSelect: () => nav.go('syncLog') },
+    { label: 'Import / Export', icon: 'arrow-up-down', onSelect: () => nav.go('importExport') },
+    { label: 'Reprocess History…', onSelect: () => api.commands.executeCommand('budget.reprocessHistory') },
+    { separator: true },
+    { label: 'Budget Settings', icon: 'settings', onSelect: () => api.commands.executeCommand('settings.open', 'schema:Budget') },
+  ];
+  function show(sectionId, view, params = {}) {
     const section = SECTIONS.find(s => s.id === sectionId) || SECTIONS[0];
     if (typeof cleanup === 'function') { try { cleanup(); } catch { /* best-effort */ } }
     cleanup = null;
     head.innerHTML = '';
     body.innerHTML = '';
     body.dataset.section = section.id;
-    _setCurrentSection(section.id);
-    const back = section.nav === false ? { id: 'budget.back', label: 'Overview', onClick: () => show('overview') } : undefined;
+    // What the section shows, merged from its reports; `undefined` drops a parameter.
+    let shown = { ...params };
+    const report = (patch) => {
+      if (ownReport !== report) return; // a section drawn over since
+      for (const [k, v] of Object.entries(patch || {})) { if (v === undefined || v === null || v === '') delete shown[k]; else shown[k] = String(v); }
+      nav.replace(section.id, shown.view, shown);
+    };
+    ownReport = report;
+    _reportPlace = report;
     // A page puts its own main action in the header (setPageActions), as
     // every Parallx page does, instead of a stray button in its body.
     const drawHeader = (actions = {}) => {
       head.replaceChildren();
-      api.ui.createPageHeader(head, { title: section.title, back, primary: actions.primary, secondary: actions.secondary, more: moreItems() });
+      api.ui.createPageHeader(head, { title: section.title, primary: actions.primary, secondary: actions.secondary, more: moreItems() });
     };
     _setPageActions = drawHeader;
     ownHeader = drawHeader;
     drawHeader();
     try {
-      cleanup = renderSection(section.id, body, api, view) || null;
+      cleanup = renderSection(section.id, body, api, view, params) || null;
     } catch (e) {
       console.error('[Budget] section render failed:', section.id, e);
       body.appendChild(emptyState('This page could not be drawn: ' + (e instanceof Error ? e.message : String(e))));
@@ -1430,31 +1346,25 @@ function renderEditorPane(container, api, input) {
     el.scrollTop = 0;
   }
 
-  const [startId, startView] = _navState.section
-    ? [_navState.section, _navState.planView]
-    : ['overview', null];
-  _navState.section = null;
-  _navState.planView = null;
-  _livePanes.push(show);
-  show(startId, startView);
-
   return {
+    show,
+    saveViewState: () => ({ scrollTop: el.scrollTop }),
+    restoreViewState(state) { if (state && Number.isFinite(state.scrollTop)) el.scrollTop = state.scrollTop; },
     dispose() {
-      const at = _livePanes.indexOf(show);
-      if (at >= 0) _livePanes.splice(at, 1);
+      ownReport = null;
       if (_setPageActions === ownHeader) _setPageActions = null;
       try { if (typeof cleanup === 'function') cleanup(); } catch { /* best-effort */ }
-      try { container.removeChild(el); } catch { /* container already gone */ }
+      el.remove();
     },
   };
 }
 
-function renderSection(id, body, api, view) {
+function renderSection(id, body, api, view, params) {
   switch (id) {
-    case 'overview':     return renderOverviewSection(body, api);
+    case 'overview':     return renderOverviewSection(body, api, params);
     case 'review':       return renderReviewQueueSection(body, api);
-    case 'transactions': return renderTransactionsSection(body, api);
-    case 'plan':         return renderPlanSection(body, api, view);
+    case 'transactions': return renderTransactionsSection(body, api, params);
+    case 'plan':         return renderPlanSection(body, api, view, params);
     case 'worth':        return renderWorthSection(body, api);
     case 'rules':        return renderRulesSection(body, api);
     case 'categories':   return renderCategoriesSection(body, api);
@@ -1819,6 +1729,7 @@ async function reconcileAccountKindsFromSnapshots() {
 // ops the AI tools use (learnExpenseRuleFromOverride, budgetToolDeleteTransaction)
 // so the human and AI paths stay consistent.
 async function openTxEditor(api, opts = {}) {
+  const giveBack = keysBack(); // a popover over the place: the keys go back when it closes
   const isCreate = !opts.id;
   let row = null;
   if (!isCreate) {
@@ -1836,7 +1747,7 @@ async function openTxEditor(api, opts = {}) {
   drawer.className = 'budget-drawer';
   overlay.appendChild(drawer);
 
-  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); giveBack(); }
   function onKey(e) { if (e.key === 'Escape') close(); }
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', onKey);
@@ -2125,27 +2036,6 @@ function drawTxHistory(api, host, steps) {
   host.appendChild(wrap);
 }
 
-// The Transactions page's quick filters. `status` and `type` are what each
-// one selects; deep links ({type, status} in _navState.txFilter) map onto them.
-const TX_VIEWS = [
-  { id: 'all',      label: 'All',          status: 'live',      type: 'all' },
-  { id: 'spend',    label: 'Spending',     status: 'live',      type: 'spend' },
-  { id: 'income',   label: 'Income',       status: 'live',      type: 'deposit' },
-  { id: 'transfer', label: 'Transfers',    status: 'live',      type: 'transfer' },
-  { id: 'review',   label: 'Needs review', status: 'review',    type: 'all' },
-  { id: 'hidden',   label: 'Hidden',       status: 'hidden',    type: 'all' },
-];
-
-function txViewFor(incoming) {
-  if (!incoming) return 'all';
-  if (incoming.status === 'review') return 'review';
-  if (incoming.status === 'hidden') return 'hidden';
-  if (incoming.type === 'spend' || incoming.type === 'purchase' || incoming.type === 'fee') return 'spend';
-  if (incoming.type === 'deposit') return 'income';
-  if (incoming.type === 'transfer') return 'transfer';
-  return 'all';
-}
-
 function dayHeading(iso) {
   const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return String(iso || '');
@@ -2161,11 +2051,11 @@ function txAmountView(r) {
   return { text: fmtMoney(cents), tone: 'out' };
 }
 
-function renderTransactionsSection(body, api) {
-  // Deep links (an Overview category, a chart slice, a Review link) arrive
-  // in _navState.txFilter and are read once.
-  const incoming = _navState.txFilter;
-  _navState.txFilter = null;
+function renderTransactionsSection(body, api, params) {
+  // A link's filter (an Overview category, a chart slice, a Review link)
+  // rides in the place's address; what the page shows then goes back there.
+  const incoming = txFilterOf(params);
+  const report = placeReporter();
 
   let view       = txViewFor(incoming);
   let monthKey   = (incoming && incoming.monthKey) || monthRange().key;
@@ -2275,6 +2165,8 @@ function renderTransactionsSection(body, api) {
     if (!alive) return;
     const mySeq = ++seq;
     const v = TX_VIEWS.find(x => x.id === view) || TX_VIEWS[0];
+    report({ view: undefined, month: undefined, category: undefined, account: undefined, day: undefined, q: undefined, only: undefined, ai: undefined,
+      ...txParamsOf({ view, monthKey, categoryId, accountId, dayYmd, merchant: search, only: typeOnly, aiTyped: aiTypedOnly }) });
     const range = monthRange(monthKey);
     // Needs Review spans every month, the same rows the sidebar counts.
     const allMonths = v.id === 'review';
@@ -2317,6 +2209,7 @@ function renderTransactionsSection(body, api) {
     if (!alive || mySeq !== seq) return;
     chips.get('review')?.setCount(reviewCount || undefined);
     drawNarrowing();
+    const held = list.contains(document.activeElement) ? document.activeElement.dataset.txId : null; // a row with the keys keeps them
     list.replaceChildren();
     if (rows.length === 0) {
       list.appendChild(emptyState(allMonths ? 'Nothing is waiting for review.'
@@ -2341,6 +2234,7 @@ function renderTransactionsSection(body, api) {
       }
       list.appendChild(drawRow(r));
     }
+    if (held) list.querySelector(`[data-tx-id="${CSS.escape(held)}"]`)?.focus();
     if (rows.length === 500) {
       const more = document.createElement('div');
       more.className = 'budget-ov-faint budget-tx-more';
@@ -2353,6 +2247,7 @@ function renderTransactionsSection(body, api) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'budget-tx-row budget-tx-item';
+    b.dataset.txId = r.id;
     b.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
 
     const who = document.createElement('span');
@@ -3162,10 +3057,11 @@ function renderCategoriesSection(body, api) {
 // is pacing, what the last sync did and what waits for you, the bills coming
 // up, everyday spending by category, the accounts. Everything is a way in:
 // each count opens the rows behind it.
-let _overviewMonth = null;
-let _planMonth = null; // Plan › Budgets month, kept while switching views
 
-function renderOverviewSection(body, api) {
+function renderOverviewSection(body, api, params) {
+  // The month the address names (none: this month); the month shown goes back to the address.
+  let month = monthOfParams(params);
+  const report = placeReporter();
   const root = document.createElement('div');
   root.className = 'budget-ov';
   body.appendChild(root);
@@ -3173,7 +3069,8 @@ function renderOverviewSection(body, api) {
 
   async function draw() {
     if (disposed) return;
-    const monthKey = _overviewMonth || monthRange().key;
+    const monthKey = month || monthRange().key;
+    report({ month: monthParam(monthKey) });
     let data;
     try { data = await readOverview(monthKey); }
     catch (err) {
@@ -3191,7 +3088,7 @@ function renderOverviewSection(body, api) {
       });
       return;
     }
-    drawMonthBar(root, data, api, draw);
+    drawMonthBar(root, data, api, (k) => { month = k; void draw(); });
     drawSyncStrip(root, data, api);
     const grid = document.createElement('div');
     grid.className = 'budget-ov-grid';
@@ -3280,9 +3177,9 @@ async function readOverview(monthKey) {
   };
 }
 
-function drawMonthBar(root, data, api, redraw) {
+function drawMonthBar(root, data, api, go) {
   const bar = document.createElement('div');
-  drawMonthNav(bar, api, data.range.key, (k) => { _overviewMonth = k === monthRange().key ? null : k; redraw(); });
+  drawMonthNav(bar, api, data.range.key, go);
   root.appendChild(bar);
 }
 
@@ -3326,8 +3223,7 @@ function drawSyncStrip(root, data, api) {
   }
   if (data.transfersAi) {
     linkButton(items, `${data.transfersAi} transfer${data.transfersAi === 1 ? '' : 's'} the AI typed this month`, () => {
-      _navState.txFilter = { monthKey: data.range.key, type: 'transfer', aiTyped: true };
-      openBudgetSection(api, 'transactions');
+      openBudgetSection(api, 'transactions', null, txParamsOf({ monthKey: data.range.key, type: 'transfer', aiTyped: true }));
     }).title = 'Kept out of spending. A wrong one hides an expense.';
   }
   if (last && Number(last.duplicates) > 0) {
@@ -3480,8 +3376,7 @@ function drawCategories(col, data, api) {
     amt.append(sp, of);
     row.append(dot, name, bar, amt);
     row.addEventListener('click', () => {
-      _navState.txFilter = { categoryId: c.id, monthKey: data.range.key, type: 'spend' };
-      openBudgetSection(api, 'transactions');
+      openBudgetSection(api, 'transactions', null, txParamsOf({ categoryId: c.id, monthKey: data.range.key, type: 'spend' }));
     });
     card.appendChild(row);
   }
@@ -3677,6 +3572,7 @@ function manualClassLabel(cls) {
 
 // Drawer to add / edit / delete a manual holding (house, 401k, car loan, …).
 async function openManualBalanceEditor(api, opts = {}) {
+  const giveBack = keysBack();
   const isCreate = !opts.id;
   let row = null;
   if (!isCreate) {
@@ -3686,7 +3582,7 @@ async function openManualBalanceEditor(api, opts = {}) {
 
   const overlay = document.createElement('div'); overlay.className = 'budget-drawer-overlay';
   const drawer = document.createElement('div'); drawer.className = 'budget-drawer'; overlay.appendChild(drawer);
-  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); giveBack(); }
   function onKey(e) { if (e.key === 'Escape') close(); }
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', onKey);
@@ -4016,6 +3912,7 @@ function buildGoalCard(g, monthlySurplus, api, refresh) {
 
 // Drawer to add / edit / delete a savings or debt goal.
 async function openGoalEditor(api, opts = {}) {
+  const giveBack = keysBack();
   const isCreate = !opts.id;
   let row = null;
   if (!isCreate) {
@@ -4024,7 +3921,7 @@ async function openGoalEditor(api, opts = {}) {
   }
   const overlay = document.createElement('div'); overlay.className = 'budget-drawer-overlay';
   const drawer = document.createElement('div'); drawer.className = 'budget-drawer'; overlay.appendChild(drawer);
-  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey); giveBack(); }
   function onKey(e) { if (e.key === 'Escape') close(); }
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
   document.addEventListener('keydown', onKey);
@@ -4195,8 +4092,7 @@ function renderCashFlowSection(body, api) {
       width: 720, height: 220,
       onClick: (g) => {
         if (g && g.meta) {
-          _navState.txFilter = { monthKey: g.meta.monthKey, type: 'all' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
+          openBudgetSection(api, 'transactions', null, txParamsOf({ monthKey: g.meta.monthKey, type: 'all' })).catch(() => {});
         }
       },
     });
@@ -4432,8 +4328,10 @@ function monthName(key) {
 // Plan › Budgets: the month as one allocation. Income expected, the bills
 // already committed, the everyday limits, what the goals need, and what has
 // no job yet. "Left to spend" is the same number the sidebar shows.
-function renderBudgetsSection(body, api) {
-  let monthKey = _planMonth || monthRange().key;
+// `params.month`: the month the address names (none: this month); `keep` hears each month chosen (Plan keeps it across its views).
+function renderBudgetsSection(body, api, params, keep) {
+  const report = placeReporter();
+  let monthKey = monthOfParams(params) || monthRange().key;
   const root = document.createElement('div');
   root.className = 'budget-pl';
   body.appendChild(root);
@@ -4472,11 +4370,12 @@ function renderBudgetsSection(body, api) {
     notifyLedgerChanged();
   }
 
-  function go(k) { monthKey = k; _planMonth = k === monthRange().key ? null : k; void draw(); }
+  function go(k) { monthKey = k; keep?.(k); void draw(); }
 
   async function draw() {
     if (!alive) return;
     const mySeq = ++seq;
+    report({ month: monthParam(monthKey) });
     let plan, income, goals, sugg;
     try {
       plan = await readMonthPlan(monthKey);
@@ -5164,8 +5063,10 @@ function renderRulesSection(body, api) {
 
 // ─── Section: Reconcile ────────────────────────────────────────────────────
 
-function renderReconcileSection(body, api) {
-  let selectedAccountId = null;
+// `params.account`: the account the address names (none: the first); `keep` hears each one chosen.
+function renderReconcileSection(body, api, params, keep) {
+  let selectedAccountId = (params && params.account) || null;
+  const report = placeReporter();
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
   const acctSlot = document.createElement('span'); acctSlot.className = 'budget-dd-slot';
@@ -5190,7 +5091,7 @@ function renderReconcileSection(body, api) {
     acctSlot.appendChild(makeDropdown(
       accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) })),
       selectedAccountId,
-      (v) => { selectedAccountId = v; void refresh(); }));
+      (v) => { selectedAccountId = v; keep?.(v); report({ account: v }); void refresh(); }));
     return accounts;
   }
 
@@ -8313,37 +8214,38 @@ async function budgetToolUpsertRule(args) {
 //
 // One page with a switch between its views: the month's budgets, the bills
 // (recurring), trends (cash flow and reports) and reconcile.
-const PLAN_VIEWS = [
-  { value: 'budgets',   label: 'Limits' },
-  { value: 'bills',     label: 'Bills' },
-  { value: 'trends',    label: 'Trends' },
-  { value: 'reconcile', label: 'Reconcile' },
-];
-function renderPlanSection(body, api, view) {
+// Plan's views (PLAN_VIEWS, ./places.js) are a parameter of the Plan place:
+// choosing one records the address and the trail (`Plan › Bills`) and leaves
+// the keys on the switch. Limits keeps its month, Reconcile its account,
+// while the views are switched.
+function renderPlanSection(body, api, view, params = {}) {
   let active = PLAN_VIEWS.some(v => v.value === view) ? view : 'budgets';
+  const report = placeReporter();
+  const kept = { month: params.month, account: params.account };
   const bar = document.createElement('div');
   bar.className = 'budget-plan-switch';
   const content = document.createElement('div');
   content.className = 'budget-plan-view';
   body.append(bar, content);
   let cleanup = null;
-  function mount(v) {
+  function mount(v, first) {
     active = v;
     if (typeof cleanup === 'function') { try { cleanup(); } catch { /* best-effort */ } }
     cleanup = null;
     content.innerHTML = '';
+    if (!first) report({ view: v === 'budgets' ? undefined : v, month: v === 'budgets' ? monthParam(kept.month) : undefined, account: v === 'reconcile' ? kept.account : undefined });
     const parts = [];
-    if (v === 'budgets') parts.push(renderBudgetsSection(content, api));
+    if (v === 'budgets') parts.push(renderBudgetsSection(content, api, { month: kept.month }, (k) => { kept.month = k; }));
     else if (v === 'bills') parts.push(renderRecurringSection(content, api));
     else if (v === 'trends') {
       const a = document.createElement('div'); const b = document.createElement('div');
       content.append(a, b);
       parts.push(renderCashFlowSection(a, api), renderReportsSection(b, api));
-    } else if (v === 'reconcile') parts.push(renderReconcileSection(content, api));
+    } else if (v === 'reconcile') parts.push(renderReconcileSection(content, api, { account: kept.account }, (id) => { kept.account = id; }));
     cleanup = () => { for (const p of parts) if (typeof p === 'function') p(); };
   }
-  api.ui.createSegmented(bar, { id: 'budget.plan.view', ariaLabel: 'Plan view', items: PLAN_VIEWS, value: active, onChange: mount });
-  mount(active);
+  api.ui.createSegmented(bar, { id: 'budget.plan.view', ariaLabel: 'Plan view', items: PLAN_VIEWS, value: active, onChange: (v) => mount(v) });
+  mount(active, true);
   return () => { if (typeof cleanup === 'function') cleanup(); };
 }
 
@@ -8390,11 +8292,8 @@ export async function activate(api, context) {
   // opens the new one — but our extension stays activated. So we must:
   //   1. Re-run migrations on the new workspace's DB.
   //   2. Re-seed defaults if its categories table is empty.
-  //   3. Clear in-memory cross-view state so filters from workspace A don't
-  //      leak into workspace B.
   if (api.workspace && typeof api.workspace.onDidChangeWorkspace === 'function') {
     _disposables.push(api.workspace.onDidChangeWorkspace(async () => {
-      _navState.txFilter = null;
       try {
         const ok = await ensureDatabase(api);
         if (ok) {
@@ -8413,9 +8312,10 @@ export async function activate(api, context) {
     createView(container) { return renderSidebarNav(container, api); },
   }));
 
-  // ── Editor provider (single, instanceId-routed) ──────────────────────
-  _disposables.push(api.editors.registerEditorProvider('budget.editor', {
-    createEditorPane(container, input) { return renderEditorPane(container, api, input); },
+  // ── Places: Budget's screens in its one tab (./places.js) ────────────
+  _disposables.push(...budgetPlacesActivate(api, {
+    createPage: (container, nav) => createBudgetPage(container, api, nav),
+    currentMonth: () => monthRange().key,
   }));
 
   // ── M86: dashboard widget contribution ───────────────────────────────
@@ -8429,24 +8329,10 @@ export async function activate(api, context) {
     }
   }
 
-  // ── "Open <section>" commands: all into the one Budget editor ────────
+  // ── "Open <section>" commands: each to its place in the one tab ─────
   for (const [commandId, route] of Object.entries(COMMAND_ROUTES)) {
     _disposables.push(api.commands.registerCommand(commandId, () => openBudgetSection(api, route[0], route[1])));
   }
-  // Tabs restored from before Budget became one tab ('budget:dashboard', …)
-  // close; the one that was in front opens its section in the Budget tab.
-  setTimeout(async () => {
-    try {
-      const old = (api.editors.openEditors || []).filter(e => /:budget\.editor:budget:(?!main$)[\w]+$/.test(e.id));
-      if (!old.length) return;
-      const front = old.find(e => e.isActive);
-      if (front) {
-        const [sid, view] = routeForInstanceId(front.id);
-        await openBudgetSection(api, sid, view);
-      }
-      for (const e of old) await api.editors.closeEditor(e.id);
-    } catch (err) { console.warn('[Budget] could not fold old tabs into Budget:', err); }
-  }, 1500);
 
   // Budget's own settings live in the app's Settings.
   _disposables.push(api.commands.registerCommand('budget.openSettings', () => api.commands.executeCommand('settings.open', 'schema:Budget')));
