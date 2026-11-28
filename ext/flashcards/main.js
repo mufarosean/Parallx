@@ -33,7 +33,7 @@
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
 import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js'; import { fcFitWide } from './fitWide.js';
-import { FC_DECK_VIEWS, FC_NAV_DEFS, FC_VIEW_LABELS, fcBindPlaceLink, fcCurrentRoute, fcMarkKeyOf, fcNavViewFor, fcOnPlaceMove, fcOpenPlace, fcPlaceCustomOfTag, fcPlaceMenuItems, fcPlacesActivate, fcPlacesOn } from './places.js';
+import { FC_DECK_VIEWS, FC_NAV_DEFS, FC_VIEW_LABELS, fcBindPlaceLink, fcCurrentRoute, fcMarkKeyOf, fcNavViewFor, fcOnPlaceMove, fcOpenPlace, fcPlaceCustomOfTag, fcPlaceMenuItems, fcPlacesActivate } from './places.js';
 import { fcWithRegistry } from './progress.js'; import { fcRegisterProviders, fcStudyWork } from './work.js'; import { fcRegisterHome } from './home.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1253,20 +1253,9 @@ function fcAggregateStats(reviews, cards, now) {
 
 let _api = null;
 let _activated = false;
-let _pendingRoute = null; // consumed by the editor pane on first render
-const _routeListeners = new Set();
 const _dataListeners = new Set();
 const fcOnData = (listener) => { _dataListeners.add(listener); return { dispose: () => { _dataListeners.delete(listener); } }; }; // hear every data change until disposed
 
-function _setRoute(route) {
-  _pendingRoute = route;
-  for (const fn of _routeListeners) { try { fn(route); } catch { /* noop */ } }
-}
-function _takePendingRoute() {
-  const r = _pendingRoute;
-  _pendingRoute = null;
-  return r;
-}
 // Data-change events are coalesced to one per tick and can be held during a
 // batch of writes. Before this, every card update or delete fired every
 // listener synchronously (the sidebar refresh, the Decks/Stats render, the
@@ -1385,7 +1374,6 @@ function fcAutoGrow(textarea, { maxPx = 320 } = {}) {
   return fit;
 }
 
-const FC_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>';
 
 /**
  * Open a card's source material. Canvas pages route through
@@ -1443,43 +1431,9 @@ function fcDeckMenuItems(deck) {
   ];
 }
 
+/** Every way into Flashcards: a route's place, in Flashcards' one tab (the core's places point). No route: the tab as it is. */
 async function openFlashcards(route) {
-  // On the places point every way in is a place in Flashcards' one tab.
-  if (fcPlacesOn(_api)) { await fcOpenPlace(_api, route); return; }
-  // The route is stashed BEFORE anything else, on every path. An open TAB
-  // does not imply a live PANE: the workbench builds a tool pane lazily on
-  // first show, and drops it again on workspace restore or when the
-  // retention LRU evicts it. In those states the route event below has no
-  // listener, and every route-carrying entry point — Custom Study, Study
-  // Deck, Browse Cards, the deck menu — surfaced the tab on whatever view it
-  // last showed and swallowed the navigation ("Custom Study does nothing").
-  // The pending route is what survives to the rebuild; a live pane consumes
-  // it in onRouteEvent so it can never hijack a later mount.
-  if (route) _setRoute(route);
-
-  // Focus, don't reopen. openEditor on an already-active tab does a FULL
-  // pane teardown/rebuild in the workbench (editorGroupView seq quirk) —
-  // every "open flashcards" from a command/link/toast was destroying the
-  // live pane and any place the user held in it. focusEditor surfaces the
-  // existing tab across ALL groups without touching the pane; the route
-  // event (when one was requested) navigates it in place.
-  try {
-    const existing = (_api.editors.openEditors ?? []).find((e) =>
-      typeof e?.id === 'string' && e.id.endsWith(':flashcards:main'));
-    if (existing) {
-      await _api.editors.focusEditor(existing.id);
-      if (route) {
-        document.dispatchEvent(new CustomEvent('parallx.flashcards.route', { detail: route }));
-      }
-      return;
-    }
-  } catch { /* fall through to a fresh open */ }
-  await _api.editors.openEditor({
-    typeId: 'flashcards',
-    title: 'Flashcards',
-    iconHtml: FC_ICON_HTML,
-    instanceId: 'main',
-  });
+  await fcOpenPlace(_api, route);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5696,19 +5650,6 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 // SECTION 8: NAVIGATION MODEL + SIDEBAR VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * The route the open pane is showing, mirrored here so the sidebar rail can
- * light where you are. null when no pane is alive — the rail then shows no
- * selection rather than a stale one.
- */
-let _fcActiveRoute = null;
-const _navListeners = new Set();
-function _setActiveRoute(route) {
-  _fcActiveRoute = route;
-  for (const listener of [..._navListeners]) {
-    try { listener(route); } catch { /* a broken listener must not stop the rest */ }
-  }
-}
 
 
 function createSidebarView(container) {
@@ -6029,19 +5970,16 @@ function createSidebarView(container) {
   void refresh();
   const onData = () => void refresh();
   _dataListeners.add(onData);
-  // On the places point the mark follows the core's record of where Flashcards' tab is.
-  const placed = fcPlacesOn(_api);
-  const offMove = placed ? fcOnPlaceMove(_api, syncNav) : null;
-  if (!placed) _navListeners.add(syncNav);
-  syncNav(placed ? fcCurrentRoute(_api) : _fcActiveRoute);
+  // The mark follows the core's record of where Flashcards' tab is.
+  const offMove = fcOnPlaceMove(_api, syncNav);
+  syncNav(fcCurrentRoute(_api));
 
   container.appendChild(root);
   return {
     dispose() {
       disposed = true;
       _dataListeners.delete(onData);
-      _navListeners.delete(syncNav);
-      offMove?.dispose();
+      offMove.dispose();
       for (const d of [...placeLinks, ...rowLinks]) d.dispose();
       root.remove();
     },
@@ -6356,24 +6294,17 @@ function renderViewError(body, route, err, setRoute, retry) {
 const FC_UNTITLED_VIEWS = new Set(['study', 'create', 'import']);
 
 /**
- * The pane that draws a route. On the places point it is one place's
- * drawing (`nav`: { route, go }): the page's own moves go to `nav.go`, which
- * moves the tab through the core, and `show(route)` draws where it went.
- * Without the point it is the one Flashcards tab, moving by itself.
+ * The pane that draws a route: one place's drawing in Flashcards' tab
+ * (`nav`: { route, go }). The page's own moves go to `nav.go`, which moves
+ * the tab through the core (named, trailed, a step of Back), and
+ * `show(route)` draws where it went.
  */
-function createEditorPane(container, input, nav) {
+function createEditorPane(container, nav) {
   injectStyles();
-  if (!nav) { try { input?.setName?.('Flashcards'); } catch { /* noop */ } }
-
-  const pendingRoute = nav ? nav.route : _takePendingRoute();
   const state = {
-    route: pendingRoute || { view: 'decks' },
+    route: nav.route || { view: 'decks' },
     disposed: false,
     session: null, // live study session (owned by renderStudy)
-    /** True once a route arrived by explicit navigation (command, link,
-     *  tab click, or a pending route consumed at construction) — a later
-     *  restoreViewState must not clobber it. */
-    explicitRoute: !!pendingRoute,
   };
 
   const root = el('div', 'fc-pane');
@@ -6426,7 +6357,6 @@ function createEditorPane(container, input, nav) {
         renderQueued = false;
         if (state.disposed) return;
         syncHeader();
-        if (!nav) _setActiveRoute(state.route); // the column marks what we show (on the places point, the core says)
         state.session = null;
         disposeView();
         body.innerHTML = '';
@@ -6461,26 +6391,13 @@ function createEditorPane(container, input, nav) {
   function showRoute(route) {
     if (JSON.stringify(route) === JSON.stringify(state.route)) return renderDone;
     state.route = route;
-    state.explicitRoute = true;
     renderDone = render();
     return renderDone;
   }
   function setRoute(route) {
-    if (nav) { if (JSON.stringify(route) !== JSON.stringify(state.route)) nav.go(route); return; }
-    void showRoute(route);
+    if (JSON.stringify(route) !== JSON.stringify(state.route)) nav.go(route);
   }
 
-  const onRouteEvent = (e) => {
-    if (!root.isConnected) return;
-    const route = e.detail;
-    if (!route || !route.view) return;
-    // This live pane is handling the navigation, so the copy openFlashcards
-    // stashed for a possibly-absent pane must be consumed here — otherwise it
-    // lingers and sends the NEXT fresh mount somewhere the user never asked for.
-    _takePendingRoute();
-    setRoute(route);
-  };
-  if (!nav) document.addEventListener('parallx.flashcards.route', onRouteEvent);
 
   const onData = () => {
     // Live-refresh passive views. The study session manages its own state —
@@ -6507,59 +6424,20 @@ function createEditorPane(container, input, nav) {
 
   let renderDone = render();
 
-  if (nav) {
-    return {
-      ready: renderDone,
-      show: (route) => showRoute(route),
-      dispose() {
-        state.disposed = true;
-        disposeView();
-        _dataListeners.delete(onData);
-        root.remove();
-      },
-      // The route is the core's (the tab's address); only the scroll is kept across a switch of tabs.
-      saveViewState: () => ({ key: JSON.stringify(state.route), scrollTop: body.scrollTop || 0 }),
-      restoreViewState(saved) {
-        if (state.disposed || !saved || saved.key !== JSON.stringify(state.route) || !(saved.scrollTop > 0)) return;
-        void renderDone.then(() => { if (!state.disposed) body.scrollTop = saved.scrollTop; });
-      },
-    };
-  }
-
   return {
+    ready: renderDone,
+    show: (route) => showRoute(route),
     dispose() {
       state.disposed = true;
       disposeView();
-      document.removeEventListener('parallx.flashcards.route', onRouteEvent);
       _dataListeners.delete(onData);
-      // Only clear the rail if WE are the pane it reflects: a rebuild can
-      // construct the new pane before the old one is torn down, and clearing
-      // then would blank a selection that is already correct.
-      if (_fcActiveRoute === state.route) _setActiveRoute(null);
       root.remove();
     },
-    // The workbench rebuilds this pane on every tab switch (media-organizer
-    // pattern): without these hooks, clicking away and back always reset the
-    // tool to the Decks view. Study routes ARE preserved (Mufaro overruled
-    // the old study→decks redirect: following a card's source link must not
-    // lose your place) — renderStudy resumes the live session from
-    // _fcStudySessions, or builds fresh when none is mid-flight.
-    saveViewState() {
-      return { route: state.route, scrollTop: body.scrollTop || 0 };
-    },
+    // The route is the core's (the tab's address); only the scroll is kept across a switch of tabs.
+    saveViewState: () => ({ key: JSON.stringify(state.route), scrollTop: body.scrollTop || 0 }),
     restoreViewState(saved) {
-      if (state.disposed || !saved || !saved.route || !saved.route.view) return;
-      // A route that arrived by explicit navigation (command/link/tab click)
-      // during this pane's construction outranks the restored snapshot —
-      // the workbench does not order the two deterministically, and the
-      // stale 120ms scroll timer would jump the NEW view.
-      if (state.explicitRoute) return;
-      setRoute(saved.route);
-      state.explicitRoute = false; // restoring is not user navigation
-      if (typeof saved.scrollTop === 'number' && saved.scrollTop > 0) {
-        // After the async view render settles; best-effort by design.
-        setTimeout(() => { if (!state.disposed) body.scrollTop = saved.scrollTop; }, 120);
-      }
+      if (state.disposed || !saved || saved.key !== JSON.stringify(state.route) || !(saved.scrollTop > 0)) return;
+      void renderDone.then(() => { if (!state.disposed) body.scrollTop = saved.scrollTop; });
     },
   };
 }
@@ -12003,14 +11881,12 @@ export async function activate(api, context) {
   const backfillTimer = setTimeout(() => { void fcBackfillEmbeddings(); }, 8000);
   context.subscriptions.push({ dispose: () => clearTimeout(backfillTimer) });
 
-  // First, so the column it draws finds them. Its screens are places in one tab (the core's places point); without the point, the one tab moves by itself.
-  const placed = fcPlacesActivate(api, {
-    createPane: (container, route, go) => createEditorPane(container, undefined, { route, go }),
+  // First, so the column it draws finds them: its screens are places in one tab (the core's places point).
+  context.subscriptions.push(...fcPlacesActivate(api, {
+    createPane: (container, route, go) => createEditorPane(container, { route, go }),
     readNames: async () => ({ decks: await db.all('SELECT id, name FROM fc_decks'), customs: await fcListCustomDeckNames() }),
     onData: fcOnData,
-  });
-  if (placed.length) context.subscriptions.push(...placed);
-  else context.subscriptions.push(api.editors.registerEditorProvider('flashcards', { createEditorPane: (container, input) => createEditorPane(container, input) }));
+  }));
 
   context.subscriptions.push(
     api.views.registerViewProvider('flashcards.decks', {
@@ -12041,7 +11917,6 @@ export async function activate(api, context) {
 
 export async function deactivate() {
   _activated = false;
-  _routeListeners.clear();
   _dataListeners.clear();
   _dbBridge = null;
 }
