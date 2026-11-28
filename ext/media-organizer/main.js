@@ -30708,7 +30708,10 @@ function moPracticeThumbTile(photoId, caption, api, onClick) {
   tile.appendChild(img);
   if (caption != null) tile.appendChild(moEl('span', null, { textContent: caption }));
   void moPracticeThumb(img, photoId, api);
-  if (onClick) tile.addEventListener('click', onClick);
+  if (onClick) { // a key opens it too: a button with the caption as its name
+    tile.addEventListener('click', onClick); tile.setAttribute('role', 'button'); tile.tabIndex = 0; if (caption != null) tile.setAttribute('aria-label', `Open photo, ${caption}`);
+    tile.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } });
+  }
   return tile;
 }
 

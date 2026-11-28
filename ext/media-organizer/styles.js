@@ -155,6 +155,8 @@ export const MO_CSS_MORE = `
 
 /* ── Practice ── */
 .mo-practice { position: absolute; inset: 0; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); overflow: hidden; outline: none; user-select: none; }
+.mo-practice:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: calc(-1 * var(--px-focus-width)); }
+.mo-practice-thumb[role="button"]:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
 .mo-practice-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .mo-practice-img { max-width: 100%; max-height: 100%; object-fit: contain; transition: filter 120ms ease; }
 .mo-practice-img.is-mirror { transform: scaleX(-1); }
