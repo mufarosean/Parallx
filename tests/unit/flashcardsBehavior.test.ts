@@ -18,6 +18,12 @@ import { resolve } from 'path';
 import { createRequire } from 'module';
 // @ts-expect-error — JS module with no types
 import { activate, deactivate, __testables } from '../../ext/flashcards/main.js';
+import { Emitter } from '../../src/platform/events.js';
+import { ToolEditorInput } from '../../src/api/bridges/editorsBridge.js';
+import { createPlacesApi } from '../../src/api/bridges/placesBridge.js';
+import { places as placesService } from '../../src/services/places.js';
+import { createPageHeader } from '../../src/ui/kit.js';
+import { markCurrent, bindPlaceLink, installPlaceOpener } from '../../src/ui/link.js';
 
 // node:sqlite is a Node built-in vite refuses to bundle for the jsdom
 // environment — load it at runtime instead (tests still execute in Node).
@@ -100,23 +106,38 @@ function makeFakeApi() {
   }));
 
   // ── editors: create panes on demand, once per instanceId ──
+  // Each tab is the real workbench's ToolEditorInput (the tab's name, its
+  // trail in the bar under the tabs, its address), kept across a pane being
+  // torn down and rebuilt, as the editor area keeps it; one tab is in front.
+  const TOOL_ID = 'parallx-community.flashcards';
   const editorProviders = new Map<string, { createEditorPane(c: HTMLElement, i?: unknown): { dispose(): void } }>();
   const paneHosts = new Map<string, HTMLElement>();
   const panes = new Map<string, { dispose(): void }>();
+  const inputs = new Map<string, ToolEditorInput>();
+  let activeKey: string | undefined;
+  const onDidActiveEditorChange = new Emitter<{ readonly id: string } | undefined>();
+  const setActive = (key: string) => {
+    if (activeKey === key) return;
+    activeKey = key;
+    onDidActiveEditorChange.fire({ id: `${TOOL_ID}:${key}` });
+  };
   const editors = {
     registerEditorProvider: (typeId: string, provider: { createEditorPane(c: HTMLElement, i?: unknown): { dispose(): void } }) => {
       editorProviders.set(typeId, provider);
       return { dispose() { editorProviders.delete(typeId); } };
     },
-    openEditor: async (options: { typeId: string; instanceId?: string }) => {
+    openEditor: async (options: { typeId: string; instanceId?: string; title?: string; iconHtml?: string }) => {
       const key = `${options.typeId}:${options.instanceId ?? ''}`;
-      if (paneHosts.has(key)) return;
+      if (paneHosts.has(key)) { setActive(key); return; }
       const provider = editorProviders.get(options.typeId);
       if (!provider) throw new Error(`no provider for ${options.typeId}`);
       const host = document.createElement('div');
       document.body.appendChild(host);
       paneHosts.set(key, host);
-      panes.set(key, provider.createEditorPane(host, { setName() { /* noop */ } }));
+      const input = new ToolEditorInput(options.typeId, options.title ?? 'Flashcards', undefined, options.iconHtml, provider as never, `${TOOL_ID}:${key}`, TOOL_ID, options.instanceId);
+      inputs.set(key, input);
+      setActive(key);
+      panes.set(key, provider.createEditorPane(host, input));
     },
     // The real workbench exposes the open TABS and lets a tool refocus one
     // without rebuilding its pane. Without these the extension falls back to
@@ -125,11 +146,33 @@ function makeFakeApi() {
     // exactly the bug this fake must be able to reproduce.
     get openEditors() {
       return [...paneHosts.keys()].map((key) => ({
-        id: `parallx-community.flashcards:${key}`,
-        name: 'Flashcards',
+        id: `${TOOL_ID}:${key}`,
+        name: inputs.get(key)?.name ?? 'Flashcards',
       }));
     },
-    focusEditor: async (_editorId: string) => true,
+    focusEditor: async (editorId: string) => {
+      const key = editorId.startsWith(`${TOOL_ID}:`) ? editorId.slice(TOOL_ID.length + 1) : editorId;
+      if (!paneHosts.has(key)) return false;
+      setActive(key);
+      return true;
+    },
+  };
+  // The editor area as the places bridge reads it (src/api/bridges/placesBridge.ts).
+  const editorService = {
+    getOpenEditors: () => [...paneHosts.keys()].map((key) => ({ id: `${TOOL_ID}:${key}`, isActive: key === activeKey })),
+    onDidActiveEditorChange: onDidActiveEditorChange.event,
+  };
+  // The core's places, wired as the real bridge wires them for a tool (its
+  // editors bridge, the editor area, the links registry).
+  const placeLinks: Record<string, unknown>[] = [];
+  const placesApi = createPlacesApi(TOOL_ID, editors as never, editorService as never, {
+    register: (contract: Record<string, unknown>) => { placeLinks.push(contract); return { dispose() { /* noop */ } }; },
+  } as never, []);
+  installPlaceOpener((address, options) => placesService.openAddress(address, options));
+  /** The Flashcards tab in front: its name and the core's trail (the bar under the tabs). */
+  const frontTab = () => {
+    const input = activeKey ? inputs.get(activeKey) : undefined;
+    return { name: input?.name, trail: (input?.trail ?? []).map((c) => c.label), place: input?.place };
   };
 
   // ── window: scripted prompts ──
@@ -218,11 +261,16 @@ function makeFakeApi() {
       },
     },
     editors,
+    places: placesApi,
     window: windowApi,
     workspace,
     lm,
     icons: { createIconHtml: () => '', getIcon: () => '', hasIcon: () => false },
     ui: {
+      // The real kit's page header and the places mark/link, as the ui bridge gives them (src/api/bridges/uiBridge.ts).
+      createPageHeader,
+      markCurrent,
+      bindPlaceLink,
       createDropdown: (container: HTMLElement, options?: { items?: { value: string; label: string }[]; selected?: string }) => {
         const elx = document.createElement('div');
         elx.className = 'fake-dropdown';
@@ -321,10 +369,10 @@ function makeFakeApi() {
     const key = `${typeId}:${instanceId}`;
     const host = paneHosts.get(key)!;
     document.body.appendChild(host);
-    panes.set(key, editorProviders.get(typeId)!.createEditorPane(host, { setName() { /* noop */ } }));
+    panes.set(key, editorProviders.get(typeId)!.createEditorPane(host, inputs.get(key)));
   };
 
-  return { api, sqlite, scripted, setConfig, lmCalls, chatTools, cronJobs, widgets, linkContracts, paneHosts, evictPane, rebuildPane };
+  return { api, sqlite, scripted, setConfig, lmCalls, chatTools, cronJobs, widgets, linkContracts, paneHosts, evictPane, rebuildPane, frontTab, placeLinks };
 }
 
 // ─── The story ───────────────────────────────────────────────────────────────
@@ -433,7 +481,7 @@ describe('editor pane', () => {
     const pane = document.querySelector('.fc-pane')!;
     expect(pane).toBeTruthy();
     // The home leads with the day's work (the look's piece 10: the page opens on what is due), over what the collection is.
-    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('2 cards due today');
+    expect(pane.querySelector('.fc-home__head .px-page-header__title')?.textContent).toBe('2 cards due today');
     expect(pane.querySelector('.fc-home__due')?.textContent).toBe('2 new, 0 learning, 0 to review.');
     // The five making-and-importing buttons are one Add menu.
     const buttons = [...pane.querySelectorAll('.fc-home__head button')].map((b) => b.textContent);
@@ -457,9 +505,21 @@ describe('editor pane', () => {
       .toEqual(['Decks', 'Study', 'Stats', 'Make Cards', 'Import']);
     // At the top level the pane's heading is the day's work, and a one-word
     // breadcrumb is hidden; the sidebar's lit row says where you are.
-    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('2 cards due today');
-    expect((pane.querySelector('.fc-pane__header') as HTMLElement).style.display).toBe('none');
-    expect(sidebar.querySelector('.fc-sb__nav-item--active')?.getAttribute('data-view')).toBe('decks');
+    // (The breadcrumb is the core's trail now, in the bar under the tabs: the
+    // pane draws none, its own header strip stays hidden on Decks, and the
+    // trail names only the tool and the place. The lit row is the shared mark.)
+    expect(pane.querySelector('.fc-home__head .px-page-header__title')?.textContent).toBe('2 cards due today');
+    expect((pane.querySelector('.fc-pane__header') as HTMLElement).hidden).toBe(true);
+    expect(pane.querySelector('.fc-pane__crumbs')).toBeNull();
+    expect(fake.frontTab().trail).toEqual(['Flashcards', 'Decks']);
+    expect(fake.frontTab().name).toBe('Decks');
+    const lit = [...sidebar.querySelectorAll('[aria-current]')];
+    expect(lit).toHaveLength(1);
+    expect(lit[0].getAttribute('aria-current')).toBe('page');
+    expect(lit[0].classList.contains('px-current')).toBe(true);
+    expect(lit[0].matches('.fc-sb__nav-item')).toBe(true);
+    expect(lit[0].getAttribute('data-view')).toBe('decks');
+    expect(sidebar.querySelectorAll('.px-current')).toHaveLength(1);
   });
 
   it('navigates to browse and adds a card through the inline form', async () => {
@@ -468,9 +528,17 @@ describe('editor pane', () => {
     await settle();
 
     // Inside a deck the breadcrumb names it, and the sidebar selects its row.
-    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Reserving');
+    // (The breadcrumb is the core's trail; the selected row the shared mark, on the deck's row alone.)
+    expect(fake.frontTab().trail).toEqual(['Flashcards', 'Reserving']);
+    expect(fake.frontTab().name).toBe('Reserving');
     const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
-    expect(sidebar.querySelector('.fc-deck-row--active')?.textContent).toContain('Reserving');
+    const lit = [...sidebar.querySelectorAll('[aria-current]')];
+    expect(lit).toHaveLength(1);
+    expect(lit[0].getAttribute('aria-current')).toBe('page');
+    expect(lit[0].classList.contains('px-current')).toBe(true);
+    expect(lit[0].matches('.fc-deck-row')).toBe(true);
+    expect(lit[0].textContent).toContain('Reserving');
+    expect(sidebar.querySelectorAll('.px-current')).toHaveLength(1);
 
     // Open the add form, fill it, save.
     const addToggle = [...pane.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Card'))!;
@@ -540,7 +608,7 @@ describe('navigation reaches the pane', () => {
     await settle();
 
     const pane = document.querySelector('.fc-pane')!;
-    expect(pane.querySelector('.fc-view__title')?.textContent).toBe('Custom Study');
+    expect(pane.querySelector('.fc-cs .px-page-header__title')?.textContent).toBe('Custom Study');
     expect(pane.querySelector('.fc-cs__avail')?.textContent).toContain('available');
   });
 
@@ -566,7 +634,7 @@ describe('navigation reaches the pane', () => {
     fake.rebuildPane();
     await settle();
     const pane = document.querySelector('.fc-pane')!;
-    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('3 cards due today'); // the decks home, by its heading
+    expect(pane.querySelector('.fc-home__head .px-page-header__title')?.textContent).toBe('3 cards due today'); // the decks home, by its heading
   });
 });
 
@@ -1097,15 +1165,22 @@ describe('custom decks', () => {
 
     (home.querySelector('.fc-deck-card__info') as HTMLElement).click();
     await settle();
-    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Models');
-    expect(pane.querySelector('.fc-custom .fc-view__title')?.textContent).toBe('Models');
+    expect(fake.frontTab().trail).toEqual(['Flashcards', 'Models']); // the core's trail (was Flashcards' own breadcrumb)
+    expect(fake.frontTab().name).toBe('Models');
+    expect(pane.querySelector('.fc-custom .px-page-header__title')?.textContent).toBe('Models');
     expect([...pane.querySelectorAll('.fc-custom__group-name')].map((n) => n.textContent)).toEqual(['Custom Source A', 'Custom Source B']);
     expect(pane.querySelectorAll('.fc-custom__card')).toHaveLength(3);
     const buttons = [...pane.querySelectorAll('.fc-custom .fc-row button')].map((b) => b.textContent);
     expect(buttons).toContain('Study 3 Cards');
     expect(buttons).toContain('Study All 3');
     // The page's own menu starts with an action, not a rule.
-    expect(sidebar.querySelector('.fc-deck-row--custom')?.classList.contains('fc-deck-row--active')).toBe(true);
+    // The custom deck's row carries the shared mark, and no other row does.
+    const lit = [...sidebar.querySelectorAll('[aria-current]')];
+    expect(lit).toHaveLength(1);
+    expect(lit[0].getAttribute('aria-current')).toBe('page');
+    expect(lit[0].classList.contains('px-current')).toBe(true);
+    expect(lit[0].matches('.fc-deck-row--custom')).toBe(true);
+    expect(sidebar.querySelectorAll('.px-current')).toHaveLength(1);
   });
 
   it('Find a deck covers custom decks', async () => {
@@ -1144,7 +1219,7 @@ describe('custom decks', () => {
     expect(study).toBeTruthy();
     study.click();
     await settle();
-    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Models');
+    expect(fake.frontTab().trail).toEqual(['Flashcards', 'Models', 'Study']); // the core's trail (was Flashcards' own breadcrumb)
     const shown = pane.textContent || '';
     expect(shown.includes('Mean of the over-dispersed Poisson model') || shown.includes('Mean of the Cape Cod model')).toBe(true);
     expect(shown).not.toContain('Variance of the over-dispersed Poisson model');
@@ -1160,7 +1235,7 @@ describe('custom decks', () => {
     all.click();
     await settle();
     expect(pane.querySelector('.fc-study__position')?.textContent).toBe('1 / 2');
-    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Models');
+    expect(fake.frontTab().trail).toEqual(['Flashcards', 'Models', 'Study']); // the core's trail (was Flashcards' own breadcrumb)
     fake.sqlite.prepare('UPDATE fc_decks SET study_apart = 0 WHERE id = ?').run(deckIds[1]);
   });
 
