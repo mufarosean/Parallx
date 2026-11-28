@@ -4874,6 +4874,8 @@ function injectStyles() {
   padding-bottom: var(--px-space-3); border-bottom: 1px solid var(--px-divider);
 }
 .fc-home__head-text { flex: 1; min-width: 0; }
+/* The day's work is the title: it wraps rather than hide its end. */
+.fc-home__head .px-page-header__title { white-space: normal; overflow-wrap: anywhere; }
 .fc-home__sub {
   margin-bottom: var(--px-space-1); font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted);
 }
@@ -4886,7 +4888,7 @@ function injectStyles() {
 .fc-deck-bar__seg--learn { background: var(--px-warning); }
 .fc-deck-bar__seg--due { background: var(--px-success); }
 .fc-home__legend { display: flex; gap: var(--px-space-4); margin-top: var(--px-space-3); font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted); }
-.fc-home__legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.fc-home__legend i { display: inline-block; width: 8px; height: 8px; border-radius: var(--px-radius-xs); margin-right: 6px; }
 .fc-home__cta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
 .fc-home__cta .fc-btn { height: 32px; }
 .fc-home__actions { margin-block: var(--px-space-5) var(--px-space-4); gap: var(--px-space-2); }
