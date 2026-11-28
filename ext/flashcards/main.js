@@ -1453,12 +1453,18 @@ function fcParseCardId(value) {
 function fcIdChip(id, className = 'fc-card__id') {
   const chip = el('span', className, `#${id}`);
   chip.title = `Card #${id}. Click to copy the id; the AI finds and edits cards by it.`;
-  chip.addEventListener('click', (e) => {
+  // A control the keyboard reaches too: Enter or Space copies, as a click does.
+  chip.setAttribute('role', 'button');
+  chip.tabIndex = 0;
+  chip.setAttribute('aria-label', `Copy card id #${id}`);
+  const copy = (e) => {
     e.stopPropagation();
     try { void navigator.clipboard?.writeText(`#${id}`); } catch { /* clipboard unavailable */ }
     chip.classList.add('fc-card__id--copied');
     setTimeout(() => chip.classList.remove('fc-card__id--copied'), 900);
-  });
+  };
+  chip.addEventListener('click', copy);
+  chip.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copy(e); } });
   return chip;
 }
 
@@ -5125,6 +5131,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   cursor: pointer; user-select: none;
 }
 .fc-card__id:hover, .fc-cardrow__id:hover, .fc-edit__id:hover { color: var(--px-text); }
+.fc-card__id:focus-visible, .fc-cardrow__id:focus-visible, .fc-edit__id:focus-visible { outline: none; color: var(--px-text); border-radius: var(--px-radius-sm); box-shadow: var(--px-ring-accent); }
 .fc-card__id--copied, .fc-card__id--copied:hover { color: var(--px-success); }
 .fc-card__id { margin-left: auto; }
 .fc-cardrow__id { margin-left: auto; }
@@ -5199,6 +5206,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
    split, where a viewport media query would report the wrong width. */
 .fc-study { display: flex; height: 100%; container-type: inline-size; }
 .fc-study__main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-4) var(--fc-gutter); overflow-y: auto; outline: none; background: var(--px-window); }
+.fc-study__main:focus-visible { box-shadow: inset 0 0 0 var(--px-focus-width) var(--px-accent); }
 .fc-study__toolbar { width: 100%; max-width: 920px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding-bottom: 10px; margin-bottom: 16px; border-bottom: 1px solid var(--px-divider); }
 .fc-study__session { display: flex; align-items: center; flex: 1 1 200px; min-width: 0; gap: 12px; }
 .fc-study__position { color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -10074,11 +10082,14 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   const srcBtn = (label, iconName, loader) => {
     const b = el('button', 'fc-btn');
     b.innerHTML = `${icon(iconName, 12)}<span>${label}</span>`;
+    // Busy, not disabled, while its picker is open: a disabled button cannot take the keys back when the picker closes.
+    let busy = false;
     fcDeclare(b, `flashcards.create.add.${fcSlug(label)}`); b.addEventListener('click', () => {
+      if (busy) return;
       void (async () => {
-        try { b.disabled = true; applyLoaded(await loader()); }
+        try { busy = true; b.setAttribute('aria-busy', 'true'); applyLoaded(await loader()); }
         catch (err) { srcStatus.textContent = `Failed: ${err.message}`; }
-        finally { b.disabled = false; }
+        finally { busy = false; b.removeAttribute('aria-busy'); }
       })();
     });
     return b;
