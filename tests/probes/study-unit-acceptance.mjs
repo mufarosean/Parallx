@@ -413,6 +413,24 @@ function installProbeModel() {
 // the canvas table, the active editor, focus and contrast.
 function installPageHelpers() {
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  // Study's screens became places in its one tab (editor type study-place, c3eebb8f): the tab is named for the
+  // place ("Progress", "Mack") and the trail under the tabs reads Study › Exam 7 › Progress. A place tab is named
+  // here by the screen it shows, read from the place (its address and its trail), as its own tab was named
+  // before: "Exam 7 Progress", "Exam 7 · Mack", the plan's name, "Study" for Home. Any other tab keeps its label.
+  const studyPlaceName = (id, label) => {
+    if (!/:study-place:/.test(id)) return label;
+    const groups = window.__parallx_workbench__?._services.get({ id: 'IEditorGroupService' })?.groups || [];
+    const e = groups.flatMap((g) => g.model?.editors || []).find((x) => x.id === id);
+    const m = /^parallx:\/\/place\/study\/([^?#/]+)/.exec(String(e?.place || ''));
+    if (!m) return label;
+    const trail = (e.trail || []).map((c) => norm(c.label));
+    const subject = trail.length >= 3 ? trail[trail.length - 2] : '';
+    const here = trail[trail.length - 1] || label;
+    if (m[1] === 'progress' && subject) return `${subject} Progress`;
+    if (m[1] === 'unit' && subject) return `${subject} · ${here}`;
+    if (m[1] === 'home') return 'Study';
+    return label;
+  };
   const shown = (n) => !!n && n.getClientRects().length > 0 && n.getBoundingClientRect().width > 0 && getComputedStyle(n).visibility !== 'hidden';
   const CLICKABLE = 'button, [role="button"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="radio"], [role="tab"], [role="treeitem"], [role="checkbox"], [role="switch"], [role="link"], a[href], summary, input[type="checkbox"], input[type="radio"]';
   const CONTROLS = `${CLICKABLE}, input, select, textarea, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]`;
@@ -600,7 +618,7 @@ function installPageHelpers() {
       return { stem: norm(c.querySelector('.st-card__q')?.innerText), options: Array.from(c.querySelectorAll('.st-opt')).filter(shown).length, field: field ? { ...point(field), value: field.value } : null, verdict: fb ? norm(fb.innerText).slice(0, 80) : '' };
     },
     results: () => { const r = scopeEl('root'); return !!r && Array.from(r.querySelectorAll('.st-res')).some(shown); },
-    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', probeTab: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: norm(t.querySelector('.ui-tab-label')?.textContent), ...point(l) }; }),
+    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', probeTab: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: studyPlaceName(t.getAttribute('data-tab-id') || '', norm(t.querySelector('.ui-tab-label')?.textContent)), ...point(l) }; }),
     /** A tab's or a choice's point read again just before the press: reading the others may have scrolled the strip or the list since. */
     relocate(pt) {
       let n = null;
@@ -950,14 +968,36 @@ async function showTab(S, title) {
 }
 async function closeTab(S, title) {
   if (!(await showTab(S, title))) return false;
+  // A Study place tab is named for the place ("Clark", c3eebb8f), shorter than its own tab was ("Exam 7 · Clark"): opened
+  // last in a full strip, its × now ends under the strip's edge, inside the window, where a press reaches another
+  // control (before, it lay past the window and was scrolled into view). The tab in front is scrolled into view first,
+  // as the walk and work probes do before they press a tab's ×.
+  await S.page.evaluate(() => document.querySelector('.ui-tab--active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+  await sleep(150);
   await S.press('body', /./, '.ui-tab--active .ui-tab-close');
   return !!(await until(async () => (await tabTitled(S, title)).length === 0, 3000));
 }
+/**
+ * The press on a unit's row, made so the tabs stand as they did when a unit had a tab of its own. Since c3eebb8f a
+ * unit is a place in Study's one tab: a press moves that tab (off whatever it showed), Ctrl+click gives a tab of its
+ * own. So: with the unit's tab open, that tab forward and the press (it stays there, as the press brought it forward
+ * before); with no Study place tab open, the press (it opens the one tab); with one on another screen, Ctrl+click
+ * (that screen's tab stays, as it did). `plain`: the press alone, for a check of the press itself.
+ */
+async function pressUnit(S, unit, pt, { plain = false } = {}) {
+  if (plain) return S.click(pt);
+  const tabs = await S.tabs();
+  if (tabs.some((t) => t.label === tabTitle(unit))) { await showTab(S, tabTitle(unit)); return S.click(pt); }
+  if (!tabs.some((t) => /:study-place:/.test(t.id))) return S.click(pt);
+  await S.page.keyboard.down('Control');
+  await S.click(pt);
+  await S.page.keyboard.up('Control');
+}
 /** Press the unit in Study's sidebar; its tab in front, or a stop that says what came instead. Returns the time of the press. */
-async function openUnit(S, unit) {
+async function openUnit(S, unit, opts) {
   const pt = must(await subjectPoint(S, unit, { under: SUBJECT }), `the unit "${unit}" under "${SUBJECT}" in Study's sidebar`);
   const at = Date.now();
-  await S.click(pt);
+  await pressUnit(S, unit, pt, opts);
   const front = await until(async () => (await tabTitled(S, tabTitle(unit))).some((t) => t.active), 5000, 30);
   if (!front) {
     const tabs = (await S.tabs()).map((t) => `${t.label}${t.active ? ' (front)' : ''}`).join(' | ');
@@ -1275,13 +1315,15 @@ phase(0, 'The ground the checks stand on (the app as it is today; none of it is 
 phase(1, 'Open a unit', {
   '1.1': 'pressing Mack in Study\'s sidebar opens a tab titled "Exam 7 · Mack", in front',
   '1.2': 'pressed again after another tab came forward, the same one tab comes forward (no second)',
-  '1.3': 'another unit opens a tab of its own: "Exam 7 · Clark" beside "Exam 7 · Mack"',
+  // Changed with the one tab (c3eebb8f): a unit no longer opens a tab of its own, pressing another unit moves the one
+  // tab, and Ctrl+click gives a tab of its own. Before: Clark pressed gave "Exam 7 · Clark" beside "Exam 7 · Mack".
+  '1.3': 'another unit pressed moves the one tab to it ("Exam 7 · Clark" in front, the same tab, no "Exam 7 · Mack"), and Ctrl+click on Mack gives Mack a tab of its own: "Exam 7 · Clark" beside "Exam 7 · Mack"',
   '1.4': '"Study…" on the unit\'s tab opens the setup sheet on that unit: Start asks only Clark\'s questions',
   '1.5': 'the unit row\'s More Actions in the sidebar has "Study…", and it opens the setup sheet on that unit',
   '1.6': 'after the app is closed and opened, pressing Mack still gives one tab "Exam 7 · Mack"',
 }, async (S, c) => {
   await check(c, '1.1', async () => {
-    await openUnit(S, 'Mack');
+    await openUnit(S, 'Mack', { plain: true });
     await S.shot('01-unit-tab');
     const tabs = await tabTitled(S, tabTitle('Mack'));
     return [tabs.length === 1 && tabs[0].active, (await S.tabs()).map((t) => t.label)];
@@ -1290,15 +1332,24 @@ phase(1, 'Open a unit', {
     must((await tabTitled(S, tabTitle('Mack'))).length, `the tab "${tabTitle('Mack')}"`);
     await S.cmd('file.openFile', path.join(S.workspace, M.md.file));
     await until(async () => !(await tabTitled(S, tabTitle('Mack'))).some((t) => t.active), 4000);
-    await openUnit(S, 'Mack');
+    await openUnit(S, 'Mack', { plain: true });
     await sleep(500);
     const tabs = await tabTitled(S, tabTitle('Mack'));
     return [tabs.length === 1 && tabs[0].active, { tabsTitledSo: tabs.length, front: tabs.some((t) => t.active) }];
   });
   await check(c, '1.3', async () => {
-    await openUnit(S, 'Clark');
+    const mackId = (await tabTitled(S, tabTitle('Mack')))[0]?.id ?? null;
+    await openUnit(S, 'Clark', { plain: true });
+    const moved = [(await tabTitled(S, tabTitle('Mack'))).length, (await tabTitled(S, tabTitle('Clark'))).length];
+    const sameTab = (await tabTitled(S, tabTitle('Clark')))[0]?.id === mackId;
+    const pt = must(await subjectPoint(S, 'Mack', { under: SUBJECT }), `the unit "Mack" under "${SUBJECT}" in Study's sidebar`);
+    await S.page.keyboard.down('Control');
+    await S.click(pt);
+    await S.page.keyboard.up('Control');
+    await until(async () => (await tabTitled(S, tabTitle('Mack'))).length === 1, 5000, 50);
+    await sleep(400);
     const both = [(await tabTitled(S, tabTitle('Mack'))).length, (await tabTitled(S, tabTitle('Clark'))).length];
-    return [same(both, [1, 1]), { mack: both[0], clark: both[1] }];
+    return [same(moved, [0, 1]) && sameTab && same(both, [1, 1]), { moved: { mack: moved[0], clark: moved[1], sameTab }, afterCtrlClick: { mack: both[0], clark: both[1] } }];
   });
   await check(c, '1.4', async () => {
     must(await showTab(S, tabTitle('Clark')), `the tab "${tabTitle('Clark')}"`);
@@ -1324,7 +1375,7 @@ phase(1, 'Open a unit', {
   await check(c, '1.6', async () => {
     await S.relaunch();
     await showStudySidebar(S);
-    await openUnit(S, 'Mack');
+    await openUnit(S, 'Mack', { plain: true });
     await sleep(600);
     return [(await tabTitled(S, tabTitle('Mack'))).length === 1, (await S.tabs()).map((t) => t.label)];
   });
