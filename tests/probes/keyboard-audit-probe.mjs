@@ -52,8 +52,10 @@ const SCREENS = [
   ['ext:media-organizer.openTagReview'], ['ext:media-organizer.findDuplicates'], ['ext:media-organizer.practiceSession'], ['ext:media-organizer.dailyStudy'],
   // Study's places share its one tab (getting around piece 5): Weak Spots and Marked, audited as screens too.
   ['ext:study.weakSpots'], ['ext:study.studyMarked'],
+  // Flashcards' places share its one tab (getting around piece 6): Study, Stats, Make Cards and Custom Study, audited as screens too.
+  ['ext:flashcards.study'], ['ext:flashcards.stats'], ['ext:flashcards.generate'], ['ext:flashcards.customStudy'],
   // Seeded content (audit-seed.mjs): what an empty workspace never shows.
-  ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:study.progress'], ['seed:study.subject'], ['seed:study.unit'], ['seed:study.unit.picker'], ['seed:study.unit.matches'], ['seed:study.plan'], ['seed:study.plan.sheet'], ['seed:imageEditor'], ['seed:imageEditor.generate'], ['seed:imageEditor.masks'], ['seed:imageEditor.masks.subject'], ['seed:plan.masks'], ['seed:plan.masks.words'], ['seed:clipEditor'], ['seed:chat'], ['seed:chat.timing'], ['seed:chat.citation'],
+  ['seed:page'], ['seed:conceptMap'], ['seed:database'], ['seed:study.progress'], ['seed:study.subject'], ['seed:study.unit'], ['seed:study.unit.picker'], ['seed:study.unit.matches'], ['seed:study.plan'], ['seed:study.plan.sheet'], ['seed:flashcards.deck'], ['seed:flashcards.study'], ['seed:imageEditor'], ['seed:imageEditor.generate'], ['seed:imageEditor.masks'], ['seed:imageEditor.masks.subject'], ['seed:plan.masks'], ['seed:plan.masks.words'], ['seed:clipEditor'], ['seed:chat'], ['seed:chat.timing'], ['seed:chat.citation'],
   // Painting Plans (behind the art tools setting, which the seed turns on).
   ['seed:plans'], ...['Compose', 'Photo', 'Values', 'Colour', 'Transfer', 'beforeAfter', 'notes', 'myPaints', 'board'].map((t) => [`seed:plan.${t}`]),
   // Colour Study: its home, a sheet on the wheel, the mix bench, My Paints, and a sheet with a plan's picture.

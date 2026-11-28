@@ -272,7 +272,16 @@ export async function seedAfterLaunch(page, pre) {
     if (press) { await page.locator(`.mo-cs [data-px-id="media-organizer.colour.${press}"]`).first().click().catch(() => {}); await page.waitForTimeout(900); }
   };
 
+  // Flashcards: a deck with a card to recognise and one to answer in writing, so its Browse and a study session are on screen.
+  log('flashcards', await run(page, 'flashcards.addCards', { deckName: 'Seeded Deck', cards: [
+    { front: 'What does the chain ladder assume?', back: 'Development factors are stable across accident years.', tags: ['seeded'] },
+    { front: 'Explain the Bornhuetter-Ferguson method.', back: 'It blends expected losses with reported losses by the expected unreported share.', recallMode: 'conceptual', rubric: ['blends expected and reported'], tags: ['seeded'] },
+  ] }));
+
   return {
+    // A deck's place (its Browse, with the Add Card form the command opens) and a study session in the Study place.
+    'seed:flashcards.deck': async () => { await run(page, 'flashcards.newCard'); await page.waitForTimeout(1_500); },
+    'seed:flashcards.study': async () => { await run(page, 'flashcards.study'); await page.waitForTimeout(1_500); },
     'seed:chat': seededChat(),
     // the answer's line opened: where the time went
     'seed:chat.timing': seededChat(async () => { await page.locator('button.parallx-chat-meta').last().click().catch(() => {}); await page.waitForTimeout(400); }),
