@@ -753,8 +753,15 @@ async function cardAfter(S, ms = 4000) {
 /** Activate a unit under a subject and return its first card. */
 async function studyUnit(S, subject, unit) {
   const pt = must(await subjectPoint(S, unit, { under: subject }), `the unit "${unit}" under "${subject}" in the sidebar`);
+  // A unit pressed gave it a tab of its own; now it moves Study's one tab, and Ctrl+click gives it a tab of its own
+  // (c3eebb8f): Ctrl+click, so the tab that was open stays open as before.
+  await S.page.keyboard.down('Control');
   await S.click(pt);
+  await S.page.keyboard.up('Control');
   let card = await cardAfter(S, 3000);
+  // The unit is a place in Study's one tab now, and the keys land on the page's title, not on its Study… (c3eebb8f):
+  // the page's Study… is pressed where Enter pressed it before.
+  if (!card && (await S.press('root', /./, '[data-px-id="study.unit.study"]'))) card = await cardAfter(S, 2500);
   if (!card) { await S.page.keyboard.press('Enter'); card = await cardAfter(S, 2500); }
   if (!card) { await S.page.mouse.dblclick(pt.x, pt.y); card = await cardAfter(S, 3000); }
   return must(card, `a first question after activating the unit "${unit}"`);
