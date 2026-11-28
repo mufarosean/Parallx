@@ -2097,10 +2097,15 @@ function renderTransactionsSection(body, api, params) {
   searchInput.setAttribute('aria-label', 'Search merchants'); api.ui.declareControl(searchInput, { id: 'budget.tx.search', label: 'Search merchants', kind: 'input', state: () => ({ kind: 'value', value: searchInput.value }) });
   searchInput.value = search;
   let searchTimer = null;
+  // The list follows each keystroke; the address takes the search once typing settles, so a search is one step of Back, not one per pause.
+  let searchShown = search;
+  let addressTimer = null;
   searchInput.addEventListener('input', () => {
     search = searchInput.value;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => void refresh(), 150);
+    clearTimeout(addressTimer);
+    addressTimer = setTimeout(() => { searchShown = search; report({ q: search.trim() || undefined }); }, 700);
   });
   bar.appendChild(searchInput);
   const acctSlot = document.createElement('span');
@@ -2174,7 +2179,7 @@ function renderTransactionsSection(body, api, params) {
     const mySeq = ++seq;
     const v = TX_VIEWS.find(x => x.id === view) || TX_VIEWS[0];
     report({ view: undefined, month: undefined, category: undefined, account: undefined, day: undefined, q: undefined, only: undefined, ai: undefined,
-      ...txParamsOf({ view, monthKey, categoryId, accountId, dayYmd, merchant: search, only: typeOnly, aiTyped: aiTypedOnly }) });
+      ...txParamsOf({ view, monthKey, categoryId, accountId, dayYmd, merchant: searchShown, only: typeOnly, aiTyped: aiTypedOnly }) });
     const range = monthRange(monthKey);
     // Needs Review spans every month, the same rows the sidebar counts.
     const allMonths = v.id === 'review';
@@ -2217,7 +2222,10 @@ function renderTransactionsSection(body, api, params) {
     if (!alive || mySeq !== seq) return;
     chips.get('review')?.setCount(reviewCount || undefined);
     drawNarrowing();
-    const held = list.contains(document.activeElement) ? document.activeElement.dataset.txId : null; // a row with the keys keeps them
+    // A row with the keys keeps them; one gone from the list (confirmed, deleted) gives them to its neighbour, else to the title.
+    const items = () => [...list.querySelectorAll('[data-tx-id]')];
+    const held = list.contains(document.activeElement) ? document.activeElement.dataset.txId : null;
+    const heldAt = held ? items().findIndex(b => b.dataset.txId === held) : -1;
     list.replaceChildren();
     if (rows.length === 0) {
       list.appendChild(emptyState(allMonths ? 'Nothing is waiting for review.'
@@ -2242,7 +2250,7 @@ function renderTransactionsSection(body, api, params) {
       }
       list.appendChild(drawRow(r));
     }
-    if (held) list.querySelector(`[data-tx-id="${CSS.escape(held)}"]`)?.focus();
+    if (held) (list.querySelector(`[data-tx-id="${CSS.escape(held)}"]`) || items()[Math.min(heldAt, items().length - 1)])?.focus();
     if (rows.length === 500) {
       const more = document.createElement('div');
       more.className = 'budget-ov-faint budget-tx-more';
@@ -2309,7 +2317,7 @@ function renderTransactionsSection(body, api, params) {
   void populateAccountSelect().then(refresh);
   const offBus = onSyncEvent((evt) => { if (evt.kind === 'complete') void refresh(); });
   const offLedger = onLedgerChanged(() => void refresh());
-  return () => { alive = false; clearTimeout(searchTimer); offBus(); offLedger(); };
+  return () => { alive = false; clearTimeout(searchTimer); clearTimeout(addressTimer); offBus(); offLedger(); };
 }
 
 // ─── Section: Review ───────────────────────────────────────────────────────
@@ -4350,8 +4358,8 @@ function monthName(key) {
 // already committed, the everyday limits, what the goals need, and what has
 // no job yet. "Left to spend" is the same number the sidebar shows.
 // `params.month`: the month the address names (none: this month); `keep` hears each month chosen (Plan keeps it across its views).
-function renderBudgetsSection(body, api, params, keep) {
-  const report = placeReporter();
+// `report`: Plan's own (it mounts this view again later, when another tab may have drawn since).
+function renderBudgetsSection(body, api, params, keep, report = placeReporter()) {
   let monthKey = monthOfParams(params) || monthRange().key;
   _planMonth = monthKey;
   const root = document.createElement('div');
@@ -5086,9 +5094,8 @@ function renderRulesSection(body, api) {
 // ─── Section: Reconcile ────────────────────────────────────────────────────
 
 // `params.account`: the account the address names (none: the first); `keep` hears each one chosen.
-function renderReconcileSection(body, api, params, keep) {
+function renderReconcileSection(body, api, params, keep, report = placeReporter()) {
   let selectedAccountId = (params && params.account) || null;
-  const report = placeReporter();
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
   const acctSlot = document.createElement('span'); acctSlot.className = 'budget-dd-slot';
@@ -8257,13 +8264,13 @@ function renderPlanSection(body, api, view, params = {}) {
     content.innerHTML = '';
     if (!first) report({ view: v === 'budgets' ? undefined : v, month: v === 'budgets' ? monthParam(kept.month) : undefined, account: v === 'reconcile' ? kept.account : undefined });
     const parts = [];
-    if (v === 'budgets') parts.push(renderBudgetsSection(content, api, { month: kept.month }, (k) => { kept.month = k; }));
+    if (v === 'budgets') parts.push(renderBudgetsSection(content, api, { month: kept.month }, (k) => { kept.month = k; }, report));
     else if (v === 'bills') parts.push(renderRecurringSection(content, api));
     else if (v === 'trends') {
       const a = document.createElement('div'); const b = document.createElement('div');
       content.append(a, b);
       parts.push(renderCashFlowSection(a, api), renderReportsSection(b, api));
-    } else if (v === 'reconcile') parts.push(renderReconcileSection(content, api, { account: kept.account }, (id) => { kept.account = id; }));
+    } else if (v === 'reconcile') parts.push(renderReconcileSection(content, api, { account: kept.account }, (id) => { kept.account = id; }, report));
     cleanup = () => { for (const p of parts) if (typeof p === 'function') p(); };
   }
   api.ui.createSegmented(bar, { id: 'budget.plan.view', ariaLabel: 'Plan view', items: PLAN_VIEWS, value: active, onChange: (v) => mount(v) });

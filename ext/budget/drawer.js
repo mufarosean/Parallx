@@ -29,13 +29,16 @@ export function drawerField(api, scope, labelText, control, hint) {
 export function keysBack(opener = document.activeElement) {
   const by = ['data-px-id', 'data-tx-id'].find((a) => opener?.hasAttribute?.(a));
   const key = by ? opener.getAttribute(by) : null;
+  // Its own page: with two Budget tabs side by side, the other's controls are not this one's.
+  const page = opener?.closest?.('.budget-editor') || document.querySelector('.budget-editor');
   return () => requestAnimationFrame(() => {
     const now = document.activeElement;
     if (now && now !== document.body && now.isConnected) return; // something else took them meanwhile
     if (opener?.isConnected) { opener.focus(); return; }
-    const again = by ? document.querySelector(`.budget-editor [${by}="${CSS.escape(key)}"]`) : null;
+    if (!page?.isConnected) return;
+    const again = by ? page.querySelector(`[${by}="${CSS.escape(key)}"]`) : null;
     if (again) { again.focus(); return; }
-    const title = document.querySelector('.budget-editor .px-page-header__title');
+    const title = page.querySelector('.px-page-header__title');
     if (title) { if (!title.hasAttribute('tabindex')) title.tabIndex = -1; title.focus({ preventScroll: true }); }
   });
 }
