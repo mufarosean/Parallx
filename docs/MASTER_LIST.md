@@ -2828,7 +2828,10 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   findings the skeptic reproduced five and judged none needed fixing now;
   fixed the closest call it named (b55c8705): New Event sent to the first
   drawing after the update was redirected to the older build's page, so
-  its form waited and popped up on a later visit to Today. (The app-verifier's drive of that fix: pending, recorded below when in.)
+  its form waited and popped up on a later visit to Today. The app-verifier then drove that fix on the real app with its own probe,
+  `tests/probes/planner-places-review-fixes-probe.mjs` (b096e252): 9/9 on
+  b55c8705, 4/9 on 99218c6c (the form not opening over Today, and popping
+  up unasked on the next visit).
   *Checks changed:* `tests/unit/plannerNavState.test.ts`, by the
   app-verifier, not the builder (423925c2): its two tests read the removed
   `setPendingPlannerNewTask`/`takePendingPlannerNewTask`; they now read
