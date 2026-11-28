@@ -2688,7 +2688,7 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   File not getting the keys back after their picker closed), so from before
   the piece; all fixed (ad360f70), and 0 on every count on ad360f70 and again on the
   final build (b921fdb7, the same code as c2189ff7).
-  The touch-drag probe all ok. The visual-consistency probe: Flashcards is
+  The touch-drag probe all ok (on ad360f70 and b921fdb7). The visual-consistency probe: Flashcards is
   off its no-header list; with a deck now seeded it found the Decks title
   cut off and a radius off the scale, both fixed; on the final build one
   rise against the baseline, Creations' title size, as before piece 1.
