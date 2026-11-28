@@ -2289,17 +2289,26 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   Painting Plans, Colour Study, and a photo's or video's detail as a place
   over the list it was opened from (trail `Atelier › All Media › card`; from
   an album, `Atelier › Probe Album › card`, the album crumb opening the
-  album's own tab; with no list, All Media). Things keep their tabs: an album
+  album's own tab (the crumb's label seen; its press checked with a
+  stand-in only); with no list, All Media). Trash was not walked (its row
+  is hidden while it is empty); read in code. Things keep their tabs: an album
   (and New Album), a plan's board, a practice session being run, the clip
   and image editors, Remove From Other Photos. Addresses carry the
-  parameters: `parallx://place/media-organizer/smart?id=1`, `/tag?path=5-12`,
-  `/folder?id=3`, `/detail?type=photo&id=2&in=grid%3Aall`,
-  `/daily?session=4`, `/plan?id=1&step=paints`. Tabs of the older build
+  parameters (seen on the real app: `parallx://place/media-organizer/smart?id=1`,
+  `/tag?path=14`, `/folder?id=1`, `/detail?type=photo&id=2&in=grid%3Aall`,
+  `/daily?session=1`; read in code: `/sheet?id=<id>`,
+  `/plan?id=<id>&step=paints`). Tabs of the older build
   (`media-organizer-grid` with `grid:…`, `detail:…`, `tag-review`,
   `duplicates`, `practice:setup`, `plans:list`, `plans:edit:…`, `colour:list`,
   `colour:sheet:…`) come back as the place in the one tab (`formerTabs`);
-  its other tabs (an album, a board, a run) come back as they were. Every
-  way in goes to the place: the column's rows, the manifest's commands
+  its other tabs (an album, a board, a run) come back as they were (seen for
+  `grid:favorites`, `grid:recent`, `detail:photo` and an album; the other
+  instance ids read in code and in `moPlaces.test.ts`). Every way in goes to
+  the place (seen on the real app for the column's rows, the seven commands
+  the probe ran, the deep links, the gallery block, the Daily Study card, a
+  grid card and an album's card; read in code for Reveal in Atelier, Open
+  Smart Album, the Duplicates page, a plan's shelf, Open Source Photo and the
+  image editor's photo): the column's rows, the manifest's commands
   (Open Library, Painting Plans, Colour Study, Open Tag Review, Find
   Duplicates, Practice Session, Daily Study, Open Smart Album, Reveal in
   Atelier), the deep links `parallx://media-organizer/photo/<id>` and
@@ -2310,8 +2319,9 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   where you are with the shared mark (a thing's tab in front marks its row;
   a detail marks its list), and its fixed rows are place links (Ctrl+click,
   their menu); a tag, folder or smart album row keeps its own menu and opens
-  its place in a tab of its own by Ctrl+click (and the tab's own menu, Open
-  in Its Own Tab, works for every place). The kit's page header is now the
+  its place in a tab of its own by Ctrl+click (read in code; Ctrl+click was
+  seen on Favorites only), and the tab's own menu, Open in Its Own Tab, works
+  for every place. The kit's page header is now the
   title of Tag Review, Practice Session, Painting Plans, Colour Study, Daily
   Study, a colour sheet and the detail; the grid places and Duplicates had
   it. The grid no longer takes the keys back from the title after a move,
@@ -2338,7 +2348,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   tab passes its view's own `saveViewState`/`restoreViewState` to the
   editor area (`src/services/places.ts`, declared in `parallx.d.ts`, guide
   §4.3b; two tests in `tests/unit/places.test.ts`, both seen failing on the
-  core before). The modularity reviewer found no breach.
+  core before, output not kept; the view-state test calls `createPane`
+  directly: a scroll kept across a real tab switch was not checked). The modularity reviewer found no breach.
   *How it was checked:* the acceptance probe
   `tests/probes/getting-around-atelier-acceptance.mjs`, written first by the
   app-verifier, gave 17/114 on the app as it was (eight guards and nine
@@ -2350,14 +2361,18 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   `tests/unit/moPlaces.test.ts`, new), build. Atelier's own probes on
   981b00db: `mo-keys-probe` and `a11y-drags-probe` exit 0;
   `colour-study-acceptance` 87 ok, 7 FAIL, 3 not run, where it gave 97 ok on
-  26085309 (the build before the piece) — every failure read the active
-  tab's old instance id; see the changed check below; after its correction,
-  97 ok on 2c991b08 (one run of three had two pixel reads fail, 4.4 and
-  9.19, passing on the next; not traced to this piece).
+  26085309 (the build before the piece): 1.2, 1.3, 1.5 and 9.19 read the
+  active tab's old instance id, 1.4, 1.6 and 8.3 failed after them; see the
+  changed check below; after its correction, on 2c991b08, one run 95 ok and
+  2 FAIL (two pixel reads, 4.4 and 9.19), the next 97 ok (not traced to this
+  piece). `a11y-drags-probe` logged one page error, `setPointerCapture` with
+  no active pointer; it was not run on the build before the piece, so
+  whether it is new is not known.
   `practice-probe`, `tag-review-probe`, `menus-probe` and
   `mo-parent-tags-probe` could not run here: they copy his photos from
   `data/dashboard-assets`, which is not in the cloud checkout;
-  `bulk-remove-probe` found no Remove model on disk and checked nothing.
+  `bulk-remove-probe` found no Remove model on disk, checked nothing and
+  exited 2.
   The keyboard audit filtered to Atelier (its openGrid screen, the four
   places with a command of their own, added to its screens, and the seeded
   Painting Plans and Colour Study screens, 22 screens): 0 on every count but
@@ -2365,8 +2380,9 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   thumbnails), Daily Study 1 without a focus ring (the player), the same on
   26085309, so from before the piece, both fixed (47c0b3a5) and 0 on the
   final build; a colour sheet with a picture 2 not focusable once, 0 on
-  both builds when run again. That first full run was stopped by my time
-  limit in its popups pass after 12 of its 22 screens' popups (0 problems on
+  both builds when run again. That first full run ended in its popups pass
+  with the browser closed (its task was killed; taken to be the time limit
+  I gave it, not shown in its log) after 12 of its 22 screens' popups (0 problems on
   those); the two screens fixed were run through all its passes, 0. Its
   dialog pass was not run. The touch-drag probe all ok; the
   visual-consistency probe one rise, Creations' title size, as before piece
@@ -2380,7 +2396,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   nothing (the title takes them now; Alt+Left/Right are left to Back). The
   app-verifier then drove the three fixes on the real app with its own
   probe, `tests/probes/atelier-review-fixes-probe.mjs`: 18 ok on 2c991b08,
-  10 ok and 8 FAIL on 981b00db.
+  10 ok and 8 FAIL on 981b00db (its report; its logs were not kept, and two
+  runs while it was still being written gave one FAIL each).
   *Checks changed:* `tests/probes/colour-study-acceptance.mjs` (an
   acceptance probe of an earlier piece), by the app-verifier, not the
   builder (369ab198): its `activeInstance()` read the active editor's
