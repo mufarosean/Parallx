@@ -59,6 +59,16 @@ const api = {
     createDropdown: (c, o = {}) => { const e = document.createElement('div'); c.appendChild(e); let v = o.selected ?? ''; const ls = []; return { element: e, get value() { return v; }, set value(x) { v = x; }, setItems() {}, onDidChange: (l) => { ls.push(l); return { dispose() {} }; }, focus() {}, setDisabled() {}, dispose() {}, _fire(x) { v = x; ls.forEach((l) => l(x)); }, _items: o.items }; },
     createAiButton: (h, o) => { const b = document.createElement('button'); b.className = 'fc-btn'; b.textContent = o.label; h.appendChild(b); return b; },
     showContextMenu: (pos, items) => { lastMenu = items.map((i) => i.label || '—'); },
+    // The kit's page header and its shared mark, as src/ui/kit.ts createPageHeader and src/ui/link.ts markCurrent draw them:
+    // the pages' titles and the column's mark moved into the core's kit (Getting around, piece 6).
+    createPageHeader: (c, o = {}) => {
+      const h = document.createElement('header'); h.className = o.front ? 'px-page-header px-page-header--front' : 'px-page-header';
+      const t = document.createElement('div'); t.className = 'px-page-header__titles';
+      const h1 = document.createElement('h1'); h1.className = 'px-page-header__title'; h1.textContent = o.title; t.appendChild(h1);
+      if (o.subtitle) { const sub = document.createElement('div'); sub.className = 'px-page-header__subtitle'; sub.textContent = o.subtitle; t.appendChild(sub); }
+      h.appendChild(t); if (c) c.appendChild(h); return h;
+    },
+    markCurrent: (e, on) => { if (on) e.setAttribute('aria-current', 'page'); else e.removeAttribute('aria-current'); e.classList.toggle('px-current', on); },
   },
   lm: {}, links: { registerLinkHandler: () => ({ dispose() {} }) }, dashboard: { registerWidget: () => ({ dispose() {} }) },
 };
@@ -83,6 +93,14 @@ const check = (label, ok, detail = '') => {
 const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 const click = (node) => node.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
 const btnByText = (host, re) => [...host.querySelectorAll('button')].find((b) => re.test(b.textContent));
+// A page's title is the kit's page header (it was .fc-view__title / .fc-home__title before piece 6).
+const titleIn = (node) => node?.querySelector('.px-page-header__title')?.textContent;
+// The column's mark is the shared one: aria-current="page" with px-current (it was fc-sb__nav-item--active / fc-deck-row--active).
+const marked = (node) => [...node.querySelectorAll('[aria-current="page"]')].filter((e) => e.classList.contains('px-current'));
+const oldMarks = (node) => node.querySelectorAll('.fc-sb__nav-item--active, .fc-deck-row--active, [aria-selected="true"]').length;
+/** Exactly one marked control in the column, it passes `is`, and none of Flashcards' own marks are left. */
+const onlyMark = (node, is) => { const m = marked(node); return m.length === 1 && is(m[0]) && oldMarks(node) === 0 && node.querySelectorAll('[aria-current]').length === 1; };
+const markSays = (node) => JSON.stringify({ marked: marked(node).map((e) => e.dataset.view ?? `deck:${e.dataset.deckId}`), old: oldMarks(node) });
 
 console.log('\n=== 1. route survives when no pane is alive ===');
 openEditors.push({ id: 'parallx-community.flashcards:flashcards:main', name: 'Flashcards' });
@@ -93,8 +111,8 @@ document.body.appendChild(host);
 editorProvider.createEditorPane(host, { id: 'x', instanceId: 'main', setName() {} });
 await settle(350);
 check('flashcards.customStudy lands on Custom Study, not the default view',
-  host.querySelector('.fc-view__title')?.textContent === 'Custom Study',
-  'saw: ' + host.querySelector('.fc-view__title')?.textContent);
+  titleIn(host) === 'Custom Study',
+  'saw: ' + titleIn(host));
 
 console.log('\n=== 2. sidebar navigation rail ===');
 const sbHost = document.createElement('div');
@@ -106,15 +124,15 @@ check('rail lists every destination', JSON.stringify(rail) === JSON.stringify(['
 check('rail is above the scroller (does not scroll away)',
   sbHost.querySelector('.fc-sidebar > .fc-sb__nav') !== null);
 check('rail lights the view the pane is on (Custom Study lights Study)',
-  sbHost.querySelector('.fc-sb__nav-item--active')?.dataset.view === 'study',
-  'lit: ' + sbHost.querySelector('.fc-sb__nav-item--active')?.dataset.view);
+  onlyMark(sbHost, (e) => e.classList.contains('fc-sb__nav-item') && e.dataset.view === 'study'),
+  'lit: ' + markSays(sbHost));
 
 const statsItem = [...sbHost.querySelectorAll('.fc-sb__nav-item')].find((n) => n.dataset.view === 'stats');
 click(statsItem);
 await settle(400);
 check('clicking a rail entry navigates the pane', host.textContent.includes('Stats') || !!host.querySelector('.fc-view'),
   host.querySelector('.fc-pane__body')?.textContent?.slice(0, 60));
-check('rail follows the pane to Stats', sbHost.querySelector('.fc-sb__nav-item--active')?.dataset.view === 'stats');
+check('rail follows the pane to Stats', onlyMark(sbHost, (e) => e.classList.contains('fc-sb__nav-item') && e.dataset.view === 'stats'), markSays(sbHost));
 
 const decksItem = [...sbHost.querySelectorAll('.fc-sb__nav-item')].find((n) => n.dataset.view === 'decks');
 click(decksItem);
@@ -122,7 +140,7 @@ await settle(400);
 
 console.log('\n=== 3. Decks home page ===');
 const body = host.querySelector('.fc-pane__body');
-check('home has a masthead', body.querySelector('.fc-home__title')?.textContent === 'Decks');
+check('home has a masthead', titleIn(body) === 'Decks', titleIn(body));
 check('masthead summarises the collection', /2 decks · 95 cards · next exam in \d+ days/.test(body.querySelector('.fc-home__sub')?.textContent || ''),
   body.querySelector('.fc-home__sub')?.textContent);
 check("today's numbers are on the home page", body.querySelectorAll('.fc-home__stat').length === 3);
@@ -146,23 +164,24 @@ check('breadcrumb on the home reads Decks', host.querySelector('.fc-pane__crumbs
   host.querySelector('.fc-pane__crumbs')?.textContent);
 click([...body.querySelectorAll('.fc-deck-card__info')][0]);
 await settle(400);
-check('deck-scoped breadcrumb names the deck',
-  /Decks\s*\/\s*Exam 7/.test(host.querySelector('.fc-pane__crumbs')?.textContent || ''),
-  host.querySelector('.fc-pane__crumbs')?.textContent);
-check('rail lights Decks while inside a deck', sbHost.querySelector('.fc-sb__nav-item--active')?.dataset.view === 'decks');
+// The trail "Flashcards › Exam 7" is the core's now (the bar under the tabs; getting-around-flashcards-acceptance K
+// reads it in the real app). In the pane, where you are is the page's title: the deck's name, exactly.
+check('deck-scoped breadcrumb names the deck', titleIn(host) === 'Exam 7', titleIn(host));
+// CHANGED DEMAND (his pick: the column marks where you are with the one shared mark, and only it): inside a deck
+// the mark is on the deck's row alone, where it used to light both Decks and the deck's row.
+check('rail lights Decks while inside a deck (now: Decks is not marked; the deck\'s row is)',
+  !marked(sbHost).some((e) => e.dataset.view === 'decks') && onlyMark(sbHost, (e) => e.classList.contains('fc-deck-row') && e.dataset.deckId === '1'), markSays(sbHost));
 check('the deck row in the sidebar is selected',
-  sbHost.querySelector('.fc-deck-row--active')?.dataset.deckId === '1',
-  sbHost.querySelector('.fc-deck-row--active')?.dataset.deckId);
+  onlyMark(sbHost, (e) => e.classList.contains('fc-deck-row') && e.dataset.deckId === '1'), markSays(sbHost));
 const backCrumb = [...host.querySelectorAll('.fc-crumb--link')][0];
-click(backCrumb);
-await settle(400);
-check('breadcrumb walks back to the home', host.querySelector('.fc-home__title')?.textContent === 'Decks');
+if (backCrumb) { click(backCrumb); await settle(400); }
+check('breadcrumb walks back to the home', !!backCrumb && titleIn(host.querySelector('.fc-pane__body')) === 'Decks', backCrumb ? titleIn(host) : 'no crumb in the pane');
 
 console.log('\n=== 5. Custom Study + Review Ahead ===');
 document.dispatchEvent(new dom.window.CustomEvent('parallx.flashcards.route', { detail: { view: 'custom' } }));
 await settle(350);
 const cs = host.querySelector('.fc-pane__body');
-check('Custom Study opens', cs.querySelector('.fc-view__title')?.textContent === 'Custom Study');
+check('Custom Study opens', titleIn(cs) === 'Custom Study', titleIn(cs));
 check('availability is reported', /\d+ new cards available/.test(cs.querySelector('.fc-cs__avail')?.textContent || ''),
   cs.querySelector('.fc-cs__avail')?.textContent);
 let start = btnByText(cs, /Study \d+ Cards?/);
