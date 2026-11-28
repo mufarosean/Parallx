@@ -364,7 +364,30 @@ async function boot() {
 const state = async () => { const s = await P(() => window.__csProbe.state()); if (!s) throw new Error('no visible .mo-cs with __moColourStudy.state()'); return s; };
 const stateOrNull = () => P(() => window.__csProbe.state()).catch(() => null);
 const until = async (fn, ms = 3_000) => { const end = Date.now() + ms; let v; for (;;) { try { v = await fn(); } catch { v = null; } if (v || Date.now() > end) return v; await wait(120); } };
-const activeInstance = () => P(() => { const m = window.__parallx_workbench__._services.get({ id: 'IEditorGroupService' })?.activeGroup?.model; const e = m?.editors?.[m.activeIndex] ?? m?.activeEditor; return e ? String(e.instanceId ?? e.id ?? '') : null; });
+// Which Atelier screen the active tab shows, named as the screen's old tab id (colour:list, colour:sheet:<id>,
+// plans:edit:<id>, plans:list). Atelier's screens became places in its one tab (instanceId `main`, typeId
+// media-organizer-place, 2c991b08); there the screen is read from the trail's last crumb's address
+// (parallx://place/media-organizer/<place>?id=<id>), the same screen the old id named.
+const activeInstance = () => P(() => {
+  const m = window.__parallx_workbench__._services.get({ id: 'IEditorGroupService' })?.activeGroup?.model;
+  const e = m?.editors?.[m.activeIndex] ?? m?.activeEditor;
+  if (!e) return null;
+  const typeId = String(e.typeId ?? e.editorTypeId ?? e.data?.typeId ?? '');
+  const isPlace = typeId === 'media-organizer-place' || String(e.id ?? '').includes(':media-organizer-place:');
+  if (!isPlace) return String(e.instanceId ?? e.id ?? '');
+  const vis = (x) => !!x && x.getClientRects().length > 0;
+  const ribbon = [...document.querySelectorAll('.editor-group .editor-ribbon')].find((r) => vis(r) && !r.classList.contains('hidden') && r.closest('.editor-group')?.querySelector('.ui-tab--active'));
+  const crumbs = ribbon ? [...ribbon.querySelectorAll('.parallx-breadcrumb-item')].filter(vis) : [];
+  const addr = [...crumbs].reverse().map((c) => c.dataset.address || '').find((a) => /^parallx:\/\/place\/media-organizer\//.test(a)) || '';
+  const mm = /^parallx:\/\/place\/media-organizer\/([^?#/]+)(?:\?([^#]*))?$/.exec(addr);
+  if (!mm) return `place:${addr}`;
+  const id = new URLSearchParams(mm[2] || '').get('id');
+  if (mm[1] === 'colour') return 'colour:list';
+  if (mm[1] === 'sheet') return `colour:sheet:${id}`;
+  if (mm[1] === 'plans') return 'plans:list';
+  if (mm[1] === 'plan') return `plans:edit:${id}`;
+  return `place:${mm[1]}${id ? `:${id}` : ''}`;
+});
 const ctl = (id) => `[data-px-id="media-organizer.colour.${id}"]`;
 // The box of the nth visible match (inside the sheet unless `anywhere`), scrolled into view.
 async function boxOf(sel, { nth = 0, anywhere = false } = {}) {
