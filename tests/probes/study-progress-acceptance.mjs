@@ -352,6 +352,24 @@ function installProbeModel() {
 // the bars with their parts.
 function installPageHelpers() {
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  // Study's screens became places in its one tab (editor type study-place, c3eebb8f): the tab is named for the
+  // place ("Progress", "Mack") and the trail under the tabs reads Study › Exam 7 › Progress. A place tab is named
+  // here by the screen it shows, read from the place (its address and its trail), as its own tab was named
+  // before: "Exam 7 Progress", "Exam 7 · Mack", the plan's name, "Study" for Home. Any other tab keeps its label.
+  const studyPlaceName = (id, label) => {
+    if (!/:study-place:/.test(id)) return label;
+    const groups = window.__parallx_workbench__?._services.get({ id: 'IEditorGroupService' })?.groups || [];
+    const e = groups.flatMap((g) => g.model?.editors || []).find((x) => x.id === id);
+    const m = /^parallx:\/\/place\/study\/([^?#/]+)/.exec(String(e?.place || ''));
+    if (!m) return label;
+    const trail = (e.trail || []).map((c) => norm(c.label));
+    const subject = trail.length >= 3 ? trail[trail.length - 2] : '';
+    const here = trail[trail.length - 1] || label;
+    if (m[1] === 'progress' && subject) return `${subject} Progress`;
+    if (m[1] === 'unit' && subject) return `${subject} · ${here}`;
+    if (m[1] === 'home') return 'Study';
+    return label;
+  };
   const shown = (n) => !!n && n.getClientRects().length > 0 && n.getBoundingClientRect().width > 0 && getComputedStyle(n).visibility !== 'hidden';
   const CLICKABLE = 'button, [role="button"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="radio"], [role="tab"], [role="treeitem"], [role="checkbox"], [role="switch"], a[href], summary, input[type="checkbox"], input[type="radio"]';
   const FIELDS = 'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), textarea, select, [role="combobox"], [role="radiogroup"], [role="listbox"], [role="group"], button[aria-haspopup]';
@@ -531,7 +549,7 @@ function installPageHelpers() {
       };
     },
     results: () => { const r = scopeEl('root'); return !!r && Array.from(r.querySelectorAll('.st-res')).some(shown); },
-    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; return { id: t.getAttribute('data-tab-id') || '', active: t.classList.contains('ui-tab--active'), label: norm(t.querySelector('.ui-tab-label')?.textContent), ...point(l) }; }),
+    tabs: () => Array.from(document.querySelectorAll('.ui-tab')).map((t) => { const l = t.querySelector('.ui-tab-label') || t; const id = t.getAttribute('data-tab-id') || ''; return { id, active: t.classList.contains('ui-tab--active'), label: studyPlaceName(id, norm(t.querySelector('.ui-tab-label')?.textContent)), ...point(l) }; }),
     tableState(dbId) { const t = table(dbId); return t ? { heads: t.heads, titles: t.rows.map((r) => norm(r.querySelector('.canvas-db-cell__titletext')?.textContent)) } : null; },
     cell(dbId, rowTitle, column) {
       const t = table(dbId);
@@ -921,8 +939,15 @@ async function cardAfter(S, ms = 4000) {
 }
 async function studyUnit(S, subject, unit) {
   const pt = must(await subjectPoint(S, unit, { under: subject }), `the unit "${unit}" under "${subject}" in the sidebar`);
+  // A unit pressed gave it a tab of its own; now it moves Study's one tab (which may be on Progress), and Ctrl+click
+  // gives it a tab of its own (c3eebb8f): Ctrl+click, so the tab that was open stays open as before.
+  await S.page.keyboard.down('Control');
   await S.click(pt);
+  await S.page.keyboard.up('Control');
   let card = await cardAfter(S, 3000);
+  // The unit is a place in Study's one tab now, and the keys land on the page's title, not on its Study… (c3eebb8f):
+  // the page's Study… is pressed where Enter pressed it before.
+  if (!card && (await S.press('root', /./, '[data-px-id="study.unit.study"]'))) card = await cardAfter(S, 2500);
   if (!card) { await S.page.keyboard.press('Enter'); card = await cardAfter(S, 2500); }
   if (!card) { await S.page.mouse.dblclick(pt.x, pt.y); card = await cardAfter(S, 3000); }
   return must(card, `a first question after activating the unit "${unit}"`);
