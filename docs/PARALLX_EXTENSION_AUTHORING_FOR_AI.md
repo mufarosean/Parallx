@@ -366,11 +366,14 @@ const reg = api.places.register({
   titleOf: (loc) => undefined,        // optional: the tab's name for a location (default: the place's title)
   trailOf: (loc) => [                 // optional: the steps after the tool, last = where the tab is
     { label: 'Stats', location: { place: 'stats' } },
+    // a step that is a thing, not a place (the album a photo was opened from): give open instead of location
+    // { label: 'Summer', open: ({ newTab }) => api.editors.openEditor({ ... }) },
   ],
   createView(container, host) {       // once per tab; draw into container
     return {
       async show(loc) { /* draw loc.place with loc.params; resolve once on screen */ },
       dispose() { /* remove listeners */ },
+      // optional: saveViewState() / restoreViewState(state), kept by the editor area across a switch of tabs (a list's scroll)
     };
     // host.go({ place, params })      a link on your page moves the tab (named, trailed, keys on the title)
     // host.replace({ place, params }) your page changed where it is by itself: record it, no redraw

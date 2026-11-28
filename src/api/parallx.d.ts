@@ -1566,10 +1566,16 @@ export interface PlaceDefinition {
   readonly title: string;
 }
 
-/** A step of the trail after the tool: `Tasks`, then `Overdue`. */
+/**
+ * A step of the trail after the tool: `Tasks`, then `Overdue`. A step that is
+ * not one of the tool's places (a thing a place sits over, as the album a photo
+ * was opened from) gives `open` instead of `location`: its crumb runs it.
+ */
 export interface PlaceStep {
   readonly label: string;
-  readonly location: PlaceLocation;
+  readonly location?: PlaceLocation;
+  /** Run when the crumb is pressed, in place of moving the tab (`newTab`: Ctrl+click or the crumb's menu). */
+  open?(options: { readonly newTab: boolean }): void;
 }
 
 /** What the core gives a tool's view of its places. */
@@ -1584,6 +1590,9 @@ export interface PlaceViewHost {
 export interface PlaceView extends IDisposable {
   /** Draw this place; resolve once it is on screen (the keys then go to its page header's title). */
   show(location: PlaceLocation): void | Promise<void>;
+  /** What the drawing keeps across a switch of tabs (a list's scroll); given back to `restoreViewState` when its tab returns. */
+  saveViewState?(): unknown;
+  restoreViewState?(state: unknown): void;
 }
 
 /** What a tool registers with {@link places.register}. */

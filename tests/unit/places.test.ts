@@ -163,4 +163,40 @@ describe('places', () => {
     expect([...h.tabs.values()][0].input.name).toBe('Home');
     expect(await svc.openAddress('parallx://place/other/home')).toBe(false);
   });
+  it('a step that is a thing, not a place, opens what it names from its crumb, and the tab stays where it is', async () => {
+    const svc2 = new PlacesService();
+    const h2 = makeHost(() => svc2);
+    const opened: boolean[] = [];
+    svc2.register('tool', {
+      id: 'demo', title: 'Demo', icon: 'calendar',
+      places: [{ id: 'home', title: 'Home' }, { id: 'stats', title: 'Stats' }],
+      trailOf: (loc) => [{ label: 'Summer', open: (o) => { opened.push(o.newTab); } }, { label: 'Stats', location: loc }],
+      createView: () => ({ show() { /* drawn */ }, dispose() { /* nothing */ } }),
+    }, h2.host);
+    await svc2.open('demo', { place: 'stats' });
+    const tab = [...h2.tabs.values()][0].input;
+    expect(tab.trail?.map((c) => c.label)).toEqual(['Demo', 'Summer', 'Stats']);
+    expect(tab.trail?.[1].address).toBeUndefined();
+    tab.trail?.[1].open?.({ newTab: false });
+    tab.trail?.[1].open?.({ newTab: true });
+    expect(opened).toEqual([false, true]);
+    expect(svc2.current('demo')).toEqual({ place: 'stats' });
+    expect(h2.tabs.size).toBe(1);
+  });
+
+  it('a place tab keeps its view\'s own state across a switch of tabs', () => {
+    const svc2 = new PlacesService();
+    const h2 = makeHost(() => svc2);
+    const restored: unknown[] = [];
+    svc2.register('tool', {
+      id: 'demo', title: 'Demo', icon: 'calendar',
+      places: [{ id: 'home', title: 'Home' }],
+      createView: () => ({ show() { /* drawn */ }, dispose() { /* nothing */ }, saveViewState: () => ({ scrollTop: 120 }), restoreViewState: (st) => { restored.push(st); } }),
+    }, h2.host);
+    const pane = svc2.createPane('demo', document.createElement('div'), new FakeInput('tool:demo:main'));
+    expect(pane.saveViewState?.()).toEqual({ scrollTop: 120 });
+    pane.restoreViewState?.({ scrollTop: 120 });
+    pane.restoreViewState?.(undefined);
+    expect(restored).toEqual([{ scrollTop: 120 }]);
+  });
 });

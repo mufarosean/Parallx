@@ -46,7 +46,7 @@ export function moRenderPlansList(container, api) {
   let disposed = false;
   const head = moEl('div', 'mo-plans-head');
   const words = moEl('div', 'mo-plans-words');
-  words.append(moEl('div', 'mo-home-title', { textContent: 'Painting Plans' }), moEl('div', 'mo-home-sub', { textContent: 'Work the design out on the photo before the canvas: crop, values, colours and a board to lay it all out.' }));
+  ui.createPageHeader(words, { title: 'Painting Plans', subtitle: 'Work the design out on the photo before the canvas: crop, values, colours and a board to lay it all out.' });
   head.appendChild(words);
   const newBtn = ui.createButton(head, { id: 'media-organizer.plans.newPlan', label: 'New Plan From Photo…', kind: 'primary', command: 'media-organizer.plans.newPlan' });
   newBtn.setAttribute('aria-expanded', 'false');

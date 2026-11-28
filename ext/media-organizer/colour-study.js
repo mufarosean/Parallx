@@ -272,7 +272,10 @@ export function moRenderColourSheet(container, api, sheetId) {
     if (p) st.shown = st.base;
     change();
   }
-  function show(next) { view = next; if (next !== 'bench') fixing = ''; change(false); const first = (next === 'bench' ? benchView : next === 'paints' ? paintsView : rowsView).querySelector('button, [tabindex="0"]'); if (first && next !== 'rows') queueMicrotask(() => first.focus()); }
+  function show(next) { view = next; if (next !== 'bench') fixing = ''; change(false); root.dispatchEvent(new CustomEvent('mo:place-step', { bubbles: true, detail: { step: next === 'rows' ? '' : next } })); const first = (next === 'bench' ? benchView : next === 'paints' ? paintsView : rowsView).querySelector('button, [tabindex="0"]'); if (first && next !== 'rows') queueMicrotask(() => first.focus()); }
+  // The mix and My Paints are steps of the sheet's place: the trail names them, and asks for one (a crumb, Back).
+  const onPlaceTo = (e) => { const want = e.detail && (e.detail.step === 'bench' || e.detail.step === 'paints') ? e.detail.step : 'rows'; if (want !== view) show(want); };
+  root.dataset.moSteps = 'sheet'; root.addEventListener('mo:place-to', onPlaceTo);
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { saveTimer = 0; void deps.db.run('UPDATE mo_colour_sheets SET state_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(st), new Date().toISOString(), sheetId]).then(() => document.dispatchEvent(new CustomEvent(HOME))).catch(() => {}); }, 350);
@@ -727,7 +730,7 @@ export function moRenderColourSheet(container, api, sheetId) {
       clearTimeout(frameTimer); clearTimeout(pickTimer); clearTimeout(subsTimer);
       if (ro) ro.disconnect();
       document.removeEventListener('mo:paints-changed', onPaints); document.removeEventListener(HOME, onRenamed);
-      root.removeEventListener('keydown', onKey);
+      root.removeEventListener('keydown', onKey); root.removeEventListener('mo:place-to', onPlaceTo);
       drop(benchOwned); drop(paintsOwned); drop(disposers);
       container.replaceChildren();
     },

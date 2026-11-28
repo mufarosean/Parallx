@@ -36,10 +36,16 @@ export interface PlaceDefinition {
   readonly title: string;
 }
 
-/** A step of the trail after the tool: 'Tasks', then 'Overdue'. */
+/**
+ * A step of the trail after the tool: 'Tasks', then 'Overdue'. A step that
+ * is not one of the tool's places (a thing a place sits over, as an album a
+ * photo was opened from) gives `open` instead: its crumb runs it.
+ */
 export interface PlaceStep {
   readonly label: string;
-  readonly location: PlaceLocation;
+  readonly location?: PlaceLocation;
+  /** Run when the crumb is pressed, in place of moving the tab to `location` (`newTab`: Ctrl+click or its menu). */
+  open?(options: { readonly newTab: boolean }): void;
 }
 
 /** What the core gives a tool's view of its places. */
@@ -54,6 +60,9 @@ export interface PlaceViewHost {
 export interface PlaceView extends IDisposable {
   /** Draw this place. Resolves once it is on screen. */
   show(location: PlaceLocation): void | Promise<void>;
+  /** What the drawing keeps across a switch of tabs (a list's scroll); given back by `restoreViewState` when the tab returns. */
+  saveViewState?(): unknown;
+  restoreViewState?(state: unknown): void;
 }
 
 export interface PlacesContribution {
@@ -417,7 +426,7 @@ export class PlacesService {
   // ── The tab ──────────────────────────────────────────────────────────
 
   /** Draw a tool's places into a tab: what the bridge's editor provider does for each pane. */
-  createPane(tool: string, container: HTMLElement, input: PlaceTabInput): IDisposable {
+  createPane(tool: string, container: HTMLElement, input: PlaceTabInput): IDisposable & { saveViewState?(): unknown; restoreViewState?(state: unknown): void } {
     const entry = this._entries.get(tool);
     if (!entry) return toDisposable(() => { /* the tool went */ });
     const pending = this._pending.get(input.id);
@@ -442,9 +451,14 @@ export class PlacesService {
     // A view that moved itself while being made (a form it opened on the way) keeps that place.
     void this._move(theTab, theTab.location, pending?.focus ?? false, true);
     const view = theTab.view;
-    return toDisposable(() => {
+    const pane = toDisposable(() => {
       if (theTab.view === view) { theTab.view = undefined; theTab.container = undefined; }
       try { view.dispose(); } catch (err) { console.warn('[Places] a view failed to close:', err); }
+    });
+    // The editor area keeps a view's own state across a switch of tabs, when it has any.
+    return Object.assign(pane, {
+      saveViewState: (): unknown => view.saveViewState?.(),
+      restoreViewState: (state: unknown): void => { if (state !== undefined) view.restoreViewState?.(state); },
     });
   }
 
@@ -490,8 +504,14 @@ export class PlacesService {
     const first: PlaceLocation = { place: c.places[0].id };
     const crumbs: IEditorTrailCrumb[] = [{ label: c.title, icon: hasIcon(c.icon) ? c.icon : 'layout-dashboard', address: placeAddress(tool, first), open: go(first) }];
     steps.forEach((s, i) => {
-      const loc = this._normalize(entry, s.location);
-      crumbs.push({ label: s.label, address: placeAddress(tool, loc), open: go(loc), ...(i === steps.length - 1 ? { current: true } : {}) });
+      const last = i === steps.length - 1 ? { current: true } : {};
+      if (s.open && !s.location) {
+        const open = s.open.bind(s);
+        crumbs.push({ label: s.label, open: (o: { readonly newTab: boolean }) => { try { open({ newTab: o.newTab }); } catch (err) { console.warn('[Places] a crumb failed to open:', err); } }, ...last });
+        return;
+      }
+      const loc = this._normalize(entry, s.location ?? tab.location);
+      crumbs.push({ label: s.label, address: placeAddress(tool, loc), open: s.open ? (o: { readonly newTab: boolean }) => s.open!({ newTab: o.newTab }) : go(loc), ...last });
     });
     return crumbs;
   }

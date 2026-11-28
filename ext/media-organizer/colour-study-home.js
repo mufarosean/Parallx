@@ -94,7 +94,7 @@ export function moRenderColourHome(container, api) {
   let disposed = false;
   const head = moEl('div', 'mo-plans-head');
   const words = moEl('div', 'mo-plans-words');
-  words.append(moEl('div', 'mo-home-title', { textContent: 'Colour Study' }), moEl('div', 'mo-home-sub', { textContent: 'Learn to mix a colour from the paints you have: what goes in it and why, and what each tube does to it.' }));
+  ui.createPageHeader(words, { title: 'Colour Study', subtitle: 'Learn to mix a colour from the paints you have: what goes in it and why, and what each tube does to it.' });
   head.appendChild(words);
   ui.createButton(head, { id: 'media-organizer.colour.newSheet', label: 'New Colour Study', icon: 'plus', kind: 'primary', command: 'media-organizer.colour.newSheet' });
   root.appendChild(head);

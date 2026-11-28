@@ -14,6 +14,7 @@
 // Every action is a command (media-organizer.duplicates.*).
 
 import { moEl } from './dom.js';
+import { moOpenPlace } from './atelier-places.js';
 
 /** Bits two photos may differ by and still look alike. */
 export const MO_LOOKALIKE_MAX = 8;
@@ -186,9 +187,9 @@ export function moDuplicatesActivate(api, d) {
   return subs;
 }
 
-/** Open the Duplicate Finder (the sidebar row, and Find Duplicates in the palette). */
+/** Open the Duplicate Finder (the sidebar row, and Find Duplicates in the palette): a place in Atelier's one tab. */
 export function moOpenDuplicates(api) {
-  return api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Duplicates', icon: 'copy', instanceId: 'duplicates' });
+  return moOpenPlace(api, 'duplicates');
 }
 
 // ── The page ──

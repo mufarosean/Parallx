@@ -6,6 +6,7 @@ import { moEl } from './dom.js';
 import { moRenderColourSheet } from './colour-study.js';
 import { moColourStudyActivate, moRenderColourHome } from './colour-study-home.js';
 import { moBrowsePhotos } from './colour-study-picture.js';
+import { moOpenPlace, moPlaceName } from './atelier-places.js';
 
 let planInUse = null;
 /** The plan whose editor was opened last: Open In Colour Study, run as a bare command, means that one. */
@@ -16,11 +17,12 @@ export function moColourPlanOpened(planId) { planInUse = planId; }
  *   resolvePath(item), fileUrl(path), artGate(api, retry), artOn(), injectStyles() }
  */
 export function moColourHost(api, h) {
-  const open = (title, instanceId) => api.editors.openEditor({ typeId: 'media-organizer-grid', title, icon: 'swatch-book', instanceId });
-  const openHome = () => { if (h.artGate(api, openHome)) open('Colour Study', 'colour:list'); };
+  // Colour Study and each sheet are places in Atelier's one tab (atelier-places.js); a sheet sits over Colour Study.
+  const openHome = () => { if (h.artGate(api, openHome)) void moOpenPlace(api, 'colour'); };
+  const openSheet = (id, title) => { moPlaceName('sheet', id, title); return moOpenPlace(api, 'sheet', { id }); };
   const b = h.boardDeps(api);
   const deps = {
-    api, db: h.db, getSetting: h.getSetting, setSetting: h.setSetting, openHome, openSheet: (id, title) => open(title || 'Colour Study', `colour:sheet:${id}`),
+    api, db: h.db, getSetting: h.getSetting, setSetting: h.setSetting, openHome, openSheet,
     browsePhotos: (text, offset, limit) => moBrowsePhotos(h.db, text, offset, limit), thumb: b.thumb, planInUse: () => planInUse,
     photoTitle: async (id) => { const r = await h.db.get("SELECT COALESCE(NULLIF(p.title, ''), f.basename) AS title FROM mo_photos p JOIN mo_files f ON f.id = (SELECT file_id FROM mo_photos_files WHERE photo_id = p.id ORDER BY is_primary DESC LIMIT 1) WHERE p.id = ?", [id]).catch(() => null); return r ? r.title : ''; },
     // The original photo, to read colours from.

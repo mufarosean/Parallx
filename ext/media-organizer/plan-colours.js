@@ -341,8 +341,7 @@ export function moPlanColours(ctx) {
   // ── My Paints, opened from the Colour step ──
   function pickPanel(panel, panelDisposers) { if (view === 'paints') paintsPanel(panel, panelDisposers); }
   function paintsPanel(panel, panelDisposers) {
-    readout = null;
-    focusIfPending('back', ui.createButton(panel, { id: 'media-organizer.plan.backFromPaints', label: 'Back To Colours', icon: 'chevron-left', kind: 'ghost', size: 'sm', command: 'media-organizer.plan.backFromPaints' }));
+    readout = null; // the way back to the colours is the trail's crumb before My Paints (atelier-places.js), and Back
     const s1 = moEl('div', 'mo-plan-section');
     const head = moEl('div', 'mo-pc-head');
     head.append(moEl('div', 'mo-practice-section-title', { textContent: 'Paints you have' }), moEl('span', 'mo-practice-dim', { textContent: String(shared.paints.length) }));
@@ -382,19 +381,25 @@ export function moPlanColours(ctx) {
     s2.appendChild(check('Prefer fewer paints', 'media-organizer.plan.preferFewer', R.preferFewer, (v) => { R.preferFewer = v; changed(true); }));
     s2.appendChild(moEl('div', 'mo-practice-dim mo-plan-hint', { textContent: 'With fewer paints preferred, a simpler mix that is nearly as close comes first. Water is for watercolour, where the paper lightens.' }));
     panel.appendChild(s2);
+    const first = s1.querySelector('button, [tabindex="0"]');
+    if (first) focusIfPending('paints', first);
   }
 
   // ── small parts ──
   // The view just opened takes the focus where the keyboard expects it.
   function focusIfPending(kind, el) {
-    if (kind === 'back') el.classList.add('mo-pc-back');
     if (pendingFocus === kind) { pendingFocus = null; queueMicrotask(() => queueMicrotask(() => el.focus())); }
     return el;
   }
   function button(label, action) { return ui.createButton(null, { id: `media-organizer.plan.${action}`, label, kind: 'secondary', size: 'sm', command: `media-organizer.plan.${action}` }); }
   const changed = (keep) => { lastMix = null; void savePaints(io); ctx.afterRecipeChange(false, keep === true); };
   // What each command does on this plan (PLAN_ACTIONS). Panels follow the state.
-  const show = (v) => { view = v; pendingFocus = v === 'paints' ? 'back' : null; if (state.tool !== 'colour') ctx.setTool('colour'); else ctx.afterRecipeChange(false); };
+  const show = (v) => {
+    view = v; pendingFocus = v === 'paints' ? 'paints' : null;
+    if (state.tool !== 'colour') ctx.setTool('colour'); else ctx.afterRecipeChange(false);
+    // My Paints is a step of the plan's place: the trail names it, and its crumb before comes back here.
+    ctx.root.dispatchEvent(new CustomEvent('mo:place-step', { bubbles: true, detail: { step: v === 'paints' ? 'paints' : '' } }));
+  };
   const acts = {
     async renameStage() {
       const n = currentStage(); if (!n) return;
@@ -506,6 +511,9 @@ export function moPlanColours(ctx) {
   const onFocusIn = () => { lastUsed = handle; if (shared.focusKey) shared.focusKey.set(true); };
   const onFocusOut = (e) => { if (shared.focusKey && !ctx.root.contains(e.relatedTarget)) shared.focusKey.set(false); };
   ctx.root.addEventListener('focusin', onFocusIn); ctx.root.addEventListener('focusout', onFocusOut);
+  // The trail (or Back) asks for a step: My Paints, or the colours.
+  const onPlaceTo = (e) => { const want = e.detail && e.detail.step === 'paints' ? 'paints' : 'list'; if ((view === 'paints') !== (want === 'paints')) show(want); };
+  ctx.root.dataset.moSteps = 'plan'; ctx.root.addEventListener('mo:place-to', onPlaceTo);
   void loadShared(io).then(() => { if (state.recipe) ctx.afterRecipeChange(false); });
 
   return {
@@ -520,7 +528,7 @@ export function moPlanColours(ctx) {
       open.delete(handle);
       if (lastUsed === handle) lastUsed = null;
       if (shared.focusKey && ctx.root.contains(document.activeElement)) shared.focusKey.set(false);
-      ctx.root.removeEventListener('focusin', onFocusIn); ctx.root.removeEventListener('focusout', onFocusOut);
+      ctx.root.removeEventListener('focusin', onFocusIn); ctx.root.removeEventListener('focusout', onFocusOut); ctx.root.removeEventListener('mo:place-to', onPlaceTo);
       for (const d of disposers.splice(0)) { try { d(); } catch { /* gone */ } }
       layer.remove();
     },

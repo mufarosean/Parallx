@@ -2,7 +2,8 @@
 // Study sheet: the bench, where a mix is changed (parts, a swapped tube, one
 // more squeeze of each, what to do when it is wrong), and My Paints, where
 // the painter's list and its named sets are kept. Both only draw: every
-// control runs one of the sheet's commands (colour-study-home.js).
+// control runs one of the sheet's commands (colour-study-home.js). The way back to
+// the rows is the trail's crumb before the panel (atelier-places.js), and Back.
 
 import { moEl, moSlug } from './dom.js';
 import { MO_COMMON_PAINTS } from './colour.js';
@@ -23,7 +24,6 @@ export function moDrawBench(c) {
   head.append(moEl('span', 'mo-practice-section-title', { textContent: 'The mix' }), moEl('span', 'mo-cs-grow'));
   const reset = go(head, 'resetMix', rec && rec.paints.length ? `Back to ${rec.paints.map((p) => p.parts).join(' : ')}` : 'Back to the Recipe', 'rotate-ccw', { kind: 'ghost', title: 'Undo the changes to the mix' });
   reset.disabled = !c.edited;
-  go(head, 'closeBench', 'Back to Rows', 'chevron-left', { kind: 'ghost' });
   view.appendChild(head);
   const d = c.drift;
   view.appendChild(moEl('div', 'mo-cs-drift', { role: 'status', textContent: !d ? 'Put a paint down to start a mix.' : !c.edited ? '' : d.text === 'the same' ? 'Your mix matches the target: the eye would not tell them apart.' : `Your mix is ${d.text} than the target.` }));
@@ -81,7 +81,6 @@ export function moDrawPaints(c) {
   view.replaceChildren();
   const head = moEl('div', 'mo-cs-line');
   head.append(moEl('span', 'mo-practice-section-title', { textContent: 'Paints you have' }), moEl('span', 'mo-practice-dim', { textContent: String(all.length) }), moEl('span', 'mo-cs-grow'));
-  go(head, 'closePaints', 'Back to Rows', 'chevron-left', { kind: 'ghost' });
   view.appendChild(head);
   view.appendChild(moEl('div', 'mo-practice-dim mo-cs-cap', { textContent: setInfo.current ? `These are the set ${setInfo.current}. Change them and save the set again to keep the change in it. Painting plans use these paints too.` : `${setInfo.starter ? 'Starter paints until you set your own. ' : ''}Painting plans use these paints too. Save them as a set to keep more than one kit.` }));
   const setRow = moEl('div', 'mo-cs-line mo-cs-wrap');

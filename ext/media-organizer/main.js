@@ -63,7 +63,7 @@
 import { moDeclare, moEl, moList, moSlug, moSurface, moTree, setSceneUi } from './dom.js';
 import { mapBounded, qMarks, sqlChunks } from './batches.js';
 import { moBoxKeys, moReorderKeys, moSliderKeys, moViewKeys } from './keys.js';
-import { moEditGenerate, moEditGenerateActivate } from './edit-generate.js'; import { moGenerateActivate } from './generate-engine.js'; import { moEnhanceVideoActivate, moEnhanceVideoFromLibrary, moEnhanceVideoSweep } from './enhance-video.js'; import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moColourHost, moColourPlanOpened } from './colour-study-host.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
+import { moEditGenerate, moEditGenerateActivate } from './edit-generate.js'; import { MO_PLACES_ID, MO_PLACE_TYPE, moOpenInstance, moOpenItem, moOpenPlace, moPlaceName, moPlaceOfInstance, moPlacesActivate, moRowOfPlace } from './atelier-places.js'; import { moGenerateActivate } from './generate-engine.js'; import { moEnhanceVideoActivate, moEnhanceVideoFromLibrary, moEnhanceVideoSweep } from './enhance-video.js'; import { MO_CSS_MORE } from './styles.js'; import { MO_ENGINE_BLUR_FS, MO_ENGINE_COPY_VS, MO_ENGINE_FS, MO_ENGINE_MASSES_FS, MO_PLAN_VS } from './engine-shaders.js'; import { MO_COMMON_PAINTS, moHexRgb, moOklab, moPalette } from './colour.js'; import { moCopyTags, moPasteTags, moTagClip } from './tag-clipboard.js'; import { moFindFolderAlbum, moMergeDuplicateFolderAlbums } from './folder-albums.js'; import { moPlansListActivate, moRenderPlansList } from './plans-list.js'; import { moColourHost, moColourPlanOpened } from './colour-study-host.js'; import { moPlanColours, moPlanColoursActivate, moPlanStages } from './plan-colours.js'; import { moBoardActivate, moRenderBoard } from './board.js'; import { moBoardContext, moBoardMenuItems } from './board-data.js'; import { moCoverSource } from './cover-source.js'; import { moEnhanceActivate, moEnhanceCard, moEnhanceReady, moEnhanceRun, moEnhanceRunMany, moEnhanceStop } from './enhance-engine.js'; import { moUpscaleBatch } from './upscale-batch.js'; import { moPlanVariations, moPlanVariationsActivate } from './plan-variations.js'; import { moPlanMassesPixels, moPlanStudy, moPlanStudyActivate } from './plan-study.js'; import { moPlanShell, moPlanShellActivate } from './plan-shell.js'; import { moPlanCompose, moPlanComposeActivate } from './plan-compose.js'; import { moPlanPhoto, moPlanPhotoActivate } from './plan-photo.js'; import { moDeepCrop, moDeepFromPpm, moDeepWithBoxes, moPpm16Begin, moPpm16Put } from './raw-deep.js'; import { moEditMasks, moEditMasksActivate, moMaskEnsure, moMaskImageLoader, moMaskImagesReady, moMaskOnImages, moMaskPasses, moMasksNormalize } from './edit-masks.js'; import { moPngField } from './edit-select.js'; import { moPlanIsolate, moPlanIsolateActivate, moPlanIsolateNormalize } from './plan-isolate.js'; import { moFolderMenu, moIsExcluded, moLoadExcluded, moPathWithin, moUnexclude } from './folder-rows.js'; import { moArrangeMenu, moItemKind, moKindsOf } from './item-menu.js'; import { moDuplicateCount, moDuplicatesActivate, moOpenDuplicates, moRenderDuplicates } from './duplicates.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
@@ -5726,9 +5726,9 @@ kbd.mo-key {
 .mo-sidebar-item .mo-icon-wrap { color: var(--px-text-secondary); }
 .mo-sidebar-item:hover { background: var(--px-surface-hover); }
 /* The row whose view is in front. */
-.mo-sidebar-item.is-current { background: var(--px-surface-selected); }
-.mo-sidebar-item.is-current .mo-sidebar-item-label { color: var(--px-text); font-weight: 600; }
-.mo-sidebar-item.is-current .mo-icon-wrap { color: var(--px-accent-text); }
+.mo-sidebar-item.px-current[aria-current] { background: var(--px-surface-selected); }
+.mo-sidebar-item.px-current[aria-current] .mo-sidebar-item-label { color: var(--px-text); font-weight: 600; }
+.mo-sidebar-item.px-current[aria-current] .mo-icon-wrap { color: var(--px-accent-text); }
 /* A job with nothing left in it. */
 .mo-sidebar-item.is-quiet .mo-sidebar-item-label { color: var(--px-text-muted); }
 .mo-sidebar-item:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
@@ -6341,20 +6341,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border-bottom: 1px solid var(--px-divider);
   flex-shrink: 0;
 }
-.mo-detail-header-icon {
-  display: inline-flex;
-  color: var(--px-text-muted);
-  flex-shrink: 0;
-}
-.mo-detail-header-title {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-size: var(--px-text-md);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.mo-detail-header > .px-page-header { flex: 1; min-width: 0; margin: 0; padding: 0; }
+.mo-detail-header .px-page-header__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-detail-header-actions {
   display: flex;
   align-items: center;
@@ -9877,13 +9865,9 @@ function renderBrowserSidebar(container, api) {
     applySidebarLayout();
   }
 
-  function openGrid(filterKey, title, icon) {
-    api.editors.openEditor({
-      typeId: 'media-organizer-grid',
-      title: title || 'Library',
-      icon: icon || 'image',
-      instanceId: `grid:${filterKey}`,
-    });
+  function openGrid(filterKey, title, e) { // a grid's scope is a place in Atelier's one tab (Ctrl+click: a tab of its own); a tag's or folder's name is known here
+    const m = /^(tag|folder|smart):(?:[\d-]*-)?(\d+)$/.exec(filterKey); if (m && title) moPlaceName(m[1], m[2], title);
+    moOpenInstance(api, `grid:${filterKey}`, e && (e.ctrlKey || e.metaKey) ? { newTab: true } : undefined);
   }
 
   function sidebarSection(title, collapsed) {
@@ -9926,7 +9910,9 @@ function renderBrowserSidebar(container, api) {
     if (count !== undefined && count !== null) {
       item.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(count) }));
     }
-    item.addEventListener('click', onClick); if (place) moDeclare(item, `media-organizer.side.place.${moSlug(label)}`, { label }); // a fixed place has an id; a folder, tag or project row is a row
+    // A place's row is a link to it: Ctrl+click (and a fixed row's menu) opens it in a tab of its own; a row with its own menu keeps it.
+    const at = view && moPlaceOfInstance(view); if (at && place) api.ui.bindPlaceLink(item, () => api.places.addressOf(MO_PLACES_ID, at));
+    item.addEventListener('click', (e) => (at && !place && (e.ctrlKey || e.metaKey) ? void moOpenPlace(api, at.place, at.params, { newTab: true }) : onClick(e))); if (place) moDeclare(item, `media-organizer.side.place.${moSlug(label)}`, { label }); // a fixed place has an id; a folder, tag or project row is a row
     return item;
   }
 
@@ -9994,7 +9980,7 @@ function renderBrowserSidebar(container, api) {
     try { rows = await db.all('SELECT id, name FROM mo_smart_albums ORDER BY name COLLATE NOCASE ASC'); } catch { rows = []; }
     smartBody.innerHTML = '';
     for (const r of rows || []) {
-      const open = () => api.editors.openEditor({ typeId: 'media-organizer-grid', title: r.name, icon: 'bookmark', instanceId: `grid:smart:${r.id}` });
+      const open = () => { moPlaceName('smart', r.id, r.name); void moOpenPlace(api, 'smart', { id: r.id }); };
       const item = sidebarItem('bookmark', r.name, null, open, 'Smart', `grid:smart:${r.id}`);
       item.title = `${r.name}: a saved search`;
       item.addEventListener('contextmenu', (e) => {
@@ -10048,7 +10034,7 @@ function renderBrowserSidebar(container, api) {
     stHeader.insertBefore(stBtns, stHeader.querySelector('.mo-chevron'));
   }
   artBody.append(
-    sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api), null, null, true),
+    sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api), null, 'daily', true),
     sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api), null, 'practice:setup', true),
     sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api), null, 'plans:list', true),
     sidebarItem('swatch-book', 'Colour Study', null, () => moColour(api).openHome(), null, 'colour:list', true),
@@ -10105,11 +10091,11 @@ function renderBrowserSidebar(container, api) {
   browseSeg.append(folderSegBtn, tagSegBtn);
   const folderPane = moEl('div', 'mo-browse-pane', { 'data-mo-browse': 'folders' });
   const folderBar = moEl('div', 'mo-browse-bar');
-  const folderBody = moEl('div', 'mo-browse-list'); moList(folderBody, 'media-organizer.side.folderList', 'Folders', () => [...folderBody.querySelectorAll('.is-current .mo-sidebar-item-label, .mo-sidebar-item.is-current > .mo-sidebar-item-label')].map((e) => e.textContent));
+  const folderBody = moEl('div', 'mo-browse-list'); moList(folderBody, 'media-organizer.side.folderList', 'Folders', () => [...folderBody.querySelectorAll('.px-current .mo-sidebar-item-label, .mo-sidebar-item.px-current > .mo-sidebar-item-label')].map((e) => e.textContent));
   folderPane.append(folderBar, folderBody);
   const tagPane = moEl('div', 'mo-browse-pane', { 'data-mo-browse': 'tags' });
   const tagBar = moEl('div', 'mo-browse-bar');
-  const tagBody = moEl('div', 'mo-browse-list'); moTree(tagBody, 'media-organizer.side.tagTree', 'Tags', () => [...tagBody.querySelectorAll('.is-current .mo-sidebar-item-label, .mo-sidebar-item.is-current > .mo-sidebar-item-label')].map((e) => e.textContent));
+  const tagBody = moEl('div', 'mo-browse-list'); moTree(tagBody, 'media-organizer.side.tagTree', 'Tags', () => [...tagBody.querySelectorAll('.px-current .mo-sidebar-item-label, .mo-sidebar-item.px-current > .mo-sidebar-item-label')].map((e) => e.textContent));
   tagPane.append(tagBar, tagBody);
   browseBody.append(browseSeg, folderPane, tagPane);
   let browseMode = 'folders';
@@ -10195,14 +10181,15 @@ function renderBrowserSidebar(container, api) {
   void refreshCounts();
 
   // The row for the editor in front is marked.
+  // The row for where Atelier is (the shared mark): a thing's own tab in front, else the place of Atelier's one tab.
   function syncCurrentRow() {
     let activeId = '';
     try { const a = (api.editors.openEditors || []).find((e) => e.isActive); activeId = a ? String(a.id || '') : ''; } catch { activeId = ''; }
-    for (const row of root.querySelectorAll('.mo-sidebar-item[data-view]')) {
-      row.classList.toggle('is-current', !!activeId && activeId.endsWith(':' + row.dataset.view));
-    }
+    const thing = /:media-organizer-[a-z]+:/.test(activeId) && !activeId.includes(`:${MO_PLACE_TYPE}:`) ? activeId : '';
+    const here = thing ? '' : moRowOfPlace(api.places && api.places.current(MO_PLACES_ID));
+    for (const row of root.querySelectorAll('.mo-sidebar-item[data-view]')) api.ui.markCurrent(row, thing ? thing.endsWith(':' + row.dataset.view) : !!here && row.dataset.view === here);
   }
-  const openEditorsSub = api.editors.onDidChangeOpenEditors ? api.editors.onDidChangeOpenEditors(() => syncCurrentRow()) : null;
+  const openEditorsSub = api.editors.onDidChangeOpenEditors ? api.editors.onDidChangeOpenEditors(() => syncCurrentRow()) : null; const placesSub = api.places && api.places.onDidMove((e) => { if (e.tool === MO_PLACES_ID) syncCurrentRow(); });
 
   async function loadFolders() {
     try {
@@ -10476,7 +10463,7 @@ function renderBrowserSidebar(container, api) {
     });
 
     // Open grid filtered by this tag.
-    row.addEventListener('click', () => openGrid(branchKey, tag.name, 'tag'));
+    row.addEventListener('click', (e) => openGrid(branchKey, tag.name, e)); // Ctrl+click: in a tab of its own
 
     // Right-click — Favorite / Rename / Merge / Delete + hierarchy ops.
     row.addEventListener('contextmenu', (e) => {
@@ -11183,7 +11170,7 @@ function renderBrowserSidebar(container, api) {
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); void loadSmartAlbums(); refreshCountsSoon(); };
   _sidebarRefreshCallbacks.push(refreshAll);
 
-  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); document.removeEventListener('mo:delete-mode-changed', refreshCountsSoon); document.removeEventListener('mo:favorite-changed', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
+  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); document.removeEventListener('mo:delete-mode-changed', refreshCountsSoon); document.removeEventListener('mo:favorite-changed', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); if (placesSub) placesSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -12929,12 +12916,7 @@ function renderGridBrowser(container, api, input) {
     // No explicit state save needed here — the workbench calls our
     // saveViewState() hook synchronously before tearing the grid pane
     // down, which captures the live gridArea.scrollTop.
-    api.editors.openEditor({
-      typeId: 'media-organizer-grid',
-      title: item.title || `${item.type} #${item.id}`,
-      icon: item.type === 'video' ? 'file-media' : 'image',
-      instanceId: `detail:${item.type}:${item.id}`,
-    });
+    void moOpenItem(api, item.type, item.id, instanceId, item.title); // a place over this list, in Atelier's one tab
   }
 
   // F7: Lightbox (context menu "View Full Size")
@@ -13699,7 +13681,7 @@ function renderGridBrowser(container, api, input) {
     }
 
     // F2: Arrow key navigation
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) && !inInput) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) && !inInput && !e.altKey) { // Alt+Left/Right are Back and Forward
       e.preventDefault();
       e.stopPropagation();
       if (state.items.length === 0) return;
@@ -13847,8 +13829,8 @@ function renderGridBrowser(container, api, input) {
       }
     });
   });
-  // Focus root on initial load
-  requestAnimationFrame(() => root.focus({ preventScroll: true }));
+  // Focus root on initial load, unless the keys are already on the page (its title, after a move to this place)
+  requestAnimationFrame(() => { if (!root.contains(document.activeElement)) root.focus({ preventScroll: true }); });
   async function resolveItemFilePath(item) {
     try {
       const type = item.type;
@@ -14598,14 +14580,10 @@ function renderDetailEditor(container, api, input) {
 }
 
 function buildDetailHeader(ctx, api, headerEl, callbacks) {
-  const iconSpan = moEl('span', 'mo-detail-header-icon');
-  iconSpan.innerHTML = moIcon(ctx.type === 'video' ? 'file-media' : 'image', 14);
-  headerEl.appendChild(iconSpan);
-
+  // The kit's page header names the item (the place's title, where the keys land after a move).
   const titleText = ctx.entity.title || (ctx.primaryFile ? ctx.primaryFile.basename : `${ctx.type} #${ctx.entity.id}`);
-  const titleEl = moEl('span', 'mo-detail-header-title', { textContent: titleText });
-  headerEl.appendChild(titleEl);
-  // A video's size and length sit beside its name (the player no longer
+  const page = api.ui.createPageHeader(headerEl, { title: titleText });
+  // A video's size and length sit under its name (the player no longer
   // repeats the name over the picture).
   if (ctx.type === 'video') {
     const vf = ctx.videoFile || {};
@@ -14615,7 +14593,7 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
     const bits = [];
     if (w && h) bits.push(`${w} \u00d7 ${h}`);
     if (d) bits.push(moTimeStr(d));
-    if (bits.length) headerEl.appendChild(moEl('span', 'mo-detail-header-meta', { textContent: bits.join(' \u00b7 ') }));
+    if (bits.length) page.querySelector('.px-page-header__titles').appendChild(moEl('div', 'px-page-header__subtitle mo-detail-header-meta', { textContent: bits.join(' \u00b7 ') }));
   }
 
   // The kit's buttons: Edit Image labelled (the one action that opens
@@ -14664,7 +14642,7 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   if (ctx.type === 'video' && ctx.fullPath) {
     api.ui.createButton(actions, { id: 'media-organizer.viewer.editClip', label: 'Edit Clip', icon: 'clapperboard', kind: 'secondary', title: 'Open in the clip editor; the marked range becomes the trim', onClick: () => { moEditClipFromPlayer(api, ctx.fullPath, ctx._player, (ctx.videoFile && ctx.videoFile.duration) || ctx.entity.duration || 0); } });
   }
-  headerEl.appendChild(actions);
+  page.appendChild(actions);
 }
 
 function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
@@ -15675,12 +15653,7 @@ function buildSimilarStrip(ctx, api) {
   const status = moEl('div', 'mo-similar-status', { textContent: 'Looking for similar photos…' });
   wrap.appendChild(status);
 
-  const openDetail = (it) => api.editors.openEditor({
-    typeId: 'media-organizer-grid',
-    title: it.title || `photo #${it.id}`,
-    icon: 'image',
-    instanceId: `detail:photo:${it.id}`,
-  });
+  const openDetail = (it) => moOpenItem(api, 'photo', it.id, `detail:${ctx.type}:${ctx.entity.id}`, it.title); // over the same list as this one
 
   (async () => {
     let result;
@@ -16254,14 +16227,7 @@ async function loadAlbumContents(album, container, api) {
         await persistOrderForType(item.type);
       });
 
-      miniCard.addEventListener('click', () => {
-        api.editors.openEditor({
-          typeId: 'media-organizer-grid',
-          title: item.title || `${item.type} #${item.id}`,
-          icon: item.type === 'video' ? 'file-media' : 'image',
-          instanceId: `detail:${item.type}:${item.id}`,
-        });
-      });
+      miniCard.addEventListener('click', () => void moOpenItem(api, item.type, item.id, `album:${album.id}`, item.title)); // its detail, over this album
       // The keyboard: Enter opens it; Ctrl+Shift+Left/Right move it among its kind, as the drop does (keys.js).
       miniCard.tabIndex = 0; miniCard.setAttribute('role', 'button'); miniCard.setAttribute('aria-label', item.title || `${item.type} ${item.id}`);
       miniCard.addEventListener('keydown', (e) => { if (e.target === miniCard && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); miniCard.click(); } });
@@ -27715,7 +27681,7 @@ async function moSaveSmartAlbum(api, queryStr, currentFilters) {
   }
 }
 
-async function moOpenSmartAlbum(api, applyFn) {
+async function moOpenSmartAlbum(api) {
   const rows = await db.all('SELECT id, name, query_json FROM mo_smart_albums ORDER BY name COLLATE NOCASE ASC');
   if (!rows || rows.length === 0) {
     api.window.showInformationMessage('No smart albums saved yet. Run a search and use "Save Smart Album".');
@@ -27730,9 +27696,8 @@ async function moOpenSmartAlbum(api, applyFn) {
   }
   const row = rows.find(r => r.name === pick.label);
   if (!row) return;
-  let parsed;
-  try { parsed = JSON.parse(row.query_json); } catch { parsed = { query: '', filters: {} }; }
-  if (typeof applyFn === 'function') applyFn(parsed);
+  moPlaceName('smart', row.id, row.name); // the smart album's place, as its row in the column opens it
+  return moOpenPlace(api, 'smart', { id: row.id });
 }
 
 async function moManageSmartAlbums(api) {
@@ -29490,14 +29455,7 @@ async function moTagWithAIFromUI(items, api, mode = 'add') {
   }
 }
 
-function moOpenTagReview(api) {
-  (api || _api).editors.openEditor({
-    typeId: 'media-organizer-grid',
-    title: 'Tag Review',
-    icon: 'sparkles',
-    instanceId: 'tag-review',
-  });
-}
+function moOpenTagReview(api) { return moOpenPlace(api || _api, 'tag-review'); }
 
 /** Work through the queue one photo at a time until it is empty or stopped. */
 async function moTagRunnerStart() {
@@ -29733,7 +29691,7 @@ function renderTagReview(container, api) {
 
   const head = moEl('div', 'mo-tr-head');
   const titleWrap = moEl('div', 'mo-tr-title-wrap');
-  titleWrap.appendChild(moEl('div', 'mo-tr-title', { textContent: 'Tag Review' }));
+  api.ui.createPageHeader(titleWrap, { title: 'Tag Review' });
   const sub = moEl('div', 'mo-tr-sub');
   titleWrap.appendChild(sub);
   head.appendChild(titleWrap);
@@ -30601,18 +30559,12 @@ async function moPracticeEndSession(id) {
   document.dispatchEvent(new CustomEvent('mo:practice-changed'));
 }
 
-function moPracticeOpenRun(api, sessionId, kind) {
-  (api || _api).editors.openEditor({
-    typeId: 'media-organizer-grid',
-    title: kind === 'daily' ? 'Daily Study' : 'Practice',
-    icon: 'timer',
-    instanceId: `practice:run:${sessionId}`,
-  });
+function moPracticeOpenRun(api, sessionId, kind) { // a practice run is a thing, its own tab; today's Daily Study is a place
+  if (kind === 'daily') return moOpenPlace(api || _api, 'daily', { session: sessionId });
+  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Practice', icon: 'timer', instanceId: `practice:run:${sessionId}` });
 }
 
-function moOpenPracticeSetup(api) {
-  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Practice Session', icon: 'timer', instanceId: 'practice:setup' });
-}
+function moOpenPracticeSetup(api) { return moOpenPlace(api || _api, 'practice'); }
 
 // ── Daily Study ────────────────────────────────────────────────────────────
 // One picture per local day, chosen on first open and stored. A day that is
@@ -30637,22 +30589,39 @@ async function moStartDailyStudy(api, opts) {
   api = api || _api;
   if (!moArtGate(api, () => void moStartDailyStudy(api, opts))) return;
   try {
-    const today = await moDailyToday();
-    if (!today) { api.window.showInformationMessage('Add some pictures to the library first.'); return; }
-    const fresh = !!(opts && opts.fresh);
-    if (today.session && !fresh) { moPracticeOpenRun(api, today.session.id, 'daily'); return; }
-    const created = await moPracticeCreateSession({
-      kind: 'daily',
-      pool: { kind: 'photos', ids: [today.photoId], label: 'Daily Study' },
-      secondsPer: _practiceCfg.dailyMinutes * 60,
-      count: 1,
-      options: { mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale },
-    });
-    await db.run('UPDATE mo_practice_daily SET session_id = ? WHERE day = ?', [created.id, today.day]);
-    moPracticeOpenRun(api, created.id, 'daily');
+    const id = await moDailyEnsure(!!(opts && opts.fresh));
+    if (!id) { api.window.showInformationMessage('Add some pictures to the library first.'); return; }
+    await moPracticeOpenRun(api, id, 'daily');
   } catch (err) {
     api.window.showErrorMessage('Daily Study could not start: ' + (err && err.message));
   }
+}
+/** Today's Daily Study run, started when there is none (or `fresh`, to draw again): its id, or 0 with no pictures. */
+async function moDailyEnsure(fresh) {
+  const today = await moDailyToday();
+  if (!today) return 0;
+  if (today.session && !fresh) return today.session.id;
+  const created = await moPracticeCreateSession({
+    kind: 'daily',
+    pool: { kind: 'photos', ids: [today.photoId], label: 'Daily Study' },
+    secondsPer: _practiceCfg.dailyMinutes * 60,
+    count: 1,
+    options: { mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale },
+  });
+  await db.run('UPDATE mo_practice_daily SET session_id = ? WHERE day = ?', [created.id, today.day]);
+  return created.id;
+}
+/** Daily Study, a place: the kit's title over today's run (or the run its address names), started when there is none. */
+function moRenderDaily(container, api, loc) {
+  moInjectStyles();
+  const wrap = moEl('div', 'mo-daily-place'), body = moEl('div', 'mo-daily-place-body');
+  api.ui.createPageHeader(wrap, { title: 'Daily Study', subtitle: `${_practiceCfg.dailyMinutes} min with one picture, every day` });
+  wrap.appendChild(body); container.appendChild(wrap);
+  let pane = null, gone = false;
+  const draw = (id) => { if (gone) return; if (id) pane = renderPracticeTab(body, api, { instanceId: `practice:run:${id}` }); else body.appendChild(moEl('div', 'mo-practice-empty', { textContent: _artToolsEnabled ? 'Add some pictures to the library first.' : 'Turn on drawing and painting tools in Atelier settings to use practice.' })); };
+  const sid = Number(loc && loc.params && loc.params.session) || 0;
+  if (sid || !_artToolsEnabled) draw(sid); else moDailyEnsure(false).then(draw, () => draw(0));
+  return { dispose() { gone = true; if (pane) pane.dispose(); container.replaceChildren(); } };
 }
 
 // The Home card. Hidden while the tools are off; refreshes when a run ends.
@@ -30743,9 +30712,7 @@ function moPracticeThumbTile(photoId, caption, api, onClick) {
   return tile;
 }
 
-function moOpenPhotoDetail(api, photoId) {
-  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: `photo #${photoId}`, icon: 'image', instanceId: `detail:photo:${photoId}` });
-}
+function moOpenPhotoDetail(api, photoId, from) { return moOpenItem(api || _api, 'photo', photoId, from); }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
@@ -30767,8 +30734,7 @@ function renderPracticeSetup(container, api) {
   let disposed = false;
   const disposers = [];
 
-  root.appendChild(moEl('div', 'mo-home-title', { textContent: 'Practice Session' }));
-  root.appendChild(moEl('div', 'mo-home-sub', { textContent: 'Timed drawing from a set you choose. Random pictures, a clock, a chime when time is up.' }));
+  api.ui.createPageHeader(root, { title: 'Practice Session', subtitle: 'Timed drawing from a set you choose. Random pictures, a clock, a chime when time is up.' });
 
   const s = { pool: { kind: 'all' }, mode: 'count', secondsPer: 120, count: 10, totalMinutes: 30, mirror: _practiceCfg.mirror, grey: _practiceCfg.greyscale, presetId: null };
   const form = moEl('div', 'mo-practice-form');
@@ -31352,7 +31318,7 @@ function renderPracticePlayer(container, api, sessionId) {
       timer = setInterval(tick, 250);
       const first = state.draws.findIndex((d) => d.outcome === 'pending');
       await goTo(first >= 0 ? first : 0);
-      root.focus();
+      const place = container.closest('.mo-daily-place'); if (!place || !place.contains(document.activeElement)) root.focus(); // Daily Study's place keeps the keys on its title
     } catch (err) {
       if (!disposed) root.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'The practice run could not load: ' + (err && err.message) }));
     }
@@ -31599,15 +31565,11 @@ async function moPlanPickAndAdd(api, kind, itemId) {
   api.window.showInformationMessage(`Added to "${chosen.title}".`);
 }
 
-function moOpenPlansList(api) {
-  (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: 'Painting Plans', icon: 'palette', instanceId: 'plans:list' });
-}
+function moOpenPlansList(api) { return moOpenPlace(api || _api, 'plans'); }
 let _moColour = null; const moColour = (api) => (_moColour ||= moColourHost(api || _api, { db, getSetting: moGetSetting, setSetting: moSetSetting, boardDeps: moBoardDeps, boardContext: moBoardContext, planLoad: moPlanLoad, planRecipe: moPlanRecipe, resolvePath: moResolveItemPath, fileUrl: localFileToUrl, artGate: moArtGate, artOn: () => _artToolsEnabled, injectStyles: moInjectStyles }));
 // A plan's tabs carry its title, so two plans open side by side are told apart.
 async function moPlanTitle(planId) { try { const r = await db.get('SELECT title FROM mo_plans WHERE id = ?', [planId]); return (r && r.title) || 'Plan'; } catch { return 'Plan'; } }
-function moOpenPlan(api, planId) {
-  void moPlanTitle(planId).then((t) => (api || _api).editors.openEditor({ typeId: 'media-organizer-grid', title: t, icon: 'palette', instanceId: `plans:edit:${planId}` }));
-}
+function moOpenPlan(api, planId) { void moPlanTitle(planId).then((t) => { moPlaceName('plan', planId, t); return moOpenPlace(api || _api, 'plan', { id: planId }); }); } // a place over Painting Plans
 // Copy Tags from one item, Paste Tags onto one or many (tag-clipboard.js). keys: "photo:12"…; without them, the
 // library's focused item (copy) or its selection, else the focused item (paste).
 async function moTagsCommand(api, which, keys) {
@@ -32324,7 +32286,7 @@ function renderPlanEditor(container, api, planId) {
   // The tool modules still name their old tools; each lives in a step now.
   const STEP_OF = { crop: 'compose', light: 'photo', pick: 'colour', study: 'colour', grids: 'transfer', info: 'compose', process: 'compose' };
   function setTool(id) {
-    state.tool = STEP_OF[id] || id; state.notes = false;
+    state.tool = STEP_OF[id] || id; state.notes = false; try { if (!colours.inPaints() || state.tool !== 'colour') root.dispatchEvent(new CustomEvent('mo:place-step', { bubbles: true, detail: { step: '' } })); } catch { /* still being made */ } // My Paints shows only on the Colour step
     if (['photo', 'values', 'colour'].includes(state.tool)) state.view = state.tool; // what Transfer and Export show
     if (state.tool !== 'photo') photo.stopRemoving();
     syncShell();
@@ -32362,7 +32324,7 @@ function renderPlanEditor(container, api, planId) {
       notes.value = state.plan.notes || '';
       notes.addEventListener('input', () => { state.plan.notes = notes.value; scheduleSave(); });
       s.appendChild(notes);
-      s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id)));
+      s.appendChild(button('Open Source Photo', () => moOpenPhotoDetail(api, state.plan.photo_id, `plans:edit:${planId}`)));
       // Deleting a plan is done where plans are kept (the Painting Plans list), not from inside one.
     }
     {
@@ -32376,7 +32338,7 @@ function renderPlanEditor(container, api, planId) {
         if (m.kind === 'photo') void moPracticeThumb(img, m.item_id, api);
         else resolveThumbnail('video', m.item_id, api).then((rr) => { if (rr && (rr.path || rr.sourcePath)) setThumbImgSrc(img, rr.sourcePath || rr.path, {}); }).catch(() => {});
         it.appendChild(moEl('span', 'mo-practice-dim', { textContent: m.role === 'output' ? 'Plan output' : (m.kind === 'video' ? 'Clip' : 'Photo') }));
-        const open = () => api.editors.openEditor({ typeId: 'media-organizer-grid', title: m.kind === 'video' ? 'Clip' : 'Photo', icon: m.kind === 'video' ? 'file-media' : 'image', instanceId: `detail:${m.kind}:${m.item_id}` });
+        const open = () => void moOpenItem(api, m.kind, m.item_id, `plans:edit:${planId}`);
         openBtn.addEventListener('click', open);
         const rm = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Remove', 'aria-label': `Remove this ${m.kind === 'video' ? 'clip' : 'photo'} from the plan` });
         rm.addEventListener('click', async () => { await db.run('DELETE FROM mo_plan_media WHERE id = ?', [m.id]); state.media = state.media.filter((x) => x.id !== m.id); renderPanel(); });
@@ -35938,7 +35900,7 @@ function renderImageEditor(container, api) {
     if (state.busy) paintBusy();
   };
   disposers.push(() => { if (busyTimer) clearInterval(busyTimer); });
-  const openPhotoTab = (photoId, title) => api.editors.openEditor({ typeId: 'media-organizer-grid', title: title || 'Photo', icon: 'image', instanceId: `detail:photo:${photoId}` });
+  const openPhotoTab = (photoId, title) => moOpenItem(api, 'photo', photoId, '', title);
   const flash = (text) => { try { if (api.statusBar && api.statusBar.setMessage) api.statusBar.setMessage(text, 2500); else api.window.showInformationMessage(text); } catch { /* no status bar */ } };
 
   // ── top bar ──
@@ -37441,7 +37403,7 @@ function renderImageEditor(container, api) {
 
 function _notifySidebarRefresh() { for (const cb of _sidebarRefreshCallbacks) { try { cb(); } catch {} } }
 let _commandDisposables = [];
-let _api = null;
+let _api = null; let _moGridTabs = null; // the old grid tab's provider: it draws each of Atelier's places, by the instance id its tab had
 
 // Cached config — read at activation, refreshed on config-change events.
 // Card render reads from this synchronously; using the bridge per-card would
@@ -37541,7 +37503,7 @@ function moGalleryBlock(api) {
         const id = config.albumId ? Number(config.albumId) : null;
         void (id
           ? db.get('SELECT id, title FROM mo_albums WHERE id = ?', [id]).then((a) => a && api.editors.openEditor({ typeId: 'media-organizer-grid', title: a.title || 'Album', icon: 'album', instanceId: `album:${a.id}` }))
-          : api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Recent', icon: 'image', instanceId: 'grid:recent' }));
+          : moOpenPlace(api, 'recent'));
       };
       ctx.setActions([{ label: 'Open in Atelier', run: openAlbum }]);
       const render = async () => {
@@ -37939,7 +37901,7 @@ export async function activate(api, context) {
   );
 
   _commandDisposables.push(
-    api.editors.registerEditorProvider('media-organizer-grid', {
+    api.editors.registerEditorProvider('media-organizer-grid', _moGridTabs = {
       createEditorPane(container, input) {
         const inputId = (input && (input.instanceId || input.id)) || '';
         if (inputId.startsWith('practice:')) return renderPracticeTab(container, api, input);
@@ -37961,6 +37923,7 @@ export async function activate(api, context) {
       },
     })
   );
+  _commandDisposables.push(...moPlacesActivate(api, { db, render: (c, input) => _moGridTabs.createEditorPane(c, input), renderDaily: (c, loc) => moRenderDaily(c, api, loc), openAlbum: (id) => void db.get('SELECT id, title FROM mo_albums WHERE id = ?', [id]).then((a) => a && api.editors.openEditor({ typeId: 'media-organizer-grid', title: a.title || 'Album', icon: 'album', instanceId: `album:${a.id}` })) })); // the screens, in one tab (atelier-places.js)
 
   // Clip / GIF exporter — a standalone editor page. Params are looked up from
   // _moClipEditors (set by the opener). If they're gone (e.g. a workspace
@@ -38057,7 +38020,7 @@ export async function activate(api, context) {
   );
   // Shortcuts go through the one dispatcher, scoped to the image editor's tab (Copy Tags and Paste Tags: the library's).
   if (api.keybindings && typeof api.keybindings.register === 'function') {
-    try { _commandDisposables.push(api.keybindings.register('Ctrl+Shift+C', 'media-organizer.copyTags', "activeEditor == 'media-organizer-grid'"), api.keybindings.register('Ctrl+Shift+V', 'media-organizer.pasteTags', "activeEditor == 'media-organizer-grid'")); } catch { /* no shortcut */ }
+    try { const on = `activeEditor == 'media-organizer-grid' || activeEditor == '${MO_PLACE_TYPE}'`; _commandDisposables.push(api.keybindings.register('Ctrl+Shift+C', 'media-organizer.copyTags', on), api.keybindings.register('Ctrl+Shift+V', 'media-organizer.pasteTags', on)); } catch { /* no shortcut */ }
     const when = `activeEditor == '${MO_EDIT_TYPE}'`;
     for (const [key, command] of [
       ['Ctrl+Z', 'media-organizer.editor.undo'], ['Ctrl+Y', 'media-organizer.editor.redo'], ['Ctrl+Shift+Z', 'media-organizer.editor.redo'],
@@ -38081,14 +38044,7 @@ export async function activate(api, context) {
   );
 
   _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.openGrid', () => {
-      api.editors.openEditor({
-        typeId: 'media-organizer-grid',
-        title: 'Library',
-        icon: 'library',
-        instanceId: 'grid:all',
-      });
-    })
+    api.commands.registerCommand('media-organizer.openGrid', () => moOpenPlace(api, 'all'))
   );
 
   // Keyboard shortcuts cheat sheet — also reachable via the sidebar footer
@@ -38175,7 +38131,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.buildPHashes', () => moRunPHashIndexer(api))
   );
   _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.findDuplicates', () => moOpenDuplicates(api)), ...moDuplicatesActivate(api, { db, sep: _isWindows ? '\\' : '/', thumb: (img, type, id) => void resolveThumbnail(type, id, api).then((r) => { const p = r && (r.path || r.sourcePath); if (p) setThumbImgSrc(img, p, {}); }).catch(() => {}), open: (type, id) => api.editors.openEditor({ typeId: 'media-organizer-grid', title: type === 'video' ? 'Video' : 'Photo', icon: type === 'video' ? 'file-media' : 'image', instanceId: `detail:${type}:${id}` }), remove: (keys, done) => showBulkDeleteDialog({ selectedIds: new Set(keys) }, api, done), deleteToTrash: moDeleteToTrash, hashReady: async () => { await detectAllTools(); return !!_toolPaths.ffmpeg; }, phash: moComputePHash, toSqlite: moBigIntToSqlite, fromSqlite: moSqliteToBigInt })
+    api.commands.registerCommand('media-organizer.findDuplicates', () => moOpenDuplicates(api)), ...moDuplicatesActivate(api, { db, sep: _isWindows ? '\\' : '/', thumb: (img, type, id) => void resolveThumbnail(type, id, api).then((r) => { const p = r && (r.path || r.sourcePath); if (p) setThumbImgSrc(img, p, {}); }).catch(() => {}), open: (type, id) => moOpenItem(api, type, id, 'duplicates'), remove: (keys, done) => showBulkDeleteDialog({ selectedIds: new Set(keys) }, api, done), deleteToTrash: moDeleteToTrash, hashReady: async () => { await detectAllTools(); return !!_toolPaths.ffmpeg; }, phash: moComputePHash, toSqlite: moBigIntToSqlite, fromSqlite: moSqliteToBigInt })
   );
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.saveSmartAlbum', async () => {
@@ -38200,10 +38156,7 @@ export async function activate(api, context) {
   );
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.openSmartAlbum', async () => {
-      await moOpenSmartAlbum(api, (parsed) => {
-        const ev = new CustomEvent('mo:apply-search-state', { detail: parsed });
-        document.dispatchEvent(ev);
-      });
+      await moOpenSmartAlbum(api);
     })
   );
 
@@ -38232,13 +38185,7 @@ export async function activate(api, context) {
         api.window.showWarningMessage('Reveal in Atelier: no path provided.');
         return;
       }
-      // Open the All Media grid first
-      await api.editors.openEditor({
-        typeId: 'media-organizer-grid',
-        title: 'All Media',
-        icon: 'image',
-        instanceId: 'grid:all',
-      });
+      await moOpenPlace(api, 'all'); // the All Media grid first
       // Then dispatch search to filter to that file's basename
       const basename = String(path).split(/[\\/]/).pop() || '';
       setTimeout(() => {
@@ -38287,18 +38234,9 @@ export async function activate(api, context) {
       kinds: {
         photo: {
           uriTemplate: 'parallx://media-organizer/photo/<photoId>',
-          description: 'Open the media-organizer grid focused on the given photo id. Iter A opens the grid; per-item lightbox lands in Iter B.',
+          description: 'Open the given photo\'s detail in Atelier.',
           examples: ['parallx://media-organizer/photo/12345'],
-          async open(parsed) {
-            const id = parsed.pathSegments[1];
-            if (!id) return false;
-            try {
-              await api.commands.executeCommand('media-organizer.openGrid');
-              return true;
-            } catch {
-              return false;
-            }
-          },
+          async open(parsed) { const id = parsed.pathSegments[1]; return !!id && /^\d+$/.test(id) && moOpenItem(api, 'photo', id); }, // the item's detail, in Atelier's one tab
           async resolveMetadata(parsed) {
             const id = parsed.pathSegments[1];
             return id ? { title: 'Photo #' + id, icon: 'image' } : null;
@@ -38306,18 +38244,9 @@ export async function activate(api, context) {
         },
         video: {
           uriTemplate: 'parallx://media-organizer/video/<videoId>',
-          description: 'Open the media-organizer grid focused on the given video id. Optional `?t=<seconds>` reserved for future seek. Iter A opens the grid only.',
+          description: 'Open the given video\'s detail in Atelier. Optional `?t=<seconds>` is reserved for a seek.',
           examples: ['parallx://media-organizer/video/789?t=42'],
-          async open(parsed) {
-            const id = parsed.pathSegments[1];
-            if (!id) return false;
-            try {
-              await api.commands.executeCommand('media-organizer.openGrid');
-              return true;
-            } catch {
-              return false;
-            }
-          },
+          async open(parsed) { const id = parsed.pathSegments[1]; return !!id && /^\d+$/.test(id) && moOpenItem(api, 'video', id); }, // the item's detail, in Atelier's one tab
           async resolveMetadata(parsed) {
             const id = parsed.pathSegments[1];
             return id ? { title: 'Video #' + id, icon: 'film' } : null;
