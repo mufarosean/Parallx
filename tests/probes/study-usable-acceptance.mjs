@@ -929,6 +929,10 @@ phase(9, 'A question can be marked to come back to', 'bank', {
   }
   if (!how) { c('9.3', false, 'no way to study the marked questions in the sidebar, its More Actions, the session screen or a Study command'); return; }
   await sleep(800);
+  // The column's Marked row and the command study.studyMarked now open the Marked place in Study's one tab (c3eebb8f),
+  // whose Start Session starts the set as the row did before: it is pressed there.
+  const start = await until(() => S.press('body', /./, '[data-px-id="study.marked.start"]'), 4000, 100);
+  if (start) { how += ', then Start Session on the Marked place'; await sleep(800); }
   if (await sheetOpen(S)) await pressStart(S);
   // The set is on screen once a new session shows a question, or this one moved off the third.
   const set = [];
