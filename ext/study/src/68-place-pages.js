@@ -70,12 +70,11 @@ async function renderSubject(host, route, ctx) {
   if (!stPlaceSubject(subjectId)) { await stPlaceWaitForSubject(inner, subjectId, ctx); return; }
   const head = ui.createBlock(inner, 'div', { className: 'st-place__head' });
   const body = ui.createBlock(inner, 'div', { className: 'st-unit__body' });
-  let title = null;
   await stPlaceRedrawn(ctx, async () => {
     const s = stPlaceSubject(subjectId);
     const { shown } = s ? stPlansOfSubject(s.id) : { shown: null };
     return s ? {
-      name: s.name, answered: s.answered, total: s.total, problem: s.problem, ready: s.ready,
+      name: s.name, answered: s.answered, total: s.total, problem: s.problem, ready: s.ready, folded: s.folded, plans: stPlansOfSubject(s.id).all.length,
       plan: shown ? { id: shown.plan.id, name: String(shown.plan.name), exam: (shown.rules && shown.rules.exam) || '' } : null,
       units: s.units.map((u) => [u.rowId, u.name, u.answered, u.total]),
     } : null;
@@ -85,19 +84,17 @@ async function renderSubject(host, route, ctx) {
     const focused = inner.contains(document.activeElement) ? document.activeElement.getAttribute('data-px-id') : '';
     const left = d.plan && d.plan.exam ? stPlanDaysBetween(stPlanToday(), d.plan.exam) : null;
     const sub = [d.problem || (d.ready ? `${d.answered} of ${d.total} questions answered` : ''), d.plan && d.plan.exam ? `exam ${stPlanDateWords(d.plan.exam, { year: true, long: true })}` : ''].filter(Boolean).join(' · ');
-    if (!title) {
-      ui.createPageHeader(head, {
-        title: d.name,
-        ...(sub ? { subtitle: sub } : {}),
-        primary: { id: 'study.subject.study', label: 'Study…', icon: 'px-study', title: `Study ${d.name}`, command: 'study.studySubject', args: [subjectId] },
-        more: stSubjectMenuItems(s),
-      });
-      title = head.querySelector('.px-page-header__title');
-    } else {
-      if (title.textContent !== d.name) title.textContent = d.name;
-      const subEl = head.querySelector('.px-page-header__subtitle');
-      if (subEl && subEl.textContent !== sub) subEl.textContent = sub;
-    }
+    // The header is drawn again with what changed (its subtitle, its menu: Open Plan, Show or Hide Units); the keys stay on its title.
+    const onTitle = !!document.activeElement && document.activeElement.classList.contains('px-page-header__title') && head.contains(document.activeElement);
+    head.replaceChildren();
+    ui.createPageHeader(head, {
+      title: d.name,
+      ...(sub ? { subtitle: sub } : {}),
+      primary: { id: 'study.subject.study', label: 'Study…', icon: 'px-study', title: `Study ${d.name}`, command: 'study.studySubject', args: [subjectId] },
+      more: stSubjectMenuItems(s),
+    });
+    const title = head.querySelector('.px-page-header__title');
+    if (onTitle && title) { title.tabIndex = -1; title.focus({ preventScroll: true }); }
     body.replaceChildren();
 
     // Its plan and its Progress: the two places inside it besides its units.

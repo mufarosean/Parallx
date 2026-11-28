@@ -402,6 +402,7 @@ a place link:
 
 ```js
 api.ui.bindPlaceLink(row, api.places.addressOf('mytool', { place: 'stats' })); // Ctrl+click and its menu: Open in Its Own Tab
+api.ui.bindPlaceLink(rowWithItsOwnMenu, address, { menu: false }); // a row with actions of its own keeps its menu; Ctrl+click only
 api.places.onDidMove(({ tool, location }) => {
   if (tool === 'mytool') for (const r of rows) api.ui.markCurrent(r, r.dataset.place === location.place); // aria-current="page" + px-current
 });

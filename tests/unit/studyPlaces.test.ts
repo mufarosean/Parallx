@@ -10,11 +10,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUiApi } from '../../src/api/bridges/uiBridge.js';
 
 type Any = Record<string, any>;
 type Loc = { place: string; params?: Record<string, string> };
 
-const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stPlaceOfInstance', 'stPlaceOfRoute', 'stRouteOfPlace', 'stRouteInstanceId', 'stRouteFromInstanceId', 'registerPlaces', 'stOpenPane', 'stPlacesOn', 'stViewRenderer'];
+const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stPlaceOfInstance', 'stPlaceOfRoute', 'stRouteOfPlace', 'stRouteInstanceId', 'stRouteFromInstanceId', 'registerPlaces', 'stOpenPane', 'stPlacesOn', 'stViewRenderer', 'renderSubject', '_emitDataChanged'];
 
 function loadStudy(): Any {
   const src = readFileSync(join(__dirname, '../../ext/study/main.js'), 'utf8').replace(/^export\s+(?=(?:async\s+)?function|const|let)/gm, '');
@@ -132,5 +133,29 @@ describe("Study's places", () => {
       expect(typeof S.stViewRenderer(view), view).toBe('function');
     }
     expect(S.stViewRenderer('constructor')).toBeNull();
+  });
+
+  it("a subject's page drawn before Study read the subject gets its count and its menu once it is read", async () => {
+    const S = loadStudy();
+    const { subs } = withApi(S, false);
+    S.__testables.__setApi({ editors: { openEditors: [] }, ui: createUiApi() });
+    S._stSubjects.set(3, { subject: { id: 3, name: 'Exam 7' }, synced: false, unitRows: [], counts: { total: 0, answered: 0, units: [] } });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const disposables: Any[] = [];
+    await S.renderSubject(host, { view: 'subject', subjectId: 3 }, { add: (d: Any) => disposables.push(d), disposed: () => false, rerender: () => {} });
+    expect(host.querySelector('.px-page-header__title')?.textContent).toBe('Exam 7');
+    expect(host.querySelector('.px-page-header__subtitle')).toBeNull();
+    const title = host.querySelector<HTMLElement>('.px-page-header__title')!;
+    title.tabIndex = -1;
+    title.focus();
+    S._stSubjects.set(3, { subject: { id: 3, name: 'Exam 7' }, synced: true, unitRows: [{ pageId: 'r7', title: 'Mack', values: {} }], counts: { total: 10, answered: 4, units: [{ name: 'Mack', total: 10, answered: 4 }] } });
+    S._emitDataChanged();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(host.querySelector('.px-page-header__subtitle')?.textContent).toBe('4 of 10 questions answered');
+    // The keys stay on the title the header was drawn with again.
+    expect(document.activeElement?.classList.contains('px-page-header__title')).toBe(true);
+    for (const d of [...disposables, ...subs]) { try { typeof d === 'function' ? d() : d.dispose(); } catch { /* gone */ } }
+    host.remove();
   });
 });
