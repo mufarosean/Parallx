@@ -2517,6 +2517,16 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   strip (a unit's own tab used to be the newest, so it came back by luck);
   the sheet now brings back the tab it was opened from (162505ff; 0 on the
   build before the piece, so new with it).
+  The app-verifier then drove both fixes on the real app with its own
+  probe, `tests/probes/study-places-review-fixes-probe.mjs`: 21/21 on
+  162505ff, 12 of 21 FAIL on c3eebb8f (the header's menu after Hide Units and
+  after a plan was made in a second tab, the subtitle after a restart or
+  right after start; Escape, Cancel and the sheet's X from the subject's and
+  the unit's Study… with Study's tab in the middle of the strip); Start
+  still leaves the session's own tab in front. The plan in its check was
+  made by `study.newPlan` given the form's answers, a stand-in for filling
+  the sheet. On 162505ff the acceptance probe again 78/78 and the touch-drag
+  probe all ok; full vitest 757 files passed, 3 skipped.
   *Checks changed:* six older Study acceptance probes, by the app-verifier,
   not the builder, one commit each naming every changed check (dcd4ab8c,
   5d0d1e22, 254a9acf, 99c61726, 3f3dfbc6, d0155c2d): they found a screen by
