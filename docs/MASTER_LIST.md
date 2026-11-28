@@ -2437,7 +2437,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   `parallx://place/study/unit?subject=<id>&unit=<row id>`,
   `/progress?subject=<id>`, `/plan?plan=<id>`, `/subject?subject=<id>`,
   `/weak`, `/marked`, `/home`. Every place has the kit's page header as its
-  title, and after a move the keys land there (the unit's own move of the
+  title (a subject's page waits for the subject, or says it is gone, before
+  it has one), and after a move the keys land there (the unit's own move of the
   keys to Study…, and Progress's and the Plan's to the pane, are gone where
   the places point is). Tabs of the older build (`study` with `home`,
   `progress-<id>`, `unit-<id>-<row>`, `plan-<id>`) come back as the place in
@@ -2468,7 +2469,7 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   More Actions and on the page). Weak Spots and Marked had no screen: each
   place lists what it holds (the weak or stale concepts with their
   material, the marked questions with where they are from) with **Start
-  Session** at its head; the column's rows, and the commands **Study Weak
+  Session** at its head when it holds something; the column's rows, and the commands **Study Weak
   Spots** and **Study Marked Questions**, now land on the place, and Start
   Session starts the session as the row did (one more press); the
   dashboard widget's "Study the Weakest 20" still starts it at once. New
@@ -2485,14 +2486,18 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   *How it was checked:* the acceptance probe
   `tests/probes/getting-around-study-acceptance.mjs`, written first by the
   app-verifier (6dcb9b92), gave 11/78 on the app as it was (seven guards and
-  four titles already there); it passes 78/78 unedited on the build commit
-  c3eebb8f and again on ba8b2e01 (seen on the real app, hidden). Pieces 1 to
-  4's probes 23/23, 30/30, 59/59, 114/114 on c3eebb8f. Typecheck, vitest
-  (757 files passed, 3 skipped, on c3eebb8f), build; with
+  four titles already there); it passes 78/78 unedited on the tree
+  committed as c3eebb8f, again on ba8b2e01 and on 162505ff (seen on the real
+  app, hidden). Pieces 1 to
+  4's probes 23/23, 30/30, 59/59, 114/114 on c3eebb8f. Typecheck (run, no
+  errors; its output not kept), vitest (757 files passed, 3 skipped, on
+  c3eebb8f), build; with
   `tests/unit/studyPlaces.test.ts` (new). Study's own probes on ba8b2e01,
   against a build of ff7a4df0 (the build before the piece): `study-app-probe`
-  0 failures, `study-plan-tab-probe` exit 0, `study-plan-acceptance` 92/92
-  on both; after the changed checks below, `study-progress-acceptance`
+  0 failures and `study-plan-tab-probe` 0 problems on ba8b2e01 (not run on
+  the base), `study-plan-acceptance` 92/92 on both; after the changed checks
+  below (the counts in brackets are the unchanged probe on ff7a4df0; no
+  changed probe was run on the base), `study-progress-acceptance`
   87/87 (87/87 before), `study-unit-acceptance` 74/74 (74/74),
   `study-usable-acceptance` 59/59 (59/59), `study-record-acceptance` 61/72
   (61/72: 6.2 to 6.7, 7.3 to 7.5, 9.2, 9.4 fail on both),
@@ -2501,13 +2506,16 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   failures are from before the piece and were not traced here. The keyboard
   audit filtered to Study (30 screens with sub-screens, with Weak Spots,
   Marked and the seeded subject added as screens): 2 popup problems on
-  c3eebb8f/ba8b2e01 (below, fixed), 0 on every count after the fix (a copy of
-  the audit with focus logging added, run on 162505ff). The touch-drag probe
+  ba8b2e01 (below, fixed), 0 on every count after the fix (a copy of the
+  audit with focus logging added, run on the tree committed as 162505ff).
+  The full audit (139 screens, on ba8b2e01) and the build before the piece
+  both show 2 other popup problems, Explorer and Planner's Show Tasks: from
+  before the piece, not traced; the full audit was not run after the fix. The touch-drag probe
   all ok; the visual-consistency probe one rise, Creations' title size, as
   before piece 1 (on ba8b2e01).
   Review by the correctness, modularity and access reviewers, each finding
-  put to the skeptic; fixed what it reproduced and judged to matter: a
-  subject's page drawn before Study read the subject (a tab back with the
+  put to the skeptic (their reports, as relayed by the builder; not kept on
+  disk); fixed what it reproduced and judged to matter: a subject's page drawn before Study read the subject (a tab back with the
   app) never got its "N of M questions answered" and kept its first menu
   (Open Plan, Show or Hide Units); the header is drawn again with what
   changed and the keys stay on its title (ba8b2e01). The keyboard audit then
@@ -2519,7 +2527,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   build before the piece, so new with it).
   The app-verifier then drove both fixes on the real app with its own
   probe, `tests/probes/study-places-review-fixes-probe.mjs`: 21/21 on
-  162505ff, 12 of 21 FAIL on c3eebb8f (the header's menu after Hide Units and
+  162505ff, 12 of 21 FAIL on c3eebb8f (its report and commit message; that
+  run's log was not kept) (the header's menu after Hide Units and
   after a plan was made in a second tab, the subtitle after a restart or
   right after start; Escape, Cancel and the sheet's X from the subject's and
   the unit's Study… with Study's tab in the middle of the strip); Start
@@ -2530,9 +2539,14 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   *Checks changed:* six older Study acceptance probes, by the app-verifier,
   not the builder, one commit each naming every changed check (dcd4ab8c,
   5d0d1e22, 254a9acf, 99c61726, 3f3dfbc6, d0155c2d): they found a screen by
-  its old tab of its own ("Exam 7 Progress", "Exam 7 · Mack"); on Study's
-  place tab they now read the same screen from the place (its address and
-  trail), demanding the same. Two demands contradicted the new rule and
+  its old tab of its own ("Exam 7 Progress", "Exam 7 · Mack"); they now
+  find the screen by its place and give it the name its old tab had (from
+  its trail and address; a unit whose tab says "Unit" from the workspace
+  file), so the screen each check reads is the same, but no older check
+  reads a Study tab's visible label any more (the acceptance probe's W1
+  checks that label). The unit probe's closeTab also scrolls the tab into
+  view before pressing its × (the shorter name put the × under the strip's
+  clipped edge). Two demands contradicted the new rule and
   were changed to it: unit 1.3 ("another unit opens a tab of its own") now
   demands that the one tab moves and Ctrl+click gives a second; a unit's
   session started by pressing its row then Enter (the keys were on Study…)
