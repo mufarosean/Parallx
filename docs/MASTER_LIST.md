@@ -2581,7 +2581,161 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   real size; a model for Weak Spots' sessions (none here: the probe's
   Study Weak Spots case needed none, as it lands on the place); Windows
   was not run.
-- *Next:* piece 6, Flashcards onto the point, in a new session.
+- **Piece 6 done (2026-11-28): Flashcards onto the places point.**
+  *What shipped:* Flashcards' screens are places in ONE tab named for the
+  place, with Flashcards' icon (`ext/flashcards/places.js`, through
+  `api.places` only; the tab keeps its editor type `flashcards`): Decks, a
+  deck (its Browse; the tab named for the deck), Study, Stats, Make Cards,
+  Custom Study, and also Import, a custom deck (its name), Find Duplicates
+  and Coverage Review. Flashcards has no things: a study session is drawn in
+  the Study place, as before. The trail in the bar under the tabs replaces
+  Flashcards' own breadcrumb (`.fc-pane__crumbs` is gone): `Flashcards ›
+  Decks`, `Flashcards › Exam 7` (a deck's Browse), `Flashcards › Exam 7 ›
+  Study`, `Flashcards › Exam 7 › Find Duplicates`, `Flashcards › Probe
+  Formulas › Study` (a custom deck's session); every crumb before the last
+  goes there in the same tab. Addresses carry the parameters:
+  `parallx://place/flashcards/deck?deck=1&q=<search>`, `/study?deck=1`,
+  `/study?tag=<tag>`, `/study?custom=<the session's filters as JSON>`,
+  `/custom-deck?id=<id>`, `/duplicates?deck=1`, `/coverage?deck=1`,
+  `/custom?deck=1`, `/make`, `/import`, `/stats`, `/decks`. A move made on
+  the page carries its whole route to the drawing (an Add Card form to open
+  rides along once, not in the address). Every way in goes through
+  `openFlashcards`, now `api.places.open`: seen on the real app (the
+  acceptance probe) for the column's rows, a deck row, the deck row's menu
+  (Find Duplicates, Coverage Review, Custom Study…), a custom deck's row,
+  the commands `flashcards.open`, `.stats`, `.study`, `.customStudy`,
+  `.generate`, `.studyTag`, `.newCard`, the deep links
+  `parallx://flashcards/deck/<id>`, `/card/<id>`, `/study` and a place's
+  address clicked in a page, Home's Flashcards card (Study) and its decks in
+  Home's feed, the column's Today Study and Memorize; read in code for the
+  dashboard widget's Study and Worksheets' Review Due Flashcards (both run
+  what `flashcards.study` runs). Study has no link into Flashcards.
+  The hand-made **Decks** (Browse, a custom deck) and **Back** (Find
+  Duplicates, Coverage Review) buttons are gone; the trail and Back do that
+  work. Buttons that end something stay (the error page's Back to Decks, a
+  finished session's ways out). Every place has the kit's page header as its
+  title: Decks' is the day's work ("2 cards due today", the kit's front
+  size), Browse and a custom deck the deck's name, Find Duplicates and
+  Coverage Review their names with the deck as subtitle, Stats and Custom
+  Study theirs; Study, Make Cards and Import, which drew none, get one from
+  the pane. After a move the keys land on it; in a session, keys pressed on
+  the Study title still grade (Space, 1 to 4), and on a card asking for a
+  typed answer a letter goes into its answer box. The column (Decks, Study,
+  Stats, Make Cards, Import) marks where the tab is with the shared mark
+  (`aria-current="page"`, `px-current`); its own marks (`role=tab` with
+  `aria-selected`, `fc-sb__nav-item--active`, `fc-deck-row--active`) are
+  gone; its rows and the deck and custom deck rows are place links
+  (Ctrl+click, a tab of its own; the deck rows keep their own menu, with
+  Open in Its Own Tab added on right-click). The arrows move along the
+  column's rows and Enter goes (the arrows no longer press the row, since a
+  press now puts the keys on the page's title). Its sidebar keeps the decks
+  list. A Flashcards tab saved by the older build (`flashcards`, `main`, its
+  screen in the tab's saved state) comes back as that screen's place, not
+  doubled. The path for a host without the places point is removed (every
+  host has it; `src/api/apiFactory.ts` always creates it): Flashcards'
+  own router (the pending route, the `parallx.flashcards.route` event, the
+  pane's own record of its route) is gone; `main.js` went from 12385 to
+  12187 lines. Nothing a tool other than Flashcards owns changed; the core
+  gained nothing.
+  *The calls the rule left, decided for him to overrule:* Import, a custom
+  deck, Find Duplicates and Coverage Review are places (screens of the tool,
+  not things). A deck's Browse is the deck's place, named for the deck, and
+  its trail is `Flashcards › <deck>` (no "Browse" crumb). The column marks
+  the deepest of its rows the trail passes through: on any screen of a deck
+  (Browse, its Study, Find Duplicates, Make Cards for it) the deck's row,
+  not Decks or Study; on a custom deck's page or session, its row; Custom
+  Study marks Study. Decks' title stays the day's work rather than
+  "Decks" (the tab and trail say Decks). A custom session's filters ride in
+  its address as JSON, so Back to it is the same session.
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-flashcards-acceptance.mjs`, written first by
+  the app-verifier (13272c76), gave 4/76 on the app as it was (four guards);
+  it passes 76/76 unedited on the build commit 83d6f32b, on 28366f72 and on
+  the final build c2189ff7, 0 page errors (seen on the real app, hidden).
+  Pieces 1 to 5's probes on 83d6f32b: 23/23, 30/30, 59/59, 114/114,
+  78/78 (not run again after; the later commits touch only Flashcards'
+  files and probes). Typecheck, vitest (757 files passed, 3 skipped, on
+  c2189ff7), build. Flashcards' own checks, on aef6b8e4 (the build before
+  the piece) and on this piece (after the changed checks below):
+  `flashcardsBehavior.test.ts` 49/49 and 49/49 (26/49 unchanged on
+  83d6f32b); `flashcards.test.ts` and the other flashcards unit tests pass
+  on both; `ext/flashcards/test/run-navigation-probe.mjs` 26 of 34 on the
+  base and 27 of 35 on c2189ff7, the same 8 failing on both (from before:
+  the column's order expecting "Create", the home's masthead reading
+  "Decks", the home's Custom Study and Import buttons, counts' labels, and
+  two old-breadcrumb readings that fail on the base too);
+  `flashcards-custom-decks-probe` 24 of 27 on both (the same 3: New Custom
+  Deck is in the Add menu, a row's counts read at the wrong index);
+  `flashcards-pages-probe` 15/15 on both; `flashcards-render-probe` stops
+  at the New Custom Deck button on both (from before; a scratch copy that
+  opens it from the Add menu ran to the end on this piece, 9 ok);
+  `flashcards-ids-probe` 17 ok, 1 FAIL and a screenshot timeout, the same on
+  both; `run-apkg-probe` 23/23 and `run-bridge-probe` 5/5 on both;
+  `run-generation-probe` not run (it needs Ollama). Those probes' runs on
+  this piece were on f04ecb7e (the navigation probe also on c2189ff7).
+  The keyboard audit on Flashcards' screens (Decks, Study, Stats, Make
+  Cards, Custom Study, a seeded deck's Browse and a seeded session, 21 with
+  sub-screens), with these added to the audit's screens: 5 problems on this
+  piece and the same 5 on aef6b8e4 (a card's #id chip mouse-only, twice; the
+  study surface without a focus ring; Make Cards' Canvas Page and Workspace
+  File not getting the keys back after their picker closed), so from before
+  the piece; all fixed (ad360f70) and 0 on every count on the final build.
+  The touch-drag probe all ok. The visual-consistency probe: Flashcards is
+  off its no-header list; with a deck now seeded it found the Decks title
+  cut off and a radius off the scale, both fixed; on the final build one
+  rise against the baseline, Creations' title size, as before piece 1.
+  Review by the correctness, modularity and access reviewers, each finding
+  put to the skeptic; fixed what it reproduced and judged to matter
+  (f04ecb7e): on a card asking for a typed answer, typing after a move went
+  to the session's shortcuts (s skipped the card, e opened the editor, z
+  undid a grade); the kit's page header kept its own padding inside
+  Flashcards' padded pages (every title 24px right of the content); in
+  Browse and a custom deck's page a long deck name pushed the page sideways.
+  The app-verifier drove the three with its own probe,
+  `tests/probes/flashcards-places-review-fixes-probe.mjs` (73ed42ab): 17/17
+  on f04ecb7e and on c2189ff7, 7 of 17 on 83d6f32b. The modularity reviewer
+  found no breach.
+  *Checks changed* (by the app-verifier, not the builder, one commit per
+  file naming every changed reading): `flashcardsBehavior.test.ts`
+  (e796ef14): its fake host is given the real kit header, mark and place
+  links and the real places point, so it runs the path his app runs; its
+  readings follow the title into the kit header; CHANGED DEMAND in five
+  tests: where it read Flashcards' breadcrumb and its own marks it now
+  demands the exact core trail, the tab's name and exactly one shared mark
+  (stricter). `run-navigation-probe.mjs` (21e5f96c, 8e54548b): the same,
+  over the real places loaded with esbuild; the `parallx.flashcards.route`
+  event it sent is gone with the path, so those routes now come through the
+  commands and the deck row's menu; CHANGED DEMAND: inside a deck the
+  deck's row is the only mark, Decks not marked. The custom decks, pages
+  and render probes (f8fb7786, c7277992, 568728c4): back to Decks by the
+  trail's first crumb, the title read from the kit header, the custom
+  deck's session read from the trail; one reading made stricter (the
+  masthead's Study button must leave the Decks title and show the session).
+  `keyboard-audit-probe.mjs` and `audit-seed.mjs` gained Flashcards' places
+  and a seeded deck as screens (b7f04d84). No assertion removed, no test
+  skipped, no baseline raised; the acceptance probe never edited.
+  *Reported and left* (the skeptic judged them minor, or not real): after a
+  restart on a custom deck's session the column can mark Study instead of
+  the custom deck's row until the next move (the names arrive after the
+  mark); closing the last Flashcards tab leaves its row marked (Worksheets'
+  and Planner's columns do the same: the core sends no move when a tab
+  closes); every data change (each grade) reads the deck names again (two
+  small queries); the column's rows keep one Tab stop and move by arrows
+  inside `role=navigation`, which nothing announces (Worksheets' column puts
+  every row on Tab); a custom deck's ⋯ menu lacks Open in Its Own Tab (its
+  right-click has it), Ctrl+Enter on a deck row opens in the same tab, and
+  the deck rows' own menu opened by Shift+F10 sits at the window's corner
+  (older code); the deck rows are buttons, not links, and the scene no
+  longer records which column row is current (aria-current has it); a view
+  that fails to draw has no title, so the keys stay on the row pressed;
+  every `onDidMove` disposable a column takes stays in the places bridge's
+  list until the tool is off (core, not this piece); Find Duplicates shows
+  a "button needs an id and a label" line for its Apply button (declared
+  before its text; the same code before the piece).
+  *Only his machine can show:* his decks and sessions at their real size, a
+  typed-answer card graded by his model (none here), card generation and
+  `run-generation-probe` (Ollama); Windows was not run.
+- *Next:* piece 7, Planner, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -4871,8 +5025,8 @@ table):** twelve pieces, under UI improvements, "Getting around";
 piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
 Back and Forward, done 2026-11-27; piece 3, Worksheets onto the point,
 done 2026-11-27; piece 4, Atelier onto the point, done 2026-11-28;
-piece 5, Study onto the point, done 2026-11-28; piece 6, Flashcards,
-opens the next session.
+piece 5, Study onto the point, done 2026-11-28; piece 6, Flashcards onto
+the point, done 2026-11-28; piece 7, Planner, opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
