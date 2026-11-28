@@ -15,7 +15,7 @@ import { createUiApi } from '../../src/api/bridges/uiBridge.js';
 type Any = Record<string, any>;
 type Loc = { place: string; params?: Record<string, string> };
 
-const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stPlaceOfInstance', 'stPlaceOfRoute', 'stRouteOfPlace', 'stRouteInstanceId', 'stRouteFromInstanceId', 'registerPlaces', 'stOpenPane', 'stPlacesOn', 'stViewRenderer', 'renderSubject', '_emitDataChanged'];
+const NAMES = ['__testables', '_stSubjects', '_stPlans', 'stPlaceOfInstance', 'stPlaceOfRoute', 'stRouteOfPlace', 'stRouteInstanceId', 'stRouteFromInstanceId', 'registerPlaces', 'stOpenPane', 'stPlacesOn', 'stViewRenderer', 'renderSubject', '_emitDataChanged', 'stNoteSheetOpener', 'stRefocusSubjectOpener'];
 
 function loadStudy(): Any {
   const src = readFileSync(join(__dirname, '../../ext/study/main.js'), 'utf8').replace(/^export\s+(?=(?:async\s+)?function|const|let)/gm, '');
@@ -157,5 +157,23 @@ describe("Study's places", () => {
     expect(document.activeElement?.classList.contains('px-page-header__title')).toBe(true);
     for (const d of [...disposables, ...subs]) { try { typeof d === 'function' ? d() : d.dispose(); } catch { /* gone */ } }
     host.remove();
+  });
+
+  it('a sheet closed with nothing started brings back the tab it was opened from, not the tab beside it', async () => {
+    const S = loadStudy();
+    const focused: string[] = [];
+    const openEditors = [{ id: 'parallx-community.study:study-place:main', isActive: true }, { id: 'core:database:worklog', isActive: false }];
+    S.__testables.__setApi({ editors: { get openEditors() { return openEditors; }, focusEditor: async (id: string) => { focused.push(id); } } });
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    S.stNoteSheetOpener();
+    // The sheet's tab closed and the editor brought forward the tab beside it: his is behind, its button hidden.
+    openEditors[0].isActive = false; openEditors[1].isActive = true;
+    opener.blur();
+    S.stRefocusSubjectOpener();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(focused).toEqual(['parallx-community.study:study-place:main']);
+    opener.remove();
   });
 });

@@ -14961,7 +14961,10 @@ let _stSubjectOpener = null;
 /** Remember where he was as a sheet opens: the focus goes back there when the sheet closes with nothing started (stSheetFrame). */
 function stNoteSheetOpener() {
   const from = typeof document !== 'undefined' ? document.activeElement : null;
-  _stSubjectOpener = from && from !== document.body && typeof from.getAttribute === 'function' ? { node: from, id: from.getAttribute('data-px-id') || '' } : null;
+  // And the tab he was in: closing the sheet's tab brings forward the tab beside it, which need not be his (Study's one tab sits anywhere in the strip).
+  let editor = '';
+  try { const a = ((_api && _api.editors && _api.editors.openEditors) || []).find((e) => e.isActive); editor = a ? String(a.id || '') : ''; } catch { editor = ''; }
+  _stSubjectOpener = from && from !== document.body && typeof from.getAttribute === 'function' ? { node: from, id: from.getAttribute('data-px-id') || '', editor } : null;
 }
 
 /** Give the focus back to what opened the sheet (the same control, or the one with its id when its view was drawn again). */
@@ -14969,12 +14972,24 @@ function stRefocusSubjectOpener() {
   const opener = _stSubjectOpener;
   _stSubjectOpener = null;
   if (!opener) return;
-  setTimeout(() => {
-    if (document.querySelector('.st-sheet')) return;
+  // His tab first, then the control: the tab comes to the front a little later, so look again for a while, while the keys are nowhere.
+  let tries = 0;
+  let broughtBack = false;
+  const attempt = () => {
+    // A sheet on screen keeps the keys (one in a tab behind does not).
+    if (Array.from(document.querySelectorAll('.st-sheet')).some((n) => n.getClientRects().length)) return;
+    const hidden = !(opener.node.isConnected && opener.node.getClientRects().length);
+    if (hidden && opener.editor && !broughtBack && _api && _api.editors && typeof _api.editors.focusEditor === 'function') {
+      broughtBack = true;
+      if (((_api.editors.openEditors) || []).some((e) => e.id === opener.editor)) void Promise.resolve(_api.editors.focusEditor(opener.editor)).catch(() => {});
+    }
     const node = opener.node.isConnected && opener.node.getClientRects().length ? opener.node
       : opener.id ? Array.from(document.querySelectorAll('[data-px-id]')).find((n) => n.getAttribute('data-px-id') === opener.id && n.getClientRects().length) : null;
-    if (node && typeof node.focus === 'function') node.focus();
-  }, 60);
+    if (node && typeof node.focus === 'function') { node.focus(); return; }
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost && ++tries < 20) setTimeout(attempt, 50);
+  };
+  setTimeout(attempt, 60);
 }
 
 /**
