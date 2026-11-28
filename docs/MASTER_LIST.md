@@ -2745,7 +2745,117 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   *Only his machine can show:* his decks and sessions at their real size, a
   typed-answer card graded by his model (none here), card generation and
   `run-generation-probe` (Ollama); Windows was not run.
-- *Next:* piece 7, Planner, in a new session.
+- **Piece 7 done (2026-11-28): Planner, what piece 1 left short.**
+  *Measured first* (on the real app, hidden, dev at 5555f0ca, a scratch
+  walk of every rule and the table's Planner row, then the keyboard audit
+  on Planner's four screens): met already: one tab named for the place
+  with Planner's icon, the trail, the column's one mark, Open in Its Own
+  Tab, Back and Forward across places (Alt+Left after New Task from
+  Calendar returned to Calendar), an event's and a task's detail opening
+  as a popover over the place (no tab, the tab and trail unchanged), Home's
+  card (Open Today), the commands `planner.open`, `.show` and
+  `.showOverdue`, a place's address in a link; the keyboard audit on
+  Today, Tasks, Calendar and New Task 0 on every count. Not met: Calendar's
+  title was its own `h1.planner-cdate`, not the kit's page header (the keys
+  landed there only by the core's fallback to a page's first h1); its
+  Previous, Next, Today and Month/Week/Day dropped the keys to nothing
+  (the toolbar was drawn again under them); the Tasks page's New Task
+  opened two forms (the button ran its command and a handler of its own)
+  and Escape left the keys on nothing; a form opened by command (New Task,
+  New Event, from the palette or with no Planner tab) and an event's
+  popover left the keys on nothing after Escape; every way in from outside
+  the page (the three dashboard widgets, the Agenda block in a page, a
+  reminder's Open Planner) ran `planner.open`, so it showed the Planner
+  wherever it was last; a Planner tab saved before piece 1 came back on
+  Today, not the page it showed. Deep links: Planner has none of its own
+  (`plannerLinks.ts` only reads links in a task's notes); the place
+  address is its link. The chat's three tools (`planner_captureTask`,
+  `_captureEvent`, `_read`) move nowhere (read in code).
+  *The calls the rule left, decided for him to overrule:* New Task and New
+  Event are popovers over a place, like an event or a task in detail (the
+  table: no things): New Task over Tasks (staying on a list it is on), New
+  Event over Calendar when the Planner is on it, else over Today; neither
+  is in the address nor a step of its own. As Flashcards' Add Card, what
+  opens over a place rides along to that place's drawing once
+  (`carryPlannerOver`/`takePlannerOver`, plannerNavState.ts); the pending
+  flags and the `parallx.planner.newTask`/`newEvent` document events are
+  gone. A widget's or the Agenda block's event opens Calendar on the
+  event's day (Day view) with the event open; a task row, or a reminder,
+  Tasks with the task open (new commands `planner.openTask`,
+  `planner.openEvent`, not in the palette: they need an id). The calendar
+  widget opens Calendar; the tasks widget's link now reads "Open Tasks"
+  (was "Open Planner →") and opens Tasks; the Agenda block's own Open
+  Planner and the reminder's button keep their names. Calendar's title is
+  the month (or week, or day) in view, its tab and trail "Calendar".
+  *What shipped:* the above, and: a popover over the page reads its opener
+  when it opens (not after loading, when the page's title had the keys)
+  and on close gives the keys back to it, or the same control drawn again,
+  or the page's title; an event's own bar or chip is its opener (a mouse
+  press on it starts a drag, so it never had the keys); any control with
+  an id keeps the keys when the page is drawn again. An older build's
+  Planner tab comes back on its page (`planner.activeTab`, read once and
+  cleared), unless a form was sent to the first drawing. Nothing outside
+  `src/built-in/planner` changed; the core gained nothing.
+  *How it was checked:* the acceptance probe
+  `tests/probes/getting-around-planner-acceptance.mjs`, written first by the
+  app-verifier (32c335c1), 17/41 on the app as it was (17 guards; its
+  author moved one meant guard, 5b, keys back after an event's popover,
+  to a demand because it failed); 41/41 unedited on the build commit
+  99218c6c and on the final build b55c8705, 0 page errors (seen on the
+  real app, hidden). Pieces 1 to 6's probes on 99218c6c: 23/23, 30/30,
+  59/59, 114/114, 78/78, 76/76. Planner's own probes on 99218c6c and on
+  5555f0ca: `planner-probe` exit 0 on both; `planner-pages-probe` 18 ok and
+  the same 3 FAIL on both (Calendar's row "lights that row alone", Enter on
+  All Tasks, Review Queue's retitle; from before the piece, not traced).
+  Typecheck, vitest (758 files passed, 3 skipped, on 99218c6c; the two
+  Planner unit files again after b55c8705), build; with
+  `tests/unit/plannerOver.test.ts` (new; seen failing on the code before).
+  On b55c8705: the keyboard audit on Planner's screens (12 with sub-screens)
+  0 on every count; the touch-drag probe all ok; the visual-consistency
+  probe one rise, Creations' title size, as before piece 1 (Planner:
+  nothing found).
+  *The "Show Tasks" popup problem* (the full keyboard audit's Planner
+  popup problem since piece 2): traced. Its screen is the audit's
+  `planner.show tasks` (Tasks); its New Task button opened two forms and
+  the page was drawn again under them, so after Escape the button the keys
+  should go back to was gone (intermittent: it depended on whether the
+  redraw beat the Escape). Fixed (one form; the keys back on the button,
+  3a to 3d of the acceptance probe). On 5555f0ca the audit filtered to
+  Planner showed 0 (it is intermittent); the full 139-screen audit was not
+  run after the fix.
+  Review by the correctness, modularity and access reviewers, every finding
+  put to the skeptic: the modularity reviewer found no breach; of eight
+  findings the skeptic reproduced five and judged none needed fixing now;
+  fixed the closest call it named (b55c8705): New Event sent to the first
+  drawing after the update was redirected to the older build's page, so
+  its form waited and popped up on a later visit to Today. (The app-verifier's drive of that fix: pending, recorded below when in.)
+  *Checks changed:* `tests/unit/plannerNavState.test.ts`, by the
+  app-verifier, not the builder (423925c2): its two tests read the removed
+  `setPendingPlannerNewTask`/`takePendingPlannerNewTask`; they now read
+  `carryPlannerOver`/`takePlannerOver`, each demanding the same (a New Task
+  request taken once, the first now checking the exact request; one
+  withdrawn after a failed open not taken); 2/2 on 5555f0ca before, 2/2 on
+  the tree after. No assertion removed, no baseline raised (the kit-handler
+  ratchet was met by the Tasks button running only its command), the
+  acceptance probe never edited.
+  *Reported and left* (reproduced by the skeptic, judged not worth acting
+  on now): with the app's Time Zone setting different from the machine's,
+  an event opened from a widget or the Agenda block can land on the day
+  before or after (the address names the day by the machine's clock, as
+  the older month-to-day move does); the first Planner drawing after the
+  update, if it is a deliberate Today (Home's Open Today), goes to the
+  older build's saved page instead (once per workspace); a form sent to a
+  place whose drawing throws stays held until the next visit there; the
+  calendar widget's picture is a way to Calendar only by mouse or finger
+  (a plain surface with no name; its click listener is added again on each
+  repaint, so one click runs the command several times, harmlessly), older
+  code; the widgets' rows and the Agenda block's names are hand-made
+  buttons, not the kit's; the Agenda block's tooltips say "the planner" in
+  lower case. A task's title on Tasks opens it by mouse only (its date
+  button is the keyboard's way, as before).
+  *Only his machine can show:* his calendar and tasks at their real size,
+  Google sync; Windows was not run.
+- *Next:* piece 8, Budget, in a new session.
 
 
 How the app looks and moves: new surfaces, polish of existing ones, the
@@ -5036,7 +5146,8 @@ piece 1, the core point, done 2026-11-27 (proved on Planner); piece 2,
 Back and Forward, done 2026-11-27; piece 3, Worksheets onto the point,
 done 2026-11-27; piece 4, Atelier onto the point, done 2026-11-28;
 piece 5, Study onto the point, done 2026-11-28; piece 6, Flashcards onto
-the point, done 2026-11-28; piece 7, Planner, opens the next session.
+the point, done 2026-11-28; piece 7, Planner, done 2026-11-28; piece 8,
+Budget, opens the next session.
 
 **Waiting for his word (saved 2026-11-28 at his asking):** the seven
 questions on Home, under "Home: the page the app opens on", "For him to
