@@ -33,6 +33,7 @@
 
 import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
 import { el, fcDeclare, fcDeclareToggle, fcList, fcSlug, fcSurface, setSceneUi } from './dom.js'; import { fcFitWide } from './fitWide.js';
+import { FC_DECK_VIEWS, FC_NAV_DEFS, FC_VIEW_LABELS, fcBindPlaceLink, fcCurrentRoute, fcMarkKeyOf, fcNavViewFor, fcOnPlaceMove, fcOpenPlace, fcPlaceCustomOfTag, fcPlaceMenuItems, fcPlacesActivate, fcPlacesOn } from './places.js';
 import { fcWithRegistry } from './progress.js'; import { fcRegisterProviders, fcStudyWork } from './work.js'; import { fcRegisterHome } from './home.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1144,9 +1145,6 @@ function fcActiveCustomDeck(route) {
     tag: route?.view === 'study' && route.tag ? String(route.tag).trim().toLowerCase() : '',
   };
 }
-function fcIsActiveCustomRow(row, active) {
-  return (!!active.id && row.dataset.customId === active.id) || (!!active.tag && row.dataset.customTag === active.tag);
-}
 /** Study every card of a custom deck now, whatever is due: a cram, so grading leaves the schedule alone. */
 function fcCustomDeckCramRoute(deck) {
   return { view: 'study', tag: deck.tag, custom: { mode: 'cram', count: Math.max(1, deck.total || 0), aheadDays: 0, tags: [deck.tag], flags: [], startedAt: Date.now() } };
@@ -1446,6 +1444,8 @@ function fcDeckMenuItems(deck) {
 }
 
 async function openFlashcards(route) {
+  // On the places point every way in is a place in Flashcards' one tab.
+  if (fcPlacesOn(_api)) { await fcOpenPlace(_api, route); return; }
   // The route is stashed BEFORE anything else, on every path. An open TAB
   // does not imply a live PANE: the workbench builds a tool pane lazily on
   // first show, and drops it again on workspace restore or when the
@@ -4747,7 +4747,8 @@ function injectStyles() {
 }
 .fc-sb__nav-item:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .fc-sb__nav-item:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
-.fc-sb__nav-item--active { background: var(--px-surface-selected); color: var(--px-text); }
+/* The shared mark (px-current) stays over a row's own hover. */
+.fc-sb__nav-item.px-current[aria-current], .fc-deck-row.px-current[aria-current] { background: var(--px-surface-selected); color: var(--px-text); }
 .fc-sb__nav-icon { display: inline-flex; flex: none; width: 16px; height: 16px; }
 .fc-sb__nav-icon svg { width: 100%; height: 100%; }
 .fc-sb__nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4831,7 +4832,6 @@ function injectStyles() {
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .fc-deck-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.fc-deck-row--active { background: var(--px-surface-selected); color: var(--px-text); box-shadow: inset 2px 0 var(--px-accent); }
 .fc-deck-row:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
 .fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 13px; height: 13px; color: var(--px-text-faint); }
 .fc-deck-row__icon svg { width: 100%; height: 100%; }
@@ -4892,28 +4892,8 @@ function injectStyles() {
 
 /* ── Pane shell — an editorial page: wide margins, an underline tab strip ── */
 .fc-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; container-type: inline-size; }
-.fc-pane__header {
-  display: flex; align-items: stretch; gap: var(--px-space-2);
-  height: 46px; padding: 0 var(--px-space-4); flex: 0 0 auto;
-  border-bottom: 1px solid var(--px-divider);
-}
-/* Breadcrumb — where you are, and the way back out. Navigation itself lives
-   in the sidebar rail; this must never grow into a second tab strip. */
-.fc-pane__crumbs { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
-.fc-crumb {
-  max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font: inherit; font-size: var(--px-text-base); font-weight: 650; color: var(--px-text);
-}
-.fc-crumb--link {
-  border: 0; padding: 2px var(--px-space-1); margin: 0 calc(var(--px-space-1) * -1);
-  border-radius: var(--px-radius-sm); background: transparent;
-  color: var(--px-text-muted); font-weight: 550; cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
-}
-.fc-crumb--link:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.fc-crumb--link:focus-visible { outline: none; box-shadow: var(--px-ring-accent); }
-.fc-crumb__sep { color: var(--px-text-faint); font-size: var(--px-text-sm); user-select: none; }
-.fc-pane__spacer { flex: 1; }
+.fc-pane__header { --fc-gutter: clamp(20px, 4cqw, 56px); flex: 0 0 auto; padding: var(--px-space-6) var(--fc-gutter) 0; }
+.fc-pane__header:not([hidden]) + .fc-pane__body .fc-view { padding-top: var(--px-space-3); }
 .fc-pane__body { flex: 1; overflow-y: auto; }
 
 /* Canvas-margin model (mirrors .canvas-full-width): the GUTTERS are the
@@ -4934,16 +4914,10 @@ function injectStyles() {
   padding-bottom: var(--px-space-3); border-bottom: 1px solid var(--px-divider);
 }
 .fc-home__head-text { flex: 1; min-width: 0; }
-.fc-home__title {
-  margin: 0;
-  font-family: var(--px-font-display); font-size: var(--px-text-xl); font-weight: 500; letter-spacing: -0.01em;
-  line-height: 1.15; color: var(--px-text);
-}
 .fc-home__sub {
   margin-bottom: var(--px-space-1); font-family: var(--px-font-mono); font-size: var(--px-text-sm); color: var(--px-text-muted);
 }
 .fc-home__due { margin-top: var(--px-space-1); font-size: var(--px-text-md); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
-.fc-home__title:has(+ .fc-home__due) { font-size: var(--px-text-2xl); line-height: 1.1; }
 .fc-deck-card__words .fc-deck-count__n { font-size: inherit; font-weight: 600; }
 .fc-deck-count__n--learn { color: var(--px-warning); }
 .fc-deck-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--px-surface-hover); }
@@ -5110,7 +5084,6 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   .fc-deck-card__counts { display: flex; gap: var(--px-space-4); }
   .fc-deck-count__l { position: static; width: auto; height: auto; clip-path: none; font-size: var(--px-text-xs); color: var(--px-text-muted); }
 }
-.fc-view__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
 
 /* ── Forms — sentence-case labels (no shouting), quiet inset inputs ── */
 .fc-form { display: flex; flex-direction: column; gap: var(--px-space-1); }
@@ -5616,7 +5589,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
    separated by whitespace; one restrained review histogram on a baseline. ── */
 .fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--px-space-5) var(--px-space-4); margin-bottom: var(--px-space-6); }
 .fc-stat__value { font-family: var(--px-font-display); font-size: var(--px-text-2xl); font-weight: 500; line-height: 1; letter-spacing: -0.01em; color: var(--px-text); font-variant-numeric: lining-nums tabular-nums; }
-.fc-stats__title { margin-bottom: var(--px-space-4); }
+.fc-view > .px-page-header { margin-bottom: var(--px-space-4); }
 .fc-chart-head { display: flex; justify-content: space-between; align-items: baseline; }
 .fc-chart-head__n { font-family: var(--px-font-mono); font-weight: 400; color: var(--px-text-muted); }
 .fc-chart__bar--done { background: var(--px-success); }
@@ -5720,54 +5693,6 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * The tool's top-level destinations, in sidebar order.
- *
- * The SIDEBAR owns this navigation. It used to live only on the editor pane's
- * tab strip, which meant the map was inside the thing it was supposed to map:
- * with no deck open there was no pane, and with no pane there was no way to
- * reach Decks, Stats, Create or Import at all. You had to click a deck (which
- * lands in Browse) and only then find the tabs. Now the destinations sit above
- * the deck list, always one click away, and the pane carries a breadcrumb
- * instead of a second copy of the same navigation.
- */
-const FC_NAV_DEFS = [
-  { view: 'decks', label: 'Decks', iconName: 'layers' },
-  { view: 'study', label: 'Study', iconName: 'play' },
-  { view: 'stats', label: 'Stats', iconName: 'chart-column' },
-  { view: 'create', label: 'Make Cards', iconName: 'px-ai-mark' },
-  { view: 'import', label: 'Import', iconName: 'inbox' },
-];
-
-/** Human names for EVERY route, including the ones that are not destinations
- *  (they are breadcrumb leaves, not rail entries). */
-const FC_VIEW_LABELS = {
-  decks: 'Decks',
-  study: 'Study',
-  create: 'Make Cards',
-  import: 'Import',
-  stats: 'Stats',
-  browse: 'Browse Cards',
-  custom: 'Custom Study',
-  customDeck: 'Custom Deck',
-  dedup: 'Find Duplicates',
-  coverage: 'Coverage Review',
-};
-
-/** Views that live UNDER one deck: they light Decks in the rail and put the
- *  deck's name in the breadcrumb. */
-const FC_DECK_VIEWS = ['browse', 'dedup', 'coverage'];
-
-/** Which rail destination a route lights. Custom Study is a launcher for
- *  Study, so it lights Study rather than nothing. */
-function fcNavViewFor(route) {
-  const view = route?.view || 'decks';
-  if (FC_DECK_VIEWS.includes(view)) return 'decks';
-  if (view === 'custom') return 'study';
-  if (view === 'customDeck') return 'decks';
-  return view;
-}
-
-/**
  * The route the open pane is showing, mirrored here so the sidebar rail can
  * light where you are. null when no pane is alive — the rail then shows no
  * selection rather than a stale one.
@@ -5794,22 +5719,23 @@ function createSidebarView(container) {
   // Fixed above the scroller: navigation must not scroll away under a long
   // deck list, and it must work with zero decks (which is exactly when
   // Make Cards and Import matter most).
+  // Each row is a link to a place; the shared mark (aria-current) says which one the tab shows.
   const nav = el('div', 'fc-sb__nav');
-  nav.setAttribute('role', 'tablist');
-  nav.setAttribute('aria-orientation', 'vertical');
+  nav.setAttribute('role', 'navigation');
   nav.setAttribute('aria-label', 'Flashcards sections');
   const navItems = new Map();
+  const placeLinks = [];
   for (const def of FC_NAV_DEFS) {
     const item = el('button', 'fc-sb__nav-item');
     item.type = 'button';
-    item.setAttribute('role', 'tab');
-    item.setAttribute('aria-selected', 'false');
-    item.dataset.view = def.view; fcDeclareToggle(item, `flashcards.side.${def.view}`, 'aria-selected', def.label);
+    item.dataset.view = def.view; fcDeclare(item, `flashcards.side.${def.view}`, { label: def.label });
     const glyph = el('span', 'fc-sb__nav-icon');
     glyph.innerHTML = icon(def.iconName, 14);
     item.appendChild(glyph);
     item.appendChild(el('span', 'fc-sb__nav-label', def.label));
     item.addEventListener('click', () => void openFlashcards({ view: def.view }));
+    placeLinks.push(fcBindPlaceLink(_api, item, { view: def.view }));
+    // The arrows move along the rows; Enter goes (a move puts the keys on the page's title).
     item.addEventListener('keydown', (event) => {
       const buttons = [...navItems.values()];
       const index = buttons.indexOf(item);
@@ -5819,7 +5745,6 @@ function createSidebarView(container) {
       if (next < 0) return;
       event.preventDefault();
       buttons[next].focus();
-      buttons[next].click();
     });
     navItems.set(def.view, item);
     nav.appendChild(item);
@@ -5888,30 +5813,25 @@ function createSidebarView(container) {
 
   const openDeckMenu = (deck, x, y) => {
     if (!_api.ui.showContextMenu) { void openFlashcards({ view: 'browse', deckId: deck.id }); return; }
-    _api.ui.showContextMenu({ x, y }, fcDeckMenuItems(deck));
+    _api.ui.showContextMenu({ x, y }, [...fcPlaceMenuItems(_api, { view: 'browse', deckId: deck.id }), ...fcDeckMenuItems(deck)]);
   };
 
   /** Deck the pane is currently inside, or null. The sidebar should always be
    *  able to answer "where am I?" — a rail entry alone cannot, because four of
    *  the five destinations can be scoped to a deck. */
-  let activeDeckId = typeof _fcActiveRoute?.deckId === 'number' ? _fcActiveRoute.deckId : null;
-  let activeCustom = fcActiveCustomDeck(_fcActiveRoute);
-
+  // The one mark for where you are: the deepest row the place's trail passes through (fcMarkKeyOf).
+  let markKey = '';
+  let rowLinks = [];
+  const rowKey = (row) => (row.dataset?.customId ? `custom:${row.dataset.customId}` : row.dataset?.deckId ? `deck:${row.dataset.deckId}` : '');
+  const markRow = (row) => _api.ui.markCurrent?.(row, !!markKey && rowKey(row) === markKey);
   const syncNav = (route) => {
-    const active = route ? fcNavViewFor(route) : null;
+    markKey = route ? fcMarkKeyOf(route, fcPlaceCustomOfTag) : '';
+    const active = markKey.startsWith('nav:') ? markKey.slice(4) : null;
     for (const [view, item] of navItems) {
-      const on = view === active;
-      item.classList.toggle('fc-sb__nav-item--active', on);
-      item.setAttribute('aria-selected', on ? 'true' : 'false');
-      item.tabIndex = on || (!active && view === 'decks') ? 0 : -1;
+      _api.ui.markCurrent?.(item, view === active);
+      item.tabIndex = view === (active || 'decks') ? 0 : -1;
     }
-    activeDeckId = typeof route?.deckId === 'number' ? route.deckId : null;
-    activeCustom = fcActiveCustomDeck(route);
-    for (const row of deckList.children) {
-      if (row.dataset?.customId) { row.classList.toggle('fc-deck-row--active', fcIsActiveCustomRow(row, activeCustom)); continue; }
-      if (!row.dataset?.deckId) continue;
-      row.classList.toggle('fc-deck-row--active', Number(row.dataset.deckId) === activeDeckId);
-    }
+    for (const row of deckList.children) if (rowKey(row)) markRow(row);
   };
 
   let disposed = false, refreshSeq = 0;
@@ -5992,6 +5912,8 @@ function createSidebarView(container) {
     deckCount.textContent = decks.length ? String(decks.length) : '';
     filter.hidden = decks.length === 0;
     columns.hidden = decks.length === 0;
+    for (const d of rowLinks) d.dispose();
+    rowLinks = [];
     deckList.innerHTML = '';
     if (decks.length === 0) {
       deckList.appendChild(el('div', 'fc-sb__empty',
@@ -6034,7 +5956,8 @@ function createSidebarView(container) {
         row.appendChild(more);
         row.dataset.customId = String(deck.id);
         row.dataset.customTag = deck.tag;
-        row.classList.toggle('fc-deck-row--active', fcIsActiveCustomRow(row, activeCustom));
+        markRow(row);
+        rowLinks.push(fcBindPlaceLink(_api, row, { view: 'customDeck', customId: deck.id }, { menu: false }));
         row.addEventListener('click', () => go({ view: 'customDeck', customId: deck.id }));
         row.addEventListener('keydown', (e) => {
           if (e.target !== row) return;
@@ -6042,7 +5965,7 @@ function createSidebarView(container) {
         });
         row.addEventListener('contextmenu', (e) => {
           e.preventDefault();
-          if (_api.ui.showContextMenu) _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, fcCustomDeckMenuItems(deck, go));
+          if (_api.ui.showContextMenu) _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [...fcPlaceMenuItems(_api, { view: 'customDeck', customId: deck.id }), ...fcCustomDeckMenuItems(deck, go)]);
         });
         deckList.appendChild(row);
       }
@@ -6083,7 +6006,8 @@ function createSidebarView(container) {
         row.appendChild(more);
 
         row.dataset.deckId = String(deck.id);
-        row.classList.toggle('fc-deck-row--active', activeDeckId === deck.id);
+        markRow(row);
+        rowLinks.push(fcBindPlaceLink(_api, row, { view: 'browse', deckId: deck.id }, { menu: false }));
         row.addEventListener('click', () => void openFlashcards({ view: 'browse', deckId: deck.id }));
         row.addEventListener('keydown', (e) => {
           if (e.target !== row) return;
@@ -6101,8 +6025,11 @@ function createSidebarView(container) {
   void refresh();
   const onData = () => void refresh();
   _dataListeners.add(onData);
-  _navListeners.add(syncNav);
-  syncNav(_fcActiveRoute);
+  // On the places point the mark follows the core's record of where Flashcards' tab is.
+  const placed = fcPlacesOn(_api);
+  const offMove = placed ? fcOnPlaceMove(_api, syncNav) : null;
+  if (!placed) _navListeners.add(syncNav);
+  syncNav(placed ? fcCurrentRoute(_api) : _fcActiveRoute);
 
   container.appendChild(root);
   return {
@@ -6110,6 +6037,8 @@ function createSidebarView(container) {
       disposed = true;
       _dataListeners.delete(onData);
       _navListeners.delete(syncNav);
+      offMove?.dispose();
+      for (const d of [...placeLinks, ...rowLinks]) d.dispose();
       root.remove();
     },
   };
@@ -6419,11 +6348,20 @@ function renderViewError(body, route, err, setRoute, retry) {
   body.appendChild(view);
 }
 
-function createEditorPane(container, input) {
-  injectStyles();
-  try { input?.setName?.('Flashcards'); } catch { /* noop */ }
+/** Views that draw no title of their own: the pane gives them the kit's page header, named for the place. */
+const FC_UNTITLED_VIEWS = new Set(['study', 'create', 'import']);
 
-  const pendingRoute = _takePendingRoute();
+/**
+ * The pane that draws a route. On the places point it is one place's
+ * drawing (`nav`: { route, go }): the page's own moves go to `nav.go`, which
+ * moves the tab through the core, and `show(route)` draws where it went.
+ * Without the point it is the one Flashcards tab, moving by itself.
+ */
+function createEditorPane(container, input, nav) {
+  injectStyles();
+  if (!nav) { try { input?.setName?.('Flashcards'); } catch { /* noop */ } }
+
+  const pendingRoute = nav ? nav.route : _takePendingRoute();
   const state = {
     route: pendingRoute || { view: 'decks' },
     disposed: false,
@@ -6435,70 +6373,22 @@ function createEditorPane(container, input) {
   };
 
   const root = el('div', 'fc-pane');
+  // The page's title for a view that draws none (Study, Make Cards, Import); where you are is the trail's job.
   const header = el('div', 'fc-pane__header');
-  // A breadcrumb, not a tab strip. Navigation moved to the sidebar rail
-  // (FC_NAV_DEFS) — repeating it here would be the same map in two places,
-  // and the pane's job is to say where you ARE and how to step back out.
-  const crumbs = el('nav', 'fc-pane__crumbs');
-  crumbs.setAttribute('aria-label', 'Breadcrumb');
-  header.appendChild(crumbs);
-  header.appendChild(el('div', 'fc-pane__spacer'));
   root.appendChild(header);
   const body = el('div', 'fc-pane__body');
   root.appendChild(body);
   container.appendChild(root);
-
-  /** Guards the async deck-name lookup below: a fast route change must not
-   *  let an older breadcrumb finish painting after the newer one. */
-  let crumbSeq = 0;
-
-  const syncCrumbs = async () => {
-    const seq = ++crumbSeq;
-    const route = state.route;
-    const view = route.view || 'decks';
-    const paint = (nodes) => {
-      if (seq !== crumbSeq || state.disposed) return;
-      crumbs.innerHTML = '';
-      for (const n of nodes) crumbs.appendChild(n);
-      // At the top level the page's own heading already says "Decks"; a
-      // one-word breadcrumb above it is the same word twice.
-      header.style.display = nodes.length ? '' : 'none';
-    };
-    const crumb = (label, onClick) => {
-      const node = el(onClick ? 'button' : 'span', onClick ? 'fc-crumb fc-crumb--link' : 'fc-crumb', label);
-      if (onClick) { node.type = 'button'; node.addEventListener('click', onClick); }
-      return node;
-    };
-    const sep = () => el('span', 'fc-crumb__sep', '/');
-
-    if (view === 'decks') { paint([]); return; }
-
-    const nodes = [crumb('Decks', () => setRoute({ view: 'decks' }))];
-    if (view === 'customDeck') {
-      const custom = await fcGetCustomDeck(route.customId);
-      nodes.push(sep());
-      nodes.push(crumb(custom ? custom.name : FC_VIEW_LABELS.customDeck));
-      paint(nodes);
-      return;
-    }
-    if (view === 'study' && route.tag && route.tag !== FC_MEMORIZE_TAG) {
-      const custom = (await fcListCustomDeckNames()).find((d) => d.tag === String(route.tag).toLowerCase());
-      if (custom) { nodes.push(sep()); nodes.push(crumb(custom.name, () => setRoute({ view: 'customDeck', customId: custom.id }))); }
-    }
-    if (route.deckId != null) {
-      const deck = await fcGetDeck(route.deckId);
-      if (deck) {
-        nodes.push(sep());
-        nodes.push(view === 'browse'
-          ? crumb(deck.name)
-          : crumb(deck.name, () => setRoute({ view: 'browse', deckId: deck.id })));
-      }
-    }
-    if (view !== 'browse' || route.deckId == null) {
-      nodes.push(sep());
-      nodes.push(crumb(FC_VIEW_LABELS[view] || view));
-    }
-    paint(nodes);
+  // With the keys on the Study title, the session's keys (Space, 1 to 4) still grade.
+  header.onkeydown = (e) => {
+    const main = state.route.view === 'study' ? body.querySelector('.fc-study__main') : null;
+    if (main && typeof main.onkeydown === 'function' && e.target?.classList?.contains('px-page-header__title')) main.onkeydown(e);
+  };
+  const syncHeader = () => {
+    header.replaceChildren();
+    const untitled = FC_UNTITLED_VIEWS.has(state.route.view);
+    if (untitled) _api.ui.createPageHeader(header, { title: FC_VIEW_LABELS[state.route.view] });
+    header.hidden = !untitled;
   };
 
   let rendering = false, renderQueued = false;
@@ -6507,15 +6397,21 @@ function createEditorPane(container, input) {
     for (const d of viewDisposables) { try { d.dispose(); } catch { /* noop */ } }
     viewDisposables = [];
   };
-  const render = async () => {
-    if (rendering) { renderQueued = true; return; }
+  let inflight = Promise.resolve();
+  // Resolves once the page is drawn; a call while one is drawing is drawn by it, and waits for it.
+  const render = () => {
+    if (rendering) { renderQueued = true; return inflight; }
+    inflight = drawRoutes();
+    return inflight;
+  };
+  const drawRoutes = async () => {
     rendering = true;
     try {
       do {
         renderQueued = false;
         if (state.disposed) return;
-        void syncCrumbs();
-        _setActiveRoute(state.route); // the sidebar rail lights what we show
+        syncHeader();
+        if (!nav) _setActiveRoute(state.route); // the column marks what we show (on the places point, the core says)
         state.session = null;
         disposeView();
         body.innerHTML = '';
@@ -6546,15 +6442,17 @@ function createEditorPane(container, input) {
     }
   };
 
-  function setRoute(route) {
-    // Same-route no-op: re-clicking "Study Now" mid-study or re-opening the
-    // current deck must not wipe the view (render() rebuilds the body and
-    // resets the card face / scroll — the "certain things reset the pane"
-    // report).
-    if (JSON.stringify(route) === JSON.stringify(state.route)) return;
+  /** Draw a route here. Same-route no-op: re-clicking "Study Now" mid-study or re-opening the current deck must not wipe the view. */
+  function showRoute(route) {
+    if (JSON.stringify(route) === JSON.stringify(state.route)) return renderDone;
     state.route = route;
     state.explicitRoute = true;
-    void render();
+    renderDone = render();
+    return renderDone;
+  }
+  function setRoute(route) {
+    if (nav) { if (JSON.stringify(route) !== JSON.stringify(state.route)) nav.go(route); return; }
+    void showRoute(route);
   }
 
   const onRouteEvent = (e) => {
@@ -6567,7 +6465,7 @@ function createEditorPane(container, input) {
     _takePendingRoute();
     setRoute(route);
   };
-  document.addEventListener('parallx.flashcards.route', onRouteEvent);
+  if (!nav) document.addEventListener('parallx.flashcards.route', onRouteEvent);
 
   const onData = () => {
     // Live-refresh passive views. The study session manages its own state —
@@ -6592,7 +6490,26 @@ function createEditorPane(container, input) {
   };
   _dataListeners.add(onData);
 
-  void render();
+  let renderDone = render();
+
+  if (nav) {
+    return {
+      ready: renderDone,
+      show: (route) => showRoute(route),
+      dispose() {
+        state.disposed = true;
+        disposeView();
+        _dataListeners.delete(onData);
+        root.remove();
+      },
+      // The route is the core's (the tab's address); only the scroll is kept across a switch of tabs.
+      saveViewState: () => ({ key: JSON.stringify(state.route), scrollTop: body.scrollTop || 0 }),
+      restoreViewState(saved) {
+        if (state.disposed || !saved || saved.key !== JSON.stringify(state.route) || !(saved.scrollTop > 0)) return;
+        void renderDone.then(() => { if (!state.disposed) body.scrollTop = saved.scrollTop; });
+      },
+    };
+  }
 
   return {
     dispose() {
@@ -6673,7 +6590,7 @@ async function renderDecks(body, setRoute) {
   const served = fcServedNow(decks, today, now);
   const behind = Math.max(0, today.dueTotal - served);
   // The page's title is the day's work; an empty shelf is still "Decks".
-  headText.appendChild(el('h1', 'fc-home__title', decks.length === 0 ? 'Decks' : served > 0 ? `${served} ${served === 1 ? 'card' : 'cards'} due today` : 'Nothing due right now'));
+  _api.ui.createPageHeader(headText, { front: true, title: decks.length === 0 ? 'Decks' : served > 0 ? `${served} ${served === 1 ? 'card' : 'cards'} due today` : 'Nothing due right now' });
   const cta = el('div', 'fc-home__cta');
   // The sidebar's list owns navigation, but the pane must not become a dead
   // end when the sidebar shows another tool: Stats is one press from here.
@@ -7283,11 +7200,7 @@ async function renderCustomDeck(body, route, setRoute) {
   const view = el('div', 'fc-view fc-custom');
 
   const head = el('div', 'fc-row');
-  const backBtn = el('button', 'fc-btn');
-  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Decks</span>`;
-  fcDeclare(backBtn, 'flashcards.customView.toDecks'); backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
-  head.appendChild(backBtn);
-  head.appendChild(el('div', 'fc-view__title', deck.name));
+  head.appendChild(_api.ui.createPageHeader(null, { title: deck.name }));
   const spacer = el('div'); spacer.style.flex = '1';
   head.appendChild(spacer);
   const studyBtn = el('button', 'fc-btn fc-btn--primary');
@@ -7367,12 +7280,7 @@ async function renderBrowse(body, route, setRoute) {
   const view = el('div', 'fc-view');
 
   const head = el('div', 'fc-row');
-  const backBtn = el('button', 'fc-btn');
-  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Decks</span>`;
-  fcDeclare(backBtn, 'flashcards.browse.toDecks'); backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
-  head.appendChild(backBtn);
-  const title = el('div', 'fc-view__title', deckRow.name);
-  head.appendChild(title);
+  head.appendChild(_api.ui.createPageHeader(null, { title: deckRow.name }));
   const spacer = el('div'); spacer.style.flex = '1';
   head.appendChild(spacer);
   const studyBtn = el('button', 'fc-btn fc-btn--primary');
@@ -7944,13 +7852,7 @@ async function renderDedup(body, route, setRoute) {
   if (!deckRow) { setRoute({ view: 'decks' }); return; }
   const view = el('div', 'fc-view');
 
-  const head = el('div', 'fc-row');
-  const backBtn = el('button', 'fc-btn');
-  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Back</span>`;
-  fcDeclare(backBtn, 'flashcards.dedup.back'); backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
-  head.appendChild(backBtn);
-  head.appendChild(el('div', 'fc-view__title', `Find Duplicates - ${deckRow.name}`));
-  view.appendChild(head);
+  _api.ui.createPageHeader(view, { title: 'Find Duplicates', subtitle: deckRow.name });
   view.appendChild(el('div', 'fc-hint',
     'Cards asking essentially the same thing, even with different wording. Nothing is deleted until you apply your choices.'));
 
@@ -8233,13 +8135,7 @@ async function renderCoverage(body, route, setRoute) {
   if (!deckRow) { setRoute({ view: 'decks' }); return; }
   const view = el('div', 'fc-view');
 
-  const head = el('div', 'fc-row');
-  const backBtn = el('button', 'fc-btn');
-  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Back</span>`;
-  fcDeclare(backBtn, 'flashcards.coverage.back'); backBtn.addEventListener('click', () => setRoute({ view: 'browse', deckId: deckRow.id }));
-  head.appendChild(backBtn);
-  head.appendChild(el('div', 'fc-view__title', `Coverage Review - ${deckRow.name}`));
-  view.appendChild(head);
+  _api.ui.createPageHeader(view, { title: 'Coverage Review', subtitle: deckRow.name });
   view.appendChild(el('div', 'fc-hint',
     'Load the material this deck should cover. The AI reports what is covered well, what is thin, and what is missing - and drafts the missing cards for review.'));
 
@@ -8596,7 +8492,7 @@ let _fcCustomPrefs = { mode: 'extra', count: 20, aheadDays: 3, tags: [], flags: 
 async function renderCustomStudy(body, route, setRoute) {
   const view = el('div', 'fc-view fc-cs');
 
-  view.appendChild(el('div', 'fc-view__title', 'Custom Study'));
+  _api.ui.createPageHeader(view, { title: 'Custom Study' });
   view.appendChild(el('div', 'fc-hint',
     'Work ahead of the daily queue. The normal session hands you a fixed batch; this is how you reach everything behind it.'));
 
@@ -10939,7 +10835,7 @@ async function renderStats(body) {
   const view = el('div', 'fc-view');
   const stats = await fcLoadStats();
 
-  view.appendChild(el('h1', 'fc-home__title fc-stats__title', 'Stats'));
+  _api.ui.createPageHeader(view, { title: 'Stats' });
   // Four numbers that say something at a glance, each with its unit in words.
   const grid = el('div', 'fc-stats-grid');
   const stat = (value, label) => {
@@ -12092,15 +11988,18 @@ export async function activate(api, context) {
   const backfillTimer = setTimeout(() => { void fcBackfillEmbeddings(); }, 8000);
   context.subscriptions.push({ dispose: () => clearTimeout(backfillTimer) });
 
+  // First, so the column it draws finds them. Its screens are places in one tab (the core's places point); without the point, the one tab moves by itself.
+  const placed = fcPlacesActivate(api, {
+    createPane: (container, route, go) => createEditorPane(container, undefined, { route, go }),
+    readNames: async () => ({ decks: await db.all('SELECT id, name FROM fc_decks'), customs: await fcListCustomDeckNames() }),
+    onData: fcOnData,
+  });
+  if (placed.length) context.subscriptions.push(...placed);
+  else context.subscriptions.push(api.editors.registerEditorProvider('flashcards', { createEditorPane: (container, input) => createEditorPane(container, input) }));
+
   context.subscriptions.push(
     api.views.registerViewProvider('flashcards.decks', {
       createView: (container) => createSidebarView(container),
-    }),
-  );
-
-  context.subscriptions.push(
-    api.editors.registerEditorProvider('flashcards', {
-      createEditorPane: (container, input) => createEditorPane(container, input),
     }),
   );
 
