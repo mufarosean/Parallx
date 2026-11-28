@@ -2612,21 +2612,23 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   what `flashcards.study` runs). Study has no link into Flashcards.
   The hand-made **Decks** (Browse, a custom deck) and **Back** (Find
   Duplicates, Coverage Review) buttons are gone; the trail and Back do that
-  work. Buttons that end something stay (the error page's Back to Decks, a
-  finished session's ways out). Every place has the kit's page header as its
+  work. Buttons that end something stay (the error page's Back to Decks;
+  Study's ways out when a session is finished, has nothing to study, or
+  waits for the next card). Every place has the kit's page header as its
   title: Decks' is the day's work ("2 cards due today", the kit's front
   size), Browse and a custom deck the deck's name, Find Duplicates and
   Coverage Review their names with the deck as subtitle, Stats and Custom
   Study theirs; Study, Make Cards and Import, which drew none, get one from
   the pane. After a move the keys land on it; in a session, keys pressed on
-  the Study title still grade (Space, 1 to 4), and on a card asking for a
+  the Study title still grade (Space and 3 seen on the real app; 1 to 4
+  all pass to the session in code), and on a card asking for a
   typed answer a letter goes into its answer box. The column (Decks, Study,
   Stats, Make Cards, Import) marks where the tab is with the shared mark
   (`aria-current="page"`, `px-current`); its own marks (`role=tab` with
   `aria-selected`, `fc-sb__nav-item--active`, `fc-deck-row--active`) are
   gone; its rows and the deck and custom deck rows are place links
   (Ctrl+click, a tab of its own; the deck rows keep their own menu, with
-  Open in Its Own Tab added on right-click). The arrows move along the
+  Open in Its Own Tab added to it: right-click and its ⋯ button). The arrows move along the
   column's rows and Enter goes (the arrows no longer press the row, since a
   press now puts the keys on the page's title). Its sidebar keeps the decks
   list. A Flashcards tab saved by the older build (`flashcards`, `main`, its
@@ -2634,7 +2636,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   doubled. The path for a host without the places point is removed (every
   host has it; `src/api/apiFactory.ts` always creates it): Flashcards'
   own router (the pending route, the `parallx.flashcards.route` event, the
-  pane's own record of its route) is gone; `main.js` went from 12385 to
+  route kept in the tab's view state, the column's own record of the
+  active route, its own editor provider) is gone; `main.js` went from 12385 to
   12187 lines. Nothing a tool other than Flashcards owns changed; the core
   gained nothing.
   *The calls the rule left, decided for him to overrule:* Import, a custom
@@ -2644,26 +2647,30 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   the deepest of its rows the trail passes through: on any screen of a deck
   (Browse, its Study, Find Duplicates, Make Cards for it) the deck's row,
   not Decks or Study; on a custom deck's page or session, its row; Custom
-  Study marks Study. Decks' title stays the day's work rather than
+  Study with no deck marks Study (for a deck, the deck's row). Decks' title stays the day's work rather than
   "Decks" (the tab and trail say Decks). A custom session's filters ride in
   its address as JSON, so Back to it is the same session.
   *How it was checked:* the acceptance probe
   `tests/probes/getting-around-flashcards-acceptance.mjs`, written first by
-  the app-verifier (13272c76), gave 4/76 on the app as it was (four guards);
+  the app-verifier (13272c76), gave 4/76 on the app as it was (four guards; the verifier's count in
+  13272c76, no log kept);
   it passes 76/76 unedited on the build commit 83d6f32b, on 28366f72 and on
   the final build c2189ff7, 0 page errors (seen on the real app, hidden).
   Pieces 1 to 5's probes on 83d6f32b: 23/23, 30/30, 59/59, 114/114,
   78/78 (not run again after; the later commits touch only Flashcards'
   files and probes). Typecheck, vitest (757 files passed, 3 skipped, on
-  c2189ff7), build. Flashcards' own checks, on aef6b8e4 (the build before
+  c2189ff7), `npm run build` (on b921fdb7, Build complete). Flashcards' own checks, on aef6b8e4 (the build before
   the piece) and on this piece (after the changed checks below):
   `flashcardsBehavior.test.ts` 49/49 and 49/49 (26/49 unchanged on
   83d6f32b); `flashcards.test.ts` and the other flashcards unit tests pass
   on both; `ext/flashcards/test/run-navigation-probe.mjs` 26 of 34 on the
   base and 27 of 35 on c2189ff7, the same 8 failing on both (from before:
   the column's order expecting "Create", the home's masthead reading
-  "Decks", the home's Custom Study and Import buttons, counts' labels, and
-  two old-breadcrumb readings that fail on the base too);
+  "Decks", today's three numbers on the home, the home's Custom Study and
+  Import buttons, counts' labels, the home's old breadcrumb reading
+  "Decks", and the walk back by the trail's first crumb demanding the
+  title "Decks", which reads the day's work; the base count is the probe
+  as it was at aef6b8e4);
   `flashcards-custom-decks-probe` 24 of 27 on both (the same 3: New Custom
   Deck is in the Add menu, a row's counts read at the wrong index);
   `flashcards-pages-probe` 15/15 on both; `flashcards-render-probe` stops
@@ -2679,7 +2686,8 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   piece and the same 5 on aef6b8e4 (a card's #id chip mouse-only, twice; the
   study surface without a focus ring; Make Cards' Canvas Page and Workspace
   File not getting the keys back after their picker closed), so from before
-  the piece; all fixed (ad360f70) and 0 on every count on the final build.
+  the piece; all fixed (ad360f70), and 0 on every count on ad360f70 and again on the
+  final build (b921fdb7, the same code as c2189ff7).
   The touch-drag probe all ok. The visual-consistency probe: Flashcards is
   off its no-header list; with a deck now seeded it found the Decks title
   cut off and a radius off the scale, both fixed; on the final build one
@@ -2691,9 +2699,11 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   undid a grade); the kit's page header kept its own padding inside
   Flashcards' padded pages (every title 24px right of the content); in
   Browse and a custom deck's page a long deck name pushed the page sideways.
-  The app-verifier drove the three with its own probe,
+  The app-verifier drove the three with its own probe (the wide name in
+  Browse only, the custom deck's page read in code; s and e driven, z not),
   `tests/probes/flashcards-places-review-fixes-probe.mjs` (73ed42ab): 17/17
-  on f04ecb7e and on c2189ff7, 7 of 17 on 83d6f32b. The modularity reviewer
+  on f04ecb7e and on c2189ff7, 7 of 17 on 83d6f32b (those two by 73ed42ab's
+  message; no log kept). The modularity reviewer
   found no breach.
   *Checks changed* (by the app-verifier, not the builder, one commit per
   file naming every changed reading): `flashcardsBehavior.test.ts`
