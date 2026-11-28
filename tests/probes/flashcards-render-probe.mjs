@@ -11,6 +11,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// The way back to Decks: Flashcards' own breadcrumb ("Decks / …" in the pane) became the core's trail in the bar
+// under the tabs (Getting around, piece 6); its first crumb, "Flashcards", goes to Decks.
+const TRAIL_HOME = '.editor-ribbon .parallx-breadcrumb-item:visible:has-text("Flashcards") >> nth=0';
 const planPath = process.argv[2];
 const outDir = path.resolve(process.argv[3] ?? path.join(os.tmpdir(), 'parallx-fc-render'));
 const studyIds = process.argv.slice(4).map(Number).filter(Boolean);
@@ -131,7 +134,7 @@ async function main() {
     await runCommand(page, 'flashcards.open');
     await page.waitForSelector('.fc-deck-card__name', { timeout: 30_000 });
     for (const d of plan.decks) {
-      await page.click('.fc-pane__crumbs >> text="Decks"').catch(() => {});
+      await page.click(TRAIL_HOME).catch(() => {});
       await page.waitForSelector('button:has-text("New Custom Deck")', { timeout: 20_000 });
       await page.click('button:has-text("New Custom Deck")');
       await page.waitForSelector('.parallx-modal-input', { timeout: 10_000 });
@@ -141,7 +144,7 @@ async function main() {
     }
 
     // Home.
-    await page.click('.fc-pane__crumbs >> text="Decks"');
+    await page.click(TRAIL_HOME);
     await page.waitForSelector('.fc-deck-card--custom', { timeout: 20_000 });
     const home = await page.$$eval('.fc-deck-card--custom', (els) => els.map((el) => ({
       name: el.querySelector('.fc-deck-card__name')?.textContent,
@@ -156,7 +159,7 @@ async function main() {
 
     // Each custom deck's page.
     for (const [n, d] of plan.decks.entries()) {
-      await page.click('.fc-pane__crumbs >> text="Decks"');
+      await page.click(TRAIL_HOME);
       await page.waitForSelector('.fc-deck-card--custom', { timeout: 20_000 });
       await page.click(`.fc-deck-card--custom:has(.fc-deck-card__name:text-is("${d.name}")) .fc-deck-card__info`);
       await page.waitForSelector('.fc-custom__card', { timeout: 20_000 });
@@ -176,7 +179,7 @@ async function main() {
     let listed = 0;
     const listFaults = [];
     for (const deck of byDeck.keys()) {
-      await page.click('.fc-pane__crumbs >> text="Decks"');
+      await page.click(TRAIL_HOME);
       await page.waitForSelector('.fc-deck-card__name', { timeout: 20_000 });
       await page.click(`.fc-deck-card:not(.fc-deck-card--custom):has(.fc-deck-card__name:text-is("${deck}")) .fc-deck-card__info`);
       await page.waitForSelector('.fc-cardrow', { timeout: 20_000 });
@@ -198,7 +201,7 @@ async function main() {
       if (!appId || !card) { check(`study card ${id} is in the plan`, false); continue; }
       const deckTag = card.tags.find((t) => t.startsWith('deck-'));
       const deck = plan.decks.find((d) => d.tag === deckTag);
-      await page.click('.fc-pane__crumbs >> text="Decks"');
+      await page.click(TRAIL_HOME);
       await page.waitForSelector('.fc-deck-card__name', { timeout: 20_000 });
       if (!deck) { console.log(`[probe] card ${id} is in no custom deck: not studied here`); continue; }
       await page.click(`.fc-deck-card--custom:has(.fc-deck-card__name:text-is("${deck.name}")) .fc-deck-card__info`);
