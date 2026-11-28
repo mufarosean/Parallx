@@ -2,7 +2,7 @@
 // form, an item in detail) is read once, by the drawing of that place only.
 
 import { describe, it, expect } from 'vitest';
-import { carryPlannerOver, takePlannerOver, plannerDayString } from '../../src/built-in/planner/plannerNavState.js';
+import { carryPlannerOver, takePlannerOver, plannerDayString, plannerOverPending } from '../../src/built-in/planner/plannerNavState.js';
 
 describe('planner: a popover over a place rides along once', () => {
   it('is taken by the place it was sent to, once', () => {
@@ -21,6 +21,14 @@ describe('planner: a popover over a place rides along once', () => {
     carryPlannerOver('calendar', { form: 'newEvent' });
     carryPlannerOver('calendar', null);
     expect(takePlannerOver('calendar')).toBeNull();
+  });
+
+  it('says while something waits to be opened over a place', () => {
+    expect(plannerOverPending()).toBe(false);
+    carryPlannerOver('today', { form: 'newEvent' });
+    expect(plannerOverPending()).toBe(true);
+    takePlannerOver('today');
+    expect(plannerOverPending()).toBe(false);
   });
 
   it('names a moment\'s local day as the calendar address does', () => {

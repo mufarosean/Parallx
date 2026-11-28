@@ -10,7 +10,7 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
-import { plannerDayFrom, takePlannerOver, type PlannerOver } from './plannerNavState.js';
+import { plannerDayFrom, plannerOverPending, takePlannerOver, type PlannerOver } from './plannerNavState.js';
 import type { PlaceLocation, PlaceView, PlaceViewHost } from '../../services/places.js';
 import { PlannerTodayView } from './plannerToday.js';
 import { appDateParts } from '../../services/localTime.js';
@@ -318,7 +318,8 @@ export class PlannerEditorPane implements IDisposable {
     const older = vs?.get<string>('planner.activeTab', '');
     if (!vs || !older) return location;
     vs.set('planner.activeTab', undefined);
-    if (location.place !== 'today' || location.params || (older !== 'calendar' && older !== 'tasks')) return location;
+    // A form sent to a place goes there (redirected, it would wait for a later visit and pop up unasked).
+    if (location.place !== 'today' || location.params || plannerOverPending() || (older !== 'calendar' && older !== 'tasks')) return location;
     this._host.replace({ place: older });
     return { place: older };
   }

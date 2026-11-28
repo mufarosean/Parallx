@@ -31,6 +31,11 @@ export function takePlannerOver(place: string): PlannerOver | null {
   return over;
 }
 
+/** True while a command has sent something to open over a place not yet drawn. */
+export function plannerOverPending(): boolean {
+  return _carried !== null;
+}
+
 /** YYYY-MM-DD of a moment, in local time (as the calendar's address names a day). */
 export function plannerDayString(at: number): string {
   const d = new Date(at);
