@@ -31,11 +31,13 @@ try {
     try { return await svc.executeCommand('flashcards.addCards', { deckName: 'Probe Deck', cards: [{ front: 'One', back: '1' }, { front: 'Two', back: '2' }, { front: 'Three', back: '3' }] }); } catch (e) { return String(e?.message || e); }
   });
   await cmd(page, 'flashcards.open'); await page.waitForTimeout(1_800);
-  const title = (await texts('.fc-home__title'))[0] ?? '';
+  // The page's title is the kit's page header since piece 6 of Getting around (it was .fc-home__title).
+  const HOME_TITLE = '.fc-home__head .px-page-header__title';
+  const title = (await texts(HOME_TITLE))[0] ?? '';
   const sub = (await texts('.fc-home__sub'))[0] ?? '';
   const due = (await texts('.fc-home__due'))[0] ?? '';
   check('the page has decks to show', /^[1-9]\d* decks? · \d+ cards?/.test(sub), { sub, made });
-  check('its title is the day\'s work, in the display face', /^(\d+ cards? due today|Nothing due right now)$/.test(title) && /^Newsreader/.test(await font('.fc-home__title')), [title, await font('.fc-home__title')]);
+  check('its title is the day\'s work, in the display face', /^(\d+ cards? due today|Nothing due right now)$/.test(title) && /^Newsreader/.test(await font(HOME_TITLE)), [title, await font(HOME_TITLE)]);
   check('under it, the split in words', /^(About \d+ min\. )?\d+ new, \d+ learning, \d+ to review\./.test(due), due);
   const n = Number((title.match(/^(\d+)/) || [])[1] || 0);
   const buttons = await texts('.fc-home__head button');
@@ -59,7 +61,7 @@ try {
   // Study from the masthead starts a session; back to Decks.
   if (n > 0) {
     await page.evaluate(() => document.querySelector('.fc-home__head .fc-btn--primary')?.click()); await page.waitForTimeout(1_200);
-    check('the primary button starts a study session', await page.evaluate(() => !document.querySelector('.fc-home__title')?.getClientRects().length), null);
+    check('the primary button starts a study session', await page.evaluate((sel) => !document.querySelector(sel)?.getClientRects().length && !!document.querySelector('.fc-study')?.getClientRects().length, HOME_TITLE), null);
     await cmd(page, 'flashcards.open'); await page.waitForTimeout(800);
     await page.evaluate(() => [...document.querySelectorAll('.fc-sb__nav-item')].find((b) => b.getAttribute('data-view') === 'decks')?.click()); await page.waitForTimeout(900);
   }
