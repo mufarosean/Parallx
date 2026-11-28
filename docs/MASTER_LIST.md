@@ -2747,14 +2747,15 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   `run-generation-probe` (Ollama); Windows was not run.
 - **Piece 7 done (2026-11-28): Planner, what piece 1 left short.**
   *Measured first* (on the real app, hidden, dev at 5555f0ca, a scratch
-  walk of every rule and the table's Planner row, then the keyboard audit
-  on Planner's four screens): met already: one tab named for the place
-  with Planner's icon, the trail, the column's one mark, Open in Its Own
-  Tab, Back and Forward across places (Alt+Left after New Task from
-  Calendar returned to Calendar), an event's and a task's detail opening
-  as a popover over the place (no tab, the tab and trail unchanged), Home's
-  card (Open Today), the commands `planner.open`, `.show` and
-  `.showOverdue`, a place's address in a link; the keyboard audit on
+  walk of the rules and the table's Planner row, then the keyboard audit
+  on Planner's four screens): met already, walked: one tab named for the
+  place with Planner's icon, the trail, the column's one mark, Back across
+  places (Alt+Left after New Task from Calendar returned to Calendar), an
+  event's and a task's detail opening as a popover over the place (no tab,
+  the tab and trail unchanged), `planner.open` and `.show`; from pieces 1
+  and 2's records, not walked here: Forward, Home's card (Open Today), a
+  place's address as a link, `.showOverdue` (Open in Its Own Tab and the
+  column rows are guards of the acceptance probe); the keyboard audit on
   Today, Tasks, Calendar and New Task 0 on every count. Not met: Calendar's
   title was its own `h1.planner-cdate`, not the kit's page header (the keys
   landed there only by the core's fallback to a page's first h1); its
@@ -2762,13 +2763,16 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   (the toolbar was drawn again under them); the Tasks page's New Task
   opened two forms (the button ran its command and a handler of its own)
   and Escape left the keys on nothing; a form opened by command (New Task,
-  New Event, from the palette or with no Planner tab) and an event's
-  popover left the keys on nothing after Escape; every way in from outside
+  New Event, from the palette or with no Planner tab) left the keys on
+  nothing after Escape; an event's popover gave the keys back to what had
+  them when it opened, so after a toolbar press (which had already dropped
+  them) they stayed on nothing (the probe's 5b), while opened straight from
+  the page they came back to Calendar's own h1; every way in from outside
   the page (the three dashboard widgets, the Agenda block in a page, a
   reminder's Open Planner) ran `planner.open`, so it showed the Planner
-  wherever it was last; a Planner tab saved before piece 1 came back on
+  wherever it was last (read in code; the probe's item 6 then saw it); a Planner tab saved before piece 1 came back on
   Today, not the page it showed. Deep links: Planner has none of its own
-  (`plannerLinks.ts` only reads links in a task's notes); the place
+  (`plannerLinks.ts` only reads links in a task's or an event's notes); the place
   address is its link. The chat's three tools (`planner_captureTask`,
   `_captureEvent`, `_read`) move nowhere (read in code).
   *The calls the rule left, decided for him to overrule:* New Task and New
@@ -2793,27 +2797,38 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   or the page's title; an event's own bar or chip is its opener (a mouse
   press on it starts a drag, so it never had the keys); any control with
   an id keeps the keys when the page is drawn again. An older build's
-  Planner tab comes back on its page (`planner.activeTab`, read once and
-  cleared), unless a form was sent to the first drawing. Nothing outside
+  Planner tab comes back on its page, Calendar or Tasks, not on the list it
+  showed (`planner.activeTab`, read once and cleared), unless a form was
+  sent to the first drawing. Nothing outside
   `src/built-in/planner` changed; the core gained nothing.
   *How it was checked:* the acceptance probe
-  `tests/probes/getting-around-planner-acceptance.mjs`, written first by the
-  app-verifier (32c335c1), 17/41 on the app as it was (17 guards; its
+  `tests/probes/getting-around-planner-acceptance.mjs`, by the
+  app-verifier from the request and the measurement, committed alone
+  (32c335c1); the builder wrote source meanwhile (its first files are on
+  disk from 11:13, the probe from 11:20) but did not rebuild until after
+  that commit, so the probe's 17/41 is on the kept 5555f0ca build (from its
+  commit message; that log not kept) (17 guards; its
   author moved one meant guard, 5b, keys back after an event's popover,
   to a demand because it failed); 41/41 unedited on the build commit
   99218c6c and on the final build b55c8705, 0 page errors (seen on the
-  real app, hidden). Pieces 1 to 6's probes on 99218c6c: 23/23, 30/30,
+  real app, hidden; an earlier build gave 39/41, the two being the keys'
+  return after the Tasks button's form and after an event's popover).
+  Pieces 1 to 6's probes on 99218c6c: 23/23, 30/30,
   59/59, 114/114, 78/78, 76/76. Planner's own probes on 99218c6c and on
-  5555f0ca: `planner-probe` exit 0 on both; `planner-pages-probe` 18 ok and
-  the same 3 FAIL on both (Calendar's row "lights that row alone", Enter on
-  All Tasks, Review Queue's retitle; from before the piece, not traced).
+  5555f0ca: `planner-probe` ran to the end on both (it asserts nothing;
+  its event click, drag and drag-create steps found no element on either
+  build: a stale probe); `planner-pages-probe` 18 ok and the same 3 FAIL on
+  both (Calendar's row "lights that row alone", Enter on All Tasks, Review
+  Queue's retitle): it looks for the column's old `--active` class, gone
+  since piece 1 (the mark is aria-current now, which the acceptance probe's
+  item 8 checks); a stale probe, not Planner, left as it is.
   Typecheck, vitest (758 files passed, 3 skipped, on 99218c6c; the two
   Planner unit files again after b55c8705), build; with
   `tests/unit/plannerOver.test.ts` (new; seen failing on the code before).
   On b55c8705: the keyboard audit on Planner's screens (12 with sub-screens)
   0 on every count; the touch-drag probe all ok; the visual-consistency
-  probe one rise, Creations' title size, as before piece 1 (Planner:
-  nothing found).
+  probe one rise, Creations' title size, as before piece 1 (Planner, the
+  one screen it opens: nothing found; Calendar's new header not measured).
   *The "Show Tasks" popup problem* (the full keyboard audit's Planner
   popup problem since piece 2): traced. Its screen is the audit's
   `planner.show tasks` (Tasks); its New Task button opened two forms and
@@ -2831,7 +2846,11 @@ https://claude.ai/artifact/68M5KShRnf1jTgqsM89Hsq
   its form waited and popped up on a later visit to Today. The app-verifier then drove that fix on the real app with its own probe,
   `tests/probes/planner-places-review-fixes-probe.mjs` (b096e252): 9/9 on
   b55c8705, 4/9 on 99218c6c (the form not opening over Today, and popping
-  up unasked on the next visit).
+  up unasked on the next visit). The reviewers' and the skeptic's reports,
+  the review-fix probe's two runs and the vitest run are as relayed in the
+  commits, not kept on disk; `plannerOver.test.ts` "seen failing" means it
+  failed on the code before (its functions did not exist), run once, not
+  logged.
   *Checks changed:* `tests/unit/plannerNavState.test.ts`, by the
   app-verifier, not the builder (423925c2): its two tests read the removed
   `setPendingPlannerNewTask`/`takePendingPlannerNewTask`; they now read
